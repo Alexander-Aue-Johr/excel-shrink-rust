@@ -1,1 +1,509 @@
 # excel-shrink-rust
+
+`excel-shrink-rust` is a Rust implementation of Excel Shrink. It processes `.xlsx` files and rewrites them in a reduced form. The current implementation focuses on cleaning XLSX-internal XML data and reducing unnecessary content within Excel workbooks.
+
+The repository is organised as a Rust Cargo workspace with two crates:
+
+* `excel-shrink-core`: library code for cleaning XLSX-internal XML data
+* `excel-shrink-cli`: command-line program for running Excel Shrink on one file or a directory of files
+
+## Repository structure
+
+```text
+excel-shrink-rust/
+├── Cargo.toml
+├── Cargo.lock
+├── excel-shrink-core/
+│   ├── Cargo.toml
+│   └── src/
+│       ├── error.rs
+│       ├── lib.rs
+│       ├── models.rs
+│       ├── sheet.rs
+│       ├── styles.rs
+│       ├── tests.rs
+│       └── workbook.rs
+└── excel-shrink-cli/
+    ├── Cargo.toml
+    └── src/
+        ├── main.rs
+        └── pipeline.rs
+```
+
+## What the tool does
+
+The CLI accepts either a single `.xlsx` file or a directory containing `.xlsx` files. It opens each XLSX file as a ZIP archive, processes the relevant XML files, and writes a cleaned XLSX file to the output directory.
+
+The main command-line options are:
+
+```text
+excel-shrink-cli <INPUT_PATH> <OUTPUT_PATH> [OPTIONS]
+
+Arguments:
+  <INPUT_PATH>   Path to an .xlsx file or to a directory containing .xlsx files
+  <OUTPUT_PATH>  Path to the output directory
+
+Options:
+  --recursive                 Recursively search input directories for .xlsx files
+  --disable-multiprocessing   Run in single-threaded mode
+  --chunk-size <BYTES>        Set the XML processing chunk size
+  --force-overwrite           Overwrite existing output files
+```
+
+The default chunk size is `16777216` bytes, which is 16 MiB.
+
+## Requirements
+
+You need:
+
+* Git
+* Rust toolchain
+* A C/C++ build toolchain
+* XLSX input files
+
+Rust is installed through `rustup`, which manages the Rust compiler and Cargo build tool.
+
+## Setup on Ubuntu 24.04 LTS
+
+The following instructions use Ubuntu 24.04 LTS as a common Linux distribution.
+
+### 1. Install system packages
+
+```bash
+sudo apt update
+sudo apt install -y build-essential curl git pkg-config
+```
+
+### 2. Install Rust
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+When asked, choose the default installation.
+
+Then activate Rust in the current terminal:
+
+```bash
+source "$HOME/.cargo/env"
+```
+
+Check that Rust and Cargo are available:
+
+```bash
+rustc --version
+cargo --version
+```
+
+### 3. Clone the repository
+
+```bash
+git clone <REPOSITORY_URL>
+cd excel-shrink-rust
+```
+
+Replace `<REPOSITORY_URL>` with the actual Git repository URL.
+
+### 4. Build the project
+
+For a normal debug build:
+
+```bash
+cargo build
+```
+
+For a faster release executable:
+
+```bash
+cargo build --release
+```
+
+The release executable will be created at:
+
+```text
+target/release/excel-shrink-cli
+```
+
+### 5. Run the tests
+
+```bash
+cargo test
+```
+
+This runs the unit tests in the workspace.
+
+## Running Excel Shrink
+
+### Process one XLSX file
+
+```bash
+cargo run --release -- path/to/input.xlsx path/to/output_directory
+```
+
+Example:
+
+```bash
+cargo run --release -- data/example.xlsx output
+```
+
+This writes the processed file to:
+
+```text
+output/example.xlsx
+```
+
+### Process all XLSX files in a directory
+
+```bash
+cargo run --release -- path/to/input_directory path/to/output_directory
+```
+
+Example:
+
+```bash
+cargo run --release -- data/xlsx_files output
+```
+
+### Process a directory recursively
+
+```bash
+cargo run --release -- path/to/input_directory path/to/output_directory --recursive
+```
+
+### Overwrite existing output files
+
+By default, existing output files are skipped. To overwrite them:
+
+```bash
+cargo run --release -- data/xlsx_files output --recursive --force-overwrite
+```
+
+### Run single-threaded
+
+For easier debugging or profiling:
+
+```bash
+cargo run --release -- data/xlsx_files output --recursive --disable-multiprocessing
+```
+
+### Change the XML chunk size
+
+```bash
+cargo run --release -- data/xlsx_files output --recursive --chunk-size 8388608
+```
+
+This example uses an 8 MiB chunk size.
+
+## Setting up WSL on Windows
+
+These instructions use Ubuntu under Windows Subsystem for Linux.
+
+### 1. Install WSL
+
+Open PowerShell as Administrator and run:
+
+```powershell
+wsl --install -d Ubuntu-24.04
+```
+
+Restart Windows if requested.
+
+Then open “Ubuntu 24.04” from the Start menu and create a Linux username and password.
+
+### 2. Update Ubuntu inside WSL
+
+Inside the Ubuntu terminal:
+
+```bash
+sudo apt update
+sudo apt upgrade -y
+```
+
+### 3. Install required packages
+
+```bash
+sudo apt install -y build-essential curl git pkg-config
+```
+
+### 4. Install Rust inside WSL
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+```
+
+Check the installation:
+
+```bash
+rustc --version
+cargo --version
+```
+
+### 5. Access Windows files from WSL
+
+Windows drives are mounted under `/mnt`.
+
+For example:
+
+```text
+C:\Users\YourName\Documents
+```
+
+becomes:
+
+```text
+/mnt/c/Users/YourName/Documents
+```
+
+A path on drive `R:` becomes:
+
+```text
+/mnt/r/...
+```
+
+Example command:
+
+```bash
+cargo run --release -- \
+  /mnt/r/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded \
+  /mnt/r/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded_shrunk \
+  --recursive
+```
+
+### 6. Recommended WSL workflow
+
+For best performance, clone and build the Rust project inside the Linux file system, for example:
+
+```bash
+mkdir -p ~/repositories
+cd ~/repositories
+git clone <REPOSITORY_URL>
+cd excel-shrink-rust
+cargo build --release
+```
+
+Input and output data may still be stored on a Windows drive such as `/mnt/r/...`, but building the Rust project itself is usually faster and more reliable inside the WSL Linux home directory.
+
+## VS Code usage
+
+This repository contains VS Code configuration files in `.vscode/`.
+
+### Recommended extensions
+
+Install the following extensions:
+
+* **Rust Analyzer** (`rust-lang.rust-analyzer`) – Rust language support, navigation, refactoring, and code intelligence
+* **CodeLLDB** (`vadimcn.vscode-lldb`) – Native Rust debugging support
+* **WSL** (`ms-vscode-remote.remote-wsl`) – Seamless development inside WSL
+* **Even Better TOML** (`tamasfe.even-better-toml`) – Improved editing support for `Cargo.toml`
+* **Error Lens** (`usernamehw.errorlens`) – Displays compiler errors directly in the editor
+* **GitLens** (`eamodio.gitlens`) – Enhanced Git integration and code history
+
+### Opening the project
+
+1. Install Visual Studio Code.
+2. Install the recommended extensions listed above.
+3. Open the repository from inside WSL using the VS Code WSL integration.
+4. Wait for Rust Analyzer to finish indexing the workspace.
+5. Build the project:
+
+```bash
+cargo build
+```
+
+### Navigation and code exploration
+
+Rust Analyzer provides powerful navigation features:
+
+* **Go to Definition**: `F12`
+* **Peek Definition**: `Alt+F12`
+* **Go to Declaration**: Right-click → *Go to Definition*
+* **Find All References**: `Shift+F12`
+* **Rename Symbol**: `F2`
+* **Go to Implementation**: Right-click → *Go to Implementations*
+* **Call Hierarchy**: Right-click on a function → *Show Call Hierarchy*
+* **Type Hierarchy**: Available for supported Rust types and traits
+* **Outline View**: Quickly navigate modules, structs, enums, traits, and functions
+
+These features are especially useful when tracing execution paths through `pipeline.rs`, `sheet.rs`, and `workbook.rs`.
+
+### Debugging
+
+The repository includes VS Code debug configurations in `.vscode/launch.json`.
+
+Useful debugging features include:
+
+* Set breakpoints by clicking in the editor gutter
+* Conditional breakpoints
+* Watch expressions
+* Variable inspection
+* Call stack inspection
+* Step Into (`F11`)
+* Step Over (`F10`)
+* Step Out (`Shift+F11`)
+* Restart and hot-reload debug sessions
+
+For easier debugging, consider running the CLI with:
+
+```bash
+cargo run -- path/to/input.xlsx output
+```
+
+or
+
+```bash
+cargo run -- path/to/input_directory output --disable-multiprocessing
+```
+
+### Running tests from VS Code
+
+Rust Analyzer automatically detects Rust tests.
+
+You can:
+
+* Click **Run Test** above a test function
+* Click **Debug Test** above a test function
+* Run all tests from the Testing panel
+* Run tests from the terminal:
+
+```bash
+cargo test
+```
+
+Run a specific test:
+
+```bash
+cargo test test_name
+```
+
+Run tests with output:
+
+```bash
+cargo test -- --nocapture
+```
+
+### Useful Rust Analyzer commands
+
+Open the Command Palette (`Ctrl+Shift+P`) and try:
+
+* Rust Analyzer: Reload Workspace
+* Rust Analyzer: Restart Server
+* Rust Analyzer: View Syntax Tree
+* Rust Analyzer: Show References
+* Rust Analyzer: Expand Macro Recursively
+
+These commands are particularly useful when investigating macro-generated code or workspace indexing issues.
+
+## Reproducing paper experiments
+
+A typical reproduction workflow is:
+
+```bash
+git clone <REPOSITORY_URL>
+cd excel-shrink-rust
+cargo build --release
+cargo test
+mkdir -p output
+cargo run --release -- path/to/xlsx_corpus output --recursive
+```
+
+After the run, the output directory contains the processed XLSX files. These files can then be compared with the original input files, for example by measuring file sizes before and after processing.
+
+A simple Linux command for comparing file sizes is:
+
+```bash
+du -b path/to/xlsx_corpus/*.xlsx
+du -b output/*.xlsx
+```
+
+For recursive corpora:
+
+```bash
+find path/to/xlsx_corpus -name "*.xlsx" -printf "%s %p\n" > original_sizes.txt
+find output -name "*.xlsx" -printf "%s %p\n" > cleaned_sizes.txt
+```
+
+## Troubleshooting
+
+### `cargo: command not found`
+
+Rust is not installed or the current terminal does not know where Cargo is installed.
+
+Run:
+
+```bash
+source "$HOME/.cargo/env"
+```
+
+If that does not help, reinstall Rust with `rustup`.
+
+### Permission problems on Windows-mounted drives
+
+If you process files under `/mnt/c`, `/mnt/d`, or `/mnt/r`, make sure the files are not open in Excel or another program.
+
+If problems continue, copy a small test corpus into the WSL home directory and run the tool there:
+
+```bash
+cp -r /mnt/r/path/to/xlsx_files ~/xlsx_test
+cargo run --release -- ~/xlsx_test ~/xlsx_test_output --recursive
+```
+
+### Existing output files are skipped
+
+Use:
+
+```bash
+--force-overwrite
+```
+
+### The program finds no XLSX files
+
+Check that the input path exists and that the files end with `.xlsx`.
+
+For recursive directory search, use:
+
+```bash
+--recursive
+```
+
+### Rust Analyzer does not detect the workspace
+
+Try:
+
+```bash
+cargo check
+```
+
+Then reload VS Code and run:
+
+```text
+Rust Analyzer: Reload Workspace
+```
+
+from the Command Palette.
+
+### The build is slow
+
+Use the release build only when needed:
+
+```bash
+cargo build
+```
+
+For final performance runs, use:
+
+```bash
+cargo build --release
+```
+
+## Notes for reviewers
+
+This repository is intended to support reproducibility of the accompanying paper. The goal is not to require reviewers to know Rust in advance. The essential commands are:
+
+```bash
+cargo build --release
+cargo test
+cargo run --release -- <INPUT_XLSX_OR_DIRECTORY> <OUTPUT_DIRECTORY> --recursive
+```
+
+The Rust package manager Cargo automatically downloads the required Rust dependencies listed in `Cargo.toml` and locked in `Cargo.lock`.
