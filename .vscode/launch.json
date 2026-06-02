@@ -1,0 +1,21 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug excel-shrink-cli",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
+            "args": [
+                "/mnt/r/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded",
+                "/mnt/r/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded_shrunk2",
+                "--recursive"
+            ],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "cargo build"
+        }
+    ]
+}

@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "excel-shrink-core",
+    "excel-shrink-cli"
+]
+resolver = "2"
+
+[workspace.dependencies]
+thiserror = "1.0"
+tracing = "0.1"
+regex = "1.10"
+bstr = "1.9"
+derive-new = "0.6"
+derive_builder = "0.20"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }

@@ -1,0 +1,14 @@
+[package]
+name = "excel-shrink-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+regex.workspace = true
+bstr.workspace = true
+derive-new.workspace = true
+derive_builder.workspace = true
+zip.workspace = true
+lazy_static = "1.4"
