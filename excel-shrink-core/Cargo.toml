@@ -12,3 +12,4 @@ derive-new.workspace = true
 derive_builder.workspace = true
 zip.workspace = true
 lazy_static = "1.4"
+memchr = "2"

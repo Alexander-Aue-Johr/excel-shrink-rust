@@ -34,7 +34,7 @@ pub fn clean_workbook(workbook_xml_bytes: &[u8]) -> Result<Vec<u8>> {
 
     // Regex zum Extrahieren aller Namen und IDs
     let search_pattern = Regex::new(
-        r#"<definedName\b[^>]*?name="([^"]*?)"(?:[^>]*?localSheetId="([^"]*?)")?[^>]*?>"#
+        r#"(?s)<definedName\b[^>]*?name="([^"]*?)"(?:[^>]*?localSheetId="([^"]*?)")?[^>]*?>"#
     )?;
 
     let mut print_area = HashSet::new();

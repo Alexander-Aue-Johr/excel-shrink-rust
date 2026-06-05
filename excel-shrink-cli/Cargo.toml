@@ -7,9 +7,11 @@ edition = "2021"
 excel-shrink-core = { path = "../excel-shrink-core" }
 clap = { version = "4.4", features = ["derive"] }
 tracing.workspace = true
-tracing-subscriber = "0.3"
 rayon = "1.8"
 threadpool = "1.8"
 zip.workspace = true
 anyhow = "1.0.102"
 walkdir = "2.5.0"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+num_cpus = "1.16"

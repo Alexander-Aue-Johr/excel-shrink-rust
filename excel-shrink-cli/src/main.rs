@@ -1,14 +1,15 @@
 use clap::Parser;
-use tracing::{info, Level};
-use tracing_subscriber::FmtSubscriber;
 use std::path::PathBuf;
 use std::time::Instant;
+use tracing::info;
+use tracing_appender::rolling;
+use tracing_subscriber::{fmt, EnvFilter};
 
 mod pipeline;
 
 #[derive(Parser, Debug)]
 #[command(name = "excel-shrink", about = "Clean and shrink XLSX files.")]
-struct Cli {
+pub struct Cli {
     /// Path to xlsx file or directory containing xlsx files
     path: PathBuf,
 
@@ -30,15 +31,45 @@ struct Cli {
     /// Force overwrite existing files
     #[arg(long)]
     force_overwrite: bool,
+
+    /// List of sheet names to process (e.g. sheet1.xml sheet2.xml)
+    #[arg(long, value_delimiter = ' ')]
+    sheets: Option<Vec<String>>,
+
+    /// Only clean the workbook.xml file and not the sheet.xml files
+    #[arg(long)]
+    only_clean_workbook: bool,
+
+    /// Remove whitespace-only cell contents from worksheet files
+    #[arg(long)]
+    remove_whitespaces: bool,
+
+    /// Disable splitting of sheet data range with cells and range with visible rows
+    #[arg(long)]
+    disable_sheetdata_splitting: bool,
+
+    /// Number of XLSX assembler/writer threads.
+    /// Defaults to the number of logical CPU cores.
+    #[arg(long)]
+    writer_workers: Option<usize>,
+
+    /// Deflate compression level for cleaned XML entries.
+    /// 1 is much faster than the ZIP default and usually still compresses XLSX XML very well.
+    #[arg(long, default_value_t = 1)]
+    compression_level: i32,
+
+    /// Store cleaned XML entries without Deflate compression.
+    /// Useful for RAM-disk throughput benchmarks and for showing pure cleaning/package speed.
+    #[arg(long)]
+    store_output: bool,
 }
 
-fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
 
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
-        .finish();
-    tracing::subscriber::set_global_default(subscriber)?;
+
+fn main() -> anyhow::Result<()> {
+    let _guard = init_logging()?;
+
+    let cli = Cli::parse();
 
     let start = Instant::now();
     info!("Starting excel-shrink pipeline...");
@@ -49,20 +80,34 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    pipeline::process_files(
-        files,
-        cli.output,
-        cli.chunk_size,
-        cli.disable_multiprocessing,
-        cli.force_overwrite,
-    )?;
+    pipeline::process_files(files, &cli)?;
 
     info!("Script completed in {:.2?}", start.elapsed());
     Ok(())
 }
 
+fn init_logging() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
+    std::fs::create_dir_all("logs")?;
+
+    let file_appender = rolling::never("logs", "excel-shrink-run.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let subscriber = fmt()
+        .with_env_filter(env_filter)
+        .with_writer(non_blocking)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber)?;
+
+    Ok(guard)
+}
+
 fn gather_files(path: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
+
     if path.is_file() && path.extension().map_or(false, |ext| ext == "xlsx") {
         files.push(path.clone());
     } else if path.is_dir() {
@@ -81,5 +126,6 @@ fn gather_files(path: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>
             }
         }
     }
+
     Ok(files)
 }
