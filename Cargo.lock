@@ -284,7 +284,6 @@ dependencies = [
  "anyhow",
  "clap",
  "excel-shrink-core",
- "num_cpus",
  "rayon",
  "threadpool",
  "tracing",

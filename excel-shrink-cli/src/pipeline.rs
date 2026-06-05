@@ -33,7 +33,6 @@ enum WriteJob {
     CopyPrecompressed {
         filename: String,
         zip_bytes: Vec<u8>,
-        uncompressed_size: usize,
     },
 }
 
@@ -259,7 +258,6 @@ fn spawn_xlsx_writer(
                 WriteJob::CopyPrecompressed {
                     filename,
                     zip_bytes,
-                    uncompressed_size: _,
                 } => {
                     copy_precompressed_jobs += 1;
 
@@ -337,7 +335,10 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
     let stop_watchdog = Arc::new(AtomicBool::new(false));
     let watchdog_handle = start_watchdog(active_tasks.clone(), stop_watchdog.clone());
 
-    let writer_workers = cli.writer_workers.unwrap_or_else(num_cpus::get).max(1);
+    let writer_workers = cli
+        .writer_workers
+        .unwrap_or_else(default_parallelism)
+        .max(1);
     let writer_pool = ThreadPool::new(writer_workers);
 
     info!(
@@ -416,7 +417,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         }
 
         let mut whitespace_indices = None;
-        if cli.remove_whitespaces {
+        if cli.remove_unreferenced_whitespace_cells {
             if let Ok(mut sst_file) = archive.by_name("xl/sharedStrings.xml") {
                 let mut sst_data = Vec::new();
                 if sst_file.read_to_end(&mut sst_data).is_ok() {
@@ -467,6 +468,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     zip_info_filename: name,
                     compress_method: method,
                     patterns: patterns.clone(),
+                    advanced_cleanup: None,
                 });
             } else if name == "xl/workbook.xml" {
                 let mut buf = Vec::new();
@@ -503,7 +505,6 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     }
                 };
 
-                let uncompressed_size = cleaned_wb.len();
                 let out_method = output_compression_method(method, cli.store_output);
 
                 match precompress_entry(&name, cleaned_wb, out_method, cli.compression_level) {
@@ -511,7 +512,6 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                         tx.send(WriteJob::CopyPrecompressed {
                             filename: name,
                             zip_bytes,
-                            uncompressed_size,
                         })
                         .unwrap();
                     }
@@ -560,147 +560,246 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             }
         }
 
+        use excel_shrink_core::models::AdvancedCleanupConfig;
+        use excel_shrink_core::reference_scanner::{scan_for_references, ScanResult};
+
+        let do_advanced = cli.remove_unreferenced_whitespace_cells
+            || cli.remove_unreferenced_hidden_content_cells;
+        let mut advanced_config = AdvancedCleanupConfig {
+            remove_unreferenced_whitespace: cli.remove_unreferenced_whitespace_cells,
+            remove_unreferenced_hidden_content: cli.remove_unreferenced_hidden_content_cells,
+            safe_to_clean: false,
+            protected_cells: Default::default(),
+        };
+
+        let mut unsafe_reason = None;
+
+        if do_advanced {
+            let mut buffers_to_scan = Vec::new();
+            let mut workbook_xml_for_scan = Vec::new();
+
+            if let Ok(mut wb_file) = archive.by_name("xl/workbook.xml") {
+                if wb_file.read_to_end(&mut workbook_xml_for_scan).is_ok() {
+                    buffers_to_scan.push(workbook_xml_for_scan.as_slice());
+                }
+            }
+
+            for (_, buf) in &sheets_data {
+                buffers_to_scan.push(buf.as_slice());
+            }
+
+            match scan_for_references(&buffers_to_scan, &mut advanced_config.protected_cells) {
+                ScanResult::Safe => {
+                    advanced_config.safe_to_clean = true;
+                }
+                ScanResult::Unsafe(reason) => {
+                    unsafe_reason = Some(reason);
+                    advanced_config.safe_to_clean = false;
+                }
+            }
+        }
+
+        let advanced_arc = if do_advanced {
+            Some(Arc::new(advanced_config))
+        } else {
+            None
+        };
+
+        if do_advanced {
+            if let Some(reason) = &unsafe_reason {
+                warn!(
+                    event = "unsafe_dynamic_reference_found",
+                    xlsx = %input_display,
+                    function = %reason,
+                    "Unsafe dynamic reference found; skipping advanced cleanup for this workbook."
+                );
+            } else {
+                let protected_refs = &advanced_arc.as_ref().unwrap().protected_cells;
+
+                debug!(
+                    event = "advanced_cleanup_safe",
+                    xlsx = %input_display,
+                    protected_cell_refs_count = protected_refs.cell_ref_count(),
+                    protected_range_refs_count = protected_refs.range_ref_count(),
+                    "Advanced cleanup safe to proceed."
+                );
+            }
+        }
+
         let sheet_count = sheets_data.len();
         let chunk_size = cli.chunk_size;
         let disable_splitting = cli.disable_sheetdata_splitting;
         let store_output = cli.store_output;
         let compression_level = cli.compression_level;
 
-        let process_sheet = |params: CleanSheetParameters,
-                             data: Vec<u8>,
-                             tx: &mpsc::Sender<WriteJob>| {
-            let start_time = Instant::now();
-            let task_key = format!("{}::{}", params.xlsx_file_path, params.zip_info_filename);
+        let process_sheet =
+            |mut params: CleanSheetParameters,
+             data: Vec<u8>,
+             tx: &mpsc::Sender<WriteJob>,
+             adv_config: Option<Arc<AdvancedCleanupConfig>>| {
+                params.advanced_cleanup = adv_config;
 
-            {
-                let mut guard = active_tasks.lock().unwrap();
-                guard.insert(
-                    task_key.clone(),
-                    ActiveTask {
-                        xlsx: params.xlsx_file_path.clone(),
-                        sheet: params.zip_info_filename.clone(),
-                        xml_size: data.len(),
-                        started: start_time,
-                        phase: "clean_sheet_data_streamwise + precompress_entry".to_string(),
-                    },
-                );
-            }
+                let start_time = Instant::now();
+                let task_key = format!("{}::{}", params.xlsx_file_path, params.zip_info_filename);
 
-            debug!(
-                "Starting Sheet {} of {}: Original size {} bytes",
-                params.zip_info_filename,
-                params.xlsx_file_path,
-                data.len()
-            );
-
-            let original_size = data.len();
-
-            let result = clean_sheet_data_streamwise(
-                Cursor::new(&data),
-                &params,
-                chunk_size,
-                disable_splitting,
-            );
-
-            let cleaned_or_original = match result {
-                Ok(cleaned_data) => {
-                    let reduction = original_size.saturating_sub(cleaned_data.len());
-                    let ratio = if original_size > 0 {
-                        (reduction as f64 / original_size as f64) * 100.0
-                    } else {
-                        0.0
-                    };
-
-                    let elapsed = start_time.elapsed();
-
-                    if elapsed.as_secs_f64() >= 5.0 {
-                        warn!(
-                                "Slow Sheet {} of {}: Original size {} bytes, Clean size {} bytes, reduction {} bytes ({:.2}% reduction), cleaning completed in {:.2?}",
-                                params.zip_info_filename,
-                                params.xlsx_file_path,
-                                original_size,
-                                cleaned_data.len(),
-                                reduction,
-                                ratio,
-                                elapsed
-                            );
-                    } else {
-                        debug!(
-                            "Processed Sheet {} of {} completed cleaning in {:.2?}",
-                            params.zip_info_filename, params.xlsx_file_path, elapsed
-                        );
-                    }
-
-                    cleaned_data
+                {
+                    let mut guard = active_tasks.lock().unwrap();
+                    guard.insert(
+                        task_key.clone(),
+                        ActiveTask {
+                            xlsx: params.xlsx_file_path.clone(),
+                            sheet: params.zip_info_filename.clone(),
+                            xml_size: data.len(),
+                            started: start_time,
+                            phase: "clean_sheet_data_streamwise + precompress_entry".to_string(),
+                        },
+                    );
                 }
 
-                Err(e) => {
-                    error!(
-                        "Error processing {} of {}: {}. Falling back to original data.",
-                        params.zip_info_filename, params.xlsx_file_path, e
-                    );
+                debug!(
+                    "Starting Sheet {} of {}: Original size {} bytes",
+                    params.zip_info_filename,
+                    params.xlsx_file_path,
+                    data.len()
+                );
 
-                    data
+                let original_size = data.len();
+
+                let result = clean_sheet_data_streamwise(
+                    Cursor::new(&data),
+                    &params,
+                    chunk_size,
+                    disable_splitting,
+                );
+
+                let cleaned_or_original = match result {
+                    Ok(cleaned_sheet) => {
+                        let cleaned_data = cleaned_sheet.xml;
+                        let metrics = cleaned_sheet.metrics;
+
+                        let reduction = original_size.saturating_sub(cleaned_data.len());
+                        let ratio = if original_size > 0 {
+                            (reduction as f64 / original_size as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+
+                        if let Some(adv) = &params.advanced_cleanup {
+                            if adv.remove_unreferenced_whitespace {
+                                info!(
+                    "[{}] whitespace cleanup: sheet={} candidates={} removed={} protected_by_reference={} skipped={}",
+                    params.xlsx_file_path,
+                    params.zip_info_filename,
+                    metrics.whitespace_candidates,
+                    metrics.whitespace_removed,
+                    metrics.whitespace_protected_by_reference,
+                    !adv.safe_to_clean
+                );
+                            }
+
+                            if adv.remove_unreferenced_hidden_content {
+                                info!(
+                    "[{}] hidden content cleanup: sheet={} candidates={} removed={} protected_by_reference={} skipped={}",
+                    params.xlsx_file_path,
+                    params.zip_info_filename,
+                    metrics.hidden_candidates,
+                    metrics.hidden_removed,
+                    metrics.hidden_protected_by_reference,
+                    !adv.safe_to_clean
+                );
+                            }
+                        }
+
+                        let elapsed = start_time.elapsed();
+
+                        if elapsed.as_secs_f64() >= 5.0 {
+                            warn!(
+                "Slow Sheet {} of {}: Original size {} bytes, Clean size {} bytes, reduction {} bytes ({:.2}% reduction), cleaning completed in {:.2?}",
+                params.zip_info_filename,
+                params.xlsx_file_path,
+                original_size,
+                cleaned_data.len(),
+                reduction,
+                ratio,
+                elapsed
+            );
+                        } else {
+                            debug!(
+                                "Processed Sheet {} of {} completed cleaning in {:.2?}",
+                                params.zip_info_filename, params.xlsx_file_path, elapsed
+                            );
+                        }
+
+                        cleaned_data
+                    }
+
+                    Err(e) => {
+                        error!(
+                            "Error processing {} of {}: {}. Falling back to original data.",
+                            params.zip_info_filename, params.xlsx_file_path, e
+                        );
+
+                        data
+                    }
+                };
+
+                let uncompressed_size = cleaned_or_original.len();
+                let out_method = output_compression_method(params.compress_method, store_output);
+                let precompress_start = Instant::now();
+
+                match precompress_entry(
+                    &params.zip_info_filename,
+                    cleaned_or_original,
+                    out_method,
+                    compression_level,
+                ) {
+                    Ok(zip_bytes) => {
+                        debug!(
+                            event = "sheet_precompressed",
+                            xlsx = %params.xlsx_file_path,
+                            sheet = %params.zip_info_filename,
+                            uncompressed_size = uncompressed_size,
+                            single_entry_zip_size = zip_bytes.len(),
+                            elapsed_ms = precompress_start.elapsed().as_millis(),
+                            "Precompressed cleaned sheet entry"
+                        );
+
+                        tx.send(WriteJob::CopyPrecompressed {
+                            filename: params.zip_info_filename.clone(),
+                            zip_bytes,
+                        })
+                        .unwrap();
+                    }
+
+                    Err(e) => {
+                        error!(
+                            event = "sheet_precompress_failed",
+                            xlsx = %params.xlsx_file_path,
+                            sheet = %params.zip_info_filename,
+                            error = %e,
+                            "Failed to precompress cleaned sheet. This sheet will be omitted from optimized output."
+                        );
+                    }
+                }
+
+                {
+                    let mut guard = active_tasks.lock().unwrap();
+                    guard.remove(&task_key);
                 }
             };
 
-            let uncompressed_size = cleaned_or_original.len();
-            let out_method = output_compression_method(params.compress_method, store_output);
-            let precompress_start = Instant::now();
-
-            match precompress_entry(
-                &params.zip_info_filename,
-                cleaned_or_original,
-                out_method,
-                compression_level,
-            ) {
-                Ok(zip_bytes) => {
-                    debug!(
-                        event = "sheet_precompressed",
-                        xlsx = %params.xlsx_file_path,
-                        sheet = %params.zip_info_filename,
-                        uncompressed_size = uncompressed_size,
-                        single_entry_zip_size = zip_bytes.len(),
-                        elapsed_ms = precompress_start.elapsed().as_millis(),
-                        "Precompressed cleaned sheet entry"
-                    );
-
-                    tx.send(WriteJob::CopyPrecompressed {
-                        filename: params.zip_info_filename.clone(),
-                        zip_bytes,
-                        uncompressed_size,
-                    })
-                    .unwrap();
-                }
-
-                Err(e) => {
-                    error!(
-                        event = "sheet_precompress_failed",
-                        xlsx = %params.xlsx_file_path,
-                        sheet = %params.zip_info_filename,
-                        error = %e,
-                        "Failed to precompress cleaned sheet. This sheet will be omitted from optimized output."
-                    );
-                }
-            }
-
-            {
-                let mut guard = active_tasks.lock().unwrap();
-                guard.remove(&task_key);
-            }
-        };
-
         if cli.disable_multiprocessing {
             for (params, data) in sheets_data {
-                process_sheet(params, data, &tx);
+                process_sheet(params, data, &tx, advanced_arc.clone());
             }
         } else {
             let tx_for_sheets = tx.clone();
-            sheets_data
-                .into_par_iter()
-                .for_each_with(tx_for_sheets, |tx, (params, data)| {
-                    process_sheet(params, data, tx);
-                });
+            sheets_data.into_par_iter().for_each_with(
+                (tx_for_sheets, advanced_arc.clone()),
+                |(tx, arc), (params, data)| {
+                    process_sheet(params, data, tx, arc.clone());
+                },
+            );
         }
 
         debug!(

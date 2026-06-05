@@ -26,13 +26,13 @@ pub fn replace_row(
         .insert(row_attributes.ref_.clone(), row_attributes.clone());
 
     let was_already_empty = original_row_content.is_empty();
-    
+
     let row_content = if !was_already_empty {
         clean_cells(params, metrics, &original_row_content)
     } else {
         original_row_content.clone()
     };
-    
+
     let is_empty = row_content.is_empty();
     let became_empty_by_cleaning = !was_already_empty && is_empty;
 
@@ -42,11 +42,19 @@ pub fn replace_row(
                 metrics.deleted_row_states.push(row_attributes);
                 return Vec::new();
             } else {
-                return generate_and_log_self_closing_row(&row_attr_str, params, metrics, row_attributes);
+                return generate_and_log_self_closing_row(
+                    &row_attr_str,
+                    params,
+                    metrics,
+                    row_attributes,
+                );
             }
         }
 
-        if (row_style.as_ref().map_or(true, |style| !style.has_fill_or_border && !style.has_apply_protection)) && !has_height {
+        if (row_style.as_ref().map_or(true, |style| {
+            !style.has_fill_or_border && !style.has_apply_protection
+        })) && !has_height
+        {
             metrics.deleted_row_states.push(row_attributes);
             return Vec::new();
         }
@@ -86,10 +94,9 @@ pub fn replace_empty_row_after_cell_range(
         return generate_and_log_self_closing_row(&row_attr_str, params, metrics, row_attributes);
     }
 
-    if row_style
-        .as_ref()
-        .map_or(true, |style| !style.has_fill_or_border && !style.has_apply_protection)
-    {
+    if row_style.as_ref().map_or(true, |style| {
+        !style.has_fill_or_border && !style.has_apply_protection
+    }) {
         metrics.deleted_row_states.push(row_attributes);
         return Vec::new();
     }
@@ -104,13 +111,15 @@ fn clean_cells(
 ) -> Vec<u8> {
     let cell_re = PROCESS_CELLS_RE.get_or_init(|| {
         Regex::new(
-            r#"(?s)<c\b((?:[^>]*\br="([A-Z]+)(\d+)")?(?:[^>]*\bs="(\d+?)")?[^/>]*?)/>"#,
+            r#"(?s)<c\b((?:[^>]*\br="([A-Z]+)(\d+)")?(?:[^>]*\bs="(\d+?)")?[^>]*?)(?:/>|>.*?</c>)"#,
         )
         .unwrap()
     });
 
     cell_re
-        .replace_all(row_content, |caps: &Captures| replace_cell(caps, params, metrics))
+        .replace_all(row_content, |caps: &Captures| {
+            replace_cell(caps, params, metrics)
+        })
         .into_owned()
 }
 
@@ -119,11 +128,19 @@ fn extract_row_attributes(
     params: &CleanSheetParameters,
 ) -> Option<(RowAttributes, Vec<u8>)> {
     let row_attr = caps.get(1)?.as_bytes().to_vec();
-    let ref_ = caps.get(2).map(|m| m.as_bytes().to_vec()).unwrap_or_default();
+    let ref_ = caps
+        .get(2)
+        .map(|m| m.as_bytes().to_vec())
+        .unwrap_or_default();
     let hidden = caps.get(3).is_some();
-    let style_id = caps.get(4).map(|m| digits_byte_string_to_integer(m.as_bytes()));
+    let style_id = caps
+        .get(4)
+        .map(|m| digits_byte_string_to_integer(m.as_bytes()));
     let ht = caps.get(5).is_some();
-    let original_row_content = caps.get(6).map(|m| m.as_bytes().to_vec()).unwrap_or_default();
+    let original_row_content = caps
+        .get(6)
+        .map(|m| m.as_bytes().to_vec())
+        .unwrap_or_default();
 
     let style = style_id.and_then(|id| params.patterns.xfs_by_index.get(&id).cloned());
 
@@ -144,9 +161,14 @@ fn extract_empty_row_attributes(
     params: &CleanSheetParameters,
 ) -> Option<RowAttributes> {
     let row_attr = caps.get(1)?.as_bytes().to_vec();
-    let ref_ = caps.get(2).map(|m| m.as_bytes().to_vec()).unwrap_or_default();
+    let ref_ = caps
+        .get(2)
+        .map(|m| m.as_bytes().to_vec())
+        .unwrap_or_default();
     let hidden = caps.get(3).is_some();
-    let style_id = caps.get(4).map(|m| digits_byte_string_to_integer(m.as_bytes()));
+    let style_id = caps
+        .get(4)
+        .map(|m| digits_byte_string_to_integer(m.as_bytes()));
 
     let style = style_id.and_then(|id| params.patterns.xfs_by_index.get(&id).cloned());
 
@@ -238,11 +260,16 @@ fn remove_irrelevant_attributes_for_empty_rows(
 }
 
 fn remove_attribute_by_name(data: &[u8], attr_name: &[u8]) -> Vec<u8> {
-    remove_attribute_matching(data, |attr| attr.starts_with(attr_name) && attr.get(attr_name.len()) == Some(&b'='))
+    remove_attribute_matching(data, |attr| {
+        attr.starts_with(attr_name) && attr.get(attr_name.len()) == Some(&b'=')
+    })
 }
 
 fn remove_dy_descent_attributes(data: &[u8]) -> Vec<u8> {
-    remove_attribute_matching(data, |attr| attr.windows(b":dyDescent=".len()).any(|w| w == b":dyDescent="))
+    remove_attribute_matching(data, |attr| {
+        attr.windows(b":dyDescent=".len())
+            .any(|w| w == b":dyDescent=")
+    })
 }
 
 fn remove_exact_attribute(data: &[u8], exact_attr: &[u8]) -> Vec<u8> {

@@ -40,10 +40,6 @@ pub struct Cli {
     #[arg(long)]
     only_clean_workbook: bool,
 
-    /// Remove whitespace-only cell contents from worksheet files
-    #[arg(long)]
-    remove_whitespaces: bool,
-
     /// Disable splitting of sheet data range with cells and range with visible rows
     #[arg(long)]
     disable_sheetdata_splitting: bool,
@@ -62,9 +58,15 @@ pub struct Cli {
     /// Useful for RAM-disk throughput benchmarks and for showing pure cleaning/package speed.
     #[arg(long)]
     store_output: bool,
+
+    /// Optional: Remove cells that only contain whitespace, IF they are completely unreferenced.
+    #[arg(long)]
+    remove_unreferenced_whitespace_cells: bool,
+
+    /// Optional: Remove cells with content in hidden rows/cols, IF they are completely unreferenced.
+    #[arg(long)]
+    remove_unreferenced_hidden_content_cells: bool,
 }
-
-
 
 fn main() -> anyhow::Result<()> {
     let _guard = init_logging()?;
@@ -92,8 +94,7 @@ fn init_logging() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard>
     let file_appender = rolling::never("logs", "excel-shrink-run.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let subscriber = fmt()
         .with_env_filter(env_filter)
@@ -112,7 +113,10 @@ fn gather_files(path: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>
         files.push(path.clone());
     } else if path.is_dir() {
         if recursive {
-            for entry in walkdir::WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+            for entry in walkdir::WalkDir::new(path)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
                 if entry.path().extension().map_or(false, |e| e == "xlsx") {
                     files.push(entry.path().to_path_buf());
                 }

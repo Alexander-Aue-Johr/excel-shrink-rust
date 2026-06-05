@@ -94,11 +94,11 @@ impl ColumnRangeMap {
         let mut last_visible: Option<&ColumnDefinition> = None;
 
         for cd in self.exact.values().chain(self.intervals.iter()) {
-            let visible =
-                cd.hidden ||
-                cd.cell_xf.as_ref().is_some_and(|xf| {
-                    xf.has_fill_or_border || xf.has_apply_protection
-                });
+            let visible = cd.hidden
+                || cd
+                    .cell_xf
+                    .as_ref()
+                    .is_some_and(|xf| xf.has_fill_or_border || xf.has_apply_protection);
 
             if visible && last_visible.map_or(true, |last| cd.max > last.max) {
                 last_visible = Some(cd);
@@ -135,6 +135,20 @@ pub struct CleanSheetMetrics {
     pub deleted_cell_states: Vec<CellAttributes>,
     pub row_attributes: HashMap<Vec<u8>, RowAttributes>,
     pub max_merge_cells_column_and_row: Option<CellCoordinate>,
+
+    pub whitespace_candidates: usize,
+    pub whitespace_removed: usize,
+    pub whitespace_protected_by_reference: usize,
+
+    pub hidden_candidates: usize,
+    pub hidden_removed: usize,
+    pub hidden_protected_by_reference: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct CleanedSheetData {
+    pub xml: Vec<u8>,
+    pub metrics: CleanSheetMetrics,
 }
 
 #[derive(Debug, Clone)]
@@ -173,12 +187,73 @@ impl WorkbookSpecificPatterns {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CellRect {
+    pub min_col: u32,
+    pub max_col: u32,
+    pub min_row: u32,
+    pub max_row: u32,
+}
+
+impl CellRect {
+    pub fn contains(&self, col: u32, row: u32) -> bool {
+        self.min_col <= col && col <= self.max_col && self.min_row <= row && row <= self.max_row
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ProtectedCellRefs {
+    pub cells: std::collections::HashSet<u64>,
+    pub ranges: Vec<CellRect>,
+}
+
+impl ProtectedCellRefs {
+    pub fn cell_ref_count(&self) -> usize {
+        self.cells.len()
+    }
+
+    pub fn range_ref_count(&self) -> usize {
+        self.ranges.len()
+    }
+
+    pub fn insert_cell(&mut self, col: u32, row: u32) {
+        self.cells.insert(encode_coord(col, row));
+    }
+
+    pub fn insert_range(&mut self, col1: u32, row1: u32, col2: u32, row2: u32) {
+        self.ranges.push(CellRect {
+            min_col: col1.min(col2),
+            max_col: col1.max(col2),
+            min_row: row1.min(row2),
+            max_row: row1.max(row2),
+        });
+    }
+
+    pub fn contains(&self, col: u32, row: u32) -> bool {
+        self.cells.contains(&encode_coord(col, row))
+            || self.ranges.iter().any(|range| range.contains(col, row))
+    }
+}
+
+pub fn encode_coord(col: u32, row: u32) -> u64 {
+    ((col as u64) << 32) | (row as u64)
+}
+
+#[derive(Debug, Clone)]
+pub struct AdvancedCleanupConfig {
+    pub remove_unreferenced_whitespace: bool,
+    pub remove_unreferenced_hidden_content: bool,
+    pub safe_to_clean: bool,
+    pub protected_cells: ProtectedCellRefs,
+}
+
 #[derive(Debug, Clone)]
 pub struct CleanSheetParameters {
     pub xlsx_file_path: String,
     pub zip_info_filename: String,
     pub compress_method: zip::CompressionMethod,
     pub patterns: WorkbookSpecificPatterns,
+    pub advanced_cleanup: Option<std::sync::Arc<AdvancedCleanupConfig>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

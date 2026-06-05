@@ -1,5 +1,7 @@
 use crate::error::{Result, ShrinkError};
-use crate::models::{CellCoordinate, CleanSheetMetrics, CleanSheetParameters, SheetStreamingState};
+use crate::models::{
+    CellCoordinate, CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, SheetStreamingState,
+};
 use crate::sheet::cols::process_cols_node;
 use crate::sheet::merge_cells::find_max_merge_cells;
 use crate::sheet::output::build_clean_sheet_xml;
@@ -30,7 +32,7 @@ pub fn clean_sheet_data_streamwise(
     params: &CleanSheetParameters,
     chunk_size: usize,
     disable_sheetdata_splitting: bool,
-) -> Result<Vec<u8>> {
+) -> Result<CleanedSheetData> {
     let preprocessed = preprocess_sheet_xml_streamwise(stream, params, chunk_size)?;
     build_clean_sheet_xml(preprocessed, params, disable_sheetdata_splitting)
 }
@@ -128,7 +130,6 @@ pub fn preprocess_sheet_xml_streamwise(
                 };
 
                 let content = buffer[..idx].to_vec();
-                let after = buffer[idx + b"</cols>".len()..].to_vec();
 
                 column_definitions = Some(process_cols_node(&content, params));
                 result.in_cols_node_output_chunks = content;

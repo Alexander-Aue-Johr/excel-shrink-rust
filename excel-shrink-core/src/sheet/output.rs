@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::models::CleanSheetParameters;
+use crate::models::{CleanSheetParameters, CleanedSheetData};
 use crate::sheet::cols::merge_extraneous_columns;
 use crate::sheet::ranges::{get_max_column, retrieve_sheet_data_range_containing_cells};
 use crate::sheet::sheet_data::{
@@ -11,15 +11,11 @@ pub fn build_clean_sheet_xml(
     preprocessed: PreprocessedSheetXml,
     params: &CleanSheetParameters,
     disable_sheetdata_splitting: bool,
-) -> Result<Vec<u8>> {
+) -> Result<CleanedSheetData> {
     let mut metrics = preprocessed.clean_sheet_metrics;
 
     let final_sheet_data = if disable_sheetdata_splitting {
-        clean_sheet_rows_and_cells_in_cell_range(
-            &preprocessed.sheet_data,
-            params,
-            &mut metrics,
-        )?
+        clean_sheet_rows_and_cells_in_cell_range(&preprocessed.sheet_data, params, &mut metrics)?
     } else {
         let ranges = retrieve_sheet_data_range_containing_cells(&preprocessed.sheet_data, params);
 
@@ -34,10 +30,9 @@ pub fn build_clean_sheet_xml(
 
     let max_column = get_max_column(&metrics);
     let in_cols_node_output_chunks = match max_column {
-        Some(max_column) => merge_extraneous_columns(
-            &preprocessed.in_cols_node_output_chunks,
-            max_column,
-        ),
+        Some(max_column) => {
+            merge_extraneous_columns(&preprocessed.in_cols_node_output_chunks, max_column)
+        }
         None => preprocessed.in_cols_node_output_chunks,
     };
 
@@ -51,5 +46,5 @@ pub fn build_clean_sheet_xml(
     out.extend_from_slice(&preprocessed.in_merge_cells_node_output_chunks);
     out.extend_from_slice(&preprocessed.until_worksheet_end_output_chunks);
 
-    Ok(out)
+    Ok(CleanedSheetData { xml: out, metrics })
 }

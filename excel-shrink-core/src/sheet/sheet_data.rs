@@ -17,7 +17,6 @@ pub fn pre_process_sheet_data_chunk(
     }
 
     let chunk = remove_hidden_rows_if_present(chunk, params);
-    let chunk = replace_whitespace_cells(&chunk, params);
     let chunk = remove_consecutive_empty_cells(&chunk, params);
 
     Ok(chunk)
@@ -38,7 +37,9 @@ pub fn clean_sheet_rows_and_cells_in_cell_range(
     });
 
     Ok(row_re
-        .replace_all(&sheet_data, |caps: &Captures| replace_row(caps, params, metrics))
+        .replace_all(&sheet_data, |caps: &Captures| {
+            replace_row(caps, params, metrics)
+        })
         .into_owned())
 }
 
@@ -61,75 +62,6 @@ pub fn clean_empty_rows_from_after_cell_range(
             replace_empty_row_after_cell_range(caps, params, metrics)
         })
         .into_owned())
-}
-
-fn replace_whitespace_cells(chunk: &[u8], params: &CleanSheetParameters) -> Vec<u8> {
-    let Some(indices) = &params.patterns.whitespace_indices else {
-        return chunk.to_vec();
-    };
-
-    if indices.is_empty() {
-        return chunk.to_vec();
-    }
-
-    let mut out = Vec::with_capacity(chunk.len());
-    let mut pos = 0;
-
-    while let Some(cell_start_relative) = crate::xml::find_bytes(&chunk[pos..], b"<c") {
-        let cell_start = pos + cell_start_relative;
-        out.extend_from_slice(&chunk[pos..cell_start]);
-
-        let Some(cell_end_relative) = crate::xml::find_bytes(&chunk[cell_start..], b"</c>") else {
-            out.extend_from_slice(&chunk[cell_start..]);
-            return out;
-        };
-
-        let cell_end = cell_start + cell_end_relative + b"</c>".len();
-        let cell = &chunk[cell_start..cell_end];
-
-        if is_whitespace_shared_string_cell(cell, indices) {
-            if let Some(open_end) = cell.iter().position(|b| *b == b'>') {
-                out.extend_from_slice(&cell[..open_end]);
-                out.extend_from_slice(b"/>");
-            } else {
-                out.extend_from_slice(cell);
-            }
-        } else {
-            out.extend_from_slice(cell);
-        }
-
-        pos = cell_end;
-    }
-
-    out.extend_from_slice(&chunk[pos..]);
-    out
-}
-
-fn is_whitespace_shared_string_cell(cell: &[u8], indices: &[usize]) -> bool {
-    if !cell.windows(b"t=\"s\"".len()).any(|w| w == b"t=\"s\"") {
-        return false;
-    }
-
-    let Some(v_start_rel) = crate::xml::find_bytes(cell, b"<v>") else {
-        return false;
-    };
-    let value_start = v_start_rel + b"<v>".len();
-
-    let Some(v_end_rel) = crate::xml::find_bytes(&cell[value_start..], b"</v>") else {
-        return false;
-    };
-
-    let value = &cell[value_start..value_start + v_end_rel];
-
-    let Ok(value_str) = std::str::from_utf8(value) else {
-        return false;
-    };
-
-    let Ok(index) = value_str.parse::<usize>() else {
-        return false;
-    };
-
-    indices.contains(&index)
 }
 
 fn remove_consecutive_empty_cells(chunk: &[u8], params: &CleanSheetParameters) -> Vec<u8> {

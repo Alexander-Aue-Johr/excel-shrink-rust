@@ -14,4 +14,3 @@ anyhow = "1.0.102"
 walkdir = "2.5.0"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-num_cpus = "1.16"
