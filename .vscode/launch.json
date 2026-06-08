@@ -20,6 +20,49 @@
             ]
         },
         {
+            "name": "Debug Sheet17 Cols (preprocess-empty-cells)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
+            "args": [
+                "/mnt/r/original_destatis_xlsx_files/statistischer-bericht-binnenschifffahrt-2080400231015.xlsx",
+                "/mnt/r/original_destatis_xlsx_files/rust_sheet17_cols/statistischer-bericht-binnenschifffahrt-2080400231015.xlsx_shrunk_rust_sheet17_cols",
+                "--preprocess-empty-cells",
+                "--remove-unreferenced-whitespace-cells",
+                "--remove-unreferenced-hidden-content-cells",
+                "--force-overwrite"
+            ],
+            "env": {
+                "EXCEL_SHRINK_DEBUG_SHEET17_COLS": "1"
+            },
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "cargo build",
+            "sourceLanguages": [
+                "rust"
+            ]
+        },
+        {
+            "name": "Rust: Debug sheet92 column parity",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
+            "args": [
+                "/mnt/r/original_destatis_xlsx_files/statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+                "/mnt/r/original_destatis_xlsx_files_excel_shrink_matrix_output/debug_sheet92_rust.xlsx",
+                "--force-overwrite",
+                "--disable-multiprocessing"
+            ],
+            "env": {
+                "EXCEL_SHRINK_DEBUG_SHEET92_COLS": "1",
+                "RUST_LOG": "debug"
+            },
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "cargo build",
+            "sourceLanguages": [
+                "rust"
+            ]
+        },
+        {
             "name": "Debug excel-shrink-cli Wanderungen",
             "type": "lldb",
             "request": "launch",
@@ -95,6 +138,48 @@
                 "--force-overwrite"
             ],
             "preLaunchTask": "cargo build release"
+        },
+
+         {
+            "name": "Wanderungen no hidden content cells",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
+            "args": [
+                "/mnt/c/Users/johr/Downloads/downloaded",
+                "/mnt/c/Users/johr/Downloads/downloaded_shrunk_rust",
+                "--force-overwrite"
+            ],
+            "preLaunchTask": "cargo build",
+            "sourceLanguages": [
+                "rust"
+            ],
+        },
+        {
+            "name": "Wanderungen hidden content cells",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
+            "args": [
+                "/mnt/c/Users/johr/Downloads/downloaded",
+                "/mnt/c/Users/johr/Downloads/downloaded_shrunk_rust_cleaned_hidden2",
+                "--remove-unreferenced-whitespace-cells",
+                "--remove-unreferenced-hidden-content-cells",
+                "--force-overwrite"
+            ],
+            "preLaunchTask": "cargo build",
+            "sourceLanguages": [
+                "rust"
+            ]
+        },
+        
+    ],
+    "inputs": [
+        {
+            "id": "sheet17OutputDir",
+            "type": "promptString",
+            "description": "Ausgabeordner fuer die geschrumpfte Datei",
+            "default": "R:/original_destatis_xlsx_files_shrunk_rust_debug"
         }
     ]
 }

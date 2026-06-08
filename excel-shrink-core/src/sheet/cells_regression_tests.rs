@@ -1,7 +1,7 @@
 use super::{replace_parsed_cell, ParsedCell};
 use crate::models::{
     AdvancedCleanupConfig, CleanSheetMetrics, CleanSheetParameters, ColumnDefinition,
-    ProtectedCellRefs, RowAttributes, WorkbookSpecificPatterns, Xf,
+    RowAttributes, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
 };
 
 use std::collections::HashMap;
@@ -20,6 +20,7 @@ fn default_params() -> CleanSheetParameters {
             whitespace_indices: None,
         },
         advanced_cleanup: None,
+        preprocess: SheetPreprocessConfig::default(),
     }
 }
 
@@ -51,6 +52,7 @@ fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
             whitespace_indices: None,
         },
         advanced_cleanup: None,
+        preprocess: SheetPreprocessConfig::default(),
     }
 }
 
@@ -65,18 +67,13 @@ fn hidden_row_3() -> RowAttributes {
     }
 }
 
-fn parsed_a3_cell<'a>(
-    raw: &'a [u8],
-    attr: &'a [u8],
-    style_id: Option<u32>,
-) -> ParsedCell<'a> {
+fn parsed_a3_cell<'a>(raw: &'a [u8], attr: &'a [u8], style_id: Option<u32>) -> ParsedCell<'a> {
     ParsedCell {
         raw,
         attr,
         column: b"A",
         row: b"3",
         col_num: 1,
-        row_num: 3,
         style_id,
     }
 }
@@ -99,14 +96,12 @@ fn keeps_hidden_cell_with_content_without_advanced_cleanup() {
 }
 
 #[test]
-fn removes_hidden_content_only_when_advanced_cleanup_is_safe_and_cell_is_unprotected() {
+fn marks_hidden_content_as_candidate_with_advanced_cleanup() {
     let mut params = default_params();
 
     params.advanced_cleanup = Some(Arc::new(AdvancedCleanupConfig {
         remove_unreferenced_whitespace: false,
         remove_unreferenced_hidden_content: true,
-        safe_to_clean: true,
-        protected_cells: ProtectedCellRefs::default(),
     }));
 
     let mut metrics = CleanSheetMetrics::default();
@@ -118,61 +113,23 @@ fn removes_hidden_content_only_when_advanced_cleanup_is_safe_and_cell_is_unprote
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, b"");
-    assert_eq!(metrics.hidden_candidates, 1);
-    assert_eq!(metrics.hidden_removed, 1);
-    assert_eq!(metrics.hidden_protected_by_reference, 0);
-}
-
-#[test]
-fn keeps_hidden_content_when_cell_is_protected_by_reference() {
-    let mut protected = ProtectedCellRefs::default();
-    protected.insert_cell(1, 3); // A3
-
-    let mut params = default_params();
-
-    params.advanced_cleanup = Some(Arc::new(AdvancedCleanupConfig {
-        remove_unreferenced_whitespace: false,
-        remove_unreferenced_hidden_content: true,
-        safe_to_clean: true,
-        protected_cells: protected,
-    }));
-
-    let mut metrics = CleanSheetMetrics::default();
-
-    metrics.row_attributes.insert(b"3".to_vec(), hidden_row_3());
-
-    let cell_xml = br#"<c r="A3"><v>secret</v></c>"#;
-    let cell = parsed_a3_cell(cell_xml, br#" r="A3""#, None);
-
-    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
-
+    // Zelle wird in Phase 1 noch nicht geloescht, sondern nur als Kandidat gespeichert.
     assert_eq!(cleaned, cell_xml);
     assert_eq!(metrics.hidden_candidates, 1);
-    assert_eq!(metrics.hidden_removed, 0);
-    assert_eq!(metrics.hidden_protected_by_reference, 1);
+    assert_eq!(metrics.candidates.len(), 1);
+    assert_eq!(metrics.candidates[0].column, b"A");
+    assert_eq!(metrics.candidates[0].row, b"3");
 }
 
 #[test]
-fn keeps_hidden_content_cell_when_cell_style_has_apply_protection() {
-    let protected_style = Xf::new(
-        Some(0),
-        Some(0),
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-    );
+fn does_not_mark_candidate_when_cell_style_has_apply_protection() {
+    let protected_style = Xf::new(Some(0), Some(0), false, false, false, false, false, true);
 
     let mut params = params_with_styles(&[(7, protected_style)]);
 
     params.advanced_cleanup = Some(Arc::new(AdvancedCleanupConfig {
         remove_unreferenced_whitespace: false,
         remove_unreferenced_hidden_content: true,
-        safe_to_clean: true,
-        protected_cells: ProtectedCellRefs::default(),
     }));
 
     let mut metrics = CleanSheetMetrics::default();
@@ -184,40 +141,20 @@ fn keeps_hidden_content_cell_when_cell_style_has_apply_protection() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
+    // Zelle bleibt erhalten und ist KEIN Loesch-Kandidat, da sie direkt durch den Excel-Style geschuetzt ist.
     assert_eq!(cleaned, cell_xml);
     assert_eq!(metrics.hidden_candidates, 1);
-    assert_eq!(metrics.hidden_removed, 0);
-    assert_eq!(metrics.hidden_protected_by_reference, 1);
+    assert_eq!(metrics.candidates.len(), 0);
 }
 
 #[test]
 fn keeps_empty_cell_with_fill_zero_when_row_has_non_default_fill_without_apply_fill() {
-    let row_red_style = Xf::new(
-        Some(4),
-        Some(0),
-        false,
-        false,
-        true,
-        false,
-        false,
-        false,
-    );
+    let row_red_style = Xf::new(Some(4), Some(0), false, false, true, false, false, false);
 
-    let cell_default_fill_style = Xf::new(
-        Some(0),
-        Some(0),
-        false,
-        false,
-        false,
-        false,
-        true,
-        false,
-    );
+    let cell_default_fill_style =
+        Xf::new(Some(0), Some(0), false, false, false, false, true, false);
 
-    let params = params_with_styles(&[
-        (4, row_red_style.clone()),
-        (10, cell_default_fill_style),
-    ]);
+    let params = params_with_styles(&[(4, row_red_style.clone()), (10, cell_default_fill_style)]);
 
     let mut metrics = CleanSheetMetrics::default();
 
@@ -245,32 +182,13 @@ fn keeps_empty_cell_with_fill_zero_when_row_has_non_default_fill_without_apply_f
 
 #[test]
 fn keeps_empty_cell_with_fill_zero_when_column_has_non_default_fill_without_apply_fill() {
-    let column_red_style = Xf::new(
-        Some(4),
-        Some(0),
-        false,
-        false,
-        true,
-        false,
-        false,
-        false,
-    );
+    let column_red_style = Xf::new(Some(4), Some(0), false, false, true, false, false, false);
 
-    let cell_default_fill_style = Xf::new(
-        Some(0),
-        Some(0),
-        false,
-        false,
-        false,
-        false,
-        true,
-        false,
-    );
+    let cell_default_fill_style =
+        Xf::new(Some(0), Some(0), false, false, false, false, true, false);
 
-    let params = params_with_styles(&[
-        (4, column_red_style.clone()),
-        (10, cell_default_fill_style),
-    ]);
+    let params =
+        params_with_styles(&[(4, column_red_style.clone()), (10, cell_default_fill_style)]);
 
     let mut metrics = CleanSheetMetrics::default();
 

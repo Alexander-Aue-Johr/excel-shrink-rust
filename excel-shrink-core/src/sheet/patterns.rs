@@ -8,16 +8,13 @@ pub fn generate_workbook_specific_patterns(
 }
 
 pub fn style_id_has_only_font_style(patterns: &WorkbookSpecificPatterns, style_id: u32) -> bool {
-    patterns
-        .xfs_by_index
-        .get(&style_id)
-        .is_some_and(|xf| {
-            (xf.fill_id.is_none() || xf.fill_id == Some(0))
-                && (xf.border_id.is_none() || xf.border_id == Some(0))
-                && !xf.apply_fill
-                && !xf.apply_border
-                && !xf.has_apply_protection
-        })
+    patterns.xfs_by_index.get(&style_id).is_some_and(|xf| {
+        (xf.fill_id.is_none() || xf.fill_id == Some(0))
+            && (xf.border_id.is_none() || xf.border_id == Some(0))
+            && !xf.apply_fill
+            && !xf.apply_border
+            && !xf.has_apply_protection
+    })
 }
 
 pub fn style_id_has_fill_border_or_protection(

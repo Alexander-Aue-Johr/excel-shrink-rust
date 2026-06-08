@@ -145,12 +145,10 @@ pub struct CleanSheetMetrics {
     pub max_merge_cells_column_and_row: Option<CellCoordinate>,
 
     pub whitespace_candidates: usize,
-    pub whitespace_removed: usize,
-    pub whitespace_protected_by_reference: usize,
-
     pub hidden_candidates: usize,
-    pub hidden_removed: usize,
-    pub hidden_protected_by_reference: usize,
+
+    pub candidates: Vec<CellCoordinate>,
+    pub has_hints: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -163,7 +161,6 @@ pub struct CleanedSheetData {
 pub struct WorkbookSpecificPatterns {
     pub xfs_by_index: HashMap<u32, Xf>,
 
-    // Wird später für manuelle/dynamische Pattern-Logik gebraucht.
     pub only_font_style_ids: Vec<u32>,
     pub fill_or_border_or_protection_ids: Vec<u32>,
     pub whitespace_indices: Option<Vec<usize>>,
@@ -215,6 +212,31 @@ pub struct ProtectedCellRefs {
     pub ranges: Vec<CellRect>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ProtectedWorkbookRefs {
+    pub by_sheet: HashMap<String, ProtectedCellRefs>,
+    pub global_or_unknown: ProtectedCellRefs,
+}
+
+impl ProtectedWorkbookRefs {
+    pub fn contains(&self, sheet: &str, col: u32, row: u32) -> bool {
+        self.by_sheet
+            .get(sheet)
+            .is_some_and(|refs| refs.contains(col, row))
+            || self.global_or_unknown.contains(col, row)
+    }
+
+    pub fn refs_for_sheet_mut(&mut self, sheet: &str) -> &mut ProtectedCellRefs {
+        self.by_sheet.entry(sheet.to_string()).or_default()
+    }
+}
+
+pub struct SheetScanBuffer<'a> {
+    pub sheet_file: &'a str,
+    pub sheet_name: &'a str,
+    pub xml: &'a [u8],
+}
+
 impl ProtectedCellRefs {
     pub fn cell_ref_count(&self) -> usize {
         self.cells.len()
@@ -251,8 +273,12 @@ pub fn encode_coord(col: u32, row: u32) -> u64 {
 pub struct AdvancedCleanupConfig {
     pub remove_unreferenced_whitespace: bool,
     pub remove_unreferenced_hidden_content: bool,
-    pub safe_to_clean: bool,
-    pub protected_cells: ProtectedCellRefs,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SheetPreprocessConfig {
+    pub remove_hidden_rows: bool,
+    pub remove_empty_cells: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -262,6 +288,7 @@ pub struct CleanSheetParameters {
     pub compress_method: zip::CompressionMethod,
     pub patterns: WorkbookSpecificPatterns,
     pub advanced_cleanup: Option<std::sync::Arc<AdvancedCleanupConfig>>,
+    pub preprocess: SheetPreprocessConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

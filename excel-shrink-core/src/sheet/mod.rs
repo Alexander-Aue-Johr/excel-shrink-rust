@@ -1,13 +1,13 @@
-pub mod streaming;
-pub mod worksheet;
+pub mod cells;
 pub mod cols;
+pub mod hidden_rows;
 pub mod merge_cells;
-pub mod sheet_data;
+pub mod output;
+pub mod patterns;
 pub mod ranges;
 pub mod rows;
-pub mod cells;
-pub mod hidden_rows;
-pub mod patterns;
-pub mod output;
+pub mod sheet_data;
+pub mod streaming;
+pub mod worksheet;
 
 pub use streaming::clean_sheet_data_streamwise;

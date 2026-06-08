@@ -42,10 +42,8 @@ fn test_clean_workbook_duplicate_defined_names() {
     let cleaned = clean_workbook(xml).expect("Failed to clean workbook");
     let cleaned_str = String::from_utf8_lossy(&cleaned);
 
-    // "Print_Area" (ohne _xlnm) sollte gelöscht werden, weil "_xlnm.Print_Area" mit identischer ID existiert
     assert!(!cleaned_str.contains(r#"name="Print_Area""#));
 
-    // Die berechtigten Werte müssen erhalten bleiben
     assert!(cleaned_str.contains(r#"name="_xlnm.Print_Area""#));
     assert!(cleaned_str.contains(r#"name="ValidName""#));
 }
@@ -64,7 +62,6 @@ fn test_clean_workbook_no_duplicates_leaves_unchanged() {
     let cleaned = clean_workbook(xml).expect("Failed to clean workbook");
     let cleaned_str = String::from_utf8_lossy(&cleaned);
 
-    // Da es keine "_xlnm"-Alternative gibt, bleibt "Print_Area" unberührt.
     assert!(cleaned_str.contains(r#"name="Print_Area""#));
     assert!(cleaned_str.contains(r#"name="ValidName""#));
 }

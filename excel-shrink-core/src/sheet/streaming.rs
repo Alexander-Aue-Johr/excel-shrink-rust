@@ -90,7 +90,6 @@ pub fn preprocess_sheet_xml_streamwise(
 
                 if let Some(mat) = re.find(&buffer) {
                     let start_idx = mat.start();
-                    // Finde das dazugehörige schließende '>' des Tags
                     if let Some(end_idx) = crate::xml::find_byte_from(&buffer, b'>', start_idx) {
                         let after_tag = end_idx + 1;
                         result.until_worksheet_start_output_chunks = buffer[..after_tag].to_vec();
@@ -150,8 +149,6 @@ pub fn preprocess_sheet_xml_streamwise(
 
                 let content = buffer[..idx].to_vec();
 
-                let content = buffer[..idx].to_vec();
-
                 let parsed_column_definitions = process_cols_node(&content, params);
                 sheet_data_preprocess_state = Some(SheetDataPreprocessState::new(
                     &parsed_column_definitions,
@@ -185,8 +182,6 @@ pub fn preprocess_sheet_xml_streamwise(
                     continue;
                 }
 
-                // Noch kein </sheetData> gefunden.
-                // Dann verarbeiten wir nur vollständige Rows und lassen die letzte mögliche Row im Buffer.
                 if let Some(last_row_start) = rfind_bytes(&buffer, b"<row") {
                     if last_row_start > 0 {
                         let chunk = &buffer[..last_row_start];
@@ -220,6 +215,7 @@ pub fn preprocess_sheet_xml_streamwise(
                 };
 
                 let content = buffer[..idx].to_vec();
+
                 max_merge_cells_column_and_row = find_max_merge_cells(&content);
                 result.in_merge_cells_node_output_chunks = content;
 

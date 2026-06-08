@@ -44,6 +44,14 @@ pub struct Cli {
     #[arg(long)]
     disable_sheetdata_splitting: bool,
 
+    /// Enable quick-win preprocessing that collapses consecutive hidden empty rows.
+    #[arg(long)]
+    preprocess_hidden_rows: bool,
+
+    /// Enable quick-win preprocessing that removes definitely safe empty self-closing cells.
+    #[arg(long)]
+    preprocess_empty_cells: bool,
+
     /// Number of XLSX assembler/writer threads.
     /// Defaults to the number of logical CPU cores.
     #[arg(long)]

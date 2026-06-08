@@ -44,9 +44,7 @@ pub fn process_worksheet_node(
             WorksheetTag::MergeCells => {
                 find_and_slice_after_tag_range(buffer, b"<mergeCells", b">", false)
             }
-            WorksheetTag::WorksheetEnd => {
-                find_and_slice_after_tag(buffer, b"</worksheet>", false)
-            }
+            WorksheetTag::WorksheetEnd => find_and_slice_after_tag(buffer, b"</worksheet>", false),
         };
 
         let Some(found) = found else {

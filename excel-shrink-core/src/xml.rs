@@ -73,8 +73,7 @@ pub fn find_and_slice_after_tag_range(
     let index_start_tag_end = after_tag_start + relative_end;
 
     let after_tag_end = index_start_tag_end + tag_end.len();
-    let is_self_closing_tag =
-        index_start_tag_end > 0 && buffer[index_start_tag_end - 1] == b'/';
+    let is_self_closing_tag = index_start_tag_end > 0 && buffer[index_start_tag_end - 1] == b'/';
 
     Some(SliceAtTagResult {
         until_tag: buffer[..after_tag_end].to_vec(),
