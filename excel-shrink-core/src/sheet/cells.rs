@@ -9,7 +9,6 @@ struct ParsedCell<'a> {
     column: &'a [u8],
     row: &'a [u8],
     col_num: u32,
-    row_num: u32,
     style_id: Option<u32>,
 }
 
@@ -21,8 +20,6 @@ impl<'a> ParsedCell<'a> {
         let row = caps.get(3)?.as_bytes();
 
         let col_num = letters_byte_string_to_integer(column);
-        let row_num = digits_byte_string_to_integer(row);
-
         let style_id = caps
             .get(4)
             .map(|m| digits_byte_string_to_integer(m.as_bytes()));
@@ -33,7 +30,6 @@ impl<'a> ParsedCell<'a> {
             column,
             row,
             col_num,
-            row_num,
             style_id,
         })
     }
@@ -76,50 +72,26 @@ fn replace_parsed_cell(
     let is_hidden = cell_is_hidden(cell, metrics);
     let is_excel_protected = cell_has_protection_style(cell, style, metrics);
 
-    let mut force_delete = false;
-
     if let Some(adv) = &params.advanced_cleanup {
-        if adv.safe_to_clean {
-            let is_deletion_protected =
-                adv.protected_cells.contains(cell.col_num, cell.row_num) || is_excel_protected;
+        let mut is_candidate = false;
 
-            if adv.remove_unreferenced_whitespace && is_whitespace_cell(cell.raw, params) {
-                metrics.whitespace_candidates += 1;
-
-                if !is_deletion_protected {
-                    metrics.whitespace_removed += 1;
-                    force_delete = true;
-                } else {
-                    metrics.whitespace_protected_by_reference += 1;
-                }
-            }
-
-            if adv.remove_unreferenced_hidden_content && is_hidden && has_content(cell.raw) {
-                metrics.hidden_candidates += 1;
-
-                if !is_deletion_protected {
-                    metrics.hidden_removed += 1;
-                    force_delete = true;
-                } else {
-                    metrics.hidden_protected_by_reference += 1;
-                }
-            }
-        } else {
-            if adv.remove_unreferenced_whitespace && is_whitespace_cell(cell.raw, params) {
-                metrics.whitespace_candidates += 1;
-            }
-
-            if adv.remove_unreferenced_hidden_content && is_hidden && has_content(cell.raw) {
-                metrics.hidden_candidates += 1;
-            }
+        if adv.remove_unreferenced_whitespace && is_whitespace_cell(cell.raw, params) {
+            metrics.whitespace_candidates += 1;
+            is_candidate = true;
+        } else if adv.remove_unreferenced_hidden_content && is_hidden && has_content(cell.raw) {
+            metrics.hidden_candidates += 1;
+            is_candidate = true;
         }
-    }
 
-    if force_delete {
-        metrics
-            .deleted_cell_states
-            .push(cell.to_cell_attributes(style));
-        return Vec::new();
+        if is_candidate && !is_excel_protected {
+            metrics
+                .candidates
+                .push(cell.to_cell_attributes(style).cell_coordinate);
+            metrics
+                .kept_cell_states
+                .push(cell.to_cell_attributes(style));
+            return cell.raw.to_vec();
+        }
     }
 
     if is_hidden {
@@ -238,9 +210,6 @@ fn cell_overrides_fill_or_border(
     let overrides_fill = overrides_inherited_non_default_fill(cell_style, row_style)
         || overrides_inherited_non_default_fill(cell_style, column_style);
 
-    // Border-Logik erst einmal nah an deiner bisherigen Semantik lassen.
-    // Der konkrete Bug betrifft Fill; hier weiterhin nur dann als Override zählen,
-    // wenn Row/Column applyBorder explizit setzen.
     let overrides_border = row_style
         .is_some_and(|row| row.apply_border && cell_style.border_id != row.border_id)
         || column_style

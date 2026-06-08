@@ -1,6 +1,6 @@
 use crate::error::{Result, ShrinkError};
 use crate::models::{CleanSheetMetrics, CleanSheetParameters, ColumnRangeMap};
-use crate::sheet::hidden_rows::remove_hidden_rows_if_present;
+use crate::sheet::hidden_rows::{remove_hidden_rows_if_present_with_state, HiddenRowCollapseState};
 use crate::sheet::rows::{replace_empty_row_after_cell_range, replace_row};
 use crate::xml::{find_byte_from, find_bytes};
 use regex::bytes::{Captures, Regex};
@@ -11,29 +11,12 @@ static PROCESS_ROWS_RE: OnceLock<Regex> = OnceLock::new();
 static PROCESS_EMPTY_ROWS_IGNORING_HEIGHT_RE: OnceLock<Regex> = OnceLock::new();
 static SELF_CLOSING_EMPTY_CELL_RE: OnceLock<Regex> = OnceLock::new();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EmptyCellPreprocessAbMode {
-    /// Test A:
-    /// Once a risky column style or risky row style is seen,
-    /// skip remove_consecutive_empty_cells for the rest of the worksheet.
-    AWorksheetWideDisable,
-
-    /// Test B:
-    /// Skip remove_consecutive_empty_cells only for chunks that are currently risky.
-    /// Row-risk state is carried over only when a chunk continues inside the same row.
-    BChunkLocalDisable,
-}
-
-/// Switch this manually for the A/B test.
-/// No CLI parameter needed.
-const EMPTY_CELL_PREPROCESS_AB_MODE: EmptyCellPreprocessAbMode =
-    EmptyCellPreprocessAbMode::BChunkLocalDisable;
-
 #[derive(Debug, Clone)]
 pub struct SheetDataPreprocessState {
     any_column_has_non_default_fill_or_border: bool,
-    worksheet_wide_disable_empty_cell_cleanup: bool,
     active_row_has_non_default_fill_or_border_style: bool,
+
+    hidden_row_collapse_state: HiddenRowCollapseState,
 
     /// Style IDs whose XF has fillId != 0 or borderId != 0.
     /// Keys are the raw ASCII bytes of the style index, e.g. b"429".
@@ -69,8 +52,8 @@ impl SheetDataPreprocessState {
 
         Self {
             any_column_has_non_default_fill_or_border,
-            worksheet_wide_disable_empty_cell_cleanup: false,
             active_row_has_non_default_fill_or_border_style: false,
+            hidden_row_collapse_state: HiddenRowCollapseState::default(),
             fill_or_border_style_ids_by_bytes,
             only_font_style_ids_by_bytes,
             checked_row_style_ids: HashSet::new(),
@@ -99,8 +82,15 @@ pub fn pre_process_sheet_data_chunk(
         return Err(ShrinkError::UnsupportedCData);
     }
 
-    let chunk = remove_hidden_rows_if_present(chunk, params);
-    return Ok(chunk);
+    let chunk = if params.preprocess.remove_hidden_rows {
+        remove_hidden_rows_if_present_with_state(chunk, &mut state.hidden_row_collapse_state)
+    } else {
+        chunk.to_vec()
+    };
+
+    if !params.preprocess.remove_empty_cells {
+        return Ok(chunk);
+    }
 
     let skip_empty_cell_cleanup = should_skip_empty_cell_cleanup_for_chunk(&chunk, state);
 
@@ -153,30 +143,10 @@ fn should_skip_empty_cell_cleanup_for_chunk(
     chunk: &[u8],
     state: &mut SheetDataPreprocessState,
 ) -> bool {
-    if state.worksheet_wide_disable_empty_cell_cleanup {
-        return true;
-    }
-
     let chunk_has_risky_active_or_declared_row_style =
         scan_row_styles_for_empty_cell_cleanup_risk(chunk, state);
 
-    match EMPTY_CELL_PREPROCESS_AB_MODE {
-        EmptyCellPreprocessAbMode::AWorksheetWideDisable => {
-            if state.any_column_has_non_default_fill_or_border
-                || chunk_has_risky_active_or_declared_row_style
-            {
-                state.worksheet_wide_disable_empty_cell_cleanup = true;
-                return true;
-            }
-
-            false
-        }
-
-        EmptyCellPreprocessAbMode::BChunkLocalDisable => {
-            state.any_column_has_non_default_fill_or_border
-                || chunk_has_risky_active_or_declared_row_style
-        }
-    }
+    state.any_column_has_non_default_fill_or_border || chunk_has_risky_active_or_declared_row_style
 }
 
 fn scan_row_styles_for_empty_cell_cleanup_risk(

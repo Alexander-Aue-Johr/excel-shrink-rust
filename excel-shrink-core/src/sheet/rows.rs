@@ -5,7 +5,8 @@ use crate::xml::find_bytes;
 use regex::bytes::{Captures, Regex};
 use std::sync::OnceLock;
 
-static PROCESS_CELLS_RE: OnceLock<Regex> = OnceLock::new();
+static PROCESS_SELF_CLOSING_CELLS_RE: OnceLock<Regex> = OnceLock::new();
+static PROCESS_ALL_CELLS_RE: OnceLock<Regex> = OnceLock::new();
 
 pub fn replace_row(
     caps: &Captures,
@@ -123,12 +124,27 @@ fn clean_cells(
     metrics: &mut CleanSheetMetrics,
     row_content: &[u8],
 ) -> Vec<u8> {
-    let cell_re = PROCESS_CELLS_RE.get_or_init(|| {
-        Regex::new(
-            r#"(?s)<c\b((?:[^>]*\br="([A-Z]+)(\d+)")?(?:[^>]*\bs="(\d+?)")?[^>]*?)(?:/>|>.*?</c>)"#,
-        )
-        .unwrap()
+    if row_content.is_empty() {
+        return Vec::new();
+    }
+
+    let needs_content_cell_scan = params.advanced_cleanup.as_ref().is_some_and(|advanced| {
+        advanced.remove_unreferenced_whitespace || advanced.remove_unreferenced_hidden_content
     });
+
+    let cell_re = if needs_content_cell_scan {
+        PROCESS_ALL_CELLS_RE.get_or_init(|| {
+            Regex::new(
+                r#"(?s)<c\b((?:[^>]*\br="([A-Z]+)(\d+)")?(?:[^>]*\bs="(\d+?)")?[^>]*?)(?:/>|>.*?</c>)"#,
+            )
+            .unwrap()
+        })
+    } else {
+        PROCESS_SELF_CLOSING_CELLS_RE.get_or_init(|| {
+            Regex::new(r#"<c\b((?:[^>]*\br="([A-Z]+)(\d+)")?(?:[^>]*\bs="(\d+?)")?[^>]*?)/>"#)
+                .unwrap()
+        })
+    };
 
     cell_re
         .replace_all(row_content, |caps: &Captures| {

@@ -10,14 +10,17 @@ pub fn find_whitespace_sst_indices(shared_strings_xml: &[u8]) -> Vec<usize> {
 
     let mut whitespace_indices = Vec::new();
 
-for (idx, mat) in si_pattern.find_iter(shared_strings_xml).enumerate() {
+    for (idx, mat) in si_pattern.find_iter(shared_strings_xml).enumerate() {
         let si_block = mat.as_bytes();
         let mut is_empty_or_whitespace = true;
 
         for t_mat in t_pattern.captures_iter(si_block) {
             if let Some(text_match) = t_mat.get(1) {
                 let text = text_match.as_bytes();
-                if !text.iter().all(|&b| b == b' ' || b == b'\t' || b == b'\n' || b == b'\r') {
+                if !text
+                    .iter()
+                    .all(|&b| b == b' ' || b == b'\t' || b == b'\n' || b == b'\r')
+                {
                     is_empty_or_whitespace = false;
                     break;
                 }

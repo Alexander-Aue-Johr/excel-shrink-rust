@@ -285,6 +285,7 @@ dependencies = [
  "clap",
  "excel-shrink-core",
  "rayon",
+ "regex",
  "threadpool",
  "tracing",
  "tracing-appender",

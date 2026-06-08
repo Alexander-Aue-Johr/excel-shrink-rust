@@ -1,33 +1,17 @@
 use super::{replace_empty_row_after_cell_range, replace_row};
-use crate::models::{CleanSheetMetrics, CleanSheetParameters, WorkbookSpecificPatterns, Xf};
+use crate::models::{
+    CleanSheetMetrics, CleanSheetParameters, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
+};
 use regex::bytes::Regex;
 use std::collections::HashMap;
 use zip::CompressionMethod;
 
 fn relevant_style() -> Xf {
-    Xf::new(
-        Some(2),
-        Some(1),
-        true,
-        true,
-        true,
-        true,
-        false,
-        false,
-    )
+    Xf::new(Some(2), Some(1), true, true, true, true, false, false)
 }
 
 fn font_only_style() -> Xf {
-    Xf::new(
-        Some(0),
-        Some(0),
-        false,
-        false,
-        false,
-        false,
-        true,
-        false,
-    )
+    Xf::new(Some(0), Some(0), false, false, false, false, true, false)
 }
 
 fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
@@ -58,6 +42,7 @@ fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
             whitespace_indices: None,
         },
         advanced_cleanup: None,
+        preprocess: SheetPreprocessConfig::default(),
     }
 }
 

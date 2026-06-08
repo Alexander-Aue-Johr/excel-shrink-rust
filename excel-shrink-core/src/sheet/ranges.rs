@@ -1,4 +1,4 @@
-use crate::models::{CleanSheetParameters, CleanSheetMetrics};
+use crate::models::{CleanSheetMetrics, CleanSheetParameters};
 use crate::utils::digits_byte_string_to_integer;
 use crate::xml::{find_bytes, rfind_bytes};
 
@@ -61,14 +61,11 @@ pub fn find_last_fill_or_border_or_protection_style_or_hidden_attribute(
         return last_pos;
     }
 
-    // hidden="1" nur einmal suchen.
-    // Nach dem Preprocessing sollten davon nur noch sehr wenige übrig sein.
     if let Some(relative) = rfind_bytes(&sheet_data[start..], b"hidden=\"1\"") {
         let absolute = start + relative;
         last_pos = Some(last_pos.map_or(absolute, |old| old.max(absolute)));
     }
 
-    // Styles rückwärts suchen, bis der erste relevante Style gefunden wurde.
     if let Some(style_pos) = rfind_relevant_style_attribute(sheet_data, params, start) {
         last_pos = Some(last_pos.map_or(style_pos, |old| old.max(style_pos)));
     }
@@ -87,8 +84,6 @@ fn rfind_relevant_style_attribute(
         let relative = rfind_bytes(&sheet_data[start..end], b"s=\"")?;
         let absolute = start + relative;
 
-        // Wichtig: Nicht "spans" treffen.
-        // Ein echtes s="..."-Attribut muss vor dem s durch Whitespace getrennt sein.
         if absolute == 0 || !sheet_data[absolute - 1].is_ascii_whitespace() {
             end = absolute;
             continue;
@@ -96,9 +91,7 @@ fn rfind_relevant_style_attribute(
 
         let value_start = absolute + b"s=\"".len();
 
-        let Some(value_end_relative) = sheet_data[value_start..]
-            .iter()
-            .position(|b| *b == b'"')
+        let Some(value_end_relative) = sheet_data[value_start..].iter().position(|b| *b == b'"')
         else {
             end = absolute;
             continue;
@@ -120,7 +113,7 @@ fn rfind_relevant_style_attribute(
 
     None
 }
- 
+
 pub fn find_last_visible_row_end_position(
     sheet_data: &[u8],
     last_visible_attribute_position: Option<usize>,

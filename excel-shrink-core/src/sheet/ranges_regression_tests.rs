@@ -1,5 +1,5 @@
 use super::*;
-use crate::models::{CleanSheetParameters, WorkbookSpecificPatterns, Xf};
+use crate::models::{CleanSheetParameters, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf};
 use std::collections::HashMap;
 use zip::CompressionMethod;
 
@@ -22,6 +22,7 @@ fn params_with_relevant_style(style_id: u32) -> CleanSheetParameters {
             whitespace_indices: None,
         },
         advanced_cleanup: None,
+        preprocess: SheetPreprocessConfig::default(),
     }
 }
 
@@ -31,11 +32,8 @@ fn does_not_treat_spans_as_style_attribute() {
 
     let sheet_data = br#"<row r="99" spans="1:8"/>"#;
 
-    let pos = find_last_fill_or_border_or_protection_style_or_hidden_attribute(
-        sheet_data,
-        &params,
-        None,
-    );
+    let pos =
+        find_last_fill_or_border_or_protection_style_or_hidden_attribute(sheet_data, &params, None);
 
     assert_eq!(pos, None);
 }
@@ -46,11 +44,8 @@ fn finds_real_row_style_attribute_after_cell_range() {
 
     let sheet_data = br#"<row r="99" s="8"/>"#;
 
-    let pos = find_last_fill_or_border_or_protection_style_or_hidden_attribute(
-        sheet_data,
-        &params,
-        None,
-    );
+    let pos =
+        find_last_fill_or_border_or_protection_style_or_hidden_attribute(sheet_data, &params, None);
 
     assert!(pos.is_some());
 }
