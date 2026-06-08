@@ -5,11 +5,39 @@
       "label": "cargo build",
       "type": "shell",
       "command": "cargo",
-      "args": ["build"],
-      "problemMatcher": ["$rustc"],
+      "args": [
+        "build",
+        "-p",
+        "excel-shrink-cli",
+        "--bin",
+        "excel-shrink-cli"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
       "group": {
         "kind": "build",
         "isDefault": true
+      }
+    },
+    {
+      "label": "cargo build release",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--release",
+        "-p",
+        "excel-shrink-cli",
+        "--bin",
+        "excel-shrink-cli"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": false
       }
     }
   ]

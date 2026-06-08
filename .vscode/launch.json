@@ -1,7 +1,4 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
@@ -10,12 +7,94 @@
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
             "args": [
-                "/mnt/r/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded",
-                "/mnt/r/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded_shrunk2",
-                "--recursive"
+                "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded",
+                "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded_ws_hd6",
+                "--recursive",
+                "--remove-unreferenced-whitespace-cells",
+                "--remove-unreferenced-hidden-content-cells"
             ],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "cargo build"
+            "preLaunchTask": "cargo build",
+            "sourceLanguages": [
+                "rust"
+            ]
+        },
+        {
+            "name": "Debug excel-shrink-cli Wanderungen",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
+            "args": [
+                "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded_wanderungen/",
+                "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/dowloaded_wanderungen_hd3",
+                "--recursive",
+                "--remove-unreferenced-whitespace-cells",
+                "--remove-unreferenced-hidden-content-cells",
+                "--force-overwrite"
+            ],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "cargo build",
+            "sourceLanguages": [
+                "rust"
+            ]
+        },
+        {
+            "name": "Wanderungen no hidden content cells",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
+            "args": [
+                "/mnt/c/Users/aue-johr/Downloads/downloaded",
+                "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust",
+                "--force-overwrite"
+            ],
+            "preLaunchTask": "cargo build",
+            "sourceLanguages": [
+                "rust"
+            ],
+        },
+        {
+            "name": "Wanderungen hidden content cells",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
+            "args": [
+                "/mnt/c/Users/aue-johr/Downloads/downloaded",
+                "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust_cleaned_hidden2",
+                "--remove-unreferenced-whitespace-cells",
+                "--remove-unreferenced-hidden-content-cells",
+                "--force-overwrite"
+            ],
+            "preLaunchTask": "cargo build",
+            "sourceLanguages": [
+                "rust"
+            ]
+        },
+        {
+            "name": "Release: Wanderungen no hidden content cells",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/release/excel-shrink-cli",
+            "args": [
+                "/mnt/c/Users/aue-johr/Downloads/downloaded",
+                "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust",
+                "--force-overwrite"
+            ],
+            "preLaunchTask": "cargo build release"
+        },
+        {
+            "name": "Release: Wanderungen hidden content cells",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/release/excel-shrink-cli",
+            "args": [
+                "/mnt/c/Users/aue-johr/Downloads/downloaded",
+                "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust_cleaned_hidden5",
+                "--remove-unreferenced-whitespace-cells",
+                "--remove-unreferenced-hidden-content-cells",
+                "--force-overwrite"
+            ],
+            "preLaunchTask": "cargo build release"
         }
     ]
 }

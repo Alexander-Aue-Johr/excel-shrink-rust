@@ -107,6 +107,14 @@ impl ColumnRangeMap {
 
         last_visible
     }
+
+    pub fn has_any_non_default_fill_or_border_style(&self) -> bool {
+        self.exact.values().chain(self.intervals.iter()).any(|cd| {
+            cd.cell_xf
+                .as_ref()
+                .is_some_and(|xf| xf.fill_id.unwrap_or(0) != 0 || xf.border_id.unwrap_or(0) != 0)
+        })
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -34,34 +34,38 @@ pub fn replace_row(
     };
 
     let is_empty = row_content.is_empty();
-    let became_empty_by_cleaning = !was_already_empty && is_empty;
 
     if is_empty {
         if is_hidden {
             if previous_row_was_also_hidden(metrics) {
                 metrics.deleted_row_states.push(row_attributes);
                 return Vec::new();
-            } else {
-                return generate_and_log_self_closing_row(
-                    &row_attr_str,
-                    params,
-                    metrics,
-                    row_attributes,
-                );
             }
+
+            if has_height {
+                row_attr_str = add_custom_height_if_absent(&row_attr_str);
+            }
+
+            return generate_and_log_self_closing_row(
+                &row_attr_str,
+                params,
+                metrics,
+                row_attributes,
+            );
         }
 
-        if (row_style.as_ref().map_or(true, |style| {
+        if row_style.as_ref().map_or(true, |style| {
             !style.has_fill_or_border && !style.has_apply_protection
-        })) && !has_height
+        }) && !has_height
         {
             metrics.deleted_row_states.push(row_attributes);
             return Vec::new();
         }
 
-        if became_empty_by_cleaning {
+        if has_height {
             row_attr_str = add_custom_height_if_absent(&row_attr_str);
         }
+
         return generate_and_log_self_closing_row(&row_attr_str, params, metrics, row_attributes);
     }
 
@@ -77,9 +81,10 @@ pub fn replace_empty_row_after_cell_range(
         return caps.get(0).unwrap().as_bytes().to_vec();
     };
 
-    let row_attr_str = row_attributes.row_attr.clone();
+    let mut row_attr_str = row_attributes.row_attr.clone();
     let is_hidden = row_attributes.hidden;
     let row_style = row_attributes.style.clone();
+    let has_height = row_attributes.has_height;
 
     metrics
         .row_attributes
@@ -91,14 +96,23 @@ pub fn replace_empty_row_after_cell_range(
             return Vec::new();
         }
 
+        if has_height {
+            row_attr_str = add_custom_height_if_absent(&row_attr_str);
+        }
+
         return generate_and_log_self_closing_row(&row_attr_str, params, metrics, row_attributes);
     }
 
     if row_style.as_ref().map_or(true, |style| {
         !style.has_fill_or_border && !style.has_apply_protection
-    }) {
+    }) && !has_height
+    {
         metrics.deleted_row_states.push(row_attributes);
         return Vec::new();
+    }
+
+    if has_height {
+        row_attr_str = add_custom_height_if_absent(&row_attr_str);
     }
 
     generate_and_log_self_closing_row(&row_attr_str, params, metrics, row_attributes)
@@ -169,6 +183,7 @@ fn extract_empty_row_attributes(
     let style_id = caps
         .get(4)
         .map(|m| digits_byte_string_to_integer(m.as_bytes()));
+    let ht = caps.get(5).is_some();
 
     let style = style_id.and_then(|id| params.patterns.xfs_by_index.get(&id).cloned());
 
@@ -177,7 +192,7 @@ fn extract_empty_row_attributes(
         ref_,
         hidden,
         style,
-        has_height: false,
+        has_height: ht,
         is_empty: true,
     })
 }
@@ -227,9 +242,11 @@ fn add_custom_height_if_absent(row_attr: &[u8]) -> Vec<u8> {
     if find_bytes(row_attr, b" customHeight=\"1\"").is_some() {
         return row_attr.to_vec();
     }
+
     if find_bytes(row_attr, b" ht=\"").is_none() {
         return row_attr.to_vec();
     }
+
     let mut out = row_attr.to_vec();
     out.extend_from_slice(b" customHeight=\"1\"");
     out
@@ -286,16 +303,19 @@ where
     while i < data.len() {
         if data[i].is_ascii_whitespace() {
             let ws_start = i;
+
             while i < data.len() && data[i].is_ascii_whitespace() {
                 i += 1;
             }
 
             let attr_start = i;
+
             while i < data.len() && !data[i].is_ascii_whitespace() {
                 i += 1;
             }
 
             let attr = &data[attr_start..i];
+
             if predicate(attr) {
                 continue;
             }
@@ -309,3 +329,7 @@ where
 
     out
 }
+
+#[cfg(test)]
+#[path = "rows_regression_tests.rs"]
+mod regression_tests;

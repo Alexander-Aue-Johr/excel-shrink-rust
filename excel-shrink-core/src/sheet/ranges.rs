@@ -182,3 +182,7 @@ pub fn get_max_column(metrics: &CleanSheetMetrics) -> Option<u32> {
     .flatten()
     .max()
 }
+
+#[cfg(test)]
+#[path = "ranges_regression_tests.rs"]
+mod regression_tests;

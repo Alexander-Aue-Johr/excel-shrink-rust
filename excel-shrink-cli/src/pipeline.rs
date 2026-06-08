@@ -186,7 +186,19 @@ fn spawn_xlsx_writer(
                 return;
             }
         };
-
+        if let Some(parent) = out_path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                error!(
+                    event = "writer_output_parent_create_failed",
+                    xlsx = %input_display,
+                    output = %out_path.display(),
+                    parent = %parent.display(),
+                    error = %e,
+                    "Failed to create output parent directory"
+                );
+                return;
+            }
+        }
         let out_file = match File::create(&out_path) {
             Ok(file) => file,
             Err(e) => {
@@ -326,6 +338,20 @@ fn spawn_xlsx_writer(
     });
 }
 
+fn send_write_job(tx: &mpsc::Sender<WriteJob>, job: WriteJob, xlsx: &str) -> bool {
+    if let Err(e) = tx.send(job) {
+        error!(
+            event = "writer_channel_closed",
+            xlsx = %xlsx,
+            error = %e,
+            "Cannot queue ZIP write job because the XLSX writer has already stopped"
+        );
+        return false;
+    }
+
+    true
+}
+
 pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()> {
     if !cli.output.exists() {
         std::fs::create_dir_all(&cli.output)?;
@@ -363,6 +389,52 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
 
         let out_path = cli.output.join(input.file_name().unwrap());
 
+        if let Some(parent) = out_path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                error!(
+                    event = "output_parent_create_failed_before_writer_start",
+                    xlsx = %input_display,
+                    output = %out_path.display(),
+                    parent = %parent.display(),
+                    error = %e,
+                    "Failed to create output parent directory before starting XLSX writer"
+                );
+                return;
+            }
+
+            match std::fs::metadata(parent) {
+                Ok(metadata) if metadata.is_dir() => {
+                    debug!(
+                        event = "output_parent_ready",
+                        xlsx = %input_display,
+                        parent = %parent.display(),
+                        "Output parent directory exists"
+                    );
+                }
+                Ok(_) => {
+                    error!(
+                        event = "output_parent_is_not_directory",
+                        xlsx = %input_display,
+                        output = %out_path.display(),
+                        parent = %parent.display(),
+                        "Output parent path exists but is not a directory"
+                    );
+                    return;
+                }
+                Err(e) => {
+                    error!(
+                        event = "output_parent_metadata_failed",
+                        xlsx = %input_display,
+                        output = %out_path.display(),
+                        parent = %parent.display(),
+                        error = %e,
+                        "Output parent directory still cannot be inspected after create_dir_all"
+                    );
+                    return;
+                }
+            }
+        }
+
         if out_path.exists() && !cli.force_overwrite {
             warn!("Output file {:?} already exists. Skipping.", out_path);
             return;
@@ -377,7 +449,6 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             rx,
             input_display.clone(),
         );
-
         let mut file_bytes = Vec::new();
         {
             let mut f = match File::open(input) {
@@ -482,11 +553,16 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                         "Failed to read workbook.xml; copying original"
                     );
 
-                    tx.send(WriteJob::CopyOriginal {
-                        index: i,
-                        filename: name,
-                    })
-                    .unwrap();
+                    if !send_write_job(
+                        &tx,
+                        WriteJob::CopyOriginal {
+                            index: i,
+                            filename: name,
+                        },
+                        &input_display,
+                    ) {
+                        return;
+                    }
 
                     continue;
                 }
@@ -509,11 +585,16 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
 
                 match precompress_entry(&name, cleaned_wb, out_method, cli.compression_level) {
                     Ok(zip_bytes) => {
-                        tx.send(WriteJob::CopyPrecompressed {
-                            filename: name,
-                            zip_bytes,
-                        })
-                        .unwrap();
+                        if !send_write_job(
+                            &tx,
+                            WriteJob::CopyPrecompressed {
+                                filename: name,
+                                zip_bytes,
+                            },
+                            &input_display,
+                        ) {
+                            return;
+                        }
                     }
                     Err(e) => {
                         error!(
@@ -524,19 +605,29 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                             "Failed to precompress cleaned workbook.xml; copying original"
                         );
 
-                        tx.send(WriteJob::CopyOriginal {
-                            index: i,
-                            filename: name,
-                        })
-                        .unwrap();
+                        if !send_write_job(
+                            &tx,
+                            WriteJob::CopyOriginal {
+                                index: i,
+                                filename: name,
+                            },
+                            &input_display,
+                        ) {
+                            return;
+                        }
                     }
                 }
             } else {
-                tx.send(WriteJob::CopyOriginal {
-                    index: i,
-                    filename: name,
-                })
-                .unwrap();
+                if !send_write_job(
+                    &tx,
+                    WriteJob::CopyOriginal {
+                        index: i,
+                        filename: name,
+                    },
+                    &input_display,
+                ) {
+                    return;
+                }
             }
         }
 
@@ -764,11 +855,16 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                             "Precompressed cleaned sheet entry"
                         );
 
-                        tx.send(WriteJob::CopyPrecompressed {
-                            filename: params.zip_info_filename.clone(),
-                            zip_bytes,
-                        })
-                        .unwrap();
+                        if !send_write_job(
+                            tx,
+                            WriteJob::CopyPrecompressed {
+                                filename: params.zip_info_filename.clone(),
+                                zip_bytes,
+                            },
+                            &params.xlsx_file_path,
+                        ) {
+                            return;
+                        }
                     }
 
                     Err(e) => {

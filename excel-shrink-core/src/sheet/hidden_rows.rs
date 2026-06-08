@@ -6,10 +6,7 @@ pub struct HiddenRowCollapseState {
     pub previous_kept_hidden_empty_row: bool,
 }
 
-pub fn remove_hidden_rows_if_present(
-    chunk: &[u8],
-    _params: &CleanSheetParameters,
-) -> Vec<u8> {
+pub fn remove_hidden_rows_if_present(chunk: &[u8], _params: &CleanSheetParameters) -> Vec<u8> {
     let mut state = HiddenRowCollapseState::default();
     remove_hidden_rows_if_present_with_state(chunk, &mut state)
 }
@@ -18,6 +15,8 @@ pub fn remove_hidden_rows_if_present_with_state(
     chunk: &[u8],
     state: &mut HiddenRowCollapseState,
 ) -> Vec<u8> {
+    return chunk.to_vec();
+
     if find_bytes(chunk, b"hidden=\"1\"").is_none() {
         state.previous_kept_hidden_empty_row = false;
         return chunk.to_vec();

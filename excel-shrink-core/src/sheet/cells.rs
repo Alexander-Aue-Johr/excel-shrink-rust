@@ -1,42 +1,92 @@
 use crate::models::{CellAttributes, CellCoordinate, CleanSheetMetrics, CleanSheetParameters, Xf};
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
-use regex::bytes::{Captures, Regex};
-use std::sync::OnceLock;
+use regex::bytes::Captures;
 
-static CELL_REF_RE: OnceLock<Regex> = OnceLock::new();
-static STYLE_RE: OnceLock<Regex> = OnceLock::new();
+#[derive(Debug, Clone, Copy)]
+struct ParsedCell<'a> {
+    raw: &'a [u8],
+    attr: &'a [u8],
+    column: &'a [u8],
+    row: &'a [u8],
+    col_num: u32,
+    row_num: u32,
+    style_id: Option<u32>,
+}
+
+impl<'a> ParsedCell<'a> {
+    fn from_captures(caps: &Captures<'a>) -> Option<Self> {
+        let raw = caps.get(0)?.as_bytes();
+        let attr = caps.get(1)?.as_bytes();
+        let column = caps.get(2)?.as_bytes();
+        let row = caps.get(3)?.as_bytes();
+
+        let col_num = letters_byte_string_to_integer(column);
+        let row_num = digits_byte_string_to_integer(row);
+
+        let style_id = caps
+            .get(4)
+            .map(|m| digits_byte_string_to_integer(m.as_bytes()));
+
+        Some(Self {
+            raw,
+            attr,
+            column,
+            row,
+            col_num,
+            row_num,
+            style_id,
+        })
+    }
+
+    fn style<'p>(&self, params: &'p CleanSheetParameters) -> Option<&'p Xf> {
+        self.style_id
+            .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id))
+    }
+
+    fn to_cell_attributes(&self, style: Option<&Xf>) -> CellAttributes {
+        CellAttributes {
+            cell_attribute_string: self.attr.to_vec(),
+            cell_coordinate: CellCoordinate {
+                column: self.column.to_vec(),
+                row: self.row.to_vec(),
+            },
+            style: style.cloned(),
+        }
+    }
+}
 
 pub fn replace_cell(
     caps: &Captures,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
-    let cell_raw = caps.get(0).unwrap().as_bytes();
-    let Some(cell_attributes) = extract_cell_attributes(caps, params) else {
-        return cell_raw.to_vec();
+    let Some(cell) = ParsedCell::from_captures(caps) else {
+        return caps.get(0).unwrap().as_bytes().to_vec();
     };
 
-    let coord = &cell_attributes.cell_coordinate;
-    let style = cell_attributes.style.clone();
+    replace_parsed_cell(&cell, params, metrics)
+}
 
-    let is_hidden = cell_is_hidden(coord, metrics);
-
-    // --- ADVANCED CLEANUP LOGIC ---
-    let col_num = letters_byte_string_to_integer(&coord.column);
-    let row_num = std::str::from_utf8(&coord.row)
-        .unwrap_or("0")
-        .parse::<u32>()
-        .unwrap_or(0);
+fn replace_parsed_cell(
+    cell: &ParsedCell<'_>,
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+) -> Vec<u8> {
+    let style = cell.style(params);
+    let is_hidden = cell_is_hidden(cell, metrics);
+    let is_excel_protected = cell_has_protection_style(cell, style, metrics);
 
     let mut force_delete = false;
 
     if let Some(adv) = &params.advanced_cleanup {
         if adv.safe_to_clean {
-            let is_protected = adv.protected_cells.contains(col_num, row_num);
-            // Feature 1: Whitespace
-            if adv.remove_unreferenced_whitespace && is_whitespace_cell(cell_raw, params) {
+            let is_deletion_protected =
+                adv.protected_cells.contains(cell.col_num, cell.row_num) || is_excel_protected;
+
+            if adv.remove_unreferenced_whitespace && is_whitespace_cell(cell.raw, params) {
                 metrics.whitespace_candidates += 1;
-                if !is_protected {
+
+                if !is_deletion_protected {
                     metrics.whitespace_removed += 1;
                     force_delete = true;
                 } else {
@@ -44,10 +94,10 @@ pub fn replace_cell(
                 }
             }
 
-            // Feature 2: Hidden Content
-            if adv.remove_unreferenced_hidden_content && is_hidden && has_content(cell_raw) {
+            if adv.remove_unreferenced_hidden_content && is_hidden && has_content(cell.raw) {
                 metrics.hidden_candidates += 1;
-                if !is_protected {
+
+                if !is_deletion_protected {
                     metrics.hidden_removed += 1;
                     force_delete = true;
                 } else {
@@ -55,159 +105,159 @@ pub fn replace_cell(
                 }
             }
         } else {
-            // Unsafe to clean, but we count candidates for logging if we can
-            if adv.remove_unreferenced_whitespace && is_whitespace_cell(cell_raw, params) {
+            if adv.remove_unreferenced_whitespace && is_whitespace_cell(cell.raw, params) {
                 metrics.whitespace_candidates += 1;
             }
-            if adv.remove_unreferenced_hidden_content && is_hidden && has_content(cell_raw) {
+
+            if adv.remove_unreferenced_hidden_content && is_hidden && has_content(cell.raw) {
                 metrics.hidden_candidates += 1;
             }
         }
     }
 
     if force_delete {
-        metrics.deleted_cell_states.push(cell_attributes);
+        metrics
+            .deleted_cell_states
+            .push(cell.to_cell_attributes(style));
         return Vec::new();
     }
-    // --- END ADVANCED CLEANUP LOGIC ---
 
-    // Original hidden logic (deletes EMPTY hidden cells, but keeps them if they override styles)
     if is_hidden {
-        // If it has content, and we didn't force delete it above, we MUST NOT delete it natively here!
-        if !has_content(cell_raw) {
-            metrics.deleted_cell_states.push(cell_attributes);
+        if !has_content(cell.raw) {
+            metrics
+                .deleted_cell_states
+                .push(cell.to_cell_attributes(style));
             return Vec::new();
-        } else {
-            // It's hidden but has content, and wasn't deleted by advanced cleanup. Keep it.
-            metrics.kept_cell_states.push(cell_attributes);
-            return cell_raw.to_vec();
         }
+
+        metrics
+            .kept_cell_states
+            .push(cell.to_cell_attributes(style));
+        return cell.raw.to_vec();
     }
 
-    // Original style logic for visible cells
     let Some(style) = style else {
-        // Safe to delete if it's empty. If it has content, don't delete!
-        if !has_content(cell_raw) {
-            metrics.deleted_cell_states.push(cell_attributes);
+        if !has_content(cell.raw) {
+            metrics
+                .deleted_cell_states
+                .push(cell.to_cell_attributes(None));
             return Vec::new();
         }
-        metrics.kept_cell_states.push(cell_attributes);
-        return cell_raw.to_vec();
+
+        metrics.kept_cell_states.push(cell.to_cell_attributes(None));
+        return cell.raw.to_vec();
     };
 
     if style.has_fill_or_border || style.has_apply_protection {
-        // If it has content, keep the whole tag, else self-close
-        if has_content(cell_raw) {
-            metrics.kept_cell_states.push(cell_attributes);
-            return cell_raw.to_vec();
+        if has_content(cell.raw) {
+            metrics
+                .kept_cell_states
+                .push(cell.to_cell_attributes(Some(style)));
+            return cell.raw.to_vec();
         }
-        let out = generate_self_closing_cell_xml(&cell_attributes.cell_attribute_string);
-        metrics.kept_cell_states.push(cell_attributes);
+
+        let out = generate_self_closing_cell_xml(cell.attr);
+        metrics
+            .kept_cell_states
+            .push(cell.to_cell_attributes(Some(style)));
+        return out;
+    }
+
+    if cell_overrides_fill_or_border(style, cell, metrics) {
+        if has_content(cell.raw) {
+            metrics
+                .kept_cell_states
+                .push(cell.to_cell_attributes(Some(style)));
+            return cell.raw.to_vec();
+        }
+
+        let out = generate_self_closing_cell_xml(cell.attr);
+        metrics
+            .kept_cell_states
+            .push(cell.to_cell_attributes(Some(style)));
         return out;
     }
 
     if !style.has_apply_fill_or_border {
-        if !has_content(cell_raw) {
-            metrics.deleted_cell_states.push(cell_attributes);
+        if !has_content(cell.raw) {
+            metrics
+                .deleted_cell_states
+                .push(cell.to_cell_attributes(Some(style)));
             return Vec::new();
         }
-        metrics.kept_cell_states.push(cell_attributes);
-        return cell_raw.to_vec();
+
+        metrics
+            .kept_cell_states
+            .push(cell.to_cell_attributes(Some(style)));
+        return cell.raw.to_vec();
     }
 
-    if cell_overrides_fill_or_border(&style, coord, metrics) {
-        if has_content(cell_raw) {
-            metrics.kept_cell_states.push(cell_attributes);
-            return cell_raw.to_vec();
-        }
-        let out = generate_self_closing_cell_xml(&cell_attributes.cell_attribute_string);
-        metrics.kept_cell_states.push(cell_attributes);
-        return out;
-    }
-
-    if !has_content(cell_raw) {
-        metrics.deleted_cell_states.push(cell_attributes);
+    if !has_content(cell.raw) {
+        metrics
+            .deleted_cell_states
+            .push(cell.to_cell_attributes(Some(style)));
         return Vec::new();
     }
 
-    metrics.kept_cell_states.push(cell_attributes);
-    cell_raw.to_vec()
+    metrics
+        .kept_cell_states
+        .push(cell.to_cell_attributes(Some(style)));
+    cell.raw.to_vec()
 }
 
-fn extract_cell_attributes(
-    caps: &Captures,
-    params: &CleanSheetParameters,
-) -> Option<CellAttributes> {
-    let cell_attr = caps.get(1)?.as_bytes().to_vec();
-
-    let cell_ref_re = CELL_REF_RE.get_or_init(|| Regex::new(r#"r="([A-Z]+)(\d+)""#).unwrap());
-    let style_re = STYLE_RE.get_or_init(|| Regex::new(r#"s="(\d+?)""#).unwrap());
-
-    let ref_caps = cell_ref_re.captures(&cell_attr)?;
-    let col_ref = ref_caps.get(1)?.as_bytes().to_vec();
-    let row_ref = ref_caps.get(2)?.as_bytes().to_vec();
-
-    let style = style_re
-        .captures(&cell_attr)
-        .and_then(|c| c.get(1))
-        .map(|m| digits_byte_string_to_integer(m.as_bytes()))
-        .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id).cloned());
-
-    Some(CellAttributes {
-        cell_attribute_string: cell_attr,
-        cell_coordinate: CellCoordinate {
-            column: col_ref,
-            row: row_ref,
-        },
-        style,
-    })
-}
-
-fn cell_is_hidden(cell_coordinate: &CellCoordinate, metrics: &CleanSheetMetrics) -> bool {
+fn cell_is_hidden(cell: &ParsedCell<'_>, metrics: &CleanSheetMetrics) -> bool {
     if metrics
         .row_attributes
-        .get(&cell_coordinate.row)
+        .get(cell.row)
         .is_some_and(|row| row.hidden)
     {
         return true;
     }
 
-    let column_index = letters_byte_string_to_integer(&cell_coordinate.column);
-
     metrics
         .column_definitions
-        .get(column_index)
+        .get(cell.col_num)
         .is_some_and(|column| column.hidden)
 }
 
 fn cell_overrides_fill_or_border(
     cell_style: &Xf,
-    cell_coordinate: &CellCoordinate,
+    cell: &ParsedCell<'_>,
     metrics: &CleanSheetMetrics,
 ) -> bool {
-    let column_index = letters_byte_string_to_integer(&cell_coordinate.column);
-
     let column_style = metrics
         .column_definitions
-        .get(column_index)
+        .get(cell.col_num)
         .and_then(|column| column.cell_xf.as_ref());
 
     let row_style = metrics
         .row_attributes
-        .get(&cell_coordinate.row)
+        .get(cell.row)
         .and_then(|row| row.style.as_ref());
 
-    let overrides_fill = row_style
-        .is_some_and(|row| row.apply_fill && cell_style.fill_id != row.fill_id)
-        || column_style
-            .is_some_and(|column| column.apply_fill && cell_style.fill_id != column.fill_id);
+    let overrides_fill = overrides_inherited_non_default_fill(cell_style, row_style)
+        || overrides_inherited_non_default_fill(cell_style, column_style);
 
+    // Border-Logik erst einmal nah an deiner bisherigen Semantik lassen.
+    // Der konkrete Bug betrifft Fill; hier weiterhin nur dann als Override zählen,
+    // wenn Row/Column applyBorder explizit setzen.
     let overrides_border = row_style
         .is_some_and(|row| row.apply_border && cell_style.border_id != row.border_id)
         || column_style
             .is_some_and(|column| column.apply_border && cell_style.border_id != column.border_id);
 
     overrides_fill || overrides_border
+}
+
+fn overrides_inherited_non_default_fill(cell_style: &Xf, inherited_style: Option<&Xf>) -> bool {
+    let Some(inherited_style) = inherited_style else {
+        return false;
+    };
+
+    let inherited_fill_id = inherited_style.fill_id.unwrap_or(0);
+    let cell_fill_id = cell_style.fill_id.unwrap_or(0);
+
+    inherited_fill_id != 0 && cell_fill_id != inherited_fill_id
 }
 
 fn generate_self_closing_cell_xml(cell_attr: &[u8]) -> Vec<u8> {
@@ -253,3 +303,32 @@ fn is_whitespace_cell(cell: &[u8], params: &CleanSheetParameters) -> bool {
 
     false
 }
+
+fn cell_has_protection_style(
+    cell: &ParsedCell<'_>,
+    cell_style: Option<&Xf>,
+    metrics: &CleanSheetMetrics,
+) -> bool {
+    if cell_style.is_some_and(|style| style.has_apply_protection) {
+        return true;
+    }
+
+    if metrics
+        .row_attributes
+        .get(cell.row)
+        .and_then(|row| row.style.as_ref())
+        .is_some_and(|style| style.has_apply_protection)
+    {
+        return true;
+    }
+
+    metrics
+        .column_definitions
+        .get(cell.col_num)
+        .and_then(|column| column.cell_xf.as_ref())
+        .is_some_and(|style| style.has_apply_protection)
+}
+
+#[cfg(test)]
+#[path = "cells_regression_tests.rs"]
+mod regression_tests;

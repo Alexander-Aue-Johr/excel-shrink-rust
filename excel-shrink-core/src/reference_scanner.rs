@@ -205,3 +205,7 @@ fn strip_sheet_prefix(reference: &str) -> &str {
         .map(|(_, cell_ref)| cell_ref)
         .unwrap_or(reference)
 }
+
+#[cfg(test)]
+#[path = "reference_scanner_regression_tests.rs"]
+mod regression_tests;

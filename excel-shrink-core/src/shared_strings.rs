@@ -31,3 +31,7 @@ for (idx, mat) in si_pattern.find_iter(shared_strings_xml).enumerate() {
 
     whitespace_indices
 }
+
+#[cfg(test)]
+#[path = "shared_strings_tests.rs"]
+mod tests;

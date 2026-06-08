@@ -1,11 +1,12 @@
 use crate::error::{Result, ShrinkError};
 use crate::models::{
-    CellCoordinate, CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, SheetStreamingState,
+    CellCoordinate, CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, ColumnRangeMap,
+    SheetStreamingState,
 };
 use crate::sheet::cols::process_cols_node;
 use crate::sheet::merge_cells::find_max_merge_cells;
 use crate::sheet::output::build_clean_sheet_xml;
-use crate::sheet::sheet_data::pre_process_sheet_data_chunk;
+use crate::sheet::sheet_data::{pre_process_sheet_data_chunk, SheetDataPreprocessState};
 use crate::sheet::worksheet::{process_worksheet_node, WorksheetTag};
 use crate::xml::{find_bytes, rfind_bytes};
 use regex::bytes::Regex;
@@ -37,6 +38,23 @@ pub fn clean_sheet_data_streamwise(
     build_clean_sheet_xml(preprocessed, params, disable_sheetdata_splitting)
 }
 
+fn get_or_create_sheet_data_preprocess_state<'a>(
+    state: &'a mut Option<SheetDataPreprocessState>,
+    column_definitions: &Option<ColumnRangeMap>,
+    params: &CleanSheetParameters,
+) -> &'a mut SheetDataPreprocessState {
+    if state.is_none() {
+        let empty_column_definitions = ColumnRangeMap::default();
+        let columns = column_definitions
+            .as_ref()
+            .unwrap_or(&empty_column_definitions);
+
+        *state = Some(SheetDataPreprocessState::new(columns, params));
+    }
+
+    state.as_mut().unwrap()
+}
+
 pub fn preprocess_sheet_xml_streamwise(
     mut stream: impl Read,
     params: &CleanSheetParameters,
@@ -52,6 +70,7 @@ pub fn preprocess_sheet_xml_streamwise(
     let mut result = PreprocessedSheetXml::default();
 
     let mut column_definitions = None;
+    let mut sheet_data_preprocess_state: Option<SheetDataPreprocessState> = None;
     let mut max_merge_cells_column_and_row: Option<CellCoordinate> = None;
 
     while state != SheetStreamingState::FoundWorksheetEnd {
@@ -131,7 +150,15 @@ pub fn preprocess_sheet_xml_streamwise(
 
                 let content = buffer[..idx].to_vec();
 
-                column_definitions = Some(process_cols_node(&content, params));
+                let content = buffer[..idx].to_vec();
+
+                let parsed_column_definitions = process_cols_node(&content, params);
+                sheet_data_preprocess_state = Some(SheetDataPreprocessState::new(
+                    &parsed_column_definitions,
+                    params,
+                ));
+                column_definitions = Some(parsed_column_definitions);
+
                 result.in_cols_node_output_chunks = content;
 
                 buffer = buffer[idx..].to_vec();
@@ -142,7 +169,15 @@ pub fn preprocess_sheet_xml_streamwise(
                 if let Some(idx) = find_bytes(&buffer, b"</sheetData>") {
                     let chunk = &buffer[..idx];
 
-                    let cleaned_chunk = pre_process_sheet_data_chunk(chunk, params)?;
+                    let preprocess_state = get_or_create_sheet_data_preprocess_state(
+                        &mut sheet_data_preprocess_state,
+                        &column_definitions,
+                        params,
+                    );
+
+                    let cleaned_chunk =
+                        pre_process_sheet_data_chunk(chunk, params, preprocess_state)?;
+
                     result.sheet_data.extend_from_slice(&cleaned_chunk);
 
                     buffer = buffer[idx..].to_vec();
@@ -156,7 +191,15 @@ pub fn preprocess_sheet_xml_streamwise(
                     if last_row_start > 0 {
                         let chunk = &buffer[..last_row_start];
 
-                        let cleaned_chunk = pre_process_sheet_data_chunk(chunk, params)?;
+                        let preprocess_state = get_or_create_sheet_data_preprocess_state(
+                            &mut sheet_data_preprocess_state,
+                            &column_definitions,
+                            params,
+                        );
+
+                        let cleaned_chunk =
+                            pre_process_sheet_data_chunk(chunk, params, preprocess_state)?;
+
                         result.sheet_data.extend_from_slice(&cleaned_chunk);
 
                         buffer = buffer[last_row_start..].to_vec();

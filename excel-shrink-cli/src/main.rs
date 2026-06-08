@@ -109,7 +109,7 @@ fn init_logging() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard>
 fn gather_files(path: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
-    if path.is_file() && path.extension().map_or(false, |ext| ext == "xlsx") {
+    if path.is_file() && is_real_xlsx_file(path) {
         files.push(path.clone());
     } else if path.is_dir() {
         if recursive {
@@ -117,19 +117,34 @@ fn gather_files(path: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>
                 .into_iter()
                 .filter_map(|e| e.ok())
             {
-                if entry.path().extension().map_or(false, |e| e == "xlsx") {
+                if is_real_xlsx_file(entry.path()) {
                     files.push(entry.path().to_path_buf());
                 }
             }
         } else {
             for entry in std::fs::read_dir(path)? {
                 let entry = entry?;
-                if entry.path().extension().map_or(false, |e| e == "xlsx") {
-                    files.push(entry.path());
+                let entry_path = entry.path();
+
+                if is_real_xlsx_file(&entry_path) {
+                    files.push(entry_path);
                 }
             }
         }
     }
 
     Ok(files)
+}
+
+fn is_real_xlsx_file(path: &std::path::Path) -> bool {
+    let is_xlsx = path
+        .extension()
+        .map_or(false, |ext| ext.eq_ignore_ascii_case("xlsx"));
+
+    let is_excel_lock_file = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("~$"));
+
+    is_xlsx && !is_excel_lock_file
 }

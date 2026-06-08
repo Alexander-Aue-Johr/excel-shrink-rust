@@ -1,0 +1,147 @@
+use super::{replace_empty_row_after_cell_range, replace_row};
+use crate::models::{CleanSheetMetrics, CleanSheetParameters, WorkbookSpecificPatterns, Xf};
+use regex::bytes::Regex;
+use std::collections::HashMap;
+use zip::CompressionMethod;
+
+fn relevant_style() -> Xf {
+    Xf::new(
+        Some(2),
+        Some(1),
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+    )
+}
+
+fn font_only_style() -> Xf {
+    Xf::new(
+        Some(0),
+        Some(0),
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+    )
+}
+
+fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
+    let mut xfs_by_index = HashMap::new();
+    let mut only_font_style_ids = Vec::new();
+    let mut fill_or_border_or_protection_ids = Vec::new();
+
+    for (id, xf) in styles {
+        if xf.has_only_font_style {
+            only_font_style_ids.push(*id);
+        }
+
+        if xf.has_fill_or_border || xf.has_apply_protection {
+            fill_or_border_or_protection_ids.push(*id);
+        }
+
+        xfs_by_index.insert(*id, xf.clone());
+    }
+
+    CleanSheetParameters {
+        xlsx_file_path: "test.xlsx".to_string(),
+        zip_info_filename: "xl/worksheets/sheet1.xml".to_string(),
+        compress_method: CompressionMethod::Deflated,
+        patterns: WorkbookSpecificPatterns {
+            xfs_by_index,
+            only_font_style_ids,
+            fill_or_border_or_protection_ids,
+            whitespace_indices: None,
+        },
+        advanced_cleanup: None,
+    }
+}
+
+fn replace_single_row(row_xml: &[u8], params: &CleanSheetParameters) -> Vec<u8> {
+    let row_re = Regex::new(
+        r#"(?s)<row\b((?:[^>]*\br="([^"]+?)")?(?:[^>]*\bhidden="(1)")?(?:[^>]*\bs="([^"]+?)")?(?:[^>]*\bht="([^"]+?)")?[^/>]*?)(?:/>|>(.*?)</row>)"#,
+    )
+    .unwrap();
+
+    let caps = row_re.captures(row_xml).unwrap();
+    let mut metrics = CleanSheetMetrics::default();
+
+    replace_row(&caps, params, &mut metrics)
+}
+
+fn replace_single_empty_row_after_cell_range(
+    row_xml: &[u8],
+    params: &CleanSheetParameters,
+) -> Vec<u8> {
+    let row_re = Regex::new(
+        r#"(?s)<row\b((?:[^>]*\br="([^"]+?)")?(?:[^>]*\bhidden="(1)")?(?:[^>]*\bs="([^"]+?)")?(?:[^>]*\bht="([^"]+?)")?[^/>]*?)(?:/>|></row>)"#,
+    )
+    .unwrap();
+
+    let caps = row_re.captures(row_xml).unwrap();
+    let mut metrics = CleanSheetMetrics::default();
+
+    replace_empty_row_after_cell_range(&caps, params, &mut metrics)
+}
+
+#[test]
+fn keeps_empty_cell_when_cell_style_has_fill_or_border_regression_row_15() {
+    let params = params_with_styles(&[(427, relevant_style()), (429, font_only_style())]);
+
+    let row_xml =
+        br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27"><c r="A15" s="427"/></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27"><c r="A15" s="427"/></row>"#
+    );
+}
+
+#[test]
+fn collapses_row_when_empty_cell_has_only_font_style_and_row_has_height() {
+    let params = params_with_styles(&[(427, font_only_style()), (429, font_only_style())]);
+
+    let row_xml =
+        br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27"><c r="A15" s="427"/></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="15" customFormat="1" ht="27" customHeight="1"/>"#
+    );
+}
+
+#[test]
+fn adds_custom_height_to_already_empty_row_with_height() {
+    let params = params_with_styles(&[(429, font_only_style())]);
+
+    let row_xml = br#"<row r="16" customFormat="1" ht="27"/>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="16" customFormat="1" ht="27" customHeight="1"/>"#
+    );
+}
+
+#[test]
+fn adds_custom_height_to_empty_row_after_cell_range_with_height() {
+    let params = params_with_styles(&[(429, font_only_style())]);
+
+    let row_xml = br#"<row r="16" customFormat="1" ht="27"/>"#;
+
+    let cleaned = replace_single_empty_row_after_cell_range(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="16" customFormat="1" ht="27" customHeight="1"/>"#
+    );
+}
