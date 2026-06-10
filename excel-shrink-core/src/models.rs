@@ -281,6 +281,13 @@ pub struct SheetPreprocessConfig {
     pub remove_empty_cells: bool,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CellCleanerMode {
+    #[default]
+    Regex,
+    Bytes,
+}
+
 #[derive(Debug, Clone)]
 pub struct CleanSheetParameters {
     pub xlsx_file_path: String,
@@ -289,6 +296,7 @@ pub struct CleanSheetParameters {
     pub patterns: WorkbookSpecificPatterns,
     pub advanced_cleanup: Option<std::sync::Arc<AdvancedCleanupConfig>>,
     pub preprocess: SheetPreprocessConfig,
+    pub cell_cleaner_mode: CellCleanerMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

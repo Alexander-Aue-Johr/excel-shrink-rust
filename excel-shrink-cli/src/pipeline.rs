@@ -11,8 +11,9 @@ use tracing::{debug, error, info, warn};
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use excel_shrink_core::models::{
-    AdvancedCleanupConfig, CellCoordinate, CleanSheetMetrics, CleanSheetParameters,
-    ProtectedWorkbookRefs, SheetPreprocessConfig, SheetScanBuffer, WorkbookSpecificPatterns,
+    AdvancedCleanupConfig, CellCleanerMode, CellCoordinate, CleanSheetMetrics,
+    CleanSheetParameters, ProtectedWorkbookRefs, SheetPreprocessConfig, SheetScanBuffer,
+    WorkbookSpecificPatterns,
 };
 use excel_shrink_core::reference_scanner::{scan_for_references_by_sheet, ScanResult};
 use excel_shrink_core::shared_strings::find_whitespace_sst_indices;
@@ -456,6 +457,10 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                         preprocess: SheetPreprocessConfig {
                             remove_hidden_rows: cli.preprocess_hidden_rows,
                             remove_empty_cells: cli.preprocess_empty_cells,
+                        },
+                        cell_cleaner_mode: match cli.cell_cleaner {
+                            crate::CliCellCleanerMode::Regex => CellCleanerMode::Regex,
+                            crate::CliCellCleanerMode::Bytes => CellCleanerMode::Bytes,
                         },
                     },
                     i,

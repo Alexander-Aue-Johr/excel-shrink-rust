@@ -1,7 +1,7 @@
-use super::{replace_parsed_cell, ParsedCell};
+use super::{replace_parsed_cell, CellView};
 use crate::models::{
-    AdvancedCleanupConfig, CleanSheetMetrics, CleanSheetParameters, ColumnDefinition,
-    RowAttributes, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
+    AdvancedCleanupConfig, CellCleanerMode, CleanSheetMetrics, CleanSheetParameters,
+    ColumnDefinition, RowAttributes, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
 };
 
 use std::collections::HashMap;
@@ -21,6 +21,7 @@ fn default_params() -> CleanSheetParameters {
         },
         advanced_cleanup: None,
         preprocess: SheetPreprocessConfig::default(),
+        cell_cleaner_mode: CellCleanerMode::Regex,
     }
 }
 
@@ -53,6 +54,7 @@ fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
         },
         advanced_cleanup: None,
         preprocess: SheetPreprocessConfig::default(),
+        cell_cleaner_mode: CellCleanerMode::Regex,
     }
 }
 
@@ -67,14 +69,19 @@ fn hidden_row_3() -> RowAttributes {
     }
 }
 
-fn parsed_a3_cell<'a>(raw: &'a [u8], attr: &'a [u8], style_id: Option<u32>) -> ParsedCell<'a> {
-    ParsedCell {
+fn parsed_a3_cell<'a>(raw: &'a [u8], attr: &'a [u8], style_id: Option<u32>) -> CellView<'a> {
+    CellView {
         raw,
-        attr,
-        column: b"A",
-        row: b"3",
-        col_num: 1,
+        opening_tag: raw,
+        attributes: attr,
+        reference: Some(b"A3"),
+        column_ref: Some(b"A"),
+        row_ref: Some(b"3"),
+        column: Some(1),
+        row: Some(3),
         style_id,
+        is_self_closing: raw.ends_with(b"/>"),
+        has_content: raw.contains(&b'>') && !raw.ends_with(b"/>"),
     }
 }
 

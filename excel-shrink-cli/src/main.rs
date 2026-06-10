@@ -1,4 +1,5 @@
 use clap::Parser;
+use clap::ValueEnum;
 use std::path::PathBuf;
 use std::time::Instant;
 use tracing::info;
@@ -74,6 +75,16 @@ pub struct Cli {
     /// Optional: Remove cells with content in hidden rows/cols, IF they are completely unreferenced.
     #[arg(long)]
     remove_unreferenced_hidden_content_cells: bool,
+
+    /// Cell cleanup implementation to use. `bytes` is experimental; default keeps the regex path.
+    #[arg(long, value_enum, default_value_t = CliCellCleanerMode::Regex)]
+    cell_cleaner: CliCellCleanerMode,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum CliCellCleanerMode {
+    Regex,
+    Bytes,
 }
 
 fn main() -> anyhow::Result<()> {

@@ -1,6 +1,6 @@
-use crate::models::{CleanSheetMetrics, CleanSheetParameters, RowAttributes};
-use crate::sheet::cells::replace_cell;
-use crate::utils::digits_byte_string_to_integer;
+use crate::models::{CellCleanerMode, CleanSheetMetrics, CleanSheetParameters, RowAttributes};
+use crate::sheet::cells::{replace_cell, replace_cell_view, CellReplacement, CellView};
+use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
 use crate::xml::find_bytes;
 use regex::bytes::{Captures, Regex};
 use std::sync::OnceLock;
@@ -128,6 +128,17 @@ fn clean_cells(
         return Vec::new();
     }
 
+    match params.cell_cleaner_mode {
+        CellCleanerMode::Regex => clean_cells_regex(params, metrics, row_content),
+        CellCleanerMode::Bytes => clean_cells_bytes(params, metrics, row_content),
+    }
+}
+
+fn clean_cells_regex(
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    row_content: &[u8],
+) -> Vec<u8> {
     let needs_content_cell_scan = params.advanced_cleanup.as_ref().is_some_and(|advanced| {
         advanced.remove_unreferenced_whitespace || advanced.remove_unreferenced_hidden_content
     });
@@ -151,6 +162,288 @@ fn clean_cells(
             replace_cell(caps, params, metrics)
         })
         .into_owned()
+}
+
+fn clean_cells_bytes(
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    row_content: &[u8],
+) -> Vec<u8> {
+    let needs_content_cell_scan = needs_content_cell_scan(params);
+
+    if find_bytes(row_content, b"<c").is_none() {
+        return row_content.to_vec();
+    }
+
+    if !needs_content_cell_scan && !contains_self_closing_cell_candidate(row_content) {
+        return row_content.to_vec();
+    }
+
+    let mut out: Option<Vec<u8>> = None;
+    let mut last_copied = 0;
+    let mut search_start = 0;
+
+    while let Some(relative_start) = find_bytes(&row_content[search_start..], b"<c") {
+        let cell_start = search_start + relative_start;
+
+        if !is_cell_tag_start(row_content, cell_start) {
+            search_start = cell_start + 2;
+            continue;
+        }
+
+        let Some(opening_end) = row_content[cell_start..]
+            .iter()
+            .position(|byte| *byte == b'>')
+            .map(|idx| cell_start + idx)
+        else {
+            break;
+        };
+
+        let opening_tag = &row_content[cell_start..=opening_end];
+        let Some(attributes) = cell_attributes_from_opening_tag(opening_tag) else {
+            search_start = opening_end + 1;
+            continue;
+        };
+        let is_self_closing = is_self_closing_opening_tag(opening_tag);
+
+        if !needs_content_cell_scan && !is_self_closing {
+            search_start = opening_end + 1;
+            continue;
+        }
+
+        let cell_end = if is_self_closing {
+            opening_end + 1
+        } else {
+            let content_start = opening_end + 1;
+            let Some(closing_relative) = find_bytes(&row_content[content_start..], b"</c>") else {
+                search_start = opening_end + 1;
+                continue;
+            };
+            content_start + closing_relative + b"</c>".len()
+        };
+
+        let raw = &row_content[cell_start..cell_end];
+        let (reference, column_ref, row_ref, column, row, style_id) =
+            parse_cell_view_attributes(attributes);
+        let cell = CellView {
+            raw,
+            opening_tag,
+            attributes,
+            reference,
+            column_ref,
+            row_ref,
+            column,
+            row,
+            style_id,
+            is_self_closing,
+            has_content: !is_self_closing && cell_has_content(raw),
+        };
+
+        match replace_cell_view(&cell, params, metrics) {
+            CellReplacement::KeepOriginal => {}
+            CellReplacement::Delete => {
+                let out = out.get_or_insert_with(|| Vec::with_capacity(row_content.len()));
+                out.extend_from_slice(&row_content[last_copied..cell_start]);
+                last_copied = cell_end;
+            }
+            CellReplacement::Replace(replacement) => {
+                let out = out.get_or_insert_with(|| Vec::with_capacity(row_content.len()));
+                out.extend_from_slice(&row_content[last_copied..cell_start]);
+                out.extend_from_slice(&replacement);
+                last_copied = cell_end;
+            }
+            CellReplacement::Borrowed(replacement) => {
+                let out = out.get_or_insert_with(|| Vec::with_capacity(row_content.len()));
+                out.extend_from_slice(&row_content[last_copied..cell_start]);
+                out.extend_from_slice(replacement);
+                last_copied = cell_end;
+            }
+        }
+
+        search_start = cell_end;
+    }
+
+    if let Some(mut out) = out {
+        out.extend_from_slice(&row_content[last_copied..]);
+        out
+    } else {
+        row_content.to_vec()
+    }
+}
+
+fn needs_content_cell_scan(params: &CleanSheetParameters) -> bool {
+    params.advanced_cleanup.as_ref().is_some_and(|advanced| {
+        advanced.remove_unreferenced_whitespace || advanced.remove_unreferenced_hidden_content
+    })
+}
+
+fn contains_self_closing_cell_candidate(row_content: &[u8]) -> bool {
+    let mut search_start = 0;
+
+    while let Some(relative_start) = find_bytes(&row_content[search_start..], b"<c") {
+        let cell_start = search_start + relative_start;
+
+        if !is_cell_tag_start(row_content, cell_start) {
+            search_start = cell_start + 2;
+            continue;
+        }
+
+        let Some(opening_end) = row_content[cell_start..]
+            .iter()
+            .position(|byte| *byte == b'>')
+            .map(|idx| cell_start + idx)
+        else {
+            return false;
+        };
+
+        if is_self_closing_opening_tag(&row_content[cell_start..=opening_end]) {
+            return true;
+        }
+
+        search_start = opening_end + 1;
+    }
+
+    false
+}
+
+fn is_cell_tag_start(row_content: &[u8], cell_start: usize) -> bool {
+    let Some(next) = row_content.get(cell_start + 2) else {
+        return false;
+    };
+
+    next.is_ascii_whitespace() || *next == b'/' || *next == b'>'
+}
+
+fn is_self_closing_opening_tag(opening_tag: &[u8]) -> bool {
+    if opening_tag.last() != Some(&b'>') {
+        return false;
+    }
+
+    let mut idx = opening_tag.len().saturating_sub(1);
+    while idx > 0 && opening_tag[idx - 1].is_ascii_whitespace() {
+        idx -= 1;
+    }
+
+    opening_tag.get(idx - 1) == Some(&b'/')
+}
+
+fn cell_attributes_from_opening_tag(opening_tag: &[u8]) -> Option<&[u8]> {
+    if !opening_tag.starts_with(b"<c") || opening_tag.last() != Some(&b'>') {
+        return None;
+    }
+
+    let mut end = opening_tag.len() - 1;
+    while end > 2 && opening_tag[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    if end > 2 && opening_tag[end - 1] == b'/' {
+        end -= 1;
+    }
+
+    Some(&opening_tag[2..end])
+}
+
+type ParsedCellAttributes<'a> = (
+    Option<&'a [u8]>,
+    Option<&'a [u8]>,
+    Option<&'a [u8]>,
+    Option<u32>,
+    Option<u32>,
+    Option<u32>,
+);
+
+fn parse_cell_view_attributes(attributes: &[u8]) -> ParsedCellAttributes<'_> {
+    let mut reference = None;
+    let mut column_ref = None;
+    let mut row_ref = None;
+    let mut column = None;
+    let mut row = None;
+    let mut style_id = None;
+
+    let mut pos = 0;
+    while pos < attributes.len() {
+        while pos < attributes.len() && attributes[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+
+        let name_start = pos;
+        while pos < attributes.len() && is_xml_attr_name_byte(attributes[pos]) {
+            pos += 1;
+        }
+
+        let name = &attributes[name_start..pos];
+        if name.is_empty() {
+            pos += 1;
+            continue;
+        }
+
+        while pos < attributes.len() && attributes[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+
+        if attributes.get(pos) != Some(&b'=') {
+            continue;
+        }
+        pos += 1;
+
+        while pos < attributes.len() && attributes[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+
+        if attributes.get(pos) != Some(&b'"') {
+            continue;
+        }
+        pos += 1;
+
+        let value_start = pos;
+        while pos < attributes.len() && attributes[pos] != b'"' {
+            pos += 1;
+        }
+        if pos >= attributes.len() {
+            break;
+        }
+
+        let value = &attributes[value_start..pos];
+        pos += 1;
+
+        match name {
+            b"r" => {
+                reference = Some(value);
+                let (col_bytes, row_bytes) = split_cell_reference(value);
+                if !col_bytes.is_empty() && !row_bytes.is_empty() {
+                    column_ref = Some(col_bytes);
+                    row_ref = Some(row_bytes);
+                    column = Some(letters_byte_string_to_integer(col_bytes));
+                    row = Some(digits_byte_string_to_integer(row_bytes));
+                }
+            }
+            b"s" => {
+                style_id = Some(digits_byte_string_to_integer(value));
+            }
+            _ => {}
+        }
+    }
+
+    (reference, column_ref, row_ref, column, row, style_id)
+}
+
+fn is_xml_attr_name_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b':' | b'.' | b'-')
+}
+
+fn split_cell_reference(reference: &[u8]) -> (&[u8], &[u8]) {
+    let split_at = reference
+        .iter()
+        .position(|byte| byte.is_ascii_digit())
+        .unwrap_or(reference.len());
+
+    (&reference[..split_at], &reference[split_at..])
+}
+
+fn cell_has_content(cell: &[u8]) -> bool {
+    find_bytes(cell, b"<v>").is_some()
+        || find_bytes(cell, b"<f>").is_some()
+        || find_bytes(cell, b"<is>").is_some()
 }
 
 fn extract_row_attributes(

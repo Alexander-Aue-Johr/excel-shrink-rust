@@ -1,5 +1,7 @@
 use super::*;
-use crate::models::{CleanSheetParameters, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf};
+use crate::models::{
+    CellCleanerMode, CleanSheetParameters, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
+};
 use std::collections::HashMap;
 use zip::CompressionMethod;
 
@@ -23,6 +25,7 @@ fn params_with_relevant_style(style_id: u32) -> CleanSheetParameters {
         },
         advanced_cleanup: None,
         preprocess: SheetPreprocessConfig::default(),
+        cell_cleaner_mode: CellCleanerMode::Regex,
     }
 }
 

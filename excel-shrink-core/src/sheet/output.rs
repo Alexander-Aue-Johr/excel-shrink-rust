@@ -354,7 +354,8 @@ fn collect_watched_cells_from_candidates(
 mod tests {
     use super::build_clean_sheet_xml;
     use crate::models::{
-        CleanSheetMetrics, CleanSheetParameters, SheetPreprocessConfig, WorkbookSpecificPatterns,
+        CellCleanerMode, CleanSheetMetrics, CleanSheetParameters, SheetPreprocessConfig,
+        WorkbookSpecificPatterns,
     };
     use crate::sheet::streaming::PreprocessedSheetXml;
     use std::collections::HashMap;
@@ -373,6 +374,7 @@ mod tests {
             },
             advanced_cleanup: None,
             preprocess: SheetPreprocessConfig::default(),
+            cell_cleaner_mode: CellCleanerMode::Regex,
         }
     }
 
