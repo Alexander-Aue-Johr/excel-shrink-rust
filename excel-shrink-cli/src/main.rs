@@ -44,6 +44,31 @@ pub struct Cli {
     #[arg(long)]
     disable_sheetdata_splitting: bool,
 
+    /// Run slower but attribution-safe analysis mode.
+    #[arg(long)]
+    analysis_mode: bool,
+
+    /// Write per-sheet cleanup statistics to this CSV file.
+    /// This also uses attribution-safe analysis behavior.
+    #[arg(long)]
+    analysis_csv: Option<PathBuf>,
+
+    /// Resolve relative input, output, log, and analysis CSV paths from this directory.
+    #[arg(long)]
+    working_directory: Option<PathBuf>,
+
+    /// Disable trailing sheetData range pruning in analysis-sensitive runs.
+    #[arg(long)]
+    disable_tail_pruning: bool,
+
+    /// Disable trailing layout-only row cleanup.
+    #[arg(long)]
+    disable_trailing_layout_only_rows: bool,
+
+    /// Disable extraneous column range merging.
+    #[arg(long)]
+    disable_extraneous_column_merge: bool,
+
     /// Enable quick-win preprocessing that collapses consecutive hidden empty rows.
     #[arg(long)]
     preprocess_hidden_rows: bool,
@@ -77,9 +102,12 @@ pub struct Cli {
 }
 
 fn main() -> anyhow::Result<()> {
-    let _guard = init_logging()?;
-
     let cli = Cli::parse();
+    if let Some(working_directory) = &cli.working_directory {
+        std::env::set_current_dir(working_directory)?;
+    }
+
+    let _guard = init_logging()?;
 
     let start = Instant::now();
     info!("Starting excel-shrink pipeline...");

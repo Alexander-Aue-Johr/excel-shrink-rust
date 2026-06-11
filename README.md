@@ -48,6 +48,7 @@ Options:
   --disable-multiprocessing   Run in single-threaded mode
   --chunk-size <BYTES>        Set the XML processing chunk size
   --force-overwrite           Overwrite existing output files
+  --working-directory <PATH>  Resolve relative paths from this directory
 ```
 
 The default chunk size is `16777216` bytes, which is 16 MiB.
@@ -193,6 +194,29 @@ cargo run --release -- data/xlsx_files output --recursive --chunk-size 8388608
 ```
 
 This example uses an 8 MiB chunk size.
+
+### Resolve relative paths from a specific directory
+
+When Excel Shrink is started by another tool, relative paths are normally resolved from that
+process working directory. Use `--working-directory` to make relative input, output, log, and
+analysis CSV paths resolve from a known workspace directory:
+
+```bash
+cargo run --release -- data/xlsx_files output --analysis-csv analysis.csv --working-directory /path/to/workspace
+```
+
+### Write cleanup analysis CSV
+
+Use `--analysis-csv` to write one row per cleaned workbook or sheet XML entry and cleanup cause:
+
+```bash
+cargo run --release -- data/xlsx_files output --analysis-csv analysis.csv
+```
+
+Each row contains the cleanup `cause`, the exact per-cause XML byte reduction in
+`reduction_bytes_uncompressed_xml`, and `reduction_ratio`, which divides that per-cause reduction by
+the original sheet or workbook XML size. The ZIP-compressed XLSX file size is not used for these
+analysis rows.
 
 ## Setting up WSL on Windows
 

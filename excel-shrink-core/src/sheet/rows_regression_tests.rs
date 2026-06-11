@@ -43,6 +43,8 @@ fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
         },
         advanced_cleanup: None,
         preprocess: SheetPreprocessConfig::default(),
+        cleanup: Default::default(),
+        collect_cleanup_stats: false,
     }
 }
 

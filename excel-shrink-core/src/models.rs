@@ -43,6 +43,164 @@ pub struct CellCoordinate {
     pub row: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CleanupCause {
+    PreprocessEmptySelfClosingCells,
+    PreprocessConsecutiveHiddenEmptyRows,
+    EmptyCellsWithoutContent,
+    EmptyHiddenCells,
+    UnreferencedWhitespaceCells,
+    UnreferencedHiddenContentCells,
+    EmptyRowsWithoutVisibleStyleOrHeight,
+    ConsecutiveHiddenEmptyRows,
+    TrailingLayoutOnlyRows,
+    EmptyRowAttributeCleanup,
+    SheetDataRangeTailPruning,
+    ExtraneousColumnRangeMerge,
+    WorkbookDefinedNameCleanup,
+}
+
+impl CleanupCause {
+    pub const ALL: [CleanupCause; 13] = [
+        CleanupCause::PreprocessEmptySelfClosingCells,
+        CleanupCause::PreprocessConsecutiveHiddenEmptyRows,
+        CleanupCause::EmptyCellsWithoutContent,
+        CleanupCause::EmptyHiddenCells,
+        CleanupCause::UnreferencedWhitespaceCells,
+        CleanupCause::UnreferencedHiddenContentCells,
+        CleanupCause::EmptyRowsWithoutVisibleStyleOrHeight,
+        CleanupCause::ConsecutiveHiddenEmptyRows,
+        CleanupCause::TrailingLayoutOnlyRows,
+        CleanupCause::EmptyRowAttributeCleanup,
+        CleanupCause::SheetDataRangeTailPruning,
+        CleanupCause::ExtraneousColumnRangeMerge,
+        CleanupCause::WorkbookDefinedNameCleanup,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CleanupCause::PreprocessEmptySelfClosingCells => "PreprocessEmptySelfClosingCells",
+            CleanupCause::PreprocessConsecutiveHiddenEmptyRows => {
+                "PreprocessConsecutiveHiddenEmptyRows"
+            }
+            CleanupCause::EmptyCellsWithoutContent => "EmptyCellsWithoutContent",
+            CleanupCause::EmptyHiddenCells => "EmptyHiddenCells",
+            CleanupCause::UnreferencedWhitespaceCells => "UnreferencedWhitespaceCells",
+            CleanupCause::UnreferencedHiddenContentCells => "UnreferencedHiddenContentCells",
+            CleanupCause::EmptyRowsWithoutVisibleStyleOrHeight => {
+                "EmptyRowsWithoutVisibleStyleOrHeight"
+            }
+            CleanupCause::ConsecutiveHiddenEmptyRows => "ConsecutiveHiddenEmptyRows",
+            CleanupCause::TrailingLayoutOnlyRows => "TrailingLayoutOnlyRows",
+            CleanupCause::EmptyRowAttributeCleanup => "EmptyRowAttributeCleanup",
+            CleanupCause::SheetDataRangeTailPruning => "SheetDataRangeTailPruning",
+            CleanupCause::ExtraneousColumnRangeMerge => "ExtraneousColumnRangeMerge",
+            CleanupCause::WorkbookDefinedNameCleanup => "WorkbookDefinedNameCleanup",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CleanupSwitches {
+    pub preprocess_empty_self_closing_cells: bool,
+    pub preprocess_consecutive_hidden_empty_rows: bool,
+
+    pub empty_cells_without_content: bool,
+    pub empty_hidden_cells: bool,
+    pub unreferenced_whitespace_cells: bool,
+    pub unreferenced_hidden_content_cells: bool,
+
+    pub empty_rows_without_visible_style_or_height: bool,
+    pub consecutive_hidden_empty_rows: bool,
+    pub trailing_layout_only_rows: bool,
+
+    pub empty_row_attribute_cleanup: bool,
+    pub sheetdata_range_tail_pruning: bool,
+    pub extraneous_column_range_merge: bool,
+}
+
+impl Default for CleanupSwitches {
+    fn default() -> Self {
+        Self {
+            preprocess_empty_self_closing_cells: false,
+            preprocess_consecutive_hidden_empty_rows: false,
+
+            empty_cells_without_content: true,
+            empty_hidden_cells: true,
+            unreferenced_whitespace_cells: false,
+            unreferenced_hidden_content_cells: false,
+
+            empty_rows_without_visible_style_or_height: true,
+            consecutive_hidden_empty_rows: true,
+            trailing_layout_only_rows: true,
+
+            empty_row_attribute_cleanup: true,
+            sheetdata_range_tail_pruning: true,
+            extraneous_column_range_merge: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CleanupStats {
+    pub enabled: bool,
+    pub removed_bytes_by_cause: HashMap<CleanupCause, usize>,
+    pub added_bytes_by_cause: HashMap<CleanupCause, usize>,
+    pub removed_items_by_cause: HashMap<CleanupCause, usize>,
+}
+
+impl CleanupStats {
+    pub fn enabled() -> Self {
+        Self {
+            enabled: true,
+            ..Self::default()
+        }
+    }
+
+    #[inline(always)]
+    pub fn record_removed(&mut self, cause: CleanupCause, bytes: usize) {
+        if !self.enabled || bytes == 0 {
+            return;
+        }
+
+        *self.removed_bytes_by_cause.entry(cause).or_default() += bytes;
+        *self.removed_items_by_cause.entry(cause).or_default() += 1;
+    }
+
+    #[inline(always)]
+    pub fn record_delta(&mut self, cause: CleanupCause, before: usize, after: usize) {
+        if !self.enabled {
+            return;
+        }
+
+        if before > after {
+            self.record_removed(cause, before - after);
+        } else if after > before {
+            *self.added_bytes_by_cause.entry(cause).or_default() += after - before;
+        }
+    }
+
+    pub fn merge(&mut self, other: CleanupStats) {
+        self.enabled |= other.enabled;
+
+        for (cause, bytes) in other.removed_bytes_by_cause {
+            *self.removed_bytes_by_cause.entry(cause).or_default() += bytes;
+        }
+        for (cause, bytes) in other.added_bytes_by_cause {
+            *self.added_bytes_by_cause.entry(cause).or_default() += bytes;
+        }
+        for (cause, items) in other.removed_items_by_cause {
+            *self.removed_items_by_cause.entry(cause).or_default() += items;
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CleanupCandidate {
+    pub coordinate: CellCoordinate,
+    pub cause: CleanupCause,
+}
+
 #[derive(Debug, Clone)]
 pub struct ColumnDefinition {
     pub min: u32,
@@ -147,7 +305,8 @@ pub struct CleanSheetMetrics {
     pub whitespace_candidates: usize,
     pub hidden_candidates: usize,
 
-    pub candidates: Vec<CellCoordinate>,
+    pub candidates: Vec<CleanupCandidate>,
+    pub cleanup_stats: CleanupStats,
     pub has_hints: bool,
 }
 
@@ -289,6 +448,8 @@ pub struct CleanSheetParameters {
     pub patterns: WorkbookSpecificPatterns,
     pub advanced_cleanup: Option<std::sync::Arc<AdvancedCleanupConfig>>,
     pub preprocess: SheetPreprocessConfig,
+    pub cleanup: CleanupSwitches,
+    pub collect_cleanup_stats: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,4 +1,7 @@
-use crate::models::{CellAttributes, CellCoordinate, CleanSheetMetrics, CleanSheetParameters, Xf};
+use crate::models::{
+    CellAttributes, CellCoordinate, CleanSheetMetrics, CleanSheetParameters, CleanupCandidate,
+    CleanupCause, Xf,
+};
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
 use regex::bytes::Captures;
 
@@ -72,34 +75,51 @@ fn replace_parsed_cell(
     let is_hidden = cell_is_hidden(cell, metrics);
     let is_excel_protected = cell_has_protection_style(cell, style, metrics);
 
-    if let Some(adv) = &params.advanced_cleanup {
-        let mut is_candidate = false;
+    if unreferenced_whitespace_cleanup_enabled(params)
+        || unreferenced_hidden_content_cleanup_enabled(params)
+    {
+        let mut candidate_cause = None;
 
-        if adv.remove_unreferenced_whitespace && is_whitespace_cell(cell.raw, params) {
+        if unreferenced_whitespace_cleanup_enabled(params) && is_whitespace_cell(cell.raw, params) {
             metrics.whitespace_candidates += 1;
-            is_candidate = true;
-        } else if adv.remove_unreferenced_hidden_content && is_hidden && has_content(cell.raw) {
+            candidate_cause = Some(CleanupCause::UnreferencedWhitespaceCells);
+        } else if unreferenced_hidden_content_cleanup_enabled(params)
+            && is_hidden
+            && has_content(cell.raw)
+        {
             metrics.hidden_candidates += 1;
-            is_candidate = true;
+            candidate_cause = Some(CleanupCause::UnreferencedHiddenContentCells);
         }
 
-        if is_candidate && !is_excel_protected {
-            metrics
-                .candidates
-                .push(cell.to_cell_attributes(style).cell_coordinate);
-            metrics
-                .kept_cell_states
-                .push(cell.to_cell_attributes(style));
+        if let Some(cause) = candidate_cause {
+            let attrs = cell.to_cell_attributes(style);
+            if !is_excel_protected {
+                metrics.candidates.push(CleanupCandidate {
+                    coordinate: attrs.cell_coordinate.clone(),
+                    cause,
+                });
+            }
+            metrics.kept_cell_states.push(attrs);
             return cell.raw.to_vec();
         }
     }
 
     if is_hidden {
         if !has_content(cell.raw) {
+            if params.cleanup.empty_hidden_cells {
+                metrics
+                    .cleanup_stats
+                    .record_removed(CleanupCause::EmptyHiddenCells, cell.raw.len());
+                metrics
+                    .deleted_cell_states
+                    .push(cell.to_cell_attributes(style));
+                return Vec::new();
+            }
+
             metrics
-                .deleted_cell_states
+                .kept_cell_states
                 .push(cell.to_cell_attributes(style));
-            return Vec::new();
+            return cell.raw.to_vec();
         }
 
         metrics
@@ -110,10 +130,13 @@ fn replace_parsed_cell(
 
     let Some(style) = style else {
         if !has_content(cell.raw) {
-            metrics
-                .deleted_cell_states
-                .push(cell.to_cell_attributes(None));
-            return Vec::new();
+            return remove_or_keep_empty_cell(
+                cell,
+                None,
+                params,
+                metrics,
+                CleanupCause::EmptyCellsWithoutContent,
+            );
         }
 
         metrics.kept_cell_states.push(cell.to_cell_attributes(None));
@@ -152,10 +175,13 @@ fn replace_parsed_cell(
 
     if !style.has_apply_fill_or_border {
         if !has_content(cell.raw) {
-            metrics
-                .deleted_cell_states
-                .push(cell.to_cell_attributes(Some(style)));
-            return Vec::new();
+            return remove_or_keep_empty_cell(
+                cell,
+                Some(style),
+                params,
+                metrics,
+                CleanupCause::EmptyCellsWithoutContent,
+            );
         }
 
         metrics
@@ -165,16 +191,56 @@ fn replace_parsed_cell(
     }
 
     if !has_content(cell.raw) {
-        metrics
-            .deleted_cell_states
-            .push(cell.to_cell_attributes(Some(style)));
-        return Vec::new();
+        return remove_or_keep_empty_cell(
+            cell,
+            Some(style),
+            params,
+            metrics,
+            CleanupCause::EmptyCellsWithoutContent,
+        );
     }
 
     metrics
         .kept_cell_states
         .push(cell.to_cell_attributes(Some(style)));
     cell.raw.to_vec()
+}
+
+fn remove_or_keep_empty_cell(
+    cell: &ParsedCell<'_>,
+    style: Option<&Xf>,
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    cause: CleanupCause,
+) -> Vec<u8> {
+    if params.cleanup.empty_cells_without_content {
+        metrics.cleanup_stats.record_removed(cause, cell.raw.len());
+        metrics
+            .deleted_cell_states
+            .push(cell.to_cell_attributes(style));
+        Vec::new()
+    } else {
+        metrics
+            .kept_cell_states
+            .push(cell.to_cell_attributes(style));
+        cell.raw.to_vec()
+    }
+}
+
+fn unreferenced_whitespace_cleanup_enabled(params: &CleanSheetParameters) -> bool {
+    params.cleanup.unreferenced_whitespace_cells
+        || params
+            .advanced_cleanup
+            .as_ref()
+            .is_some_and(|advanced| advanced.remove_unreferenced_whitespace)
+}
+
+fn unreferenced_hidden_content_cleanup_enabled(params: &CleanSheetParameters) -> bool {
+    params.cleanup.unreferenced_hidden_content_cells
+        || params
+            .advanced_cleanup
+            .as_ref()
+            .is_some_and(|advanced| advanced.remove_unreferenced_hidden_content)
 }
 
 fn cell_is_hidden(cell: &ParsedCell<'_>, metrics: &CleanSheetMetrics) -> bool {

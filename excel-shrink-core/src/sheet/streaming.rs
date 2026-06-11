@@ -1,7 +1,6 @@
 use crate::error::{Result, ShrinkError};
 use crate::models::{
-    CellCoordinate, CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, ColumnRangeMap,
-    SheetStreamingState,
+    CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, ColumnRangeMap, SheetStreamingState,
 };
 use crate::sheet::cols::process_cols_node;
 use crate::sheet::merge_cells::find_max_merge_cells;
@@ -68,11 +67,10 @@ pub fn preprocess_sheet_xml_streamwise(
     let mut processed_tags: Vec<WorksheetTag> = Vec::new();
 
     let mut result = PreprocessedSheetXml::default();
+    result.clean_sheet_metrics.cleanup_stats.enabled = params.collect_cleanup_stats;
 
     let mut column_definitions = None;
     let mut sheet_data_preprocess_state: Option<SheetDataPreprocessState> = None;
-    let mut max_merge_cells_column_and_row: Option<CellCoordinate> = None;
-
     while state != SheetStreamingState::FoundWorksheetEnd {
         if !reached_eof {
             let n = stream.read(&mut read_buf)?;
@@ -150,6 +148,7 @@ pub fn preprocess_sheet_xml_streamwise(
                 let content = buffer[..idx].to_vec();
 
                 let parsed_column_definitions = process_cols_node(&content, params);
+                result.clean_sheet_metrics.column_definitions = parsed_column_definitions.clone();
                 sheet_data_preprocess_state = Some(SheetDataPreprocessState::new(
                     &parsed_column_definitions,
                     params,
@@ -172,8 +171,12 @@ pub fn preprocess_sheet_xml_streamwise(
                         params,
                     );
 
-                    let cleaned_chunk =
-                        pre_process_sheet_data_chunk(chunk, params, preprocess_state)?;
+                    let cleaned_chunk = pre_process_sheet_data_chunk(
+                        chunk,
+                        params,
+                        preprocess_state,
+                        &mut result.clean_sheet_metrics,
+                    )?;
 
                     result.sheet_data.extend_from_slice(&cleaned_chunk);
 
@@ -192,8 +195,12 @@ pub fn preprocess_sheet_xml_streamwise(
                             params,
                         );
 
-                        let cleaned_chunk =
-                            pre_process_sheet_data_chunk(chunk, params, preprocess_state)?;
+                        let cleaned_chunk = pre_process_sheet_data_chunk(
+                            chunk,
+                            params,
+                            preprocess_state,
+                            &mut result.clean_sheet_metrics,
+                        )?;
 
                         result.sheet_data.extend_from_slice(&cleaned_chunk);
 
@@ -216,7 +223,8 @@ pub fn preprocess_sheet_xml_streamwise(
 
                 let content = buffer[..idx].to_vec();
 
-                max_merge_cells_column_and_row = find_max_merge_cells(&content);
+                result.clean_sheet_metrics.max_merge_cells_column_and_row =
+                    find_max_merge_cells(&content);
                 result.in_merge_cells_node_output_chunks = content;
 
                 buffer = buffer[idx..].to_vec();
@@ -226,12 +234,6 @@ pub fn preprocess_sheet_xml_streamwise(
             SheetStreamingState::FoundWorksheetEnd => break,
         }
     }
-
-    result.clean_sheet_metrics = CleanSheetMetrics {
-        column_definitions: column_definitions.unwrap_or_default(),
-        max_merge_cells_column_and_row,
-        ..CleanSheetMetrics::default()
-    };
 
     Ok(result)
 }

@@ -1,5 +1,5 @@
 use crate::error::{Result, ShrinkError};
-use crate::models::{CleanSheetMetrics, CleanSheetParameters, ColumnRangeMap};
+use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, ColumnRangeMap};
 use crate::sheet::hidden_rows::{remove_hidden_rows_if_present_with_state, HiddenRowCollapseState};
 use crate::sheet::rows::{replace_empty_row_after_cell_range, replace_row};
 use crate::xml::{find_byte_from, find_bytes};
@@ -77,18 +77,23 @@ pub fn pre_process_sheet_data_chunk(
     chunk: &[u8],
     params: &CleanSheetParameters,
     state: &mut SheetDataPreprocessState,
+    metrics: &mut CleanSheetMetrics,
 ) -> Result<Vec<u8>> {
     if chunk.windows(b"<![CDATA[".len()).any(|w| w == b"<![CDATA[") {
         return Err(ShrinkError::UnsupportedCData);
     }
 
-    let chunk = if params.preprocess.remove_hidden_rows {
-        remove_hidden_rows_if_present_with_state(chunk, &mut state.hidden_row_collapse_state)
+    let chunk = if params.cleanup.preprocess_consecutive_hidden_empty_rows {
+        remove_hidden_rows_if_present_with_state(
+            chunk,
+            &mut state.hidden_row_collapse_state,
+            metrics,
+        )
     } else {
         chunk.to_vec()
     };
 
-    if !params.preprocess.remove_empty_cells {
+    if !params.cleanup.preprocess_empty_self_closing_cells {
         return Ok(chunk);
     }
 
@@ -98,7 +103,7 @@ pub fn pre_process_sheet_data_chunk(
         return Ok(chunk);
     }
 
-    Ok(remove_consecutive_empty_cells(&chunk, state))
+    Ok(remove_consecutive_empty_cells(&chunk, state, metrics))
 }
 
 pub fn clean_sheet_rows_and_cells_in_cell_range(
@@ -195,7 +200,11 @@ fn scan_row_styles_for_empty_cell_cleanup_risk(
     chunk_is_risky
 }
 
-fn remove_consecutive_empty_cells(chunk: &[u8], state: &SheetDataPreprocessState) -> Vec<u8> {
+fn remove_consecutive_empty_cells(
+    chunk: &[u8],
+    state: &SheetDataPreprocessState,
+    metrics: &mut CleanSheetMetrics,
+) -> Vec<u8> {
     if find_bytes(chunk, b"<c").is_none() {
         return chunk.to_vec();
     }
@@ -213,6 +222,10 @@ fn remove_consecutive_empty_cells(chunk: &[u8], state: &SheetDataPreprocessState
             };
 
             if removable {
+                metrics.cleanup_stats.record_removed(
+                    CleanupCause::PreprocessEmptySelfClosingCells,
+                    caps.get(0).unwrap().as_bytes().len(),
+                );
                 Vec::new()
             } else {
                 caps.get(0).unwrap().as_bytes().to_vec()

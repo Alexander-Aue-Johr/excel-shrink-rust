@@ -23,6 +23,8 @@ fn params_with_relevant_style(style_id: u32) -> CleanSheetParameters {
         },
         advanced_cleanup: None,
         preprocess: SheetPreprocessConfig::default(),
+        cleanup: Default::default(),
+        collect_cleanup_stats: false,
     }
 }
 

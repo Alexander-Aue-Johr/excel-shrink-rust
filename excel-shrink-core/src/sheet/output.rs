@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::models::{CleanSheetParameters, CleanedSheetData, Xf};
+use crate::models::{CleanSheetParameters, CleanedSheetData, CleanupCause, Xf};
 use crate::sheet::cols::merge_extraneous_columns;
 use crate::sheet::ranges::{
     get_max_cell_column, get_max_merge_cells_column_index, get_max_visible_column_index,
@@ -17,11 +17,24 @@ pub fn build_clean_sheet_xml(
     disable_sheetdata_splitting: bool,
 ) -> Result<CleanedSheetData> {
     let mut metrics = preprocessed.clean_sheet_metrics;
+    metrics.cleanup_stats.enabled |= params.collect_cleanup_stats;
 
-    let final_sheet_data = if disable_sheetdata_splitting {
+    let use_range_tail_pruning =
+        !disable_sheetdata_splitting && params.cleanup.sheetdata_range_tail_pruning;
+
+    let final_sheet_data = if !use_range_tail_pruning {
         clean_sheet_rows_and_cells_in_cell_range(&preprocessed.sheet_data, params, &mut metrics)?
     } else {
+        let original_len = preprocessed.sheet_data.len();
         let ranges = retrieve_sheet_data_range_containing_cells(&preprocessed.sheet_data, params);
+        let kept_len = ranges.cells_range.len() + ranges.rows_range.len();
+
+        if original_len > kept_len {
+            metrics.cleanup_stats.record_removed(
+                CleanupCause::SheetDataRangeTailPruning,
+                original_len - kept_len,
+            );
+        }
 
         let cleaned_cells_range =
             clean_sheet_rows_and_cells_in_cell_range(&ranges.cells_range, params, &mut metrics)?;
@@ -32,7 +45,11 @@ pub fn build_clean_sheet_xml(
         [cleaned_cells_range, cleaned_visible_rows_range].concat()
     };
 
-    let final_sheet_data = trim_trailing_layout_only_rows(&final_sheet_data, params);
+    let final_sheet_data = if params.cleanup.trailing_layout_only_rows {
+        trim_trailing_layout_only_rows(&final_sheet_data, params, &mut metrics)
+    } else {
+        final_sheet_data
+    };
 
     let max_cell_column = get_max_cell_column(&metrics);
     let max_merge_column = get_max_merge_cells_column_index(&metrics);
@@ -43,8 +60,17 @@ pub fn build_clean_sheet_xml(
         .flatten()
         .max();
 
-    let in_cols_node_output_chunks =
-        merge_extraneous_columns(&preprocessed.in_cols_node_output_chunks, max_column);
+    let in_cols_node_output_chunks = if params.cleanup.extraneous_column_range_merge {
+        merge_extraneous_columns(&preprocessed.in_cols_node_output_chunks, max_column)
+    } else {
+        preprocessed.in_cols_node_output_chunks.clone()
+    };
+
+    metrics.cleanup_stats.record_delta(
+        CleanupCause::ExtraneousColumnRangeMerge,
+        preprocessed.in_cols_node_output_chunks.len(),
+        in_cols_node_output_chunks.len(),
+    );
 
     let mut out = Vec::new();
     out.extend_from_slice(&preprocessed.until_worksheet_start_output_chunks);
@@ -60,7 +86,11 @@ pub fn build_clean_sheet_xml(
     Ok(CleanedSheetData { xml: out, metrics })
 }
 
-fn trim_trailing_layout_only_rows(sheet_data: &[u8], params: &CleanSheetParameters) -> Vec<u8> {
+fn trim_trailing_layout_only_rows(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut crate::models::CleanSheetMetrics,
+) -> Vec<u8> {
     let mut end = sheet_data.len();
 
     loop {
@@ -82,6 +112,9 @@ fn trim_trailing_layout_only_rows(sheet_data: &[u8], params: &CleanSheetParamete
         let row = &sheet_data[row_start..row_end];
 
         if trailing_row_is_layout_only(row, params) {
+            metrics
+                .cleanup_stats
+                .record_removed(CleanupCause::TrailingLayoutOnlyRows, row.len());
             end = row_start;
             continue;
         }
@@ -177,6 +210,8 @@ mod tests {
             },
             advanced_cleanup: None,
             preprocess: SheetPreprocessConfig::default(),
+            cleanup: Default::default(),
+            collect_cleanup_stats: false,
         }
     }
 

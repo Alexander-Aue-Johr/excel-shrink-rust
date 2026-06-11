@@ -1,4 +1,4 @@
-use crate::models::CleanSheetParameters;
+use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause};
 use crate::xml::{find_byte_from, find_bytes};
 
 #[derive(Debug, Clone, Default)]
@@ -8,24 +8,27 @@ pub struct HiddenRowCollapseState {
 
 pub fn remove_hidden_rows_if_present(chunk: &[u8], _params: &CleanSheetParameters) -> Vec<u8> {
     let mut state = HiddenRowCollapseState::default();
-    remove_hidden_rows_if_present_with_state(chunk, &mut state)
+    let mut metrics = CleanSheetMetrics::default();
+    remove_hidden_rows_if_present_with_state(chunk, &mut state, &mut metrics)
 }
 
 pub fn remove_hidden_rows_if_present_with_state(
     chunk: &[u8],
     state: &mut HiddenRowCollapseState,
+    metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
     if find_bytes(chunk, b"hidden=\"1\"").is_none() {
         state.previous_kept_hidden_empty_row = false;
         return chunk.to_vec();
     }
 
-    collapse_consecutive_hidden_empty_rows(chunk, state)
+    collapse_consecutive_hidden_empty_rows(chunk, state, metrics)
 }
 
 fn collapse_consecutive_hidden_empty_rows(
     chunk: &[u8],
     state: &mut HiddenRowCollapseState,
+    metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
     let mut out = Vec::with_capacity(chunk.len());
     let mut pos = 0;
@@ -48,6 +51,11 @@ fn collapse_consecutive_hidden_empty_rows(
             if !state.previous_kept_hidden_empty_row {
                 out.extend_from_slice(row);
                 state.previous_kept_hidden_empty_row = true;
+            } else {
+                metrics.cleanup_stats.record_removed(
+                    CleanupCause::PreprocessConsecutiveHiddenEmptyRows,
+                    row.len(),
+                );
             }
         } else {
             out.extend_from_slice(row);

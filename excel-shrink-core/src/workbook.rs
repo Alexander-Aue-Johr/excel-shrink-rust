@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::models::{CleanupCause, CleanupStats};
 use bstr::ByteSlice;
 use regex::bytes::{Captures, Regex};
 use std::collections::HashSet;
@@ -11,6 +12,14 @@ struct DefinedName {
 }
 
 pub fn clean_workbook(workbook_xml_bytes: &[u8]) -> Result<Vec<u8>> {
+    let mut stats = CleanupStats::default();
+    clean_workbook_with_stats(workbook_xml_bytes, &mut stats)
+}
+
+pub fn clean_workbook_with_stats(
+    workbook_xml_bytes: &[u8],
+    stats: &mut CleanupStats,
+) -> Result<Vec<u8>> {
     let start_tag = b"<definedNames";
     let end_tag = b"</definedNames>";
 
@@ -144,6 +153,10 @@ pub fn clean_workbook(workbook_xml_bytes: &[u8]) -> Result<Vec<u8>> {
             debug!(
                 "Removing duplicate definedName: {:?}",
                 String::from_utf8_lossy(&def_name.name)
+            );
+            stats.record_removed(
+                CleanupCause::WorkbookDefinedNameCleanup,
+                caps.get(0).unwrap().as_bytes().len(),
             );
             Vec::new()
         } else {

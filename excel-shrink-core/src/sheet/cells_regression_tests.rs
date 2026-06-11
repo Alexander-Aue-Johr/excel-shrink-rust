@@ -21,6 +21,8 @@ fn default_params() -> CleanSheetParameters {
         },
         advanced_cleanup: None,
         preprocess: SheetPreprocessConfig::default(),
+        cleanup: Default::default(),
+        collect_cleanup_stats: false,
     }
 }
 
@@ -53,6 +55,8 @@ fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
         },
         advanced_cleanup: None,
         preprocess: SheetPreprocessConfig::default(),
+        cleanup: Default::default(),
+        collect_cleanup_stats: false,
     }
 }
 
@@ -116,8 +120,8 @@ fn marks_hidden_content_as_candidate_with_advanced_cleanup() {
     assert_eq!(cleaned, cell_xml);
     assert_eq!(metrics.hidden_candidates, 1);
     assert_eq!(metrics.candidates.len(), 1);
-    assert_eq!(metrics.candidates[0].column, b"A");
-    assert_eq!(metrics.candidates[0].row, b"3");
+    assert_eq!(metrics.candidates[0].coordinate.column, b"A");
+    assert_eq!(metrics.candidates[0].coordinate.row, b"3");
 }
 
 #[test]

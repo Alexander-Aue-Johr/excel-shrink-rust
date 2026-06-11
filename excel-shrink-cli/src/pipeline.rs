@@ -11,14 +11,15 @@ use tracing::{debug, error, info, warn};
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use excel_shrink_core::models::{
-    AdvancedCleanupConfig, CellCoordinate, CleanSheetMetrics, CleanSheetParameters,
-    ProtectedWorkbookRefs, SheetPreprocessConfig, SheetScanBuffer, WorkbookSpecificPatterns,
+    AdvancedCleanupConfig, CleanSheetMetrics, CleanSheetParameters, CleanupCandidate, CleanupCause,
+    CleanupStats, CleanupSwitches, ProtectedWorkbookRefs, SheetPreprocessConfig, SheetScanBuffer,
+    WorkbookSpecificPatterns,
 };
 use excel_shrink_core::reference_scanner::{scan_for_references_by_sheet, ScanResult};
 use excel_shrink_core::shared_strings::find_whitespace_sst_indices;
 use excel_shrink_core::sheet::clean_sheet_data_streamwise;
 use excel_shrink_core::styles::parse_xfs;
-use excel_shrink_core::workbook::clean_workbook;
+use excel_shrink_core::workbook::clean_workbook_with_stats;
 use excel_shrink_core::xml::extract_xml_block;
 
 use crate::Cli;
@@ -55,6 +56,23 @@ type ProcessedSheetOk = (
 type ProcessedSheetErr = (CleanSheetParameters, usize);
 type ProcessedSheetResult = Result<ProcessedSheetOk, ProcessedSheetErr>;
 
+#[derive(Debug, Clone)]
+struct AnalysisCsvRow {
+    input_file: String,
+    sheet_file: String,
+    cause: CleanupCause,
+    removed_items: usize,
+    removed_bytes_uncompressed_xml: usize,
+    added_bytes_uncompressed_xml: usize,
+    reduction_bytes_uncompressed_xml: isize,
+    reduction_ratio: f64,
+    original_sheet_xml_bytes: usize,
+    cleaned_sheet_xml_bytes: usize,
+    sheet_reduction_bytes_uncompressed_xml: isize,
+    sheet_reduction_ratio: f64,
+    analysis_mode: bool,
+}
+
 fn default_parallelism() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
@@ -68,6 +86,135 @@ fn normalize_sheet_target(target: &str) -> String {
         without_leading_slash.to_string()
     } else {
         format!("xl/{without_leading_slash}")
+    }
+}
+
+fn attribution_safe_analysis(cli: &Cli) -> bool {
+    cli.analysis_mode || cli.analysis_csv.is_some()
+}
+
+fn cleanup_stats_enabled(cli: &Cli) -> bool {
+    attribution_safe_analysis(cli)
+}
+
+fn csv_escape(value: &str) -> String {
+    if !value
+        .as_bytes()
+        .iter()
+        .any(|byte| matches!(byte, b',' | b'"' | b'\n' | b'\r'))
+    {
+        return value.to_string();
+    }
+
+    let escaped = value.replace('"', "\"\"");
+    format!("\"{escaped}\"")
+}
+
+fn write_analysis_csv_row<W: Write>(writer: &mut W, row: &AnalysisCsvRow) -> std::io::Result<()> {
+    let fields = vec![
+        csv_escape(&row.input_file),
+        csv_escape(&row.sheet_file),
+        row.cause.as_str().to_string(),
+        row.removed_items.to_string(),
+        row.removed_bytes_uncompressed_xml.to_string(),
+        row.added_bytes_uncompressed_xml.to_string(),
+        row.reduction_bytes_uncompressed_xml.to_string(),
+        format!("{:.6}", row.reduction_ratio),
+        row.original_sheet_xml_bytes.to_string(),
+        row.cleaned_sheet_xml_bytes.to_string(),
+        row.sheet_reduction_bytes_uncompressed_xml.to_string(),
+        format!("{:.6}", row.sheet_reduction_ratio),
+        row.analysis_mode.to_string(),
+    ];
+
+    writeln!(writer, "{}", fields.join(","))
+}
+
+fn spawn_analysis_csv_writer(
+    path: &PathBuf,
+) -> anyhow::Result<(mpsc::Sender<AnalysisCsvRow>, std::thread::JoinHandle<()>)> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+    write_analysis_csv_header(&mut writer)?;
+    writer.flush()?;
+
+    let (tx, rx) = mpsc::channel::<AnalysisCsvRow>();
+    let handle = std::thread::spawn(move || {
+        for row in rx {
+            if let Err(e) = write_analysis_csv_row(&mut writer, &row) {
+                error!(event = "analysis_csv_write_failed", error = %e, "Failed to write analysis CSV row");
+                break;
+            }
+            let _ = writer.flush();
+        }
+
+        let _ = writer.flush();
+    });
+
+    Ok((tx, handle))
+}
+
+fn send_cleanup_stats_rows(
+    tx: Option<&mpsc::Sender<AnalysisCsvRow>>,
+    input_file: &str,
+    sheet_file: &str,
+    stats: &CleanupStats,
+    original_sheet_xml_bytes: usize,
+    cleaned_sheet_xml_bytes: usize,
+    analysis_mode: bool,
+) {
+    let Some(tx) = tx else {
+        return;
+    };
+
+    let sheet_reduction_bytes =
+        original_sheet_xml_bytes as isize - cleaned_sheet_xml_bytes as isize;
+
+    for cause in CleanupCause::ALL {
+        let removed_bytes = *stats.removed_bytes_by_cause.get(&cause).unwrap_or(&0);
+        let added_bytes = *stats.added_bytes_by_cause.get(&cause).unwrap_or(&0);
+        let reduction_bytes = removed_bytes as isize - added_bytes as isize;
+        let row = AnalysisCsvRow {
+            input_file: input_file.to_string(),
+            sheet_file: sheet_file.to_string(),
+            cause,
+            removed_items: *stats.removed_items_by_cause.get(&cause).unwrap_or(&0),
+            removed_bytes_uncompressed_xml: removed_bytes,
+            added_bytes_uncompressed_xml: added_bytes,
+            reduction_bytes_uncompressed_xml: reduction_bytes,
+            reduction_ratio: reduction_ratio(reduction_bytes, original_sheet_xml_bytes),
+            original_sheet_xml_bytes,
+            cleaned_sheet_xml_bytes,
+            sheet_reduction_bytes_uncompressed_xml: sheet_reduction_bytes,
+            sheet_reduction_ratio: reduction_ratio(sheet_reduction_bytes, original_sheet_xml_bytes),
+            analysis_mode,
+        };
+
+        if let Err(e) = tx.send(row) {
+            error!(event = "analysis_csv_channel_closed", error = %e, "Cannot queue analysis CSV row");
+            return;
+        }
+    }
+}
+
+fn write_analysis_csv_header<W: Write>(writer: &mut W) -> std::io::Result<()> {
+    writeln!(
+        writer,
+        "input_file,sheet_file,cause,removed_items,removed_bytes_uncompressed_xml,added_bytes_uncompressed_xml,reduction_bytes_uncompressed_xml,reduction_ratio,original_sheet_xml_bytes,cleaned_sheet_xml_bytes,sheet_reduction_bytes_uncompressed_xml,sheet_reduction_ratio,analysis_mode"
+    )
+}
+
+fn reduction_ratio(reduced_bytes: isize, original_bytes: usize) -> f64 {
+    if original_bytes == 0 {
+        0.0
+    } else {
+        reduced_bytes as f64 / original_bytes as f64
     }
 }
 
@@ -333,19 +480,21 @@ fn send_write_job(tx: &mpsc::Sender<WriteJob>, job: WriteJob, xlsx: &str) -> boo
 
 fn apply_deferred_candidate_cleanup(
     mut xml: Vec<u8>,
-    candidates: &[CellCoordinate],
+    candidates: &[CleanupCandidate],
     protected_refs: &ProtectedWorkbookRefs,
     sheet_file: &str,
+    stats: &mut CleanupStats,
 ) -> Vec<u8> {
-    let mut safe_refs = std::collections::HashSet::new();
+    let mut safe_refs = HashMap::new();
     for cand in candidates {
-        let col = excel_shrink_core::utils::letters_byte_string_to_integer(&cand.column);
-        if let Ok(row_str) = std::str::from_utf8(&cand.row) {
+        let coord = &cand.coordinate;
+        let col = excel_shrink_core::utils::letters_byte_string_to_integer(&coord.column);
+        if let Ok(row_str) = std::str::from_utf8(&coord.row) {
             if let Ok(row) = row_str.parse::<u32>() {
                 if !protected_refs.contains(sheet_file, col, row) {
-                    let mut r = cand.column.clone();
-                    r.extend_from_slice(&cand.row);
-                    safe_refs.insert(r);
+                    let mut r = coord.column.clone();
+                    r.extend_from_slice(&coord.row);
+                    safe_refs.insert(r, cand.cause);
                 }
             }
         }
@@ -360,7 +509,8 @@ fn apply_deferred_candidate_cleanup(
     xml = re
         .replace_all(&xml, |caps: &regex::bytes::Captures| {
             let r_val = caps.get(1).unwrap().as_bytes();
-            if safe_refs.contains(r_val) {
+            if let Some(cause) = safe_refs.get(r_val) {
+                stats.record_removed(*cause, caps.get(0).unwrap().as_bytes().len());
                 Vec::new()
             } else {
                 caps.get(0).unwrap().as_bytes().to_vec()
@@ -376,6 +526,14 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         std::fs::create_dir_all(&cli.output)?;
     }
 
+    let (analysis_tx, analysis_handle) = match &cli.analysis_csv {
+        Some(path) => {
+            let (tx, handle) = spawn_analysis_csv_writer(path)?;
+            (Some(tx), Some(handle))
+        }
+        None => (None, None),
+    };
+
     let active_tasks: ActiveTasks = Arc::new(Mutex::new(HashMap::new()));
     let (stop_watchdog_tx, watchdog_handle) = start_watchdog(active_tasks.clone());
 
@@ -389,6 +547,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         let file_start = Instant::now();
         let input_display = input.display().to_string();
         let active_tasks = active_tasks.clone();
+        let analysis_tx = analysis_tx.clone();
         debug!("Processing: {:?}", input);
 
         let out_path = cli.output.join(input.file_name().unwrap());
@@ -457,6 +616,21 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         }
 
         let patterns = WorkbookSpecificPatterns::new(all_xfs, whitespace_indices);
+        let attribution_safe_analysis = attribution_safe_analysis(cli);
+        let cleanup = CleanupSwitches {
+            preprocess_consecutive_hidden_empty_rows: cli.preprocess_hidden_rows,
+            preprocess_empty_self_closing_cells: cli.preprocess_empty_cells,
+
+            unreferenced_whitespace_cells: cli.remove_unreferenced_whitespace_cells,
+            unreferenced_hidden_content_cells: cli.remove_unreferenced_hidden_content_cells,
+
+            sheetdata_range_tail_pruning: !attribution_safe_analysis && !cli.disable_tail_pruning,
+            trailing_layout_only_rows: !cli.disable_trailing_layout_only_rows,
+            extraneous_column_range_merge: !cli.disable_extraneous_column_merge,
+
+            ..CleanupSwitches::default()
+        };
+        let collect_cleanup_stats = cleanup_stats_enabled(cli);
         let mut sheet_tasks = Vec::new();
         let mut workbook_xml_for_scan: Option<Vec<u8>> = None;
         let mut workbook_rels_for_scan: Option<Vec<u8>> = None;
@@ -494,6 +668,8 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                             remove_hidden_rows: cli.preprocess_hidden_rows,
                             remove_empty_cells: cli.preprocess_empty_cells,
                         },
+                        cleanup: cleanup.clone(),
+                        collect_cleanup_stats,
                     },
                     i,
                 ));
@@ -516,13 +692,21 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     continue;
                 }
 
-                let cleaned_wb = match clean_workbook(&buf) {
+                let original_wb_size = buf.len();
+                let mut cleanup_stats = if collect_cleanup_stats {
+                    CleanupStats::enabled()
+                } else {
+                    CleanupStats::default()
+                };
+
+                let cleaned_wb = match clean_workbook_with_stats(&buf, &mut cleanup_stats) {
                     Ok(cleaned) => cleaned,
                     Err(e) => {
                         error!(event = "workbook_clean_failed", xlsx = %input_display, entry = %name, error = %e, "Failed to clean workbook.xml; using original workbook.xml bytes");
                         buf
                     }
                 };
+                let cleaned_wb_size = cleaned_wb.len();
 
                 if cli.remove_unreferenced_whitespace_cells
                     || cli.remove_unreferenced_hidden_content_cells
@@ -533,6 +717,16 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 let out_method = output_compression_method(method, cli.store_output);
                 match precompress_entry(&name, cleaned_wb, out_method, cli.compression_level) {
                     Ok(zip_bytes) => {
+                        send_cleanup_stats_rows(
+                            analysis_tx.as_ref(),
+                            &input_display,
+                            &name,
+                            &cleanup_stats,
+                            original_wb_size,
+                            cleaned_wb_size,
+                            attribution_safe_analysis,
+                        );
+
                         if !send_write_job(
                             &tx,
                             WriteJob::CopyPrecompressed {
@@ -784,7 +978,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
 
         // --- PHASE 3: Fast Regex Cleanup & Precompression ---
         let finalize_sheet = |res: ProcessedSheetResult| {
-            let (params, index, mut xml, metrics, start_time, original_size) = match res {
+            let (params, index, mut xml, mut metrics, start_time, original_size) = match res {
                 Ok(val) => val,
                 Err((params, index)) => {
                     if !send_write_job(
@@ -807,10 +1001,13 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     &metrics.candidates,
                     &protected_refs,
                     &params.zip_info_filename,
+                    &mut metrics.cleanup_stats,
                 );
             }
 
             let reduction = original_size.saturating_sub(xml.len());
+            let cleaned_size = xml.len();
+
             let elapsed = start_time.elapsed();
             if elapsed.as_secs_f64() >= 5.0 {
                 warn!(
@@ -830,6 +1027,16 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 cli.compression_level,
             ) {
                 Ok(zip_bytes) => {
+                    send_cleanup_stats_rows(
+                        analysis_tx.as_ref(),
+                        &params.xlsx_file_path,
+                        &params.zip_info_filename,
+                        &metrics.cleanup_stats,
+                        original_size,
+                        cleaned_size,
+                        attribution_safe_analysis,
+                    );
+
                     if !send_write_job(
                         &tx,
                         WriteJob::CopyPrecompressed {
@@ -873,6 +1080,11 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         input_files.par_iter().for_each(process_file);
     }
 
+    drop(analysis_tx);
+    if let Some(handle) = analysis_handle {
+        handle.join().ok();
+    }
+
     writer_pool.join();
     let _ = stop_watchdog_tx.send(());
     watchdog_handle.join().ok();
@@ -883,11 +1095,103 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use excel_shrink_core::models::CellCoordinate;
 
-    fn candidate_s41() -> CellCoordinate {
-        CellCoordinate {
-            column: b"S".to_vec(),
-            row: b"41".to_vec(),
+    fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -> Cli {
+        Cli {
+            path: PathBuf::from("input.xlsx"),
+            output: PathBuf::from("out"),
+            recursive: false,
+            disable_multiprocessing: false,
+            chunk_size: 16_777_216,
+            force_overwrite: false,
+            sheets: None,
+            only_clean_workbook: false,
+            disable_sheetdata_splitting: false,
+            analysis_mode,
+            analysis_csv,
+            working_directory: None,
+            disable_tail_pruning: false,
+            disable_trailing_layout_only_rows: false,
+            disable_extraneous_column_merge: false,
+            preprocess_hidden_rows: false,
+            preprocess_empty_cells: false,
+            writer_workers: None,
+            compression_level: 1,
+            store_output: false,
+            remove_unreferenced_whitespace_cells: false,
+            remove_unreferenced_hidden_content_cells: false,
+        }
+    }
+
+    #[test]
+    fn analysis_csv_implies_attribution_safe_analysis() {
+        let cli = cli_with_analysis_flags(false, Some(PathBuf::from("analysis.csv")));
+
+        assert!(attribution_safe_analysis(&cli));
+    }
+
+    #[test]
+    fn no_analysis_flags_uses_production_tail_pruning_policy() {
+        let cli = cli_with_analysis_flags(false, None);
+
+        assert!(!attribution_safe_analysis(&cli));
+    }
+
+    #[test]
+    fn reduction_ratio_uses_original_bytes_as_denominator() {
+        assert_eq!(reduction_ratio(25, 100), 0.25);
+        assert_eq!(reduction_ratio(-10, 100), -0.1);
+        assert_eq!(reduction_ratio(25, 0), 0.0);
+    }
+
+    #[test]
+    fn analysis_csv_row_includes_net_bytes_and_ratios() {
+        let row = AnalysisCsvRow {
+            input_file: "input,quoted.xlsx".to_string(),
+            sheet_file: "xl/worksheets/sheet1.xml".to_string(),
+            cause: CleanupCause::EmptyCellsWithoutContent,
+            removed_items: 3,
+            removed_bytes_uncompressed_xml: 50,
+            added_bytes_uncompressed_xml: 5,
+            reduction_bytes_uncompressed_xml: 45,
+            reduction_ratio: 0.225,
+            original_sheet_xml_bytes: 200,
+            cleaned_sheet_xml_bytes: 160,
+            sheet_reduction_bytes_uncompressed_xml: 40,
+            sheet_reduction_ratio: 0.2,
+            analysis_mode: true,
+        };
+        let mut out = Vec::new();
+
+        write_analysis_csv_row(&mut out, &row).unwrap();
+
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "\"input,quoted.xlsx\",xl/worksheets/sheet1.xml,EmptyCellsWithoutContent,3,50,5,45,0.225000,200,160,40,0.200000,true\n"
+        );
+    }
+
+    #[test]
+    fn analysis_csv_header_uses_long_format_columns() {
+        let mut out = Vec::new();
+
+        write_analysis_csv_header(&mut out).unwrap();
+        let header = String::from_utf8(out).unwrap();
+
+        assert_eq!(
+            header,
+            "input_file,sheet_file,cause,removed_items,removed_bytes_uncompressed_xml,added_bytes_uncompressed_xml,reduction_bytes_uncompressed_xml,reduction_ratio,original_sheet_xml_bytes,cleaned_sheet_xml_bytes,sheet_reduction_bytes_uncompressed_xml,sheet_reduction_ratio,analysis_mode\n"
+        );
+    }
+
+    fn candidate_s41() -> CleanupCandidate {
+        CleanupCandidate {
+            coordinate: CellCoordinate {
+                column: b"S".to_vec(),
+                row: b"41".to_vec(),
+            },
+            cause: CleanupCause::UnreferencedHiddenContentCells,
         }
     }
 
@@ -897,12 +1201,14 @@ mod tests {
             .to_vec();
         let candidates = vec![candidate_s41()];
         let protected = ProtectedWorkbookRefs::default();
+        let mut stats = CleanupStats::enabled();
 
         let cleaned = apply_deferred_candidate_cleanup(
             xml,
             &candidates,
             &protected,
             "xl/worksheets/sheet1.xml",
+            &mut stats,
         );
 
         assert!(
@@ -920,12 +1226,14 @@ mod tests {
         protected
             .refs_for_sheet_mut("xl/worksheets/sheet1.xml")
             .insert_cell(19, 41);
+        let mut stats = CleanupStats::enabled();
 
         let cleaned = apply_deferred_candidate_cleanup(
             xml,
             &candidates,
             &protected,
             "xl/worksheets/sheet1.xml",
+            &mut stats,
         );
 
         assert!(

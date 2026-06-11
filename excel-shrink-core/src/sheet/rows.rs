@@ -1,4 +1,4 @@
-use crate::models::{CleanSheetMetrics, CleanSheetParameters, RowAttributes};
+use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, RowAttributes};
 use crate::sheet::cells::replace_cell;
 use crate::utils::digits_byte_string_to_integer;
 use crate::xml::find_bytes;
@@ -39,8 +39,14 @@ pub fn replace_row(
     if is_empty {
         if is_hidden {
             if previous_row_was_also_hidden(metrics) {
-                metrics.deleted_row_states.push(row_attributes);
-                return Vec::new();
+                if params.cleanup.consecutive_hidden_empty_rows {
+                    metrics.cleanup_stats.record_removed(
+                        CleanupCause::ConsecutiveHiddenEmptyRows,
+                        caps.get(0).unwrap().as_bytes().len(),
+                    );
+                    metrics.deleted_row_states.push(row_attributes);
+                    return Vec::new();
+                }
             }
 
             if has_height {
@@ -59,8 +65,14 @@ pub fn replace_row(
             !style.has_fill_or_border && !style.has_apply_protection
         }) && !has_height
         {
-            metrics.deleted_row_states.push(row_attributes);
-            return Vec::new();
+            if params.cleanup.empty_rows_without_visible_style_or_height {
+                metrics.cleanup_stats.record_removed(
+                    CleanupCause::EmptyRowsWithoutVisibleStyleOrHeight,
+                    caps.get(0).unwrap().as_bytes().len(),
+                );
+                metrics.deleted_row_states.push(row_attributes);
+                return Vec::new();
+            }
         }
 
         if has_height {
@@ -93,8 +105,14 @@ pub fn replace_empty_row_after_cell_range(
 
     if is_hidden {
         if previous_row_was_also_hidden(metrics) {
-            metrics.deleted_row_states.push(row_attributes);
-            return Vec::new();
+            if params.cleanup.consecutive_hidden_empty_rows {
+                metrics.cleanup_stats.record_removed(
+                    CleanupCause::ConsecutiveHiddenEmptyRows,
+                    caps.get(0).unwrap().as_bytes().len(),
+                );
+                metrics.deleted_row_states.push(row_attributes);
+                return Vec::new();
+            }
         }
 
         if has_height {
@@ -108,8 +126,14 @@ pub fn replace_empty_row_after_cell_range(
         !style.has_fill_or_border && !style.has_apply_protection
     }) && !has_height
     {
-        metrics.deleted_row_states.push(row_attributes);
-        return Vec::new();
+        if params.cleanup.empty_rows_without_visible_style_or_height {
+            metrics.cleanup_stats.record_removed(
+                CleanupCause::EmptyRowsWithoutVisibleStyleOrHeight,
+                caps.get(0).unwrap().as_bytes().len(),
+            );
+            metrics.deleted_row_states.push(row_attributes);
+            return Vec::new();
+        }
     }
 
     if has_height {
@@ -128,9 +152,11 @@ fn clean_cells(
         return Vec::new();
     }
 
-    let needs_content_cell_scan = params.advanced_cleanup.as_ref().is_some_and(|advanced| {
-        advanced.remove_unreferenced_whitespace || advanced.remove_unreferenced_hidden_content
-    });
+    let needs_content_cell_scan = params.cleanup.unreferenced_whitespace_cells
+        || params.cleanup.unreferenced_hidden_content_cells
+        || params.advanced_cleanup.as_ref().is_some_and(|advanced| {
+            advanced.remove_unreferenced_whitespace || advanced.remove_unreferenced_hidden_content
+        });
 
     let cell_re = if needs_content_cell_scan {
         PROCESS_ALL_CELLS_RE.get_or_init(|| {
@@ -228,7 +254,17 @@ fn generate_and_log_self_closing_row(
 ) -> Vec<u8> {
     metrics.kept_row_states.push(row_attributes);
 
-    let cleaned_row_attr = remove_irrelevant_attributes_for_empty_rows(row_attr, params);
+    let cleaned_row_attr = if params.cleanup.empty_row_attribute_cleanup {
+        remove_irrelevant_attributes_for_empty_rows(row_attr, params)
+    } else {
+        row_attr.to_vec()
+    };
+
+    metrics.cleanup_stats.record_delta(
+        CleanupCause::EmptyRowAttributeCleanup,
+        row_attr.len(),
+        cleaned_row_attr.len(),
+    );
 
     let mut out = Vec::with_capacity(cleaned_row_attr.len() + 7);
     out.extend_from_slice(b"<row");
