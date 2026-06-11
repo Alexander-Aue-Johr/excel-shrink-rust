@@ -23,7 +23,7 @@ fn still_extracts_real_ref_attributes_except_dimension() {
     let xml = br#"
         <worksheet>
             <dimension ref="A1:XFD99"/>
-            <autoFilter ref="A1:B10"/>
+            <mergeCell ref="A1:B10"/>
         </worksheet>
     "#;
 

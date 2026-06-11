@@ -212,6 +212,37 @@ fn non_selection_sqref_keeps_candidate() {
 }
 
 #[test]
+fn autofilter_ref_does_not_keep_whitespace_candidate_cells() {
+    let sheet1_xml = br#"
+        <worksheet>
+            <autoFilter ref="A3:FP2792">
+                <sortState ref="A4:FP2792"/>
+            </autoFilter>
+            <sortState ref="A4:FP2791"/>
+        </worksheet>
+    "#;
+
+    let mut protected = ProtectedWorkbookRefs::default();
+
+    let result = scan_for_references_by_sheet(
+        &[SheetScanBuffer {
+            sheet_file: "xl/worksheets/sheet1.xml",
+            sheet_name: "Sheet1",
+            xml: sheet1_xml,
+        }],
+        &mut protected,
+        None,
+        None,
+    );
+
+    assert!(matches!(result, ScanResult::Safe));
+    assert!(
+        !protected.contains("xl/worksheets/sheet1.xml", 24, 4),
+        "filter and sort ranges should not protect X4 whitespace content from cleanup"
+    );
+}
+
+#[test]
 fn cross_sheet_reference_with_custom_sheet_name_seed_map_keeps_target_candidate() {
     let sheet2_xml = br#"
         <worksheet>

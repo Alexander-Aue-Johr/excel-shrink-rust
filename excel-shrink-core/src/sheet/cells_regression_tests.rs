@@ -3,6 +3,7 @@ use crate::models::{
     AdvancedCleanupConfig, CleanSheetMetrics, CleanSheetParameters, ColumnDefinition,
     RowAttributes, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
 };
+use crate::shared_strings::find_whitespace_sst_indices;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -82,6 +83,17 @@ fn parsed_a3_cell<'a>(raw: &'a [u8], attr: &'a [u8], style_id: Option<u32>) -> P
     }
 }
 
+fn parsed_x4_cell<'a>(raw: &'a [u8], attr: &'a [u8], style_id: Option<u32>) -> ParsedCell<'a> {
+    ParsedCell {
+        raw,
+        attr,
+        column: b"X",
+        row: b"4",
+        col_num: 24,
+        style_id,
+    }
+}
+
 fn fill_style(fill_id: u32, apply_fill: bool) -> Xf {
     Xf::new(
         Some(fill_id),
@@ -93,6 +105,30 @@ fn fill_style(fill_id: u32, apply_fill: bool) -> Xf {
         fill_id == 0 && !apply_fill,
         false,
     )
+}
+
+fn font_and_apply_fill_style(fill_id: u32) -> Xf {
+    Xf::new_with_visible_parts(
+        Some(fill_id),
+        Some(0),
+        false,
+        true,
+        fill_id != 0,
+        false,
+        true,
+        false,
+        false,
+    )
+}
+
+fn shared_strings_with_self_closing_text_at(index: usize) -> Vec<u8> {
+    let mut xml = Vec::new();
+    xml.extend_from_slice(b"<sst>");
+    for _ in 0..index {
+        xml.extend_from_slice(b"<si><t>value</t></si>");
+    }
+    xml.extend_from_slice(b"<si><t /></si></sst>");
+    xml
 }
 
 #[test]
@@ -415,4 +451,65 @@ fn keeps_empty_cell_when_row_applies_fill_and_cell_overrides_with_default_fill()
     assert_eq!(cleaned, cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
+}
+
+#[test]
+fn marks_x4_whitespace_candidate_when_cell_and_column_apply_default_fill() {
+    let cell_style_91 = font_and_apply_fill_style(0);
+    let column_style_74 = font_and_apply_fill_style(0);
+    let mut params = params_with_styles(&[(74, column_style_74.clone()), (91, cell_style_91)]);
+    params.cleanup.unreferenced_whitespace_cells = true;
+    params.patterns.whitespace_indices = Some(vec![15801]);
+
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 15,
+        max: 16_384,
+        cell_xf: Some(column_style_74),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+
+    let cell_xml = br#"<c r="X4" s="91" t="s"><v>15801</v></c>"#;
+    let cell = parsed_x4_cell(cell_xml, br#" r="X4" s="91" t="s""#, Some(91));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned, cell_xml);
+    assert_eq!(metrics.whitespace_candidates, 1);
+    assert_eq!(metrics.candidates.len(), 1);
+    assert_eq!(metrics.candidates[0].coordinate.column, b"X");
+    assert_eq!(metrics.candidates[0].coordinate.row, b"4");
+}
+
+#[test]
+fn marks_x4_whitespace_candidate_when_shared_string_text_is_self_closing() {
+    let cell_style_91 = font_and_apply_fill_style(0);
+    let column_style_74 = font_and_apply_fill_style(0);
+    let mut params = params_with_styles(&[(74, column_style_74.clone()), (91, cell_style_91)]);
+    params.cleanup.unreferenced_whitespace_cells = true;
+
+    let shared_strings = shared_strings_with_self_closing_text_at(15801);
+    params.patterns.whitespace_indices = Some(find_whitespace_sst_indices(&shared_strings));
+
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 15,
+        max: 16_384,
+        cell_xf: Some(column_style_74),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+
+    let cell_xml = br#"<c r="X4" s="91" t="s"><v>15801</v></c>"#;
+    let cell = parsed_x4_cell(cell_xml, br#" r="X4" s="91" t="s""#, Some(91));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned, cell_xml);
+    assert_eq!(params.patterns.whitespace_indices.as_deref(), Some(&[15801][..]));
+    assert_eq!(metrics.whitespace_candidates, 1);
+    assert_eq!(metrics.candidates.len(), 1);
+    assert_eq!(metrics.candidates[0].coordinate.column, b"X");
+    assert_eq!(metrics.candidates[0].coordinate.row, b"4");
 }

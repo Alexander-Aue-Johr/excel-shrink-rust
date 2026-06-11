@@ -71,7 +71,7 @@ pub fn scan_for_references(
         for caps in ref_re.captures_iter(buf) {
             let tag_name = caps.get(1).unwrap().as_bytes();
 
-            if tag_name.eq_ignore_ascii_case(b"dimension") {
+            if ref_tag_should_be_ignored(tag_name) {
                 continue;
             }
 
@@ -173,7 +173,7 @@ pub fn scan_for_references_by_sheet(
         for caps in ref_re.captures_iter(xml) {
             let tag_name = caps.get(1).unwrap().as_bytes();
 
-            if tag_name.eq_ignore_ascii_case(b"dimension") {
+            if ref_tag_should_be_ignored(tag_name) {
                 continue;
             }
 
@@ -213,6 +213,12 @@ fn extract_coordinates(text: &[u8], protected: &mut ProtectedCellRefs, coord_re:
             }
         }
     }
+}
+
+fn ref_tag_should_be_ignored(tag_name: &[u8]) -> bool {
+    tag_name.eq_ignore_ascii_case(b"dimension")
+        || tag_name.eq_ignore_ascii_case(b"autoFilter")
+        || tag_name.eq_ignore_ascii_case(b"sortState")
 }
 
 fn extract_tokens_for_sheet(
