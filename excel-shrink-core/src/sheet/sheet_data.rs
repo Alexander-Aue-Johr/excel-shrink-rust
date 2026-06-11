@@ -18,7 +18,7 @@ pub struct SheetDataPreprocessState {
 
     hidden_row_collapse_state: HiddenRowCollapseState,
 
-    /// Style IDs whose XF has fillId != 0 or borderId != 0.
+    /// Style IDs whose XF can apply a visible fill or border to empty cells.
     /// Keys are the raw ASCII bytes of the style index, e.g. b"429".
     fill_or_border_style_ids_by_bytes: HashSet<Vec<u8>>,
 
@@ -41,7 +41,7 @@ impl SheetDataPreprocessState {
         for (style_id, xf) in &params.patterns.xfs_by_index {
             let style_id_bytes = style_id.to_string().into_bytes();
 
-            if xf.fill_id.unwrap_or(0) != 0 || xf.border_id.unwrap_or(0) != 0 {
+            if xf.applies_visible_fill_or_border() {
                 fill_or_border_style_ids_by_bytes.insert(style_id_bytes.clone());
             }
 

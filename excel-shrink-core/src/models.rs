@@ -6,6 +6,10 @@ pub struct Xf {
     pub border_id: Option<u32>,
     pub apply_border: bool,
     pub apply_fill: bool,
+
+    pub has_visible_fill: bool,
+    pub has_visible_border: bool,
+
     pub has_fill_or_border: bool,
     pub has_apply_fill_or_border: bool,
     pub has_only_font_style: bool,
@@ -24,16 +28,52 @@ impl Xf {
         has_only_font_style: bool,
         has_apply_protection: bool,
     ) -> Self {
+        let has_visible_fill = has_fill_or_border && fill_id.unwrap_or(0) != 0;
+        let has_visible_border = has_fill_or_border && border_id.unwrap_or(0) != 0;
+
         Self {
             fill_id,
             border_id,
             apply_border,
             apply_fill,
+            has_visible_fill,
+            has_visible_border,
             has_fill_or_border,
             has_apply_fill_or_border,
             has_only_font_style,
             has_apply_protection,
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_visible_parts(
+        fill_id: Option<u32>,
+        border_id: Option<u32>,
+        apply_border: bool,
+        apply_fill: bool,
+        has_visible_fill: bool,
+        has_visible_border: bool,
+        has_apply_fill_or_border: bool,
+        has_only_font_style: bool,
+        has_apply_protection: bool,
+    ) -> Self {
+        Self {
+            fill_id,
+            border_id,
+            apply_border,
+            apply_fill,
+            has_visible_fill,
+            has_visible_border,
+            has_fill_or_border: has_visible_fill || has_visible_border,
+            has_apply_fill_or_border,
+            has_only_font_style,
+            has_apply_protection,
+        }
+    }
+
+    pub fn applies_visible_fill_or_border(&self) -> bool {
+        (self.has_visible_fill && self.apply_fill)
+            || (self.has_visible_border && self.apply_border)
     }
 }
 
@@ -270,7 +310,7 @@ impl ColumnRangeMap {
         self.exact.values().chain(self.intervals.iter()).any(|cd| {
             cd.cell_xf
                 .as_ref()
-                .is_some_and(|xf| xf.fill_id.unwrap_or(0) != 0 || xf.border_id.unwrap_or(0) != 0)
+                .is_some_and(Xf::applies_visible_fill_or_border)
         })
     }
 }

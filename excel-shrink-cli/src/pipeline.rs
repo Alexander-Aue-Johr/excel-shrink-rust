@@ -20,7 +20,6 @@ use excel_shrink_core::shared_strings::find_whitespace_sst_indices;
 use excel_shrink_core::sheet::clean_sheet_data_streamwise;
 use excel_shrink_core::styles::parse_xfs;
 use excel_shrink_core::workbook::clean_workbook_with_stats;
-use excel_shrink_core::xml::extract_xml_block;
 
 use crate::Cli;
 
@@ -595,12 +594,8 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         if let Ok(mut styles_file) = archive.by_name("xl/styles.xml") {
             let mut styles_data = Vec::new();
             if styles_file.read_to_end(&mut styles_data).is_ok() {
-                if let Some((cell_xfs, _, _, _)) =
-                    extract_xml_block(&styles_data, b"<cellXfs", b"</cellXfs>", 0)
-                {
-                    if let Ok(xfs) = parse_xfs(&cell_xfs) {
-                        all_xfs = xfs;
-                    }
+                if let Ok(xfs) = parse_xfs(&styles_data) {
+                    all_xfs = xfs;
                 }
             }
         }

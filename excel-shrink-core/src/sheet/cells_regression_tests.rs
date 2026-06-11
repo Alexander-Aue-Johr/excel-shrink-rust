@@ -82,6 +82,19 @@ fn parsed_a3_cell<'a>(raw: &'a [u8], attr: &'a [u8], style_id: Option<u32>) -> P
     }
 }
 
+fn fill_style(fill_id: u32, apply_fill: bool) -> Xf {
+    Xf::new(
+        Some(fill_id),
+        Some(0),
+        false,
+        apply_fill,
+        fill_id != 0,
+        apply_fill,
+        fill_id == 0 && !apply_fill,
+        false,
+    )
+}
+
 #[test]
 fn keeps_hidden_cell_with_content_without_advanced_cleanup() {
     let params = default_params();
@@ -150,7 +163,7 @@ fn does_not_mark_candidate_when_cell_style_has_apply_protection() {
 }
 
 #[test]
-fn keeps_empty_cell_with_fill_zero_when_row_has_non_default_fill_without_apply_fill() {
+fn removes_empty_cell_with_fill_zero_when_row_has_non_default_fill_without_apply_fill() {
     let row_red_style = Xf::new(Some(4), Some(0), false, false, true, false, false, false);
 
     let cell_default_fill_style =
@@ -177,13 +190,13 @@ fn keeps_empty_cell_with_fill_zero_when_row_has_non_default_fill_without_apply_f
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
-    assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
 }
 
 #[test]
-fn keeps_empty_cell_with_fill_zero_when_column_has_non_default_fill_without_apply_fill() {
+fn removes_empty_cell_with_fill_zero_when_column_has_non_default_fill_without_apply_fill() {
     let column_red_style = Xf::new(Some(4), Some(0), false, false, true, false, false, false);
 
     let cell_default_fill_style =
@@ -201,6 +214,198 @@ fn keeps_empty_cell_with_fill_zero_when_column_has_non_default_fill_without_appl
         hidden: false,
     });
     metrics.column_definitions.finalize();
+
+    let cell_xml = br#"<c r="A3" s="10"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
+}
+
+#[test]
+fn removes_empty_cell_when_row_and_column_apply_same_fill_as_cell() {
+    let inherited_default_fill = fill_style(0, true);
+    let cell_default_fill_style = fill_style(0, false);
+
+    let params = params_with_styles(&[
+        (4, inherited_default_fill.clone()),
+        (10, cell_default_fill_style),
+    ]);
+
+    let mut metrics = CleanSheetMetrics::default();
+
+    metrics.row_attributes.insert(
+        b"3".to_vec(),
+        RowAttributes {
+            row_attr: br#" r="3" s="4" customFormat="1""#.to_vec(),
+            ref_: b"3".to_vec(),
+            hidden: false,
+            style: Some(inherited_default_fill.clone()),
+            has_height: false,
+            is_empty: false,
+        },
+    );
+
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 1,
+        cell_xf: Some(inherited_default_fill),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+
+    let cell_xml = br#"<c r="A3" s="10"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
+}
+
+#[test]
+fn keeps_empty_cell_when_row_and_column_apply_fill_and_only_column_differs() {
+    let row_default_fill = fill_style(0, true);
+    let column_red_fill = fill_style(4, true);
+    let cell_default_fill_style = fill_style(0, false);
+
+    let params = params_with_styles(&[
+        (4, row_default_fill.clone()),
+        (5, column_red_fill.clone()),
+        (10, cell_default_fill_style),
+    ]);
+
+    let mut metrics = CleanSheetMetrics::default();
+
+    metrics.row_attributes.insert(
+        b"3".to_vec(),
+        RowAttributes {
+            row_attr: br#" r="3" s="4" customFormat="1""#.to_vec(),
+            ref_: b"3".to_vec(),
+            hidden: false,
+            style: Some(row_default_fill),
+            has_height: false,
+            is_empty: false,
+        },
+    );
+
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 1,
+        cell_xf: Some(column_red_fill),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+
+    let cell_xml = br#"<c r="A3" s="10"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned, cell_xml);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_states.len(), 0);
+}
+
+#[test]
+fn removes_empty_cell_when_row_applies_same_visible_fill_as_cell() {
+    let row_red_fill = fill_style(4, true);
+    let cell_red_fill = fill_style(4, false);
+
+    let params = params_with_styles(&[(4, row_red_fill.clone()), (10, cell_red_fill)]);
+
+    let mut metrics = CleanSheetMetrics::default();
+
+    metrics.row_attributes.insert(
+        b"3".to_vec(),
+        RowAttributes {
+            row_attr: br#" r="3" s="4" customFormat="1""#.to_vec(),
+            ref_: b"3".to_vec(),
+            hidden: false,
+            style: Some(row_red_fill),
+            has_height: false,
+            is_empty: false,
+        },
+    );
+
+    let cell_xml = br#"<c r="A3" s="10"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
+}
+
+#[test]
+fn removes_empty_cell_when_column_applies_same_visible_fill_as_cell() {
+    let column_red_fill = fill_style(4, true);
+    let cell_red_fill = fill_style(4, false);
+
+    let params = params_with_styles(&[(4, column_red_fill.clone()), (10, cell_red_fill)]);
+
+    let mut metrics = CleanSheetMetrics::default();
+
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 1,
+        cell_xf: Some(column_red_fill),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+
+    let cell_xml = br#"<c r="A3" s="10"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
+}
+
+#[test]
+fn keeps_empty_cell_when_no_row_or_column_apply_fill_and_cell_has_visible_fill() {
+    let cell_red_fill = fill_style(4, false);
+    let params = params_with_styles(&[(10, cell_red_fill)]);
+
+    let mut metrics = CleanSheetMetrics::default();
+
+    let cell_xml = br#"<c r="A3" s="10"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned, cell_xml);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_states.len(), 0);
+}
+
+#[test]
+fn keeps_empty_cell_when_row_applies_fill_and_cell_overrides_with_default_fill() {
+    let row_red_fill = fill_style(4, true);
+    let cell_default_fill = fill_style(0, false);
+
+    let params = params_with_styles(&[(4, row_red_fill.clone()), (10, cell_default_fill)]);
+
+    let mut metrics = CleanSheetMetrics::default();
+
+    metrics.row_attributes.insert(
+        b"3".to_vec(),
+        RowAttributes {
+            row_attr: br#" r="3" s="4" customFormat="1""#.to_vec(),
+            ref_: b"3".to_vec(),
+            hidden: false,
+            style: Some(row_red_fill),
+            has_height: false,
+            is_empty: false,
+        },
+    );
 
     let cell_xml = br#"<c r="A3" s="10"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));

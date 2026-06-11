@@ -143,67 +143,28 @@ fn replace_parsed_cell(
         return cell.raw.to_vec();
     };
 
-    if style.has_fill_or_border || style.has_apply_protection {
-        if has_content(cell.raw) {
-            metrics
-                .kept_cell_states
-                .push(cell.to_cell_attributes(Some(style)));
-            return cell.raw.to_vec();
-        }
-
-        let out = generate_self_closing_cell_xml(cell.attr);
-        metrics
-            .kept_cell_states
-            .push(cell.to_cell_attributes(Some(style)));
-        return out;
-    }
-
-    if cell_overrides_fill_or_border(style, cell, metrics) {
-        if has_content(cell.raw) {
-            metrics
-                .kept_cell_states
-                .push(cell.to_cell_attributes(Some(style)));
-            return cell.raw.to_vec();
-        }
-
-        let out = generate_self_closing_cell_xml(cell.attr);
-        metrics
-            .kept_cell_states
-            .push(cell.to_cell_attributes(Some(style)));
-        return out;
-    }
-
-    if !style.has_apply_fill_or_border {
-        if !has_content(cell.raw) {
-            return remove_or_keep_empty_cell(
-                cell,
-                Some(style),
-                params,
-                metrics,
-                CleanupCause::EmptyCellsWithoutContent,
-            );
-        }
-
+    if has_content(cell.raw) {
         metrics
             .kept_cell_states
             .push(cell.to_cell_attributes(Some(style)));
         return cell.raw.to_vec();
     }
 
-    if !has_content(cell.raw) {
-        return remove_or_keep_empty_cell(
-            cell,
-            Some(style),
-            params,
-            metrics,
-            CleanupCause::EmptyCellsWithoutContent,
-        );
+    if style.has_apply_protection || cell_has_effective_fill_or_border(style, cell, metrics) {
+        let out = generate_self_closing_cell_xml(cell.attr);
+        metrics
+            .kept_cell_states
+            .push(cell.to_cell_attributes(Some(style)));
+        return out;
     }
 
-    metrics
-        .kept_cell_states
-        .push(cell.to_cell_attributes(Some(style)));
-    cell.raw.to_vec()
+    remove_or_keep_empty_cell(
+        cell,
+        Some(style),
+        params,
+        metrics,
+        CleanupCause::EmptyCellsWithoutContent,
+    )
 }
 
 fn remove_or_keep_empty_cell(
@@ -258,7 +219,7 @@ fn cell_is_hidden(cell: &ParsedCell<'_>, metrics: &CleanSheetMetrics) -> bool {
         .is_some_and(|column| column.hidden)
 }
 
-fn cell_overrides_fill_or_border(
+fn cell_has_effective_fill_or_border(
     cell_style: &Xf,
     cell: &ParsedCell<'_>,
     metrics: &CleanSheetMetrics,
@@ -273,26 +234,49 @@ fn cell_overrides_fill_or_border(
         .get(cell.row)
         .and_then(|row| row.style.as_ref());
 
-    let overrides_fill = overrides_inherited_non_default_fill(cell_style, row_style)
-        || overrides_inherited_non_default_fill(cell_style, column_style);
-
-    let overrides_border = row_style
-        .is_some_and(|row| row.apply_border && cell_style.border_id != row.border_id)
-        || column_style
-            .is_some_and(|column| column.apply_border && cell_style.border_id != column.border_id);
-
-    overrides_fill || overrides_border
+    cell_has_effective_fill(cell_style, row_style, column_style)
+        || cell_has_effective_border(cell_style, row_style, column_style)
 }
 
-fn overrides_inherited_non_default_fill(cell_style: &Xf, inherited_style: Option<&Xf>) -> bool {
-    let Some(inherited_style) = inherited_style else {
-        return false;
-    };
-
-    let inherited_fill_id = inherited_style.fill_id.unwrap_or(0);
+fn cell_has_effective_fill(
+    cell_style: &Xf,
+    row_style: Option<&Xf>,
+    column_style: Option<&Xf>,
+) -> bool {
     let cell_fill_id = cell_style.fill_id.unwrap_or(0);
 
-    inherited_fill_id != 0 && cell_fill_id != inherited_fill_id
+    match (
+        row_style.filter(|style| style.apply_fill),
+        column_style.filter(|style| style.apply_fill),
+    ) {
+        (Some(row), Some(column)) => {
+            cell_fill_id != row.fill_id.unwrap_or(0) || cell_fill_id != column.fill_id.unwrap_or(0)
+        }
+        (Some(row), None) => cell_fill_id != row.fill_id.unwrap_or(0),
+        (None, Some(column)) => cell_fill_id != column.fill_id.unwrap_or(0),
+        (None, None) => cell_style.has_visible_fill,
+    }
+}
+
+fn cell_has_effective_border(
+    cell_style: &Xf,
+    row_style: Option<&Xf>,
+    column_style: Option<&Xf>,
+) -> bool {
+    let cell_border_id = cell_style.border_id.unwrap_or(0);
+
+    match (
+        row_style.filter(|style| style.apply_border),
+        column_style.filter(|style| style.apply_border),
+    ) {
+        (Some(row), Some(column)) => {
+            cell_border_id != row.border_id.unwrap_or(0)
+                || cell_border_id != column.border_id.unwrap_or(0)
+        }
+        (Some(row), None) => cell_border_id != row.border_id.unwrap_or(0),
+        (None, Some(column)) => cell_border_id != column.border_id.unwrap_or(0),
+        (None, None) => cell_style.has_visible_border,
+    }
 }
 
 fn generate_self_closing_cell_xml(cell_attr: &[u8]) -> Vec<u8> {
