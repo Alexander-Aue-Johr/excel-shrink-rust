@@ -8,7 +8,6 @@ static ATTR_MIN: OnceLock<Regex> = OnceLock::new();
 static ATTR_MAX: OnceLock<Regex> = OnceLock::new();
 static ATTR_STYLE: OnceLock<Regex> = OnceLock::new();
 static ATTR_HIDDEN: OnceLock<Regex> = OnceLock::new();
-static ATTR_PATTERN: OnceLock<Regex> = OnceLock::new();
 
 pub fn process_cols_node(col_data: &[u8], params: &CleanSheetParameters) -> ColumnRangeMap {
     let mut map = ColumnRangeMap::default();
@@ -58,111 +57,80 @@ pub fn process_cols_node(col_data: &[u8], params: &CleanSheetParameters) -> Colu
     map
 }
 
-pub fn merge_extraneous_columns(cols_content: &[u8], last_max_col: Option<u32>) -> Vec<u8> {
-    let Some(last_max_col) = last_max_col else {
-        return cols_content.to_vec();
-    };
-
-    if last_max_col == 0 {
-        return cols_content.to_vec();
-    }
-
+pub fn merge_extraneous_columns(cols_content: &[u8], max_column: u32) -> Vec<u8> {
     let col_re = COL_PATTERN.get_or_init(|| Regex::new(r"<col\b[^>]*/>").unwrap());
-    let max_re = ATTR_MAX.get_or_init(|| Regex::new(r#"max="([^"]+)""#).unwrap());
-    let attr_re =
-        ATTR_PATTERN.get_or_init(|| Regex::new(r#"\s([A-Za-z_:][\w:.-]*)="([^"]*)""#).unwrap());
+    let min_re = ATTR_MIN.get_or_init(|| Regex::new(r#"min="([^"]+)""#).unwrap());
+    let hidden_re = ATTR_HIDDEN.get_or_init(|| Regex::new(r#"hidden="([^"]+)""#).unwrap());
 
-    let mut col_chunks = Vec::new();
-    let mut current_run: Option<ExtraneousColumnRun<'_>> = None;
-
-    let mut last_end = 0;
+    let mut removable_columns = Vec::new();
 
     for mat in col_re.find_iter(cols_content) {
         let tag = mat.as_bytes();
 
-        if let Some(max_caps) = max_re.captures(tag) {
-            let max_val = digits_byte_string_to_integer(max_caps.get(1).unwrap().as_bytes());
-            let max_attr = max_caps.get(0).unwrap().as_bytes();
+        let hidden = hidden_re
+            .captures(tag)
+            .is_some_and(|caps| caps.get(1).unwrap().as_bytes() == b"1");
 
-            if max_val <= last_max_col {
-                if let Some(run) = current_run.take() {
-                    flush_extraneous_column_run(&mut col_chunks, max_re, run);
-                }
-                col_chunks.extend_from_slice(&cols_content[last_end..mat.end()]);
-                last_end = mat.end();
-            } else if let Some(run) = current_run.as_mut() {
-                let tag_attrs = comparable_column_attributes(attr_re, tag);
-                let run_attrs = run
-                    .attrs
-                    .get_or_insert_with(|| comparable_column_attributes(attr_re, run.first_tag));
+        // Analyzer compatibility:
+        // find_excess_columns(...) returns no removable columns as soon as any
+        // column definition is hidden.
+        if hidden {
+            return cols_content.to_vec();
+        }
 
-                if *run_attrs == tag_attrs {
-                    run.last_max_attr = max_attr;
-                } else {
-                    let completed_run = current_run.take().unwrap();
-                    flush_extraneous_column_run(&mut col_chunks, max_re, completed_run);
-                    col_chunks.extend_from_slice(&cols_content[last_end..mat.start()]);
-                    current_run = Some(ExtraneousColumnRun {
-                        first_tag: tag,
-                        attrs: Some(tag_attrs),
-                        last_max_attr: max_attr,
-                    });
-                }
+        let Some(min_caps) = min_re.captures(tag) else {
+            continue;
+        };
 
-                last_end = mat.end();
-            } else {
-                col_chunks.extend_from_slice(&cols_content[last_end..mat.start()]);
-                current_run = Some(ExtraneousColumnRun {
-                    first_tag: tag,
-                    attrs: None,
-                    last_max_attr: max_attr,
-                });
-                last_end = mat.end();
-            }
+        let min_value = digits_byte_string_to_integer(min_caps.get(1).unwrap().as_bytes());
+
+        // Analyzer compatibility:
+        // only complete <col> definitions whose min is beyond max_column are
+        // collapsed. Do not split a column definition where min <= max_column
+        // but max > max_column.
+        if min_value > max_column {
+            removable_columns.push(RemovableColumnTag {
+                start: mat.start(),
+                end: mat.end(),
+                tag,
+                min_value,
+            });
         }
     }
 
-    if let Some(run) = current_run {
-        flush_extraneous_column_run(&mut col_chunks, max_re, run);
-        col_chunks.extend_from_slice(&cols_content[last_end..]);
-        return col_chunks;
+    if removable_columns.is_empty() {
+        return cols_content.to_vec();
     }
 
-    cols_content.to_vec()
+    let first = removable_columns.first().unwrap();
+    let last = removable_columns.last().unwrap();
+
+    let replacement_min = format!(r#"min="{}""#, first.min_value);
+    let collapsed_last_tag = min_re
+        .replace(last.tag, replacement_min.as_bytes())
+        .into_owned();
+
+    let mut out = Vec::with_capacity(cols_content.len());
+    let mut cursor = 0;
+
+    for removable in &removable_columns[..removable_columns.len().saturating_sub(1)] {
+        out.extend_from_slice(&cols_content[cursor..removable.start]);
+        cursor = removable.end;
+    }
+
+    out.extend_from_slice(&cols_content[cursor..last.start]);
+    out.extend_from_slice(&collapsed_last_tag);
+    out.extend_from_slice(&cols_content[last.end..]);
+
+    out
 }
 
-struct ExtraneousColumnRun<'a> {
-    first_tag: &'a [u8],
-    attrs: Option<Vec<(&'a [u8], &'a [u8])>>,
-    last_max_attr: &'a [u8],
-}
-
-fn flush_extraneous_column_run(
-    col_chunks: &mut Vec<u8>,
-    max_re: &Regex,
-    run: ExtraneousColumnRun<'_>,
-) {
-    let replaced = max_re.replace(run.first_tag, run.last_max_attr);
-    col_chunks.extend_from_slice(&replaced);
-}
-
-fn comparable_column_attributes<'a>(attr_re: &Regex, tag: &'a [u8]) -> Vec<(&'a [u8], &'a [u8])> {
-    let mut attrs: Vec<(&'a [u8], &'a [u8])> = attr_re
-        .captures_iter(tag)
-        .filter_map(|caps| {
-            let name = caps.get(1)?.as_bytes();
-
-            if name == b"min" || name == b"max" {
-                return None;
-            }
-
-            let value = caps.get(2)?.as_bytes();
-            Some((name, value))
-        })
-        .collect();
-
-    attrs.sort_unstable();
-    attrs
+#[derive(Debug, Clone, Copy)]
+struct RemovableColumnTag<'a> {
+    start: usize,
+    end: usize,
+    tag: &'a [u8],
+    min_value: u32,
 }
 
 #[cfg(test)]
@@ -172,58 +140,62 @@ mod tests {
     const COLS: &[u8] = br#"<col min="1" max="12" width="8.43"/><col min="13" max="17" width="10.0"/><col min="18" max="25" width="10.0"/>"#;
 
     #[test]
-    fn merge_extraneous_columns_preserves_boundary_when_last_max_col_is_17() {
-        let merged = merge_extraneous_columns(COLS, Some(17));
+    fn preserves_columns_when_no_col_min_is_beyond_max_column() {
+        let merged = merge_extraneous_columns(COLS, 25);
 
         assert_eq!(merged, COLS);
     }
 
     #[test]
-    fn merge_extraneous_columns_extends_first_extraneous_range_when_last_max_col_is_14() {
-        let merged = merge_extraneous_columns(COLS, Some(14));
+    fn does_not_split_column_range_that_crosses_max_column_boundary() {
+        let merged = merge_extraneous_columns(COLS, 14);
+
+        // Analyzer compatibility:
+        // <col min="13" max="17".../> is not removed because min <= max_column.
+        // <col min="18" max="25".../> is the only removable column, so changing
+        // its min to its own min is a no-op.
+        assert_eq!(merged, COLS);
+    }
+
+    #[test]
+    fn collapses_all_columns_with_min_beyond_max_column_into_last_column() {
+        let cols = br#"<col min="1" max="5" width="8.43"/><col min="6" max="10" style="1"/><col min="11" max="20" style="2"/><col min="21" max="30" style="3"/>"#;
+
+        let merged = merge_extraneous_columns(cols, 5);
 
         assert_eq!(
             merged,
-            br#"<col min="1" max="12" width="8.43"/><col min="13" max="25" width="10.0"/>"#
+            br#"<col min="1" max="5" width="8.43"/><col min="6" max="30" style="3"/>"#
         );
     }
 
     #[test]
-    fn merge_extraneous_columns_leaves_cols_unchanged_when_last_max_col_is_none() {
-        let cols = br#"<col min="8" max="8" width="11.5703125" style="587"/><col min="9" max="16384" width="11.5703125" style="559"/>"#;
+    fn max_column_zero_collapses_all_columns_into_last_column() {
+        let cols = br#"<col min="1" max="10" style="1"/><col min="11" max="16384" style="2"/>"#;
 
-        let merged = merge_extraneous_columns(cols, None);
+        let merged = merge_extraneous_columns(cols, 0);
+
+        assert_eq!(merged, br#"<col min="1" max="16384" style="2"/>"#);
+    }
+
+    #[test]
+    fn hidden_column_disables_column_collapse_globally() {
+        let cols = br#"<col min="1" max="5" width="8.43"/><col min="6" max="10" hidden="1"/><col min="11" max="20" style="2"/><col min="21" max="30" style="3"/>"#;
+
+        let merged = merge_extraneous_columns(cols, 5);
 
         assert_eq!(merged, cols);
     }
 
     #[test]
-    fn merge_extraneous_columns_preserves_extraneous_style_boundary() {
-        let cols = br#"<col min="8" max="8" width="11.5703125" style="587"/><col min="9" max="16384" width="11.5703125" style="559"/>"#;
+    fn ignores_style_and_custom_width_boundaries_beyond_max_column_like_analyzer() {
+        let cols = br#"<col min="1" max="5" width="8.43"/><col min="6" max="10" style="1" customWidth="true"/><col min="11" max="20" style="2" width="10.0"/><col min="21" max="30" style="3" width="12.0"/>"#;
 
-        let merged = merge_extraneous_columns(cols, Some(7));
-
-        assert_eq!(merged, cols);
-    }
-
-    #[test]
-    fn merge_extraneous_columns_preserves_custom_width_boundary() {
-        let cols = br#"<col min="9" max="11" style="92" width="11.453125"/><col min="12" max="12" customWidth="true" style="92" width="10.90625"/><col min="13" max="16384" style="92" width="11.453125"/>"#;
-
-        let merged = merge_extraneous_columns(cols, Some(8));
-
-        assert_eq!(merged, cols);
-    }
-
-    #[test]
-    fn merge_extraneous_columns_merges_equivalent_runs_without_global_bailout() {
-        let cols = br#"<col min="1" max="5" width="8.43"/><col min="6" max="10" width="10.0"/><col min="11" max="20" width="10.0"/><col min="21" max="30" width="12.0"/><col min="31" max="40" width="12.0"/>"#;
-
-        let merged = merge_extraneous_columns(cols, Some(5));
+        let merged = merge_extraneous_columns(cols, 5);
 
         assert_eq!(
             merged,
-            br#"<col min="1" max="5" width="8.43"/><col min="6" max="20" width="10.0"/><col min="21" max="40" width="12.0"/>"#
+            br#"<col min="1" max="5" width="8.43"/><col min="6" max="30" style="3" width="12.0"/>"#
         );
     }
 }

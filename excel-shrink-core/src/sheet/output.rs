@@ -3,7 +3,7 @@ use crate::models::{CleanSheetParameters, CleanedSheetData, CleanupCause, Xf};
 use crate::sheet::cols::merge_extraneous_columns;
 use crate::sheet::ranges::{
     find_visible_content_bounds, get_max_cell_column, get_max_merge_cells_column_index,
-    get_max_visible_column_index, retrieve_sheet_data_range_containing_cells,
+    retrieve_sheet_data_range_containing_cells,
 };
 use crate::sheet::sheet_data::{
     clean_empty_rows_from_after_cell_range, clean_sheet_rows_and_cells_in_cell_range,
@@ -68,12 +68,12 @@ pub fn build_clean_sheet_xml(
 
     let max_cell_column = get_max_cell_column(&metrics);
     let max_merge_column = get_max_merge_cells_column_index(&metrics);
-    let max_visible_column = get_max_visible_column_index(&metrics);
 
-    let max_column = [max_cell_column, max_merge_column, max_visible_column]
+    let max_column = [max_cell_column, max_merge_column]
         .into_iter()
         .flatten()
-        .max();
+        .max()
+        .unwrap_or(0);
 
     let in_cols_node_output_chunks = if params.cleanup.extraneous_column_range_merge {
         merge_extraneous_columns(&preprocessed.in_cols_node_output_chunks, max_column)
@@ -349,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn reduced_fixture_q_cell_keeps_tail_cols_and_points_upstream_if_max_drops() {
+    fn col_definitions_do_not_extend_max_column_when_sheet_has_no_cells_or_merges() {
         let params = default_params();
 
         let preprocessed = PreprocessedSheetXml {
@@ -357,7 +357,7 @@ mod tests {
             before_cols_node_output_chunks: b"<cols>".to_vec(),
             in_cols_node_output_chunks: br#"<col min="1" max="12" width="8.43"/><col min="13" max="17" width="10.0"/><col min="18" max="25" width="9.5"/>"#.to_vec(),
             before_sheet_data_node_output_chunks: b"</cols><sheetData>".to_vec(),
-            sheet_data: b"<row r=\"1\"><c r=\"Q1\"><v>1</v></c></row>".to_vec(),
+            sheet_data: Vec::new(),
             before_merge_cells_node_output_chunks: b"".to_vec(),
             in_merge_cells_node_output_chunks: b"".to_vec(),
             until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
@@ -367,9 +367,9 @@ mod tests {
         let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
         let xml = String::from_utf8_lossy(&cleaned.xml);
 
-        assert!(xml.contains(r#"<col min="13" max="17" width="10.0"/>"#));
-        assert!(xml.contains(r#"<col min="18" max="25" width="9.5"/>"#));
-        assert!(!xml.contains(r#"<col min="13" max="25" width="10.0"/>"#));
+        assert!(xml.contains(r#"<col min="1" max="25" width="9.5"/>"#));
+        assert!(!xml.contains(r#"<col min="1" max="12" width="8.43"/>"#));
+        assert!(!xml.contains(r#"<col min="13" max="17" width="10.0"/>"#));
     }
 
     #[test]
