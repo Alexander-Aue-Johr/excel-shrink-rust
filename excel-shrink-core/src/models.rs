@@ -72,8 +72,7 @@ impl Xf {
     }
 
     pub fn applies_visible_fill_or_border(&self) -> bool {
-        (self.has_visible_fill && self.apply_fill)
-            || (self.has_visible_border && self.apply_border)
+        (self.has_visible_fill && self.apply_fill) || (self.has_visible_border && self.apply_border)
     }
 }
 
@@ -288,15 +287,14 @@ impl ColumnRangeMap {
         }
     }
 
-    pub fn get_last_visible_range(&self) -> Option<&ColumnDefinition> {
+    pub fn get_last_visible_range(&self, include_protection: bool) -> Option<&ColumnDefinition> {
         let mut last_visible: Option<&ColumnDefinition> = None;
 
         for cd in self.exact.values().chain(self.intervals.iter()) {
             let visible = cd.hidden
-                || cd
-                    .cell_xf
-                    .as_ref()
-                    .is_some_and(|xf| xf.has_fill_or_border || xf.has_apply_protection);
+                || cd.cell_xf.as_ref().is_some_and(|xf| {
+                    xf.has_fill_or_border || (include_protection && xf.has_apply_protection)
+                });
 
             if visible && last_visible.map_or(true, |last| cd.max > last.max) {
                 last_visible = Some(cd);
@@ -332,6 +330,35 @@ pub struct CellAttributes {
     pub style: Option<Xf>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct VisibleContentBounds {
+    pub max_col: Option<u32>,
+    pub max_row: Option<u32>,
+}
+
+impl VisibleContentBounds {
+    pub fn include_cell(&mut self, col: u32, row: u32) {
+        self.max_col = Some(self.max_col.map_or(col, |old| old.max(col)));
+        self.max_row = Some(self.max_row.map_or(row, |old| old.max(row)));
+    }
+
+    pub fn include_col(&mut self, col: u32) {
+        self.max_col = Some(self.max_col.map_or(col, |old| old.max(col)));
+    }
+
+    pub fn include_row(&mut self, row: u32) {
+        self.max_row = Some(self.max_row.map_or(row, |old| old.max(row)));
+    }
+
+    pub fn cell_is_outside(&self, col: u32, row: u32) -> bool {
+        self.max_col.map_or(true, |max| col > max) || self.max_row.map_or(true, |max| row > max)
+    }
+
+    pub fn row_is_below(&self, row: u32) -> bool {
+        self.max_row.map_or(true, |max| row > max)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct CleanSheetMetrics {
     pub column_definitions: ColumnRangeMap,
@@ -347,6 +374,8 @@ pub struct CleanSheetMetrics {
 
     pub candidates: Vec<CleanupCandidate>,
     pub cleanup_stats: CleanupStats,
+    pub sheet_protection_enabled: bool,
+    pub visible_content_bounds: VisibleContentBounds,
     pub has_hints: bool,
 }
 

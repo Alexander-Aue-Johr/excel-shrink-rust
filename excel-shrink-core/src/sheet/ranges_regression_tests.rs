@@ -34,8 +34,9 @@ fn does_not_treat_spans_as_style_attribute() {
 
     let sheet_data = br#"<row r="99" spans="1:8"/>"#;
 
-    let pos =
-        find_last_fill_or_border_or_protection_style_or_hidden_attribute(sheet_data, &params, None);
+    let pos = find_last_fill_or_border_or_protection_style_or_hidden_attribute(
+        sheet_data, &params, None, false,
+    );
 
     assert_eq!(pos, None);
 }
@@ -46,8 +47,9 @@ fn finds_real_row_style_attribute_after_cell_range() {
 
     let sheet_data = br#"<row r="99" s="8"/>"#;
 
-    let pos =
-        find_last_fill_or_border_or_protection_style_or_hidden_attribute(sheet_data, &params, None);
+    let pos = find_last_fill_or_border_or_protection_style_or_hidden_attribute(
+        sheet_data, &params, None, false,
+    );
 
     assert!(pos.is_some());
 }

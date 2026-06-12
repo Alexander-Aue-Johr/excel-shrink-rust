@@ -1,4 +1,4 @@
-use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, RowAttributes};
+use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, RowAttributes, Xf};
 use crate::sheet::cells::replace_cell;
 use crate::utils::digits_byte_string_to_integer;
 use crate::xml::find_bytes;
@@ -61,9 +61,11 @@ pub fn replace_row(
             );
         }
 
-        if row_style.as_ref().map_or(true, |style| {
-            !style.has_fill_or_border && !style.has_apply_protection
-        }) && !has_height
+        if !empty_row_has_relevant_visible_or_protected_style(
+            row_style.as_ref(),
+            &row_attributes.ref_,
+            metrics,
+        ) && !has_height
         {
             if params.cleanup.empty_rows_without_visible_style_or_height {
                 metrics.cleanup_stats.record_removed(
@@ -122,9 +124,11 @@ pub fn replace_empty_row_after_cell_range(
         return generate_and_log_self_closing_row(&row_attr_str, params, metrics, row_attributes);
     }
 
-    if row_style.as_ref().map_or(true, |style| {
-        !style.has_fill_or_border && !style.has_apply_protection
-    }) && !has_height
+    if !empty_row_has_relevant_visible_or_protected_style(
+        row_style.as_ref(),
+        &row_attributes.ref_,
+        metrics,
+    ) && !has_height
     {
         if params.cleanup.empty_rows_without_visible_style_or_height {
             metrics.cleanup_stats.record_removed(
@@ -244,6 +248,38 @@ fn previous_row_was_also_hidden(metrics: &CleanSheetMetrics) -> bool {
         .kept_row_states
         .last()
         .is_some_and(|previous| previous.hidden)
+}
+
+fn empty_row_has_relevant_visible_or_protected_style(
+    style: Option<&Xf>,
+    row_ref: &[u8],
+    metrics: &CleanSheetMetrics,
+) -> bool {
+    let Some(style) = style else {
+        return false;
+    };
+
+    if style.has_fill_or_border {
+        return true;
+    }
+
+    if !style.has_apply_protection {
+        return false;
+    }
+
+    if metrics.sheet_protection_enabled {
+        return true;
+    }
+
+    let Ok(row_str) = std::str::from_utf8(row_ref) else {
+        return true;
+    };
+
+    let Ok(row_num) = row_str.parse::<u32>() else {
+        return true;
+    };
+
+    !metrics.visible_content_bounds.row_is_below(row_num)
 }
 
 fn generate_and_log_self_closing_row(

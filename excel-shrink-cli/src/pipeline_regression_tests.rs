@@ -155,8 +155,7 @@ fn phase3_removes_unprotected_x4_whitespace_candidate_cell() {
 
 #[test]
 fn phase3_keeps_sheet1_candidate_when_protected_by_sheet1_ref() {
-    let xml =
-        br#"<sheetData><row r="41"><c r="S41"><v>secret</v></c></row></sheetData>"#.to_vec();
+    let xml = br#"<sheetData><row r="41"><c r="S41"><v>secret</v></c></row></sheetData>"#.to_vec();
     let candidates = vec![candidate_s41()];
     let mut protected = ProtectedWorkbookRefs::default();
     protected

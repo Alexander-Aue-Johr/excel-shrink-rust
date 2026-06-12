@@ -174,7 +174,7 @@ fn marks_hidden_content_as_candidate_with_advanced_cleanup() {
 }
 
 #[test]
-fn does_not_mark_candidate_when_cell_style_has_apply_protection() {
+fn does_not_mark_candidate_when_cell_style_has_apply_protection_and_sheet_is_protected() {
     let protected_style = Xf::new(Some(0), Some(0), false, false, false, false, false, true);
 
     let mut params = params_with_styles(&[(7, protected_style)]);
@@ -185,6 +185,7 @@ fn does_not_mark_candidate_when_cell_style_has_apply_protection() {
     }));
 
     let mut metrics = CleanSheetMetrics::default();
+    metrics.sheet_protection_enabled = true;
 
     metrics.row_attributes.insert(b"3".to_vec(), hidden_row_3());
 
@@ -507,7 +508,10 @@ fn marks_x4_whitespace_candidate_when_shared_string_text_is_self_closing() {
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
     assert_eq!(cleaned, cell_xml);
-    assert_eq!(params.patterns.whitespace_indices.as_deref(), Some(&[15801][..]));
+    assert_eq!(
+        params.patterns.whitespace_indices.as_deref(),
+        Some(&[15801][..])
+    );
     assert_eq!(metrics.whitespace_candidates, 1);
     assert_eq!(metrics.candidates.len(), 1);
     assert_eq!(metrics.candidates[0].coordinate.column, b"X");

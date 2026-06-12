@@ -82,10 +82,10 @@ pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
 }
 
 fn parse_visible_fills(styles_xml: &[u8]) -> Vec<bool> {
-    let fills_block_pattern = FILLS_BLOCK_PATTERN
-        .get_or_init(|| Regex::new(r"(?s)<fills\b[^>]*>.*?</fills>").unwrap());
-    let fill_tag_pattern =
-        FILL_TAG_PATTERN.get_or_init(|| Regex::new(r"(?s)<fill\b[^>]*>.*?</fill>|<fill\b[^>]*/>").unwrap());
+    let fills_block_pattern =
+        FILLS_BLOCK_PATTERN.get_or_init(|| Regex::new(r"(?s)<fills\b[^>]*>.*?</fills>").unwrap());
+    let fill_tag_pattern = FILL_TAG_PATTERN
+        .get_or_init(|| Regex::new(r"(?s)<fill\b[^>]*>.*?</fill>|<fill\b[^>]*/>").unwrap());
 
     let Some(fills_block) = fills_block_pattern.find(styles_xml) else {
         return Vec::new();
@@ -107,9 +107,8 @@ fn fill_has_visible_pattern(fill: &[u8]) -> bool {
     };
 
     let pattern_tag = &fill[pattern_pos..pattern_pos + tag_end_rel + 1];
-    extract_attr_value(pattern_tag, b"patternType").map_or(true, |pattern_type| {
-        pattern_type != b"none"
-    })
+    extract_attr_value(pattern_tag, b"patternType")
+        .map_or(true, |pattern_type| pattern_type != b"none")
 }
 
 fn parse_visible_borders(styles_xml: &[u8]) -> Vec<bool> {

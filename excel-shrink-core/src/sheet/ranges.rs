@@ -1,6 +1,13 @@
-use crate::models::{CleanSheetMetrics, CleanSheetParameters};
-use crate::utils::digits_byte_string_to_integer;
+use crate::models::{
+    CleanSheetMetrics, CleanSheetParameters, ColumnRangeMap, VisibleContentBounds, Xf,
+};
+use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
 use crate::xml::{find_bytes, rfind_bytes};
+use regex::bytes::Regex;
+use std::sync::OnceLock;
+
+static ROW_RE: OnceLock<Regex> = OnceLock::new();
+static CELL_RE: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VisibleSheetDataRanges {
@@ -11,6 +18,7 @@ pub struct VisibleSheetDataRanges {
 pub fn retrieve_sheet_data_range_containing_cells(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
+    sheet_protection_enabled: bool,
 ) -> VisibleSheetDataRanges {
     let last_row_with_cell_end_pos = find_last_row_with_cell_end_pos(sheet_data);
 
@@ -19,6 +27,7 @@ pub fn retrieve_sheet_data_range_containing_cells(
             sheet_data,
             params,
             last_row_with_cell_end_pos,
+            sheet_protection_enabled,
         );
 
     let last_visible_row_end_position =
@@ -53,6 +62,7 @@ pub fn find_last_fill_or_border_or_protection_style_or_hidden_attribute(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
     last_row_with_cell_end_pos: Option<usize>,
+    sheet_protection_enabled: bool,
 ) -> Option<usize> {
     let start = last_row_with_cell_end_pos.unwrap_or(0);
     let mut last_pos = last_row_with_cell_end_pos;
@@ -66,7 +76,9 @@ pub fn find_last_fill_or_border_or_protection_style_or_hidden_attribute(
         last_pos = Some(last_pos.map_or(absolute, |old| old.max(absolute)));
     }
 
-    if let Some(style_pos) = rfind_relevant_style_attribute(sheet_data, params, start) {
+    if let Some(style_pos) =
+        rfind_relevant_style_attribute(sheet_data, params, start, sheet_protection_enabled)
+    {
         last_pos = Some(last_pos.map_or(style_pos, |old| old.max(style_pos)));
     }
 
@@ -77,6 +89,7 @@ fn rfind_relevant_style_attribute(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
     start: usize,
+    sheet_protection_enabled: bool,
 ) -> Option<usize> {
     let mut end = sheet_data.len();
 
@@ -102,8 +115,11 @@ fn rfind_relevant_style_attribute(
 
         if params
             .patterns
-            .fill_or_border_or_protection_ids
-            .contains(&style_id)
+            .xfs_by_index
+            .get(&style_id)
+            .is_some_and(|xf| {
+                xf.has_fill_or_border || (sheet_protection_enabled && xf.has_apply_protection)
+            })
         {
             return Some(absolute);
         }
@@ -112,6 +128,92 @@ fn rfind_relevant_style_attribute(
     }
 
     None
+}
+
+pub fn find_visible_content_bounds(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    column_definitions: &ColumnRangeMap,
+) -> VisibleContentBounds {
+    let mut bounds = VisibleContentBounds::default();
+
+    if let Some(column) = column_definitions.get_last_visible_range(false) {
+        bounds.include_col(column.max);
+    }
+
+    let row_re = ROW_RE.get_or_init(|| {
+        Regex::new(
+            r#"(?s)<row\b((?:[^>]*\br="([^"]+?)")?(?:[^>]*\bs="([^"]+?)")?[^/>]*?)(?:/>|>(.*?)</row>)"#,
+        )
+        .unwrap()
+    });
+
+    let cell_re = CELL_RE.get_or_init(|| {
+        Regex::new(
+            r#"(?s)<c\b((?:[^>]*\br="([A-Z]+)(\d+)")?(?:[^>]*\bs="(\d+?)")?[^>]*?)(?:/>|>.*?</c>)"#,
+        )
+        .unwrap()
+    });
+
+    for row_caps in row_re.captures_iter(sheet_data) {
+        let row_num = row_caps
+            .get(2)
+            .map(|m| digits_byte_string_to_integer(m.as_bytes()));
+
+        let row_style = row_caps
+            .get(3)
+            .map(|m| digits_byte_string_to_integer(m.as_bytes()))
+            .and_then(|id| params.patterns.xfs_by_index.get(&id));
+
+        if row_style.is_some_and(style_has_visible_fill_or_border) {
+            if let Some(row_num) = row_num {
+                bounds.include_row(row_num);
+            }
+        }
+
+        let row_content = row_caps.get(4).map_or(b"".as_slice(), |m| m.as_bytes());
+
+        for cell_caps in cell_re.captures_iter(row_content) {
+            let Some(column) = cell_caps.get(2).map(|m| m.as_bytes()) else {
+                continue;
+            };
+            let Some(row) = cell_caps
+                .get(3)
+                .map(|m| digits_byte_string_to_integer(m.as_bytes()))
+            else {
+                continue;
+            };
+
+            let col = letters_byte_string_to_integer(column);
+            let raw = cell_caps.get(0).unwrap().as_bytes();
+            let cell_style = cell_caps
+                .get(4)
+                .map(|m| digits_byte_string_to_integer(m.as_bytes()))
+                .and_then(|id| params.patterns.xfs_by_index.get(&id));
+            let column_style = column_definitions
+                .get(col)
+                .and_then(|column| column.cell_xf.as_ref());
+
+            if cell_has_visible_content(raw)
+                || cell_style.is_some_and(style_has_visible_fill_or_border)
+                || column_style.is_some_and(style_has_visible_fill_or_border)
+            {
+                bounds.include_cell(col, row);
+            }
+        }
+    }
+
+    bounds
+}
+
+fn cell_has_visible_content(cell: &[u8]) -> bool {
+    find_bytes(cell, b"<v").is_some()
+        || find_bytes(cell, b"<f").is_some()
+        || find_bytes(cell, b"<is").is_some()
+}
+
+fn style_has_visible_fill_or_border(style: &Xf) -> bool {
+    style.has_fill_or_border
 }
 
 pub fn find_last_visible_row_end_position(
@@ -161,7 +263,7 @@ pub fn get_max_merge_cells_column_index(metrics: &CleanSheetMetrics) -> Option<u
 pub fn get_max_visible_column_index(metrics: &CleanSheetMetrics) -> Option<u32> {
     metrics
         .column_definitions
-        .get_last_visible_range()
+        .get_last_visible_range(metrics.sheet_protection_enabled)
         .map(|cd| cd.max)
 }
 

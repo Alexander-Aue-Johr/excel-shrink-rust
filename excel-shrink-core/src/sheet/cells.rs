@@ -73,7 +73,7 @@ fn replace_parsed_cell(
 ) -> Vec<u8> {
     let style = cell.style(params);
     let is_hidden = cell_is_hidden(cell, metrics);
-    let is_excel_protected = cell_has_protection_style(cell, style, metrics);
+    let is_excel_protected = cell_has_relevant_protection_style(cell, style, metrics);
 
     if unreferenced_whitespace_cleanup_enabled(params)
         || unreferenced_hidden_content_cleanup_enabled(params)
@@ -150,7 +150,10 @@ fn replace_parsed_cell(
         return cell.raw.to_vec();
     }
 
-    if style.has_apply_protection || cell_has_effective_fill_or_border(style, cell, metrics) {
+    let has_relevant_protection = cell_has_relevant_protection_style(cell, Some(style), metrics);
+    let has_effective_fill_or_border = cell_has_effective_fill_or_border(style, cell, metrics);
+
+    if has_relevant_protection || has_effective_fill_or_border {
         let out = generate_self_closing_cell_xml(cell.attr);
         metrics
             .kept_cell_states
@@ -346,6 +349,32 @@ fn cell_has_protection_style(
         .get(cell.col_num)
         .and_then(|column| column.cell_xf.as_ref())
         .is_some_and(|style| style.has_apply_protection)
+}
+
+fn cell_has_relevant_protection_style(
+    cell: &ParsedCell<'_>,
+    cell_style: Option<&Xf>,
+    metrics: &CleanSheetMetrics,
+) -> bool {
+    if !cell_has_protection_style(cell, cell_style, metrics) {
+        return false;
+    }
+
+    if metrics.sheet_protection_enabled {
+        return true;
+    }
+
+    let Ok(row_str) = std::str::from_utf8(cell.row) else {
+        return true;
+    };
+
+    let Ok(row_num) = row_str.parse::<u32>() else {
+        return true;
+    };
+
+    !metrics
+        .visible_content_bounds
+        .cell_is_outside(cell.col_num, row_num)
 }
 
 #[cfg(test)]
