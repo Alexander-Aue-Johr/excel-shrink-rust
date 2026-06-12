@@ -148,6 +148,10 @@ pub fn scan_for_references_by_sheet(
         for caps in defined_name_with_attrs_re.captures_iter(xml) {
             let attrs = caps.get(1).map(|m| m.as_bytes()).unwrap_or_default();
             let content = caps.get(2).unwrap().as_bytes();
+            if defined_name_should_be_ignored(attrs) {
+                continue;
+            }
+
             if let Some(m) = unsafe_re.find(content) {
                 let func = String::from_utf8_lossy(m.as_bytes()).to_string();
                 return ScanResult::Unsafe(func);
@@ -219,6 +223,16 @@ fn ref_tag_should_be_ignored(tag_name: &[u8]) -> bool {
     tag_name.eq_ignore_ascii_case(b"dimension")
         || tag_name.eq_ignore_ascii_case(b"autoFilter")
         || tag_name.eq_ignore_ascii_case(b"sortState")
+}
+
+fn defined_name_should_be_ignored(attrs: &[u8]) -> bool {
+    let Some(name) = extract_quoted_attr_value(attrs, b"name") else {
+        return false;
+    };
+
+    name.eq_ignore_ascii_case(b"_xlnm._FilterDatabase")
+        || name.eq_ignore_ascii_case(b"_FilterDatabase")
+        || bytes_ends_with_ignore_ascii_case(name, b".wvu.FilterData")
 }
 
 fn extract_tokens_for_sheet(
@@ -435,12 +449,67 @@ fn trim_ascii(bytes: &[u8]) -> &[u8] {
 }
 
 fn extract_local_sheet_id(attrs: &[u8]) -> Option<usize> {
-    let needle = b"localSheetId=\"";
-    let start = crate::xml::find_bytes(attrs, needle)? + needle.len();
-    let end_rel = attrs[start..].iter().position(|byte| *byte == b'\"')?;
-    let raw = &attrs[start..start + end_rel];
+    let raw = extract_quoted_attr_value(attrs, b"localSheetId")?;
     let value = std::str::from_utf8(raw).ok()?;
     value.parse::<usize>().ok()
+}
+
+fn extract_quoted_attr_value<'a>(attrs: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
+    let mut index = 0;
+
+    while index < attrs.len() {
+        while index < attrs.len() && attrs[index].is_ascii_whitespace() {
+            index += 1;
+        }
+
+        let name_start = index;
+        while index < attrs.len()
+            && (attrs[index].is_ascii_alphanumeric()
+                || matches!(attrs[index], b':' | b'_' | b'-' | b'.'))
+        {
+            index += 1;
+        }
+
+        if name_start == index {
+            index += 1;
+            continue;
+        }
+
+        let name = &attrs[name_start..index];
+        while index < attrs.len() && attrs[index].is_ascii_whitespace() {
+            index += 1;
+        }
+
+        if attrs.get(index) != Some(&b'=') {
+            continue;
+        }
+        index += 1;
+
+        while index < attrs.len() && attrs[index].is_ascii_whitespace() {
+            index += 1;
+        }
+
+        let quote = *attrs.get(index)?;
+        if quote != b'"' && quote != b'\'' {
+            continue;
+        }
+        index += 1;
+
+        let value_start = index;
+        let end_rel = attrs[index..].iter().position(|byte| *byte == quote)?;
+        let value = &attrs[value_start..value_start + end_rel];
+        index = value_start + end_rel + 1;
+
+        if name.eq_ignore_ascii_case(attr_name) {
+            return Some(value);
+        }
+    }
+
+    None
+}
+
+fn bytes_ends_with_ignore_ascii_case(value: &[u8], suffix: &[u8]) -> bool {
+    value.len() >= suffix.len() && value[value.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
 }
 
 #[cfg(test)]

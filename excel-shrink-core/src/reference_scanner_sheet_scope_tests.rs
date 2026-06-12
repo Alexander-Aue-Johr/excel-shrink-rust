@@ -243,6 +243,40 @@ fn autofilter_ref_does_not_keep_whitespace_candidate_cells() {
 }
 
 #[test]
+fn filter_defined_names_do_not_keep_whitespace_candidate_cells() {
+    let workbook_xml = br#"
+        <workbook>
+            <definedNames>
+                <definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">Sheet1!$A$3:$FP$2792</definedName>
+                <definedName name="Z_08BA4DC8_1B9B_43C9_BE6A_1B0C51DB5350_.wvu.FilterData" localSheetId="0" hidden="1">Sheet1!$A$3:$BP$3</definedName>
+            </definedNames>
+        </workbook>
+    "#;
+
+    let sheet_order = vec!["xl/worksheets/sheet1.xml".to_string()];
+    let mut seed = HashMap::new();
+    seed.insert("Sheet1".to_string(), "xl/worksheets/sheet1.xml".to_string());
+    let mut protected = ProtectedWorkbookRefs::default();
+
+    let result = scan_for_references_by_sheet(
+        &[SheetScanBuffer {
+            sheet_file: "xl/workbook.xml",
+            sheet_name: "Workbook",
+            xml: workbook_xml,
+        }],
+        &mut protected,
+        Some(&seed),
+        Some(&sheet_order),
+    );
+
+    assert!(matches!(result, ScanResult::Safe));
+    assert!(
+        !protected.contains("xl/worksheets/sheet1.xml", 24, 4),
+        "filter metadata defined names should not protect X4 whitespace content from cleanup"
+    );
+}
+
+#[test]
 fn cross_sheet_reference_with_custom_sheet_name_seed_map_keeps_target_candidate() {
     let sheet2_xml = br#"
         <worksheet>
