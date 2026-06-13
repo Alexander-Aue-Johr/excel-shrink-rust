@@ -100,7 +100,13 @@ pub fn clean_sheet_rows_and_cells_in_cell_range(
     metrics: &mut CleanSheetMetrics,
 ) -> Result<Vec<u8>> {
     Ok(apply_row_byte_substitution(sheet_data, |row| {
-        replace_row_bytes(row.raw, row.attr, row.content, params, metrics)
+        Cow::Owned(replace_row_bytes(
+            row.raw,
+            row.attr,
+            row.content,
+            params,
+            metrics,
+        ))
     }))
 }
 
@@ -112,10 +118,12 @@ pub fn clean_empty_rows_from_after_cell_range(
     Ok(apply_row_byte_substitution(sheet_data, |row| {
         if row.content.is_some_and(|content| !content.is_empty()) {
             metrics.kept_row_states.clear();
-            return row.raw.to_vec();
+            return Cow::Borrowed(row.raw);
         }
 
-        replace_empty_row_after_cell_range_bytes(row.raw, row.attr, params, metrics)
+        Cow::Owned(replace_empty_row_after_cell_range_bytes(
+            row.raw, row.attr, params, metrics,
+        ))
     }))
 }
 
@@ -128,7 +136,7 @@ struct ParsedRowBlock<'a> {
 
 fn apply_row_byte_substitution<F>(sheet_data: &[u8], mut replace: F) -> Vec<u8>
 where
-    F: FnMut(ParsedRowBlock<'_>) -> Vec<u8>,
+    F: for<'a> FnMut(ParsedRowBlock<'a>) -> Cow<'a, [u8]>,
 {
     let mut out = Vec::with_capacity(sheet_data.len().min(64 * 1024 * 1024));
     let mut pos = 0;
@@ -164,7 +172,8 @@ where
             attr: &sheet_data[attr_start..attr_end],
             content,
         };
-        extend_without_large_growth(&mut out, &replace(row));
+        let replacement = replace(row);
+        extend_without_large_growth(&mut out, replacement.as_ref());
         pos = row_end;
     }
 

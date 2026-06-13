@@ -4,7 +4,6 @@ use crate::models::{
 };
 use crate::sheet::cols::process_cols_node;
 use crate::sheet::merge_cells::find_max_merge_cells;
-use crate::sheet::output::build_clean_sheet_xml;
 use crate::sheet::sheet_data::{pre_process_sheet_data_chunk, SheetDataPreprocessState};
 use crate::sheet::worksheet::{process_worksheet_node, WorksheetTag};
 use crate::xml::rfind_bytes;
@@ -33,8 +32,32 @@ pub fn clean_sheet_data_streamwise(
     chunk_size: usize,
     disable_sheetdata_splitting: bool,
 ) -> Result<CleanedSheetData> {
-    let preprocessed = preprocess_sheet_xml_streamwise(stream, params, chunk_size)?;
-    build_clean_sheet_xml(preprocessed, params, disable_sheetdata_splitting)
+    clean_sheet_data_streamwise_with_progress(
+        stream,
+        params,
+        chunk_size,
+        disable_sheetdata_splitting,
+        &mut |_| {},
+    )
+}
+
+pub fn clean_sheet_data_streamwise_with_progress(
+    stream: impl Read,
+    params: &CleanSheetParameters,
+    chunk_size: usize,
+    disable_sheetdata_splitting: bool,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<CleanedSheetData> {
+    progress("preprocess_sheet_xml_streamwise");
+    let preprocessed =
+        preprocess_sheet_xml_streamwise_with_progress(stream, params, chunk_size, progress)?;
+    progress("build_clean_sheet_xml");
+    crate::sheet::output::build_clean_sheet_xml_with_progress(
+        preprocessed,
+        params,
+        disable_sheetdata_splitting,
+        progress,
+    )
 }
 
 fn get_or_create_sheet_data_preprocess_state<'a>(
@@ -59,10 +82,20 @@ pub fn preprocess_sheet_xml_streamwise(
     params: &CleanSheetParameters,
     chunk_size: usize,
 ) -> Result<PreprocessedSheetXml> {
+    preprocess_sheet_xml_streamwise_with_progress(&mut stream, params, chunk_size, &mut |_| {})
+}
+
+pub fn preprocess_sheet_xml_streamwise_with_progress(
+    mut stream: impl Read,
+    params: &CleanSheetParameters,
+    chunk_size: usize,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<PreprocessedSheetXml> {
     let mut buffer = Vec::new();
     let mut read_buf = vec![0u8; chunk_size];
 
     let mut state = SheetStreamingState::SeekWorksheetNode;
+    let mut last_reported_state: Option<SheetStreamingState> = None;
     let mut reached_eof = false;
     let mut processed_tags: Vec<WorksheetTag> = Vec::new();
 
@@ -72,6 +105,18 @@ pub fn preprocess_sheet_xml_streamwise(
     let mut column_definitions = None;
     let mut sheet_data_preprocess_state: Option<SheetDataPreprocessState> = None;
     while state != SheetStreamingState::FoundWorksheetEnd {
+        if last_reported_state != Some(state) {
+            match state {
+                SheetStreamingState::SeekWorksheetNode => progress("seek_worksheet_node"),
+                SheetStreamingState::InWorksheetNode => progress("scan_worksheet_node_children"),
+                SheetStreamingState::InColsNode => progress("process_cols_node"),
+                SheetStreamingState::InSheetDataNode => progress("preprocess_sheet_data_node"),
+                SheetStreamingState::InMergeCellsNode => progress("process_merge_cells_node"),
+                SheetStreamingState::FoundWorksheetEnd => progress("found_worksheet_end"),
+            }
+            last_reported_state = Some(state);
+        }
+
         if !reached_eof {
             let n = stream.read(&mut read_buf)?;
             if n == 0 {

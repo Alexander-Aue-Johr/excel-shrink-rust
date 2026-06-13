@@ -10,4 +10,4 @@ pub mod sheet_data;
 pub mod streaming;
 pub mod worksheet;
 
-pub use streaming::clean_sheet_data_streamwise;
+pub use streaming::{clean_sheet_data_streamwise, clean_sheet_data_streamwise_with_progress};

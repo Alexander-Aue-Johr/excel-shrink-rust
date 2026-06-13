@@ -17,7 +17,7 @@ use excel_shrink_core::models::{
 };
 use excel_shrink_core::reference_scanner::{scan_for_references_by_sheet, ScanResult};
 use excel_shrink_core::shared_strings::find_whitespace_sst_indices;
-use excel_shrink_core::sheet::clean_sheet_data_streamwise;
+use excel_shrink_core::sheet::clean_sheet_data_streamwise_with_progress;
 use excel_shrink_core::sheet::output::trim_trailing_layout_only_rows_vec;
 use excel_shrink_core::sheet::sheet_data::clean_empty_rows_from_after_cell_range;
 use excel_shrink_core::styles::parse_xfs;
@@ -44,6 +44,7 @@ struct ActiveTask {
     xml_size: usize,
     started: Instant,
     phase: String,
+    phase_started: Instant,
 }
 
 type ActiveTasks = Arc<Mutex<HashMap<String, ActiveTask>>>;
@@ -421,7 +422,9 @@ fn start_watchdog(active_tasks: ActiveTasks) -> (mpsc::Sender<()>, std::thread::
 
     let handle = std::thread::spawn(move || {
         let warn_after = Duration::from_secs(30);
-        let tick = Duration::from_millis(100);
+        let warn_interval = Duration::from_secs(10);
+        let tick = Duration::from_secs(1);
+        let mut last_warn_by_task: HashMap<String, Instant> = HashMap::new();
 
         loop {
             match stop_rx.recv_timeout(tick) {
@@ -435,15 +438,36 @@ fn start_watchdog(active_tasks: ActiveTasks) -> (mpsc::Sender<()>, std::thread::
                 let guard = active_tasks.lock().unwrap();
                 guard.values().cloned().collect()
             };
+            let active_keys: std::collections::HashSet<String> = tasks_snapshot
+                .iter()
+                .map(|task| format!("{}::{}", task.xlsx, task.sheet))
+                .collect();
+            last_warn_by_task.retain(|key, _| active_keys.contains(key));
 
             for task in tasks_snapshot {
                 let elapsed = now.duration_since(task.started);
-                if elapsed >= warn_after {
-                    warn!(
-                        "active_slow_sheet: elapsed={:.2?}, file={}, sheet={}, xml_size={} bytes, phase={}",
-                        elapsed, task.xlsx, task.sheet, task.xml_size, task.phase
-                    );
+                if elapsed < warn_after {
+                    continue;
                 }
+
+                let task_key = format!("{}::{}", task.xlsx, task.sheet);
+                let should_warn = last_warn_by_task
+                    .get(&task_key)
+                    .is_none_or(|last_warn| now.duration_since(*last_warn) >= warn_interval);
+                if !should_warn {
+                    continue;
+                }
+
+                last_warn_by_task.insert(task_key, now);
+                warn!(
+                    "active_slow_sheet: elapsed={:.2?}, phase_elapsed={:.2?}, file={}, sheet={}, xml_size={} bytes, phase={}",
+                    elapsed,
+                    now.duration_since(task.phase_started),
+                    task.xlsx,
+                    task.sheet,
+                    task.xml_size,
+                    task.phase
+                );
             }
         }
     });
@@ -1017,15 +1041,29 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                         xml_size: original_size,
                         started: start_time,
                         phase: "clean_sheet_data_streamwise".to_string(),
+                        phase_started: start_time,
                     },
                 );
             }
 
-            let result = clean_sheet_data_streamwise(
+            let progress_active_tasks = active_tasks.clone();
+            let progress_task_key = task_key.clone();
+            let mut update_phase = move |phase: &'static str| {
+                let mut guard = progress_active_tasks.lock().unwrap();
+                if let Some(task) = guard.get_mut(&progress_task_key) {
+                    if task.phase != phase {
+                        task.phase = phase.to_string();
+                        task.phase_started = Instant::now();
+                    }
+                }
+            };
+
+            let result = clean_sheet_data_streamwise_with_progress(
                 &mut sheet_file,
                 &params,
                 chunk_size,
                 disable_splitting,
+                &mut update_phase,
             );
 
             {

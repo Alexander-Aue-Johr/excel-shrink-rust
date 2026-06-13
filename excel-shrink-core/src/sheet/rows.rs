@@ -464,41 +464,21 @@ fn remove_irrelevant_attributes_for_empty_rows(
     row_attr: &[u8],
     params: &CleanSheetParameters,
 ) -> Vec<u8> {
-    let mut out = row_attr.to_vec();
+    let remove_font_only_style = extract_attr_value(row_attr, b"s")
+        .map(digits_byte_string_to_integer)
+        .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id))
+        .is_some_and(|xf| xf.has_only_font_style);
 
-    out = remove_attribute_by_name(&out, b"spans");
-    out = remove_dy_descent_attributes(&out);
-
-    for style_id in params.patterns.xfs_by_index.keys() {
-        if params
-            .patterns
-            .xfs_by_index
-            .get(style_id)
-            .is_some_and(|xf| xf.has_only_font_style)
-        {
-            let needle = format!(r#"s="{}""#, style_id).into_bytes();
-            out = remove_exact_attribute(&out, &needle);
-        }
-    }
-
-    out
-}
-
-fn remove_attribute_by_name(data: &[u8], attr_name: &[u8]) -> Vec<u8> {
-    remove_attribute_matching(data, |attr| {
-        attr.starts_with(attr_name) && attr.get(attr_name.len()) == Some(&b'=')
+    remove_attribute_matching(row_attr, |attr| {
+        attribute_has_name(attr, b"spans")
+            || attr.windows(b":dyDescent=".len())
+                .any(|window| window == b":dyDescent=")
+            || (remove_font_only_style && attribute_has_name(attr, b"s"))
     })
 }
 
-fn remove_dy_descent_attributes(data: &[u8]) -> Vec<u8> {
-    remove_attribute_matching(data, |attr| {
-        attr.windows(b":dyDescent=".len())
-            .any(|w| w == b":dyDescent=")
-    })
-}
-
-fn remove_exact_attribute(data: &[u8], exact_attr: &[u8]) -> Vec<u8> {
-    remove_attribute_matching(data, |attr| attr == exact_attr)
+fn attribute_has_name(attr: &[u8], attr_name: &[u8]) -> bool {
+    attr.starts_with(attr_name) && attr.get(attr_name.len()) == Some(&b'=')
 }
 
 fn remove_attribute_matching<F>(data: &[u8], predicate: F) -> Vec<u8>

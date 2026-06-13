@@ -22,6 +22,21 @@ pub fn build_clean_sheet_xml(
     params: &CleanSheetParameters,
     disable_sheetdata_splitting: bool,
 ) -> Result<CleanedSheetData> {
+    build_clean_sheet_xml_with_progress(
+        preprocessed,
+        params,
+        disable_sheetdata_splitting,
+        &mut |_| {},
+    )
+}
+
+pub fn build_clean_sheet_xml_with_progress(
+    preprocessed: PreprocessedSheetXml,
+    params: &CleanSheetParameters,
+    disable_sheetdata_splitting: bool,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<CleanedSheetData> {
+    progress("build_prepare_sheet_metrics");
     let sheet_protection_enabled = worksheet_has_enabled_sheet_protection(&preprocessed);
     let mut metrics = preprocessed.clean_sheet_metrics;
     metrics.cleanup_stats.enabled |= params.collect_cleanup_stats;
@@ -34,8 +49,10 @@ pub fn build_clean_sheet_xml(
         !disable_sheetdata_splitting && params.cleanup.sheetdata_range_tail_pruning;
 
     let final_sheet_data = if !use_range_tail_pruning {
+        progress("clean_sheet_rows_and_cells");
         clean_sheet_rows_and_cells_in_cell_range(&preprocessed.sheet_data, params, &mut metrics)?
     } else {
+        progress("retrieve_sheet_data_ranges");
         let original_len = preprocessed.sheet_data.len();
         let ranges = retrieve_sheet_data_range_containing_cells(
             &preprocessed.sheet_data,
@@ -51,9 +68,11 @@ pub fn build_clean_sheet_xml(
             );
         }
 
+        progress("clean_cells_range");
         let cleaned_cells_range =
             clean_sheet_rows_and_cells_in_cell_range(&ranges.cells_range, params, &mut metrics)?;
 
+        progress("clean_visible_rows_range");
         let cleaned_visible_rows_range =
             clean_empty_rows_from_after_cell_range(&ranges.rows_range, params, &mut metrics)?;
 
@@ -61,11 +80,13 @@ pub fn build_clean_sheet_xml(
     };
 
     let mut final_sheet_data = if params.cleanup.trailing_layout_only_rows {
+        progress("trim_trailing_layout_only_rows");
         trim_trailing_layout_only_rows_vec(final_sheet_data, params, &mut metrics)
     } else {
         final_sheet_data
     };
 
+    progress("compute_visible_bounds");
     let max_cell_column = get_max_cell_column(&metrics);
     let max_cell_row = get_max_cell_row(&metrics);
     let max_merge_column = get_max_merge_cells_column_index(&metrics);
@@ -85,6 +106,7 @@ pub fn build_clean_sheet_xml(
         .max()
         .unwrap_or(0);
 
+    progress("remove_protection_only_cells_outside_bounds");
     final_sheet_data = remove_protection_only_cells_outside_bounds(
         final_sheet_data,
         max_column,
@@ -93,10 +115,12 @@ pub fn build_clean_sheet_xml(
     );
 
     if params.cleanup.trailing_layout_only_rows {
+        progress("trim_trailing_layout_only_rows_after_bounds");
         final_sheet_data =
             trim_trailing_layout_only_rows_vec(final_sheet_data, params, &mut metrics);
     }
 
+    progress("merge_extraneous_columns");
     let in_cols_node_output_chunks = if params.cleanup.extraneous_column_range_merge {
         merge_extraneous_columns(&preprocessed.in_cols_node_output_chunks, max_column)
     } else {
@@ -109,6 +133,7 @@ pub fn build_clean_sheet_xml(
         in_cols_node_output_chunks.len(),
     );
 
+    progress("assemble_clean_sheet_xml");
     let mut out = Vec::new();
     out.extend_from_slice(&preprocessed.until_worksheet_start_output_chunks);
     out.extend_from_slice(&preprocessed.before_cols_node_output_chunks);
@@ -119,6 +144,7 @@ pub fn build_clean_sheet_xml(
     out.extend_from_slice(&preprocessed.in_merge_cells_node_output_chunks);
     out.extend_from_slice(&preprocessed.until_worksheet_end_output_chunks);
 
+    progress("scan_reference_hints");
     metrics.has_hints = crate::reference_scanner::check_for_reference_hints(&out);
     Ok(CleanedSheetData { xml: out, metrics })
 }
