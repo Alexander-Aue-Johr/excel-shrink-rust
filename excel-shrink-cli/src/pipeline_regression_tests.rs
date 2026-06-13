@@ -3,6 +3,7 @@ use excel_shrink_core::models::{
     CleanSheetParameters, SheetPreprocessConfig, WorkbookSpecificPatterns,
 };
 use excel_shrink_core::sheet::output::trim_trailing_layout_only_rows;
+use excel_shrink_core::sheet::sheet_data::clean_empty_rows_from_after_cell_range;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -229,7 +230,61 @@ fn phase3_trims_trailing_row_after_deferred_candidate_cleanup() {
 }
 
 #[test]
-fn pipeline_collapses_consecutive_hidden_empty_rows_from_streamed_sheet_entry() {
+fn phase3_preserves_hidden_rows_emptied_by_deferred_candidate_cleanup() {
+    let xml = br#"<row r="44504"><c r="A44504"><v>keep</v></c></row><row r="44505" spans="1:117" hidden="1" x14ac:dyDescent="0.25"><c r="S44505"><v>secret</v></c></row><row r="44506" spans="1:117" hidden="1" x14ac:dyDescent="0.25"><c r="S44506"><v>secret</v></c></row><row r="44596"><c r="A44596"><v>keep</v></c></row><row r="44597" spans="1:117" hidden="1" x14ac:dyDescent="0.25"><c r="S44597"><v>secret</v></c></row><row r="44598" spans="1:117" hidden="1" x14ac:dyDescent="0.25"><c r="S44598"><v>secret</v></c></row><row r="44650"><c r="A44650"><v>keep</v></c></row>"#.to_vec();
+    let candidates = vec![
+        CleanupCandidate {
+            col: 19,
+            row: 44505,
+            cause: CleanupCause::UnreferencedHiddenContentCells,
+        },
+        CleanupCandidate {
+            col: 19,
+            row: 44506,
+            cause: CleanupCause::UnreferencedHiddenContentCells,
+        },
+        CleanupCandidate {
+            col: 19,
+            row: 44597,
+            cause: CleanupCause::UnreferencedHiddenContentCells,
+        },
+        CleanupCandidate {
+            col: 19,
+            row: 44598,
+            cause: CleanupCause::UnreferencedHiddenContentCells,
+        },
+    ];
+    let protected = ProtectedWorkbookRefs::default();
+    let params = default_sheet_params();
+    let mut stats = CleanupStats::enabled();
+    let mut metrics = CleanSheetMetrics {
+        cleanup_stats: CleanupStats::enabled(),
+        ..CleanSheetMetrics::default()
+    };
+
+    let cleaned = apply_deferred_candidate_cleanup(
+        xml,
+        &candidates,
+        &protected,
+        "xl/worksheets/sheet1.xml",
+        &mut stats,
+    );
+    let cleaned = clean_empty_rows_from_after_cell_range(&cleaned, &params, &mut metrics).unwrap();
+    let cleaned = String::from_utf8_lossy(&cleaned);
+
+    assert!(cleaned.contains(r#"r="44504""#));
+    assert!(cleaned.contains(r#"<row r="44505" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"<row r="44506" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"r="44596""#));
+    assert!(cleaned.contains(r#"<row r="44597" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"<row r="44598" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"r="44650""#));
+    assert!(!cleaned.contains("spans="));
+    assert!(!cleaned.contains("dyDescent"));
+}
+
+#[test]
+fn pipeline_preserves_consecutive_hidden_empty_rows_from_streamed_sheet_entry() {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -284,9 +339,9 @@ fn pipeline_collapses_consecutive_hidden_empty_rows_from_streamed_sheet_entry() 
         .unwrap();
 
     assert!(sheet.contains(r#"r="307905""#));
-    assert!(!sheet.contains(r#"r="307906""#));
-    assert!(!sheet.contains(r#"r="307907""#));
-    assert!(!sheet.contains(r#"r="307908""#));
+    assert!(sheet.contains(r#"r="307906""#));
+    assert!(sheet.contains(r#"r="307907""#));
+    assert!(sheet.contains(r#"r="307908""#));
 
     let _ = std::fs::remove_dir_all(temp_root);
 }

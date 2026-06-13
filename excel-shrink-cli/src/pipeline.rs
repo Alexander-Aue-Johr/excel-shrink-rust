@@ -19,6 +19,7 @@ use excel_shrink_core::reference_scanner::{scan_for_references_by_sheet, ScanRes
 use excel_shrink_core::shared_strings::find_whitespace_sst_indices;
 use excel_shrink_core::sheet::clean_sheet_data_streamwise;
 use excel_shrink_core::sheet::output::trim_trailing_layout_only_rows_vec;
+use excel_shrink_core::sheet::sheet_data::clean_empty_rows_from_after_cell_range;
 use excel_shrink_core::styles::parse_xfs;
 use excel_shrink_core::workbook::clean_workbook_with_stats;
 
@@ -1039,6 +1040,25 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     &params.zip_info_filename,
                     &mut metrics.cleanup_stats,
                 );
+
+                metrics.row_attributes.clear();
+                metrics.kept_row_states.clear();
+                metrics.deleted_row_states.clear();
+                let mut deferred_row_cleanup_params = params.clone();
+                deferred_row_cleanup_params
+                    .cleanup
+                    .consecutive_hidden_empty_rows = false;
+                match clean_empty_rows_from_after_cell_range(
+                    &xml,
+                    &deferred_row_cleanup_params,
+                    &mut metrics,
+                ) {
+                    Ok(cleaned) => xml = cleaned,
+                    Err(e) => {
+                        error!(event = "deferred_empty_row_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to clean rows emptied by deferred cleanup; keeping deferred-cleaned XML");
+                    }
+                }
+
                 if params.cleanup.trailing_layout_only_rows {
                     xml = trim_trailing_layout_only_rows_vec(xml, &params, &mut metrics);
                 }

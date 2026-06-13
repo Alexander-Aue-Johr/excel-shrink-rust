@@ -1,6 +1,5 @@
 use crate::error::{Result, ShrinkError};
 use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, ColumnRangeMap};
-use crate::sheet::hidden_rows::{remove_hidden_rows_if_present_with_state, HiddenRowCollapseState};
 use crate::sheet::rows::{replace_empty_row_after_cell_range_bytes, replace_row_bytes};
 use crate::xml::{find_byte_from, find_bytes};
 use std::borrow::Cow;
@@ -10,8 +9,6 @@ use std::collections::HashSet;
 pub struct SheetDataPreprocessState {
     any_column_has_non_default_fill_or_border: bool,
     active_row_has_non_default_fill_or_border_style: bool,
-
-    hidden_row_collapse_state: HiddenRowCollapseState,
 
     /// Style IDs whose XF can apply a visible fill or border to empty cells.
     /// Keys are the raw ASCII bytes of the style index, e.g. b"429".
@@ -48,7 +45,6 @@ impl SheetDataPreprocessState {
         Self {
             any_column_has_non_default_fill_or_border,
             active_row_has_non_default_fill_or_border_style: false,
-            hidden_row_collapse_state: HiddenRowCollapseState::default(),
             fill_or_border_style_ids_by_bytes,
             only_font_style_ids_by_bytes,
             checked_row_style_ids: HashSet::new(),
@@ -78,15 +74,7 @@ pub fn pre_process_sheet_data_chunk<'a>(
         return Err(ShrinkError::UnsupportedCData);
     }
 
-    let chunk = if params.cleanup.preprocess_consecutive_hidden_empty_rows {
-        remove_hidden_rows_if_present_with_state(
-            chunk,
-            &mut state.hidden_row_collapse_state,
-            metrics,
-        )
-    } else {
-        Cow::Borrowed(chunk)
-    };
+    let chunk = Cow::Borrowed(chunk);
 
     if !params.cleanup.preprocess_empty_self_closing_cells {
         return Ok(chunk);
@@ -123,6 +111,7 @@ pub fn clean_empty_rows_from_after_cell_range(
 ) -> Result<Vec<u8>> {
     Ok(apply_row_byte_substitution(sheet_data, |row| {
         if row.content.is_some_and(|content| !content.is_empty()) {
+            metrics.kept_row_states.clear();
             return row.raw.to_vec();
         }
 
@@ -390,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn preprocess_collapses_consecutive_hidden_empty_rows_with_excel_tail_attributes() {
+    fn preprocess_preserves_consecutive_hidden_empty_rows() {
         let params = default_params();
         let mut state = SheetDataPreprocessState::new(&Default::default(), &params);
         let mut metrics = CleanSheetMetrics::default();
@@ -400,10 +389,7 @@ mod tests {
             pre_process_sheet_data_chunk(sheet_data, &params, &mut state, &mut metrics).unwrap();
         let cleaned = String::from_utf8_lossy(cleaned.as_ref());
 
-        assert!(cleaned.contains(r#"r="307905""#));
-        assert!(!cleaned.contains(r#"r="307906""#));
-        assert!(!cleaned.contains(r#"r="307907""#));
-        assert!(!cleaned.contains(r#"r="307908""#));
+        assert_eq!(cleaned.as_bytes(), sheet_data);
     }
 
     #[test]

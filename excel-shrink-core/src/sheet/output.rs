@@ -187,6 +187,17 @@ pub fn trim_trailing_layout_only_rows(
     params: &CleanSheetParameters,
     metrics: &mut crate::models::CleanSheetMetrics,
 ) -> Vec<u8> {
+    if let Some((remove_start, preserve_start)) = trailing_hidden_tail_removal_range(sheet_data) {
+        let mut out = Vec::with_capacity(sheet_data.len() - (preserve_start - remove_start));
+        out.extend_from_slice(&sheet_data[..remove_start]);
+        out.extend_from_slice(&sheet_data[preserve_start..]);
+        metrics.cleanup_stats.record_removed(
+            CleanupCause::TrailingLayoutOnlyRows,
+            preserve_start - remove_start,
+        );
+        return out;
+    }
+
     let end = trailing_layout_only_rows_cutoff(sheet_data, params, metrics);
 
     if end == sheet_data.len() {
@@ -201,6 +212,15 @@ pub fn trim_trailing_layout_only_rows_vec(
     params: &CleanSheetParameters,
     metrics: &mut crate::models::CleanSheetMetrics,
 ) -> Vec<u8> {
+    if let Some((remove_start, preserve_start)) = trailing_hidden_tail_removal_range(&sheet_data) {
+        sheet_data.drain(remove_start..preserve_start);
+        metrics.cleanup_stats.record_removed(
+            CleanupCause::TrailingLayoutOnlyRows,
+            preserve_start - remove_start,
+        );
+        return sheet_data;
+    }
+
     let end = trailing_layout_only_rows_cutoff(&sheet_data, params, metrics);
 
     if end < sheet_data.len() {
@@ -208,6 +228,59 @@ pub fn trim_trailing_layout_only_rows_vec(
     }
 
     sheet_data
+}
+
+fn trailing_hidden_tail_removal_range(sheet_data: &[u8]) -> Option<(usize, usize)> {
+    let mut tail_end = sheet_data.len();
+
+    while tail_end > 0 && sheet_data[tail_end - 1].is_ascii_whitespace() {
+        tail_end -= 1;
+    }
+
+    let last_row_start = rfind_bytes(&sheet_data[..tail_end], b"<row")?;
+    let last_row_end = find_row_end(sheet_data, last_row_start)?;
+    if last_row_end != tail_end {
+        return None;
+    }
+
+    let last_row = &sheet_data[last_row_start..last_row_end];
+    if !hidden_row_without_cells(last_row) {
+        return None;
+    }
+
+    let preserve_start = last_row_start;
+    let mut remove_start = preserve_start;
+    let mut scan_end = preserve_start;
+
+    loop {
+        while scan_end > 0 && sheet_data[scan_end - 1].is_ascii_whitespace() {
+            scan_end -= 1;
+        }
+
+        let Some(row_start) = rfind_bytes(&sheet_data[..scan_end], b"<row") else {
+            break;
+        };
+        let Some(row_end) = find_row_end(sheet_data, row_start) else {
+            break;
+        };
+        if row_end != scan_end {
+            break;
+        }
+
+        let row = &sheet_data[row_start..row_end];
+        if !hidden_row_without_cells(row) {
+            break;
+        }
+
+        remove_start = row_start;
+        scan_end = row_start;
+    }
+
+    (remove_start < preserve_start).then_some((remove_start, preserve_start))
+}
+
+fn hidden_row_without_cells(row: &[u8]) -> bool {
+    row_is_hidden(row) && find_bytes(row, b"<c").is_none()
 }
 
 fn trailing_layout_only_rows_cutoff(
@@ -561,5 +634,34 @@ mod tests {
         let xml = String::from_utf8_lossy(&cleaned.xml);
 
         assert!(xml.contains(r#"<c r="C1" s="7"/>"#));
+    }
+
+    #[test]
+    fn trailing_hidden_tail_keeps_only_last_hidden_row() {
+        let params = default_params();
+        let mut metrics = CleanSheetMetrics::default();
+        let sheet_data = br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="2" hidden="1"/><row r="3" hidden="1"/><row r="4" hidden="1"/>"#;
+
+        let cleaned = super::trim_trailing_layout_only_rows(sheet_data, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="1""#));
+        assert!(!cleaned.contains(r#"r="2""#));
+        assert!(!cleaned.contains(r#"r="3""#));
+        assert!(cleaned.contains(r#"r="4""#));
+    }
+
+    #[test]
+    fn non_trailing_hidden_rows_are_not_collapsed_by_tail_cleanup() {
+        let params = default_params();
+        let mut metrics = CleanSheetMetrics::default();
+        let sheet_data = br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="2" hidden="1"/><row r="3" hidden="1"/><row r="4"><c r="A4"><v>1</v></c></row>"#;
+
+        let cleaned = super::trim_trailing_layout_only_rows(sheet_data, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="2""#));
+        assert!(cleaned.contains(r#"r="3""#));
+        assert!(cleaned.contains(r#"r="4""#));
     }
 }

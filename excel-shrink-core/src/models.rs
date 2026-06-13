@@ -170,7 +170,7 @@ impl Default for CleanupSwitches {
             unreferenced_hidden_content_cells: false,
 
             empty_rows_without_visible_style_or_height: true,
-            consecutive_hidden_empty_rows: true,
+            consecutive_hidden_empty_rows: false,
             trailing_layout_only_rows: true,
 
             empty_row_attribute_cleanup: true,

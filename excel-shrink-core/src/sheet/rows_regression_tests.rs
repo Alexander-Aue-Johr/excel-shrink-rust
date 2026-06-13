@@ -135,7 +135,7 @@ fn adds_custom_height_to_empty_row_after_cell_range_with_height() {
 }
 
 #[test]
-fn postprocess_collapses_consecutive_hidden_empty_rows_with_excel_tail_attributes() {
+fn postprocess_preserves_consecutive_hidden_empty_rows_but_cleans_attributes() {
     let params = params_with_styles(&[]);
     let sheet_data = br#"<row r="307905" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307906" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307907" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307908" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row>"#;
     let mut metrics = CleanSheetMetrics::default();
@@ -145,7 +145,9 @@ fn postprocess_collapses_consecutive_hidden_empty_rows_with_excel_tail_attribute
     let cleaned = String::from_utf8(cleaned).unwrap();
 
     assert!(cleaned.contains(r#"<row r="307905" hidden="1"/>"#));
-    assert!(!cleaned.contains(r#"r="307906""#));
-    assert!(!cleaned.contains(r#"r="307907""#));
-    assert!(!cleaned.contains(r#"r="307908""#));
+    assert!(cleaned.contains(r#"<row r="307906" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"<row r="307907" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"<row r="307908" hidden="1"/>"#));
+    assert!(!cleaned.contains("spans="));
+    assert!(!cleaned.contains("dyDescent"));
 }
