@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Read, Seek, Write};
 use std::path::PathBuf;
@@ -22,6 +22,7 @@ use excel_shrink_core::sheet::output::trim_trailing_layout_only_rows_vec;
 use excel_shrink_core::sheet::sheet_data::clean_empty_rows_from_after_cell_range;
 use excel_shrink_core::styles::parse_xfs;
 use excel_shrink_core::workbook::clean_workbook_with_stats;
+use excel_shrink_core::xml::find_bytes;
 
 use crate::Cli;
 
@@ -247,6 +248,28 @@ fn extract_sheet_name_and_rid_in_order(workbook_xml: &[u8]) -> Vec<(String, Stri
     pairs
 }
 
+fn extract_sheet_id_name_and_rid_in_order(workbook_xml: &[u8]) -> Vec<(String, String, String)> {
+    let mut triples = Vec::new();
+    let re = regex::bytes::Regex::new(r#"(?s)<(?:[A-Za-z_][\w.-]*:)?sheet\b[^>]*>"#).unwrap();
+
+    for sheet_match in re.find_iter(workbook_xml) {
+        let sheet = sheet_match.as_bytes();
+        let Some(sheet_id) = extract_attr_string(sheet, b"sheetId") else {
+            continue;
+        };
+        let Some(name) = extract_attr_string(sheet, b"name") else {
+            continue;
+        };
+        let Some(rid) = extract_attr_string(sheet, b"r:id") else {
+            continue;
+        };
+
+        triples.push((sheet_id, name, rid));
+    }
+
+    triples
+}
+
 fn extract_rid_to_target(workbook_rels_xml: &[u8]) -> HashMap<String, String> {
     let mut map = HashMap::new();
     let re = regex::bytes::Regex::new(
@@ -275,6 +298,31 @@ fn extract_rid_to_target(workbook_rels_xml: &[u8]) -> HashMap<String, String> {
     map
 }
 
+fn extract_attr_string(element: &[u8], attr_name: &[u8]) -> Option<String> {
+    let mut pos = 0;
+    while pos + attr_name.len() + 2 <= element.len() {
+        let rel = find_bytes(&element[pos..], attr_name)?;
+        let start = pos + rel;
+        let before_ok =
+            start == 0 || element[start - 1].is_ascii_whitespace() || element[start - 1] == b'<';
+        let after_name = start + attr_name.len();
+        if before_ok && after_name < element.len() && element[after_name] == b'=' {
+            let quote_pos = after_name + 1;
+            if quote_pos < element.len() && element[quote_pos] == b'"' {
+                let value_start = quote_pos + 1;
+                let value_end =
+                    value_start + element[value_start..].iter().position(|b| *b == b'"')?;
+                return std::str::from_utf8(&element[value_start..value_end])
+                    .ok()
+                    .map(str::to_string);
+            }
+        }
+        pos = after_name;
+    }
+
+    None
+}
+
 fn build_sheet_name_to_file_map(
     workbook_xml: &[u8],
     workbook_rels_xml: &[u8],
@@ -293,6 +341,79 @@ fn build_sheet_name_to_file_map(
     }
 
     (map, sheet_files_in_workbook_order)
+}
+
+fn build_sheet_id_to_file_map(
+    workbook_xml: &[u8],
+    workbook_rels_xml: &[u8],
+) -> HashMap<String, String> {
+    let sheet_id_name_rid_triples = extract_sheet_id_name_and_rid_in_order(workbook_xml);
+    let rid_to_target = extract_rid_to_target(workbook_rels_xml);
+
+    let mut map = HashMap::new();
+    for (sheet_id, _name, rid) in sheet_id_name_rid_triples {
+        if let Some(target) = rid_to_target.get(&rid) {
+            map.insert(sheet_id, target.clone());
+        }
+    }
+
+    map
+}
+
+fn collect_cell_refs(xml: &[u8]) -> HashSet<String> {
+    let mut refs = HashSet::new();
+    let re = regex::bytes::Regex::new(r#"(?s)<c\b[^>]*\br="([A-Z]+\d+)"[^>]*(?:/|>)"#).unwrap();
+
+    for caps in re.captures_iter(xml) {
+        if let Some(reference) = caps.get(1) {
+            if let Ok(reference) = std::str::from_utf8(reference.as_bytes()) {
+                refs.insert(reference.to_string());
+            }
+        }
+    }
+
+    refs
+}
+
+fn clean_calc_chain(
+    calc_chain_xml: Vec<u8>,
+    sheet_id_to_file: &HashMap<String, String>,
+    known_cells_by_sheet_file: &HashMap<String, HashSet<String>>,
+) -> Vec<u8> {
+    if known_cells_by_sheet_file.is_empty() {
+        return calc_chain_xml;
+    }
+
+    let re = regex::bytes::Regex::new(r#"(?s)<(?:[A-Za-z_][\w.-]*:)?c\b[^>]*/>"#).unwrap();
+    let mut out = Vec::with_capacity(calc_chain_xml.len());
+    let mut last_end = 0;
+    let mut current_sheet_id: Option<String> = None;
+
+    for m in re.find_iter(&calc_chain_xml) {
+        let entry = m.as_bytes();
+        if let Some(sheet_id) = extract_attr_string(entry, b"i") {
+            current_sheet_id = Some(sheet_id);
+        } else if current_sheet_id.is_none() {
+            current_sheet_id = Some("1".to_string());
+        }
+
+        let remove = extract_attr_string(entry, b"r").is_some_and(|cell_ref| {
+            current_sheet_id
+                .as_deref()
+                .and_then(|sheet_id| sheet_id_to_file.get(sheet_id))
+                .and_then(|sheet_file| known_cells_by_sheet_file.get(sheet_file))
+                .is_some_and(|known_cells| !known_cells.contains(&cell_ref))
+        });
+
+        out.extend_from_slice(&calc_chain_xml[last_end..m.start()]);
+        if !remove {
+            out.extend_from_slice(entry);
+        }
+        last_end = m.end();
+    }
+
+    out.extend_from_slice(&calc_chain_xml[last_end..]);
+    out
 }
 
 fn start_watchdog(active_tasks: ActiveTasks) -> (mpsc::Sender<()>, std::thread::JoinHandle<()>) {
@@ -656,6 +777,9 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         let mut sheet_tasks = Vec::new();
         let mut workbook_xml_for_scan: Option<Vec<u8>> = None;
         let mut workbook_rels_for_scan: Option<Vec<u8>> = None;
+        let mut workbook_xml_for_calc_chain: Option<Vec<u8>> = None;
+        let mut workbook_rels_for_calc_chain: Option<Vec<u8>> = None;
+        let mut calc_chain_part: Option<(usize, CompressionMethod, Vec<u8>)> = None;
 
         for i in 0..archive.len() {
             let mut file = match archive.by_index(i) {
@@ -733,6 +857,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 if do_advanced {
                     workbook_xml_for_scan = Some(cleaned_wb.clone());
                 }
+                workbook_xml_for_calc_chain = Some(cleaned_wb.clone());
 
                 let out_method = output_compression_method(method, cli.store_output);
                 match precompress_entry(&name, cleaned_wb, out_method, cli.compression_level) {
@@ -775,15 +900,16 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     }
                 }
             } else if name == "xl/_rels/workbook.xml.rels" {
-                if do_advanced {
-                    let mut rels_buf = Vec::new();
-                    match file.read_to_end(&mut rels_buf) {
-                        Ok(_) => {
+                let mut rels_buf = Vec::new();
+                match file.read_to_end(&mut rels_buf) {
+                    Ok(_) => {
+                        workbook_rels_for_calc_chain = Some(rels_buf.clone());
+                        if do_advanced {
                             workbook_rels_for_scan = Some(rels_buf);
                         }
-                        Err(e) => {
-                            error!(event = "workbook_rels_read_failed", xlsx = %input_display, entry = %name, error = %e, "Failed to read workbook relationships; sheet-scoped deferred cleanup may be skipped");
-                        }
+                    }
+                    Err(e) => {
+                        error!(event = "workbook_rels_read_failed", xlsx = %input_display, entry = %name, error = %e, "Failed to read workbook relationships; sheet-scoped deferred cleanup may be skipped");
                     }
                 }
                 if !send_write_job(
@@ -795,6 +921,26 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     &input_display,
                 ) {
                     return;
+                }
+            } else if name == "xl/calcChain.xml" {
+                let mut calc_chain_buf = Vec::new();
+                match file.read_to_end(&mut calc_chain_buf) {
+                    Ok(_) => {
+                        calc_chain_part = Some((i, method, calc_chain_buf));
+                    }
+                    Err(e) => {
+                        error!(event = "calc_chain_read_failed", xlsx = %input_display, entry = %name, error = %e, "Failed to read calcChain.xml; copying original");
+                        if !send_write_job(
+                            &tx,
+                            WriteJob::CopyOriginal {
+                                index: i,
+                                filename: name,
+                            },
+                            &input_display,
+                        ) {
+                            return;
+                        }
+                    }
                 }
             } else {
                 if !send_write_job(
@@ -1013,6 +1159,9 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         }
 
         // --- PHASE 3: Fast Regex Cleanup & Precompression ---
+        let known_cells_by_sheet_file: Arc<Mutex<HashMap<String, HashSet<String>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
         let finalize_sheet = |res: ProcessedSheetResult| {
             let (params, index, mut xml, mut metrics, start_time, original_size) = match res {
                 Ok(val) => val,
@@ -1065,6 +1214,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
 
             let reduction = original_size.saturating_sub(xml.len());
             let cleaned_size = xml.len();
+            let cleaned_cell_refs = collect_cell_refs(&xml);
 
             let elapsed = start_time.elapsed();
             if elapsed.as_secs_f64() >= 5.0 {
@@ -1101,6 +1251,10 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                         cleaned_size,
                         attribution_safe_analysis,
                     );
+                    {
+                        let mut guard = known_cells_by_sheet_file.lock().unwrap();
+                        guard.insert(params.zip_info_filename.clone(), cleaned_cell_refs);
+                    }
 
                     if !send_write_job(
                         &tx,
@@ -1134,6 +1288,62 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             processed_sheets.into_iter().for_each(finalize_sheet);
         } else {
             processed_sheets.into_par_iter().for_each(finalize_sheet);
+        }
+
+        if let Some((index, method, calc_chain_xml)) = calc_chain_part {
+            let maybe_cleaned_calc_chain = workbook_xml_for_calc_chain
+                .as_ref()
+                .zip(workbook_rels_for_calc_chain.as_ref())
+                .map(|(wb_xml, wb_rels)| {
+                    let sheet_id_to_file = build_sheet_id_to_file_map(wb_xml, wb_rels);
+                    let known_cells = known_cells_by_sheet_file.lock().unwrap();
+                    clean_calc_chain(calc_chain_xml.clone(), &sheet_id_to_file, &known_cells)
+                });
+
+            if let Some(cleaned_calc_chain) = maybe_cleaned_calc_chain {
+                let out_method = output_compression_method(method, cli.store_output);
+                match precompress_entry(
+                    "xl/calcChain.xml",
+                    cleaned_calc_chain,
+                    out_method,
+                    cli.compression_level,
+                ) {
+                    Ok(zip_bytes) => {
+                        if !send_write_job(
+                            &tx,
+                            WriteJob::CopyPrecompressed {
+                                filename: "xl/calcChain.xml".to_string(),
+                                zip_bytes,
+                            },
+                            &input_display,
+                        ) {
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        error!(event = "calc_chain_precompress_failed", xlsx = %input_display, error = %e, "Failed to precompress cleaned calcChain.xml; copying original");
+                        if !send_write_job(
+                            &tx,
+                            WriteJob::CopyOriginal {
+                                index,
+                                filename: "xl/calcChain.xml".to_string(),
+                            },
+                            &input_display,
+                        ) {
+                            return;
+                        }
+                    }
+                }
+            } else if !send_write_job(
+                &tx,
+                WriteJob::CopyOriginal {
+                    index,
+                    filename: "xl/calcChain.xml".to_string(),
+                },
+                &input_display,
+            ) {
+                return;
+            }
         }
 
         info!(event = "file_done", xlsx = %input_display, elapsed_ms = file_start.elapsed().as_millis(), "Finished XLSX processing");

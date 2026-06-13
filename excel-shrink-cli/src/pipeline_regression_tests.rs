@@ -345,3 +345,104 @@ fn pipeline_preserves_consecutive_hidden_empty_rows_from_streamed_sheet_entry() 
 
     let _ = std::fs::remove_dir_all(temp_root);
 }
+
+#[test]
+fn calc_chain_removes_missing_cells_for_processed_sheet_only() {
+    let workbook_xml =
+        br#"<workbook><sheets><sheet name="Sheet1" sheetId="7" r:id="rId1"/></sheets></workbook>"#;
+    let workbook_rels_xml = br#"<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>"#;
+    let sheet_id_to_file = build_sheet_id_to_file_map(workbook_xml, workbook_rels_xml);
+    let mut known_cells_by_sheet = HashMap::new();
+    known_cells_by_sheet.insert(
+        "xl/worksheets/sheet1.xml".to_string(),
+        ["A1".to_string(), "C3".to_string()].into_iter().collect(),
+    );
+
+    let cleaned = clean_calc_chain(
+        br#"<calcChain><c r="A1" i="7"/><c r="B2"/><c r="C3"/></calcChain>"#.to_vec(),
+        &sheet_id_to_file,
+        &known_cells_by_sheet,
+    );
+    let cleaned = String::from_utf8(cleaned).unwrap();
+
+    assert!(cleaned.contains(r#"r="A1""#));
+    assert!(!cleaned.contains(r#"r="B2""#));
+    assert!(cleaned.contains(r#"r="C3""#));
+}
+
+#[test]
+fn pipeline_cleans_calc_chain_entries_for_cells_removed_from_sheet() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let temp_root = std::env::temp_dir().join(format!(
+        "excel_shrink_calc_chain_{}_{}",
+        std::process::id(),
+        unique
+    ));
+    let input_dir = temp_root.join("in");
+    let output_dir = temp_root.join("out");
+    std::fs::create_dir_all(&input_dir).unwrap();
+
+    let input = input_dir.join("calc_chain.xlsx");
+    let file = File::create(&input).unwrap();
+    let mut writer = ZipWriter::new(file);
+    let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    writer.start_file("xl/workbook.xml", options).unwrap();
+    writer
+        .write_all(br#"<workbook><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>"#)
+        .unwrap();
+    writer
+        .start_file("xl/_rels/workbook.xml.rels", options)
+        .unwrap();
+    writer
+        .write_all(br#"<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>"#)
+        .unwrap();
+    writer
+        .start_file("xl/worksheets/sheet1.xml", options)
+        .unwrap();
+    writer
+        .write_all(
+            br#"<worksheet><sheetData><row r="1"><c r="A1"><f>1+1</f><v>2</v></c><c r="B1"/></row></sheetData></worksheet>"#,
+        )
+        .unwrap();
+    writer.start_file("xl/calcChain.xml", options).unwrap();
+    writer
+        .write_all(br#"<calcChain><c r="A1" i="1"/><c r="B1"/></calcChain>"#)
+        .unwrap();
+    writer.finish().unwrap();
+
+    let mut cli = cli_with_analysis_flags(false, None);
+    cli.path = input.clone();
+    cli.output = output_dir.clone();
+    cli.force_overwrite = true;
+    cli.disable_multiprocessing = true;
+    cli.chunk_size = 64;
+    cli.writer_workers = Some(1);
+
+    process_files(vec![input.clone()], &cli).unwrap();
+
+    let output = output_dir.join("calc_chain.xlsx");
+    let file = File::open(output).unwrap();
+    let mut archive = ZipArchive::new(file).unwrap();
+    let mut sheet = String::new();
+    archive
+        .by_name("xl/worksheets/sheet1.xml")
+        .unwrap()
+        .read_to_string(&mut sheet)
+        .unwrap();
+    let mut calc_chain = String::new();
+    archive
+        .by_name("xl/calcChain.xml")
+        .unwrap()
+        .read_to_string(&mut calc_chain)
+        .unwrap();
+
+    assert!(!sheet.contains(r#"r="B1""#));
+    assert!(calc_chain.contains(r#"r="A1""#));
+    assert!(!calc_chain.contains(r#"r="B1""#));
+
+    let _ = std::fs::remove_dir_all(temp_root);
+}
