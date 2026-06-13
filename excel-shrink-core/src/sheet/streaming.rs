@@ -7,7 +7,7 @@ use crate::sheet::merge_cells::find_max_merge_cells;
 use crate::sheet::output::build_clean_sheet_xml;
 use crate::sheet::sheet_data::{pre_process_sheet_data_chunk, SheetDataPreprocessState};
 use crate::sheet::worksheet::{process_worksheet_node, WorksheetTag};
-use crate::xml::{find_bytes, rfind_bytes};
+use crate::xml::rfind_bytes;
 use regex::bytes::Regex;
 use std::io::Read;
 use std::sync::OnceLock;
@@ -162,7 +162,7 @@ pub fn preprocess_sheet_xml_streamwise(
             }
 
             SheetStreamingState::InSheetDataNode => {
-                if let Some(idx) = find_bytes(&buffer, b"</sheetData>") {
+                if let Some(idx) = rfind_bytes(&buffer, b"</sheetData>") {
                     let chunk = &buffer[..idx];
 
                     let preprocess_state = get_or_create_sheet_data_preprocess_state(
@@ -178,7 +178,7 @@ pub fn preprocess_sheet_xml_streamwise(
                         &mut result.clean_sheet_metrics,
                     )?;
 
-                    result.sheet_data.extend_from_slice(&cleaned_chunk);
+                    extend_without_large_growth(&mut result.sheet_data, &cleaned_chunk);
 
                     buffer = buffer[idx..].to_vec();
                     state = SheetStreamingState::InWorksheetNode;
@@ -202,7 +202,7 @@ pub fn preprocess_sheet_xml_streamwise(
                             &mut result.clean_sheet_metrics,
                         )?;
 
-                        result.sheet_data.extend_from_slice(&cleaned_chunk);
+                        extend_without_large_growth(&mut result.sheet_data, &cleaned_chunk);
 
                         buffer = buffer[last_row_start..].to_vec();
                     }
@@ -236,4 +236,12 @@ pub fn preprocess_sheet_xml_streamwise(
     }
 
     Ok(result)
+}
+
+fn extend_without_large_growth(out: &mut Vec<u8>, bytes: &[u8]) {
+    let spare = out.capacity().saturating_sub(out.len());
+    if spare < bytes.len() {
+        out.reserve_exact((bytes.len() - spare).max(16 * 1024 * 1024));
+    }
+    out.extend_from_slice(bytes);
 }

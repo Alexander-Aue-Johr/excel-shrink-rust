@@ -236,7 +236,8 @@ impl CleanupStats {
 
 #[derive(Debug, Clone)]
 pub struct CleanupCandidate {
-    pub coordinate: CellCoordinate,
+    pub col: u32,
+    pub row: u32,
     pub cause: CleanupCause,
 }
 
@@ -325,9 +326,9 @@ pub struct RowAttributes {
 
 #[derive(Debug, Clone)]
 pub struct CellAttributes {
-    pub cell_attribute_string: Vec<u8>,
-    pub cell_coordinate: CellCoordinate,
-    pub style: Option<Xf>,
+    pub col: u32,
+    pub row: u32,
+    pub kept_only_for_protection: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

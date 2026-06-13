@@ -1,5 +1,6 @@
 use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause};
 use crate::xml::{find_byte_from, find_bytes};
+use std::borrow::Cow;
 
 #[derive(Debug, Clone, Default)]
 pub struct HiddenRowCollapseState {
@@ -9,38 +10,38 @@ pub struct HiddenRowCollapseState {
 pub fn remove_hidden_rows_if_present(chunk: &[u8], _params: &CleanSheetParameters) -> Vec<u8> {
     let mut state = HiddenRowCollapseState::default();
     let mut metrics = CleanSheetMetrics::default();
-    remove_hidden_rows_if_present_with_state(chunk, &mut state, &mut metrics)
+    remove_hidden_rows_if_present_with_state(chunk, &mut state, &mut metrics).into_owned()
 }
 
-pub fn remove_hidden_rows_if_present_with_state(
-    chunk: &[u8],
+pub fn remove_hidden_rows_if_present_with_state<'a>(
+    chunk: &'a [u8],
     state: &mut HiddenRowCollapseState,
     metrics: &mut CleanSheetMetrics,
-) -> Vec<u8> {
+) -> Cow<'a, [u8]> {
     if find_bytes(chunk, b"hidden=\"1\"").is_none() {
         state.previous_kept_hidden_empty_row = false;
-        return chunk.to_vec();
+        return Cow::Borrowed(chunk);
     }
 
     collapse_consecutive_hidden_empty_rows(chunk, state, metrics)
 }
 
-fn collapse_consecutive_hidden_empty_rows(
-    chunk: &[u8],
+fn collapse_consecutive_hidden_empty_rows<'a>(
+    chunk: &'a [u8],
     state: &mut HiddenRowCollapseState,
     metrics: &mut CleanSheetMetrics,
-) -> Vec<u8> {
-    let mut out = Vec::with_capacity(chunk.len());
+) -> Cow<'a, [u8]> {
+    let mut out: Option<Vec<u8>> = None;
     let mut pos = 0;
 
     while let Some(row_start_relative) = find_bytes(&chunk[pos..], b"<row") {
         let row_start = pos + row_start_relative;
 
-        out.extend_from_slice(&chunk[pos..row_start]);
-
         let Some(row_end) = find_row_end(chunk, row_start) else {
-            out.extend_from_slice(&chunk[row_start..]);
-            return out;
+            if let Some(out) = out.as_mut() {
+                out.extend_from_slice(&chunk[pos..]);
+            }
+            return out.map_or(Cow::Borrowed(chunk), Cow::Owned);
         };
 
         let row = &chunk[row_start..row_end];
@@ -49,24 +50,38 @@ fn collapse_consecutive_hidden_empty_rows(
 
         if is_hidden_empty_row {
             if !state.previous_kept_hidden_empty_row {
-                out.extend_from_slice(row);
+                if let Some(out) = out.as_mut() {
+                    out.extend_from_slice(&chunk[pos..row_end]);
+                }
                 state.previous_kept_hidden_empty_row = true;
             } else {
+                if out.is_none() {
+                    let mut new_out = Vec::with_capacity(chunk.len().min(64 * 1024 * 1024));
+                    new_out.extend_from_slice(&chunk[..row_start]);
+                    out = Some(new_out);
+                } else if let Some(out) = out.as_mut() {
+                    out.extend_from_slice(&chunk[pos..row_start]);
+                }
                 metrics.cleanup_stats.record_removed(
                     CleanupCause::PreprocessConsecutiveHiddenEmptyRows,
                     row.len(),
                 );
             }
         } else {
-            out.extend_from_slice(row);
+            if let Some(out) = out.as_mut() {
+                out.extend_from_slice(&chunk[pos..row_end]);
+            }
             state.previous_kept_hidden_empty_row = false;
         }
 
         pos = row_end;
     }
 
-    out.extend_from_slice(&chunk[pos..]);
-    out
+    if let Some(out) = out.as_mut() {
+        out.extend_from_slice(&chunk[pos..]);
+    }
+
+    out.map_or(Cow::Borrowed(chunk), Cow::Owned)
 }
 
 fn is_hidden_empty_row(row: &[u8]) -> bool {

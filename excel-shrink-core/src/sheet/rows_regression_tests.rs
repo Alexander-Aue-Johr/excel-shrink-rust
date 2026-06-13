@@ -2,6 +2,7 @@ use super::{replace_empty_row_after_cell_range, replace_row};
 use crate::models::{
     CleanSheetMetrics, CleanSheetParameters, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
 };
+use crate::sheet::sheet_data::clean_sheet_rows_and_cells_in_cell_range;
 use regex::bytes::Regex;
 use std::collections::HashMap;
 use zip::CompressionMethod;
@@ -131,4 +132,20 @@ fn adds_custom_height_to_empty_row_after_cell_range_with_height() {
         cleaned,
         br#"<row r="16" customFormat="1" ht="27" customHeight="1"/>"#
     );
+}
+
+#[test]
+fn postprocess_collapses_consecutive_hidden_empty_rows_with_excel_tail_attributes() {
+    let params = params_with_styles(&[]);
+    let sheet_data = br#"<row r="307905" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307906" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307907" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307908" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row>"#;
+    let mut metrics = CleanSheetMetrics::default();
+
+    let cleaned = clean_sheet_rows_and_cells_in_cell_range(sheet_data, &params, &mut metrics)
+        .expect("hidden empty rows should clean");
+    let cleaned = String::from_utf8(cleaned).unwrap();
+
+    assert!(cleaned.contains(r#"<row r="307905" hidden="1"/>"#));
+    assert!(!cleaned.contains(r#"r="307906""#));
+    assert!(!cleaned.contains(r#"r="307907""#));
+    assert!(!cleaned.contains(r#"r="307908""#));
 }

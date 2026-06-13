@@ -1,18 +1,16 @@
 use crate::models::{
-    CellAttributes, CellCoordinate, CleanSheetMetrics, CleanSheetParameters, CleanupCandidate,
-    CleanupCause, Xf,
+    CellAttributes, CleanSheetMetrics, CleanSheetParameters, CleanupCandidate, CleanupCause, Xf,
 };
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
 use regex::bytes::Captures;
 
 #[derive(Debug, Clone, Copy)]
-struct ParsedCell<'a> {
-    raw: &'a [u8],
-    attr: &'a [u8],
-    column: &'a [u8],
-    row: &'a [u8],
-    col_num: u32,
-    style_id: Option<u32>,
+pub(crate) struct ParsedCell<'a> {
+    pub(crate) raw: &'a [u8],
+    pub(crate) attr: &'a [u8],
+    pub(crate) row: &'a [u8],
+    pub(crate) col_num: u32,
+    pub(crate) style_id: Option<u32>,
 }
 
 impl<'a> ParsedCell<'a> {
@@ -30,7 +28,6 @@ impl<'a> ParsedCell<'a> {
         Some(Self {
             raw,
             attr,
-            column,
             row,
             col_num,
             style_id,
@@ -42,14 +39,26 @@ impl<'a> ParsedCell<'a> {
             .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id))
     }
 
-    fn to_cell_attributes(&self, style: Option<&Xf>) -> CellAttributes {
+    fn to_cell_attributes(&self) -> CellAttributes {
+        self.to_cell_attributes_with_protection_only(false)
+    }
+
+    fn to_cell_attributes_with_protection_only(
+        &self,
+        kept_only_for_protection: bool,
+    ) -> CellAttributes {
         CellAttributes {
-            cell_attribute_string: self.attr.to_vec(),
-            cell_coordinate: CellCoordinate {
-                column: self.column.to_vec(),
-                row: self.row.to_vec(),
-            },
-            style: style.cloned(),
+            col: self.col_num,
+            row: digits_byte_string_to_integer(self.row),
+            kept_only_for_protection,
+        }
+    }
+
+    fn to_cleanup_candidate(&self, cause: CleanupCause) -> CleanupCandidate {
+        CleanupCandidate {
+            col: self.col_num,
+            row: digits_byte_string_to_integer(self.row),
+            cause,
         }
     }
 }
@@ -66,7 +75,7 @@ pub fn replace_cell(
     replace_parsed_cell(&cell, params, metrics)
 }
 
-fn replace_parsed_cell(
+pub(crate) fn replace_parsed_cell(
     cell: &ParsedCell<'_>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
@@ -74,6 +83,7 @@ fn replace_parsed_cell(
     let style = cell.style(params);
     let is_hidden = cell_is_hidden(cell, metrics);
     let is_excel_protected = cell_has_relevant_protection_style(cell, style, metrics);
+    record_visible_cell_bounds(cell, style, metrics);
 
     if unreferenced_whitespace_cleanup_enabled(params)
         || unreferenced_hidden_content_cleanup_enabled(params)
@@ -92,14 +102,12 @@ fn replace_parsed_cell(
         }
 
         if let Some(cause) = candidate_cause {
-            let attrs = cell.to_cell_attributes(style);
             if !is_excel_protected {
-                metrics.candidates.push(CleanupCandidate {
-                    coordinate: attrs.cell_coordinate.clone(),
-                    cause,
-                });
+                metrics.candidates.push(cell.to_cleanup_candidate(cause));
             }
-            metrics.kept_cell_states.push(attrs);
+            metrics
+                .kept_cell_states
+                .push(cell.to_cell_attributes_with_protection_only(is_excel_protected));
             return cell.raw.to_vec();
         }
     }
@@ -110,21 +118,15 @@ fn replace_parsed_cell(
                 metrics
                     .cleanup_stats
                     .record_removed(CleanupCause::EmptyHiddenCells, cell.raw.len());
-                metrics
-                    .deleted_cell_states
-                    .push(cell.to_cell_attributes(style));
+                metrics.deleted_cell_states.push(cell.to_cell_attributes());
                 return Vec::new();
             }
 
-            metrics
-                .kept_cell_states
-                .push(cell.to_cell_attributes(style));
+            metrics.kept_cell_states.push(cell.to_cell_attributes());
             return cell.raw.to_vec();
         }
 
-        metrics
-            .kept_cell_states
-            .push(cell.to_cell_attributes(style));
+        metrics.kept_cell_states.push(cell.to_cell_attributes());
         return cell.raw.to_vec();
     }
 
@@ -132,21 +134,18 @@ fn replace_parsed_cell(
         if !has_content(cell.raw) {
             return remove_or_keep_empty_cell(
                 cell,
-                None,
                 params,
                 metrics,
                 CleanupCause::EmptyCellsWithoutContent,
             );
         }
 
-        metrics.kept_cell_states.push(cell.to_cell_attributes(None));
+        metrics.kept_cell_states.push(cell.to_cell_attributes());
         return cell.raw.to_vec();
     };
 
     if has_content(cell.raw) {
-        metrics
-            .kept_cell_states
-            .push(cell.to_cell_attributes(Some(style)));
+        metrics.kept_cell_states.push(cell.to_cell_attributes());
         return cell.raw.to_vec();
     }
 
@@ -157,13 +156,14 @@ fn replace_parsed_cell(
         let out = generate_self_closing_cell_xml(cell.attr);
         metrics
             .kept_cell_states
-            .push(cell.to_cell_attributes(Some(style)));
+            .push(cell.to_cell_attributes_with_protection_only(
+                has_relevant_protection && !has_effective_fill_or_border,
+            ));
         return out;
     }
 
     remove_or_keep_empty_cell(
         cell,
-        Some(style),
         params,
         metrics,
         CleanupCause::EmptyCellsWithoutContent,
@@ -172,21 +172,16 @@ fn replace_parsed_cell(
 
 fn remove_or_keep_empty_cell(
     cell: &ParsedCell<'_>,
-    style: Option<&Xf>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     cause: CleanupCause,
 ) -> Vec<u8> {
     if params.cleanup.empty_cells_without_content {
         metrics.cleanup_stats.record_removed(cause, cell.raw.len());
-        metrics
-            .deleted_cell_states
-            .push(cell.to_cell_attributes(style));
+        metrics.deleted_cell_states.push(cell.to_cell_attributes());
         Vec::new()
     } else {
-        metrics
-            .kept_cell_states
-            .push(cell.to_cell_attributes(style));
+        metrics.kept_cell_states.push(cell.to_cell_attributes());
         cell.raw.to_vec()
     }
 }
@@ -239,6 +234,34 @@ fn cell_has_effective_fill_or_border(
 
     cell_has_effective_fill(cell_style, row_style, column_style)
         || cell_has_effective_border(cell_style, row_style, column_style)
+}
+
+fn record_visible_cell_bounds(
+    cell: &ParsedCell<'_>,
+    cell_style: Option<&Xf>,
+    metrics: &mut CleanSheetMetrics,
+) {
+    let Ok(row_str) = std::str::from_utf8(cell.row) else {
+        return;
+    };
+    let Ok(row_num) = row_str.parse::<u32>() else {
+        return;
+    };
+
+    let column_style = metrics
+        .column_definitions
+        .get(cell.col_num)
+        .and_then(|column| column.cell_xf.as_ref());
+
+    let is_visible = has_content(cell.raw)
+        || cell_style.is_some_and(|style| cell_has_effective_fill_or_border(style, cell, metrics))
+        || column_style.is_some_and(|style| style.has_fill_or_border);
+
+    if is_visible {
+        metrics
+            .visible_content_bounds
+            .include_cell(cell.col_num, row_num);
+    }
 }
 
 fn cell_has_effective_fill(
@@ -360,21 +383,7 @@ fn cell_has_relevant_protection_style(
         return false;
     }
 
-    if metrics.sheet_protection_enabled {
-        return true;
-    }
-
-    let Ok(row_str) = std::str::from_utf8(cell.row) else {
-        return true;
-    };
-
-    let Ok(row_num) = row_str.parse::<u32>() else {
-        return true;
-    };
-
-    !metrics
-        .visible_content_bounds
-        .cell_is_outside(cell.col_num, row_num)
+    true
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@ use crate::error::Result;
 use crate::models::{CleanSheetParameters, CleanedSheetData, CleanupCause, Xf};
 use crate::sheet::cols::merge_extraneous_columns;
 use crate::sheet::ranges::{
-    find_visible_content_bounds, get_max_cell_column, get_max_merge_cells_column_index,
+    get_max_cell_column, get_max_cell_row, get_max_merge_cells_column_index,
     retrieve_sheet_data_range_containing_cells,
 };
 use crate::sheet::sheet_data::{
@@ -11,9 +11,11 @@ use crate::sheet::sheet_data::{
 use crate::sheet::streaming::PreprocessedSheetXml;
 use crate::xml::{find_byte_from, find_bytes, rfind_bytes};
 use regex::bytes::Regex;
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 static SHEET_PROTECTION_RE: OnceLock<Regex> = OnceLock::new();
+static CELL_RE: OnceLock<Regex> = OnceLock::new();
 
 pub fn build_clean_sheet_xml(
     preprocessed: PreprocessedSheetXml,
@@ -24,11 +26,9 @@ pub fn build_clean_sheet_xml(
     let mut metrics = preprocessed.clean_sheet_metrics;
     metrics.cleanup_stats.enabled |= params.collect_cleanup_stats;
     metrics.sheet_protection_enabled = sheet_protection_enabled;
-    metrics.visible_content_bounds = find_visible_content_bounds(
-        &preprocessed.sheet_data,
-        params,
-        &metrics.column_definitions,
-    );
+    if let Some(column) = metrics.column_definitions.get_last_visible_range(false) {
+        metrics.visible_content_bounds.include_col(column.max);
+    }
 
     let use_range_tail_pruning =
         !disable_sheetdata_splitting && params.cleanup.sheetdata_range_tail_pruning;
@@ -60,20 +60,42 @@ pub fn build_clean_sheet_xml(
         [cleaned_cells_range, cleaned_visible_rows_range].concat()
     };
 
-    let final_sheet_data = if params.cleanup.trailing_layout_only_rows {
-        trim_trailing_layout_only_rows(&final_sheet_data, params, &mut metrics)
+    let mut final_sheet_data = if params.cleanup.trailing_layout_only_rows {
+        trim_trailing_layout_only_rows_vec(final_sheet_data, params, &mut metrics)
     } else {
         final_sheet_data
     };
 
     let max_cell_column = get_max_cell_column(&metrics);
+    let max_cell_row = get_max_cell_row(&metrics);
     let max_merge_column = get_max_merge_cells_column_index(&metrics);
 
-    let max_column = [max_cell_column, max_merge_column]
+    let max_column = [
+        max_cell_column,
+        max_merge_column,
+        metrics.visible_content_bounds.max_col,
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .unwrap_or(0);
+    let max_row = [max_cell_row, metrics.visible_content_bounds.max_row]
         .into_iter()
         .flatten()
         .max()
         .unwrap_or(0);
+
+    final_sheet_data = remove_protection_only_cells_outside_bounds(
+        final_sheet_data,
+        max_column,
+        max_row,
+        &mut metrics,
+    );
+
+    if params.cleanup.trailing_layout_only_rows {
+        final_sheet_data =
+            trim_trailing_layout_only_rows_vec(final_sheet_data, params, &mut metrics);
+    }
 
     let in_cols_node_output_chunks = if params.cleanup.extraneous_column_range_merge {
         merge_extraneous_columns(&preprocessed.in_cols_node_output_chunks, max_column)
@@ -101,11 +123,98 @@ pub fn build_clean_sheet_xml(
     Ok(CleanedSheetData { xml: out, metrics })
 }
 
-fn trim_trailing_layout_only_rows(
+fn remove_protection_only_cells_outside_bounds(
+    sheet_data: Vec<u8>,
+    max_column: u32,
+    max_row: u32,
+    metrics: &mut crate::models::CleanSheetMetrics,
+) -> Vec<u8> {
+    let protected_outside_refs: HashSet<(u32, u32)> = metrics
+        .kept_cell_states
+        .iter()
+        .filter(|cell| cell.kept_only_for_protection)
+        .filter_map(|cell| {
+            if cell.col > max_column || cell.row > max_row {
+                Some((cell.col, cell.row))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if protected_outside_refs.is_empty() {
+        return sheet_data;
+    }
+
+    let cell_re =
+        CELL_RE.get_or_init(|| Regex::new(r#"(?s)<c\b([^>]*)/>|<c\b([^>]*)>.*?</c>"#).unwrap());
+
+    let mut out = Vec::with_capacity(sheet_data.len().min(64 * 1024 * 1024));
+    let mut last_end = 0;
+
+    for caps in cell_re.captures_iter(&sheet_data) {
+        let Some(cell_match) = caps.get(0) else {
+            continue;
+        };
+        out.extend_from_slice(&sheet_data[last_end..cell_match.start()]);
+
+        let attr = caps
+            .get(1)
+            .or_else(|| caps.get(2))
+            .map_or(b"".as_slice(), |m| m.as_bytes());
+        let remove = extract_attribute_value(attr, b"r")
+            .and_then(parse_cell_reference)
+            .is_some_and(|reference| protected_outside_refs.contains(&reference));
+
+        if remove {
+            metrics.cleanup_stats.record_removed(
+                CleanupCause::EmptyCellsWithoutContent,
+                cell_match.as_bytes().len(),
+            );
+        } else {
+            out.extend_from_slice(cell_match.as_bytes());
+        }
+
+        last_end = cell_match.end();
+    }
+
+    out.extend_from_slice(&sheet_data[last_end..]);
+    out
+}
+
+pub fn trim_trailing_layout_only_rows(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
     metrics: &mut crate::models::CleanSheetMetrics,
 ) -> Vec<u8> {
+    let end = trailing_layout_only_rows_cutoff(sheet_data, params, metrics);
+
+    if end == sheet_data.len() {
+        sheet_data.to_vec()
+    } else {
+        sheet_data[..end].to_vec()
+    }
+}
+
+pub fn trim_trailing_layout_only_rows_vec(
+    mut sheet_data: Vec<u8>,
+    params: &CleanSheetParameters,
+    metrics: &mut crate::models::CleanSheetMetrics,
+) -> Vec<u8> {
+    let end = trailing_layout_only_rows_cutoff(&sheet_data, params, metrics);
+
+    if end < sheet_data.len() {
+        sheet_data.truncate(end);
+    }
+
+    sheet_data
+}
+
+fn trailing_layout_only_rows_cutoff(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut crate::models::CleanSheetMetrics,
+) -> usize {
     let mut end = sheet_data.len();
 
     loop {
@@ -126,7 +235,7 @@ fn trim_trailing_layout_only_rows(
 
         let row = &sheet_data[row_start..row_end];
 
-        if trailing_row_is_layout_only(row, params, metrics.sheet_protection_enabled) {
+        if trailing_row_is_layout_only(row, params) {
             metrics
                 .cleanup_stats
                 .record_removed(CleanupCause::TrailingLayoutOnlyRows, row.len());
@@ -137,11 +246,7 @@ fn trim_trailing_layout_only_rows(
         break;
     }
 
-    if end == sheet_data.len() {
-        sheet_data.to_vec()
-    } else {
-        sheet_data[..end].to_vec()
-    }
+    end
 }
 
 fn find_row_end(data: &[u8], row_start: usize) -> Option<usize> {
@@ -157,11 +262,7 @@ fn find_row_end(data: &[u8], row_start: usize) -> Option<usize> {
     Some(content_start + closing_relative + b"</row>".len())
 }
 
-fn trailing_row_is_layout_only(
-    row: &[u8],
-    params: &CleanSheetParameters,
-    sheet_protection_enabled: bool,
-) -> bool {
+fn trailing_row_is_layout_only(row: &[u8], params: &CleanSheetParameters) -> bool {
     if find_bytes(row, b"<c").is_some() {
         return false;
     }
@@ -170,7 +271,7 @@ fn trailing_row_is_layout_only(
         return true;
     }
 
-    if row_has_visible_style(row, params, sheet_protection_enabled) {
+    if row_has_visible_style(row, params) {
         return false;
     }
 
@@ -181,23 +282,19 @@ fn row_is_hidden(row: &[u8]) -> bool {
     find_bytes(row, b" hidden=\"1\"").is_some() || find_bytes(row, b" hidden=\"true\"").is_some()
 }
 
-fn row_has_visible_style(
-    row: &[u8],
-    params: &CleanSheetParameters,
-    sheet_protection_enabled: bool,
-) -> bool {
+fn row_has_visible_style(row: &[u8], params: &CleanSheetParameters) -> bool {
     let Some(style_id) = extract_style_id(row) else {
         return false;
     };
 
     match params.patterns.xfs_by_index.get(&style_id) {
-        Some(style) => style_is_visible_anchor(style, sheet_protection_enabled),
+        Some(style) => style_is_visible_anchor(style),
         None => true, // conservative: unknown row style may be visible
     }
 }
 
-fn style_is_visible_anchor(style: &Xf, sheet_protection_enabled: bool) -> bool {
-    style.has_fill_or_border || (sheet_protection_enabled && style.has_apply_protection)
+fn style_is_visible_anchor(style: &Xf) -> bool {
+    style.has_fill_or_border
 }
 
 fn extract_style_id(tag: &[u8]) -> Option<u32> {
@@ -264,6 +361,27 @@ fn extract_attribute_value<'a>(tag: &'a [u8], attr: &[u8]) -> Option<&'a [u8]> {
     }
 
     None
+}
+
+fn parse_cell_reference(reference: &[u8]) -> Option<(u32, u32)> {
+    let split = reference
+        .iter()
+        .position(|byte| byte.is_ascii_digit())
+        .filter(|split| *split > 0 && *split < reference.len())?;
+
+    let column = &reference[..split];
+    let row = &reference[split..];
+
+    if !column.iter().all(|byte| byte.is_ascii_uppercase())
+        || !row.iter().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+
+    Some((
+        crate::utils::letters_byte_string_to_integer(column),
+        crate::utils::digits_byte_string_to_integer(row),
+    ))
 }
 
 #[cfg(test)]
@@ -388,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn protected_sheet_keeps_empty_apply_protection_cell_outside_visible_bounds() {
+    fn protected_sheet_removes_empty_apply_protection_cell_outside_visible_bounds() {
         let params = params_with_styles(&[(7, apply_protection_only_style())]);
         let preprocessed = preprocessed_with_sheet_data(
             br#"<row r="1"><c r="A1"><v>1</v></c><c r="C1" s="7"/></row>"#,
@@ -398,7 +516,22 @@ mod tests {
         let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
         let xml = String::from_utf8_lossy(&cleaned.xml);
 
-        assert!(xml.contains(r#"<c r="C1" s="7"/>"#));
+        assert!(xml.contains(r#"<c r="A1"><v>1</v></c>"#));
+        assert!(!xml.contains(r#"r="C1""#));
+    }
+
+    #[test]
+    fn protected_sheet_keeps_empty_apply_protection_cell_inside_visible_bounds() {
+        let params = params_with_styles(&[(7, apply_protection_only_style())]);
+        let preprocessed = preprocessed_with_sheet_data(
+            br#"<row r="1"><c r="A1" s="7"/></row><row r="2"><c r="C2"><v>1</v></c></row>"#,
+            Some(br#"<sheetProtection sheet="1"/>"#),
+        );
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(xml.contains(r#"<c r="A1" s="7"/>"#));
     }
 
     #[test]

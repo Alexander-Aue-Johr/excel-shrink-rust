@@ -1,20 +1,36 @@
 use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, RowAttributes, Xf};
-use crate::sheet::cells::replace_cell;
-use crate::utils::digits_byte_string_to_integer;
-use crate::xml::find_bytes;
-use regex::bytes::{Captures, Regex};
-use std::sync::OnceLock;
-
-static PROCESS_SELF_CLOSING_CELLS_RE: OnceLock<Regex> = OnceLock::new();
-static PROCESS_ALL_CELLS_RE: OnceLock<Regex> = OnceLock::new();
+use crate::sheet::cells::{replace_parsed_cell, ParsedCell};
+use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
+use crate::xml::{find_byte_from, find_bytes};
+use regex::bytes::Captures;
 
 pub fn replace_row(
     caps: &Captures,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
-    let Some((row_attributes, original_row_content)) = extract_row_attributes(caps, params) else {
+    let Some(row_match) = caps.get(0).map(|m| m.as_bytes()) else {
+        return Vec::new();
+    };
+    let Some(row_attr) = caps.get(1).map(|m| m.as_bytes()) else {
         return caps.get(0).unwrap().as_bytes().to_vec();
+    };
+    let row_content = caps.get(6).map(|m| m.as_bytes());
+
+    replace_row_bytes(row_match, row_attr, row_content, params, metrics)
+}
+
+pub fn replace_row_bytes(
+    row_raw: &[u8],
+    row_attr: &[u8],
+    row_content: Option<&[u8]>,
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+) -> Vec<u8> {
+    let Some((row_attributes, original_row_content)) =
+        extract_row_attributes_from_parts(row_attr, row_content, params)
+    else {
+        return row_raw.to_vec();
     };
 
     let mut row_attr_str = row_attributes.row_attr.clone();
@@ -25,6 +41,7 @@ pub fn replace_row(
     metrics
         .row_attributes
         .insert(row_attributes.ref_.clone(), row_attributes.clone());
+    record_visible_row_bounds(&row_attributes, metrics);
 
     let was_already_empty = original_row_content.is_empty();
 
@@ -40,10 +57,9 @@ pub fn replace_row(
         if is_hidden {
             if previous_row_was_also_hidden(metrics) {
                 if params.cleanup.consecutive_hidden_empty_rows {
-                    metrics.cleanup_stats.record_removed(
-                        CleanupCause::ConsecutiveHiddenEmptyRows,
-                        caps.get(0).unwrap().as_bytes().len(),
-                    );
+                    metrics
+                        .cleanup_stats
+                        .record_removed(CleanupCause::ConsecutiveHiddenEmptyRows, row_raw.len());
                     metrics.deleted_row_states.push(row_attributes);
                     return Vec::new();
                 }
@@ -70,7 +86,7 @@ pub fn replace_row(
             if params.cleanup.empty_rows_without_visible_style_or_height {
                 metrics.cleanup_stats.record_removed(
                     CleanupCause::EmptyRowsWithoutVisibleStyleOrHeight,
-                    caps.get(0).unwrap().as_bytes().len(),
+                    row_raw.len(),
                 );
                 metrics.deleted_row_states.push(row_attributes);
                 return Vec::new();
@@ -92,8 +108,24 @@ pub fn replace_empty_row_after_cell_range(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
-    let Some(row_attributes) = extract_empty_row_attributes(caps, params) else {
+    let Some(row_match) = caps.get(0).map(|m| m.as_bytes()) else {
+        return Vec::new();
+    };
+    let Some(row_attr) = caps.get(1).map(|m| m.as_bytes()) else {
         return caps.get(0).unwrap().as_bytes().to_vec();
+    };
+
+    replace_empty_row_after_cell_range_bytes(row_match, row_attr, params, metrics)
+}
+
+pub fn replace_empty_row_after_cell_range_bytes(
+    row_raw: &[u8],
+    row_attr: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+) -> Vec<u8> {
+    let Some(row_attributes) = extract_empty_row_attributes_from_attr(row_attr, params) else {
+        return row_raw.to_vec();
     };
 
     let mut row_attr_str = row_attributes.row_attr.clone();
@@ -104,14 +136,14 @@ pub fn replace_empty_row_after_cell_range(
     metrics
         .row_attributes
         .insert(row_attributes.ref_.clone(), row_attributes.clone());
+    record_visible_row_bounds(&row_attributes, metrics);
 
     if is_hidden {
         if previous_row_was_also_hidden(metrics) {
             if params.cleanup.consecutive_hidden_empty_rows {
-                metrics.cleanup_stats.record_removed(
-                    CleanupCause::ConsecutiveHiddenEmptyRows,
-                    caps.get(0).unwrap().as_bytes().len(),
-                );
+                metrics
+                    .cleanup_stats
+                    .record_removed(CleanupCause::ConsecutiveHiddenEmptyRows, row_raw.len());
                 metrics.deleted_row_states.push(row_attributes);
                 return Vec::new();
             }
@@ -133,7 +165,7 @@ pub fn replace_empty_row_after_cell_range(
         if params.cleanup.empty_rows_without_visible_style_or_height {
             metrics.cleanup_stats.record_removed(
                 CleanupCause::EmptyRowsWithoutVisibleStyleOrHeight,
-                caps.get(0).unwrap().as_bytes().len(),
+                row_raw.len(),
             );
             metrics.deleted_row_states.push(row_attributes);
             return Vec::new();
@@ -156,56 +188,106 @@ fn clean_cells(
         return Vec::new();
     }
 
-    let needs_content_cell_scan = params.cleanup.unreferenced_whitespace_cells
-        || params.cleanup.unreferenced_hidden_content_cells
-        || params.advanced_cleanup.as_ref().is_some_and(|advanced| {
-            advanced.remove_unreferenced_whitespace || advanced.remove_unreferenced_hidden_content
-        });
+    let mut out = Vec::with_capacity(row_content.len().min(64 * 1024));
+    let mut pos = 0;
 
-    let cell_re = if needs_content_cell_scan {
-        PROCESS_ALL_CELLS_RE.get_or_init(|| {
-            Regex::new(
-                r#"(?s)<c\b((?:[^>]*\br="([A-Z]+)(\d+)")?(?:[^>]*\bs="(\d+?)")?[^>]*?)(?:/>|>.*?</c>)"#,
-            )
-            .unwrap()
-        })
-    } else {
-        PROCESS_SELF_CLOSING_CELLS_RE.get_or_init(|| {
-            Regex::new(r#"<c\b((?:[^>]*\br="([A-Z]+)(\d+)")?(?:[^>]*\bs="(\d+?)")?[^>]*?)/>"#)
-                .unwrap()
-        })
-    };
+    while let Some(cell_start_rel) = find_bytes(&row_content[pos..], b"<c") {
+        let cell_start = pos + cell_start_rel;
 
-    cell_re
-        .replace_all(row_content, |caps: &Captures| {
-            replace_cell(caps, params, metrics)
-        })
-        .into_owned()
+        if !is_cell_tag_start(row_content, cell_start) {
+            out.extend_from_slice(&row_content[pos..cell_start + b"<c".len()]);
+            pos = cell_start + b"<c".len();
+            continue;
+        }
+
+        let Some(tag_end) = find_byte_from(row_content, b'>', cell_start) else {
+            break;
+        };
+
+        let attr_start = cell_start + b"<c".len();
+        let self_closing = tag_end > cell_start && row_content[tag_end - 1] == b'/';
+        let attr_end = if self_closing { tag_end - 1 } else { tag_end };
+
+        let (cell_end, raw) = if self_closing {
+            (tag_end + 1, &row_content[cell_start..tag_end + 1])
+        } else {
+            let content_start = tag_end + 1;
+            let Some(close_rel) = find_bytes(&row_content[content_start..], b"</c>") else {
+                break;
+            };
+            let cell_end = content_start + close_rel + b"</c>".len();
+            (cell_end, &row_content[cell_start..cell_end])
+        };
+
+        out.extend_from_slice(&row_content[pos..cell_start]);
+
+        let attr = &row_content[attr_start..attr_end];
+        if let Some(cell) = parse_cell_from_parts(raw, attr) {
+            out.extend_from_slice(&replace_parsed_cell(&cell, params, metrics));
+        } else {
+            out.extend_from_slice(raw);
+        }
+
+        pos = cell_end;
+    }
+
+    out.extend_from_slice(&row_content[pos..]);
+    out
 }
 
-fn extract_row_attributes(
-    caps: &Captures,
+fn is_cell_tag_start(data: &[u8], cell_start: usize) -> bool {
+    matches!(
+        data.get(cell_start + b"<c".len()),
+        Some(byte) if byte.is_ascii_whitespace() || matches!(byte, b'/' | b'>')
+    )
+}
+
+fn parse_cell_from_parts<'a>(raw: &'a [u8], attr: &'a [u8]) -> Option<ParsedCell<'a>> {
+    let reference = extract_attr_value(attr, b"r")?;
+    let split = reference
+        .iter()
+        .position(|byte| byte.is_ascii_digit())
+        .filter(|split| *split > 0 && *split < reference.len())?;
+
+    let column = &reference[..split];
+    let row = &reference[split..];
+
+    if !column.iter().all(|byte| byte.is_ascii_uppercase())
+        || !row.iter().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+
+    let style_id = extract_attr_value(attr, b"s").map(digits_byte_string_to_integer);
+
+    Some(ParsedCell {
+        raw,
+        attr,
+        row,
+        col_num: letters_byte_string_to_integer(column),
+        style_id,
+    })
+}
+
+fn extract_row_attributes_from_parts(
+    row_attr: &[u8],
+    row_content: Option<&[u8]>,
     params: &CleanSheetParameters,
 ) -> Option<(RowAttributes, Vec<u8>)> {
-    let row_attr = caps.get(1)?.as_bytes().to_vec();
-    let ref_ = caps
-        .get(2)
-        .map(|m| m.as_bytes().to_vec())
+    let row_attr_vec = row_attr.to_vec();
+    let ref_ = extract_attr_value(row_attr, b"r")
+        .map(|value| value.to_vec())
         .unwrap_or_default();
-    let hidden = caps.get(3).is_some();
-    let style_id = caps
-        .get(4)
-        .map(|m| digits_byte_string_to_integer(m.as_bytes()));
-    let ht = caps.get(5).is_some();
-    let original_row_content = caps
-        .get(6)
-        .map(|m| m.as_bytes().to_vec())
+    let hidden = extract_attr_value(row_attr, b"hidden").is_some_and(|value| value == b"1");
+    let style_id = extract_attr_value(row_attr, b"s").map(digits_byte_string_to_integer);
+    let ht = extract_attr_value(row_attr, b"ht").is_some();
+    let original_row_content = row_content
+        .map(|content| content.to_vec())
         .unwrap_or_default();
-
     let style = style_id.and_then(|id| params.patterns.xfs_by_index.get(&id).cloned());
 
     let row_attributes = RowAttributes {
-        row_attr,
+        row_attr: row_attr_vec,
         ref_,
         hidden,
         style,
@@ -216,25 +298,21 @@ fn extract_row_attributes(
     Some((row_attributes, original_row_content))
 }
 
-fn extract_empty_row_attributes(
-    caps: &Captures,
+fn extract_empty_row_attributes_from_attr(
+    row_attr: &[u8],
     params: &CleanSheetParameters,
 ) -> Option<RowAttributes> {
-    let row_attr = caps.get(1)?.as_bytes().to_vec();
-    let ref_ = caps
-        .get(2)
-        .map(|m| m.as_bytes().to_vec())
+    let row_attr_vec = row_attr.to_vec();
+    let ref_ = extract_attr_value(row_attr, b"r")
+        .map(|value| value.to_vec())
         .unwrap_or_default();
-    let hidden = caps.get(3).is_some();
-    let style_id = caps
-        .get(4)
-        .map(|m| digits_byte_string_to_integer(m.as_bytes()));
-    let ht = caps.get(5).is_some();
-
+    let hidden = extract_attr_value(row_attr, b"hidden").is_some_and(|value| value == b"1");
+    let style_id = extract_attr_value(row_attr, b"s").map(digits_byte_string_to_integer);
+    let ht = extract_attr_value(row_attr, b"ht").is_some();
     let style = style_id.and_then(|id| params.patterns.xfs_by_index.get(&id).cloned());
 
     Some(RowAttributes {
-        row_attr,
+        row_attr: row_attr_vec,
         ref_,
         hidden,
         style,
@@ -243,11 +321,53 @@ fn extract_empty_row_attributes(
     })
 }
 
+fn extract_attr_value<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
+    let mut search_start = 0;
+
+    while search_start < data.len() {
+        let relative = find_bytes(&data[search_start..], attr_name)?;
+        let attr_start = search_start + relative;
+        let value_marker = attr_start + attr_name.len();
+
+        if attr_start > 0
+            && data[attr_start - 1].is_ascii_whitespace()
+            && data.get(value_marker..value_marker + 2) == Some(b"=\"")
+        {
+            let value_start = value_marker + 2;
+            let value_end = data[value_start..].iter().position(|byte| *byte == b'"')?;
+            return Some(&data[value_start..value_start + value_end]);
+        }
+
+        search_start = attr_start + attr_name.len();
+    }
+
+    None
+}
+
 fn previous_row_was_also_hidden(metrics: &CleanSheetMetrics) -> bool {
     metrics
         .kept_row_states
         .last()
         .is_some_and(|previous| previous.hidden)
+}
+
+fn record_visible_row_bounds(row_attributes: &RowAttributes, metrics: &mut CleanSheetMetrics) {
+    if !row_attributes
+        .style
+        .as_ref()
+        .is_some_and(|style| style.has_fill_or_border)
+    {
+        return;
+    }
+
+    let Ok(row_str) = std::str::from_utf8(&row_attributes.ref_) else {
+        return;
+    };
+    let Ok(row_num) = row_str.parse::<u32>() else {
+        return;
+    };
+
+    metrics.visible_content_bounds.include_row(row_num);
 }
 
 fn empty_row_has_relevant_visible_or_protected_style(

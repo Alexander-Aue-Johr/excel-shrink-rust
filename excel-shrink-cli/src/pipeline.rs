@@ -18,6 +18,7 @@ use excel_shrink_core::models::{
 use excel_shrink_core::reference_scanner::{scan_for_references_by_sheet, ScanResult};
 use excel_shrink_core::shared_strings::find_whitespace_sst_indices;
 use excel_shrink_core::sheet::clean_sheet_data_streamwise;
+use excel_shrink_core::sheet::output::trim_trailing_layout_only_rows_vec;
 use excel_shrink_core::styles::parse_xfs;
 use excel_shrink_core::workbook::clean_workbook_with_stats;
 
@@ -486,16 +487,8 @@ fn apply_deferred_candidate_cleanup(
 ) -> Vec<u8> {
     let mut safe_refs = HashMap::new();
     for cand in candidates {
-        let coord = &cand.coordinate;
-        let col = excel_shrink_core::utils::letters_byte_string_to_integer(&coord.column);
-        if let Ok(row_str) = std::str::from_utf8(&coord.row) {
-            if let Ok(row) = row_str.parse::<u32>() {
-                if !protected_refs.contains(sheet_file, col, row) {
-                    let mut r = coord.column.clone();
-                    r.extend_from_slice(&coord.row);
-                    safe_refs.insert(r, cand.cause);
-                }
-            }
+        if !protected_refs.contains(sheet_file, cand.col, cand.row) {
+            safe_refs.insert((cand.col, cand.row), cand.cause);
         }
     }
 
@@ -508,7 +501,9 @@ fn apply_deferred_candidate_cleanup(
     xml = re
         .replace_all(&xml, |caps: &regex::bytes::Captures| {
             let r_val = caps.get(1).unwrap().as_bytes();
-            if let Some(cause) = safe_refs.get(r_val) {
+            if let Some(cause) =
+                parse_cell_reference(r_val).and_then(|reference| safe_refs.get(&reference))
+            {
                 stats.record_removed(*cause, caps.get(0).unwrap().as_bytes().len());
                 Vec::new()
             } else {
@@ -518,6 +513,27 @@ fn apply_deferred_candidate_cleanup(
         .into_owned();
 
     xml
+}
+
+fn parse_cell_reference(reference: &[u8]) -> Option<(u32, u32)> {
+    let split = reference
+        .iter()
+        .position(|byte| byte.is_ascii_digit())
+        .filter(|split| *split > 0 && *split < reference.len())?;
+
+    let column = &reference[..split];
+    let row = &reference[split..];
+
+    if !column.iter().all(|byte| byte.is_ascii_uppercase())
+        || !row.iter().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+
+    Some((
+        excel_shrink_core::utils::letters_byte_string_to_integer(column),
+        excel_shrink_core::utils::digits_byte_string_to_integer(row),
+    ))
 }
 
 pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()> {
@@ -580,6 +596,11 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 return;
             }
         };
+        let remove_unreferenced_whitespace_cells = !cli.disable_unreferenced_whitespace_cells;
+        let remove_unreferenced_hidden_content_cells =
+            !cli.disable_unreferenced_hidden_content_cells;
+        let do_advanced =
+            remove_unreferenced_whitespace_cells || remove_unreferenced_hidden_content_cells;
 
         let (tx, rx) = mpsc::channel::<WriteJob>();
         spawn_xlsx_writer(
@@ -601,7 +622,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         }
 
         let mut whitespace_indices = None;
-        if cli.remove_unreferenced_whitespace_cells {
+        if remove_unreferenced_whitespace_cells {
             if let Ok(mut sst_file) = archive.by_name("xl/sharedStrings.xml") {
                 let mut sst_data = Vec::new();
                 if sst_file.read_to_end(&mut sst_data).is_ok() {
@@ -616,8 +637,8 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             preprocess_consecutive_hidden_empty_rows: cli.preprocess_hidden_rows,
             preprocess_empty_self_closing_cells: cli.preprocess_empty_cells,
 
-            unreferenced_whitespace_cells: cli.remove_unreferenced_whitespace_cells,
-            unreferenced_hidden_content_cells: cli.remove_unreferenced_hidden_content_cells,
+            unreferenced_whitespace_cells: remove_unreferenced_whitespace_cells,
+            unreferenced_hidden_content_cells: remove_unreferenced_hidden_content_cells,
 
             sheetdata_range_tail_pruning: !attribution_safe_analysis && !cli.disable_tail_pruning,
             trailing_layout_only_rows: !cli.disable_trailing_layout_only_rows,
@@ -703,9 +724,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 };
                 let cleaned_wb_size = cleaned_wb.len();
 
-                if cli.remove_unreferenced_whitespace_cells
-                    || cli.remove_unreferenced_hidden_content_cells
-                {
+                if do_advanced {
                     workbook_xml_for_scan = Some(cleaned_wb.clone());
                 }
 
@@ -750,9 +769,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     }
                 }
             } else if name == "xl/_rels/workbook.xml.rels" {
-                if cli.remove_unreferenced_whitespace_cells
-                    || cli.remove_unreferenced_hidden_content_cells
-                {
+                if do_advanced {
                     let mut rels_buf = Vec::new();
                     match file.read_to_end(&mut rels_buf) {
                         Ok(_) => {
@@ -787,12 +804,10 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             }
         }
 
-        let do_advanced = cli.remove_unreferenced_whitespace_cells
-            || cli.remove_unreferenced_hidden_content_cells;
         let advanced_arc = if do_advanced {
             Some(Arc::new(AdvancedCleanupConfig {
-                remove_unreferenced_whitespace: cli.remove_unreferenced_whitespace_cells,
-                remove_unreferenced_hidden_content: cli.remove_unreferenced_hidden_content_cells,
+                remove_unreferenced_whitespace: remove_unreferenced_whitespace_cells,
+                remove_unreferenced_hidden_content: remove_unreferenced_hidden_content_cells,
             }))
         } else {
             None
@@ -816,7 +831,6 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 }
             };
 
-            let mut data = Vec::new();
             let mut sheet_file = match archive.by_name(&params.zip_info_filename) {
                 Ok(file) => file,
                 Err(e) => {
@@ -824,11 +838,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     return Err((params, index));
                 }
             };
-
-            if let Err(e) = sheet_file.read_to_end(&mut data) {
-                error!(event = "sheet_read_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to read sheet XML");
-                return Err((params, index));
-            }
+            let original_size = usize::try_from(sheet_file.size()).unwrap_or(usize::MAX);
 
             let start_time = Instant::now();
             let task_key = format!("{}::{}", params.xlsx_file_path, params.zip_info_filename);
@@ -840,7 +850,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     ActiveTask {
                         xlsx: params.xlsx_file_path.clone(),
                         sheet: params.zip_info_filename.clone(),
-                        xml_size: data.len(),
+                        xml_size: original_size,
                         started: start_time,
                         phase: "clean_sheet_data_streamwise".to_string(),
                     },
@@ -848,7 +858,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             }
 
             let result = clean_sheet_data_streamwise(
-                Cursor::new(&data),
+                &mut sheet_file,
                 &params,
                 chunk_size,
                 disable_splitting,
@@ -866,7 +876,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     cleaned.xml,
                     cleaned.metrics,
                     start_time,
-                    data.len(),
+                    original_size,
                 )),
                 Err(e) => {
                     error!(event = "sheet_clean_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to clean sheet XML; copying original");
@@ -998,6 +1008,9 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     &params.zip_info_filename,
                     &mut metrics.cleanup_stats,
                 );
+                if params.cleanup.trailing_layout_only_rows {
+                    xml = trim_trailing_layout_only_rows_vec(xml, &params, &mut metrics);
+                }
             }
 
             let reduction = original_size.saturating_sub(xml.len());

@@ -76,7 +76,6 @@ fn parsed_a3_cell<'a>(raw: &'a [u8], attr: &'a [u8], style_id: Option<u32>) -> P
     ParsedCell {
         raw,
         attr,
-        column: b"A",
         row: b"3",
         col_num: 1,
         style_id,
@@ -87,7 +86,6 @@ fn parsed_x4_cell<'a>(raw: &'a [u8], attr: &'a [u8], style_id: Option<u32>) -> P
     ParsedCell {
         raw,
         attr,
-        column: b"X",
         row: b"4",
         col_num: 24,
         style_id,
@@ -169,8 +167,8 @@ fn marks_hidden_content_as_candidate_with_advanced_cleanup() {
     assert_eq!(cleaned, cell_xml);
     assert_eq!(metrics.hidden_candidates, 1);
     assert_eq!(metrics.candidates.len(), 1);
-    assert_eq!(metrics.candidates[0].coordinate.column, b"A");
-    assert_eq!(metrics.candidates[0].coordinate.row, b"3");
+    assert_eq!(metrics.candidates[0].col, 1);
+    assert_eq!(metrics.candidates[0].row, 3);
 }
 
 #[test]
@@ -479,8 +477,8 @@ fn marks_x4_whitespace_candidate_when_cell_and_column_apply_default_fill() {
     assert_eq!(cleaned, cell_xml);
     assert_eq!(metrics.whitespace_candidates, 1);
     assert_eq!(metrics.candidates.len(), 1);
-    assert_eq!(metrics.candidates[0].coordinate.column, b"X");
-    assert_eq!(metrics.candidates[0].coordinate.row, b"4");
+    assert_eq!(metrics.candidates[0].col, 24);
+    assert_eq!(metrics.candidates[0].row, 4);
 }
 
 #[test]
@@ -514,6 +512,6 @@ fn marks_x4_whitespace_candidate_when_shared_string_text_is_self_closing() {
     );
     assert_eq!(metrics.whitespace_candidates, 1);
     assert_eq!(metrics.candidates.len(), 1);
-    assert_eq!(metrics.candidates[0].coordinate.column, b"X");
-    assert_eq!(metrics.candidates[0].coordinate.row, b"4");
+    assert_eq!(metrics.candidates[0].col, 24);
+    assert_eq!(metrics.candidates[0].row, 4);
 }

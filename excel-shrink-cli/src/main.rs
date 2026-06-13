@@ -84,7 +84,7 @@ pub struct Cli {
 
     /// Deflate compression level for cleaned XML entries.
     /// 1 is much faster than the ZIP default and usually still compresses XLSX XML very well.
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, default_value_t = 2)]
     compression_level: i32,
 
     /// Store cleaned XML entries without Deflate compression.
@@ -92,13 +92,13 @@ pub struct Cli {
     #[arg(long)]
     store_output: bool,
 
-    /// Optional: Remove cells that only contain whitespace, IF they are completely unreferenced.
+    /// Disable removing cells that only contain whitespace, even when completely unreferenced.
     #[arg(long)]
-    remove_unreferenced_whitespace_cells: bool,
+    disable_unreferenced_whitespace_cells: bool,
 
-    /// Optional: Remove cells with content in hidden rows/cols, IF they are completely unreferenced.
+    /// Disable removing cells with content in hidden rows/cols, even when completely unreferenced.
     #[arg(long)]
-    remove_unreferenced_hidden_content_cells: bool,
+    disable_unreferenced_hidden_content_cells: bool,
 }
 
 fn main() -> anyhow::Result<()> {
