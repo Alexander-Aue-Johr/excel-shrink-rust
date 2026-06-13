@@ -2,6 +2,36 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Debug hidden row preprocess real file",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/excel-shrink-cli.exe",
+            "args": [
+                "K:\\original_data_gov_xlsx_files\\frpp_public_dataset_fy24_07022025_af7affc7a554.xlsx",
+                "${workspaceFolder}\\.tmp_debug_hidden_rows",
+                "--force-overwrite",
+                "--disable-multiprocessing",
+                "--writer-workers",
+                "1",
+                "--sheets",
+                "sheet1.xml",
+                "--chunk-size",
+                "1048576",
+                "--preprocess-hidden-rows",
+                "--preprocess-empty-cells",
+                "--compression-level",
+                "1"
+            ],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "cargo build",
+            "sourceLanguages": [
+                "rust"
+            ],
+            "env": {
+                "RUST_BACKTRACE": "1"
+            }
+        },
+        {
             "name": "Debug excel-shrink-cli",
             "type": "lldb",
             "request": "launch",
@@ -9,9 +39,7 @@
             "args": [
                 "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded",
                 "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded_ws_hd6",
-                "--recursive",
-                "--remove-unreferenced-whitespace-cells",
-                "--remove-unreferenced-hidden-content-cells"
+                "--recursive"
             ],
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "cargo build",
@@ -28,8 +56,6 @@
                 "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded_wanderungen/",
                 "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/dowloaded_wanderungen_hd3",
                 "--recursive",
-                "--remove-unreferenced-whitespace-cells",
-                "--remove-unreferenced-hidden-content-cells",
                 "--force-overwrite"
             ],
             "cwd": "${workspaceFolder}",
@@ -46,6 +72,7 @@
             "args": [
                 "/mnt/c/Users/aue-johr/Downloads/downloaded",
                 "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust",
+                "--keep-unreferenced-whitespace-cells",
                 "--force-overwrite"
             ],
             "preLaunchTask": "cargo build",
@@ -61,8 +88,6 @@
             "args": [
                 "/mnt/c/Users/aue-johr/Downloads/downloaded",
                 "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust_cleaned_hidden2",
-                "--remove-unreferenced-whitespace-cells",
-                "--remove-unreferenced-hidden-content-cells",
                 "--force-overwrite"
             ],
             "preLaunchTask": "cargo build",
@@ -78,6 +103,7 @@
             "args": [
                 "/mnt/c/Users/aue-johr/Downloads/downloaded",
                 "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust",
+                "--keep-unreferenced-whitespace-cells",
                 "--force-overwrite"
             ],
             "preLaunchTask": "cargo build release"
@@ -90,8 +116,6 @@
             "args": [
                 "/mnt/c/Users/aue-johr/Downloads/downloaded",
                 "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust_cleaned_hidden5",
-                "--remove-unreferenced-whitespace-cells",
-                "--remove-unreferenced-hidden-content-cells",
                 "--force-overwrite"
             ],
             "preLaunchTask": "cargo build release"
