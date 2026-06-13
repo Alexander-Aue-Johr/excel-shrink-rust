@@ -470,9 +470,8 @@ fn remove_irrelevant_attributes_for_empty_rows(
         .is_some_and(|xf| xf.has_only_font_style);
 
     remove_attribute_matching(row_attr, |attr| {
-        attribute_has_name(attr, b"spans")
-            || attr.windows(b":dyDescent=".len())
-                .any(|window| window == b":dyDescent=")
+        attr.windows(b":dyDescent=".len())
+            .any(|window| window == b":dyDescent=")
             || (remove_font_only_style && attribute_has_name(attr, b"s"))
     })
 }

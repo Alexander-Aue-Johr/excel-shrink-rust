@@ -144,10 +144,9 @@ fn postprocess_preserves_consecutive_hidden_empty_rows_but_cleans_attributes() {
         .expect("hidden empty rows should clean");
     let cleaned = String::from_utf8(cleaned).unwrap();
 
-    assert!(cleaned.contains(r#"<row r="307905" hidden="1"/>"#));
-    assert!(cleaned.contains(r#"<row r="307906" hidden="1"/>"#));
-    assert!(cleaned.contains(r#"<row r="307907" hidden="1"/>"#));
-    assert!(cleaned.contains(r#"<row r="307908" hidden="1"/>"#));
-    assert!(!cleaned.contains("spans="));
+    assert!(cleaned.contains(r#"<row r="307905" spans="1:117" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"<row r="307906" spans="1:117" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"<row r="307907" spans="1:117" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"<row r="307908" spans="1:117" hidden="1"/>"#));
     assert!(!cleaned.contains("dyDescent"));
 }
