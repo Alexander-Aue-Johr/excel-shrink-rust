@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use tracing::info;
 use tracing_appender::rolling;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 mod pipeline;
 
@@ -117,6 +117,7 @@ fn main() -> anyhow::Result<()> {
         info!("No XLSX files found.");
         return Ok(());
     }
+    info!(files_total = files.len(), "Found XLSX files");
 
     pipeline::process_files(files, &cli)?;
 
@@ -130,14 +131,25 @@ fn init_logging() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard>
     let file_appender = rolling::never("logs", "excel-shrink-run.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let file_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let console_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let subscriber = fmt()
-        .with_env_filter(env_filter)
+    let file_layer = fmt::layer()
         .with_writer(non_blocking)
-        .finish();
+        .with_ansi(false)
+        .with_filter(file_filter);
 
-    tracing::subscriber::set_global_default(subscriber)?;
+    let console_layer = fmt::layer()
+        .compact()
+        .with_target(false)
+        .with_writer(std::io::stderr)
+        .with_filter(console_filter);
+
+    tracing_subscriber::registry()
+        .with(file_layer)
+        .with(console_layer)
+        .try_init()?;
 
     Ok(guard)
 }

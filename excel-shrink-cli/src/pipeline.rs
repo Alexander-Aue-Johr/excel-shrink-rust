@@ -7,7 +7,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use threadpool::ThreadPool;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use excel_shrink_core::models::{
@@ -557,13 +557,19 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         .unwrap_or_else(default_parallelism)
         .max(1);
     let writer_pool = ThreadPool::new(writer_workers);
+    info!(
+        files_total = input_files.len(),
+        writer_workers,
+        multiprocessing_disabled = cli.disable_multiprocessing,
+        "Processing XLSX files"
+    );
 
     let process_file = |input: &PathBuf| {
         let file_start = Instant::now();
         let input_display = input.display().to_string();
         let active_tasks = active_tasks.clone();
         let analysis_tx = analysis_tx.clone();
-        debug!("Processing: {:?}", input);
+        info!(xlsx = %input_display, "Processing XLSX");
 
         let out_path = cli.output.join(input.file_name().unwrap());
         if out_path.exists() && !cli.force_overwrite {
@@ -804,6 +810,12 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             }
         }
 
+        info!(
+            xlsx = %input_display,
+            sheets_to_clean = sheet_tasks.len(),
+            "Planned workbook cleanup"
+        );
+
         let advanced_arc = if do_advanced {
             Some(Arc::new(AdvancedCleanupConfig {
                 remove_unreferenced_whitespace: remove_unreferenced_whitespace_cells,
@@ -842,6 +854,12 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
 
             let start_time = Instant::now();
             let task_key = format!("{}::{}", params.xlsx_file_path, params.zip_info_filename);
+            info!(
+                xlsx = %params.xlsx_file_path,
+                sheet = %params.zip_info_filename,
+                original_xml_bytes = original_size,
+                "Processing sheet"
+            );
 
             {
                 let mut guard = active_tasks.lock().unwrap();
@@ -870,14 +888,27 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             }
 
             match result {
-                Ok(cleaned) => Ok((
-                    params,
-                    index,
-                    cleaned.xml,
-                    cleaned.metrics,
-                    start_time,
-                    original_size,
-                )),
+                Ok(cleaned) => {
+                    let cleaned_size = cleaned.xml.len();
+                    let reduction = original_size.saturating_sub(cleaned_size);
+                    info!(
+                        xlsx = %params.xlsx_file_path,
+                        sheet = %params.zip_info_filename,
+                        original_xml_bytes = original_size,
+                        cleaned_xml_bytes = cleaned_size,
+                        reduction_bytes = reduction,
+                        elapsed_ms = start_time.elapsed().as_millis(),
+                        "Finished sheet cleanup"
+                    );
+                    Ok((
+                        params,
+                        index,
+                        cleaned.xml,
+                        cleaned.metrics,
+                        start_time,
+                        original_size,
+                    ))
+                }
                 Err(e) => {
                     error!(event = "sheet_clean_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to clean sheet XML; copying original");
                     Err((params, index))
@@ -1035,6 +1066,13 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 cli.compression_level,
             ) {
                 Ok(zip_bytes) => {
+                    info!(
+                        xlsx = %params.xlsx_file_path,
+                        sheet = %params.zip_info_filename,
+                        cleaned_xml_bytes = cleaned_size,
+                        reduction_bytes = reduction,
+                        "Queued cleaned sheet for writing"
+                    );
                     send_cleanup_stats_rows(
                         analysis_tx.as_ref(),
                         &params.xlsx_file_path,
@@ -1079,7 +1117,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             processed_sheets.into_par_iter().for_each(finalize_sheet);
         }
 
-        debug!(event = "file_done", xlsx = %input_display, elapsed_ms = file_start.elapsed().as_millis(), "Finished XLSX processing");
+        info!(event = "file_done", xlsx = %input_display, elapsed_ms = file_start.elapsed().as_millis(), "Finished XLSX processing");
     };
 
     if cli.disable_multiprocessing {
