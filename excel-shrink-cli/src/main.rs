@@ -92,13 +92,13 @@ pub struct Cli {
     #[arg(long)]
     store_output: bool,
 
-    /// Disable removing cells that only contain whitespace, even when completely unreferenced.
+    /// Keep cells that only contain whitespace, even when completely unreferenced.
     #[arg(long)]
-    disable_unreferenced_whitespace_cells: bool,
+    keep_unreferenced_whitespace_cells: bool,
 
-    /// Disable removing cells with content in hidden rows/cols, even when completely unreferenced.
+    /// Remove cells with content in hidden rows/cols when they are completely unreferenced.
     #[arg(long)]
-    disable_unreferenced_hidden_content_cells: bool,
+    remove_unreferenced_hidden_content_cells: bool,
 }
 
 fn main() -> anyhow::Result<()> {

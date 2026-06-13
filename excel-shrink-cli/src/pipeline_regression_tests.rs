@@ -33,8 +33,8 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         writer_workers: None,
         compression_level: 1,
         store_output: false,
-        disable_unreferenced_whitespace_cells: false,
-        disable_unreferenced_hidden_content_cells: false,
+        keep_unreferenced_whitespace_cells: false,
+        remove_unreferenced_hidden_content_cells: false,
     }
 }
 

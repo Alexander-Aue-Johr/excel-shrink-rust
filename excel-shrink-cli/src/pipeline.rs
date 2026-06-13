@@ -603,9 +603,8 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 return;
             }
         };
-        let remove_unreferenced_whitespace_cells = !cli.disable_unreferenced_whitespace_cells;
-        let remove_unreferenced_hidden_content_cells =
-            !cli.disable_unreferenced_hidden_content_cells;
+        let remove_unreferenced_whitespace_cells = !cli.keep_unreferenced_whitespace_cells;
+        let remove_unreferenced_hidden_content_cells = cli.remove_unreferenced_hidden_content_cells;
         let do_advanced =
             remove_unreferenced_whitespace_cells || remove_unreferenced_hidden_content_cells;
 
