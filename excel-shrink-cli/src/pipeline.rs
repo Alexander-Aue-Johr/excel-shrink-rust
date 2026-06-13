@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Read, Seek, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -48,6 +49,98 @@ struct ActiveTask {
 }
 
 type ActiveTasks = Arc<Mutex<HashMap<String, ActiveTask>>>;
+
+#[derive(Clone)]
+struct BatchProgress {
+    files_completed: Arc<AtomicUsize>,
+    files_active: Arc<AtomicUsize>,
+    files_total: usize,
+}
+
+impl BatchProgress {
+    fn new(files_total: usize) -> Self {
+        Self {
+            files_completed: Arc::new(AtomicUsize::new(0)),
+            files_active: Arc::new(AtomicUsize::new(0)),
+            files_total,
+        }
+    }
+
+    fn start_file(&self, xlsx: String) -> XlsxProgress {
+        let files_active = self.files_active.fetch_add(1, Ordering::Relaxed) + 1;
+        let files_completed = self.files_completed.load(Ordering::Relaxed);
+        let files_remaining = self.files_total.saturating_sub(files_completed);
+        info!(
+            event = "file_started",
+            xlsx = %xlsx,
+            files_total = self.files_total,
+            files_completed,
+            files_remaining,
+            files_active,
+            "Started XLSX processing"
+        );
+
+        XlsxProgress {
+            batch: self.clone(),
+            xlsx,
+            finished: false,
+        }
+    }
+}
+
+struct XlsxProgress {
+    batch: BatchProgress,
+    xlsx: String,
+    finished: bool,
+}
+
+impl XlsxProgress {
+    fn finish(
+        &mut self,
+        event: &'static str,
+        output_written: bool,
+        elapsed_ms: u128,
+        jobs_total: Option<usize>,
+        message: &'static str,
+    ) {
+        if !self.finished {
+            self.finished = true;
+            let files_completed = self.batch.files_completed.fetch_add(1, Ordering::Relaxed) + 1;
+            let files_active = self
+                .batch
+                .files_active
+                .fetch_sub(1, Ordering::Relaxed)
+                .saturating_sub(1);
+            let files_remaining = self.batch.files_total.saturating_sub(files_completed);
+            info!(
+                event,
+                xlsx = %self.xlsx,
+                output_written,
+                elapsed_ms,
+                jobs_total,
+                files_total = self.batch.files_total,
+                files_completed,
+                files_remaining,
+                files_active,
+                "{message}"
+            );
+        }
+    }
+}
+
+impl Drop for XlsxProgress {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.finish(
+                "file_processing_stopped",
+                false,
+                0,
+                None,
+                "XLSX processing stopped before output was written",
+            );
+        }
+    }
+}
 type ProcessedSheetOk = (
     CleanSheetParameters,
     usize,
@@ -534,6 +627,7 @@ fn spawn_xlsx_writer(
     out_path: PathBuf,
     rx: mpsc::Receiver<WriteJob>,
     input_display: String,
+    mut progress: XlsxProgress,
 ) {
     writer_pool.execute(move || {
         let writer_start = Instant::now();
@@ -612,7 +706,13 @@ fn spawn_xlsx_writer(
             return;
         }
 
-        info!(event = "file_written", xlsx = %input_display, elapsed_ms = writer_start.elapsed().as_millis(), jobs_total = jobs_total, "Finished writing XLSX");
+        progress.finish(
+            "file_written",
+            true,
+            writer_start.elapsed().as_millis(),
+            Some(jobs_total),
+            "Finished writing XLSX",
+        );
     });
 }
 
@@ -695,6 +795,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         None => (None, None),
     };
 
+    let batch_progress = BatchProgress::new(input_files.len());
     let active_tasks: ActiveTasks = Arc::new(Mutex::new(HashMap::new()));
     let (stop_watchdog_tx, watchdog_handle) = start_watchdog(active_tasks.clone());
 
@@ -704,7 +805,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         .max(1);
     let writer_pool = ThreadPool::new(writer_workers);
     info!(
-        files_total = input_files.len(),
+        files_total = batch_progress.files_total,
         writer_workers,
         multiprocessing_disabled = cli.disable_multiprocessing,
         "Processing XLSX files"
@@ -715,11 +816,18 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         let input_display = input.display().to_string();
         let active_tasks = active_tasks.clone();
         let analysis_tx = analysis_tx.clone();
-        info!(xlsx = %input_display, "Processing XLSX");
+        let mut file_progress = batch_progress.start_file(input_display.clone());
 
         let out_path = cli.output.join(input.file_name().unwrap());
         if out_path.exists() && !cli.force_overwrite {
             warn!("Output file {:?} already exists. Skipping.", out_path);
+            file_progress.finish(
+                "file_skipped",
+                false,
+                file_start.elapsed().as_millis(),
+                None,
+                "Skipped XLSX because output file already exists",
+            );
             return;
         }
 
@@ -760,6 +868,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             out_path,
             rx,
             input_display.clone(),
+            file_progress,
         );
 
         let mut all_xfs = Vec::new();
@@ -1257,7 +1366,13 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             let elapsed = start_time.elapsed();
             if elapsed.as_secs_f64() >= 5.0 {
                 warn!(
-                    "Slow Sheet {}: Clean size {} bytes, reduction {} bytes, time {:.2?}",
+                    xlsx = %params.xlsx_file_path,
+                    sheet = %params.zip_info_filename,
+                    cleaned_xml_bytes = xml.len(),
+                    reduction_bytes = reduction,
+                    elapsed_ms = elapsed.as_millis(),
+                    "Slow Sheet in {} / {}: Clean size {} bytes, reduction {} bytes, time {:.2?}",
+                    params.xlsx_file_path,
                     params.zip_info_filename,
                     xml.len(),
                     reduction,
@@ -1384,7 +1499,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             }
         }
 
-        info!(event = "file_done", xlsx = %input_display, elapsed_ms = file_start.elapsed().as_millis(), "Finished XLSX processing");
+        info!(event = "file_queued_for_writer", xlsx = %input_display, elapsed_ms = file_start.elapsed().as_millis(), "Queued XLSX for writing");
     };
 
     if cli.disable_multiprocessing {

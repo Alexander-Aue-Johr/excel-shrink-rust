@@ -131,9 +131,8 @@ fn init_logging() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard>
     let file_appender = rolling::never("logs", "excel-shrink-run.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    let file_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let console_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let file_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
+    let console_filter = EnvFilter::new("info");
 
     let file_layer = fmt::layer()
         .with_writer(non_blocking)
