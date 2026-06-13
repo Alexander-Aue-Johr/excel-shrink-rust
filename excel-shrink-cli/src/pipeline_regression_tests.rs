@@ -31,6 +31,7 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         preprocess_hidden_rows: false,
         preprocess_empty_cells: false,
         writer_workers: None,
+        max_active_workbooks: None,
         compression_level: 1,
         store_output: false,
         keep_unreferenced_whitespace_cells: false,

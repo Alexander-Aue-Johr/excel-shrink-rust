@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufWriter, Cursor, Read, Seek, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use threadpool::ThreadPool;
@@ -49,6 +49,53 @@ struct ActiveTask {
 }
 
 type ActiveTasks = Arc<Mutex<HashMap<String, ActiveTask>>>;
+
+#[derive(Clone)]
+struct WorkbookLimiter {
+    inner: Arc<WorkbookLimiterInner>,
+}
+
+struct WorkbookLimiterInner {
+    max_active: usize,
+    active: Mutex<usize>,
+    available: Condvar,
+}
+
+struct WorkbookPermit {
+    inner: Arc<WorkbookLimiterInner>,
+}
+
+impl WorkbookLimiter {
+    fn new(max_active: usize) -> Self {
+        Self {
+            inner: Arc::new(WorkbookLimiterInner {
+                max_active: max_active.max(1),
+                active: Mutex::new(0),
+                available: Condvar::new(),
+            }),
+        }
+    }
+
+    fn acquire(&self) -> WorkbookPermit {
+        let mut active = self.inner.active.lock().unwrap();
+        while *active >= self.inner.max_active {
+            active = self.inner.available.wait(active).unwrap();
+        }
+        *active += 1;
+
+        WorkbookPermit {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl Drop for WorkbookPermit {
+    fn drop(&mut self) {
+        let mut active = self.inner.active.lock().unwrap();
+        *active = active.saturating_sub(1);
+        self.inner.available.notify_one();
+    }
+}
 
 #[derive(Clone)]
 struct BatchProgress {
@@ -628,8 +675,10 @@ fn spawn_xlsx_writer(
     rx: mpsc::Receiver<WriteJob>,
     input_display: String,
     mut progress: XlsxProgress,
+    workbook_permit: WorkbookPermit,
 ) {
     writer_pool.execute(move || {
+        let _workbook_permit = workbook_permit;
         let writer_start = Instant::now();
         let source_file = match File::open(&input_path) {
             Ok(file) => file,
@@ -803,15 +852,22 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         .writer_workers
         .unwrap_or_else(default_parallelism)
         .max(1);
+    let max_active_workbooks = cli
+        .max_active_workbooks
+        .unwrap_or_else(default_parallelism)
+        .max(1);
+    let workbook_limiter = WorkbookLimiter::new(max_active_workbooks);
     let writer_pool = ThreadPool::new(writer_workers);
     info!(
         files_total = batch_progress.files_total,
         writer_workers,
+        max_active_workbooks,
         multiprocessing_disabled = cli.disable_multiprocessing,
         "Processing XLSX files"
     );
 
     let process_file = |input: &PathBuf| {
+        let workbook_permit = workbook_limiter.acquire();
         let file_start = Instant::now();
         let input_display = input.display().to_string();
         let active_tasks = active_tasks.clone();
@@ -869,6 +925,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             rx,
             input_display.clone(),
             file_progress,
+            workbook_permit,
         );
 
         let mut all_xfs = Vec::new();

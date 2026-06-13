@@ -82,6 +82,12 @@ pub struct Cli {
     #[arg(long)]
     writer_workers: Option<usize>,
 
+    /// Maximum number of workbooks that may be active at once.
+    /// A workbook stays active until its output XLSX has been fully written.
+    /// Defaults to the number of logical CPU cores.
+    #[arg(long)]
+    max_active_workbooks: Option<usize>,
+
     /// Deflate compression level for cleaned XML entries.
     /// 1 is much faster than the ZIP default and usually still compresses XLSX XML very well.
     #[arg(long, default_value_t = 2)]
