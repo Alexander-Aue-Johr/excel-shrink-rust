@@ -8,7 +8,7 @@ use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use threadpool::ThreadPool;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use excel_shrink_core::models::{
@@ -1445,7 +1445,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 cli.compression_level,
             ) {
                 Ok(zip_bytes) => {
-                    info!(
+                    debug!(
                         xlsx = %params.xlsx_file_path,
                         sheet = %params.zip_info_filename,
                         cleaned_xml_bytes = cleaned_size,
@@ -1556,7 +1556,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             }
         }
 
-        info!(event = "file_queued_for_writer", xlsx = %input_display, elapsed_ms = file_start.elapsed().as_millis(), "Queued XLSX for writing");
+        debug!(event = "file_queued_for_writer", xlsx = %input_display, elapsed_ms = file_start.elapsed().as_millis(), "Queued XLSX for writing");
     };
 
     if cli.disable_multiprocessing {
