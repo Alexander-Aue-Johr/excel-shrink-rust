@@ -14,10 +14,6 @@ pub struct SheetDataPreprocessState {
     /// Keys are the raw ASCII bytes of the style index, e.g. b"429".
     fill_or_border_style_ids_by_bytes: HashSet<Vec<u8>>,
 
-    /// Style IDs that are safe to remove from empty self-closing cells.
-    /// These are style IDs where the XF is only font-like / non-visible.
-    only_font_style_ids_by_bytes: HashSet<Vec<u8>>,
-
     /// Cache for row style IDs we have already checked.
     checked_row_style_ids: HashSet<Vec<u8>>,
 }
@@ -28,17 +24,11 @@ impl SheetDataPreprocessState {
             column_definitions.has_any_non_default_fill_or_border_style();
 
         let mut fill_or_border_style_ids_by_bytes = HashSet::new();
-        let mut only_font_style_ids_by_bytes = HashSet::new();
-
         for (style_id, xf) in &params.patterns.xfs_by_index {
             let style_id_bytes = style_id.to_string().into_bytes();
 
             if xf.applies_visible_fill_or_border() {
                 fill_or_border_style_ids_by_bytes.insert(style_id_bytes.clone());
-            }
-
-            if xf.has_only_font_style {
-                only_font_style_ids_by_bytes.insert(style_id_bytes);
             }
         }
 
@@ -46,7 +36,6 @@ impl SheetDataPreprocessState {
             any_column_has_non_default_fill_or_border,
             active_row_has_non_default_fill_or_border_style: false,
             fill_or_border_style_ids_by_bytes,
-            only_font_style_ids_by_bytes,
             checked_row_style_ids: HashSet::new(),
         }
     }
@@ -59,8 +48,8 @@ impl SheetDataPreprocessState {
         self.fill_or_border_style_ids_by_bytes.contains(style_id)
     }
 
-    fn empty_cell_style_id_is_removable(&self, style_id: &[u8]) -> bool {
-        self.only_font_style_ids_by_bytes.contains(style_id)
+    fn empty_cell_style_id_is_removable(&self, _style_id: &[u8]) -> bool {
+        false
     }
 }
 
@@ -402,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn preprocess_empty_cell_scanner_removes_unstyled_and_font_only_self_closing_cells() {
+    fn preprocess_empty_cell_scanner_removes_unstyled_but_keeps_font_only_self_closing_cells() {
         let mut params = default_params();
         params.patterns.xfs_by_index.insert(
             7,
@@ -419,7 +408,7 @@ mod tests {
         let cleaned = String::from_utf8_lossy(cleaned.as_ref());
 
         assert!(!cleaned.contains(r#"r="A1""#));
-        assert!(!cleaned.contains(r#"r="B1""#));
+        assert!(cleaned.contains(r#"r="B1""#));
         assert!(cleaned.contains(r#"r="C1""#));
         assert!(cleaned.contains(r#"<custom r="D1"/>"#));
         assert_eq!(
@@ -427,7 +416,7 @@ mod tests {
                 .cleanup_stats
                 .removed_items_by_cause
                 .get(&crate::models::CleanupCause::PreprocessEmptySelfClosingCells),
-            Some(&2)
+            Some(&1)
         );
     }
 

@@ -321,6 +321,7 @@ pub struct RowAttributes {
     pub hidden: bool,
     pub style: Option<Xf>,
     pub has_height: bool,
+    pub has_custom_height: bool,
     pub is_empty: bool,
 }
 

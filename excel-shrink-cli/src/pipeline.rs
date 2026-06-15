@@ -1190,7 +1190,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
 
             let start_time = Instant::now();
             let task_key = format!("{}::{}", params.xlsx_file_path, params.zip_info_filename);
-            info!(
+            debug!(
                 xlsx = %params.xlsx_file_path,
                 sheet = %params.zip_info_filename,
                 original_xml_bytes = original_size,
@@ -1241,7 +1241,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 Ok(cleaned) => {
                     let cleaned_size = cleaned.xml.len();
                     let reduction = original_size.saturating_sub(cleaned_size);
-                    info!(
+                    debug!(
                         xlsx = %params.xlsx_file_path,
                         sheet = %params.zip_info_filename,
                         original_xml_bytes = original_size,

@@ -15,6 +15,10 @@ fn font_only_style() -> Xf {
     Xf::new(Some(0), Some(0), false, false, false, false, true, false)
 }
 
+fn non_font_empty_style() -> Xf {
+    Xf::new(Some(0), Some(0), false, false, false, false, false, false)
+}
+
 fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
     let mut xfs_by_index = HashMap::new();
     let mut only_font_style_ids = Vec::new();
@@ -92,7 +96,7 @@ fn keeps_empty_cell_when_cell_style_has_fill_or_border_regression_row_15() {
 }
 
 #[test]
-fn collapses_row_when_empty_cell_has_only_font_style_and_row_has_height() {
+fn keeps_empty_cell_when_cell_style_has_only_font_style_and_row_has_height() {
     let params = params_with_styles(&[(427, font_only_style()), (429, font_only_style())]);
 
     let row_xml =
@@ -102,36 +106,76 @@ fn collapses_row_when_empty_cell_has_only_font_style_and_row_has_height() {
 
     assert_eq!(
         cleaned,
-        br#"<row r="15" customFormat="1" ht="27" customHeight="1"/>"#
+        br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27"><c r="A15" s="427"/></row>"#
     );
 }
 
 #[test]
-fn adds_custom_height_to_already_empty_row_with_height() {
+fn keeps_only_first_empty_font_only_cell_per_style_when_row_has_no_custom_height() {
+    let params = params_with_styles(&[(427, font_only_style()), (429, font_only_style())]);
+
+    let row_xml = br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27"><c r="A15" s="427"/><c r="B15" s="427"/><c r="C15" s="429"/></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27"><c r="A15" s="427"/><c r="C15" s="429"/></row>"#
+    );
+}
+
+#[test]
+fn removes_empty_font_only_cells_when_row_already_has_custom_height() {
+    let params = params_with_styles(&[(427, font_only_style()), (429, font_only_style())]);
+
+    let row_xml = br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27" customHeight="1"><c r="A15" s="427"/><c r="B15" s="429"/></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27" customHeight="1"/>"#
+    );
+}
+
+#[test]
+fn keeps_structural_empty_style_anchor_when_custom_height_row_would_lose_style() {
+    let params = params_with_styles(&[
+        (6, non_font_empty_style()),
+        (12, font_only_style()),
+        (47, font_only_style()),
+    ]);
+
+    let row_xml = br#"<row r="29" spans="1:13" s="12" customFormat="1" ht="13.2" customHeight="1"><c r="A29" s="12" t="s"><v>1</v></c><c r="C29" s="6"/><c r="D29" s="47" t="s"><v>2</v></c></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="29" spans="1:13" s="12" customFormat="1" ht="13.2" customHeight="1"><c r="A29" s="12" t="s"><v>1</v></c><c r="C29" s="6"/><c r="D29" s="47" t="s"><v>2</v></c></row>"#
+    );
+}
+
+#[test]
+fn does_not_add_custom_height_to_already_empty_row_with_height() {
     let params = params_with_styles(&[(429, font_only_style())]);
 
     let row_xml = br#"<row r="16" customFormat="1" ht="27"/>"#;
 
     let cleaned = replace_single_row(row_xml, &params);
 
-    assert_eq!(
-        cleaned,
-        br#"<row r="16" customFormat="1" ht="27" customHeight="1"/>"#
-    );
+    assert_eq!(cleaned, br#"<row r="16" customFormat="1" ht="27"/>"#);
 }
 
 #[test]
-fn adds_custom_height_to_empty_row_after_cell_range_with_height() {
+fn does_not_add_custom_height_to_empty_row_after_cell_range_with_height() {
     let params = params_with_styles(&[(429, font_only_style())]);
 
     let row_xml = br#"<row r="16" customFormat="1" ht="27"/>"#;
 
     let cleaned = replace_single_empty_row_after_cell_range(row_xml, &params);
 
-    assert_eq!(
-        cleaned,
-        br#"<row r="16" customFormat="1" ht="27" customHeight="1"/>"#
-    );
+    assert_eq!(cleaned, br#"<row r="16" customFormat="1" ht="27"/>"#);
 }
 
 #[test]
@@ -144,9 +188,17 @@ fn postprocess_preserves_consecutive_hidden_empty_rows_but_cleans_attributes() {
         .expect("hidden empty rows should clean");
     let cleaned = String::from_utf8(cleaned).unwrap();
 
-    assert!(cleaned.contains(r#"<row r="307905" spans="1:117" hidden="1"/>"#));
-    assert!(cleaned.contains(r#"<row r="307906" spans="1:117" hidden="1"/>"#));
-    assert!(cleaned.contains(r#"<row r="307907" spans="1:117" hidden="1"/>"#));
-    assert!(cleaned.contains(r#"<row r="307908" spans="1:117" hidden="1"/>"#));
-    assert!(!cleaned.contains("dyDescent"));
+    assert!(
+        cleaned.contains(r#"<row r="307905" spans="1:117" hidden="1" x14ac:dyDescent="0.25"/>"#)
+    );
+    assert!(
+        cleaned.contains(r#"<row r="307906" spans="1:117" hidden="1" x14ac:dyDescent="0.25"/>"#)
+    );
+    assert!(
+        cleaned.contains(r#"<row r="307907" spans="1:117" hidden="1" x14ac:dyDescent="0.25"/>"#)
+    );
+    assert!(
+        cleaned.contains(r#"<row r="307908" spans="1:117" hidden="1" x14ac:dyDescent="0.25"/>"#)
+    );
+    assert!(cleaned.contains("dyDescent"));
 }

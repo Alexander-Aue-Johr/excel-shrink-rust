@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 use std::time::Instant;
 use tracing::info;
@@ -105,6 +105,35 @@ pub struct Cli {
     /// Remove cells with content in hidden rows/cols when they are completely unreferenced.
     #[arg(long)]
     remove_unreferenced_hidden_content_cells: bool,
+
+    /// Console log level.
+    #[arg(long, value_enum, default_value_t = LogLevel::Info)]
+    console_log_level: LogLevel,
+
+    /// File log level. Defaults to RUST_LOG when set, otherwise debug.
+    #[arg(long, value_enum)]
+    file_log_level: Option<LogLevel>,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl LogLevel {
+    fn as_filter(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
+        }
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -113,7 +142,7 @@ fn main() -> anyhow::Result<()> {
         std::env::set_current_dir(working_directory)?;
     }
 
-    let _guard = init_logging()?;
+    let _guard = init_logging(cli.console_log_level, cli.file_log_level)?;
 
     let start = Instant::now();
     info!("Starting excel-shrink pipeline...");
@@ -131,14 +160,20 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn init_logging() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
+fn init_logging(
+    console_log_level: LogLevel,
+    file_log_level: Option<LogLevel>,
+) -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
     std::fs::create_dir_all("logs")?;
 
     let file_appender = rolling::never("logs", "excel-shrink-run.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    let file_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
-    let console_filter = EnvFilter::new("info");
+    let file_filter = match file_log_level {
+        Some(level) => EnvFilter::new(level.as_filter()),
+        None => EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug")),
+    };
+    let console_filter = EnvFilter::new(console_log_level.as_filter());
 
     let file_layer = fmt::layer()
         .with_writer(non_blocking)

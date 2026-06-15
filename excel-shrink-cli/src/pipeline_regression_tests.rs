@@ -36,6 +36,8 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         store_output: false,
         keep_unreferenced_whitespace_cells: false,
         remove_unreferenced_hidden_content_cells: false,
+        console_log_level: LogLevel::Info,
+        file_log_level: None,
     }
 }
 

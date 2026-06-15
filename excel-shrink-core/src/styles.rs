@@ -17,8 +17,10 @@ pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
 
         let fill_id = extract_u32(chunk, b"fillId");
         let border_id = extract_u32(chunk, b"borderId");
+        let font_id = extract_u32(chunk, b"fontId");
         let apply_border = extract_bool(chunk, b"applyBorder");
         let apply_fill = extract_bool(chunk, b"applyFill");
+        let apply_font = extract_bool(chunk, b"applyFont");
         let apply_protection = extract_bool(chunk, b"applyProtection");
 
         let has_visible_fill = if has_style_tables {
@@ -35,8 +37,8 @@ pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
 
         let has_apply_fill_or_border = apply_fill || apply_border;
         let has_fill_or_border = has_visible_fill || has_visible_border;
-        let has_only_font_style =
-            !has_fill_or_border && !has_apply_fill_or_border && !apply_protection;
+        let has_font = font_id.unwrap_or(0) != 0 || apply_font;
+        let has_only_font_style = has_font && !has_fill_or_border && !apply_protection;
 
         xfs.push(Xf::new_with_visible_parts(
             fill_id,

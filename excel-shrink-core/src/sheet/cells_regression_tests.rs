@@ -68,6 +68,7 @@ fn hidden_row_3() -> RowAttributes {
         hidden: true,
         style: None,
         has_height: false,
+        has_custom_height: false,
         is_empty: false,
     }
 }
@@ -100,7 +101,7 @@ fn fill_style(fill_id: u32, apply_fill: bool) -> Xf {
         apply_fill,
         fill_id != 0,
         apply_fill,
-        fill_id == 0 && !apply_fill,
+        false,
         false,
     )
 }
@@ -142,6 +143,46 @@ fn keeps_hidden_cell_with_content_without_advanced_cleanup() {
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
     assert_eq!(cleaned, cell_xml);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_states.len(), 0);
+}
+
+#[test]
+fn keeps_formula_cell_with_attributes_and_empty_cached_value() {
+    let params = default_params();
+    let mut metrics = CleanSheetMetrics::default();
+
+    let cell_xml =
+        br#"<c r="A3" s="39" t="str"><f t="shared" ref="A3:A10" si="0">IF(B3=1,"","")</f><v/></c>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="39" t="str""#, Some(39));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned, cell_xml);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_states.len(), 0);
+}
+
+#[test]
+fn does_not_mark_hidden_formula_cell_as_advanced_cleanup_candidate() {
+    let mut params = default_params();
+
+    params.advanced_cleanup = Some(Arc::new(AdvancedCleanupConfig {
+        remove_unreferenced_whitespace: false,
+        remove_unreferenced_hidden_content: true,
+    }));
+
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.row_attributes.insert(b"3".to_vec(), hidden_row_3());
+
+    let cell_xml = br#"<c r="A3" s="39" t="str"><f t="shared" si="0"/><v/></c>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="39" t="str""#, Some(39));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned, cell_xml);
+    assert_eq!(metrics.hidden_candidates, 0);
+    assert_eq!(metrics.candidates.len(), 0);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
 }
@@ -202,7 +243,7 @@ fn removes_empty_cell_with_fill_zero_when_row_has_non_default_fill_without_apply
     let row_red_style = Xf::new(Some(4), Some(0), false, false, true, false, false, false);
 
     let cell_default_fill_style =
-        Xf::new(Some(0), Some(0), false, false, false, false, true, false);
+        Xf::new(Some(0), Some(0), false, false, false, false, false, false);
 
     let params = params_with_styles(&[(4, row_red_style.clone()), (10, cell_default_fill_style)]);
 
@@ -216,6 +257,7 @@ fn removes_empty_cell_with_fill_zero_when_row_has_non_default_fill_without_apply
             hidden: false,
             style: Some(row_red_style),
             has_height: false,
+            has_custom_height: false,
             is_empty: false,
         },
     );
@@ -235,7 +277,7 @@ fn removes_empty_cell_with_fill_zero_when_column_has_non_default_fill_without_ap
     let column_red_style = Xf::new(Some(4), Some(0), false, false, true, false, false, false);
 
     let cell_default_fill_style =
-        Xf::new(Some(0), Some(0), false, false, false, false, true, false);
+        Xf::new(Some(0), Some(0), false, false, false, false, false, false);
 
     let params =
         params_with_styles(&[(4, column_red_style.clone()), (10, cell_default_fill_style)]);
@@ -280,6 +322,7 @@ fn removes_empty_cell_when_row_and_column_apply_same_fill_as_cell() {
             hidden: false,
             style: Some(inherited_default_fill.clone()),
             has_height: false,
+            has_custom_height: false,
             is_empty: false,
         },
     );
@@ -324,6 +367,7 @@ fn keeps_empty_cell_when_row_and_column_apply_fill_and_only_column_differs() {
             hidden: false,
             style: Some(row_default_fill),
             has_height: false,
+            has_custom_height: false,
             is_empty: false,
         },
     );
@@ -363,6 +407,7 @@ fn removes_empty_cell_when_row_applies_same_visible_fill_as_cell() {
             hidden: false,
             style: Some(row_red_fill),
             has_height: false,
+            has_custom_height: false,
             is_empty: false,
         },
     );
@@ -438,6 +483,7 @@ fn keeps_empty_cell_when_row_applies_fill_and_cell_overrides_with_default_fill()
             hidden: false,
             style: Some(row_red_fill),
             has_height: false,
+            has_custom_height: false,
             is_empty: false,
         },
     );

@@ -80,6 +80,16 @@ pub(crate) fn replace_parsed_cell(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
+    replace_parsed_cell_with_font_policy(cell, params, metrics, false, false)
+}
+
+pub(crate) fn replace_parsed_cell_with_font_policy(
+    cell: &ParsedCell<'_>,
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    keep_font_only_empty_cell: bool,
+    keep_other_empty_cell: bool,
+) -> Vec<u8> {
     let style = cell.style(params);
     let is_hidden = cell_is_hidden(cell, metrics);
     let is_excel_protected = cell_has_relevant_protection_style(cell, style, metrics);
@@ -96,6 +106,7 @@ pub(crate) fn replace_parsed_cell(
         } else if unreferenced_hidden_content_cleanup_enabled(params)
             && is_hidden
             && has_content(cell.raw)
+            && !has_formula(cell.raw)
         {
             metrics.hidden_candidates += 1;
             candidate_cause = Some(CleanupCause::UnreferencedHiddenContentCells);
@@ -147,6 +158,27 @@ pub(crate) fn replace_parsed_cell(
     if has_content(cell.raw) {
         metrics.kept_cell_states.push(cell.to_cell_attributes());
         return cell.raw.to_vec();
+    }
+
+    if style.has_only_font_style {
+        if keep_font_only_empty_cell {
+            let out = generate_self_closing_cell_xml(cell.attr);
+            metrics.kept_cell_states.push(cell.to_cell_attributes());
+            return out;
+        }
+
+        return remove_or_keep_empty_cell(
+            cell,
+            params,
+            metrics,
+            CleanupCause::EmptyCellsWithoutContent,
+        );
+    }
+
+    if keep_other_empty_cell {
+        let out = generate_self_closing_cell_xml(cell.attr);
+        metrics.kept_cell_states.push(cell.to_cell_attributes());
+        return out;
     }
 
     let has_relevant_protection = cell_has_relevant_protection_style(cell, Some(style), metrics);
@@ -315,8 +347,30 @@ fn generate_self_closing_cell_xml(cell_attr: &[u8]) -> Vec<u8> {
 
 fn has_content(cell: &[u8]) -> bool {
     crate::xml::find_bytes(cell, b"<v>").is_some()
-        || crate::xml::find_bytes(cell, b"<f>").is_some()
+        || has_formula(cell)
         || crate::xml::find_bytes(cell, b"<is>").is_some()
+}
+
+fn has_formula(cell: &[u8]) -> bool {
+    has_child_tag(cell, b"f")
+}
+
+fn has_child_tag(cell: &[u8], tag_name: &[u8]) -> bool {
+    let mut needle = Vec::with_capacity(tag_name.len() + 1);
+    needle.push(b'<');
+    needle.extend_from_slice(tag_name);
+
+    let mut pos = 0;
+    while let Some(rel) = crate::xml::find_bytes(&cell[pos..], &needle) {
+        let start = pos + rel;
+        let next = cell.get(start + needle.len()).copied();
+        if matches!(next, Some(b' ' | b'/' | b'>')) {
+            return true;
+        }
+        pos = start + needle.len();
+    }
+
+    false
 }
 
 fn is_whitespace_cell(cell: &[u8], params: &CleanSheetParameters) -> bool {
