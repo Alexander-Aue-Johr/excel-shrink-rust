@@ -111,7 +111,7 @@ fn keeps_empty_cell_when_cell_style_has_only_font_style_and_row_has_height() {
 }
 
 #[test]
-fn keeps_only_first_empty_font_only_cell_per_style_when_row_has_no_custom_height() {
+fn keeps_empty_font_only_cells_when_row_has_no_custom_height() {
     let params = params_with_styles(&[(427, font_only_style()), (429, font_only_style())]);
 
     let row_xml = br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27"><c r="A15" s="427"/><c r="B15" s="427"/><c r="C15" s="429"/></row>"#;
@@ -120,7 +120,39 @@ fn keeps_only_first_empty_font_only_cell_per_style_when_row_has_no_custom_height
 
     assert_eq!(
         cleaned,
-        br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27"><c r="A15" s="427"/><c r="C15" s="429"/></row>"#
+        br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27"><c r="A15" s="427"/><c r="B15" s="427"/><c r="C15" s="429"/></row>"#
+    );
+}
+
+#[test]
+fn keeps_repeated_empty_font_only_footer_cells_after_content() {
+    let params = params_with_styles(&[(8, font_only_style()), (13, font_only_style())]);
+
+    let row_xml = br#"<row r="16108" spans="1:20" x14ac:dyDescent="0.2"><c r="A16108" s="8" t="s"><v>41422</v></c><c r="B16108" s="13"/><c r="C16108" s="13"/><c r="D16108" s="13"/><c r="E16108" s="13"/><c r="F16108" s="13"/></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="16108" spans="1:20" x14ac:dyDescent="0.2"><c r="A16108" s="8" t="s"><v>41422</v></c><c r="B16108" s="13"/><c r="C16108" s="13"/><c r="D16108" s="13"/><c r="E16108" s="13"/><c r="F16108" s="13"/></row>"#
+    );
+}
+
+#[test]
+fn keeps_one_empty_default_style_footer_cell_after_content() {
+    let params = params_with_styles(&[
+        (8, font_only_style()),
+        (18, font_only_style()),
+        (87, font_only_style()),
+    ]);
+
+    let row_xml = br#"<row r="16107" spans="1:20" ht="15" x14ac:dyDescent="0.25"><c r="A16107" s="8" t="s"><v>41420</v></c><c r="B16107"/><c r="C16107"/><c r="H16107" s="87"/><c r="I16107" s="87"/><c r="M16107" s="18"/><c r="N16107"/></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="16107" spans="1:20" ht="15" x14ac:dyDescent="0.25"><c r="A16107" s="8" t="s"><v>41420</v></c><c r="B16107"/><c r="H16107" s="87"/><c r="I16107" s="87"/><c r="M16107" s="18"/></row>"#
     );
 }
 

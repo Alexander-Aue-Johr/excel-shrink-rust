@@ -37,7 +37,8 @@ pub fn replace_row_bytes(
     let is_hidden = row_attributes.hidden;
     let row_style = row_attributes.style.clone();
     let has_height = row_attributes.has_height;
-    let preserve_font_only_representatives = !row_attributes.has_custom_height;
+    let preserve_font_only_empty_cells = !row_attributes.has_custom_height;
+    let preserve_default_empty_representative = !row_attributes.has_custom_height;
     let preserve_structural_empty_representatives = row_attributes.has_height;
 
     metrics
@@ -52,7 +53,8 @@ pub fn replace_row_bytes(
             params,
             metrics,
             &original_row_content,
-            preserve_font_only_representatives,
+            preserve_font_only_empty_cells,
+            preserve_default_empty_representative,
             preserve_structural_empty_representatives,
         )
     } else {
@@ -175,7 +177,8 @@ fn clean_cells(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     row_content: &[u8],
-    preserve_font_only_representatives: bool,
+    preserve_font_only_empty_cells: bool,
+    preserve_default_empty_representative: bool,
     preserve_structural_empty_representatives: bool,
 ) -> Vec<u8> {
     if row_content.is_empty() {
@@ -185,7 +188,7 @@ fn clean_cells(
     let mut out = Vec::with_capacity(row_content.len().min(64 * 1024));
     let mut pos = 0;
     let content_style_ids = collect_content_style_ids(row_content);
-    let mut kept_font_only_style_ids = std::collections::HashSet::new();
+    let mut kept_default_empty_cell = false;
     let mut kept_structural_empty_style_ids = std::collections::HashSet::new();
 
     while let Some(cell_start_rel) = find_bytes(&row_content[pos..], b"<c") {
@@ -220,11 +223,14 @@ fn clean_cells(
 
         let attr = &row_content[attr_start..attr_end];
         if let Some(cell) = parse_cell_from_parts(raw, attr) {
-            let keep_font_only_empty_cell = preserve_font_only_representatives
-                && empty_cell_has_only_font_style(&cell, params)
-                && cell
-                    .style_id
-                    .is_some_and(|style_id| kept_font_only_style_ids.insert(style_id));
+            let keep_font_only_empty_cell =
+                preserve_font_only_empty_cells && empty_cell_has_only_font_style(&cell, params);
+            let keep_default_empty_cell = preserve_default_empty_representative
+                && !kept_default_empty_cell
+                && empty_cell_has_default_style(&cell);
+            if keep_default_empty_cell {
+                kept_default_empty_cell = true;
+            }
             let keep_other_empty_cell = preserve_structural_empty_representatives
                 && empty_cell_has_non_font_style(&cell, params)
                 && cell.style_id.is_some_and(|style_id| {
@@ -237,6 +243,7 @@ fn clean_cells(
                 metrics,
                 keep_font_only_empty_cell,
                 keep_other_empty_cell,
+                keep_default_empty_cell,
             ));
         } else {
             out.extend_from_slice(raw);
@@ -300,6 +307,10 @@ fn empty_cell_has_only_font_style(cell: &ParsedCell<'_>, params: &CleanSheetPara
     cell.style_id
         .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id))
         .is_some_and(|style| style.has_only_font_style)
+}
+
+fn empty_cell_has_default_style(cell: &ParsedCell<'_>) -> bool {
+    cell.style_id.is_none() && !raw_cell_has_content(cell.raw)
 }
 
 fn empty_cell_has_non_font_style(cell: &ParsedCell<'_>, params: &CleanSheetParameters) -> bool {

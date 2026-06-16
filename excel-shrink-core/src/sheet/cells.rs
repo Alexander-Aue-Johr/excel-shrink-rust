@@ -80,7 +80,7 @@ pub(crate) fn replace_parsed_cell(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
-    replace_parsed_cell_with_font_policy(cell, params, metrics, false, false)
+    replace_parsed_cell_with_font_policy(cell, params, metrics, false, false, false)
 }
 
 pub(crate) fn replace_parsed_cell_with_font_policy(
@@ -89,6 +89,7 @@ pub(crate) fn replace_parsed_cell_with_font_policy(
     metrics: &mut CleanSheetMetrics,
     keep_font_only_empty_cell: bool,
     keep_other_empty_cell: bool,
+    keep_default_empty_cell: bool,
 ) -> Vec<u8> {
     let style = cell.style(params);
     let is_hidden = cell_is_hidden(cell, metrics);
@@ -143,6 +144,12 @@ pub(crate) fn replace_parsed_cell_with_font_policy(
 
     let Some(style) = style else {
         if !has_content(cell.raw) {
+            if keep_default_empty_cell {
+                let out = generate_self_closing_cell_xml(cell.attr);
+                metrics.kept_cell_states.push(cell.to_cell_attributes());
+                return out;
+            }
+
             return remove_or_keep_empty_cell(
                 cell,
                 params,
