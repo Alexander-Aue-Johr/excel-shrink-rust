@@ -2,6 +2,26 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Debug excel-shrink-cli (enter input and output directories)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/excel-shrink-cli.exe",
+            "args": [
+                "${input:excelShrinkInputDir}",
+                "${input:excelShrinkOutputDir}",
+                "--recursive",
+                "--force-overwrite"
+            ],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "cargo build",
+            "sourceLanguages": [
+                "rust"
+            ],
+            "env": {
+                "RUST_BACKTRACE": "1"
+            }
+        },
+        {
             "name": "Debug hidden row preprocess real file",
             "type": "lldb",
             "request": "launch",
@@ -119,6 +139,20 @@
                 "--force-overwrite"
             ],
             "preLaunchTask": "cargo build release"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "excelShrinkInputDir",
+            "type": "promptString",
+            "description": "Input directory or XLSX file",
+            "default": "${workspaceFolder}"
+        },
+        {
+            "id": "excelShrinkOutputDir",
+            "type": "promptString",
+            "description": "Output directory",
+            "default": "${workspaceFolder}\\.tmp_excel_shrink_output"
         }
     ]
 }
