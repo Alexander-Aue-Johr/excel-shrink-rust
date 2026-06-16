@@ -74,6 +74,18 @@ impl Xf {
     pub fn applies_visible_fill_or_border(&self) -> bool {
         (self.has_visible_fill && self.apply_fill) || (self.has_visible_border && self.apply_border)
     }
+
+    pub fn applies_default_border_override(&self) -> bool {
+        self.apply_border && self.border_id.unwrap_or(0) == 0
+    }
+
+    pub fn applies_default_fill_override(&self) -> bool {
+        self.apply_fill && self.fill_id.unwrap_or(0) == 0
+    }
+
+    pub fn applies_default_fill_or_border_override(&self) -> bool {
+        self.applies_default_fill_override() || self.applies_default_border_override()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -407,7 +419,10 @@ impl WorkbookSpecificPatterns {
             if xf.has_only_font_style {
                 only_font_style_ids.push(id);
             }
-            if xf.has_fill_or_border || xf.has_apply_protection {
+            if xf.has_fill_or_border
+                || xf.applies_default_fill_or_border_override()
+                || xf.has_apply_protection
+            {
                 fill_or_border_or_protection_ids.push(id);
             }
             xfs_by_index.insert(id, xf);

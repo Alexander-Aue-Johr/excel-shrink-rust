@@ -92,6 +92,38 @@ fn test_applies_visible_fill_or_border_pairs_visibility_with_matching_apply_flag
 }
 
 #[test]
+fn test_apply_border_default_style_is_not_only_font_style() {
+    let xml = br#"
+        <cellXfs count="1">
+            <xf numFmtId="0" fontId="10" fillId="0" borderId="0" xfId="0" applyFont="1" applyBorder="1"/>
+        </cellXfs>
+    "#;
+
+    let xfs = parse_xfs(xml).expect("Should parse valid XML successfully");
+
+    assert_eq!(xfs.len(), 1);
+    assert!(xfs[0].apply_border);
+    assert!(xfs[0].has_apply_fill_or_border);
+    assert!(!xfs[0].has_only_font_style);
+}
+
+#[test]
+fn test_apply_fill_default_style_is_not_only_font_style() {
+    let xml = br#"
+        <cellXfs count="1">
+            <xf numFmtId="0" fontId="10" fillId="0" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+        </cellXfs>
+    "#;
+
+    let xfs = parse_xfs(xml).expect("Should parse valid XML successfully");
+
+    assert_eq!(xfs.len(), 1);
+    assert!(xfs[0].apply_fill);
+    assert!(xfs[0].has_apply_fill_or_border);
+    assert!(!xfs[0].has_only_font_style);
+}
+
+#[test]
 fn test_clean_workbook_duplicate_defined_names() {
     let xml = br#"
         <workbook>

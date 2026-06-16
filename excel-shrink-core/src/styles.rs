@@ -38,7 +38,13 @@ pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
         let has_apply_fill_or_border = apply_fill || apply_border;
         let has_fill_or_border = has_visible_fill || has_visible_border;
         let has_font = font_id.unwrap_or(0) != 0 || apply_font;
-        let has_only_font_style = has_font && !has_fill_or_border && !apply_protection;
+        let applies_default_fill_override = apply_fill && fill_id.unwrap_or(0) == 0;
+        let applies_default_border_override = apply_border && border_id.unwrap_or(0) == 0;
+        let has_only_font_style = has_font
+            && !has_fill_or_border
+            && !applies_default_fill_override
+            && !applies_default_border_override
+            && !apply_protection;
 
         xfs.push(Xf::new_with_visible_parts(
             fill_id,

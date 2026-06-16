@@ -189,7 +189,8 @@ pub(crate) fn replace_parsed_cell_with_font_policy(
     }
 
     let has_relevant_protection = cell_has_relevant_protection_style(cell, Some(style), metrics);
-    let has_effective_fill_or_border = cell_has_effective_fill_or_border(style, cell, metrics);
+    let has_effective_fill_or_border = cell_has_effective_fill_or_border(style, cell, metrics)
+        || style.applies_default_fill_or_border_override();
 
     if has_relevant_protection || has_effective_fill_or_border {
         let out = generate_self_closing_cell_xml(cell.attr);

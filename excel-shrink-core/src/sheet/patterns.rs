@@ -21,8 +21,9 @@ pub fn style_id_has_fill_border_or_protection(
     patterns: &WorkbookSpecificPatterns,
     style_id: u32,
 ) -> bool {
-    patterns
-        .xfs_by_index
-        .get(&style_id)
-        .is_some_and(|xf| xf.has_fill_or_border || xf.has_apply_protection)
+    patterns.xfs_by_index.get(&style_id).is_some_and(|xf| {
+        xf.has_fill_or_border
+            || xf.applies_default_fill_or_border_override()
+            || xf.has_apply_protection
+    })
 }
