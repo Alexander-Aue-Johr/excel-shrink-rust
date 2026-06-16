@@ -20,10 +20,12 @@ use excel_shrink_core::reference_scanner::{scan_for_references_by_sheet, ScanRes
 use excel_shrink_core::shared_strings::find_whitespace_sst_indices;
 use excel_shrink_core::sheet::clean_sheet_data_streamwise_with_progress;
 use excel_shrink_core::sheet::output::trim_trailing_layout_only_rows_vec;
-use excel_shrink_core::sheet::sheet_data::clean_empty_rows_from_after_cell_range;
+use excel_shrink_core::sheet::sheet_data::{
+    clean_empty_rows_from_after_cell_range, clean_selected_rows_and_cells_in_cell_range,
+};
 use excel_shrink_core::styles::parse_xfs;
 use excel_shrink_core::workbook::clean_workbook_with_stats;
-use excel_shrink_core::xml::find_bytes;
+use excel_shrink_core::xml::{find_byte_from, find_bytes};
 
 use crate::Cli;
 
@@ -774,12 +776,12 @@ fn send_write_job(tx: &mpsc::Sender<WriteJob>, job: WriteJob, xlsx: &str) -> boo
 }
 
 fn apply_deferred_candidate_cleanup(
-    mut xml: Vec<u8>,
+    xml: Vec<u8>,
     candidates: &[CleanupCandidate],
     protected_refs: &ProtectedWorkbookRefs,
     sheet_file: &str,
     stats: &mut CleanupStats,
-) -> Vec<u8> {
+) -> (Vec<u8>, HashSet<u32>) {
     let mut safe_refs = HashMap::new();
     for cand in candidates {
         if !protected_refs.contains(sheet_file, cand.col, cand.row) {
@@ -788,26 +790,113 @@ fn apply_deferred_candidate_cleanup(
     }
 
     if safe_refs.is_empty() {
-        return xml;
+        return (xml, HashSet::new());
     }
 
-    let re =
-        regex::bytes::Regex::new(r#"(?s)<c\b[^>]*\br="([A-Z]+\d+)"[^>]*>(?:.*?</c>|/>)"#).unwrap();
-    xml = re
-        .replace_all(&xml, |caps: &regex::bytes::Captures| {
-            let r_val = caps.get(1).unwrap().as_bytes();
-            if let Some(cause) =
-                parse_cell_reference(r_val).and_then(|reference| safe_refs.get(&reference))
-            {
-                stats.record_removed(*cause, caps.get(0).unwrap().as_bytes().len());
-                Vec::new()
-            } else {
-                caps.get(0).unwrap().as_bytes().to_vec()
-            }
-        })
-        .into_owned();
+    let mut out = Vec::with_capacity(xml.len());
+    let mut affected_rows = HashSet::new();
+    let mut pos = 0;
 
-    xml
+    while let Some(cell_start_rel) = find_bytes(&xml[pos..], b"<c") {
+        let cell_start = pos + cell_start_rel;
+
+        if !is_cell_tag_start(&xml, cell_start) {
+            out.extend_from_slice(&xml[pos..cell_start + b"<c".len()]);
+            pos = cell_start + b"<c".len();
+            continue;
+        }
+
+        let Some(tag_end) = find_byte_from(&xml, b'>', cell_start) else {
+            break;
+        };
+
+        let attr_start = cell_start + b"<c".len();
+        let self_closing = tag_end > cell_start && xml[tag_end - 1] == b'/';
+        let attr_end = if self_closing { tag_end - 1 } else { tag_end };
+        let attr = &xml[attr_start..attr_end];
+
+        let cell_end = if self_closing {
+            tag_end + 1
+        } else {
+            let content_start = tag_end + 1;
+            let Some(close_rel) = find_bytes(&xml[content_start..], b"</c>") else {
+                break;
+            };
+            content_start + close_rel + b"</c>".len()
+        };
+
+        out.extend_from_slice(&xml[pos..cell_start]);
+        let raw = &xml[cell_start..cell_end];
+        let replacement = extract_xml_attr_value(attr, b"r")
+            .and_then(parse_cell_reference)
+            .and_then(|reference| safe_refs.get(&reference).map(|cause| (reference, *cause)))
+            .map(|((_col, row), cause)| {
+                affected_rows.insert(row);
+                if cause == CleanupCause::UnreferencedWhitespaceCells {
+                    let cleaned = generate_self_closing_cell_xml(attr);
+                    stats.record_delta(cause, raw.len(), cleaned.len());
+                    cleaned
+                } else {
+                    stats.record_removed(cause, raw.len());
+                    Vec::new()
+                }
+            });
+
+        if let Some(replacement) = replacement {
+            out.extend_from_slice(&replacement);
+        } else {
+            out.extend_from_slice(raw);
+        }
+
+        pos = cell_end;
+    }
+
+    out.extend_from_slice(&xml[pos..]);
+
+    (out, affected_rows)
+}
+
+fn is_cell_tag_start(data: &[u8], cell_start: usize) -> bool {
+    matches!(
+        data.get(cell_start + b"<c".len()),
+        Some(byte) if byte.is_ascii_whitespace() || matches!(byte, b'/' | b'>')
+    )
+}
+
+fn extract_xml_attr_value<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
+    let mut needle = Vec::with_capacity(attr_name.len() + 2);
+    needle.extend_from_slice(attr_name);
+    needle.extend_from_slice(b"=\"");
+
+    let mut search_start = 0;
+    while search_start < data.len() {
+        let pos_rel = find_bytes(&data[search_start..], &needle)?;
+        let pos = search_start + pos_rel;
+        let has_attribute_boundary = pos == 0 || data[pos - 1].is_ascii_whitespace();
+
+        if !has_attribute_boundary {
+            search_start = pos + 1;
+            continue;
+        }
+
+        let value_start = pos + needle.len();
+        let value_end_rel = data[value_start..].iter().position(|b| *b == b'"')?;
+        return Some(&data[value_start..value_start + value_end_rel]);
+    }
+
+    None
+}
+
+fn generate_self_closing_cell_xml(cell_attr: &[u8]) -> Vec<u8> {
+    let cell_attr = cell_attr
+        .strip_suffix(b"/")
+        .unwrap_or(cell_attr)
+        .trim_ascii_end();
+    let mut out = Vec::with_capacity(cell_attr.len() + 4);
+    out.extend_from_slice(b"<c");
+    out.extend_from_slice(cell_attr);
+    out.extend_from_slice(b"/>");
+    out
 }
 
 fn parse_cell_reference(reference: &[u8]) -> Option<(u32, u32)> {
@@ -1385,21 +1474,40 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             };
 
             if safe_to_clean && !metrics.candidates.is_empty() {
-                xml = apply_deferred_candidate_cleanup(
+                let (cleaned_xml, deferred_cleanup_rows) = apply_deferred_candidate_cleanup(
                     xml,
                     &metrics.candidates,
                     &protected_refs,
                     &params.zip_info_filename,
                     &mut metrics.cleanup_stats,
                 );
+                xml = cleaned_xml;
 
-                metrics.row_attributes.clear();
-                metrics.kept_row_states.clear();
-                metrics.deleted_row_states.clear();
                 let mut deferred_row_cleanup_params = params.clone();
                 deferred_row_cleanup_params
                     .cleanup
                     .consecutive_hidden_empty_rows = false;
+
+                if !deferred_cleanup_rows.is_empty() {
+                    metrics.row_attributes.clear();
+                    metrics.kept_row_states.clear();
+                    metrics.deleted_row_states.clear();
+                    match clean_selected_rows_and_cells_in_cell_range(
+                        &xml,
+                        &deferred_row_cleanup_params,
+                        &mut metrics,
+                        &deferred_cleanup_rows,
+                    ) {
+                        Ok(cleaned) => xml = cleaned,
+                        Err(e) => {
+                            error!(event = "deferred_row_cell_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, rows = deferred_cleanup_rows.len(), error = %e, "Failed to clean rows touched by deferred cleanup; keeping deferred-cleaned XML");
+                        }
+                    }
+                }
+
+                metrics.row_attributes.clear();
+                metrics.kept_row_states.clear();
+                metrics.deleted_row_states.clear();
                 match clean_empty_rows_from_after_cell_range(
                     &xml,
                     &deferred_row_cleanup_params,

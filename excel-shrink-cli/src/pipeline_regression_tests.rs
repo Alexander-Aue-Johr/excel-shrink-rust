@@ -1,9 +1,12 @@
 use super::*;
+use crate::LogLevel;
 use excel_shrink_core::models::{
     CleanSheetParameters, SheetPreprocessConfig, WorkbookSpecificPatterns,
 };
 use excel_shrink_core::sheet::output::trim_trailing_layout_only_rows;
-use excel_shrink_core::sheet::sheet_data::clean_empty_rows_from_after_cell_range;
+use excel_shrink_core::sheet::sheet_data::{
+    clean_empty_rows_from_after_cell_range, clean_selected_rows_and_cells_in_cell_range,
+};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -144,7 +147,7 @@ fn phase3_removes_unprotected_hidden_candidate_cell() {
     let protected = ProtectedWorkbookRefs::default();
     let mut stats = CleanupStats::enabled();
 
-    let cleaned = apply_deferred_candidate_cleanup(
+    let (cleaned, touched_rows) = apply_deferred_candidate_cleanup(
         xml,
         &candidates,
         &protected,
@@ -152,6 +155,7 @@ fn phase3_removes_unprotected_hidden_candidate_cell() {
         &mut stats,
     );
 
+    assert_eq!(touched_rows, [41].into_iter().collect());
     assert!(
         !String::from_utf8_lossy(&cleaned).contains("r=\"S41\""),
         "sheet1!S41 should be removed when unprotected"
@@ -159,14 +163,14 @@ fn phase3_removes_unprotected_hidden_candidate_cell() {
 }
 
 #[test]
-fn phase3_removes_unprotected_x4_whitespace_candidate_cell() {
+fn phase3_strips_unprotected_x4_whitespace_candidate_cell_content() {
     let xml = br#"<sheetData><row r="4"><c r="W4" s="91"><v>118</v></c><c r="X4" s="91" t="s"><v>15801</v></c><c r="Y4" s="91"><v>7</v></c></row></sheetData>"#
         .to_vec();
     let candidates = vec![candidate_x4_whitespace()];
     let protected = ProtectedWorkbookRefs::default();
     let mut stats = CleanupStats::enabled();
 
-    let cleaned = apply_deferred_candidate_cleanup(
+    let (cleaned, touched_rows) = apply_deferred_candidate_cleanup(
         xml,
         &candidates,
         &protected,
@@ -174,10 +178,45 @@ fn phase3_removes_unprotected_x4_whitespace_candidate_cell() {
         &mut stats,
     );
 
+    assert_eq!(touched_rows, [4].into_iter().collect());
     let cleaned = String::from_utf8_lossy(&cleaned);
-    assert!(!cleaned.contains(r#"r="X4""#));
+    assert!(cleaned.contains(r#"<c r="X4" s="91" t="s"/>"#));
+    assert!(!cleaned.contains(r#"<c r="X4" s="91" t="s"><v>15801</v></c>"#));
     assert!(cleaned.contains(r#"r="W4""#));
     assert!(cleaned.contains(r#"r="Y4""#));
+}
+
+#[test]
+fn phase3_row_cleanup_preserves_stripped_whitespace_cell_with_visible_fill() {
+    let xml = br#"<sheetData><row r="4"><c r="W4" s="91"><v>118</v></c><c r="X4" s="37" t="s"><v>15801</v></c><c r="Y4" s="91"><v>7</v></c></row></sheetData>"#
+        .to_vec();
+    let candidates = vec![candidate_x4_whitespace()];
+    let protected = ProtectedWorkbookRefs::default();
+    let mut params = default_sheet_params();
+    params.patterns.xfs_by_index.insert(
+        37,
+        excel_shrink_core::models::Xf::new(Some(2), Some(0), false, true, true, true, false, false),
+    );
+    let mut stats = CleanupStats::enabled();
+    let mut metrics = CleanSheetMetrics {
+        cleanup_stats: CleanupStats::enabled(),
+        ..CleanSheetMetrics::default()
+    };
+
+    let (cleaned, touched_rows) = apply_deferred_candidate_cleanup(
+        xml,
+        &candidates,
+        &protected,
+        "xl/worksheets/sheet1.xml",
+        &mut stats,
+    );
+    let cleaned =
+        clean_selected_rows_and_cells_in_cell_range(&cleaned, &params, &mut metrics, &touched_rows)
+            .expect("row cleanup should succeed");
+    let cleaned = String::from_utf8_lossy(&cleaned);
+
+    assert!(cleaned.contains(r#"<c r="X4" s="37" t="s"/>"#));
+    assert!(!cleaned.contains(r#"<v>15801</v>"#));
 }
 
 #[test]
@@ -190,7 +229,7 @@ fn phase3_keeps_sheet1_candidate_when_protected_by_sheet1_ref() {
         .insert_cell(19, 41);
     let mut stats = CleanupStats::enabled();
 
-    let cleaned = apply_deferred_candidate_cleanup(
+    let (cleaned, touched_rows) = apply_deferred_candidate_cleanup(
         xml,
         &candidates,
         &protected,
@@ -198,6 +237,7 @@ fn phase3_keeps_sheet1_candidate_when_protected_by_sheet1_ref() {
         &mut stats,
     );
 
+    assert!(touched_rows.is_empty());
     assert!(
         String::from_utf8_lossy(&cleaned).contains("r=\"S41\""),
         "sheet1!S41 should be kept when protected on target sheet"
@@ -218,13 +258,14 @@ fn phase3_trims_trailing_row_after_deferred_candidate_cleanup() {
         ..CleanSheetMetrics::default()
     };
 
-    let cleaned = apply_deferred_candidate_cleanup(
+    let (cleaned, touched_rows) = apply_deferred_candidate_cleanup(
         xml,
         &candidates,
         &protected,
         "xl/worksheets/sheet1.xml",
         &mut stats,
     );
+    assert_eq!(touched_rows, [41].into_iter().collect());
     let cleaned = trim_trailing_layout_only_rows(&cleaned, &params, &mut metrics);
     let cleaned = String::from_utf8_lossy(&cleaned);
 
@@ -265,25 +306,32 @@ fn phase3_preserves_hidden_rows_emptied_by_deferred_candidate_cleanup() {
         ..CleanSheetMetrics::default()
     };
 
-    let cleaned = apply_deferred_candidate_cleanup(
+    let (cleaned, touched_rows) = apply_deferred_candidate_cleanup(
         xml,
         &candidates,
         &protected,
         "xl/worksheets/sheet1.xml",
         &mut stats,
     );
+    assert_eq!(
+        touched_rows,
+        [44505, 44506, 44597, 44598].into_iter().collect()
+    );
+    let cleaned =
+        clean_selected_rows_and_cells_in_cell_range(&cleaned, &params, &mut metrics, &touched_rows)
+            .expect("row cleanup should succeed");
     let cleaned = clean_empty_rows_from_after_cell_range(&cleaned, &params, &mut metrics).unwrap();
     let cleaned = String::from_utf8_lossy(&cleaned);
 
     assert!(cleaned.contains(r#"r="44504""#));
-    assert!(cleaned.contains(r#"<row r="44505" hidden="1"/>"#));
-    assert!(cleaned.contains(r#"<row r="44506" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"<row r="44505""#));
+    assert!(cleaned.contains(r#"<row r="44506""#));
+    assert!(cleaned.contains(r#"hidden="1""#));
     assert!(cleaned.contains(r#"r="44596""#));
-    assert!(cleaned.contains(r#"<row r="44597" hidden="1"/>"#));
-    assert!(cleaned.contains(r#"<row r="44598" hidden="1"/>"#));
+    assert!(cleaned.contains(r#"<row r="44597""#));
+    assert!(cleaned.contains(r#"<row r="44598""#));
     assert!(cleaned.contains(r#"r="44650""#));
-    assert!(!cleaned.contains("spans="));
-    assert!(!cleaned.contains("dyDescent"));
+    assert!(!cleaned.contains("secret"));
 }
 
 #[test]
@@ -408,12 +456,12 @@ fn pipeline_cleans_calc_chain_entries_for_cells_removed_from_sheet() {
         .unwrap();
     writer
         .write_all(
-            br#"<worksheet><sheetData><row r="1"><c r="A1"><f>1+1</f><v>2</v></c><c r="B1"/></row></sheetData></worksheet>"#,
+            br#"<worksheet><sheetData><row r="1"><c r="A1"><f>1+1</f><v>2</v></c><c r="B1"/><c r="C1"/></row></sheetData></worksheet>"#,
         )
         .unwrap();
     writer.start_file("xl/calcChain.xml", options).unwrap();
     writer
-        .write_all(br#"<calcChain><c r="A1" i="1"/><c r="B1"/></calcChain>"#)
+        .write_all(br#"<calcChain><c r="A1" i="1"/><c r="B1"/><c r="C1"/></calcChain>"#)
         .unwrap();
     writer.finish().unwrap();
 
@@ -443,9 +491,11 @@ fn pipeline_cleans_calc_chain_entries_for_cells_removed_from_sheet() {
         .read_to_string(&mut calc_chain)
         .unwrap();
 
-    assert!(!sheet.contains(r#"r="B1""#));
+    assert!(sheet.contains(r#"r="B1""#));
+    assert!(!sheet.contains(r#"r="C1""#));
     assert!(calc_chain.contains(r#"r="A1""#));
-    assert!(!calc_chain.contains(r#"r="B1""#));
+    assert!(calc_chain.contains(r#"r="B1""#));
+    assert!(!calc_chain.contains(r#"r="C1""#));
 
     let _ = std::fs::remove_dir_all(temp_root);
 }

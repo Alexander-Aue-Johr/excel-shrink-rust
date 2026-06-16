@@ -99,6 +99,37 @@ pub fn clean_sheet_rows_and_cells_in_cell_range(
     }))
 }
 
+pub fn clean_selected_rows_and_cells_in_cell_range(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    row_numbers: &HashSet<u32>,
+) -> Result<Vec<u8>> {
+    if row_numbers.is_empty() {
+        return Ok(sheet_data.to_vec());
+    }
+
+    Ok(apply_row_byte_substitution(sheet_data, |row| {
+        let Some(row_number) =
+            extract_xml_attr_value(row.attr, b"r").map(crate::utils::digits_byte_string_to_integer)
+        else {
+            return Cow::Borrowed(row.raw);
+        };
+
+        if row_numbers.contains(&row_number) {
+            Cow::Owned(replace_row_bytes(
+                row.raw,
+                row.attr,
+                row.content,
+                params,
+                metrics,
+            ))
+        } else {
+            Cow::Borrowed(row.raw)
+        }
+    }))
+}
+
 pub fn clean_empty_rows_from_after_cell_range(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
