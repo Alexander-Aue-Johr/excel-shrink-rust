@@ -37,7 +37,10 @@ fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
             only_font_style_ids.push(*id);
         }
 
-        if xf.has_fill_or_border || xf.has_apply_protection {
+        if xf.has_fill_or_border
+            || xf.applies_default_fill_or_border_override()
+            || xf.has_apply_protection
+        {
             fill_or_border_or_protection_ids.push(*id);
         }
 
@@ -120,6 +123,34 @@ fn font_and_apply_fill_style(fill_id: u32) -> Xf {
     )
 }
 
+fn font_and_apply_default_border_style() -> Xf {
+    Xf::new_with_visible_parts(
+        Some(0),
+        Some(0),
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+    )
+}
+
+fn font_and_apply_default_fill_style() -> Xf {
+    Xf::new_with_visible_parts(
+        Some(0),
+        Some(0),
+        false,
+        true,
+        false,
+        false,
+        true,
+        false,
+        false,
+    )
+}
+
 fn shared_strings_with_self_closing_text_at(index: usize) -> Vec<u8> {
     let mut xml = Vec::new();
     xml.extend_from_slice(b"<sst>");
@@ -155,6 +186,48 @@ fn keeps_formula_cell_with_attributes_and_empty_cached_value() {
     let cell_xml =
         br#"<c r="A3" s="39" t="str"><f t="shared" ref="A3:A10" si="0">IF(B3=1,"","")</f><v/></c>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="39" t="str""#, Some(39));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned, cell_xml);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_states.len(), 0);
+}
+
+#[test]
+fn keeps_empty_cell_when_style_applies_default_border_override() {
+    let params = params_with_styles(&[(43, font_and_apply_default_border_style())]);
+    let mut metrics = CleanSheetMetrics::default();
+
+    let cell_xml = br#"<c r="F2" s="43"/>"#;
+    let cell = ParsedCell {
+        raw: cell_xml,
+        attr: br#" r="F2" s="43""#,
+        row: b"2",
+        col_num: 6,
+        style_id: Some(43),
+    };
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned, cell_xml);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_states.len(), 0);
+}
+
+#[test]
+fn keeps_empty_cell_when_style_applies_default_fill_override() {
+    let params = params_with_styles(&[(44, font_and_apply_default_fill_style())]);
+    let mut metrics = CleanSheetMetrics::default();
+
+    let cell_xml = br#"<c r="G2" s="44"/>"#;
+    let cell = ParsedCell {
+        raw: cell_xml,
+        attr: br#" r="G2" s="44""#,
+        row: b"2",
+        col_num: 7,
+        style_id: Some(44),
+    };
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 

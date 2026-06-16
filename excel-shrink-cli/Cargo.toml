@@ -7,7 +7,7 @@ edition = "2021"
 excel-shrink-core = { path = "../excel-shrink-core" }
 clap = { version = "4.4", features = ["derive"] }
 tracing.workspace = true
-rayon = "1.8"
+rayon.workspace = true
 threadpool = "1.8"
 zip.workspace = true
 anyhow = "1.0.102"
