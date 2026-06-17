@@ -226,7 +226,6 @@ struct CleanedChunk {
     xml: Vec<u8>,
     metrics: CleanSheetMetrics,
 }
-
 fn plan_row_aligned_chunks_by_max_size(
     sheet_data: &[u8],
     max_chunk_size: usize,
@@ -239,63 +238,64 @@ fn plan_row_aligned_chunks_by_max_size(
         }];
     }
 
-    let row_ends = collect_row_end_positions(sheet_data);
-    if row_ends.is_empty() {
-        return vec![RowAlignedChunk {
-            index: 0,
-            start: 0,
-            end: sheet_data.len(),
-        }];
-    }
-
     let mut chunks = Vec::new();
     let mut start = 0usize;
-    let mut row_end_index = 0usize;
 
     while start < sheet_data.len() {
-        while row_end_index < row_ends.len() && row_ends[row_end_index] <= start {
-            row_end_index += 1;
+        let target_end = start.saturating_add(max_chunk_size);
+
+        if target_end >= sheet_data.len() {
+            break;
         }
 
-        let target_end = start.saturating_add(max_chunk_size).min(sheet_data.len());
-        let first_candidate = row_end_index;
-        let mut last_fit = None;
-        while row_end_index < row_ends.len() && row_ends[row_end_index] <= target_end {
-            if row_ends[row_end_index] > start {
-                last_fit = Some(row_ends[row_end_index]);
-            }
-            row_end_index += 1;
-        }
+        let Some(boundary) = find_next_row_start(sheet_data, target_end) else {
+            break;
+        };
 
-        let end = last_fit.unwrap_or_else(|| {
-            row_ends
-                .get(first_candidate)
-                .copied()
-                .filter(|end| *end > start)
-                .unwrap_or(sheet_data.len())
-        });
-
-        if end <= start {
+        if boundary <= start || boundary >= sheet_data.len() {
             break;
         }
 
         chunks.push(RowAlignedChunk {
             index: chunks.len(),
             start,
-            end,
+            end: boundary,
         });
-        start = end;
+
+        start = boundary;
     }
 
-    if chunks.is_empty() {
-        chunks.push(RowAlignedChunk {
-            index: 0,
-            start: 0,
-            end: sheet_data.len(),
-        });
-    }
+    chunks.push(RowAlignedChunk {
+        index: chunks.len(),
+        start,
+        end: sheet_data.len(),
+    });
 
     chunks
+}
+
+fn find_next_row_start(data: &[u8], from: usize) -> Option<usize> {
+    let mut pos = from.min(data.len());
+
+    while pos < data.len() {
+        let rel = find_bytes(&data[pos..], b"<row")?;
+        let candidate = pos + rel;
+
+        if is_row_tag_start(data, candidate) {
+            return Some(candidate);
+        }
+
+        pos = candidate + 1;
+    }
+
+    None
+}
+
+fn is_row_tag_start(data: &[u8], row_start: usize) -> bool {
+    matches!(
+        data.get(row_start + b"<row".len()),
+        Some(byte) if byte.is_ascii_whitespace() || matches!(byte, b'/' | b'>')
+    )
 }
 
 fn clean_row_aligned_chunks_by_max_size(
@@ -364,35 +364,6 @@ fn clean_row_aligned_chunks_by_max_size(
     }
 
     Ok(out)
-}
-
-fn collect_row_end_positions(sheet_data: &[u8]) -> Vec<usize> {
-    let mut row_ends = Vec::new();
-    let mut pos = 0;
-
-    while let Some(row_start_rel) = find_bytes(&sheet_data[pos..], b"<row") {
-        let row_start = pos + row_start_rel;
-
-        let Some(tag_end) = find_byte_from(sheet_data, b'>', row_start) else {
-            break;
-        };
-
-        let self_closing = tag_end > row_start && sheet_data[tag_end - 1] == b'/';
-        let row_end = if self_closing {
-            tag_end + 1
-        } else {
-            let content_start = tag_end + 1;
-            let Some(close_rel) = find_bytes(&sheet_data[content_start..], b"</row>") else {
-                break;
-            };
-            content_start + close_rel + b"</row>".len()
-        };
-
-        row_ends.push(row_end);
-        pos = row_end;
-    }
-
-    row_ends
 }
 
 fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {

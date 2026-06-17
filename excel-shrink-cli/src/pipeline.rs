@@ -1,10 +1,11 @@
 use rayon::prelude::*;
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Read, Seek, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc, Condvar, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use threadpool::ThreadPool;
@@ -51,53 +52,6 @@ struct ActiveTask {
 }
 
 type ActiveTasks = Arc<Mutex<HashMap<String, ActiveTask>>>;
-
-#[derive(Clone)]
-struct WorkbookLimiter {
-    inner: Arc<WorkbookLimiterInner>,
-}
-
-struct WorkbookLimiterInner {
-    max_active: usize,
-    active: Mutex<usize>,
-    available: Condvar,
-}
-
-struct WorkbookPermit {
-    inner: Arc<WorkbookLimiterInner>,
-}
-
-impl WorkbookLimiter {
-    fn new(max_active: usize) -> Self {
-        Self {
-            inner: Arc::new(WorkbookLimiterInner {
-                max_active: max_active.max(1),
-                active: Mutex::new(0),
-                available: Condvar::new(),
-            }),
-        }
-    }
-
-    fn acquire(&self) -> WorkbookPermit {
-        let mut active = self.inner.active.lock().unwrap();
-        while *active >= self.inner.max_active {
-            active = self.inner.available.wait(active).unwrap();
-        }
-        *active += 1;
-
-        WorkbookPermit {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl Drop for WorkbookPermit {
-    fn drop(&mut self) {
-        let mut active = self.inner.active.lock().unwrap();
-        *active = active.saturating_sub(1);
-        self.inner.available.notify_one();
-    }
-}
 
 #[derive(Clone)]
 struct BatchProgress {
@@ -684,10 +638,8 @@ fn spawn_xlsx_writer(
     rx: mpsc::Receiver<WriteJob>,
     input_display: String,
     mut progress: XlsxProgress,
-    workbook_permit: WorkbookPermit,
 ) {
     writer_pool.execute(move || {
-        let _workbook_permit = workbook_permit;
         let writer_start = Instant::now();
         let source_file = match File::open(&input_path) {
             Ok(file) => file,
@@ -927,10 +879,23 @@ fn parse_cell_reference(reference: &[u8]) -> Option<(u32, u32)> {
     ))
 }
 
-pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()> {
+pub fn process_files(mut input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()> {
     if !cli.output.exists() {
         std::fs::create_dir_all(&cli.output)?;
     }
+
+    input_files.sort_by_cached_key(|path| {
+        Reverse(
+            std::fs::metadata(path)
+                .map(|metadata| metadata.len())
+                .unwrap_or(0),
+        )
+    });
+    let largest_input_file_bytes = input_files
+        .first()
+        .and_then(|path| std::fs::metadata(path).ok())
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
 
     let (analysis_tx, analysis_handle) = match &cli.analysis_csv {
         Some(path) => {
@@ -948,22 +913,18 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         .writer_workers
         .unwrap_or_else(default_parallelism)
         .max(1);
-    let max_active_workbooks = cli
-        .max_active_workbooks
-        .unwrap_or_else(default_parallelism)
-        .max(1);
-    let workbook_limiter = WorkbookLimiter::new(max_active_workbooks);
     let writer_pool = ThreadPool::new(writer_workers);
     info!(
         files_total = batch_progress.files_total,
+        largest_input_file_bytes,
         writer_workers,
-        max_active_workbooks,
+        configured_max_active_workbooks = cli.max_active_workbooks,
+        workbook_back_pressure_disabled = true,
         multiprocessing_disabled = cli.disable_multiprocessing,
         "Processing XLSX files"
     );
 
     let process_file = |input: &PathBuf| {
-        let workbook_permit = workbook_limiter.acquire();
         let file_start = Instant::now();
         let input_display = input.display().to_string();
         let active_tasks = active_tasks.clone();
@@ -1021,7 +982,6 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             rx,
             input_display.clone(),
             file_progress,
-            workbook_permit,
         );
 
         let mut all_xfs = Vec::new();
@@ -1393,9 +1353,36 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 .map(|task| process_sheet_initial(task, advanced_arc.clone(), file_bytes.clone()))
                 .collect()
         } else {
-            sheet_tasks
-                .into_par_iter()
-                .map(|task| process_sheet_initial(task, advanced_arc.clone(), file_bytes.clone()))
+            let sheet_count = sheet_tasks.len();
+            let (result_tx, result_rx) = mpsc::channel();
+
+            rayon::scope_fifo(|scope| {
+                for (task_order, task) in sheet_tasks.into_iter().enumerate() {
+                    let result_tx = result_tx.clone();
+                    let advanced_arc = advanced_arc.clone();
+                    let file_bytes = file_bytes.clone();
+                    let process_sheet_initial = &process_sheet_initial;
+
+                    scope.spawn_fifo(move |_| {
+                        let result = process_sheet_initial(task, advanced_arc, file_bytes);
+                        let _ = result_tx.send((task_order, result));
+                    });
+                }
+            });
+            drop(result_tx);
+
+            let mut indexed_results: Vec<_> = result_rx.into_iter().collect();
+            if indexed_results.len() != sheet_count {
+                error!(
+                    expected = sheet_count,
+                    actual = indexed_results.len(),
+                    "Sheet task result count mismatch"
+                );
+            }
+            indexed_results.sort_by_key(|(task_order, _)| *task_order);
+            indexed_results
+                .into_iter()
+                .map(|(_, result)| result)
                 .collect()
         };
 
@@ -1698,7 +1685,12 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
     if cli.disable_multiprocessing {
         input_files.iter().for_each(process_file);
     } else {
-        input_files.par_iter().for_each(process_file);
+        rayon::scope_fifo(|scope| {
+            for input in &input_files {
+                let process_file = &process_file;
+                scope.spawn_fifo(move |_| process_file(input));
+            }
+        });
     }
 
     drop(analysis_tx);
