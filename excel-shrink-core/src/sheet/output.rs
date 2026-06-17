@@ -6,7 +6,11 @@ use crate::sheet::ranges::{
     retrieve_sheet_data_range_containing_cells,
 };
 use crate::sheet::sheet_data::{
-    clean_empty_rows_from_after_cell_range, clean_sheet_rows_and_cells_in_cell_range,
+    clean_empty_rows_from_after_cell_range,
+    clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size,
+    clean_sheet_rows_and_cells_in_cell_range,
+    clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size,
+    should_parallel_chunk_range,
 };
 use crate::sheet::streaming::PreprocessedSheetXml;
 use crate::xml::{find_byte_from, find_bytes, rfind_bytes};
@@ -26,6 +30,7 @@ pub fn build_clean_sheet_xml(
         preprocessed,
         params,
         disable_sheetdata_splitting,
+        0,
         &mut |_| {},
     )
 }
@@ -34,6 +39,7 @@ pub fn build_clean_sheet_xml_with_progress(
     preprocessed: PreprocessedSheetXml,
     params: &CleanSheetParameters,
     disable_sheetdata_splitting: bool,
+    parallel_range_chunk_size: usize,
     progress: &mut impl FnMut(&'static str),
 ) -> Result<CleanedSheetData> {
     progress("build_prepare_sheet_metrics");
@@ -68,13 +74,37 @@ pub fn build_clean_sheet_xml_with_progress(
             );
         }
 
-        progress("clean_cells_range");
         let cleaned_cells_range =
-            clean_sheet_rows_and_cells_in_cell_range(&ranges.cells_range, params, &mut metrics)?;
+            if should_parallel_chunk_range(ranges.cells_range.len(), parallel_range_chunk_size) {
+                progress("clean_cells_range_parallel");
+                clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
+                    ranges.cells_range,
+                    params,
+                    &mut metrics,
+                    parallel_range_chunk_size,
+                    "cells_range",
+                    &params.zip_info_filename,
+                )?
+            } else {
+                progress("clean_cells_range");
+                clean_sheet_rows_and_cells_in_cell_range(ranges.cells_range, params, &mut metrics)?
+            };
 
-        progress("clean_visible_rows_range");
         let cleaned_visible_rows_range =
-            clean_empty_rows_from_after_cell_range(&ranges.rows_range, params, &mut metrics)?;
+            if should_parallel_chunk_range(ranges.rows_range.len(), parallel_range_chunk_size) {
+                progress("clean_visible_rows_range_parallel");
+                clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size(
+                    ranges.rows_range,
+                    params,
+                    &mut metrics,
+                    parallel_range_chunk_size,
+                    "rows_range",
+                    &params.zip_info_filename,
+                )?
+            } else {
+                progress("clean_visible_rows_range");
+                clean_empty_rows_from_after_cell_range(ranges.rows_range, params, &mut metrics)?
+            };
 
         [cleaned_cells_range, cleaned_visible_rows_range].concat()
     };

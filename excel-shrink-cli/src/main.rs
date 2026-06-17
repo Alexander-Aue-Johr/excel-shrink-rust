@@ -24,9 +24,16 @@ pub struct Cli {
     #[arg(long)]
     disable_multiprocessing: bool,
 
-    /// Set the chunk size for processing XML data
+    /// Read buffer size for streaming XML preprocessing.
+    /// This is not the number or size of Rayon work items.
     #[arg(long, default_value_t = 16_777_216)]
     chunk_size: usize,
+
+    /// Maximum uncompressed XML bytes per parallel range chunk.
+    /// If a concrete range is at or below this size, it is processed sequentially.
+    /// Set to 0 to disable range chunking completely.
+    #[arg(long, default_value_t = 134_217_728)]
+    parallel_range_chunk_size: usize,
 
     /// Force overwrite existing files
     #[arg(long)]

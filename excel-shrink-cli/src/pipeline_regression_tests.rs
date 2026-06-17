@@ -21,6 +21,7 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         recursive: false,
         disable_multiprocessing: false,
         chunk_size: 16_777_216,
+        parallel_range_chunk_size: 134_217_728,
         force_overwrite: false,
         sheets: None,
         only_clean_workbook: false,

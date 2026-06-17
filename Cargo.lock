@@ -303,6 +303,7 @@ dependencies = [
  "derive_builder",
  "lazy_static",
  "memchr",
+ "rayon",
  "regex",
  "thiserror 1.0.69",
  "tracing",

@@ -202,6 +202,13 @@ type ProcessedSheetErr = (CleanSheetParameters, usize);
 type ProcessedSheetResult = Result<ProcessedSheetOk, ProcessedSheetErr>;
 
 #[derive(Debug, Clone)]
+struct SheetTask {
+    params: CleanSheetParameters,
+    zip_index: usize,
+    original_xml_size: usize,
+}
+
+#[derive(Debug, Clone)]
 struct AnalysisCsvRow {
     input_file: String,
     sheet_file: String,
@@ -1082,8 +1089,10 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 });
 
             if should_process_sheet {
-                sheet_tasks.push((
-                    CleanSheetParameters {
+                let original_xml_size = usize::try_from(file.size()).unwrap_or(usize::MAX);
+
+                sheet_tasks.push(SheetTask {
+                    params: CleanSheetParameters {
                         xlsx_file_path: input.to_string_lossy().to_string(),
                         zip_info_filename: name,
                         compress_method: method,
@@ -1096,8 +1105,9 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                         cleanup: cleanup.clone(),
                         collect_cleanup_stats,
                     },
-                    i,
-                ));
+                    zip_index: i,
+                    original_xml_size,
+                });
             } else if name == "xl/workbook.xml" {
                 let mut buf = Vec::new();
                 if let Err(e) = file.read_to_end(&mut buf) {
@@ -1235,9 +1245,27 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             }
         }
 
+        sheet_tasks.sort_by(|a, b| {
+            b.original_xml_size
+                .cmp(&a.original_xml_size)
+                .then_with(|| a.params.zip_info_filename.cmp(&b.params.zip_info_filename))
+        });
+
+        let largest_sheet_xml_bytes = sheet_tasks
+            .iter()
+            .map(|task| task.original_xml_size)
+            .max()
+            .unwrap_or(0);
+
+        let total_sheet_xml_bytes: usize =
+            sheet_tasks.iter().map(|task| task.original_xml_size).sum();
+
         info!(
             xlsx = %input_display,
             sheets_to_clean = sheet_tasks.len(),
+            total_sheet_xml_bytes,
+            largest_sheet_xml_bytes,
+            parallel_range_chunk_size = cli.parallel_range_chunk_size,
             "Planned workbook cleanup"
         );
 
@@ -1254,11 +1282,15 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         let disable_splitting = cli.disable_sheetdata_splitting;
 
         // --- PHASE 1: Pre-Processing & Cell Cleanup (Collect Candidates) ---
-        let process_sheet_initial = |mut params: CleanSheetParameters,
-                                     index: usize,
+        let process_sheet_initial = |task: SheetTask,
                                      adv_config: Option<Arc<AdvancedCleanupConfig>>,
                                      source_zip_bytes: Arc<Vec<u8>>|
          -> ProcessedSheetResult {
+            let SheetTask {
+                mut params,
+                zip_index: index,
+                original_xml_size: planned_original_size,
+            } = task;
             params.advanced_cleanup = adv_config;
             let mut archive = match ZipArchive::new(Cursor::new(source_zip_bytes.as_slice())) {
                 Ok(archive) => archive,
@@ -1275,7 +1307,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     return Err((params, index));
                 }
             };
-            let original_size = usize::try_from(sheet_file.size()).unwrap_or(usize::MAX);
+            let original_size = usize::try_from(sheet_file.size()).unwrap_or(planned_original_size);
 
             let start_time = Instant::now();
             let task_key = format!("{}::{}", params.xlsx_file_path, params.zip_info_filename);
@@ -1285,7 +1317,6 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 original_xml_bytes = original_size,
                 "Processing sheet"
             );
-
             {
                 let mut guard = active_tasks.lock().unwrap();
                 guard.insert(
@@ -1318,6 +1349,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 &params,
                 chunk_size,
                 disable_splitting,
+                cli.parallel_range_chunk_size,
                 &mut update_phase,
             );
 
@@ -1358,16 +1390,12 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         let processed_sheets: Vec<ProcessedSheetResult> = if cli.disable_multiprocessing {
             sheet_tasks
                 .into_iter()
-                .map(|(params, index)| {
-                    process_sheet_initial(params, index, advanced_arc.clone(), file_bytes.clone())
-                })
+                .map(|task| process_sheet_initial(task, advanced_arc.clone(), file_bytes.clone()))
                 .collect()
         } else {
             sheet_tasks
                 .into_par_iter()
-                .map(|(params, index)| {
-                    process_sheet_initial(params, index, advanced_arc.clone(), file_bytes.clone())
-                })
+                .map(|task| process_sheet_initial(task, advanced_arc.clone(), file_bytes.clone()))
                 .collect()
         };
 

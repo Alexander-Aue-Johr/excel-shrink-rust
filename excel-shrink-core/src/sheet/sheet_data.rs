@@ -2,8 +2,10 @@ use crate::error::{Result, ShrinkError};
 use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, ColumnRangeMap};
 use crate::sheet::rows::{replace_empty_row_after_cell_range_bytes, replace_row_bytes};
 use crate::xml::{find_byte_from, find_bytes};
+use rayon::prelude::*;
 use std::borrow::Cow;
 use std::collections::HashSet;
+use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct SheetDataPreprocessState {
@@ -99,6 +101,37 @@ pub fn clean_sheet_rows_and_cells_in_cell_range(
     }))
 }
 
+pub(crate) fn should_parallel_chunk_range(range_len: usize, max_chunk_size: usize) -> bool {
+    max_chunk_size > 0 && range_len > max_chunk_size
+}
+
+pub fn clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    max_chunk_size: usize,
+    range_kind: &'static str,
+    sheet_name: &str,
+) -> Result<Vec<u8>> {
+    if !should_parallel_chunk_range(sheet_data.len(), max_chunk_size) {
+        return clean_sheet_rows_and_cells_in_cell_range(sheet_data, params, metrics);
+    }
+
+    if params.cleanup.consecutive_hidden_empty_rows {
+        return clean_sheet_rows_and_cells_in_cell_range(sheet_data, params, metrics);
+    }
+
+    clean_row_aligned_chunks_by_max_size(
+        sheet_data,
+        params,
+        metrics,
+        max_chunk_size,
+        range_kind,
+        sheet_name,
+        clean_sheet_rows_and_cells_in_cell_range,
+    )
+}
+
 pub fn clean_selected_rows_and_cells_in_cell_range(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
@@ -147,11 +180,265 @@ pub fn clean_empty_rows_from_after_cell_range(
     }))
 }
 
+pub fn clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    max_chunk_size: usize,
+    range_kind: &'static str,
+    sheet_name: &str,
+) -> Result<Vec<u8>> {
+    if !should_parallel_chunk_range(sheet_data.len(), max_chunk_size) {
+        return clean_empty_rows_from_after_cell_range(sheet_data, params, metrics);
+    }
+
+    if params.cleanup.consecutive_hidden_empty_rows {
+        return clean_empty_rows_from_after_cell_range(sheet_data, params, metrics);
+    }
+
+    clean_row_aligned_chunks_by_max_size(
+        sheet_data,
+        params,
+        metrics,
+        max_chunk_size,
+        range_kind,
+        sheet_name,
+        clean_empty_rows_from_after_cell_range,
+    )
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ParsedRowBlock<'a> {
     raw: &'a [u8],
     attr: &'a [u8],
     content: Option<&'a [u8]>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RowAlignedChunk {
+    index: usize,
+    start: usize,
+    end: usize,
+}
+
+struct CleanedChunk {
+    index: usize,
+    xml: Vec<u8>,
+    metrics: CleanSheetMetrics,
+}
+
+fn plan_row_aligned_chunks_by_max_size(
+    sheet_data: &[u8],
+    max_chunk_size: usize,
+) -> Vec<RowAlignedChunk> {
+    if max_chunk_size == 0 || sheet_data.len() <= max_chunk_size {
+        return vec![RowAlignedChunk {
+            index: 0,
+            start: 0,
+            end: sheet_data.len(),
+        }];
+    }
+
+    let row_ends = collect_row_end_positions(sheet_data);
+    if row_ends.is_empty() {
+        return vec![RowAlignedChunk {
+            index: 0,
+            start: 0,
+            end: sheet_data.len(),
+        }];
+    }
+
+    let mut chunks = Vec::new();
+    let mut start = 0usize;
+    let mut row_end_index = 0usize;
+
+    while start < sheet_data.len() {
+        while row_end_index < row_ends.len() && row_ends[row_end_index] <= start {
+            row_end_index += 1;
+        }
+
+        let target_end = start.saturating_add(max_chunk_size).min(sheet_data.len());
+        let first_candidate = row_end_index;
+        let mut last_fit = None;
+        while row_end_index < row_ends.len() && row_ends[row_end_index] <= target_end {
+            if row_ends[row_end_index] > start {
+                last_fit = Some(row_ends[row_end_index]);
+            }
+            row_end_index += 1;
+        }
+
+        let end = last_fit.unwrap_or_else(|| {
+            row_ends
+                .get(first_candidate)
+                .copied()
+                .filter(|end| *end > start)
+                .unwrap_or(sheet_data.len())
+        });
+
+        if end <= start {
+            break;
+        }
+
+        chunks.push(RowAlignedChunk {
+            index: chunks.len(),
+            start,
+            end,
+        });
+        start = end;
+    }
+
+    if chunks.is_empty() {
+        chunks.push(RowAlignedChunk {
+            index: 0,
+            start: 0,
+            end: sheet_data.len(),
+        });
+    }
+
+    chunks
+}
+
+fn clean_row_aligned_chunks_by_max_size(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    max_chunk_size: usize,
+    range_kind: &'static str,
+    sheet_name: &str,
+    clean_chunk: fn(&[u8], &CleanSheetParameters, &mut CleanSheetMetrics) -> Result<Vec<u8>>,
+) -> Result<Vec<u8>> {
+    let chunks = plan_row_aligned_chunks_by_max_size(sheet_data, max_chunk_size);
+
+    if chunks.len() <= 1 {
+        return clean_chunk(sheet_data, params, metrics);
+    }
+
+    let largest_chunk_bytes = chunks
+        .iter()
+        .map(|chunk| chunk.end - chunk.start)
+        .max()
+        .unwrap_or(0);
+    let smallest_chunk_bytes = chunks
+        .iter()
+        .map(|chunk| chunk.end - chunk.start)
+        .min()
+        .unwrap_or(0);
+
+    info!(
+        event = "range_chunked",
+        sheet = %sheet_name,
+        range_kind,
+        range_bytes = sheet_data.len(),
+        max_chunk_size,
+        actual_chunks = chunks.len(),
+        largest_chunk_bytes,
+        smallest_chunk_bytes,
+        "Parallel range chunking enabled"
+    );
+
+    let base_metrics = metrics.clone();
+    let mut cleaned_chunks: Vec<CleanedChunk> = chunks
+        .par_iter()
+        .map(|chunk| {
+            let mut chunk_metrics = make_chunk_metrics(&base_metrics);
+            let xml = clean_chunk(
+                &sheet_data[chunk.start..chunk.end],
+                params,
+                &mut chunk_metrics,
+            )?;
+
+            Ok(CleanedChunk {
+                index: chunk.index,
+                xml,
+                metrics: chunk_metrics,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    cleaned_chunks.sort_by_key(|chunk| chunk.index);
+
+    let mut out = Vec::with_capacity(sheet_data.len().min(64 * 1024 * 1024));
+    for chunk in cleaned_chunks {
+        extend_without_large_growth(&mut out, &chunk.xml);
+        merge_chunk_metrics(metrics, chunk.metrics);
+    }
+
+    Ok(out)
+}
+
+fn collect_row_end_positions(sheet_data: &[u8]) -> Vec<usize> {
+    let mut row_ends = Vec::new();
+    let mut pos = 0;
+
+    while let Some(row_start_rel) = find_bytes(&sheet_data[pos..], b"<row") {
+        let row_start = pos + row_start_rel;
+
+        let Some(tag_end) = find_byte_from(sheet_data, b'>', row_start) else {
+            break;
+        };
+
+        let self_closing = tag_end > row_start && sheet_data[tag_end - 1] == b'/';
+        let row_end = if self_closing {
+            tag_end + 1
+        } else {
+            let content_start = tag_end + 1;
+            let Some(close_rel) = find_bytes(&sheet_data[content_start..], b"</row>") else {
+                break;
+            };
+            content_start + close_rel + b"</row>".len()
+        };
+
+        row_ends.push(row_end);
+        pos = row_end;
+    }
+
+    row_ends
+}
+
+fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {
+    let mut metrics = base.clone();
+
+    metrics.kept_row_states.clear();
+    metrics.deleted_row_states.clear();
+    metrics.kept_cell_states.clear();
+    metrics.deleted_cell_states.clear();
+    metrics.row_attributes.clear();
+
+    metrics.whitespace_candidates = 0;
+    metrics.hidden_candidates = 0;
+    metrics.candidates.clear();
+
+    metrics.visible_content_bounds = Default::default();
+
+    metrics.cleanup_stats = if base.cleanup_stats.enabled {
+        crate::models::CleanupStats::enabled()
+    } else {
+        crate::models::CleanupStats::default()
+    };
+
+    metrics
+}
+
+fn merge_chunk_metrics(target: &mut CleanSheetMetrics, chunk: CleanSheetMetrics) {
+    target.kept_row_states.extend(chunk.kept_row_states);
+    target.deleted_row_states.extend(chunk.deleted_row_states);
+    target.kept_cell_states.extend(chunk.kept_cell_states);
+    target.deleted_cell_states.extend(chunk.deleted_cell_states);
+    target.row_attributes.extend(chunk.row_attributes);
+
+    target.whitespace_candidates += chunk.whitespace_candidates;
+    target.hidden_candidates += chunk.hidden_candidates;
+    target.candidates.extend(chunk.candidates);
+
+    if let Some(col) = chunk.visible_content_bounds.max_col {
+        target.visible_content_bounds.include_col(col);
+    }
+    if let Some(row) = chunk.visible_content_bounds.max_row {
+        target.visible_content_bounds.include_row(row);
+    }
+
+    target.cleanup_stats.merge(chunk.cleanup_stats);
+    target.has_hints |= chunk.has_hints;
 }
 
 fn apply_row_byte_substitution<F>(sheet_data: &[u8], mut replace: F) -> Vec<u8>
@@ -377,7 +664,12 @@ fn extract_xml_attr_value<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [u
 #[cfg(test)]
 mod tests {
     use super::{
-        pre_process_sheet_data_chunk, remove_consecutive_empty_cells, SheetDataPreprocessState,
+        clean_empty_rows_from_after_cell_range,
+        clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size,
+        clean_sheet_rows_and_cells_in_cell_range,
+        clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size,
+        plan_row_aligned_chunks_by_max_size, pre_process_sheet_data_chunk,
+        remove_consecutive_empty_cells, SheetDataPreprocessState,
     };
     use crate::models::{
         CleanSheetMetrics, CleanSheetParameters, CleanupStats, CleanupSwitches,
@@ -419,6 +711,151 @@ mod tests {
         let cleaned = String::from_utf8_lossy(cleaned.as_ref());
 
         assert_eq!(cleaned.as_bytes(), sheet_data);
+    }
+
+    #[test]
+    fn range_at_or_below_max_chunk_size_is_not_chunked() {
+        let data = br#"<row r="1"><c r="A1"/></row>"#;
+        let chunks = plan_row_aligned_chunks_by_max_size(data, data.len());
+
+        assert_eq!(chunks.len(), 1);
+    }
+
+    #[test]
+    fn range_above_max_chunk_size_is_split_on_row_boundaries() {
+        let data = br#"<row r="1"><c r="A1"/></row><row r="2"><c r="A2"/></row><row r="3"><c r="A3"/></row>"#;
+        let chunks = plan_row_aligned_chunks_by_max_size(data, 40);
+
+        assert!(chunks.len() > 1);
+
+        let rebuilt: Vec<u8> = chunks
+            .iter()
+            .flat_map(|chunk| data[chunk.start..chunk.end].to_vec())
+            .collect();
+
+        assert_eq!(rebuilt, data);
+    }
+
+    #[test]
+    fn parallel_cell_range_cleaning_matches_sequential_output_and_metrics() {
+        let params = default_params();
+        let sheet_data = br#"
+        <row r="1"><c r="A1"/><c r="B1"><v>42</v></c></row>
+        <row r="2"><c r="A2"/><c r="B2"><v>43</v></c></row>
+        <row r="3"><c r="A3"/><c r="B3"><v>44</v></c></row>
+        <row r="4"><c r="A4"/><c r="B4"><v>45</v></c></row>
+    "#;
+
+        let mut sequential_metrics = CleanSheetMetrics::default();
+        let sequential =
+            clean_sheet_rows_and_cells_in_cell_range(sheet_data, &params, &mut sequential_metrics)
+                .unwrap();
+
+        let mut parallel_metrics = CleanSheetMetrics::default();
+        let parallel = clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
+            sheet_data,
+            &params,
+            &mut parallel_metrics,
+            80,
+            "cells_range",
+            &params.zip_info_filename,
+        )
+        .unwrap();
+
+        assert_eq!(parallel, sequential);
+        assert_eq!(
+            parallel_metrics.kept_row_states.len(),
+            sequential_metrics.kept_row_states.len()
+        );
+        assert_eq!(
+            parallel_metrics.kept_cell_states.len(),
+            sequential_metrics.kept_cell_states.len()
+        );
+        assert_eq!(
+            parallel_metrics.deleted_cell_states.len(),
+            sequential_metrics.deleted_cell_states.len()
+        );
+        assert_eq!(
+            parallel_metrics.candidates.len(),
+            sequential_metrics.candidates.len()
+        );
+    }
+
+    #[test]
+    fn parallel_cell_range_cleaning_preserves_consecutive_hidden_empty_rows() {
+        let params = default_params();
+        let sheet_data = br#"<row r="307905" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307906" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307907" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307908" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row>"#;
+
+        let mut metrics = CleanSheetMetrics::default();
+        let cleaned = clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
+            sheet_data,
+            &params,
+            &mut metrics,
+            80,
+            "cells_range",
+            &params.zip_info_filename,
+        )
+        .unwrap();
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="307905""#));
+        assert!(cleaned.contains(r#"r="307906""#));
+        assert!(cleaned.contains(r#"r="307907""#));
+        assert!(cleaned.contains(r#"r="307908""#));
+    }
+
+    #[test]
+    fn parallel_cell_range_cleaning_falls_back_when_consecutive_hidden_empty_rows_enabled() {
+        let mut params = default_params();
+        params.cleanup.consecutive_hidden_empty_rows = true;
+        let sheet_data = br#"<row r="1" hidden="1"></row><row r="2" hidden="1"></row>"#;
+
+        let mut sequential_metrics = CleanSheetMetrics::default();
+        let sequential =
+            clean_sheet_rows_and_cells_in_cell_range(sheet_data, &params, &mut sequential_metrics)
+                .unwrap();
+
+        let mut parallel_metrics = CleanSheetMetrics::default();
+        let parallel = clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
+            sheet_data,
+            &params,
+            &mut parallel_metrics,
+            1,
+            "cells_range",
+            &params.zip_info_filename,
+        )
+        .unwrap();
+
+        assert_eq!(parallel, sequential);
+    }
+
+    #[test]
+    fn parallel_rows_range_cleaning_matches_sequential_output() {
+        let params = default_params();
+        let sheet_data = br#"
+        <row r="5"></row>
+        <row r="6" ht="15" customHeight="1"></row>
+        <row r="7"></row>
+        <row r="8" hidden="1"></row>
+    "#;
+
+        let mut sequential_metrics = CleanSheetMetrics::default();
+        let sequential =
+            clean_empty_rows_from_after_cell_range(sheet_data, &params, &mut sequential_metrics)
+                .unwrap();
+
+        let mut parallel_metrics = CleanSheetMetrics::default();
+        let parallel = clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size(
+            sheet_data,
+            &params,
+            &mut parallel_metrics,
+            70,
+            "rows_range",
+            &params.zip_info_filename,
+        )
+        .unwrap();
+
+        assert_eq!(parallel, sequential);
     }
 
     #[test]

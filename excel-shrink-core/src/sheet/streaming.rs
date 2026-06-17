@@ -37,6 +37,7 @@ pub fn clean_sheet_data_streamwise(
         params,
         chunk_size,
         disable_sheetdata_splitting,
+        0,
         &mut |_| {},
     )
 }
@@ -46,6 +47,7 @@ pub fn clean_sheet_data_streamwise_with_progress(
     params: &CleanSheetParameters,
     chunk_size: usize,
     disable_sheetdata_splitting: bool,
+    parallel_range_chunk_size: usize,
     progress: &mut impl FnMut(&'static str),
 ) -> Result<CleanedSheetData> {
     progress("preprocess_sheet_xml_streamwise");
@@ -56,6 +58,7 @@ pub fn clean_sheet_data_streamwise_with_progress(
         preprocessed,
         params,
         disable_sheetdata_splitting,
+        parallel_range_chunk_size,
         progress,
     )
 }
