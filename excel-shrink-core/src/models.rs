@@ -164,6 +164,7 @@ pub struct CleanupSwitches {
     pub empty_rows_without_visible_style_or_height: bool,
     pub consecutive_hidden_empty_rows: bool,
     pub trailing_layout_only_rows: bool,
+    pub empty_style_representative_cells: bool,
 
     pub empty_row_attribute_cleanup: bool,
     pub sheetdata_range_tail_pruning: bool,
@@ -184,6 +185,7 @@ impl Default for CleanupSwitches {
             empty_rows_without_visible_style_or_height: true,
             consecutive_hidden_empty_rows: false,
             trailing_layout_only_rows: true,
+            empty_style_representative_cells: true,
 
             empty_row_attribute_cleanup: true,
             sheetdata_range_tail_pruning: true,

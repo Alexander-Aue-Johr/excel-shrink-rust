@@ -2,7 +2,7 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Read, Seek, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -711,10 +711,18 @@ fn spawn_xlsx_writer(
             }
         }
 
-        let out_file = match File::create(&out_path) {
+        let partial_out_path = partial_output_path(&out_path);
+        if partial_out_path.exists() {
+            if let Err(e) = std::fs::remove_file(&partial_out_path) {
+                error!(event = "writer_partial_output_remove_failed", xlsx = %input_display, output = %partial_out_path.display(), error = %e, "Failed to remove stale partial output XLSX");
+                return;
+            }
+        }
+
+        let out_file = match File::create(&partial_out_path) {
             Ok(file) => file,
             Err(e) => {
-                error!(event = "writer_output_create_failed", xlsx = %input_display, error = %e, "Failed to create output XLSX");
+                error!(event = "writer_output_create_failed", xlsx = %input_display, output = %partial_out_path.display(), error = %e, "Failed to create partial output XLSX");
                 return;
             }
         };
@@ -760,7 +768,20 @@ fn spawn_xlsx_writer(
         };
 
         if let Err(e) = buffered_out_file.flush() {
-            error!(event = "file_flush_failed", xlsx = %input_display, output = %out_path.display(), error = %e, "Failed to flush output XLSX");
+            error!(event = "file_flush_failed", xlsx = %input_display, output = %partial_out_path.display(), error = %e, "Failed to flush partial output XLSX");
+            return;
+        }
+        drop(buffered_out_file);
+
+        if out_path.exists() {
+            if let Err(e) = std::fs::remove_file(&out_path) {
+                error!(event = "writer_existing_output_remove_failed", xlsx = %input_display, output = %out_path.display(), error = %e, "Failed to remove existing output XLSX before replacing it");
+                return;
+            }
+        }
+
+        if let Err(e) = std::fs::rename(&partial_out_path, &out_path) {
+            error!(event = "writer_output_rename_failed", xlsx = %input_display, partial_output = %partial_out_path.display(), output = %out_path.display(), error = %e, "Failed to rename partial output XLSX");
             return;
         }
 
@@ -772,6 +793,12 @@ fn spawn_xlsx_writer(
             "Finished writing XLSX",
         );
     });
+}
+
+fn partial_output_path(out_path: &Path) -> PathBuf {
+    let mut partial = out_path.as_os_str().to_os_string();
+    partial.push(".partial");
+    PathBuf::from(partial)
 }
 
 fn send_write_job(tx: &mpsc::Sender<WriteJob>, job: WriteJob, xlsx: &str) -> bool {
@@ -1056,6 +1083,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             sheetdata_range_tail_pruning: !attribution_safe_analysis && !cli.disable_tail_pruning,
             trailing_layout_only_rows: !cli.disable_trailing_layout_only_rows,
             extraneous_column_range_merge: !cli.disable_extraneous_column_merge,
+            empty_style_representative_cells: !cli.disable_empty_style_representatives,
 
             ..CleanupSwitches::default()
         };

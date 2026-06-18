@@ -1,6 +1,7 @@
 use super::{replace_empty_row_after_cell_range, replace_row};
 use crate::models::{
-    CleanSheetMetrics, CleanSheetParameters, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
+    CleanSheetMetrics, CleanSheetParameters, CleanupSwitches, SheetPreprocessConfig,
+    WorkbookSpecificPatterns, Xf,
 };
 use crate::sheet::sheet_data::clean_sheet_rows_and_cells_in_cell_range;
 use regex::bytes::Regex;
@@ -153,6 +154,28 @@ fn keeps_one_empty_default_style_footer_cell_after_content() {
     assert_eq!(
         cleaned,
         br#"<row r="16107" spans="1:20" ht="15" x14ac:dyDescent="0.25"><c r="A16107" s="8" t="s"><v>41420</v></c><c r="B16107"/><c r="H16107" s="87"/><c r="I16107" s="87"/><c r="M16107" s="18"/></row>"#
+    );
+}
+
+#[test]
+fn removes_empty_style_representatives_when_feature_is_disabled() {
+    let mut params = params_with_styles(&[
+        (8, font_only_style()),
+        (18, font_only_style()),
+        (87, font_only_style()),
+    ]);
+    params.cleanup = CleanupSwitches {
+        empty_style_representative_cells: false,
+        ..CleanupSwitches::default()
+    };
+
+    let row_xml = br#"<row r="16107" spans="1:20" ht="15" x14ac:dyDescent="0.25"><c r="A16107" s="8" t="s"><v>41420</v></c><c r="B16107"/><c r="C16107"/><c r="H16107" s="87"/><c r="I16107" s="87"/><c r="M16107" s="18"/><c r="N16107"/></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="16107" spans="1:20" ht="15" x14ac:dyDescent="0.25"><c r="A16107" s="8" t="s"><v>41420</v></c></row>"#
     );
 }
 

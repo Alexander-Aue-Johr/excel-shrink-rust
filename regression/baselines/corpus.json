@@ -1,0 +1,8 @@
+{
+  "name": "destatis-corpus",
+  "description": "Heavy full-corpus regression suite. Keep this separate from the fast smoke suite.",
+  "defaults": {
+    "cli_args": []
+  },
+  "cases": []
+}

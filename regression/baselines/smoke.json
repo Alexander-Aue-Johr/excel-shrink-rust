@@ -1,0 +1,160 @@
+{
+  "name": "destatis-smoke",
+  "description": "Developer-facing corpus-backed smoke suite for high-signal XLSX regressions. Slow flagship cases stay opt-in by default.",
+  "defaults": {
+    "cli_args": [
+      "--disable-multiprocessing",
+      "--writer-workers",
+      "1"
+    ]
+  },
+  "cases": [
+    {
+      "id": "overall-reduction",
+      "category": "Overall Reduction",
+      "reason": "Broad end-to-end sentinel for large regressions in preservation behavior.",
+      "dominant_cleanup": [
+        "PreprocessEmptySelfClosingCells",
+        "EmptyCellsWithoutContent",
+        "EmptyRowsWithoutVisibleStyleOrHeight",
+        "TrailingLayoutOnlyRows",
+        "EmptyRowAttributeCleanup"
+      ],
+      "notes": "Slow flagship case; useful when reviewing broad row/cell preservation changes.",
+      "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
+      "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "relative_input": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "cached_file_name": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "slow": true,
+      "min_reduction_ratio": 0.97
+    },
+    {
+      "id": "empty-cells",
+      "category": "Empty Cells",
+      "reason": "Focused sentinel for empty-cell removal staying aggressive enough on real XLSX files.",
+      "dominant_cleanup": [
+        "PreprocessEmptySelfClosingCells",
+        "EmptyCellsWithoutContent"
+      ],
+      "notes": "Sensitive to style-anchor and default-style representative preservation rules.",
+      "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
+      "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx",
+      "relative_input": "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx",
+      "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx",
+      "cached_file_name": "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx",
+      "min_reduction_ratio": 0.98
+    },
+    {
+      "id": "empty-rows",
+      "category": "Empty Rows",
+      "reason": "Focused sentinel for deleting rows that no longer carry visible style or height semantics.",
+      "dominant_cleanup": [
+        "EmptyRowsWithoutVisibleStyleOrHeight",
+        "EmptyRowAttributeCleanup"
+      ],
+      "notes": "Useful when changing row preservation, row height handling, or cell-anchor heuristics.",
+      "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
+      "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/jahresbericht-5422701207005.xlsx",
+      "relative_input": "jahresbericht-5422701207005.xlsx",
+      "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/jahresbericht-5422701207005.xlsx",
+      "cached_file_name": "jahresbericht-5422701207005.xlsx",
+      "min_reduction_ratio": 0.93
+    },
+    {
+      "id": "trailing-layout-rows",
+      "category": "Trailing Layout Rows",
+      "reason": "Small, fast sentinel for pruning layout-only tails.",
+      "dominant_cleanup": [
+        "TrailingLayoutOnlyRows",
+        "SheetDataRangeTailPruning"
+      ],
+      "notes": "Shares a workbook with empty-row-attributes but watches a different cleanup signal.",
+      "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
+      "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/seeschifffahrt-monat-2080500221095.xlsx",
+      "relative_input": "seeschifffahrt-monat-2080500221095.xlsx",
+      "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/seeschifffahrt-monat-2080500221095.xlsx",
+      "cached_file_name": "seeschifffahrt-monat-2080500221095.xlsx",
+      "min_reduction_ratio": 0.5
+    },
+    {
+      "id": "empty-row-attributes",
+      "category": "Empty Row Attributes",
+      "reason": "Small, fast sentinel for removing row-attribute noise after structural cleanup.",
+      "dominant_cleanup": [
+        "EmptyRowAttributeCleanup",
+        "EmptyRowsWithoutVisibleStyleOrHeight"
+      ],
+      "notes": "Shares a workbook with trailing-layout-rows but watches row XML noise.",
+      "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
+      "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/seeschifffahrt-monat-2080500221095.xlsx",
+      "relative_input": "seeschifffahrt-monat-2080500221095.xlsx",
+      "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/seeschifffahrt-monat-2080500221095.xlsx",
+      "cached_file_name": "seeschifffahrt-monat-2080500221095.xlsx",
+      "min_reduction_ratio": 0.5
+    },
+    {
+      "id": "column-range-merge",
+      "category": "Column Range Merge",
+      "reason": "Focused sentinel for collapsing extraneous <col> ranges without over-preservation.",
+      "dominant_cleanup": [
+        "ExtraneousColumnRangeMerge"
+      ],
+      "notes": "Useful when changing max-column detection or column range preservation.",
+      "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
+      "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/foerderprogramme-5411206209005.xlsx",
+      "relative_input": "foerderprogramme-5411206209005.xlsx",
+      "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/foerderprogramme-5411206209005.xlsx",
+      "cached_file_name": "foerderprogramme-5411206209005.xlsx",
+      "min_reduction_ratio": 0.88
+    },
+    {
+      "id": "unreferenced-whitespace",
+      "category": "Unreferenced Whitespace",
+      "reason": "Workbook-level sentinel for stripping dead whitespace-only cells.",
+      "dominant_cleanup": [
+        "UnreferencedWhitespaceCells"
+      ],
+      "notes": "Useful when changing reference scanning or whitespace shared-string handling.",
+      "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
+      "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/krankenhausverzeichnis-3500100227005.xlsx",
+      "relative_input": "krankenhausverzeichnis-3500100227005.xlsx",
+      "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/krankenhausverzeichnis-3500100227005.xlsx",
+      "cached_file_name": "krankenhausverzeichnis-3500100227005.xlsx",
+      "min_reduction_ratio": 0.8
+    },
+    {
+      "id": "unreferenced-hidden-content",
+      "category": "Unreferenced Hidden Content",
+      "reason": "High-signal case for hidden content cells that are semantically dead but easy to over-preserve.",
+      "dominant_cleanup": [
+        "UnreferencedHiddenContentCells"
+      ],
+      "notes": "Slow opt-in case; do not relax without confirming removed hidden content is unsafe to keep.",
+      "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
+      "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/wanderungen-2010120217005.xlsx",
+      "relative_input": "wanderungen-2010120217005.xlsx",
+      "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/wanderungen-2010120217005.xlsx",
+      "cached_file_name": "wanderungen-2010120217005.xlsx",
+      "slow": true,
+      "min_reduction_ratio": 0.99
+    },
+    {
+      "id": "hidden-empty-rows",
+      "category": "Hidden Empty Rows",
+      "reason": "Strongest known Destatis sentinel for collapsing long runs of hidden empty rows.",
+      "dominant_cleanup": [
+        "PreprocessConsecutiveHiddenEmptyRows",
+        "ConsecutiveHiddenEmptyRows"
+      ],
+      "notes": "Slow opt-in case; useful when changing hidden-row preprocessing or row cleanup.",
+      "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
+      "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+      "relative_input": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+      "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+      "cached_file_name": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+      "slow": true,
+      "min_reduction_ratio": 0.98
+    }
+  ]
+}

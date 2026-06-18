@@ -37,9 +37,13 @@ pub fn replace_row_bytes(
     let is_hidden = row_attributes.hidden;
     let row_style = row_attributes.style.clone();
     let has_height = row_attributes.has_height;
-    let preserve_font_only_empty_cells = !row_attributes.has_custom_height;
-    let preserve_default_empty_representative = !row_attributes.has_custom_height;
-    let preserve_structural_empty_representatives = row_attributes.has_height;
+    let preserve_empty_style_representatives = params.cleanup.empty_style_representative_cells;
+    let preserve_font_only_empty_cells =
+        preserve_empty_style_representatives && !row_attributes.has_custom_height;
+    let preserve_default_empty_representative =
+        preserve_empty_style_representatives && !row_attributes.has_custom_height;
+    let preserve_structural_empty_representatives =
+        preserve_empty_style_representatives && row_attributes.has_height;
 
     metrics
         .row_attributes

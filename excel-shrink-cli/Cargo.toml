@@ -3,6 +3,9 @@ name = "excel-shrink-cli"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+corpus-regression-tests = []
+
 [dependencies]
 excel-shrink-core = { path = "../excel-shrink-core" }
 clap = { version = "4.4", features = ["derive"] }
@@ -15,3 +18,5 @@ walkdir = "2.5.0"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 regex = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

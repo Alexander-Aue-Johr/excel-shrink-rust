@@ -6,6 +6,7 @@ use tracing_appender::rolling;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 mod pipeline;
+mod regression;
 
 #[derive(Parser, Debug)]
 #[command(name = "excel-shrink", about = "Clean and shrink XLSX files.")]
@@ -76,6 +77,10 @@ pub struct Cli {
     #[arg(long)]
     disable_extraneous_column_merge: bool,
 
+    /// Disable keeping representative empty cells for per-row default/unique styles.
+    #[arg(long)]
+    disable_empty_style_representatives: bool,
+
     /// Enable quick-win preprocessing that collapses consecutive hidden empty rows.
     #[arg(long)]
     preprocess_hidden_rows: bool,
@@ -144,6 +149,14 @@ impl LogLevel {
 }
 
 fn main() -> anyhow::Result<()> {
+    let mut raw_args = std::env::args_os();
+    let program = raw_args.next().unwrap_or_else(|| "excel-shrink".into());
+    if raw_args.next().is_some_and(|arg| arg == "regression") {
+        let regression_args = std::iter::once(program).chain(raw_args);
+        let _guard = init_logging(LogLevel::Info, None)?;
+        return regression::run_from_args(regression_args);
+    }
+
     let cli = Cli::parse();
     if let Some(working_directory) = &cli.working_directory {
         std::env::set_current_dir(working_directory)?;
@@ -243,3 +256,7 @@ fn is_real_xlsx_file(path: &std::path::Path) -> bool {
 
     is_xlsx && !is_excel_lock_file
 }
+
+#[cfg(test)]
+#[path = "corpus_regression_tests.rs"]
+mod corpus_regression_tests;

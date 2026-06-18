@@ -128,10 +128,34 @@ target/release/excel-shrink-cli
 ### 5. Run the tests
 
 ```bash
-cargo test
+cargo test --workspace
 ```
 
 This runs the unit tests in the workspace.
+
+For release-mode validation:
+
+```bash
+cargo test --release --workspace
+```
+
+The corpus-backed smoke regressions are opt-in because they download or read larger XLSX files:
+
+```bash
+cargo run --release -p excel-shrink-cli -- regression smoke
+```
+
+Run one regression case directly when debugging:
+
+```bash
+cargo run --release -p excel-shrink-cli -- regression smoke --case-id trailing-layout-rows
+```
+
+The same smoke cases are also available as `corpus-regression-tests`-gated Rust tests for debugger-friendly execution.
+
+```bash
+cargo test -p excel-shrink-cli --bin excel-shrink-cli --features corpus-regression-tests corpus_regression_default_smoke_suite -- --nocapture
+```
 
 ## Running Excel Shrink
 

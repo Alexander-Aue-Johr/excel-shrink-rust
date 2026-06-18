@@ -32,6 +32,7 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         disable_tail_pruning: false,
         disable_trailing_layout_only_rows: false,
         disable_extraneous_column_merge: false,
+        disable_empty_style_representatives: false,
         preprocess_hidden_rows: false,
         preprocess_empty_cells: false,
         writer_workers: None,
