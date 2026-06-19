@@ -235,18 +235,22 @@ fn corpus_regression_cli_args_from_env_for_test() -> Vec<String> {
         }
     }
 
-    if let Ok(value) =
-        std::env::var("EXCEL_SHRINK_CORPUS_REGRESSION_PARALLEL_RANGE_CHUNK_SIZE")
-    {
+    if let Ok(value) = std::env::var("EXCEL_SHRINK_CORPUS_REGRESSION_PARALLEL_RANGE_CHUNK_SIZE") {
         if !value.trim().is_empty() {
             args.push("--parallel-range-chunk-size".to_string());
             args.push(value.trim().to_string());
         }
     }
 
-    if env_flag_enabled_for_test(
-        "EXCEL_SHRINK_CORPUS_REGRESSION_DISABLE_EMPTY_STYLE_REPRESENTATIVES",
-    ) {
+    let keep_empty_style_sentinel_cells =
+        match std::env::var("EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS") {
+            Ok(value) if !value.trim().is_empty() => env_flag_value_enabled_for_test(&value),
+            _ => !env_flag_enabled_for_test(
+                "EXCEL_SHRINK_CORPUS_REGRESSION_DISABLE_EMPTY_STYLE_REPRESENTATIVES",
+            ),
+        };
+
+    if !keep_empty_style_sentinel_cells {
         args.push("--disable-empty-style-representatives".to_string());
     }
 
@@ -269,11 +273,14 @@ fn corpus_regression_cli_args_from_env_for_test() -> Vec<String> {
 fn env_flag_enabled_for_test(name: &str) -> bool {
     std::env::var(name)
         .ok()
-        .map(|value| {
-            let value = value.trim();
-            value.eq_ignore_ascii_case("true") || value == "1" || value.eq_ignore_ascii_case("yes")
-        })
+        .map(|value| env_flag_value_enabled_for_test(&value))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+fn env_flag_value_enabled_for_test(value: &str) -> bool {
+    let value = value.trim();
+    value.eq_ignore_ascii_case("true") || value == "1" || value.eq_ignore_ascii_case("yes")
 }
 
 #[cfg(test)]

@@ -77,7 +77,7 @@ pub struct Cli {
     #[arg(long)]
     disable_extraneous_column_merge: bool,
 
-    /// Disable keeping representative empty cells for per-row default/unique styles.
+    /// Disable keeping empty style sentinel cells for per-row default/unique styles.
     #[arg(long)]
     disable_empty_style_representatives: bool,
 

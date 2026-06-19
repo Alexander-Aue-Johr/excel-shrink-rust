@@ -173,10 +173,10 @@
                 "RUST_BACKTRACE": "1",
                 "EXCEL_SHRINK_CORPUS_ROOT": "${input:corpusRegressionCorpusRoot}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_CONSOLE_LOG_LEVEL": "${input:corpusRegressionConsoleLogLevel}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS": "${input:corpusRegressionIgnoreDefaultCliArgs}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS": "${input:corpusRegressionUseNormalMultiprocessing}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_CHUNK_SIZE": "${input:corpusRegressionChunkSize}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_PARALLEL_RANGE_CHUNK_SIZE": "${input:corpusRegressionParallelRangeChunkSize}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_DISABLE_EMPTY_STYLE_REPRESENTATIVES": "${input:corpusRegressionDisableEmptyStyleRepresentatives}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS": "${input:corpusRegressionKeepEmptyStyleSentinelCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}"
             }
@@ -214,10 +214,10 @@
                 "RUST_BACKTRACE": "1",
                 "EXCEL_SHRINK_CORPUS_ROOT": "${input:corpusRegressionCorpusRoot}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_CONSOLE_LOG_LEVEL": "${input:corpusRegressionConsoleLogLevel}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS": "${input:corpusRegressionIgnoreDefaultCliArgs}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS": "${input:corpusRegressionUseNormalMultiprocessing}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_CHUNK_SIZE": "${input:corpusRegressionChunkSize}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_PARALLEL_RANGE_CHUNK_SIZE": "${input:corpusRegressionParallelRangeChunkSize}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_DISABLE_EMPTY_STYLE_REPRESENTATIVES": "${input:corpusRegressionDisableEmptyStyleRepresentatives}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS": "${input:corpusRegressionKeepEmptyStyleSentinelCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}"
             }
@@ -256,10 +256,10 @@
                 "EXCEL_SHRINK_CORPUS_ROOT": "${input:corpusRegressionCorpusRoot}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_CASE_ID": "${input:corpusRegressionCaseId}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_CONSOLE_LOG_LEVEL": "${input:corpusRegressionConsoleLogLevel}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS": "${input:corpusRegressionIgnoreDefaultCliArgs}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS": "${input:corpusRegressionUseNormalMultiprocessing}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_CHUNK_SIZE": "${input:corpusRegressionChunkSize}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_PARALLEL_RANGE_CHUNK_SIZE": "${input:corpusRegressionParallelRangeChunkSize}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_DISABLE_EMPTY_STYLE_REPRESENTATIVES": "${input:corpusRegressionDisableEmptyStyleRepresentatives}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS": "${input:corpusRegressionKeepEmptyStyleSentinelCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}"
             }
@@ -315,12 +315,12 @@
             "default": "info"
         },
         {
-            "id": "corpusRegressionIgnoreDefaultCliArgs",
+            "id": "corpusRegressionUseNormalMultiprocessing",
             "type": "pickString",
-            "description": "Ignore baseline defaults.cli_args. Set true to enable normal sheet/file multiprocessing.",
+            "description": "Use normal sheet/file multiprocessing instead of baseline defaults.cli_args",
             "options": [
-                "false",
-                "true"
+                "true",
+                "false"
             ],
             "default": "false"
         },
@@ -343,7 +343,7 @@
         {
             "id": "corpusRegressionParallelRangeChunkSize",
             "type": "pickString",
-            "description": "Row-aligned parallel sheet range chunk size. Use 0 to disable range chunking.",
+            "description": "Row-aligned parallel sheet range chunk size. Use 0 for no range chunking.",
             "options": [
                 "0",
                 "4096",
@@ -359,14 +359,14 @@
             "default": "134217728"
         },
         {
-            "id": "corpusRegressionDisableEmptyStyleRepresentatives",
+            "id": "corpusRegressionKeepEmptyStyleSentinelCells",
             "type": "pickString",
-            "description": "Disable keeping per-row empty cells for default/unique styles",
+            "description": "Keep empty style sentinel cells for per-row default/unique styles",
             "options": [
-                "false",
-                "true"
+                "true",
+                "false"
             ],
-            "default": "false"
+            "default": "true"
         },
         {
             "id": "corpusRegressionRemoveUnreferencedWhitespaceCells",
@@ -383,8 +383,8 @@
             "type": "pickString",
             "description": "Remove completely unreferenced content cells in hidden rows/columns",
             "options": [
-                "false",
-                "true"
+                "true",
+                "false"
             ],
             "default": "false"
         }
