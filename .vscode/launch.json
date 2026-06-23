@@ -141,7 +141,7 @@
             "preLaunchTask": "cargo build release"
         },
         {
-            "name": "Debug corpus regression tests (default smoke suite)",
+            "name": "Debug corpus regression tests (smoke suite)",
             "type": "lldb",
             "request": "launch",
             "cargo": {
@@ -151,10 +151,8 @@
                     "excel-shrink-cli",
                     "--bin",
                     "excel-shrink-cli",
-                    "--features",
-                    "corpus-regression-tests",
                     "--no-run",
-                    "corpus_regression_default_smoke_suite"
+                    "corpus_regression_smoke_suite"
                 ],
                 "filter": {
                     "name": "excel-shrink-cli",
@@ -162,48 +160,7 @@
                 }
             },
             "args": [
-                "corpus_regression_default_smoke_suite",
-                "--nocapture"
-            ],
-            "cwd": "${workspaceFolder}",
-            "sourceLanguages": [
-                "rust"
-            ],
-            "env": {
-                "RUST_BACKTRACE": "1",
-                "EXCEL_SHRINK_CORPUS_ROOT": "${input:corpusRegressionCorpusRoot}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_CONSOLE_LOG_LEVEL": "${input:corpusRegressionConsoleLogLevel}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS": "${input:corpusRegressionUseNormalMultiprocessing}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_CHUNK_SIZE": "${input:corpusRegressionChunkSize}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_PARALLEL_RANGE_CHUNK_SIZE": "${input:corpusRegressionParallelRangeChunkSize}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS": "${input:corpusRegressionKeepEmptyStyleSentinelCells}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
-                "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}"
-            }
-        },
-        {
-            "name": "Debug corpus regression tests (full smoke suite)",
-            "type": "lldb",
-            "request": "launch",
-            "cargo": {
-                "args": [
-                    "test",
-                    "-p",
-                    "excel-shrink-cli",
-                    "--bin",
-                    "excel-shrink-cli",
-                    "--features",
-                    "corpus-regression-tests",
-                    "--no-run",
-                    "corpus_regression_full_smoke_suite"
-                ],
-                "filter": {
-                    "name": "excel-shrink-cli",
-                    "kind": "bin"
-                }
-            },
-            "args": [
-                "corpus_regression_full_smoke_suite",
+                "corpus_regression_smoke_suite",
                 "--nocapture"
             ],
             "cwd": "${workspaceFolder}",
@@ -234,7 +191,7 @@
                     "--bin",
                     "excel-shrink-cli",
                     "--features",
-                    "corpus-regression-tests",
+                    "cell-tracing",
                     "--no-run",
                     "corpus_regression_selected_smoke_case"
                 ],
@@ -245,6 +202,7 @@
             },
             "args": [
                 "corpus_regression_selected_smoke_case",
+                "--ignored",
                 "--nocapture"
             ],
             "cwd": "${workspaceFolder}",
@@ -255,6 +213,7 @@
                 "RUST_BACKTRACE": "1",
                 "EXCEL_SHRINK_CORPUS_ROOT": "${input:corpusRegressionCorpusRoot}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_CASE_ID": "${input:corpusRegressionCaseId}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_SHEETS": "${input:corpusRegressionSheets}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_CONSOLE_LOG_LEVEL": "${input:corpusRegressionConsoleLogLevel}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS": "${input:corpusRegressionUseNormalMultiprocessing}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_CHUNK_SIZE": "${input:corpusRegressionChunkSize}",
@@ -262,6 +221,90 @@
                 "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS": "${input:corpusRegressionKeepEmptyStyleSentinelCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}"
+            }
+        },
+        {
+            "name": "Debug cell trace regression test (pick test)",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli",
+                    "--features",
+                    "cell-tracing",
+                    "--no-run",
+                    "${input:cellTraceRegressionTest}"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "${input:cellTraceRegressionTest}",
+                "--ignored",
+                "--nocapture"
+            ],
+            "cwd": "${workspaceFolder}",
+            "sourceLanguages": [
+                "rust"
+            ],
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "EXCEL_SHRINK_CORPUS_ROOT": "${input:corpusRegressionCorpusRoot}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_CONSOLE_LOG_LEVEL": "${input:corpusRegressionConsoleLogLevel}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS": "${input:corpusRegressionKeepEmptyStyleSentinelCells}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}"
+            }
+        },
+        {
+            "name": "Debug corpus regression test (pick smoke case, Excel screenshots)",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "test",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli",
+                    "--features",
+                    "cell-tracing",
+                    "--no-run",
+                    "corpus_regression_selected_smoke_case"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "corpus_regression_selected_smoke_case",
+                "--ignored",
+                "--nocapture"
+            ],
+            "cwd": "${workspaceFolder}",
+            "sourceLanguages": [
+                "rust"
+            ],
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "EXCEL_SHRINK_CORPUS_ROOT": "${input:corpusRegressionCorpusRoot}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_CASE_ID": "${input:corpusRegressionCaseId}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_SHEETS": "${input:corpusRegressionSheets}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_CONSOLE_LOG_LEVEL": "${input:corpusRegressionConsoleLogLevel}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS": "${input:corpusRegressionUseNormalMultiprocessing}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_CHUNK_SIZE": "${input:corpusRegressionChunkSize}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_PARALLEL_RANGE_CHUNK_SIZE": "${input:corpusRegressionParallelRangeChunkSize}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS": "${input:corpusRegressionKeepEmptyStyleSentinelCells}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_EXCEL_SCREENSHOT_CHECK": "1"
             }
         }
     ],
@@ -300,6 +343,23 @@
             "type": "promptString",
             "description": "Optional local corpus root. Leave empty to use downloaded cache.",
             "default": "${workspaceFolder}\\..\\original_destatis_xlsx_files"
+        },
+        {
+            "id": "corpusRegressionSheets",
+            "type": "promptString",
+            "description": "Optional worksheet XML files to clean, comma-separated. Leave empty to clean all sheets.",
+            "default": ""
+        },
+        {
+            "id": "cellTraceRegressionTest",
+            "type": "pickString",
+            "description": "Cell trace regression test",
+            "options": [
+                "corpus_regression_trace_kernhaushalt_sheet84_d1048576_removed",
+                "corpus_regression_trace_seeschifffahrt_sheet1_h15_visited",
+                "corpus_regression_trace_seeschifffahrt_sheet11_cells_removed"
+            ],
+            "default": "corpus_regression_trace_kernhaushalt_sheet84_d1048576_removed"
         },
         {
             "id": "corpusRegressionConsoleLogLevel",
