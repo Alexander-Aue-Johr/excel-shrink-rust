@@ -1,5 +1,5 @@
 use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, RowAttributes, Xf};
-use crate::sheet::cells::{replace_parsed_cell_with_font_policy, ParsedCell};
+use crate::sheet::cells::{replace_parsed_cell_with_empty_style_policy, ParsedCell};
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
 use crate::xml::{find_byte_from, find_bytes};
 use regex::bytes::Captures;
@@ -38,12 +38,8 @@ pub fn replace_row_bytes(
     let row_style = row_attributes.style.clone();
     let has_height = row_attributes.has_height;
     let preserve_empty_style_representatives = params.cleanup.empty_style_representative_cells;
-    let preserve_font_only_empty_cells =
+    let preserve_empty_font_only_representatives =
         preserve_empty_style_representatives && !row_attributes.has_custom_height;
-    let preserve_default_empty_representative =
-        preserve_empty_style_representatives && !row_attributes.has_custom_height;
-    let preserve_structural_empty_representatives =
-        preserve_empty_style_representatives && row_attributes.has_height;
 
     metrics
         .row_attributes
@@ -57,9 +53,7 @@ pub fn replace_row_bytes(
             params,
             metrics,
             &original_row_content,
-            preserve_font_only_empty_cells,
-            preserve_default_empty_representative,
-            preserve_structural_empty_representatives,
+            preserve_empty_font_only_representatives,
         )
     } else {
         original_row_content.clone()
@@ -181,9 +175,7 @@ fn clean_cells(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     row_content: &[u8],
-    preserve_font_only_empty_cells: bool,
-    preserve_default_empty_representative: bool,
-    preserve_structural_empty_representatives: bool,
+    preserve_empty_font_only_representatives: bool,
 ) -> Vec<u8> {
     if row_content.is_empty() {
         return Vec::new();
@@ -191,9 +183,9 @@ fn clean_cells(
 
     let mut out = Vec::with_capacity(row_content.len().min(64 * 1024));
     let mut pos = 0;
-    let content_style_ids = collect_content_style_ids(row_content);
-    let mut kept_default_empty_cell = false;
-    let mut kept_structural_empty_style_ids = std::collections::HashSet::new();
+    let mut kept_default_style_cell = false;
+    let mut kept_represented_style_ids =
+        preserve_empty_font_only_representatives.then(std::collections::HashSet::<u32>::new);
 
     while let Some(cell_start_rel) = find_bytes(&row_content[pos..], b"<c") {
         let cell_start = pos + cell_start_rel;
@@ -227,28 +219,44 @@ fn clean_cells(
 
         let attr = &row_content[attr_start..attr_end];
         if let Some(cell) = parse_cell_from_parts(raw, attr) {
-            let keep_font_only_empty_cell =
-                preserve_font_only_empty_cells && empty_cell_has_only_font_style(&cell, params);
-            let keep_default_empty_cell = preserve_default_empty_representative
-                && !kept_default_empty_cell
-                && empty_cell_has_default_style(&cell);
-            if keep_default_empty_cell {
-                kept_default_empty_cell = true;
-            }
-            let keep_other_empty_cell = preserve_structural_empty_representatives
-                && empty_cell_has_non_font_style(&cell, params)
+            #[cfg(feature = "cell-tracing")]
+            crate::cleaning_trace::record_cell_visit_if_target(
+                crate::cleaning_trace::CellVisitEvent {
+                    sheet_file: &params.zip_info_filename,
+                    col: cell.col_num,
+                    row: cell.row,
+                    style_id: cell.style_id,
+                },
+            );
+
+            let keep_empty_font_only_style_cell = preserve_empty_font_only_representatives
+                && empty_cell_has_no_empty_cell_visible_style(&cell, params)
                 && cell.style_id.is_some_and(|style_id| {
-                    !content_style_ids.contains(&style_id)
-                        && kept_structural_empty_style_ids.insert(style_id)
+                    !kept_represented_style_ids
+                        .as_ref()
+                        .is_some_and(|style_ids| style_ids.contains(&style_id))
                 });
-            out.extend_from_slice(&replace_parsed_cell_with_font_policy(
+            let keep_default_empty_cell = preserve_empty_font_only_representatives
+                && !kept_default_style_cell
+                && empty_cell_has_default_style(&cell);
+            let cleaned_cell = replace_parsed_cell_with_empty_style_policy(
                 &cell,
                 params,
                 metrics,
-                keep_font_only_empty_cell,
-                keep_other_empty_cell,
+                keep_empty_font_only_style_cell,
+                false,
                 keep_default_empty_cell,
-            ));
+            );
+
+            if !cleaned_cell.is_empty() {
+                record_represented_cell_style(
+                    &cell,
+                    &mut kept_represented_style_ids,
+                    &mut kept_default_style_cell,
+                );
+            }
+
+            out.extend_from_slice(&cleaned_cell);
         } else {
             out.extend_from_slice(raw);
         }
@@ -260,71 +268,35 @@ fn clean_cells(
     out
 }
 
-fn collect_content_style_ids(row_content: &[u8]) -> std::collections::HashSet<u32> {
-    let mut styles = std::collections::HashSet::new();
-    let mut pos = 0;
-
-    while let Some(cell_start_rel) = find_bytes(&row_content[pos..], b"<c") {
-        let cell_start = pos + cell_start_rel;
-        if !is_cell_tag_start(row_content, cell_start) {
-            pos = cell_start + b"<c".len();
-            continue;
+fn record_represented_cell_style(
+    cell: &ParsedCell<'_>,
+    kept_represented_style_ids: &mut Option<std::collections::HashSet<u32>>,
+    kept_default_style_cell: &mut bool,
+) {
+    if let Some(style_id) = cell.style_id {
+        if let Some(style_ids) = kept_represented_style_ids {
+            style_ids.insert(style_id);
         }
-
-        let Some(tag_end) = find_byte_from(row_content, b'>', cell_start) else {
-            break;
-        };
-        let attr_start = cell_start + b"<c".len();
-        let self_closing = tag_end > cell_start && row_content[tag_end - 1] == b'/';
-        let attr_end = if self_closing { tag_end - 1 } else { tag_end };
-        let cell_end = if self_closing {
-            tag_end + 1
-        } else {
-            let content_start = tag_end + 1;
-            let Some(close_rel) = find_bytes(&row_content[content_start..], b"</c>") else {
-                break;
-            };
-            content_start + close_rel + b"</c>".len()
-        };
-
-        let raw = &row_content[cell_start..cell_end];
-        let attr = &row_content[attr_start..attr_end];
-        if raw_cell_has_content(raw) {
-            if let Some(style_id) =
-                extract_attr_value(attr, b"s").map(digits_byte_string_to_integer)
-            {
-                styles.insert(style_id);
-            }
-        }
-
-        pos = cell_end;
+    } else {
+        *kept_default_style_cell = true;
     }
-
-    styles
 }
 
-fn empty_cell_has_only_font_style(cell: &ParsedCell<'_>, params: &CleanSheetParameters) -> bool {
+fn empty_cell_has_no_empty_cell_visible_style(
+    cell: &ParsedCell<'_>,
+    params: &CleanSheetParameters,
+) -> bool {
     if raw_cell_has_content(cell.raw) {
         return false;
     }
 
     cell.style_id
         .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id))
-        .is_some_and(|style| style.has_only_font_style)
+        .is_some_and(|style| style.has_no_empty_cell_visible_style)
 }
 
 fn empty_cell_has_default_style(cell: &ParsedCell<'_>) -> bool {
     cell.style_id.is_none() && !raw_cell_has_content(cell.raw)
-}
-
-fn empty_cell_has_non_font_style(cell: &ParsedCell<'_>, params: &CleanSheetParameters) -> bool {
-    if raw_cell_has_content(cell.raw) {
-        return false;
-    }
-
-    cell.style_id
-        .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id))
-        .is_some_and(|style| !style.has_only_font_style)
 }
 
 fn raw_cell_has_content(cell: &[u8]) -> bool {

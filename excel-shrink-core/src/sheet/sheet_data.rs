@@ -685,7 +685,7 @@ mod tests {
             compress_method: CompressionMethod::Deflated,
             patterns: WorkbookSpecificPatterns {
                 xfs_by_index: HashMap::new(),
-                only_font_style_ids: Vec::new(),
+                no_empty_cell_visible_style_ids: Vec::new(),
                 fill_or_border_or_protection_ids: Vec::new(),
                 whitespace_indices: None,
             },

@@ -1,4 +1,8 @@
 use super::{replace_parsed_cell, ParsedCell};
+#[cfg(feature = "cell-tracing")]
+use crate::cleaning_trace::{self, CellDecision, RecordedCellDecision};
+#[cfg(feature = "cell-tracing")]
+use crate::models::CleanupCause;
 use crate::models::{
     AdvancedCleanupConfig, CleanSheetMetrics, CleanSheetParameters, ColumnDefinition,
     RowAttributes, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
@@ -16,7 +20,7 @@ fn default_params() -> CleanSheetParameters {
         compress_method: CompressionMethod::Deflated,
         patterns: WorkbookSpecificPatterns {
             xfs_by_index: HashMap::new(),
-            only_font_style_ids: Vec::new(),
+            no_empty_cell_visible_style_ids: Vec::new(),
             fill_or_border_or_protection_ids: Vec::new(),
             whitespace_indices: None,
         },
@@ -29,12 +33,12 @@ fn default_params() -> CleanSheetParameters {
 
 fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
     let mut xfs_by_index = HashMap::new();
-    let mut only_font_style_ids = Vec::new();
+    let mut no_empty_cell_visible_style_ids = Vec::new();
     let mut fill_or_border_or_protection_ids = Vec::new();
 
     for (id, xf) in styles {
-        if xf.has_only_font_style {
-            only_font_style_ids.push(*id);
+        if xf.has_no_empty_cell_visible_style {
+            no_empty_cell_visible_style_ids.push(*id);
         }
 
         if xf.has_fill_or_border
@@ -53,7 +57,7 @@ fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
         compress_method: CompressionMethod::Deflated,
         patterns: WorkbookSpecificPatterns {
             xfs_by_index,
-            only_font_style_ids,
+            no_empty_cell_visible_style_ids,
             fill_or_border_or_protection_ids,
             whitespace_indices: None,
         },
@@ -109,6 +113,19 @@ fn fill_style(fill_id: u32, apply_fill: bool) -> Xf {
     )
 }
 
+fn border_style(border_id: u32, apply_border: bool) -> Xf {
+    Xf::new(
+        Some(0),
+        Some(border_id),
+        apply_border,
+        false,
+        border_id != 0,
+        apply_border,
+        false,
+        false,
+    )
+}
+
 fn font_and_apply_fill_style(fill_id: u32) -> Xf {
     Xf::new_with_visible_parts(
         Some(fill_id),
@@ -133,6 +150,20 @@ fn font_and_apply_default_border_style() -> Xf {
         false,
         true,
         false,
+        false,
+    )
+}
+
+fn font_only_style() -> Xf {
+    Xf::new_with_visible_parts(
+        Some(0),
+        Some(0),
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
         false,
     )
 }
@@ -216,6 +247,64 @@ fn keeps_empty_cell_when_style_applies_default_border_override() {
 }
 
 #[test]
+fn removes_empty_cell_when_default_border_override_matches_borderless_column_style() {
+    let column_style = font_only_style();
+    let cell_default_border_style = font_and_apply_default_border_style();
+    let params = params_with_styles(&[(2, column_style.clone()), (43, cell_default_border_style)]);
+
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 1,
+        cell_xf: Some(column_style),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+
+    let cell_xml = br#"<c r="A3" s="43"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="43""#, Some(43));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
+}
+
+#[test]
+fn keeps_empty_cell_when_default_border_override_clears_visible_row_border() {
+    let row_border_style = border_style(4, true);
+    let cell_default_border_style = font_and_apply_default_border_style();
+    let params = params_with_styles(&[
+        (4, row_border_style.clone()),
+        (43, cell_default_border_style),
+    ]);
+
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.row_attributes.insert(
+        b"3".to_vec(),
+        RowAttributes {
+            row_attr: br#" r="3" s="4" customFormat="1""#.to_vec(),
+            ref_: b"3".to_vec(),
+            hidden: false,
+            style: Some(row_border_style),
+            has_height: false,
+            has_custom_height: false,
+            is_empty: false,
+        },
+    );
+
+    let cell_xml = br#"<c r="A3" s="43"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="43""#, Some(43));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned, cell_xml);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_states.len(), 0);
+}
+
+#[test]
 fn keeps_empty_cell_when_style_applies_default_fill_override() {
     let params = params_with_styles(&[(44, font_and_apply_default_fill_style())]);
     let mut metrics = CleanSheetMetrics::default();
@@ -228,6 +317,61 @@ fn keeps_empty_cell_when_style_applies_default_fill_override() {
         col_num: 7,
         style_id: Some(44),
     };
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned, cell_xml);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_states.len(), 0);
+}
+
+#[test]
+fn removes_empty_cell_when_default_fill_override_matches_fillless_column_style() {
+    let column_style = font_only_style();
+    let cell_default_fill_style = font_and_apply_default_fill_style();
+    let params = params_with_styles(&[(2, column_style.clone()), (44, cell_default_fill_style)]);
+
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 1,
+        cell_xf: Some(column_style),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+
+    let cell_xml = br#"<c r="A3" s="44"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="44""#, Some(44));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
+}
+
+#[test]
+fn keeps_empty_cell_when_default_fill_override_clears_visible_row_fill() {
+    let row_fill_style = fill_style(4, true);
+    let cell_default_fill_style = font_and_apply_default_fill_style();
+    let params = params_with_styles(&[(4, row_fill_style.clone()), (44, cell_default_fill_style)]);
+
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.row_attributes.insert(
+        b"3".to_vec(),
+        RowAttributes {
+            row_attr: br#" r="3" s="4" customFormat="1""#.to_vec(),
+            ref_: b"3".to_vec(),
+            hidden: false,
+            style: Some(row_fill_style),
+            has_height: false,
+            has_custom_height: false,
+            is_empty: false,
+        },
+    );
+
+    let cell_xml = br#"<c r="A3" s="44"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="44""#, Some(44));
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
@@ -633,4 +777,46 @@ fn marks_x4_whitespace_candidate_when_shared_string_text_is_self_closing() {
     assert_eq!(metrics.candidates.len(), 1);
     assert_eq!(metrics.candidates[0].col, 24);
     assert_eq!(metrics.candidates[0].row, 4);
+}
+
+#[cfg(feature = "cell-tracing")]
+#[test]
+fn traces_d1048576_removed_when_empty_cell_style_only_affects_font() {
+    fn parsed_d1048576_cell<'a>(
+        raw: &'a [u8],
+        attr: &'a [u8],
+        style_id: Option<u32>,
+    ) -> ParsedCell<'a> {
+        ParsedCell {
+            raw,
+            attr,
+            row: b"1048576",
+            col_num: 4,
+            style_id,
+        }
+    }
+
+    let params = params_with_styles(&[(12, font_only_style())]);
+    let mut metrics = CleanSheetMetrics::default();
+    cleaning_trace::clear();
+
+    let cell_xml = br#"<c r="D1048576" s="12"/>"#;
+    let cell = parsed_d1048576_cell(cell_xml, br#" r="D1048576" s="12""#, Some(12));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(
+        cleaning_trace::recorded_cell_decisions(),
+        vec![RecordedCellDecision {
+            sheet_file: "xl/worksheets/sheet1.xml".to_string(),
+            col: 4,
+            row: b"1048576".to_vec(),
+            style_id: Some(12),
+            decision: CellDecision::Removed,
+            cause: CleanupCause::EmptyCellsWithoutContent,
+        }]
+    );
 }

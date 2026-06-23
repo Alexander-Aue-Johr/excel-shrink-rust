@@ -19,13 +19,14 @@ fn test_parse_xfs() {
     assert_eq!(xfs[0].fill_id, Some(0));
     assert!(!xfs[0].apply_fill);
     assert!(!xfs[0].has_fill_or_border);
+    assert!(xfs[0].has_no_empty_cell_visible_style);
 
     assert_eq!(xfs[1].fill_id, Some(2));
     assert!(xfs[1].apply_fill);
     assert!(xfs[1].has_fill_or_border);
 
     assert!(xfs[2].has_apply_protection);
-    assert!(!xfs[2].has_only_font_style);
+    assert!(!xfs[2].has_no_empty_cell_visible_style);
 }
 
 #[test]
@@ -92,7 +93,7 @@ fn test_applies_visible_fill_or_border_pairs_visibility_with_matching_apply_flag
 }
 
 #[test]
-fn test_apply_border_default_style_is_not_only_font_style() {
+fn test_apply_border_default_style_has_empty_cell_visible_effect() {
     let xml = br#"
         <cellXfs count="1">
             <xf numFmtId="0" fontId="10" fillId="0" borderId="0" xfId="0" applyFont="1" applyBorder="1"/>
@@ -104,11 +105,11 @@ fn test_apply_border_default_style_is_not_only_font_style() {
     assert_eq!(xfs.len(), 1);
     assert!(xfs[0].apply_border);
     assert!(xfs[0].has_apply_fill_or_border);
-    assert!(!xfs[0].has_only_font_style);
+    assert!(!xfs[0].has_no_empty_cell_visible_style);
 }
 
 #[test]
-fn test_apply_fill_default_style_is_not_only_font_style() {
+fn test_apply_fill_default_style_has_empty_cell_visible_effect() {
     let xml = br#"
         <cellXfs count="1">
             <xf numFmtId="0" fontId="10" fillId="0" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
@@ -120,7 +121,7 @@ fn test_apply_fill_default_style_is_not_only_font_style() {
     assert_eq!(xfs.len(), 1);
     assert!(xfs[0].apply_fill);
     assert!(xfs[0].has_apply_fill_or_border);
-    assert!(!xfs[0].has_only_font_style);
+    assert!(!xfs[0].has_no_empty_cell_visible_style);
 }
 
 #[test]

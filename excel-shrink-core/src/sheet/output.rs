@@ -392,7 +392,11 @@ fn find_row_end(data: &[u8], row_start: usize) -> Option<usize> {
 }
 
 fn trailing_row_is_layout_only(row: &[u8], params: &CleanSheetParameters) -> bool {
-    if find_bytes(row, b"<c").is_some() {
+    if !params.cleanup.empty_style_representative_cells && find_bytes(row, b"<c").is_some() {
+        return false;
+    }
+
+    if params.cleanup.empty_style_representative_cells && row_has_visible_cell_anchor(row, params) {
         return false;
     }
 
@@ -405,6 +409,48 @@ fn trailing_row_is_layout_only(row: &[u8], params: &CleanSheetParameters) -> boo
     }
 
     true
+}
+
+fn row_has_visible_cell_anchor(row: &[u8], params: &CleanSheetParameters) -> bool {
+    let mut pos = 0;
+
+    while let Some(cell_start_rel) = find_bytes(&row[pos..], b"<c") {
+        let cell_start = pos + cell_start_rel;
+        let after_name = cell_start + b"<c".len();
+
+        if !matches!(
+            row.get(after_name),
+            Some(byte) if byte.is_ascii_whitespace() || matches!(byte, b'/' | b'>')
+        ) {
+            pos = after_name;
+            continue;
+        }
+
+        let Some(tag_end) = find_byte_from(row, b'>', cell_start) else {
+            return true;
+        };
+
+        let attr_end = if tag_end > cell_start && row[tag_end - 1] == b'/' {
+            tag_end - 1
+        } else {
+            return true;
+        };
+
+        let attr = &row[after_name..attr_end];
+        if extract_style_id(attr).is_some_and(|style_id| {
+            params
+                .patterns
+                .xfs_by_index
+                .get(&style_id)
+                .map_or(true, style_is_visible_anchor)
+        }) {
+            return true;
+        }
+
+        pos = tag_end + 1;
+    }
+
+    false
 }
 
 fn row_is_hidden(row: &[u8]) -> bool {
@@ -531,7 +577,7 @@ mod tests {
             compress_method: CompressionMethod::Deflated,
             patterns: WorkbookSpecificPatterns {
                 xfs_by_index: HashMap::new(),
-                only_font_style_ids: Vec::new(),
+                no_empty_cell_visible_style_ids: Vec::new(),
                 fill_or_border_or_protection_ids: Vec::new(),
                 whitespace_indices: None,
             },
@@ -546,8 +592,11 @@ mod tests {
         let mut params = default_params();
 
         for (style_id, style) in styles {
-            if style.has_only_font_style {
-                params.patterns.only_font_style_ids.push(*style_id);
+            if style.has_no_empty_cell_visible_style {
+                params
+                    .patterns
+                    .no_empty_cell_visible_style_ids
+                    .push(*style_id);
             }
             if style.has_fill_or_border || style.has_apply_protection {
                 params
@@ -566,6 +615,10 @@ mod tests {
 
     fn apply_protection_only_style() -> Xf {
         Xf::new(Some(0), Some(0), false, false, false, false, false, true)
+    }
+
+    fn font_only_style() -> Xf {
+        Xf::new(Some(0), Some(0), false, false, false, false, true, false)
     }
 
     fn visible_fill_style() -> Xf {
@@ -676,6 +729,77 @@ mod tests {
 
         assert!(xml.contains(r#"r="1""#));
         assert!(!xml.contains(r#"r="999""#));
+    }
+
+    #[test]
+    fn trailing_self_closing_default_cell_is_layout_only_when_representatives_are_enabled() {
+        let params = default_params();
+        let mut metrics = CleanSheetMetrics::default();
+        let sheet_data =
+            br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="999"><c r="A999"/></row>"#;
+
+        let cleaned = super::trim_trailing_layout_only_rows(sheet_data, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="1""#));
+        assert!(!cleaned.contains(r#"r="999""#));
+    }
+
+    #[test]
+    fn trailing_self_closing_font_only_cell_is_layout_only_when_representatives_are_enabled() {
+        let params = params_with_styles(&[(7, font_only_style())]);
+        let mut metrics = CleanSheetMetrics::default();
+        let sheet_data =
+            br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="999"><c r="A999" s="7"/></row>"#;
+
+        let cleaned = super::trim_trailing_layout_only_rows(sheet_data, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="1""#));
+        assert!(!cleaned.contains(r#"r="999""#));
+    }
+
+    #[test]
+    fn trailing_self_closing_apply_protection_cell_is_layout_only() {
+        let params = params_with_styles(&[(7, apply_protection_only_style())]);
+        let mut metrics = CleanSheetMetrics::default();
+        let sheet_data =
+            br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="999"><c r="A999" s="7"/></row>"#;
+
+        let cleaned = super::trim_trailing_layout_only_rows(sheet_data, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="1""#));
+        assert!(!cleaned.contains(r#"r="999""#));
+    }
+
+    #[test]
+    fn trailing_self_closing_font_only_cell_keeps_tail_when_representatives_are_disabled() {
+        let mut params = params_with_styles(&[(7, font_only_style())]);
+        params.cleanup.empty_style_representative_cells = false;
+        let mut metrics = CleanSheetMetrics::default();
+        let sheet_data =
+            br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="999"><c r="A999" s="7"/></row>"#;
+
+        let cleaned = super::trim_trailing_layout_only_rows(sheet_data, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="1""#));
+        assert!(cleaned.contains(r#"r="999""#));
+    }
+
+    #[test]
+    fn trailing_self_closing_visible_fill_cell_keeps_tail() {
+        let params = params_with_styles(&[(7, visible_fill_style())]);
+        let mut metrics = CleanSheetMetrics::default();
+        let sheet_data =
+            br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="999"><c r="A999" s="7"/></row>"#;
+
+        let cleaned = super::trim_trailing_layout_only_rows(sheet_data, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="1""#));
+        assert!(cleaned.contains(r#"r="999""#));
     }
 
     #[test]

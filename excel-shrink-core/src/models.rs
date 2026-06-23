@@ -12,7 +12,7 @@ pub struct Xf {
 
     pub has_fill_or_border: bool,
     pub has_apply_fill_or_border: bool,
-    pub has_only_font_style: bool,
+    pub has_no_empty_cell_visible_style: bool,
     pub has_apply_protection: bool,
 }
 
@@ -25,7 +25,7 @@ impl Xf {
         apply_fill: bool,
         has_fill_or_border: bool,
         has_apply_fill_or_border: bool,
-        has_only_font_style: bool,
+        has_no_empty_cell_visible_style: bool,
         has_apply_protection: bool,
     ) -> Self {
         let has_visible_fill = has_fill_or_border && fill_id.unwrap_or(0) != 0;
@@ -40,7 +40,7 @@ impl Xf {
             has_visible_border,
             has_fill_or_border,
             has_apply_fill_or_border,
-            has_only_font_style,
+            has_no_empty_cell_visible_style,
             has_apply_protection,
         }
     }
@@ -54,7 +54,7 @@ impl Xf {
         has_visible_fill: bool,
         has_visible_border: bool,
         has_apply_fill_or_border: bool,
-        has_only_font_style: bool,
+        has_no_empty_cell_visible_style: bool,
         has_apply_protection: bool,
     ) -> Self {
         Self {
@@ -66,7 +66,7 @@ impl Xf {
             has_visible_border,
             has_fill_or_border: has_visible_fill || has_visible_border,
             has_apply_fill_or_border,
-            has_only_font_style,
+            has_no_empty_cell_visible_style,
             has_apply_protection,
         }
     }
@@ -405,7 +405,7 @@ pub struct CleanedSheetData {
 pub struct WorkbookSpecificPatterns {
     pub xfs_by_index: HashMap<u32, Xf>,
 
-    pub only_font_style_ids: Vec<u32>,
+    pub no_empty_cell_visible_style_ids: Vec<u32>,
     pub fill_or_border_or_protection_ids: Vec<u32>,
     pub whitespace_indices: Option<Vec<usize>>,
 }
@@ -413,13 +413,13 @@ pub struct WorkbookSpecificPatterns {
 impl WorkbookSpecificPatterns {
     pub fn new(xfs: Vec<Xf>, whitespace_indices: Option<Vec<usize>>) -> Self {
         let mut xfs_by_index = std::collections::HashMap::new();
-        let mut only_font_style_ids = Vec::new();
+        let mut no_empty_cell_visible_style_ids = Vec::new();
         let mut fill_or_border_or_protection_ids = Vec::new();
 
         for (i, xf) in xfs.into_iter().enumerate() {
             let id = i as u32;
-            if xf.has_only_font_style {
-                only_font_style_ids.push(id);
+            if xf.has_no_empty_cell_visible_style {
+                no_empty_cell_visible_style_ids.push(id);
             }
             if xf.has_fill_or_border
                 || xf.applies_default_fill_or_border_override()
@@ -432,7 +432,7 @@ impl WorkbookSpecificPatterns {
 
         Self {
             xfs_by_index,
-            only_font_style_ids,
+            no_empty_cell_visible_style_ids,
             fill_or_border_or_protection_ids,
             whitespace_indices,
         }

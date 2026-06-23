@@ -17,7 +17,7 @@ fn params_with_relevant_style(style_id: u32) -> CleanSheetParameters {
         compress_method: CompressionMethod::Deflated,
         patterns: WorkbookSpecificPatterns {
             xfs_by_index,
-            only_font_style_ids: Vec::new(),
+            no_empty_cell_visible_style_ids: Vec::new(),
             fill_or_border_or_protection_ids: vec![style_id],
             whitespace_indices: None,
         },

@@ -1,8 +1,22 @@
+#[cfg(feature = "cell-tracing")]
+use crate::cleaning_trace::{CellDecision, CellDecisionEvent};
 use crate::models::{
     CellAttributes, CleanSheetMetrics, CleanSheetParameters, CleanupCandidate, CleanupCause, Xf,
 };
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
 use regex::bytes::Captures;
+
+#[cfg(feature = "cell-tracing")]
+macro_rules! trace_cell_decision {
+    ($event:expr) => {
+        crate::cleaning_trace::record($event);
+    };
+}
+
+#[cfg(not(feature = "cell-tracing"))]
+macro_rules! trace_cell_decision {
+    ($event:expr) => {};
+}
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ParsedCell<'a> {
@@ -80,14 +94,14 @@ pub(crate) fn replace_parsed_cell(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
-    replace_parsed_cell_with_font_policy(cell, params, metrics, false, false, false)
+    replace_parsed_cell_with_empty_style_policy(cell, params, metrics, false, false, false)
 }
 
-pub(crate) fn replace_parsed_cell_with_font_policy(
+pub(crate) fn replace_parsed_cell_with_empty_style_policy(
     cell: &ParsedCell<'_>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
-    keep_font_only_empty_cell: bool,
+    keep_no_empty_cell_visible_style_cell: bool,
     keep_other_empty_cell: bool,
     keep_default_empty_cell: bool,
 ) -> Vec<u8> {
@@ -167,8 +181,8 @@ pub(crate) fn replace_parsed_cell_with_font_policy(
         return cell.raw.to_vec();
     }
 
-    if style.has_only_font_style {
-        if keep_font_only_empty_cell {
+    if style.has_no_empty_cell_visible_style {
+        if keep_no_empty_cell_visible_style_cell {
             let out = generate_self_closing_cell_xml(cell.attr);
             metrics.kept_cell_states.push(cell.to_cell_attributes());
             return out;
@@ -190,7 +204,8 @@ pub(crate) fn replace_parsed_cell_with_font_policy(
 
     let has_relevant_protection = cell_has_relevant_protection_style(cell, Some(style), metrics);
     let has_effective_fill_or_border = cell_has_effective_fill_or_border(style, cell, metrics)
-        || style.applies_default_fill_or_border_override();
+        || cell_applies_effective_default_fill_override(style, cell, metrics)
+        || cell_applies_effective_default_border_override(style, cell, metrics);
 
     if has_relevant_protection || has_effective_fill_or_border {
         let out = generate_self_closing_cell_xml(cell.attr);
@@ -219,9 +234,25 @@ fn remove_or_keep_empty_cell(
     if params.cleanup.empty_cells_without_content {
         metrics.cleanup_stats.record_removed(cause, cell.raw.len());
         metrics.deleted_cell_states.push(cell.to_cell_attributes());
+        trace_cell_decision!(CellDecisionEvent {
+            sheet_file: &params.zip_info_filename,
+            col: cell.col_num,
+            row: cell.row,
+            style_id: cell.style_id,
+            decision: CellDecision::Removed,
+            cause,
+        });
         Vec::new()
     } else {
         metrics.kept_cell_states.push(cell.to_cell_attributes());
+        trace_cell_decision!(CellDecisionEvent {
+            sheet_file: &params.zip_info_filename,
+            col: cell.col_num,
+            row: cell.row,
+            style_id: cell.style_id,
+            decision: CellDecision::Kept,
+            cause,
+        });
         cell.raw.to_vec()
     }
 }
@@ -342,6 +373,62 @@ fn cell_has_effective_border(
         (Some(row), None) => cell_border_id != row.border_id.unwrap_or(0),
         (None, Some(column)) => cell_border_id != column.border_id.unwrap_or(0),
         (None, None) => cell_style.has_visible_border,
+    }
+}
+
+fn cell_applies_effective_default_fill_override(
+    cell_style: &Xf,
+    cell: &ParsedCell<'_>,
+    metrics: &CleanSheetMetrics,
+) -> bool {
+    if !cell_style.applies_default_fill_override() {
+        return false;
+    }
+
+    let column_style = metrics
+        .column_definitions
+        .get(cell.col_num)
+        .and_then(|column| column.cell_xf.as_ref());
+
+    let row_style = metrics
+        .row_attributes
+        .get(cell.row)
+        .and_then(|row| row.style.as_ref());
+
+    match (row_style, column_style) {
+        (None, None) => true,
+        (row_style, column_style) => {
+            row_style.is_some_and(|style| style.apply_fill && style.has_visible_fill)
+                || column_style.is_some_and(|style| style.apply_fill && style.has_visible_fill)
+        }
+    }
+}
+
+fn cell_applies_effective_default_border_override(
+    cell_style: &Xf,
+    cell: &ParsedCell<'_>,
+    metrics: &CleanSheetMetrics,
+) -> bool {
+    if !cell_style.applies_default_border_override() {
+        return false;
+    }
+
+    let column_style = metrics
+        .column_definitions
+        .get(cell.col_num)
+        .and_then(|column| column.cell_xf.as_ref());
+
+    let row_style = metrics
+        .row_attributes
+        .get(cell.row)
+        .and_then(|row| row.style.as_ref());
+
+    match (row_style, column_style) {
+        (None, None) => true,
+        (row_style, column_style) => {
+            row_style.is_some_and(|style| style.apply_border && style.has_visible_border)
+                || column_style.is_some_and(|style| style.apply_border && style.has_visible_border)
+        }
     }
 }
 
