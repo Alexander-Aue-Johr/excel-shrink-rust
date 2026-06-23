@@ -23,7 +23,7 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         chunk_size: 16_777_216,
         parallel_range_chunk_size: 134_217_728,
         force_overwrite: false,
-        sheets: None,
+        sheets: Vec::new(),
         only_clean_workbook: false,
         disable_sheetdata_splitting: false,
         analysis_mode,
@@ -65,6 +65,42 @@ fn reduction_ratio_uses_original_bytes_as_denominator() {
     assert_eq!(reduction_ratio(25, 100), 0.25);
     assert_eq!(reduction_ratio(-10, 100), -0.1);
     assert_eq!(reduction_ratio(25, 0), 0.0);
+}
+
+#[test]
+fn empty_sheet_selection_cleans_all_sheets() {
+    let selected = selected_sheet_targets(&[]);
+
+    assert!(sheet_selected_for_cleanup(
+        "xl/worksheets/sheet84.xml",
+        &selected
+    ));
+}
+
+#[test]
+fn sheet_selection_accepts_basename_or_zip_path() {
+    let selected = selected_sheet_targets(&[
+        "sheet84.xml".to_string(),
+        "worksheets/sheet2.xml".to_string(),
+        "xl/worksheets/sheet7.xml".to_string(),
+    ]);
+
+    assert!(sheet_selected_for_cleanup(
+        "xl/worksheets/sheet84.xml",
+        &selected
+    ));
+    assert!(sheet_selected_for_cleanup(
+        "xl/worksheets/sheet2.xml",
+        &selected
+    ));
+    assert!(sheet_selected_for_cleanup(
+        "xl/worksheets/sheet7.xml",
+        &selected
+    ));
+    assert!(!sheet_selected_for_cleanup(
+        "xl/worksheets/sheet1.xml",
+        &selected
+    ));
 }
 
 #[test]
@@ -130,7 +166,7 @@ fn default_sheet_params() -> CleanSheetParameters {
         compress_method: CompressionMethod::Deflated,
         patterns: WorkbookSpecificPatterns {
             xfs_by_index: HashMap::new(),
-            only_font_style_ids: Vec::new(),
+            no_empty_cell_visible_style_ids: Vec::new(),
             fill_or_border_or_protection_ids: Vec::new(),
             whitespace_indices: None,
         },

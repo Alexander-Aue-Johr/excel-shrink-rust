@@ -236,9 +236,27 @@ fn normalize_sheet_target(target: &str) -> String {
 
     if without_leading_slash.starts_with("xl/") {
         without_leading_slash.to_string()
+    } else if without_leading_slash.starts_with("worksheets/") {
+        format!("xl/{without_leading_slash}")
+    } else if without_leading_slash.starts_with("sheet") && without_leading_slash.ends_with(".xml")
+    {
+        format!("xl/worksheets/{without_leading_slash}")
     } else {
         format!("xl/{without_leading_slash}")
     }
+}
+
+fn selected_sheet_targets(sheets: &[String]) -> HashSet<String> {
+    sheets
+        .iter()
+        .map(|sheet| sheet.trim())
+        .filter(|sheet| !sheet.is_empty())
+        .map(normalize_sheet_target)
+        .collect()
+}
+
+fn sheet_selected_for_cleanup(sheet_file: &str, selected_sheets: &HashSet<String>) -> bool {
+    selected_sheets.is_empty() || selected_sheets.contains(sheet_file)
 }
 
 fn attribution_safe_analysis(cli: &Cli) -> bool {
@@ -1088,6 +1106,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             ..CleanupSwitches::default()
         };
         let collect_cleanup_stats = cleanup_stats_enabled(cli);
+        let selected_sheets = selected_sheet_targets(&cli.sheets);
         let mut sheet_tasks = Vec::new();
         let mut workbook_xml_for_scan: Option<Vec<u8>> = None;
         let mut workbook_rels_for_scan: Option<Vec<u8>> = None;
@@ -1109,12 +1128,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             let is_sheet = name.starts_with("xl/worksheets/sheet") && name.ends_with(".xml");
             let should_process_sheet = is_sheet
                 && !cli.only_clean_workbook
-                && cli.sheets.as_ref().map_or(true, |sheets| {
-                    std::path::Path::new(&name)
-                        .file_name()
-                        .and_then(|file_name| file_name.to_str())
-                        .map_or(false, |file_name| sheets.iter().any(|s| file_name == s))
-                });
+                && sheet_selected_for_cleanup(&name, &selected_sheets);
 
             if should_process_sheet {
                 let original_xml_size = usize::try_from(file.size()).unwrap_or(usize::MAX);

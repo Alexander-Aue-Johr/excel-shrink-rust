@@ -40,9 +40,10 @@ pub struct Cli {
     #[arg(long)]
     force_overwrite: bool,
 
-    /// List of sheet names to process (e.g. sheet1.xml sheet2.xml)
-    #[arg(long, value_delimiter = ' ')]
-    sheets: Option<Vec<String>>,
+    /// Worksheet XML files to process. Omit to clean all sheets.
+    /// Accepts values like sheet1.xml, worksheets/sheet1.xml, or xl/worksheets/sheet1.xml.
+    #[arg(long, value_delimiter = ',', num_args = 1..)]
+    sheets: Vec<String>,
 
     /// Only clean the workbook.xml file and not the sheet.xml files
     #[arg(long)]
