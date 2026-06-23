@@ -3,6 +3,9 @@ name = "excel-shrink-core"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+cell-tracing = []
+
 [dependencies]
 thiserror.workspace = true
 tracing.workspace = true

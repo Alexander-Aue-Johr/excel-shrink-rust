@@ -1,3 +1,5 @@
+#[cfg(feature = "cell-tracing")]
+pub mod cleaning_trace;
 pub mod error;
 pub mod models;
 pub mod reference_scanner;
