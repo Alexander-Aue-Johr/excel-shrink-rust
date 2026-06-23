@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+# Kept so older local commands that pass this feature still work; smoke corpus tests are default tests now.
 corpus-regression-tests = []
+cell-tracing = ["excel-shrink-core/cell-tracing"]
 
 [dependencies]
 excel-shrink-core = { path = "../excel-shrink-core" }
@@ -20,3 +22,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+memchr = "2"
+image = { version = "0.25", default-features = false, features = ["png"] }

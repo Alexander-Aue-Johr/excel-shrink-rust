@@ -39,8 +39,7 @@ If no corpus root is provided, the runner first checks the gitignored local cach
 `cargo run --release -p excel-shrink-cli -- regression smoke`
 
 - intended for frequent local checks
-- contains a few representative category-oriented cases
-- skips slow flagship cases by default
+- contains representative category-oriented single-workbook cases
 - uses `regression/baselines/smoke.json`
 
 `cargo run --release -p excel-shrink-cli -- regression corpus`
@@ -87,7 +86,6 @@ Runner/provenance fields:
 - `input_path`
 - `download_url`
 - `cached_file_name`
-- `slow`
 - `cli_args`
 - `analysis_mode`
 - `max_output_bytes`
@@ -97,8 +95,6 @@ Runner/provenance fields:
 Use `relative_input` for files below the corpus root. Use `input_path` only for explicit absolute or repo-relative paths.
 
 Use `download_url` and `cached_file_name` when the workbook should be fetched into the local gitignored cache automatically.
-
-Use `slow: true` for heavyweight but important sentinels that should not run in the default fast smoke pass.
 
 `analysis_mode: true` makes the runner pass `--analysis-csv`, which uses attribution-safe analysis behavior. Use this only for cases where analysis-mode expectations matter.
 
@@ -152,12 +148,6 @@ Smoke run:
 cargo run --release -p excel-shrink-cli -- regression smoke --corpus-root /data/excel-shrink-corpus
 ```
 
-Smoke run including slow flagship cases:
-
-```bash
-cargo run --release -p excel-shrink-cli -- regression smoke --include-slow
-```
-
 Full corpus run:
 
 ```bash
@@ -191,29 +181,45 @@ cargo run --release -p excel-shrink-cli -- regression smoke --ignore-default-cli
 
 This is useful when `smoke.json` pins conservative defaults such as `--disable-multiprocessing` but you want to inspect normal Rayon sheet/file parallelism.
 
+Run Excel-backed value validation:
+
+```bash
+cargo run --release -p excel-shrink-cli -- regression smoke --excel-recalc-check
+```
+
+This opens each shrunk workbook in Microsoft Excel, forces a full formula recalculation, saves a copy, and compares worksheet cell values from the shrunk workbook to the Excel-saved copy. If Excel changes values, the runner also saves a recalculated copy of the original workbook and uses only the changed sheets to classify volatile formulas such as random or date functions. Non-volatile differences fail the case.
+
+Run Excel screenshot validation:
+
+```bash
+cargo run --release -p excel-shrink-cli -- regression smoke --excel-screenshot-check
+```
+
+This opens the original and shrunk workbooks in Excel, captures each used range, and writes cropped difference images plus approximate cell coordinates under the case output directory. The check requires Microsoft Excel automation. On Windows it invokes PowerShell directly; under WSL it tries `powershell.exe` and converts `/mnt/<drive>/...` paths for the Windows side.
+Full per-sheet original/shrunk screenshots are cached under the workspace `.tmp/excel-screenshot-cache` directory. Test output directories contain only the diff artifacts and reports.
+
 ## VS Code debugging
 
 The corpus-backed smoke regressions are also available as Rust tests inside `excel-shrink-cli`.
-Enable them with the `corpus-regression-tests` feature.
+They are normal tests and run as part of `cargo test`.
 
 Example:
 
 ```bash
-cargo test -p excel-shrink-cli --bin excel-shrink-cli --features corpus-regression-tests corpus_regression_default_smoke_suite -- --nocapture
+cargo test -p excel-shrink-cli --bin excel-shrink-cli corpus_regression_smoke_suite -- --nocapture
 ```
 
 Test entry points:
 
-- `corpus_regression_default_smoke_suite`
-- `corpus_regression_full_smoke_suite`
+- `corpus_regression_smoke_suite`
 - `corpus_regression_selected_smoke_case`
 
-The selected-case test uses `EXCEL_SHRINK_CORPUS_REGRESSION_CASE_ID=<case-id>`.
+The selected-case test is ignored by default and uses `EXCEL_SHRINK_CORPUS_REGRESSION_CASE_ID=<case-id>`.
+Set `EXCEL_SHRINK_CORPUS_REGRESSION_EXCEL_RECALC_CHECK=1` or `EXCEL_SHRINK_CORPUS_REGRESSION_EXCEL_SCREENSHOT_CHECK=1` to enable the Excel-backed checks from those Rust test entry points.
 
 The VS Code launch configs in `.vscode/launch.json` are wired to those tests so you can debug:
 
-- the default fast smoke suite
-- the full smoke suite including slow cases
+- the smoke suite
 - one category case chosen by case ID
 
 ## Policy

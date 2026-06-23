@@ -1,13 +1,19 @@
 use crate::pipeline::process_files;
 use crate::Cli;
 use clap::{Parser, Subcommand};
+use excel_automation::{ExcelSavedWorkbook, ExcelScreenshotReport};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+use xlsx_value_compare::{CellValueDifference, MissingCellPolicy, WorkbookComparisonReport};
+
+mod excel_automation;
+mod xlsx_value_compare;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -49,10 +55,6 @@ pub struct RegressionRunArgs {
     #[arg(long)]
     case_id: Option<String>,
 
-    /// Include slow smoke cases.
-    #[arg(long)]
-    include_slow: bool,
-
     /// Allow a selected baseline to contain no cases.
     #[arg(long)]
     allow_empty: bool,
@@ -64,6 +66,14 @@ pub struct RegressionRunArgs {
     /// Extra CLI argument passed to excel-shrink for each case. Repeat for multiple args.
     #[arg(long = "cli-arg", allow_hyphen_values = true)]
     cli_args: Vec<String>,
+
+    /// Open the shrunk workbook with Excel, force formula recalculation, save it, and compare cached cell values.
+    #[arg(long)]
+    excel_recalc_check: bool,
+
+    /// Open original and shrunk workbooks with Excel, screenshot used ranges, and save cropped differences.
+    #[arg(long)]
+    excel_screenshot_check: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,7 +104,6 @@ pub struct RegressionCase {
     cached_file_name: Option<String>,
     cli_args: Option<Vec<String>>,
     analysis_mode: Option<bool>,
-    slow: Option<bool>,
     max_output_bytes: Option<u64>,
     min_reduction_ratio: Option<f64>,
     analysis_checks: Option<Vec<AnalysisCheck>>,
@@ -120,7 +129,8 @@ struct RegressionReport {
     mode: String,
     baseline_path: PathBuf,
     corpus_root: Option<PathBuf>,
-    include_slow: bool,
+    excel_recalc_check: bool,
+    excel_screenshot_check: bool,
     output_root: PathBuf,
     created_at_unix_ms: u128,
     cases: Vec<CaseReport>,
@@ -137,7 +147,6 @@ struct CaseReport {
     source_repository_url: Option<String>,
     source_file_url: Option<String>,
     download_url: Option<String>,
-    slow: bool,
     input_path: PathBuf,
     output_path: PathBuf,
     original_bytes: u64,
@@ -145,7 +154,22 @@ struct CaseReport {
     reduction_ratio: Option<f64>,
     analysis_mode: bool,
     failures: Vec<String>,
+    top_sheet_reductions: Vec<SheetReductionDetail>,
     analysis_details: Vec<AnalysisDetail>,
+    value_comparison_details: Option<WorkbookComparisonReport>,
+    excel_recalc_details: Option<ExcelRecalcValidationReport>,
+    excel_screenshot_details: Option<ExcelScreenshotReport>,
+}
+
+#[derive(Debug, Serialize)]
+struct ExcelRecalcValidationReport {
+    original_vs_shrunk: WorkbookComparisonReport,
+    shrunk_recalculated: ExcelSavedWorkbook,
+    shrunk_vs_recalculated: WorkbookComparisonReport,
+    original_recalculated: Option<ExcelSavedWorkbook>,
+    original_vs_recalculated_for_changed_sheets: Option<WorkbookComparisonReport>,
+    volatile_difference_count: usize,
+    real_recalc_differences: Vec<CellValueDifference>,
 }
 
 #[derive(Debug, Serialize)]
@@ -155,6 +179,15 @@ struct AnalysisDetail {
     removed_items: f64,
     removed_bytes_uncompressed_xml: f64,
     reduction_bytes_uncompressed_xml: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct SheetReductionDetail {
+    sheet_file: String,
+    original_sheet_xml_bytes: u64,
+    cleaned_sheet_xml_bytes: u64,
+    reduction_bytes_uncompressed_xml: i64,
+    reduction_ratio: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -187,21 +220,41 @@ where
 pub fn run_smoke_case_for_corpus_regression_test(case_id: &str) {
     init_corpus_regression_logging_for_test();
 
+    let args = corpus_regression_run_args_for_test(Some(case_id.to_string()));
+    run_suite("smoke", "regression/baselines/smoke.json", args)
+        .unwrap_or_else(|e| panic!("corpus regression smoke case '{case_id}' failed: {e:#}"));
+}
+
+#[cfg(test)]
+pub fn run_smoke_suite_for_corpus_regression_test() {
+    init_corpus_regression_logging_for_test();
+
+    let args = corpus_regression_run_args_for_test(None);
+    run_suite("smoke", "regression/baselines/smoke.json", args)
+        .unwrap_or_else(|e| panic!("corpus regression smoke suite failed: {e:#}"));
+}
+
+#[cfg(test)]
+fn corpus_regression_run_args_for_test(case_id: Option<String>) -> RegressionRunArgs {
     let args = RegressionRunArgs {
         baseline_path: None,
         corpus_root: None,
         output_root: None,
         report_path: None,
-        case_id: Some(case_id.to_string()),
-        include_slow: true,
+        case_id,
         allow_empty: false,
         ignore_default_cli_args: env_flag_enabled_for_test(
             "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS",
         ),
         cli_args: corpus_regression_cli_args_from_env_for_test(),
+        excel_recalc_check: env_flag_enabled_for_test(
+            "EXCEL_SHRINK_CORPUS_REGRESSION_EXCEL_RECALC_CHECK",
+        ),
+        excel_screenshot_check: env_flag_enabled_for_test(
+            "EXCEL_SHRINK_CORPUS_REGRESSION_EXCEL_SCREENSHOT_CHECK",
+        ),
     };
-    run_suite("smoke", "regression/baselines/smoke.json", args)
-        .unwrap_or_else(|e| panic!("corpus regression smoke case '{case_id}' failed: {e:#}"));
+    args
 }
 
 #[cfg(test)]
@@ -241,6 +294,28 @@ fn corpus_regression_cli_args_from_env_for_test() -> Vec<String> {
             args.push(value.trim().to_string());
         }
     }
+
+    if let Ok(value) = std::env::var("EXCEL_SHRINK_CORPUS_REGRESSION_SHEETS") {
+        let sheets: Vec<_> = value
+            .split(',')
+            .map(str::trim)
+            .filter(|sheet| !sheet.is_empty())
+            .collect();
+
+        if !sheets.is_empty() {
+            args.push("--sheets".to_string());
+            args.extend(sheets.into_iter().map(str::to_string));
+        }
+    }
+
+    args.extend(corpus_regression_cleanup_cli_args_from_env_for_test());
+
+    args
+}
+
+#[cfg(test)]
+fn corpus_regression_cleanup_cli_args_from_env_for_test() -> Vec<String> {
+    let mut args = Vec::new();
 
     let keep_empty_style_sentinel_cells =
         match std::env::var("EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS") {
@@ -284,20 +359,277 @@ fn env_flag_value_enabled_for_test(value: &str) -> bool {
 }
 
 #[cfg(test)]
-pub fn smoke_cases_for_corpus_regression_tests(include_slow: bool) -> Vec<String> {
-    let suite = load_suite(&repo_root().join("regression/baselines/smoke.json"));
-    suite
-        .cases
-        .into_iter()
-        .filter(|case| include_slow || !case.slow.unwrap_or(false))
-        .map(|case| case.id)
-        .collect()
-}
-
-#[cfg(test)]
 pub fn available_smoke_cases_for_corpus_regression_tests() -> Vec<String> {
     let suite = load_suite(&repo_root().join("regression/baselines/smoke.json"));
     suite.cases.into_iter().map(|case| case.id).collect()
+}
+
+#[cfg(all(test, feature = "cell-tracing"))]
+pub fn run_seeschifffahrt_sheet11_trace_removed_cells_for_corpus_regression_test(
+    selected_cell: Option<&str>,
+) {
+    use excel_shrink_core::cleaning_trace::{self, CellDecision, CellVisitTarget};
+    use excel_shrink_core::models::CleanupCause;
+
+    init_corpus_regression_logging_for_test();
+    cleaning_trace::clear();
+
+    const SHEET_FILE: &str = "xl/worksheets/sheet11.xml";
+    let expected_cells = [
+        ("A1", 1_u32, b"1".as_slice()),
+        ("F2", 6_u32, b"2".as_slice()),
+        ("B22", 2_u32, b"22".as_slice()),
+    ];
+
+    let selected_cell = selected_cell
+        .map(str::trim)
+        .filter(|cell| !cell.is_empty() && !cell.eq_ignore_ascii_case("all"));
+    let cells_to_check: Vec<_> = expected_cells
+        .into_iter()
+        .filter(|(cell_ref, _, _)| {
+            selected_cell.map_or(true, |selected| cell_ref.eq_ignore_ascii_case(selected))
+        })
+        .collect();
+    assert!(
+        !cells_to_check.is_empty(),
+        "unknown seeschifffahrt sheet11 trace cell {:?}; expected one of all, A1, F2, B22",
+        selected_cell
+    );
+    cleaning_trace::set_cell_visit_targets(
+        cells_to_check
+            .iter()
+            .map(|(_, col, row)| CellVisitTarget {
+                sheet_file: SHEET_FILE.to_string(),
+                col: *col,
+                row: row.to_vec(),
+            })
+            .collect(),
+    );
+
+    let repo_root = repo_root();
+    let suite = load_suite(&repo_root.join("regression/baselines/smoke.json"));
+    let case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "trailing-layout-rows")
+        .expect("smoke baseline should contain trailing-layout-rows case");
+    let corpus_root = std::env::var_os("EXCEL_SHRINK_CORPUS_ROOT")
+        .map(PathBuf::from)
+        .map(|path| resolve_path(&repo_root, path));
+    let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case)
+        .unwrap_or_else(|e| panic!("failed to resolve seeschifffahrt input: {e:#}"));
+    let output_root = repo_root
+        .join("regression/tmp")
+        .join(format!("cell-trace-{}", timestamp()));
+    fs::create_dir_all(&output_root)
+        .unwrap_or_else(|e| panic!("failed to create cell trace output directory: {e}"));
+
+    let mut cli_args = vec![
+        "excel-shrink".to_string(),
+        input.to_string_lossy().to_string(),
+        output_root.to_string_lossy().to_string(),
+        "--force-overwrite".to_string(),
+        "--disable-multiprocessing".to_string(),
+        "--writer-workers".to_string(),
+        "1".to_string(),
+    ];
+    cli_args.extend(corpus_regression_cleanup_cli_args_from_env_for_test());
+    cli_args.extend(["--sheets".to_string(), SHEET_FILE.to_string()]);
+    let cli = Cli::parse_from(cli_args);
+
+    process_files(vec![input], &cli)
+        .unwrap_or_else(|e| panic!("seeschifffahrt sheet11 trace run failed: {e:#}"));
+
+    let decisions = cleaning_trace::recorded_cell_decisions();
+    let visits = cleaning_trace::recorded_cell_visits();
+    for (cell_ref, col, row) in cells_to_check {
+        assert!(
+            visits.iter().any(|visit| {
+                visit.sheet_file == SHEET_FILE && visit.col == col && visit.row == row
+            }),
+            "expected {SHEET_FILE}!{cell_ref} to be visited; matching trace event was not recorded"
+        );
+        assert!(
+            decisions.iter().any(|decision| {
+                decision.sheet_file == SHEET_FILE
+                    && decision.col == col
+                    && decision.row == row
+                    && decision.decision == CellDecision::Removed
+                    && decision.cause == CleanupCause::EmptyCellsWithoutContent
+            }),
+            "expected {SHEET_FILE}!{cell_ref} to be removed; matching trace event was not recorded"
+        );
+    }
+}
+
+#[cfg(all(test, feature = "cell-tracing"))]
+pub fn run_kernhaushalt_sheet84_trace_removed_cell_for_corpus_regression_test() {
+    use excel_shrink_core::cleaning_trace::{self, CellDecision, CellVisitTarget};
+    use excel_shrink_core::models::CleanupCause;
+
+    init_corpus_regression_logging_for_test();
+    cleaning_trace::clear();
+
+    const SHEET_FILE: &str = "xl/worksheets/sheet84.xml";
+    const CELL_REF: &str = "D1048576";
+    const COL: u32 = 4;
+    const ROW: &[u8] = b"1048576";
+    cleaning_trace::set_cell_visit_targets(vec![CellVisitTarget {
+        sheet_file: SHEET_FILE.to_string(),
+        col: COL,
+        row: ROW.to_vec(),
+    }]);
+
+    let repo_root = repo_root();
+    let suite = load_suite(&repo_root.join("regression/baselines/smoke.json"));
+    let case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "overall-reduction")
+        .expect("smoke baseline should contain overall-reduction case");
+    let corpus_root = std::env::var_os("EXCEL_SHRINK_CORPUS_ROOT")
+        .map(PathBuf::from)
+        .map(|path| resolve_path(&repo_root, path));
+    let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case)
+        .unwrap_or_else(|e| panic!("failed to resolve kernhaushalt input: {e:#}"));
+    let output_root = repo_root
+        .join("regression/tmp")
+        .join(format!("cell-trace-{}", timestamp()));
+    fs::create_dir_all(&output_root)
+        .unwrap_or_else(|e| panic!("failed to create cell trace output directory: {e}"));
+
+    let mut cli_args = vec![
+        "excel-shrink".to_string(),
+        input.to_string_lossy().to_string(),
+        output_root.to_string_lossy().to_string(),
+        "--force-overwrite".to_string(),
+        "--disable-multiprocessing".to_string(),
+        "--writer-workers".to_string(),
+        "1".to_string(),
+    ];
+    cli_args.extend(corpus_regression_cleanup_cli_args_from_env_for_test());
+    cli_args.extend([
+        "--disable-tail-pruning".to_string(),
+        "--parallel-range-chunk-size".to_string(),
+        "0".to_string(),
+        "--sheets".to_string(),
+        SHEET_FILE.to_string(),
+    ]);
+    let cli = Cli::parse_from(cli_args);
+
+    process_files(vec![input], &cli)
+        .unwrap_or_else(|e| panic!("kernhaushalt sheet84 trace run failed: {e:#}"));
+
+    let decisions = cleaning_trace::recorded_cell_decisions();
+    let visits = cleaning_trace::recorded_cell_visits();
+    assert!(
+        visits.iter().any(|visit| {
+            visit.sheet_file == SHEET_FILE && visit.col == COL && visit.row == ROW
+        }),
+        "expected {SHEET_FILE}!{CELL_REF} to be visited; matching trace event was not recorded"
+    );
+    assert!(
+        decisions.iter().any(|decision| {
+            decision.sheet_file == SHEET_FILE
+                && decision.col == COL
+                && decision.row == ROW
+                && decision.decision == CellDecision::Removed
+                && decision.cause == CleanupCause::EmptyCellsWithoutContent
+        }),
+        "expected {SHEET_FILE}!{CELL_REF} to be removed; matching trace event was not recorded"
+    );
+}
+
+#[cfg(all(test, feature = "cell-tracing"))]
+pub fn run_seeschifffahrt_sheet1_h15_trace_visited_cell_for_corpus_regression_test() {
+    run_single_smoke_case_trace_cell_for_corpus_regression_test(
+        "trailing-layout-rows",
+        "xl/worksheets/sheet1.xml",
+        "H15",
+        8,
+        b"15",
+        "seeschifffahrt sheet1 H15",
+        &[],
+        false,
+    );
+}
+
+#[cfg(all(test, feature = "cell-tracing"))]
+fn run_single_smoke_case_trace_cell_for_corpus_regression_test(
+    case_id: &str,
+    sheet_file: &str,
+    cell_ref: &str,
+    col: u32,
+    row: &[u8],
+    label: &str,
+    extra_cli_args: &[&str],
+    expect_removed: bool,
+) {
+    use excel_shrink_core::cleaning_trace::{self, CellDecision, CellVisitTarget};
+    use excel_shrink_core::models::CleanupCause;
+
+    init_corpus_regression_logging_for_test();
+    cleaning_trace::clear();
+    cleaning_trace::set_cell_visit_targets(vec![CellVisitTarget {
+        sheet_file: sheet_file.to_string(),
+        col,
+        row: row.to_vec(),
+    }]);
+
+    let repo_root = repo_root();
+    let suite = load_suite(&repo_root.join("regression/baselines/smoke.json"));
+    let case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == case_id)
+        .unwrap_or_else(|| panic!("smoke baseline should contain {case_id} case"));
+    let corpus_root = std::env::var_os("EXCEL_SHRINK_CORPUS_ROOT")
+        .map(PathBuf::from)
+        .map(|path| resolve_path(&repo_root, path));
+    let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case)
+        .unwrap_or_else(|e| panic!("failed to resolve {label} input: {e:#}"));
+    let output_root = repo_root
+        .join("regression/tmp")
+        .join(format!("cell-trace-{}", timestamp()));
+    fs::create_dir_all(&output_root)
+        .unwrap_or_else(|e| panic!("failed to create cell trace output directory: {e}"));
+
+    let mut cli_args = vec![
+        "excel-shrink".to_string(),
+        input.to_string_lossy().to_string(),
+        output_root.to_string_lossy().to_string(),
+        "--force-overwrite".to_string(),
+        "--disable-multiprocessing".to_string(),
+        "--writer-workers".to_string(),
+        "1".to_string(),
+    ];
+    cli_args.extend(corpus_regression_cleanup_cli_args_from_env_for_test());
+    cli_args.extend(extra_cli_args.iter().map(|arg| (*arg).to_string()));
+    cli_args.extend(["--sheets".to_string(), sheet_file.to_string()]);
+    let cli = Cli::parse_from(cli_args);
+
+    process_files(vec![input], &cli).unwrap_or_else(|e| panic!("{label} trace run failed: {e:#}"));
+
+    let decisions = cleaning_trace::recorded_cell_decisions();
+    let visits = cleaning_trace::recorded_cell_visits();
+    assert!(
+        visits
+            .iter()
+            .any(|visit| visit.sheet_file == sheet_file && visit.col == col && visit.row == row),
+        "expected {sheet_file}!{cell_ref} to be visited; matching trace event was not recorded"
+    );
+    if expect_removed {
+        assert!(
+            decisions.iter().any(|decision| {
+                decision.sheet_file == sheet_file
+                    && decision.col == col
+                    && decision.row == row
+                    && decision.decision == CellDecision::Removed
+                    && decision.cause == CleanupCause::EmptyCellsWithoutContent
+            }),
+            "expected {sheet_file}!{cell_ref} to be removed; matching trace event was not recorded"
+        );
+    }
 }
 
 fn run_suite(
@@ -322,20 +654,6 @@ fn run_suite(
             case_id,
             baseline_path.display()
         );
-    } else if mode_name == "smoke" && !args.include_slow {
-        let slow_cases: Vec<_> = cases
-            .iter()
-            .filter(|case| case.slow.unwrap_or(false))
-            .map(|case| case.id.clone())
-            .collect();
-        cases.retain(|case| !case.slow.unwrap_or(false));
-        if !slow_cases.is_empty() {
-            eprintln!(
-                "[smoke] Skipping slow cases by default: {}",
-                slow_cases.join(", ")
-            );
-            eprintln!("[smoke] Use --include-slow or --case-id <id> to run them.");
-        }
     }
 
     anyhow::ensure!(
@@ -389,6 +707,8 @@ fn run_suite(
             corpus_root.as_deref(),
             suite_defaults,
             &args.cli_args,
+            args.excel_recalc_check,
+            args.excel_screenshot_check,
             &case,
         );
         match &report {
@@ -403,12 +723,24 @@ fn run_suite(
                     report.cleaned_bytes.unwrap_or(0),
                     ratio_text
                 );
+                if !report.top_sheet_reductions.is_empty() {
+                    eprintln!(
+                        "[{mode_name}]   Top sheet reductions: {}",
+                        summarize_top_sheet_reductions(&report.top_sheet_reductions)
+                    );
+                }
             }
             Ok(report) => {
                 any_failure = true;
                 eprintln!("[{mode_name}] FAIL {}", report.id);
                 for failure in &report.failures {
                     eprintln!("  - {failure}");
+                }
+                if !report.top_sheet_reductions.is_empty() {
+                    eprintln!(
+                        "[{mode_name}]   Top sheet reductions: {}",
+                        summarize_top_sheet_reductions(&report.top_sheet_reductions)
+                    );
                 }
             }
             Err(error) => {
@@ -451,7 +783,8 @@ fn run_suite(
         mode: mode_name.to_string(),
         baseline_path,
         corpus_root,
-        include_slow: args.include_slow,
+        excel_recalc_check: args.excel_recalc_check,
+        excel_screenshot_check: args.excel_screenshot_check,
         output_root,
         created_at_unix_ms: unix_ms(),
         cases: reports,
@@ -471,6 +804,8 @@ fn run_case(
     corpus_root: Option<&Path>,
     defaults: Option<&SuiteDefaults>,
     extra_cli_args: &[String],
+    excel_recalc_check: bool,
+    excel_screenshot_check: bool,
     case: &RegressionCase,
 ) -> anyhow::Result<CaseReport> {
     let input = resolve_case_input(repo_root, corpus_root, case)?;
@@ -501,7 +836,11 @@ fn run_case(
     let original_bytes = fs::metadata(&input)?.len();
     let mut cleaned_bytes = None;
     let mut reduction_ratio = None;
+    let mut top_sheet_reductions = Vec::new();
     let mut analysis_details = Vec::new();
+    let mut value_comparison_details = None;
+    let mut excel_recalc_details = None;
+    let mut excel_screenshot_details = None;
 
     if output_path.exists() {
         let output_bytes = fs::metadata(&output_path)?.len();
@@ -512,6 +851,10 @@ fn run_case(
         };
         cleaned_bytes = Some(output_bytes);
         reduction_ratio = Some(ratio);
+        match top_sheet_reductions_by_uncompressed_xml(&input, &output_path, 5) {
+            Ok(reductions) => top_sheet_reductions = reductions,
+            Err(error) => failures.push(format!("sheet reduction analysis failed: {error:#}")),
+        }
 
         if let Some(max_output_bytes) = case.max_output_bytes {
             if output_bytes > max_output_bytes {
@@ -547,6 +890,60 @@ fn run_case(
         }
     }
 
+    if output_path.exists() && excel_recalc_check {
+        match validate_excel_recalculation(&input, &output_path, &case_output_dir, &cli) {
+            Ok((report, validation_failures)) => {
+                value_comparison_details = Some(report.original_vs_shrunk.clone());
+                failures.extend(validation_failures);
+                excel_recalc_details = Some(report);
+            }
+            Err(error) => {
+                failures.push(format!("Excel recalculation validation failed: {error:#}"))
+            }
+        }
+    }
+
+    if output_path.exists() && excel_screenshot_check {
+        if value_comparison_details.is_none() {
+            match compare_original_and_shrunk_values(&input, &output_path, &cli) {
+                Ok(report) => {
+                    if !report.differences.is_empty() {
+                        failures.push(value_comparison_failure(&report));
+                    }
+                    value_comparison_details = Some(report);
+                }
+                Err(error) => {
+                    failures.push(format!("cell value comparison failed: {error:#}"));
+                }
+            }
+        }
+
+        let screenshot_dir = case_output_dir.join("excel-screenshots");
+        let work_dir = case_output_dir.join("excel-automation");
+        let range_limits = value_comparison_details
+            .as_ref()
+            .map(|report| report.right_capture_ranges.clone())
+            .unwrap_or_default();
+        match excel_automation::compare_sheet_screenshots(
+            &input,
+            &output_path,
+            &screenshot_dir,
+            &work_dir,
+            &range_limits,
+        ) {
+            Ok(report) => {
+                if report.differences_found {
+                    failures.push(format!(
+                        "Excel screenshot comparison found differences; report: {}",
+                        report.report_path.display()
+                    ));
+                }
+                excel_screenshot_details = Some(report);
+            }
+            Err(error) => failures.push(format!("Excel screenshot validation failed: {error:#}")),
+        }
+    }
+
     Ok(CaseReport {
         id: case.id.clone(),
         category: case.category.clone(),
@@ -556,7 +953,6 @@ fn run_case(
         source_repository_url: case.source_repository_url.clone(),
         source_file_url: case.source_file_url.clone(),
         download_url: case.download_url.clone(),
-        slow: case.slow.unwrap_or(false),
         input_path: input,
         output_path,
         original_bytes,
@@ -564,8 +960,170 @@ fn run_case(
         reduction_ratio,
         analysis_mode,
         failures,
+        top_sheet_reductions,
         analysis_details,
+        value_comparison_details,
+        excel_recalc_details,
+        excel_screenshot_details,
     })
+}
+
+fn compare_original_and_shrunk_values(
+    original_path: &Path,
+    shrunk_path: &Path,
+    cli: &Cli,
+) -> anyhow::Result<WorkbookComparisonReport> {
+    xlsx_value_compare::compare_workbook_values(
+        original_path,
+        shrunk_path,
+        missing_cell_policy(cli),
+        None,
+    )
+}
+
+fn validate_excel_recalculation(
+    original_path: &Path,
+    shrunk_path: &Path,
+    case_output_dir: &Path,
+    cli: &Cli,
+) -> anyhow::Result<(ExcelRecalcValidationReport, Vec<String>)> {
+    let excel_dir = case_output_dir.join("excel-recalc");
+    let automation_dir = case_output_dir.join("excel-automation");
+    fs::create_dir_all(&excel_dir)?;
+
+    let original_vs_shrunk = compare_original_and_shrunk_values(original_path, shrunk_path, cli)?;
+
+    let shrunk_recalculated_path = excel_dir
+        .join("shrunk-recalculated")
+        .join(file_name(shrunk_path)?);
+    let shrunk_recalculated = excel_automation::save_recalculated_copy(
+        shrunk_path,
+        &shrunk_recalculated_path,
+        &automation_dir,
+    )?;
+
+    let shrunk_vs_recalculated = xlsx_value_compare::compare_workbook_values(
+        shrunk_path,
+        &shrunk_recalculated.path,
+        MissingCellPolicy::strict(),
+        None,
+    )?;
+
+    let mut failures = Vec::new();
+    if !original_vs_shrunk.differences.is_empty() {
+        failures.push(value_comparison_failure(&original_vs_shrunk));
+    }
+
+    let mut original_recalculated = None;
+    let mut original_vs_recalculated_for_changed_sheets = None;
+    let mut volatile_difference_count = 0;
+    let mut real_recalc_differences = Vec::new();
+
+    if !shrunk_vs_recalculated.differences.is_empty() {
+        let changed_sheets = sheets_with_differences(&shrunk_vs_recalculated.differences);
+        let original_recalculated_path = excel_dir
+            .join("original-recalculated")
+            .join(excel_saved_file_name(original_path)?);
+        let saved_original = excel_automation::save_recalculated_copy(
+            original_path,
+            &original_recalculated_path,
+            &automation_dir,
+        )?;
+        let original_recalc_report = xlsx_value_compare::compare_workbook_values(
+            original_path,
+            &saved_original.path,
+            MissingCellPolicy::strict(),
+            Some(&changed_sheets),
+        )?;
+        let volatile_keys =
+            xlsx_value_compare::difference_keys(&original_recalc_report.differences);
+
+        for difference in &shrunk_vs_recalculated.differences {
+            let key = (difference.sheet_file.clone(), difference.cell_ref.clone());
+            if volatile_keys.contains(&key) {
+                volatile_difference_count += 1;
+            } else {
+                real_recalc_differences.push(difference.clone());
+            }
+        }
+
+        if !real_recalc_differences.is_empty() {
+            failures.push(format!(
+                "shrunk workbook changed after Excel recalculation in {} non-volatile cells: {}",
+                real_recalc_differences.len(),
+                summarize_cell_differences(&real_recalc_differences)
+            ));
+        }
+
+        original_recalculated = Some(saved_original);
+        original_vs_recalculated_for_changed_sheets = Some(original_recalc_report);
+    }
+
+    Ok((
+        ExcelRecalcValidationReport {
+            original_vs_shrunk,
+            shrunk_recalculated,
+            shrunk_vs_recalculated,
+            original_recalculated,
+            original_vs_recalculated_for_changed_sheets,
+            volatile_difference_count,
+            real_recalc_differences,
+        },
+        failures,
+    ))
+}
+
+fn missing_cell_policy(cli: &Cli) -> MissingCellPolicy {
+    MissingCellPolicy {
+        allow_whitespace_values: !cli.keep_unreferenced_whitespace_cells,
+        allow_hidden_rows_or_columns: cli.remove_unreferenced_hidden_content_cells,
+    }
+}
+
+fn value_comparison_failure(report: &WorkbookComparisonReport) -> String {
+    format!(
+        "original-vs-shrunk cell value comparison found {} differences: {}",
+        report.difference_count,
+        summarize_cell_differences(&report.differences)
+    )
+}
+
+fn sheets_with_differences(differences: &[CellValueDifference]) -> HashSet<String> {
+    differences
+        .iter()
+        .map(|difference| difference.sheet_file.clone())
+        .collect()
+}
+
+fn summarize_cell_differences(differences: &[CellValueDifference]) -> String {
+    const LIMIT: usize = 8;
+    let mut parts = differences
+        .iter()
+        .take(LIMIT)
+        .map(|difference| {
+            format!(
+                "{}!{} ({:?})",
+                difference.sheet_file, difference.cell_ref, difference.kind
+            )
+        })
+        .collect::<Vec<_>>();
+    if differences.len() > LIMIT {
+        parts.push(format!("... {} more", differences.len() - LIMIT));
+    }
+    parts.join(", ")
+}
+
+fn file_name(path: &Path) -> anyhow::Result<&std::ffi::OsStr> {
+    path.file_name()
+        .ok_or_else(|| anyhow::anyhow!("path has no file name: {}", path.display()))
+}
+
+fn excel_saved_file_name(path: &Path) -> anyhow::Result<String> {
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or_else(|| anyhow::anyhow!("path has no UTF-8 file stem: {}", path.display()))?;
+    Ok(format!("{stem}.excel-saved.xlsx"))
 }
 
 fn failed_case_report(
@@ -583,7 +1141,6 @@ fn failed_case_report(
         source_repository_url: case.source_repository_url.clone(),
         source_file_url: case.source_file_url.clone(),
         download_url: case.download_url.clone(),
-        slow: case.slow.unwrap_or(false),
         input_path: repo_root.join(case.relative_input.as_deref().unwrap_or("")),
         output_path: output_root.join(&case.id),
         original_bytes: 0,
@@ -591,8 +1148,93 @@ fn failed_case_report(
         reduction_ratio: None,
         analysis_mode: false,
         failures: vec![failure],
+        top_sheet_reductions: Vec::new(),
         analysis_details: Vec::new(),
+        value_comparison_details: None,
+        excel_recalc_details: None,
+        excel_screenshot_details: None,
     }
+}
+
+fn top_sheet_reductions_by_uncompressed_xml(
+    original_path: &Path,
+    cleaned_path: &Path,
+    limit: usize,
+) -> anyhow::Result<Vec<SheetReductionDetail>> {
+    let original_sheets = worksheet_xml_sizes(original_path)?;
+    let cleaned_sheets = worksheet_xml_sizes(cleaned_path)?;
+
+    let mut reductions = Vec::new();
+    for (sheet_file, original_size) in original_sheets {
+        let cleaned_size = cleaned_sheets.get(&sheet_file).copied().unwrap_or(0);
+        let reduction_bytes = original_size as i64 - cleaned_size as i64;
+        if reduction_bytes <= 0 {
+            continue;
+        }
+
+        reductions.push(SheetReductionDetail {
+            sheet_file,
+            original_sheet_xml_bytes: original_size,
+            cleaned_sheet_xml_bytes: cleaned_size,
+            reduction_bytes_uncompressed_xml: reduction_bytes,
+            reduction_ratio: if original_size == 0 {
+                0.0
+            } else {
+                reduction_bytes as f64 / original_size as f64
+            },
+        });
+    }
+
+    reductions.sort_by(|left, right| {
+        right
+            .reduction_bytes_uncompressed_xml
+            .cmp(&left.reduction_bytes_uncompressed_xml)
+            .then_with(|| left.sheet_file.cmp(&right.sheet_file))
+    });
+    reductions.truncate(limit);
+    Ok(reductions)
+}
+
+fn worksheet_xml_sizes(path: &Path) -> anyhow::Result<HashMap<String, u64>> {
+    let file = fs::File::open(path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    let mut sizes = HashMap::new();
+
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        let name = entry.name().to_string();
+        if !name.starts_with("xl/worksheets/") || !name.ends_with(".xml") {
+            continue;
+        }
+
+        let mut bytes_read = 0_u64;
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let read = entry.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            bytes_read += read as u64;
+        }
+        sizes.insert(name, bytes_read);
+    }
+
+    Ok(sizes)
+}
+
+fn summarize_top_sheet_reductions(reductions: &[SheetReductionDetail]) -> String {
+    reductions
+        .iter()
+        .map(|detail| {
+            format!(
+                "{} {:.2}% ({} bytes)",
+                detail.sheet_file,
+                detail.reduction_ratio * 100.0,
+                detail.reduction_bytes_uncompressed_xml
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn aggregate_report(reports: &[CaseReport], expectation: &AggregateExpectation) -> AggregateReport {

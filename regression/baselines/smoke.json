@@ -1,6 +1,6 @@
 {
   "name": "destatis-smoke",
-  "description": "Developer-facing corpus-backed smoke suite for high-signal XLSX regressions. Slow flagship cases stay opt-in by default.",
+  "description": "Developer-facing corpus-backed smoke suite for high-signal XLSX regressions.",
   "defaults": {
     "cli_args": [
       "--disable-multiprocessing",
@@ -20,13 +20,12 @@
         "TrailingLayoutOnlyRows",
         "EmptyRowAttributeCleanup"
       ],
-      "notes": "Slow flagship case; useful when reviewing broad row/cell preservation changes.",
+      "notes": "Useful when reviewing broad row/cell preservation changes.",
       "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
       "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
       "relative_input": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
       "cached_file_name": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
-      "slow": true,
       "min_reduction_ratio": 0.97
     },
     {
@@ -130,13 +129,12 @@
       "dominant_cleanup": [
         "UnreferencedHiddenContentCells"
       ],
-      "notes": "Slow opt-in case; do not relax without confirming removed hidden content is unsafe to keep.",
+      "notes": "Do not relax without confirming removed hidden content is unsafe to keep.",
       "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
       "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/wanderungen-2010120217005.xlsx",
       "relative_input": "wanderungen-2010120217005.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/wanderungen-2010120217005.xlsx",
       "cached_file_name": "wanderungen-2010120217005.xlsx",
-      "slow": true,
       "min_reduction_ratio": 0.99
     },
     {
@@ -147,13 +145,12 @@
         "PreprocessConsecutiveHiddenEmptyRows",
         "ConsecutiveHiddenEmptyRows"
       ],
-      "notes": "Slow opt-in case; useful when changing hidden-row preprocessing or row cleanup.",
+      "notes": "Useful when changing hidden-row preprocessing or row cleanup.",
       "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
       "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
       "relative_input": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
       "cached_file_name": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
-      "slow": true,
       "min_reduction_ratio": 0.98
     }
   ]
