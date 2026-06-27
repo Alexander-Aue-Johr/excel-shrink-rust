@@ -1092,7 +1092,6 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         let patterns = WorkbookSpecificPatterns::new(all_xfs, whitespace_indices);
         let attribution_safe_analysis = attribution_safe_analysis(cli);
         let cleanup = CleanupSwitches {
-            preprocess_consecutive_hidden_empty_rows: cli.preprocess_hidden_rows,
             preprocess_empty_self_closing_cells: cli.preprocess_empty_cells,
 
             unreferenced_whitespace_cells: remove_unreferenced_whitespace_cells,
@@ -1102,6 +1101,8 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             trailing_layout_only_rows: !cli.disable_trailing_layout_only_rows,
             extraneous_column_range_merge: !cli.disable_extraneous_column_merge,
             empty_style_representative_cells: !cli.disable_empty_style_representatives,
+            remove_apply_protection_without_sheet_protection: cli
+                .remove_apply_protection_without_sheet_protection,
 
             ..CleanupSwitches::default()
         };
@@ -1141,7 +1142,6 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                         patterns: patterns.clone(),
                         advanced_cleanup: None,
                         preprocess: SheetPreprocessConfig {
-                            remove_hidden_rows: cli.preprocess_hidden_rows,
                             remove_empty_cells: cli.preprocess_empty_cells,
                         },
                         cleanup: cleanup.clone(),
@@ -1553,18 +1553,13 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 );
                 xml = cleaned_xml;
 
-                let mut deferred_row_cleanup_params = params.clone();
-                deferred_row_cleanup_params
-                    .cleanup
-                    .consecutive_hidden_empty_rows = false;
-
                 if !deferred_cleanup_rows.is_empty() {
                     metrics.row_attributes.clear();
                     metrics.kept_row_states.clear();
                     metrics.deleted_row_states.clear();
                     match clean_selected_rows_and_cells_in_cell_range(
                         &xml,
-                        &deferred_row_cleanup_params,
+                        &params,
                         &mut metrics,
                         &deferred_cleanup_rows,
                     ) {
@@ -1580,7 +1575,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 metrics.deleted_row_states.clear();
                 match clean_empty_rows_from_after_cell_range(
                     &xml,
-                    &deferred_row_cleanup_params,
+                    &params,
                     &mut metrics,
                 ) {
                     Ok(cleaned) => xml = cleaned,
@@ -1590,6 +1585,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 }
 
                 if params.cleanup.trailing_layout_only_rows {
+                    metrics.tail_anchor_max_row = None;
                     xml = trim_trailing_layout_only_rows_vec(xml, &params, &mut metrics);
                 }
             }

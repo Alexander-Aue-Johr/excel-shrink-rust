@@ -33,7 +33,6 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         disable_trailing_layout_only_rows: false,
         disable_extraneous_column_merge: false,
         disable_empty_style_representatives: false,
-        preprocess_hidden_rows: false,
         preprocess_empty_cells: false,
         writer_workers: None,
         max_active_workbooks: None,
@@ -41,6 +40,7 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         store_output: false,
         keep_unreferenced_whitespace_cells: false,
         remove_unreferenced_hidden_content_cells: false,
+        remove_apply_protection_without_sheet_protection: false,
         console_log_level: LogLevel::Info,
         file_log_level: None,
     }
@@ -373,7 +373,7 @@ fn phase3_preserves_hidden_rows_emptied_by_deferred_candidate_cleanup() {
 }
 
 #[test]
-fn pipeline_preserves_consecutive_hidden_empty_rows_from_streamed_sheet_entry() {
+fn pipeline_preserves_hidden_empty_rows_from_streamed_sheet_entry() {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -412,7 +412,6 @@ fn pipeline_preserves_consecutive_hidden_empty_rows_from_streamed_sheet_entry() 
     cli.force_overwrite = true;
     cli.disable_multiprocessing = true;
     cli.chunk_size = 64;
-    cli.preprocess_hidden_rows = true;
     cli.writer_workers = Some(1);
 
     process_files(vec![input.clone()], &cli).unwrap();

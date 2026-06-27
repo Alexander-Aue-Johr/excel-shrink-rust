@@ -82,10 +82,6 @@ pub struct Cli {
     #[arg(long)]
     disable_empty_style_representatives: bool,
 
-    /// Enable quick-win preprocessing that collapses consecutive hidden empty rows.
-    #[arg(long)]
-    preprocess_hidden_rows: bool,
-
     /// Enable quick-win preprocessing that removes definitely safe empty self-closing cells.
     #[arg(long)]
     preprocess_empty_cells: bool,
@@ -118,6 +114,11 @@ pub struct Cli {
     /// Remove cells with content in hidden rows/cols when they are completely unreferenced.
     #[arg(long)]
     remove_unreferenced_hidden_content_cells: bool,
+
+    /// Treat applyProtection-only cell styles as removable when the worksheet has no active sheetProtection.
+    /// By default, applyProtection styles are kept conservatively even on unprotected sheets.
+    #[arg(long)]
+    remove_apply_protection_without_sheet_protection: bool,
 
     /// Console log level.
     #[arg(long, value_enum, default_value_t = LogLevel::Info)]

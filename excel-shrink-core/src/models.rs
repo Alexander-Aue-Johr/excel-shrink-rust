@@ -97,13 +97,10 @@ pub struct CellCoordinate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CleanupCause {
     PreprocessEmptySelfClosingCells,
-    PreprocessConsecutiveHiddenEmptyRows,
     EmptyCellsWithoutContent,
     EmptyHiddenCells,
     UnreferencedWhitespaceCells,
     UnreferencedHiddenContentCells,
-    EmptyRowsWithoutVisibleStyleOrHeight,
-    ConsecutiveHiddenEmptyRows,
     TrailingLayoutOnlyRows,
     EmptyRowAttributeCleanup,
     SheetDataRangeTailPruning,
@@ -112,15 +109,12 @@ pub enum CleanupCause {
 }
 
 impl CleanupCause {
-    pub const ALL: [CleanupCause; 13] = [
+    pub const ALL: [CleanupCause; 10] = [
         CleanupCause::PreprocessEmptySelfClosingCells,
-        CleanupCause::PreprocessConsecutiveHiddenEmptyRows,
         CleanupCause::EmptyCellsWithoutContent,
         CleanupCause::EmptyHiddenCells,
         CleanupCause::UnreferencedWhitespaceCells,
         CleanupCause::UnreferencedHiddenContentCells,
-        CleanupCause::EmptyRowsWithoutVisibleStyleOrHeight,
-        CleanupCause::ConsecutiveHiddenEmptyRows,
         CleanupCause::TrailingLayoutOnlyRows,
         CleanupCause::EmptyRowAttributeCleanup,
         CleanupCause::SheetDataRangeTailPruning,
@@ -131,17 +125,10 @@ impl CleanupCause {
     pub fn as_str(self) -> &'static str {
         match self {
             CleanupCause::PreprocessEmptySelfClosingCells => "PreprocessEmptySelfClosingCells",
-            CleanupCause::PreprocessConsecutiveHiddenEmptyRows => {
-                "PreprocessConsecutiveHiddenEmptyRows"
-            }
             CleanupCause::EmptyCellsWithoutContent => "EmptyCellsWithoutContent",
             CleanupCause::EmptyHiddenCells => "EmptyHiddenCells",
             CleanupCause::UnreferencedWhitespaceCells => "UnreferencedWhitespaceCells",
             CleanupCause::UnreferencedHiddenContentCells => "UnreferencedHiddenContentCells",
-            CleanupCause::EmptyRowsWithoutVisibleStyleOrHeight => {
-                "EmptyRowsWithoutVisibleStyleOrHeight"
-            }
-            CleanupCause::ConsecutiveHiddenEmptyRows => "ConsecutiveHiddenEmptyRows",
             CleanupCause::TrailingLayoutOnlyRows => "TrailingLayoutOnlyRows",
             CleanupCause::EmptyRowAttributeCleanup => "EmptyRowAttributeCleanup",
             CleanupCause::SheetDataRangeTailPruning => "SheetDataRangeTailPruning",
@@ -154,15 +141,12 @@ impl CleanupCause {
 #[derive(Debug, Clone)]
 pub struct CleanupSwitches {
     pub preprocess_empty_self_closing_cells: bool,
-    pub preprocess_consecutive_hidden_empty_rows: bool,
 
     pub empty_cells_without_content: bool,
     pub empty_hidden_cells: bool,
     pub unreferenced_whitespace_cells: bool,
     pub unreferenced_hidden_content_cells: bool,
 
-    pub empty_rows_without_visible_style_or_height: bool,
-    pub consecutive_hidden_empty_rows: bool,
     pub trailing_layout_only_rows: bool,
     pub empty_style_representative_cells: bool,
     pub remove_apply_protection_without_sheet_protection: bool,
@@ -176,22 +160,19 @@ impl Default for CleanupSwitches {
     fn default() -> Self {
         Self {
             preprocess_empty_self_closing_cells: false,
-            preprocess_consecutive_hidden_empty_rows: false,
 
             empty_cells_without_content: true,
             empty_hidden_cells: true,
             unreferenced_whitespace_cells: false,
             unreferenced_hidden_content_cells: false,
 
-            empty_rows_without_visible_style_or_height: true,
-            consecutive_hidden_empty_rows: false,
             trailing_layout_only_rows: true,
             empty_style_representative_cells: true,
+            remove_apply_protection_without_sheet_protection: false,
 
             empty_row_attribute_cleanup: true,
             sheetdata_range_tail_pruning: true,
             extraneous_column_range_merge: true,
-            remove_apply_protection_without_sheet_protection: false,
         }
     }
 }
@@ -384,8 +365,8 @@ pub struct CleanSheetMetrics {
     pub deleted_row_states: Vec<RowAttributes>,
     pub kept_cell_states: Vec<CellAttributes>,
     pub deleted_cell_states: Vec<CellAttributes>,
-    pub row_attributes: HashMap<Vec<u8>, RowAttributes>,
     pub rows_with_kept_content_cells: HashSet<Vec<u8>>,
+    pub row_attributes: HashMap<Vec<u8>, RowAttributes>,
     pub max_merge_cells_column_and_row: Option<CellCoordinate>,
 
     pub whitespace_candidates: usize,
@@ -395,8 +376,8 @@ pub struct CleanSheetMetrics {
     pub cleanup_stats: CleanupStats,
     pub sheet_protection_enabled: bool,
     pub visible_content_bounds: VisibleContentBounds,
-    pub has_hints: bool,
     pub tail_anchor_max_row: Option<u32>,
+    pub has_hints: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -528,7 +509,6 @@ pub struct AdvancedCleanupConfig {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SheetPreprocessConfig {
-    pub remove_hidden_rows: bool,
     pub remove_empty_cells: bool,
 }
 

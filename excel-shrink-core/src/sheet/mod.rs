@@ -1,6 +1,5 @@
 pub mod cells;
 pub mod cols;
-pub mod hidden_rows;
 pub mod merge_cells;
 pub mod output;
 pub mod patterns;
