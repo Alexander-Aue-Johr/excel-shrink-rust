@@ -13,7 +13,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 use zip::ZipArchive;
 
-const SCREENSHOT_CACHE_VERSION: u32 = 3;
+const SCREENSHOT_CACHE_VERSION: u32 = 4;
 const WORKBOOK_XML_REPAIR_MARKER_VERSION: u32 = 1;
 const EXCEL_SCREENSHOT_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 const EXCEL_SCREENSHOT_POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -128,12 +128,18 @@ pub fn compare_sheet_screenshots(
     let report_path = output_dir.join("screenshot-differences.json");
     let mut original_cache_hit = original_cache.is_complete()?;
     let shrunk_cache_hit = shrunk_cache.is_complete()?;
+    let original_sheet_cache_hits = original_cache.valid_current_sheet_captures()?.len();
+    let shrunk_sheet_cache_hits = shrunk_cache.valid_current_sheet_captures()?.len();
     eprintln!(
-        "[excel-screenshot] cache original_hash={} hit={} shrunk_hash={} hit={} root={}",
+        "[excel-screenshot] cache original_hash={} hit={} sheet_hits={}/{} shrunk_hash={} hit={} sheet_hits={}/{} root={}",
         original_cache.workbook_hash,
         original_cache_hit,
+        original_sheet_cache_hits,
+        original_cache.sheet_identities.len(),
         shrunk_cache.workbook_hash,
         shrunk_cache_hit,
+        shrunk_sheet_cache_hits,
+        shrunk_cache.sheet_identities.len(),
         cache_root.display()
     );
 
@@ -144,6 +150,19 @@ pub fn compare_sheet_screenshots(
      -> anyhow::Result<PowerShellScriptOutcome> {
         fs::create_dir_all(&original_cache.cache_dir)?;
         fs::create_dir_all(&shrunk_cache.cache_dir)?;
+        let original_sheet_cache_path = work_dir.join("original-sheet-screenshot-cache.json");
+        let shrunk_sheet_cache_path = work_dir.join("shrunk-sheet-screenshot-cache.json");
+        let original_sheet_cache_count =
+            write_sheet_cache_plan(original_cache, &original_sheet_cache_path)?;
+        let shrunk_sheet_cache_count =
+            write_sheet_cache_plan(&shrunk_cache, &shrunk_sheet_cache_path)?;
+        eprintln!(
+            "[excel-screenshot] sheet cache original_hits={}/{} shrunk_hits={}/{}",
+            original_sheet_cache_count,
+            original_cache.sheet_identities.len(),
+            shrunk_sheet_cache_count,
+            shrunk_cache.sheet_identities.len()
+        );
         let original_excel_path =
             copy_workbook_with_suffix(original_for_capture, work_dir, "original")?;
         let shrunk_excel_path = copy_workbook_with_suffix(shrunk_path, work_dir, "shrunk")?;
@@ -165,6 +184,14 @@ pub fn compare_sheet_screenshots(
                     power_shell_path(&original_cache.cache_dir)?,
                 ),
                 ("ShrunkCacheDir", power_shell_path(&shrunk_cache.cache_dir)?),
+                (
+                    "OriginalSheetCachePath",
+                    power_shell_path(&original_sheet_cache_path)?,
+                ),
+                (
+                    "ShrunkSheetCachePath",
+                    power_shell_path(&shrunk_sheet_cache_path)?,
+                ),
                 ("OriginalAlreadyCached", original_cache_hit.to_string()),
                 ("ShrunkAlreadyCached", shrunk_cache_hit.to_string()),
             ],
@@ -342,9 +369,17 @@ struct ScreenshotCaptureTile {
 struct WorkbookScreenshotCache {
     workbook_hash: String,
     capture_range_hash: String,
+    cache_root: PathBuf,
     cache_dir: PathBuf,
     manifest_path: PathBuf,
     marker_path: PathBuf,
+    sheet_identities: BTreeMap<usize, WorkbookScreenshotSheetIdentity>,
+}
+
+#[derive(Debug, Clone)]
+struct WorkbookScreenshotSheetIdentity {
+    sheet_file: String,
+    sheet_xml_hash: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -359,11 +394,17 @@ struct WorkbookScreenshotCacheManifest {
 struct WorkbookScreenshotCapture {
     sheet_index: usize,
     sheet_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sheet_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sheet_xml_hash: Option<String>,
     capture_range: Option<String>,
     capture_strategy: Option<String>,
     used_range_error: Option<String>,
     screenshot_error: Option<String>,
     image: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    image_hash: Option<String>,
     #[serde(default)]
     background_rgba: Option<ScreenshotRgba>,
     capture_info: Option<ScreenshotCaptureInfo>,
@@ -377,10 +418,17 @@ struct WorkbookScreenshotTile {
     capture_range: String,
     capture_info: ScreenshotCaptureInfo,
     image: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    image_hash: Option<String>,
     #[serde(default)]
     background_rgba: Option<ScreenshotRgba>,
     width: Option<u32>,
     height: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct WorkbookScreenshotSheetCachePlan {
+    captures: Vec<WorkbookScreenshotCapture>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -404,70 +452,85 @@ impl WorkbookScreenshotCache {
         capture_range_hash: &str,
     ) -> anyhow::Result<Self> {
         let workbook_hash = workbook_content_hash(workbook_path)?;
+        let sheet_identities = workbook_sheet_identities(workbook_path)?;
         let cache_dir = cache_root.join(&workbook_hash);
         Ok(Self {
             manifest_path: cache_dir.join("workbook-screenshots.json"),
             marker_path: cache_dir.join("complete.json"),
             workbook_hash,
             capture_range_hash: capture_range_hash.to_string(),
+            cache_root: cache_root.to_path_buf(),
             cache_dir,
+            sheet_identities,
         })
     }
 
     fn is_complete(&self) -> anyhow::Result<bool> {
-        if !self.marker_path.exists() || !self.manifest_path.exists() {
-            return Ok(false);
-        }
-
-        let Ok(marker) = read_json_file::<WorkbookScreenshotCacheMarker>(&self.marker_path) else {
-            return Ok(false);
-        };
-        if marker.version != SCREENSHOT_CACHE_VERSION
-            || marker.workbook_hash != self.workbook_hash
-            || marker.capture_range_hash != self.capture_range_hash
-        {
-            return Ok(false);
-        }
-
-        let Ok(manifest) = self.read_manifest() else {
-            return Ok(false);
-        };
-        if manifest.version != SCREENSHOT_CACHE_VERSION
-            || manifest.workbook_hash != self.workbook_hash
-            || manifest.capture_range_hash != self.capture_range_hash
-            || manifest.captures.len() != marker.capture_count
-        {
-            return Ok(false);
-        }
-
-        for capture in &manifest.captures {
-            if capture.screenshot_error.is_some() {
-                return Ok(false);
-            }
-            if capture.tiles.is_empty() {
-                let Some(image) = capture.image.as_ref().map(normalize_automation_path) else {
-                    return Ok(false);
-                };
-                if !image.exists() {
-                    return Ok(false);
-                }
-            } else {
-                for tile in &capture.tiles {
-                    let Some(image) = tile.image.as_ref().map(normalize_automation_path) else {
-                        return Ok(false);
-                    };
-                    if !image.exists() {
-                        return Ok(false);
-                    }
-                }
-            }
-        }
-
-        Ok(true)
+        let valid = self.valid_current_sheet_captures()?;
+        Ok(!self.sheet_identities.is_empty() && valid.len() == self.sheet_identities.len())
     }
 
-    fn read_manifest(&self) -> anyhow::Result<WorkbookScreenshotCacheManifest> {
-        read_json_file(&self.manifest_path)
+    fn valid_current_sheet_captures(
+        &self,
+    ) -> anyhow::Result<BTreeMap<usize, WorkbookScreenshotCapture>> {
+        let mut valid = BTreeMap::new();
+        for manifest_path in self.candidate_manifest_paths()? {
+            let Ok(manifest) = read_json_file::<WorkbookScreenshotCacheManifest>(&manifest_path)
+            else {
+                continue;
+            };
+            if manifest.version != SCREENSHOT_CACHE_VERSION
+                || manifest.capture_range_hash != self.capture_range_hash
+            {
+                continue;
+            }
+
+            for capture in manifest.captures {
+                if valid.contains_key(&capture.sheet_index) {
+                    continue;
+                }
+                let Some(identity) = self.sheet_identities.get(&capture.sheet_index) else {
+                    continue;
+                };
+                if capture.sheet_xml_hash.as_deref() != Some(identity.sheet_xml_hash.as_str()) {
+                    continue;
+                }
+                if !capture_has_valid_images(&capture)? {
+                    continue;
+                }
+                valid.insert(capture.sheet_index, capture);
+            }
+
+            if valid.len() == self.sheet_identities.len() {
+                break;
+            }
+        }
+
+        Ok(valid)
+    }
+
+    fn candidate_manifest_paths(&self) -> anyhow::Result<Vec<PathBuf>> {
+        let mut paths = Vec::new();
+        if self.manifest_path.exists() {
+            paths.push(self.manifest_path.clone());
+        }
+        if !self.cache_root.exists() {
+            return Ok(paths);
+        }
+
+        for entry in fs::read_dir(&self.cache_root)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path == self.cache_dir || !path.is_dir() {
+                continue;
+            }
+            let manifest_path = path.join("workbook-screenshots.json");
+            if manifest_path.exists() {
+                paths.push(manifest_path);
+            }
+        }
+
+        Ok(paths)
     }
 }
 
@@ -953,18 +1016,8 @@ fn write_pair_manifest_from_cache(
     shrunk_cache: &WorkbookScreenshotCache,
     capture_manifest_path: &Path,
 ) -> anyhow::Result<()> {
-    let original_manifest = original_cache.read_manifest()?;
-    let shrunk_manifest = shrunk_cache.read_manifest()?;
-    let original_by_index: BTreeMap<_, _> = original_manifest
-        .captures
-        .into_iter()
-        .map(|capture| (capture.sheet_index, capture))
-        .collect();
-    let shrunk_by_index: BTreeMap<_, _> = shrunk_manifest
-        .captures
-        .into_iter()
-        .map(|capture| (capture.sheet_index, capture))
-        .collect();
+    let original_by_index = original_cache.valid_current_sheet_captures()?;
+    let shrunk_by_index = shrunk_cache.valid_current_sheet_captures()?;
     let max_sheet_index = original_by_index
         .keys()
         .chain(shrunk_by_index.keys())
@@ -1013,6 +1066,22 @@ fn write_pair_manifest_from_cache(
 
     fs::write(capture_manifest_path, serde_json::to_vec_pretty(&captures)?)?;
     Ok(())
+}
+
+fn write_sheet_cache_plan(
+    cache: &WorkbookScreenshotCache,
+    cache_plan_path: &Path,
+) -> anyhow::Result<usize> {
+    let captures: Vec<_> = cache
+        .valid_current_sheet_captures()?
+        .into_values()
+        .collect();
+    let count = captures.len();
+    fs::write(
+        cache_plan_path,
+        serde_json::to_vec_pretty(&WorkbookScreenshotSheetCachePlan { captures })?,
+    )?;
+    Ok(count)
 }
 
 fn pair_cached_tiles(
@@ -1074,13 +1143,17 @@ fn update_workbook_screenshot_cache(
         }
         .map(normalize_automation_path);
 
-        let tiles = side_cache_tiles(&pair.tiles, original_side);
+        let tiles = side_cache_tiles(&pair.tiles, original_side)?;
+        let image_hash = match image.as_ref() {
+            Some(image) if image.exists() => Some(file_content_hash(image)?),
+            _ => None,
+        };
+        let sheet_identity = cache.sheet_identities.get(&pair.sheet_index);
 
         if pair.screenshot_error.is_some()
-            || (tiles.is_empty() && image.as_ref().is_none_or(|image| !image.exists()))
-            || tiles
-                .iter()
-                .any(|tile| tile.image.as_ref().is_none_or(|image| !image.exists()))
+            || sheet_identity.is_none()
+            || (tiles.is_empty() && image_hash.is_none())
+            || tiles.iter().any(|tile| tile.image_hash.is_none())
         {
             complete = false;
         }
@@ -1088,11 +1161,14 @@ fn update_workbook_screenshot_cache(
         captures.push(WorkbookScreenshotCapture {
             sheet_index: pair.sheet_index,
             sheet_name: pair.sheet_name,
+            sheet_file: sheet_identity.map(|identity| identity.sheet_file.clone()),
+            sheet_xml_hash: sheet_identity.map(|identity| identity.sheet_xml_hash.clone()),
             capture_range: pair.capture_range,
             capture_strategy: pair.capture_strategy,
             used_range_error: pair.used_range_error,
             screenshot_error: pair.screenshot_error,
             image,
+            image_hash,
             background_rgba: if original_side {
                 pair.original_background_rgba
             } else {
@@ -1127,7 +1203,7 @@ fn update_workbook_screenshot_cache(
 fn side_cache_tiles(
     tiles: &[ScreenshotCaptureTile],
     original_side: bool,
-) -> Vec<WorkbookScreenshotTile> {
+) -> anyhow::Result<Vec<WorkbookScreenshotTile>> {
     tiles
         .iter()
         .map(|tile| {
@@ -1137,6 +1213,10 @@ fn side_cache_tiles(
                 tile.shrunk_image.as_ref()
             }
             .map(normalize_automation_path);
+            let image_hash = match image.as_ref() {
+                Some(image) if image.exists() => Some(file_content_hash(image)?),
+                _ => None,
+            };
             let (width, height) = if original_side {
                 (tile.original_width, tile.original_height)
             } else {
@@ -1148,15 +1228,16 @@ fn side_cache_tiles(
                 tile.shrunk_background_rgba
             };
 
-            WorkbookScreenshotTile {
+            Ok(WorkbookScreenshotTile {
                 tile_index: tile.tile_index,
                 capture_range: tile.capture_range.clone(),
                 capture_info: tile.capture_info.clone(),
                 image,
+                image_hash,
                 background_rgba,
                 width,
                 height,
-            }
+            })
         })
         .collect()
 }
@@ -1225,6 +1306,10 @@ fn read_json_file<T: DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
 }
 
 fn workbook_content_hash(path: &Path) -> anyhow::Result<String> {
+    file_content_hash(path)
+}
+
+fn file_content_hash(path: &Path) -> anyhow::Result<String> {
     let mut reader = BufReader::new(File::open(path)?);
     let mut buffer = [0u8; 64 * 1024];
     let mut hash = fnv_offset_basis();
@@ -1240,12 +1325,13 @@ fn workbook_content_hash(path: &Path) -> anyhow::Result<String> {
     Ok(format!("{hash:016x}"))
 }
 
+fn bytes_content_hash(bytes: &[u8]) -> String {
+    format!("{:016x}", fnv_hash_update(fnv_offset_basis(), bytes))
+}
+
 fn capture_range_hash(range_limits: &[WorksheetCaptureRange]) -> anyhow::Result<String> {
     let bytes = serde_json::to_vec(range_limits)?;
-    Ok(format!(
-        "{:016x}",
-        fnv_hash_update(fnv_offset_basis(), &bytes)
-    ))
+    Ok(bytes_content_hash(&bytes))
 }
 
 fn fnv_offset_basis() -> u64 {
@@ -1273,6 +1359,68 @@ fn screenshot_cache_root(work_dir: &Path) -> PathBuf {
         .unwrap_or_else(|_| work_dir.to_path_buf())
         .join(".tmp")
         .join("excel-screenshot-cache")
+}
+
+fn workbook_sheet_identities(
+    workbook_path: &Path,
+) -> anyhow::Result<BTreeMap<usize, WorkbookScreenshotSheetIdentity>> {
+    let sheet_files = workbook_sheet_order(workbook_path)?;
+    let file = File::open(workbook_path)?;
+    let mut archive = ZipArchive::new(file)?;
+    let mut identities = BTreeMap::new();
+    for (index, sheet_file) in sheet_files.into_iter().enumerate() {
+        let mut entry = archive.by_name(&sheet_file).map_err(|error| {
+            anyhow::anyhow!(
+                "failed to read '{}' from '{}': {error}",
+                sheet_file,
+                workbook_path.display()
+            )
+        })?;
+        let mut sheet_xml = Vec::new();
+        entry.read_to_end(&mut sheet_xml)?;
+        identities.insert(
+            index + 1,
+            WorkbookScreenshotSheetIdentity {
+                sheet_file,
+                sheet_xml_hash: bytes_content_hash(&sheet_xml),
+            },
+        );
+    }
+    Ok(identities)
+}
+
+fn capture_has_valid_images(capture: &WorkbookScreenshotCapture) -> anyhow::Result<bool> {
+    if capture.screenshot_error.is_some() {
+        return Ok(false);
+    }
+
+    if capture.tiles.is_empty() {
+        let Some(image) = capture.image.as_ref().map(normalize_automation_path) else {
+            return Ok(false);
+        };
+        return path_has_expected_hash(&image, capture.image_hash.as_deref());
+    }
+
+    for tile in &capture.tiles {
+        let Some(image) = tile.image.as_ref().map(normalize_automation_path) else {
+            return Ok(false);
+        };
+        if !path_has_expected_hash(&image, tile.image_hash.as_deref())? {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+fn path_has_expected_hash(path: &Path, expected_hash: Option<&str>) -> anyhow::Result<bool> {
+    let Some(expected_hash) = expected_hash else {
+        return Ok(false);
+    };
+    if !path.exists() {
+        return Ok(false);
+    }
+    Ok(file_content_hash(path)? == expected_hash)
 }
 
 fn find_diff_box(left: &image::RgbaImage, right: &image::RgbaImage) -> Option<DiffBox> {
@@ -2690,6 +2838,8 @@ param(
     [Parameter(Mandatory=$false)][string]$RangeLimitPath = '',
     [Parameter(Mandatory=$true)][string]$OriginalCacheDir,
     [Parameter(Mandatory=$true)][string]$ShrunkCacheDir,
+    [Parameter(Mandatory=$false)][string]$OriginalSheetCachePath = '',
+    [Parameter(Mandatory=$false)][string]$ShrunkSheetCachePath = '',
     [Parameter(Mandatory=$false)][string]$OriginalAlreadyCached = 'false',
     [Parameter(Mandatory=$false)][string]$ShrunkAlreadyCached = 'false'
 )
@@ -2949,6 +3099,130 @@ function Use-CachedRangeImage([string]$path, [string]$label) {
     }
     finally {
         $image.Dispose()
+    }
+}
+
+function Test-CachedCaptureFiles($capture) {
+    if ($null -eq $capture) {
+        return $false
+    }
+    if ($null -ne $capture.screenshot_error) {
+        return $false
+    }
+
+    $tiles = @($capture.tiles)
+    if ($tiles.Count -eq 0) {
+        $image = [string]$capture.image
+        return (-not [string]::IsNullOrWhiteSpace($image)) -and (Test-Path $image)
+    }
+
+    foreach ($tile in $tiles) {
+        $image = [string]$tile.image
+        if ([string]::IsNullOrWhiteSpace($image) -or -not (Test-Path $image)) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Read-SheetCaptureCache([string]$path) {
+    $map = @{}
+    if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path $path)) {
+        return $map
+    }
+
+    try {
+        $json = Get-Content -Path $path -Raw | ConvertFrom-Json
+        foreach ($capture in @($json.captures)) {
+            if (Test-CachedCaptureFiles $capture) {
+                $map[[int]$capture.sheet_index] = $capture
+            }
+        }
+        Write-ProgressLine "sheet cache loaded path='$path' count=$($map.Count)"
+    }
+    catch {
+        Write-ProgressLine "sheet cache ignored path='$path' error='$($_.Exception.Message)'"
+    }
+
+    return $map
+}
+
+function First-NonEmptyString($primary, $fallback) {
+    if ($null -ne $primary -and -not [string]::IsNullOrWhiteSpace([string]$primary)) {
+        return [string]$primary
+    }
+    if ($null -ne $fallback -and -not [string]::IsNullOrWhiteSpace([string]$fallback)) {
+        return [string]$fallback
+    }
+    return $null
+}
+
+function First-NonNull($primary, $fallback) {
+    if ($null -ne $primary) {
+        return $primary
+    }
+    return $fallback
+}
+
+function Join-CachedCaptureTiles($originalCapture, $shrunkCapture) {
+    $originalByIndex = @{}
+    $shrunkByIndex = @{}
+    $tileIndexes = @{}
+
+    foreach ($tile in @($originalCapture.tiles)) {
+        $index = [int]$tile.tile_index
+        $originalByIndex[$index] = $tile
+        $tileIndexes[$index] = $true
+    }
+    foreach ($tile in @($shrunkCapture.tiles)) {
+        $index = [int]$tile.tile_index
+        $shrunkByIndex[$index] = $tile
+        $tileIndexes[$index] = $true
+    }
+
+    $tiles = New-Object System.Collections.ArrayList
+    foreach ($index in @($tileIndexes.Keys | Sort-Object)) {
+        $originalTile = $originalByIndex[[int]$index]
+        $shrunkTile = $shrunkByIndex[[int]$index]
+        $preferred = First-NonNull $shrunkTile $originalTile
+        if ($null -eq $preferred) {
+            continue
+        }
+
+        [void]$tiles.Add([pscustomobject]@{
+            tile_index = [int]$index
+            capture_range = $preferred.capture_range
+            capture_info = $preferred.capture_info
+            original_image = if ($null -ne $originalTile) { $originalTile.image } else { $null }
+            shrunk_image = if ($null -ne $shrunkTile) { $shrunkTile.image } else { $null }
+            original_background_rgba = if ($null -ne $originalTile) { $originalTile.background_rgba } else { $null }
+            shrunk_background_rgba = if ($null -ne $shrunkTile) { $shrunkTile.background_rgba } else { $null }
+            original_width = if ($null -ne $originalTile) { $originalTile.width } else { $null }
+            original_height = if ($null -ne $originalTile) { $originalTile.height } else { $null }
+            shrunk_width = if ($null -ne $shrunkTile) { $shrunkTile.width } else { $null }
+            shrunk_height = if ($null -ne $shrunkTile) { $shrunkTile.height } else { $null }
+        })
+    }
+
+    return @($tiles.ToArray())
+}
+
+function New-CachedCapturePair([int]$sheetIndex, [string]$sheetName, $originalCapture, $shrunkCapture) {
+    $tiles = Join-CachedCaptureTiles $originalCapture $shrunkCapture
+    $preferred = First-NonNull $shrunkCapture $originalCapture
+    return [pscustomobject]@{
+        sheet_index = $sheetIndex
+        sheet_name = $sheetName
+        capture_range = First-NonEmptyString $shrunkCapture.capture_range $originalCapture.capture_range
+        capture_strategy = First-NonEmptyString $shrunkCapture.capture_strategy $originalCapture.capture_strategy
+        used_range_error = First-NonEmptyString $shrunkCapture.used_range_error $originalCapture.used_range_error
+        screenshot_error = $null
+        capture_info = $preferred.capture_info
+        original_image = if (@($originalCapture.tiles).Count -eq 0) { $originalCapture.image } else { $null }
+        shrunk_image = if (@($shrunkCapture.tiles).Count -eq 0) { $shrunkCapture.image } else { $null }
+        original_background_rgba = $originalCapture.background_rgba
+        shrunk_background_rgba = $shrunkCapture.background_rgba
+        tiles = @($tiles)
     }
 }
 
@@ -3261,6 +3535,8 @@ $original = $null
 $shrunk = $null
 $captures = New-Object System.Collections.ArrayList
 $rangeLimitsByIndex = @{}
+$originalSheetCacheByIndex = @{}
+$shrunkSheetCacheByIndex = @{}
 $ProgressPath = Join-Path $OutputDir "screenshot-progress.log"
 $originalAlreadyCachedEnabled = $OriginalAlreadyCached -match '^(1|true|yes)$'
 $shrunkAlreadyCachedEnabled = $ShrunkAlreadyCached -match '^(1|true|yes)$'
@@ -3285,6 +3561,9 @@ try {
     Write-ProgressLine "shrunk_cache_dir='$ShrunkCacheDir' already_cached=$ShrunkAlreadyCached"
     Write-ProgressLine "capture_manifest_path='$CaptureManifestPath'"
     Write-ProgressLine "range_limit_path='$RangeLimitPath' loaded_count=$($rangeLimitsByIndex.Count)"
+    $originalSheetCacheByIndex = Read-SheetCaptureCache $OriginalSheetCachePath
+    $shrunkSheetCacheByIndex = Read-SheetCaptureCache $ShrunkSheetCachePath
+    Write-ProgressLine "sheet cache summary original_hits=$($originalSheetCacheByIndex.Count) shrunk_hits=$($shrunkSheetCacheByIndex.Count)"
     $excel = New-Object -ComObject Excel.Application
     $excel.Visible = $true
     $excel.ScreenUpdating = $true
@@ -3325,6 +3604,18 @@ try {
         $usedRangeError = $null
 
         Write-ProgressLine "sheet start index=$i name='$($origSheet.Name)'"
+
+        $cachedOriginal = $originalSheetCacheByIndex[$i]
+        $cachedShrunk = $shrunkSheetCacheByIndex[$i]
+        if ($null -ne $cachedOriginal -and $null -ne $cachedShrunk) {
+            [void]$captures.Add((New-CachedCapturePair $i $origSheet.Name $cachedOriginal $cachedShrunk))
+            Write-ProgressLine "sheet cache hit index=$i original_hash='$($cachedOriginal.sheet_xml_hash)' shrunk_hash='$($cachedShrunk.sheet_xml_hash)'"
+            Write-ProgressLine "sheet done index=$i"
+            continue
+        }
+        elseif ($null -ne $cachedOriginal -or $null -ne $cachedShrunk) {
+            Write-ProgressLine "sheet cache partial index=$i original_hit=$($null -ne $cachedOriginal) shrunk_hit=$($null -ne $cachedShrunk); recapturing pair"
+        }
 
         try {
             $primaryStrategy = if ($null -ne $rangeLimit) { "rust_bounds" } else { "used_range" }
@@ -3520,6 +3811,67 @@ mod tests {
             &test_dir,
             "cab52f9ca5f59e7b"
         ));
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn screenshot_cache_reuses_capture_by_sheet_xml_hash() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-sheet-screenshot-cache-hit-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+
+        let workbook = test_dir.join("current.xlsx");
+        write_minimal_workbook(
+            &workbook,
+            br#"<worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>"#,
+        )?;
+        let cache_root = test_dir.join("cache");
+        fs::create_dir_all(&cache_root)?;
+        let cache = WorkbookScreenshotCache::new(&workbook, &cache_root, "range-hash")?;
+        let image_path = test_dir.join("cached.png");
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 255, 255, 255])).save(&image_path)?;
+
+        write_test_screenshot_cache_manifest(&cache_root, &cache, &image_path, "old-workbook")?;
+
+        let valid = cache.valid_current_sheet_captures()?;
+        assert_eq!(valid.len(), 1);
+        assert!(cache.is_complete()?);
+        assert_eq!(valid[&1].image.as_deref(), Some(image_path.as_path()));
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn screenshot_cache_rejects_changed_cached_image() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-sheet-screenshot-cache-stale-image-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+
+        let workbook = test_dir.join("current.xlsx");
+        write_minimal_workbook(
+            &workbook,
+            br#"<worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>"#,
+        )?;
+        let cache_root = test_dir.join("cache");
+        fs::create_dir_all(&cache_root)?;
+        let cache = WorkbookScreenshotCache::new(&workbook, &cache_root, "range-hash")?;
+        let image_path = test_dir.join("cached.png");
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 255, 255, 255])).save(&image_path)?;
+
+        write_test_screenshot_cache_manifest(&cache_root, &cache, &image_path, "old-workbook")?;
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([0, 0, 0, 255])).save(&image_path)?;
+
+        assert!(cache.valid_current_sheet_captures()?.is_empty());
+        assert!(!cache.is_complete()?);
 
         let _ = fs::remove_dir_all(&test_dir);
         Ok(())
@@ -3865,6 +4217,50 @@ mod tests {
         writer.write_all(br#"<sst><si><t>old</t></si><si><t>new</t></si></sst>"#)?;
         writer.finish()?;
 
+        Ok(())
+    }
+
+    fn write_test_screenshot_cache_manifest(
+        cache_root: &Path,
+        cache: &WorkbookScreenshotCache,
+        image_path: &Path,
+        workbook_hash: &str,
+    ) -> anyhow::Result<()> {
+        let identity = cache.sheet_identities.get(&1).unwrap();
+        let cache_dir = cache_root.join(workbook_hash);
+        fs::create_dir_all(&cache_dir)?;
+        let manifest = WorkbookScreenshotCacheManifest {
+            version: SCREENSHOT_CACHE_VERSION,
+            workbook_hash: workbook_hash.to_string(),
+            capture_range_hash: cache.capture_range_hash.clone(),
+            captures: vec![WorkbookScreenshotCapture {
+                sheet_index: 1,
+                sheet_name: "Sheet1".to_string(),
+                sheet_file: Some(identity.sheet_file.clone()),
+                sheet_xml_hash: Some(identity.sheet_xml_hash.clone()),
+                capture_range: Some("A1:A1".to_string()),
+                capture_strategy: Some("test".to_string()),
+                used_range_error: None,
+                screenshot_error: None,
+                image: Some(image_path.to_path_buf()),
+                image_hash: Some(file_content_hash(image_path)?),
+                background_rgba: None,
+                capture_info: Some(ScreenshotCaptureInfo {
+                    strategy: "test".to_string(),
+                    address: "A1:A1".to_string(),
+                    start_row: 1,
+                    start_column: 1,
+                    rows: 1,
+                    columns: 1,
+                    used_range_error: None,
+                }),
+                tiles: Vec::new(),
+            }],
+        };
+        fs::write(
+            cache_dir.join("workbook-screenshots.json"),
+            serde_json::to_vec_pretty(&manifest)?,
+        )?;
         Ok(())
     }
 
