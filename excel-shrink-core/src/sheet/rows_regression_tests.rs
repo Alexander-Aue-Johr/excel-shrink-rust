@@ -194,6 +194,46 @@ fn removes_empty_no_empty_cell_visible_style_cells_when_row_already_has_custom_h
 }
 
 #[test]
+fn keeps_empty_row_even_without_height_when_cells_are_removed() {
+    let mut params = params_with_styles(&[]);
+    params.cleanup = CleanupSwitches {
+        empty_style_representative_cells: false,
+        ..CleanupSwitches::default()
+    };
+
+    let row_xml = br#"<row r="15"><c r="A15"/></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(cleaned, br#"<row r="15"/>"#);
+}
+
+#[test]
+fn keeps_empty_row_after_cell_range_even_without_height() {
+    let params = params_with_styles(&[]);
+
+    let row_xml = br#"<row r="16"></row>"#;
+
+    let cleaned = replace_single_empty_row_after_cell_range(row_xml, &params);
+
+    assert_eq!(cleaned, br#"<row r="16"/>"#);
+}
+
+#[test]
+fn keeps_one_empty_style_representative_when_custom_height_row_has_content() {
+    let params = params_with_styles(&[(427, font_only_style()), (429, font_only_style())]);
+
+    let row_xml = br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27" customHeight="1"><c r="A15" s="8" t="s"><v>1</v></c><c r="B15" s="427"/><c r="C15" s="429"/><c r="D15" s="429"/></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27" customHeight="1"><c r="A15" s="8" t="s"><v>1</v></c><c r="B15" s="427"/></row>"#
+    );
+}
+
+#[test]
 fn keeps_structural_empty_style_anchor_when_custom_height_row_would_lose_style() {
     let params = params_with_styles(&[
         (6, relevant_style()),
@@ -212,7 +252,7 @@ fn keeps_structural_empty_style_anchor_when_custom_height_row_would_lose_style()
 }
 
 #[test]
-fn removes_empty_all_default_style_cell_when_row_already_has_custom_height() {
+fn keeps_empty_font_only_cell_when_custom_height_row_has_content() {
     let params = params_with_styles(&[
         (6, no_empty_cell_visible_style()),
         (12, font_only_style()),
@@ -225,7 +265,21 @@ fn removes_empty_all_default_style_cell_when_row_already_has_custom_height() {
 
     assert_eq!(
         cleaned,
-        br#"<row r="29" spans="1:13" s="12" customFormat="1" ht="13.2" customHeight="1"><c r="A29" s="12" t="s"><v>1</v></c><c r="D29" s="47" t="s"><v>2</v></c></row>"#
+        br#"<row r="29" spans="1:13" s="12" customFormat="1" ht="13.2" customHeight="1"><c r="A29" s="12" t="s"><v>1</v></c><c r="C29" s="6"/><c r="D29" s="47" t="s"><v>2</v></c></row>"#
+    );
+}
+
+#[test]
+fn keeps_empty_style_representative_in_hidden_custom_height_row_with_content() {
+    let params = params_with_styles(&[(8, font_only_style()), (427, font_only_style())]);
+
+    let row_xml = br#"<row r="15" hidden="1" spans="1:8" ht="27" customHeight="1"><c r="A15" s="8" t="s"><v>1</v></c><c r="B15" s="427"/></row>"#;
+
+    let cleaned = replace_single_row(row_xml, &params);
+
+    assert_eq!(
+        cleaned,
+        br#"<row r="15" hidden="1" spans="1:8" ht="27" customHeight="1"><c r="A15" s="8" t="s"><v>1</v></c><c r="B15" s="427"/></row>"#
     );
 }
 
@@ -252,7 +306,7 @@ fn does_not_add_custom_height_to_empty_row_after_cell_range_with_height() {
 }
 
 #[test]
-fn postprocess_preserves_consecutive_hidden_empty_rows_but_cleans_attributes() {
+fn postprocess_preserves_hidden_empty_rows_but_cleans_attributes() {
     let params = params_with_styles(&[]);
     let sheet_data = br#"<row r="307905" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307906" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307907" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307908" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row>"#;
     let mut metrics = CleanSheetMetrics::default();

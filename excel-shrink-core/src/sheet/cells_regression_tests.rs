@@ -84,6 +84,7 @@ fn parsed_a3_cell<'a>(raw: &'a [u8], attr: &'a [u8], style_id: Option<u32>) -> P
     ParsedCell {
         raw,
         attr,
+        reference_attr: br#"r="A3""#,
         row: b"3",
         col_num: 1,
         style_id,
@@ -94,6 +95,7 @@ fn parsed_x4_cell<'a>(raw: &'a [u8], attr: &'a [u8], style_id: Option<u32>) -> P
     ParsedCell {
         raw,
         attr,
+        reference_attr: br#"r="X4""#,
         row: b"4",
         col_num: 24,
         style_id,
@@ -204,7 +206,47 @@ fn keeps_hidden_cell_with_content_without_advanced_cleanup() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_states.len(), 0);
+}
+
+#[test]
+fn removes_empty_hidden_cell_without_style_representative() {
+    let params = default_params();
+    let mut metrics = CleanSheetMetrics::default();
+
+    metrics.row_attributes.insert(b"3".to_vec(), hidden_row_3());
+
+    let cell_xml = br#"<c r="A3"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3""#, None);
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
+}
+
+#[test]
+fn keeps_empty_hidden_column_cell_when_style_has_visible_fill() {
+    let params = params_with_styles(&[(7, fill_style(2, true))]);
+    let mut metrics = CleanSheetMetrics::default();
+
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 1,
+        cell_xf: None,
+        hidden: true,
+    });
+    metrics.column_definitions.finalize();
+
+    let cell_xml = br#"<c r="A3" s="7"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="7""#, Some(7));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
 }
@@ -220,7 +262,7 @@ fn keeps_formula_cell_with_attributes_and_empty_cached_value() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
 }
@@ -234,6 +276,7 @@ fn keeps_empty_cell_when_style_applies_default_border_override() {
     let cell = ParsedCell {
         raw: cell_xml,
         attr: br#" r="F2" s="43""#,
+        reference_attr: br#"r="F2""#,
         row: b"2",
         col_num: 6,
         style_id: Some(43),
@@ -241,7 +284,7 @@ fn keeps_empty_cell_when_style_applies_default_border_override() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
 }
@@ -299,7 +342,7 @@ fn keeps_empty_cell_when_default_border_override_clears_visible_row_border() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
 }
@@ -313,6 +356,7 @@ fn keeps_empty_cell_when_style_applies_default_fill_override() {
     let cell = ParsedCell {
         raw: cell_xml,
         attr: br#" r="G2" s="44""#,
+        reference_attr: br#"r="G2""#,
         row: b"2",
         col_num: 7,
         style_id: Some(44),
@@ -320,7 +364,7 @@ fn keeps_empty_cell_when_style_applies_default_fill_override() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
 }
@@ -375,7 +419,7 @@ fn keeps_empty_cell_when_default_fill_override_clears_visible_row_fill() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
 }
@@ -397,7 +441,7 @@ fn does_not_mark_hidden_formula_cell_as_advanced_cleanup_candidate() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.hidden_candidates, 0);
     assert_eq!(metrics.candidates.len(), 0);
     assert_eq!(metrics.kept_cell_states.len(), 1);
@@ -422,7 +466,7 @@ fn marks_hidden_content_as_candidate_with_advanced_cleanup() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.hidden_candidates, 1);
     assert_eq!(metrics.candidates.len(), 1);
     assert_eq!(metrics.candidates[0].col, 1);
@@ -450,9 +494,62 @@ fn does_not_mark_candidate_when_cell_style_has_apply_protection_and_sheet_is_pro
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.hidden_candidates, 1);
     assert_eq!(metrics.candidates.len(), 0);
+}
+
+#[test]
+fn default_does_not_mark_candidate_when_cell_style_has_apply_protection_without_sheet_protection() {
+    let protected_style = Xf::new(Some(0), Some(0), false, false, false, false, false, true);
+
+    let mut params = params_with_styles(&[(7, protected_style)]);
+
+    params.advanced_cleanup = Some(Arc::new(AdvancedCleanupConfig {
+        remove_unreferenced_whitespace: false,
+        remove_unreferenced_hidden_content: true,
+    }));
+
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.row_attributes.insert(b"3".to_vec(), hidden_row_3());
+
+    let cell_xml = br#"<c r="A3" s="7"><v>secret</v></c>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="7""#, Some(7));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned.as_ref(), cell_xml);
+    assert_eq!(metrics.hidden_candidates, 1);
+    assert_eq!(metrics.candidates.len(), 0);
+}
+
+#[test]
+fn opt_in_marks_candidate_when_cell_style_has_apply_protection_without_sheet_protection() {
+    let protected_style = Xf::new(Some(0), Some(0), false, false, false, false, false, true);
+
+    let mut params = params_with_styles(&[(7, protected_style)]);
+
+    params.advanced_cleanup = Some(Arc::new(AdvancedCleanupConfig {
+        remove_unreferenced_whitespace: false,
+        remove_unreferenced_hidden_content: true,
+    }));
+    params
+        .cleanup
+        .remove_apply_protection_without_sheet_protection = true;
+
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.row_attributes.insert(b"3".to_vec(), hidden_row_3());
+
+    let cell_xml = br#"<c r="A3" s="7"><v>secret</v></c>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="7""#, Some(7));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned.as_ref(), cell_xml);
+    assert_eq!(metrics.hidden_candidates, 1);
+    assert_eq!(metrics.candidates.len(), 1);
+    assert_eq!(metrics.candidates[0].col, 1);
+    assert_eq!(metrics.candidates[0].row, 3);
 }
 
 #[test]
@@ -602,7 +699,7 @@ fn keeps_empty_cell_when_row_and_column_apply_fill_and_only_column_differs() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
 }
@@ -678,7 +775,7 @@ fn keeps_empty_cell_when_no_row_or_column_apply_fill_and_cell_has_visible_fill()
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
 }
@@ -710,7 +807,7 @@ fn keeps_empty_cell_when_row_applies_fill_and_cell_overrides_with_default_fill()
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_states.len(), 0);
 }
@@ -737,7 +834,7 @@ fn marks_x4_whitespace_candidate_when_cell_and_column_apply_default_fill() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.whitespace_candidates, 1);
     assert_eq!(metrics.candidates.len(), 1);
     assert_eq!(metrics.candidates[0].col, 24);
@@ -768,7 +865,7 @@ fn marks_x4_whitespace_candidate_when_shared_string_text_is_self_closing() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned, cell_xml);
+    assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(
         params.patterns.whitespace_indices.as_deref(),
         Some(&[15801][..])

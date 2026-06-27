@@ -5,6 +5,7 @@ use crate::models::{
 };
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
 use regex::bytes::Captures;
+use std::borrow::Cow;
 
 #[cfg(feature = "cell-tracing")]
 macro_rules! trace_cell_decision {
@@ -22,6 +23,7 @@ macro_rules! trace_cell_decision {
 pub(crate) struct ParsedCell<'a> {
     pub(crate) raw: &'a [u8],
     pub(crate) attr: &'a [u8],
+    pub(crate) reference_attr: &'a [u8],
     pub(crate) row: &'a [u8],
     pub(crate) col_num: u32,
     pub(crate) style_id: Option<u32>,
@@ -31,6 +33,7 @@ impl<'a> ParsedCell<'a> {
     fn from_captures(caps: &Captures<'a>) -> Option<Self> {
         let raw = caps.get(0)?.as_bytes();
         let attr = caps.get(1)?.as_bytes();
+        let reference_attr = extract_attr_assignment(attr, b"r")?;
         let column = caps.get(2)?.as_bytes();
         let row = caps.get(3)?.as_bytes();
 
@@ -42,6 +45,7 @@ impl<'a> ParsedCell<'a> {
         Some(Self {
             raw,
             attr,
+            reference_attr,
             row,
             col_num,
             style_id,
@@ -86,41 +90,49 @@ pub fn replace_cell(
         return caps.get(0).unwrap().as_bytes().to_vec();
     };
 
-    replace_parsed_cell(&cell, params, metrics)
+    replace_parsed_cell(&cell, params, metrics).into_owned()
 }
 
-pub(crate) fn replace_parsed_cell(
-    cell: &ParsedCell<'_>,
+pub(crate) fn replace_parsed_cell<'a>(
+    cell: &ParsedCell<'a>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
-) -> Vec<u8> {
-    replace_parsed_cell_with_empty_style_policy(cell, params, metrics, false, false, false)
+) -> Cow<'a, [u8]> {
+    replace_parsed_cell_with_empty_style_policy(
+        cell,
+        params,
+        metrics,
+        parsed_cell_has_content(cell),
+        false,
+        false,
+        false,
+    )
 }
 
-pub(crate) fn replace_parsed_cell_with_empty_style_policy(
-    cell: &ParsedCell<'_>,
+pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
+    cell: &ParsedCell<'a>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
+    has_cell_content: bool,
     keep_no_empty_cell_visible_style_cell: bool,
     keep_other_empty_cell: bool,
     keep_default_empty_cell: bool,
-) -> Vec<u8> {
+) -> Cow<'a, [u8]> {
     let style = cell.style(params);
     let is_hidden = cell_is_hidden(cell, metrics);
-    let is_excel_protected = cell_has_relevant_protection_style(cell, style, metrics);
-    record_visible_cell_bounds(cell, style, metrics);
+    let unreferenced_whitespace_cleanup = unreferenced_whitespace_cleanup_enabled(params);
+    let unreferenced_hidden_content_cleanup = unreferenced_hidden_content_cleanup_enabled(params);
+    record_visible_cell_bounds(cell, style, metrics, has_cell_content);
 
-    if unreferenced_whitespace_cleanup_enabled(params)
-        || unreferenced_hidden_content_cleanup_enabled(params)
-    {
+    if unreferenced_whitespace_cleanup || unreferenced_hidden_content_cleanup {
         let mut candidate_cause = None;
 
-        if unreferenced_whitespace_cleanup_enabled(params) && is_whitespace_cell(cell.raw, params) {
+        if unreferenced_whitespace_cleanup && is_whitespace_cell(cell.raw, params) {
             metrics.whitespace_candidates += 1;
             candidate_cause = Some(CleanupCause::UnreferencedWhitespaceCells);
-        } else if unreferenced_hidden_content_cleanup_enabled(params)
+        } else if unreferenced_hidden_content_cleanup
             && is_hidden
-            && has_content(cell.raw)
+            && has_cell_content
             && !has_formula(cell.raw)
         {
             metrics.hidden_candidates += 1;
@@ -128,40 +140,76 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy(
         }
 
         if let Some(cause) = candidate_cause {
+            let is_excel_protected =
+                cell_has_relevant_protection_style(cell, style, params, metrics);
             if !is_excel_protected {
                 metrics.candidates.push(cell.to_cleanup_candidate(cause));
             }
-            metrics
-                .kept_cell_states
-                .push(cell.to_cell_attributes_with_protection_only(is_excel_protected));
-            return cell.raw.to_vec();
+            record_kept_cell(
+                params,
+                metrics,
+                cell,
+                style,
+                has_cell_content,
+                is_excel_protected,
+            );
+            record_kept_content_cell_row(metrics, cell, has_cell_content);
+            return Cow::Borrowed(cell.raw);
         }
     }
 
     if is_hidden {
-        if !has_content(cell.raw) {
+        if !has_cell_content {
+            if empty_hidden_cell_is_style_representative(
+                cell,
+                style,
+                params,
+                metrics,
+                keep_no_empty_cell_visible_style_cell,
+                keep_other_empty_cell,
+                keep_default_empty_cell,
+            ) {
+                let out = generate_self_closing_cell_xml(cell.attr);
+                let kept_only_for_protection = style.is_some_and(|style| {
+                    cell_has_relevant_protection_style(cell, Some(style), params, metrics)
+                        && !cell_has_effective_fill_or_border(style, cell, metrics)
+                        && !cell_applies_effective_default_fill_override(style, cell, metrics)
+                        && !cell_applies_effective_default_border_override(style, cell, metrics)
+                });
+                record_kept_cell(
+                    params,
+                    metrics,
+                    cell,
+                    style,
+                    has_cell_content,
+                    kept_only_for_protection,
+                );
+                return Cow::Owned(out);
+            }
+
             if params.cleanup.empty_hidden_cells {
                 metrics
                     .cleanup_stats
                     .record_removed(CleanupCause::EmptyHiddenCells, cell.raw.len());
                 metrics.deleted_cell_states.push(cell.to_cell_attributes());
-                return Vec::new();
+                return Cow::Owned(Vec::new());
             }
 
-            metrics.kept_cell_states.push(cell.to_cell_attributes());
-            return cell.raw.to_vec();
+            record_kept_cell(params, metrics, cell, style, has_cell_content, false);
+            return Cow::Borrowed(cell.raw);
         }
 
-        metrics.kept_cell_states.push(cell.to_cell_attributes());
-        return cell.raw.to_vec();
+        record_kept_cell(params, metrics, cell, style, has_cell_content, false);
+        record_kept_content_cell_row(metrics, cell, has_cell_content);
+        return Cow::Borrowed(cell.raw);
     }
 
     let Some(style) = style else {
-        if !has_content(cell.raw) {
+        if !has_cell_content {
             if keep_default_empty_cell {
                 let out = generate_self_closing_cell_xml(cell.attr);
-                metrics.kept_cell_states.push(cell.to_cell_attributes());
-                return out;
+                record_kept_cell(params, metrics, cell, None, has_cell_content, false);
+                return Cow::Owned(out);
             }
 
             return remove_or_keep_empty_cell(
@@ -169,23 +217,26 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy(
                 params,
                 metrics,
                 CleanupCause::EmptyCellsWithoutContent,
+                None,
             );
         }
 
-        metrics.kept_cell_states.push(cell.to_cell_attributes());
-        return cell.raw.to_vec();
+        record_kept_cell(params, metrics, cell, None, has_cell_content, false);
+        record_kept_content_cell_row(metrics, cell, has_cell_content);
+        return Cow::Borrowed(cell.raw);
     };
 
-    if has_content(cell.raw) {
-        metrics.kept_cell_states.push(cell.to_cell_attributes());
-        return cell.raw.to_vec();
+    if has_cell_content {
+        record_kept_cell(params, metrics, cell, Some(style), has_cell_content, false);
+        record_kept_content_cell_row(metrics, cell, has_cell_content);
+        return Cow::Borrowed(cell.raw);
     }
 
     if style.has_no_empty_cell_visible_style {
         if keep_no_empty_cell_visible_style_cell {
             let out = generate_self_closing_cell_xml(cell.attr);
-            metrics.kept_cell_states.push(cell.to_cell_attributes());
-            return out;
+            record_kept_cell(params, metrics, cell, Some(style), has_cell_content, false);
+            return Cow::Owned(out);
         }
 
         return remove_or_keep_empty_cell(
@@ -193,28 +244,33 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy(
             params,
             metrics,
             CleanupCause::EmptyCellsWithoutContent,
+            Some(style),
         );
     }
 
     if keep_other_empty_cell {
         let out = generate_self_closing_cell_xml(cell.attr);
-        metrics.kept_cell_states.push(cell.to_cell_attributes());
-        return out;
+        record_kept_cell(params, metrics, cell, Some(style), has_cell_content, false);
+        return Cow::Owned(out);
     }
 
-    let has_relevant_protection = cell_has_relevant_protection_style(cell, Some(style), metrics);
+    let has_relevant_protection =
+        cell_has_relevant_protection_style(cell, Some(style), params, metrics);
     let has_effective_fill_or_border = cell_has_effective_fill_or_border(style, cell, metrics)
         || cell_applies_effective_default_fill_override(style, cell, metrics)
         || cell_applies_effective_default_border_override(style, cell, metrics);
 
     if has_relevant_protection || has_effective_fill_or_border {
         let out = generate_self_closing_cell_xml(cell.attr);
-        metrics
-            .kept_cell_states
-            .push(cell.to_cell_attributes_with_protection_only(
-                has_relevant_protection && !has_effective_fill_or_border,
-            ));
-        return out;
+        record_kept_cell(
+            params,
+            metrics,
+            cell,
+            Some(style),
+            has_cell_content,
+            has_relevant_protection && !has_effective_fill_or_border,
+        );
+        return Cow::Owned(out);
     }
 
     remove_or_keep_empty_cell(
@@ -222,15 +278,100 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy(
         params,
         metrics,
         CleanupCause::EmptyCellsWithoutContent,
+        Some(style),
     )
 }
 
-fn remove_or_keep_empty_cell(
+fn record_kept_cell(
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
     cell: &ParsedCell<'_>,
+    cell_style: Option<&Xf>,
+    has_cell_content: bool,
+    kept_only_for_protection: bool,
+) {
+    let row = digits_byte_string_to_integer(cell.row);
+    let is_tail_anchor = kept_cell_is_tail_anchor(
+        params,
+        metrics,
+        cell,
+        cell_style,
+        has_cell_content,
+        kept_only_for_protection,
+    );
+
+    metrics
+        .kept_cell_states
+        .push(cell.to_cell_attributes_with_protection_only(kept_only_for_protection));
+
+    if is_tail_anchor {
+        metrics.tail_anchor_max_row =
+            Some(metrics.tail_anchor_max_row.map_or(row, |old| old.max(row)));
+    }
+}
+
+fn kept_cell_is_tail_anchor(
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+    cell: &ParsedCell<'_>,
+    cell_style: Option<&Xf>,
+    has_cell_content: bool,
+    kept_only_for_protection: bool,
+) -> bool {
+    if has_cell_content {
+        return true;
+    }
+
+    if !params.cleanup.empty_style_representative_cells {
+        return true;
+    }
+
+    if kept_only_for_protection {
+        return false;
+    }
+
+    if cell_style.is_none() && cell.style_id.is_some() {
+        return true;
+    }
+
+    let column_style = metrics
+        .column_definitions
+        .get(cell.col_num)
+        .and_then(|column| column.cell_xf.as_ref());
+    if column_style.is_some_and(|style| style.has_fill_or_border) {
+        return true;
+    }
+
+    cell_style.is_some_and(|style| {
+        cell_has_effective_fill_or_border(style, cell, metrics)
+            || cell_applies_effective_default_fill_override(style, cell, metrics)
+            || cell_applies_effective_default_border_override(style, cell, metrics)
+    })
+}
+
+fn record_kept_content_cell_row(
+    metrics: &mut CleanSheetMetrics,
+    cell: &ParsedCell<'_>,
+    has_cell_content: bool,
+) {
+    if has_cell_content {
+        metrics
+            .rows_with_kept_content_cells
+            .insert(cell.row.to_vec());
+    }
+}
+
+pub(crate) fn parsed_cell_has_content(cell: &ParsedCell<'_>) -> bool {
+    has_content(cell.raw)
+}
+
+fn remove_or_keep_empty_cell<'a>(
+    cell: &ParsedCell<'a>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     cause: CleanupCause,
-) -> Vec<u8> {
+    cell_style: Option<&Xf>,
+) -> Cow<'a, [u8]> {
     if params.cleanup.empty_cells_without_content {
         metrics.cleanup_stats.record_removed(cause, cell.raw.len());
         metrics.deleted_cell_states.push(cell.to_cell_attributes());
@@ -242,9 +383,9 @@ fn remove_or_keep_empty_cell(
             decision: CellDecision::Removed,
             cause,
         });
-        Vec::new()
+        Cow::Owned(Vec::new())
     } else {
-        metrics.kept_cell_states.push(cell.to_cell_attributes());
+        record_kept_cell(params, metrics, cell, cell_style, false, false);
         trace_cell_decision!(CellDecisionEvent {
             sheet_file: &params.zip_info_filename,
             col: cell.col_num,
@@ -253,8 +394,62 @@ fn remove_or_keep_empty_cell(
             decision: CellDecision::Kept,
             cause,
         });
-        cell.raw.to_vec()
+        Cow::Borrowed(cell.raw)
     }
+}
+
+fn extract_attr_assignment<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
+    let mut search_start = 0;
+
+    while search_start < data.len() {
+        let relative = memchr::memmem::find(&data[search_start..], attr_name)?;
+        let attr_start = search_start + relative;
+        let value_marker = attr_start + attr_name.len();
+
+        if attr_start > 0
+            && data[attr_start - 1].is_ascii_whitespace()
+            && data.get(value_marker..value_marker + 2) == Some(b"=\"")
+        {
+            let value_start = value_marker + 2;
+            let value_end = data[value_start..].iter().position(|byte| *byte == b'"')?;
+            return Some(&data[attr_start..value_start + value_end + 1]);
+        }
+
+        search_start = attr_start + attr_name.len();
+    }
+
+    None
+}
+
+fn empty_hidden_cell_is_style_representative(
+    cell: &ParsedCell<'_>,
+    cell_style: Option<&Xf>,
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+    keep_no_empty_cell_visible_style_cell: bool,
+    keep_other_empty_cell: bool,
+    keep_default_empty_cell: bool,
+) -> bool {
+    if keep_default_empty_cell && cell.style_id.is_none() {
+        return true;
+    }
+
+    let Some(style) = cell_style else {
+        return false;
+    };
+
+    if keep_other_empty_cell {
+        return true;
+    }
+
+    if keep_no_empty_cell_visible_style_cell && style.has_no_empty_cell_visible_style {
+        return true;
+    }
+
+    cell_has_relevant_protection_style(cell, Some(style), params, metrics)
+        || cell_has_effective_fill_or_border(style, cell, metrics)
+        || cell_applies_effective_default_fill_override(style, cell, metrics)
+        || cell_applies_effective_default_border_override(style, cell, metrics)
 }
 
 fn unreferenced_whitespace_cleanup_enabled(params: &CleanSheetParameters) -> bool {
@@ -311,6 +506,7 @@ fn record_visible_cell_bounds(
     cell: &ParsedCell<'_>,
     cell_style: Option<&Xf>,
     metrics: &mut CleanSheetMetrics,
+    has_cell_content: bool,
 ) {
     let Ok(row_str) = std::str::from_utf8(cell.row) else {
         return;
@@ -324,7 +520,7 @@ fn record_visible_cell_bounds(
         .get(cell.col_num)
         .and_then(|column| column.cell_xf.as_ref());
 
-    let is_visible = has_content(cell.raw)
+    let is_visible = has_cell_content
         || cell_style.is_some_and(|style| cell_has_effective_fill_or_border(style, cell, metrics))
         || column_style.is_some_and(|style| style.has_fill_or_border);
 
@@ -526,8 +722,17 @@ fn cell_has_protection_style(
 fn cell_has_relevant_protection_style(
     cell: &ParsedCell<'_>,
     cell_style: Option<&Xf>,
+    params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
 ) -> bool {
+    if params
+        .cleanup
+        .remove_apply_protection_without_sheet_protection
+        && !metrics.sheet_protection_enabled
+    {
+        return false;
+    }
+
     if !cell_has_protection_style(cell, cell_style, metrics) {
         return false;
     }

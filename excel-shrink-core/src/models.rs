@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Xf {
@@ -165,6 +165,7 @@ pub struct CleanupSwitches {
     pub consecutive_hidden_empty_rows: bool,
     pub trailing_layout_only_rows: bool,
     pub empty_style_representative_cells: bool,
+    pub remove_apply_protection_without_sheet_protection: bool,
 
     pub empty_row_attribute_cleanup: bool,
     pub sheetdata_range_tail_pruning: bool,
@@ -190,6 +191,7 @@ impl Default for CleanupSwitches {
             empty_row_attribute_cleanup: true,
             sheetdata_range_tail_pruning: true,
             extraneous_column_range_merge: true,
+            remove_apply_protection_without_sheet_protection: false,
         }
     }
 }
@@ -383,6 +385,7 @@ pub struct CleanSheetMetrics {
     pub kept_cell_states: Vec<CellAttributes>,
     pub deleted_cell_states: Vec<CellAttributes>,
     pub row_attributes: HashMap<Vec<u8>, RowAttributes>,
+    pub rows_with_kept_content_cells: HashSet<Vec<u8>>,
     pub max_merge_cells_column_and_row: Option<CellCoordinate>,
 
     pub whitespace_candidates: usize,
@@ -393,6 +396,7 @@ pub struct CleanSheetMetrics {
     pub sheet_protection_enabled: bool,
     pub visible_content_bounds: VisibleContentBounds,
     pub has_hints: bool,
+    pub tail_anchor_max_row: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

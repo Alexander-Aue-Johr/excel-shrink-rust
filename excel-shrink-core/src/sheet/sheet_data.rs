@@ -91,13 +91,7 @@ pub fn clean_sheet_rows_and_cells_in_cell_range(
     metrics: &mut CleanSheetMetrics,
 ) -> Result<Vec<u8>> {
     Ok(apply_row_byte_substitution(sheet_data, |row| {
-        Cow::Owned(replace_row_bytes(
-            row.raw,
-            row.attr,
-            row.content,
-            params,
-            metrics,
-        ))
+        replace_row_bytes(row.raw, row.attr, row.content, params, metrics)
     }))
 }
 
@@ -114,10 +108,6 @@ pub fn clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
     sheet_name: &str,
 ) -> Result<Vec<u8>> {
     if !should_parallel_chunk_range(sheet_data.len(), max_chunk_size) {
-        return clean_sheet_rows_and_cells_in_cell_range(sheet_data, params, metrics);
-    }
-
-    if params.cleanup.consecutive_hidden_empty_rows {
         return clean_sheet_rows_and_cells_in_cell_range(sheet_data, params, metrics);
     }
 
@@ -150,13 +140,7 @@ pub fn clean_selected_rows_and_cells_in_cell_range(
         };
 
         if row_numbers.contains(&row_number) {
-            Cow::Owned(replace_row_bytes(
-                row.raw,
-                row.attr,
-                row.content,
-                params,
-                metrics,
-            ))
+            replace_row_bytes(row.raw, row.attr, row.content, params, metrics)
         } else {
             Cow::Borrowed(row.raw)
         }
@@ -174,9 +158,7 @@ pub fn clean_empty_rows_from_after_cell_range(
             return Cow::Borrowed(row.raw);
         }
 
-        Cow::Owned(replace_empty_row_after_cell_range_bytes(
-            row.raw, row.attr, params, metrics,
-        ))
+        replace_empty_row_after_cell_range_bytes(row.raw, row.attr, params, metrics)
     }))
 }
 
@@ -189,10 +171,6 @@ pub fn clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size(
     sheet_name: &str,
 ) -> Result<Vec<u8>> {
     if !should_parallel_chunk_range(sheet_data.len(), max_chunk_size) {
-        return clean_empty_rows_from_after_cell_range(sheet_data, params, metrics);
-    }
-
-    if params.cleanup.consecutive_hidden_empty_rows {
         return clean_empty_rows_from_after_cell_range(sheet_data, params, metrics);
     }
 
@@ -402,6 +380,7 @@ fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {
     metrics.deleted_row_states.clear();
     metrics.kept_cell_states.clear();
     metrics.deleted_cell_states.clear();
+    metrics.rows_with_kept_content_cells.clear();
     metrics.row_attributes.clear();
 
     metrics.whitespace_candidates = 0;
@@ -409,6 +388,7 @@ fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {
     metrics.candidates.clear();
 
     metrics.visible_content_bounds = Default::default();
+    metrics.tail_anchor_max_row = None;
 
     metrics.cleanup_stats = if base.cleanup_stats.enabled {
         crate::models::CleanupStats::enabled()
@@ -424,6 +404,9 @@ fn merge_chunk_metrics(target: &mut CleanSheetMetrics, chunk: CleanSheetMetrics)
     target.deleted_row_states.extend(chunk.deleted_row_states);
     target.kept_cell_states.extend(chunk.kept_cell_states);
     target.deleted_cell_states.extend(chunk.deleted_cell_states);
+    target
+        .rows_with_kept_content_cells
+        .extend(chunk.rows_with_kept_content_cells);
     target.row_attributes.extend(chunk.row_attributes);
 
     target.whitespace_candidates += chunk.whitespace_candidates;
@@ -435,6 +418,10 @@ fn merge_chunk_metrics(target: &mut CleanSheetMetrics, chunk: CleanSheetMetrics)
     }
     if let Some(row) = chunk.visible_content_bounds.max_row {
         target.visible_content_bounds.include_row(row);
+    }
+    if let Some(row) = chunk.tail_anchor_max_row {
+        target.tail_anchor_max_row =
+            Some(target.tail_anchor_max_row.map_or(row, |old| old.max(row)));
     }
 
     target.cleanup_stats.merge(chunk.cleanup_stats);
@@ -691,16 +678,13 @@ mod tests {
             },
             advanced_cleanup: None,
             preprocess: SheetPreprocessConfig::default(),
-            cleanup: CleanupSwitches {
-                preprocess_consecutive_hidden_empty_rows: true,
-                ..CleanupSwitches::default()
-            },
+            cleanup: CleanupSwitches::default(),
             collect_cleanup_stats: false,
         }
     }
 
     #[test]
-    fn preprocess_preserves_consecutive_hidden_empty_rows() {
+    fn preprocess_empty_cell_cleanup_preserves_hidden_empty_rows() {
         let params = default_params();
         let mut state = SheetDataPreprocessState::new(&Default::default(), &params);
         let mut metrics = CleanSheetMetrics::default();
@@ -782,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    fn parallel_cell_range_cleaning_preserves_consecutive_hidden_empty_rows() {
+    fn parallel_cell_range_cleaning_preserves_hidden_empty_rows() {
         let params = default_params();
         let sheet_data = br#"<row r="307905" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307906" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307907" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row><row r="307908" spans="1:117" hidden="1" x14ac:dyDescent="0.25"></row>"#;
 
@@ -802,31 +786,6 @@ mod tests {
         assert!(cleaned.contains(r#"r="307906""#));
         assert!(cleaned.contains(r#"r="307907""#));
         assert!(cleaned.contains(r#"r="307908""#));
-    }
-
-    #[test]
-    fn parallel_cell_range_cleaning_falls_back_when_consecutive_hidden_empty_rows_enabled() {
-        let mut params = default_params();
-        params.cleanup.consecutive_hidden_empty_rows = true;
-        let sheet_data = br#"<row r="1" hidden="1"></row><row r="2" hidden="1"></row>"#;
-
-        let mut sequential_metrics = CleanSheetMetrics::default();
-        let sequential =
-            clean_sheet_rows_and_cells_in_cell_range(sheet_data, &params, &mut sequential_metrics)
-                .unwrap();
-
-        let mut parallel_metrics = CleanSheetMetrics::default();
-        let parallel = clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
-            sheet_data,
-            &params,
-            &mut parallel_metrics,
-            1,
-            "cells_range",
-            &params.zip_info_filename,
-        )
-        .unwrap();
-
-        assert_eq!(parallel, sequential);
     }
 
     #[test]
