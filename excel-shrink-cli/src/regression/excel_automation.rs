@@ -1,14 +1,23 @@
-use super::xlsx_value_compare::WorksheetCaptureRange;
+use super::xlsx_value_compare::{workbook_sheet_order, WorksheetCaptureRange};
+use crate::pipeline::process_files;
+use crate::{Cli, LogLevel};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, ExitStatus};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime};
+use zip::ZipArchive;
 
-const SCREENSHOT_CACHE_VERSION: u32 = 1;
+const SCREENSHOT_CACHE_VERSION: u32 = 3;
+const WORKBOOK_XML_REPAIR_MARKER_VERSION: u32 = 1;
+const EXCEL_SCREENSHOT_STALL_TIMEOUT: Duration = Duration::from_secs(60);
+const EXCEL_SCREENSHOT_POLL_INTERVAL: Duration = Duration::from_millis(500);
+const WORKBOOK_XML_REPAIRED_SUFFIX: &str = "workbook-xml-repaired";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ExcelSavedWorkbook {
@@ -21,6 +30,7 @@ pub struct ExcelScreenshotReport {
     pub output_dir: PathBuf,
     pub differences_found: bool,
     pub kept_screenshots: bool,
+    pub original_workbook_xml_repaired_path: Option<PathBuf>,
     pub screenshot_cache_root: PathBuf,
     pub original_cache_dir: PathBuf,
     pub shrunk_cache_dir: PathBuf,
@@ -82,9 +92,28 @@ pub fn compare_sheet_screenshots(
     let cache_root = screenshot_cache_root(work_dir);
     fs::create_dir_all(&cache_root)?;
     let capture_range_hash = capture_range_hash(range_limits)?;
-    let original_cache =
+    let mut original_for_capture = original_path.to_path_buf();
+    let mut original_workbook_xml_repaired_path = None;
+    let mut original_cache =
         WorkbookScreenshotCache::new(original_path, &cache_root, &capture_range_hash)?;
+    let unrepaired_original_workbook_hash = original_cache.workbook_hash.clone();
     let shrunk_cache = WorkbookScreenshotCache::new(shrunk_path, &cache_root, &capture_range_hash)?;
+
+    if original_workbook_xml_repair_is_marked(&cache_root, &unrepaired_original_workbook_hash) {
+        eprintln!(
+            "[excel-screenshot] original_hash={} previously required workbook.xml repair; repairing before screenshot capture",
+            unrepaired_original_workbook_hash
+        );
+        let repaired = repair_original_workbook_xml_only(original_path, work_dir)?;
+        eprintln!(
+            "[excel-screenshot] repaired original workbook.xml path={}",
+            repaired.display()
+        );
+        original_for_capture = repaired.clone();
+        original_workbook_xml_repaired_path = Some(repaired);
+        original_cache =
+            WorkbookScreenshotCache::new(&original_for_capture, &cache_root, &capture_range_hash)?;
+    }
 
     let script_path = work_dir.join("excel_compare_screenshots.ps1");
     fs::write(&script_path, SCREENSHOT_COMPARE_SCRIPT)?;
@@ -94,12 +123,10 @@ pub fn compare_sheet_screenshots(
         serde_json::to_string_pretty(range_limits)?,
     )?;
 
-    let original_excel_path = copy_workbook_with_suffix(original_path, work_dir, "original")?;
-    let shrunk_excel_path = copy_workbook_with_suffix(shrunk_path, work_dir, "shrunk")?;
-
     let capture_manifest_path = output_dir.join("screenshot-captures.json");
+    let progress_path = output_dir.join("screenshot-progress.log");
     let report_path = output_dir.join("screenshot-differences.json");
-    let original_cache_hit = original_cache.is_complete()?;
+    let mut original_cache_hit = original_cache.is_complete()?;
     let shrunk_cache_hit = shrunk_cache.is_complete()?;
     eprintln!(
         "[excel-screenshot] cache original_hash={} hit={} shrunk_hash={} hit={} root={}",
@@ -110,12 +137,19 @@ pub fn compare_sheet_screenshots(
         cache_root.display()
     );
 
-    if original_cache_hit && shrunk_cache_hit {
-        write_pair_manifest_from_cache(&original_cache, &shrunk_cache, &capture_manifest_path)?;
-    } else {
+    let run_capture = |original_for_capture: &Path,
+                       original_cache: &WorkbookScreenshotCache,
+                       original_cache_hit: bool,
+                       shrunk_cache_hit: bool|
+     -> anyhow::Result<PowerShellScriptOutcome> {
         fs::create_dir_all(&original_cache.cache_dir)?;
         fs::create_dir_all(&shrunk_cache.cache_dir)?;
-        let status = run_power_shell_script_with_status(
+        let original_excel_path =
+            copy_workbook_with_suffix(original_for_capture, work_dir, "original")?;
+        let shrunk_excel_path = copy_workbook_with_suffix(shrunk_path, work_dir, "shrunk")?;
+        let _ = fs::remove_file(&capture_manifest_path);
+
+        run_power_shell_script_with_status_and_stall_timeout(
             &script_path,
             &[
                 ("OriginalPath", power_shell_path(&original_excel_path)?),
@@ -134,24 +168,99 @@ pub fn compare_sheet_screenshots(
                 ("OriginalAlreadyCached", original_cache_hit.to_string()),
                 ("ShrunkAlreadyCached", shrunk_cache_hit.to_string()),
             ],
-        )?;
+            &progress_path,
+            EXCEL_SCREENSHOT_STALL_TIMEOUT,
+        )
+    };
 
-        anyhow::ensure!(
-            capture_manifest_path.exists(),
-            "Excel screenshot capture did not create manifest: {}",
-            capture_manifest_path.display()
-        );
+    if original_cache_hit && shrunk_cache_hit {
+        write_pair_manifest_from_cache(&original_cache, &shrunk_cache, &capture_manifest_path)?;
+    } else {
+        let repair_reason = match run_capture(&original_for_capture, &original_cache, false, false)?
+        {
+            PowerShellScriptOutcome::Completed(status) => {
+                if screenshot_capture_needs_original_workbook_repair(
+                    &status,
+                    &progress_path,
+                    &capture_manifest_path,
+                ) {
+                    Some("Excel failed before opening original workbook".to_string())
+                } else {
+                    ensure_screenshot_capture_completed(&status, &capture_manifest_path)?;
+                    None
+                }
+            }
+            PowerShellScriptOutcome::TimedOut { stalled_for } => Some(format!(
+                "Excel automation stalled for {:.1}s",
+                stalled_for.as_secs_f64()
+            )),
+        };
 
-        anyhow::ensure!(
-            status.success(),
-            "Excel screenshot capture failed; manifest: {}",
-            capture_manifest_path.display()
-        );
+        if let Some(repair_reason) = repair_reason {
+            preserve_stalled_progress_log(output_dir, &progress_path)?;
+            eprintln!(
+                "[excel-screenshot] {repair_reason}; repairing original workbook.xml and retrying"
+            );
+
+            let repaired = repair_original_workbook_xml_only(original_path, work_dir)?;
+            eprintln!(
+                "[excel-screenshot] repaired original workbook.xml path={}",
+                repaired.display()
+            );
+
+            original_for_capture = repaired.clone();
+            original_workbook_xml_repaired_path = Some(repaired);
+            original_cache = WorkbookScreenshotCache::new(
+                &original_for_capture,
+                &cache_root,
+                &capture_range_hash,
+            )?;
+            original_cache_hit = original_cache.is_complete()?;
+
+            let repair_retry_succeeded = if original_cache_hit && shrunk_cache_hit {
+                write_pair_manifest_from_cache(
+                    &original_cache,
+                    &shrunk_cache,
+                    &capture_manifest_path,
+                )?;
+                true
+            } else {
+                match run_capture(&original_for_capture, &original_cache, false, false)? {
+                    PowerShellScriptOutcome::Completed(status) => {
+                        ensure_screenshot_capture_completed(&status, &capture_manifest_path)?;
+                        true
+                    }
+                    PowerShellScriptOutcome::TimedOut { stalled_for } => {
+                        anyhow::bail!(
+                                "Excel screenshot capture stalled for {:.1}s after original workbook.xml repair; manifest: {}",
+                                stalled_for.as_secs_f64(),
+                                capture_manifest_path.display()
+                            );
+                    }
+                }
+            };
+
+            if repair_retry_succeeded {
+                mark_original_workbook_xml_repair_needed(
+                    &cache_root,
+                    &unrepaired_original_workbook_hash,
+                )?;
+            }
+        }
+
         update_workbook_screenshot_cache(&capture_manifest_path, &original_cache, true)?;
         update_workbook_screenshot_cache(&capture_manifest_path, &shrunk_cache, false)?;
     }
 
-    let differences_found = compare_captured_screenshots(&capture_manifest_path, &report_path)?;
+    let sheet_xml_diff_context = SheetXmlDiffContext {
+        original_workbook_path: original_for_capture.as_path(),
+        shrunk_workbook_path: shrunk_path,
+    };
+    let differences_found = compare_captured_screenshots(
+        &capture_manifest_path,
+        &report_path,
+        Some(&sheet_xml_diff_context),
+    )?;
 
     eprintln!(
         "[excel-screenshot] done differences_found={} report={}",
@@ -164,6 +273,7 @@ pub fn compare_sheet_screenshots(
         output_dir: output_dir.to_path_buf(),
         differences_found,
         kept_screenshots: true,
+        original_workbook_xml_repaired_path,
         screenshot_cache_root: cache_root,
         original_cache_dir: original_cache.cache_dir,
         shrunk_cache_dir: shrunk_cache.cache_dir,
@@ -183,7 +293,21 @@ struct ScreenshotCapture {
     screenshot_error: Option<String>,
     original_image: Option<PathBuf>,
     shrunk_image: Option<PathBuf>,
+    #[serde(default)]
+    original_background_rgba: Option<ScreenshotRgba>,
+    #[serde(default)]
+    shrunk_background_rgba: Option<ScreenshotRgba>,
     capture_info: Option<ScreenshotCaptureInfo>,
+    #[serde(default)]
+    tiles: Vec<ScreenshotCaptureTile>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+struct ScreenshotRgba {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -195,6 +319,23 @@ struct ScreenshotCaptureInfo {
     rows: u32,
     columns: u32,
     used_range_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct ScreenshotCaptureTile {
+    tile_index: usize,
+    capture_range: String,
+    capture_info: ScreenshotCaptureInfo,
+    original_image: Option<PathBuf>,
+    shrunk_image: Option<PathBuf>,
+    #[serde(default)]
+    original_background_rgba: Option<ScreenshotRgba>,
+    #[serde(default)]
+    shrunk_background_rgba: Option<ScreenshotRgba>,
+    original_width: Option<u32>,
+    original_height: Option<u32>,
+    shrunk_width: Option<u32>,
+    shrunk_height: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -223,7 +364,23 @@ struct WorkbookScreenshotCapture {
     used_range_error: Option<String>,
     screenshot_error: Option<String>,
     image: Option<PathBuf>,
+    #[serde(default)]
+    background_rgba: Option<ScreenshotRgba>,
     capture_info: Option<ScreenshotCaptureInfo>,
+    #[serde(default)]
+    tiles: Vec<WorkbookScreenshotTile>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct WorkbookScreenshotTile {
+    tile_index: usize,
+    capture_range: String,
+    capture_info: ScreenshotCaptureInfo,
+    image: Option<PathBuf>,
+    #[serde(default)]
+    background_rgba: Option<ScreenshotRgba>,
+    width: Option<u32>,
+    height: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -232,6 +389,12 @@ struct WorkbookScreenshotCacheMarker {
     workbook_hash: String,
     capture_range_hash: String,
     capture_count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct WorkbookXmlRepairMarker {
+    version: u32,
+    original_workbook_hash: String,
 }
 
 impl WorkbookScreenshotCache {
@@ -281,11 +444,22 @@ impl WorkbookScreenshotCache {
             if capture.screenshot_error.is_some() {
                 return Ok(false);
             }
-            let Some(image) = capture.image.as_ref().map(normalize_automation_path) else {
-                return Ok(false);
-            };
-            if !image.exists() {
-                return Ok(false);
+            if capture.tiles.is_empty() {
+                let Some(image) = capture.image.as_ref().map(normalize_automation_path) else {
+                    return Ok(false);
+                };
+                if !image.exists() {
+                    return Ok(false);
+                }
+            } else {
+                for tile in &capture.tiles {
+                    let Some(image) = tile.image.as_ref().map(normalize_automation_path) else {
+                        return Ok(false);
+                    };
+                    if !image.exists() {
+                        return Ok(false);
+                    }
+                }
             }
         }
 
@@ -297,10 +471,46 @@ impl WorkbookScreenshotCache {
     }
 }
 
+fn workbook_xml_repair_marker_path(cache_root: &Path, original_workbook_hash: &str) -> PathBuf {
+    cache_root
+        .join("workbook-xml-repair-needed")
+        .join(format!("{original_workbook_hash}.json"))
+}
+
+fn original_workbook_xml_repair_is_marked(cache_root: &Path, original_workbook_hash: &str) -> bool {
+    let marker_path = workbook_xml_repair_marker_path(cache_root, original_workbook_hash);
+    let Ok(marker) = read_json_file::<WorkbookXmlRepairMarker>(&marker_path) else {
+        return false;
+    };
+
+    marker.version == WORKBOOK_XML_REPAIR_MARKER_VERSION
+        && marker.original_workbook_hash == original_workbook_hash
+}
+
+fn mark_original_workbook_xml_repair_needed(
+    cache_root: &Path,
+    original_workbook_hash: &str,
+) -> anyhow::Result<()> {
+    let marker_path = workbook_xml_repair_marker_path(cache_root, original_workbook_hash);
+    if let Some(parent) = marker_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let marker = WorkbookXmlRepairMarker {
+        version: WORKBOOK_XML_REPAIR_MARKER_VERSION,
+        original_workbook_hash: original_workbook_hash.to_string(),
+    };
+    fs::write(marker_path, serde_json::to_vec_pretty(&marker)?)?;
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct ScreenshotDifference {
     sheet_index: usize,
     sheet_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tile_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sheet_file: Option<String>,
     capture_range: Option<String>,
     capture_strategy: Option<String>,
     used_range_error: Option<String>,
@@ -319,9 +529,71 @@ struct ScreenshotDifference {
     #[serde(skip_serializing_if = "Option::is_none")]
     diff_pixels: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    original_sheet_xml: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shrunk_sheet_xml: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sheet_xml_diff: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sheet_xml_diff_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     original_image: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     shrunk_image: Option<PathBuf>,
+}
+
+struct SheetXmlDiffContext<'a> {
+    original_workbook_path: &'a Path,
+    shrunk_workbook_path: &'a Path,
+}
+
+struct SheetXmlDiffArtifacts {
+    sheet_file: String,
+    original_sheet_xml: PathBuf,
+    shrunk_sheet_xml: PathBuf,
+    sheet_xml_diff: PathBuf,
+}
+
+#[derive(Debug, Default)]
+struct SheetXmlDiffSourceContext {
+    line_info: Vec<SheetXmlDiffLineInfo>,
+    rows_by_index: BTreeMap<u32, SheetRowXmlInfo>,
+    columns: Vec<SheetColumnXmlInfo>,
+    style_xfs: Vec<String>,
+    shared_strings: Vec<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct SheetXmlDiffLineInfo {
+    row: Option<SheetRowXmlInfo>,
+    cell: Option<SheetCellXmlInfo>,
+    shared_string_index: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+struct SheetRowXmlInfo {
+    row_index: u32,
+    style_id: Option<usize>,
+    node: String,
+}
+
+#[derive(Debug, Clone)]
+struct SheetCellXmlInfo {
+    reference: String,
+    row_index: u32,
+    column_name: String,
+    column_index: u32,
+    style_id: Option<usize>,
+    cell_type: Option<String>,
+    node: String,
+}
+
+#[derive(Debug, Clone)]
+struct SheetColumnXmlInfo {
+    min: u32,
+    max: u32,
+    style_id: Option<usize>,
+    node: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -348,9 +620,24 @@ struct CropRect {
     height: u32,
 }
 
+struct ScreenshotImageComparison {
+    sheet_index: usize,
+    sheet_name: String,
+    tile_index: Option<usize>,
+    capture_range: Option<String>,
+    capture_strategy: Option<String>,
+    used_range_error: Option<String>,
+    capture_info: ScreenshotCaptureInfo,
+    original_image: PathBuf,
+    shrunk_image: PathBuf,
+    original_background_rgba: Option<ScreenshotRgba>,
+    shrunk_background_rgba: Option<ScreenshotRgba>,
+}
+
 fn compare_captured_screenshots(
     capture_manifest_path: &Path,
     report_path: &Path,
+    sheet_xml_diff_context: Option<&SheetXmlDiffContext<'_>>,
 ) -> anyhow::Result<bool> {
     let captures: Vec<ScreenshotCapture> = read_json_file(capture_manifest_path)?;
 
@@ -363,23 +650,57 @@ fn compare_captured_screenshots(
             .map(normalize_automation_path);
         let shrunk_image = capture.shrunk_image.as_ref().map(normalize_automation_path);
 
-        if capture.screenshot_error.is_some() {
-            differences.push(ScreenshotDifference {
-                sheet_index: capture.sheet_index,
-                sheet_name: capture.sheet_name,
-                capture_range: capture.capture_range,
-                capture_strategy: capture.capture_strategy,
-                used_range_error: capture.used_range_error,
-                screenshot_error: capture.screenshot_error,
-                diff_box: None,
-                approximate_cells: None,
-                approximate_cells_error: None,
-                original_crop: None,
-                shrunk_crop: None,
-                diff_pixels: None,
+        if let Some(screenshot_error) = capture.screenshot_error.clone() {
+            differences.push(screenshot_error_difference(
+                capture,
                 original_image,
                 shrunk_image,
-            });
+                screenshot_error,
+            ));
+            continue;
+        }
+
+        if !capture.tiles.is_empty() {
+            for tile in &capture.tiles {
+                let original_image = tile.original_image.as_ref().map(normalize_automation_path);
+                let shrunk_image = tile.shrunk_image.as_ref().map(normalize_automation_path);
+                let (original_image, shrunk_image) = match (original_image, shrunk_image) {
+                    (Some(original_image), Some(shrunk_image)) => (original_image, shrunk_image),
+                    (original_image, shrunk_image) => {
+                        differences.push(screenshot_error_difference_for_parts(
+                            capture.sheet_index,
+                            capture.sheet_name.clone(),
+                            Some(tile.tile_index),
+                            Some(tile.capture_range.clone()),
+                            capture.capture_strategy.clone(),
+                            capture.used_range_error.clone(),
+                            original_image,
+                            shrunk_image,
+                            "missing cached screenshot tile".to_string(),
+                        ));
+                        continue;
+                    }
+                };
+
+                compare_screenshot_image_pair(
+                    ScreenshotImageComparison {
+                        sheet_index: capture.sheet_index,
+                        sheet_name: capture.sheet_name.clone(),
+                        tile_index: Some(tile.tile_index),
+                        capture_range: Some(tile.capture_range.clone()),
+                        capture_strategy: capture.capture_strategy.clone(),
+                        used_range_error: capture.used_range_error.clone(),
+                        capture_info: tile.capture_info.clone(),
+                        original_image,
+                        shrunk_image,
+                        original_background_rgba: tile.original_background_rgba,
+                        shrunk_background_rgba: tile.shrunk_background_rgba,
+                    },
+                    report_path,
+                    sheet_xml_diff_context,
+                    &mut differences,
+                )?;
+            }
             continue;
         }
 
@@ -389,76 +710,242 @@ fn compare_captured_screenshots(
         let Some(shrunk_image) = shrunk_image else {
             continue;
         };
+        let capture_info = capture
+            .capture_info
+            .clone()
+            .unwrap_or(ScreenshotCaptureInfo {
+                strategy: capture
+                    .capture_strategy
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                address: capture.capture_range.clone().unwrap_or_default(),
+                start_row: 1,
+                start_column: 1,
+                rows: 1,
+                columns: 1,
+                used_range_error: capture.used_range_error.clone(),
+            });
 
-        let original_pixels = load_screenshot_image(&original_image)?;
-        let shrunk_pixels = load_screenshot_image(&shrunk_image)?;
-        let diff_box = find_diff_box(&original_pixels, &shrunk_pixels);
-        if let Some(diff_box) = diff_box {
-            let safe_name = sanitize_sheet_name(&capture.sheet_name);
-            let output_dir = report_path
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("report path has no parent"))?;
-            let original_crop = output_dir.join(format!(
-                "{}-{}-diff-original.png",
-                capture.sheet_index, safe_name
-            ));
-            let shrunk_crop = output_dir.join(format!(
-                "{}-{}-diff-shrunk.png",
-                capture.sheet_index, safe_name
-            ));
-            let diff_pixels = output_dir.join(format!(
-                "{}-{}-diff-pixels.png",
-                capture.sheet_index, safe_name
-            ));
-
-            let capture_info = capture
-                .capture_info
-                .clone()
-                .unwrap_or(ScreenshotCaptureInfo {
-                    strategy: capture
-                        .capture_strategy
-                        .clone()
-                        .unwrap_or_else(|| "unknown".to_string()),
-                    address: capture.capture_range.clone().unwrap_or_default(),
-                    start_row: 1,
-                    start_column: 1,
-                    rows: 1,
-                    columns: 1,
-                    used_range_error: capture.used_range_error.clone(),
-                });
-
-            save_diff_crop(&original_pixels, &original_crop, diff_box, &capture_info)?;
-            save_diff_crop(&shrunk_pixels, &shrunk_crop, diff_box, &capture_info)?;
-            save_diff_pixels(
-                &original_pixels,
-                &shrunk_pixels,
-                &diff_pixels,
-                diff_box,
-                &capture_info,
-            )?;
-
-            let approximate_cells = approximate_cells(diff_box, &capture_info);
-            differences.push(ScreenshotDifference {
+        compare_screenshot_image_pair(
+            ScreenshotImageComparison {
                 sheet_index: capture.sheet_index,
                 sheet_name: capture.sheet_name,
+                tile_index: None,
                 capture_range: capture.capture_range,
                 capture_strategy: capture.capture_strategy,
                 used_range_error: capture.used_range_error,
-                screenshot_error: None,
-                diff_box: Some(diff_box),
-                approximate_cells: Some(approximate_cells),
-                approximate_cells_error: None,
-                original_crop: Some(original_crop),
-                shrunk_crop: Some(shrunk_crop),
-                diff_pixels: Some(diff_pixels),
-                original_image: None,
-                shrunk_image: None,
-            });
-        }
+                capture_info,
+                original_image,
+                shrunk_image,
+                original_background_rgba: capture.original_background_rgba,
+                shrunk_background_rgba: capture.shrunk_background_rgba,
+            },
+            report_path,
+            sheet_xml_diff_context,
+            &mut differences,
+        )?;
     }
 
     fs::write(report_path, serde_json::to_vec_pretty(&differences)?)?;
     Ok(!differences.is_empty())
+}
+
+fn compare_screenshot_image_pair(
+    comparison: ScreenshotImageComparison,
+    report_path: &Path,
+    sheet_xml_diff_context: Option<&SheetXmlDiffContext<'_>>,
+    differences: &mut Vec<ScreenshotDifference>,
+) -> anyhow::Result<()> {
+    let original_pixels = match load_screenshot_image(&comparison.original_image) {
+        Ok(pixels) => pixels,
+        Err(error) => {
+            differences.push(screenshot_error_difference_for_parts(
+                comparison.sheet_index,
+                comparison.sheet_name,
+                comparison.tile_index,
+                comparison.capture_range,
+                comparison.capture_strategy,
+                comparison.used_range_error,
+                Some(comparison.original_image),
+                Some(comparison.shrunk_image),
+                format!("failed to load original screenshot: {error:#}"),
+            ));
+            return Ok(());
+        }
+    };
+    let shrunk_pixels = match load_screenshot_image(&comparison.shrunk_image) {
+        Ok(pixels) => pixels,
+        Err(error) => {
+            differences.push(screenshot_error_difference_for_parts(
+                comparison.sheet_index,
+                comparison.sheet_name,
+                comparison.tile_index,
+                comparison.capture_range,
+                comparison.capture_strategy,
+                comparison.used_range_error,
+                Some(comparison.original_image),
+                Some(comparison.shrunk_image),
+                format!("failed to load shrunk screenshot: {error:#}"),
+            ));
+            return Ok(());
+        }
+    };
+    let (original_pixels, shrunk_pixels) = pad_screenshot_pair_to_common_canvas(
+        original_pixels,
+        shrunk_pixels,
+        comparison.original_background_rgba,
+        comparison.shrunk_background_rgba,
+    );
+
+    let Some(diff_box) = find_diff_box(&original_pixels, &shrunk_pixels) else {
+        return Ok(());
+    };
+
+    let output_dir = report_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("report path has no parent"))?;
+    let artifact_stem = screenshot_diff_artifact_stem(
+        comparison.sheet_index,
+        &comparison.sheet_name,
+        comparison.tile_index,
+    );
+    let original_crop = output_dir.join(format!("{artifact_stem}-diff-original.png"));
+    let shrunk_crop = output_dir.join(format!("{artifact_stem}-diff-shrunk.png"));
+    let diff_pixels = output_dir.join(format!("{artifact_stem}-diff-pixels.png"));
+
+    save_diff_crop(
+        &original_pixels,
+        &original_crop,
+        diff_box,
+        &comparison.capture_info,
+    )?;
+    save_diff_crop(
+        &shrunk_pixels,
+        &shrunk_crop,
+        diff_box,
+        &comparison.capture_info,
+    )?;
+    save_diff_pixels(
+        &original_pixels,
+        &shrunk_pixels,
+        &diff_pixels,
+        diff_box,
+        &comparison.capture_info,
+    )?;
+
+    let approximate_cells = approximate_cells(diff_box, &comparison.capture_info);
+    let sheet_xml_diff = match sheet_xml_diff_context {
+        Some(context) => create_sheet_xml_git_diff(
+            context,
+            output_dir,
+            comparison.sheet_index,
+            &comparison.sheet_name,
+        ),
+        None => Ok(None),
+    };
+    let (sheet_file, original_sheet_xml, shrunk_sheet_xml, sheet_xml_diff, sheet_xml_diff_error) =
+        match sheet_xml_diff {
+            Ok(Some(artifacts)) => (
+                Some(artifacts.sheet_file),
+                Some(artifacts.original_sheet_xml),
+                Some(artifacts.shrunk_sheet_xml),
+                Some(artifacts.sheet_xml_diff),
+                None,
+            ),
+            Ok(None) => (None, None, None, None, None),
+            Err(error) => (None, None, None, None, Some(format!("{error:#}"))),
+        };
+
+    differences.push(ScreenshotDifference {
+        sheet_index: comparison.sheet_index,
+        sheet_name: comparison.sheet_name,
+        tile_index: comparison.tile_index,
+        sheet_file,
+        capture_range: comparison.capture_range,
+        capture_strategy: comparison.capture_strategy,
+        used_range_error: comparison.used_range_error,
+        screenshot_error: None,
+        diff_box: Some(diff_box),
+        approximate_cells: Some(approximate_cells),
+        approximate_cells_error: None,
+        original_crop: Some(original_crop),
+        shrunk_crop: Some(shrunk_crop),
+        diff_pixels: Some(diff_pixels),
+        original_sheet_xml,
+        shrunk_sheet_xml,
+        sheet_xml_diff,
+        sheet_xml_diff_error,
+        original_image: None,
+        shrunk_image: None,
+    });
+
+    Ok(())
+}
+
+fn screenshot_diff_artifact_stem(
+    sheet_index: usize,
+    sheet_name: &str,
+    tile_index: Option<usize>,
+) -> String {
+    let safe_name = sanitize_sheet_name(sheet_name);
+    match tile_index {
+        Some(tile_index) => format!("{sheet_index}-{safe_name}-tile-{tile_index:03}"),
+        None => format!("{sheet_index}-{safe_name}"),
+    }
+}
+
+fn screenshot_error_difference(
+    capture: ScreenshotCapture,
+    original_image: Option<PathBuf>,
+    shrunk_image: Option<PathBuf>,
+    screenshot_error: String,
+) -> ScreenshotDifference {
+    screenshot_error_difference_for_parts(
+        capture.sheet_index,
+        capture.sheet_name,
+        None,
+        capture.capture_range,
+        capture.capture_strategy,
+        capture.used_range_error,
+        original_image,
+        shrunk_image,
+        screenshot_error,
+    )
+}
+
+fn screenshot_error_difference_for_parts(
+    sheet_index: usize,
+    sheet_name: String,
+    tile_index: Option<usize>,
+    capture_range: Option<String>,
+    capture_strategy: Option<String>,
+    used_range_error: Option<String>,
+    original_image: Option<PathBuf>,
+    shrunk_image: Option<PathBuf>,
+    screenshot_error: String,
+) -> ScreenshotDifference {
+    ScreenshotDifference {
+        sheet_index,
+        sheet_name,
+        tile_index,
+        sheet_file: None,
+        capture_range,
+        capture_strategy,
+        used_range_error,
+        screenshot_error: Some(screenshot_error),
+        diff_box: None,
+        approximate_cells: None,
+        approximate_cells_error: None,
+        original_crop: None,
+        shrunk_crop: None,
+        diff_pixels: None,
+        original_sheet_xml: None,
+        shrunk_sheet_xml: None,
+        sheet_xml_diff: None,
+        sheet_xml_diff_error: None,
+        original_image,
+        shrunk_image,
+    }
 }
 
 fn write_pair_manifest_from_cache(
@@ -503,6 +990,10 @@ fn write_pair_manifest_from_cache(
             .or(shrunk)
             .map(|capture| capture.sheet_name.clone())
             .unwrap_or_else(|| format!("Sheet {sheet_index}"));
+        let tiles = match (original, shrunk) {
+            (Some(original), Some(shrunk)) => pair_cached_tiles(original, shrunk),
+            _ => Vec::new(),
+        };
 
         captures.push(ScreenshotCapture {
             sheet_index,
@@ -513,12 +1004,57 @@ fn write_pair_manifest_from_cache(
             screenshot_error,
             original_image: original.and_then(|capture| capture.image.clone()),
             shrunk_image: shrunk.and_then(|capture| capture.image.clone()),
+            original_background_rgba: original.and_then(|capture| capture.background_rgba),
+            shrunk_background_rgba: shrunk.and_then(|capture| capture.background_rgba),
             capture_info: preferred.and_then(|capture| capture.capture_info.clone()),
+            tiles,
         });
     }
 
     fs::write(capture_manifest_path, serde_json::to_vec_pretty(&captures)?)?;
     Ok(())
+}
+
+fn pair_cached_tiles(
+    original: &WorkbookScreenshotCapture,
+    shrunk: &WorkbookScreenshotCapture,
+) -> Vec<ScreenshotCaptureTile> {
+    let original_by_index: BTreeMap<_, _> = original
+        .tiles
+        .iter()
+        .map(|tile| (tile.tile_index, tile))
+        .collect();
+    let shrunk_by_index: BTreeMap<_, _> = shrunk
+        .tiles
+        .iter()
+        .map(|tile| (tile.tile_index, tile))
+        .collect();
+
+    original_by_index
+        .keys()
+        .chain(shrunk_by_index.keys())
+        .copied()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .filter_map(|tile_index| {
+            let original = original_by_index.get(&tile_index);
+            let shrunk = shrunk_by_index.get(&tile_index);
+            let preferred = shrunk.or(original)?;
+            Some(ScreenshotCaptureTile {
+                tile_index,
+                capture_range: preferred.capture_range.clone(),
+                capture_info: preferred.capture_info.clone(),
+                original_image: original.and_then(|tile| tile.image.clone()),
+                shrunk_image: shrunk.and_then(|tile| tile.image.clone()),
+                original_background_rgba: original.and_then(|tile| tile.background_rgba),
+                shrunk_background_rgba: shrunk.and_then(|tile| tile.background_rgba),
+                original_width: original.and_then(|tile| tile.width),
+                original_height: original.and_then(|tile| tile.height),
+                shrunk_width: shrunk.and_then(|tile| tile.width),
+                shrunk_height: shrunk.and_then(|tile| tile.height),
+            })
+        })
+        .collect()
 }
 
 fn update_workbook_screenshot_cache(
@@ -538,7 +1074,14 @@ fn update_workbook_screenshot_cache(
         }
         .map(normalize_automation_path);
 
-        if pair.screenshot_error.is_some() || image.as_ref().is_none_or(|image| !image.exists()) {
+        let tiles = side_cache_tiles(&pair.tiles, original_side);
+
+        if pair.screenshot_error.is_some()
+            || (tiles.is_empty() && image.as_ref().is_none_or(|image| !image.exists()))
+            || tiles
+                .iter()
+                .any(|tile| tile.image.as_ref().is_none_or(|image| !image.exists()))
+        {
             complete = false;
         }
 
@@ -550,7 +1093,13 @@ fn update_workbook_screenshot_cache(
             used_range_error: pair.used_range_error,
             screenshot_error: pair.screenshot_error,
             image,
+            background_rgba: if original_side {
+                pair.original_background_rgba
+            } else {
+                pair.shrunk_background_rgba
+            },
             capture_info: pair.capture_info,
+            tiles,
         });
     }
 
@@ -575,10 +1124,97 @@ fn update_workbook_screenshot_cache(
     Ok(())
 }
 
+fn side_cache_tiles(
+    tiles: &[ScreenshotCaptureTile],
+    original_side: bool,
+) -> Vec<WorkbookScreenshotTile> {
+    tiles
+        .iter()
+        .map(|tile| {
+            let image = if original_side {
+                tile.original_image.as_ref()
+            } else {
+                tile.shrunk_image.as_ref()
+            }
+            .map(normalize_automation_path);
+            let (width, height) = if original_side {
+                (tile.original_width, tile.original_height)
+            } else {
+                (tile.shrunk_width, tile.shrunk_height)
+            };
+            let background_rgba = if original_side {
+                tile.original_background_rgba
+            } else {
+                tile.shrunk_background_rgba
+            };
+
+            WorkbookScreenshotTile {
+                tile_index: tile.tile_index,
+                capture_range: tile.capture_range.clone(),
+                capture_info: tile.capture_info.clone(),
+                image,
+                background_rgba,
+                width,
+                height,
+            }
+        })
+        .collect()
+}
+
 fn load_screenshot_image(path: &Path) -> anyhow::Result<image::RgbaImage> {
     Ok(image::open(path)
         .map_err(|error| anyhow::anyhow!("failed to open image '{}': {error}", path.display()))?
         .to_rgba8())
+}
+
+fn pad_screenshot_pair_to_common_canvas(
+    original: image::RgbaImage,
+    shrunk: image::RgbaImage,
+    original_background_rgba: Option<ScreenshotRgba>,
+    shrunk_background_rgba: Option<ScreenshotRgba>,
+) -> (image::RgbaImage, image::RgbaImage) {
+    let width = original.width().max(shrunk.width());
+    let height = original.height().max(shrunk.height());
+    (
+        pad_screenshot_canvas_if_needed(original, width, height, original_background_rgba),
+        pad_screenshot_canvas_if_needed(shrunk, width, height, shrunk_background_rgba),
+    )
+}
+
+fn pad_screenshot_canvas_if_needed(
+    source: image::RgbaImage,
+    width: u32,
+    height: u32,
+    background_rgba: Option<ScreenshotRgba>,
+) -> image::RgbaImage {
+    if source.width() == width && source.height() == height {
+        return source;
+    }
+
+    let fill = screenshot_canvas_fill_color(background_rgba, &source);
+    let mut padded = image::RgbaImage::from_pixel(width, height, fill);
+    for y in 0..source.height() {
+        for x in 0..source.width() {
+            padded.put_pixel(x, y, *source.get_pixel(x, y));
+        }
+    }
+    padded
+}
+
+fn screenshot_canvas_fill_color(
+    background_rgba: Option<ScreenshotRgba>,
+    source: &image::RgbaImage,
+) -> image::Rgba<u8> {
+    background_rgba
+        .map(|rgba| image::Rgba([rgba.r, rgba.g, rgba.b, rgba.a]))
+        .unwrap_or_else(|| infer_screenshot_padding_color(source))
+}
+
+fn infer_screenshot_padding_color(source: &image::RgbaImage) -> image::Rgba<u8> {
+    if source.width() == 0 || source.height() == 0 {
+        return image::Rgba([255, 255, 255, 255]);
+    }
+    *source.get_pixel(source.width() - 1, source.height() - 1)
 }
 
 fn read_json_file<T: DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
@@ -641,13 +1277,15 @@ fn screenshot_cache_root(work_dir: &Path) -> PathBuf {
 
 fn find_diff_box(left: &image::RgbaImage, right: &image::RgbaImage) -> Option<DiffBox> {
     if left.width() != right.width() || left.height() != right.height() {
+        let width = left.width().max(right.width());
+        let height = left.height().max(right.height());
         return Some(DiffBox {
             min_x: 0,
             min_y: 0,
-            max_x: left.width().max(right.width()).saturating_sub(1),
-            max_y: left.height().max(right.height()).saturating_sub(1),
-            image_width: right.width(),
-            image_height: right.height(),
+            max_x: width.saturating_sub(1),
+            max_y: height.saturating_sub(1),
+            image_width: width,
+            image_height: height,
         });
     }
 
@@ -857,6 +1495,780 @@ fn sanitize_sheet_name(name: &str) -> String {
         .collect()
 }
 
+fn create_sheet_xml_git_diff(
+    context: &SheetXmlDiffContext<'_>,
+    output_dir: &Path,
+    sheet_index: usize,
+    sheet_name: &str,
+) -> anyhow::Result<Option<SheetXmlDiffArtifacts>> {
+    let Some(sheet_file) = sheet_file_for_index(
+        context.original_workbook_path,
+        context.shrunk_workbook_path,
+        sheet_index,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let safe_name = sanitize_sheet_name(sheet_name);
+    let original_sheet_xml = output_dir.join(format!(
+        "{sheet_index:03}-{safe_name}-sheet-xml-original.xml"
+    ));
+    let shrunk_sheet_xml =
+        output_dir.join(format!("{sheet_index:03}-{safe_name}-sheet-xml-shrunk.xml"));
+    let sheet_xml_diff = output_dir.join(format!("{sheet_index:03}-{safe_name}-sheet-xml.diff"));
+
+    let original_xml = read_zip_entry(context.original_workbook_path, &sheet_file)?;
+    let shrunk_xml = read_zip_entry(context.shrunk_workbook_path, &sheet_file)?;
+    let original_formatted_xml = format_xml_for_diff(&original_xml);
+    let shrunk_formatted_xml = format_xml_for_diff(&shrunk_xml);
+    fs::write(&original_sheet_xml, original_formatted_xml.as_bytes())?;
+    fs::write(&shrunk_sheet_xml, shrunk_formatted_xml.as_bytes())?;
+
+    let original_styles_xml =
+        read_zip_entry_optional(context.original_workbook_path, "xl/styles.xml")?;
+    let shrunk_styles_xml = read_zip_entry_optional(context.shrunk_workbook_path, "xl/styles.xml")?;
+    let original_shared_strings_xml =
+        read_zip_entry_optional(context.original_workbook_path, "xl/sharedStrings.xml")?;
+    let shrunk_shared_strings_xml =
+        read_zip_entry_optional(context.shrunk_workbook_path, "xl/sharedStrings.xml")?;
+    let original_context = build_sheet_xml_diff_source_context(
+        &original_formatted_xml,
+        original_styles_xml.as_deref(),
+        original_shared_strings_xml.as_deref(),
+    );
+    let shrunk_context = build_sheet_xml_diff_source_context(
+        &shrunk_formatted_xml,
+        shrunk_styles_xml.as_deref(),
+        shrunk_shared_strings_xml.as_deref(),
+    );
+
+    write_git_no_index_diff(
+        &original_sheet_xml,
+        &shrunk_sheet_xml,
+        &sheet_xml_diff,
+        &original_context,
+        &shrunk_context,
+    )?;
+
+    Ok(Some(SheetXmlDiffArtifacts {
+        sheet_file,
+        original_sheet_xml,
+        shrunk_sheet_xml,
+        sheet_xml_diff,
+    }))
+}
+
+fn sheet_file_for_index(
+    original_workbook_path: &Path,
+    shrunk_workbook_path: &Path,
+    sheet_index: usize,
+) -> anyhow::Result<Option<String>> {
+    if sheet_index == 0 {
+        return Ok(None);
+    }
+
+    let index = sheet_index - 1;
+    let original_order = workbook_sheet_order(original_workbook_path)?;
+    if let Some(sheet_file) = original_order.get(index) {
+        return Ok(Some(sheet_file.clone()));
+    }
+
+    let shrunk_order = workbook_sheet_order(shrunk_workbook_path)?;
+    if let Some(sheet_file) = shrunk_order.get(index) {
+        return Ok(Some(sheet_file.clone()));
+    }
+
+    Ok(Some(format!("xl/worksheets/sheet{sheet_index}.xml")))
+}
+
+fn read_zip_entry(workbook_path: &Path, entry_name: &str) -> anyhow::Result<Vec<u8>> {
+    let file = File::open(workbook_path)?;
+    let mut archive = ZipArchive::new(file)?;
+    let mut entry = archive.by_name(entry_name).map_err(|error| {
+        anyhow::anyhow!(
+            "failed to read '{}' from '{}': {error}",
+            entry_name,
+            workbook_path.display()
+        )
+    })?;
+    let mut bytes = Vec::new();
+    entry.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+fn read_zip_entry_optional(
+    workbook_path: &Path,
+    entry_name: &str,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    let file = File::open(workbook_path)?;
+    let mut archive = ZipArchive::new(file)?;
+    let Ok(mut entry) = archive.by_name(entry_name) else {
+        return Ok(None);
+    };
+    let mut bytes = Vec::new();
+    entry.read_to_end(&mut bytes)?;
+    Ok(Some(bytes))
+}
+
+fn format_xml_for_diff(xml: &[u8]) -> String {
+    let text = String::from_utf8_lossy(xml);
+    let mut output = String::new();
+    let mut token = String::new();
+    let mut in_tag = false;
+    let mut indent = 0usize;
+
+    for ch in text.chars() {
+        if ch == '<' {
+            write_xml_diff_text_token(&mut output, &mut token, indent);
+            token.push(ch);
+            in_tag = true;
+        } else if ch == '>' && in_tag {
+            token.push(ch);
+            write_xml_diff_tag_token(&mut output, &mut token, &mut indent);
+            in_tag = false;
+        } else {
+            token.push(ch);
+        }
+    }
+
+    if in_tag {
+        write_xml_diff_text_token(&mut output, &mut token, indent);
+    } else {
+        write_xml_diff_text_token(&mut output, &mut token, indent);
+    }
+
+    output
+}
+
+fn write_xml_diff_text_token(output: &mut String, token: &mut String, indent: usize) {
+    let text = token.trim();
+    if !text.is_empty() {
+        output.push_str(&"  ".repeat(indent));
+        output.push_str(text);
+        output.push('\n');
+    }
+    token.clear();
+}
+
+fn write_xml_diff_tag_token(output: &mut String, token: &mut String, indent: &mut usize) {
+    let tag = token.trim();
+    if tag.is_empty() {
+        token.clear();
+        return;
+    }
+
+    if tag.starts_with("</") {
+        *indent = indent.saturating_sub(1);
+    }
+
+    output.push_str(&"  ".repeat(*indent));
+    output.push_str(tag);
+    output.push('\n');
+
+    if xml_diff_tag_increases_indent(tag) {
+        *indent += 1;
+    }
+    token.clear();
+}
+
+fn xml_diff_tag_increases_indent(tag: &str) -> bool {
+    tag.starts_with('<')
+        && !tag.starts_with("</")
+        && !tag.starts_with("<?")
+        && !tag.starts_with("<!")
+        && !tag.ends_with("/>")
+}
+
+fn build_sheet_xml_diff_source_context(
+    formatted_xml: &str,
+    styles_xml: Option<&[u8]>,
+    shared_strings_xml: Option<&[u8]>,
+) -> SheetXmlDiffSourceContext {
+    let mut context = SheetXmlDiffSourceContext {
+        style_xfs: extract_style_xfs(styles_xml),
+        shared_strings: extract_shared_string_nodes(shared_strings_xml),
+        ..SheetXmlDiffSourceContext::default()
+    };
+    let mut current_row: Option<SheetRowXmlInfo> = None;
+    let mut current_cell: Option<SheetCellXmlInfo> = None;
+    let mut inside_value = false;
+
+    for line in formatted_xml.lines() {
+        let trimmed = line.trim();
+        let mut line_info = SheetXmlDiffLineInfo::default();
+
+        if is_xml_start_tag(trimmed, "col") {
+            if let Some(column) = sheet_column_info_from_tag(trimmed) {
+                context.columns.push(column);
+            }
+        }
+
+        if is_xml_start_tag(trimmed, "row") {
+            if let Some(row) = sheet_row_info_from_tag(trimmed) {
+                context.rows_by_index.insert(row.row_index, row.clone());
+                line_info.row = Some(row.clone());
+                current_row = Some(row);
+            }
+            if xml_tag_is_self_closing(trimmed) {
+                current_row = None;
+            }
+        } else if is_xml_end_tag(trimmed, "row") {
+            line_info.row = current_row.clone();
+            current_row = None;
+        } else if let Some(row) = current_row.clone() {
+            line_info.row = Some(row);
+        }
+
+        if is_xml_start_tag(trimmed, "c") {
+            if let Some(cell) = sheet_cell_info_from_tag(trimmed, current_row.as_ref()) {
+                line_info.cell = Some(cell.clone());
+                current_cell = Some(cell);
+            }
+            if xml_tag_is_self_closing(trimmed) {
+                current_cell = None;
+            }
+        } else if is_xml_end_tag(trimmed, "c") {
+            line_info.cell = current_cell.clone();
+            current_cell = None;
+        } else if let Some(cell) = current_cell.clone() {
+            line_info.cell = Some(cell);
+        }
+
+        if inside_value
+            && !trimmed.starts_with('<')
+            && current_cell
+                .as_ref()
+                .and_then(|cell| cell.cell_type.as_deref())
+                == Some("s")
+        {
+            line_info.shared_string_index = trimmed.parse::<usize>().ok();
+        }
+
+        if is_xml_start_tag(trimmed, "v") && !xml_tag_is_self_closing(trimmed) {
+            inside_value = true;
+        }
+        if is_xml_end_tag(trimmed, "v") {
+            inside_value = false;
+        }
+
+        context.line_info.push(line_info);
+    }
+
+    context
+}
+
+fn sheet_row_info_from_tag(tag: &str) -> Option<SheetRowXmlInfo> {
+    let row_index = xml_attr_value(tag, "r")?.parse::<u32>().ok()?;
+    Some(SheetRowXmlInfo {
+        row_index,
+        style_id: xml_attr_usize(tag, "s"),
+        node: compact_xml_snippet(tag),
+    })
+}
+
+fn sheet_cell_info_from_tag(
+    tag: &str,
+    current_row: Option<&SheetRowXmlInfo>,
+) -> Option<SheetCellXmlInfo> {
+    let reference = xml_attr_value(tag, "r")?;
+    let (column_name, row_index, column_index) = parse_cell_reference(&reference)?;
+    Some(SheetCellXmlInfo {
+        reference,
+        row_index: row_index.or_else(|| current_row.map(|row| row.row_index))?,
+        column_name,
+        column_index,
+        style_id: xml_attr_usize(tag, "s"),
+        cell_type: xml_attr_value(tag, "t"),
+        node: compact_xml_snippet(tag),
+    })
+}
+
+fn sheet_column_info_from_tag(tag: &str) -> Option<SheetColumnXmlInfo> {
+    let min = xml_attr_value(tag, "min")?.parse::<u32>().ok()?;
+    let max = xml_attr_value(tag, "max")
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(min);
+    Some(SheetColumnXmlInfo {
+        min,
+        max: max.max(min),
+        style_id: xml_attr_usize(tag, "style"),
+        node: compact_xml_snippet(tag),
+    })
+}
+
+fn parse_cell_reference(reference: &str) -> Option<(String, Option<u32>, u32)> {
+    let column_name: String = reference
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphabetic())
+        .collect();
+    if column_name.is_empty() {
+        return None;
+    }
+    let row_text = &reference[column_name.len()..];
+    let row_index = if row_text.is_empty() {
+        None
+    } else {
+        row_text.parse::<u32>().ok()
+    };
+    let column_index = column_index_from_name(&column_name)?;
+    Some((column_name, row_index, column_index))
+}
+
+fn column_index_from_name(column_name: &str) -> Option<u32> {
+    let mut index = 0u32;
+    for ch in column_name.chars() {
+        if !ch.is_ascii_alphabetic() {
+            return None;
+        }
+        index = index
+            .checked_mul(26)?
+            .checked_add((ch.to_ascii_uppercase() as u32) - ('A' as u32) + 1)?;
+    }
+    (index > 0).then_some(index)
+}
+
+fn extract_style_xfs(styles_xml: Option<&[u8]>) -> Vec<String> {
+    let Some(styles_xml) = styles_xml else {
+        return Vec::new();
+    };
+    let styles_xml = String::from_utf8_lossy(styles_xml);
+    let cell_xfs = find_xml_element_block(&styles_xml, "cellXfs").unwrap_or(&styles_xml);
+    extract_xml_nodes(cell_xfs, "xf")
+        .into_iter()
+        .map(|node| compact_xml_snippet(&node))
+        .collect()
+}
+
+fn extract_shared_string_nodes(shared_strings_xml: Option<&[u8]>) -> Vec<String> {
+    let Some(shared_strings_xml) = shared_strings_xml else {
+        return Vec::new();
+    };
+    let shared_strings_xml = String::from_utf8_lossy(shared_strings_xml);
+    extract_xml_nodes(&shared_strings_xml, "si")
+        .into_iter()
+        .map(|node| compact_xml_snippet(&node))
+        .collect()
+}
+
+fn find_xml_element_block<'a>(xml: &'a str, element_name: &str) -> Option<&'a str> {
+    let start = find_xml_start_tag(xml, element_name, 0)?;
+    let open_end = find_xml_tag_end(xml, start)?;
+    if xml_tag_is_self_closing(&xml[start..=open_end]) {
+        return Some(&xml[start..=open_end]);
+    }
+    let close_tag = format!("</{element_name}>");
+    let close_start = xml[open_end + 1..].find(&close_tag)? + open_end + 1;
+    Some(&xml[start..close_start + close_tag.len()])
+}
+
+fn extract_xml_nodes(xml: &str, element_name: &str) -> Vec<String> {
+    let close_tag = format!("</{element_name}>");
+    let mut nodes = Vec::new();
+    let mut search_from = 0usize;
+
+    while let Some(start) = find_xml_start_tag(xml, element_name, search_from) {
+        let Some(open_end) = find_xml_tag_end(xml, start) else {
+            break;
+        };
+        let end = if xml_tag_is_self_closing(&xml[start..=open_end]) {
+            open_end + 1
+        } else if let Some(close_start) = xml[open_end + 1..].find(&close_tag) {
+            open_end + 1 + close_start + close_tag.len()
+        } else {
+            break;
+        };
+        nodes.push(xml[start..end].to_string());
+        search_from = end;
+    }
+
+    nodes
+}
+
+fn find_xml_start_tag(xml: &str, element_name: &str, from: usize) -> Option<usize> {
+    let needle = format!("<{element_name}");
+    let mut search_from = from;
+    while let Some(relative) = xml[search_from..].find(&needle) {
+        let start = search_from + relative;
+        let after = start + needle.len();
+        let boundary = xml[after..]
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_whitespace() || matches!(ch, '>' | '/'));
+        if boundary {
+            return Some(start);
+        }
+        search_from = after;
+    }
+    None
+}
+
+fn find_xml_tag_end(xml: &str, start: usize) -> Option<usize> {
+    let mut quote: Option<char> = None;
+    for (offset, ch) in xml[start..].char_indices() {
+        match (quote, ch) {
+            (Some(current), quote_ch) if current == quote_ch => quote = None,
+            (None, '"' | '\'') => quote = Some(ch),
+            (None, '>') => return Some(start + offset),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn is_xml_start_tag(line: &str, element_name: &str) -> bool {
+    find_xml_start_tag(line, element_name, 0) == Some(0)
+}
+
+fn is_xml_end_tag(line: &str, element_name: &str) -> bool {
+    line.starts_with(&format!("</{element_name}>"))
+}
+
+fn xml_tag_is_self_closing(tag: &str) -> bool {
+    tag.trim_end().ends_with("/>")
+}
+
+fn xml_attr_usize(tag: &str, attr_name: &str) -> Option<usize> {
+    xml_attr_value(tag, attr_name)?.parse::<usize>().ok()
+}
+
+fn xml_attr_value(tag: &str, attr_name: &str) -> Option<String> {
+    let bytes = tag.as_bytes();
+    let attr = attr_name.as_bytes();
+    let mut index = 0usize;
+
+    while index + attr.len() <= bytes.len() {
+        if &bytes[index..index + attr.len()] != attr {
+            index += 1;
+            continue;
+        }
+        let before_ok =
+            index == 0 || bytes[index - 1].is_ascii_whitespace() || bytes[index - 1] == b'<';
+        let mut cursor = index + attr.len();
+        while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if !before_ok || cursor >= bytes.len() || bytes[cursor] != b'=' {
+            index += 1;
+            continue;
+        }
+        cursor += 1;
+        while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= bytes.len() || !matches!(bytes[cursor], b'"' | b'\'') {
+            return None;
+        }
+        let quote = bytes[cursor];
+        cursor += 1;
+        let value_start = cursor;
+        while cursor < bytes.len() && bytes[cursor] != quote {
+            cursor += 1;
+        }
+        if cursor >= bytes.len() {
+            return None;
+        }
+        return Some(tag[value_start..cursor].to_string());
+    }
+
+    None
+}
+
+fn compact_xml_snippet(snippet: &str) -> String {
+    let mut compact = String::new();
+    let mut previous_was_space = false;
+    for ch in snippet.trim().chars() {
+        if ch.is_whitespace() {
+            if !previous_was_space {
+                compact.push(' ');
+            }
+            previous_was_space = true;
+        } else {
+            compact.push(ch);
+            previous_was_space = false;
+        }
+    }
+    compact
+}
+
+fn write_git_no_index_diff(
+    original_path: &Path,
+    shrunk_path: &Path,
+    diff_path: &Path,
+    original_context: &SheetXmlDiffSourceContext,
+    shrunk_context: &SheetXmlDiffSourceContext,
+) -> anyhow::Result<()> {
+    let output = Command::new("git")
+        .arg("diff")
+        .arg("--no-index")
+        .arg("--no-ext-diff")
+        .arg("--")
+        .arg(original_path)
+        .arg(shrunk_path)
+        .output()
+        .map_err(|error| anyhow::anyhow!("failed to run git diff --no-index: {error}"))?;
+
+    if !(output.status.success() || output.status.code() == Some(1)) {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git diff --no-index failed: {stderr}");
+    }
+
+    let diff = String::from_utf8_lossy(&output.stdout);
+    let annotated_diff = annotate_sheet_xml_diff(&diff, original_context, shrunk_context);
+    fs::write(diff_path, annotated_diff.as_bytes())?;
+    Ok(())
+}
+
+fn annotate_sheet_xml_diff(
+    diff: &str,
+    original_context: &SheetXmlDiffSourceContext,
+    shrunk_context: &SheetXmlDiffSourceContext,
+) -> String {
+    let mut annotated = String::new();
+    let mut original_line = 0usize;
+    let mut shrunk_line = 0usize;
+
+    for line in diff.lines() {
+        annotated.push_str(line);
+        annotated.push('\n');
+
+        if let Some((old_start, new_start)) = parse_unified_diff_hunk_header(line) {
+            original_line = old_start;
+            shrunk_line = new_start;
+            continue;
+        }
+
+        if line.starts_with("---") || line.starts_with("+++") {
+            continue;
+        }
+
+        if line.starts_with('-') {
+            append_sheet_xml_diff_annotations(
+                &mut annotated,
+                "original",
+                original_line,
+                original_context,
+            );
+            original_line += 1;
+        } else if line.starts_with('+') {
+            append_sheet_xml_diff_annotations(
+                &mut annotated,
+                "shrunk",
+                shrunk_line,
+                shrunk_context,
+            );
+            shrunk_line += 1;
+        } else if line.starts_with(' ') {
+            original_line += 1;
+            shrunk_line += 1;
+        }
+    }
+
+    annotated
+}
+
+fn parse_unified_diff_hunk_header(line: &str) -> Option<(usize, usize)> {
+    if !line.starts_with("@@ ") {
+        return None;
+    }
+    let old_marker = line.find('-')?;
+    let new_marker = line.find('+')?;
+    Some((
+        parse_unified_diff_hunk_start(&line[old_marker + 1..])?,
+        parse_unified_diff_hunk_start(&line[new_marker + 1..])?,
+    ))
+}
+
+fn parse_unified_diff_hunk_start(text: &str) -> Option<usize> {
+    let digits: String = text.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    digits.parse::<usize>().ok()
+}
+
+fn append_sheet_xml_diff_annotations(
+    annotated: &mut String,
+    side: &str,
+    line_number: usize,
+    context: &SheetXmlDiffSourceContext,
+) {
+    if line_number == 0 {
+        return;
+    }
+    let Some(line_info) = context.line_info.get(line_number - 1) else {
+        return;
+    };
+
+    if let Some(cell) = &line_info.cell {
+        append_cell_diff_annotations(annotated, side, line_number, context, line_info, cell);
+    } else if let Some(row) = &line_info.row {
+        append_row_diff_annotations(annotated, side, line_number, context, row);
+    }
+}
+
+fn append_cell_diff_annotations(
+    annotated: &mut String,
+    side: &str,
+    line_number: usize,
+    context: &SheetXmlDiffSourceContext,
+    line_info: &SheetXmlDiffLineInfo,
+    cell: &SheetCellXmlInfo,
+) {
+    let row = context
+        .rows_by_index
+        .get(&cell.row_index)
+        .or(line_info.row.as_ref());
+    let column = context.column_for_index(cell.column_index);
+    let effective_style = cell
+        .style_id
+        .map(|style_id| ("cell", style_id))
+        .or_else(|| row.and_then(|row| row.style_id.map(|style_id| ("row", style_id))))
+        .or_else(|| column.and_then(|column| column.style_id.map(|style_id| ("column", style_id))))
+        .unwrap_or(("default", 0));
+
+    append_annotation_line(
+        annotated,
+        format!(
+            "side={side} line={line_number} cell={} row={} column={} cell_s={} row_s={} column_s={} effective_s={} effective_source={} cell_node={}",
+            cell.reference,
+            cell.row_index,
+            cell.column_name,
+            style_id_text(cell.style_id, true),
+            style_id_text(row.and_then(|row| row.style_id), false),
+            style_id_text(column.and_then(|column| column.style_id), false),
+            effective_style.1,
+            effective_style.0,
+            cell.node,
+        ),
+    );
+    append_style_annotation(
+        annotated,
+        side,
+        line_number,
+        "effective",
+        Some(effective_style.1),
+        context,
+    );
+    append_style_annotation(annotated, side, line_number, "cell", cell.style_id, context);
+
+    if let Some(row) = row {
+        append_annotation_line(
+            annotated,
+            format!(
+                "side={side} line={line_number} row_node={} row_s={}",
+                row.node,
+                style_id_text(row.style_id, false)
+            ),
+        );
+        append_style_annotation(annotated, side, line_number, "row", row.style_id, context);
+    }
+
+    if let Some(column) = column {
+        append_annotation_line(
+            annotated,
+            format!(
+                "side={side} line={line_number} column_node={} column_s={}",
+                column.node,
+                style_id_text(column.style_id, false)
+            ),
+        );
+        append_style_annotation(
+            annotated,
+            side,
+            line_number,
+            "column",
+            column.style_id,
+            context,
+        );
+    }
+
+    if let Some(shared_string_index) = line_info.shared_string_index {
+        let node = context
+            .shared_strings
+            .get(shared_string_index)
+            .map(String::as_str)
+            .unwrap_or("<missing shared string node>");
+        append_annotation_line(
+            annotated,
+            format!("side={side} line={line_number} shared_string[{shared_string_index}]={node}"),
+        );
+    }
+}
+
+fn append_row_diff_annotations(
+    annotated: &mut String,
+    side: &str,
+    line_number: usize,
+    context: &SheetXmlDiffSourceContext,
+    row: &SheetRowXmlInfo,
+) {
+    let effective_style = row.style_id.unwrap_or(0);
+    append_annotation_line(
+        annotated,
+        format!(
+            "side={side} line={line_number} row={} row_s={} effective_s={} row_node={}",
+            row.row_index,
+            style_id_text(row.style_id, false),
+            effective_style,
+            row.node
+        ),
+    );
+    append_style_annotation(
+        annotated,
+        side,
+        line_number,
+        if row.style_id.is_some() {
+            "row"
+        } else {
+            "default"
+        },
+        Some(effective_style),
+        context,
+    );
+}
+
+fn append_style_annotation(
+    annotated: &mut String,
+    side: &str,
+    line_number: usize,
+    label: &str,
+    style_id: Option<usize>,
+    context: &SheetXmlDiffSourceContext,
+) {
+    let Some(style_id) = style_id else {
+        return;
+    };
+    let node = context
+        .style_xfs
+        .get(style_id)
+        .map(String::as_str)
+        .unwrap_or("<missing style xf node>");
+    append_annotation_line(
+        annotated,
+        format!("side={side} line={line_number} {label}_style_xf[{style_id}]={node}"),
+    );
+}
+
+fn append_annotation_line(annotated: &mut String, text: String) {
+    annotated.push_str("# excel-shrink-context ");
+    annotated.push_str(&text);
+    annotated.push('\n');
+}
+
+fn style_id_text(style_id: Option<usize>, default_zero: bool) -> String {
+    match (style_id, default_zero) {
+        (Some(style_id), _) => style_id.to_string(),
+        (None, true) => "0 (implicit)".to_string(),
+        (None, false) => "<none>".to_string(),
+    }
+}
+
+impl SheetXmlDiffSourceContext {
+    fn column_for_index(&self, column_index: u32) -> Option<&SheetColumnXmlInfo> {
+        self.columns
+            .iter()
+            .find(|column| column.min <= column_index && column_index <= column.max)
+    }
+}
+
 fn normalize_automation_path(path: &PathBuf) -> PathBuf {
     #[cfg(not(windows))]
     {
@@ -913,6 +2325,118 @@ fn copy_workbook_with_suffix(
     Ok(copied_path)
 }
 
+#[derive(Debug)]
+enum PowerShellScriptOutcome {
+    Completed(ExitStatus),
+    TimedOut { stalled_for: Duration },
+}
+
+fn ensure_screenshot_capture_completed(
+    status: &ExitStatus,
+    capture_manifest_path: &Path,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        capture_manifest_path.exists(),
+        "Excel screenshot capture did not create manifest: {}",
+        capture_manifest_path.display()
+    );
+
+    anyhow::ensure!(
+        status.success(),
+        "Excel screenshot capture failed; manifest: {}",
+        capture_manifest_path.display()
+    );
+
+    Ok(())
+}
+
+fn screenshot_capture_needs_original_workbook_repair(
+    status: &ExitStatus,
+    progress_path: &Path,
+    capture_manifest_path: &Path,
+) -> bool {
+    if status.success() && capture_manifest_path.exists() {
+        return false;
+    }
+
+    let progress = fs::read_to_string(progress_path).unwrap_or_default();
+    !progress.contains("opened original workbook")
+}
+
+fn preserve_stalled_progress_log(output_dir: &Path, progress_path: &Path) -> anyhow::Result<()> {
+    if !progress_path.exists() {
+        return Ok(());
+    }
+
+    let preserved = output_dir.join("screenshot-progress.before-workbook-xml-repair.log");
+    fs::copy(progress_path, &preserved).map_err(|e| {
+        anyhow::anyhow!(
+            "failed to preserve stalled screenshot progress log '{}' to '{}': {e}",
+            progress_path.display(),
+            preserved.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn repair_original_workbook_xml_only(
+    original_path: &Path,
+    work_dir: &Path,
+) -> anyhow::Result<PathBuf> {
+    fs::create_dir_all(work_dir)?;
+    let repair_input =
+        copy_workbook_with_suffix(original_path, work_dir, WORKBOOK_XML_REPAIRED_SUFFIX)?;
+    let repair_output_dir = work_dir.join(WORKBOOK_XML_REPAIRED_SUFFIX);
+    fs::create_dir_all(&repair_output_dir)?;
+
+    let repaired_path = repair_output_dir.join(repair_input.file_name().ok_or_else(|| {
+        anyhow::anyhow!(
+            "repair input path has no file name: {}",
+            repair_input.display()
+        )
+    })?);
+    let _ = fs::remove_file(&repaired_path);
+
+    let cli = Cli {
+        path: repair_input.clone(),
+        output: repair_output_dir,
+        recursive: false,
+        disable_multiprocessing: true,
+        chunk_size: 16_777_216,
+        parallel_range_chunk_size: 134_217_728,
+        force_overwrite: true,
+        sheets: Vec::new(),
+        only_clean_workbook: true,
+        disable_sheetdata_splitting: false,
+        analysis_mode: false,
+        analysis_csv: None,
+        working_directory: None,
+        disable_tail_pruning: false,
+        disable_trailing_layout_only_rows: false,
+        disable_extraneous_column_merge: false,
+        disable_empty_style_representatives: false,
+        preprocess_empty_cells: false,
+        writer_workers: Some(1),
+        max_active_workbooks: Some(1),
+        compression_level: 2,
+        store_output: false,
+        keep_unreferenced_whitespace_cells: false,
+        remove_unreferenced_hidden_content_cells: false,
+        remove_apply_protection_without_sheet_protection: false,
+        console_log_level: LogLevel::Info,
+        file_log_level: None,
+    };
+
+    process_files(vec![repair_input], &cli)?;
+    anyhow::ensure!(
+        repaired_path.exists(),
+        "workbook.xml-only repair did not create expected output: {}",
+        repaired_path.display()
+    );
+
+    Ok(repaired_path)
+}
+
 fn run_power_shell_script(script_path: &Path, args: &[(&str, String)]) -> anyhow::Result<()> {
     let status = run_power_shell_script_with_status(script_path, args)?;
     anyhow::ensure!(
@@ -927,6 +2451,54 @@ fn run_power_shell_script_with_status(
     script_path: &Path,
     args: &[(&str, String)],
 ) -> anyhow::Result<std::process::ExitStatus> {
+    let mut command = power_shell_script_command(script_path, args)?;
+    command
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to start PowerShell automation: {e}"))
+}
+
+fn run_power_shell_script_with_status_and_stall_timeout(
+    script_path: &Path,
+    args: &[(&str, String)],
+    progress_path: &Path,
+    stall_timeout: Duration,
+) -> anyhow::Result<PowerShellScriptOutcome> {
+    let mut child = power_shell_script_command(script_path, args)?
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("failed to start PowerShell automation: {e}"))?;
+    let mut last_progress_at = Instant::now();
+    let mut last_progress_modified: Option<SystemTime> = None;
+
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| anyhow::anyhow!("failed to poll PowerShell automation: {e}"))?
+        {
+            return Ok(PowerShellScriptOutcome::Completed(status));
+        }
+
+        if let Some(modified) = file_modified_at(progress_path) {
+            if last_progress_modified.is_none_or(|previous| modified > previous) {
+                last_progress_modified = Some(modified);
+                last_progress_at = Instant::now();
+            }
+        }
+
+        let stalled_for = last_progress_at.elapsed();
+        if stalled_for >= stall_timeout {
+            terminate_child_process(&mut child);
+            terminate_excel_processes_from_progress_log(progress_path);
+            return Ok(PowerShellScriptOutcome::TimedOut { stalled_for });
+        }
+
+        thread::sleep(EXCEL_SCREENSHOT_POLL_INTERVAL);
+    }
+}
+
+fn power_shell_script_command(
+    script_path: &Path,
+    args: &[(&str, String)],
+) -> anyhow::Result<Command> {
     let Some(shell) = find_power_shell() else {
         anyhow::bail!(
             "PowerShell is not available. Install Excel-accessible PowerShell or run on Windows/WSL with powershell.exe."
@@ -950,9 +2522,69 @@ fn run_power_shell_script_with_status(
         command.arg(format!("-{name}")).arg(value);
     }
 
-    command
-        .status()
-        .map_err(|e| anyhow::anyhow!("failed to start PowerShell automation: {e}"))
+    Ok(command)
+}
+
+fn file_modified_at(path: &Path) -> Option<SystemTime> {
+    fs::metadata(path).ok()?.modified().ok()
+}
+
+fn terminate_child_process(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn terminate_excel_processes_from_progress_log(progress_path: &Path) {
+    for pid in excel_pids_from_progress_log(progress_path) {
+        eprintln!("[excel-screenshot] terminating stalled Excel automation process pid={pid}");
+        terminate_process_by_pid(pid);
+    }
+}
+
+fn excel_pids_from_progress_log(progress_path: &Path) -> BTreeSet<u32> {
+    let Ok(text) = fs::read_to_string(progress_path) else {
+        return BTreeSet::new();
+    };
+
+    let mut pids = BTreeSet::new();
+    for marker in ["excel pid=", "excel_pid="] {
+        let mut rest = text.as_str();
+        while let Some(index) = rest.find(marker) {
+            let after_marker = &rest[index + marker.len()..];
+            let digits: String = after_marker
+                .chars()
+                .take_while(|ch| ch.is_ascii_digit())
+                .collect();
+            if let Ok(pid) = digits.parse::<u32>() {
+                pids.insert(pid);
+            }
+            rest = &after_marker[digits.len()..];
+        }
+    }
+    pids
+}
+
+fn terminate_process_by_pid(pid: u32) {
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .arg("/PID")
+            .arg(pid.to_string())
+            .arg("/F")
+            .arg("/T")
+            .status();
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = Command::new("powershell.exe")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(format!(
+                "Stop-Process -Id {pid} -Force -ErrorAction SilentlyContinue"
+            ))
+            .status();
+    }
 }
 
 fn find_power_shell() -> Option<&'static str> {
@@ -1066,6 +2698,18 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 
+if (-not ('ExcelShrinkScreenshotWin32' -as [type])) {
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class ExcelShrinkScreenshotWin32 {
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+"@
+}
+
 function Write-ProgressLine([string]$message) {
     $timestamp = Get-Date -Format o
     Add-Content -Path $ProgressPath -Value "$timestamp $message"
@@ -1149,9 +2793,91 @@ function Hide-ActiveGridlines($worksheet, [string]$label) {
     }
 }
 
+function Default-ScreenshotBackgroundRgba() {
+    return [pscustomobject]@{
+        r = 255
+        g = 255
+        b = 255
+        a = 255
+    }
+}
+
+function Convert-ExcelColorToRgba($color) {
+    if ($null -eq $color) {
+        return $null
+    }
+
+    try {
+        $value = [int64]$color
+        if ($value -lt 0) {
+            return $null
+        }
+
+        return [pscustomobject]@{
+            r = [int]($value -band 255)
+            g = [int](($value -shr 8) -band 255)
+            b = [int](($value -shr 16) -band 255)
+            a = 255
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-InteriorBackgroundRgba($interior) {
+    if ($null -eq $interior) {
+        return $null
+    }
+
+    try {
+        $colorIndex = $interior.ColorIndex
+        if ($null -ne $colorIndex -and [int]$colorIndex -eq -4142) {
+            return $null
+        }
+    }
+    catch {
+    }
+
+    try {
+        return Convert-ExcelColorToRgba $interior.Color
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-RangePaddingBackgroundRgba($range) {
+    try {
+        $row = [Math]::Max(1, [int]$range.Rows.Count)
+        $column = [Math]::Max(1, [int]$range.Columns.Count)
+        $cell = $range.Cells.Item($row, $column)
+
+        try {
+            $rgba = Get-InteriorBackgroundRgba $cell.DisplayFormat.Interior
+            if ($null -ne $rgba) {
+                return $rgba
+            }
+        }
+        catch {
+        }
+
+        $rgba = Get-InteriorBackgroundRgba $cell.Interior
+        if ($null -ne $rgba) {
+            return $rgba
+        }
+    }
+    catch {
+    }
+
+    return (Default-ScreenshotBackgroundRgba)
+}
+
 function Save-RangeImage($worksheet, $range, [string]$path, [string]$label, [string]$addressLabel) {
     $address = if (-not [string]::IsNullOrWhiteSpace($addressLabel)) { $addressLabel } else { Range-Address $range }
     Write-ProgressLine "capture start $label worksheet='$($worksheet.Name)' range='$address'"
+    $backgroundRgba = Get-RangePaddingBackgroundRgba $range
+    Write-ProgressLine "capture background $label rgba=$($backgroundRgba.r),$($backgroundRgba.g),$($backgroundRgba.b),$($backgroundRgba.a)"
 
     $image = $null
     $lastError = $null
@@ -1190,11 +2916,20 @@ function Save-RangeImage($worksheet, $range, [string]$path, [string]$label, [str
         }
         throw "Clipboard did not contain an image for worksheet '$($worksheet.Name)' range '$address'"
     }
+    $width = [int]$image.Width
+    $height = [int]$image.Height
     $image.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-    Write-ProgressLine "capture image $label width=$($image.Width) height=$($image.Height)"
+    Write-ProgressLine "capture image $label width=$width height=$height"
     $image.Dispose()
     [System.Windows.Forms.Clipboard]::Clear()
     Write-ProgressLine "capture saved $label path='$path' bytes=$(File-Size $path)"
+    return [pscustomobject]@{
+        path = $path
+        width = $width
+        height = $height
+        pixels = [int64]$width * [int64]$height
+        background_rgba = $backgroundRgba
+    }
 }
 
 function Use-CachedRangeImage([string]$path, [string]$label) {
@@ -1202,6 +2937,19 @@ function Use-CachedRangeImage([string]$path, [string]$label) {
         throw "cached screenshot missing for $label path='$path'"
     }
     Write-ProgressLine "capture cache hit $label path='$path' bytes=$(File-Size $path)"
+    $image = [System.Drawing.Image]::FromFile($path)
+    try {
+        return [pscustomobject]@{
+            path = $path
+            width = [int]$image.Width
+            height = [int]$image.Height
+            pixels = [int64]$image.Width * [int64]$image.Height
+            background_rgba = $null
+        }
+    }
+    finally {
+        $image.Dispose()
+    }
 }
 
 function Range-CaptureInfo($range, [string]$strategy, [string]$address, [string]$usedRangeError) {
@@ -1216,6 +2964,298 @@ function Range-CaptureInfo($range, [string]$strategy, [string]$address, [string]
     }
 }
 
+function Is-MemoryLikeCaptureError([string]$message) {
+    if ([string]::IsNullOrWhiteSpace($message)) {
+        return $false
+    }
+    return $message -match '(?i)(memory|speicher|ressource|resource|not enough|nicht genug|nicht genügend|out of|8007000e|e_outofmemory)'
+}
+
+function Get-RangePointSize($range) {
+    $width = [double]0
+    $height = [double]0
+    try {
+        $width = [double]$range.Width
+    }
+    catch {
+        $width = [double]$range.Columns.Count
+    }
+    try {
+        $height = [double]$range.Height
+    }
+    catch {
+        $height = [double]$range.Rows.Count
+    }
+    return [pscustomobject]@{
+        width = $width
+        height = $height
+    }
+}
+
+function Prefer-ColumnSplitForRangePair($origRange, $shrunkRange) {
+    $origSize = Get-RangePointSize $origRange
+    $shrunkSize = Get-RangePointSize $shrunkRange
+    $maxWidth = [Math]::Max([double]$origSize.width, [double]$shrunkSize.width)
+    $maxHeight = [Math]::Max([double]$origSize.height, [double]$shrunkSize.height)
+    if ($maxWidth -gt 0 -or $maxHeight -gt 0) {
+        return $maxWidth -gt $maxHeight
+    }
+    return [int]$shrunkRange.Columns.Count -gt [int]$shrunkRange.Rows.Count
+}
+
+function Worksheet-RangeByBounds($worksheet, [int]$startRow, [int]$startColumn, [int]$rows, [int]$columns) {
+    $endRow = $startRow + $rows - 1
+    $endColumn = $startColumn + $columns - 1
+    return ,$worksheet.Range($worksheet.Cells.Item($startRow, $startColumn), $worksheet.Cells.Item($endRow, $endColumn))
+}
+
+function Split-RangePair($origSheet, $shrunkSheet, $origRange, $shrunkRange, [bool]$preferColumns) {
+    $startRow = [int]$shrunkRange.Row
+    $startColumn = [int]$shrunkRange.Column
+    $rows = [int]$shrunkRange.Rows.Count
+    $columns = [int]$shrunkRange.Columns.Count
+    $splitColumns = $false
+
+    if ($preferColumns -and $columns -gt 1) {
+        $splitColumns = $true
+    }
+    elseif ((-not $preferColumns) -and $rows -gt 1) {
+        $splitColumns = $false
+    }
+    elseif ($columns -gt 1) {
+        $splitColumns = $true
+    }
+    elseif ($rows -gt 1) {
+        $splitColumns = $false
+    }
+    else {
+        return @()
+    }
+
+    if ($splitColumns) {
+        $leftColumns = [Math]::Max(1, [int][Math]::Floor($columns / 2))
+        $rightColumns = $columns - $leftColumns
+        if ($rightColumns -le 0) { return @() }
+        return @(
+            [pscustomobject]@{
+                original = Worksheet-RangeByBounds $origSheet $startRow $startColumn $rows $leftColumns
+                shrunk = Worksheet-RangeByBounds $shrunkSheet $startRow $startColumn $rows $leftColumns
+            },
+            [pscustomobject]@{
+                original = Worksheet-RangeByBounds $origSheet $startRow ($startColumn + $leftColumns) $rows $rightColumns
+                shrunk = Worksheet-RangeByBounds $shrunkSheet $startRow ($startColumn + $leftColumns) $rows $rightColumns
+            }
+        )
+    }
+
+    $topRows = [Math]::Max(1, [int][Math]::Floor($rows / 2))
+    $bottomRows = $rows - $topRows
+    if ($bottomRows -le 0) { return @() }
+    return @(
+        [pscustomobject]@{
+            original = Worksheet-RangeByBounds $origSheet $startRow $startColumn $topRows $columns
+            shrunk = Worksheet-RangeByBounds $shrunkSheet $startRow $startColumn $topRows $columns
+        },
+        [pscustomobject]@{
+            original = Worksheet-RangeByBounds $origSheet ($startRow + $topRows) $startColumn $bottomRows $columns
+            shrunk = Worksheet-RangeByBounds $shrunkSheet ($startRow + $topRows) $startColumn $bottomRows $columns
+        }
+    )
+}
+
+function Capture-RangeTileRecursive($origSheet, $shrunkSheet, $origRange, $shrunkRange, [string]$originalCacheDir, [string]$shrunkCacheDir, [string]$baseName, [string]$label, [string]$strategy, [string]$usedRangeError, [ref]$nextTileIndex, [int]$depth) {
+    $tileIndex = [int]$nextTileIndex.Value
+    $nextTileIndex.Value = $tileIndex + 1
+    $origPath = Join-Path $originalCacheDir ("{0}-tile-{1:D3}.png" -f $baseName, $tileIndex)
+    $shrunkPath = Join-Path $shrunkCacheDir ("{0}-tile-{1:D3}.png" -f $baseName, $tileIndex)
+    $address = Range-Address $shrunkRange
+    $tileLabel = "$label tile=$tileIndex depth=$depth"
+
+    try {
+        $origInfo = Save-RangeImage $origSheet $origRange $origPath "original $tileLabel" $address
+        $shrunkInfo = Save-RangeImage $shrunkSheet $shrunkRange $shrunkPath "shrunk $tileLabel" $address
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        Remove-Item $origPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $shrunkPath -Force -ErrorAction SilentlyContinue
+        if (-not (Is-MemoryLikeCaptureError $errorMessage) -or $depth -ge 16) {
+            throw
+        }
+
+        $preferColumns = Prefer-ColumnSplitForRangePair $origRange $shrunkRange
+        $parts = @(Split-RangePair $origSheet $shrunkSheet $origRange $shrunkRange $preferColumns)
+        if ($parts.Count -eq 0) {
+            throw
+        }
+
+        Write-ProgressLine "tile split $tileLabel range='$address' reason='memory_error' error='$errorMessage' split_axis=$(if ($preferColumns) { 'columns' } else { 'rows' })"
+        $tiles = New-Object System.Collections.ArrayList
+        foreach ($part in $parts) {
+            foreach ($tile in @(Capture-RangeTileRecursive $origSheet $shrunkSheet $part.original $part.shrunk $originalCacheDir $shrunkCacheDir $baseName $label $strategy $usedRangeError $nextTileIndex ($depth + 1))) {
+                [void]$tiles.Add($tile)
+            }
+        }
+        return @($tiles.ToArray())
+    }
+
+    $maxPixels = [Math]::Max([int64]$origInfo.pixels, [int64]$shrunkInfo.pixels)
+
+    if ($maxPixels -le $MaxScreenshotPixels -or $depth -ge 16) {
+        return @([pscustomobject]@{
+            tile_index = $tileIndex
+            capture_range = $address
+            capture_info = Range-CaptureInfo $shrunkRange "${strategy}_tile" $address $usedRangeError
+            original_image = $origPath
+            shrunk_image = $shrunkPath
+            original_background_rgba = $origInfo.background_rgba
+            shrunk_background_rgba = $shrunkInfo.background_rgba
+            original_width = [int]$origInfo.width
+            original_height = [int]$origInfo.height
+            shrunk_width = [int]$shrunkInfo.width
+            shrunk_height = [int]$shrunkInfo.height
+        })
+    }
+
+    $maxWidth = [Math]::Max([int]$origInfo.width, [int]$shrunkInfo.width)
+    $maxHeight = [Math]::Max([int]$origInfo.height, [int]$shrunkInfo.height)
+    $preferColumns = $maxWidth -gt $maxHeight
+    $parts = @(Split-RangePair $origSheet $shrunkSheet $origRange $shrunkRange $preferColumns)
+    if ($parts.Count -eq 0) {
+        return @([pscustomobject]@{
+            tile_index = $tileIndex
+            capture_range = $address
+            capture_info = Range-CaptureInfo $shrunkRange "${strategy}_tile" $address $usedRangeError
+            original_image = $origPath
+            shrunk_image = $shrunkPath
+            original_background_rgba = $origInfo.background_rgba
+            shrunk_background_rgba = $shrunkInfo.background_rgba
+            original_width = [int]$origInfo.width
+            original_height = [int]$origInfo.height
+            shrunk_width = [int]$shrunkInfo.width
+            shrunk_height = [int]$shrunkInfo.height
+        })
+    }
+
+    Write-ProgressLine "tile split $tileLabel range='$address' width=$maxWidth height=$maxHeight pixels=$maxPixels max_pixels=$MaxScreenshotPixels split_axis=$(if ($preferColumns) { 'columns' } else { 'rows' })"
+    Remove-Item $origPath -Force -ErrorAction SilentlyContinue
+    Remove-Item $shrunkPath -Force -ErrorAction SilentlyContinue
+
+    $tiles = New-Object System.Collections.ArrayList
+    foreach ($part in $parts) {
+        foreach ($tile in @(Capture-RangeTileRecursive $origSheet $shrunkSheet $part.original $part.shrunk $originalCacheDir $shrunkCacheDir $baseName $label $strategy $usedRangeError $nextTileIndex ($depth + 1))) {
+            [void]$tiles.Add($tile)
+        }
+    }
+    return @($tiles.ToArray())
+}
+
+function Capture-RangeImageSet($origSheet, $shrunkSheet, $origRange, $shrunkRange, [string]$originalCacheDir, [string]$shrunkCacheDir, [string]$baseName, [string]$label, [string]$strategy, [string]$usedRangeError) {
+    $origPath = Join-Path $originalCacheDir ("{0}.png" -f $baseName)
+    $shrunkPath = Join-Path $shrunkCacheDir ("{0}.png" -f $baseName)
+    $address = Range-Address $shrunkRange
+    try {
+        $origInfo = Save-RangeImage $origSheet $origRange $origPath "original $label" $address
+        $shrunkInfo = Save-RangeImage $shrunkSheet $shrunkRange $shrunkPath "shrunk $label" $address
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        Remove-Item $origPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $shrunkPath -Force -ErrorAction SilentlyContinue
+        if (-not (Is-MemoryLikeCaptureError $errorMessage)) {
+            throw
+        }
+
+        $preferColumns = Prefer-ColumnSplitForRangePair $origRange $shrunkRange
+        $parts = @(Split-RangePair $origSheet $shrunkSheet $origRange $shrunkRange $preferColumns)
+        if ($parts.Count -eq 0) {
+            throw
+        }
+
+        Write-ProgressLine "capture split $label range='$address' reason='memory_error' error='$errorMessage' split_axis=$(if ($preferColumns) { 'columns' } else { 'rows' })"
+        $tiles = New-Object System.Collections.ArrayList
+        $nextTileIndex = 1
+        foreach ($part in $parts) {
+            foreach ($tile in @(Capture-RangeTileRecursive $origSheet $shrunkSheet $part.original $part.shrunk $originalCacheDir $shrunkCacheDir $baseName $label $strategy $usedRangeError ([ref]$nextTileIndex) 1)) {
+                [void]$tiles.Add($tile)
+            }
+        }
+
+        return [pscustomobject]@{
+            capture_range = $address
+            capture_strategy = "${strategy}_tiled_after_memory_error"
+            capture_info = Range-CaptureInfo $shrunkRange "${strategy}_tiled_after_memory_error" $address $usedRangeError
+            original_image = $null
+            shrunk_image = $null
+            original_background_rgba = $null
+            shrunk_background_rgba = $null
+            tiles = @($tiles.ToArray())
+        }
+    }
+
+    $maxPixels = [Math]::Max([int64]$origInfo.pixels, [int64]$shrunkInfo.pixels)
+    $captureInfo = Range-CaptureInfo $shrunkRange $strategy $address $usedRangeError
+
+    if ($maxPixels -le $MaxScreenshotPixels) {
+        return [pscustomobject]@{
+            capture_range = $address
+            capture_strategy = $strategy
+            capture_info = $captureInfo
+            original_image = $origPath
+            shrunk_image = $shrunkPath
+            original_background_rgba = $origInfo.background_rgba
+            shrunk_background_rgba = $shrunkInfo.background_rgba
+            tiles = @()
+        }
+    }
+
+    $maxWidth = [Math]::Max([int]$origInfo.width, [int]$shrunkInfo.width)
+    $maxHeight = [Math]::Max([int]$origInfo.height, [int]$shrunkInfo.height)
+    $preferColumns = $maxWidth -gt $maxHeight
+    $parts = @(Split-RangePair $origSheet $shrunkSheet $origRange $shrunkRange $preferColumns)
+    if ($parts.Count -eq 0) {
+        return [pscustomobject]@{
+            capture_range = $address
+            capture_strategy = $strategy
+            capture_info = $captureInfo
+            original_image = $origPath
+            shrunk_image = $shrunkPath
+            original_background_rgba = $origInfo.background_rgba
+            shrunk_background_rgba = $shrunkInfo.background_rgba
+            tiles = @()
+        }
+    }
+
+    Write-ProgressLine "capture split $label range='$address' width=$maxWidth height=$maxHeight pixels=$maxPixels max_pixels=$MaxScreenshotPixels split_axis=$(if ($preferColumns) { 'columns' } else { 'rows' })"
+    Remove-Item $origPath -Force -ErrorAction SilentlyContinue
+    Remove-Item $shrunkPath -Force -ErrorAction SilentlyContinue
+
+    $tiles = New-Object System.Collections.ArrayList
+    $nextTileIndex = 1
+    foreach ($part in $parts) {
+        foreach ($tile in @(Capture-RangeTileRecursive $origSheet $shrunkSheet $part.original $part.shrunk $originalCacheDir $shrunkCacheDir $baseName $label $strategy $usedRangeError ([ref]$nextTileIndex) 1)) {
+            [void]$tiles.Add($tile)
+        }
+    }
+
+    return [pscustomobject]@{
+        capture_range = $address
+        capture_strategy = "${strategy}_tiled"
+        capture_info = Range-CaptureInfo $shrunkRange "${strategy}_tiled" $address $usedRangeError
+        original_image = $null
+        shrunk_image = $null
+        original_background_rgba = $null
+        shrunk_background_rgba = $null
+        tiles = @($tiles.ToArray())
+    }
+}
+
+function Get-WindowProcessId($hwnd) {
+    $processId = [uint32]0
+    [void][ExcelShrinkScreenshotWin32]::GetWindowThreadProcessId([IntPtr]$hwnd, [ref]$processId)
+    return [int]$processId
+}
+
 $excel = $null
 $original = $null
 $shrunk = $null
@@ -1224,6 +3264,7 @@ $rangeLimitsByIndex = @{}
 $ProgressPath = Join-Path $OutputDir "screenshot-progress.log"
 $originalAlreadyCachedEnabled = $OriginalAlreadyCached -match '^(1|true|yes)$'
 $shrunkAlreadyCachedEnabled = $ShrunkAlreadyCached -match '^(1|true|yes)$'
+$MaxScreenshotPixels = [int64]80000000
 
 if (-not [string]::IsNullOrWhiteSpace($RangeLimitPath) -and (Test-Path $RangeLimitPath)) {
     $rangeLimits = Get-Content -Path $RangeLimitPath -Raw | ConvertFrom-Json
@@ -1250,6 +3291,8 @@ try {
     $excel.DisplayAlerts = $false
     $excel.AskToUpdateLinks = $false
     $excel.AutomationSecurity = 3
+    $excelProcessId = Get-WindowProcessId $excel.Hwnd
+    Write-ProgressLine "excel pid=$excelProcessId"
 
     $original = $excel.Workbooks.Open($OriginalPath, 0, $false)
     if ($null -eq $original) {
@@ -1269,11 +3312,16 @@ try {
         $origSheet = $original.Worksheets.Item($i)
         $shrunkSheet = $shrunk.Worksheets.Item($i)
         $rangeLimit = $rangeLimitsByIndex[$i]
-        $imageName = "{0:D3}.png" -f $i
+        $imageBase = "{0:D3}" -f $i
+        $imageName = "$imageBase.png"
         $origImage = Join-Path $OriginalCacheDir $imageName
         $shrunkImage = Join-Path $ShrunkCacheDir $imageName
         $captureRange = $null
         $captureInfo = $null
+        $captureStrategy = $null
+        $captureTiles = @()
+        $origBackgroundRgba = $null
+        $shrunkBackgroundRgba = $null
         $usedRangeError = $null
 
         Write-ProgressLine "sheet start index=$i name='$($origSheet.Name)'"
@@ -1286,27 +3334,26 @@ try {
                 $captureRange = RangeLimit-Address $rangeLimit $shrunkRange
                 $captureInfo = Range-CaptureInfo $shrunkRange $primaryStrategy $captureRange $null
                 Write-ProgressLine "sheet primary range index=$i strategy=$primaryStrategy range='$captureRange' start_row=$($captureInfo.start_row) start_column=$($captureInfo.start_column) rows=$($captureInfo.rows) columns=$($captureInfo.columns)"
-                if ($originalAlreadyCachedEnabled) {
-                    Use-CachedRangeImage $origImage "original sheet $i $primaryStrategy"
-                }
-                else {
-                    Save-RangeImage $origSheet $origRange $origImage "original sheet $i $primaryStrategy" $captureRange
-                }
-                if ($shrunkAlreadyCachedEnabled) {
-                    Use-CachedRangeImage $shrunkImage "shrunk sheet $i $primaryStrategy"
-                }
-                else {
-                    Save-RangeImage $shrunkSheet $shrunkRange $shrunkImage "shrunk sheet $i $primaryStrategy" $captureRange
-                }
+                $captureSet = Capture-RangeImageSet $origSheet $shrunkSheet $origRange $shrunkRange $OriginalCacheDir $ShrunkCacheDir $imageBase "sheet $i $primaryStrategy" $primaryStrategy $null
+                $captureRange = $captureSet.capture_range
+                $captureStrategy = $captureSet.capture_strategy
+                $captureInfo = $captureSet.capture_info
+                $origImage = $captureSet.original_image
+                $shrunkImage = $captureSet.shrunk_image
+                $origBackgroundRgba = $captureSet.original_background_rgba
+                $shrunkBackgroundRgba = $captureSet.shrunk_background_rgba
+                $captureTiles = @($captureSet.tiles)
             }
             catch {
                 $usedRangeError = $_.Exception.Message
                 Write-ProgressLine "primary range failed index=$i strategy=$primaryStrategy error='$usedRangeError'"
                 if (-not $originalAlreadyCachedEnabled) {
                     Remove-Item $origImage -Force -ErrorAction SilentlyContinue
+                    Remove-Item (Join-Path $OriginalCacheDir ("{0}-tile-*.png" -f $imageBase)) -Force -ErrorAction SilentlyContinue
                 }
                 if (-not $shrunkAlreadyCachedEnabled) {
                     Remove-Item $shrunkImage -Force -ErrorAction SilentlyContinue
+                    Remove-Item (Join-Path $ShrunkCacheDir ("{0}-tile-*.png" -f $imageBase)) -Force -ErrorAction SilentlyContinue
                 }
 
                 $shrunkRange = $shrunkSheet.UsedRange
@@ -1314,37 +3361,37 @@ try {
                 $captureRange = Range-Address $shrunkRange
                 $captureInfo = Range-CaptureInfo $shrunkRange "used_range_after_primary_failure" $captureRange $usedRangeError
                 Write-ProgressLine "sheet used range fallback index=$i range='$captureRange' start_row=$($captureInfo.start_row) start_column=$($captureInfo.start_column) rows=$($captureInfo.rows) columns=$($captureInfo.columns)"
-                if ($originalAlreadyCachedEnabled) {
-                    Use-CachedRangeImage $origImage "original sheet $i used range fallback"
-                }
-                else {
-                    Save-RangeImage $origSheet $origRange $origImage "original sheet $i used range fallback" $captureRange
-                }
-                if ($shrunkAlreadyCachedEnabled) {
-                    Use-CachedRangeImage $shrunkImage "shrunk sheet $i used range fallback"
-                }
-                else {
-                    Save-RangeImage $shrunkSheet $shrunkRange $shrunkImage "shrunk sheet $i used range fallback" $captureRange
-                }
+                $captureSet = Capture-RangeImageSet $origSheet $shrunkSheet $origRange $shrunkRange $OriginalCacheDir $ShrunkCacheDir $imageBase "sheet $i used range fallback" "used_range_after_primary_failure" $usedRangeError
+                $captureRange = $captureSet.capture_range
+                $captureStrategy = $captureSet.capture_strategy
+                $captureInfo = $captureSet.capture_info
+                $origImage = $captureSet.original_image
+                $shrunkImage = $captureSet.shrunk_image
+                $origBackgroundRgba = $captureSet.original_background_rgba
+                $shrunkBackgroundRgba = $captureSet.shrunk_background_rgba
+                $captureTiles = @($captureSet.tiles)
             }
 
             [void]$captures.Add([pscustomobject]@{
                 sheet_index = $i
                 sheet_name = $origSheet.Name
                 capture_range = $captureRange
-                capture_strategy = $captureInfo.strategy
+                capture_strategy = $captureStrategy
                 used_range_error = $usedRangeError
                 capture_info = $captureInfo
                 original_image = $origImage
                 shrunk_image = $shrunkImage
+                original_background_rgba = $origBackgroundRgba
+                shrunk_background_rgba = $shrunkBackgroundRgba
+                tiles = @($captureTiles)
             })
-            Write-ProgressLine "sheet captured index=$i strategy=$($captureInfo.strategy) range='$captureRange'"
+            Write-ProgressLine "sheet captured index=$i strategy=$captureStrategy range='$captureRange' tiles=$(@($captureTiles).Count)"
             Write-ProgressLine "sheet done index=$i"
         }
         catch {
-            $capturedOriginalImage = if (Test-Path $origImage) { $origImage } else { $null }
-            $capturedShrunkImage = if (Test-Path $shrunkImage) { $shrunkImage } else { $null }
-            $errorCaptureStrategy = if ($null -ne $captureInfo) { $captureInfo.strategy } else { $null }
+            $capturedOriginalImage = if ($null -ne $origImage -and (Test-Path $origImage)) { $origImage } else { $null }
+            $capturedShrunkImage = if ($null -ne $shrunkImage -and (Test-Path $shrunkImage)) { $shrunkImage } else { $null }
+            $errorCaptureStrategy = if ($null -ne $captureStrategy) { $captureStrategy } elseif ($null -ne $captureInfo) { $captureInfo.strategy } else { $null }
             [void]$captures.Add([pscustomobject]@{
                 sheet_index = $i
                 sheet_name = $origSheet.Name
@@ -1355,6 +3402,9 @@ try {
                 capture_info = $captureInfo
                 original_image = $capturedOriginalImage
                 shrunk_image = $capturedShrunkImage
+                original_background_rgba = $origBackgroundRgba
+                shrunk_background_rgba = $shrunkBackgroundRgba
+                tiles = @($captureTiles)
             })
             Write-ProgressLine "sheet error index=$i error='$($_.Exception.Message)'"
         }
@@ -1378,6 +3428,8 @@ Write-ProgressLine "screenshot capture finished captures=$($captures.Count) mani
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    use std::os::windows::process::ExitStatusExt;
 
     #[cfg(not(windows))]
     #[test]
@@ -1433,7 +3485,8 @@ mod tests {
 
         assert!(compare_captured_screenshots(
             &capture_manifest_path,
-            &report_path
+            &report_path,
+            None
         )?);
         assert!(report_path.exists());
         assert!(original_path.exists());
@@ -1441,6 +3494,433 @@ mod tests {
 
         let report = fs::read_to_string(&report_path)?;
         assert!(report.contains("diff_pixels"));
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn workbook_xml_repair_marker_round_trips() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-workbook-xml-repair-marker-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+
+        assert!(!original_workbook_xml_repair_is_marked(
+            &test_dir,
+            "883cf282c4066b1d"
+        ));
+        mark_original_workbook_xml_repair_needed(&test_dir, "883cf282c4066b1d")?;
+        assert!(original_workbook_xml_repair_is_marked(
+            &test_dir,
+            "883cf282c4066b1d"
+        ));
+        assert!(!original_workbook_xml_repair_is_marked(
+            &test_dir,
+            "cab52f9ca5f59e7b"
+        ));
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn screenshot_image_load_error_is_written_as_difference() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-screenshot-load-error-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+
+        let original_path = test_dir.join("original.png");
+        let shrunk_path = test_dir.join("shrunk.png");
+        fs::write(&original_path, b"not a png")?;
+        image::RgbaImage::from_pixel(1, 1, image::Rgba([255, 255, 255, 255])).save(&shrunk_path)?;
+
+        let capture_manifest_path = test_dir.join("screenshot-captures.json");
+        let report_path = test_dir.join("screenshot-differences.json");
+        let capture_manifest = serde_json::json!([
+            {
+                "sheet_index": 1,
+                "sheet_name": "Sheet1",
+                "capture_range": "A1:A1",
+                "capture_strategy": "test",
+                "used_range_error": null,
+                "screenshot_error": null,
+                "original_image": original_path,
+                "shrunk_image": shrunk_path,
+                "capture_info": {
+                    "strategy": "test",
+                    "address": "A1:A1",
+                    "start_row": 1,
+                    "start_column": 1,
+                    "rows": 1,
+                    "columns": 1,
+                    "used_range_error": null
+                }
+            }
+        ]);
+        fs::write(
+            &capture_manifest_path,
+            serde_json::to_vec_pretty(&capture_manifest)?,
+        )?;
+
+        assert!(compare_captured_screenshots(
+            &capture_manifest_path,
+            &report_path,
+            None
+        )?);
+        let report = fs::read_to_string(&report_path)?;
+        assert!(report.contains("failed to load original screenshot"));
+        assert!(report.contains("original.png"));
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn pads_smaller_screenshot_with_manifest_background_before_compare() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-screenshot-padding-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+
+        let original_path = test_dir.join("original.png");
+        let shrunk_path = test_dir.join("shrunk.png");
+        let content = image::Rgba([20, 30, 40, 255]);
+        let background = image::Rgba([200, 210, 220, 255]);
+        image::RgbaImage::from_pixel(2, 2, content).save(&original_path)?;
+        let mut shrunk = image::RgbaImage::from_pixel(3, 3, background);
+        for y in 0..2 {
+            for x in 0..2 {
+                shrunk.put_pixel(x, y, content);
+            }
+        }
+        shrunk.save(&shrunk_path)?;
+
+        let capture_manifest_path = test_dir.join("screenshot-captures.json");
+        let report_path = test_dir.join("screenshot-differences.json");
+        let capture_manifest = serde_json::json!([
+            {
+                "sheet_index": 1,
+                "sheet_name": "Sheet1",
+                "capture_range": "A1:A1",
+                "capture_strategy": "test",
+                "used_range_error": null,
+                "screenshot_error": null,
+                "original_image": original_path,
+                "shrunk_image": shrunk_path,
+                "original_background_rgba": { "r": 200, "g": 210, "b": 220, "a": 255 },
+                "shrunk_background_rgba": { "r": 200, "g": 210, "b": 220, "a": 255 },
+                "capture_info": {
+                    "strategy": "test",
+                    "address": "A1:A1",
+                    "start_row": 1,
+                    "start_column": 1,
+                    "rows": 1,
+                    "columns": 1,
+                    "used_range_error": null
+                }
+            }
+        ]);
+        fs::write(
+            &capture_manifest_path,
+            serde_json::to_vec_pretty(&capture_manifest)?,
+        )?;
+
+        assert!(!compare_captured_screenshots(
+            &capture_manifest_path,
+            &report_path,
+            None
+        )?);
+        let report = fs::read_to_string(&report_path)?;
+        assert_eq!(report.trim(), "[]");
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn compares_tiled_screenshots_without_full_image() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-screenshot-tiles-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+
+        let original_tile_1 = test_dir.join("original-001-tile-001.png");
+        let shrunk_tile_1 = test_dir.join("shrunk-001-tile-001.png");
+        let original_tile_2 = test_dir.join("original-001-tile-002.png");
+        let shrunk_tile_2 = test_dir.join("shrunk-001-tile-002.png");
+        let white = image::RgbaImage::from_pixel(4, 4, image::Rgba([255, 255, 255, 255]));
+        white.save(&original_tile_1)?;
+        white.save(&shrunk_tile_1)?;
+        white.save(&original_tile_2)?;
+        let mut changed = white.clone();
+        changed.put_pixel(2, 2, image::Rgba([255, 0, 0, 255]));
+        changed.save(&shrunk_tile_2)?;
+
+        let capture_manifest_path = test_dir.join("screenshot-captures.json");
+        let report_path = test_dir.join("screenshot-differences.json");
+        let capture_manifest = serde_json::json!([
+            {
+                "sheet_index": 1,
+                "sheet_name": "Sheet1",
+                "capture_range": "A1:A8",
+                "capture_strategy": "test_tiled",
+                "used_range_error": null,
+                "original_image": null,
+                "shrunk_image": null,
+                "capture_info": {
+                    "strategy": "test_tiled",
+                    "address": "A1:A8",
+                    "start_row": 1,
+                    "start_column": 1,
+                    "rows": 8,
+                    "columns": 1,
+                    "used_range_error": null
+                },
+                "tiles": [
+                    {
+                        "tile_index": 1,
+                        "capture_range": "A1:A4",
+                        "capture_info": {
+                            "strategy": "test_tile",
+                            "address": "A1:A4",
+                            "start_row": 1,
+                            "start_column": 1,
+                            "rows": 4,
+                            "columns": 1,
+                            "used_range_error": null
+                        },
+                        "original_image": original_tile_1,
+                        "shrunk_image": shrunk_tile_1,
+                        "original_width": 4,
+                        "original_height": 4,
+                        "shrunk_width": 4,
+                        "shrunk_height": 4
+                    },
+                    {
+                        "tile_index": 2,
+                        "capture_range": "A5:A8",
+                        "capture_info": {
+                            "strategy": "test_tile",
+                            "address": "A5:A8",
+                            "start_row": 5,
+                            "start_column": 1,
+                            "rows": 4,
+                            "columns": 1,
+                            "used_range_error": null
+                        },
+                        "original_image": original_tile_2,
+                        "shrunk_image": shrunk_tile_2,
+                        "original_width": 4,
+                        "original_height": 4,
+                        "shrunk_width": 4,
+                        "shrunk_height": 4
+                    }
+                ]
+            }
+        ]);
+        fs::write(
+            &capture_manifest_path,
+            serde_json::to_vec_pretty(&capture_manifest)?,
+        )?;
+
+        assert!(compare_captured_screenshots(
+            &capture_manifest_path,
+            &report_path,
+            None
+        )?);
+        let report = fs::read_to_string(&report_path)?;
+        assert!(report.contains("\"tile_index\": 2"));
+        assert!(report.contains("\"capture_range\": \"A5:A8\""));
+        assert!(report.contains("tile-002-diff-pixels"));
+        assert!(!report.contains("\"tile_index\": 1"));
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn screenshot_difference_writes_sheet_xml_git_diff() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-screenshot-xml-diff-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+
+        let original_workbook = test_dir.join("original.xlsx");
+        let shrunk_workbook = test_dir.join("shrunk.xlsx");
+        write_minimal_workbook(
+            &original_workbook,
+            br#"<worksheet><cols><col min="1" max="1" style="1"/></cols><sheetData><row r="1" s="2"><c r="A1" s="1" t="s"><v>0</v></c></row></sheetData></worksheet>"#,
+        )?;
+        write_minimal_workbook(
+            &shrunk_workbook,
+            br#"<worksheet><cols><col min="1" max="1" style="1"/></cols><sheetData><row r="1" s="2"><c r="A1" s="1" t="s"><v>1</v></c></row></sheetData></worksheet>"#,
+        )?;
+
+        let original_image = test_dir.join("original.png");
+        let shrunk_image = test_dir.join("shrunk.png");
+        let original = image::RgbaImage::from_pixel(3, 3, image::Rgba([255, 255, 255, 255]));
+        let mut shrunk = original.clone();
+        shrunk.put_pixel(1, 1, image::Rgba([255, 0, 0, 255]));
+        original.save(&original_image)?;
+        shrunk.save(&shrunk_image)?;
+
+        let capture_manifest_path = test_dir.join("screenshot-captures.json");
+        let report_path = test_dir.join("screenshot-differences.json");
+        let capture_manifest = serde_json::json!([
+            {
+                "sheet_index": 1,
+                "sheet_name": "Sheet1",
+                "capture_range": "A1:C3",
+                "capture_strategy": "test",
+                "used_range_error": null,
+                "original_image": original_image,
+                "shrunk_image": shrunk_image,
+                "capture_info": {
+                    "strategy": "test",
+                    "address": "A1:C3",
+                    "start_row": 1,
+                    "start_column": 1,
+                    "rows": 3,
+                    "columns": 3,
+                    "used_range_error": null
+                }
+            }
+        ]);
+        fs::write(
+            &capture_manifest_path,
+            serde_json::to_vec_pretty(&capture_manifest)?,
+        )?;
+
+        let context = SheetXmlDiffContext {
+            original_workbook_path: &original_workbook,
+            shrunk_workbook_path: &shrunk_workbook,
+        };
+        assert!(compare_captured_screenshots(
+            &capture_manifest_path,
+            &report_path,
+            Some(&context),
+        )?);
+
+        let sheet_xml_diff = test_dir.join("001-Sheet1-sheet-xml.diff");
+        assert!(sheet_xml_diff.exists());
+        let diff = fs::read_to_string(&sheet_xml_diff)?;
+        assert!(diff.contains("-          0"));
+        assert!(diff.contains("+          1"));
+        assert!(diff.contains("cell=A1"));
+        assert!(diff.contains("cell_s=1"));
+        assert!(diff.contains("row_s=2"));
+        assert!(diff.contains("column_s=1"));
+        assert!(diff.contains("effective_style_xf[1]=<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFill=\"1\"/>"));
+        assert!(diff.contains("row_style_xf[2]=<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>"));
+        assert!(diff.contains("column_node=<col min=\"1\" max=\"1\" style=\"1\"/>"));
+        assert!(diff.contains("shared_string[0]=<si><t>old</t></si>"));
+        assert!(diff.contains("shared_string[1]=<si><t>new</t></si>"));
+
+        let report = fs::read_to_string(&report_path)?;
+        assert!(report.contains("sheet_xml_diff"));
+        assert!(report.contains("xl/worksheets/sheet1.xml"));
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    fn write_minimal_workbook(path: &Path, sheet_xml: &[u8]) -> anyhow::Result<()> {
+        use std::io::Write;
+        use zip::write::FileOptions;
+
+        let file = File::create(path)?;
+        let mut writer = zip::ZipWriter::new(file);
+        let options = FileOptions::default();
+
+        writer.start_file("xl/workbook.xml", options)?;
+        writer.write_all(
+            br#"<workbook><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>"#,
+        )?;
+
+        writer.start_file("xl/_rels/workbook.xml.rels", options)?;
+        writer.write_all(
+            br#"<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>"#,
+        )?;
+
+        writer.start_file("xl/worksheets/sheet1.xml", options)?;
+        writer.write_all(sheet_xml)?;
+
+        writer.start_file("xl/styles.xml", options)?;
+        writer.write_all(
+            br#"<styleSheet><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>"#,
+        )?;
+
+        writer.start_file("xl/sharedStrings.xml", options)?;
+        writer.write_all(br#"<sst><si><t>old</t></si><si><t>new</t></si></sst>"#)?;
+        writer.finish()?;
+
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn extracts_excel_pids_from_progress_log() -> anyhow::Result<()> {
+        let test_dir =
+            std::env::temp_dir().join(format!("excel-shrink-progress-pids-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+        let progress_path = test_dir.join("screenshot-progress.log");
+        fs::write(
+            &progress_path,
+            "2026-01-01T00:00:00Z excel pid=1234\n2026-01-01T00:00:01Z excel_pid=5678\n",
+        )?;
+
+        let pids = excel_pids_from_progress_log(&progress_path);
+        assert!(pids.contains(&1234));
+        assert!(pids.contains(&5678));
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_capture_before_original_open_triggers_workbook_repair() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-repair-decision-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+        let progress_path = test_dir.join("screenshot-progress.log");
+        let manifest_path = test_dir.join("screenshot-captures.json");
+        fs::write(
+            &progress_path,
+            "screenshot capture started\nexcel pid=1234\n",
+        )?;
+
+        assert!(screenshot_capture_needs_original_workbook_repair(
+            &ExitStatus::from_raw(1),
+            &progress_path,
+            &manifest_path,
+        ));
+
+        fs::write(
+            &progress_path,
+            "screenshot capture started\nopened original workbook 'a.xlsx'\n",
+        )?;
+        assert!(!screenshot_capture_needs_original_workbook_repair(
+            &ExitStatus::from_raw(1),
+            &progress_path,
+            &manifest_path,
+        ));
+
         let _ = fs::remove_dir_all(&test_dir);
         Ok(())
     }

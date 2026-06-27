@@ -109,6 +109,13 @@ pub fn compare_workbook_values(
     ))
 }
 
+pub fn workbook_sheet_order(path: &Path) -> anyhow::Result<Vec<String>> {
+    let mut file_bytes = Vec::new();
+    File::open(path)?.read_to_end(&mut file_bytes)?;
+    let mut archive = ZipArchive::new(Cursor::new(file_bytes.as_slice()))?;
+    read_workbook_sheet_order(&mut archive)
+}
+
 pub fn difference_keys(differences: &[CellValueDifference]) -> HashSet<(String, String)> {
     differences
         .iter()

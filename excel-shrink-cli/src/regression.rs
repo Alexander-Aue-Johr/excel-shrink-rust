@@ -149,6 +149,8 @@ struct CaseReport {
     download_url: Option<String>,
     input_path: PathBuf,
     output_path: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    original_copy_path: Option<PathBuf>,
     original_bytes: u64,
     cleaned_bytes: Option<u64>,
     reduction_ratio: Option<f64>,
@@ -944,6 +946,16 @@ fn run_case(
         }
     }
 
+    let mut original_copy_path = None;
+    if !failures.is_empty() {
+        match copy_original_input_for_failed_case(&input, &case_output_dir) {
+            Ok(path) => original_copy_path = Some(path),
+            Err(error) => failures.push(format!(
+                "failed to copy original workbook into case output directory: {error:#}"
+            )),
+        }
+    }
+
     Ok(CaseReport {
         id: case.id.clone(),
         category: case.category.clone(),
@@ -956,6 +968,7 @@ fn run_case(
         input_path: input,
         output_path,
         original_bytes,
+        original_copy_path,
         cleaned_bytes,
         reduction_ratio,
         analysis_mode,
@@ -969,6 +982,22 @@ fn run_case(
 }
 
 fn compare_original_and_shrunk_values(
+fn copy_original_input_for_failed_case(
+    input: &Path,
+    case_output_dir: &Path,
+) -> anyhow::Result<PathBuf> {
+    let file_name = file_name(input)?;
+    let destination = case_output_dir.join(format!("original-{}", file_name.to_string_lossy()));
+    fs::copy(input, &destination).map_err(|error| {
+        anyhow::anyhow!(
+            "failed to copy '{}' to '{}': {error}",
+            input.display(),
+            destination.display()
+        )
+    })?;
+    Ok(destination)
+}
+
     original_path: &Path,
     shrunk_path: &Path,
     cli: &Cli,
@@ -1144,6 +1173,7 @@ fn failed_case_report(
         input_path: repo_root.join(case.relative_input.as_deref().unwrap_or("")),
         output_path: output_root.join(&case.id),
         original_bytes: 0,
+        original_copy_path: None,
         cleaned_bytes: None,
         reduction_ratio: None,
         analysis_mode: false,
