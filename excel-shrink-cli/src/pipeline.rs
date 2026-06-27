@@ -589,7 +589,7 @@ fn start_watchdog(active_tasks: ActiveTasks) -> (mpsc::Sender<()>, std::thread::
 
     let handle = std::thread::spawn(move || {
         let warn_after = Duration::from_secs(30);
-        let warn_interval = Duration::from_secs(10);
+        let warn_interval = Duration::from_secs(120);
         let tick = Duration::from_secs(1);
         let mut last_warn_by_task: HashMap<String, Instant> = HashMap::new();
 
