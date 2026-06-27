@@ -2,11 +2,7 @@
   "name": "destatis-smoke",
   "description": "Developer-facing corpus-backed smoke suite for high-signal XLSX regressions.",
   "defaults": {
-    "cli_args": [
-      "--disable-multiprocessing",
-      "--writer-workers",
-      "1"
-    ]
+    "cli_args": []
   },
   "cases": [
     {
