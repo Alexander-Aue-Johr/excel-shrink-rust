@@ -348,6 +348,13 @@ pub fn get_max_merge_cells_column_index(metrics: &CleanSheetMetrics) -> Option<u
         .map(|coord| crate::utils::letters_byte_string_to_integer(&coord.column))
 }
 
+pub fn get_max_merge_cells_row_index(metrics: &CleanSheetMetrics) -> Option<u32> {
+    metrics
+        .max_merge_cells_column_and_row
+        .as_ref()
+        .map(|coord| crate::utils::digits_byte_string_to_integer(&coord.row))
+}
+
 pub fn get_max_visible_column_index(metrics: &CleanSheetMetrics) -> Option<u32> {
     metrics
         .column_definitions
