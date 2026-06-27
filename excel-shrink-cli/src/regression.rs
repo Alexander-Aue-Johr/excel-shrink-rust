@@ -557,6 +557,20 @@ pub fn run_seeschifffahrt_sheet1_h15_trace_visited_cell_for_corpus_regression_te
 }
 
 #[cfg(all(test, feature = "cell-tracing"))]
+pub fn run_foerderprogramme_sheet2_a5_trace_visited_cell_for_corpus_regression_test() {
+    run_single_smoke_case_trace_cell_for_corpus_regression_test(
+        "column-range-merge",
+        "xl/worksheets/sheet2.xml",
+        "A5",
+        1,
+        b"5",
+        "foerderprogramme sheet2 A5",
+        &[],
+        false,
+    );
+}
+
+#[cfg(all(test, feature = "cell-tracing"))]
 fn run_single_smoke_case_trace_cell_for_corpus_regression_test(
     case_id: &str,
     sheet_file: &str,
@@ -967,8 +981,8 @@ fn run_case(
         download_url: case.download_url.clone(),
         input_path: input,
         output_path,
-        original_bytes,
         original_copy_path,
+        original_bytes,
         cleaned_bytes,
         reduction_ratio,
         analysis_mode,
@@ -981,7 +995,6 @@ fn run_case(
     })
 }
 
-fn compare_original_and_shrunk_values(
 fn copy_original_input_for_failed_case(
     input: &Path,
     case_output_dir: &Path,
@@ -998,6 +1011,7 @@ fn copy_original_input_for_failed_case(
     Ok(destination)
 }
 
+fn compare_original_and_shrunk_values(
     original_path: &Path,
     shrunk_path: &Path,
     cli: &Cli,
@@ -1172,8 +1186,8 @@ fn failed_case_report(
         download_url: case.download_url.clone(),
         input_path: repo_root.join(case.relative_input.as_deref().unwrap_or("")),
         output_path: output_root.join(&case.id),
-        original_bytes: 0,
         original_copy_path: None,
+        original_bytes: 0,
         cleaned_bytes: None,
         reduction_ratio: None,
         analysis_mode: false,
@@ -1622,11 +1636,10 @@ fn normalize_cli_path(path: PathBuf) -> PathBuf {
     path
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
     #[test]
     fn normalize_cli_path_accepts_backslash_separators_on_unix() {
         let path = normalize_cli_path(PathBuf::from("/repo\\..\\original_destatis_xlsx_files"));

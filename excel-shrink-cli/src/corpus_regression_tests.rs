@@ -46,6 +46,13 @@ fn corpus_regression_trace_seeschifffahrt_sheet1_h15_visited() {
 
 #[cfg(feature = "cell-tracing")]
 #[test]
+#[ignore = "real-file trace regression; run explicitly"]
+fn corpus_regression_trace_foerderprogramme_sheet2_a5_visited() {
+    regression::run_foerderprogramme_sheet2_a5_trace_visited_cell_for_corpus_regression_test();
+}
+
+#[cfg(feature = "cell-tracing")]
+#[test]
 #[ignore = "set EXCEL_SHRINK_CELL_TRACE_TARGET_CELL and run explicitly"]
 fn corpus_regression_trace_selected_seeschifffahrt_sheet11_cell_removed() {
     let selected_cell = std::env::var("EXCEL_SHRINK_CELL_TRACE_TARGET_CELL")

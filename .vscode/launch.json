@@ -355,6 +355,7 @@
             "type": "pickString",
             "description": "Cell trace regression test",
             "options": [
+                "corpus_regression_trace_foerderprogramme_sheet2_a5_visited",
                 "corpus_regression_trace_kernhaushalt_sheet84_d1048576_removed",
                 "corpus_regression_trace_seeschifffahrt_sheet1_h15_visited",
                 "corpus_regression_trace_seeschifffahrt_sheet11_cells_removed"
