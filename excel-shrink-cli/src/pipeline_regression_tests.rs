@@ -7,7 +7,7 @@ use excel_shrink_core::sheet::output::trim_trailing_layout_only_rows;
 use excel_shrink_core::sheet::sheet_data::{
     clean_empty_rows_from_after_cell_range, clean_selected_rows_and_cells_in_cell_range,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -235,7 +235,15 @@ fn phase3_row_cleanup_preserves_stripped_whitespace_cell_with_visible_fill() {
     let mut params = default_sheet_params();
     params.patterns.xfs_by_index.insert(
         37,
-        excel_shrink_core::models::Xf::new(Some(2), Some(0), false, true, true, true, false, false),
+        excel_shrink_core::models::Xf::builder()
+            .font_id(Some(0))
+            .fill_id(Some(2))
+            .border_id(Some(0))
+            .apply_fill(true)
+            .has_visible_fill(true)
+            .has_fill_or_border(true)
+            .has_apply_fill_or_border(true)
+            .build_xf(),
     );
     let mut stats = CleanupStats::enabled();
     let mut metrics = CleanSheetMetrics {
@@ -295,6 +303,7 @@ fn phase3_trims_trailing_row_after_deferred_candidate_cleanup() {
     let mut stats = CleanupStats::enabled();
     let mut metrics = CleanSheetMetrics {
         cleanup_stats: CleanupStats::enabled(),
+        tail_anchor_max_row: Some(41),
         ..CleanSheetMetrics::default()
     };
 
@@ -306,11 +315,84 @@ fn phase3_trims_trailing_row_after_deferred_candidate_cleanup() {
         &mut stats,
     );
     assert_eq!(touched_rows, [41].into_iter().collect());
+    invalidate_tail_anchor_for_touched_rows(&mut metrics, &touched_rows);
     let cleaned = trim_trailing_layout_only_rows(&cleaned, &params, &mut metrics);
     let cleaned = String::from_utf8_lossy(&cleaned);
 
     assert!(cleaned.contains(r#"r="1""#));
     assert!(!cleaned.contains(r#"r="41""#));
+}
+
+#[test]
+fn phase3_sheet_data_block_cleanup_preserves_worksheet_tail() {
+    let prefix = b"<worksheet><sheetData>";
+    let sheet_data =
+        br#"<row r="1"><c r="A1"><v>keep</v></c></row><row r="41"><c r="S41"><v>secret</v></c></row>"#;
+    let suffix =
+        br#"</sheetData><mergeCells count="1"><mergeCell ref="A1:A1"/></mergeCells></worksheet>"#;
+    let mut xml = Vec::new();
+    xml.extend_from_slice(prefix);
+    let sheet_data_range = xml.len()..xml.len() + sheet_data.len();
+    xml.extend_from_slice(sheet_data);
+    xml.extend_from_slice(suffix);
+    let candidates = vec![candidate_s41()];
+    let protected = ProtectedWorkbookRefs::default();
+    let params = default_sheet_params();
+    let mut stats = CleanupStats::enabled();
+    let mut metrics = CleanSheetMetrics {
+        cleanup_stats: CleanupStats::enabled(),
+        ..CleanSheetMetrics::default()
+    };
+
+    let mut touched_rows = HashSet::new();
+    let (cleaned, sheet_data_range) =
+        transform_sheet_data_range(&xml, sheet_data_range, |sheet_data| {
+            let (cleaned, rows) = apply_deferred_candidate_cleanup(
+                sheet_data.to_vec(),
+                &candidates,
+                &protected,
+                "xl/worksheets/sheet1.xml",
+                &mut stats,
+            );
+            touched_rows = rows;
+            Ok(cleaned)
+        })
+        .expect("candidate cleanup should succeed");
+    assert_eq!(touched_rows, [41].into_iter().collect());
+
+    let (cleaned, sheet_data_range) =
+        transform_sheet_data_range(&cleaned, sheet_data_range, |sheet_data| {
+            clean_selected_rows_and_cells_in_cell_range(
+                sheet_data,
+                &params,
+                &mut metrics,
+                &touched_rows,
+            )
+        })
+        .expect("row cleanup should succeed");
+    let (cleaned, sheet_data_range) =
+        transform_sheet_data_range(&cleaned, sheet_data_range, |sheet_data| {
+            clean_empty_rows_from_after_cell_range(sheet_data, &params, &mut metrics)
+        })
+        .expect("empty row cleanup should succeed");
+    let (cleaned, _sheet_data_range) =
+        transform_sheet_data_range(&cleaned, sheet_data_range, |sheet_data| {
+            Ok(
+                excel_shrink_core::sheet::output::trim_trailing_layout_only_rows_vec(
+                    sheet_data.to_vec(),
+                    &params,
+                    &mut metrics,
+                ),
+            )
+        })
+        .expect("tail cleanup should succeed");
+    let cleaned = String::from_utf8_lossy(&cleaned);
+
+    assert!(cleaned.contains(r#"r="1""#));
+    assert!(!cleaned.contains(r#"r="41""#));
+    assert!(cleaned.contains("</sheetData>"));
+    assert!(cleaned.contains("<mergeCells"));
+    assert!(cleaned.ends_with("</worksheet>"));
 }
 
 #[test]

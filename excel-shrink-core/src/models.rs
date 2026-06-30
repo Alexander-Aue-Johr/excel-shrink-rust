@@ -404,6 +404,7 @@ pub struct CleanSheetMetrics {
 #[derive(Debug, Clone)]
 pub struct CleanedSheetData {
     pub xml: Vec<u8>,
+    pub sheet_data_range: std::ops::Range<usize>,
     pub metrics: CleanSheetMetrics,
 }
 

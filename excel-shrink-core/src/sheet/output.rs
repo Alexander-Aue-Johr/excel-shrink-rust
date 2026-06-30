@@ -184,14 +184,20 @@ pub fn build_clean_sheet_xml_with_progress(
     out.extend_from_slice(&preprocessed.before_cols_node_output_chunks);
     out.extend_from_slice(&in_cols_node_output_chunks);
     out.extend_from_slice(&preprocessed.before_sheet_data_node_output_chunks);
+    let sheet_data_start = out.len();
     out.extend_from_slice(&final_sheet_data);
+    let sheet_data_end = out.len();
     out.extend_from_slice(&preprocessed.before_merge_cells_node_output_chunks);
     out.extend_from_slice(&preprocessed.in_merge_cells_node_output_chunks);
     out.extend_from_slice(&preprocessed.until_worksheet_end_output_chunks);
 
     progress("scan_reference_hints");
     metrics.has_hints = crate::reference_scanner::check_for_reference_hints(&out);
-    Ok(CleanedSheetData { xml: out, metrics })
+    Ok(CleanedSheetData {
+        xml: out,
+        sheet_data_range: sheet_data_start..sheet_data_end,
+        metrics,
+    })
 }
 
 fn remove_protection_only_cells_outside_bounds(

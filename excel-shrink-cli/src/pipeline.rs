@@ -2,6 +2,7 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Read, Seek, Write};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
@@ -194,6 +195,7 @@ type ProcessedSheetOk = (
     CleanSheetParameters,
     usize,
     Vec<u8>,
+    Range<usize>,
     CleanSheetMetrics,
     Instant,
     usize,
@@ -908,6 +910,41 @@ fn apply_deferred_candidate_cleanup(
     (out, affected_rows)
 }
 
+fn invalidate_tail_anchor_for_touched_rows(
+    metrics: &mut CleanSheetMetrics,
+    touched_rows: &HashSet<u32>,
+) {
+    if metrics
+        .tail_anchor_max_row
+        .is_some_and(|row| touched_rows.contains(&row))
+    {
+        metrics.tail_anchor_max_row = None;
+    }
+}
+
+fn transform_sheet_data_range<F>(
+    xml: &[u8],
+    sheet_data_range: Range<usize>,
+    transform: F,
+) -> excel_shrink_core::error::Result<(Vec<u8>, Range<usize>)>
+where
+    F: FnOnce(&[u8]) -> excel_shrink_core::error::Result<Vec<u8>>,
+{
+    if sheet_data_range.start > sheet_data_range.end || sheet_data_range.end > xml.len() {
+        return Ok((xml.to_vec(), sheet_data_range.start..sheet_data_range.start));
+    }
+
+    let cleaned_sheet_data = transform(&xml[sheet_data_range.clone()])?;
+    let mut out = Vec::with_capacity(xml.len() - sheet_data_range.len() + cleaned_sheet_data.len());
+    out.extend_from_slice(&xml[..sheet_data_range.start]);
+    out.extend_from_slice(&cleaned_sheet_data);
+    out.extend_from_slice(&xml[sheet_data_range.end..]);
+    let new_end = sheet_data_range.start + cleaned_sheet_data.len();
+    let new_range = sheet_data_range.start..new_end;
+
+    Ok((out, new_range))
+}
+
 fn is_cell_tag_start(data: &[u8], cell_start: usize) -> bool {
     matches!(
         data.get(cell_start + b"<c".len()),
@@ -1419,6 +1456,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                         params,
                         index,
                         cleaned.xml,
+                        cleaned.sheet_data_range,
                         cleaned.metrics,
                         start_time,
                         original_size,
@@ -1461,7 +1499,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         }
 
         for (index, res) in processed_sheets.iter().enumerate() {
-            if let Ok((_params, _, _, metrics, _, _)) = res {
+            if let Ok((_params, _, _, _, metrics, _, _)) = res {
                 if !metrics.candidates.is_empty() {
                     has_candidates = true;
                 }
@@ -1483,7 +1521,7 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                     continue;
                 }
 
-                if let Ok((params, _, xml, _, _, _)) = res {
+                if let Ok((params, _, xml, _, _, _, _)) = res {
                     let sheet_name = file_to_sheet_name_map
                         .get(&params.zip_info_filename)
                         .map(String::as_str)
@@ -1528,7 +1566,15 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             Arc::new(Mutex::new(HashMap::new()));
 
         let finalize_sheet = |res: ProcessedSheetResult| {
-            let (params, index, mut xml, mut metrics, start_time, original_size) = match res {
+            let (
+                params,
+                index,
+                mut xml,
+                mut sheet_data_range,
+                mut metrics,
+                start_time,
+                original_size,
+            ) = match res {
                 Ok(val) => val,
                 Err((params, index)) => {
                     if !send_write_job(
@@ -1546,26 +1592,45 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             };
 
             if safe_to_clean && !metrics.candidates.is_empty() {
-                let (cleaned_xml, deferred_cleanup_rows) = apply_deferred_candidate_cleanup(
-                    xml,
-                    &metrics.candidates,
-                    &protected_refs,
-                    &params.zip_info_filename,
-                    &mut metrics.cleanup_stats,
-                );
-                xml = cleaned_xml;
+                let mut deferred_cleanup_rows = HashSet::new();
+                match transform_sheet_data_range(&xml, sheet_data_range.clone(), |sheet_data| {
+                    let (cleaned, touched_rows) = apply_deferred_candidate_cleanup(
+                        sheet_data.to_vec(),
+                        &metrics.candidates,
+                        &protected_refs,
+                        &params.zip_info_filename,
+                        &mut metrics.cleanup_stats,
+                    );
+                    deferred_cleanup_rows = touched_rows;
+                    Ok(cleaned)
+                }) {
+                    Ok((cleaned, new_range)) => {
+                        xml = cleaned;
+                        sheet_data_range = new_range;
+                    }
+                    Err(e) => {
+                        error!(event = "deferred_candidate_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to clean deferred candidates; keeping initial XML");
+                    }
+                }
+
+                invalidate_tail_anchor_for_touched_rows(&mut metrics, &deferred_cleanup_rows);
 
                 if !deferred_cleanup_rows.is_empty() {
                     metrics.row_attributes.clear();
                     metrics.kept_row_states.clear();
                     metrics.deleted_row_states.clear();
-                    match clean_selected_rows_and_cells_in_cell_range(
-                        &xml,
-                        &params,
-                        &mut metrics,
-                        &deferred_cleanup_rows,
-                    ) {
-                        Ok(cleaned) => xml = cleaned,
+                    match transform_sheet_data_range(&xml, sheet_data_range.clone(), |sheet_data| {
+                        clean_selected_rows_and_cells_in_cell_range(
+                            sheet_data,
+                            &params,
+                            &mut metrics,
+                            &deferred_cleanup_rows,
+                        )
+                    }) {
+                        Ok((cleaned, new_range)) => {
+                            xml = cleaned;
+                            sheet_data_range = new_range;
+                        }
                         Err(e) => {
                             error!(event = "deferred_row_cell_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, rows = deferred_cleanup_rows.len(), error = %e, "Failed to clean rows touched by deferred cleanup; keeping deferred-cleaned XML");
                         }
@@ -1575,20 +1640,33 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 metrics.row_attributes.clear();
                 metrics.kept_row_states.clear();
                 metrics.deleted_row_states.clear();
-                match clean_empty_rows_from_after_cell_range(
-                    &xml,
-                    &params,
-                    &mut metrics,
-                ) {
-                    Ok(cleaned) => xml = cleaned,
+                match transform_sheet_data_range(&xml, sheet_data_range.clone(), |sheet_data| {
+                    clean_empty_rows_from_after_cell_range(sheet_data, &params, &mut metrics)
+                }) {
+                    Ok((cleaned, new_range)) => {
+                        xml = cleaned;
+                        sheet_data_range = new_range;
+                    }
                     Err(e) => {
                         error!(event = "deferred_empty_row_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to clean rows emptied by deferred cleanup; keeping deferred-cleaned XML");
                     }
                 }
 
                 if params.cleanup.trailing_layout_only_rows {
-                    metrics.tail_anchor_max_row = None;
-                    xml = trim_trailing_layout_only_rows_vec(xml, &params, &mut metrics);
+                    match transform_sheet_data_range(&xml, sheet_data_range.clone(), |sheet_data| {
+                        Ok(trim_trailing_layout_only_rows_vec(
+                            sheet_data.to_vec(),
+                            &params,
+                            &mut metrics,
+                        ))
+                    }) {
+                        Ok((cleaned, _new_range)) => {
+                            xml = cleaned;
+                        }
+                        Err(e) => {
+                            error!(event = "deferred_tail_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to trim rows after deferred cleanup; keeping deferred-cleaned XML");
+                        }
+                    }
                 }
             }
 
