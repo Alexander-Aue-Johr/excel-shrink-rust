@@ -25,62 +25,6 @@ impl Xf {
         XfBuilder::default()
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        fill_id: Option<u32>,
-        border_id: Option<u32>,
-        apply_border: bool,
-        apply_fill: bool,
-        has_fill_or_border: bool,
-        has_apply_fill_or_border: bool,
-        has_no_empty_cell_visible_style: bool,
-        has_apply_protection: bool,
-    ) -> Self {
-        let has_visible_fill = has_fill_or_border && fill_id.unwrap_or(0) != 0;
-        let has_visible_border = has_fill_or_border && border_id.unwrap_or(0) != 0;
-
-        Self {
-            fill_id,
-            border_id,
-            apply_border,
-            apply_fill,
-            has_visible_fill,
-            has_visible_border,
-            has_fill_or_border,
-            has_apply_fill_or_border,
-            has_no_empty_cell_visible_style,
-            has_apply_protection,
-            ..Self::default()
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_with_visible_parts(
-        fill_id: Option<u32>,
-        border_id: Option<u32>,
-        apply_border: bool,
-        apply_fill: bool,
-        has_visible_fill: bool,
-        has_visible_border: bool,
-        has_apply_fill_or_border: bool,
-        has_no_empty_cell_visible_style: bool,
-        has_apply_protection: bool,
-    ) -> Self {
-        Self {
-            fill_id,
-            border_id,
-            apply_border,
-            apply_fill,
-            has_visible_fill,
-            has_visible_border,
-            has_fill_or_border: has_visible_fill || has_visible_border,
-            has_apply_fill_or_border,
-            has_no_empty_cell_visible_style,
-            has_apply_protection,
-            ..Self::default()
-        }
-    }
-
     pub fn applies_visible_fill_or_border(&self) -> bool {
         (self.has_visible_fill && self.apply_fill) || (self.has_visible_border && self.apply_border)
     }
