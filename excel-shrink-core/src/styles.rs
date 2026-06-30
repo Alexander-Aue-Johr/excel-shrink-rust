@@ -15,8 +15,10 @@ pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
     while let Some(tag) = find_next_tag(cell_styles, b"xf", pos) {
         let chunk = tag.raw;
 
+        let font_id = extract_u32(chunk, b"fontId");
         let fill_id = extract_u32(chunk, b"fillId");
         let border_id = extract_u32(chunk, b"borderId");
+        let apply_font = extract_bool(chunk, b"applyFont");
         let apply_border = extract_bool(chunk, b"applyBorder");
         let apply_fill = extract_bool(chunk, b"applyFill");
         let apply_protection = extract_bool(chunk, b"applyProtection");
@@ -42,17 +44,22 @@ pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
             && !applies_default_border_override
             && !apply_protection;
 
-        xfs.push(Xf::new_with_visible_parts(
-            fill_id,
-            border_id,
-            apply_border,
-            apply_fill,
-            has_visible_fill,
-            has_visible_border,
-            has_apply_fill_or_border,
-            has_no_empty_cell_visible_style,
-            apply_protection,
-        ));
+        xfs.push(
+            Xf::builder()
+                .font_id(font_id)
+                .fill_id(fill_id)
+                .border_id(border_id)
+                .apply_font(apply_font)
+                .apply_border(apply_border)
+                .apply_fill(apply_fill)
+                .has_visible_fill(has_visible_fill)
+                .has_visible_border(has_visible_border)
+                .has_fill_or_border(has_fill_or_border)
+                .has_apply_fill_or_border(has_apply_fill_or_border)
+                .has_no_empty_cell_visible_style(has_no_empty_cell_visible_style)
+                .has_apply_protection(apply_protection)
+                .build_xf(),
+        );
 
         pos = tag.end;
     }

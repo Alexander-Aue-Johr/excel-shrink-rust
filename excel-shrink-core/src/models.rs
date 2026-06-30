@@ -1,9 +1,13 @@
+use derive_builder::Builder;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Builder)]
+#[builder(default)]
 pub struct Xf {
+    pub font_id: Option<u32>,
     pub fill_id: Option<u32>,
     pub border_id: Option<u32>,
+    pub apply_font: bool,
     pub apply_border: bool,
     pub apply_fill: bool,
 
@@ -17,6 +21,10 @@ pub struct Xf {
 }
 
 impl Xf {
+    pub fn builder() -> XfBuilder {
+        XfBuilder::default()
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         fill_id: Option<u32>,
@@ -42,6 +50,7 @@ impl Xf {
             has_apply_fill_or_border,
             has_no_empty_cell_visible_style,
             has_apply_protection,
+            ..Self::default()
         }
     }
 
@@ -68,6 +77,7 @@ impl Xf {
             has_apply_fill_or_border,
             has_no_empty_cell_visible_style,
             has_apply_protection,
+            ..Self::default()
         }
     }
 
@@ -85,6 +95,13 @@ impl Xf {
 
     pub fn applies_default_fill_or_border_override(&self) -> bool {
         self.applies_default_fill_override() || self.applies_default_border_override()
+    }
+}
+
+impl XfBuilder {
+    pub fn build_xf(&self) -> Xf {
+        self.build()
+            .expect("XfBuilder has defaults for every field")
     }
 }
 
