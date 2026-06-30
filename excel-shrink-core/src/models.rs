@@ -166,6 +166,8 @@ pub struct CleanupSwitches {
 
     pub trailing_layout_only_rows: bool,
     pub empty_style_representative_cells: bool,
+    pub empty_font_style_representative_cells: bool,
+    pub column_font_style_representative_cells: bool,
     pub remove_apply_protection_without_sheet_protection: bool,
 
     pub empty_row_attribute_cleanup: bool,
@@ -185,6 +187,8 @@ impl Default for CleanupSwitches {
 
             trailing_layout_only_rows: true,
             empty_style_representative_cells: true,
+            empty_font_style_representative_cells: true,
+            column_font_style_representative_cells: true,
             remove_apply_protection_without_sheet_protection: false,
 
             empty_row_attribute_cleanup: true,

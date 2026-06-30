@@ -1,6 +1,7 @@
 use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, RowAttributes};
 use crate::sheet::cells::{
-    parsed_cell_has_content, replace_parsed_cell_with_empty_style_policy, ParsedCell,
+    parsed_cell_has_content, parsed_empty_cell_has_effective_fill_or_border,
+    replace_parsed_cell_with_empty_style_policy, ParsedCell,
 };
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
 use crate::xml::{find_byte_from, find_bytes, find_bytes_from, rfind_bytes};
@@ -8,15 +9,16 @@ use regex::bytes::Captures;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EmptyStyleRepresentativePolicy {
-    Disabled,
-    PerStyle,
-    OneForContentRow,
+struct EmptyStyleRepresentativePolicy {
+    keep_default_styleless: bool,
+    keep_font_styles: bool,
+    require_content_in_row: bool,
 }
 
 struct CleanCellsResult<'a> {
     row_content: Cow<'a, [u8]>,
     tentative_style_representatives: Vec<TentativeStyleRepresentative>,
+    cells_removed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -65,7 +67,6 @@ pub fn replace_row_bytes<'a>(
     };
 
     let is_hidden = row_attributes.hidden;
-    let preserve_empty_style_representatives = params.cleanup.empty_style_representative_cells;
     let original_row_content = row_content.unwrap_or_default();
 
     metrics
@@ -73,16 +74,13 @@ pub fn replace_row_bytes<'a>(
         .insert(row_attributes.ref_.clone(), row_attributes.clone());
     record_visible_row_bounds(&row_attributes, metrics);
 
-    let empty_style_representative_policy = if preserve_empty_style_representatives {
-        if row_attributes.has_custom_height {
-            EmptyStyleRepresentativePolicy::OneForContentRow
-        } else {
-            EmptyStyleRepresentativePolicy::PerStyle
-        }
-    } else {
-        EmptyStyleRepresentativePolicy::Disabled
+    let empty_style_representative_policy = EmptyStyleRepresentativePolicy {
+        keep_default_styleless: params.cleanup.empty_style_representative_cells,
+        keep_font_styles: params.cleanup.empty_font_style_representative_cells,
+        require_content_in_row: row_attributes.has_custom_height,
     };
     let was_already_empty = original_row_content.is_empty();
+    let mut cells_removed = false;
 
     let row_content = if !was_already_empty {
         let clean_result = clean_cells(
@@ -94,9 +92,11 @@ pub fn replace_row_bytes<'a>(
         let CleanCellsResult {
             row_content,
             tentative_style_representatives,
+            cells_removed: clean_cells_removed,
         } = clean_result;
+        cells_removed = clean_cells_removed;
 
-        if empty_style_representative_policy == EmptyStyleRepresentativePolicy::OneForContentRow
+        if empty_style_representative_policy.require_content_in_row
             && !metrics
                 .rows_with_kept_content_cells
                 .contains(row_attributes.ref_.as_slice())
@@ -115,6 +115,7 @@ pub fn replace_row_bytes<'a>(
                     );
                 }
                 remove_tentative_representatives_from_metrics(metrics, &removal.removed);
+                cells_removed = cells_removed || !removal.removed.is_empty();
                 Cow::Owned(removal.row_content)
             }
         } else {
@@ -139,7 +140,14 @@ pub fn replace_row_bytes<'a>(
         metrics.kept_row_states.push(row_attributes);
         Cow::Borrowed(row_raw)
     } else {
-        generate_and_log_row(row_attr, row_content.as_ref(), metrics, row_attributes).into()
+        generate_and_log_row(
+            row_attr,
+            row_content.as_ref(),
+            metrics,
+            row_attributes,
+            cells_removed,
+        )
+        .into()
     }
 }
 
@@ -192,17 +200,16 @@ fn clean_cells<'a>(
         return CleanCellsResult {
             row_content: Cow::Borrowed(row_content),
             tentative_style_representatives: Vec::new(),
+            cells_removed: false,
         };
     }
 
     let mut out: Option<Vec<u8>> = None;
     let mut pos = 0;
+    let mut cells_removed = false;
     let mut kept_default_style_cell = false;
-    let mut kept_single_empty_style_representative = false;
     let mut tentative_style_representatives = Vec::new();
-    let mut kept_represented_style_ids = (empty_style_representative_policy
-        == EmptyStyleRepresentativePolicy::PerStyle)
-        .then(std::collections::HashSet::<u32>::new);
+    let mut kept_represented_style_ids = std::collections::HashSet::<u32>::new();
 
     while let Some(cell_start_rel) = find_bytes(&row_content[pos..], b"<c") {
         let cell_start = pos + cell_start_rel;
@@ -247,36 +254,21 @@ fn clean_cells<'a>(
                 },
             );
 
-            let keep_empty_font_only_style_cell = match empty_style_representative_policy {
-                EmptyStyleRepresentativePolicy::Disabled => false,
-                EmptyStyleRepresentativePolicy::PerStyle => {
-                    empty_cell_has_no_empty_cell_visible_style(&cell, params, has_cell_content)
-                        && cell.style_id.is_some_and(|style_id| {
-                            !kept_represented_style_ids
-                                .as_ref()
-                                .is_some_and(|style_ids| style_ids.contains(&style_id))
-                        })
-                }
-                EmptyStyleRepresentativePolicy::OneForContentRow => {
-                    !kept_single_empty_style_representative
-                        && empty_cell_has_no_empty_cell_visible_style(
-                            &cell,
-                            params,
-                            has_cell_content,
-                        )
-                }
-            };
-            let keep_default_empty_cell = match empty_style_representative_policy {
-                EmptyStyleRepresentativePolicy::Disabled => false,
-                EmptyStyleRepresentativePolicy::PerStyle => {
-                    !kept_default_style_cell
-                        && empty_cell_has_default_style(&cell, has_cell_content)
-                }
-                EmptyStyleRepresentativePolicy::OneForContentRow => {
-                    !kept_single_empty_style_representative
-                        && empty_cell_has_default_style(&cell, has_cell_content)
-                }
-            };
+            let keep_empty_font_only_style_cell = empty_style_representative_policy
+                .keep_font_styles
+                && empty_cell_has_no_empty_cell_visible_style(&cell, params, has_cell_content)
+                && cell
+                    .style_id
+                    .is_some_and(|style_id| !kept_represented_style_ids.contains(&style_id));
+            let keep_default_empty_cell = empty_style_representative_policy.keep_default_styleless
+                && !kept_default_style_cell
+                && empty_cell_has_default_style(&cell, has_cell_content);
+            let has_effective_fill_or_border = parsed_empty_cell_has_effective_fill_or_border(
+                &cell,
+                params,
+                metrics,
+                has_cell_content,
+            );
             let cleaned_cell = replace_parsed_cell_with_empty_style_policy(
                 &cell,
                 params,
@@ -288,18 +280,15 @@ fn clean_cells<'a>(
             );
 
             if !cleaned_cell.as_ref().is_empty() {
-                if empty_style_representative_policy == EmptyStyleRepresentativePolicy::PerStyle {
-                    record_represented_cell_style(
-                        &cell,
-                        &mut kept_represented_style_ids,
-                        &mut kept_default_style_cell,
-                    );
-                }
+                record_represented_cell_style(
+                    &cell,
+                    &mut kept_represented_style_ids,
+                    &mut kept_default_style_cell,
+                );
                 if (keep_empty_font_only_style_cell || keep_default_empty_cell) && !has_cell_content
                 {
-                    kept_single_empty_style_representative = true;
-                    if empty_style_representative_policy
-                        == EmptyStyleRepresentativePolicy::OneForContentRow
+                    if empty_style_representative_policy.require_content_in_row
+                        && !has_effective_fill_or_border
                     {
                         tentative_style_representatives.push(TentativeStyleRepresentative {
                             reference_attr: cell.reference_attr.to_vec(),
@@ -314,6 +303,10 @@ fn clean_cells<'a>(
         } else {
             Cow::Borrowed(raw)
         };
+
+        if cleaned_cell.as_ref().is_empty() {
+            cells_removed = true;
+        }
 
         if let Some(out) = out.as_mut() {
             out.extend_from_slice(&row_content[pos..cell_start]);
@@ -338,18 +331,17 @@ fn clean_cells<'a>(
     CleanCellsResult {
         row_content,
         tentative_style_representatives,
+        cells_removed,
     }
 }
 
 fn record_represented_cell_style(
     cell: &ParsedCell<'_>,
-    kept_represented_style_ids: &mut Option<std::collections::HashSet<u32>>,
+    kept_represented_style_ids: &mut std::collections::HashSet<u32>,
     kept_default_style_cell: &mut bool,
 ) {
     if let Some(style_id) = cell.style_id {
-        if let Some(style_ids) = kept_represented_style_ids {
-            style_ids.insert(style_id);
-        }
+        kept_represented_style_ids.insert(style_id);
     } else {
         *kept_default_style_cell = true;
     }
@@ -416,6 +408,12 @@ fn remove_tentative_representatives_from_metrics(
     metrics: &mut CleanSheetMetrics,
     removed: &[RemovedStyleRepresentative],
 ) {
+    let removed_tail_anchor = metrics.tail_anchor_max_row.is_some_and(|tail_row| {
+        removed
+            .iter()
+            .any(|removed| removed.representative.row == tail_row)
+    });
+
     for removed in removed {
         if let Some(index) = metrics.kept_cell_states.iter().position(|cell| {
             cell.col == removed.representative.col && cell.row == removed.representative.row
@@ -429,6 +427,10 @@ fn remove_tentative_representatives_from_metrics(
                 row: removed.representative.row,
                 kept_only_for_protection: false,
             });
+    }
+
+    if removed_tail_anchor {
+        metrics.tail_anchor_max_row = None;
     }
 }
 
@@ -641,16 +643,92 @@ fn generate_and_log_row(
     row_content: &[u8],
     metrics: &mut CleanSheetMetrics,
     row_attributes: RowAttributes,
+    rewrite_spans: bool,
 ) -> Vec<u8> {
+    let row_attr = if rewrite_spans {
+        rewrite_row_spans_upper_bound(row_attr, metrics, &row_attributes)
+    } else {
+        Cow::Borrowed(row_attr)
+    };
     metrics.kept_row_states.push(row_attributes);
 
-    let mut out = Vec::with_capacity(row_attr.len() + row_content.len() + 11);
+    let mut out = Vec::with_capacity(row_attr.as_ref().len() + row_content.len() + 11);
     out.extend_from_slice(b"<row");
-    out.extend_from_slice(row_attr);
+    out.extend_from_slice(row_attr.as_ref());
     out.extend_from_slice(b">");
     out.extend_from_slice(row_content);
     out.extend_from_slice(b"</row>");
     out
+}
+
+fn rewrite_row_spans_upper_bound<'a>(
+    row_attr: &'a [u8],
+    metrics: &CleanSheetMetrics,
+    row_attributes: &RowAttributes,
+) -> Cow<'a, [u8]> {
+    let row_number = digits_byte_string_to_integer(&row_attributes.ref_);
+    if row_number == 0 {
+        return Cow::Borrowed(row_attr);
+    }
+
+    let Some(max_kept_col) = metrics
+        .kept_cell_states
+        .iter()
+        .filter(|cell| cell.row == row_number)
+        .map(|cell| cell.col)
+        .max()
+    else {
+        return Cow::Borrowed(row_attr);
+    };
+
+    rewrite_spans_attr_upper_bound(row_attr, max_kept_col)
+}
+
+fn rewrite_spans_attr_upper_bound(row_attr: &[u8], max_kept_col: u32) -> Cow<'_, [u8]> {
+    let Some(value_range) = find_attr_value_range(row_attr, b"spans") else {
+        return Cow::Borrowed(row_attr);
+    };
+
+    let value = &row_attr[value_range.clone()];
+    let Some(colon) = value.iter().position(|byte| *byte == b':') else {
+        return Cow::Borrowed(row_attr);
+    };
+
+    let upper = max_kept_col.to_string();
+    if &value[colon + 1..] == upper.as_bytes() {
+        return Cow::Borrowed(row_attr);
+    }
+
+    let mut out =
+        Vec::with_capacity(row_attr.len() - value.len() + colon + 1 + upper.as_bytes().len());
+    out.extend_from_slice(&row_attr[..value_range.start]);
+    out.extend_from_slice(&value[..colon + 1]);
+    out.extend_from_slice(upper.as_bytes());
+    out.extend_from_slice(&row_attr[value_range.end..]);
+    Cow::Owned(out)
+}
+
+fn find_attr_value_range(data: &[u8], attr_name: &[u8]) -> Option<std::ops::Range<usize>> {
+    let mut search_start = 0;
+
+    while search_start < data.len() {
+        let relative = find_bytes(&data[search_start..], attr_name)?;
+        let attr_start = search_start + relative;
+        let value_marker = attr_start + attr_name.len();
+
+        if attr_start > 0
+            && data[attr_start - 1].is_ascii_whitespace()
+            && data.get(value_marker..value_marker + 2) == Some(b"=\"")
+        {
+            let value_start = value_marker + 2;
+            let value_end = data[value_start..].iter().position(|byte| *byte == b'"')?;
+            return Some(value_start..value_start + value_end);
+        }
+
+        search_start = attr_start + attr_name.len();
+    }
+
+    None
 }
 
 fn remove_irrelevant_attributes_for_empty_rows<'a>(

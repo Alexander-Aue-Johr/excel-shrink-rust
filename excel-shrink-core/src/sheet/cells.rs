@@ -123,14 +123,24 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
     let unreferenced_whitespace_cleanup = unreferenced_whitespace_cleanup_enabled(params);
     let unreferenced_hidden_content_cleanup = unreferenced_hidden_content_cleanup_enabled(params);
     record_visible_cell_bounds(cell, style, metrics, has_cell_content);
+    let keep_column_font_style_cell =
+        parsed_empty_cell_has_column_font_style_override(cell, params, metrics, has_cell_content);
 
     if unreferenced_whitespace_cleanup || unreferenced_hidden_content_cleanup {
         let mut candidate_cause = None;
+        let keep_style_representative = keep_no_empty_cell_visible_style_cell
+            || keep_other_empty_cell
+            || keep_default_empty_cell
+            || keep_column_font_style_cell;
 
-        if unreferenced_whitespace_cleanup && is_whitespace_cell(cell.raw, params) {
+        if !keep_style_representative
+            && unreferenced_whitespace_cleanup
+            && is_whitespace_cell(cell.raw, params)
+        {
             metrics.whitespace_candidates += 1;
             candidate_cause = Some(CleanupCause::UnreferencedWhitespaceCells);
         } else if unreferenced_hidden_content_cleanup
+            && !keep_style_representative
             && is_hidden
             && has_cell_content
             && !has_formula(cell.raw)
@@ -166,7 +176,7 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
                 params,
                 metrics,
                 keep_no_empty_cell_visible_style_cell,
-                keep_other_empty_cell,
+                keep_other_empty_cell || keep_column_font_style_cell,
                 keep_default_empty_cell,
             ) {
                 let out = generate_self_closing_cell_xml(cell.attr);
@@ -175,6 +185,13 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
                         && !cell_has_effective_fill_or_border(style, cell, metrics)
                         && !cell_applies_effective_default_fill_override(style, cell, metrics)
                         && !cell_applies_effective_default_border_override(style, cell, metrics)
+                        && !empty_cell_has_column_font_style_override(
+                            cell,
+                            style,
+                            params,
+                            metrics,
+                            has_cell_content,
+                        )
                 });
                 record_kept_cell(
                     params,
@@ -232,8 +249,15 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
         return Cow::Borrowed(cell.raw);
     }
 
+    let has_effective_fill_or_border = cell_has_effective_fill_or_border(style, cell, metrics)
+        || cell_applies_effective_default_fill_override(style, cell, metrics)
+        || cell_applies_effective_default_border_override(style, cell, metrics);
+
     if style.has_no_empty_cell_visible_style {
-        if keep_no_empty_cell_visible_style_cell {
+        if keep_no_empty_cell_visible_style_cell
+            || keep_column_font_style_cell
+            || has_effective_fill_or_border
+        {
             let out = generate_self_closing_cell_xml(cell.attr);
             record_kept_cell(params, metrics, cell, Some(style), has_cell_content, false);
             return Cow::Owned(out);
@@ -248,7 +272,7 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
         );
     }
 
-    if keep_other_empty_cell {
+    if keep_other_empty_cell || keep_column_font_style_cell {
         let out = generate_self_closing_cell_xml(cell.attr);
         record_kept_cell(params, metrics, cell, Some(style), has_cell_content, false);
         return Cow::Owned(out);
@@ -256,9 +280,6 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
 
     let has_relevant_protection =
         cell_has_relevant_protection_style(cell, Some(style), params, metrics);
-    let has_effective_fill_or_border = cell_has_effective_fill_or_border(style, cell, metrics)
-        || cell_applies_effective_default_fill_override(style, cell, metrics)
-        || cell_applies_effective_default_border_override(style, cell, metrics);
 
     if has_relevant_protection || has_effective_fill_or_border {
         let out = generate_self_closing_cell_xml(cell.attr);
@@ -280,6 +301,23 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
         CleanupCause::EmptyCellsWithoutContent,
         Some(style),
     )
+}
+
+pub(crate) fn parsed_empty_cell_has_effective_fill_or_border(
+    cell: &ParsedCell<'_>,
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+    has_cell_content: bool,
+) -> bool {
+    if has_cell_content {
+        return false;
+    }
+
+    cell.style(params).is_some_and(|style| {
+        cell_has_effective_fill_or_border(style, cell, metrics)
+            || cell_applies_effective_default_fill_override(style, cell, metrics)
+            || cell_applies_effective_default_border_override(style, cell, metrics)
+    })
 }
 
 fn record_kept_cell(
@@ -322,12 +360,11 @@ fn kept_cell_is_tail_anchor(
         return true;
     }
 
-    if !params.cleanup.empty_style_representative_cells {
+    if cell_style.is_none()
+        && cell.style_id.is_none()
+        && params.cleanup.empty_style_representative_cells
+    {
         return true;
-    }
-
-    if kept_only_for_protection {
-        return false;
     }
 
     if cell_style.is_none() && cell.style_id.is_some() {
@@ -342,11 +379,24 @@ fn kept_cell_is_tail_anchor(
         return true;
     }
 
-    cell_style.is_some_and(|style| {
+    let has_visible_style_anchor = cell_style.is_some_and(|style| {
         cell_has_effective_fill_or_border(style, cell, metrics)
             || cell_applies_effective_default_fill_override(style, cell, metrics)
             || cell_applies_effective_default_border_override(style, cell, metrics)
-    })
+    });
+    if has_visible_style_anchor {
+        return true;
+    }
+
+    if kept_only_for_protection {
+        return false;
+    }
+
+    if parsed_empty_cell_has_column_font_style_override(cell, params, metrics, false) {
+        return false;
+    }
+
+    false
 }
 
 fn record_kept_content_cell_row(
@@ -539,7 +589,7 @@ fn cell_has_effective_fill(
     let cell_fill_id = cell_style.fill_id.unwrap_or(0);
 
     match (
-        row_style.filter(|style| style.apply_fill),
+        row_style.filter(|style| style.apply_fill || style.has_visible_fill),
         column_style.filter(|style| style.apply_fill),
     ) {
         (Some(row), Some(column)) => {
@@ -570,6 +620,60 @@ fn cell_has_effective_border(
         (None, Some(column)) => cell_border_id != column.border_id.unwrap_or(0),
         (None, None) => cell_style.has_visible_border,
     }
+}
+
+fn empty_cell_has_column_font_style_override(
+    cell: &ParsedCell<'_>,
+    cell_style: &Xf,
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+    has_cell_content: bool,
+) -> bool {
+    if has_cell_content || !params.cleanup.column_font_style_representative_cells {
+        return false;
+    }
+
+    let cell_font_id = cell_style.font_id.unwrap_or(0);
+    let row_attributes = metrics.row_attributes.get(cell.row);
+    let row_uses_auto_height =
+        row_attributes.is_some_and(|row| row.has_height && !row.has_custom_height);
+
+    if cell_font_id == 0 && !cell_style.apply_font && !row_uses_auto_height {
+        return false;
+    }
+
+    let Some(column_style) = metrics
+        .column_definitions
+        .get(cell.col_num)
+        .and_then(|column| column.cell_xf.as_ref())
+    else {
+        return false;
+    };
+
+    let column_font_id = column_style.font_id.unwrap_or(0);
+
+    if row_uses_auto_height
+        && row_attributes
+            .and_then(|row| row.style.as_ref())
+            .is_some_and(|row_style| {
+                cell_style.font_id.unwrap_or(column_font_id) != row_style.font_id.unwrap_or(0)
+            })
+    {
+        return true;
+    }
+
+    cell_font_id != column_font_id
+}
+
+fn parsed_empty_cell_has_column_font_style_override(
+    cell: &ParsedCell<'_>,
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+    has_cell_content: bool,
+) -> bool {
+    cell.style(params).is_some_and(|style| {
+        empty_cell_has_column_font_style_override(cell, style, params, metrics, has_cell_content)
+    })
 }
 
 fn cell_applies_effective_default_fill_override(

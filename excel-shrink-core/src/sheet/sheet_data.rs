@@ -822,7 +822,9 @@ mod tests {
         let mut params = default_params();
         params.patterns.xfs_by_index.insert(
             7,
-            Xf::new(None, None, false, false, false, false, true, false),
+            Xf::builder()
+                .has_no_empty_cell_visible_style(true)
+                .build_xf(),
         );
         let state = SheetDataPreprocessState::new(&Default::default(), &params);
         let mut metrics = CleanSheetMetrics {
