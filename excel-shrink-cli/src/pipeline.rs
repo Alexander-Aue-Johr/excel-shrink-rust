@@ -1101,6 +1101,8 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             trailing_layout_only_rows: !cli.disable_trailing_layout_only_rows,
             extraneous_column_range_merge: !cli.disable_extraneous_column_merge,
             empty_style_representative_cells: !cli.disable_empty_style_representatives,
+            empty_font_style_representative_cells: !cli.disable_empty_font_style_representatives,
+            column_font_style_representative_cells: !cli.disable_column_font_style_representatives,
             remove_apply_protection_without_sheet_protection: cli
                 .remove_apply_protection_without_sheet_protection,
 

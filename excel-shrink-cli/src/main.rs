@@ -78,9 +78,17 @@ pub struct Cli {
     #[arg(long)]
     disable_extraneous_column_merge: bool,
 
-    /// Disable keeping empty style sentinel cells for per-row default/unique styles.
+    /// Disable keeping empty styleless/default-style cells that conservatively preserve default-font layout.
     #[arg(long)]
     disable_empty_style_representatives: bool,
+
+    /// Disable keeping empty font-only style cells that conservatively preserve row height/alignment.
+    #[arg(long)]
+    disable_empty_font_style_representatives: bool,
+
+    /// Disable keeping empty cells whose font style overrides an inherited column font.
+    #[arg(long)]
+    disable_column_font_style_representatives: bool,
 
     /// Enable quick-win preprocessing that removes definitely safe empty self-closing cells.
     #[arg(long)]

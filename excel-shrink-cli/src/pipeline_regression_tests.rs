@@ -33,6 +33,8 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         disable_trailing_layout_only_rows: false,
         disable_extraneous_column_merge: false,
         disable_empty_style_representatives: false,
+        disable_empty_font_style_representatives: false,
+        disable_column_font_style_representatives: false,
         preprocess_empty_cells: false,
         writer_workers: None,
         max_active_workbooks: None,
