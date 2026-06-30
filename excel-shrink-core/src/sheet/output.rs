@@ -1,6 +1,7 @@
 use crate::error::Result;
 use crate::models::{CleanSheetParameters, CleanedSheetData, CleanupCause, Xf};
 use crate::sheet::cols::merge_extraneous_columns;
+use crate::sheet::drawings::find_worksheet_drawing_anchor_bounds;
 use crate::sheet::ranges::{
     get_max_cell_column, get_max_cell_row, get_max_merge_cells_column_index,
     get_max_merge_cells_row_index, retrieve_sheet_data_range_containing_cells,
@@ -44,13 +45,23 @@ pub fn build_clean_sheet_xml_with_progress(
 ) -> Result<CleanedSheetData> {
     progress("build_prepare_sheet_metrics");
     let sheet_protection_enabled = worksheet_has_enabled_sheet_protection(&preprocessed);
+    let drawing_anchor_bounds = find_worksheet_drawing_anchor_bounds(&preprocessed, params);
     let mut metrics = preprocessed.clean_sheet_metrics;
     metrics.cleanup_stats.enabled |= params.collect_cleanup_stats;
     metrics.sheet_protection_enabled = sheet_protection_enabled;
     if let Some(column) = metrics.column_definitions.get_last_visible_range(false) {
         metrics.visible_content_bounds.include_col(column.max);
     }
+    if let Some(row) = drawing_anchor_bounds.max_row {
+        metrics.visible_content_bounds.include_row(row);
+        metrics.tail_anchor_max_row =
+            Some(metrics.tail_anchor_max_row.map_or(row, |old| old.max(row)));
+    }
+    if let Some(column) = drawing_anchor_bounds.max_col {
+        metrics.visible_content_bounds.include_col(column);
+    }
     let max_merge_row = get_max_merge_cells_row_index(&metrics);
+    let preserve_through_row = tail_boundary_row(&metrics, max_merge_row);
 
     let use_range_tail_pruning =
         !disable_sheetdata_splitting && params.cleanup.sheetdata_range_tail_pruning;
@@ -65,6 +76,7 @@ pub fn build_clean_sheet_xml_with_progress(
             &preprocessed.sheet_data,
             params,
             metrics.sheet_protection_enabled,
+            preserve_through_row,
         );
         let kept_len = ranges.cells_range.len() + ranges.rows_range.len();
 
@@ -273,31 +285,24 @@ fn trim_trailing_layout_only_rows_preserving_rows_through(
     metrics: &mut crate::models::CleanSheetMetrics,
     preserve_through_row: Option<u32>,
 ) -> Vec<u8> {
-    let preserve_through_row = tail_boundary_row(metrics, preserve_through_row);
+    let tail_boundary_row = tail_boundary_row(metrics, preserve_through_row);
 
-    if let Some(max_row) = preserve_through_row {
-        let end = cutoff_after_row_boundary(sheet_data, max_row, metrics);
-        return if end == sheet_data.len() {
-            sheet_data.to_vec()
-        } else {
-            sheet_data[..end].to_vec()
-        };
+    if tail_boundary_row.is_none() {
+        if let Some((remove_start, preserve_start)) =
+            trailing_hidden_tail_removal_range(sheet_data, None)
+        {
+            let mut out = Vec::with_capacity(sheet_data.len() - (preserve_start - remove_start));
+            out.extend_from_slice(&sheet_data[..remove_start]);
+            out.extend_from_slice(&sheet_data[preserve_start..]);
+            metrics.cleanup_stats.record_removed(
+                CleanupCause::TrailingLayoutOnlyRows,
+                preserve_start - remove_start,
+            );
+            return out;
+        }
     }
 
-    if let Some((remove_start, preserve_start)) =
-        trailing_hidden_tail_removal_range(sheet_data, None)
-    {
-        let mut out = Vec::with_capacity(sheet_data.len() - (preserve_start - remove_start));
-        out.extend_from_slice(&sheet_data[..remove_start]);
-        out.extend_from_slice(&sheet_data[preserve_start..]);
-        metrics.cleanup_stats.record_removed(
-            CleanupCause::TrailingLayoutOnlyRows,
-            preserve_start - remove_start,
-        );
-        return out;
-    }
-
-    let end = trailing_layout_only_rows_cutoff(sheet_data, params, metrics, preserve_through_row);
+    let end = trailing_layout_only_rows_cutoff(sheet_data, params, metrics, tail_boundary_row);
 
     if end == sheet_data.len() {
         sheet_data.to_vec()
@@ -320,28 +325,22 @@ fn trim_trailing_layout_only_rows_vec_preserving_rows_through(
     metrics: &mut crate::models::CleanSheetMetrics,
     preserve_through_row: Option<u32>,
 ) -> Vec<u8> {
-    let preserve_through_row = tail_boundary_row(metrics, preserve_through_row);
+    let tail_boundary_row = tail_boundary_row(metrics, preserve_through_row);
 
-    if let Some(max_row) = preserve_through_row {
-        let end = cutoff_after_row_boundary(&sheet_data, max_row, metrics);
-        if end < sheet_data.len() {
-            sheet_data.truncate(end);
+    if tail_boundary_row.is_none() {
+        if let Some((remove_start, preserve_start)) =
+            trailing_hidden_tail_removal_range(&sheet_data, None)
+        {
+            sheet_data.drain(remove_start..preserve_start);
+            metrics.cleanup_stats.record_removed(
+                CleanupCause::TrailingLayoutOnlyRows,
+                preserve_start - remove_start,
+            );
+            return sheet_data;
         }
-        return sheet_data;
     }
 
-    if let Some((remove_start, preserve_start)) =
-        trailing_hidden_tail_removal_range(&sheet_data, None)
-    {
-        sheet_data.drain(remove_start..preserve_start);
-        metrics.cleanup_stats.record_removed(
-            CleanupCause::TrailingLayoutOnlyRows,
-            preserve_start - remove_start,
-        );
-        return sheet_data;
-    }
-
-    let end = trailing_layout_only_rows_cutoff(&sheet_data, params, metrics, preserve_through_row);
+    let end = trailing_layout_only_rows_cutoff(&sheet_data, params, metrics, tail_boundary_row);
 
     if end < sheet_data.len() {
         sheet_data.truncate(end);
@@ -433,7 +432,7 @@ fn trailing_layout_only_rows_cutoff(
     preserve_through_row: Option<u32>,
 ) -> usize {
     if let Some(max_row) = preserve_through_row {
-        return cutoff_after_row_boundary(sheet_data, max_row, metrics);
+        return cutoff_after_row_boundary(sheet_data, max_row, params, metrics);
     }
 
     let mut end = sheet_data.len();
@@ -477,9 +476,11 @@ fn trailing_layout_only_rows_cutoff(
 fn cutoff_after_row_boundary(
     sheet_data: &[u8],
     max_row: u32,
+    params: &CleanSheetParameters,
     metrics: &mut crate::models::CleanSheetMetrics,
 ) -> usize {
     if let Some(end) = cutoff_after_exact_row_reference(sheet_data, max_row) {
+        let end = extend_cutoff_to_visible_row_before_hidden_tail(sheet_data, end, params);
         if end < sheet_data.len() {
             metrics
                 .cleanup_stats
@@ -521,6 +522,7 @@ fn cutoff_after_row_boundary(
             } else {
                 row_end
             };
+            end = extend_cutoff_to_visible_row_before_hidden_tail(sheet_data, end, params);
             break;
         }
 
@@ -534,6 +536,70 @@ fn cutoff_after_row_boundary(
     }
 
     end
+}
+
+fn extend_cutoff_to_visible_row_before_hidden_tail(
+    sheet_data: &[u8],
+    cutoff: usize,
+    params: &CleanSheetParameters,
+) -> usize {
+    let Some((layout_row, layout_row_end)) = next_row_after_cutoff(sheet_data, cutoff) else {
+        return cutoff;
+    };
+
+    if row_is_hidden(layout_row) || !trailing_row_is_layout_only(layout_row, params) {
+        return cutoff;
+    }
+
+    if tail_after_position_is_hidden_rows_only(sheet_data, layout_row_end) {
+        layout_row_end
+    } else {
+        cutoff
+    }
+}
+
+fn next_row_after_cutoff(sheet_data: &[u8], cutoff: usize) -> Option<(&[u8], usize)> {
+    let mut pos = cutoff;
+    while pos < sheet_data.len() && sheet_data[pos].is_ascii_whitespace() {
+        pos += 1;
+    }
+
+    if pos >= sheet_data.len() || !row_tag_starts_at(sheet_data, pos) {
+        return None;
+    }
+
+    let row_end = find_row_end(sheet_data, pos)?;
+    Some((&sheet_data[pos..row_end], row_end))
+}
+
+fn tail_after_position_is_hidden_rows_only(sheet_data: &[u8], mut pos: usize) -> bool {
+    let mut found_hidden_row = false;
+
+    loop {
+        while pos < sheet_data.len() && sheet_data[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+
+        if pos >= sheet_data.len() {
+            return found_hidden_row;
+        }
+
+        if !row_tag_starts_at(sheet_data, pos) {
+            return false;
+        }
+
+        let Some(row_end) = find_row_end(sheet_data, pos) else {
+            return false;
+        };
+        let row = &sheet_data[pos..row_end];
+
+        if !row_is_hidden(row) {
+            return false;
+        }
+
+        found_hidden_row = true;
+        pos = row_end;
+    }
 }
 
 fn cutoff_after_exact_row_reference(sheet_data: &[u8], max_row: u32) -> Option<usize> {
@@ -633,11 +699,7 @@ fn find_row_end(data: &[u8], row_start: usize) -> Option<usize> {
 }
 
 fn trailing_row_is_layout_only(row: &[u8], params: &CleanSheetParameters) -> bool {
-    if !params.cleanup.empty_style_representative_cells && find_bytes(row, b"<c").is_some() {
-        return false;
-    }
-
-    if params.cleanup.empty_style_representative_cells && row_has_visible_cell_anchor(row, params) {
+    if row_has_visible_cell_anchor(row, params) {
         return false;
     }
 
@@ -678,13 +740,15 @@ fn row_has_visible_cell_anchor(row: &[u8], params: &CleanSheetParameters) -> boo
         };
 
         let attr = &row[after_name..attr_end];
-        if extract_style_id(attr).is_some_and(|style_id| {
-            params
+        let is_anchor = match extract_style_id(attr) {
+            Some(style_id) => params
                 .patterns
                 .xfs_by_index
                 .get(&style_id)
-                .map_or(true, style_is_visible_anchor)
-        }) {
+                .map_or(true, style_is_visible_anchor),
+            None => params.cleanup.empty_style_representative_cells,
+        };
+        if is_anchor {
             return true;
         }
 
@@ -809,6 +873,10 @@ mod tests {
     };
     use crate::sheet::streaming::PreprocessedSheetXml;
     use std::collections::HashMap;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use zip::write::FileOptions;
     use zip::CompressionMethod;
 
     fn default_params() -> CleanSheetParameters {
@@ -855,15 +923,31 @@ mod tests {
     }
 
     fn apply_protection_only_style() -> Xf {
-        Xf::new(Some(0), Some(0), false, false, false, false, false, true)
+        Xf::builder()
+            .font_id(Some(0))
+            .fill_id(Some(0))
+            .border_id(Some(0))
+            .has_apply_protection(true)
+            .build_xf()
     }
 
     fn font_only_style() -> Xf {
-        Xf::new(Some(0), Some(0), false, false, false, false, true, false)
+        Xf::builder()
+            .font_id(Some(0))
+            .fill_id(Some(0))
+            .border_id(Some(0))
+            .has_no_empty_cell_visible_style(true)
+            .build_xf()
     }
 
     fn visible_fill_style() -> Xf {
-        Xf::new(Some(4), Some(0), false, false, true, false, false, false)
+        Xf::builder()
+            .font_id(Some(0))
+            .fill_id(Some(4))
+            .border_id(Some(0))
+            .has_visible_fill(true)
+            .has_fill_or_border(true)
+            .build_xf()
     }
 
     fn preprocessed_with_sheet_data(
@@ -889,6 +973,31 @@ mod tests {
         }
     }
 
+    fn temp_xlsx_path(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{name}-{}-{nanos}.xlsx", std::process::id()))
+    }
+
+    fn write_drawing_anchor_xlsx(path: &PathBuf) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = FileOptions::default().compression_method(CompressionMethod::Stored);
+
+        zip.start_file("xl/worksheets/_rels/sheet1.xml.rels", options)
+            .unwrap();
+        zip.write_all(br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>"#)
+            .unwrap();
+
+        zip.start_file("xl/drawings/drawing1.xml", options).unwrap();
+        zip.write_all(br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><xdr:twoCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>109</xdr:row><xdr:rowOff>47625</xdr:rowOff></xdr:from><xdr:to><xdr:col>3</xdr:col><xdr:colOff>66675</xdr:colOff><xdr:row>110</xdr:row><xdr:rowOff>49790</xdr:rowOff></xdr:to><xdr:sp><xdr:txBody><a:bodyPr/><a:p><a:r><a:t>Statistisches Bundesamt, Zeitreihen, 2021</a:t></a:r></a:p></xdr:txBody></xdr:sp><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>"#)
+            .unwrap();
+
+        zip.finish().unwrap();
+    }
+
     #[test]
     fn col_definitions_do_not_extend_max_column_when_sheet_has_no_cells_or_merges() {
         let params = default_params();
@@ -911,6 +1020,31 @@ mod tests {
         assert!(xml.contains(r#"<col min="1" max="25" width="9.5"/>"#));
         assert!(!xml.contains(r#"<col min="1" max="12" width="8.43"/>"#));
         assert!(!xml.contains(r#"<col min="13" max="17" width="10.0"/>"#));
+    }
+
+    #[test]
+    fn drawing_text_box_anchor_preserves_layout_row_after_last_cell() {
+        let xlsx_path = temp_xlsx_path("drawing-anchor-row");
+        write_drawing_anchor_xlsx(&xlsx_path);
+
+        let mut params = default_params();
+        params.xlsx_file_path = xlsx_path.to_string_lossy().to_string();
+        let mut preprocessed = preprocessed_with_sheet_data(
+            br#"<row r="110"><c r="I110"><v>27</v></c></row><row r="111" spans="1:9" x14ac:dyDescent="0.2"/><row r="112" spans="1:9" x14ac:dyDescent="0.2"/>"#,
+            None,
+        );
+        preprocessed.until_worksheet_end_output_chunks =
+            br#"</sheetData><drawing r:id="rId2"/></worksheet>"#.to_vec();
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(xml.contains(r#"r="110""#));
+        assert!(xml.contains(r#"r="111""#));
+        assert!(!xml.contains(r#"r="112""#));
+        assert!(xml.contains(r#"<drawing r:id="rId2"/>"#));
+
+        let _ = std::fs::remove_file(xlsx_path);
     }
 
     #[test]
@@ -987,6 +1121,41 @@ mod tests {
         assert!(cleaned.contains(r#"r="1""#));
         assert!(cleaned.contains(r#"r="10""#));
         assert!(!cleaned.contains(r#"r="20""#));
+    }
+
+    #[test]
+    fn tail_anchor_preserves_visible_layout_row_before_hidden_tail() {
+        let params = default_params();
+        let mut metrics = CleanSheetMetrics {
+            tail_anchor_max_row: Some(110),
+            ..CleanSheetMetrics::default()
+        };
+        let sheet_data = br#"<row r="110"><c r="I110"><v>27</v></c></row><row r="111" spans="1:9" x14ac:dyDescent="0.2"/><row r="112" hidden="1" customHeight="1"/><row r="113" hidden="1" customHeight="1"/>"#;
+
+        let cleaned = super::trim_trailing_layout_only_rows(sheet_data, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="110""#));
+        assert!(cleaned.contains(r#"r="111""#));
+        assert!(!cleaned.contains(r#"r="112""#));
+        assert!(!cleaned.contains(r#"r="113""#));
+    }
+
+    #[test]
+    fn tail_anchor_does_not_preserve_visible_layout_row_without_hidden_tail() {
+        let params = default_params();
+        let mut metrics = CleanSheetMetrics {
+            tail_anchor_max_row: Some(110),
+            ..CleanSheetMetrics::default()
+        };
+        let sheet_data = br#"<row r="110"><c r="I110"><v>27</v></c></row><row r="111" spans="1:9" x14ac:dyDescent="0.2"/><row r="112" spans="1:9" x14ac:dyDescent="0.2"/>"#;
+
+        let cleaned = super::trim_trailing_layout_only_rows(sheet_data, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="110""#));
+        assert!(!cleaned.contains(r#"r="111""#));
+        assert!(!cleaned.contains(r#"r="112""#));
     }
 
     #[test]
@@ -1070,7 +1239,7 @@ mod tests {
     }
 
     #[test]
-    fn trailing_self_closing_default_cell_is_layout_only_when_representatives_are_enabled() {
+    fn trailing_self_closing_default_cell_keeps_tail_when_representatives_are_enabled() {
         let params = default_params();
         let mut metrics = CleanSheetMetrics::default();
         let sheet_data =
@@ -1080,7 +1249,7 @@ mod tests {
         let cleaned = String::from_utf8_lossy(&cleaned);
 
         assert!(cleaned.contains(r#"r="1""#));
-        assert!(!cleaned.contains(r#"r="999""#));
+        assert!(cleaned.contains(r#"r="999""#));
     }
 
     #[test]
@@ -1098,6 +1267,21 @@ mod tests {
     }
 
     #[test]
+    fn build_clean_sheet_xml_trims_trailing_font_only_representatives() {
+        let params = params_with_styles(&[(7, font_only_style())]);
+        let preprocessed = preprocessed_with_sheet_data(
+            br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="999"><c r="A999" s="7"/></row>"#,
+            None,
+        );
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(xml.contains(r#"r="1""#));
+        assert!(!xml.contains(r#"r="999""#));
+    }
+
+    #[test]
     fn trailing_self_closing_apply_protection_cell_is_layout_only() {
         let params = params_with_styles(&[(7, apply_protection_only_style())]);
         let mut metrics = CleanSheetMetrics::default();
@@ -1112,9 +1296,26 @@ mod tests {
     }
 
     #[test]
-    fn trailing_self_closing_font_only_cell_keeps_tail_when_representatives_are_disabled() {
-        let mut params = params_with_styles(&[(7, font_only_style())]);
+    fn trailing_self_closing_default_cell_is_layout_only_when_default_representatives_are_disabled()
+    {
+        let mut params = default_params();
         params.cleanup.empty_style_representative_cells = false;
+        let mut metrics = CleanSheetMetrics::default();
+        let sheet_data =
+            br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="999"><c r="A999"/></row>"#;
+
+        let cleaned = super::trim_trailing_layout_only_rows(sheet_data, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+
+        assert!(cleaned.contains(r#"r="1""#));
+        assert!(!cleaned.contains(r#"r="999""#));
+    }
+
+    #[test]
+    fn trailing_self_closing_font_only_cell_is_layout_only_when_font_representatives_are_disabled()
+    {
+        let mut params = params_with_styles(&[(7, font_only_style())]);
+        params.cleanup.empty_font_style_representative_cells = false;
         let mut metrics = CleanSheetMetrics::default();
         let sheet_data =
             br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="999"><c r="A999" s="7"/></row>"#;
@@ -1123,7 +1324,7 @@ mod tests {
         let cleaned = String::from_utf8_lossy(&cleaned);
 
         assert!(cleaned.contains(r#"r="1""#));
-        assert!(cleaned.contains(r#"r="999""#));
+        assert!(!cleaned.contains(r#"r="999""#));
     }
 
     #[test]

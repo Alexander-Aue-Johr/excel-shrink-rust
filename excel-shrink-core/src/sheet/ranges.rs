@@ -10,10 +10,17 @@ pub struct VisibleSheetDataRanges<'a> {
     pub rows_range: &'a [u8],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowEndPosition {
+    pub row: u32,
+    pub end: usize,
+}
+
 pub fn retrieve_sheet_data_range_containing_cells<'a>(
     sheet_data: &'a [u8],
     params: &CleanSheetParameters,
     sheet_protection_enabled: bool,
+    preserve_through_row: Option<u32>,
 ) -> VisibleSheetDataRanges<'a> {
     let last_row_with_cell_end_pos = find_last_row_with_cell_end_pos(sheet_data);
 
@@ -25,8 +32,28 @@ pub fn retrieve_sheet_data_range_containing_cells<'a>(
             sheet_protection_enabled,
         );
 
-    let last_visible_row_end_position =
+    let last_visible_row_end =
         find_last_visible_row_end_position(sheet_data, last_visible_attribute_position);
+    let mut last_visible_row_end_position = last_visible_row_end.map(|row_end| row_end.end);
+    if let Some(preserve_row) = preserve_through_row {
+        let needs_preserve_scan = last_visible_row_end
+            .map(|row_end| preserve_row > row_end.row)
+            .unwrap_or(true);
+        if needs_preserve_scan {
+            let search_start = last_visible_row_end
+                .map(|row_end| row_end.end)
+                .or(last_row_with_cell_end_pos)
+                .unwrap_or(0);
+            if let Some(preserved_end) =
+                find_last_row_end_at_or_before_from(sheet_data, search_start, preserve_row)
+            {
+                last_visible_row_end_position = Some(
+                    last_visible_row_end_position
+                        .map_or(preserved_end.end, |old| old.max(preserved_end.end)),
+                );
+            }
+        }
+    }
 
     let cells_range = match last_row_with_cell_end_pos {
         Some(pos) => &sheet_data[..pos],
@@ -45,6 +72,94 @@ pub fn retrieve_sheet_data_range_containing_cells<'a>(
         cells_range,
         rows_range,
     }
+}
+
+fn find_last_row_end_at_or_before_from(
+    sheet_data: &[u8],
+    start: usize,
+    max_row: u32,
+) -> Option<RowEndPosition> {
+    find_row_end_for_reference_from(sheet_data, start, max_row)
+        .or_else(|| scan_last_row_end_at_or_before_from(sheet_data, start, max_row))
+}
+
+fn find_row_end_for_reference_from(
+    sheet_data: &[u8],
+    start: usize,
+    row: u32,
+) -> Option<RowEndPosition> {
+    let needle = format!(r#" r="{row}""#);
+    let needle = needle.as_bytes();
+    let mut search_start = start.min(sheet_data.len());
+
+    while let Some(relative) = find_bytes(&sheet_data[search_start..], needle) {
+        let attr_start = search_start + relative;
+        if let Some(row_end) = row_end_containing_row_reference(sheet_data, attr_start, row) {
+            return Some(row_end);
+        }
+
+        search_start = (attr_start + needle.len()).min(sheet_data.len());
+    }
+
+    None
+}
+
+fn row_end_containing_row_reference(
+    sheet_data: &[u8],
+    attr_start: usize,
+    expected_row: u32,
+) -> Option<RowEndPosition> {
+    let row_start = rfind_bytes(&sheet_data[..attr_start], b"<row")?;
+    let row_open_end = find_tag_open_end(sheet_data, row_start)?;
+    if attr_start >= row_open_end {
+        return None;
+    }
+
+    let row_tag = &sheet_data[row_start..row_open_end];
+    let row = extract_attr_value(row_tag, b"r").map(digits_byte_string_to_integer)?;
+    if row != expected_row {
+        return None;
+    }
+
+    let end = find_row_end(sheet_data, row_open_end)?;
+    Some(RowEndPosition { row, end })
+}
+
+fn scan_last_row_end_at_or_before_from(
+    sheet_data: &[u8],
+    start: usize,
+    max_row: u32,
+) -> Option<RowEndPosition> {
+    let mut pos = start.min(sheet_data.len());
+    let mut last_end = None;
+
+    while let Some(row_start_relative) = find_bytes(&sheet_data[pos..], b"<row") {
+        let row_start = pos + row_start_relative;
+        let Some(row_open_end) = find_tag_open_end(sheet_data, row_start) else {
+            break;
+        };
+        let row_tag = &sheet_data[row_start..row_open_end];
+        let Some(row_number) = extract_attr_value(row_tag, b"r").map(digits_byte_string_to_integer)
+        else {
+            pos = row_open_end;
+            continue;
+        };
+
+        if row_number > max_row {
+            break;
+        }
+
+        let Some(row_end) = find_row_end(sheet_data, row_open_end) else {
+            break;
+        };
+        last_end = Some(RowEndPosition {
+            row: row_number,
+            end: row_end,
+        });
+        pos = row_end;
+    }
+
+    last_end
 }
 
 pub fn find_last_row_with_cell_end_pos(sheet_data: &[u8]) -> Option<usize> {
@@ -299,24 +414,29 @@ fn style_has_visible_fill_or_border(style: &Xf) -> bool {
 pub fn find_last_visible_row_end_position(
     sheet_data: &[u8],
     last_visible_attribute_position: Option<usize>,
-) -> Option<usize> {
+) -> Option<RowEndPosition> {
     let pos = last_visible_attribute_position?;
-
-    let row_end_tag_pos = find_from(sheet_data, b"</row>", pos);
-    let self_closing_tag_pos = find_from(sheet_data, b"/>", pos);
-
-    match (row_end_tag_pos, self_closing_tag_pos) {
-        (Some(row_end), Some(self_closing)) => {
-            if row_end < self_closing {
-                Some(row_end + b"</row>".len())
-            } else {
-                Some(self_closing + b"/>".len())
-            }
-        }
-        (Some(row_end), None) => Some(row_end + b"</row>".len()),
-        (None, Some(self_closing)) => Some(self_closing + b"/>".len()),
-        (None, None) => None,
+    if let Some(row_end) = row_end_at_or_before_position(sheet_data, pos) {
+        return Some(row_end);
     }
+
+    let row_start = find_from(sheet_data, b"<row", pos)?;
+    row_end_from_start(sheet_data, row_start)
+}
+
+fn row_end_at_or_before_position(sheet_data: &[u8], pos: usize) -> Option<RowEndPosition> {
+    let row_start = rfind_bytes(&sheet_data[..pos.min(sheet_data.len())], b"<row")?;
+    let row_end = row_end_from_start(sheet_data, row_start)?;
+    (pos <= row_end.end).then_some(row_end)
+}
+
+fn row_end_from_start(sheet_data: &[u8], row_start: usize) -> Option<RowEndPosition> {
+    let row_open_end = find_tag_open_end(sheet_data, row_start)?;
+    let row_tag = &sheet_data[row_start..row_open_end];
+    let row = extract_attr_value(row_tag, b"r").map(digits_byte_string_to_integer)?;
+    let end = find_row_end(sheet_data, row_open_end)?;
+
+    Some(RowEndPosition { row, end })
 }
 
 fn find_from(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
