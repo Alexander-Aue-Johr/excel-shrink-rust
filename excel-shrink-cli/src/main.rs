@@ -1,4 +1,5 @@
 use clap::{Parser, ValueEnum};
+use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::time::Instant;
 use tracing::info;
@@ -137,7 +138,7 @@ pub struct Cli {
     file_log_level: Option<LogLevel>,
 }
 
-#[derive(Copy, Clone, Debug, ValueEnum)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
 pub enum LogLevel {
     Error,
     Warn,
@@ -156,14 +157,31 @@ impl LogLevel {
             Self::Trace => "trace",
         }
     }
+
+    pub(crate) fn includes(self, message_level: Self) -> bool {
+        self.verbosity_rank() >= message_level.verbosity_rank()
+    }
+
+    fn verbosity_rank(self) -> u8 {
+        match self {
+            Self::Error => 0,
+            Self::Warn => 1,
+            Self::Info => 2,
+            Self::Debug => 3,
+            Self::Trace => 4,
+        }
+    }
 }
 
 fn main() -> anyhow::Result<()> {
     let mut raw_args = std::env::args_os();
     let program = raw_args.next().unwrap_or_else(|| "excel-shrink".into());
     if raw_args.next().is_some_and(|arg| arg == "regression") {
-        let regression_args = std::iter::once(program).chain(raw_args);
-        let _guard = init_logging(LogLevel::Info, None)?;
+        let regression_tail: Vec<OsString> = raw_args.collect();
+        let console_log_level =
+            regression_console_log_level(&regression_tail).unwrap_or(LogLevel::Info);
+        let regression_args = std::iter::once(program).chain(regression_tail);
+        let _guard = init_logging(console_log_level, None)?;
         return regression::run_from_args(regression_args);
     }
 
@@ -188,6 +206,44 @@ fn main() -> anyhow::Result<()> {
 
     info!("Script completed in {:.2?}", start.elapsed());
     Ok(())
+}
+
+fn regression_console_log_level(args: &[OsString]) -> Option<LogLevel> {
+    let mut index = 0;
+    while index < args.len() {
+        let arg = args[index].as_os_str();
+        if arg == OsStr::new("--") {
+            break;
+        }
+        if arg == OsStr::new("--cli-arg") {
+            index += 2;
+            continue;
+        }
+        if let Some(arg) = arg.to_str() {
+            if let Some(value) = arg.strip_prefix("--console-log-level=") {
+                return parse_log_level(value);
+            }
+            if arg == "--console-log-level" {
+                return args
+                    .get(index + 1)
+                    .and_then(|value| value.to_str())
+                    .and_then(parse_log_level);
+            }
+        }
+        index += 1;
+    }
+    None
+}
+
+fn parse_log_level(value: &str) -> Option<LogLevel> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "error" => Some(LogLevel::Error),
+        "warn" => Some(LogLevel::Warn),
+        "info" => Some(LogLevel::Info),
+        "debug" => Some(LogLevel::Debug),
+        "trace" => Some(LogLevel::Trace),
+        _ => None,
+    }
 }
 
 fn init_logging(
@@ -265,6 +321,66 @@ fn is_real_xlsx_file(path: &std::path::Path) -> bool {
         .is_some_and(|name| name.starts_with("~$"));
 
     is_xlsx && !is_excel_lock_file
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn os_args(args: &[&str]) -> Vec<OsString> {
+        args.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn regression_console_log_level_reads_subcommand_flag() {
+        assert_eq!(
+            regression_console_log_level(&os_args(&[
+                "smoke",
+                "--excel-screenshot-check",
+                "--console-log-level",
+                "error",
+            ])),
+            Some(LogLevel::Error)
+        );
+    }
+
+    #[test]
+    fn regression_console_log_level_ignores_cli_arg_values() {
+        assert_eq!(
+            regression_console_log_level(&os_args(&[
+                "smoke",
+                "--cli-arg",
+                "--console-log-level",
+                "--cli-arg",
+                "error",
+            ])),
+            None
+        );
+    }
+
+    #[test]
+    fn cli_parses_disable_column_font_style_representatives() {
+        let cli = Cli::parse_from([
+            "excel-shrink",
+            "input.xlsx",
+            "out",
+            "--disable-column-font-style-representatives",
+        ]);
+
+        assert!(cli.disable_column_font_style_representatives);
+    }
+
+    #[test]
+    fn cli_parses_disable_empty_font_style_representatives() {
+        let cli = Cli::parse_from([
+            "excel-shrink",
+            "input.xlsx",
+            "out",
+            "--disable-empty-font-style-representatives",
+        ]);
+
+        assert!(cli.disable_empty_font_style_representatives);
+    }
 }
 
 #[cfg(test)]

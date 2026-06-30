@@ -13,7 +13,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 use zip::ZipArchive;
 
-const SCREENSHOT_CACHE_VERSION: u32 = 4;
+const SCREENSHOT_CACHE_VERSION: u32 = 5;
 const WORKBOOK_XML_REPAIR_MARKER_VERSION: u32 = 1;
 const EXCEL_SCREENSHOT_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 const EXCEL_SCREENSHOT_POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -77,8 +77,18 @@ pub fn compare_sheet_screenshots(
     output_dir: &Path,
     work_dir: &Path,
     range_limits: &[WorksheetCaptureRange],
+    console_log_level: LogLevel,
 ) -> anyhow::Result<ExcelScreenshotReport> {
-    eprintln!(
+    let show_info = console_log_level.includes(LogLevel::Info);
+    macro_rules! screenshot_info {
+        ($($arg:tt)*) => {
+            if show_info {
+                eprintln!($($arg)*);
+            }
+        };
+    }
+
+    screenshot_info!(
         "[excel-screenshot] original={} shrunk={} output_dir={} range_limits={}",
         original_path.display(),
         shrunk_path.display(),
@@ -100,12 +110,12 @@ pub fn compare_sheet_screenshots(
     let shrunk_cache = WorkbookScreenshotCache::new(shrunk_path, &cache_root, &capture_range_hash)?;
 
     if original_workbook_xml_repair_is_marked(&cache_root, &unrepaired_original_workbook_hash) {
-        eprintln!(
+        screenshot_info!(
             "[excel-screenshot] original_hash={} previously required workbook.xml repair; repairing before screenshot capture",
             unrepaired_original_workbook_hash
         );
         let repaired = repair_original_workbook_xml_only(original_path, work_dir)?;
-        eprintln!(
+        screenshot_info!(
             "[excel-screenshot] repaired original workbook.xml path={}",
             repaired.display()
         );
@@ -130,7 +140,7 @@ pub fn compare_sheet_screenshots(
     let shrunk_cache_hit = shrunk_cache.is_complete()?;
     let original_sheet_cache_hits = original_cache.valid_current_sheet_captures()?.len();
     let shrunk_sheet_cache_hits = shrunk_cache.valid_current_sheet_captures()?.len();
-    eprintln!(
+    screenshot_info!(
         "[excel-screenshot] cache original_hash={} hit={} sheet_hits={}/{} shrunk_hash={} hit={} sheet_hits={}/{} root={}",
         original_cache.workbook_hash,
         original_cache_hit,
@@ -147,7 +157,7 @@ pub fn compare_sheet_screenshots(
                        original_cache: &WorkbookScreenshotCache,
                        original_cache_hit: bool,
                        shrunk_cache_hit: bool|
-     -> anyhow::Result<PowerShellScriptOutcome> {
+     -> anyhow::Result<ScreenshotCaptureRun> {
         fs::create_dir_all(&original_cache.cache_dir)?;
         fs::create_dir_all(&shrunk_cache.cache_dir)?;
         let original_sheet_cache_path = work_dir.join("original-sheet-screenshot-cache.json");
@@ -156,7 +166,7 @@ pub fn compare_sheet_screenshots(
             write_sheet_cache_plan(original_cache, &original_sheet_cache_path)?;
         let shrunk_sheet_cache_count =
             write_sheet_cache_plan(&shrunk_cache, &shrunk_sheet_cache_path)?;
-        eprintln!(
+        screenshot_info!(
             "[excel-screenshot] sheet cache original_hits={}/{} shrunk_hits={}/{}",
             original_sheet_cache_count,
             original_cache.sheet_identities.len(),
@@ -166,9 +176,16 @@ pub fn compare_sheet_screenshots(
         let original_excel_path =
             copy_workbook_with_suffix(original_for_capture, work_dir, "original")?;
         let shrunk_excel_path = copy_workbook_with_suffix(shrunk_path, work_dir, "shrunk")?;
+        screenshot_info!(
+            "[excel-screenshot] capture inputs original_excel={} shrunk_excel={} progress={} manifest={}",
+            original_excel_path.display(),
+            shrunk_excel_path.display(),
+            progress_path.display(),
+            capture_manifest_path.display()
+        );
         let _ = fs::remove_file(&capture_manifest_path);
 
-        run_power_shell_script_with_status_and_stall_timeout(
+        let outcome = run_power_shell_script_with_status_and_stall_timeout(
             &script_path,
             &[
                 ("OriginalPath", power_shell_path(&original_excel_path)?),
@@ -197,23 +214,35 @@ pub fn compare_sheet_screenshots(
             ],
             &progress_path,
             EXCEL_SCREENSHOT_STALL_TIMEOUT,
-        )
+        )?;
+
+        Ok(ScreenshotCaptureRun {
+            outcome,
+            original_excel_path,
+            shrunk_excel_path,
+        })
     };
 
     if original_cache_hit && shrunk_cache_hit {
         write_pair_manifest_from_cache(&original_cache, &shrunk_cache, &capture_manifest_path)?;
     } else {
-        let repair_reason = match run_capture(&original_for_capture, &original_cache, false, false)?
-        {
+        let capture_run = run_capture(&original_for_capture, &original_cache, false, false)?;
+        let repair_reason = match &capture_run.outcome {
             PowerShellScriptOutcome::Completed(status) => {
                 if screenshot_capture_needs_original_workbook_repair(
-                    &status,
+                    status,
                     &progress_path,
                     &capture_manifest_path,
                 ) {
                     Some("Excel failed before opening original workbook".to_string())
                 } else {
-                    ensure_screenshot_capture_completed(&status, &capture_manifest_path)?;
+                    ensure_screenshot_capture_completed(
+                        status,
+                        &capture_manifest_path,
+                        &progress_path,
+                        &capture_run.original_excel_path,
+                        &capture_run.shrunk_excel_path,
+                    )?;
                     None
                 }
             }
@@ -225,12 +254,12 @@ pub fn compare_sheet_screenshots(
 
         if let Some(repair_reason) = repair_reason {
             preserve_stalled_progress_log(output_dir, &progress_path)?;
-            eprintln!(
+            screenshot_info!(
                 "[excel-screenshot] {repair_reason}; repairing original workbook.xml and retrying"
             );
 
             let repaired = repair_original_workbook_xml_only(original_path, work_dir)?;
-            eprintln!(
+            screenshot_info!(
                 "[excel-screenshot] repaired original workbook.xml path={}",
                 repaired.display()
             );
@@ -252,16 +281,28 @@ pub fn compare_sheet_screenshots(
                 )?;
                 true
             } else {
-                match run_capture(&original_for_capture, &original_cache, false, false)? {
+                let retry_run = run_capture(&original_for_capture, &original_cache, false, false)?;
+                match &retry_run.outcome {
                     PowerShellScriptOutcome::Completed(status) => {
-                        ensure_screenshot_capture_completed(&status, &capture_manifest_path)?;
+                        ensure_screenshot_capture_completed(
+                            status,
+                            &capture_manifest_path,
+                            &progress_path,
+                            &retry_run.original_excel_path,
+                            &retry_run.shrunk_excel_path,
+                        )?;
                         true
                     }
                     PowerShellScriptOutcome::TimedOut { stalled_for } => {
                         anyhow::bail!(
-                                "Excel screenshot capture stalled for {:.1}s after original workbook.xml repair; manifest: {}",
+                                "Excel screenshot capture stalled for {:.1}s after original workbook.xml repair; manifest: {}\n{}",
                                 stalled_for.as_secs_f64(),
-                                capture_manifest_path.display()
+                                capture_manifest_path.display(),
+                                screenshot_capture_failure_details(
+                                    &progress_path,
+                                    &retry_run.original_excel_path,
+                                    &retry_run.shrunk_excel_path
+                                )
                             );
                     }
                 }
@@ -289,7 +330,7 @@ pub fn compare_sheet_screenshots(
         Some(&sheet_xml_diff_context),
     )?;
 
-    eprintln!(
+    screenshot_info!(
         "[excel-screenshot] done differences_found={} report={}",
         differences_found,
         report_path.display()
@@ -598,6 +639,8 @@ struct ScreenshotDifference {
     #[serde(skip_serializing_if = "Option::is_none")]
     sheet_xml_diff: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    sheet_xml_visual_diff: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     sheet_xml_diff_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     original_image: Option<PathBuf>,
@@ -615,9 +658,10 @@ struct SheetXmlDiffArtifacts {
     original_sheet_xml: PathBuf,
     shrunk_sheet_xml: PathBuf,
     sheet_xml_diff: PathBuf,
+    sheet_xml_visual_diff: Option<PathBuf>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct SheetXmlDiffSourceContext {
     line_info: Vec<SheetXmlDiffLineInfo>,
     rows_by_index: BTreeMap<u32, SheetRowXmlInfo>,
@@ -673,6 +717,21 @@ struct DiffBox {
 struct ApproximateCells {
     top_left: String,
     bottom_right: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VisualCellRange {
+    top_row: u32,
+    bottom_row: u32,
+    left_column: u32,
+    right_column: u32,
+}
+
+#[derive(Debug, Clone)]
+struct VisualDiffCells {
+    range: VisualCellRange,
+    rows: BTreeSet<u32>,
+    cells: BTreeSet<(u32, u32)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -896,28 +955,43 @@ fn compare_screenshot_image_pair(
         &comparison.capture_info,
     )?;
 
-    let approximate_cells = approximate_cells(diff_box, &comparison.capture_info);
+    let visual_diff_cells = visual_diff_cells(
+        &original_pixels,
+        &shrunk_pixels,
+        diff_box,
+        &comparison.capture_info,
+    );
+    let approximate_cells = approximate_cells(visual_diff_cells.range);
     let sheet_xml_diff = match sheet_xml_diff_context {
         Some(context) => create_sheet_xml_git_diff(
             context,
             output_dir,
             comparison.sheet_index,
             &comparison.sheet_name,
+            comparison.tile_index,
+            Some(&visual_diff_cells),
         ),
         None => Ok(None),
     };
-    let (sheet_file, original_sheet_xml, shrunk_sheet_xml, sheet_xml_diff, sheet_xml_diff_error) =
-        match sheet_xml_diff {
-            Ok(Some(artifacts)) => (
-                Some(artifacts.sheet_file),
-                Some(artifacts.original_sheet_xml),
-                Some(artifacts.shrunk_sheet_xml),
-                Some(artifacts.sheet_xml_diff),
-                None,
-            ),
-            Ok(None) => (None, None, None, None, None),
-            Err(error) => (None, None, None, None, Some(format!("{error:#}"))),
-        };
+    let (
+        sheet_file,
+        original_sheet_xml,
+        shrunk_sheet_xml,
+        sheet_xml_diff,
+        sheet_xml_visual_diff,
+        sheet_xml_diff_error,
+    ) = match sheet_xml_diff {
+        Ok(Some(artifacts)) => (
+            Some(artifacts.sheet_file),
+            Some(artifacts.original_sheet_xml),
+            Some(artifacts.shrunk_sheet_xml),
+            Some(artifacts.sheet_xml_diff),
+            artifacts.sheet_xml_visual_diff,
+            None,
+        ),
+        Ok(None) => (None, None, None, None, None, None),
+        Err(error) => (None, None, None, None, None, Some(format!("{error:#}"))),
+    };
 
     differences.push(ScreenshotDifference {
         sheet_index: comparison.sheet_index,
@@ -937,6 +1011,7 @@ fn compare_screenshot_image_pair(
         original_sheet_xml,
         shrunk_sheet_xml,
         sheet_xml_diff,
+        sheet_xml_visual_diff,
         sheet_xml_diff_error,
         original_image: None,
         shrunk_image: None,
@@ -1005,6 +1080,7 @@ fn screenshot_error_difference_for_parts(
         original_sheet_xml: None,
         shrunk_sheet_xml: None,
         sheet_xml_diff: None,
+        sheet_xml_visual_diff: None,
         sheet_xml_diff_error: None,
         original_image,
         shrunk_image,
@@ -1038,7 +1114,7 @@ fn write_pair_manifest_from_cache(
                 .clone()
                 .or_else(|| shrunk.screenshot_error.clone()),
         };
-        let preferred = shrunk.or(original);
+        let preferred = original.or(shrunk);
         let sheet_name = original
             .or(shrunk)
             .map(|capture| capture.sheet_name.clone())
@@ -1108,7 +1184,7 @@ fn pair_cached_tiles(
         .filter_map(|tile_index| {
             let original = original_by_index.get(&tile_index);
             let shrunk = shrunk_by_index.get(&tile_index);
-            let preferred = shrunk.or(original)?;
+            let preferred = original.or(shrunk)?;
             Some(ScreenshotCaptureTile {
                 tile_index,
                 capture_range: preferred.capture_range.clone(),
@@ -1579,7 +1655,7 @@ fn row_context_crop_rect(
     }
 }
 
-fn approximate_cells(diff_box: DiffBox, capture_info: &ScreenshotCaptureInfo) -> ApproximateCells {
+fn visual_cell_range(diff_box: DiffBox, capture_info: &ScreenshotCaptureInfo) -> VisualCellRange {
     let rows = capture_info.rows.max(1);
     let cols = capture_info.columns.max(1);
     let top_row = pixel_to_cell_index(
@@ -1607,9 +1683,70 @@ fn approximate_cells(diff_box: DiffBox, capture_info: &ScreenshotCaptureInfo) ->
         capture_info.start_column,
     );
 
+    VisualCellRange {
+        top_row: top_row.min(bottom_row),
+        bottom_row: top_row.max(bottom_row),
+        left_column: left_col.min(right_col),
+        right_column: left_col.max(right_col),
+    }
+}
+
+fn visual_diff_cells(
+    original_pixels: &image::RgbaImage,
+    shrunk_pixels: &image::RgbaImage,
+    diff_box: DiffBox,
+    capture_info: &ScreenshotCaptureInfo,
+) -> VisualDiffCells {
+    let range = visual_cell_range(diff_box, capture_info);
+    let rows = capture_info.rows.max(1);
+    let cols = capture_info.columns.max(1);
+    let width = original_pixels.width().min(shrunk_pixels.width());
+    let height = original_pixels.height().min(shrunk_pixels.height());
+    let mut diff_rows = BTreeSet::new();
+    let mut diff_cells = BTreeSet::new();
+
+    if width > 0 && height > 0 {
+        let left_stride = original_pixels.width() as usize * 4;
+        let right_stride = shrunk_pixels.width() as usize * 4;
+        let left_raw = original_pixels.as_raw();
+        let right_raw = shrunk_pixels.as_raw();
+        let max_x = diff_box.max_x.min(width - 1);
+        let max_y = diff_box.max_y.min(height - 1);
+
+        for y in diff_box.min_y.min(max_y)..=max_y {
+            let row_index =
+                pixel_to_cell_index(y, diff_box.image_height, rows, capture_info.start_row);
+            for x in diff_box.min_x.min(max_x)..=max_x {
+                let left_start = y as usize * left_stride + x as usize * 4;
+                let right_start = y as usize * right_stride + x as usize * 4;
+                if left_raw[left_start..left_start + 4] == right_raw[right_start..right_start + 4] {
+                    continue;
+                }
+
+                let column_index =
+                    pixel_to_cell_index(x, diff_box.image_width, cols, capture_info.start_column);
+                diff_rows.insert(row_index);
+                diff_cells.insert((row_index, column_index));
+            }
+        }
+    }
+
+    if diff_cells.is_empty() {
+        diff_rows.insert(range.top_row);
+        diff_cells.insert((range.top_row, range.left_column));
+    }
+
+    VisualDiffCells {
+        range,
+        rows: diff_rows,
+        cells: diff_cells,
+    }
+}
+
+fn approximate_cells(range: VisualCellRange) -> ApproximateCells {
     ApproximateCells {
-        top_left: format!("{}{}", column_name(left_col), top_row),
-        bottom_right: format!("{}{}", column_name(right_col), bottom_row),
+        top_left: format!("{}{}", column_name(range.left_column), range.top_row),
+        bottom_right: format!("{}{}", column_name(range.right_column), range.bottom_row),
     }
 }
 
@@ -1648,6 +1785,8 @@ fn create_sheet_xml_git_diff(
     output_dir: &Path,
     sheet_index: usize,
     sheet_name: &str,
+    tile_index: Option<usize>,
+    visual_diff_cells: Option<&VisualDiffCells>,
 ) -> anyhow::Result<Option<SheetXmlDiffArtifacts>> {
     let Some(sheet_file) = sheet_file_for_index(
         context.original_workbook_path,
@@ -1665,6 +1804,16 @@ fn create_sheet_xml_git_diff(
     let shrunk_sheet_xml =
         output_dir.join(format!("{sheet_index:03}-{safe_name}-sheet-xml-shrunk.xml"));
     let sheet_xml_diff = output_dir.join(format!("{sheet_index:03}-{safe_name}-sheet-xml.diff"));
+    let sheet_xml_visual_stem = match tile_index {
+        Some(tile_index) => {
+            format!("{sheet_index:03}-{safe_name}-tile-{tile_index:03}-sheet-xml-visual")
+        }
+        None => format!("{sheet_index:03}-{safe_name}-sheet-xml-visual"),
+    };
+    let sheet_xml_visual_original =
+        output_dir.join(format!("{sheet_xml_visual_stem}-original.xml"));
+    let sheet_xml_visual_shrunk = output_dir.join(format!("{sheet_xml_visual_stem}-shrunk.xml"));
+    let sheet_xml_visual_diff = output_dir.join(format!("{sheet_xml_visual_stem}.diff"));
 
     let original_xml = read_zip_entry(context.original_workbook_path, &sheet_file)?;
     let shrunk_xml = read_zip_entry(context.shrunk_workbook_path, &sheet_file)?;
@@ -1698,13 +1847,106 @@ fn create_sheet_xml_git_diff(
         &original_context,
         &shrunk_context,
     )?;
+    let sheet_xml_visual_diff = if let Some(visual_diff_cells) = visual_diff_cells {
+        write_visual_sheet_xml_git_diff(
+            &original_formatted_xml,
+            &shrunk_formatted_xml,
+            &original_context,
+            &shrunk_context,
+            visual_diff_cells,
+            &sheet_xml_visual_original,
+            &sheet_xml_visual_shrunk,
+            &sheet_xml_visual_diff,
+        )?;
+        Some(sheet_xml_visual_diff)
+    } else {
+        None
+    };
 
     Ok(Some(SheetXmlDiffArtifacts {
         sheet_file,
         original_sheet_xml,
         shrunk_sheet_xml,
         sheet_xml_diff,
+        sheet_xml_visual_diff,
     }))
+}
+
+fn write_visual_sheet_xml_git_diff(
+    original_formatted_xml: &str,
+    shrunk_formatted_xml: &str,
+    original_context: &SheetXmlDiffSourceContext,
+    shrunk_context: &SheetXmlDiffSourceContext,
+    visual_diff_cells: &VisualDiffCells,
+    original_visual_path: &Path,
+    shrunk_visual_path: &Path,
+    diff_path: &Path,
+) -> anyhow::Result<()> {
+    let (original_visual_xml, original_visual_context) =
+        visual_sheet_xml_source(original_formatted_xml, original_context, visual_diff_cells);
+    let (shrunk_visual_xml, shrunk_visual_context) =
+        visual_sheet_xml_source(shrunk_formatted_xml, shrunk_context, visual_diff_cells);
+
+    fs::write(original_visual_path, original_visual_xml.as_bytes())?;
+    fs::write(shrunk_visual_path, shrunk_visual_xml.as_bytes())?;
+
+    let mut annotated_diff = create_annotated_git_no_index_diff(
+        original_visual_path,
+        shrunk_visual_path,
+        &original_visual_context,
+        &shrunk_visual_context,
+    )?;
+    let range_header = format!(
+        "# excel-shrink visual cell range: {}:{}\n",
+        visual_diff_cells.range.top_left_reference(),
+        visual_diff_cells.range.bottom_right_reference()
+    );
+    if annotated_diff.is_empty() {
+        annotated_diff.push_str(
+            "# excel-shrink no sheet XML row/cell differences inside visual cell range\n",
+        );
+    }
+    annotated_diff.insert_str(0, &range_header);
+    fs::write(diff_path, annotated_diff.as_bytes())?;
+    Ok(())
+}
+
+fn visual_sheet_xml_source(
+    formatted_xml: &str,
+    context: &SheetXmlDiffSourceContext,
+    visual_diff_cells: &VisualDiffCells,
+) -> (String, SheetXmlDiffSourceContext) {
+    let mut visual_xml = String::new();
+    let mut visual_context = SheetXmlDiffSourceContext {
+        rows_by_index: context.rows_by_index.clone(),
+        columns: context.columns.clone(),
+        style_xfs: context.style_xfs.clone(),
+        shared_strings: context.shared_strings.clone(),
+        ..SheetXmlDiffSourceContext::default()
+    };
+
+    for (line, line_info) in formatted_xml.lines().zip(&context.line_info) {
+        if sheet_xml_line_is_in_visual_cells(line_info, visual_diff_cells) {
+            visual_xml.push_str(line);
+            visual_xml.push('\n');
+            visual_context.line_info.push(line_info.clone());
+        }
+    }
+
+    (visual_xml, visual_context)
+}
+
+fn sheet_xml_line_is_in_visual_cells(
+    line_info: &SheetXmlDiffLineInfo,
+    visual_diff_cells: &VisualDiffCells,
+) -> bool {
+    if let Some(cell) = &line_info.cell {
+        return visual_diff_cells.contains_cell(cell.row_index, cell.column_index);
+    }
+    line_info
+        .row
+        .as_ref()
+        .is_some_and(|row| visual_diff_cells.contains_row(row.row_index))
 }
 
 fn sheet_file_for_index(
@@ -2146,6 +2388,22 @@ fn write_git_no_index_diff(
     original_context: &SheetXmlDiffSourceContext,
     shrunk_context: &SheetXmlDiffSourceContext,
 ) -> anyhow::Result<()> {
+    let annotated_diff = create_annotated_git_no_index_diff(
+        original_path,
+        shrunk_path,
+        original_context,
+        shrunk_context,
+    )?;
+    fs::write(diff_path, annotated_diff.as_bytes())?;
+    Ok(())
+}
+
+fn create_annotated_git_no_index_diff(
+    original_path: &Path,
+    shrunk_path: &Path,
+    original_context: &SheetXmlDiffSourceContext,
+    shrunk_context: &SheetXmlDiffSourceContext,
+) -> anyhow::Result<String> {
     let output = Command::new("git")
         .arg("diff")
         .arg("--no-index")
@@ -2163,8 +2421,7 @@ fn write_git_no_index_diff(
 
     let diff = String::from_utf8_lossy(&output.stdout);
     let annotated_diff = annotate_sheet_xml_diff(&diff, original_context, shrunk_context);
-    fs::write(diff_path, annotated_diff.as_bytes())?;
-    Ok(())
+    Ok(annotated_diff)
 }
 
 fn annotate_sheet_xml_diff(
@@ -2409,6 +2666,40 @@ fn style_id_text(style_id: Option<usize>, default_zero: bool) -> String {
     }
 }
 
+impl VisualCellRange {
+    fn contains_row(&self, row_index: u32) -> bool {
+        self.top_row <= row_index && row_index <= self.bottom_row
+    }
+
+    fn top_left_reference(&self) -> String {
+        format!("{}{}", column_name(self.left_column), self.top_row)
+    }
+
+    fn bottom_right_reference(&self) -> String {
+        format!("{}{}", column_name(self.right_column), self.bottom_row)
+    }
+}
+
+impl VisualDiffCells {
+    fn contains_row(&self, row_index: u32) -> bool {
+        if self.rows.is_empty() {
+            self.range.contains_row(row_index)
+        } else {
+            self.rows.contains(&row_index)
+        }
+    }
+
+    fn contains_cell(&self, row_index: u32, column_index: u32) -> bool {
+        if self.cells.is_empty() {
+            self.range.contains_row(row_index)
+                && self.range.left_column <= column_index
+                && column_index <= self.range.right_column
+        } else {
+            self.cells.contains(&(row_index, column_index))
+        }
+    }
+}
+
 impl SheetXmlDiffSourceContext {
     fn column_for_index(&self, column_index: u32) -> Option<&SheetColumnXmlInfo> {
         self.columns
@@ -2479,23 +2770,74 @@ enum PowerShellScriptOutcome {
     TimedOut { stalled_for: Duration },
 }
 
+#[derive(Debug)]
+struct ScreenshotCaptureRun {
+    outcome: PowerShellScriptOutcome,
+    original_excel_path: PathBuf,
+    shrunk_excel_path: PathBuf,
+}
+
 fn ensure_screenshot_capture_completed(
     status: &ExitStatus,
     capture_manifest_path: &Path,
+    progress_path: &Path,
+    original_excel_path: &Path,
+    shrunk_excel_path: &Path,
 ) -> anyhow::Result<()> {
     anyhow::ensure!(
         capture_manifest_path.exists(),
-        "Excel screenshot capture did not create manifest: {}",
-        capture_manifest_path.display()
+        "Excel screenshot capture did not create manifest: {}\n{}",
+        capture_manifest_path.display(),
+        screenshot_capture_failure_details(progress_path, original_excel_path, shrunk_excel_path)
     );
 
     anyhow::ensure!(
         status.success(),
-        "Excel screenshot capture failed; manifest: {}",
-        capture_manifest_path.display()
+        "Excel screenshot capture failed with status {status}; manifest: {}\n{}",
+        capture_manifest_path.display(),
+        screenshot_capture_failure_details(progress_path, original_excel_path, shrunk_excel_path)
     );
 
     Ok(())
+}
+
+fn screenshot_capture_failure_details(
+    progress_path: &Path,
+    original_excel_path: &Path,
+    shrunk_excel_path: &Path,
+) -> String {
+    let progress = fs::read_to_string(progress_path).unwrap_or_default();
+    let phase = infer_screenshot_capture_phase(&progress);
+    let progress_tail = progress_tail(&progress, 40);
+    format!(
+        "likely_failed_phase={phase}\noriginal_excel={}\nshrunk_excel={}\nprogress_log={}\nprogress_tail:\n{}",
+        original_excel_path.display(),
+        shrunk_excel_path.display(),
+        progress_path.display(),
+        if progress_tail.is_empty() {
+            "<empty>".to_string()
+        } else {
+            progress_tail
+        }
+    )
+}
+
+fn infer_screenshot_capture_phase(progress: &str) -> &'static str {
+    if progress.contains("opened shrunk workbook") {
+        "after opening shrunk workbook"
+    } else if progress.contains("label='shrunk'") || progress.contains("opened original workbook") {
+        "opening shrunk workbook"
+    } else if progress.contains("label='original'") || progress.contains("excel pid=") {
+        "opening original workbook"
+    } else {
+        "before opening workbooks"
+    }
+}
+
+fn progress_tail(progress: &str, max_lines: usize) -> String {
+    let lines: Vec<_> = progress.lines().collect();
+    let start = lines.len().saturating_sub(max_lines);
+    lines[start..].join("\n")
 }
 
 fn screenshot_capture_needs_original_workbook_repair(
@@ -2563,6 +2905,8 @@ fn repair_original_workbook_xml_only(
         disable_trailing_layout_only_rows: false,
         disable_extraneous_column_merge: false,
         disable_empty_style_representatives: false,
+        disable_empty_font_style_representatives: false,
+        disable_column_font_style_representatives: false,
         preprocess_empty_cells: false,
         writer_workers: Some(1),
         max_active_workbooks: Some(1),
@@ -2914,6 +3258,78 @@ function RangeLimit-Address($rangeLimit, $range) {
     return Range-Address $range
 }
 
+function Worksheet-RangeFromA1ThroughBottomRight($worksheet, $range) {
+    $startRow = [int]$range.Row
+    $startColumn = [int]$range.Column
+    $endRow = $startRow + [int]$range.Rows.Count - 1
+    $endColumn = $startColumn + [int]$range.Columns.Count - 1
+    $endRow = [Math]::Max(1, [Math]::Min([int]$worksheet.Rows.Count, $endRow))
+    $endColumn = [Math]::Max(1, [Math]::Min([int]$worksheet.Columns.Count, $endColumn))
+    return ,$worksheet.Range($worksheet.Cells.Item(1, 1), $worksheet.Cells.Item($endRow, $endColumn))
+}
+
+function Max-WorksheetRange($worksheet, $leftRange, $rightRange) {
+    if ($null -eq $rightRange) {
+        return ,$leftRange
+    }
+
+    $leftEndRow = [int]$leftRange.Row + [int]$leftRange.Rows.Count - 1
+    $leftEndColumn = [int]$leftRange.Column + [int]$leftRange.Columns.Count - 1
+    $rightEndRow = [int]$rightRange.Row + [int]$rightRange.Rows.Count - 1
+    $rightEndColumn = [int]$rightRange.Column + [int]$rightRange.Columns.Count - 1
+
+    $startRow = [Math]::Max(1, [Math]::Min([int]$leftRange.Row, [int]$rightRange.Row))
+    $startColumn = [Math]::Max(1, [Math]::Min([int]$leftRange.Column, [int]$rightRange.Column))
+    $endRow = [Math]::Min([int]$worksheet.Rows.Count, [Math]::Max($leftEndRow, $rightEndRow))
+    $endColumn = [Math]::Min([int]$worksheet.Columns.Count, [Math]::Max($leftEndColumn, $rightEndColumn))
+
+    return ,$worksheet.Range($worksheet.Cells.Item($startRow, $startColumn), $worksheet.Cells.Item($endRow, $endColumn))
+}
+
+function Try-SelectAllRangeFromMaxCell($worksheet, $baseRange, [string]$label) {
+    try {
+        $maxRow = [int]$baseRange.Row + [int]$baseRange.Rows.Count - 1
+        $maxColumn = [int]$baseRange.Column + [int]$baseRange.Columns.Count - 1
+        $maxRow = [Math]::Max(1, [Math]::Min([int]$worksheet.Rows.Count, $maxRow))
+        $maxColumn = [Math]::Max(1, [Math]::Min([int]$worksheet.Columns.Count, $maxColumn))
+
+        [void]$worksheet.Parent.Activate()
+        [void]$worksheet.Activate()
+        [void]$worksheet.Cells.Item($maxRow, $maxColumn).Select()
+        Start-Sleep -Milliseconds 50
+
+        $method = 'execute_mso_select_all'
+        try {
+            [void]$worksheet.Application.CommandBars.ExecuteMso("SelectAll")
+        }
+        catch {
+            $method = 'sendkeys_ctrl_a'
+            [System.Windows.Forms.SendKeys]::SendWait("^a")
+        }
+        Start-Sleep -Milliseconds 100
+
+        $selection = $worksheet.Application.Selection
+        if ($null -eq $selection) {
+            Write-ProgressLine "select all range ignored $label reason='empty_selection'"
+            return $null
+        }
+
+        $selectedRows = [int]$selection.Rows.Count
+        $selectedColumns = [int]$selection.Columns.Count
+        if ($selectedRows -ge [int]$worksheet.Rows.Count -or $selectedColumns -ge [int]$worksheet.Columns.Count) {
+            Write-ProgressLine "select all range ignored $label method=$method reason='whole_sheet' selected='$(Range-Address $selection)'"
+            return $null
+        }
+
+        Write-ProgressLine "select all range $label method=$method max_cell='$((Column-Name $maxColumn))$maxRow' selected='$(Range-Address $selection)'"
+        return ,$selection
+    }
+    catch {
+        Write-ProgressLine "select all range failed $label error='$($_.Exception.Message)'"
+        return $null
+    }
+}
+
 function Resolve-CaptureRange($worksheet, $rangeLimit) {
     if ($null -ne $rangeLimit) {
         $maxRow = [int]$rangeLimit.max_row
@@ -2928,7 +3344,10 @@ function Resolve-CaptureRange($worksheet, $rangeLimit) {
         }
     }
 
-    return ,$worksheet.UsedRange
+    $usedRange = $worksheet.UsedRange
+    $baseRange = Worksheet-RangeFromA1ThroughBottomRight $worksheet $usedRange
+    $selectAllRange = Try-SelectAllRangeFromMaxCell $worksheet $baseRange "worksheet='$($worksheet.Name)'"
+    return ,(Max-WorksheetRange $worksheet $baseRange $selectAllRange)
 }
 
 function Hide-ActiveGridlines($worksheet, [string]$label) {
@@ -3102,6 +3521,45 @@ function Use-CachedRangeImage([string]$path, [string]$label) {
     }
 }
 
+function Wait-ExcelReady($excel, [string]$label, [int]$maxAttempts = 60) {
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            if ($excel.Ready) {
+                return
+            }
+        }
+        catch {
+        }
+        Write-ProgressLine "excel busy label='$label' wait_attempt=$attempt"
+        Start-Sleep -Milliseconds 500
+    }
+}
+
+function Open-WorkbookWithRetry($excel, [string]$path, [string]$label) {
+    $lastError = $null
+    for ($attempt = 1; $attempt -le 20; $attempt++) {
+        try {
+            Wait-ExcelReady $excel "before open $label" 10
+            Write-ProgressLine "open workbook start label='$label' attempt=$attempt path='$path'"
+            $workbook = $excel.Workbooks.Open($path, 0, $false)
+            if ($null -ne $workbook) {
+                Write-ProgressLine "opened $label workbook '$path' attempt=$attempt"
+                Wait-ExcelReady $excel "after open $label" 60
+                return $workbook
+            }
+            $lastError = "Excel returned null workbook"
+        }
+        catch {
+            $lastError = $_.Exception.Message
+            Write-ProgressLine "open workbook failed label='$label' attempt=$attempt error='$lastError'"
+        }
+
+        Start-Sleep -Milliseconds ([Math]::Min(5000, 250 * $attempt))
+    }
+
+    throw "Excel did not open $label workbook '$path': $lastError"
+}
+
 function Test-CachedCaptureFiles($capture) {
     if ($null -eq $capture) {
         return $false
@@ -3184,7 +3642,7 @@ function Join-CachedCaptureTiles($originalCapture, $shrunkCapture) {
     foreach ($index in @($tileIndexes.Keys | Sort-Object)) {
         $originalTile = $originalByIndex[[int]$index]
         $shrunkTile = $shrunkByIndex[[int]$index]
-        $preferred = First-NonNull $shrunkTile $originalTile
+        $preferred = First-NonNull $originalTile $shrunkTile
         if ($null -eq $preferred) {
             continue
         }
@@ -3209,13 +3667,13 @@ function Join-CachedCaptureTiles($originalCapture, $shrunkCapture) {
 
 function New-CachedCapturePair([int]$sheetIndex, [string]$sheetName, $originalCapture, $shrunkCapture) {
     $tiles = Join-CachedCaptureTiles $originalCapture $shrunkCapture
-    $preferred = First-NonNull $shrunkCapture $originalCapture
+    $preferred = First-NonNull $originalCapture $shrunkCapture
     return [pscustomobject]@{
         sheet_index = $sheetIndex
         sheet_name = $sheetName
-        capture_range = First-NonEmptyString $shrunkCapture.capture_range $originalCapture.capture_range
-        capture_strategy = First-NonEmptyString $shrunkCapture.capture_strategy $originalCapture.capture_strategy
-        used_range_error = First-NonEmptyString $shrunkCapture.used_range_error $originalCapture.used_range_error
+        capture_range = First-NonEmptyString $originalCapture.capture_range $shrunkCapture.capture_range
+        capture_strategy = First-NonEmptyString $originalCapture.capture_strategy $shrunkCapture.capture_strategy
+        used_range_error = First-NonEmptyString $originalCapture.used_range_error $shrunkCapture.used_range_error
         screenshot_error = $null
         capture_info = $preferred.capture_info
         original_image = if (@($originalCapture.tiles).Count -eq 0) { $originalCapture.image } else { $null }
@@ -3284,10 +3742,10 @@ function Worksheet-RangeByBounds($worksheet, [int]$startRow, [int]$startColumn, 
 }
 
 function Split-RangePair($origSheet, $shrunkSheet, $origRange, $shrunkRange, [bool]$preferColumns) {
-    $startRow = [int]$shrunkRange.Row
-    $startColumn = [int]$shrunkRange.Column
-    $rows = [int]$shrunkRange.Rows.Count
-    $columns = [int]$shrunkRange.Columns.Count
+    $startRow = [int]$origRange.Row
+    $startColumn = [int]$origRange.Column
+    $rows = [int]$origRange.Rows.Count
+    $columns = [int]$origRange.Columns.Count
     $splitColumns = $false
 
     if ($preferColumns -and $columns -gt 1) {
@@ -3342,7 +3800,7 @@ function Capture-RangeTileRecursive($origSheet, $shrunkSheet, $origRange, $shrun
     $nextTileIndex.Value = $tileIndex + 1
     $origPath = Join-Path $originalCacheDir ("{0}-tile-{1:D3}.png" -f $baseName, $tileIndex)
     $shrunkPath = Join-Path $shrunkCacheDir ("{0}-tile-{1:D3}.png" -f $baseName, $tileIndex)
-    $address = Range-Address $shrunkRange
+    $address = Range-Address $origRange
     $tileLabel = "$label tile=$tileIndex depth=$depth"
 
     try {
@@ -3379,7 +3837,7 @@ function Capture-RangeTileRecursive($origSheet, $shrunkSheet, $origRange, $shrun
         return @([pscustomobject]@{
             tile_index = $tileIndex
             capture_range = $address
-            capture_info = Range-CaptureInfo $shrunkRange "${strategy}_tile" $address $usedRangeError
+            capture_info = Range-CaptureInfo $origRange "${strategy}_tile" $address $usedRangeError
             original_image = $origPath
             shrunk_image = $shrunkPath
             original_background_rgba = $origInfo.background_rgba
@@ -3399,7 +3857,7 @@ function Capture-RangeTileRecursive($origSheet, $shrunkSheet, $origRange, $shrun
         return @([pscustomobject]@{
             tile_index = $tileIndex
             capture_range = $address
-            capture_info = Range-CaptureInfo $shrunkRange "${strategy}_tile" $address $usedRangeError
+            capture_info = Range-CaptureInfo $origRange "${strategy}_tile" $address $usedRangeError
             original_image = $origPath
             shrunk_image = $shrunkPath
             original_background_rgba = $origInfo.background_rgba
@@ -3427,7 +3885,7 @@ function Capture-RangeTileRecursive($origSheet, $shrunkSheet, $origRange, $shrun
 function Capture-RangeImageSet($origSheet, $shrunkSheet, $origRange, $shrunkRange, [string]$originalCacheDir, [string]$shrunkCacheDir, [string]$baseName, [string]$label, [string]$strategy, [string]$usedRangeError) {
     $origPath = Join-Path $originalCacheDir ("{0}.png" -f $baseName)
     $shrunkPath = Join-Path $shrunkCacheDir ("{0}.png" -f $baseName)
-    $address = Range-Address $shrunkRange
+    $address = Range-Address $origRange
     try {
         $origInfo = Save-RangeImage $origSheet $origRange $origPath "original $label" $address
         $shrunkInfo = Save-RangeImage $shrunkSheet $shrunkRange $shrunkPath "shrunk $label" $address
@@ -3458,7 +3916,7 @@ function Capture-RangeImageSet($origSheet, $shrunkSheet, $origRange, $shrunkRang
         return [pscustomobject]@{
             capture_range = $address
             capture_strategy = "${strategy}_tiled_after_memory_error"
-            capture_info = Range-CaptureInfo $shrunkRange "${strategy}_tiled_after_memory_error" $address $usedRangeError
+            capture_info = Range-CaptureInfo $origRange "${strategy}_tiled_after_memory_error" $address $usedRangeError
             original_image = $null
             shrunk_image = $null
             original_background_rgba = $null
@@ -3468,7 +3926,7 @@ function Capture-RangeImageSet($origSheet, $shrunkSheet, $origRange, $shrunkRang
     }
 
     $maxPixels = [Math]::Max([int64]$origInfo.pixels, [int64]$shrunkInfo.pixels)
-    $captureInfo = Range-CaptureInfo $shrunkRange $strategy $address $usedRangeError
+    $captureInfo = Range-CaptureInfo $origRange $strategy $address $usedRangeError
 
     if ($maxPixels -le $MaxScreenshotPixels) {
         return [pscustomobject]@{
@@ -3515,7 +3973,7 @@ function Capture-RangeImageSet($origSheet, $shrunkSheet, $origRange, $shrunkRang
     return [pscustomobject]@{
         capture_range = $address
         capture_strategy = "${strategy}_tiled"
-        capture_info = Range-CaptureInfo $shrunkRange "${strategy}_tiled" $address $usedRangeError
+        capture_info = Range-CaptureInfo $origRange "${strategy}_tiled" $address $usedRangeError
         original_image = $null
         shrunk_image = $null
         original_background_rgba = $null
@@ -3573,17 +4031,8 @@ try {
     $excelProcessId = Get-WindowProcessId $excel.Hwnd
     Write-ProgressLine "excel pid=$excelProcessId"
 
-    $original = $excel.Workbooks.Open($OriginalPath, 0, $false)
-    if ($null -eq $original) {
-        throw "Excel did not open original workbook '$OriginalPath'"
-    }
-    Write-ProgressLine "opened original workbook '$OriginalPath'"
-
-    $shrunk = $excel.Workbooks.Open($ShrunkPath, 0, $false)
-    if ($null -eq $shrunk) {
-        throw "Excel did not open shrunk workbook '$ShrunkPath'"
-    }
-    Write-ProgressLine "opened shrunk workbook '$ShrunkPath'"
+    $original = Open-WorkbookWithRetry $excel $OriginalPath "original"
+    $shrunk = Open-WorkbookWithRetry $excel $ShrunkPath "shrunk"
     $sheetCount = [Math]::Min($original.Worksheets.Count, $shrunk.Worksheets.Count)
     Write-ProgressLine "sheet count $sheetCount"
 
@@ -3620,10 +4069,10 @@ try {
         try {
             $primaryStrategy = if ($null -ne $rangeLimit) { "rust_bounds" } else { "used_range" }
             try {
-                $shrunkRange = Resolve-CaptureRange $shrunkSheet $rangeLimit
-                $origRange = Matching-WorksheetRange $origSheet $shrunkRange
-                $captureRange = RangeLimit-Address $rangeLimit $shrunkRange
-                $captureInfo = Range-CaptureInfo $shrunkRange $primaryStrategy $captureRange $null
+                $origRange = Resolve-CaptureRange $origSheet $rangeLimit
+                $shrunkRange = Matching-WorksheetRange $shrunkSheet $origRange
+                $captureRange = RangeLimit-Address $rangeLimit $origRange
+                $captureInfo = Range-CaptureInfo $origRange $primaryStrategy $captureRange $null
                 Write-ProgressLine "sheet primary range index=$i strategy=$primaryStrategy range='$captureRange' start_row=$($captureInfo.start_row) start_column=$($captureInfo.start_column) rows=$($captureInfo.rows) columns=$($captureInfo.columns)"
                 $captureSet = Capture-RangeImageSet $origSheet $shrunkSheet $origRange $shrunkRange $OriginalCacheDir $ShrunkCacheDir $imageBase "sheet $i $primaryStrategy" $primaryStrategy $null
                 $captureRange = $captureSet.capture_range
@@ -3647,10 +4096,10 @@ try {
                     Remove-Item (Join-Path $ShrunkCacheDir ("{0}-tile-*.png" -f $imageBase)) -Force -ErrorAction SilentlyContinue
                 }
 
-                $shrunkRange = $shrunkSheet.UsedRange
-                $origRange = Matching-WorksheetRange $origSheet $shrunkRange
-                $captureRange = Range-Address $shrunkRange
-                $captureInfo = Range-CaptureInfo $shrunkRange "used_range_after_primary_failure" $captureRange $usedRangeError
+                $origRange = Resolve-CaptureRange $origSheet $null
+                $shrunkRange = Matching-WorksheetRange $shrunkSheet $origRange
+                $captureRange = Range-Address $origRange
+                $captureInfo = Range-CaptureInfo $origRange "used_range_after_primary_failure" $captureRange $usedRangeError
                 Write-ProgressLine "sheet used range fallback index=$i range='$captureRange' start_row=$($captureInfo.start_row) start_column=$($captureInfo.start_column) rows=$($captureInfo.rows) columns=$($captureInfo.columns)"
                 $captureSet = Capture-RangeImageSet $origSheet $shrunkSheet $origRange $shrunkRange $OriginalCacheDir $ShrunkCacheDir $imageBase "sheet $i used range fallback" "used_range_after_primary_failure" $usedRangeError
                 $captureRange = $captureSet.capture_range
@@ -4112,11 +4561,11 @@ mod tests {
         let shrunk_workbook = test_dir.join("shrunk.xlsx");
         write_minimal_workbook(
             &original_workbook,
-            br#"<worksheet><cols><col min="1" max="1" style="1"/></cols><sheetData><row r="1" s="2"><c r="A1" s="1" t="s"><v>0</v></c></row></sheetData></worksheet>"#,
+            br#"<worksheet><cols><col min="1" max="2" style="1"/></cols><sheetData><row r="1" s="2"><c r="A1" s="1" t="s"><v>0</v></c></row><row r="2" s="2"><c r="A2" s="1" t="s"><v>0</v></c><c r="B2" s="1" t="s"><v>0</v></c><c r="C2" s="1" t="s"><v>0</v></c></row></sheetData></worksheet>"#,
         )?;
         write_minimal_workbook(
             &shrunk_workbook,
-            br#"<worksheet><cols><col min="1" max="1" style="1"/></cols><sheetData><row r="1" s="2"><c r="A1" s="1" t="s"><v>1</v></c></row></sheetData></worksheet>"#,
+            br#"<worksheet><cols><col min="1" max="2" style="1"/></cols><sheetData><row r="1" s="2"><c r="A1" s="1" t="s"><v>1</v></c></row><row r="2" s="2"><c r="A2" s="1" t="s"><v>0</v></c><c r="B2" s="1" t="s"><v>1</v></c><c r="C2" s="1" t="s"><v>0</v></c></row></sheetData></worksheet>"#,
         )?;
 
         let original_image = test_dir.join("original.png");
@@ -4170,17 +4619,29 @@ mod tests {
         assert!(diff.contains("-          0"));
         assert!(diff.contains("+          1"));
         assert!(diff.contains("cell=A1"));
+        assert!(diff.contains("cell=B2"));
         assert!(diff.contains("cell_s=1"));
         assert!(diff.contains("row_s=2"));
         assert!(diff.contains("column_s=1"));
         assert!(diff.contains("effective_style_xf[1]=<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFill=\"1\"/>"));
         assert!(diff.contains("row_style_xf[2]=<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>"));
-        assert!(diff.contains("column_node=<col min=\"1\" max=\"1\" style=\"1\"/>"));
+        assert!(diff.contains("column_node=<col min=\"1\" max=\"2\" style=\"1\"/>"));
         assert!(diff.contains("shared_string[0]=<si><t>old</t></si>"));
         assert!(diff.contains("shared_string[1]=<si><t>new</t></si>"));
 
+        let sheet_xml_visual_diff = test_dir.join("001-Sheet1-sheet-xml-visual.diff");
+        assert!(sheet_xml_visual_diff.exists());
+        let visual_diff = fs::read_to_string(&sheet_xml_visual_diff)?;
+        assert!(visual_diff.contains("# excel-shrink visual cell range: B2:B2"));
+        assert!(visual_diff.contains("cell=B2"));
+        assert!(!visual_diff.contains("cell=A1"));
+        assert!(!visual_diff.contains("r=\"A1\""));
+
         let report = fs::read_to_string(&report_path)?;
         assert!(report.contains("sheet_xml_diff"));
+        assert!(report.contains("sheet_xml_visual_diff"));
+        assert!(report.contains("\"top_left\": \"B2\""));
+        assert!(report.contains("\"bottom_right\": \"B2\""));
         assert!(report.contains("xl/worksheets/sheet1.xml"));
 
         let _ = fs::remove_dir_all(&test_dir);
@@ -4316,6 +4777,34 @@ mod tests {
             &progress_path,
             &manifest_path,
         ));
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn screenshot_failure_details_identify_shrunk_open_failure() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-open-failure-details-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+        let progress_path = test_dir.join("screenshot-progress.log");
+        fs::write(
+            &progress_path,
+            "screenshot capture started\nexcel pid=1234\nopened original workbook 'original.xlsx'\n",
+        )?;
+
+        let details = screenshot_capture_failure_details(
+            &progress_path,
+            Path::new("original.xlsx"),
+            Path::new("shrunk.xlsx"),
+        );
+        assert!(details.contains("likely_failed_phase=opening shrunk workbook"));
+        assert!(details.contains("original_excel=original.xlsx"));
+        assert!(details.contains("shrunk_excel=shrunk.xlsx"));
+        assert!(details.contains("opened original workbook"));
 
         let _ = fs::remove_dir_all(&test_dir);
         Ok(())

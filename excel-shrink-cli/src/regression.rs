@@ -1,5 +1,5 @@
 use crate::pipeline::process_files;
-use crate::Cli;
+use crate::{Cli, LogLevel};
 use clap::{Parser, Subcommand};
 use excel_automation::{ExcelSavedWorkbook, ExcelScreenshotReport};
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,10 @@ mod xlsx_value_compare;
     about = "Run real-file regression suites."
 )]
 pub struct RegressionCli {
+    /// Console log level for the regression runner.
+    #[arg(long, value_enum, default_value_t = LogLevel::Info, global = true)]
+    console_log_level: LogLevel,
+
     #[command(subcommand)]
     command: RegressionCommand,
 }
@@ -208,13 +212,20 @@ where
     T: Into<std::ffi::OsString> + Clone,
 {
     let cli = RegressionCli::parse_from(args);
+    let console_log_level = cli.console_log_level;
     match cli.command {
-        RegressionCommand::Smoke(args) => {
-            run_suite("smoke", "regression/baselines/smoke.json", args)
-        }
-        RegressionCommand::Corpus(args) => {
-            run_suite("corpus", "regression/baselines/corpus.json", args)
-        }
+        RegressionCommand::Smoke(args) => run_suite(
+            "smoke",
+            "regression/baselines/smoke.json",
+            args,
+            console_log_level,
+        ),
+        RegressionCommand::Corpus(args) => run_suite(
+            "corpus",
+            "regression/baselines/corpus.json",
+            args,
+            console_log_level,
+        ),
     }
 }
 
@@ -223,8 +234,13 @@ pub fn run_smoke_case_for_corpus_regression_test(case_id: &str) {
     init_corpus_regression_logging_for_test();
 
     let args = corpus_regression_run_args_for_test(Some(case_id.to_string()));
-    run_suite("smoke", "regression/baselines/smoke.json", args)
-        .unwrap_or_else(|e| panic!("corpus regression smoke case '{case_id}' failed: {e:#}"));
+    run_suite(
+        "smoke",
+        "regression/baselines/smoke.json",
+        args,
+        LogLevel::Info,
+    )
+    .unwrap_or_else(|e| panic!("corpus regression smoke case '{case_id}' failed: {e:#}"));
 }
 
 #[cfg(test)]
@@ -232,8 +248,13 @@ pub fn run_smoke_suite_for_corpus_regression_test() {
     init_corpus_regression_logging_for_test();
 
     let args = corpus_regression_run_args_for_test(None);
-    run_suite("smoke", "regression/baselines/smoke.json", args)
-        .unwrap_or_else(|e| panic!("corpus regression smoke suite failed: {e:#}"));
+    run_suite(
+        "smoke",
+        "regression/baselines/smoke.json",
+        args,
+        LogLevel::Info,
+    )
+    .unwrap_or_else(|e| panic!("corpus regression smoke suite failed: {e:#}"));
 }
 
 #[cfg(test)]
@@ -418,7 +439,7 @@ pub fn run_seeschifffahrt_sheet11_trace_removed_cells_for_corpus_regression_test
     let corpus_root = std::env::var_os("EXCEL_SHRINK_CORPUS_ROOT")
         .map(PathBuf::from)
         .map(|path| resolve_path(&repo_root, path));
-    let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case)
+    let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case, LogLevel::Info)
         .unwrap_or_else(|e| panic!("failed to resolve seeschifffahrt input: {e:#}"));
     let output_root = repo_root
         .join("regression/tmp")
@@ -492,7 +513,7 @@ pub fn run_kernhaushalt_sheet84_trace_removed_cell_for_corpus_regression_test() 
     let corpus_root = std::env::var_os("EXCEL_SHRINK_CORPUS_ROOT")
         .map(PathBuf::from)
         .map(|path| resolve_path(&repo_root, path));
-    let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case)
+    let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case, LogLevel::Info)
         .unwrap_or_else(|e| panic!("failed to resolve kernhaushalt input: {e:#}"));
     let output_root = repo_root
         .join("regression/tmp")
@@ -602,7 +623,7 @@ fn run_single_smoke_case_trace_cell_for_corpus_regression_test(
     let corpus_root = std::env::var_os("EXCEL_SHRINK_CORPUS_ROOT")
         .map(PathBuf::from)
         .map(|path| resolve_path(&repo_root, path));
-    let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case)
+    let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case, LogLevel::Info)
         .unwrap_or_else(|e| panic!("failed to resolve {label} input: {e:#}"));
     let output_root = repo_root
         .join("regression/tmp")
@@ -652,6 +673,7 @@ fn run_suite(
     mode_name: &str,
     default_baseline_relative_path: &str,
     args: RegressionRunArgs,
+    console_log_level: LogLevel,
 ) -> anyhow::Result<()> {
     let repo_root = repo_root();
     let baseline_path = resolve_path(
@@ -714,8 +736,12 @@ fn run_suite(
         suite.defaults.as_ref()
     };
 
+    let show_info = console_log_level.includes(LogLevel::Info);
+
     for case in cases {
-        eprintln!("[{mode_name}] Running case '{}'", case.id);
+        if show_info {
+            eprintln!("[{mode_name}] Running case '{}'", case.id);
+        }
         let report = run_case(
             mode_name,
             &repo_root,
@@ -725,25 +751,28 @@ fn run_suite(
             &args.cli_args,
             args.excel_recalc_check,
             args.excel_screenshot_check,
+            console_log_level,
             &case,
         );
         match &report {
             Ok(report) if report.failures.is_empty() => {
-                let ratio_text = report
-                    .reduction_ratio
-                    .map(|ratio| format!("{:.2}%", ratio * 100.0))
-                    .unwrap_or_else(|| "n/a".to_string());
-                eprintln!(
-                    "[{mode_name}] PASS {} (output={} bytes, reduction={})",
-                    report.id,
-                    report.cleaned_bytes.unwrap_or(0),
-                    ratio_text
-                );
-                if !report.top_sheet_reductions.is_empty() {
+                if show_info {
+                    let ratio_text = report
+                        .reduction_ratio
+                        .map(|ratio| format!("{:.2}%", ratio * 100.0))
+                        .unwrap_or_else(|| "n/a".to_string());
                     eprintln!(
-                        "[{mode_name}]   Top sheet reductions: {}",
-                        summarize_top_sheet_reductions(&report.top_sheet_reductions)
+                        "[{mode_name}] PASS {} (output={} bytes, reduction={})",
+                        report.id,
+                        report.cleaned_bytes.unwrap_or(0),
+                        ratio_text
                     );
+                    if !report.top_sheet_reductions.is_empty() {
+                        eprintln!(
+                            "[{mode_name}]   Top sheet reductions: {}",
+                            summarize_top_sheet_reductions(&report.top_sheet_reductions)
+                        );
+                    }
                 }
             }
             Ok(report) => {
@@ -752,7 +781,7 @@ fn run_suite(
                 for failure in &report.failures {
                     eprintln!("  - {failure}");
                 }
-                if !report.top_sheet_reductions.is_empty() {
+                if show_info && !report.top_sheet_reductions.is_empty() {
                     eprintln!(
                         "[{mode_name}]   Top sheet reductions: {}",
                         summarize_top_sheet_reductions(&report.top_sheet_reductions)
@@ -781,11 +810,13 @@ fn run_suite(
         .map(|expectation| aggregate_report(&reports, expectation));
     if let Some(aggregate) = &aggregate {
         if aggregate.failures.is_empty() {
-            eprintln!(
-                "[{mode_name}] Aggregate: output={} bytes, reduction={:.2}%",
-                aggregate.total_cleaned_bytes,
-                aggregate.total_reduction_ratio * 100.0
-            );
+            if show_info {
+                eprintln!(
+                    "[{mode_name}] Aggregate: output={} bytes, reduction={:.2}%",
+                    aggregate.total_cleaned_bytes,
+                    aggregate.total_reduction_ratio * 100.0
+                );
+            }
         } else {
             any_failure = true;
             eprintln!("[{mode_name}] Aggregate failed");
@@ -807,7 +838,9 @@ fn run_suite(
         aggregate,
     };
     fs::write(&report_path, serde_json::to_string_pretty(&report)?)?;
-    eprintln!("[{mode_name}] Report written to {}", report_path.display());
+    if show_info {
+        eprintln!("[{mode_name}] Report written to {}", report_path.display());
+    }
 
     anyhow::ensure!(!any_failure, "One or more regression checks failed.");
     Ok(())
@@ -822,9 +855,10 @@ fn run_case(
     extra_cli_args: &[String],
     excel_recalc_check: bool,
     excel_screenshot_check: bool,
+    console_log_level: LogLevel,
     case: &RegressionCase,
 ) -> anyhow::Result<CaseReport> {
-    let input = resolve_case_input(repo_root, corpus_root, case)?;
+    let input = resolve_case_input(repo_root, corpus_root, case, console_log_level)?;
     let case_output_dir = output_root.join(&case.id);
     fs::create_dir_all(&case_output_dir)?;
     let analysis_mode = analysis_mode(defaults, case);
@@ -946,6 +980,7 @@ fn run_case(
             &screenshot_dir,
             &work_dir,
             &range_limits,
+            console_log_level,
         ) {
             Ok(report) => {
                 if report.differences_found {
@@ -1374,6 +1409,7 @@ fn resolve_case_input(
     repo_root: &Path,
     corpus_root: Option<&Path>,
     case: &RegressionCase,
+    console_log_level: LogLevel,
 ) -> anyhow::Result<PathBuf> {
     if let Some(input_path) = &case.input_path {
         let path = normalize_cli_path(PathBuf::from(input_path));
@@ -1392,12 +1428,14 @@ fn resolve_case_input(
             return Ok(path);
         }
 
-        eprintln!(
-            "[smoke] Input file for case '{}' not found under corpus root: {}",
-            case.id,
-            path.display()
-        );
-        eprintln!("[smoke] Falling back to local cache, sibling corpus, or download URL.");
+        if console_log_level.includes(LogLevel::Warn) {
+            eprintln!(
+                "[smoke] Input file for case '{}' not found under corpus root: {}",
+                case.id,
+                path.display()
+            );
+            eprintln!("[smoke] Falling back to local cache, sibling corpus, or download URL.");
+        }
     }
 
     if let Some(relative_input) = &case.relative_input {
@@ -1412,12 +1450,13 @@ fn resolve_case_input(
         }
     }
 
-    ensure_downloaded_case_input(repo_root, case)
+    ensure_downloaded_case_input(repo_root, case, console_log_level)
 }
 
 fn ensure_downloaded_case_input(
     repo_root: &Path,
     case: &RegressionCase,
+    console_log_level: LogLevel,
 ) -> anyhow::Result<PathBuf> {
     let cached_root = cached_corpus_root(repo_root);
     fs::create_dir_all(&cached_root)?;
@@ -1438,7 +1477,9 @@ fn ensure_downloaded_case_input(
         return Ok(cached_path);
     }
 
-    eprintln!("[download] {download_url}");
+    if console_log_level.includes(LogLevel::Info) {
+        eprintln!("[download] {download_url}");
+    }
     let status = Command::new("curl")
         .args(["-L", "--fail", "--output"])
         .arg(&cached_path)
