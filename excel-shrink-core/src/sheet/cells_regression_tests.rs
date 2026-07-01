@@ -314,7 +314,7 @@ fn keeps_empty_cell_when_apply_font_differs_from_column_apply_font() {
 }
 
 #[test]
-fn keeps_empty_hidden_column_cell_when_apply_font_differs_from_column_apply_font() {
+fn removes_empty_hidden_column_cell_when_apply_font_differs_from_column_apply_font() {
     let column_style = apply_font_only_style(4);
     let cell_style = apply_font_only_style(8);
     let params = params_with_styles(&[(4, column_style.clone()), (8, cell_style)]);
@@ -333,9 +333,42 @@ fn keeps_empty_hidden_column_cell_when_apply_font_differs_from_column_apply_font
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned.as_ref(), cell_xml);
-    assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.tail_anchor_max_row, None);
+}
+
+#[test]
+fn removes_empty_hidden_column_cell_when_only_font_differs_from_column_font() {
+    let column_style = apply_font_only_style(4);
+    let cell_style = apply_font_only_style(8);
+    let params = params_with_styles(&[(4, column_style.clone()), (8, cell_style)]);
+    let mut metrics = CleanSheetMetrics::default();
+
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 16_384,
+        max: 16_384,
+        cell_xf: Some(column_style),
+        hidden: true,
+    });
+    metrics.column_definitions.finalize();
+
+    let cell_xml = br#"<c r="XFD49" s="8"/>"#;
+    let cell = ParsedCell {
+        raw: cell_xml,
+        attr: br#" r="XFD49" s="8""#,
+        reference_attr: br#"r="XFD49""#,
+        row: b"49",
+        col_num: 16_384,
+        style_id: Some(8),
+    };
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_states.len(), 1);
     assert_eq!(metrics.tail_anchor_max_row, None);
 }
 

@@ -176,7 +176,7 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
                 params,
                 metrics,
                 keep_no_empty_cell_visible_style_cell,
-                keep_other_empty_cell || keep_column_font_style_cell,
+                keep_other_empty_cell,
                 keep_default_empty_cell,
             ) {
                 let out = generate_self_closing_cell_xml(cell.attr);
