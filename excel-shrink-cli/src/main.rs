@@ -83,9 +83,10 @@ pub struct Cli {
     #[arg(long)]
     disable_column_tail_fill_merge: bool,
 
-    /// Disable keeping empty styleless/default-style cells that conservatively preserve default-font layout.
+    /// Disable keeping empty styleless cells that preserve default-font row layout.
+    /// Without these anchors, deleting styleless empty cells can cause rows to shift.
     #[arg(long)]
-    disable_empty_style_representatives: bool,
+    disable_default_font_representatives: bool,
 
     /// Disable keeping empty font-only style cells that conservatively preserve row height/alignment.
     #[arg(long)]
