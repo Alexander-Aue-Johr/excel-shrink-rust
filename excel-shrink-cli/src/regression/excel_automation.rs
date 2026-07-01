@@ -3,9 +3,11 @@ use crate::pipeline::process_files;
 use crate::{Cli, LogLevel};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::fs::File;
+use std::hash::{Hash, Hasher};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
@@ -18,6 +20,7 @@ const WORKBOOK_XML_REPAIR_MARKER_VERSION: u32 = 1;
 const EXCEL_SCREENSHOT_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 const EXCEL_SCREENSHOT_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const WORKBOOK_XML_REPAIRED_SUFFIX: &str = "workbook-xml-repaired";
+const MAX_VERTICAL_REFLOW_SEARCH_PX: usize = 2048;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ExcelSavedWorkbook {
@@ -370,7 +373,7 @@ struct ScreenshotCapture {
     tiles: Vec<ScreenshotCaptureTile>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 struct ScreenshotRgba {
     r: u8,
     g: u8,
@@ -633,6 +636,8 @@ struct ScreenshotDifference {
     #[serde(skip_serializing_if = "Option::is_none")]
     diff_pixels: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    vertical_reflow_proof: Option<VerticalReflowProof>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     original_sheet_xml: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     shrunk_sheet_xml: Option<PathBuf>,
@@ -646,6 +651,47 @@ struct ScreenshotDifference {
     original_image: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     shrunk_image: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct VerticalReflowProof {
+    classification: &'static str,
+    reconstructs_original: bool,
+    original_width: u32,
+    original_height: u32,
+    shrunk_width: u32,
+    shrunk_height: u32,
+    height_delta_px: i32,
+    matched_rows: u32,
+    inserted_rows: u32,
+    removed_rows: u32,
+    operations: Vec<VerticalReflowOperation>,
+    residual_diff_pixels: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    residual_diff_box: Option<DiffBox>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reconstructed_from_shrunk: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct VerticalReflowOperation {
+    at_y: u32,
+    shift_suffix_by_px: i32,
+    direction: &'static str,
+    row_count: u32,
+    spacer: VerticalReflowSpacer,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct VerticalReflowSpacer {
+    kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rgba: Option<ScreenshotRgba>,
+}
+
+struct VerticalReflowProofResult {
+    proof: VerticalReflowProof,
+    reconstructed: image::RgbaImage,
 }
 
 struct SheetXmlDiffContext<'a> {
@@ -878,7 +924,7 @@ fn compare_screenshot_image_pair(
     sheet_xml_diff_context: Option<&SheetXmlDiffContext<'_>>,
     differences: &mut Vec<ScreenshotDifference>,
 ) -> anyhow::Result<()> {
-    let original_pixels = match load_screenshot_image(&comparison.original_image) {
+    let original_pixels_unpadded = match load_screenshot_image(&comparison.original_image) {
         Ok(pixels) => pixels,
         Err(error) => {
             differences.push(screenshot_error_difference_for_parts(
@@ -895,7 +941,7 @@ fn compare_screenshot_image_pair(
             return Ok(());
         }
     };
-    let shrunk_pixels = match load_screenshot_image(&comparison.shrunk_image) {
+    let shrunk_pixels_unpadded = match load_screenshot_image(&comparison.shrunk_image) {
         Ok(pixels) => pixels,
         Err(error) => {
             differences.push(screenshot_error_difference_for_parts(
@@ -912,9 +958,11 @@ fn compare_screenshot_image_pair(
             return Ok(());
         }
     };
+    let vertical_reflow_proof =
+        prove_vertical_suffix_reflow(&original_pixels_unpadded, &shrunk_pixels_unpadded);
     let (original_pixels, shrunk_pixels) = pad_screenshot_pair_to_common_canvas(
-        original_pixels,
-        shrunk_pixels,
+        original_pixels_unpadded,
+        shrunk_pixels_unpadded,
         comparison.original_background_rgba,
         comparison.shrunk_background_rgba,
     );
@@ -934,6 +982,24 @@ fn compare_screenshot_image_pair(
     let original_crop = output_dir.join(format!("{artifact_stem}-diff-original.png"));
     let shrunk_crop = output_dir.join(format!("{artifact_stem}-diff-shrunk.png"));
     let diff_pixels = output_dir.join(format!("{artifact_stem}-diff-pixels.png"));
+    let vertical_reflow_proof = match vertical_reflow_proof {
+        Some(mut result) => {
+            let reconstructed_path =
+                output_dir.join(format!("{artifact_stem}-vertical-reflow-reconstructed.png"));
+            result
+                .reconstructed
+                .save(&reconstructed_path)
+                .map_err(|error| {
+                    anyhow::anyhow!(
+                        "failed to save image '{}': {error}",
+                        reconstructed_path.display()
+                    )
+                })?;
+            result.proof.reconstructed_from_shrunk = Some(reconstructed_path);
+            Some(result.proof)
+        }
+        None => None,
+    };
 
     save_diff_crop(
         &original_pixels,
@@ -1008,6 +1074,7 @@ fn compare_screenshot_image_pair(
         original_crop: Some(original_crop),
         shrunk_crop: Some(shrunk_crop),
         diff_pixels: Some(diff_pixels),
+        vertical_reflow_proof,
         original_sheet_xml,
         shrunk_sheet_xml,
         sheet_xml_diff,
@@ -1077,6 +1144,7 @@ fn screenshot_error_difference_for_parts(
         original_crop: None,
         shrunk_crop: None,
         diff_pixels: None,
+        vertical_reflow_proof: None,
         original_sheet_xml: None,
         shrunk_sheet_xml: None,
         sheet_xml_diff: None,
@@ -1497,6 +1565,443 @@ fn path_has_expected_hash(path: &Path, expected_hash: Option<&str>) -> anyhow::R
         return Ok(false);
     }
     Ok(file_content_hash(path)? == expected_hash)
+}
+
+fn prove_vertical_suffix_reflow(
+    original: &image::RgbaImage,
+    shrunk: &image::RgbaImage,
+) -> Option<VerticalReflowProofResult> {
+    if original.width() != shrunk.width() || original.width() == 0 {
+        return None;
+    }
+
+    let width = original.width();
+    let original_rows = image_rows(original);
+    let mut reconstructed_rows = image_rows(shrunk);
+    let original_hashes = row_hashes(&original_rows);
+    let mut reconstructed_hashes = row_hashes(&reconstructed_rows);
+    let mut operations = Vec::new();
+    let mut matched_rows = 0u32;
+    let mut inserted_rows = 0u32;
+    let mut removed_rows = 0u32;
+    let mut original_y = 0usize;
+    let mut reconstructed_y = 0usize;
+
+    while original_y < original_rows.len() && reconstructed_y < reconstructed_rows.len() {
+        if original_hashes[original_y] == reconstructed_hashes[reconstructed_y]
+            && original_rows[original_y] == reconstructed_rows[reconstructed_y]
+        {
+            matched_rows = matched_rows.saturating_add(1);
+            original_y += 1;
+            reconstructed_y += 1;
+            continue;
+        }
+
+        let insert_candidate = find_vertical_reflow_insert(
+            &original_rows,
+            &original_hashes,
+            original_y,
+            &reconstructed_rows,
+            &reconstructed_hashes,
+            reconstructed_y,
+        );
+        let remove_candidate = find_vertical_reflow_remove(
+            &original_rows,
+            &original_hashes,
+            original_y,
+            &reconstructed_rows,
+            &reconstructed_hashes,
+            reconstructed_y,
+        );
+
+        match choose_vertical_reflow_candidate(insert_candidate, remove_candidate) {
+            Some(VerticalReflowCandidate::Insert { len, spacer }) => {
+                let inserted = vertical_reflow_insert_rows(
+                    &spacer,
+                    len,
+                    width,
+                    reconstructed_y
+                        .checked_sub(1)
+                        .and_then(|index| reconstructed_rows.get(index)),
+                    reconstructed_rows.get(reconstructed_y),
+                )?;
+                let inserted_hashes = row_hashes(&inserted);
+                reconstructed_rows.splice(reconstructed_y..reconstructed_y, inserted);
+                reconstructed_hashes.splice(reconstructed_y..reconstructed_y, inserted_hashes);
+                operations.push(VerticalReflowOperation {
+                    at_y: reconstructed_y as u32,
+                    shift_suffix_by_px: len as i32,
+                    direction: "down",
+                    row_count: len as u32,
+                    spacer: spacer.into_report(),
+                });
+                inserted_rows = inserted_rows.saturating_add(len as u32);
+            }
+            Some(VerticalReflowCandidate::Remove { len, spacer }) => {
+                reconstructed_rows.drain(reconstructed_y..reconstructed_y + len);
+                reconstructed_hashes.drain(reconstructed_y..reconstructed_y + len);
+                operations.push(VerticalReflowOperation {
+                    at_y: reconstructed_y as u32,
+                    shift_suffix_by_px: -(len as i32),
+                    direction: "up",
+                    row_count: len as u32,
+                    spacer: spacer.into_report(),
+                });
+                removed_rows = removed_rows.saturating_add(len as u32);
+            }
+            None => return None,
+        }
+    }
+
+    if original_y < original_rows.len() {
+        let len = original_rows.len() - original_y;
+        let spacer = classify_vertical_spacer_rows(
+            &original_rows,
+            original_y,
+            len,
+            reconstructed_y
+                .checked_sub(1)
+                .and_then(|index| reconstructed_rows.get(index)),
+            None,
+        )?;
+        let inserted = vertical_reflow_insert_rows(
+            &spacer,
+            len,
+            width,
+            reconstructed_y
+                .checked_sub(1)
+                .and_then(|index| reconstructed_rows.get(index)),
+            None,
+        )?;
+        let inserted_hashes = row_hashes(&inserted);
+        reconstructed_rows.splice(reconstructed_y..reconstructed_y, inserted);
+        reconstructed_hashes.splice(reconstructed_y..reconstructed_y, inserted_hashes);
+        operations.push(VerticalReflowOperation {
+            at_y: reconstructed_y as u32,
+            shift_suffix_by_px: len as i32,
+            direction: "down",
+            row_count: len as u32,
+            spacer: spacer.into_report(),
+        });
+        inserted_rows = inserted_rows.saturating_add(len as u32);
+    }
+
+    if reconstructed_y < reconstructed_rows.len() {
+        let len = reconstructed_rows.len() - reconstructed_y;
+        let spacer = classify_vertical_spacer_rows(
+            &reconstructed_rows,
+            reconstructed_y,
+            len,
+            reconstructed_y
+                .checked_sub(1)
+                .and_then(|index| reconstructed_rows.get(index)),
+            None,
+        )?;
+        reconstructed_rows.drain(reconstructed_y..);
+        reconstructed_hashes.drain(reconstructed_y..);
+        operations.push(VerticalReflowOperation {
+            at_y: reconstructed_y as u32,
+            shift_suffix_by_px: -(len as i32),
+            direction: "up",
+            row_count: len as u32,
+            spacer: spacer.into_report(),
+        });
+        removed_rows = removed_rows.saturating_add(len as u32);
+    }
+
+    if operations.is_empty() {
+        return None;
+    }
+
+    let reconstructed = rows_to_image(&reconstructed_rows, width)?;
+    let residual_diff_box = find_diff_box(original, &reconstructed);
+    let residual_diff_pixels = residual_diff_box
+        .map(|diff_box| count_diff_pixels(original, &reconstructed, diff_box))
+        .unwrap_or(0);
+    if residual_diff_pixels != 0 {
+        return None;
+    }
+
+    Some(VerticalReflowProofResult {
+        proof: VerticalReflowProof {
+            classification: "vertical_suffix_reflow",
+            reconstructs_original: true,
+            original_width: original.width(),
+            original_height: original.height(),
+            shrunk_width: shrunk.width(),
+            shrunk_height: shrunk.height(),
+            height_delta_px: original.height() as i32 - shrunk.height() as i32,
+            matched_rows,
+            inserted_rows,
+            removed_rows,
+            operations,
+            residual_diff_pixels,
+            residual_diff_box,
+            reconstructed_from_shrunk: None,
+        },
+        reconstructed,
+    })
+}
+
+enum VerticalReflowCandidate {
+    Insert {
+        len: usize,
+        spacer: VerticalReflowSpacerKind,
+    },
+    Remove {
+        len: usize,
+        spacer: VerticalReflowSpacerKind,
+    },
+}
+
+#[derive(Debug, Clone)]
+enum VerticalReflowSpacerKind {
+    DuplicatePreviousRow,
+    DuplicateNextRow,
+    UniformRgba(ScreenshotRgba),
+}
+
+impl VerticalReflowSpacerKind {
+    fn into_report(self) -> VerticalReflowSpacer {
+        match self {
+            VerticalReflowSpacerKind::DuplicatePreviousRow => VerticalReflowSpacer {
+                kind: "duplicate_previous_row",
+                rgba: None,
+            },
+            VerticalReflowSpacerKind::DuplicateNextRow => VerticalReflowSpacer {
+                kind: "duplicate_next_row",
+                rgba: None,
+            },
+            VerticalReflowSpacerKind::UniformRgba(rgba) => VerticalReflowSpacer {
+                kind: "uniform_rgba",
+                rgba: Some(rgba),
+            },
+        }
+    }
+}
+
+fn choose_vertical_reflow_candidate(
+    insert: Option<VerticalReflowCandidate>,
+    remove: Option<VerticalReflowCandidate>,
+) -> Option<VerticalReflowCandidate> {
+    match (insert, remove) {
+        (Some(insert), Some(remove)) => {
+            if vertical_reflow_candidate_len(&insert) <= vertical_reflow_candidate_len(&remove) {
+                Some(insert)
+            } else {
+                Some(remove)
+            }
+        }
+        (Some(insert), None) => Some(insert),
+        (None, Some(remove)) => Some(remove),
+        (None, None) => None,
+    }
+}
+
+fn vertical_reflow_candidate_len(candidate: &VerticalReflowCandidate) -> usize {
+    match candidate {
+        VerticalReflowCandidate::Insert { len, .. }
+        | VerticalReflowCandidate::Remove { len, .. } => *len,
+    }
+}
+
+fn find_vertical_reflow_insert(
+    original_rows: &[Vec<u8>],
+    original_hashes: &[u64],
+    original_y: usize,
+    reconstructed_rows: &[Vec<u8>],
+    reconstructed_hashes: &[u64],
+    reconstructed_y: usize,
+) -> Option<VerticalReflowCandidate> {
+    let current_reconstructed = reconstructed_rows.get(reconstructed_y)?;
+    let current_hash = *reconstructed_hashes.get(reconstructed_y)?;
+    let max_len =
+        (original_rows.len().saturating_sub(original_y + 1)).min(MAX_VERTICAL_REFLOW_SEARCH_PX);
+
+    for len in 1..=max_len {
+        let candidate_y = original_y + len;
+        if original_hashes.get(candidate_y).copied() != Some(current_hash)
+            || original_rows.get(candidate_y) != Some(current_reconstructed)
+        {
+            continue;
+        }
+
+        let spacer = classify_vertical_spacer_rows(
+            original_rows,
+            original_y,
+            len,
+            reconstructed_y
+                .checked_sub(1)
+                .and_then(|index| reconstructed_rows.get(index)),
+            Some(current_reconstructed),
+        )?;
+        return Some(VerticalReflowCandidate::Insert { len, spacer });
+    }
+
+    None
+}
+
+fn find_vertical_reflow_remove(
+    original_rows: &[Vec<u8>],
+    original_hashes: &[u64],
+    original_y: usize,
+    reconstructed_rows: &[Vec<u8>],
+    reconstructed_hashes: &[u64],
+    reconstructed_y: usize,
+) -> Option<VerticalReflowCandidate> {
+    let current_original = original_rows.get(original_y)?;
+    let current_hash = *original_hashes.get(original_y)?;
+    let max_len = (reconstructed_rows.len().saturating_sub(reconstructed_y + 1))
+        .min(MAX_VERTICAL_REFLOW_SEARCH_PX);
+
+    for len in 1..=max_len {
+        let candidate_y = reconstructed_y + len;
+        if reconstructed_hashes.get(candidate_y).copied() != Some(current_hash)
+            || reconstructed_rows.get(candidate_y) != Some(current_original)
+        {
+            continue;
+        }
+
+        let spacer = classify_vertical_spacer_rows(
+            reconstructed_rows,
+            reconstructed_y,
+            len,
+            reconstructed_y
+                .checked_sub(1)
+                .and_then(|index| reconstructed_rows.get(index)),
+            Some(current_original),
+        )?;
+        return Some(VerticalReflowCandidate::Remove { len, spacer });
+    }
+
+    None
+}
+
+fn classify_vertical_spacer_rows(
+    rows: &[Vec<u8>],
+    start: usize,
+    len: usize,
+    previous_row: Option<&Vec<u8>>,
+    next_row: Option<&Vec<u8>>,
+) -> Option<VerticalReflowSpacerKind> {
+    if len == 0 || start.checked_add(len)? > rows.len() {
+        return None;
+    }
+
+    let gap = &rows[start..start + len];
+    if let Some(previous_row) = previous_row {
+        if gap.iter().all(|row| row == previous_row) {
+            return Some(VerticalReflowSpacerKind::DuplicatePreviousRow);
+        }
+    }
+    if let Some(next_row) = next_row {
+        if gap.iter().all(|row| row == next_row) {
+            return Some(VerticalReflowSpacerKind::DuplicateNextRow);
+        }
+    }
+
+    let rgba = uniform_row_rgba(&gap[0])?;
+    if gap.iter().all(|row| uniform_row_rgba(row) == Some(rgba)) {
+        return Some(VerticalReflowSpacerKind::UniformRgba(rgba));
+    }
+
+    None
+}
+
+fn vertical_reflow_insert_rows(
+    spacer: &VerticalReflowSpacerKind,
+    len: usize,
+    width: u32,
+    previous_row: Option<&Vec<u8>>,
+    next_row: Option<&Vec<u8>>,
+) -> Option<Vec<Vec<u8>>> {
+    let row = match spacer {
+        VerticalReflowSpacerKind::DuplicatePreviousRow => previous_row?.clone(),
+        VerticalReflowSpacerKind::DuplicateNextRow => next_row?.clone(),
+        VerticalReflowSpacerKind::UniformRgba(rgba) => {
+            uniform_image_row(width, image::Rgba([rgba.r, rgba.g, rgba.b, rgba.a]))
+        }
+    };
+    Some((0..len).map(|_| row.clone()).collect())
+}
+
+fn image_rows(image: &image::RgbaImage) -> Vec<Vec<u8>> {
+    let row_len = image.width() as usize * 4;
+    image
+        .as_raw()
+        .chunks(row_len.max(1))
+        .map(|row| row.to_vec())
+        .collect()
+}
+
+fn rows_to_image(rows: &[Vec<u8>], width: u32) -> Option<image::RgbaImage> {
+    let row_len = width as usize * 4;
+    let mut bytes = Vec::with_capacity(row_len.checked_mul(rows.len())?);
+    for row in rows {
+        if row.len() != row_len {
+            return None;
+        }
+        bytes.extend_from_slice(row);
+    }
+    image::RgbaImage::from_raw(width, rows.len() as u32, bytes)
+}
+
+fn row_hashes(rows: &[Vec<u8>]) -> Vec<u64> {
+    rows.iter().map(|row| row_hash(row)).collect()
+}
+
+fn row_hash(row: &[u8]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    row.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn uniform_image_row(width: u32, color: image::Rgba<u8>) -> Vec<u8> {
+    let mut row = Vec::with_capacity(width as usize * 4);
+    for _ in 0..width {
+        row.extend_from_slice(&color.0);
+    }
+    row
+}
+
+fn uniform_row_rgba(row: &[u8]) -> Option<ScreenshotRgba> {
+    let first = row.get(0..4)?;
+    if row.chunks_exact(4).all(|pixel| pixel == first) {
+        Some(ScreenshotRgba {
+            r: first[0],
+            g: first[1],
+            b: first[2],
+            a: first[3],
+        })
+    } else {
+        None
+    }
+}
+
+fn count_diff_pixels(left: &image::RgbaImage, right: &image::RgbaImage, diff_box: DiffBox) -> u64 {
+    let width = left.width().min(right.width());
+    let height = left.height().min(right.height());
+    if width == 0 || height == 0 {
+        return 0;
+    }
+
+    let left_stride = left.width() as usize * 4;
+    let right_stride = right.width() as usize * 4;
+    let left_raw = left.as_raw();
+    let right_raw = right.as_raw();
+    let mut count = 0u64;
+    let max_x = diff_box.max_x.min(width - 1);
+    let max_y = diff_box.max_y.min(height - 1);
+    for y in diff_box.min_y.min(max_y)..=max_y {
+        for x in diff_box.min_x.min(max_x)..=max_x {
+            let left_start = y as usize * left_stride + x as usize * 4;
+            let right_start = y as usize * right_stride + x as usize * 4;
+            if left_raw[left_start..left_start + 4] != right_raw[right_start..right_start + 4] {
+                count += 1;
+            }
+        }
+    }
+    count
 }
 
 fn find_diff_box(left: &image::RgbaImage, right: &image::RgbaImage) -> Option<DiffBox> {
@@ -2904,6 +3409,7 @@ fn repair_original_workbook_xml_only(
         disable_tail_pruning: false,
         disable_trailing_layout_only_rows: false,
         disable_extraneous_column_merge: false,
+        disable_column_tail_fill_merge: false,
         disable_empty_style_representatives: false,
         disable_empty_font_style_representatives: false,
         disable_column_font_style_representatives: false,
@@ -4239,6 +4745,124 @@ mod tests {
     }
 
     #[test]
+    fn screenshot_difference_reports_vertical_suffix_reflow_proof() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-screenshot-vertical-reflow-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+
+        let original_path = test_dir.join("original.png");
+        let shrunk_path = test_dir.join("shrunk.png");
+        let original = test_image_from_row_colors(&[
+            image::Rgba([200, 0, 0, 255]),
+            image::Rgba([0, 160, 0, 255]),
+            image::Rgba([255, 255, 255, 255]),
+            image::Rgba([255, 255, 255, 255]),
+            image::Rgba([0, 0, 200, 255]),
+        ]);
+        let shrunk = test_image_from_row_colors(&[
+            image::Rgba([200, 0, 0, 255]),
+            image::Rgba([0, 160, 0, 255]),
+            image::Rgba([255, 255, 255, 255]),
+            image::Rgba([0, 0, 200, 255]),
+        ]);
+        original.save(&original_path)?;
+        shrunk.save(&shrunk_path)?;
+
+        let capture_manifest_path = test_dir.join("screenshot-captures.json");
+        let report_path = test_dir.join("screenshot-differences.json");
+        let capture_manifest = serde_json::json!([
+            {
+                "sheet_index": 1,
+                "sheet_name": "Sheet1",
+                "capture_range": "A1:A5",
+                "capture_strategy": "test",
+                "used_range_error": null,
+                "original_image": original_path,
+                "shrunk_image": shrunk_path,
+                "capture_info": {
+                    "strategy": "test",
+                    "address": "A1:A5",
+                    "start_row": 1,
+                    "start_column": 1,
+                    "rows": 5,
+                    "columns": 1,
+                    "used_range_error": null
+                }
+            }
+        ]);
+        fs::write(
+            &capture_manifest_path,
+            serde_json::to_vec_pretty(&capture_manifest)?,
+        )?;
+
+        assert!(compare_captured_screenshots(
+            &capture_manifest_path,
+            &report_path,
+            None
+        )?);
+        let report: serde_json::Value = serde_json::from_slice(&fs::read(&report_path)?)?;
+        let proof = &report[0]["vertical_reflow_proof"];
+        assert_eq!(proof["classification"], "vertical_suffix_reflow");
+        assert_eq!(proof["reconstructs_original"], true);
+        assert_eq!(proof["height_delta_px"], 1);
+        assert_eq!(proof["residual_diff_pixels"], 0);
+        assert_eq!(proof["operations"][0]["at_y"], 3);
+        assert_eq!(proof["operations"][0]["shift_suffix_by_px"], 1);
+        assert_eq!(proof["operations"][0]["direction"], "down");
+        let reconstructed = proof["reconstructed_from_shrunk"]
+            .as_str()
+            .expect("proof should include reconstructed image path");
+        assert!(Path::new(reconstructed).exists());
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn vertical_suffix_reflow_proof_handles_suffix_shift_up() {
+        let original = test_image_from_row_colors(&[
+            image::Rgba([200, 0, 0, 255]),
+            image::Rgba([255, 255, 255, 255]),
+            image::Rgba([0, 0, 200, 255]),
+        ]);
+        let shrunk = test_image_from_row_colors(&[
+            image::Rgba([200, 0, 0, 255]),
+            image::Rgba([255, 255, 255, 255]),
+            image::Rgba([255, 255, 255, 255]),
+            image::Rgba([0, 0, 200, 255]),
+        ]);
+
+        let result = prove_vertical_suffix_reflow(&original, &shrunk)
+            .expect("extra spacer row should be provable as vertical reflow");
+        assert_eq!(result.proof.residual_diff_pixels, 0);
+        assert_eq!(result.proof.operations.len(), 1);
+        assert_eq!(result.proof.operations[0].at_y, 2);
+        assert_eq!(result.proof.operations[0].shift_suffix_by_px, -1);
+        assert_eq!(result.proof.operations[0].direction, "up");
+        assert_eq!(result.proof.removed_rows, 1);
+        assert_eq!(result.reconstructed, original);
+    }
+
+    #[test]
+    fn vertical_suffix_reflow_proof_rejects_content_changes() {
+        let original = test_image_from_row_colors(&[
+            image::Rgba([200, 0, 0, 255]),
+            image::Rgba([0, 160, 0, 255]),
+            image::Rgba([0, 0, 200, 255]),
+        ]);
+        let shrunk = test_image_from_row_colors(&[
+            image::Rgba([200, 0, 0, 255]),
+            image::Rgba([0, 160, 0, 255]),
+            image::Rgba([200, 0, 200, 255]),
+        ]);
+
+        assert!(prove_vertical_suffix_reflow(&original, &shrunk).is_none());
+    }
+
+    #[test]
     fn workbook_xml_repair_marker_round_trips() -> anyhow::Result<()> {
         let test_dir = std::env::temp_dir().join(format!(
             "excel-shrink-workbook-xml-repair-marker-{}",
@@ -4679,6 +5303,17 @@ mod tests {
         writer.finish()?;
 
         Ok(())
+    }
+
+    fn test_image_from_row_colors(colors: &[image::Rgba<u8>]) -> image::RgbaImage {
+        let width = 4;
+        let mut image = image::RgbaImage::new(width, colors.len() as u32);
+        for (y, color) in colors.iter().enumerate() {
+            for x in 0..width {
+                image.put_pixel(x, y as u32, *color);
+            }
+        }
+        image
     }
 
     fn write_test_screenshot_cache_manifest(
