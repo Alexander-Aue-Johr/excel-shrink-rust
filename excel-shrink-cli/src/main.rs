@@ -79,6 +79,10 @@ pub struct Cli {
     #[arg(long)]
     disable_extraneous_column_merge: bool,
 
+    /// Disable merging borderless same-fill column tails.
+    #[arg(long)]
+    disable_column_tail_fill_merge: bool,
+
     /// Disable keeping empty styleless/default-style cells that conservatively preserve default-font layout.
     #[arg(long)]
     disable_empty_style_representatives: bool,
@@ -368,6 +372,18 @@ mod tests {
         ]);
 
         assert!(cli.disable_column_font_style_representatives);
+    }
+
+    #[test]
+    fn cli_parses_disable_column_tail_fill_merge() {
+        let cli = Cli::parse_from([
+            "excel-shrink",
+            "input.xlsx",
+            "out",
+            "--disable-column-tail-fill-merge",
+        ]);
+
+        assert!(cli.disable_column_tail_fill_merge);
     }
 
     #[test]
