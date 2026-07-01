@@ -53,6 +53,39 @@ Options:
 
 The default chunk size is `16777216` bytes, which is 16 MiB.
 
+### Visual-preservation cleanup flags
+
+The default run is conservative for visible workbook layout: textless visual representatives and
+unreferenced whitespace-only cells are kept when removing them could slightly change the rendered
+worksheet. The following flags opt in to stronger cleanup:
+
+```text
+--remove-textless-default-font-representatives
+--remove-textless-style-representatives
+--remove-textless-column-style-representatives
+--remove-unreferenced-whitespace-cells
+```
+
+Unreferenced content in hidden rows or columns is removed by default because this normally does not
+change the visible workbook representation. Use this conservative opt-in to retain it:
+
+```text
+--keep-unreferenced-hidden-content-cells
+```
+
+Inactive protection-only cells are controlled by one policy argument:
+
+```text
+--inactive-protection-cell-policy remove
+--inactive-protection-cell-policy keep-in-data-range
+--inactive-protection-cell-policy keep-all
+```
+
+The default is `remove`: when a worksheet has no active sheet protection, cells whose only relevance
+comes from applyProtection/protection style are removed, including inside the visible data range.
+`keep-in-data-range` retains such cells only inside the actual visible data range. `keep-all`
+retains them even outside that range.
+
 ## Requirements
 
 You need:

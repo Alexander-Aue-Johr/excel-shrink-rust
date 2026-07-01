@@ -83,18 +83,23 @@ pub struct Cli {
     #[arg(long)]
     disable_column_tail_fill_merge: bool,
 
-    /// Disable keeping empty styleless cells that preserve default-font row layout.
-    /// Without these anchors, deleting styleless empty cells can cause rows to shift.
+    /// Remove textless styleless/default-font representative cells.
+    /// Default without this flag: these textless representatives are kept to preserve visual row layout.
+    /// Aggressive cleanup opt-in: removing them can slightly change visual representation.
     #[arg(long)]
-    disable_default_font_representatives: bool,
+    remove_textless_default_font_representatives: bool,
 
-    /// Disable keeping empty font-only style cells that conservatively preserve row height/alignment.
+    /// Remove textless cells with explicit style that can act as visual representatives.
+    /// Default without this flag: these textless style representatives are kept.
+    /// Aggressive cleanup opt-in: removing them can slightly change visual representation.
     #[arg(long)]
-    disable_empty_font_style_representatives: bool,
+    remove_textless_style_representatives: bool,
 
-    /// Disable keeping empty cells whose font style overrides an inherited column font.
+    /// Remove textless cells whose visual relevance comes from column style/font overrides.
+    /// Default without this flag: these textless column-style representatives are kept.
+    /// Aggressive cleanup opt-in: removing them can slightly change visual representation.
     #[arg(long)]
-    disable_column_font_style_representatives: bool,
+    remove_textless_column_style_representatives: bool,
 
     /// Enable quick-win preprocessing that removes definitely safe empty self-closing cells.
     #[arg(long)]
@@ -121,18 +126,26 @@ pub struct Cli {
     #[arg(long)]
     store_output: bool,
 
-    /// Keep cells that only contain whitespace, even when completely unreferenced.
+    /// Remove unreferenced whitespace-only cells.
+    /// Default without this flag: unreferenced whitespace-only cells are kept conservatively.
+    /// Aggressive cleanup opt-in: removing them can slightly change visual representation.
     #[arg(long)]
-    keep_unreferenced_whitespace_cells: bool,
+    remove_unreferenced_whitespace_cells: bool,
 
-    /// Remove cells with content in hidden rows/cols when they are completely unreferenced.
+    /// Keep unreferenced hidden-content cells.
+    /// Default without this flag: unreferenced hidden-content cells are removed because this normally does not change visible representation.
+    /// Conservative opt-in: use this to retain hidden content even when no reference is found.
     #[arg(long)]
-    remove_unreferenced_hidden_content_cells: bool,
+    keep_unreferenced_hidden_content_cells: bool,
 
-    /// Treat applyProtection-only cell styles as removable when the worksheet has no active sheetProtection.
-    /// By default, applyProtection styles are kept conservatively even on unprotected sheets.
-    #[arg(long)]
-    remove_apply_protection_without_sheet_protection: bool,
+    /// Policy for cells that are only relevant because of applyProtection/protection style
+    /// while the worksheet has no active sheetProtection.
+    ///
+    /// remove (default): remove inactive protection-only cells, including inside the visible data range.
+    /// keep-in-data-range: keep inactive protection-only cells only inside the actual visible data range.
+    /// keep-all: keep all inactive protection-only cells, including outside the actual visible data range.
+    #[arg(long, value_enum, default_value_t = InactiveProtectionCellPolicyArg::Remove)]
+    inactive_protection_cell_policy: InactiveProtectionCellPolicyArg,
 
     /// Console log level.
     #[arg(long, value_enum, default_value_t = LogLevel::Info)]
@@ -150,6 +163,25 @@ pub enum LogLevel {
     Info,
     Debug,
     Trace,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum InactiveProtectionCellPolicyArg {
+    /// Remove inactive protection-only cells, including inside the visible data range.
+    #[value(
+        help = "Remove inactive protection-only cells, including inside the visible data range"
+    )]
+    Remove,
+    /// Keep inactive protection-only cells only inside the actual visible data range.
+    #[value(
+        help = "Keep inactive protection-only cells only inside the actual visible data range"
+    )]
+    KeepInDataRange,
+    /// Keep all inactive protection-only cells, including outside the actual visible data range.
+    #[value(
+        help = "Keep all inactive protection-only cells, including outside the actual visible data range"
+    )]
+    KeepAll,
 }
 
 impl LogLevel {
@@ -331,6 +363,7 @@ fn is_real_xlsx_file(path: &std::path::Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
 
     fn os_args(args: &[&str]) -> Vec<OsString> {
         args.iter().map(OsString::from).collect()
@@ -364,15 +397,27 @@ mod tests {
     }
 
     #[test]
-    fn cli_parses_disable_column_font_style_representatives() {
+    fn cli_parses_remove_textless_column_style_representatives() {
         let cli = Cli::parse_from([
             "excel-shrink",
             "input.xlsx",
             "out",
-            "--disable-column-font-style-representatives",
+            "--remove-textless-column-style-representatives",
         ]);
 
-        assert!(cli.disable_column_font_style_representatives);
+        assert!(cli.remove_textless_column_style_representatives);
+    }
+
+    #[test]
+    fn cli_parses_remove_textless_default_font_representatives() {
+        let cli = Cli::parse_from([
+            "excel-shrink",
+            "input.xlsx",
+            "out",
+            "--remove-textless-default-font-representatives",
+        ]);
+
+        assert!(cli.remove_textless_default_font_representatives);
     }
 
     #[test]
@@ -388,15 +433,97 @@ mod tests {
     }
 
     #[test]
-    fn cli_parses_disable_empty_font_style_representatives() {
+    fn cli_parses_remove_textless_style_representatives() {
         let cli = Cli::parse_from([
             "excel-shrink",
             "input.xlsx",
             "out",
-            "--disable-empty-font-style-representatives",
+            "--remove-textless-style-representatives",
         ]);
 
-        assert!(cli.disable_empty_font_style_representatives);
+        assert!(cli.remove_textless_style_representatives);
+    }
+
+    #[test]
+    fn cli_parses_advanced_cleanup_flags_with_new_polarity() {
+        let cli = Cli::parse_from([
+            "excel-shrink",
+            "input.xlsx",
+            "out",
+            "--remove-unreferenced-whitespace-cells",
+            "--keep-unreferenced-hidden-content-cells",
+        ]);
+
+        assert!(cli.remove_unreferenced_whitespace_cells);
+        assert!(cli.keep_unreferenced_hidden_content_cells);
+    }
+
+    #[test]
+    fn cli_parses_inactive_protection_policy_values() {
+        let keep_in_data_range = Cli::parse_from([
+            "excel-shrink",
+            "input.xlsx",
+            "out",
+            "--inactive-protection-cell-policy",
+            "keep-in-data-range",
+        ]);
+        let keep_all = Cli::parse_from([
+            "excel-shrink",
+            "input.xlsx",
+            "out",
+            "--inactive-protection-cell-policy",
+            "keep-all",
+        ]);
+
+        assert_eq!(
+            keep_in_data_range.inactive_protection_cell_policy,
+            InactiveProtectionCellPolicyArg::KeepInDataRange
+        );
+        assert_eq!(
+            keep_all.inactive_protection_cell_policy,
+            InactiveProtectionCellPolicyArg::KeepAll
+        );
+    }
+
+    #[test]
+    fn cli_defaults_inactive_protection_policy_to_remove() {
+        let cli = Cli::parse_from(["excel-shrink", "input.xlsx", "out"]);
+
+        assert_eq!(
+            cli.inactive_protection_cell_policy,
+            InactiveProtectionCellPolicyArg::Remove
+        );
+    }
+
+    #[test]
+    fn cli_rejects_removed_cleanup_flag_names() {
+        for old_flag in [
+            "--disable-default-font-representatives",
+            "--disable-empty-style-representatives",
+            "--disable-column-font-style-representatives",
+            "--remove-unreferenced-hidden-content-cells",
+            "--remove-inactive-protection-cells",
+        ] {
+            let result = Cli::try_parse_from(["excel-shrink", "input.xlsx", "out", old_flag]);
+
+            assert!(result.is_err(), "{old_flag} should not be accepted");
+        }
+    }
+
+    #[test]
+    fn cli_help_documents_cleanup_flag_semantics() {
+        let mut help = Vec::new();
+        Cli::command().write_long_help(&mut help).unwrap();
+        let help = String::from_utf8(help).unwrap();
+
+        assert!(help.contains("Aggressive cleanup opt-in"));
+        assert!(help
+            .contains("Default without this flag: unreferenced hidden-content cells are removed"));
+        assert!(help.contains("remove (default): remove inactive protection-only cells"));
+        assert!(
+            help.contains("keep-in-data-range: keep inactive protection-only cells only inside")
+        );
+        assert!(help.contains("keep-all: keep all inactive protection-only cells"));
     }
 }
 

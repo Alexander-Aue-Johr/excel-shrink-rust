@@ -3,8 +3,9 @@ use crate::models::{CleanSheetParameters, CleanedSheetData, CleanupCause, Xf};
 use crate::sheet::cols::merge_extraneous_columns_with_styles;
 use crate::sheet::drawings::find_worksheet_drawing_anchor_bounds;
 use crate::sheet::ranges::{
-    get_max_cell_column, get_max_cell_row, get_max_merge_cells_column_index,
-    get_max_merge_cells_row_index, retrieve_sheet_data_range_containing_cells,
+    find_visible_content_bounds, get_max_cell_column, get_max_cell_row,
+    get_max_merge_cells_column_index, get_max_merge_cells_row_index,
+    retrieve_sheet_data_range_containing_cells,
 };
 use crate::sheet::sheet_data::{
     clean_empty_rows_from_after_cell_range,
@@ -49,6 +50,11 @@ pub fn build_clean_sheet_xml_with_progress(
     let mut metrics = preprocessed.clean_sheet_metrics;
     metrics.cleanup_stats.enabled |= params.collect_cleanup_stats;
     metrics.sheet_protection_enabled = sheet_protection_enabled;
+    metrics.visible_data_range_bounds = find_visible_content_bounds(
+        &preprocessed.sheet_data,
+        params,
+        &metrics.column_definitions,
+    );
     if let Some(row) = drawing_anchor_bounds.max_row {
         metrics.visible_content_bounds.include_row(row);
         metrics.tail_anchor_max_row =
@@ -173,6 +179,7 @@ pub fn build_clean_sheet_xml_with_progress(
         final_sheet_data,
         max_column,
         max_row,
+        params,
         &mut metrics,
     );
 
@@ -235,8 +242,16 @@ fn remove_protection_only_cells_outside_bounds(
     sheet_data: Vec<u8>,
     max_column: u32,
     max_row: u32,
+    params: &CleanSheetParameters,
     metrics: &mut crate::models::CleanSheetMetrics,
 ) -> Vec<u8> {
+    if !metrics.sheet_protection_enabled
+        && params.cleanup.inactive_protection_cell_policy
+            == crate::models::InactiveProtectionCellPolicy::KeepAll
+    {
+        return sheet_data;
+    }
+
     let protected_outside_refs: HashSet<(u32, u32)> = metrics
         .kept_cell_states
         .iter()
@@ -764,8 +779,8 @@ fn row_has_visible_cell_anchor(row: &[u8], params: &CleanSheetParameters) -> boo
                 .patterns
                 .xfs_by_index
                 .get(&style_id)
-                .map_or(true, style_is_visible_anchor),
-            None => params.cleanup.empty_style_representative_cells,
+                .map_or(true, |style| style_is_trailing_cell_anchor(style, params)),
+            None => params.cleanup.keep_textless_default_font_representatives,
         };
         if is_anchor {
             return true;
@@ -794,6 +809,13 @@ fn row_has_visible_style(row: &[u8], params: &CleanSheetParameters) -> bool {
 
 fn style_is_visible_anchor(style: &Xf) -> bool {
     style.has_fill_or_border
+}
+
+fn style_is_trailing_cell_anchor(style: &Xf, params: &CleanSheetParameters) -> bool {
+    style_is_visible_anchor(style)
+        || (style.has_apply_protection
+            && params.cleanup.inactive_protection_cell_policy
+                == crate::models::InactiveProtectionCellPolicy::KeepAll)
 }
 
 fn extract_style_id(tag: &[u8]) -> Option<u32> {
@@ -887,8 +909,8 @@ fn parse_cell_reference(reference: &[u8]) -> Option<(u32, u32)> {
 mod tests {
     use super::build_clean_sheet_xml;
     use crate::models::{
-        CleanSheetMetrics, CleanSheetParameters, CleanupCause, SheetPreprocessConfig,
-        WorkbookSpecificPatterns, Xf,
+        CleanSheetMetrics, CleanSheetParameters, CleanupCause, InactiveProtectionCellPolicy,
+        SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
     };
     use crate::sheet::streaming::PreprocessedSheetXml;
     use std::collections::HashMap;
@@ -1233,6 +1255,70 @@ mod tests {
     }
 
     #[test]
+    fn unprotected_sheet_default_removes_inactive_protection_cell_inside_visible_data_range() {
+        let params = params_with_styles(&[(7, apply_protection_only_style())]);
+        let preprocessed = preprocessed_with_sheet_data(
+            br#"<row r="1"><c r="B1" s="7"/></row><row r="2"><c r="C2"><v>1</v></c></row>"#,
+            None,
+        );
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(!xml.contains(r#"r="B1""#));
+        assert!(xml.contains(r#"<c r="C2"><v>1</v></c>"#));
+    }
+
+    #[test]
+    fn keep_in_data_range_keeps_inactive_protection_cell_inside_visible_data_range_only() {
+        let mut params = params_with_styles(&[(7, apply_protection_only_style())]);
+        params.cleanup.inactive_protection_cell_policy =
+            InactiveProtectionCellPolicy::KeepInDataRange;
+        let preprocessed = preprocessed_with_sheet_data(
+            br#"<row r="1"><c r="B1" s="7"/></row><row r="2"><c r="C2"><v>1</v></c></row><row r="3"><c r="D3" s="7"/></row>"#,
+            None,
+        );
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(xml.contains(r#"<c r="B1" s="7"/>"#));
+        assert!(!xml.contains(r#"r="D3""#));
+        assert!(xml.contains(r#"<c r="C2"><v>1</v></c>"#));
+    }
+
+    #[test]
+    fn keep_in_data_range_is_not_order_dependent_on_later_visible_content() {
+        let mut params = params_with_styles(&[(7, apply_protection_only_style())]);
+        params.cleanup.inactive_protection_cell_policy =
+            InactiveProtectionCellPolicy::KeepInDataRange;
+        let preprocessed = preprocessed_with_sheet_data(
+            br#"<row r="1"><c r="B1" s="7"/></row><row r="5"><c r="C5"><v>1</v></c></row>"#,
+            None,
+        );
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(xml.contains(r#"<c r="B1" s="7"/>"#));
+    }
+
+    #[test]
+    fn keep_all_keeps_inactive_protection_cell_outside_visible_data_range() {
+        let mut params = params_with_styles(&[(7, apply_protection_only_style())]);
+        params.cleanup.inactive_protection_cell_policy = InactiveProtectionCellPolicy::KeepAll;
+        let preprocessed = preprocessed_with_sheet_data(
+            br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="9"><c r="J9" s="7"/></row>"#,
+            None,
+        );
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(xml.contains(r#"<c r="J9" s="7"/>"#));
+    }
+
+    #[test]
     fn apply_protection_does_not_extend_visible_tail_when_sheet_is_unprotected() {
         let params = params_with_styles(&[(7, apply_protection_only_style())]);
         let preprocessed = preprocessed_with_sheet_data(
@@ -1345,16 +1431,16 @@ mod tests {
         assert!(!xml.contains(r#"r="96""#));
         assert!(!xml.contains(r#"r="97""#));
         assert!(!xml.contains(r#"r="98""#));
-        assert!(xml.contains(r#"r="B93""#));
+        assert!(!xml.contains(r#"r="B93""#));
+        assert!(!xml.contains(r#"r="A94""#));
+        assert!(!xml.contains(r#"r="A95""#));
         assert!(xml.contains(r#"<mergeCell ref="A93:M95"/>"#));
     }
 
     #[test]
-    fn opt_in_removes_unprotected_apply_protection_cells_but_preserves_merge_tail_rows() {
+    fn default_removes_unprotected_apply_protection_cells_but_preserves_merge_tail_rows() {
         let mut params = params_with_styles(&[(1029, apply_protection_only_style())]);
-        params
-            .cleanup
-            .remove_apply_protection_without_sheet_protection = true;
+        params.cleanup.inactive_protection_cell_policy = InactiveProtectionCellPolicy::Remove;
         let merge_cells = br#"<mergeCells count="1"><mergeCell ref="A93:M95"/></mergeCells>"#;
         let mut preprocessed = preprocessed_with_sheet_data(
             br#"<row r="93" spans="1:14" ht="5.45" customHeight="1"><c r="A93" s="1029" t="s"><v>1740</v></c><c r="B93" s="1029"/><c r="M93" s="1029"/></row><row r="94" spans="1:14" ht="13.15" customHeight="1"><c r="A94" s="1029"/></row><row r="95" spans="1:14" ht="7.9" customHeight="1"><c r="A95" s="1029"/></row><row r="96" spans="1:14"/>"#,
@@ -1440,7 +1526,7 @@ mod tests {
     fn trailing_self_closing_default_cell_is_layout_only_when_default_representatives_are_disabled()
     {
         let mut params = default_params();
-        params.cleanup.empty_style_representative_cells = false;
+        params.cleanup.keep_textless_default_font_representatives = false;
         let mut metrics = CleanSheetMetrics::default();
         let sheet_data =
             br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="999"><c r="A999"/></row>"#;
@@ -1456,7 +1542,7 @@ mod tests {
     fn trailing_self_closing_font_only_cell_is_layout_only_when_font_representatives_are_disabled()
     {
         let mut params = params_with_styles(&[(7, font_only_style())]);
-        params.cleanup.empty_font_style_representative_cells = false;
+        params.cleanup.keep_textless_style_representatives = false;
         let mut metrics = CleanSheetMetrics::default();
         let sheet_data =
             br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="999"><c r="A999" s="7"/></row>"#;

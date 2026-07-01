@@ -344,24 +344,24 @@ fn corpus_regression_cleanup_cli_args_from_env_for_test() -> Vec<String> {
         match std::env::var("EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS") {
             Ok(value) if !value.trim().is_empty() => env_flag_value_enabled_for_test(&value),
             _ => !env_flag_enabled_for_test(
-                "EXCEL_SHRINK_CORPUS_REGRESSION_DISABLE_DEFAULT_FONT_REPRESENTATIVES",
+                "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_TEXTLESS_DEFAULT_FONT_REPRESENTATIVES",
             ),
         };
 
     if !keep_empty_style_sentinel_cells {
-        args.push("--disable-default-font-representatives".to_string());
-    }
-
-    if !env_flag_enabled_for_test(
-        "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS",
-    ) {
-        args.push("--keep-unreferenced-whitespace-cells".to_string());
+        args.push("--remove-textless-default-font-representatives".to_string());
     }
 
     if env_flag_enabled_for_test(
-        "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS",
+        "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS",
     ) {
-        args.push("--remove-unreferenced-hidden-content-cells".to_string());
+        args.push("--remove-unreferenced-whitespace-cells".to_string());
+    }
+
+    if env_flag_enabled_for_test(
+        "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_UNREFERENCED_HIDDEN_CONTENT_CELLS",
+    ) {
+        args.push("--keep-unreferenced-hidden-content-cells".to_string());
     }
 
     args
@@ -1153,8 +1153,8 @@ fn validate_excel_recalculation(
 
 fn missing_cell_policy(cli: &Cli) -> MissingCellPolicy {
     MissingCellPolicy {
-        allow_whitespace_values: !cli.keep_unreferenced_whitespace_cells,
-        allow_hidden_rows_or_columns: cli.remove_unreferenced_hidden_content_cells,
+        allow_whitespace_values: cli.remove_unreferenced_whitespace_cells,
+        allow_hidden_rows_or_columns: !cli.keep_unreferenced_hidden_content_cells,
     }
 }
 

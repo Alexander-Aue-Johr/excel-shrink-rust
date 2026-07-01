@@ -5,7 +5,8 @@ use crate::cleaning_trace::{self, CellDecision, RecordedCellDecision};
 use crate::models::CleanupCause;
 use crate::models::{
     AdvancedCleanupConfig, CleanSheetMetrics, CleanSheetParameters, ColumnDefinition,
-    RowAttributes, SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
+    InactiveProtectionCellPolicy, RowAttributes, SheetPreprocessConfig, WorkbookSpecificPatterns,
+    Xf,
 };
 use crate::shared_strings::find_whitespace_sst_indices;
 
@@ -634,7 +635,7 @@ fn opt_out_removes_empty_cell_when_apply_font_differs_from_column_apply_font() {
     let column_style = apply_font_only_style(4);
     let cell_style = apply_font_only_style(8);
     let mut params = params_with_styles(&[(4, column_style.clone()), (8, cell_style)]);
-    params.cleanup.column_font_style_representative_cells = false;
+    params.cleanup.keep_textless_column_style_representatives = false;
     let mut metrics = CleanSheetMetrics::default();
 
     metrics.column_definitions.add(ColumnDefinition {
@@ -935,7 +936,7 @@ fn does_not_mark_candidate_when_cell_style_has_apply_protection_and_sheet_is_pro
 }
 
 #[test]
-fn default_does_not_mark_candidate_when_cell_style_has_apply_protection_without_sheet_protection() {
+fn default_marks_candidate_when_cell_style_has_apply_protection_without_sheet_protection() {
     let protected_style = apply_protection_style();
 
     let mut params = params_with_styles(&[(7, protected_style)]);
@@ -955,14 +956,17 @@ fn default_does_not_mark_candidate_when_cell_style_has_apply_protection_without_
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.hidden_candidates, 1);
-    assert_eq!(metrics.candidates.len(), 0);
+    assert_eq!(metrics.candidates.len(), 1);
+    assert_eq!(metrics.candidates[0].col, 1);
+    assert_eq!(metrics.candidates[0].row, 3);
 }
 
 #[test]
 fn protection_only_cell_still_anchors_tail_when_column_style_is_visible() {
     let column_style = fill_style(4, false);
     let protected_style = apply_protection_style();
-    let params = params_with_styles(&[(4, column_style.clone()), (7, protected_style)]);
+    let mut params = params_with_styles(&[(4, column_style.clone()), (7, protected_style)]);
+    params.cleanup.inactive_protection_cell_policy = InactiveProtectionCellPolicy::KeepAll;
     let mut metrics = CleanSheetMetrics::default();
 
     metrics.column_definitions.add(ColumnDefinition {
@@ -985,7 +989,8 @@ fn protection_only_cell_still_anchors_tail_when_column_style_is_visible() {
 }
 
 #[test]
-fn opt_in_marks_candidate_when_cell_style_has_apply_protection_without_sheet_protection() {
+fn keep_all_does_not_mark_candidate_when_cell_style_has_apply_protection_without_sheet_protection()
+{
     let protected_style = apply_protection_style();
 
     let mut params = params_with_styles(&[(7, protected_style)]);
@@ -994,9 +999,7 @@ fn opt_in_marks_candidate_when_cell_style_has_apply_protection_without_sheet_pro
         remove_unreferenced_whitespace: false,
         remove_unreferenced_hidden_content: true,
     }));
-    params
-        .cleanup
-        .remove_apply_protection_without_sheet_protection = true;
+    params.cleanup.inactive_protection_cell_policy = InactiveProtectionCellPolicy::KeepAll;
 
     let mut metrics = CleanSheetMetrics::default();
     metrics.row_attributes.insert(b"3".to_vec(), hidden_row_3());
@@ -1008,9 +1011,7 @@ fn opt_in_marks_candidate_when_cell_style_has_apply_protection_without_sheet_pro
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.hidden_candidates, 1);
-    assert_eq!(metrics.candidates.len(), 1);
-    assert_eq!(metrics.candidates[0].col, 1);
-    assert_eq!(metrics.candidates[0].row, 3);
+    assert_eq!(metrics.candidates.len(), 0);
 }
 
 #[test]

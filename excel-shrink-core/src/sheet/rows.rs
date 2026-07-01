@@ -75,8 +75,8 @@ pub fn replace_row_bytes<'a>(
     record_visible_row_bounds(&row_attributes, metrics);
 
     let empty_style_representative_policy = EmptyStyleRepresentativePolicy {
-        keep_default_styleless: params.cleanup.empty_style_representative_cells,
-        keep_font_styles: params.cleanup.empty_font_style_representative_cells,
+        keep_default_styleless: params.cleanup.keep_textless_default_font_representatives,
+        keep_font_styles: params.cleanup.keep_textless_style_representatives,
         require_content_in_row: row_attributes.has_custom_height,
     };
     let was_already_empty = original_row_content.is_empty();
@@ -279,14 +279,13 @@ fn clean_cells<'a>(
                 keep_default_empty_cell,
             );
 
-            if !cleaned_cell.as_ref().is_empty() {
+            if !cleaned_cell.as_ref().is_empty() && !has_cell_content {
                 record_represented_cell_style(
                     &cell,
                     &mut kept_represented_style_ids,
                     &mut kept_default_style_cell,
                 );
-                if (keep_empty_font_only_style_cell || keep_default_empty_cell) && !has_cell_content
-                {
+                if keep_empty_font_only_style_cell || keep_default_empty_cell {
                     if empty_style_representative_policy.require_content_in_row
                         && !has_effective_fill_or_border
                     {

@@ -1,7 +1,8 @@
 #[cfg(feature = "cell-tracing")]
 use crate::cleaning_trace::{CellDecision, CellDecisionEvent};
 use crate::models::{
-    CellAttributes, CleanSheetMetrics, CleanSheetParameters, CleanupCandidate, CleanupCause, Xf,
+    CellAttributes, CleanSheetMetrics, CleanSheetParameters, CleanupCandidate, CleanupCause,
+    InactiveProtectionCellPolicy, Xf,
 };
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
 use regex::bytes::Captures;
@@ -362,7 +363,7 @@ fn kept_cell_is_tail_anchor(
 
     if cell_style.is_none()
         && cell.style_id.is_none()
-        && params.cleanup.empty_style_representative_cells
+        && params.cleanup.keep_textless_default_font_representatives
     {
         return true;
     }
@@ -389,7 +390,9 @@ fn kept_cell_is_tail_anchor(
     }
 
     if kept_only_for_protection {
-        return false;
+        return !metrics.sheet_protection_enabled
+            && params.cleanup.inactive_protection_cell_policy
+                == InactiveProtectionCellPolicy::KeepAll;
     }
 
     if parsed_empty_cell_has_column_font_style_override(cell, params, metrics, false) {
@@ -629,7 +632,7 @@ fn empty_cell_has_column_font_style_override(
     metrics: &CleanSheetMetrics,
     has_cell_content: bool,
 ) -> bool {
-    if has_cell_content || !params.cleanup.column_font_style_representative_cells {
+    if has_cell_content || !params.cleanup.keep_textless_column_style_representatives {
         return false;
     }
 
@@ -829,12 +832,22 @@ fn cell_has_relevant_protection_style(
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
 ) -> bool {
-    if params
-        .cleanup
-        .remove_apply_protection_without_sheet_protection
-        && !metrics.sheet_protection_enabled
-    {
-        return false;
+    if !metrics.sheet_protection_enabled {
+        match params.cleanup.inactive_protection_cell_policy {
+            InactiveProtectionCellPolicy::Remove => {
+                return false;
+            }
+            InactiveProtectionCellPolicy::KeepInDataRange => {
+                let row = digits_byte_string_to_integer(cell.row);
+                if metrics
+                    .visible_data_range_bounds
+                    .cell_is_outside(cell.col_num, row)
+                {
+                    return false;
+                }
+            }
+            InactiveProtectionCellPolicy::KeepAll => {}
+        }
     }
 
     if !cell_has_protection_style(cell, cell_style, metrics) {

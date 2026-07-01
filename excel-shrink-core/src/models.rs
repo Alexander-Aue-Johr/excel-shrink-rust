@@ -109,10 +109,10 @@ pub struct CleanupSwitches {
     pub unreferenced_hidden_content_cells: bool,
 
     pub trailing_layout_only_rows: bool,
-    pub empty_style_representative_cells: bool,
-    pub empty_font_style_representative_cells: bool,
-    pub column_font_style_representative_cells: bool,
-    pub remove_apply_protection_without_sheet_protection: bool,
+    pub keep_textless_default_font_representatives: bool,
+    pub keep_textless_style_representatives: bool,
+    pub keep_textless_column_style_representatives: bool,
+    pub inactive_protection_cell_policy: InactiveProtectionCellPolicy,
 
     pub empty_row_attribute_cleanup: bool,
     pub sheetdata_range_tail_pruning: bool,
@@ -131,10 +131,10 @@ impl Default for CleanupSwitches {
             unreferenced_hidden_content_cells: false,
 
             trailing_layout_only_rows: true,
-            empty_style_representative_cells: true,
-            empty_font_style_representative_cells: true,
-            column_font_style_representative_cells: true,
-            remove_apply_protection_without_sheet_protection: false,
+            keep_textless_default_font_representatives: true,
+            keep_textless_style_representatives: true,
+            keep_textless_column_style_representatives: true,
+            inactive_protection_cell_policy: InactiveProtectionCellPolicy::Remove,
 
             empty_row_attribute_cleanup: true,
             sheetdata_range_tail_pruning: true,
@@ -142,6 +142,13 @@ impl Default for CleanupSwitches {
             column_tail_fill_merge: true,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InactiveProtectionCellPolicy {
+    Remove,
+    KeepInDataRange,
+    KeepAll,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -343,6 +350,7 @@ pub struct CleanSheetMetrics {
     pub cleanup_stats: CleanupStats,
     pub sheet_protection_enabled: bool,
     pub visible_content_bounds: VisibleContentBounds,
+    pub visible_data_range_bounds: VisibleContentBounds,
     pub tail_anchor_max_row: Option<u32>,
     pub has_hints: bool,
 }

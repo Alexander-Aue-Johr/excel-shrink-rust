@@ -14,8 +14,8 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use excel_shrink_core::models::{
     AdvancedCleanupConfig, CleanSheetMetrics, CleanSheetParameters, CleanupCandidate, CleanupCause,
-    CleanupStats, CleanupSwitches, ProtectedWorkbookRefs, SheetPreprocessConfig, SheetScanBuffer,
-    WorkbookSpecificPatterns,
+    CleanupStats, CleanupSwitches, InactiveProtectionCellPolicy, ProtectedWorkbookRefs,
+    SheetPreprocessConfig, SheetScanBuffer, WorkbookSpecificPatterns,
 };
 use excel_shrink_core::reference_scanner::{scan_for_references_by_sheet, ScanResult};
 use excel_shrink_core::shared_strings::find_whitespace_sst_indices;
@@ -1090,10 +1090,20 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
                 return;
             }
         };
-        let remove_unreferenced_whitespace_cells = !cli.keep_unreferenced_whitespace_cells;
-        let remove_unreferenced_hidden_content_cells = cli.remove_unreferenced_hidden_content_cells;
+        let remove_unreferenced_whitespace_cells = cli.remove_unreferenced_whitespace_cells;
+        let remove_unreferenced_hidden_content_cells = !cli.keep_unreferenced_hidden_content_cells;
         let do_advanced =
             remove_unreferenced_whitespace_cells || remove_unreferenced_hidden_content_cells;
+
+        let inactive_protection_cell_policy = match cli.inactive_protection_cell_policy {
+            crate::InactiveProtectionCellPolicyArg::Remove => InactiveProtectionCellPolicy::Remove,
+            crate::InactiveProtectionCellPolicyArg::KeepInDataRange => {
+                InactiveProtectionCellPolicy::KeepInDataRange
+            }
+            crate::InactiveProtectionCellPolicyArg::KeepAll => {
+                InactiveProtectionCellPolicy::KeepAll
+            }
+        };
 
         let (tx, rx) = mpsc::channel::<WriteJob>();
         spawn_xlsx_writer(
@@ -1138,11 +1148,12 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
             trailing_layout_only_rows: !cli.disable_trailing_layout_only_rows,
             extraneous_column_range_merge: !cli.disable_extraneous_column_merge,
             column_tail_fill_merge: !cli.disable_column_tail_fill_merge,
-            empty_style_representative_cells: !cli.disable_default_font_representatives,
-            empty_font_style_representative_cells: !cli.disable_empty_font_style_representatives,
-            column_font_style_representative_cells: !cli.disable_column_font_style_representatives,
-            remove_apply_protection_without_sheet_protection: cli
-                .remove_apply_protection_without_sheet_protection,
+            keep_textless_default_font_representatives: !cli
+                .remove_textless_default_font_representatives,
+            keep_textless_style_representatives: !cli.remove_textless_style_representatives,
+            keep_textless_column_style_representatives: !cli
+                .remove_textless_column_style_representatives,
+            inactive_protection_cell_policy,
 
             ..CleanupSwitches::default()
         };

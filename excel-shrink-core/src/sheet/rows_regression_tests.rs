@@ -253,7 +253,7 @@ fn keeps_one_empty_default_style_footer_cell_after_content() {
 fn disables_default_styleless_representatives_without_disabling_font_style_representatives() {
     let mut params = params_with_styles(&[(8, font_only_style()), (87, font_only_style())]);
     params.cleanup = CleanupSwitches {
-        empty_style_representative_cells: false,
+        keep_textless_default_font_representatives: false,
         ..CleanupSwitches::default()
     };
 
@@ -271,7 +271,7 @@ fn disables_default_styleless_representatives_without_disabling_font_style_repre
 fn disables_font_style_representatives_without_disabling_default_styleless_representatives() {
     let mut params = params_with_styles(&[(8, font_only_style()), (87, font_only_style())]);
     params.cleanup = CleanupSwitches {
-        empty_font_style_representative_cells: false,
+        keep_textless_style_representatives: false,
         ..CleanupSwitches::default()
     };
 
@@ -293,8 +293,8 @@ fn removes_empty_representatives_when_both_features_are_disabled() {
         (87, font_only_style()),
     ]);
     params.cleanup = CleanupSwitches {
-        empty_style_representative_cells: false,
-        empty_font_style_representative_cells: false,
+        keep_textless_default_font_representatives: false,
+        keep_textless_style_representatives: false,
         ..CleanupSwitches::default()
     };
 
@@ -396,7 +396,7 @@ fn keeps_empty_cell_that_activates_column_font_in_auto_height_row() {
 fn keeps_empty_row_even_without_height_when_cells_are_removed() {
     let mut params = params_with_styles(&[]);
     params.cleanup = CleanupSwitches {
-        empty_style_representative_cells: false,
+        keep_textless_default_font_representatives: false,
         ..CleanupSwitches::default()
     };
 
