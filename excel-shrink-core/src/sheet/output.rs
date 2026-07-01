@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crate::models::{CleanSheetParameters, CleanedSheetData, CleanupCause, Xf};
-use crate::sheet::cols::merge_extraneous_columns;
+use crate::sheet::cols::merge_extraneous_columns_with_styles;
 use crate::sheet::drawings::find_worksheet_drawing_anchor_bounds;
 use crate::sheet::ranges::{
     get_max_cell_column, get_max_cell_row, get_max_merge_cells_column_index,
@@ -49,9 +49,6 @@ pub fn build_clean_sheet_xml_with_progress(
     let mut metrics = preprocessed.clean_sheet_metrics;
     metrics.cleanup_stats.enabled |= params.collect_cleanup_stats;
     metrics.sheet_protection_enabled = sheet_protection_enabled;
-    if let Some(column) = metrics.column_definitions.get_last_visible_range(false) {
-        metrics.visible_content_bounds.include_col(column.max);
-    }
     if let Some(row) = drawing_anchor_bounds.max_row {
         metrics.visible_content_bounds.include_row(row);
         metrics.tail_anchor_max_row =
@@ -59,6 +56,9 @@ pub fn build_clean_sheet_xml_with_progress(
     }
     if let Some(column) = drawing_anchor_bounds.max_col {
         metrics.visible_content_bounds.include_col(column);
+    }
+    if let Some(column) = metrics.column_definitions.get_last_visible_range(false) {
+        metrics.visible_content_bounds.include_col(column.max);
     }
     let max_merge_row = get_max_merge_cells_row_index(&metrics);
     let preserve_through_row = tail_boundary_row(&metrics, max_merge_row);
@@ -139,6 +139,15 @@ pub fn build_clean_sheet_xml_with_progress(
     let max_cell_row = get_max_cell_row(&metrics);
     let max_merge_column = get_max_merge_cells_column_index(&metrics);
     let max_merge_row = get_max_merge_cells_row_index(&metrics);
+    let column_tail_merge_boundary = [
+        max_cell_column,
+        max_merge_column,
+        drawing_anchor_bounds.max_col,
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .unwrap_or(0);
 
     let max_column = [
         max_cell_column,
@@ -179,7 +188,17 @@ pub fn build_clean_sheet_xml_with_progress(
 
     progress("merge_extraneous_columns");
     let in_cols_node_output_chunks = if params.cleanup.extraneous_column_range_merge {
-        merge_extraneous_columns(&preprocessed.in_cols_node_output_chunks, max_column)
+        let merge_boundary = if params.cleanup.column_tail_fill_merge {
+            column_tail_merge_boundary
+        } else {
+            max_column
+        };
+        merge_extraneous_columns_with_styles(
+            &preprocessed.in_cols_node_output_chunks,
+            merge_boundary,
+            params,
+            params.cleanup.column_tail_fill_merge,
+        )
     } else {
         preprocessed.in_cols_node_output_chunks.clone()
     };
@@ -868,8 +887,8 @@ fn parse_cell_reference(reference: &[u8]) -> Option<(u32, u32)> {
 mod tests {
     use super::build_clean_sheet_xml;
     use crate::models::{
-        CleanSheetMetrics, CleanSheetParameters, SheetPreprocessConfig, WorkbookSpecificPatterns,
-        Xf,
+        CleanSheetMetrics, CleanSheetParameters, CleanupCause, SheetPreprocessConfig,
+        WorkbookSpecificPatterns, Xf,
     };
     use crate::sheet::streaming::PreprocessedSheetXml;
     use std::collections::HashMap;
@@ -1020,6 +1039,128 @@ mod tests {
         assert!(xml.contains(r#"<col min="1" max="25" width="9.5"/>"#));
         assert!(!xml.contains(r#"<col min="1" max="12" width="8.43"/>"#));
         assert!(!xml.contains(r#"<col min="13" max="17" width="10.0"/>"#));
+    }
+
+    #[test]
+    fn visible_column_styles_after_last_cell_do_not_block_tail_column_merge() {
+        let visible_column_style = Xf::builder()
+            .font_id(Some(3))
+            .fill_id(Some(2))
+            .border_id(Some(0))
+            .apply_fill(true)
+            .has_visible_fill(true)
+            .has_fill_or_border(true)
+            .has_apply_fill_or_border(true)
+            .build_xf();
+        let params = params_with_styles(&[(39, visible_column_style)]);
+        let cols = br#"<col min="1" max="20" width="5.21875" style="39" customWidth="1"/><col min="21" max="239" width="8.77734375" style="39" customWidth="1"/><col min="240" max="16148" width="11.5546875" style="39" customWidth="1"/><col min="16149" max="16384" width="8.77734375" style="39" customWidth="1"/>"#;
+        let mut metrics = CleanSheetMetrics::default();
+        metrics.column_definitions = crate::sheet::cols::process_cols_node(cols, &params);
+
+        let preprocessed = PreprocessedSheetXml {
+            until_worksheet_start_output_chunks: b"<worksheet>".to_vec(),
+            before_cols_node_output_chunks: b"<cols>".to_vec(),
+            in_cols_node_output_chunks: cols.to_vec(),
+            before_sheet_data_node_output_chunks: b"</cols><sheetData>".to_vec(),
+            sheet_data: br#"<row r="5"><c r="T5" s="39"><v>1</v></c></row>"#.to_vec(),
+            before_merge_cells_node_output_chunks: b"".to_vec(),
+            in_merge_cells_node_output_chunks: b"".to_vec(),
+            until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
+            clean_sheet_metrics: metrics,
+        };
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(xml.contains(r#"<c r="T5" s="39"><v>1</v></c>"#));
+        assert!(xml.contains(
+            r#"<col min="21" max="16384" width="8.77734375" style="39" customWidth="1"/>"#
+        ));
+        assert!(!xml.contains(r#"<col min="21" max="239""#));
+        assert!(!xml.contains(r#"<col min="240" max="16148""#));
+        assert!(cleaned
+            .metrics
+            .cleanup_stats
+            .removed_bytes_by_cause
+            .is_empty());
+    }
+
+    #[test]
+    fn column_tail_fill_merge_can_be_disabled_at_sheet_level() {
+        let visible_column_style = Xf::builder()
+            .font_id(Some(3))
+            .fill_id(Some(2))
+            .border_id(Some(0))
+            .apply_fill(true)
+            .has_visible_fill(true)
+            .has_fill_or_border(true)
+            .has_apply_fill_or_border(true)
+            .build_xf();
+        let mut params = params_with_styles(&[(39, visible_column_style)]);
+        params.cleanup.column_tail_fill_merge = false;
+        let cols = br#"<col min="1" max="20" width="5.21875" style="39" customWidth="1"/><col min="21" max="239" width="8.77734375" style="39" customWidth="1"/><col min="240" max="16148" width="11.5546875" style="39" customWidth="1"/><col min="16149" max="16384" width="8.77734375" style="39" customWidth="1"/>"#;
+        let mut metrics = CleanSheetMetrics::default();
+        metrics.column_definitions = crate::sheet::cols::process_cols_node(cols, &params);
+
+        let preprocessed = PreprocessedSheetXml {
+            until_worksheet_start_output_chunks: b"<worksheet>".to_vec(),
+            before_cols_node_output_chunks: b"<cols>".to_vec(),
+            in_cols_node_output_chunks: cols.to_vec(),
+            before_sheet_data_node_output_chunks: b"</cols><sheetData>".to_vec(),
+            sheet_data: br#"<row r="5"><c r="T5" s="39"><v>1</v></c></row>"#.to_vec(),
+            before_merge_cells_node_output_chunks: b"".to_vec(),
+            in_merge_cells_node_output_chunks: b"".to_vec(),
+            until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
+            clean_sheet_metrics: metrics,
+        };
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(xml.contains(r#"<col min="21" max="239""#));
+        assert!(xml.contains(r#"<col min="240" max="16148""#));
+        assert!(xml.contains(r#"<col min="16149" max="16384""#));
+    }
+
+    #[test]
+    fn column_tail_fill_merge_records_saved_bytes_when_cleanup_stats_are_enabled() {
+        let visible_column_style = Xf::builder()
+            .font_id(Some(3))
+            .fill_id(Some(2))
+            .border_id(Some(0))
+            .apply_fill(true)
+            .has_visible_fill(true)
+            .has_fill_or_border(true)
+            .has_apply_fill_or_border(true)
+            .build_xf();
+        let mut params = params_with_styles(&[(39, visible_column_style)]);
+        params.collect_cleanup_stats = true;
+        let cols = br#"<col min="1" max="20" width="5.21875" style="39" customWidth="1"/><col min="21" max="239" width="8.77734375" style="39" customWidth="1"/><col min="240" max="16148" width="11.5546875" style="39" customWidth="1"/><col min="16149" max="16384" width="8.77734375" style="39" customWidth="1"/>"#;
+        let collapsed_cols = br#"<col min="1" max="20" width="5.21875" style="39" customWidth="1"/><col min="21" max="16384" width="8.77734375" style="39" customWidth="1"/>"#;
+        let mut metrics = CleanSheetMetrics::default();
+        metrics.column_definitions = crate::sheet::cols::process_cols_node(cols, &params);
+
+        let preprocessed = PreprocessedSheetXml {
+            until_worksheet_start_output_chunks: b"<worksheet>".to_vec(),
+            before_cols_node_output_chunks: b"<cols>".to_vec(),
+            in_cols_node_output_chunks: cols.to_vec(),
+            before_sheet_data_node_output_chunks: b"</cols><sheetData>".to_vec(),
+            sheet_data: br#"<row r="5"><c r="T5" s="39"><v>1</v></c></row>"#.to_vec(),
+            before_merge_cells_node_output_chunks: b"".to_vec(),
+            in_merge_cells_node_output_chunks: b"".to_vec(),
+            until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
+            clean_sheet_metrics: metrics,
+        };
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let removed_bytes = cleaned
+            .metrics
+            .cleanup_stats
+            .removed_bytes_by_cause
+            .get(&CleanupCause::ExtraneousColumnRangeMerge)
+            .copied();
+
+        assert_eq!(removed_bytes, Some(cols.len() - collapsed_cols.len()));
     }
 
     #[test]

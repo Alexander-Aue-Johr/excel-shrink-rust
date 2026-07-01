@@ -117,6 +117,7 @@ pub struct CleanupSwitches {
     pub empty_row_attribute_cleanup: bool,
     pub sheetdata_range_tail_pruning: bool,
     pub extraneous_column_range_merge: bool,
+    pub column_tail_fill_merge: bool,
 }
 
 impl Default for CleanupSwitches {
@@ -138,6 +139,7 @@ impl Default for CleanupSwitches {
             empty_row_attribute_cleanup: true,
             sheetdata_range_tail_pruning: true,
             extraneous_column_range_merge: true,
+            column_tail_fill_merge: true,
         }
     }
 }
