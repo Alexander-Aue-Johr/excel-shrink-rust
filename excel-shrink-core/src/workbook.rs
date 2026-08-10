@@ -2,13 +2,72 @@ use crate::error::Result;
 use crate::models::{CleanupCause, CleanupStats};
 use bstr::ByteSlice;
 use regex::bytes::{Captures, Regex};
+use std::borrow::Cow;
 use std::collections::HashSet;
+use std::ops::Range;
 use tracing::debug;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct DefinedName {
     name: Vec<u8>,
     local_sheet_id: Vec<u8>,
+}
+
+#[derive(Default)]
+struct KnownDefinedNames {
+    print_area: HashSet<Vec<u8>>,
+    xlnm_print_area: HashSet<Vec<u8>>,
+    print_titles: HashSet<Vec<u8>>,
+    xlnm_print_titles: HashSet<Vec<u8>>,
+    filter_database: HashSet<Vec<u8>>,
+    xlnm_filter_database: HashSet<Vec<u8>>,
+    database: HashSet<Vec<u8>>,
+    xlnm_database: HashSet<Vec<u8>>,
+}
+
+impl KnownDefinedNames {
+    fn record(&mut self, name: &[u8], sheet_id: Vec<u8>) {
+        match name {
+            b"Print_Area" => self.print_area.insert(sheet_id),
+            b"_xlnm.Print_Area" => self.xlnm_print_area.insert(sheet_id),
+            b"Print_Titles" => self.print_titles.insert(sheet_id),
+            b"_xlnm.Print_Titles" => self.xlnm_print_titles.insert(sheet_id),
+            b"_FilterDatabase" => self.filter_database.insert(sheet_id),
+            b"_xlnm._FilterDatabase" => self.xlnm_filter_database.insert(sheet_id),
+            b"Database" => self.database.insert(sheet_id),
+            b"_xlnm.Database" => self.xlnm_database.insert(sheet_id),
+            _ => false,
+        };
+    }
+
+    fn duplicates(self) -> HashSet<DefinedName> {
+        let mut duplicates = HashSet::new();
+        mark_duplicates(
+            self.print_area,
+            &self.xlnm_print_area,
+            b"Print_Area",
+            &mut duplicates,
+        );
+        mark_duplicates(
+            self.print_titles,
+            &self.xlnm_print_titles,
+            b"Print_Titles",
+            &mut duplicates,
+        );
+        mark_duplicates(
+            self.filter_database,
+            &self.xlnm_filter_database,
+            b"_FilterDatabase",
+            &mut duplicates,
+        );
+        mark_duplicates(
+            self.database,
+            &self.xlnm_database,
+            b"Database",
+            &mut duplicates,
+        );
+        duplicates
+    }
 }
 
 pub fn clean_workbook(workbook_xml_bytes: &[u8]) -> Result<Vec<u8>> {
@@ -20,154 +79,123 @@ pub fn clean_workbook_with_stats(
     workbook_xml_bytes: &[u8],
     stats: &mut CleanupStats,
 ) -> Result<Vec<u8>> {
-    let start_tag = b"<definedNames";
-    let end_tag = b"</definedNames>";
-
-    let start_idx = match workbook_xml_bytes.find(start_tag) {
-        Some(idx) => idx,
-        None => return Ok(workbook_xml_bytes.to_vec()),
+    let Some(content_range) = find_defined_names_content(workbook_xml_bytes) else {
+        return Ok(workbook_xml_bytes.to_vec());
     };
+    let content = &workbook_xml_bytes[content_range.clone()];
+    let duplicates = collect_defined_names(content)?.duplicates();
 
-    let tag_close_idx = match workbook_xml_bytes[start_idx..].find(b">") {
-        Some(idx) => start_idx + idx + 1,
-        None => return Ok(workbook_xml_bytes.to_vec()),
-    };
-
-    let end_idx = match workbook_xml_bytes[tag_close_idx..].find(end_tag) {
-        Some(idx) => tag_close_idx + idx,
-        None => return Ok(workbook_xml_bytes.to_vec()),
-    };
-
-    let defined_names_content = &workbook_xml_bytes[tag_close_idx..end_idx];
-
-    let search_pattern = Regex::new(
-        r#"(?s)<definedName\b[^>]*?name="([^"]*?)"(?:[^>]*?localSheetId="([^"]*?)")?[^>]*?>"#,
-    )?;
-
-    let mut print_area = HashSet::new();
-    let mut xlnm_print_area = HashSet::new();
-    let mut print_titles = HashSet::new();
-    let mut xlnm_print_titles = HashSet::new();
-    let mut filter_database = HashSet::new();
-    let mut xlnm_filter_database = HashSet::new();
-    let mut database = HashSet::new();
-    let mut xlnm_database = HashSet::new();
-
-    for caps in search_pattern.captures_iter(defined_names_content) {
-        let name = caps
-            .get(1)
-            .map(|m| m.as_bytes().to_vec())
-            .unwrap_or_default();
-        let sheet_id = caps
-            .get(2)
-            .map(|m| m.as_bytes().to_vec())
-            .unwrap_or_default();
-
-        match name.as_slice() {
-            b"Print_Area" => {
-                print_area.insert(sheet_id);
-            }
-            b"_xlnm.Print_Area" => {
-                xlnm_print_area.insert(sheet_id);
-            }
-            b"Print_Titles" => {
-                print_titles.insert(sheet_id);
-            }
-            b"_xlnm.Print_Titles" => {
-                xlnm_print_titles.insert(sheet_id);
-            }
-            b"_FilterDatabase" => {
-                filter_database.insert(sheet_id);
-            }
-            b"_xlnm._FilterDatabase" => {
-                xlnm_filter_database.insert(sheet_id);
-            }
-            b"Database" => {
-                database.insert(sheet_id);
-            }
-            b"_xlnm.Database" => {
-                xlnm_database.insert(sheet_id);
-            }
-            _ => {}
-        }
-    }
-
-    let mut to_delete = HashSet::new();
-
-    for id in print_area {
-        if xlnm_print_area.contains(&id) {
-            to_delete.insert(DefinedName {
-                name: b"Print_Area".to_vec(),
-                local_sheet_id: id,
-            });
-        }
-    }
-    for id in print_titles {
-        if xlnm_print_titles.contains(&id) {
-            to_delete.insert(DefinedName {
-                name: b"Print_Titles".to_vec(),
-                local_sheet_id: id,
-            });
-        }
-    }
-    for id in filter_database {
-        if xlnm_filter_database.contains(&id) {
-            to_delete.insert(DefinedName {
-                name: b"_FilterDatabase".to_vec(),
-                local_sheet_id: id,
-            });
-        }
-    }
-    for id in database {
-        if xlnm_database.contains(&id) {
-            to_delete.insert(DefinedName {
-                name: b"Database".to_vec(),
-                local_sheet_id: id,
-            });
-        }
-    }
-
-    if to_delete.is_empty() {
+    if duplicates.is_empty() {
         return Ok(workbook_xml_bytes.to_vec());
     }
 
-    let replace_pattern = Regex::new(
+    let cleaned_content = remove_duplicate_defined_names(content, &duplicates, stats)?;
+    Ok(replace_defined_names_content(
+        workbook_xml_bytes,
+        content_range,
+        &cleaned_content,
+    ))
+}
+
+fn find_defined_names_content(workbook_xml: &[u8]) -> Option<Range<usize>> {
+    let block_start = workbook_xml.find(b"<definedNames")?;
+    let content_start = block_start + workbook_xml[block_start..].find(b">")? + 1;
+    let content_end = content_start + workbook_xml[content_start..].find(b"</definedNames>")?;
+    Some(content_start..content_end)
+}
+
+fn collect_defined_names(content: &[u8]) -> Result<KnownDefinedNames> {
+    let pattern = Regex::new(
+        r#"(?s)<definedName\b[^>]*?name="([^"]*?)"(?:[^>]*?localSheetId="([^"]*?)")?[^>]*?>"#,
+    )?;
+    let mut known = KnownDefinedNames::default();
+
+    for captures in pattern.captures_iter(content) {
+        let name = captures
+            .get(1)
+            .map_or(b"".as_slice(), |item| item.as_bytes());
+        let sheet_id = captures
+            .get(2)
+            .map_or_else(Vec::new, |item| item.as_bytes().to_vec());
+        known.record(name, sheet_id);
+    }
+
+    Ok(known)
+}
+
+fn mark_duplicates(
+    unprefixed_ids: HashSet<Vec<u8>>,
+    prefixed_ids: &HashSet<Vec<u8>>,
+    unprefixed_name: &[u8],
+    duplicates: &mut HashSet<DefinedName>,
+) {
+    duplicates.extend(
+        unprefixed_ids
+            .into_iter()
+            .filter(|sheet_id| prefixed_ids.contains(sheet_id))
+            .map(|local_sheet_id| DefinedName {
+                name: unprefixed_name.to_vec(),
+                local_sheet_id,
+            }),
+    );
+}
+
+fn remove_duplicate_defined_names<'a>(
+    content: &'a [u8],
+    duplicates: &HashSet<DefinedName>,
+    stats: &mut CleanupStats,
+) -> Result<Cow<'a, [u8]>> {
+    let pattern = Regex::new(
         r#"(?s)<definedName\b[^>]*?name="([^"]*?)"(?:[^>]*?localSheetId="([^"]*?)")?[^>]*?>.*?</definedName>"#,
     )?;
-
-    let replaced_content = replace_pattern.replace_all(defined_names_content, |caps: &Captures| {
-        let name = caps
-            .get(1)
-            .map(|m| m.as_bytes().to_vec())
-            .unwrap_or_default();
-        let sheet_id = caps
-            .get(2)
-            .map(|m| m.as_bytes().to_vec())
-            .unwrap_or_default();
-
-        let def_name = DefinedName {
-            name,
-            local_sheet_id: sheet_id,
-        };
-        if to_delete.contains(&def_name) {
-            debug!(
-                "Removing duplicate definedName: {:?}",
-                String::from_utf8_lossy(&def_name.name)
-            );
-            stats.record_removed(
-                CleanupCause::WorkbookDefinedNameCleanup,
-                caps.get(0).unwrap().as_bytes().len(),
-            );
-            Vec::new()
-        } else {
-            caps.get(0).unwrap().as_bytes().to_vec()
-        }
+    let cleaned = pattern.replace_all(content, |captures: &Captures| {
+        replace_defined_name_match(captures, duplicates, stats)
     });
+    Ok(cleaned)
+}
 
-    let mut output = Vec::with_capacity(workbook_xml_bytes.len());
-    output.extend_from_slice(&workbook_xml_bytes[..tag_close_idx]);
-    output.extend_from_slice(&replaced_content);
-    output.extend_from_slice(&workbook_xml_bytes[end_idx..]);
+fn replace_defined_name_match(
+    captures: &Captures<'_>,
+    duplicates: &HashSet<DefinedName>,
+    stats: &mut CleanupStats,
+) -> Vec<u8> {
+    let defined_name = defined_name_from_captures(captures);
+    let complete_match = captures.get(0).unwrap().as_bytes();
 
-    Ok(output)
+    if !duplicates.contains(&defined_name) {
+        return complete_match.to_vec();
+    }
+
+    debug!(
+        "Removing duplicate definedName: {:?}",
+        String::from_utf8_lossy(&defined_name.name)
+    );
+    stats.record_removed(
+        CleanupCause::WorkbookDefinedNameCleanup,
+        complete_match.len(),
+    );
+    Vec::new()
+}
+
+fn defined_name_from_captures(captures: &Captures<'_>) -> DefinedName {
+    DefinedName {
+        name: captures
+            .get(1)
+            .map_or_else(Vec::new, |item| item.as_bytes().to_vec()),
+        local_sheet_id: captures
+            .get(2)
+            .map_or_else(Vec::new, |item| item.as_bytes().to_vec()),
+    }
+}
+
+fn replace_defined_names_content(
+    workbook_xml: &[u8],
+    content_range: Range<usize>,
+    cleaned_content: &[u8],
+) -> Vec<u8> {
+    let mut output = Vec::with_capacity(workbook_xml.len());
+    output.extend_from_slice(&workbook_xml[..content_range.start]);
+    output.extend_from_slice(cleaned_content);
+    output.extend_from_slice(&workbook_xml[content_range.end..]);
+    output
 }

@@ -1,5 +1,6 @@
 /// Convert a column-letter bytes object (e.g. b"A", b"B", b"AA")
 /// into its 1-based column index (A=1, B=2, ... AA=27, etc.).
+#[inline]
 pub fn letters_byte_string_to_integer(col_bytes: &[u8]) -> u32 {
     let mut col_index = 0;
     for &b in col_bytes {
@@ -13,6 +14,7 @@ pub fn letters_byte_string_to_integer(col_bytes: &[u8]) -> u32 {
 }
 
 /// Convert row bytes (e.g. b"80") directly into an integer without decoding to string.
+#[inline]
 pub fn digits_byte_string_to_integer(row_bytes: &[u8]) -> u32 {
     let mut row_index = 0;
     for &b in row_bytes {

@@ -15,6 +15,17 @@ struct EmptyStyleRepresentativePolicy {
     require_content_in_row: bool,
 }
 
+impl EmptyStyleRepresentativePolicy {
+    #[inline]
+    fn for_row(params: &CleanSheetParameters, row: &RowAttributes) -> Self {
+        Self {
+            keep_default_styleless: params.cleanup.keep_textless_default_font_representatives,
+            keep_font_styles: params.cleanup.keep_textless_style_representatives,
+            require_content_in_row: row.has_custom_height,
+        }
+    }
+}
+
 struct CleanCellsResult<'a> {
     row_content: Cow<'a, [u8]>,
     tentative_style_representatives: Vec<TentativeStyleRepresentative>,
@@ -36,6 +47,125 @@ struct RepresentativeRemovalResult {
 struct RemovedStyleRepresentative {
     representative: TentativeStyleRepresentative,
     bytes_removed: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct XmlAttributeMatch {
+    assignment_start: usize,
+    value_start: usize,
+    value_end: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ParsedCellBlock<'a> {
+    start: usize,
+    end: usize,
+    raw: &'a [u8],
+    attr: &'a [u8],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EmptyStyleRepresentativeDecision {
+    keep_font_only: bool,
+    keep_merged: bool,
+    keep_default: bool,
+    has_effective_fill_or_border: bool,
+}
+
+impl EmptyStyleRepresentativeDecision {
+    #[inline]
+    fn is_tentative(self, policy: EmptyStyleRepresentativePolicy) -> bool {
+        policy.require_content_in_row
+            && !self.has_effective_fill_or_border
+            && (self.keep_font_only || self.keep_default)
+    }
+}
+
+struct RowCellCleanupState {
+    output: Option<Vec<u8>>,
+    position: usize,
+    cells_removed: bool,
+    kept_default_style_cell: bool,
+    tentative_style_representatives: Vec<TentativeStyleRepresentative>,
+    kept_represented_style_ids: std::collections::HashSet<u32>,
+}
+
+impl RowCellCleanupState {
+    fn new() -> Self {
+        Self {
+            output: None,
+            position: 0,
+            cells_removed: false,
+            kept_default_style_cell: false,
+            tentative_style_representatives: Vec::new(),
+            kept_represented_style_ids: std::collections::HashSet::new(),
+        }
+    }
+
+    fn advance_past_non_cell_match(&mut self, row_content: &[u8], next_position: usize) {
+        if let Some(output) = self.output.as_mut() {
+            output.extend_from_slice(&row_content[self.position..next_position]);
+        }
+        self.position = next_position;
+    }
+
+    fn append_cleaned_cell(
+        &mut self,
+        row_content: &[u8],
+        block: ParsedCellBlock<'_>,
+        cleaned_cell: Cow<'_, [u8]>,
+    ) {
+        self.cells_removed |= cleaned_cell.is_empty();
+
+        if let Some(output) = self.output.as_mut() {
+            output.extend_from_slice(&row_content[self.position..block.start]);
+            output.extend_from_slice(cleaned_cell.as_ref());
+        } else if matches!(&cleaned_cell, Cow::Owned(_)) {
+            let mut output = Vec::with_capacity(row_content.len().min(64 * 1024));
+            output.extend_from_slice(&row_content[..block.start]);
+            output.extend_from_slice(cleaned_cell.as_ref());
+            self.output = Some(output);
+        }
+
+        self.position = block.end;
+    }
+
+    fn record_kept_empty_representative(
+        &mut self,
+        cell: &ParsedCell<'_>,
+        decision: EmptyStyleRepresentativeDecision,
+        policy: EmptyStyleRepresentativePolicy,
+    ) {
+        record_represented_cell_style(
+            cell,
+            &mut self.kept_represented_style_ids,
+            &mut self.kept_default_style_cell,
+        );
+
+        if decision.is_tentative(policy) {
+            self.tentative_style_representatives
+                .push(TentativeStyleRepresentative {
+                    reference_attr: cell.reference_attr.to_vec(),
+                    col: cell.col_num,
+                    row: digits_byte_string_to_integer(cell.row),
+                });
+        }
+    }
+
+    fn finish<'a>(self, row_content: &'a [u8]) -> CleanCellsResult<'a> {
+        let row_content = if let Some(mut output) = self.output {
+            output.extend_from_slice(&row_content[self.position..]);
+            Cow::Owned(output)
+        } else {
+            Cow::Borrowed(row_content)
+        };
+
+        CleanCellsResult {
+            row_content,
+            tentative_style_representatives: self.tentative_style_representatives,
+            cells_removed: self.cells_removed,
+        }
+    }
 }
 
 pub fn replace_row(
@@ -66,89 +196,121 @@ pub fn replace_row_bytes<'a>(
         return Cow::Borrowed(row_raw);
     };
 
-    let is_hidden = row_attributes.hidden;
     let original_row_content = row_content.unwrap_or_default();
+    register_row_attributes(&row_attributes, metrics);
 
-    metrics
-        .row_attributes
-        .insert(row_attributes.ref_.clone(), row_attributes.clone());
-    record_visible_row_bounds(&row_attributes, metrics);
+    let style_policy = EmptyStyleRepresentativePolicy::for_row(params, &row_attributes);
+    let clean_result = clean_row_content(
+        params,
+        metrics,
+        original_row_content,
+        style_policy,
+        &row_attributes,
+    );
 
-    let empty_style_representative_policy = EmptyStyleRepresentativePolicy {
-        keep_default_styleless: params.cleanup.keep_textless_default_font_representatives,
-        keep_font_styles: params.cleanup.keep_textless_style_representatives,
-        require_content_in_row: row_attributes.has_custom_height,
-    };
-    let was_already_empty = original_row_content.is_empty();
-    let mut cells_removed = false;
+    render_cleaned_row(
+        row_raw,
+        row_attr,
+        clean_result,
+        params,
+        metrics,
+        row_attributes,
+    )
+}
 
-    let row_content = if !was_already_empty {
-        let clean_result = clean_cells(
+fn clean_row_content<'a>(
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    original_row_content: &'a [u8],
+    style_policy: EmptyStyleRepresentativePolicy,
+    row_attributes: &RowAttributes,
+) -> CleanCellsResult<'a> {
+    if original_row_content.is_empty() {
+        return unchanged_row_content(original_row_content);
+    }
+
+    let clean_result = clean_cells(params, metrics, original_row_content, style_policy);
+    remove_unneeded_style_representatives(clean_result, style_policy, row_attributes, metrics)
+}
+
+fn unchanged_row_content(row_content: &[u8]) -> CleanCellsResult<'_> {
+    CleanCellsResult {
+        row_content: Cow::Borrowed(row_content),
+        tentative_style_representatives: Vec::new(),
+        cells_removed: false,
+    }
+}
+
+fn remove_unneeded_style_representatives<'a>(
+    clean_result: CleanCellsResult<'a>,
+    style_policy: EmptyStyleRepresentativePolicy,
+    row_attributes: &RowAttributes,
+    metrics: &mut CleanSheetMetrics,
+) -> CleanCellsResult<'a> {
+    if !style_policy.require_content_in_row
+        || metrics
+            .rows_with_kept_content_cells
+            .contains(row_attributes.ref_.as_slice())
+        || clean_result.tentative_style_representatives.is_empty()
+    {
+        return clean_result;
+    }
+
+    let removal = remove_tentative_style_representatives(
+        clean_result.row_content.into_owned(),
+        clean_result.tentative_style_representatives,
+    );
+    record_style_representative_removal(metrics, &removal.removed);
+
+    CleanCellsResult {
+        row_content: Cow::Owned(removal.row_content),
+        tentative_style_representatives: Vec::new(),
+        cells_removed: clean_result.cells_removed || !removal.removed.is_empty(),
+    }
+}
+
+fn record_style_representative_removal(
+    metrics: &mut CleanSheetMetrics,
+    removed: &[RemovedStyleRepresentative],
+) {
+    for removed_cell in removed {
+        metrics.cleanup_stats.record_removed(
+            CleanupCause::EmptyCellsWithoutContent,
+            removed_cell.bytes_removed,
+        );
+    }
+    remove_tentative_representatives_from_metrics(metrics, removed);
+}
+
+fn render_cleaned_row<'a>(
+    row_raw: &'a [u8],
+    row_attr: &[u8],
+    clean_result: CleanCellsResult<'a>,
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    row_attributes: RowAttributes,
+) -> Cow<'a, [u8]> {
+    if clean_result.row_content.is_empty() {
+        return Cow::Owned(generate_and_log_self_closing_row(
+            row_attr,
             params,
             metrics,
-            original_row_content,
-            empty_style_representative_policy,
-        );
-        let CleanCellsResult {
-            row_content,
-            tentative_style_representatives,
-            cells_removed: clean_cells_removed,
-        } = clean_result;
-        cells_removed = clean_cells_removed;
-
-        if empty_style_representative_policy.require_content_in_row
-            && !metrics
-                .rows_with_kept_content_cells
-                .contains(row_attributes.ref_.as_slice())
-        {
-            if tentative_style_representatives.is_empty() {
-                row_content
-            } else {
-                let removal = remove_tentative_style_representatives(
-                    row_content.into_owned(),
-                    tentative_style_representatives,
-                );
-                for removed in &removal.removed {
-                    metrics.cleanup_stats.record_removed(
-                        CleanupCause::EmptyCellsWithoutContent,
-                        removed.bytes_removed,
-                    );
-                }
-                remove_tentative_representatives_from_metrics(metrics, &removal.removed);
-                cells_removed = cells_removed || !removal.removed.is_empty();
-                Cow::Owned(removal.row_content)
-            }
-        } else {
-            row_content
-        }
-    } else {
-        Cow::Borrowed(original_row_content)
-    };
-
-    let is_empty = row_content.is_empty();
-
-    if is_empty {
-        if is_hidden {
-            return generate_and_log_self_closing_row(row_attr, params, metrics, row_attributes)
-                .into();
-        }
-
-        return generate_and_log_self_closing_row(row_attr, params, metrics, row_attributes).into();
-    }
-
-    if matches!(&row_content, Cow::Borrowed(_)) {
-        metrics.kept_row_states.push(row_attributes);
-        Cow::Borrowed(row_raw)
-    } else {
-        generate_and_log_row(
-            row_attr,
-            row_content.as_ref(),
-            metrics,
             row_attributes,
-            cells_removed,
-        )
-        .into()
+        ));
     }
+
+    if matches!(&clean_result.row_content, Cow::Borrowed(_)) {
+        metrics.kept_row_states.push(row_attributes);
+        return Cow::Borrowed(row_raw);
+    }
+
+    Cow::Owned(generate_and_log_row(
+        row_attr,
+        clean_result.row_content.as_ref(),
+        metrics,
+        row_attributes,
+        clean_result.cells_removed,
+    ))
 }
 
 pub fn replace_empty_row_after_cell_range(
@@ -176,16 +338,7 @@ pub fn replace_empty_row_after_cell_range_bytes<'a>(
         return Cow::Borrowed(row_raw);
     };
 
-    let is_hidden = row_attributes.hidden;
-
-    metrics
-        .row_attributes
-        .insert(row_attributes.ref_.clone(), row_attributes.clone());
-    record_visible_row_bounds(&row_attributes, metrics);
-
-    if is_hidden {
-        return generate_and_log_self_closing_row(row_attr, params, metrics, row_attributes).into();
-    }
+    register_row_attributes(&row_attributes, metrics);
 
     generate_and_log_self_closing_row(row_attr, params, metrics, row_attributes).into()
 }
@@ -194,147 +347,133 @@ fn clean_cells<'a>(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     row_content: &'a [u8],
-    empty_style_representative_policy: EmptyStyleRepresentativePolicy,
+    style_policy: EmptyStyleRepresentativePolicy,
 ) -> CleanCellsResult<'a> {
     if row_content.is_empty() {
-        return CleanCellsResult {
-            row_content: Cow::Borrowed(row_content),
-            tentative_style_representatives: Vec::new(),
-            cells_removed: false,
-        };
+        return unchanged_row_content(row_content);
     }
 
-    let mut out: Option<Vec<u8>> = None;
-    let mut pos = 0;
-    let mut cells_removed = false;
-    let mut kept_default_style_cell = false;
-    let mut tentative_style_representatives = Vec::new();
-    let mut kept_represented_style_ids = std::collections::HashSet::<u32>::new();
-
-    while let Some(cell_start_rel) = find_bytes(&row_content[pos..], b"<c") {
-        let cell_start = pos + cell_start_rel;
+    let mut state = RowCellCleanupState::new();
+    while let Some(cell_start_rel) = find_bytes(&row_content[state.position..], b"<c") {
+        let cell_start = state.position + cell_start_rel;
 
         if !is_cell_tag_start(row_content, cell_start) {
-            if let Some(out) = out.as_mut() {
-                out.extend_from_slice(&row_content[pos..cell_start + b"<c".len()]);
-            }
-            pos = cell_start + b"<c".len();
+            state.advance_past_non_cell_match(row_content, cell_start + b"<c".len());
             continue;
         }
 
-        let Some(tag_end) = find_byte_from(row_content, b'>', cell_start) else {
+        let Some(block) = parse_cell_block(row_content, cell_start) else {
             break;
         };
-
-        let attr_start = cell_start + b"<c".len();
-        let self_closing = tag_end > cell_start && row_content[tag_end - 1] == b'/';
-        let attr_end = if self_closing { tag_end - 1 } else { tag_end };
-
-        let (cell_end, raw) = if self_closing {
-            (tag_end + 1, &row_content[cell_start..tag_end + 1])
-        } else {
-            let content_start = tag_end + 1;
-            let Some(close_rel) = find_bytes(&row_content[content_start..], b"</c>") else {
-                break;
-            };
-            let cell_end = content_start + close_rel + b"</c>".len();
-            (cell_end, &row_content[cell_start..cell_end])
-        };
-
-        let attr = &row_content[attr_start..attr_end];
-        let cleaned_cell = if let Some(cell) = parse_cell_from_parts(raw, attr) {
-            let has_cell_content = parsed_cell_has_content(&cell);
-            #[cfg(feature = "cell-tracing")]
-            crate::cleaning_trace::record_cell_visit_if_target(
-                crate::cleaning_trace::CellVisitEvent {
-                    sheet_file: &params.zip_info_filename,
-                    col: cell.col_num,
-                    row: cell.row,
-                    style_id: cell.style_id,
-                },
-            );
-
-            let keep_empty_font_only_style_cell = empty_style_representative_policy
-                .keep_font_styles
-                && empty_cell_has_no_empty_cell_visible_style(&cell, params, has_cell_content)
-                && cell
-                    .style_id
-                    .is_some_and(|style_id| !kept_represented_style_ids.contains(&style_id));
-            let keep_empty_merged_style_cell =
-                empty_styled_cell_is_inside_merge_range(&cell, params, metrics, has_cell_content);
-            let keep_default_empty_cell = empty_style_representative_policy.keep_default_styleless
-                && !kept_default_style_cell
-                && empty_cell_has_default_style(&cell, has_cell_content);
-            let has_effective_fill_or_border = parsed_empty_cell_has_effective_fill_or_border(
-                &cell,
-                params,
-                metrics,
-                has_cell_content,
-            );
-            let cleaned_cell = replace_parsed_cell_with_empty_style_policy(
-                &cell,
-                params,
-                metrics,
-                has_cell_content,
-                keep_empty_font_only_style_cell,
-                keep_empty_merged_style_cell,
-                keep_default_empty_cell,
-            );
-
-            if !cleaned_cell.as_ref().is_empty() && !has_cell_content {
-                record_represented_cell_style(
-                    &cell,
-                    &mut kept_represented_style_ids,
-                    &mut kept_default_style_cell,
-                );
-                if keep_empty_font_only_style_cell || keep_default_empty_cell {
-                    if empty_style_representative_policy.require_content_in_row
-                        && !has_effective_fill_or_border
-                    {
-                        tentative_style_representatives.push(TentativeStyleRepresentative {
-                            reference_attr: cell.reference_attr.to_vec(),
-                            col: cell.col_num,
-                            row: digits_byte_string_to_integer(cell.row),
-                        });
-                    }
-                }
-            }
-
-            cleaned_cell
-        } else {
-            Cow::Borrowed(raw)
-        };
-
-        if cleaned_cell.as_ref().is_empty() {
-            cells_removed = true;
-        }
-
-        if let Some(out) = out.as_mut() {
-            out.extend_from_slice(&row_content[pos..cell_start]);
-            out.extend_from_slice(cleaned_cell.as_ref());
-        } else if matches!(&cleaned_cell, Cow::Owned(_)) {
-            let mut new_out = Vec::with_capacity(row_content.len().min(64 * 1024));
-            new_out.extend_from_slice(&row_content[..cell_start]);
-            new_out.extend_from_slice(cleaned_cell.as_ref());
-            out = Some(new_out);
-        }
-
-        pos = cell_end;
+        let cleaned_cell = clean_cell_block(block, params, metrics, style_policy, &mut state);
+        state.append_cleaned_cell(row_content, block, cleaned_cell);
     }
 
-    let row_content = if let Some(mut out) = out {
-        out.extend_from_slice(&row_content[pos..]);
-        Cow::Owned(out)
+    state.finish(row_content)
+}
+
+fn parse_cell_block(row_content: &[u8], cell_start: usize) -> Option<ParsedCellBlock<'_>> {
+    let tag_end = find_byte_from(row_content, b'>', cell_start)?;
+    let self_closing = tag_end > cell_start && row_content[tag_end - 1] == b'/';
+    let attr_start = cell_start + b"<c".len();
+    let attr_end = if self_closing { tag_end - 1 } else { tag_end };
+
+    let cell_end = if self_closing {
+        tag_end + 1
     } else {
-        Cow::Borrowed(row_content)
+        let content_start = tag_end + 1;
+        let close_rel = find_bytes(&row_content[content_start..], b"</c>")?;
+        content_start + close_rel + b"</c>".len()
     };
 
-    CleanCellsResult {
-        row_content,
-        tentative_style_representatives,
-        cells_removed,
+    Some(ParsedCellBlock {
+        start: cell_start,
+        end: cell_end,
+        raw: &row_content[cell_start..cell_end],
+        attr: &row_content[attr_start..attr_end],
+    })
+}
+
+fn clean_cell_block<'a>(
+    block: ParsedCellBlock<'a>,
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    style_policy: EmptyStyleRepresentativePolicy,
+    state: &mut RowCellCleanupState,
+) -> Cow<'a, [u8]> {
+    let Some(cell) = parse_cell_from_parts(block.raw, block.attr) else {
+        return Cow::Borrowed(block.raw);
+    };
+
+    let has_cell_content = parsed_cell_has_content(&cell);
+    record_cell_visit(params, &cell);
+    let representative = select_empty_style_representative(
+        &cell,
+        params,
+        metrics,
+        has_cell_content,
+        style_policy,
+        state,
+    );
+    let cleaned_cell = replace_parsed_cell_with_empty_style_policy(
+        &cell,
+        params,
+        metrics,
+        has_cell_content,
+        representative.keep_font_only,
+        representative.keep_merged,
+        representative.keep_default,
+    );
+
+    if !cleaned_cell.is_empty() && !has_cell_content {
+        state.record_kept_empty_representative(&cell, representative, style_policy);
+    }
+
+    cleaned_cell
+}
+
+fn select_empty_style_representative(
+    cell: &ParsedCell<'_>,
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+    has_cell_content: bool,
+    policy: EmptyStyleRepresentativePolicy,
+    state: &RowCellCleanupState,
+) -> EmptyStyleRepresentativeDecision {
+    let keep_font_only = policy.keep_font_styles
+        && empty_cell_has_no_empty_cell_visible_style(cell, params, has_cell_content)
+        && cell
+            .style_id
+            .is_some_and(|style_id| !state.kept_represented_style_ids.contains(&style_id));
+    let keep_merged =
+        empty_styled_cell_is_inside_merge_range(cell, params, metrics, has_cell_content);
+    let keep_default = policy.keep_default_styleless
+        && !state.kept_default_style_cell
+        && empty_cell_has_default_style(cell, has_cell_content);
+    let has_effective_fill_or_border =
+        parsed_empty_cell_has_effective_fill_or_border(cell, params, metrics, has_cell_content);
+
+    EmptyStyleRepresentativeDecision {
+        keep_font_only,
+        keep_merged,
+        keep_default,
+        has_effective_fill_or_border,
     }
 }
+
+#[cfg(feature = "cell-tracing")]
+fn record_cell_visit(params: &CleanSheetParameters, cell: &ParsedCell<'_>) {
+    crate::cleaning_trace::record_cell_visit_if_target(crate::cleaning_trace::CellVisitEvent {
+        sheet_file: &params.zip_info_filename,
+        col: cell.col_num,
+        row: cell.row,
+        style_id: cell.style_id,
+    });
+}
+
+#[cfg(not(feature = "cell-tracing"))]
+#[inline]
+fn record_cell_visit(_params: &CleanSheetParameters, _cell: &ParsedCell<'_>) {}
 
 fn record_represented_cell_style(
     cell: &ParsedCell<'_>,
@@ -467,10 +606,12 @@ fn empty_cell_has_no_empty_cell_visible_style(
         .is_some_and(|style| style.has_no_empty_cell_visible_style)
 }
 
+#[inline]
 fn empty_cell_has_default_style(cell: &ParsedCell<'_>, has_cell_content: bool) -> bool {
     cell.style_id.is_none() && !has_cell_content
 }
 
+#[inline(always)]
 fn is_cell_tag_start(data: &[u8], cell_start: usize) -> bool {
     matches!(
         data.get(cell_start + b"<c".len()),
@@ -507,27 +648,10 @@ fn parse_cell_from_parts<'a>(raw: &'a [u8], attr: &'a [u8]) -> Option<ParsedCell
     })
 }
 
+#[inline]
 fn extract_attr_assignment<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
-    let mut search_start = 0;
-
-    while search_start < data.len() {
-        let relative = find_bytes(&data[search_start..], attr_name)?;
-        let attr_start = search_start + relative;
-        let value_marker = attr_start + attr_name.len();
-
-        if attr_start > 0
-            && data[attr_start - 1].is_ascii_whitespace()
-            && data.get(value_marker..value_marker + 2) == Some(b"=\"")
-        {
-            let value_start = value_marker + 2;
-            let value_end = data[value_start..].iter().position(|byte| *byte == b'"')?;
-            return Some(&data[attr_start..value_start + value_end + 1]);
-        }
-
-        search_start = attr_start + attr_name.len();
-    }
-
-    None
+    let attribute = find_xml_attribute(data, attr_name)?;
+    Some(&data[attribute.assignment_start..attribute.value_end + 1])
 }
 
 fn extract_row_attributes_from_parts(
@@ -535,75 +659,84 @@ fn extract_row_attributes_from_parts(
     row_content: Option<&[u8]>,
     params: &CleanSheetParameters,
 ) -> Option<RowAttributes> {
-    let row_attr_vec = row_attr.to_vec();
-    let ref_ = extract_attr_value(row_attr, b"r")
-        .map(|value| value.to_vec())
-        .unwrap_or_default();
-    let hidden = extract_attr_value(row_attr, b"hidden").is_some_and(|value| value == b"1");
-    let style_id = extract_attr_value(row_attr, b"s").map(digits_byte_string_to_integer);
-    let ht = extract_attr_value(row_attr, b"ht").is_some();
-    let custom_height =
-        extract_attr_value(row_attr, b"customHeight").is_some_and(|value| value == b"1");
-    let style = style_id.and_then(|id| params.patterns.xfs_by_index.get(&id).cloned());
-
-    Some(RowAttributes {
-        row_attr: row_attr_vec,
-        ref_,
-        hidden,
-        style,
-        has_height: ht,
-        has_custom_height: custom_height,
-        is_empty: row_content.is_none_or(|content| content.is_empty()),
-    })
+    Some(parse_row_attributes(
+        row_attr,
+        row_content.is_none_or(|content| content.is_empty()),
+        params,
+    ))
 }
 
 fn extract_empty_row_attributes_from_attr(
     row_attr: &[u8],
     params: &CleanSheetParameters,
 ) -> Option<RowAttributes> {
-    let row_attr_vec = row_attr.to_vec();
+    Some(parse_row_attributes(row_attr, true, params))
+}
+
+fn parse_row_attributes(
+    row_attr: &[u8],
+    is_empty: bool,
+    params: &CleanSheetParameters,
+) -> RowAttributes {
     let ref_ = extract_attr_value(row_attr, b"r")
         .map(|value| value.to_vec())
         .unwrap_or_default();
     let hidden = extract_attr_value(row_attr, b"hidden").is_some_and(|value| value == b"1");
     let style_id = extract_attr_value(row_attr, b"s").map(digits_byte_string_to_integer);
-    let ht = extract_attr_value(row_attr, b"ht").is_some();
-    let custom_height =
+    let has_height = extract_attr_value(row_attr, b"ht").is_some();
+    let has_custom_height =
         extract_attr_value(row_attr, b"customHeight").is_some_and(|value| value == b"1");
     let style = style_id.and_then(|id| params.patterns.xfs_by_index.get(&id).cloned());
 
-    Some(RowAttributes {
-        row_attr: row_attr_vec,
+    RowAttributes {
+        row_attr: row_attr.to_vec(),
         ref_,
         hidden,
         style,
-        has_height: ht,
-        has_custom_height: custom_height,
-        is_empty: true,
-    })
+        has_height,
+        has_custom_height,
+        is_empty,
+    }
 }
 
+#[inline]
 fn extract_attr_value<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
+    let attribute = find_xml_attribute(data, attr_name)?;
+    Some(&data[attribute.value_start..attribute.value_end])
+}
+
+fn find_xml_attribute(data: &[u8], attr_name: &[u8]) -> Option<XmlAttributeMatch> {
     let mut search_start = 0;
 
     while search_start < data.len() {
         let relative = find_bytes(&data[search_start..], attr_name)?;
-        let attr_start = search_start + relative;
-        let value_marker = attr_start + attr_name.len();
+        let assignment_start = search_start + relative;
+        let value_marker = assignment_start + attr_name.len();
 
-        if attr_start > 0
-            && data[attr_start - 1].is_ascii_whitespace()
+        if assignment_start > 0
+            && data[assignment_start - 1].is_ascii_whitespace()
             && data.get(value_marker..value_marker + 2) == Some(b"=\"")
         {
             let value_start = value_marker + 2;
-            let value_end = data[value_start..].iter().position(|byte| *byte == b'"')?;
-            return Some(&data[value_start..value_start + value_end]);
+            let value_length = data[value_start..].iter().position(|byte| *byte == b'"')?;
+            return Some(XmlAttributeMatch {
+                assignment_start,
+                value_start,
+                value_end: value_start + value_length,
+            });
         }
 
-        search_start = attr_start + attr_name.len();
+        search_start = assignment_start + attr_name.len();
     }
 
     None
+}
+
+fn register_row_attributes(row_attributes: &RowAttributes, metrics: &mut CleanSheetMetrics) {
+    metrics
+        .row_attributes
+        .insert(row_attributes.ref_.clone(), row_attributes.clone());
+    record_visible_row_bounds(row_attributes, metrics);
 }
 
 fn record_visible_row_bounds(row_attributes: &RowAttributes, metrics: &mut CleanSheetMetrics) {
@@ -633,8 +766,16 @@ fn generate_and_log_self_closing_row(
     row_attributes: RowAttributes,
 ) -> Vec<u8> {
     metrics.kept_row_states.push(row_attributes);
+    let cleaned_row_attr = clean_empty_row_attributes(row_attr, params, metrics);
+    generate_self_closing_row_xml(cleaned_row_attr.as_ref())
+}
 
-    let cleaned_row_attr = if params.cleanup.empty_row_attribute_cleanup {
+fn clean_empty_row_attributes<'a>(
+    row_attr: &'a [u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+) -> Cow<'a, [u8]> {
+    let cleaned = if params.cleanup.empty_row_attribute_cleanup {
         remove_irrelevant_attributes_for_empty_rows(row_attr, params)
     } else {
         Cow::Borrowed(row_attr)
@@ -643,14 +784,17 @@ fn generate_and_log_self_closing_row(
     metrics.cleanup_stats.record_delta(
         CleanupCause::EmptyRowAttributeCleanup,
         row_attr.len(),
-        cleaned_row_attr.as_ref().len(),
+        cleaned.len(),
     );
+    cleaned
+}
 
-    let mut out = Vec::with_capacity(cleaned_row_attr.as_ref().len() + 7);
-    out.extend_from_slice(b"<row");
-    out.extend_from_slice(cleaned_row_attr.as_ref());
-    out.extend_from_slice(b"/>");
-    out
+fn generate_self_closing_row_xml(row_attr: &[u8]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(row_attr.len() + 7);
+    output.extend_from_slice(b"<row");
+    output.extend_from_slice(row_attr);
+    output.extend_from_slice(b"/>");
+    output
 }
 
 fn generate_and_log_row(
@@ -666,14 +810,17 @@ fn generate_and_log_row(
         Cow::Borrowed(row_attr)
     };
     metrics.kept_row_states.push(row_attributes);
+    generate_row_xml(row_attr.as_ref(), row_content)
+}
 
-    let mut out = Vec::with_capacity(row_attr.as_ref().len() + row_content.len() + 11);
-    out.extend_from_slice(b"<row");
-    out.extend_from_slice(row_attr.as_ref());
-    out.extend_from_slice(b">");
-    out.extend_from_slice(row_content);
-    out.extend_from_slice(b"</row>");
-    out
+fn generate_row_xml(row_attr: &[u8], row_content: &[u8]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(row_attr.len() + row_content.len() + 11);
+    output.extend_from_slice(b"<row");
+    output.extend_from_slice(row_attr);
+    output.extend_from_slice(b">");
+    output.extend_from_slice(row_content);
+    output.extend_from_slice(b"</row>");
+    output
 }
 
 fn rewrite_row_spans_upper_bound<'a>(
@@ -723,27 +870,10 @@ fn rewrite_spans_attr_upper_bound(row_attr: &[u8], max_kept_col: u32) -> Cow<'_,
     Cow::Owned(out)
 }
 
+#[inline]
 fn find_attr_value_range(data: &[u8], attr_name: &[u8]) -> Option<std::ops::Range<usize>> {
-    let mut search_start = 0;
-
-    while search_start < data.len() {
-        let relative = find_bytes(&data[search_start..], attr_name)?;
-        let attr_start = search_start + relative;
-        let value_marker = attr_start + attr_name.len();
-
-        if attr_start > 0
-            && data[attr_start - 1].is_ascii_whitespace()
-            && data.get(value_marker..value_marker + 2) == Some(b"=\"")
-        {
-            let value_start = value_marker + 2;
-            let value_end = data[value_start..].iter().position(|byte| *byte == b'"')?;
-            return Some(value_start..value_start + value_end);
-        }
-
-        search_start = attr_start + attr_name.len();
-    }
-
-    None
+    let attribute = find_xml_attribute(data, attr_name)?;
+    Some(attribute.value_start..attribute.value_end)
 }
 
 fn remove_irrelevant_attributes_for_empty_rows<'a>(

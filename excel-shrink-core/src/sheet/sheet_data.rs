@@ -25,14 +25,13 @@ impl SheetDataPreprocessState {
         let any_column_has_non_default_fill_or_border =
             column_definitions.has_any_non_default_fill_or_border_style();
 
-        let mut fill_or_border_style_ids_by_bytes = HashSet::new();
-        for (style_id, xf) in &params.patterns.xfs_by_index {
-            let style_id_bytes = style_id.to_string().into_bytes();
-
-            if xf.applies_visible_fill_or_border() {
-                fill_or_border_style_ids_by_bytes.insert(style_id_bytes.clone());
-            }
-        }
+        let fill_or_border_style_ids_by_bytes = params
+            .patterns
+            .xfs_by_index
+            .iter()
+            .filter(|(_, xf)| xf.applies_visible_fill_or_border())
+            .map(|(style_id, _)| style_id.to_string().into_bytes())
+            .collect();
 
         Self {
             any_column_has_non_default_fill_or_border,
@@ -65,24 +64,15 @@ pub fn pre_process_sheet_data_chunk<'a>(
         return Err(ShrinkError::UnsupportedCData);
     }
 
-    let chunk = Cow::Borrowed(chunk);
-
     if !params.cleanup.preprocess_empty_self_closing_cells {
-        return Ok(chunk);
+        return Ok(Cow::Borrowed(chunk));
     }
 
-    let skip_empty_cell_cleanup = should_skip_empty_cell_cleanup_for_chunk(chunk.as_ref(), state);
-
-    if skip_empty_cell_cleanup {
-        return Ok(chunk);
+    if should_skip_empty_cell_cleanup_for_chunk(chunk, state) {
+        return Ok(Cow::Borrowed(chunk));
     }
 
-    Ok(
-        match remove_consecutive_empty_cells(chunk.as_ref(), state, metrics) {
-            Cow::Borrowed(_) => chunk,
-            Cow::Owned(cleaned) => Cow::Owned(cleaned),
-        },
-    )
+    Ok(remove_consecutive_empty_cells(chunk, state, metrics))
 }
 
 pub fn clean_sheet_rows_and_cells_in_cell_range(
@@ -95,6 +85,7 @@ pub fn clean_sheet_rows_and_cells_in_cell_range(
     }))
 }
 
+#[inline]
 pub(crate) fn should_parallel_chunk_range(range_len: usize, max_chunk_size: usize) -> bool {
     max_chunk_size > 0 && range_len > max_chunk_size
 }
@@ -133,18 +124,27 @@ pub fn clean_selected_rows_and_cells_in_cell_range(
     }
 
     Ok(apply_row_byte_substitution(sheet_data, |row| {
-        let Some(row_number) =
-            extract_xml_attr_value(row.attr, b"r").map(crate::utils::digits_byte_string_to_integer)
-        else {
-            return Cow::Borrowed(row.raw);
-        };
-
-        if row_numbers.contains(&row_number) {
-            replace_row_bytes(row.raw, row.attr, row.content, params, metrics)
-        } else {
-            Cow::Borrowed(row.raw)
-        }
+        clean_row_if_selected(row, params, metrics, row_numbers)
     }))
+}
+
+fn clean_row_if_selected<'a>(
+    row: ParsedRowBlock<'a>,
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    row_numbers: &HashSet<u32>,
+) -> Cow<'a, [u8]> {
+    let Some(row_number) =
+        extract_xml_attr_value(row.attr, b"r").map(crate::utils::digits_byte_string_to_integer)
+    else {
+        return Cow::Borrowed(row.raw);
+    };
+
+    if !row_numbers.contains(&row_number) {
+        return Cow::Borrowed(row.raw);
+    }
+
+    replace_row_bytes(row.raw, row.attr, row.content, params, metrics)
 }
 
 pub fn clean_empty_rows_from_after_cell_range(
@@ -153,13 +153,21 @@ pub fn clean_empty_rows_from_after_cell_range(
     metrics: &mut CleanSheetMetrics,
 ) -> Result<Vec<u8>> {
     Ok(apply_row_byte_substitution(sheet_data, |row| {
-        if row.content.is_some_and(|content| !content.is_empty()) {
-            metrics.kept_row_states.clear();
-            return Cow::Borrowed(row.raw);
-        }
-
-        replace_empty_row_after_cell_range_bytes(row.raw, row.attr, params, metrics)
+        clean_empty_row_after_cell_range(row, params, metrics)
     }))
+}
+
+fn clean_empty_row_after_cell_range<'a>(
+    row: ParsedRowBlock<'a>,
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+) -> Cow<'a, [u8]> {
+    if row.content.is_some_and(|content| !content.is_empty()) {
+        metrics.kept_row_states.clear();
+        return Cow::Borrowed(row.raw);
+    }
+
+    replace_empty_row_after_cell_range_bytes(row.raw, row.attr, params, metrics)
 }
 
 pub fn clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size(
@@ -193,6 +201,15 @@ struct ParsedRowBlock<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct LocatedRowBlock<'a> {
+    start: usize,
+    end: usize,
+    row: ParsedRowBlock<'a>,
+}
+
+type CleanChunkFn = fn(&[u8], &CleanSheetParameters, &mut CleanSheetMetrics) -> Result<Vec<u8>>;
+
+#[derive(Debug, Clone, Copy)]
 struct RowAlignedChunk {
     index: usize,
     start: usize,
@@ -205,54 +222,143 @@ struct CleanedChunk {
     metrics: CleanSheetMetrics,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ScannedCellTag<'a> {
+    NonCellMatch {
+        end: usize,
+    },
+    PreservedTag {
+        end: usize,
+    },
+    EmptySelfClosing {
+        start: usize,
+        end: usize,
+        attr: &'a [u8],
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RowStyleRisk {
+    tag_end: usize,
+    has_non_default_fill_or_border: bool,
+    continues_beyond_chunk: bool,
+}
+
+struct OptionalRewriteBuffer {
+    output: Option<Vec<u8>>,
+    position: usize,
+}
+
+impl OptionalRewriteBuffer {
+    fn new() -> Self {
+        Self {
+            output: None,
+            position: 0,
+        }
+    }
+
+    fn preserve_through(&mut self, input: &[u8], end: usize) {
+        if let Some(output) = self.output.as_mut() {
+            extend_without_large_growth(output, &input[self.position..end]);
+        }
+        self.position = end;
+    }
+
+    fn remove_range(&mut self, input: &[u8], start: usize, end: usize) {
+        if let Some(output) = self.output.as_mut() {
+            extend_without_large_growth(output, &input[self.position..start]);
+        } else {
+            let mut output = Vec::with_capacity(input.len().min(64 * 1024 * 1024));
+            output.extend_from_slice(&input[..start]);
+            self.output = Some(output);
+        }
+        self.position = end;
+    }
+
+    fn finish<'a>(mut self, input: &'a [u8]) -> Cow<'a, [u8]> {
+        if let Some(output) = self.output.as_mut() {
+            extend_without_large_growth(output, &input[self.position..]);
+        }
+        self.output.map_or(Cow::Borrowed(input), Cow::Owned)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ChunkSizeSummary {
+    largest: usize,
+    smallest: usize,
+}
+
+impl ChunkSizeSummary {
+    fn from_chunks(chunks: &[RowAlignedChunk]) -> Self {
+        let mut sizes = chunks.iter().map(|chunk| chunk.end - chunk.start);
+        let Some(first) = sizes.next() else {
+            return Self {
+                largest: 0,
+                smallest: 0,
+            };
+        };
+
+        sizes.fold(
+            Self {
+                largest: first,
+                smallest: first,
+            },
+            |summary, size| Self {
+                largest: summary.largest.max(size),
+                smallest: summary.smallest.min(size),
+            },
+        )
+    }
+}
+
 fn plan_row_aligned_chunks_by_max_size(
     sheet_data: &[u8],
     max_chunk_size: usize,
 ) -> Vec<RowAlignedChunk> {
-    if max_chunk_size == 0 || sheet_data.len() <= max_chunk_size {
-        return vec![RowAlignedChunk {
-            index: 0,
-            start: 0,
-            end: sheet_data.len(),
-        }];
+    if !should_parallel_chunk_range(sheet_data.len(), max_chunk_size) {
+        return vec![full_range_chunk(sheet_data.len())];
     }
 
     let row_ends = collect_row_end_positions(sheet_data);
     if row_ends.is_empty() {
-        return vec![RowAlignedChunk {
-            index: 0,
-            start: 0,
-            end: sheet_data.len(),
-        }];
+        return vec![full_range_chunk(sheet_data.len())];
     }
 
+    let chunks = build_row_aligned_chunks(sheet_data.len(), max_chunk_size, &row_ends);
+    if chunks.is_empty() {
+        vec![full_range_chunk(sheet_data.len())]
+    } else {
+        chunks
+    }
+}
+
+#[inline]
+fn full_range_chunk(data_len: usize) -> RowAlignedChunk {
+    RowAlignedChunk {
+        index: 0,
+        start: 0,
+        end: data_len,
+    }
+}
+
+fn build_row_aligned_chunks(
+    data_len: usize,
+    max_chunk_size: usize,
+    row_ends: &[usize],
+) -> Vec<RowAlignedChunk> {
     let mut chunks = Vec::new();
     let mut start = 0usize;
     let mut row_end_index = 0usize;
 
-    while start < sheet_data.len() {
-        while row_end_index < row_ends.len() && row_ends[row_end_index] <= start {
-            row_end_index += 1;
-        }
-
-        let target_end = start.saturating_add(max_chunk_size).min(sheet_data.len());
-        let first_candidate = row_end_index;
-        let mut last_fit = None;
-        while row_end_index < row_ends.len() && row_ends[row_end_index] <= target_end {
-            if row_ends[row_end_index] > start {
-                last_fit = Some(row_ends[row_end_index]);
-            }
-            row_end_index += 1;
-        }
-
-        let end = last_fit.unwrap_or_else(|| {
-            row_ends
-                .get(first_candidate)
-                .copied()
-                .filter(|end| *end > start)
-                .unwrap_or(sheet_data.len())
-        });
-
+    while start < data_len {
+        let end = next_row_aligned_chunk_end(
+            row_ends,
+            &mut row_end_index,
+            start,
+            max_chunk_size,
+            data_len,
+        );
         if end <= start {
             break;
         }
@@ -265,15 +371,51 @@ fn plan_row_aligned_chunks_by_max_size(
         start = end;
     }
 
-    if chunks.is_empty() {
-        chunks.push(RowAlignedChunk {
-            index: 0,
-            start: 0,
-            end: sheet_data.len(),
-        });
-    }
-
     chunks
+}
+
+fn next_row_aligned_chunk_end(
+    row_ends: &[usize],
+    row_end_index: &mut usize,
+    start: usize,
+    max_chunk_size: usize,
+    data_len: usize,
+) -> usize {
+    skip_consumed_row_ends(row_ends, row_end_index, start);
+
+    let target_end = start.saturating_add(max_chunk_size).min(data_len);
+    let first_candidate = *row_end_index;
+    let last_fit = take_row_ends_through_target(row_ends, row_end_index, start, target_end);
+
+    last_fit.unwrap_or_else(|| {
+        row_ends
+            .get(first_candidate)
+            .copied()
+            .filter(|end| *end > start)
+            .unwrap_or(data_len)
+    })
+}
+
+fn skip_consumed_row_ends(row_ends: &[usize], row_end_index: &mut usize, start: usize) {
+    while *row_end_index < row_ends.len() && row_ends[*row_end_index] <= start {
+        *row_end_index += 1;
+    }
+}
+
+fn take_row_ends_through_target(
+    row_ends: &[usize],
+    row_end_index: &mut usize,
+    start: usize,
+    target_end: usize,
+) -> Option<usize> {
+    let mut last_fit = None;
+    while *row_end_index < row_ends.len() && row_ends[*row_end_index] <= target_end {
+        if row_ends[*row_end_index] > start {
+            last_fit = Some(row_ends[*row_end_index]);
+        }
+        *row_end_index += 1;
+    }
+    last_fit
 }
 
 fn clean_row_aligned_chunks_by_max_size(
@@ -283,94 +425,144 @@ fn clean_row_aligned_chunks_by_max_size(
     max_chunk_size: usize,
     range_kind: &'static str,
     sheet_name: &str,
-    clean_chunk: fn(&[u8], &CleanSheetParameters, &mut CleanSheetMetrics) -> Result<Vec<u8>>,
+    clean_chunk: CleanChunkFn,
 ) -> Result<Vec<u8>> {
     let chunks = plan_row_aligned_chunks_by_max_size(sheet_data, max_chunk_size);
-
     if chunks.len() <= 1 {
         return clean_chunk(sheet_data, params, metrics);
     }
 
-    let largest_chunk_bytes = chunks
-        .iter()
-        .map(|chunk| chunk.end - chunk.start)
-        .max()
-        .unwrap_or(0);
-    let smallest_chunk_bytes = chunks
-        .iter()
-        .map(|chunk| chunk.end - chunk.start)
-        .min()
-        .unwrap_or(0);
+    log_chunking_plan(
+        sheet_data.len(),
+        max_chunk_size,
+        range_kind,
+        sheet_name,
+        &chunks,
+    );
+    let cleaned_chunks =
+        clean_chunks_in_parallel(sheet_data, params, metrics, &chunks, clean_chunk)?;
 
+    Ok(assemble_cleaned_chunks(
+        cleaned_chunks,
+        sheet_data.len(),
+        metrics,
+    ))
+}
+
+fn log_chunking_plan(
+    range_bytes: usize,
+    max_chunk_size: usize,
+    range_kind: &'static str,
+    sheet_name: &str,
+    chunks: &[RowAlignedChunk],
+) {
+    let sizes = ChunkSizeSummary::from_chunks(chunks);
     info!(
         event = "range_chunked",
         sheet = %sheet_name,
         range_kind,
-        range_bytes = sheet_data.len(),
+        range_bytes,
         max_chunk_size,
         actual_chunks = chunks.len(),
-        largest_chunk_bytes,
-        smallest_chunk_bytes,
+        largest_chunk_bytes = sizes.largest,
+        smallest_chunk_bytes = sizes.smallest,
         "Parallel range chunking enabled"
     );
+}
 
+fn clean_chunks_in_parallel(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+    chunks: &[RowAlignedChunk],
+    clean_chunk: CleanChunkFn,
+) -> Result<Vec<CleanedChunk>> {
     let base_metrics = metrics.clone();
-    let mut cleaned_chunks: Vec<CleanedChunk> = chunks
+    chunks
         .par_iter()
         .map(|chunk| {
-            let mut chunk_metrics = make_chunk_metrics(&base_metrics);
-            let xml = clean_chunk(
-                &sheet_data[chunk.start..chunk.end],
-                params,
-                &mut chunk_metrics,
-            )?;
-
-            Ok(CleanedChunk {
-                index: chunk.index,
-                xml,
-                metrics: chunk_metrics,
-            })
+            clean_chunk_in_isolation(sheet_data, params, &base_metrics, *chunk, clean_chunk)
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect()
+}
 
+fn clean_chunk_in_isolation(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    base_metrics: &CleanSheetMetrics,
+    chunk: RowAlignedChunk,
+    clean_chunk: CleanChunkFn,
+) -> Result<CleanedChunk> {
+    let mut chunk_metrics = make_chunk_metrics(base_metrics);
+    let xml = clean_chunk(
+        &sheet_data[chunk.start..chunk.end],
+        params,
+        &mut chunk_metrics,
+    )?;
+
+    Ok(CleanedChunk {
+        index: chunk.index,
+        xml,
+        metrics: chunk_metrics,
+    })
+}
+
+fn assemble_cleaned_chunks(
+    mut cleaned_chunks: Vec<CleanedChunk>,
+    input_size: usize,
+    metrics: &mut CleanSheetMetrics,
+) -> Vec<u8> {
     cleaned_chunks.sort_by_key(|chunk| chunk.index);
 
-    let mut out = Vec::with_capacity(sheet_data.len().min(64 * 1024 * 1024));
+    let mut output = Vec::with_capacity(input_size.min(64 * 1024 * 1024));
     for chunk in cleaned_chunks {
-        extend_without_large_growth(&mut out, &chunk.xml);
+        extend_without_large_growth(&mut output, &chunk.xml);
         merge_chunk_metrics(metrics, chunk.metrics);
     }
-
-    Ok(out)
+    output
 }
 
 fn collect_row_end_positions(sheet_data: &[u8]) -> Vec<usize> {
     let mut row_ends = Vec::new();
-    let mut pos = 0;
+    let mut position = 0;
 
-    while let Some(row_start_rel) = find_bytes(&sheet_data[pos..], b"<row") {
-        let row_start = pos + row_start_rel;
-
-        let Some(tag_end) = find_byte_from(sheet_data, b'>', row_start) else {
-            break;
-        };
-
-        let self_closing = tag_end > row_start && sheet_data[tag_end - 1] == b'/';
-        let row_end = if self_closing {
-            tag_end + 1
-        } else {
-            let content_start = tag_end + 1;
-            let Some(close_rel) = find_bytes(&sheet_data[content_start..], b"</row>") else {
-                break;
-            };
-            content_start + close_rel + b"</row>".len()
-        };
-
-        row_ends.push(row_end);
-        pos = row_end;
+    while let Some(block) = find_next_row_block(sheet_data, position) {
+        row_ends.push(block.end);
+        position = block.end;
     }
 
     row_ends
+}
+
+fn find_next_row_block(sheet_data: &[u8], position: usize) -> Option<LocatedRowBlock<'_>> {
+    let row_start_rel = find_bytes(&sheet_data[position..], b"<row")?;
+    let row_start = position + row_start_rel;
+    let tag_end = find_byte_from(sheet_data, b'>', row_start)?;
+    let self_closing = tag_end > row_start && sheet_data[tag_end - 1] == b'/';
+    let attr_start = row_start + b"<row".len();
+    let attr_end = if self_closing { tag_end - 1 } else { tag_end };
+
+    let (row_end, content) = if self_closing {
+        (tag_end + 1, None)
+    } else {
+        let content_start = tag_end + 1;
+        let close_rel = find_bytes(&sheet_data[content_start..], b"</row>")?;
+        let content_end = content_start + close_rel;
+        (
+            content_end + b"</row>".len(),
+            Some(&sheet_data[content_start..content_end]),
+        )
+    };
+
+    Some(LocatedRowBlock {
+        start: row_start,
+        end: row_end,
+        row: ParsedRowBlock {
+            raw: &sheet_data[row_start..row_end],
+            attr: &sheet_data[attr_start..attr_end],
+            content,
+        },
+    })
 }
 
 fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {
@@ -433,49 +625,21 @@ fn apply_row_byte_substitution<F>(sheet_data: &[u8], mut replace: F) -> Vec<u8>
 where
     F: for<'a> FnMut(ParsedRowBlock<'a>) -> Cow<'a, [u8]>,
 {
-    let mut out = Vec::with_capacity(sheet_data.len().min(64 * 1024 * 1024));
-    let mut pos = 0;
+    let mut output = Vec::with_capacity(sheet_data.len().min(64 * 1024 * 1024));
+    let mut position = 0;
 
-    while let Some(row_start_rel) = find_bytes(&sheet_data[pos..], b"<row") {
-        let row_start = pos + row_start_rel;
-
-        let Some(tag_end) = find_byte_from(sheet_data, b'>', row_start) else {
-            break;
-        };
-
-        let attr_start = row_start + b"<row".len();
-        let self_closing = tag_end > row_start && sheet_data[tag_end - 1] == b'/';
-        let attr_end = if self_closing { tag_end - 1 } else { tag_end };
-
-        let (row_end, content) = if self_closing {
-            (tag_end + 1, None)
-        } else {
-            let content_start = tag_end + 1;
-            let Some(close_rel) = find_bytes(&sheet_data[content_start..], b"</row>") else {
-                break;
-            };
-            let content_end = content_start + close_rel;
-            (
-                content_end + b"</row>".len(),
-                Some(&sheet_data[content_start..content_end]),
-            )
-        };
-
-        extend_without_large_growth(&mut out, &sheet_data[pos..row_start]);
-        let row = ParsedRowBlock {
-            raw: &sheet_data[row_start..row_end],
-            attr: &sheet_data[attr_start..attr_end],
-            content,
-        };
-        let replacement = replace(row);
-        extend_without_large_growth(&mut out, replacement.as_ref());
-        pos = row_end;
+    while let Some(block) = find_next_row_block(sheet_data, position) {
+        extend_without_large_growth(&mut output, &sheet_data[position..block.start]);
+        let replacement = replace(block.row);
+        extend_without_large_growth(&mut output, replacement.as_ref());
+        position = block.end;
     }
 
-    extend_without_large_growth(&mut out, &sheet_data[pos..]);
-    out
+    extend_without_large_growth(&mut output, &sheet_data[position..]);
+    output
 }
 
+#[inline]
 fn extend_without_large_growth(out: &mut Vec<u8>, bytes: &[u8]) {
     let spare = out.capacity().saturating_sub(out.len());
     if spare < bytes.len() {
@@ -499,45 +663,43 @@ fn scan_row_styles_for_empty_cell_cleanup_risk(
     state: &mut SheetDataPreprocessState,
 ) -> bool {
     let mut chunk_is_risky = state.active_row_has_non_default_fill_or_border_style;
-    let mut pos = 0;
+    let mut position = 0;
 
-    while let Some(row_start_rel) = find_bytes(&chunk[pos..], b"<row") {
-        let row_start = pos + row_start_rel;
+    while let Some(row_start_rel) = find_bytes(&chunk[position..], b"<row") {
+        let row_start = position + row_start_rel;
+        let risk = inspect_row_style_risk(chunk, row_start, state);
 
-        let row_tag_end_exclusive = match find_byte_from(chunk, b'>', row_start) {
-            Some(tag_end) => tag_end + 1,
-            None => chunk.len(),
-        };
-
-        let row_tag = &chunk[row_start..row_tag_end_exclusive];
-
-        let row_has_non_default_fill_or_border_style = extract_xml_attr_value(row_tag, b"s")
-            .is_some_and(|style_id| state.row_style_id_has_non_default_fill_or_border(style_id));
-
-        if row_has_non_default_fill_or_border_style {
-            chunk_is_risky = true;
-        }
-
-        let row_start_tag_is_self_closing =
-            row_tag_end_exclusive >= 2 && chunk[row_tag_end_exclusive - 2] == b'/';
-
-        let row_continues_beyond_this_chunk = if row_start_tag_is_self_closing {
-            false
-        } else {
-            find_bytes(&chunk[row_tag_end_exclusive..], b"</row>").is_none()
-        };
-
+        chunk_is_risky |= risk.has_non_default_fill_or_border;
         state.active_row_has_non_default_fill_or_border_style =
-            row_continues_beyond_this_chunk && row_has_non_default_fill_or_border_style;
+            risk.continues_beyond_chunk && risk.has_non_default_fill_or_border;
 
-        if row_tag_end_exclusive <= row_start {
+        if risk.tag_end <= row_start {
             break;
         }
-
-        pos = row_tag_end_exclusive;
+        position = risk.tag_end;
     }
 
     chunk_is_risky
+}
+
+fn inspect_row_style_risk(
+    chunk: &[u8],
+    row_start: usize,
+    state: &mut SheetDataPreprocessState,
+) -> RowStyleRisk {
+    let tag_end = find_byte_from(chunk, b'>', row_start).map_or(chunk.len(), |end| end + 1);
+    let row_tag = &chunk[row_start..tag_end];
+    let has_non_default_fill_or_border = extract_xml_attr_value(row_tag, b"s")
+        .is_some_and(|style_id| state.row_style_id_has_non_default_fill_or_border(style_id));
+    let is_self_closing = tag_end >= 2 && chunk[tag_end - 2] == b'/';
+    let continues_beyond_chunk =
+        !is_self_closing && find_bytes(&chunk[tag_end..], b"</row>").is_none();
+
+    RowStyleRisk {
+        tag_end,
+        has_non_default_fill_or_border,
+        continues_beyond_chunk,
+    }
 }
 
 fn remove_consecutive_empty_cells<'a>(
@@ -549,68 +711,80 @@ fn remove_consecutive_empty_cells<'a>(
         return Cow::Borrowed(chunk);
     }
 
-    let mut out: Option<Vec<u8>> = None;
-    let mut pos = 0;
-
-    while let Some(cell_start_rel) = find_bytes(&chunk[pos..], b"<c") {
-        let cell_start = pos + cell_start_rel;
-
-        if !is_cell_tag_start(chunk, cell_start) {
-            if let Some(out) = out.as_mut() {
-                extend_without_large_growth(out, &chunk[pos..cell_start + b"<c".len()]);
-            }
-            pos = cell_start + b"<c".len();
-            continue;
-        }
-
-        let Some(tag_end) = find_byte_from(chunk, b'>', cell_start) else {
+    let mut rewrite = OptionalRewriteBuffer::new();
+    while let Some(cell_start_rel) = find_bytes(&chunk[rewrite.position..], b"<c") {
+        let cell_start = rewrite.position + cell_start_rel;
+        let Some(tag) = scan_cell_tag(chunk, cell_start) else {
             break;
         };
 
-        if tag_end == cell_start || chunk[tag_end - 1] != b'/' {
-            if let Some(out) = out.as_mut() {
-                extend_without_large_growth(out, &chunk[pos..tag_end + 1]);
+        match tag {
+            ScannedCellTag::NonCellMatch { end } | ScannedCellTag::PreservedTag { end } => {
+                rewrite.preserve_through(chunk, end);
             }
-            pos = tag_end + 1;
-            continue;
-        }
-
-        let attr_start = cell_start + b"<c".len();
-        let attr_end = tag_end - 1;
-        let attr = &chunk[attr_start..attr_end];
-        let cell_end = tag_end + 1;
-
-        let removable = match extract_xml_attr_value(attr, b"s") {
-            None => true,
-            Some(style_id) => state.empty_cell_style_id_is_removable(style_id),
-        };
-
-        if removable {
-            if out.is_none() {
-                let mut new_out = Vec::with_capacity(chunk.len().min(64 * 1024 * 1024));
-                new_out.extend_from_slice(&chunk[..cell_start]);
-                out = Some(new_out);
-            } else if let Some(out) = out.as_mut() {
-                extend_without_large_growth(out, &chunk[pos..cell_start]);
+            ScannedCellTag::EmptySelfClosing { start, end, attr } => {
+                process_empty_self_closing_cell(
+                    chunk,
+                    start,
+                    end,
+                    attr,
+                    state,
+                    metrics,
+                    &mut rewrite,
+                );
             }
-            metrics.cleanup_stats.record_removed(
-                CleanupCause::PreprocessEmptySelfClosingCells,
-                cell_end - cell_start,
-            );
-        } else if let Some(out) = out.as_mut() {
-            extend_without_large_growth(out, &chunk[pos..cell_end]);
         }
-
-        pos = cell_end;
     }
 
-    if let Some(out) = out.as_mut() {
-        extend_without_large_growth(out, &chunk[pos..]);
-    }
-
-    out.map_or(Cow::Borrowed(chunk), Cow::Owned)
+    rewrite.finish(chunk)
 }
 
+fn scan_cell_tag(chunk: &[u8], cell_start: usize) -> Option<ScannedCellTag<'_>> {
+    if !is_cell_tag_start(chunk, cell_start) {
+        return Some(ScannedCellTag::NonCellMatch {
+            end: cell_start + b"<c".len(),
+        });
+    }
+
+    let tag_end = find_byte_from(chunk, b'>', cell_start)?;
+    if tag_end == cell_start || chunk[tag_end - 1] != b'/' {
+        return Some(ScannedCellTag::PreservedTag { end: tag_end + 1 });
+    }
+
+    Some(ScannedCellTag::EmptySelfClosing {
+        start: cell_start,
+        end: tag_end + 1,
+        attr: &chunk[cell_start + b"<c".len()..tag_end - 1],
+    })
+}
+
+fn process_empty_self_closing_cell(
+    chunk: &[u8],
+    start: usize,
+    end: usize,
+    attr: &[u8],
+    state: &SheetDataPreprocessState,
+    metrics: &mut CleanSheetMetrics,
+    rewrite: &mut OptionalRewriteBuffer,
+) {
+    if !empty_self_closing_cell_is_removable(attr, state) {
+        rewrite.preserve_through(chunk, end);
+        return;
+    }
+
+    rewrite.remove_range(chunk, start, end);
+    metrics
+        .cleanup_stats
+        .record_removed(CleanupCause::PreprocessEmptySelfClosingCells, end - start);
+}
+
+#[inline]
+fn empty_self_closing_cell_is_removable(attr: &[u8], state: &SheetDataPreprocessState) -> bool {
+    extract_xml_attr_value(attr, b"s")
+        .is_none_or(|style_id| state.empty_cell_style_id_is_removable(style_id))
+}
+
+#[inline(always)]
 fn is_cell_tag_start(data: &[u8], cell_start: usize) -> bool {
     matches!(
         data.get(cell_start + b"<c".len()),
@@ -619,31 +793,22 @@ fn is_cell_tag_start(data: &[u8], cell_start: usize) -> bool {
 }
 
 fn extract_xml_attr_value<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
-    let mut needle = Vec::with_capacity(attr_name.len() + 2);
-    needle.extend_from_slice(attr_name);
-    needle.extend_from_slice(b"=\"");
-
     let mut search_start = 0;
 
     while search_start < data.len() {
-        let Some(pos_rel) = find_bytes(&data[search_start..], &needle) else {
-            return None;
-        };
+        let relative = find_bytes(&data[search_start..], attr_name)?;
+        let attribute_start = search_start + relative;
+        let value_marker = attribute_start + attr_name.len();
+        let has_attribute_boundary =
+            attribute_start == 0 || data[attribute_start - 1].is_ascii_whitespace();
 
-        let pos = search_start + pos_rel;
-
-        let has_attribute_boundary = pos == 0 || data[pos - 1].is_ascii_whitespace();
-
-        if !has_attribute_boundary {
-            search_start = pos + 1;
-            continue;
+        if has_attribute_boundary && data.get(value_marker..value_marker + 2) == Some(b"=\"") {
+            let value_start = value_marker + 2;
+            let value_length = data[value_start..].iter().position(|byte| *byte == b'"')?;
+            return Some(&data[value_start..value_start + value_length]);
         }
 
-        let value_start = pos + needle.len();
-
-        let value_end_rel = data[value_start..].iter().position(|b| *b == b'"')?;
-
-        return Some(&data[value_start..value_start + value_end_rel]);
+        search_start = attribute_start + 1;
     }
 
     None

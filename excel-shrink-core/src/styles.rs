@@ -5,66 +5,106 @@ use crate::xml::{find_byte_from, find_bytes};
 pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
     let visible_fills = parse_visible_fills(styles_xml_or_cell_xfs);
     let visible_borders = parse_visible_borders(styles_xml_or_cell_xfs);
-    let has_style_tables = !visible_fills.is_empty() || !visible_borders.is_empty();
+    let visibility = StyleVisibility::new(&visible_fills, &visible_borders);
     let cell_styles = find_xml_block(styles_xml_or_cell_xfs, b"cellXfs")
         .map_or(styles_xml_or_cell_xfs, |block| block);
-
     let mut xfs = Vec::new();
     let mut pos = 0;
 
     while let Some(tag) = find_next_tag(cell_styles, b"xf", pos) {
-        let chunk = tag.raw;
-
-        let font_id = extract_u32(chunk, b"fontId");
-        let fill_id = extract_u32(chunk, b"fillId");
-        let border_id = extract_u32(chunk, b"borderId");
-        let apply_font = extract_bool(chunk, b"applyFont");
-        let apply_border = extract_bool(chunk, b"applyBorder");
-        let apply_fill = extract_bool(chunk, b"applyFill");
-        let apply_protection = extract_bool(chunk, b"applyProtection");
-
-        let has_visible_fill = if has_style_tables {
-            fill_id.is_some_and(|id| visible_fills.get(id as usize).copied().unwrap_or(false))
-        } else {
-            fill_id.unwrap_or(0) != 0
-        };
-
-        let has_visible_border = if has_style_tables {
-            border_id.is_some_and(|id| visible_borders.get(id as usize).copied().unwrap_or(false))
-        } else {
-            border_id.unwrap_or(0) != 0
-        };
-
-        let has_apply_fill_or_border = apply_fill || apply_border;
-        let has_fill_or_border = has_visible_fill || has_visible_border;
-        let applies_default_fill_override = apply_fill && fill_id.unwrap_or(0) == 0;
-        let applies_default_border_override = apply_border && border_id.unwrap_or(0) == 0;
-        let has_no_empty_cell_visible_style = !has_fill_or_border
-            && !applies_default_fill_override
-            && !applies_default_border_override
-            && !apply_protection;
-
-        xfs.push(
-            Xf::builder()
-                .font_id(font_id)
-                .fill_id(fill_id)
-                .border_id(border_id)
-                .apply_font(apply_font)
-                .apply_border(apply_border)
-                .apply_fill(apply_fill)
-                .has_visible_fill(has_visible_fill)
-                .has_visible_border(has_visible_border)
-                .has_fill_or_border(has_fill_or_border)
-                .has_apply_fill_or_border(has_apply_fill_or_border)
-                .has_no_empty_cell_visible_style(has_no_empty_cell_visible_style)
-                .has_apply_protection(apply_protection)
-                .build_xf(),
-        );
-
+        xfs.push(parse_xf(tag.raw, &visibility));
         pos = tag.end;
     }
 
     Ok(xfs)
+}
+
+struct StyleVisibility<'a> {
+    fills: &'a [bool],
+    borders: &'a [bool],
+    has_style_tables: bool,
+}
+
+impl<'a> StyleVisibility<'a> {
+    fn new(fills: &'a [bool], borders: &'a [bool]) -> Self {
+        Self {
+            fills,
+            borders,
+            has_style_tables: !fills.is_empty() || !borders.is_empty(),
+        }
+    }
+
+    #[inline]
+    fn fill_is_visible(&self, fill_id: Option<u32>) -> bool {
+        self.style_is_visible(fill_id, self.fills)
+    }
+
+    #[inline]
+    fn border_is_visible(&self, border_id: Option<u32>) -> bool {
+        self.style_is_visible(border_id, self.borders)
+    }
+
+    #[inline]
+    fn style_is_visible(&self, style_id: Option<u32>, table: &[bool]) -> bool {
+        if self.has_style_tables {
+            style_id.is_some_and(|id| table.get(id as usize).copied().unwrap_or(false))
+        } else {
+            style_id.unwrap_or(0) != 0
+        }
+    }
+}
+
+fn parse_xf(chunk: &[u8], visibility: &StyleVisibility<'_>) -> Xf {
+    let font_id = extract_u32(chunk, b"fontId");
+    let fill_id = extract_u32(chunk, b"fillId");
+    let border_id = extract_u32(chunk, b"borderId");
+    let apply_font = extract_bool(chunk, b"applyFont");
+    let apply_border = extract_bool(chunk, b"applyBorder");
+    let apply_fill = extract_bool(chunk, b"applyFill");
+    let apply_protection = extract_bool(chunk, b"applyProtection");
+    let has_visible_fill = visibility.fill_is_visible(fill_id);
+    let has_visible_border = visibility.border_is_visible(border_id);
+    let has_fill_or_border = has_visible_fill || has_visible_border;
+    let has_no_empty_cell_visible_style = has_no_empty_cell_visible_style(
+        fill_id,
+        border_id,
+        apply_fill,
+        apply_border,
+        apply_protection,
+        has_fill_or_border,
+    );
+
+    Xf::builder()
+        .font_id(font_id)
+        .fill_id(fill_id)
+        .border_id(border_id)
+        .apply_font(apply_font)
+        .apply_border(apply_border)
+        .apply_fill(apply_fill)
+        .has_visible_fill(has_visible_fill)
+        .has_visible_border(has_visible_border)
+        .has_fill_or_border(has_fill_or_border)
+        .has_apply_fill_or_border(apply_fill || apply_border)
+        .has_no_empty_cell_visible_style(has_no_empty_cell_visible_style)
+        .has_apply_protection(apply_protection)
+        .build_xf()
+}
+
+#[inline]
+fn has_no_empty_cell_visible_style(
+    fill_id: Option<u32>,
+    border_id: Option<u32>,
+    apply_fill: bool,
+    apply_border: bool,
+    apply_protection: bool,
+    has_fill_or_border: bool,
+) -> bool {
+    let applies_default_fill_override = apply_fill && fill_id.unwrap_or(0) == 0;
+    let applies_default_border_override = apply_border && border_id.unwrap_or(0) == 0;
+    !has_fill_or_border
+        && !applies_default_fill_override
+        && !applies_default_border_override
+        && !apply_protection
 }
 
 fn parse_visible_fills(styles_xml: &[u8]) -> Vec<bool> {

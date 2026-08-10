@@ -6,37 +6,51 @@ pub fn process_cols_node(col_data: &[u8], params: &CleanSheetParameters) -> Colu
     let mut map = ColumnRangeMap::default();
 
     for column in parse_column_tags(col_data) {
-        let style = column
-            .style_id
-            .and_then(|id| params.patterns.xfs_by_index.get(&id).cloned());
-
-        map.add(ColumnDefinition {
-            min: column.min,
-            max: column.max,
-            cell_xf: style,
-            hidden: column.hidden,
-        });
+        map.add(column_definition(column, params));
     }
 
     map.finalize();
     map
 }
 
+fn column_definition(
+    column: ParsedColumnTag<'_>,
+    params: &CleanSheetParameters,
+) -> ColumnDefinition {
+    let style = column
+        .style_id
+        .and_then(|id| params.patterns.xfs_by_index.get(&id).cloned());
+
+    ColumnDefinition {
+        min: column.min,
+        max: column.max,
+        cell_xf: style,
+        hidden: column.hidden,
+    }
+}
+
 pub fn merge_extraneous_columns(cols_content: &[u8], max_column: u32) -> Vec<u8> {
+    let Some(removable_columns) = removable_column_tags(cols_content, max_column) else {
+        return cols_content.to_vec();
+    };
+
+    collapse_removable_columns(cols_content, &removable_columns)
+        .unwrap_or_else(|| cols_content.to_vec())
+}
+
+fn removable_column_tags(
+    cols_content: &[u8],
+    max_column: u32,
+) -> Option<Vec<RemovableColumnTag<'_>>> {
     let mut removable_columns = Vec::new();
 
     for column in parse_column_tags(cols_content) {
-        // Analyzer compatibility:
-        // find_excess_columns(...) returns no removable columns as soon as any
-        // column definition is hidden.
+        // Analyzer compatibility: any hidden definition disables collapsing globally.
         if column.hidden {
-            return cols_content.to_vec();
+            return None;
         }
 
-        // Analyzer compatibility:
-        // only complete <col> definitions whose min is beyond max_column are
-        // collapsed. Do not split a column definition where min <= max_column
-        // but max > max_column.
+        // Analyzer compatibility: definitions crossing max_column are not split.
         if column.min > max_column {
             removable_columns.push(RemovableColumnTag {
                 start: column.start,
@@ -47,18 +61,17 @@ pub fn merge_extraneous_columns(cols_content: &[u8], max_column: u32) -> Vec<u8>
         }
     }
 
-    if removable_columns.is_empty() {
-        return cols_content.to_vec();
-    }
+    Some(removable_columns)
+}
 
-    let first = removable_columns.first().unwrap();
-    let last = removable_columns.last().unwrap();
-
+fn collapse_removable_columns(
+    cols_content: &[u8],
+    removable_columns: &[RemovableColumnTag<'_>],
+) -> Option<Vec<u8>> {
+    let first = removable_columns.first()?;
+    let last = removable_columns.last()?;
     let replacement_min = first.min_value.to_string();
-    let Some(collapsed_last_tag) = replace_attr_value(last.tag, b"min", replacement_min.as_bytes())
-    else {
-        return cols_content.to_vec();
-    };
+    let collapsed_last_tag = replace_attr_value(last.tag, b"min", replacement_min.as_bytes())?;
 
     let mut out = Vec::with_capacity(cols_content.len());
     let mut cursor = 0;
@@ -71,8 +84,7 @@ pub fn merge_extraneous_columns(cols_content: &[u8], max_column: u32) -> Vec<u8>
     out.extend_from_slice(&cols_content[cursor..last.start]);
     out.extend_from_slice(&collapsed_last_tag);
     out.extend_from_slice(&cols_content[last.end..]);
-
-    out
+    Some(out)
 }
 
 pub fn merge_extraneous_columns_with_styles(
@@ -100,69 +112,71 @@ pub fn merge_extraneous_columns_with_styles(
 
 fn parse_column_tags(cols_content: &[u8]) -> Vec<ParsedColumnTag<'_>> {
     let mut columns = Vec::new();
-    let mut pos = 0;
+    let mut position = 0;
 
-    while let Some(tag_match) = find_next_col_tag(cols_content, pos) {
-        let tag = tag_match.tag;
-        let min = extract_attr_value(tag, b"min").map(digits_byte_string_to_integer);
-        let max = extract_attr_value(tag, b"max").map(digits_byte_string_to_integer);
-        let style_id = extract_attr_value(tag, b"style").map(digits_byte_string_to_integer);
-        let hidden = extract_attr_value(tag, b"hidden").is_some_and(|value| value == b"1");
+    while let Some(tag_match) = find_next_col_tag(cols_content, position) {
+        position = tag_match.end;
 
-        let (Some(min), Some(max)) = (min, max) else {
-            pos = tag_match.end;
-            continue;
-        };
-
-        if min == 0 || max == 0 {
-            pos = tag_match.end;
-            continue;
+        if let Some(column) = parse_column_tag(tag_match) {
+            columns.push(column);
         }
-
-        columns.push(ParsedColumnTag {
-            start: tag_match.start,
-            end: tag_match.end,
-            tag,
-            min,
-            max,
-            hidden,
-            style_id,
-        });
-
-        pos = tag_match.end;
     }
 
     columns
 }
 
-fn find_next_col_tag<'a>(data: &'a [u8], start: usize) -> Option<ColumnTagMatch<'a>> {
-    let mut pos = start;
+fn parse_column_tag(tag_match: ColumnTagMatch<'_>) -> Option<ParsedColumnTag<'_>> {
+    let tag = tag_match.tag;
+    let min = extract_attr_value(tag, b"min").map(digits_byte_string_to_integer)?;
+    let max = extract_attr_value(tag, b"max").map(digits_byte_string_to_integer)?;
 
-    while pos < data.len() {
-        let tag_start_relative = find_bytes(&data[pos..], b"<col")?;
-        let tag_start = pos + tag_start_relative;
+    if min == 0 || max == 0 {
+        return None;
+    }
+
+    Some(ParsedColumnTag {
+        start: tag_match.start,
+        end: tag_match.end,
+        tag,
+        min,
+        max,
+        hidden: extract_attr_value(tag, b"hidden").is_some_and(|value| value == b"1"),
+        style_id: extract_attr_value(tag, b"style").map(digits_byte_string_to_integer),
+    })
+}
+fn find_next_col_tag<'a>(data: &'a [u8], start: usize) -> Option<ColumnTagMatch<'a>> {
+    let mut search_start = start;
+
+    while search_start < data.len() {
+        let relative = find_bytes(&data[search_start..], b"<col")?;
+        let tag_start = search_start + relative;
         let after_name = tag_start + b"<col".len();
 
-        if !data
-            .get(after_name)
-            .is_some_and(|byte| byte.is_ascii_whitespace() || *byte == b'/' || *byte == b'>')
-        {
-            pos = after_name;
-            continue;
+        if col_tag_name_is_delimited(data, after_name) {
+            return column_tag_match_at(data, tag_start);
         }
 
-        let tag_end = find_byte_from(data, b'>', tag_start)? + 1;
-
-        return Some(ColumnTagMatch {
-            start: tag_start,
-            end: tag_end,
-            tag: &data[tag_start..tag_end],
-        });
+        search_start = after_name;
     }
 
     None
 }
 
+#[inline]
+fn col_tag_name_is_delimited(data: &[u8], after_name: usize) -> bool {
+    data.get(after_name)
+        .is_some_and(|byte| byte.is_ascii_whitespace() || matches!(byte, b'/' | b'>'))
+}
+
+fn column_tag_match_at(data: &[u8], tag_start: usize) -> Option<ColumnTagMatch<'_>> {
+    let tag_end = find_byte_from(data, b'>', tag_start)? + 1;
+
+    Some(ColumnTagMatch {
+        start: tag_start,
+        end: tag_end,
+        tag: &data[tag_start..tag_end],
+    })
+}
 fn extract_attr_value<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
     let range = attr_value_range(data, attr_name)?;
     Some(&data[range])
@@ -183,26 +197,33 @@ fn attr_value_range(data: &[u8], attr_name: &[u8]) -> Option<std::ops::Range<usi
     let mut search_start = 0;
 
     while search_start < data.len() {
-        let attr_start_relative = find_bytes(&data[search_start..], attr_name)?;
-        let attr_start = search_start + attr_start_relative;
-        let after_name = attr_start + attr_name.len();
+        let relative = find_bytes(&data[search_start..], attr_name)?;
+        let attribute_start = search_start + relative;
+        let after_name = attribute_start + attr_name.len();
 
-        let before_ok = attr_start > 0 && data[attr_start - 1].is_ascii_whitespace();
-        let assignment_ok =
-            after_name + 1 < data.len() && data[after_name] == b'=' && data[after_name + 1] == b'"';
-
-        if before_ok && assignment_ok {
-            let value_start = after_name + 2;
-            let value_end_relative = data[value_start..].iter().position(|byte| *byte == b'"')?;
-            let value_end = value_start + value_end_relative;
-
-            return Some(value_start..value_end);
+        if quoted_attribute_starts_at(data, attribute_start, after_name) {
+            return quoted_value_range(data, after_name);
         }
 
         search_start = after_name;
     }
 
     None
+}
+
+#[inline]
+fn quoted_attribute_starts_at(data: &[u8], attribute_start: usize, after_name: usize) -> bool {
+    attribute_start > 0
+        && data[attribute_start - 1].is_ascii_whitespace()
+        && data.get(after_name) == Some(&b'=')
+        && data.get(after_name + 1) == Some(&b'"')
+}
+
+fn quoted_value_range(data: &[u8], after_name: usize) -> Option<std::ops::Range<usize>> {
+    let value_start = after_name + 2;
+    let value_end = value_start + data[value_start..].iter().position(|byte| *byte == b'"')?;
+
+    Some(value_start..value_end)
 }
 
 fn collapse_visible_equal_fill_column_tail(
@@ -212,41 +233,128 @@ fn collapse_visible_equal_fill_column_tail(
     params: &CleanSheetParameters,
     collapse_equal_fill_tail: bool,
 ) -> Option<Vec<u8>> {
+    if !collapse_equal_fill_tail {
+        return None;
+    }
+
     let last = columns.last()?;
+    let target_style = eligible_visible_tail_style(last, max_column, params)?;
+    let first_tail_index = equal_fill_tail_start(columns, max_column, params, target_style);
+    let first_tail = multiple_column_tail_start(columns, first_tail_index)?;
+
+    collapse_tail_into_first(cols_content, first_tail, last)
+}
+
+fn eligible_visible_tail_style(
+    last: &ParsedColumnTag<'_>,
+    max_column: u32,
+    params: &CleanSheetParameters,
+) -> Option<ColumnTailStyle> {
     if last.min <= max_column {
         return None;
     }
 
-    let target_style = column_tail_style(last, params)?;
-    if !target_style.has_visible_fill || !collapse_equal_fill_tail {
-        return None;
-    }
+    column_tail_style(last, params).filter(|style| style.has_visible_fill)
+}
 
+fn equal_fill_tail_start(
+    columns: &[ParsedColumnTag<'_>],
+    max_column: u32,
+    params: &CleanSheetParameters,
+    target_style: ColumnTailStyle,
+) -> usize {
     let mut first_tail_index = columns.len() - 1;
 
     while first_tail_index > 0 {
         let previous = &columns[first_tail_index - 1];
-
-        if previous.min <= max_column {
+        if !column_extends_equal_fill_tail(previous, max_column, params, target_style) {
             break;
         }
-
-        let Some(previous_style) = column_tail_style(previous, params) else {
-            break;
-        };
-
-        if previous_style.fill_key != target_style.fill_key {
-            break;
-        }
-
         first_tail_index -= 1;
     }
 
-    if first_tail_index == columns.len() - 1 {
+    first_tail_index
+}
+
+fn column_extends_equal_fill_tail(
+    column: &ParsedColumnTag<'_>,
+    max_column: u32,
+    params: &CleanSheetParameters,
+    target_style: ColumnTailStyle,
+) -> bool {
+    column.min > max_column
+        && column_tail_style(column, params)
+            .is_some_and(|style| style.fill_key == target_style.fill_key)
+}
+
+fn collapse_default_column_tail(
+    cols_content: &[u8],
+    columns: &[ParsedColumnTag<'_>],
+    max_column: u32,
+    params: &CleanSheetParameters,
+) -> Option<Vec<u8>> {
+    let last = columns.last()?;
+    eligible_default_tail_column(last, max_column, params)?;
+
+    let first_tail_index = default_tail_start(columns, max_column, params);
+    let first_tail = multiple_column_tail_start(columns, first_tail_index)?;
+
+    collapse_tail_into_last(cols_content, first_tail, last)
+}
+
+fn eligible_default_tail_column(
+    last: &ParsedColumnTag<'_>,
+    max_column: u32,
+    params: &CleanSheetParameters,
+) -> Option<()> {
+    if last.min <= max_column {
         return None;
     }
 
-    let first_tail = &columns[first_tail_index];
+    column_tail_style(last, params)
+        .filter(|style| !style.has_visible_fill)
+        .map(|_| ())
+}
+
+fn default_tail_start(
+    columns: &[ParsedColumnTag<'_>],
+    max_column: u32,
+    params: &CleanSheetParameters,
+) -> usize {
+    let mut first_tail_index = columns.len() - 1;
+
+    while first_tail_index > 0 {
+        let previous = &columns[first_tail_index - 1];
+        if !column_extends_default_tail(previous, max_column, params) {
+            break;
+        }
+        first_tail_index -= 1;
+    }
+
+    first_tail_index
+}
+
+fn column_extends_default_tail(
+    column: &ParsedColumnTag<'_>,
+    max_column: u32,
+    params: &CleanSheetParameters,
+) -> bool {
+    column.min > max_column
+        && column_tail_style(column, params).is_some_and(|style| !style.has_visible_fill)
+}
+
+fn multiple_column_tail_start<'slice, 'data>(
+    columns: &'slice [ParsedColumnTag<'data>],
+    first_tail_index: usize,
+) -> Option<&'slice ParsedColumnTag<'data>> {
+    (first_tail_index < columns.len() - 1).then(|| &columns[first_tail_index])
+}
+
+fn collapse_tail_into_first(
+    cols_content: &[u8],
+    first_tail: &ParsedColumnTag<'_>,
+    last: &ParsedColumnTag<'_>,
+) -> Option<Vec<u8>> {
     let replacement_max = last.max.to_string();
     let collapsed_first_tag =
         replace_attr_value(first_tail.tag, b"max", replacement_max.as_bytes())?;
@@ -257,51 +365,14 @@ fn collapse_visible_equal_fill_column_tail(
     out.extend_from_slice(&cols_content[..first_tail.start]);
     out.extend_from_slice(&collapsed_first_tag);
     out.extend_from_slice(&cols_content[last.end..]);
-
     Some(out)
 }
 
-fn collapse_default_column_tail(
+fn collapse_tail_into_last(
     cols_content: &[u8],
-    columns: &[ParsedColumnTag<'_>],
-    max_column: u32,
-    params: &CleanSheetParameters,
+    first_tail: &ParsedColumnTag<'_>,
+    last: &ParsedColumnTag<'_>,
 ) -> Option<Vec<u8>> {
-    let last = columns.last()?;
-    if last.min <= max_column {
-        return None;
-    }
-
-    let target_style = column_tail_style(last, params)?;
-    if target_style.has_visible_fill {
-        return None;
-    }
-
-    let mut first_tail_index = columns.len() - 1;
-
-    while first_tail_index > 0 {
-        let previous = &columns[first_tail_index - 1];
-
-        if previous.min <= max_column {
-            break;
-        }
-
-        let Some(previous_style) = column_tail_style(previous, params) else {
-            break;
-        };
-
-        if previous_style.has_visible_fill {
-            break;
-        }
-
-        first_tail_index -= 1;
-    }
-
-    if first_tail_index == columns.len() - 1 {
-        return None;
-    }
-
-    let first_tail = &columns[first_tail_index];
     let replacement_min = first_tail.min.to_string();
     let collapsed_last_tag = replace_attr_value(last.tag, b"min", replacement_min.as_bytes())?;
 
@@ -310,11 +381,10 @@ fn collapse_default_column_tail(
     );
     out.extend_from_slice(&cols_content[..first_tail.start]);
     out.extend_from_slice(&collapsed_last_tag);
-    out.extend_from_slice(&cols_content[last.end..]);
 
+    out.extend_from_slice(&cols_content[last.end..]);
     Some(out)
 }
-
 fn column_tail_style(
     column: &ParsedColumnTag<'_>,
     params: &CleanSheetParameters,

@@ -64,6 +64,7 @@ pub struct CellRange {
 }
 
 impl CellRange {
+    #[inline]
     pub fn contains(self, col: u32, row: u32) -> bool {
         self.start_col <= col && col <= self.end_col && self.start_row <= row && row <= self.end_row
     }
@@ -255,6 +256,7 @@ impl ColumnRangeMap {
         self.interval_starts = self.intervals.iter().map(|cd| cd.min).collect();
     }
 
+    #[inline]
     pub fn get(&self, col: u32) -> Option<&ColumnDefinition> {
         if let Some(cd) = self.exact.get(&col) {
             return Some(cd);
@@ -325,23 +327,28 @@ pub struct VisibleContentBounds {
 }
 
 impl VisibleContentBounds {
+    #[inline]
     pub fn include_cell(&mut self, col: u32, row: u32) {
         self.max_col = Some(self.max_col.map_or(col, |old| old.max(col)));
         self.max_row = Some(self.max_row.map_or(row, |old| old.max(row)));
     }
 
+    #[inline]
     pub fn include_col(&mut self, col: u32) {
         self.max_col = Some(self.max_col.map_or(col, |old| old.max(col)));
     }
 
+    #[inline]
     pub fn include_row(&mut self, row: u32) {
         self.max_row = Some(self.max_row.map_or(row, |old| old.max(row)));
     }
 
+    #[inline]
     pub fn cell_is_outside(&self, col: u32, row: u32) -> bool {
         self.max_col.map_or(true, |max| col > max) || self.max_row.map_or(true, |max| row > max)
     }
 
+    #[inline]
     pub fn row_is_below(&self, row: u32) -> bool {
         self.max_row.map_or(true, |max| row > max)
     }
@@ -479,6 +486,7 @@ pub struct CellRect {
 }
 
 impl CellRect {
+    #[inline]
     pub fn contains(&self, col: u32, row: u32) -> bool {
         self.min_col <= col && col <= self.max_col && self.min_row <= row && row <= self.max_row
     }
@@ -497,6 +505,7 @@ pub struct ProtectedWorkbookRefs {
 }
 
 impl ProtectedWorkbookRefs {
+    #[inline]
     pub fn contains(&self, sheet: &str, col: u32, row: u32) -> bool {
         self.by_sheet
             .get(sheet)
@@ -504,6 +513,7 @@ impl ProtectedWorkbookRefs {
             || self.global_or_unknown.contains(col, row)
     }
 
+    #[inline]
     pub fn refs_for_sheet_mut(&mut self, sheet: &str) -> &mut ProtectedCellRefs {
         self.by_sheet.entry(sheet.to_string()).or_default()
     }
@@ -524,6 +534,7 @@ impl ProtectedCellRefs {
         self.ranges.len()
     }
 
+    #[inline]
     pub fn insert_cell(&mut self, col: u32, row: u32) {
         self.cells.insert(encode_coord(col, row));
     }
@@ -537,12 +548,14 @@ impl ProtectedCellRefs {
         });
     }
 
+    #[inline]
     pub fn contains(&self, col: u32, row: u32) -> bool {
         self.cells.contains(&encode_coord(col, row))
             || self.ranges.iter().any(|range| range.contains(col, row))
     }
 }
 
+#[inline]
 pub fn encode_coord(col: u32, row: u32) -> u64 {
     ((col as u64) << 32) | (row as u64)
 }

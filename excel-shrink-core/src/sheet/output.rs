@@ -1,5 +1,8 @@
 use crate::error::Result;
-use crate::models::{CleanSheetParameters, CleanedSheetData, CleanupCause, Xf};
+use crate::models::{
+    CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, CleanupCause, VisibleContentBounds,
+    Xf,
+};
 use crate::sheet::cols::merge_extraneous_columns_with_styles;
 use crate::sheet::drawings::find_worksheet_drawing_anchor_bounds;
 use crate::sheet::ranges::{
@@ -18,6 +21,7 @@ use crate::sheet::streaming::PreprocessedSheetXml;
 use crate::xml::{find_byte_from, find_bytes, rfind_bytes};
 use regex::bytes::Regex;
 use std::collections::HashSet;
+use std::ops::Range;
 use std::sync::OnceLock;
 
 static SHEET_PROTECTION_RE: OnceLock<Regex> = OnceLock::new();
@@ -44,17 +48,100 @@ pub fn build_clean_sheet_xml_with_progress(
     parallel_range_chunk_size: usize,
     progress: &mut impl FnMut(&'static str),
 ) -> Result<CleanedSheetData> {
-    progress("build_prepare_sheet_metrics");
-    let sheet_protection_enabled = worksheet_has_enabled_sheet_protection(&preprocessed);
-    let drawing_anchor_bounds = find_worksheet_drawing_anchor_bounds(&preprocessed, params);
-    let mut metrics = preprocessed.clean_sheet_metrics;
-    metrics.cleanup_stats.enabled |= params.collect_cleanup_stats;
-    metrics.sheet_protection_enabled = sheet_protection_enabled;
-    metrics.visible_data_range_bounds = find_visible_content_bounds(
+    let mut preprocessed = preprocessed;
+    let drawing_anchor_bounds = prepare_sheet_metrics(&mut preprocessed, params, progress);
+    let initial_max_merge_row = get_max_merge_cells_row_index(&preprocessed.clean_sheet_metrics);
+    let preserve_through_row =
+        tail_boundary_row(&preprocessed.clean_sheet_metrics, initial_max_merge_row);
+
+    let mut final_sheet_data = clean_sheet_data(
         &preprocessed.sheet_data,
         params,
-        &metrics.column_definitions,
+        &mut preprocessed.clean_sheet_metrics,
+        disable_sheetdata_splitting,
+        parallel_range_chunk_size,
+        preserve_through_row,
+        progress,
+    )?;
+    final_sheet_data = trim_layout_rows_if_enabled(
+        final_sheet_data,
+        params,
+        &mut preprocessed.clean_sheet_metrics,
+        initial_max_merge_row,
+        "trim_trailing_layout_only_rows",
+        progress,
     );
+
+    progress("compute_visible_bounds");
+    let bounds = compute_sheet_bounds(&preprocessed.clean_sheet_metrics, drawing_anchor_bounds);
+
+    progress("remove_protection_only_cells_outside_bounds");
+    final_sheet_data = remove_protection_only_cells_outside_bounds(
+        final_sheet_data,
+        bounds.max_column,
+        bounds.max_row,
+        params,
+        &mut preprocessed.clean_sheet_metrics,
+    );
+    final_sheet_data = trim_layout_rows_if_enabled(
+        final_sheet_data,
+        params,
+        &mut preprocessed.clean_sheet_metrics,
+        bounds.max_merge_row,
+        "trim_trailing_layout_only_rows_after_bounds",
+        progress,
+    );
+
+    let columns = clean_columns(
+        &preprocessed.in_cols_node_output_chunks,
+        bounds,
+        params,
+        &mut preprocessed.clean_sheet_metrics,
+        progress,
+    );
+
+    progress("assemble_clean_sheet_xml");
+    let assembled = assemble_clean_sheet_xml(&preprocessed, &columns, &final_sheet_data);
+
+    progress("scan_reference_hints");
+    let mut metrics = preprocessed.clean_sheet_metrics;
+    metrics.has_hints = crate::reference_scanner::check_for_reference_hints(&assembled.xml);
+
+    Ok(CleanedSheetData {
+        xml: assembled.xml,
+        sheet_data_range: assembled.sheet_data_range,
+        metrics,
+    })
+}
+
+fn prepare_sheet_metrics(
+    preprocessed: &mut PreprocessedSheetXml,
+    params: &CleanSheetParameters,
+    progress: &mut impl FnMut(&'static str),
+) -> VisibleContentBounds {
+    progress("build_prepare_sheet_metrics");
+    let sheet_protection_enabled = worksheet_has_enabled_sheet_protection(preprocessed);
+    let drawing_anchor_bounds = find_worksheet_drawing_anchor_bounds(preprocessed, params);
+    let visible_data_range_bounds = find_visible_content_bounds(
+        &preprocessed.sheet_data,
+        params,
+        &preprocessed.clean_sheet_metrics.column_definitions,
+    );
+
+    let metrics = &mut preprocessed.clean_sheet_metrics;
+    metrics.cleanup_stats.enabled |= params.collect_cleanup_stats;
+    metrics.sheet_protection_enabled = sheet_protection_enabled;
+    metrics.visible_data_range_bounds = visible_data_range_bounds;
+    include_drawing_anchor_bounds(metrics, drawing_anchor_bounds);
+    include_last_visible_column(metrics);
+
+    drawing_anchor_bounds
+}
+
+fn include_drawing_anchor_bounds(
+    metrics: &mut CleanSheetMetrics,
+    drawing_anchor_bounds: VisibleContentBounds,
+) {
     if let Some(row) = drawing_anchor_bounds.max_row {
         metrics.visible_content_bounds.include_row(row);
         metrics.record_tail_anchor_row(row);
@@ -62,179 +149,262 @@ pub fn build_clean_sheet_xml_with_progress(
     if let Some(column) = drawing_anchor_bounds.max_col {
         metrics.visible_content_bounds.include_col(column);
     }
+}
+
+fn include_last_visible_column(metrics: &mut CleanSheetMetrics) {
     if let Some(column) = metrics.column_definitions.get_last_visible_range(false) {
         metrics.visible_content_bounds.include_col(column.max);
     }
-    let max_merge_row = get_max_merge_cells_row_index(&metrics);
-    let preserve_through_row = tail_boundary_row(&metrics, max_merge_row);
+}
 
+fn clean_sheet_data(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    disable_sheetdata_splitting: bool,
+    parallel_range_chunk_size: usize,
+    preserve_through_row: Option<u32>,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<Vec<u8>> {
     let use_range_tail_pruning =
         !disable_sheetdata_splitting && params.cleanup.sheetdata_range_tail_pruning;
 
-    let final_sheet_data = if !use_range_tail_pruning {
-        progress("clean_sheet_rows_and_cells");
-        clean_sheet_rows_and_cells_in_cell_range(&preprocessed.sheet_data, params, &mut metrics)?
-    } else {
-        progress("retrieve_sheet_data_ranges");
-        let original_len = preprocessed.sheet_data.len();
-        let ranges = retrieve_sheet_data_range_containing_cells(
-            &preprocessed.sheet_data,
+    if use_range_tail_pruning {
+        clean_pruned_sheet_data(
+            sheet_data,
             params,
-            metrics.sheet_protection_enabled,
+            metrics,
+            parallel_range_chunk_size,
             preserve_through_row,
-        );
-        let kept_len = ranges.cells_range.len() + ranges.rows_range.len();
-
-        if original_len > kept_len {
-            metrics.cleanup_stats.record_removed(
-                CleanupCause::SheetDataRangeTailPruning,
-                original_len - kept_len,
-            );
-        }
-
-        let cleaned_cells_range =
-            if should_parallel_chunk_range(ranges.cells_range.len(), parallel_range_chunk_size) {
-                progress("clean_cells_range_parallel");
-                clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
-                    ranges.cells_range,
-                    params,
-                    &mut metrics,
-                    parallel_range_chunk_size,
-                    "cells_range",
-                    &params.zip_info_filename,
-                )?
-            } else {
-                progress("clean_cells_range");
-                clean_sheet_rows_and_cells_in_cell_range(ranges.cells_range, params, &mut metrics)?
-            };
-
-        let cleaned_visible_rows_range =
-            if should_parallel_chunk_range(ranges.rows_range.len(), parallel_range_chunk_size) {
-                progress("clean_visible_rows_range_parallel");
-                clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size(
-                    ranges.rows_range,
-                    params,
-                    &mut metrics,
-                    parallel_range_chunk_size,
-                    "rows_range",
-                    &params.zip_info_filename,
-                )?
-            } else {
-                progress("clean_visible_rows_range");
-                clean_empty_rows_from_after_cell_range(ranges.rows_range, params, &mut metrics)?
-            };
-
-        [cleaned_cells_range, cleaned_visible_rows_range].concat()
-    };
-
-    let mut final_sheet_data = if params.cleanup.trailing_layout_only_rows {
-        progress("trim_trailing_layout_only_rows");
-        trim_trailing_layout_only_rows_vec_preserving_rows_through(
-            final_sheet_data,
-            params,
-            &mut metrics,
-            max_merge_row,
+            progress,
         )
     } else {
-        final_sheet_data
-    };
+        progress("clean_sheet_rows_and_cells");
+        clean_sheet_rows_and_cells_in_cell_range(sheet_data, params, metrics)
+    }
+}
 
-    progress("compute_visible_bounds");
-    let max_cell_column = get_max_cell_column(&metrics);
-    let max_cell_row = get_max_cell_row(&metrics);
-    let max_merge_column = get_max_merge_cells_column_index(&metrics);
-    let max_merge_row = get_max_merge_cells_row_index(&metrics);
-    let column_tail_merge_boundary = [
-        max_cell_column,
-        max_merge_column,
-        drawing_anchor_bounds.max_col,
-    ]
-    .into_iter()
-    .flatten()
-    .max()
-    .unwrap_or(0);
-
-    let max_column = [
-        max_cell_column,
-        max_merge_column,
-        metrics.visible_content_bounds.max_col,
-    ]
-    .into_iter()
-    .flatten()
-    .max()
-    .unwrap_or(0);
-    let max_row = [
-        max_cell_row,
-        max_merge_row,
-        metrics.visible_content_bounds.max_row,
-    ]
-    .into_iter()
-    .flatten()
-    .max()
-    .unwrap_or(0);
-
-    progress("remove_protection_only_cells_outside_bounds");
-    final_sheet_data = remove_protection_only_cells_outside_bounds(
-        final_sheet_data,
-        max_column,
-        max_row,
+fn clean_pruned_sheet_data(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    parallel_range_chunk_size: usize,
+    preserve_through_row: Option<u32>,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<Vec<u8>> {
+    progress("retrieve_sheet_data_ranges");
+    let ranges = retrieve_sheet_data_range_containing_cells(
+        sheet_data,
         params,
-        &mut metrics,
+        metrics.sheet_protection_enabled,
+        preserve_through_row,
     );
+    record_pruned_sheet_data_tail(sheet_data.len(), &ranges, metrics);
 
-    if params.cleanup.trailing_layout_only_rows {
-        progress("trim_trailing_layout_only_rows_after_bounds");
-        final_sheet_data = trim_trailing_layout_only_rows_vec_preserving_rows_through(
-            final_sheet_data,
-            params,
-            &mut metrics,
-            max_merge_row,
+    let cleaned_cells = clean_cells_range(
+        ranges.cells_range,
+        params,
+        metrics,
+        parallel_range_chunk_size,
+        progress,
+    )?;
+    let cleaned_rows = clean_visible_rows_range(
+        ranges.rows_range,
+        params,
+        metrics,
+        parallel_range_chunk_size,
+        progress,
+    )?;
+
+    Ok([cleaned_cells, cleaned_rows].concat())
+}
+
+fn record_pruned_sheet_data_tail(
+    original_len: usize,
+    ranges: &crate::sheet::ranges::VisibleSheetDataRanges<'_>,
+    metrics: &mut CleanSheetMetrics,
+) {
+    let kept_len = ranges.cells_range.len() + ranges.rows_range.len();
+    if original_len > kept_len {
+        metrics.cleanup_stats.record_removed(
+            CleanupCause::SheetDataRangeTailPruning,
+            original_len - kept_len,
         );
     }
+}
 
+fn clean_cells_range(
+    cells_range: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    parallel_range_chunk_size: usize,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<Vec<u8>> {
+    if should_parallel_chunk_range(cells_range.len(), parallel_range_chunk_size) {
+        progress("clean_cells_range_parallel");
+        clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
+            cells_range,
+            params,
+            metrics,
+            parallel_range_chunk_size,
+            "cells_range",
+            &params.zip_info_filename,
+        )
+    } else {
+        progress("clean_cells_range");
+        clean_sheet_rows_and_cells_in_cell_range(cells_range, params, metrics)
+    }
+}
+
+fn clean_visible_rows_range(
+    rows_range: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    parallel_range_chunk_size: usize,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<Vec<u8>> {
+    if should_parallel_chunk_range(rows_range.len(), parallel_range_chunk_size) {
+        progress("clean_visible_rows_range_parallel");
+        clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size(
+            rows_range,
+            params,
+            metrics,
+            parallel_range_chunk_size,
+            "rows_range",
+            &params.zip_info_filename,
+        )
+    } else {
+        progress("clean_visible_rows_range");
+        clean_empty_rows_from_after_cell_range(rows_range, params, metrics)
+    }
+}
+
+fn trim_layout_rows_if_enabled(
+    sheet_data: Vec<u8>,
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    preserve_through_row: Option<u32>,
+    progress_stage: &'static str,
+    progress: &mut impl FnMut(&'static str),
+) -> Vec<u8> {
+    if !params.cleanup.trailing_layout_only_rows {
+        return sheet_data;
+    }
+
+    progress(progress_stage);
+    trim_trailing_layout_only_rows_vec_preserving_rows_through(
+        sheet_data,
+        params,
+        metrics,
+        preserve_through_row,
+    )
+}
+
+fn compute_sheet_bounds(
+    metrics: &CleanSheetMetrics,
+    drawing_anchor_bounds: VisibleContentBounds,
+) -> SheetBounds {
+    let max_cell_column = get_max_cell_column(metrics);
+    let max_cell_row = get_max_cell_row(metrics);
+    let max_merge_column = get_max_merge_cells_column_index(metrics);
+    let max_merge_row = get_max_merge_cells_row_index(metrics);
+
+    SheetBounds {
+        column_tail_merge_boundary: maximum_bound([
+            max_cell_column,
+            max_merge_column,
+            drawing_anchor_bounds.max_col,
+        ]),
+        max_column: maximum_bound([
+            max_cell_column,
+            max_merge_column,
+            metrics.visible_content_bounds.max_col,
+        ]),
+        max_row: maximum_bound([
+            max_cell_row,
+            max_merge_row,
+            metrics.visible_content_bounds.max_row,
+        ]),
+        max_merge_row,
+    }
+}
+
+#[inline]
+fn maximum_bound(bounds: [Option<u32>; 3]) -> u32 {
+    bounds.into_iter().flatten().max().unwrap_or(0)
+}
+
+fn clean_columns(
+    columns: &[u8],
+    bounds: SheetBounds,
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+    progress: &mut impl FnMut(&'static str),
+) -> Vec<u8> {
     progress("merge_extraneous_columns");
-    let in_cols_node_output_chunks = if params.cleanup.extraneous_column_range_merge {
-        let merge_boundary = if params.cleanup.column_tail_fill_merge {
-            column_tail_merge_boundary
-        } else {
-            max_column
-        };
+    let cleaned_columns = if params.cleanup.extraneous_column_range_merge {
         merge_extraneous_columns_with_styles(
-            &preprocessed.in_cols_node_output_chunks,
-            merge_boundary,
+            columns,
+            column_merge_boundary(bounds, params),
             params,
             params.cleanup.column_tail_fill_merge,
         )
     } else {
-        preprocessed.in_cols_node_output_chunks.clone()
+        columns.to_vec()
     };
 
     metrics.cleanup_stats.record_delta(
         CleanupCause::ExtraneousColumnRangeMerge,
-        preprocessed.in_cols_node_output_chunks.len(),
-        in_cols_node_output_chunks.len(),
+        columns.len(),
+        cleaned_columns.len(),
     );
+    cleaned_columns
+}
 
-    progress("assemble_clean_sheet_xml");
-    let mut out = Vec::new();
-    out.extend_from_slice(&preprocessed.until_worksheet_start_output_chunks);
-    out.extend_from_slice(&preprocessed.before_cols_node_output_chunks);
-    out.extend_from_slice(&in_cols_node_output_chunks);
-    out.extend_from_slice(&preprocessed.before_sheet_data_node_output_chunks);
-    let sheet_data_start = out.len();
-    out.extend_from_slice(&final_sheet_data);
-    let sheet_data_end = out.len();
-    out.extend_from_slice(&preprocessed.before_merge_cells_node_output_chunks);
-    out.extend_from_slice(&preprocessed.in_merge_cells_node_output_chunks);
-    out.extend_from_slice(&preprocessed.until_worksheet_end_output_chunks);
+#[inline]
+fn column_merge_boundary(bounds: SheetBounds, params: &CleanSheetParameters) -> u32 {
+    if params.cleanup.column_tail_fill_merge {
+        bounds.column_tail_merge_boundary
+    } else {
+        bounds.max_column
+    }
+}
 
-    progress("scan_reference_hints");
-    metrics.has_hints = crate::reference_scanner::check_for_reference_hints(&out);
-    Ok(CleanedSheetData {
-        xml: out,
+fn assemble_clean_sheet_xml(
+    preprocessed: &PreprocessedSheetXml,
+    columns: &[u8],
+    sheet_data: &[u8],
+) -> AssembledSheetXml {
+    let mut xml = Vec::new();
+    xml.extend_from_slice(&preprocessed.until_worksheet_start_output_chunks);
+    xml.extend_from_slice(&preprocessed.before_cols_node_output_chunks);
+    xml.extend_from_slice(columns);
+    xml.extend_from_slice(&preprocessed.before_sheet_data_node_output_chunks);
+    let sheet_data_start = xml.len();
+    xml.extend_from_slice(sheet_data);
+    let sheet_data_end = xml.len();
+    xml.extend_from_slice(&preprocessed.before_merge_cells_node_output_chunks);
+    xml.extend_from_slice(&preprocessed.in_merge_cells_node_output_chunks);
+    xml.extend_from_slice(&preprocessed.until_worksheet_end_output_chunks);
+
+    AssembledSheetXml {
+        xml,
         sheet_data_range: sheet_data_start..sheet_data_end,
-        metrics,
-    })
+    }
+}
+
+#[derive(Debug)]
+struct AssembledSheetXml {
+    xml: Vec<u8>,
+    sheet_data_range: Range<usize>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SheetBounds {
+    max_column: u32,
+    max_row: u32,
+    max_merge_row: Option<u32>,
+    column_tail_merge_boundary: u32,
 }
 
 fn remove_protection_only_cells_outside_bounds(
@@ -242,53 +412,62 @@ fn remove_protection_only_cells_outside_bounds(
     max_column: u32,
     max_row: u32,
     params: &CleanSheetParameters,
-    metrics: &mut crate::models::CleanSheetMetrics,
+    metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
-    if !metrics.sheet_protection_enabled
-        && params.cleanup.inactive_protection_cell_policy
-            == crate::models::InactiveProtectionCellPolicy::KeepAll
-    {
+    if keep_all_inactive_protection_cells(params, metrics) {
         return sheet_data;
     }
 
-    let protected_outside_refs: HashSet<(u32, u32)> = metrics
-        .kept_cell_states
-        .iter()
-        .filter(|cell| cell.kept_only_for_protection)
-        .filter_map(|cell| {
-            if cell.col > max_column || cell.row > max_row {
-                Some((cell.col, cell.row))
-            } else {
-                None
-            }
-        })
-        .collect();
-
+    let protected_outside_refs =
+        protection_only_references_outside_bounds(metrics, max_column, max_row);
     if protected_outside_refs.is_empty() {
         return sheet_data;
     }
 
+    remove_cells_with_references(sheet_data, &protected_outside_refs, metrics)
+}
+
+#[inline]
+fn keep_all_inactive_protection_cells(
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+) -> bool {
+    !metrics.sheet_protection_enabled
+        && params.cleanup.inactive_protection_cell_policy
+            == crate::models::InactiveProtectionCellPolicy::KeepAll
+}
+
+fn protection_only_references_outside_bounds(
+    metrics: &CleanSheetMetrics,
+    max_column: u32,
+    max_row: u32,
+) -> HashSet<(u32, u32)> {
+    metrics
+        .kept_cell_states
+        .iter()
+        .filter(|cell| cell.kept_only_for_protection)
+        .filter(|cell| cell.col > max_column || cell.row > max_row)
+        .map(|cell| (cell.col, cell.row))
+        .collect()
+}
+
+fn remove_cells_with_references(
+    sheet_data: Vec<u8>,
+    references: &HashSet<(u32, u32)>,
+    metrics: &mut CleanSheetMetrics,
+) -> Vec<u8> {
     let cell_re =
         CELL_RE.get_or_init(|| Regex::new(r#"(?s)<c\b([^>]*)/>|<c\b([^>]*)>.*?</c>"#).unwrap());
-
     let mut out = Vec::with_capacity(sheet_data.len().min(64 * 1024 * 1024));
     let mut last_end = 0;
 
-    for caps in cell_re.captures_iter(&sheet_data) {
-        let Some(cell_match) = caps.get(0) else {
+    for captures in cell_re.captures_iter(&sheet_data) {
+        let Some(cell_match) = captures.get(0) else {
             continue;
         };
         out.extend_from_slice(&sheet_data[last_end..cell_match.start()]);
 
-        let attr = caps
-            .get(1)
-            .or_else(|| caps.get(2))
-            .map_or(b"".as_slice(), |m| m.as_bytes());
-        let remove = extract_attribute_value(attr, b"r")
-            .and_then(parse_cell_reference)
-            .is_some_and(|reference| protected_outside_refs.contains(&reference));
-
-        if remove {
+        if captured_cell_has_reference(&captures, references) {
             metrics.cleanup_stats.record_removed(
                 CleanupCause::EmptyCellsWithoutContent,
                 cell_match.as_bytes().len(),
@@ -296,7 +475,6 @@ fn remove_protection_only_cells_outside_bounds(
         } else {
             out.extend_from_slice(cell_match.as_bytes());
         }
-
         last_end = cell_match.end();
     }
 
@@ -304,10 +482,23 @@ fn remove_protection_only_cells_outside_bounds(
     out
 }
 
+fn captured_cell_has_reference(
+    captures: &regex::bytes::Captures<'_>,
+    references: &HashSet<(u32, u32)>,
+) -> bool {
+    let attributes = captures
+        .get(1)
+        .or_else(|| captures.get(2))
+        .map_or(b"".as_slice(), |capture| capture.as_bytes());
+
+    extract_attribute_value(attributes, b"r")
+        .and_then(parse_cell_reference)
+        .is_some_and(|reference| references.contains(&reference))
+}
 pub fn trim_trailing_layout_only_rows(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
-    metrics: &mut crate::models::CleanSheetMetrics,
+    metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
     trim_trailing_layout_only_rows_preserving_rows_through(sheet_data, params, metrics, None)
 }
@@ -315,39 +506,24 @@ pub fn trim_trailing_layout_only_rows(
 fn trim_trailing_layout_only_rows_preserving_rows_through(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
-    metrics: &mut crate::models::CleanSheetMetrics,
+    metrics: &mut CleanSheetMetrics,
     preserve_through_row: Option<u32>,
 ) -> Vec<u8> {
-    let tail_boundary_row = tail_boundary_row(metrics, preserve_through_row);
+    let boundary_row = tail_boundary_row(metrics, preserve_through_row);
 
-    if tail_boundary_row.is_none() {
-        if let Some((remove_start, preserve_start)) =
-            trailing_hidden_tail_removal_range(sheet_data, None)
-        {
-            let mut out = Vec::with_capacity(sheet_data.len() - (preserve_start - remove_start));
-            out.extend_from_slice(&sheet_data[..remove_start]);
-            out.extend_from_slice(&sheet_data[preserve_start..]);
-            metrics.cleanup_stats.record_removed(
-                CleanupCause::TrailingLayoutOnlyRows,
-                preserve_start - remove_start,
-            );
-            return out;
-        }
+    if let Some(removal_range) = unbounded_hidden_tail_removal_range(sheet_data, boundary_row) {
+        record_trailing_row_removal(metrics, removal_range);
+        return copy_without_range(sheet_data, removal_range);
     }
 
-    let end = trailing_layout_only_rows_cutoff(sheet_data, params, metrics, tail_boundary_row);
-
-    if end == sheet_data.len() {
-        sheet_data.to_vec()
-    } else {
-        sheet_data[..end].to_vec()
-    }
+    let end = trailing_layout_only_rows_cutoff(sheet_data, params, metrics, boundary_row);
+    sheet_data[..end].to_vec()
 }
 
 pub fn trim_trailing_layout_only_rows_vec(
     sheet_data: Vec<u8>,
     params: &CleanSheetParameters,
-    metrics: &mut crate::models::CleanSheetMetrics,
+    metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
     trim_trailing_layout_only_rows_vec_preserving_rows_through(sheet_data, params, metrics, None)
 }
@@ -355,35 +531,47 @@ pub fn trim_trailing_layout_only_rows_vec(
 fn trim_trailing_layout_only_rows_vec_preserving_rows_through(
     mut sheet_data: Vec<u8>,
     params: &CleanSheetParameters,
-    metrics: &mut crate::models::CleanSheetMetrics,
+    metrics: &mut CleanSheetMetrics,
     preserve_through_row: Option<u32>,
 ) -> Vec<u8> {
-    let tail_boundary_row = tail_boundary_row(metrics, preserve_through_row);
+    let boundary_row = tail_boundary_row(metrics, preserve_through_row);
 
-    if tail_boundary_row.is_none() {
-        if let Some((remove_start, preserve_start)) =
-            trailing_hidden_tail_removal_range(&sheet_data, None)
-        {
-            sheet_data.drain(remove_start..preserve_start);
-            metrics.cleanup_stats.record_removed(
-                CleanupCause::TrailingLayoutOnlyRows,
-                preserve_start - remove_start,
-            );
-            return sheet_data;
-        }
+    if let Some(removal_range) = unbounded_hidden_tail_removal_range(&sheet_data, boundary_row) {
+        sheet_data.drain(removal_range.0..removal_range.1);
+        record_trailing_row_removal(metrics, removal_range);
+        return sheet_data;
     }
 
-    let end = trailing_layout_only_rows_cutoff(&sheet_data, params, metrics, tail_boundary_row);
-
-    if end < sheet_data.len() {
-        sheet_data.truncate(end);
-    }
-
+    let end = trailing_layout_only_rows_cutoff(&sheet_data, params, metrics, boundary_row);
+    sheet_data.truncate(end);
     sheet_data
 }
 
+fn unbounded_hidden_tail_removal_range(
+    sheet_data: &[u8],
+    boundary_row: Option<u32>,
+) -> Option<(usize, usize)> {
+    if boundary_row.is_some() {
+        return None;
+    }
+
+    trailing_hidden_tail_removal_range(sheet_data, None)
+}
+
+fn copy_without_range(sheet_data: &[u8], range: (usize, usize)) -> Vec<u8> {
+    let mut out = Vec::with_capacity(sheet_data.len() - (range.1 - range.0));
+    out.extend_from_slice(&sheet_data[..range.0]);
+    out.extend_from_slice(&sheet_data[range.1..]);
+    out
+}
+
+fn record_trailing_row_removal(metrics: &mut CleanSheetMetrics, range: (usize, usize)) {
+    metrics
+        .cleanup_stats
+        .record_removed(CleanupCause::TrailingLayoutOnlyRows, range.1 - range.0);
+}
 fn tail_boundary_row(
-    metrics: &crate::models::CleanSheetMetrics,
+    metrics: &CleanSheetMetrics,
     preserve_through_row: Option<u32>,
 ) -> Option<u32> {
     [
@@ -400,107 +588,86 @@ fn trailing_hidden_tail_removal_range(
     sheet_data: &[u8],
     preserve_through_row: Option<u32>,
 ) -> Option<(usize, usize)> {
-    let mut tail_end = sheet_data.len();
-
-    while tail_end > 0 && sheet_data[tail_end - 1].is_ascii_whitespace() {
-        tail_end -= 1;
-    }
-
-    let last_row_start = rfind_bytes(&sheet_data[..tail_end], b"<row")?;
-    let last_row_end = find_row_end(sheet_data, last_row_start)?;
-    if last_row_end != tail_end {
+    let preserved_row = contiguous_trailing_row(sheet_data, sheet_data.len())?;
+    if !is_removable_hidden_tail_row(preserved_row.raw, preserve_through_row) {
         return None;
     }
 
-    let last_row = &sheet_data[last_row_start..last_row_end];
-    if !hidden_row_without_cells(last_row) {
-        return None;
-    }
-    if row_is_protected_tail_boundary(last_row, preserve_through_row) {
-        return None;
-    }
-
-    let preserve_start = last_row_start;
+    let preserve_start = preserved_row.start;
     let mut remove_start = preserve_start;
     let mut scan_end = preserve_start;
 
-    loop {
-        while scan_end > 0 && sheet_data[scan_end - 1].is_ascii_whitespace() {
-            scan_end -= 1;
-        }
-
-        let Some(row_start) = rfind_bytes(&sheet_data[..scan_end], b"<row") else {
-            break;
-        };
-        let Some(row_end) = find_row_end(sheet_data, row_start) else {
-            break;
-        };
-        if row_end != scan_end {
+    while let Some(row) = contiguous_trailing_row(sheet_data, scan_end) {
+        if !is_removable_hidden_tail_row(row.raw, preserve_through_row) {
             break;
         }
-
-        let row = &sheet_data[row_start..row_end];
-        if !hidden_row_without_cells(row) {
-            break;
-        }
-        if row_is_protected_tail_boundary(row, preserve_through_row) {
-            break;
-        }
-
-        remove_start = row_start;
-        scan_end = row_start;
+        remove_start = row.start;
+        scan_end = row.start;
     }
 
     (remove_start < preserve_start).then_some((remove_start, preserve_start))
 }
 
+#[inline]
+fn is_removable_hidden_tail_row(row: &[u8], preserve_through_row: Option<u32>) -> bool {
+    hidden_row_without_cells(row) && !row_is_protected_tail_boundary(row, preserve_through_row)
+}
+
+#[inline]
 fn hidden_row_without_cells(row: &[u8]) -> bool {
     row_is_hidden(row) && find_bytes(row, b"<c").is_none()
+}
+
+fn contiguous_trailing_row(sheet_data: &[u8], end: usize) -> Option<TrailingRow<'_>> {
+    let row_end_boundary = trim_trailing_whitespace_end(sheet_data, end);
+    let row_start = rfind_bytes(&sheet_data[..row_end_boundary], b"<row")?;
+    let row_end = find_row_end(sheet_data, row_start)?;
+
+    (row_end == row_end_boundary).then_some(TrailingRow {
+        start: row_start,
+        raw: &sheet_data[row_start..row_end],
+    })
+}
+
+#[inline]
+fn trim_trailing_whitespace_end(data: &[u8], mut end: usize) -> usize {
+    while end > 0 && data[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    end
 }
 
 fn trailing_layout_only_rows_cutoff(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
-    metrics: &mut crate::models::CleanSheetMetrics,
+    metrics: &mut CleanSheetMetrics,
     preserve_through_row: Option<u32>,
 ) -> usize {
     if let Some(max_row) = preserve_through_row {
         return cutoff_after_row_boundary(sheet_data, max_row, params, metrics);
     }
 
+    remove_trailing_layout_rows(sheet_data, params, metrics)
+}
+
+fn remove_trailing_layout_rows(
+    sheet_data: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &mut CleanSheetMetrics,
+) -> usize {
     let mut end = sheet_data.len();
 
-    loop {
-        let Some(row_start) = rfind_bytes(&sheet_data[..end], b"<row") else {
-            break;
-        };
-
-        let Some(row_end) = find_row_end(sheet_data, row_start) else {
-            break;
-        };
-
-        if sheet_data[row_end..end]
-            .iter()
-            .any(|byte| !byte.is_ascii_whitespace())
+    while let Some(row) = contiguous_trailing_row(sheet_data, end) {
+        if row_is_protected_tail_boundary(row.raw, None)
+            || !trailing_row_is_layout_only(row.raw, params)
         {
             break;
         }
 
-        let row = &sheet_data[row_start..row_end];
-
-        if row_is_protected_tail_boundary(row, preserve_through_row) {
-            break;
-        }
-
-        if trailing_row_is_layout_only(row, params) {
-            metrics
-                .cleanup_stats
-                .record_removed(CleanupCause::TrailingLayoutOnlyRows, row.len());
-            end = row_start;
-            continue;
-        }
-
-        break;
+        metrics
+            .cleanup_stats
+            .record_removed(CleanupCause::TrailingLayoutOnlyRows, row.raw.len());
+        end = row.start;
     }
 
     end
@@ -510,36 +677,31 @@ fn cutoff_after_row_boundary(
     sheet_data: &[u8],
     max_row: u32,
     params: &CleanSheetParameters,
-    metrics: &mut crate::models::CleanSheetMetrics,
+    metrics: &mut CleanSheetMetrics,
 ) -> usize {
-    if let Some(end) = cutoff_after_exact_row_reference(sheet_data, max_row) {
-        let end = extend_cutoff_to_visible_row_before_hidden_tail(sheet_data, end, params);
-        if end < sheet_data.len() {
-            metrics
-                .cleanup_stats
-                .record_removed(CleanupCause::TrailingLayoutOnlyRows, sheet_data.len() - end);
-        }
+    let cutoff = cutoff_after_exact_row_reference(sheet_data, max_row)
+        .map(|end| extend_cutoff_to_visible_row_before_hidden_tail(sheet_data, end, params))
+        .unwrap_or_else(|| scan_cutoff_after_row_boundary(sheet_data, max_row, params));
 
-        return end;
-    }
+    record_removed_sheet_data_tail(metrics, sheet_data.len(), cutoff);
+    cutoff
+}
 
+fn scan_cutoff_after_row_boundary(
+    sheet_data: &[u8],
+    max_row: u32,
+    params: &CleanSheetParameters,
+) -> usize {
     let mut end = sheet_data.len();
 
     loop {
-        let mut scan_end = end;
-        while scan_end > 0 && sheet_data[scan_end - 1].is_ascii_whitespace() {
-            scan_end -= 1;
-        }
-
+        let scan_end = trim_trailing_whitespace_end(sheet_data, end);
         let Some(row_start) = rfind_bytes(&sheet_data[..scan_end], b"<row") else {
-            end = 0;
-            break;
+            return 0;
         };
-
         let Some(row_end) = find_row_end(sheet_data, row_start) else {
             return sheet_data.len();
         };
-
         if row_end != scan_end {
             return sheet_data.len();
         }
@@ -548,29 +710,37 @@ fn cutoff_after_row_boundary(
         let Some(row_number) = row_number(row) else {
             return sheet_data.len();
         };
-
         if row_number <= max_row {
-            end = if end == sheet_data.len() {
+            let cutoff = if end == sheet_data.len() {
                 sheet_data.len()
             } else {
                 row_end
             };
-            end = extend_cutoff_to_visible_row_before_hidden_tail(sheet_data, end, params);
-            break;
+            return extend_cutoff_to_visible_row_before_hidden_tail(sheet_data, cutoff, params);
         }
 
         end = row_start;
     }
-
-    if end < sheet_data.len() {
-        metrics
-            .cleanup_stats
-            .record_removed(CleanupCause::TrailingLayoutOnlyRows, sheet_data.len() - end);
-    }
-
-    end
 }
 
+fn record_removed_sheet_data_tail(
+    metrics: &mut CleanSheetMetrics,
+    sheet_data_len: usize,
+    cutoff: usize,
+) {
+    if cutoff < sheet_data_len {
+        metrics.cleanup_stats.record_removed(
+            CleanupCause::TrailingLayoutOnlyRows,
+            sheet_data_len - cutoff,
+        );
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrailingRow<'a> {
+    start: usize,
+    raw: &'a [u8],
+}
 fn extend_cutoff_to_visible_row_before_hidden_tail(
     sheet_data: &[u8],
     cutoff: usize,
@@ -675,20 +845,8 @@ fn row_start_containing_row_reference(
     }
 
     let open_end = find_byte_from(sheet_data, b'>', row_start)?;
-    if attr_start >= open_end || attr_start + attr_len > open_end {
-        return None;
-    }
-
-    if !sheet_data
-        .get(attr_start.wrapping_sub(1))
-        .is_some_and(u8::is_ascii_whitespace)
-    {
-        return None;
-    }
-
-    if !sheet_data
-        .get(attr_start + attr_len)
-        .is_none_or(|byte| byte.is_ascii_whitespace() || matches!(byte, b'/' | b'>'))
+    if !attribute_is_inside_open_tag(attr_start, attr_len, open_end)
+        || !attribute_has_xml_boundaries(sheet_data, attr_start, attr_len)
     {
         return None;
     }
@@ -696,6 +854,20 @@ fn row_start_containing_row_reference(
     Some(row_start)
 }
 
+#[inline]
+fn attribute_is_inside_open_tag(attr_start: usize, attr_len: usize, open_end: usize) -> bool {
+    attr_start < open_end && attr_start + attr_len <= open_end
+}
+
+#[inline]
+fn attribute_has_xml_boundaries(sheet_data: &[u8], attr_start: usize, attr_len: usize) -> bool {
+    sheet_data
+        .get(attr_start.wrapping_sub(1))
+        .is_some_and(u8::is_ascii_whitespace)
+        && sheet_data
+            .get(attr_start + attr_len)
+            .is_none_or(|byte| byte.is_ascii_whitespace() || matches!(byte, b'/' | b'>'))
+}
 fn row_tag_starts_at(sheet_data: &[u8], row_start: usize) -> bool {
     sheet_data
         .get(row_start..row_start + b"<row".len())
@@ -732,65 +904,77 @@ fn find_row_end(data: &[u8], row_start: usize) -> Option<usize> {
 }
 
 fn trailing_row_is_layout_only(row: &[u8], params: &CleanSheetParameters) -> bool {
-    if row_has_visible_cell_anchor(row, params) {
-        return false;
-    }
-
-    if row_is_hidden(row) {
-        return true;
-    }
-
-    if row_has_visible_style(row, params) {
-        return false;
-    }
-
-    true
+    !row_has_visible_cell_anchor(row, params)
+        && (row_is_hidden(row) || !row_has_visible_style(row, params))
 }
 
 fn row_has_visible_cell_anchor(row: &[u8], params: &CleanSheetParameters) -> bool {
-    let mut pos = 0;
+    let mut search_start = 0;
 
-    while let Some(cell_start_rel) = find_bytes(&row[pos..], b"<c") {
-        let cell_start = pos + cell_start_rel;
-        let after_name = cell_start + b"<c".len();
-
-        if !matches!(
-            row.get(after_name),
-            Some(byte) if byte.is_ascii_whitespace() || matches!(byte, b'/' | b'>')
-        ) {
-            pos = after_name;
-            continue;
+    while let Some(cell_tag) = next_cell_tag(row, search_start) {
+        match cell_tag {
+            ScannedCellTag::Anchoring => return true,
+            ScannedCellTag::SelfClosing { attributes, end } => {
+                if self_closing_cell_is_anchor(attributes, params) {
+                    return true;
+                }
+                search_start = end;
+            }
         }
-
-        let Some(tag_end) = find_byte_from(row, b'>', cell_start) else {
-            return true;
-        };
-
-        let attr_end = if tag_end > cell_start && row[tag_end - 1] == b'/' {
-            tag_end - 1
-        } else {
-            return true;
-        };
-
-        let attr = &row[after_name..attr_end];
-        let is_anchor = match extract_style_id(attr) {
-            Some(style_id) => params
-                .patterns
-                .xfs_by_index
-                .get(&style_id)
-                .map_or(true, |style| style_is_trailing_cell_anchor(style, params)),
-            None => params.cleanup.keep_textless_default_font_representatives,
-        };
-        if is_anchor {
-            return true;
-        }
-
-        pos = tag_end + 1;
     }
 
     false
 }
 
+fn next_cell_tag(row: &[u8], mut search_start: usize) -> Option<ScannedCellTag<'_>> {
+    while let Some(relative) = find_bytes(&row[search_start..], b"<c") {
+        let cell_start = search_start + relative;
+        let after_name = cell_start + b"<c".len();
+
+        if !xml_name_is_delimited(row, after_name) {
+            search_start = after_name;
+            continue;
+        }
+
+        let Some(tag_end) = find_byte_from(row, b'>', cell_start) else {
+            return Some(ScannedCellTag::Anchoring);
+        };
+        if tag_end <= cell_start || row[tag_end - 1] != b'/' {
+            return Some(ScannedCellTag::Anchoring);
+        }
+
+        return Some(ScannedCellTag::SelfClosing {
+            attributes: &row[after_name..tag_end - 1],
+            end: tag_end + 1,
+        });
+    }
+
+    None
+}
+
+#[inline]
+fn xml_name_is_delimited(xml: &[u8], after_name: usize) -> bool {
+    xml.get(after_name)
+        .is_some_and(|byte| byte.is_ascii_whitespace() || matches!(byte, b'/' | b'>'))
+}
+
+fn self_closing_cell_is_anchor(attributes: &[u8], params: &CleanSheetParameters) -> bool {
+    match extract_style_id(attributes) {
+        Some(style_id) => params
+            .patterns
+            .xfs_by_index
+            .get(&style_id)
+            .map_or(true, |style| style_is_trailing_cell_anchor(style, params)),
+        None => params.cleanup.keep_textless_default_font_representatives,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ScannedCellTag<'a> {
+    Anchoring,
+    SelfClosing { attributes: &'a [u8], end: usize },
+}
+#[inline]
 fn row_is_hidden(row: &[u8]) -> bool {
     find_bytes(row, b" hidden=\"1\"").is_some() || find_bytes(row, b" hidden=\"true\"").is_some()
 }
@@ -800,16 +984,19 @@ fn row_has_visible_style(row: &[u8], params: &CleanSheetParameters) -> bool {
         return false;
     };
 
-    match params.patterns.xfs_by_index.get(&style_id) {
-        Some(style) => style_is_visible_anchor(style),
-        None => true, // conservative: unknown row style may be visible
-    }
+    params
+        .patterns
+        .xfs_by_index
+        .get(&style_id)
+        .is_none_or(style_is_visible_anchor)
 }
 
+#[inline]
 fn style_is_visible_anchor(style: &Xf) -> bool {
     style.has_fill_or_border
 }
 
+#[inline]
 fn style_is_trailing_cell_anchor(style: &Xf, params: &CleanSheetParameters) -> bool {
     style_is_visible_anchor(style)
         || (style.has_apply_protection
@@ -865,24 +1052,28 @@ fn extract_attribute_value<'a>(tag: &'a [u8], attr: &[u8]) -> Option<&'a [u8]> {
 
     let mut search_start = 0;
     while search_start < tag.len() {
-        let Some(pos_rel) = find_bytes(&tag[search_start..], &needle) else {
-            return None;
-        };
-        let pos = search_start + pos_rel;
+        let relative = find_bytes(&tag[search_start..], &needle)?;
+        let attribute_start = search_start + relative;
 
-        if pos > 0 && !tag[pos - 1].is_ascii_whitespace() {
-            search_start = pos + 1;
-            continue;
+        if attribute_name_has_left_boundary(tag, attribute_start) {
+            return quoted_value_after(tag, attribute_start + needle.len());
         }
 
-        let value_start = pos + needle.len();
-        let value_end_rel = tag[value_start..].iter().position(|byte| *byte == b'"')?;
-        return Some(&tag[value_start..value_start + value_end_rel]);
+        search_start = attribute_start + 1;
     }
 
     None
 }
 
+#[inline]
+fn attribute_name_has_left_boundary(tag: &[u8], attribute_start: usize) -> bool {
+    attribute_start == 0 || tag[attribute_start - 1].is_ascii_whitespace()
+}
+
+fn quoted_value_after(tag: &[u8], value_start: usize) -> Option<&[u8]> {
+    let value_end = value_start + tag[value_start..].iter().position(|byte| *byte == b'"')?;
+    Some(&tag[value_start..value_end])
+}
 fn parse_cell_reference(reference: &[u8]) -> Option<(u32, u32)> {
     let split = reference
         .iter()

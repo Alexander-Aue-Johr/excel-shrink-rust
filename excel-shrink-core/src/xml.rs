@@ -117,18 +117,22 @@ pub fn replace_xml_block(
     out
 }
 
+#[inline]
 pub fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     memchr::memmem::find(haystack, needle)
 }
 
+#[inline]
 pub fn find_bytes_from(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
     find_bytes(&haystack[start..], needle).map(|idx| start + idx)
 }
 
+#[inline]
 pub fn rfind_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     memchr::memmem::rfind(haystack, needle)
 }
 
+#[inline]
 pub fn find_byte_from(haystack: &[u8], needle: u8, start: usize) -> Option<usize> {
     haystack[start..]
         .iter()

@@ -21,40 +21,63 @@ pub fn find_worksheet_drawing_anchor_bounds(
         return VisibleContentBounds::default();
     }
 
-    let Some(rels_path) = worksheet_relationships_path(&params.zip_info_filename) else {
+    let Some(mut archive) = open_workbook_archive(&params.xlsx_file_path) else {
+        return VisibleContentBounds::default();
+    };
+    let Some(drawing_targets) =
+        drawing_targets_for_worksheet(&mut archive, &drawing_rids, &params.zip_info_filename)
+    else {
         return VisibleContentBounds::default();
     };
 
-    let Ok(file) = File::open(&params.xlsx_file_path) else {
-        return VisibleContentBounds::default();
-    };
-    let Ok(mut archive) = ZipArchive::new(file) else {
-        return VisibleContentBounds::default();
-    };
+    drawing_anchor_bounds_from_targets(&mut archive, drawing_targets)
+}
 
-    let Some(rels_xml) = read_zip_entry(&mut archive, &rels_path) else {
-        return VisibleContentBounds::default();
-    };
+fn open_workbook_archive(path: &str) -> Option<ZipArchive<File>> {
+    let file = File::open(path).ok()?;
+    ZipArchive::new(file).ok()
+}
 
-    let drawing_targets =
-        collect_drawing_targets(&rels_xml, &drawing_rids, &params.zip_info_filename);
+fn drawing_targets_for_worksheet(
+    archive: &mut ZipArchive<File>,
+    drawing_rids: &HashSet<Vec<u8>>,
+    sheet_part: &str,
+) -> Option<Vec<String>> {
+    let relationships_path = worksheet_relationships_path(sheet_part)?;
+    let relationships_xml = read_zip_entry(archive, &relationships_path)?;
+
+    Some(collect_drawing_targets(
+        &relationships_xml,
+        drawing_rids,
+        sheet_part,
+    ))
+}
+
+fn drawing_anchor_bounds_from_targets(
+    archive: &mut ZipArchive<File>,
+    drawing_targets: Vec<String>,
+) -> VisibleContentBounds {
     let mut bounds = VisibleContentBounds::default();
 
     for target in drawing_targets {
-        let Some(drawing_xml) = read_zip_entry(&mut archive, &target) else {
+        let Some(drawing_xml) = read_zip_entry(archive, &target) else {
             continue;
         };
 
-        let drawing_bounds = drawing_anchor_bounds_from_xml(&drawing_xml);
-        if let Some(row) = drawing_bounds.max_row {
-            bounds.include_row(row);
-        }
-        if let Some(col) = drawing_bounds.max_col {
-            bounds.include_col(col);
-        }
+        include_bounds(&mut bounds, drawing_anchor_bounds_from_xml(&drawing_xml));
     }
 
     bounds
+}
+
+#[inline]
+fn include_bounds(bounds: &mut VisibleContentBounds, additional: VisibleContentBounds) {
+    if let Some(row) = additional.max_row {
+        bounds.include_row(row);
+    }
+    if let Some(column) = additional.max_col {
+        bounds.include_col(column);
+    }
 }
 
 fn collect_drawing_rids(preprocessed: &PreprocessedSheetXml) -> HashSet<Vec<u8>> {
@@ -94,60 +117,71 @@ fn collect_drawing_targets(
         .get_or_init(|| Regex::new(r#"(?s)<(?:[A-Za-z_][\w.-]*:)?Relationship\b[^>]*>"#).unwrap());
     let mut targets = Vec::new();
 
-    for rel_match in relationship_re.find_iter(rels_xml) {
-        let rel = rel_match.as_bytes();
-        let Some(id) = extract_attr_value(rel, b"Id") else {
-            continue;
-        };
-        if !drawing_rids.contains(id) {
-            continue;
+    for relationship in relationship_re.find_iter(rels_xml) {
+        if let Some(target) =
+            drawing_target_from_relationship(relationship.as_bytes(), drawing_rids, source_part)
+        {
+            targets.push(target);
         }
-
-        let Some(rel_type) = extract_attr_value(rel, b"Type") else {
-            continue;
-        };
-        if !rel_type.ends_with(b"/drawing") {
-            continue;
-        }
-
-        let Some(target) = extract_attr_value(rel, b"Target") else {
-            continue;
-        };
-        let Ok(target) = std::str::from_utf8(target) else {
-            continue;
-        };
-        let Some(resolved) = resolve_part_target(source_part, target) else {
-            continue;
-        };
-
-        targets.push(resolved);
     }
 
     targets
 }
 
+fn drawing_target_from_relationship(
+    relationship: &[u8],
+    drawing_rids: &HashSet<Vec<u8>>,
+    source_part: &str,
+) -> Option<String> {
+    let id = extract_attr_value(relationship, b"Id")?;
+    if !drawing_rids.contains(id) {
+        return None;
+    }
+
+    let relationship_type = extract_attr_value(relationship, b"Type")?;
+    if !relationship_type.ends_with(b"/drawing") {
+        return None;
+    }
+
+    let target = std::str::from_utf8(extract_attr_value(relationship, b"Target")?).ok()?;
+    resolve_part_target(source_part, target)
+}
+
 fn drawing_anchor_bounds_from_xml(drawing_xml: &[u8]) -> VisibleContentBounds {
+    let mut bounds = VisibleContentBounds::default();
+    include_drawing_row_anchors(&mut bounds, drawing_xml);
+    include_drawing_column_anchors(&mut bounds, drawing_xml);
+    bounds
+}
+
+fn include_drawing_row_anchors(bounds: &mut VisibleContentBounds, drawing_xml: &[u8]) {
     let row_re = DRAWING_ROW_RE.get_or_init(|| {
         Regex::new(r#"<(?:[A-Za-z_][\w.-]*:)?row>(\d+)</(?:[A-Za-z_][\w.-]*:)?row>"#).unwrap()
     });
-    let col_re = DRAWING_COL_RE.get_or_init(|| {
-        Regex::new(r#"<(?:[A-Za-z_][\w.-]*:)?col>(\d+)</(?:[A-Za-z_][\w.-]*:)?col>"#).unwrap()
-    });
-    let mut bounds = VisibleContentBounds::default();
 
-    for caps in row_re.captures_iter(drawing_xml) {
-        if let Some(row) = caps.get(1).and_then(|m| parse_u32(m.as_bytes())) {
+    for captures in row_re.captures_iter(drawing_xml) {
+        if let Some(row) = captures
+            .get(1)
+            .and_then(|capture| parse_u32(capture.as_bytes()))
+        {
             bounds.include_row(row.saturating_add(1));
         }
     }
+}
 
-    for caps in col_re.captures_iter(drawing_xml) {
-        if let Some(col) = caps.get(1).and_then(|m| parse_u32(m.as_bytes())) {
-            bounds.include_col(col.saturating_add(1));
+fn include_drawing_column_anchors(bounds: &mut VisibleContentBounds, drawing_xml: &[u8]) {
+    let column_re = DRAWING_COL_RE.get_or_init(|| {
+        Regex::new(r#"<(?:[A-Za-z_][\w.-]*:)?col>(\d+)</(?:[A-Za-z_][\w.-]*:)?col>"#).unwrap()
+    });
+
+    for captures in column_re.captures_iter(drawing_xml) {
+        if let Some(column) = captures
+            .get(1)
+            .and_then(|capture| parse_u32(capture.as_bytes()))
+        {
+            bounds.include_col(column.saturating_add(1));
         }
     }
-
-    bounds
 }
 
 fn worksheet_relationships_path(sheet_part: &str) -> Option<String> {
@@ -164,29 +198,37 @@ fn resolve_part_target(source_part: &str, target: &str) -> Option<String> {
     if target.is_empty() {
         return None;
     }
-
     if target.starts_with('/') {
         return Some(target.trim_start_matches('/').to_string());
     }
 
-    let slash = source_part.rfind('/')?;
-    let source_dir = &source_part[..slash];
-    let mut parts: Vec<&str> = source_dir
+    resolve_relative_part_target(source_part, target)
+}
+
+fn resolve_relative_part_target(source_part: &str, target: &str) -> Option<String> {
+    let source_directory_end = source_part.rfind('/')?;
+    let mut parts: Vec<&str> = source_part[..source_directory_end]
         .split('/')
         .filter(|part| !part.is_empty())
         .collect();
 
     for part in target.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            part => parts.push(part),
-        }
+        apply_target_path_part(&mut parts, part)?;
     }
 
     Some(parts.join("/"))
+}
+
+#[inline]
+fn apply_target_path_part<'a>(parts: &mut Vec<&'a str>, part: &'a str) -> Option<()> {
+    match part {
+        "" | "." => Some(()),
+        ".." => parts.pop().map(|_| ()),
+        part => {
+            parts.push(part);
+            Some(())
+        }
+    }
 }
 
 fn read_zip_entry<R: Read + std::io::Seek>(
@@ -202,28 +244,46 @@ fn read_zip_entry<R: Read + std::io::Seek>(
 }
 
 fn extract_attr_value<'a>(element: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
-    let mut pos = 0;
-    while pos + attr_name.len() + 2 <= element.len() {
-        let rel = crate::xml::find_bytes(&element[pos..], attr_name)?;
-        let start = pos + rel;
-        let before_ok =
-            start == 0 || element[start - 1].is_ascii_whitespace() || element[start - 1] == b'<';
-        let after_name = start + attr_name.len();
-        if before_ok && after_name < element.len() && element[after_name] == b'=' {
-            let quote_pos = after_name + 1;
-            if quote_pos < element.len() && element[quote_pos] == b'"' {
-                let value_start = quote_pos + 1;
-                let value_end =
-                    value_start + element[value_start..].iter().position(|b| *b == b'"')?;
-                return Some(&element[value_start..value_end]);
-            }
+    let mut search_start = 0;
+
+    while search_start + attr_name.len() + 2 <= element.len() {
+        let relative = crate::xml::find_bytes(&element[search_start..], attr_name)?;
+        let attribute_start = search_start + relative;
+        let after_name = attribute_start + attr_name.len();
+
+        if quoted_attribute_starts_at(element, attribute_start, after_name) {
+            return quoted_attribute_value(element, after_name);
         }
-        pos = after_name;
+
+        search_start = after_name;
     }
 
     None
 }
 
+#[inline]
+fn quoted_attribute_starts_at(element: &[u8], start: usize, after_name: usize) -> bool {
+    attribute_has_left_boundary(element, start)
+        && element.get(after_name) == Some(&b'=')
+        && element.get(after_name + 1) == Some(&b'"')
+}
+
+#[inline]
+fn attribute_has_left_boundary(element: &[u8], start: usize) -> bool {
+    start == 0 || element[start - 1].is_ascii_whitespace() || element[start - 1] == b'<'
+}
+
+fn quoted_attribute_value(element: &[u8], after_name: usize) -> Option<&[u8]> {
+    let value_start = after_name + 2;
+    let value_end = value_start
+        + element[value_start..]
+            .iter()
+            .position(|byte| *byte == b'"')?;
+
+    Some(&element[value_start..value_end])
+}
+
+#[inline]
 fn parse_u32(bytes: &[u8]) -> Option<u32> {
     let mut value = 0u32;
     for byte in bytes {

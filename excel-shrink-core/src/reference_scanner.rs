@@ -21,71 +21,157 @@ pub enum ScanResult {
 }
 
 /// Packt Spalte und Zeile in einen u64 für extrem schnelles Hashing.
+#[inline]
 pub fn encode_coord(col: u32, row: u32) -> u64 {
     ((col as u64) << 32) | (row as u64)
+}
+
+struct FlatScanPatterns {
+    unsafe_function: &'static Regex,
+    formula: &'static Regex,
+    defined_name: &'static Regex,
+    reference_attribute: &'static Regex,
+    sequence_reference_attribute: &'static Regex,
+    coordinate: &'static Regex,
+}
+
+struct SheetScanPatterns {
+    unsafe_function: &'static Regex,
+    formula: &'static Regex,
+    defined_name: &'static Regex,
+    reference_attribute: &'static Regex,
+    sequence_reference_attribute: &'static Regex,
+    reference_token: &'static Regex,
+}
+
+fn flat_scan_patterns() -> FlatScanPatterns {
+    FlatScanPatterns {
+        unsafe_function: unsafe_function_pattern(),
+        formula: formula_pattern(),
+        defined_name: DEFINED_NAME_PATTERN
+            .get_or_init(|| Regex::new(r"(?s)<definedName\b[^>]*>(.*?)</definedName>").unwrap()),
+        reference_attribute: reference_attribute_pattern(),
+        sequence_reference_attribute: SQREF_PATTERN
+            .get_or_init(|| Regex::new(r#"sqref="([^"]+)""#).unwrap()),
+        coordinate: COORD_PATTERN.get_or_init(|| {
+            Regex::new(r"\$([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})|([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})")
+                .unwrap()
+        }),
+    }
+}
+
+fn sheet_scan_patterns() -> SheetScanPatterns {
+    SheetScanPatterns {
+        unsafe_function: unsafe_function_pattern(),
+        formula: formula_pattern(),
+        defined_name: DEFINED_NAME_WITH_ATTRS_PATTERN
+            .get_or_init(|| Regex::new(r"(?s)<definedName\b([^>]*)>(.*?)</definedName>").unwrap()),
+        reference_attribute: reference_attribute_pattern(),
+        sequence_reference_attribute: SQREF_WITH_TAG_PATTERN.get_or_init(|| {
+            Regex::new(
+                r#"(?s)<(?:[A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)\b[^>]*\bsqref="([^"]+)"[^>]*>"#,
+            )
+            .unwrap()
+        }),
+        reference_token: REFERENCE_TOKEN_PATTERN.get_or_init(|| {
+            Regex::new(
+                r"(?i)(?:'[^']+'!|[A-Z_][A-Z0-9_.\-]*!)?\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6}(?::\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6})?",
+            )
+            .unwrap()
+        }),
+    }
+}
+
+fn unsafe_function_pattern() -> &'static Regex {
+    UNSAFE_FUNCTIONS.get_or_init(|| Regex::new(r"(?i)\b(INDIRECT|OFFSET|ADDRESS|CELL)\b").unwrap())
+}
+
+fn formula_pattern() -> &'static Regex {
+    FORMULA_PATTERN.get_or_init(|| Regex::new(r"(?s)<f[^>]*>(.*?)</f>").unwrap())
+}
+
+fn reference_attribute_pattern() -> &'static Regex {
+    REF_PATTERN.get_or_init(|| {
+        Regex::new(r#"(?s)<(?:[A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)\b[^>]*\bref="([^"]+)"[^>]*>"#)
+            .unwrap()
+    })
 }
 
 pub fn scan_for_references(
     buffers: &[&[u8]],
     protected_cells: &mut ProtectedCellRefs,
 ) -> ScanResult {
-    let unsafe_re = UNSAFE_FUNCTIONS
-        .get_or_init(|| Regex::new(r"(?i)\b(INDIRECT|OFFSET|ADDRESS|CELL)\b").unwrap());
-    let formula_re = FORMULA_PATTERN.get_or_init(|| Regex::new(r"(?s)<f[^>]*>(.*?)</f>").unwrap());
-    let defined_name_re = DEFINED_NAME_PATTERN
-        .get_or_init(|| Regex::new(r"(?s)<definedName\b[^>]*>(.*?)</definedName>").unwrap());
-    let ref_re = REF_PATTERN.get_or_init(|| {
-        Regex::new(r#"(?s)<(?:[A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)\b[^>]*\bref="([^"]+)"[^>]*>"#)
-            .unwrap()
-    });
-    let sqref_re = SQREF_PATTERN.get_or_init(|| Regex::new(r#"sqref="([^"]+)""#).unwrap());
+    let patterns = flat_scan_patterns();
 
-    // Matched A1, $A$1, etc.
-    let coord_re = COORD_PATTERN.get_or_init(|| {
-        Regex::new(r"\$([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})|([A-Za-z]{1,3})\$?([1-9][0-9]{0,6})")
-            .unwrap()
-    });
-
-    for &buf in buffers {
-        // 1. Check for unsafe functions anywhere in formulas
-        for caps in formula_re.captures_iter(buf) {
-            let formula = caps.get(1).unwrap().as_bytes();
-            if let Some(m) = unsafe_re.find(formula) {
-                let func = String::from_utf8_lossy(m.as_bytes()).to_string();
-                return ScanResult::Unsafe(func);
-            }
-            extract_coordinates(formula, protected_cells, &coord_re);
-        }
-
-        // 2. Check defined names
-        for caps in defined_name_re.captures_iter(buf) {
-            let content = caps.get(1).unwrap().as_bytes();
-            if let Some(m) = unsafe_re.find(content) {
-                let func = String::from_utf8_lossy(m.as_bytes()).to_string();
-                return ScanResult::Unsafe(func);
-            }
-            extract_coordinates(content, protected_cells, &coord_re);
-        }
-
-        // 3. Extract simple ranges from attributes like ref="A1:B10"
-        for caps in ref_re.captures_iter(buf) {
-            let tag_name = caps.get(1).unwrap().as_bytes();
-
-            if ref_tag_should_be_ignored(tag_name) {
-                continue;
-            }
-
-            let content = caps.get(2).unwrap().as_bytes();
-            extract_range(content, protected_cells);
-        }
-
-        for caps in sqref_re.captures_iter(buf) {
-            let content = caps.get(1).unwrap().as_bytes();
-            extract_range(content, protected_cells);
+    for &buffer in buffers {
+        if let Some(function) = scan_flat_buffer(buffer, protected_cells, &patterns) {
+            return ScanResult::Unsafe(function);
         }
     }
 
     ScanResult::Safe
+}
+
+fn scan_flat_buffer(
+    buffer: &[u8],
+    protected_cells: &mut ProtectedCellRefs,
+    patterns: &FlatScanPatterns,
+) -> Option<String> {
+    if let Some(function) = scan_flat_formulas(buffer, protected_cells, patterns) {
+        return Some(function);
+    }
+    if let Some(function) = scan_flat_defined_names(buffer, protected_cells, patterns) {
+        return Some(function);
+    }
+    scan_flat_reference_attributes(buffer, protected_cells, patterns);
+    None
+}
+
+fn scan_flat_formulas(
+    buffer: &[u8],
+    protected_cells: &mut ProtectedCellRefs,
+    patterns: &FlatScanPatterns,
+) -> Option<String> {
+    for captures in patterns.formula.captures_iter(buffer) {
+        let formula = captures.get(1).unwrap().as_bytes();
+        if let Some(function) = unsafe_function_name(formula, patterns.unsafe_function) {
+            return Some(function);
+        }
+        extract_coordinates(formula, protected_cells, patterns.coordinate);
+    }
+    None
+}
+
+fn scan_flat_defined_names(
+    buffer: &[u8],
+    protected_cells: &mut ProtectedCellRefs,
+    patterns: &FlatScanPatterns,
+) -> Option<String> {
+    for captures in patterns.defined_name.captures_iter(buffer) {
+        let content = captures.get(1).unwrap().as_bytes();
+        if let Some(function) = unsafe_function_name(content, patterns.unsafe_function) {
+            return Some(function);
+        }
+        extract_coordinates(content, protected_cells, patterns.coordinate);
+    }
+    None
+}
+
+fn scan_flat_reference_attributes(
+    buffer: &[u8],
+    protected_cells: &mut ProtectedCellRefs,
+    patterns: &FlatScanPatterns,
+) {
+    for captures in patterns.reference_attribute.captures_iter(buffer) {
+        let tag_name = captures.get(1).unwrap().as_bytes();
+        if !ref_tag_should_be_ignored(tag_name) {
+            extract_range(captures.get(2).unwrap().as_bytes(), protected_cells);
+        }
+    }
+
+    for captures in patterns.sequence_reference_attribute.captures_iter(buffer) {
+        extract_range(captures.get(1).unwrap().as_bytes(), protected_cells);
+    }
 }
 
 pub fn scan_for_references_by_sheet(
@@ -94,109 +180,168 @@ pub fn scan_for_references_by_sheet(
     sheet_name_to_file_seed: Option<&HashMap<String, String>>,
     sheet_files_by_index: Option<&[String]>,
 ) -> ScanResult {
-    let unsafe_re = UNSAFE_FUNCTIONS
-        .get_or_init(|| Regex::new(r"(?i)\b(INDIRECT|OFFSET|ADDRESS|CELL)\b").unwrap());
-    let formula_re = FORMULA_PATTERN.get_or_init(|| Regex::new(r"(?s)<f[^>]*>(.*?)</f>").unwrap());
-    let defined_name_with_attrs_re = DEFINED_NAME_WITH_ATTRS_PATTERN
-        .get_or_init(|| Regex::new(r"(?s)<definedName\b([^>]*)>(.*?)</definedName>").unwrap());
-    let ref_re = REF_PATTERN.get_or_init(|| {
-        Regex::new(r#"(?s)<(?:[A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)\b[^>]*\bref="([^"]+)"[^>]*>"#)
-            .unwrap()
-    });
-    let sqref_with_tag_re = SQREF_WITH_TAG_PATTERN.get_or_init(|| {
-        Regex::new(r#"(?s)<(?:[A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)\b[^>]*\bsqref="([^"]+)"[^>]*>"#)
-            .unwrap()
-    });
-    let reference_token_re = REFERENCE_TOKEN_PATTERN.get_or_init(|| {
-        Regex::new(
-            r"(?i)(?:'[^']+'!|[A-Z_][A-Z0-9_.\-]*!)?\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6}(?::\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6})?",
-        )
-        .unwrap()
-    });
-
-    let mut sheet_name_to_file: HashMap<String, String> = HashMap::new();
-
-    if let Some(seed) = sheet_name_to_file_seed {
-        for (name, file) in seed {
-            sheet_name_to_file.insert(name.clone(), file.clone());
-        }
-    }
+    let patterns = sheet_scan_patterns();
+    let sheet_name_to_file = build_sheet_name_to_file_map(buffers, sheet_name_to_file_seed);
 
     for buffer in buffers {
-        sheet_name_to_file.insert(buffer.sheet_name.to_string(), buffer.sheet_file.to_string());
-    }
-
-    for buffer in buffers {
-        let current_sheet = buffer.sheet_file;
-        let xml = buffer.xml;
-
-        for caps in formula_re.captures_iter(xml) {
-            let formula = caps.get(1).unwrap().as_bytes();
-            if let Some(m) = unsafe_re.find(formula) {
-                let func = String::from_utf8_lossy(m.as_bytes()).to_string();
-                return ScanResult::Unsafe(func);
-            }
-            extract_tokens_for_sheet(
-                formula,
-                Some(current_sheet),
-                &sheet_name_to_file,
-                protected_refs,
-                reference_token_re,
-            );
-        }
-
-        for caps in defined_name_with_attrs_re.captures_iter(xml) {
-            let attrs = caps.get(1).map(|m| m.as_bytes()).unwrap_or_default();
-            let content = caps.get(2).unwrap().as_bytes();
-            if defined_name_should_be_ignored(attrs) {
-                continue;
-            }
-
-            if let Some(m) = unsafe_re.find(content) {
-                let func = String::from_utf8_lossy(m.as_bytes()).to_string();
-                return ScanResult::Unsafe(func);
-            }
-
-            let default_sheet_for_unprefixed = if current_sheet == "xl/workbook.xml" {
-                extract_local_sheet_id(attrs)
-                    .and_then(|index| sheet_files_by_index.and_then(|order| order.get(index)))
-                    .map(String::as_str)
-            } else {
-                Some(current_sheet)
-            };
-
-            extract_tokens_for_sheet(
-                content,
-                default_sheet_for_unprefixed,
-                &sheet_name_to_file,
-                protected_refs,
-                reference_token_re,
-            );
-        }
-
-        for caps in ref_re.captures_iter(xml) {
-            let tag_name = caps.get(1).unwrap().as_bytes();
-
-            if ref_tag_should_be_ignored(tag_name) {
-                continue;
-            }
-
-            let content = caps.get(2).unwrap().as_bytes();
-            extract_range_for_sheet(content, current_sheet, &sheet_name_to_file, protected_refs);
-        }
-
-        for caps in sqref_with_tag_re.captures_iter(xml) {
-            let tag_name = caps.get(1).unwrap().as_bytes();
-            if tag_name.eq_ignore_ascii_case(b"selection") {
-                continue;
-            }
-
-            let content = caps.get(2).unwrap().as_bytes();
-            extract_range_for_sheet(content, current_sheet, &sheet_name_to_file, protected_refs);
+        if let Some(function) = scan_sheet_buffer(
+            buffer,
+            protected_refs,
+            &sheet_name_to_file,
+            sheet_files_by_index,
+            &patterns,
+        ) {
+            return ScanResult::Unsafe(function);
         }
     }
 
     ScanResult::Safe
+}
+
+fn build_sheet_name_to_file_map(
+    buffers: &[SheetScanBuffer<'_>],
+    seed: Option<&HashMap<String, String>>,
+) -> HashMap<String, String> {
+    let mut map = seed.cloned().unwrap_or_default();
+    map.extend(
+        buffers
+            .iter()
+            .map(|buffer| (buffer.sheet_name.to_string(), buffer.sheet_file.to_string())),
+    );
+    map
+}
+
+fn scan_sheet_buffer(
+    buffer: &SheetScanBuffer<'_>,
+    protected_refs: &mut ProtectedWorkbookRefs,
+    sheet_name_to_file: &HashMap<String, String>,
+    sheet_files_by_index: Option<&[String]>,
+    patterns: &SheetScanPatterns,
+) -> Option<String> {
+    if let Some(function) =
+        scan_sheet_formulas(buffer, protected_refs, sheet_name_to_file, patterns)
+    {
+        return Some(function);
+    }
+    if let Some(function) = scan_sheet_defined_names(
+        buffer,
+        protected_refs,
+        sheet_name_to_file,
+        sheet_files_by_index,
+        patterns,
+    ) {
+        return Some(function);
+    }
+    scan_sheet_reference_attributes(buffer, protected_refs, sheet_name_to_file, patterns);
+    None
+}
+
+fn scan_sheet_formulas(
+    buffer: &SheetScanBuffer<'_>,
+    protected_refs: &mut ProtectedWorkbookRefs,
+    sheet_name_to_file: &HashMap<String, String>,
+    patterns: &SheetScanPatterns,
+) -> Option<String> {
+    for captures in patterns.formula.captures_iter(buffer.xml) {
+        let formula = captures.get(1).unwrap().as_bytes();
+        if let Some(function) = unsafe_function_name(formula, patterns.unsafe_function) {
+            return Some(function);
+        }
+        extract_tokens_for_sheet(
+            formula,
+            Some(buffer.sheet_file),
+            sheet_name_to_file,
+            protected_refs,
+            patterns.reference_token,
+        );
+    }
+    None
+}
+
+fn scan_sheet_defined_names(
+    buffer: &SheetScanBuffer<'_>,
+    protected_refs: &mut ProtectedWorkbookRefs,
+    sheet_name_to_file: &HashMap<String, String>,
+    sheet_files_by_index: Option<&[String]>,
+    patterns: &SheetScanPatterns,
+) -> Option<String> {
+    for captures in patterns.defined_name.captures_iter(buffer.xml) {
+        let attrs = captures
+            .get(1)
+            .map(|capture| capture.as_bytes())
+            .unwrap_or_default();
+        if defined_name_should_be_ignored(attrs) {
+            continue;
+        }
+
+        let content = captures.get(2).unwrap().as_bytes();
+        if let Some(function) = unsafe_function_name(content, patterns.unsafe_function) {
+            return Some(function);
+        }
+
+        extract_tokens_for_sheet(
+            content,
+            default_defined_name_sheet(buffer.sheet_file, attrs, sheet_files_by_index),
+            sheet_name_to_file,
+            protected_refs,
+            patterns.reference_token,
+        );
+    }
+    None
+}
+
+fn default_defined_name_sheet<'a>(
+    current_sheet: &'a str,
+    attrs: &[u8],
+    sheet_files_by_index: Option<&'a [String]>,
+) -> Option<&'a str> {
+    if current_sheet != "xl/workbook.xml" {
+        return Some(current_sheet);
+    }
+
+    extract_local_sheet_id(attrs)
+        .and_then(|index| sheet_files_by_index.and_then(|order| order.get(index)))
+        .map(String::as_str)
+}
+
+fn scan_sheet_reference_attributes(
+    buffer: &SheetScanBuffer<'_>,
+    protected_refs: &mut ProtectedWorkbookRefs,
+    sheet_name_to_file: &HashMap<String, String>,
+    patterns: &SheetScanPatterns,
+) {
+    for captures in patterns.reference_attribute.captures_iter(buffer.xml) {
+        let tag_name = captures.get(1).unwrap().as_bytes();
+        if !ref_tag_should_be_ignored(tag_name) {
+            extract_range_for_sheet(
+                captures.get(2).unwrap().as_bytes(),
+                buffer.sheet_file,
+                sheet_name_to_file,
+                protected_refs,
+            );
+        }
+    }
+
+    for captures in patterns
+        .sequence_reference_attribute
+        .captures_iter(buffer.xml)
+    {
+        let tag_name = captures.get(1).unwrap().as_bytes();
+        if !tag_name.eq_ignore_ascii_case(b"selection") {
+            extract_range_for_sheet(
+                captures.get(2).unwrap().as_bytes(),
+                buffer.sheet_file,
+                sheet_name_to_file,
+                protected_refs,
+            );
+        }
+    }
+}
+
+fn unsafe_function_name(text: &[u8], pattern: &Regex) -> Option<String> {
+    pattern
+        .find(text)
+        .map(|matched| String::from_utf8_lossy(matched.as_bytes()).to_string())
 }
 
 fn extract_coordinates(text: &[u8], protected: &mut ProtectedCellRefs, coord_re: &Regex) {
@@ -279,44 +424,16 @@ fn extract_range_for_sheet(
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ParsedReferenceToken {
+    Single(ParsedRefPart),
+    Range(ParsedRefPart, ParsedRefPart),
+}
+
 fn extract_reference_token_bytes(token: &[u8], protected: &mut ProtectedCellRefs) {
-    let (_, raw_ref) = split_sheet_prefix_bytes(trim_ascii(token));
-
-    if let Some(colon_idx) = crate::xml::find_bytes(raw_ref, b":") {
-        let left = &raw_ref[..colon_idx];
-        let right = &raw_ref[colon_idx + 1..];
-
-        let Some(left_ref) = parse_ref_part_bytes(left) else {
-            return;
-        };
-        let Some(right_ref) = parse_ref_part_bytes(right) else {
-            return;
-        };
-
-        let col1 = left_ref.col.unwrap_or(1);
-        let col2 = right_ref.col.unwrap_or(MAX_EXCEL_COL);
-        let row1 = left_ref.row.unwrap_or(1);
-        let row2 = right_ref.row.unwrap_or(MAX_EXCEL_ROW);
-
-        protected.insert_range(col1, row1, col2, row2);
-        return;
-    }
-
-    let Some(single_ref) = parse_ref_part_bytes(raw_ref) else {
-        return;
-    };
-
-    match (single_ref.col, single_ref.row) {
-        (Some(col), Some(row)) => {
-            protected.insert_cell(col, row);
-        }
-        (Some(col), None) => {
-            protected.insert_range(col, 1, col, MAX_EXCEL_ROW);
-        }
-        (None, Some(row)) => {
-            protected.insert_range(1, row, MAX_EXCEL_COL, row);
-        }
-        (None, None) => {}
+    let (_, raw_reference) = split_sheet_prefix_bytes(trim_ascii(token));
+    if let Some(reference) = parse_reference_token(raw_reference) {
+        insert_parsed_reference(reference, protected);
     }
 }
 
@@ -326,56 +443,57 @@ fn extract_reference_token_for_sheet_bytes(
     sheet_name_to_file: &HashMap<String, String>,
     protected: &mut ProtectedWorkbookRefs,
 ) {
-    let (sheet_opt, raw_ref) = split_sheet_prefix_bytes(trim_ascii(token));
-
-    let target_sheet = if let Some(raw_sheet) = sheet_opt {
-        resolve_sheet_name(raw_sheet, sheet_name_to_file)
-    } else {
-        default_sheet_for_unprefixed
+    let (sheet_prefix, raw_reference) = split_sheet_prefix_bytes(trim_ascii(token));
+    let Some(reference) = parse_reference_token(raw_reference) else {
+        return;
     };
 
-    if let Some(colon_idx) = crate::xml::find_bytes(raw_ref, b":") {
-        let left = &raw_ref[..colon_idx];
-        let right = &raw_ref[colon_idx + 1..];
+    let target_sheet = match sheet_prefix {
+        Some(sheet) => resolve_sheet_name(sheet, sheet_name_to_file),
+        None => default_sheet_for_unprefixed,
+    };
+    insert_parsed_reference(reference, refs_for_target_sheet(target_sheet, protected));
+}
 
-        let Some(left_ref) = parse_ref_part_bytes(left) else {
-            return;
-        };
-        let Some(right_ref) = parse_ref_part_bytes(right) else {
-            return;
-        };
+fn parse_reference_token(raw_reference: &[u8]) -> Option<ParsedReferenceToken> {
+    let Some(colon_index) = crate::xml::find_bytes(raw_reference, b":") else {
+        return parse_ref_part_bytes(raw_reference).map(ParsedReferenceToken::Single);
+    };
 
-        let col1 = left_ref.col.unwrap_or(1);
-        let col2 = right_ref.col.unwrap_or(MAX_EXCEL_COL);
-        let row1 = left_ref.row.unwrap_or(1);
-        let row2 = right_ref.row.unwrap_or(MAX_EXCEL_ROW);
+    let start = parse_ref_part_bytes(&raw_reference[..colon_index])?;
+    let end = parse_ref_part_bytes(&raw_reference[colon_index + 1..])?;
+    Some(ParsedReferenceToken::Range(start, end))
+}
 
-        if let Some(sheet) = target_sheet {
-            protected
-                .refs_for_sheet_mut(sheet)
-                .insert_range(col1, row1, col2, row2);
-        } else {
-            protected
-                .global_or_unknown
-                .insert_range(col1, row1, col2, row2);
-        }
-    } else {
-        let Some(single_ref) = parse_ref_part_bytes(raw_ref) else {
-            return;
-        };
+fn refs_for_target_sheet<'a>(
+    target_sheet: Option<&str>,
+    protected: &'a mut ProtectedWorkbookRefs,
+) -> &'a mut ProtectedCellRefs {
+    match target_sheet {
+        Some(sheet) => protected.refs_for_sheet_mut(sheet),
+        None => &mut protected.global_or_unknown,
+    }
+}
 
-        let refs = if let Some(sheet) = target_sheet {
-            protected.refs_for_sheet_mut(sheet)
-        } else {
-            &mut protected.global_or_unknown
-        };
+fn insert_parsed_reference(reference: ParsedReferenceToken, protected: &mut ProtectedCellRefs) {
+    match reference {
+        ParsedReferenceToken::Single(reference) => insert_single_reference(reference, protected),
+        ParsedReferenceToken::Range(start, end) => protected.insert_range(
+            start.col.unwrap_or(1),
+            start.row.unwrap_or(1),
+            end.col.unwrap_or(MAX_EXCEL_COL),
+            end.row.unwrap_or(MAX_EXCEL_ROW),
+        ),
+    }
+}
 
-        match (single_ref.col, single_ref.row) {
-            (Some(col), Some(row)) => refs.insert_cell(col, row),
-            (Some(col), None) => refs.insert_range(col, 1, col, MAX_EXCEL_ROW),
-            (None, Some(row)) => refs.insert_range(1, row, MAX_EXCEL_COL, row),
-            (None, None) => {}
-        }
+#[inline]
+fn insert_single_reference(reference: ParsedRefPart, protected: &mut ProtectedCellRefs) {
+    match (reference.col, reference.row) {
+        (Some(col), Some(row)) => protected.insert_cell(col, row),
+        (Some(col), None) => protected.insert_range(col, 1, col, MAX_EXCEL_ROW),
+        (None, Some(row)) => protected.insert_range(1, row, MAX_EXCEL_COL, row),
+        (None, None) => {}
     }
 }
 
