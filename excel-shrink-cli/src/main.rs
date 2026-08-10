@@ -215,21 +215,33 @@ fn main() -> anyhow::Result<()> {
     let mut raw_args = std::env::args_os();
     let program = raw_args.next().unwrap_or_else(|| "excel-shrink".into());
     if raw_args.next().is_some_and(|arg| arg == "regression") {
-        let regression_tail: Vec<OsString> = raw_args.collect();
-        let console_log_level =
-            regression_console_log_level(&regression_tail).unwrap_or(LogLevel::Info);
-        let regression_args = std::iter::once(program).chain(regression_tail);
-        let _guard = init_logging(console_log_level, None)?;
-        return regression::run_from_args(regression_args);
+        return run_regression_command(program, raw_args.collect());
     }
 
-    let cli = Cli::parse();
+    run_cleanup_command(Cli::parse())
+}
+
+fn run_regression_command(program: OsString, args: Vec<OsString>) -> anyhow::Result<()> {
+    let console_log_level = regression_console_log_level(&args).unwrap_or(LogLevel::Info);
+    let regression_args = std::iter::once(program).chain(args);
+    let _guard = init_logging(console_log_level, None)?;
+    regression::run_from_args(regression_args)
+}
+
+fn run_cleanup_command(cli: Cli) -> anyhow::Result<()> {
+    set_working_directory(&cli)?;
+    let _guard = init_logging(cli.console_log_level, cli.file_log_level)?;
+    run_cleanup_pipeline(&cli)
+}
+
+fn set_working_directory(cli: &Cli) -> anyhow::Result<()> {
     if let Some(working_directory) = &cli.working_directory {
         std::env::set_current_dir(working_directory)?;
     }
+    Ok(())
+}
 
-    let _guard = init_logging(cli.console_log_level, cli.file_log_level)?;
-
+fn run_cleanup_pipeline(cli: &Cli) -> anyhow::Result<()> {
     let start = Instant::now();
     info!("Starting excel-shrink pipeline...");
 
@@ -240,7 +252,7 @@ fn main() -> anyhow::Result<()> {
     }
     info!(files_total = files.len(), "Found XLSX files");
 
-    pipeline::process_files(files, &cli)?;
+    pipeline::process_files(files, cli)?;
 
     info!("Script completed in {:.2?}", start.elapsed());
     Ok(())
@@ -319,33 +331,41 @@ fn init_logging(
 }
 
 fn gather_files(path: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-
-    if path.is_file() && is_real_xlsx_file(path) {
-        files.push(path.clone());
-    } else if path.is_dir() {
-        if recursive {
-            for entry in walkdir::WalkDir::new(path)
-                .into_iter()
-                .filter_map(|e| e.ok())
-            {
-                if is_real_xlsx_file(entry.path()) {
-                    files.push(entry.path().to_path_buf());
-                }
-            }
-        } else {
-            for entry in std::fs::read_dir(path)? {
-                let entry = entry?;
-                let entry_path = entry.path();
-
-                if is_real_xlsx_file(&entry_path) {
-                    files.push(entry_path);
-                }
-            }
-        }
+    if path.is_file() {
+        return Ok(is_real_xlsx_file(path)
+            .then(|| path.clone())
+            .into_iter()
+            .collect());
     }
 
-    Ok(files)
+    if !path.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    if recursive {
+        Ok(gather_files_recursively(path))
+    } else {
+        gather_files_in_directory(path)
+    }
+}
+
+fn gather_files_recursively(path: &std::path::Path) -> Vec<PathBuf> {
+    walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| is_real_xlsx_file(entry.path()))
+        .map(|entry| entry.path().to_path_buf())
+        .collect()
+}
+
+fn gather_files_in_directory(path: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
+    std::fs::read_dir(path)?
+        .filter_map(|entry| match entry {
+            Ok(entry) if is_real_xlsx_file(&entry.path()) => Some(Ok(entry.path())),
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect()
 }
 
 fn is_real_xlsx_file(path: &std::path::Path) -> bool {
