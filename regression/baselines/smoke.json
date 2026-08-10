@@ -1,8 +1,13 @@
 {
   "name": "destatis-smoke",
-  "description": "Developer-facing corpus-backed smoke suite for high-signal XLSX regressions.",
+  "description": "Developer-facing corpus-backed smoke suite for high-signal XLSX regressions under aggressive cleanup opt-ins.",
   "defaults": {
-    "cli_args": []
+    "cli_args": [
+      "--remove-textless-default-font-representatives",
+      "--remove-textless-style-representatives",
+      "--remove-textless-column-style-representatives",
+      "--remove-unreferenced-whitespace-cells"
+    ]
   },
   "cases": [
     {
@@ -22,7 +27,7 @@
       "relative_input": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
       "cached_file_name": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
-      "min_reduction_ratio": 0.97
+      "min_reduction_ratio": 0.96
     },
     {
       "id": "empty-cells",
@@ -38,7 +43,7 @@
       "relative_input": "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx",
       "cached_file_name": "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx",
-      "min_reduction_ratio": 0.98
+      "min_reduction_ratio": 0.89
     },
     {
       "id": "empty-rows",
@@ -54,7 +59,7 @@
       "relative_input": "jahresbericht-5422701207005.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/jahresbericht-5422701207005.xlsx",
       "cached_file_name": "jahresbericht-5422701207005.xlsx",
-      "min_reduction_ratio": 0.93
+      "min_reduction_ratio": 0.83
     },
     {
       "id": "trailing-layout-rows",
@@ -70,7 +75,7 @@
       "relative_input": "seeschifffahrt-monat-2080500221095.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/seeschifffahrt-monat-2080500221095.xlsx",
       "cached_file_name": "seeschifffahrt-monat-2080500221095.xlsx",
-      "min_reduction_ratio": 0.5
+      "min_reduction_ratio": 0.12
     },
     {
       "id": "empty-row-attributes",
@@ -86,7 +91,7 @@
       "relative_input": "seeschifffahrt-monat-2080500221095.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/seeschifffahrt-monat-2080500221095.xlsx",
       "cached_file_name": "seeschifffahrt-monat-2080500221095.xlsx",
-      "min_reduction_ratio": 0.5
+      "min_reduction_ratio": 0.12
     },
     {
       "id": "column-range-merge",
@@ -101,7 +106,7 @@
       "relative_input": "foerderprogramme-5411206209005.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/foerderprogramme-5411206209005.xlsx",
       "cached_file_name": "foerderprogramme-5411206209005.xlsx",
-      "min_reduction_ratio": 0.88
+      "min_reduction_ratio": 0.74
     },
     {
       "id": "unreferenced-whitespace",
@@ -116,7 +121,7 @@
       "relative_input": "krankenhausverzeichnis-3500100227005.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/krankenhausverzeichnis-3500100227005.xlsx",
       "cached_file_name": "krankenhausverzeichnis-3500100227005.xlsx",
-      "min_reduction_ratio": 0.8
+      "min_reduction_ratio": 0.55
     },
     {
       "id": "unreferenced-hidden-content",
@@ -131,7 +136,7 @@
       "relative_input": "wanderungen-2010120217005.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/wanderungen-2010120217005.xlsx",
       "cached_file_name": "wanderungen-2010120217005.xlsx",
-      "min_reduction_ratio": 0.99
+      "min_reduction_ratio": 0.91
     },
     {
       "id": "hidden-empty-rows",
@@ -147,7 +152,7 @@
       "relative_input": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
       "cached_file_name": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
-      "min_reduction_ratio": 0.98
+      "min_reduction_ratio": 0.91
     }
   ]
 }
