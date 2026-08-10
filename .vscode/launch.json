@@ -306,6 +306,79 @@
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_EXCEL_SCREENSHOT_CHECK": "1"
             }
+        },
+        {
+            "name": "Debug smoke visual profile matrix (pick case)",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "regression",
+                "smoke",
+                "--case-id",
+                "${input:corpusRegressionCaseId}",
+                "--all-visual-profile-checks",
+                "--corpus-root",
+                "${input:corpusRegressionCorpusRoot}",
+                "--console-log-level",
+                "${input:corpusRegressionConsoleLogLevel}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "sourceLanguages": [
+                "rust"
+            ],
+            "env": {
+                "RUST_BACKTRACE": "1"
+            }
+        },
+        {
+            "name": "Release smoke visual profile matrix (pick case)",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--release",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "regression",
+                "smoke",
+                "--case-id",
+                "${input:corpusRegressionCaseId}",
+                "--all-visual-profile-checks",
+                "--corpus-root",
+                "${input:corpusRegressionCorpusRoot}",
+                "--console-log-level",
+                "${input:corpusRegressionConsoleLogLevel}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "sourceLanguages": [
+                "rust"
+            ],
+            "env": {
+                "RUST_BACKTRACE": "1"
+            }
         }
     ],
     "inputs": [
