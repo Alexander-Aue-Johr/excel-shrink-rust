@@ -191,17 +191,22 @@ impl Drop for XlsxProgress {
         }
     }
 }
-type ProcessedSheetOk = (
-    CleanSheetParameters,
-    usize,
-    Vec<u8>,
-    Range<usize>,
-    CleanSheetMetrics,
-    Instant,
-    usize,
-);
-type ProcessedSheetErr = (CleanSheetParameters, usize);
-type ProcessedSheetResult = Result<ProcessedSheetOk, ProcessedSheetErr>;
+struct ProcessedSheet {
+    params: CleanSheetParameters,
+    zip_index: usize,
+    xml: Vec<u8>,
+    sheet_data_range: Range<usize>,
+    metrics: CleanSheetMetrics,
+    started: Instant,
+    original_size: usize,
+}
+
+struct FailedSheet {
+    params: CleanSheetParameters,
+    zip_index: usize,
+}
+
+type ProcessedSheetResult = Result<ProcessedSheet, FailedSheet>;
 
 #[derive(Debug, Clone)]
 struct SheetTask {
@@ -210,6 +215,119 @@ struct SheetTask {
     original_xml_size: usize,
 }
 
+struct ArchivePlan {
+    sheet_tasks: Vec<SheetTask>,
+    workbook_xml_for_scan: Option<Vec<u8>>,
+    workbook_rels_for_scan: Option<Vec<u8>>,
+    workbook_xml_for_calc_chain: Option<Vec<u8>>,
+    workbook_rels_for_calc_chain: Option<Vec<u8>>,
+    calc_chain_part: Option<(usize, CompressionMethod, Vec<u8>)>,
+}
+
+impl ArchivePlan {
+    fn new() -> Self {
+        Self {
+            sheet_tasks: Vec::new(),
+            workbook_xml_for_scan: None,
+            workbook_rels_for_scan: None,
+            workbook_xml_for_calc_chain: None,
+            workbook_rels_for_calc_chain: None,
+            calc_chain_part: None,
+        }
+    }
+}
+
+struct ReferenceValidation {
+    protected_refs: ProtectedWorkbookRefs,
+    safe_to_clean: bool,
+}
+
+#[derive(Clone, Copy)]
+struct AdvancedCleanupSelection {
+    remove_whitespace: bool,
+    remove_hidden_content: bool,
+}
+
+impl AdvancedCleanupSelection {
+    fn enabled(self) -> bool {
+        self.remove_whitespace || self.remove_hidden_content
+    }
+
+    fn config(self) -> Option<Arc<AdvancedCleanupConfig>> {
+        self.enabled().then(|| {
+            Arc::new(AdvancedCleanupConfig {
+                remove_unreferenced_whitespace: self.remove_whitespace,
+                remove_unreferenced_hidden_content: self.remove_hidden_content,
+            })
+        })
+    }
+}
+
+struct WorkbookPreparation {
+    patterns: WorkbookSpecificPatterns,
+    cleanup: CleanupSwitches,
+    collect_cleanup_stats: bool,
+    selected_sheets: HashSet<String>,
+}
+
+struct ArchivePlanningContext<'a> {
+    input: &'a Path,
+    input_display: &'a str,
+    cli: &'a Cli,
+    patterns: &'a WorkbookSpecificPatterns,
+    cleanup: &'a CleanupSwitches,
+    collect_cleanup_stats: bool,
+    selected_sheets: &'a HashSet<String>,
+    tx: &'a mpsc::Sender<WriteJob>,
+    advanced_cleanup_enabled: bool,
+    analysis_tx: Option<&'a mpsc::Sender<AnalysisCsvRow>>,
+    attribution_safe_analysis: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ArchiveEntryKind {
+    Sheet,
+    Workbook,
+    WorkbookRelationships,
+    CalculationChain,
+    CopyOriginal,
+}
+
+enum ArchiveEntryPlan {
+    Continue,
+    Abort,
+}
+
+struct SheetFinalizer<'a> {
+    tx: &'a mpsc::Sender<WriteJob>,
+    analysis_tx: Option<&'a mpsc::Sender<AnalysisCsvRow>>,
+    known_cells_by_sheet_file: &'a Mutex<HashMap<String, HashSet<String>>>,
+    protected_refs: &'a ProtectedWorkbookRefs,
+    safe_to_clean: bool,
+    attribution_safe_analysis: bool,
+    store_output: bool,
+    compression_level: i32,
+}
+
+struct InitialSheetProcessor {
+    source_zip_bytes: Arc<Vec<u8>>,
+    active_tasks: ActiveTasks,
+    chunk_size: usize,
+    disable_splitting: bool,
+    parallel_range_chunk_size: usize,
+}
+
+struct ActiveSheetGuard {
+    active_tasks: ActiveTasks,
+    task_key: String,
+}
+
+impl Drop for ActiveSheetGuard {
+    fn drop(&mut self) {
+        let mut guard = self.active_tasks.lock().unwrap();
+        guard.remove(&self.task_key);
+    }
+}
 #[derive(Debug, Clone)]
 struct AnalysisCsvRow {
     input_file: String,
@@ -707,112 +825,203 @@ fn spawn_xlsx_writer(
     workbook_permit: WorkbookPermit,
 ) {
     writer_pool.execute(move || {
-        let _workbook_permit = workbook_permit;
-        let writer_start = Instant::now();
-        let source_file = match File::open(&input_path) {
-            Ok(file) => file,
-            Err(e) => {
-                error!(event = "writer_source_open_failed", xlsx = %input_display, error = %e, "Failed to open source XLSX for raw copying");
-                return;
-            }
-        };
-
-        let mut source_archive = match ZipArchive::new(source_file) {
-            Ok(archive) => archive,
-            Err(e) => {
-                error!(event = "writer_source_zip_open_failed", xlsx = %input_display, error = %e, "Failed to open source XLSX as ZIP");
-                return;
-            }
-        };
-        if let Some(parent) = out_path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                error!(event = "writer_output_parent_create_failed", xlsx = %input_display, output = %out_path.display(), parent = %parent.display(), error = %e, "Failed to create output parent directory");
-                return;
-            }
-        }
-
-        let partial_out_path = partial_output_path(&out_path);
-        if partial_out_path.exists() {
-            if let Err(e) = std::fs::remove_file(&partial_out_path) {
-                error!(event = "writer_partial_output_remove_failed", xlsx = %input_display, output = %partial_out_path.display(), error = %e, "Failed to remove stale partial output XLSX");
-                return;
-            }
-        }
-
-        let out_file = match File::create(&partial_out_path) {
-            Ok(file) => file,
-            Err(e) => {
-                error!(event = "writer_output_create_failed", xlsx = %input_display, output = %partial_out_path.display(), error = %e, "Failed to create partial output XLSX");
-                return;
-            }
-        };
-
-        let buffered_out_file = BufWriter::with_capacity(16 * 1024 * 1024, out_file);
-        let mut zip_writer = ZipWriter::new(buffered_out_file);
-        let mut jobs_total: usize = 0;
-
-        loop {
-            let job = match rx.recv() {
-                Ok(job) => job,
-                Err(_) => break,
-            };
-            jobs_total += 1;
-
-            match job {
-                WriteJob::CopyOriginal { index, filename } => {
-                    match source_archive.by_index(index) {
-                        Ok(file) => {
-                            if let Err(e) = zip_writer.raw_copy_file(file) {
-                                error!(event = "zip_entry_raw_copy_failed", xlsx = %input_display, entry = %filename, error = %e, "Failed to raw-copy original ZIP entry");
-                            }
-                        }
-                        Err(e) => {
-                            error!(event = "zip_entry_lookup_failed", xlsx = %input_display, entry = %filename, index = index, error = %e, "Failed to find original ZIP entry by index");
-                        }
-                    }
-                }
-                WriteJob::CopyPrecompressed { filename, zip_bytes } => {
-                    if let Err(e) = raw_copy_single_entry_zip(&mut zip_writer, zip_bytes) {
-                        error!(event = "zip_entry_precompressed_copy_failed", xlsx = %input_display, entry = %filename, error = %e, "Copy precompressed failed");
-                    }
-                }
-            }
-        }
-
-        let mut buffered_out_file = match zip_writer.finish() {
-            Ok(writer) => writer,
-            Err(e) => {
-                error!(event = "file_finish_failed", xlsx = %input_display, output = %out_path.display(), error = %e, "Failed to finish output XLSX");
-                return;
-            }
-        };
-
-        if let Err(e) = buffered_out_file.flush() {
-            error!(event = "file_flush_failed", xlsx = %input_display, output = %partial_out_path.display(), error = %e, "Failed to flush partial output XLSX");
-            return;
-        }
-        drop(buffered_out_file);
-
-        if out_path.exists() {
-            if let Err(e) = std::fs::remove_file(&out_path) {
-                error!(event = "writer_existing_output_remove_failed", xlsx = %input_display, output = %out_path.display(), error = %e, "Failed to remove existing output XLSX before replacing it");
-                return;
-            }
-        }
-
-        if let Err(e) = std::fs::rename(&partial_out_path, &out_path) {
-            error!(event = "writer_output_rename_failed", xlsx = %input_display, partial_output = %partial_out_path.display(), output = %out_path.display(), error = %e, "Failed to rename partial output XLSX");
-            return;
-        }
-
-        progress.finish(
-            "file_written",
-            true,
-            writer_start.elapsed().as_millis(),
-            Some(jobs_total),
-            "Finished writing XLSX",
+        write_xlsx(
+            input_path,
+            out_path,
+            rx,
+            input_display,
+            &mut progress,
+            workbook_permit,
         );
     });
+}
+
+fn write_xlsx(
+    input_path: PathBuf,
+    out_path: PathBuf,
+    rx: mpsc::Receiver<WriteJob>,
+    input_display: String,
+    progress: &mut XlsxProgress,
+    workbook_permit: WorkbookPermit,
+) {
+    let _workbook_permit = workbook_permit;
+    let writer_start = Instant::now();
+    let Some(mut source_archive) = open_source_archive(&input_path, &input_display) else {
+        return;
+    };
+    let Some((partial_out_path, buffered_output)) =
+        prepare_partial_output(&out_path, &input_display)
+    else {
+        return;
+    };
+
+    let mut zip_writer = ZipWriter::new(buffered_output);
+    let jobs_total = copy_write_jobs(rx, &mut source_archive, &mut zip_writer, &input_display);
+    if !finish_output_archive(zip_writer, &partial_out_path, &out_path, &input_display) {
+        return;
+    }
+
+    progress.finish(
+        "file_written",
+        true,
+        writer_start.elapsed().as_millis(),
+        Some(jobs_total),
+        "Finished writing XLSX",
+    );
+}
+
+fn open_source_archive(input_path: &Path, input_display: &str) -> Option<ZipArchive<File>> {
+    let source_file = match File::open(input_path) {
+        Ok(file) => file,
+        Err(error) => {
+            error!(event = "writer_source_open_failed", xlsx = %input_display, error = %error, "Failed to open source XLSX for raw copying");
+            return None;
+        }
+    };
+
+    match ZipArchive::new(source_file) {
+        Ok(archive) => Some(archive),
+        Err(error) => {
+            error!(event = "writer_source_zip_open_failed", xlsx = %input_display, error = %error, "Failed to open source XLSX as ZIP");
+            None
+        }
+    }
+}
+
+fn prepare_partial_output(
+    out_path: &Path,
+    input_display: &str,
+) -> Option<(PathBuf, BufWriter<File>)> {
+    if !create_output_parent(out_path, input_display) {
+        return None;
+    }
+    let partial_out_path = partial_output_path(out_path);
+    if !remove_stale_partial_output(&partial_out_path, input_display) {
+        return None;
+    }
+
+    let output_file = match File::create(&partial_out_path) {
+        Ok(file) => file,
+        Err(error) => {
+            error!(event = "writer_output_create_failed", xlsx = %input_display, output = %partial_out_path.display(), error = %error, "Failed to create partial output XLSX");
+            return None;
+        }
+    };
+    Some((
+        partial_out_path,
+        BufWriter::with_capacity(16 * 1024 * 1024, output_file),
+    ))
+}
+
+fn create_output_parent(out_path: &Path, input_display: &str) -> bool {
+    let Some(parent) = out_path.parent() else {
+        return true;
+    };
+    if let Err(error) = std::fs::create_dir_all(parent) {
+        error!(event = "writer_output_parent_create_failed", xlsx = %input_display, output = %out_path.display(), parent = %parent.display(), error = %error, "Failed to create output parent directory");
+        return false;
+    }
+    true
+}
+
+fn remove_stale_partial_output(partial_out_path: &Path, input_display: &str) -> bool {
+    if !partial_out_path.exists() {
+        return true;
+    }
+    if let Err(error) = std::fs::remove_file(partial_out_path) {
+        error!(event = "writer_partial_output_remove_failed", xlsx = %input_display, output = %partial_out_path.display(), error = %error, "Failed to remove stale partial output XLSX");
+        return false;
+    }
+    true
+}
+
+fn copy_write_jobs(
+    rx: mpsc::Receiver<WriteJob>,
+    source_archive: &mut ZipArchive<File>,
+    zip_writer: &mut ZipWriter<BufWriter<File>>,
+    input_display: &str,
+) -> usize {
+    let mut jobs_total = 0;
+    while let Ok(job) = rx.recv() {
+        jobs_total += 1;
+        copy_write_job(job, source_archive, zip_writer, input_display);
+    }
+    jobs_total
+}
+
+fn copy_write_job(
+    job: WriteJob,
+    source_archive: &mut ZipArchive<File>,
+    zip_writer: &mut ZipWriter<BufWriter<File>>,
+    input_display: &str,
+) {
+    match job {
+        WriteJob::CopyOriginal { index, filename } => {
+            copy_original_entry(index, &filename, source_archive, zip_writer, input_display)
+        }
+        WriteJob::CopyPrecompressed {
+            filename,
+            zip_bytes,
+        } => {
+            if let Err(error) = raw_copy_single_entry_zip(zip_writer, zip_bytes) {
+                error!(event = "zip_entry_precompressed_copy_failed", xlsx = %input_display, entry = %filename, error = %error, "Copy precompressed failed");
+            }
+        }
+    }
+}
+
+fn copy_original_entry(
+    index: usize,
+    filename: &str,
+    source_archive: &mut ZipArchive<File>,
+    zip_writer: &mut ZipWriter<BufWriter<File>>,
+    input_display: &str,
+) {
+    let file = match source_archive.by_index(index) {
+        Ok(file) => file,
+        Err(error) => {
+            error!(event = "zip_entry_lookup_failed", xlsx = %input_display, entry = %filename, index, error = %error, "Failed to find original ZIP entry by index");
+            return;
+        }
+    };
+    if let Err(error) = zip_writer.raw_copy_file(file) {
+        error!(event = "zip_entry_raw_copy_failed", xlsx = %input_display, entry = %filename, error = %error, "Failed to raw-copy original ZIP entry");
+    }
+}
+
+fn finish_output_archive(
+    mut zip_writer: ZipWriter<BufWriter<File>>,
+    partial_out_path: &Path,
+    out_path: &Path,
+    input_display: &str,
+) -> bool {
+    let mut buffered_output = match zip_writer.finish() {
+        Ok(writer) => writer,
+        Err(error) => {
+            error!(event = "file_finish_failed", xlsx = %input_display, output = %out_path.display(), error = %error, "Failed to finish output XLSX");
+            return false;
+        }
+    };
+    if let Err(error) = buffered_output.flush() {
+        error!(event = "file_flush_failed", xlsx = %input_display, output = %partial_out_path.display(), error = %error, "Failed to flush partial output XLSX");
+        return false;
+    }
+    drop(buffered_output);
+    replace_output_file(partial_out_path, out_path, input_display)
+}
+
+fn replace_output_file(partial_out_path: &Path, out_path: &Path, input_display: &str) -> bool {
+    if out_path.exists() {
+        if let Err(error) = std::fs::remove_file(out_path) {
+            error!(event = "writer_existing_output_remove_failed", xlsx = %input_display, output = %out_path.display(), error = %error, "Failed to remove existing output XLSX before replacing it");
+            return false;
+        }
+    }
+    if let Err(error) = std::fs::rename(partial_out_path, out_path) {
+        error!(event = "writer_output_rename_failed", xlsx = %input_display, partial_output = %partial_out_path.display(), output = %out_path.display(), error = %error, "Failed to rename partial output XLSX");
+        return false;
+    }
+    true
 }
 
 fn partial_output_path(out_path: &Path) -> PathBuf {
@@ -836,13 +1045,7 @@ fn apply_deferred_candidate_cleanup(
     sheet_file: &str,
     stats: &mut CleanupStats,
 ) -> (Vec<u8>, HashSet<u32>) {
-    let mut safe_refs = HashMap::new();
-    for cand in candidates {
-        if !protected_refs.contains(sheet_file, cand.col, cand.row) {
-            safe_refs.insert((cand.col, cand.row), cand.cause);
-        }
-    }
-
+    let safe_refs = collect_safe_candidate_causes(candidates, protected_refs, sheet_file);
     if safe_refs.is_empty() {
         return (xml, HashSet::new());
     }
@@ -860,41 +1063,16 @@ fn apply_deferred_candidate_cleanup(
             continue;
         }
 
-        let Some(tag_end) = find_byte_from(&xml, b'>', cell_start) else {
+        let Some(cell) = parse_cell_slice(&xml, cell_start) else {
             break;
         };
 
-        let attr_start = cell_start + b"<c".len();
-        let self_closing = tag_end > cell_start && xml[tag_end - 1] == b'/';
-        let attr_end = if self_closing { tag_end - 1 } else { tag_end };
-        let attr = &xml[attr_start..attr_end];
-
-        let cell_end = if self_closing {
-            tag_end + 1
-        } else {
-            let content_start = tag_end + 1;
-            let Some(close_rel) = find_bytes(&xml[content_start..], b"</c>") else {
-                break;
-            };
-            content_start + close_rel + b"</c>".len()
-        };
-
-        out.extend_from_slice(&xml[pos..cell_start]);
-        let raw = &xml[cell_start..cell_end];
-        let replacement = extract_xml_attr_value(attr, b"r")
-            .and_then(parse_cell_reference)
-            .and_then(|reference| safe_refs.get(&reference).map(|cause| (reference, *cause)))
-            .map(|((_col, row), cause)| {
-                affected_rows.insert(row);
-                if cause == CleanupCause::UnreferencedWhitespaceCells {
-                    let cleaned = generate_self_closing_cell_xml(attr);
-                    stats.record_delta(cause, raw.len(), cleaned.len());
-                    cleaned
-                } else {
-                    stats.record_removed(cause, raw.len());
-                    Vec::new()
-                }
-            });
+        out.extend_from_slice(&xml[pos..cell.start]);
+        let raw = &xml[cell.start..cell.end];
+        let cell_end = cell.end;
+        let attributes = &xml[cell.attributes];
+        let replacement =
+            candidate_cell_replacement(raw, attributes, &safe_refs, &mut affected_rows, stats);
 
         if let Some(replacement) = replacement {
             out.extend_from_slice(&replacement);
@@ -985,6 +1163,75 @@ fn generate_self_closing_cell_xml(cell_attr: &[u8]) -> Vec<u8> {
     out
 }
 
+struct CellSlice {
+    start: usize,
+    end: usize,
+    attributes: Range<usize>,
+}
+
+fn collect_safe_candidate_causes(
+    candidates: &[CleanupCandidate],
+    protected_refs: &ProtectedWorkbookRefs,
+    sheet_file: &str,
+) -> HashMap<(u32, u32), CleanupCause> {
+    candidates
+        .iter()
+        .filter(|candidate| !protected_refs.contains(sheet_file, candidate.col, candidate.row))
+        .map(|candidate| ((candidate.col, candidate.row), candidate.cause))
+        .collect()
+}
+
+fn parse_cell_slice(xml: &[u8], cell_start: usize) -> Option<CellSlice> {
+    let tag_end = find_byte_from(xml, b'>', cell_start)?;
+    let self_closing = tag_end > cell_start && xml[tag_end - 1] == b'/';
+    let attributes = cell_start + b"<c".len()..if self_closing { tag_end - 1 } else { tag_end };
+    let end = find_cell_end(xml, tag_end, self_closing)?;
+    Some(CellSlice {
+        start: cell_start,
+        end,
+        attributes,
+    })
+}
+
+#[inline]
+fn find_cell_end(xml: &[u8], tag_end: usize, self_closing: bool) -> Option<usize> {
+    if self_closing {
+        return Some(tag_end + 1);
+    }
+    let content_start = tag_end + 1;
+    let close = find_bytes(&xml[content_start..], b"</c>")?;
+    Some(content_start + close + b"</c>".len())
+}
+
+fn candidate_cell_replacement(
+    raw: &[u8],
+    attributes: &[u8],
+    safe_refs: &HashMap<(u32, u32), CleanupCause>,
+    affected_rows: &mut HashSet<u32>,
+    stats: &mut CleanupStats,
+) -> Option<Vec<u8>> {
+    let reference = extract_xml_attr_value(attributes, b"r").and_then(parse_cell_reference)?;
+    let cause = *safe_refs.get(&reference)?;
+    affected_rows.insert(reference.1);
+    Some(replacement_for_cleanup_cause(raw, attributes, cause, stats))
+}
+
+fn replacement_for_cleanup_cause(
+    raw: &[u8],
+    attributes: &[u8],
+    cause: CleanupCause,
+    stats: &mut CleanupStats,
+) -> Vec<u8> {
+    if cause == CleanupCause::UnreferencedWhitespaceCells {
+        let cleaned = generate_self_closing_cell_xml(attributes);
+        stats.record_delta(cause, raw.len(), cleaned.len());
+        return cleaned;
+    }
+
+    stats.record_removed(cause, raw.len());
+    Vec::new()
+}
+
 fn parse_cell_reference(reference: &[u8]) -> Option<(u32, u32)> {
     let split = reference
         .iter()
@@ -1006,838 +1253,1290 @@ fn parse_cell_reference(reference: &[u8]) -> Option<(u32, u32)> {
     ))
 }
 
-pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()> {
-    if !cli.output.exists() {
-        std::fs::create_dir_all(&cli.output)?;
+fn advanced_cleanup_selection(cli: &Cli) -> AdvancedCleanupSelection {
+    AdvancedCleanupSelection {
+        remove_whitespace: cli.remove_unreferenced_whitespace_cells,
+        remove_hidden_content: !cli.keep_unreferenced_hidden_content_cells,
+    }
+}
+
+fn inactive_protection_policy(cli: &Cli) -> InactiveProtectionCellPolicy {
+    match cli.inactive_protection_cell_policy {
+        crate::InactiveProtectionCellPolicyArg::Remove => InactiveProtectionCellPolicy::Remove,
+        crate::InactiveProtectionCellPolicyArg::KeepInDataRange => {
+            InactiveProtectionCellPolicy::KeepInDataRange
+        }
+        crate::InactiveProtectionCellPolicyArg::KeepAll => InactiveProtectionCellPolicy::KeepAll,
+    }
+}
+
+fn read_input_file(input: &Path) -> Option<Arc<Vec<u8>>> {
+    let mut file = match File::open(input) {
+        Ok(file) => file,
+        Err(error) => {
+            error!("Failed to open file {:?}: {}", input, error);
+            return None;
+        }
+    };
+    let mut bytes = Vec::new();
+    if let Err(error) = file.read_to_end(&mut bytes) {
+        error!("Failed to read file {:?}: {}", input, error);
+        return None;
+    }
+    Some(Arc::new(bytes))
+}
+
+fn prepare_workbook<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    cli: &Cli,
+    advanced: AdvancedCleanupSelection,
+) -> WorkbookPreparation {
+    WorkbookPreparation {
+        patterns: load_workbook_patterns(archive, advanced.remove_whitespace),
+        cleanup: cleanup_switches(cli, advanced),
+        collect_cleanup_stats: cleanup_stats_enabled(cli),
+        selected_sheets: selected_sheet_targets(&cli.sheets),
+    }
+}
+
+fn load_workbook_patterns<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    include_whitespace_indices: bool,
+) -> WorkbookSpecificPatterns {
+    let all_xfs = read_zip_entry(archive, "xl/styles.xml")
+        .and_then(|styles| parse_xfs(&styles).ok())
+        .unwrap_or_default();
+    let whitespace_indices = include_whitespace_indices
+        .then(|| {
+            read_zip_entry(archive, "xl/sharedStrings.xml")
+                .map(|strings| find_whitespace_sst_indices(&strings))
+        })
+        .flatten();
+    WorkbookSpecificPatterns::new(all_xfs, whitespace_indices)
+}
+
+fn read_zip_entry<R: Read + Seek>(archive: &mut ZipArchive<R>, name: &str) -> Option<Vec<u8>> {
+    let mut file = archive.by_name(name).ok()?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
+    Some(bytes)
+}
+
+fn cleanup_switches(cli: &Cli, advanced: AdvancedCleanupSelection) -> CleanupSwitches {
+    let analysis_safe = attribution_safe_analysis(cli);
+    CleanupSwitches {
+        preprocess_empty_self_closing_cells: cli.preprocess_empty_cells,
+        unreferenced_whitespace_cells: advanced.remove_whitespace,
+        unreferenced_hidden_content_cells: advanced.remove_hidden_content,
+        sheetdata_range_tail_pruning: !analysis_safe && !cli.disable_tail_pruning,
+        trailing_layout_only_rows: !cli.disable_trailing_layout_only_rows,
+        extraneous_column_range_merge: !cli.disable_extraneous_column_merge,
+        column_tail_fill_merge: !cli.disable_column_tail_fill_merge,
+        keep_textless_default_font_representatives: !cli
+            .remove_textless_default_font_representatives,
+        keep_textless_style_representatives: !cli.remove_textless_style_representatives,
+        keep_textless_column_style_representatives: !cli
+            .remove_textless_column_style_representatives,
+        inactive_protection_cell_policy: inactive_protection_policy(cli),
+        ..CleanupSwitches::default()
+    }
+}
+
+impl InitialSheetProcessor {
+    fn process(
+        &self,
+        task: SheetTask,
+        advanced_cleanup: Option<Arc<AdvancedCleanupConfig>>,
+    ) -> ProcessedSheetResult {
+        let SheetTask {
+            mut params,
+            zip_index,
+            original_xml_size: planned_original_size,
+        } = task;
+        params.advanced_cleanup = advanced_cleanup;
+
+        let mut archive = match ZipArchive::new(Cursor::new(self.source_zip_bytes.as_slice())) {
+            Ok(archive) => archive,
+            Err(error) => {
+                error!(event = "sheet_source_zip_open_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %error, "Failed to reopen source XLSX for sheet processing");
+                return failed_sheet(params, zip_index);
+            }
+        };
+        let mut sheet_file = match archive.by_name(&params.zip_info_filename) {
+            Ok(file) => file,
+            Err(error) => {
+                error!(event = "sheet_lookup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %error, "Failed to find sheet XML in source XLSX");
+                return failed_sheet(params, zip_index);
+            }
+        };
+        let original_size = usize::try_from(sheet_file.size()).unwrap_or(planned_original_size);
+        let (active_guard, started) =
+            ActiveSheetGuard::start(&params, original_size, self.active_tasks.clone());
+        let mut report_progress = active_guard.progress_reporter();
+        let result = clean_sheet_data_streamwise_with_progress(
+            &mut sheet_file,
+            &params,
+            self.chunk_size,
+            self.disable_splitting,
+            self.parallel_range_chunk_size,
+            &mut report_progress,
+        );
+
+        match result {
+            Ok(cleaned) => {
+                complete_initial_sheet(params, zip_index, cleaned, started, original_size)
+            }
+            Err(error) => {
+                error!(event = "sheet_clean_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %error, "Failed to clean sheet XML; copying original");
+                failed_sheet(params, zip_index)
+            }
+        }
+    }
+}
+
+impl ActiveSheetGuard {
+    fn start(
+        params: &CleanSheetParameters,
+        original_size: usize,
+        active_tasks: ActiveTasks,
+    ) -> (Self, Instant) {
+        let started = Instant::now();
+        let task_key = format!("{}::{}", params.xlsx_file_path, params.zip_info_filename);
+        debug!(
+            xlsx = %params.xlsx_file_path,
+            sheet = %params.zip_info_filename,
+            original_xml_bytes = original_size,
+            "Processing sheet"
+        );
+        active_tasks.lock().unwrap().insert(
+            task_key.clone(),
+            ActiveTask {
+                xlsx: params.xlsx_file_path.clone(),
+                sheet: params.zip_info_filename.clone(),
+                xml_size: original_size,
+                started,
+                phase: "clean_sheet_data_streamwise".to_string(),
+                phase_started: started,
+            },
+        );
+        (
+            Self {
+                active_tasks,
+                task_key,
+            },
+            started,
+        )
     }
 
-    let (analysis_tx, analysis_handle) = match &cli.analysis_csv {
-        Some(path) => {
-            let (tx, handle) = spawn_analysis_csv_writer(path)?;
-            (Some(tx), Some(handle))
+    fn progress_reporter(&self) -> impl FnMut(&'static str) {
+        let active_tasks = self.active_tasks.clone();
+        let task_key = self.task_key.clone();
+        move |phase| {
+            let mut guard = active_tasks.lock().unwrap();
+            if let Some(task) = guard.get_mut(&task_key) {
+                if task.phase != phase {
+                    task.phase = phase.to_string();
+                    task.phase_started = Instant::now();
+                }
+            }
         }
-        None => (None, None),
+    }
+}
+
+fn complete_initial_sheet(
+    params: CleanSheetParameters,
+    zip_index: usize,
+    cleaned: excel_shrink_core::models::CleanedSheetData,
+    started: Instant,
+    original_size: usize,
+) -> ProcessedSheetResult {
+    let cleaned_size = cleaned.xml.len();
+    debug!(
+        xlsx = %params.xlsx_file_path,
+        sheet = %params.zip_info_filename,
+        original_xml_bytes = original_size,
+        cleaned_xml_bytes = cleaned_size,
+        reduction_bytes = original_size.saturating_sub(cleaned_size),
+        elapsed_ms = started.elapsed().as_millis(),
+        "Finished sheet cleanup"
+    );
+    Ok(ProcessedSheet {
+        params,
+        zip_index,
+        xml: cleaned.xml,
+        sheet_data_range: cleaned.sheet_data_range,
+        metrics: cleaned.metrics,
+        started,
+        original_size,
+    })
+}
+
+fn failed_sheet(params: CleanSheetParameters, zip_index: usize) -> ProcessedSheetResult {
+    Err(FailedSheet { params, zip_index })
+}
+
+fn plan_archive<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    context: &ArchivePlanningContext<'_>,
+) -> Option<ArchivePlan> {
+    let mut plan = ArchivePlan::new();
+
+    for index in 0..archive.len() {
+        let mut file = match archive.by_index(index) {
+            Ok(file) => file,
+            Err(error) => {
+                error!(event = "zip_entry_read_failed", xlsx = %context.input_display, index, error = %error, "Failed to read ZIP entry");
+                continue;
+            }
+        };
+        let filename = file.name().to_string();
+        let compression = file.compression();
+        let kind = classify_archive_entry(&filename, context);
+        let entry_plan = match kind {
+            ArchiveEntryKind::Sheet => {
+                plan.sheet_tasks.push(build_sheet_task(
+                    index,
+                    &filename,
+                    compression,
+                    file.size(),
+                    context,
+                ));
+                ArchiveEntryPlan::Continue
+            }
+            ArchiveEntryKind::Workbook => {
+                plan_workbook_entry(&mut file, index, filename, compression, context, &mut plan)
+            }
+            ArchiveEntryKind::WorkbookRelationships => {
+                plan_relationships_entry(&mut file, index, filename, context, &mut plan)
+            }
+            ArchiveEntryKind::CalculationChain => plan_calculation_chain_entry(
+                &mut file,
+                index,
+                filename,
+                compression,
+                context,
+                &mut plan,
+            ),
+            ArchiveEntryKind::CopyOriginal => {
+                queue_original_entry(context.tx, index, filename, context.input_display)
+            }
+        };
+
+        if matches!(entry_plan, ArchiveEntryPlan::Abort) {
+            return None;
+        }
+    }
+
+    Some(plan)
+}
+
+fn classify_archive_entry(
+    filename: &str,
+    context: &ArchivePlanningContext<'_>,
+) -> ArchiveEntryKind {
+    let selected_sheet = filename.starts_with("xl/worksheets/sheet")
+        && filename.ends_with(".xml")
+        && !context.cli.only_clean_workbook
+        && sheet_selected_for_cleanup(filename, context.selected_sheets);
+    if selected_sheet {
+        return ArchiveEntryKind::Sheet;
+    }
+
+    match filename {
+        "xl/workbook.xml" => ArchiveEntryKind::Workbook,
+        "xl/_rels/workbook.xml.rels" => ArchiveEntryKind::WorkbookRelationships,
+        "xl/calcChain.xml" => ArchiveEntryKind::CalculationChain,
+        _ => ArchiveEntryKind::CopyOriginal,
+    }
+}
+
+fn build_sheet_task(
+    index: usize,
+    filename: &str,
+    compression: CompressionMethod,
+    original_size: u64,
+    context: &ArchivePlanningContext<'_>,
+) -> SheetTask {
+    SheetTask {
+        params: CleanSheetParameters {
+            xlsx_file_path: context.input.to_string_lossy().to_string(),
+            zip_info_filename: filename.to_string(),
+            compress_method: compression,
+            patterns: context.patterns.clone(),
+            advanced_cleanup: None,
+            preprocess: SheetPreprocessConfig {
+                remove_empty_cells: context.cli.preprocess_empty_cells,
+            },
+            cleanup: context.cleanup.clone(),
+            collect_cleanup_stats: context.collect_cleanup_stats,
+        },
+        zip_index: index,
+        original_xml_size: usize::try_from(original_size).unwrap_or(usize::MAX),
+    }
+}
+
+fn plan_workbook_entry(
+    file: &mut impl Read,
+    index: usize,
+    filename: String,
+    compression: CompressionMethod,
+    context: &ArchivePlanningContext<'_>,
+    plan: &mut ArchivePlan,
+) -> ArchiveEntryPlan {
+    let workbook_xml = match read_archive_entry(file) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            error!(event = "workbook_read_failed", xlsx = %context.input_display, entry = %filename, error = %error, "Failed to read workbook.xml; copying original");
+            return queue_original_entry(context.tx, index, filename, context.input_display);
+        }
+    };
+    let original_size = workbook_xml.len();
+    let mut stats = cleanup_stats(context.collect_cleanup_stats);
+    let cleaned = clean_workbook_or_original(workbook_xml, &filename, context, &mut stats);
+    let cleaned_size = cleaned.len();
+
+    if context.advanced_cleanup_enabled {
+        plan.workbook_xml_for_scan = Some(cleaned.clone());
+    }
+    plan.workbook_xml_for_calc_chain = Some(cleaned.clone());
+
+    let output_method = output_compression_method(compression, context.cli.store_output);
+    match precompress_entry(
+        &filename,
+        cleaned,
+        output_method,
+        context.cli.compression_level,
+    ) {
+        Ok(zip_bytes) => {
+            send_cleanup_stats_rows(
+                context.analysis_tx,
+                context.input_display,
+                &filename,
+                &stats,
+                original_size,
+                cleaned_size,
+                context.attribution_safe_analysis,
+            );
+            queue_precompressed_entry(context.tx, filename, zip_bytes, context.input_display)
+        }
+        Err(error) => {
+            error!(event = "workbook_precompress_failed", xlsx = %context.input_display, entry = %filename, error = %error, "Failed to precompress cleaned workbook.xml; copying original");
+            queue_original_entry(context.tx, index, filename, context.input_display)
+        }
+    }
+}
+
+fn cleanup_stats(enabled: bool) -> CleanupStats {
+    if enabled {
+        CleanupStats::enabled()
+    } else {
+        CleanupStats::default()
+    }
+}
+
+fn clean_workbook_or_original(
+    workbook_xml: Vec<u8>,
+    filename: &str,
+    context: &ArchivePlanningContext<'_>,
+    stats: &mut CleanupStats,
+) -> Vec<u8> {
+    match clean_workbook_with_stats(&workbook_xml, stats) {
+        Ok(cleaned) => cleaned,
+        Err(error) => {
+            error!(event = "workbook_clean_failed", xlsx = %context.input_display, entry = %filename, error = %error, "Failed to clean workbook.xml; using original workbook.xml bytes");
+            workbook_xml
+        }
+    }
+}
+
+fn plan_relationships_entry(
+    file: &mut impl Read,
+    index: usize,
+    filename: String,
+    context: &ArchivePlanningContext<'_>,
+    plan: &mut ArchivePlan,
+) -> ArchiveEntryPlan {
+    match read_archive_entry(file) {
+        Ok(relationships) => {
+            plan.workbook_rels_for_calc_chain = Some(relationships.clone());
+            if context.advanced_cleanup_enabled {
+                plan.workbook_rels_for_scan = Some(relationships);
+            }
+        }
+        Err(error) => {
+            error!(event = "workbook_rels_read_failed", xlsx = %context.input_display, entry = %filename, error = %error, "Failed to read workbook relationships; sheet-scoped deferred cleanup may be skipped");
+        }
+    }
+    queue_original_entry(context.tx, index, filename, context.input_display)
+}
+
+fn plan_calculation_chain_entry(
+    file: &mut impl Read,
+    index: usize,
+    filename: String,
+    compression: CompressionMethod,
+    context: &ArchivePlanningContext<'_>,
+    plan: &mut ArchivePlan,
+) -> ArchiveEntryPlan {
+    match read_archive_entry(file) {
+        Ok(calc_chain) => {
+            plan.calc_chain_part = Some((index, compression, calc_chain));
+            ArchiveEntryPlan::Continue
+        }
+        Err(error) => {
+            error!(event = "calc_chain_read_failed", xlsx = %context.input_display, entry = %filename, error = %error, "Failed to read calcChain.xml; copying original");
+            queue_original_entry(context.tx, index, filename, context.input_display)
+        }
+    }
+}
+
+fn read_archive_entry(file: &mut impl Read) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+fn queue_original_entry(
+    tx: &mpsc::Sender<WriteJob>,
+    index: usize,
+    filename: String,
+    input_display: &str,
+) -> ArchiveEntryPlan {
+    if send_write_job(
+        tx,
+        WriteJob::CopyOriginal { index, filename },
+        input_display,
+    ) {
+        ArchiveEntryPlan::Continue
+    } else {
+        ArchiveEntryPlan::Abort
+    }
+}
+
+fn queue_precompressed_entry(
+    tx: &mpsc::Sender<WriteJob>,
+    filename: String,
+    zip_bytes: Vec<u8>,
+    input_display: &str,
+) -> ArchiveEntryPlan {
+    if send_write_job(
+        tx,
+        WriteJob::CopyPrecompressed {
+            filename,
+            zip_bytes,
+        },
+        input_display,
+    ) {
+        ArchiveEntryPlan::Continue
+    } else {
+        ArchiveEntryPlan::Abort
+    }
+}
+
+#[derive(Default)]
+struct SheetReferenceMap {
+    name_to_file: HashMap<String, String>,
+    file_to_name: HashMap<String, String>,
+    files_in_workbook_order: Vec<String>,
+}
+
+impl SheetReferenceMap {
+    fn from_workbook(workbook_xml: Option<&[u8]>, workbook_rels: Option<&[u8]>) -> Self {
+        let (name_to_file, files_in_workbook_order) = workbook_xml
+            .zip(workbook_rels)
+            .map(|(workbook, relationships)| build_sheet_name_to_file_map(workbook, relationships))
+            .unwrap_or_default();
+        let file_to_name = name_to_file
+            .iter()
+            .map(|(sheet_name, sheet_file)| (sheet_file.clone(), sheet_name.clone()))
+            .collect();
+
+        Self {
+            name_to_file,
+            file_to_name,
+            files_in_workbook_order,
+        }
+    }
+}
+
+impl ReferenceValidation {
+    fn disabled() -> Self {
+        Self {
+            protected_refs: ProtectedWorkbookRefs::default(),
+            safe_to_clean: false,
+        }
+    }
+}
+
+fn validate_deferred_references(
+    processed_sheets: &[ProcessedSheetResult],
+    workbook_xml: Option<&[u8]>,
+    workbook_rels: Option<&[u8]>,
+    input_display: &str,
+) -> ReferenceValidation {
+    let Some(scan_selection) = deferred_reference_scan_selection(processed_sheets) else {
+        return ReferenceValidation::disabled();
+    };
+    let reference_map = SheetReferenceMap::from_workbook(workbook_xml, workbook_rels);
+    let scan_buffers = build_reference_scan_buffers(
+        processed_sheets,
+        &scan_selection,
+        &reference_map,
+        workbook_xml,
+    );
+
+    scan_deferred_references(&scan_buffers, &reference_map, input_display)
+}
+
+fn deferred_reference_scan_selection(
+    processed_sheets: &[ProcessedSheetResult],
+) -> Option<Vec<bool>> {
+    let mut has_candidates = false;
+    let mut include_sheet = Vec::with_capacity(processed_sheets.len());
+
+    for result in processed_sheets {
+        let Some(metrics) = result.as_ref().ok().map(|sheet| &sheet.metrics) else {
+            include_sheet.push(false);
+            continue;
+        };
+        has_candidates |= !metrics.candidates.is_empty();
+        include_sheet.push(metrics.has_hints || !metrics.candidates.is_empty());
+    }
+
+    has_candidates.then_some(include_sheet)
+}
+
+fn build_reference_scan_buffers<'a>(
+    processed_sheets: &'a [ProcessedSheetResult],
+    scan_selection: &[bool],
+    reference_map: &'a SheetReferenceMap,
+    workbook_xml: Option<&'a [u8]>,
+) -> Vec<SheetScanBuffer<'a>> {
+    let mut buffers = Vec::new();
+
+    for (result, include) in processed_sheets.iter().zip(scan_selection) {
+        if !*include {
+            continue;
+        }
+        let Ok(sheet) = result else {
+            continue;
+        };
+        let sheet_name = reference_map
+            .file_to_name
+            .get(&sheet.params.zip_info_filename)
+            .map(String::as_str)
+            .unwrap_or("Unknown");
+        buffers.push(SheetScanBuffer {
+            sheet_file: &sheet.params.zip_info_filename,
+            sheet_name,
+            xml: &sheet.xml,
+        });
+    }
+
+    if let Some(xml) = workbook_xml {
+        buffers.push(SheetScanBuffer {
+            sheet_file: "xl/workbook.xml",
+            sheet_name: "Workbook",
+            xml,
+        });
+    }
+
+    buffers
+}
+
+fn scan_deferred_references(
+    scan_buffers: &[SheetScanBuffer<'_>],
+    reference_map: &SheetReferenceMap,
+    input_display: &str,
+) -> ReferenceValidation {
+    let mut protected_refs = ProtectedWorkbookRefs::default();
+    let safe_to_clean = match scan_for_references_by_sheet(
+        scan_buffers,
+        &mut protected_refs,
+        Some(&reference_map.name_to_file),
+        Some(&reference_map.files_in_workbook_order),
+    ) {
+        ScanResult::Safe => true,
+        ScanResult::Unsafe(reason) => {
+            warn!(
+                "Unsafe dynamic reference found: {}. Skipping deferred cleanup for {}.",
+                reason, input_display
+            );
+            false
+        }
     };
 
+    ReferenceValidation {
+        protected_refs,
+        safe_to_clean,
+    }
+}
+
+impl SheetFinalizer<'_> {
+    fn finalize(&self, result: ProcessedSheetResult) {
+        let Some(mut sheet) = self.cleaned_sheet_or_queue_original(result) else {
+            return;
+        };
+        self.apply_deferred_cleanup(&mut sheet);
+        self.queue_cleaned_sheet(sheet);
+    }
+
+    fn cleaned_sheet_or_queue_original(
+        &self,
+        result: ProcessedSheetResult,
+    ) -> Option<ProcessedSheet> {
+        match result {
+            Ok(sheet) => Some(sheet),
+            Err(FailedSheet { params, zip_index }) => {
+                send_write_job(
+                    self.tx,
+                    WriteJob::CopyOriginal {
+                        index: zip_index,
+                        filename: params.zip_info_filename,
+                    },
+                    &params.xlsx_file_path,
+                );
+                None
+            }
+        }
+    }
+
+    fn apply_deferred_cleanup(&self, sheet: &mut ProcessedSheet) {
+        if !self.safe_to_clean || sheet.metrics.candidates.is_empty() {
+            return;
+        }
+
+        let touched_rows = self.remove_deferred_candidates(sheet);
+        invalidate_tail_anchor_for_touched_rows(&mut sheet.metrics, &touched_rows);
+        if !touched_rows.is_empty() {
+            self.reclean_touched_rows(sheet, &touched_rows);
+        }
+        self.remove_empty_rows(sheet);
+        if sheet.params.cleanup.trailing_layout_only_rows {
+            self.trim_trailing_layout_rows(sheet);
+        }
+    }
+
+    fn remove_deferred_candidates(&self, sheet: &mut ProcessedSheet) -> HashSet<u32> {
+        let ProcessedSheet {
+            params,
+            xml,
+            sheet_data_range,
+            metrics,
+            ..
+        } = sheet;
+        let mut touched_rows = HashSet::new();
+        let result = transform_sheet_data_range(xml, sheet_data_range.clone(), |sheet_data| {
+            let (cleaned, rows) = apply_deferred_candidate_cleanup(
+                sheet_data.to_vec(),
+                &metrics.candidates,
+                self.protected_refs,
+                &params.zip_info_filename,
+                &mut metrics.cleanup_stats,
+            );
+            touched_rows = rows;
+            Ok(cleaned)
+        });
+
+        match result {
+            Ok((cleaned, new_range)) => {
+                *xml = cleaned;
+                *sheet_data_range = new_range;
+            }
+            Err(error) => {
+                error!(event = "deferred_candidate_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %error, "Failed to clean deferred candidates; keeping initial XML");
+            }
+        }
+        touched_rows
+    }
+
+    fn reclean_touched_rows(&self, sheet: &mut ProcessedSheet, touched_rows: &HashSet<u32>) {
+        let ProcessedSheet {
+            params,
+            xml,
+            sheet_data_range,
+            metrics,
+            ..
+        } = sheet;
+        clear_row_cleanup_state(metrics);
+        match transform_sheet_data_range(xml, sheet_data_range.clone(), |sheet_data| {
+            clean_selected_rows_and_cells_in_cell_range(sheet_data, params, metrics, touched_rows)
+        }) {
+            Ok((cleaned, new_range)) => {
+                *xml = cleaned;
+                *sheet_data_range = new_range;
+            }
+            Err(error) => {
+                error!(event = "deferred_row_cell_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, rows = touched_rows.len(), error = %error, "Failed to clean rows touched by deferred cleanup; keeping deferred-cleaned XML");
+            }
+        }
+    }
+
+    fn remove_empty_rows(&self, sheet: &mut ProcessedSheet) {
+        let ProcessedSheet {
+            params,
+            xml,
+            sheet_data_range,
+            metrics,
+            ..
+        } = sheet;
+        clear_row_cleanup_state(metrics);
+        match transform_sheet_data_range(xml, sheet_data_range.clone(), |sheet_data| {
+            clean_empty_rows_from_after_cell_range(sheet_data, params, metrics)
+        }) {
+            Ok((cleaned, new_range)) => {
+                *xml = cleaned;
+                *sheet_data_range = new_range;
+            }
+            Err(error) => {
+                error!(event = "deferred_empty_row_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %error, "Failed to clean rows emptied by deferred cleanup; keeping deferred-cleaned XML");
+            }
+        }
+    }
+
+    fn trim_trailing_layout_rows(&self, sheet: &mut ProcessedSheet) {
+        let ProcessedSheet {
+            params,
+            xml,
+            sheet_data_range,
+            metrics,
+            ..
+        } = sheet;
+        match transform_sheet_data_range(xml, sheet_data_range.clone(), |sheet_data| {
+            Ok(trim_trailing_layout_only_rows_vec(
+                sheet_data.to_vec(),
+                params,
+                metrics,
+            ))
+        }) {
+            Ok((cleaned, new_range)) => {
+                *xml = cleaned;
+                *sheet_data_range = new_range;
+            }
+            Err(error) => {
+                error!(event = "deferred_tail_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %error, "Failed to trim rows after deferred cleanup; keeping deferred-cleaned XML");
+            }
+        }
+    }
+
+    fn queue_cleaned_sheet(&self, sheet: ProcessedSheet) {
+        let ProcessedSheet {
+            params,
+            zip_index,
+            xml,
+            metrics,
+            started,
+            original_size,
+            ..
+        } = sheet;
+        let cleaned_size = xml.len();
+        let reduction = original_size.saturating_sub(cleaned_size);
+        let cleaned_cell_refs = collect_cell_refs(&xml);
+        warn_if_sheet_is_slow(&params, started, cleaned_size, reduction);
+        let output_method = output_compression_method(params.compress_method, self.store_output);
+
+        match precompress_entry(
+            &params.zip_info_filename,
+            xml,
+            output_method,
+            self.compression_level,
+        ) {
+            Ok(zip_bytes) => self.queue_precompressed_sheet(
+                params,
+                metrics,
+                original_size,
+                cleaned_size,
+                reduction,
+                cleaned_cell_refs,
+                zip_bytes,
+            ),
+            Err(error) => self.queue_original_after_compression_error(params, zip_index, error),
+        }
+    }
+
+    fn queue_precompressed_sheet(
+        &self,
+        params: CleanSheetParameters,
+        metrics: CleanSheetMetrics,
+        original_size: usize,
+        cleaned_size: usize,
+        reduction: usize,
+        cleaned_cell_refs: HashSet<String>,
+        zip_bytes: Vec<u8>,
+    ) {
+        debug!(
+            xlsx = %params.xlsx_file_path,
+            sheet = %params.zip_info_filename,
+            cleaned_xml_bytes = cleaned_size,
+            reduction_bytes = reduction,
+            "Queued cleaned sheet for writing"
+        );
+        send_cleanup_stats_rows(
+            self.analysis_tx,
+            &params.xlsx_file_path,
+            &params.zip_info_filename,
+            &metrics.cleanup_stats,
+            original_size,
+            cleaned_size,
+            self.attribution_safe_analysis,
+        );
+        self.known_cells_by_sheet_file
+            .lock()
+            .unwrap()
+            .insert(params.zip_info_filename.clone(), cleaned_cell_refs);
+        send_write_job(
+            self.tx,
+            WriteJob::CopyPrecompressed {
+                filename: params.zip_info_filename,
+                zip_bytes,
+            },
+            &params.xlsx_file_path,
+        );
+    }
+
+    fn queue_original_after_compression_error(
+        &self,
+        params: CleanSheetParameters,
+        zip_index: usize,
+        error: anyhow::Error,
+    ) {
+        error!(event = "sheet_precompress_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %error, "Failed to precompress cleaned sheet; copying original");
+        send_write_job(
+            self.tx,
+            WriteJob::CopyOriginal {
+                index: zip_index,
+                filename: params.zip_info_filename,
+            },
+            &params.xlsx_file_path,
+        );
+    }
+}
+
+fn clear_row_cleanup_state(metrics: &mut CleanSheetMetrics) {
+    metrics.row_attributes.clear();
+    metrics.kept_row_states.clear();
+    metrics.deleted_row_states.clear();
+}
+
+fn warn_if_sheet_is_slow(
+    params: &CleanSheetParameters,
+    started: Instant,
+    cleaned_size: usize,
+    reduction: usize,
+) {
+    let elapsed = started.elapsed();
+    if elapsed.as_secs_f64() < 5.0 {
+        return;
+    }
+    warn!(
+        xlsx = %params.xlsx_file_path,
+        sheet = %params.zip_info_filename,
+        cleaned_xml_bytes = cleaned_size,
+        reduction_bytes = reduction,
+        elapsed_ms = elapsed.as_millis(),
+        "Slow Sheet in {} / {}: Clean size {} bytes, reduction {} bytes, time {:.2?}",
+        params.xlsx_file_path,
+        params.zip_info_filename,
+        cleaned_size,
+        reduction,
+        elapsed
+    );
+}
+
+fn finalize_sheets(
+    processed_sheets: Vec<ProcessedSheetResult>,
+    finalizer: &SheetFinalizer<'_>,
+    disable_multiprocessing: bool,
+) {
+    if disable_multiprocessing {
+        processed_sheets
+            .into_iter()
+            .for_each(|result| finalizer.finalize(result));
+    } else {
+        processed_sheets
+            .into_par_iter()
+            .for_each(|result| finalizer.finalize(result));
+    }
+}
+
+fn queue_calculation_chain(
+    calc_chain_part: Option<(usize, CompressionMethod, Vec<u8>)>,
+    workbook_xml: Option<&[u8]>,
+    workbook_rels: Option<&[u8]>,
+    known_cells_by_sheet_file: &Mutex<HashMap<String, HashSet<String>>>,
+    tx: &mpsc::Sender<WriteJob>,
+    input_display: &str,
+    store_output: bool,
+    compression_level: i32,
+) -> bool {
+    let Some((index, method, calc_chain_xml)) = calc_chain_part else {
+        return true;
+    };
+    let Some((workbook_xml, workbook_rels)) = workbook_xml.zip(workbook_rels) else {
+        return queue_original_calc_chain(tx, index, input_display);
+    };
+    let sheet_id_to_file = build_sheet_id_to_file_map(workbook_xml, workbook_rels);
+    let cleaned = {
+        let known_cells = known_cells_by_sheet_file.lock().unwrap();
+        clean_calc_chain(calc_chain_xml, &sheet_id_to_file, &known_cells)
+    };
+
+    queue_cleaned_calc_chain(
+        tx,
+        index,
+        method,
+        cleaned,
+        input_display,
+        store_output,
+        compression_level,
+    )
+}
+
+fn queue_cleaned_calc_chain(
+    tx: &mpsc::Sender<WriteJob>,
+    index: usize,
+    method: CompressionMethod,
+    xml: Vec<u8>,
+    input_display: &str,
+    store_output: bool,
+    compression_level: i32,
+) -> bool {
+    let output_method = output_compression_method(method, store_output);
+    match precompress_entry("xl/calcChain.xml", xml, output_method, compression_level) {
+        Ok(zip_bytes) => send_write_job(
+            tx,
+            WriteJob::CopyPrecompressed {
+                filename: "xl/calcChain.xml".to_string(),
+                zip_bytes,
+            },
+            input_display,
+        ),
+        Err(error) => {
+            error!(event = "calc_chain_precompress_failed", xlsx = %input_display, error = %error, "Failed to precompress cleaned calcChain.xml; copying original");
+            queue_original_calc_chain(tx, index, input_display)
+        }
+    }
+}
+
+fn queue_original_calc_chain(
+    tx: &mpsc::Sender<WriteJob>,
+    index: usize,
+    input_display: &str,
+) -> bool {
+    send_write_job(
+        tx,
+        WriteJob::CopyOriginal {
+            index,
+            filename: "xl/calcChain.xml".to_string(),
+        },
+        input_display,
+    )
+}
+
+fn prioritize_sheet_tasks(
+    mut sheet_tasks: Vec<SheetTask>,
+    input_display: &str,
+    parallel_range_chunk_size: usize,
+) -> Vec<SheetTask> {
+    sheet_tasks.sort_by(|left, right| {
+        right
+            .original_xml_size
+            .cmp(&left.original_xml_size)
+            .then_with(|| {
+                left.params
+                    .zip_info_filename
+                    .cmp(&right.params.zip_info_filename)
+            })
+    });
+    let (total_sheet_xml_bytes, largest_sheet_xml_bytes) = sheet_task_size_summary(&sheet_tasks);
+    info!(
+        xlsx = %input_display,
+        sheets_to_clean = sheet_tasks.len(),
+        total_sheet_xml_bytes,
+        largest_sheet_xml_bytes,
+        parallel_range_chunk_size,
+        "Planned workbook cleanup"
+    );
+    sheet_tasks
+}
+
+fn sheet_task_size_summary(sheet_tasks: &[SheetTask]) -> (usize, usize) {
+    let total = sheet_tasks.iter().map(|task| task.original_xml_size).sum();
+    let largest = sheet_tasks
+        .iter()
+        .map(|task| task.original_xml_size)
+        .max()
+        .unwrap_or(0);
+    (total, largest)
+}
+
+fn process_initial_sheets(
+    sheet_tasks: Vec<SheetTask>,
+    source_zip_bytes: Arc<Vec<u8>>,
+    active_tasks: ActiveTasks,
+    advanced_cleanup: AdvancedCleanupSelection,
+    cli: &Cli,
+) -> Vec<ProcessedSheetResult> {
+    let processor = InitialSheetProcessor {
+        source_zip_bytes,
+        active_tasks,
+        chunk_size: cli.chunk_size,
+        disable_splitting: cli.disable_sheetdata_splitting,
+        parallel_range_chunk_size: cli.parallel_range_chunk_size,
+    };
+    let advanced_config = advanced_cleanup.config();
+    let process_sheet = |task| processor.process(task, advanced_config.clone());
+
+    if cli.disable_multiprocessing {
+        sheet_tasks.into_iter().map(process_sheet).collect()
+    } else {
+        sheet_tasks.into_par_iter().map(process_sheet).collect()
+    }
+}
+
+fn process_file(
+    input: &PathBuf,
+    cli: &Cli,
+    writer_pool: &ThreadPool,
+    workbook_limiter: &WorkbookLimiter,
+    batch_progress: &BatchProgress,
+    active_tasks: &ActiveTasks,
+    analysis_tx: Option<mpsc::Sender<AnalysisCsvRow>>,
+) {
+    let workbook_permit = workbook_limiter.acquire();
+    let file_start = Instant::now();
+    let input_display = input.display().to_string();
+    let active_tasks = active_tasks.clone();
+    let mut file_progress = batch_progress.start_file(input_display.clone());
+
+    let out_path = cli.output.join(input.file_name().unwrap());
+    if out_path.exists() && !cli.force_overwrite {
+        warn!("Output file {:?} already exists. Skipping.", out_path);
+        file_progress.finish(
+            "file_skipped",
+            false,
+            file_start.elapsed().as_millis(),
+            None,
+            "Skipped XLSX because output file already exists",
+        );
+        return;
+    }
+
+    let Some(file_bytes) = read_input_file(input) else {
+        return;
+    };
+    let mut archive = match ZipArchive::new(Cursor::new(file_bytes.as_slice())) {
+        Ok(archive) => archive,
+        Err(error) => {
+            error!("Failed to parse ZIP archive {:?}: {}", input, error);
+            return;
+        }
+    };
+    let advanced_cleanup = advanced_cleanup_selection(cli);
+    let do_advanced = advanced_cleanup.enabled();
+
+    let (tx, rx) = mpsc::channel::<WriteJob>();
+    spawn_xlsx_writer(
+        writer_pool,
+        input.clone(),
+        out_path,
+        rx,
+        input_display.clone(),
+        file_progress,
+        workbook_permit,
+    );
+
+    let WorkbookPreparation {
+        patterns,
+        cleanup,
+        collect_cleanup_stats,
+        selected_sheets,
+    } = prepare_workbook(&mut archive, cli, advanced_cleanup);
+    let attribution_safe_analysis = attribution_safe_analysis(cli);
+    let planning_context = ArchivePlanningContext {
+        input,
+        input_display: &input_display,
+        cli,
+        patterns: &patterns,
+        cleanup: &cleanup,
+        collect_cleanup_stats,
+        selected_sheets: &selected_sheets,
+        tx: &tx,
+        advanced_cleanup_enabled: do_advanced,
+        analysis_tx: analysis_tx.as_ref(),
+        attribution_safe_analysis,
+    };
+    let Some(archive_plan) = plan_archive(&mut archive, &planning_context) else {
+        return;
+    };
+    drop(archive);
+
+    let ArchivePlan {
+        sheet_tasks,
+        workbook_xml_for_scan,
+        workbook_rels_for_scan,
+        workbook_xml_for_calc_chain,
+        workbook_rels_for_calc_chain,
+        calc_chain_part,
+    } = archive_plan;
+
+    let sheet_tasks =
+        prioritize_sheet_tasks(sheet_tasks, &input_display, cli.parallel_range_chunk_size);
+
+    let processed_sheets =
+        process_initial_sheets(sheet_tasks, file_bytes, active_tasks, advanced_cleanup, cli);
+
+    let ReferenceValidation {
+        protected_refs,
+        safe_to_clean,
+    } = validate_deferred_references(
+        &processed_sheets,
+        workbook_xml_for_scan.as_deref(),
+        workbook_rels_for_scan.as_deref(),
+        &input_display,
+    );
+
+    let known_cells_by_sheet_file = Mutex::new(HashMap::new());
+    let finalizer = SheetFinalizer {
+        tx: &tx,
+        analysis_tx: analysis_tx.as_ref(),
+        known_cells_by_sheet_file: &known_cells_by_sheet_file,
+        protected_refs: &protected_refs,
+        safe_to_clean,
+        attribution_safe_analysis,
+        store_output: cli.store_output,
+        compression_level: cli.compression_level,
+    };
+    finalize_sheets(processed_sheets, &finalizer, cli.disable_multiprocessing);
+
+    if !queue_calculation_chain(
+        calc_chain_part,
+        workbook_xml_for_calc_chain.as_deref(),
+        workbook_rels_for_calc_chain.as_deref(),
+        &known_cells_by_sheet_file,
+        &tx,
+        &input_display,
+        cli.store_output,
+        cli.compression_level,
+    ) {
+        return;
+    }
+    debug!(event = "file_queued_for_writer", xlsx = %input_display, elapsed_ms = file_start.elapsed().as_millis(), "Queued XLSX for writing");
+}
+
+pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()> {
+    ensure_output_directory(cli)?;
+    let (analysis_tx, analysis_handle) = start_optional_analysis_writer(cli)?;
     let batch_progress = BatchProgress::new(input_files.len());
     let active_tasks: ActiveTasks = Arc::new(Mutex::new(HashMap::new()));
     let (stop_watchdog_tx, watchdog_handle) = start_watchdog(active_tasks.clone());
-
-    let writer_workers = cli
-        .writer_workers
-        .unwrap_or_else(default_parallelism)
-        .max(1);
-    let max_active_workbooks = cli
-        .max_active_workbooks
-        .unwrap_or_else(default_parallelism)
-        .max(1);
+    let writer_workers = configured_worker_count(cli.writer_workers);
+    let max_active_workbooks = configured_worker_count(cli.max_active_workbooks);
     let workbook_limiter = WorkbookLimiter::new(max_active_workbooks);
     let writer_pool = ThreadPool::new(writer_workers);
+
+    log_batch_plan(cli, &batch_progress, writer_workers, max_active_workbooks);
+    run_input_files(
+        &input_files,
+        cli,
+        &writer_pool,
+        &workbook_limiter,
+        &batch_progress,
+        &active_tasks,
+        analysis_tx.clone(),
+    );
+    finish_batch(
+        analysis_tx,
+        analysis_handle,
+        &writer_pool,
+        stop_watchdog_tx,
+        watchdog_handle,
+    );
+    Ok(())
+}
+
+fn ensure_output_directory(cli: &Cli) -> anyhow::Result<()> {
+    if !cli.output.exists() {
+        std::fs::create_dir_all(&cli.output)?;
+    }
+    Ok(())
+}
+
+fn start_optional_analysis_writer(
+    cli: &Cli,
+) -> anyhow::Result<(
+    Option<mpsc::Sender<AnalysisCsvRow>>,
+    Option<std::thread::JoinHandle<()>>,
+)> {
+    match &cli.analysis_csv {
+        Some(path) => {
+            let (sender, handle) = spawn_analysis_csv_writer(path)?;
+            Ok((Some(sender), Some(handle)))
+        }
+        None => Ok((None, None)),
+    }
+}
+
+fn configured_worker_count(configured: Option<usize>) -> usize {
+    configured.unwrap_or_else(default_parallelism).max(1)
+}
+
+fn log_batch_plan(
+    cli: &Cli,
+    progress: &BatchProgress,
+    writer_workers: usize,
+    max_active_workbooks: usize,
+) {
     info!(
-        files_total = batch_progress.files_total,
+        files_total = progress.files_total,
         writer_workers,
         max_active_workbooks,
         multiprocessing_disabled = cli.disable_multiprocessing,
         "Processing XLSX files"
     );
-
-    let process_file = |input: &PathBuf| {
-        let workbook_permit = workbook_limiter.acquire();
-        let file_start = Instant::now();
-        let input_display = input.display().to_string();
-        let active_tasks = active_tasks.clone();
-        let analysis_tx = analysis_tx.clone();
-        let mut file_progress = batch_progress.start_file(input_display.clone());
-
-        let out_path = cli.output.join(input.file_name().unwrap());
-        if out_path.exists() && !cli.force_overwrite {
-            warn!("Output file {:?} already exists. Skipping.", out_path);
-            file_progress.finish(
-                "file_skipped",
-                false,
-                file_start.elapsed().as_millis(),
-                None,
-                "Skipped XLSX because output file already exists",
-            );
-            return;
-        }
-
-        let mut file_bytes = Vec::new();
-        {
-            let mut f = match File::open(input) {
-                Ok(f) => f,
-                Err(e) => {
-                    error!("Failed to open file {:?}: {}", input, e);
-                    return;
-                }
-            };
-
-            if let Err(e) = f.read_to_end(&mut file_bytes) {
-                error!("Failed to read file {:?}: {}", input, e);
-                return;
-            }
-        }
-
-        let file_bytes = Arc::new(file_bytes);
-
-        let mut archive = match ZipArchive::new(Cursor::new(file_bytes.as_slice())) {
-            Ok(arc) => arc,
-            Err(e) => {
-                error!("Failed to parse ZIP archive {:?}: {}", input, e);
-                return;
-            }
-        };
-        let remove_unreferenced_whitespace_cells = cli.remove_unreferenced_whitespace_cells;
-        let remove_unreferenced_hidden_content_cells = !cli.keep_unreferenced_hidden_content_cells;
-        let do_advanced =
-            remove_unreferenced_whitespace_cells || remove_unreferenced_hidden_content_cells;
-
-        let inactive_protection_cell_policy = match cli.inactive_protection_cell_policy {
-            crate::InactiveProtectionCellPolicyArg::Remove => InactiveProtectionCellPolicy::Remove,
-            crate::InactiveProtectionCellPolicyArg::KeepInDataRange => {
-                InactiveProtectionCellPolicy::KeepInDataRange
-            }
-            crate::InactiveProtectionCellPolicyArg::KeepAll => {
-                InactiveProtectionCellPolicy::KeepAll
-            }
-        };
-
-        let (tx, rx) = mpsc::channel::<WriteJob>();
-        spawn_xlsx_writer(
-            &writer_pool,
-            input.clone(),
-            out_path,
-            rx,
-            input_display.clone(),
-            file_progress,
-            workbook_permit,
-        );
-
-        let mut all_xfs = Vec::new();
-        if let Ok(mut styles_file) = archive.by_name("xl/styles.xml") {
-            let mut styles_data = Vec::new();
-            if styles_file.read_to_end(&mut styles_data).is_ok() {
-                if let Ok(xfs) = parse_xfs(&styles_data) {
-                    all_xfs = xfs;
-                }
-            }
-        }
-
-        let mut whitespace_indices = None;
-        if remove_unreferenced_whitespace_cells {
-            if let Ok(mut sst_file) = archive.by_name("xl/sharedStrings.xml") {
-                let mut sst_data = Vec::new();
-                if sst_file.read_to_end(&mut sst_data).is_ok() {
-                    whitespace_indices = Some(find_whitespace_sst_indices(&sst_data));
-                }
-            }
-        }
-
-        let patterns = WorkbookSpecificPatterns::new(all_xfs, whitespace_indices);
-        let attribution_safe_analysis = attribution_safe_analysis(cli);
-        let cleanup = CleanupSwitches {
-            preprocess_empty_self_closing_cells: cli.preprocess_empty_cells,
-
-            unreferenced_whitespace_cells: remove_unreferenced_whitespace_cells,
-            unreferenced_hidden_content_cells: remove_unreferenced_hidden_content_cells,
-
-            sheetdata_range_tail_pruning: !attribution_safe_analysis && !cli.disable_tail_pruning,
-            trailing_layout_only_rows: !cli.disable_trailing_layout_only_rows,
-            extraneous_column_range_merge: !cli.disable_extraneous_column_merge,
-            column_tail_fill_merge: !cli.disable_column_tail_fill_merge,
-            keep_textless_default_font_representatives: !cli
-                .remove_textless_default_font_representatives,
-            keep_textless_style_representatives: !cli.remove_textless_style_representatives,
-            keep_textless_column_style_representatives: !cli
-                .remove_textless_column_style_representatives,
-            inactive_protection_cell_policy,
-
-            ..CleanupSwitches::default()
-        };
-        let collect_cleanup_stats = cleanup_stats_enabled(cli);
-        let selected_sheets = selected_sheet_targets(&cli.sheets);
-        let mut sheet_tasks = Vec::new();
-        let mut workbook_xml_for_scan: Option<Vec<u8>> = None;
-        let mut workbook_rels_for_scan: Option<Vec<u8>> = None;
-        let mut workbook_xml_for_calc_chain: Option<Vec<u8>> = None;
-        let mut workbook_rels_for_calc_chain: Option<Vec<u8>> = None;
-        let mut calc_chain_part: Option<(usize, CompressionMethod, Vec<u8>)> = None;
-
-        for i in 0..archive.len() {
-            let mut file = match archive.by_index(i) {
-                Ok(file) => file,
-                Err(e) => {
-                    error!(event = "zip_entry_read_failed", xlsx = %input_display, index = i, error = %e, "Failed to read ZIP entry");
-                    continue;
-                }
-            };
-            let name = file.name().to_string();
-            let method = file.compression();
-
-            let is_sheet = name.starts_with("xl/worksheets/sheet") && name.ends_with(".xml");
-            let should_process_sheet = is_sheet
-                && !cli.only_clean_workbook
-                && sheet_selected_for_cleanup(&name, &selected_sheets);
-
-            if should_process_sheet {
-                let original_xml_size = usize::try_from(file.size()).unwrap_or(usize::MAX);
-
-                sheet_tasks.push(SheetTask {
-                    params: CleanSheetParameters {
-                        xlsx_file_path: input.to_string_lossy().to_string(),
-                        zip_info_filename: name,
-                        compress_method: method,
-                        patterns: patterns.clone(),
-                        advanced_cleanup: None,
-                        preprocess: SheetPreprocessConfig {
-                            remove_empty_cells: cli.preprocess_empty_cells,
-                        },
-                        cleanup: cleanup.clone(),
-                        collect_cleanup_stats,
-                    },
-                    zip_index: i,
-                    original_xml_size,
-                });
-            } else if name == "xl/workbook.xml" {
-                let mut buf = Vec::new();
-                if let Err(e) = file.read_to_end(&mut buf) {
-                    error!(event = "workbook_read_failed", xlsx = %input_display, entry = %name, error = %e, "Failed to read workbook.xml; copying original");
-
-                    if !send_write_job(
-                        &tx,
-                        WriteJob::CopyOriginal {
-                            index: i,
-                            filename: name,
-                        },
-                        &input_display,
-                    ) {
-                        return;
-                    }
-
-                    continue;
-                }
-
-                let original_wb_size = buf.len();
-                let mut cleanup_stats = if collect_cleanup_stats {
-                    CleanupStats::enabled()
-                } else {
-                    CleanupStats::default()
-                };
-
-                let cleaned_wb = match clean_workbook_with_stats(&buf, &mut cleanup_stats) {
-                    Ok(cleaned) => cleaned,
-                    Err(e) => {
-                        error!(event = "workbook_clean_failed", xlsx = %input_display, entry = %name, error = %e, "Failed to clean workbook.xml; using original workbook.xml bytes");
-                        buf
-                    }
-                };
-                let cleaned_wb_size = cleaned_wb.len();
-
-                if do_advanced {
-                    workbook_xml_for_scan = Some(cleaned_wb.clone());
-                }
-                workbook_xml_for_calc_chain = Some(cleaned_wb.clone());
-
-                let out_method = output_compression_method(method, cli.store_output);
-                match precompress_entry(&name, cleaned_wb, out_method, cli.compression_level) {
-                    Ok(zip_bytes) => {
-                        send_cleanup_stats_rows(
-                            analysis_tx.as_ref(),
-                            &input_display,
-                            &name,
-                            &cleanup_stats,
-                            original_wb_size,
-                            cleaned_wb_size,
-                            attribution_safe_analysis,
-                        );
-
-                        if !send_write_job(
-                            &tx,
-                            WriteJob::CopyPrecompressed {
-                                filename: name,
-                                zip_bytes,
-                            },
-                            &input_display,
-                        ) {
-                            return;
-                        }
-                        continue;
-                    }
-                    Err(e) => {
-                        error!(event = "workbook_precompress_failed", xlsx = %input_display, entry = %name, error = %e, "Failed to precompress cleaned workbook.xml; copying original");
-
-                        if !send_write_job(
-                            &tx,
-                            WriteJob::CopyOriginal {
-                                index: i,
-                                filename: name,
-                            },
-                            &input_display,
-                        ) {
-                            return;
-                        }
-                    }
-                }
-            } else if name == "xl/_rels/workbook.xml.rels" {
-                let mut rels_buf = Vec::new();
-                match file.read_to_end(&mut rels_buf) {
-                    Ok(_) => {
-                        workbook_rels_for_calc_chain = Some(rels_buf.clone());
-                        if do_advanced {
-                            workbook_rels_for_scan = Some(rels_buf);
-                        }
-                    }
-                    Err(e) => {
-                        error!(event = "workbook_rels_read_failed", xlsx = %input_display, entry = %name, error = %e, "Failed to read workbook relationships; sheet-scoped deferred cleanup may be skipped");
-                    }
-                }
-                if !send_write_job(
-                    &tx,
-                    WriteJob::CopyOriginal {
-                        index: i,
-                        filename: name,
-                    },
-                    &input_display,
-                ) {
-                    return;
-                }
-            } else if name == "xl/calcChain.xml" {
-                let mut calc_chain_buf = Vec::new();
-                match file.read_to_end(&mut calc_chain_buf) {
-                    Ok(_) => {
-                        calc_chain_part = Some((i, method, calc_chain_buf));
-                    }
-                    Err(e) => {
-                        error!(event = "calc_chain_read_failed", xlsx = %input_display, entry = %name, error = %e, "Failed to read calcChain.xml; copying original");
-                        if !send_write_job(
-                            &tx,
-                            WriteJob::CopyOriginal {
-                                index: i,
-                                filename: name,
-                            },
-                            &input_display,
-                        ) {
-                            return;
-                        }
-                    }
-                }
-            } else {
-                if !send_write_job(
-                    &tx,
-                    WriteJob::CopyOriginal {
-                        index: i,
-                        filename: name,
-                    },
-                    &input_display,
-                ) {
-                    return;
-                }
-            }
-        }
-
-        sheet_tasks.sort_by(|a, b| {
-            b.original_xml_size
-                .cmp(&a.original_xml_size)
-                .then_with(|| a.params.zip_info_filename.cmp(&b.params.zip_info_filename))
-        });
-
-        let largest_sheet_xml_bytes = sheet_tasks
-            .iter()
-            .map(|task| task.original_xml_size)
-            .max()
-            .unwrap_or(0);
-
-        let total_sheet_xml_bytes: usize =
-            sheet_tasks.iter().map(|task| task.original_xml_size).sum();
-
-        info!(
-            xlsx = %input_display,
-            sheets_to_clean = sheet_tasks.len(),
-            total_sheet_xml_bytes,
-            largest_sheet_xml_bytes,
-            parallel_range_chunk_size = cli.parallel_range_chunk_size,
-            "Planned workbook cleanup"
-        );
-
-        let advanced_arc = if do_advanced {
-            Some(Arc::new(AdvancedCleanupConfig {
-                remove_unreferenced_whitespace: remove_unreferenced_whitespace_cells,
-                remove_unreferenced_hidden_content: remove_unreferenced_hidden_content_cells,
-            }))
-        } else {
-            None
-        };
-
-        let chunk_size = cli.chunk_size;
-        let disable_splitting = cli.disable_sheetdata_splitting;
-
-        // --- PHASE 1: Pre-Processing & Cell Cleanup (Collect Candidates) ---
-        let process_sheet_initial = |task: SheetTask,
-                                     adv_config: Option<Arc<AdvancedCleanupConfig>>,
-                                     source_zip_bytes: Arc<Vec<u8>>|
-         -> ProcessedSheetResult {
-            let SheetTask {
-                mut params,
-                zip_index: index,
-                original_xml_size: planned_original_size,
-            } = task;
-            params.advanced_cleanup = adv_config;
-            let mut archive = match ZipArchive::new(Cursor::new(source_zip_bytes.as_slice())) {
-                Ok(archive) => archive,
-                Err(e) => {
-                    error!(event = "sheet_source_zip_open_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to reopen source XLSX for sheet processing");
-                    return Err((params, index));
-                }
-            };
-
-            let mut sheet_file = match archive.by_name(&params.zip_info_filename) {
-                Ok(file) => file,
-                Err(e) => {
-                    error!(event = "sheet_lookup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to find sheet XML in source XLSX");
-                    return Err((params, index));
-                }
-            };
-            let original_size = usize::try_from(sheet_file.size()).unwrap_or(planned_original_size);
-
-            let start_time = Instant::now();
-            let task_key = format!("{}::{}", params.xlsx_file_path, params.zip_info_filename);
-            debug!(
-                xlsx = %params.xlsx_file_path,
-                sheet = %params.zip_info_filename,
-                original_xml_bytes = original_size,
-                "Processing sheet"
-            );
-            {
-                let mut guard = active_tasks.lock().unwrap();
-                guard.insert(
-                    task_key.clone(),
-                    ActiveTask {
-                        xlsx: params.xlsx_file_path.clone(),
-                        sheet: params.zip_info_filename.clone(),
-                        xml_size: original_size,
-                        started: start_time,
-                        phase: "clean_sheet_data_streamwise".to_string(),
-                        phase_started: start_time,
-                    },
-                );
-            }
-
-            let progress_active_tasks = active_tasks.clone();
-            let progress_task_key = task_key.clone();
-            let mut update_phase = move |phase: &'static str| {
-                let mut guard = progress_active_tasks.lock().unwrap();
-                if let Some(task) = guard.get_mut(&progress_task_key) {
-                    if task.phase != phase {
-                        task.phase = phase.to_string();
-                        task.phase_started = Instant::now();
-                    }
-                }
-            };
-
-            let result = clean_sheet_data_streamwise_with_progress(
-                &mut sheet_file,
-                &params,
-                chunk_size,
-                disable_splitting,
-                cli.parallel_range_chunk_size,
-                &mut update_phase,
-            );
-
-            {
-                let mut guard = active_tasks.lock().unwrap();
-                guard.remove(&task_key);
-            }
-
-            match result {
-                Ok(cleaned) => {
-                    let cleaned_size = cleaned.xml.len();
-                    let reduction = original_size.saturating_sub(cleaned_size);
-                    debug!(
-                        xlsx = %params.xlsx_file_path,
-                        sheet = %params.zip_info_filename,
-                        original_xml_bytes = original_size,
-                        cleaned_xml_bytes = cleaned_size,
-                        reduction_bytes = reduction,
-                        elapsed_ms = start_time.elapsed().as_millis(),
-                        "Finished sheet cleanup"
-                    );
-                    Ok((
-                        params,
-                        index,
-                        cleaned.xml,
-                        cleaned.sheet_data_range,
-                        cleaned.metrics,
-                        start_time,
-                        original_size,
-                    ))
-                }
-                Err(e) => {
-                    error!(event = "sheet_clean_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to clean sheet XML; copying original");
-                    Err((params, index))
-                }
-            }
-        };
-
-        let processed_sheets: Vec<ProcessedSheetResult> = if cli.disable_multiprocessing {
-            sheet_tasks
-                .into_iter()
-                .map(|task| process_sheet_initial(task, advanced_arc.clone(), file_bytes.clone()))
-                .collect()
-        } else {
-            sheet_tasks
-                .into_par_iter()
-                .map(|task| process_sheet_initial(task, advanced_arc.clone(), file_bytes.clone()))
-                .collect()
-        };
-
-        // --- PHASE 2: Deferred Reference Validation Phase ---
-        let mut has_candidates = false;
-        let mut include_sheet_for_scan = vec![false; processed_sheets.len()];
-
-        let mut sheet_name_to_file_map = HashMap::new();
-        let mut sheet_files_in_workbook_order = Vec::new();
-        if let (Some(wb_xml), Some(wb_rels)) = (&workbook_xml_for_scan, &workbook_rels_for_scan) {
-            let (name_map, sheet_order) = build_sheet_name_to_file_map(wb_xml, wb_rels);
-            sheet_name_to_file_map = name_map;
-            sheet_files_in_workbook_order = sheet_order;
-        }
-
-        let mut file_to_sheet_name_map = HashMap::new();
-        for (sheet_name, sheet_file) in &sheet_name_to_file_map {
-            file_to_sheet_name_map.insert(sheet_file.clone(), sheet_name.clone());
-        }
-
-        for (index, res) in processed_sheets.iter().enumerate() {
-            if let Ok((_params, _, _, _, metrics, _, _)) = res {
-                if !metrics.candidates.is_empty() {
-                    has_candidates = true;
-                }
-
-                if metrics.has_hints || !metrics.candidates.is_empty() {
-                    include_sheet_for_scan[index] = true;
-                }
-            }
-        }
-
-        let mut protected_refs = ProtectedWorkbookRefs::default();
-        let mut safe_to_clean = false;
-
-        if has_candidates {
-            let mut sheet_scan_buffers = Vec::new();
-
-            for (index, res) in processed_sheets.iter().enumerate() {
-                if !include_sheet_for_scan[index] {
-                    continue;
-                }
-
-                if let Ok((params, _, xml, _, _, _, _)) = res {
-                    let sheet_name = file_to_sheet_name_map
-                        .get(&params.zip_info_filename)
-                        .map(String::as_str)
-                        .unwrap_or("Unknown");
-
-                    sheet_scan_buffers.push(SheetScanBuffer {
-                        sheet_file: &params.zip_info_filename,
-                        sheet_name,
-                        xml: xml.as_slice(),
-                    });
-                }
-            }
-
-            if let Some(wb_xml) = &workbook_xml_for_scan {
-                sheet_scan_buffers.push(SheetScanBuffer {
-                    sheet_file: "xl/workbook.xml",
-                    sheet_name: "Workbook",
-                    xml: wb_xml.as_slice(),
-                });
-            }
-
-            match scan_for_references_by_sheet(
-                &sheet_scan_buffers,
-                &mut protected_refs,
-                Some(&sheet_name_to_file_map),
-                Some(&sheet_files_in_workbook_order),
-            ) {
-                ScanResult::Safe => {
-                    safe_to_clean = true;
-                }
-                ScanResult::Unsafe(reason) => {
-                    warn!(
-                        "Unsafe dynamic reference found: {}. Skipping deferred cleanup for {}.",
-                        reason, input_display
-                    );
-                }
-            }
-        }
-
-        // --- PHASE 3: Fast Regex Cleanup & Precompression ---
-        let known_cells_by_sheet_file: Arc<Mutex<HashMap<String, HashSet<String>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-
-        let finalize_sheet = |res: ProcessedSheetResult| {
-            let (
-                params,
-                index,
-                mut xml,
-                mut sheet_data_range,
-                mut metrics,
-                start_time,
-                original_size,
-            ) = match res {
-                Ok(val) => val,
-                Err((params, index)) => {
-                    if !send_write_job(
-                        &tx,
-                        WriteJob::CopyOriginal {
-                            index,
-                            filename: params.zip_info_filename,
-                        },
-                        &params.xlsx_file_path,
-                    ) {
-                        return;
-                    }
-                    return;
-                }
-            };
-
-            if safe_to_clean && !metrics.candidates.is_empty() {
-                let mut deferred_cleanup_rows = HashSet::new();
-                match transform_sheet_data_range(&xml, sheet_data_range.clone(), |sheet_data| {
-                    let (cleaned, touched_rows) = apply_deferred_candidate_cleanup(
-                        sheet_data.to_vec(),
-                        &metrics.candidates,
-                        &protected_refs,
-                        &params.zip_info_filename,
-                        &mut metrics.cleanup_stats,
-                    );
-                    deferred_cleanup_rows = touched_rows;
-                    Ok(cleaned)
-                }) {
-                    Ok((cleaned, new_range)) => {
-                        xml = cleaned;
-                        sheet_data_range = new_range;
-                    }
-                    Err(e) => {
-                        error!(event = "deferred_candidate_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to clean deferred candidates; keeping initial XML");
-                    }
-                }
-
-                invalidate_tail_anchor_for_touched_rows(&mut metrics, &deferred_cleanup_rows);
-
-                if !deferred_cleanup_rows.is_empty() {
-                    metrics.row_attributes.clear();
-                    metrics.kept_row_states.clear();
-                    metrics.deleted_row_states.clear();
-                    match transform_sheet_data_range(&xml, sheet_data_range.clone(), |sheet_data| {
-                        clean_selected_rows_and_cells_in_cell_range(
-                            sheet_data,
-                            &params,
-                            &mut metrics,
-                            &deferred_cleanup_rows,
-                        )
-                    }) {
-                        Ok((cleaned, new_range)) => {
-                            xml = cleaned;
-                            sheet_data_range = new_range;
-                        }
-                        Err(e) => {
-                            error!(event = "deferred_row_cell_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, rows = deferred_cleanup_rows.len(), error = %e, "Failed to clean rows touched by deferred cleanup; keeping deferred-cleaned XML");
-                        }
-                    }
-                }
-
-                metrics.row_attributes.clear();
-                metrics.kept_row_states.clear();
-                metrics.deleted_row_states.clear();
-                match transform_sheet_data_range(&xml, sheet_data_range.clone(), |sheet_data| {
-                    clean_empty_rows_from_after_cell_range(sheet_data, &params, &mut metrics)
-                }) {
-                    Ok((cleaned, new_range)) => {
-                        xml = cleaned;
-                        sheet_data_range = new_range;
-                    }
-                    Err(e) => {
-                        error!(event = "deferred_empty_row_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to clean rows emptied by deferred cleanup; keeping deferred-cleaned XML");
-                    }
-                }
-
-                if params.cleanup.trailing_layout_only_rows {
-                    match transform_sheet_data_range(&xml, sheet_data_range.clone(), |sheet_data| {
-                        Ok(trim_trailing_layout_only_rows_vec(
-                            sheet_data.to_vec(),
-                            &params,
-                            &mut metrics,
-                        ))
-                    }) {
-                        Ok((cleaned, _new_range)) => {
-                            xml = cleaned;
-                        }
-                        Err(e) => {
-                            error!(event = "deferred_tail_cleanup_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to trim rows after deferred cleanup; keeping deferred-cleaned XML");
-                        }
-                    }
-                }
-            }
-
-            let reduction = original_size.saturating_sub(xml.len());
-            let cleaned_size = xml.len();
-            let cleaned_cell_refs = collect_cell_refs(&xml);
-
-            let elapsed = start_time.elapsed();
-            if elapsed.as_secs_f64() >= 5.0 {
-                warn!(
-                    xlsx = %params.xlsx_file_path,
-                    sheet = %params.zip_info_filename,
-                    cleaned_xml_bytes = xml.len(),
-                    reduction_bytes = reduction,
-                    elapsed_ms = elapsed.as_millis(),
-                    "Slow Sheet in {} / {}: Clean size {} bytes, reduction {} bytes, time {:.2?}",
-                    params.xlsx_file_path,
-                    params.zip_info_filename,
-                    xml.len(),
-                    reduction,
-                    elapsed
-                );
-            }
-
-            let out_method = output_compression_method(params.compress_method, cli.store_output);
-            match precompress_entry(
-                &params.zip_info_filename,
-                xml,
-                out_method,
-                cli.compression_level,
-            ) {
-                Ok(zip_bytes) => {
-                    debug!(
-                        xlsx = %params.xlsx_file_path,
-                        sheet = %params.zip_info_filename,
-                        cleaned_xml_bytes = cleaned_size,
-                        reduction_bytes = reduction,
-                        "Queued cleaned sheet for writing"
-                    );
-                    send_cleanup_stats_rows(
-                        analysis_tx.as_ref(),
-                        &params.xlsx_file_path,
-                        &params.zip_info_filename,
-                        &metrics.cleanup_stats,
-                        original_size,
-                        cleaned_size,
-                        attribution_safe_analysis,
-                    );
-                    {
-                        let mut guard = known_cells_by_sheet_file.lock().unwrap();
-                        guard.insert(params.zip_info_filename.clone(), cleaned_cell_refs);
-                    }
-
-                    if !send_write_job(
-                        &tx,
-                        WriteJob::CopyPrecompressed {
-                            filename: params.zip_info_filename,
-                            zip_bytes,
-                        },
-                        &params.xlsx_file_path,
-                    ) {
-                        return;
-                    }
-                }
-                Err(e) => {
-                    error!(event = "sheet_precompress_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %e, "Failed to precompress cleaned sheet; copying original");
-
-                    if !send_write_job(
-                        &tx,
-                        WriteJob::CopyOriginal {
-                            index,
-                            filename: params.zip_info_filename,
-                        },
-                        &params.xlsx_file_path,
-                    ) {
-                        return;
-                    }
-                }
-            }
-        };
-
-        if cli.disable_multiprocessing {
-            processed_sheets.into_iter().for_each(finalize_sheet);
-        } else {
-            processed_sheets.into_par_iter().for_each(finalize_sheet);
-        }
-
-        if let Some((index, method, calc_chain_xml)) = calc_chain_part {
-            let maybe_cleaned_calc_chain = workbook_xml_for_calc_chain
-                .as_ref()
-                .zip(workbook_rels_for_calc_chain.as_ref())
-                .map(|(wb_xml, wb_rels)| {
-                    let sheet_id_to_file = build_sheet_id_to_file_map(wb_xml, wb_rels);
-                    let known_cells = known_cells_by_sheet_file.lock().unwrap();
-                    clean_calc_chain(calc_chain_xml.clone(), &sheet_id_to_file, &known_cells)
-                });
-
-            if let Some(cleaned_calc_chain) = maybe_cleaned_calc_chain {
-                let out_method = output_compression_method(method, cli.store_output);
-                match precompress_entry(
-                    "xl/calcChain.xml",
-                    cleaned_calc_chain,
-                    out_method,
-                    cli.compression_level,
-                ) {
-                    Ok(zip_bytes) => {
-                        if !send_write_job(
-                            &tx,
-                            WriteJob::CopyPrecompressed {
-                                filename: "xl/calcChain.xml".to_string(),
-                                zip_bytes,
-                            },
-                            &input_display,
-                        ) {
-                            return;
-                        }
-                    }
-                    Err(e) => {
-                        error!(event = "calc_chain_precompress_failed", xlsx = %input_display, error = %e, "Failed to precompress cleaned calcChain.xml; copying original");
-                        if !send_write_job(
-                            &tx,
-                            WriteJob::CopyOriginal {
-                                index,
-                                filename: "xl/calcChain.xml".to_string(),
-                            },
-                            &input_display,
-                        ) {
-                            return;
-                        }
-                    }
-                }
-            } else if !send_write_job(
-                &tx,
-                WriteJob::CopyOriginal {
-                    index,
-                    filename: "xl/calcChain.xml".to_string(),
-                },
-                &input_display,
-            ) {
-                return;
-            }
-        }
-
-        debug!(event = "file_queued_for_writer", xlsx = %input_display, elapsed_ms = file_start.elapsed().as_millis(), "Queued XLSX for writing");
+}
+
+fn run_input_files(
+    input_files: &[PathBuf],
+    cli: &Cli,
+    writer_pool: &ThreadPool,
+    workbook_limiter: &WorkbookLimiter,
+    batch_progress: &BatchProgress,
+    active_tasks: &ActiveTasks,
+    analysis_tx: Option<mpsc::Sender<AnalysisCsvRow>>,
+) {
+    let process = |input: &PathBuf| {
+        process_file(
+            input,
+            cli,
+            writer_pool,
+            workbook_limiter,
+            batch_progress,
+            active_tasks,
+            analysis_tx.clone(),
+        )
     };
-
     if cli.disable_multiprocessing {
-        input_files.iter().for_each(process_file);
+        input_files.iter().for_each(process);
     } else {
-        input_files.par_iter().for_each(process_file);
+        input_files.par_iter().for_each(process);
     }
+}
 
+fn finish_batch(
+    analysis_tx: Option<mpsc::Sender<AnalysisCsvRow>>,
+    analysis_handle: Option<std::thread::JoinHandle<()>>,
+    writer_pool: &ThreadPool,
+    stop_watchdog_tx: mpsc::Sender<()>,
+    watchdog_handle: std::thread::JoinHandle<()>,
+) {
     drop(analysis_tx);
     if let Some(handle) = analysis_handle {
         handle.join().ok();
     }
-
     writer_pool.join();
     let _ = stop_watchdog_tx.send(());
     watchdog_handle.join().ok();
-
-    Ok(())
 }
 
 #[cfg(test)]
