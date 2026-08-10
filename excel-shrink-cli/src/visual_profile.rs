@@ -151,21 +151,31 @@ impl VisualProfileConfig {
 
     pub fn active_flags(&self) -> Vec<&'static str> {
         let mut flags = Vec::new();
-        if self.remove_textless_default_font_representatives {
-            flags.push(REMOVE_TEXTLESS_DEFAULT_FONT_REPRESENTATIVES);
-        }
-        if self.remove_textless_style_representatives {
-            flags.push(REMOVE_TEXTLESS_STYLE_REPRESENTATIVES);
-        }
-        if self.remove_textless_column_style_representatives {
-            flags.push(REMOVE_TEXTLESS_COLUMN_STYLE_REPRESENTATIVES);
-        }
-        if self.remove_unreferenced_whitespace_cells {
-            flags.push(REMOVE_UNREFERENCED_WHITESPACE_CELLS);
-        }
-        if self.keep_unreferenced_hidden_content_cells {
-            flags.push(KEEP_UNREFERENCED_HIDDEN_CONTENT_CELLS);
-        }
+        push_enabled_flag(
+            &mut flags,
+            self.remove_textless_default_font_representatives,
+            REMOVE_TEXTLESS_DEFAULT_FONT_REPRESENTATIVES,
+        );
+        push_enabled_flag(
+            &mut flags,
+            self.remove_textless_style_representatives,
+            REMOVE_TEXTLESS_STYLE_REPRESENTATIVES,
+        );
+        push_enabled_flag(
+            &mut flags,
+            self.remove_textless_column_style_representatives,
+            REMOVE_TEXTLESS_COLUMN_STYLE_REPRESENTATIVES,
+        );
+        push_enabled_flag(
+            &mut flags,
+            self.remove_unreferenced_whitespace_cells,
+            REMOVE_UNREFERENCED_WHITESPACE_CELLS,
+        );
+        push_enabled_flag(
+            &mut flags,
+            self.keep_unreferenced_hidden_content_cells,
+            KEEP_UNREFERENCED_HIDDEN_CONTENT_CELLS,
+        );
         flags
     }
 
@@ -196,15 +206,21 @@ impl VisualProfileConfig {
 
     pub fn cli_args(&self) -> Vec<String> {
         let mut args = Vec::new();
-        if self.remove_textless_default_font_representatives {
-            args.push(format!("--{REMOVE_TEXTLESS_DEFAULT_FONT_REPRESENTATIVES}"));
-        }
-        if self.remove_textless_style_representatives {
-            args.push(format!("--{REMOVE_TEXTLESS_STYLE_REPRESENTATIVES}"));
-        }
-        if self.remove_textless_column_style_representatives {
-            args.push(format!("--{REMOVE_TEXTLESS_COLUMN_STYLE_REPRESENTATIVES}"));
-        }
+        push_enabled_cli_flag(
+            &mut args,
+            self.remove_textless_default_font_representatives,
+            REMOVE_TEXTLESS_DEFAULT_FONT_REPRESENTATIVES,
+        );
+        push_enabled_cli_flag(
+            &mut args,
+            self.remove_textless_style_representatives,
+            REMOVE_TEXTLESS_STYLE_REPRESENTATIVES,
+        );
+        push_enabled_cli_flag(
+            &mut args,
+            self.remove_textless_column_style_representatives,
+            REMOVE_TEXTLESS_COLUMN_STYLE_REPRESENTATIVES,
+        );
         match self.inactive_protection_cell_policy {
             InactiveProtectionCellPolicyArg::Remove => {}
             policy => {
@@ -212,13 +228,29 @@ impl VisualProfileConfig {
                 args.push(inactive_protection_cell_policy_name(policy).to_string());
             }
         }
-        if self.remove_unreferenced_whitespace_cells {
-            args.push(format!("--{REMOVE_UNREFERENCED_WHITESPACE_CELLS}"));
-        }
-        if self.keep_unreferenced_hidden_content_cells {
-            args.push(format!("--{KEEP_UNREFERENCED_HIDDEN_CONTENT_CELLS}"));
-        }
+        push_enabled_cli_flag(
+            &mut args,
+            self.remove_unreferenced_whitespace_cells,
+            REMOVE_UNREFERENCED_WHITESPACE_CELLS,
+        );
+        push_enabled_cli_flag(
+            &mut args,
+            self.keep_unreferenced_hidden_content_cells,
+            KEEP_UNREFERENCED_HIDDEN_CONTENT_CELLS,
+        );
         args
+    }
+}
+
+fn push_enabled_flag(flags: &mut Vec<&'static str>, enabled: bool, flag: &'static str) {
+    if enabled {
+        flags.push(flag);
+    }
+}
+
+fn push_enabled_cli_flag(args: &mut Vec<String>, enabled: bool, flag: &str) {
+    if enabled {
+        args.push(format!("--{flag}"));
     }
 }
 

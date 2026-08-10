@@ -203,149 +203,163 @@ pub fn compare_sheet_screenshots(
         cache_root.display()
     );
 
-    let run_capture = |original_for_capture: &Path,
-                       original_cache: &WorkbookScreenshotCache,
-                       original_cache_hit: bool,
-                       shrunk_cache_hit: bool|
-     -> anyhow::Result<ScreenshotCaptureRun> {
-        fs::create_dir_all(&original_cache.cache_dir)?;
-        fs::create_dir_all(&shrunk_cache.cache_dir)?;
-        let original_sheet_cache_path = work_dir.join("original-sheet-screenshot-cache.json");
-        let shrunk_sheet_cache_path = work_dir.join("shrunk-sheet-screenshot-cache.json");
-        let original_sheet_cache_count =
-            write_sheet_cache_plan(original_cache, &original_sheet_cache_path)?;
-        let shrunk_sheet_cache_count =
-            write_sheet_cache_plan(&shrunk_cache, &shrunk_sheet_cache_path)?;
+    if original_cache_hit && shrunk_cache_hit {
         screenshot_info!(
-            "[excel-screenshot] sheet cache original_hits={}/{} shrunk_hits={}/{}",
-            original_sheet_cache_count,
-            original_cache.sheet_identities.len(),
-            shrunk_sheet_cache_count,
-            shrunk_cache.sheet_identities.len()
+            "[excel-screenshot] all sheets cached; writing capture manifest without opening Excel"
         );
-        let original_excel_path =
-            link_workbook_with_suffix(original_for_capture, work_dir, "original")?;
-        let shrunk_excel_path = link_workbook_with_suffix(shrunk_path, work_dir, "shrunk")?;
-        screenshot_info!(
+        write_cached_capture_manifest_without_excel(
+            &capture_manifest_path,
+            &progress_path,
+            &original_cache,
+            &shrunk_cache,
+        )?;
+    } else {
+        let run_capture = |original_for_capture: &Path,
+                           original_cache: &WorkbookScreenshotCache,
+                           original_cache_hit: bool,
+                           shrunk_cache_hit: bool|
+         -> anyhow::Result<ScreenshotCaptureRun> {
+            fs::create_dir_all(&original_cache.cache_dir)?;
+            fs::create_dir_all(&shrunk_cache.cache_dir)?;
+            let original_sheet_cache_path = work_dir.join("original-sheet-screenshot-cache.json");
+            let shrunk_sheet_cache_path = work_dir.join("shrunk-sheet-screenshot-cache.json");
+            let original_sheet_cache_count =
+                write_sheet_cache_plan(original_cache, &original_sheet_cache_path)?;
+            let shrunk_sheet_cache_count =
+                write_sheet_cache_plan(&shrunk_cache, &shrunk_sheet_cache_path)?;
+            screenshot_info!(
+                "[excel-screenshot] sheet cache original_hits={}/{} shrunk_hits={}/{}",
+                original_sheet_cache_count,
+                original_cache.sheet_identities.len(),
+                shrunk_sheet_cache_count,
+                shrunk_cache.sheet_identities.len()
+            );
+            let original_excel_path =
+                link_workbook_with_suffix(original_for_capture, work_dir, "original")?;
+            let shrunk_excel_path = link_workbook_with_suffix(shrunk_path, work_dir, "shrunk")?;
+            screenshot_info!(
             "[excel-screenshot] capture inputs original_excel={} shrunk_excel={} progress={} manifest={}",
             original_excel_path.display(),
             shrunk_excel_path.display(),
             progress_path.display(),
             capture_manifest_path.display()
         );
-        let _ = fs::remove_file(&capture_manifest_path);
-        let _ = fs::remove_file(&open_timing_path);
+            let _ = fs::remove_file(&capture_manifest_path);
+            let _ = fs::remove_file(&open_timing_path);
 
-        let outcome = run_power_shell_script_with_status_and_stall_timeout(
-            &script_path,
-            &[
-                ("OriginalPath", power_shell_path(&original_excel_path)?),
-                ("ShrunkPath", power_shell_path(&shrunk_excel_path)?),
-                ("OutputDir", power_shell_path(output_dir)?),
-                (
-                    "CaptureManifestPath",
-                    power_shell_path(&capture_manifest_path)?,
-                ),
-                ("RangeLimitPath", power_shell_path(&range_limit_path)?),
-                (
-                    "OriginalCacheDir",
-                    power_shell_path(&original_cache.cache_dir)?,
-                ),
-                ("ShrunkCacheDir", power_shell_path(&shrunk_cache.cache_dir)?),
-                (
-                    "OriginalSheetCachePath",
-                    power_shell_path(&original_sheet_cache_path)?,
-                ),
-                (
-                    "ShrunkSheetCachePath",
-                    power_shell_path(&shrunk_sheet_cache_path)?,
-                ),
-                ("OriginalAlreadyCached", original_cache_hit.to_string()),
-                ("ShrunkAlreadyCached", shrunk_cache_hit.to_string()),
-            ],
-            &progress_path,
-            EXCEL_SCREENSHOT_STALL_TIMEOUT,
-        )?;
-
-        Ok(ScreenshotCaptureRun {
-            outcome,
-            original_excel_path,
-            shrunk_excel_path,
-        })
-    };
-
-    let capture_run = run_capture(
-        &original_for_capture,
-        &original_cache,
-        original_cache_hit,
-        shrunk_cache_hit,
-    )?;
-    let repair_reason = match &capture_run.outcome {
-        PowerShellScriptOutcome::Completed(status) => {
-            if screenshot_capture_needs_original_workbook_repair(
-                status,
+            let outcome = run_power_shell_script_with_status_and_stall_timeout(
+                &script_path,
+                &[
+                    ("OriginalPath", power_shell_path(&original_excel_path)?),
+                    ("ShrunkPath", power_shell_path(&shrunk_excel_path)?),
+                    ("OutputDir", power_shell_path(output_dir)?),
+                    (
+                        "CaptureManifestPath",
+                        power_shell_path(&capture_manifest_path)?,
+                    ),
+                    ("RangeLimitPath", power_shell_path(&range_limit_path)?),
+                    (
+                        "OriginalCacheDir",
+                        power_shell_path(&original_cache.cache_dir)?,
+                    ),
+                    ("ShrunkCacheDir", power_shell_path(&shrunk_cache.cache_dir)?),
+                    (
+                        "OriginalSheetCachePath",
+                        power_shell_path(&original_sheet_cache_path)?,
+                    ),
+                    (
+                        "ShrunkSheetCachePath",
+                        power_shell_path(&shrunk_sheet_cache_path)?,
+                    ),
+                    ("OriginalAlreadyCached", original_cache_hit.to_string()),
+                    ("ShrunkAlreadyCached", shrunk_cache_hit.to_string()),
+                ],
                 &progress_path,
-                &capture_manifest_path,
-            ) {
-                Some("Excel failed before opening original workbook".to_string())
-            } else {
-                ensure_screenshot_capture_completed(
-                    status,
-                    &capture_manifest_path,
-                    &progress_path,
-                    &capture_run.original_excel_path,
-                    &capture_run.shrunk_excel_path,
-                )?;
-                None
-            }
-        }
-        PowerShellScriptOutcome::TimedOut { stalled_for } => Some(format!(
-            "Excel automation stalled for {:.1}s",
-            stalled_for.as_secs_f64()
-        )),
-    };
+                EXCEL_SCREENSHOT_STALL_TIMEOUT,
+            )?;
 
-    if let Some(repair_reason) = repair_reason {
-        preserve_stalled_progress_log(output_dir, &progress_path)?;
-        screenshot_info!(
-            "[excel-screenshot] {repair_reason}; repairing original workbook.xml and retrying"
-        );
+            Ok(ScreenshotCaptureRun {
+                outcome,
+                original_excel_path,
+                shrunk_excel_path,
+            })
+        };
 
-        let repaired = repair_original_workbook_xml_only(original_path, work_dir)?;
-        screenshot_info!(
-            "[excel-screenshot] repaired original workbook.xml path={}",
-            repaired.display()
-        );
-
-        original_for_capture = repaired.clone();
-        original_workbook_xml_repaired_path = Some(repaired);
-        original_cache =
-            WorkbookScreenshotCache::new(&original_for_capture, &cache_root, &capture_range_hash)?
-                .with_range_limits(range_limits)?;
-        original_cache_hit = original_cache.is_complete()?;
-
-        let retry_run = run_capture(
+        let capture_run = run_capture(
             &original_for_capture,
             &original_cache,
             original_cache_hit,
             shrunk_cache_hit,
         )?;
-        match &retry_run.outcome {
+        let repair_reason = match &capture_run.outcome {
             PowerShellScriptOutcome::Completed(status) => {
-                ensure_screenshot_capture_completed(
+                if screenshot_capture_needs_original_workbook_repair(
                     status,
-                    &capture_manifest_path,
                     &progress_path,
-                    &retry_run.original_excel_path,
-                    &retry_run.shrunk_excel_path,
-                )?;
-                mark_original_workbook_xml_repair_needed(
-                    &cache_root,
-                    &unrepaired_original_workbook_hash,
-                )?;
+                    &capture_manifest_path,
+                ) {
+                    Some("Excel failed before opening original workbook".to_string())
+                } else {
+                    ensure_screenshot_capture_completed(
+                        status,
+                        &capture_manifest_path,
+                        &progress_path,
+                        &capture_run.original_excel_path,
+                        &capture_run.shrunk_excel_path,
+                    )?;
+                    None
+                }
             }
-            PowerShellScriptOutcome::TimedOut { stalled_for } => {
-                anyhow::bail!(
+            PowerShellScriptOutcome::TimedOut { stalled_for } => Some(format!(
+                "Excel automation stalled for {:.1}s",
+                stalled_for.as_secs_f64()
+            )),
+        };
+
+        if let Some(repair_reason) = repair_reason {
+            preserve_stalled_progress_log(output_dir, &progress_path)?;
+            screenshot_info!(
+                "[excel-screenshot] {repair_reason}; repairing original workbook.xml and retrying"
+            );
+
+            let repaired = repair_original_workbook_xml_only(original_path, work_dir)?;
+            screenshot_info!(
+                "[excel-screenshot] repaired original workbook.xml path={}",
+                repaired.display()
+            );
+
+            original_for_capture = repaired.clone();
+            original_workbook_xml_repaired_path = Some(repaired);
+            original_cache = WorkbookScreenshotCache::new(
+                &original_for_capture,
+                &cache_root,
+                &capture_range_hash,
+            )?
+            .with_range_limits(range_limits)?;
+            original_cache_hit = original_cache.is_complete()?;
+
+            let retry_run = run_capture(
+                &original_for_capture,
+                &original_cache,
+                original_cache_hit,
+                shrunk_cache_hit,
+            )?;
+            match &retry_run.outcome {
+                PowerShellScriptOutcome::Completed(status) => {
+                    ensure_screenshot_capture_completed(
+                        status,
+                        &capture_manifest_path,
+                        &progress_path,
+                        &retry_run.original_excel_path,
+                        &retry_run.shrunk_excel_path,
+                    )?;
+                    mark_original_workbook_xml_repair_needed(
+                        &cache_root,
+                        &unrepaired_original_workbook_hash,
+                    )?;
+                }
+                PowerShellScriptOutcome::TimedOut { stalled_for } => {
+                    anyhow::bail!(
                     "Excel screenshot capture stalled for {:.1}s after original workbook.xml repair; manifest: {}\n{}",
                     stalled_for.as_secs_f64(),
                     capture_manifest_path.display(),
@@ -355,12 +369,13 @@ pub fn compare_sheet_screenshots(
                         &retry_run.shrunk_excel_path
                     )
                 );
+                }
             }
         }
-    }
 
-    update_workbook_screenshot_cache(&capture_manifest_path, &original_cache, true)?;
-    update_workbook_screenshot_cache(&capture_manifest_path, &shrunk_cache, false)?;
+        update_workbook_screenshot_cache(&capture_manifest_path, &original_cache, true)?;
+        update_workbook_screenshot_cache(&capture_manifest_path, &shrunk_cache, false)?;
+    }
 
     let sheet_xml_diff_context = SheetXmlDiffContext {
         original_workbook_path: original_for_capture.as_path(),
@@ -1408,6 +1423,154 @@ fn write_sheet_cache_plan(
         serde_json::to_vec_pretty(&WorkbookScreenshotSheetCachePlan { captures })?,
     )?;
     Ok(count)
+}
+
+fn write_cached_capture_manifest_without_excel(
+    capture_manifest_path: &Path,
+    progress_path: &Path,
+    original_cache: &WorkbookScreenshotCache,
+    shrunk_cache: &WorkbookScreenshotCache,
+) -> anyhow::Result<()> {
+    let original_captures = original_cache.valid_current_sheet_captures()?;
+    let shrunk_captures = shrunk_cache.valid_current_sheet_captures()?;
+    anyhow::ensure!(
+        original_captures.len() == original_cache.sheet_identities.len()
+            && shrunk_captures.len() == shrunk_cache.sheet_identities.len(),
+        "cannot build cached screenshot manifest without complete original and shrunk sheet caches"
+    );
+
+    let mut captures = Vec::new();
+    for (&sheet_index, original_capture) in &original_captures {
+        let Some(shrunk_capture) = shrunk_captures.get(&sheet_index) else {
+            anyhow::bail!("missing shrunk cached screenshot for sheet index {sheet_index}");
+        };
+        captures.push(cached_capture_pair(
+            sheet_index,
+            original_capture,
+            shrunk_capture,
+        ));
+    }
+
+    if let Some(parent) = capture_manifest_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(capture_manifest_path, serde_json::to_vec_pretty(&captures)?)?;
+    fs::write(
+        progress_path,
+        format!(
+            "screenshot capture skipped {}; all sheets reused from cache without opening Excel\ncached manifest='{}' captures={}\n",
+            current_timestamp_for_progress_log(),
+            capture_manifest_path.display(),
+            captures.len()
+        ),
+    )?;
+    Ok(())
+}
+
+fn cached_capture_pair(
+    sheet_index: usize,
+    original_capture: &WorkbookScreenshotCapture,
+    shrunk_capture: &WorkbookScreenshotCapture,
+) -> ScreenshotCapture {
+    let tiles = cached_capture_tiles(original_capture, shrunk_capture);
+    let preferred_capture = if original_capture.capture_info.is_some() {
+        original_capture
+    } else {
+        shrunk_capture
+    };
+
+    ScreenshotCapture {
+        sheet_index,
+        sheet_name: first_non_empty_string(
+            Some(original_capture.sheet_name.as_str()),
+            Some(shrunk_capture.sheet_name.as_str()),
+        )
+        .unwrap_or_else(|| format!("sheet {sheet_index}")),
+        capture_range: first_non_empty_string(
+            original_capture.capture_range.as_deref(),
+            shrunk_capture.capture_range.as_deref(),
+        ),
+        capture_strategy: first_non_empty_string(
+            original_capture.capture_strategy.as_deref(),
+            shrunk_capture.capture_strategy.as_deref(),
+        ),
+        used_range_error: first_non_empty_string(
+            original_capture.used_range_error.as_deref(),
+            shrunk_capture.used_range_error.as_deref(),
+        ),
+        screenshot_error: None,
+        original_image: if original_capture.tiles.is_empty() {
+            original_capture.image.clone()
+        } else {
+            None
+        },
+        shrunk_image: if shrunk_capture.tiles.is_empty() {
+            shrunk_capture.image.clone()
+        } else {
+            None
+        },
+        original_background_rgba: original_capture.background_rgba,
+        shrunk_background_rgba: shrunk_capture.background_rgba,
+        capture_info: preferred_capture.capture_info.clone(),
+        tiles,
+    }
+}
+
+fn cached_capture_tiles(
+    original_capture: &WorkbookScreenshotCapture,
+    shrunk_capture: &WorkbookScreenshotCapture,
+) -> Vec<ScreenshotCaptureTile> {
+    let original_by_index = original_capture
+        .tiles
+        .iter()
+        .map(|tile| (tile.tile_index, tile))
+        .collect::<BTreeMap<_, _>>();
+    let shrunk_by_index = shrunk_capture
+        .tiles
+        .iter()
+        .map(|tile| (tile.tile_index, tile))
+        .collect::<BTreeMap<_, _>>();
+    let indexes = original_by_index
+        .keys()
+        .chain(shrunk_by_index.keys())
+        .copied()
+        .collect::<BTreeSet<_>>();
+
+    indexes
+        .into_iter()
+        .filter_map(|tile_index| {
+            let original_tile = original_by_index.get(&tile_index).copied();
+            let shrunk_tile = shrunk_by_index.get(&tile_index).copied();
+            let preferred_tile = original_tile.or(shrunk_tile)?;
+            Some(ScreenshotCaptureTile {
+                tile_index,
+                capture_range: preferred_tile.capture_range.clone(),
+                capture_info: preferred_tile.capture_info.clone(),
+                original_image: original_tile.and_then(|tile| tile.image.clone()),
+                shrunk_image: shrunk_tile.and_then(|tile| tile.image.clone()),
+                original_background_rgba: original_tile.and_then(|tile| tile.background_rgba),
+                shrunk_background_rgba: shrunk_tile.and_then(|tile| tile.background_rgba),
+                original_width: original_tile.and_then(|tile| tile.width),
+                original_height: original_tile.and_then(|tile| tile.height),
+                shrunk_width: shrunk_tile.and_then(|tile| tile.width),
+                shrunk_height: shrunk_tile.and_then(|tile| tile.height),
+            })
+        })
+        .collect()
+}
+
+fn first_non_empty_string(primary: Option<&str>, fallback: Option<&str>) -> Option<String> {
+    primary
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| fallback.filter(|value| !value.trim().is_empty()))
+        .map(ToOwned::to_owned)
+}
+
+fn current_timestamp_for_progress_log() -> String {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|duration| format!("unix_ms={}", duration.as_millis()))
+        .unwrap_or_else(|_| "unix_ms=0".to_string())
 }
 
 fn update_workbook_screenshot_cache(
@@ -6925,5 +7088,86 @@ mod tests {
 
         let _ = fs::remove_dir_all(&test_dir);
         Ok(())
+    }
+
+    #[test]
+    fn cached_capture_pair_combines_cached_tiles_without_excel() {
+        let capture_info = ScreenshotCaptureInfo {
+            strategy: "test".to_string(),
+            address: "A1:A4".to_string(),
+            start_row: 1,
+            start_column: 1,
+            rows: 4,
+            columns: 1,
+            used_range_error: None,
+        };
+        let original = WorkbookScreenshotCapture {
+            sheet_index: 7,
+            sheet_name: "OriginalName".to_string(),
+            sheet_file: Some("xl/worksheets/sheet7.xml".to_string()),
+            sheet_xml_hash: Some("same-sheet".to_string()),
+            capture_range: Some("A1:A4".to_string()),
+            capture_strategy: Some("rust_bounds_tiled".to_string()),
+            used_range_error: None,
+            screenshot_error: None,
+            image: None,
+            image_hash: None,
+            background_rgba: None,
+            capture_info: Some(capture_info.clone()),
+            tiles: vec![WorkbookScreenshotTile {
+                tile_index: 1,
+                capture_range: "A1:A4".to_string(),
+                capture_info: capture_info.clone(),
+                image: Some(PathBuf::from("original-tile.png")),
+                image_hash: Some("original-hash".to_string()),
+                background_rgba: Some(ScreenshotRgba {
+                    r: 255,
+                    g: 255,
+                    b: 255,
+                    a: 255,
+                }),
+                width: Some(10),
+                height: Some(20),
+            }],
+        };
+        let shrunk = WorkbookScreenshotCapture {
+            sheet_index: 7,
+            sheet_name: "ShrunkName".to_string(),
+            sheet_file: Some("xl/worksheets/sheet7.xml".to_string()),
+            sheet_xml_hash: Some("same-sheet".to_string()),
+            capture_range: Some("A1:A4".to_string()),
+            capture_strategy: Some("rust_bounds_tiled".to_string()),
+            used_range_error: None,
+            screenshot_error: None,
+            image: None,
+            image_hash: None,
+            background_rgba: None,
+            capture_info: Some(capture_info.clone()),
+            tiles: vec![WorkbookScreenshotTile {
+                tile_index: 1,
+                capture_range: "A1:A4".to_string(),
+                capture_info,
+                image: Some(PathBuf::from("shrunk-tile.png")),
+                image_hash: Some("shrunk-hash".to_string()),
+                background_rgba: None,
+                width: Some(10),
+                height: Some(20),
+            }],
+        };
+
+        let pair = cached_capture_pair(7, &original, &shrunk);
+        assert_eq!(pair.sheet_index, 7);
+        assert_eq!(pair.sheet_name, "OriginalName");
+        assert!(pair.original_image.is_none());
+        assert!(pair.shrunk_image.is_none());
+        assert_eq!(pair.tiles.len(), 1);
+        assert_eq!(
+            pair.tiles[0].original_image,
+            Some(PathBuf::from("original-tile.png"))
+        );
+        assert_eq!(
+            pair.tiles[0].shrunk_image,
+            Some(PathBuf::from("shrunk-tile.png"))
+        );
     }
 }
