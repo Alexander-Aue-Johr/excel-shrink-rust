@@ -1,9 +1,16 @@
 use crate::pipeline::process_files;
+use crate::visual_profile::{
+    predefined_visual_profiles, profile_artifact_root, write_visual_profile_metadata,
+    ResolvedVisualProfile, VisualProfileConfig,
+};
 use crate::{Cli, LogLevel};
 use clap::{Parser, Subcommand};
-use excel_automation::{ExcelSavedWorkbook, ExcelScreenshotReport};
+use excel_automation::{
+    ExcelSavedWorkbook, ExcelScreenshotDifferenceSummary, ExcelScreenshotReport, WorkbookOpenTiming,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -71,6 +78,16 @@ pub struct RegressionRunArgs {
     #[arg(long = "cli-arg", allow_hyphen_values = true)]
     cli_args: Vec<String>,
 
+    /// Run the suite once for each predefined visual profile.
+    /// Baseline defaults are ignored so each run uses the exact profile configuration.
+    #[arg(long)]
+    all_visual_profiles: bool,
+
+    /// Run every predefined visual profile with Excel recalculation/value and screenshot checks.
+    /// This implies --all-visual-profiles, --excel-recalc-check, and --excel-screenshot-check.
+    #[arg(long)]
+    all_visual_profile_checks: bool,
+
     /// Open the shrunk workbook with Excel, force formula recalculation, save it, and compare cached cell values.
     #[arg(long)]
     excel_recalc_check: bool,
@@ -133,6 +150,10 @@ struct RegressionReport {
     mode: String,
     baseline_path: PathBuf,
     corpus_root: Option<PathBuf>,
+    visual_profile: String,
+    visual_profile_kind: String,
+    visual_profile_path: String,
+    config_hash: String,
     excel_recalc_check: bool,
     excel_screenshot_check: bool,
     output_root: PathBuf,
@@ -153,13 +174,21 @@ struct CaseReport {
     download_url: Option<String>,
     input_path: PathBuf,
     output_path: PathBuf,
+    visual_profile: String,
+    visual_profile_kind: String,
+    visual_profile_path: String,
+    config_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     original_copy_path: Option<PathBuf>,
     original_bytes: u64,
     cleaned_bytes: Option<u64>,
     reduction_ratio: Option<f64>,
+    original_uncompressed_bytes: Option<u64>,
+    cleaned_uncompressed_bytes: Option<u64>,
+    uncompressed_reduction_ratio: Option<f64>,
     analysis_mode: bool,
     failures: Vec<String>,
+    sheet_size_details: Vec<SheetReductionDetail>,
     top_sheet_reductions: Vec<SheetReductionDetail>,
     analysis_details: Vec<AnalysisDetail>,
     value_comparison_details: Option<WorkbookComparisonReport>,
@@ -187,7 +216,7 @@ struct AnalysisDetail {
     reduction_bytes_uncompressed_xml: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct SheetReductionDetail {
     sheet_file: String,
     original_sheet_xml_bytes: u64,
@@ -204,6 +233,152 @@ struct AggregateReport {
     failures: Vec<String>,
 }
 
+struct SuiteRunResult {
+    report_path: PathBuf,
+    measurement_profile: RegressionMeasurementProfile,
+    any_failure: bool,
+}
+
+impl SuiteRunResult {
+    fn ensure_success(self) -> anyhow::Result<Self> {
+        anyhow::ensure!(!self.any_failure, "One or more regression checks failed.");
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct RegressionMeasurementReport {
+    mode: String,
+    created_at_unix_ms: u128,
+    output_root: PathBuf,
+    profiles: Vec<RegressionMeasurementProfile>,
+}
+
+#[derive(Debug, Serialize)]
+struct RegressionMeasurementProfile {
+    visual_profile: String,
+    visual_profile_kind: String,
+    visual_profile_path: String,
+    config_hash: String,
+    report_path: PathBuf,
+    cases: Vec<RegressionCaseMeasurement>,
+    aggregate: RegressionMeasurementAggregate,
+}
+
+#[derive(Debug, Serialize)]
+struct RegressionCaseMeasurement {
+    id: String,
+    category: Option<String>,
+    input_path: PathBuf,
+    output_path: PathBuf,
+    original_bytes: u64,
+    cleaned_bytes: Option<u64>,
+    reduction_ratio: Option<f64>,
+    original_uncompressed_bytes: Option<u64>,
+    cleaned_uncompressed_bytes: Option<u64>,
+    uncompressed_reduction_ratio: Option<f64>,
+    sheet_size_details: Vec<SheetReductionDetail>,
+    visual_diff_summary: Option<ExcelScreenshotDifferenceSummary>,
+    screenshot_report_path: Option<PathBuf>,
+    screenshot_output_dir: Option<PathBuf>,
+    entropy_changed_diff_details: Vec<RegressionVisualDiffDetail>,
+    open_timings: Vec<WorkbookOpenTiming>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct RegressionVisualDiffDetail {
+    screenshot_report_path: PathBuf,
+    sheet_index: usize,
+    sheet_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tile_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sheet_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diff_pixel_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    approximate_cells: Option<MeasurementApproximateCells>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    original_crop: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shrunk_crop: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diff_pixels: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vertical_reflow_proof: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vertical_reflow_residual_diff_pixels: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    original_image: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shrunk_image: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sheet_xml_diff: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sheet_xml_visual_diff: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct MeasurementApproximateCells {
+    top_left: String,
+    bottom_right: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MeasurementScreenshotDifference {
+    sheet_index: usize,
+    sheet_name: String,
+    #[serde(default)]
+    tile_index: Option<usize>,
+    #[serde(default)]
+    sheet_file: Option<String>,
+    #[serde(default)]
+    screenshot_error: Option<String>,
+    #[serde(default)]
+    diff_pixel_count: Option<u64>,
+    #[serde(default)]
+    approximate_cells: Option<MeasurementApproximateCells>,
+    #[serde(default)]
+    original_crop: Option<PathBuf>,
+    #[serde(default)]
+    shrunk_crop: Option<PathBuf>,
+    #[serde(default)]
+    diff_pixels: Option<PathBuf>,
+    #[serde(default)]
+    vertical_reflow_proof: Option<serde_json::Value>,
+    #[serde(default)]
+    original_image: Option<PathBuf>,
+    #[serde(default)]
+    shrunk_image: Option<PathBuf>,
+    #[serde(default)]
+    sheet_xml_diff: Option<PathBuf>,
+    #[serde(default)]
+    sheet_xml_visual_diff: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct RegressionMeasurementAggregate {
+    case_count: usize,
+    successful_case_count: usize,
+    total_original_bytes: u64,
+    total_cleaned_bytes: u64,
+    total_reduction_ratio: f64,
+    total_original_uncompressed_bytes: u64,
+    total_cleaned_uncompressed_bytes: u64,
+    total_uncompressed_reduction_ratio: f64,
+    total_original_sheet_xml_bytes: u64,
+    total_cleaned_sheet_xml_bytes: u64,
+    total_sheet_xml_reduction_ratio: f64,
+    visual_total_differences: usize,
+    visual_shift_only_differences: usize,
+    visual_entropy_changed_differences: usize,
+    visual_screenshot_error_differences: usize,
+    visual_diff_pixels: u64,
+    visual_shift_movement_px: u64,
+    avg_original_open_ms: Option<f64>,
+    avg_shrunk_open_ms: Option<f64>,
+}
+
 static DOWNLOAD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 pub fn run_from_args<I, T>(args: I) -> anyhow::Result<()>
@@ -214,13 +389,13 @@ where
     let cli = RegressionCli::parse_from(args);
     let console_log_level = cli.console_log_level;
     match cli.command {
-        RegressionCommand::Smoke(args) => run_suite(
+        RegressionCommand::Smoke(args) => run_suite_or_visual_profile_matrix(
             "smoke",
             "regression/baselines/smoke.json",
             args,
             console_log_level,
         ),
-        RegressionCommand::Corpus(args) => run_suite(
+        RegressionCommand::Corpus(args) => run_suite_or_visual_profile_matrix(
             "corpus",
             "regression/baselines/corpus.json",
             args,
@@ -240,6 +415,7 @@ pub fn run_smoke_case_for_corpus_regression_test(case_id: &str) {
         args,
         LogLevel::Info,
     )
+    .and_then(SuiteRunResult::ensure_success)
     .unwrap_or_else(|e| panic!("corpus regression smoke case '{case_id}' failed: {e:#}"));
 }
 
@@ -254,6 +430,7 @@ pub fn run_smoke_suite_for_corpus_regression_test() {
         args,
         LogLevel::Info,
     )
+    .and_then(SuiteRunResult::ensure_success)
     .unwrap_or_else(|e| panic!("corpus regression smoke suite failed: {e:#}"));
 }
 
@@ -270,6 +447,8 @@ fn corpus_regression_run_args_for_test(case_id: Option<String>) -> RegressionRun
             "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS",
         ),
         cli_args: corpus_regression_cli_args_from_env_for_test(),
+        all_visual_profiles: false,
+        all_visual_profile_checks: false,
         excel_recalc_check: env_flag_enabled_for_test(
             "EXCEL_SHRINK_CORPUS_REGRESSION_EXCEL_RECALC_CHECK",
         ),
@@ -674,15 +853,66 @@ fn run_suite(
     default_baseline_relative_path: &str,
     args: RegressionRunArgs,
     console_log_level: LogLevel,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<SuiteRunResult> {
     let repo_root = repo_root();
-    let baseline_path = resolve_path(
+    let requested_baseline_path = args.baseline_path.clone();
+    let mut baseline_path = resolve_path(
         &repo_root,
-        args.baseline_path
+        requested_baseline_path
+            .clone()
             .unwrap_or_else(|| PathBuf::from(default_baseline_relative_path)),
     );
-    let suite = load_suite(&baseline_path);
+    let mut suite = load_suite(&baseline_path);
+    let mut suite_profile = suite_visual_profile(
+        suite_defaults_for_run(&suite, args.ignore_default_cli_args),
+        &args.cli_args,
+    );
+
+    if requested_baseline_path.is_none() {
+        let profiled_baseline_path = profiled_regression_baseline_path(
+            &repo_root,
+            default_baseline_relative_path,
+            &suite_profile,
+        );
+        if profiled_baseline_path.exists() && profiled_baseline_path != baseline_path {
+            baseline_path = profiled_baseline_path;
+            suite = load_suite(&baseline_path);
+            suite_profile = suite_visual_profile(
+                suite_defaults_for_run(&suite, args.ignore_default_cli_args),
+                &args.cli_args,
+            );
+        }
+    }
+
+    let mut corpus_root = args
+        .corpus_root
+        .clone()
+        .or_else(|| std::env::var_os("EXCEL_SHRINK_CORPUS_ROOT").map(PathBuf::from))
+        .map(|path| resolve_path(&repo_root, path));
+    let show_info = console_log_level.includes(LogLevel::Info);
+
     let mut cases = suite.cases.clone();
+    if cases.is_empty() && mode_name == "corpus" {
+        let discovery_root = corpus_root
+            .clone()
+            .or_else(|| existing_default_corpus_root(&repo_root))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "corpus baseline contains no cases and no corpus root exists; pass --corpus-root"
+                )
+            })?;
+        if show_info {
+            eprintln!(
+                "[{mode_name}] Discovering corpus workbooks under {}",
+                discovery_root.display()
+            );
+        }
+        cases = discover_corpus_cases(&discovery_root)?;
+        corpus_root = Some(discovery_root);
+        if show_info {
+            eprintln!("[{mode_name}] Discovered {} corpus workbooks", cases.len());
+        }
+    }
 
     if let Some(case_id) = &args.case_id {
         cases.retain(|case| case.id == *case_id);
@@ -703,6 +933,7 @@ fn run_suite(
     let timestamp = timestamp();
     let output_root = args
         .output_root
+        .clone()
         .map(|path| resolve_path(&repo_root, path))
         .unwrap_or_else(|| {
             repo_root
@@ -713,30 +944,26 @@ fn run_suite(
 
     let report_path = args
         .report_path
+        .clone()
         .map(|path| resolve_path(&repo_root, path))
         .unwrap_or_else(|| {
-            repo_root
-                .join("regression/reports")
+            regression_report_root(&repo_root, &suite_profile)
                 .join(format!("{mode_name}-{timestamp}.json"))
         });
     if let Some(parent) = report_path.parent() {
         fs::create_dir_all(parent)?;
+        write_visual_profile_metadata(&parent.join("profile-metadata.json"), &suite_profile, None)?;
     }
-
-    let corpus_root = args
-        .corpus_root
-        .or_else(|| std::env::var_os("EXCEL_SHRINK_CORPUS_ROOT").map(PathBuf::from))
-        .map(|path| resolve_path(&repo_root, path));
+    write_visual_profile_metadata(
+        &profile_artifact_root(&repo_root, "baselines", &suite_profile)
+            .join("profile-metadata.json"),
+        &suite_profile,
+        None,
+    )?;
 
     let mut reports = Vec::new();
     let mut any_failure = false;
-    let suite_defaults = if args.ignore_default_cli_args {
-        None
-    } else {
-        suite.defaults.as_ref()
-    };
-
-    let show_info = console_log_level.includes(LogLevel::Info);
+    let suite_defaults = suite_defaults_for_run(&suite, args.ignore_default_cli_args);
 
     for case in cases {
         if show_info {
@@ -830,6 +1057,10 @@ fn run_suite(
         mode: mode_name.to_string(),
         baseline_path,
         corpus_root,
+        visual_profile: suite_profile.profile_name().to_string(),
+        visual_profile_kind: suite_profile.profile_kind().to_string(),
+        visual_profile_path: suite_profile.profile_path_string(),
+        config_hash: suite_profile.config_hash.clone(),
         excel_recalc_check: args.excel_recalc_check,
         excel_screenshot_check: args.excel_screenshot_check,
         output_root,
@@ -837,13 +1068,229 @@ fn run_suite(
         cases: reports,
         aggregate,
     };
+    let measurement_profile = measurement_profile_from_report(&report, &report_path);
     fs::write(&report_path, serde_json::to_string_pretty(&report)?)?;
     if show_info {
         eprintln!("[{mode_name}] Report written to {}", report_path.display());
     }
 
-    anyhow::ensure!(!any_failure, "One or more regression checks failed.");
+    Ok(SuiteRunResult {
+        report_path,
+        measurement_profile,
+        any_failure,
+    })
+}
+
+fn run_suite_or_visual_profile_matrix(
+    mode_name: &str,
+    default_baseline_relative_path: &str,
+    mut args: RegressionRunArgs,
+    console_log_level: LogLevel,
+) -> anyhow::Result<()> {
+    if args.all_visual_profile_checks {
+        args.all_visual_profiles = true;
+        args.excel_recalc_check = true;
+        args.excel_screenshot_check = true;
+    }
+
+    if args.all_visual_profiles {
+        run_visual_profile_matrix(
+            mode_name,
+            default_baseline_relative_path,
+            args,
+            console_log_level,
+        )
+    } else {
+        run_suite(
+            mode_name,
+            default_baseline_relative_path,
+            args,
+            console_log_level,
+        )
+        .and_then(SuiteRunResult::ensure_success)
+        .map(|_| ())
+    }
+}
+
+fn run_visual_profile_matrix(
+    mode_name: &str,
+    default_baseline_relative_path: &str,
+    args: RegressionRunArgs,
+    console_log_level: LogLevel,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        args.report_path.is_none(),
+        "--report-path cannot be used with --all-visual-profiles because each profile writes its own report"
+    );
+    ensure_no_visual_profile_cli_args(&args.cli_args)?;
+
+    let repo_root = repo_root();
+    let matrix_timestamp = timestamp();
+    let base_output_root = args
+        .output_root
+        .clone()
+        .map(|path| resolve_path(&repo_root, path))
+        .unwrap_or_else(|| {
+            repo_root.join("regression/tmp").join(format!(
+                "{mode_name}-all-visual-profiles-{matrix_timestamp}"
+            ))
+        });
+    let show_info = console_log_level.includes(LogLevel::Info);
+    let mut failures = Vec::new();
+    let mut measurement_profiles = Vec::new();
+
+    for predefined in predefined_visual_profiles() {
+        let profile = ResolvedVisualProfile::from_config(predefined.config);
+        if show_info {
+            eprintln!(
+                "[{mode_name}] Running visual profile '{}'",
+                profile.profile_path_string()
+            );
+        }
+
+        let mut profile_args = args.clone();
+        profile_args.all_visual_profiles = false;
+        profile_args.all_visual_profile_checks = false;
+        profile_args.ignore_default_cli_args = true;
+        profile_args.report_path = None;
+        profile_args.output_root = Some(base_output_root.join(profile.profile_path()));
+        profile_args
+            .cli_args
+            .extend(predefined.config.cli_args().into_iter());
+
+        match run_suite(
+            mode_name,
+            default_baseline_relative_path,
+            profile_args,
+            console_log_level,
+        ) {
+            Ok(result) => {
+                if result.any_failure {
+                    failures.push(format!(
+                        "{}: one or more regression checks failed; report: {}",
+                        predefined.name,
+                        result.report_path.display()
+                    ));
+                }
+                measurement_profiles.push(result.measurement_profile);
+            }
+            Err(error) => {
+                failures.push(format!("{}: {error:#}", predefined.name));
+            }
+        }
+    }
+
+    let measurement_report = RegressionMeasurementReport {
+        mode: mode_name.to_string(),
+        created_at_unix_ms: unix_ms(),
+        output_root: base_output_root,
+        profiles: measurement_profiles,
+    };
+    let measurement_dir = repo_root.join("regression/measurements");
+    fs::create_dir_all(&measurement_dir)?;
+    let measurement_path = measurement_dir.join(format!(
+        "{mode_name}-all-visual-profiles-{matrix_timestamp}.json"
+    ));
+    let chart_path = measurement_dir.join(format!(
+        "{mode_name}-all-visual-profiles-{matrix_timestamp}.html"
+    ));
+    fs::write(
+        &measurement_path,
+        serde_json::to_string_pretty(&measurement_report)?,
+    )?;
+    fs::write(&chart_path, measurement_chart_html(&measurement_report))?;
+    if show_info {
+        eprintln!(
+            "[{mode_name}] Measurement report written to {}",
+            measurement_path.display()
+        );
+        eprintln!(
+            "[{mode_name}] Measurement chart written to {}",
+            chart_path.display()
+        );
+    }
+
+    anyhow::ensure!(
+        failures.is_empty(),
+        "One or more visual profile runs failed:\n{}",
+        failures.join("\n")
+    );
     Ok(())
+}
+
+fn ensure_no_visual_profile_cli_args(cli_args: &[String]) -> anyhow::Result<()> {
+    let mut index = 0;
+    while index < cli_args.len() {
+        let arg = &cli_args[index];
+        if visual_profile_cli_arg_name(arg).is_some() {
+            anyhow::bail!(
+                "--all-visual-profiles supplies visual cleanup args itself; remove '{}' from --cli-arg",
+                arg
+            );
+        }
+        index += 1;
+    }
+    Ok(())
+}
+
+fn visual_profile_cli_arg_name(arg: &str) -> Option<&str> {
+    let stripped = arg.strip_prefix("--")?;
+    let name = stripped.split_once('=').map_or(stripped, |(name, _)| name);
+    match name {
+        "remove-textless-default-font-representatives"
+        | "remove-textless-style-representatives"
+        | "remove-textless-column-style-representatives"
+        | "inactive-protection-cell-policy"
+        | "remove-unreferenced-whitespace-cells"
+        | "keep-unreferenced-hidden-content-cells" => Some(name),
+        _ => None,
+    }
+}
+
+fn suite_defaults_for_run(
+    suite: &RegressionSuite,
+    ignore_default_cli_args: bool,
+) -> Option<&SuiteDefaults> {
+    if ignore_default_cli_args {
+        None
+    } else {
+        suite.defaults.as_ref()
+    }
+}
+
+fn suite_visual_profile(
+    defaults: Option<&SuiteDefaults>,
+    extra_cli_args: &[String],
+) -> ResolvedVisualProfile {
+    let mut args = vec![
+        "excel-shrink".to_string(),
+        "input.xlsx".to_string(),
+        "out".to_string(),
+    ];
+    if let Some(defaults) = defaults {
+        if let Some(default_args) = &defaults.cli_args {
+            args.extend(default_args.iter().cloned());
+        }
+    }
+    args.extend(extra_cli_args.iter().cloned());
+
+    ResolvedVisualProfile::from_cli(&Cli::parse_from(args))
+}
+
+fn profiled_regression_baseline_path(
+    repo_root: &Path,
+    default_baseline_relative_path: &str,
+    profile: &ResolvedVisualProfile,
+) -> PathBuf {
+    let file_name = Path::new(default_baseline_relative_path)
+        .file_name()
+        .unwrap_or_else(|| std::ffi::OsStr::new("baseline.json"));
+
+    repo_root
+        .join("regression")
+        .join("baselines")
+        .join(profile.profile_path())
+        .join(file_name)
 }
 
 fn run_case(
@@ -872,25 +1319,47 @@ fn run_case(
         &analysis_csv_path,
         extra_cli_args,
     );
-
-    let mut failures = Vec::new();
-    if let Err(error) = process_files(vec![input.clone()], &cli) {
-        failures.push(format!("excel-shrink failed: {error:#}"));
-    }
-
+    let visual_profile = ResolvedVisualProfile::from_cli(&cli);
     let output_path = case_output_dir.join(
         input
             .file_name()
             .ok_or_else(|| anyhow::anyhow!("input file has no file name: {}", input.display()))?,
     );
+
+    let mut failures = Vec::new();
+    fs::remove_file(&output_path).ok();
+    if let Err(error) = process_files(vec![input.clone()], &cli) {
+        failures.push(format!("excel-shrink failed: {error:#}"));
+    } else if output_path.exists() {
+        if let Err(error) = excel_automation::replace_workbook_with_shared_cache_link(
+            &output_path,
+            &case_output_dir,
+        ) {
+            failures.push(format!(
+                "failed to link cleaned workbook through shared cache: {error:#}"
+            ));
+        }
+    }
+
     let original_bytes = fs::metadata(&input)?.len();
+    let mut original_uncompressed_bytes = None;
     let mut cleaned_bytes = None;
     let mut reduction_ratio = None;
+    let mut cleaned_uncompressed_bytes = None;
+    let mut uncompressed_reduction_ratio = None;
+    let mut sheet_size_details = Vec::new();
     let mut top_sheet_reductions = Vec::new();
     let mut analysis_details = Vec::new();
     let mut value_comparison_details = None;
     let mut excel_recalc_details = None;
     let mut excel_screenshot_details = None;
+
+    match workbook_uncompressed_bytes(&input) {
+        Ok(bytes) => original_uncompressed_bytes = Some(bytes),
+        Err(error) => failures.push(format!(
+            "original workbook uncompressed size analysis failed: {error:#}"
+        )),
+    }
 
     if output_path.exists() {
         let output_bytes = fs::metadata(&output_path)?.len();
@@ -901,8 +1370,21 @@ fn run_case(
         };
         cleaned_bytes = Some(output_bytes);
         reduction_ratio = Some(ratio);
-        match top_sheet_reductions_by_uncompressed_xml(&input, &output_path, 5) {
-            Ok(reductions) => top_sheet_reductions = reductions,
+        match workbook_uncompressed_bytes(&output_path) {
+            Ok(bytes) => {
+                cleaned_uncompressed_bytes = Some(bytes);
+                uncompressed_reduction_ratio =
+                    original_uncompressed_bytes.map(|original| ratio_reduced(original, bytes));
+            }
+            Err(error) => failures.push(format!(
+                "cleaned workbook uncompressed size analysis failed: {error:#}"
+            )),
+        }
+        match sheet_size_details_by_uncompressed_xml(&input, &output_path) {
+            Ok(details) => {
+                top_sheet_reductions = top_sheet_reductions_from_details(&details, 5);
+                sheet_size_details = details;
+            }
             Err(error) => failures.push(format!("sheet reduction analysis failed: {error:#}")),
         }
 
@@ -980,6 +1462,7 @@ fn run_case(
             &screenshot_dir,
             &work_dir,
             &range_limits,
+            &visual_profile,
             console_log_level,
         ) {
             Ok(report) => {
@@ -997,10 +1480,10 @@ fn run_case(
 
     let mut original_copy_path = None;
     if !failures.is_empty() {
-        match copy_original_input_for_failed_case(&input, &case_output_dir) {
+        match link_original_input_for_failed_case(&input, &case_output_dir) {
             Ok(path) => original_copy_path = Some(path),
             Err(error) => failures.push(format!(
-                "failed to copy original workbook into case output directory: {error:#}"
+                "failed to link original workbook into case output directory: {error:#}"
             )),
         }
     }
@@ -1016,12 +1499,20 @@ fn run_case(
         download_url: case.download_url.clone(),
         input_path: input,
         output_path,
+        visual_profile: visual_profile.profile_name().to_string(),
+        visual_profile_kind: visual_profile.profile_kind().to_string(),
+        visual_profile_path: visual_profile.profile_path_string(),
+        config_hash: visual_profile.config_hash,
         original_copy_path,
         original_bytes,
         cleaned_bytes,
         reduction_ratio,
+        original_uncompressed_bytes,
+        cleaned_uncompressed_bytes,
+        uncompressed_reduction_ratio,
         analysis_mode,
         failures,
+        sheet_size_details,
         top_sheet_reductions,
         analysis_details,
         value_comparison_details,
@@ -1030,20 +1521,24 @@ fn run_case(
     })
 }
 
-fn copy_original_input_for_failed_case(
+fn link_original_input_for_failed_case(
     input: &Path,
     case_output_dir: &Path,
 ) -> anyhow::Result<PathBuf> {
     let file_name = file_name(input)?;
     let destination = case_output_dir.join(format!("original-{}", file_name.to_string_lossy()));
-    fs::copy(input, &destination).map_err(|error| {
+    let destination_file_name = destination.file_name().ok_or_else(|| {
         anyhow::anyhow!(
-            "failed to copy '{}' to '{}': {error}",
-            input.display(),
+            "original workbook destination has no file name: {}",
             destination.display()
         )
     })?;
-    Ok(destination)
+    excel_automation::link_workbook_artifact_to_shared_cache(
+        input,
+        case_output_dir,
+        case_output_dir,
+        destination_file_name,
+    )
 }
 
 fn compare_original_and_shrunk_values(
@@ -1210,6 +1705,7 @@ fn failed_case_report(
     case: &RegressionCase,
     failure: String,
 ) -> CaseReport {
+    let visual_profile = ResolvedVisualProfile::from_config(VisualProfileConfig::default());
     CaseReport {
         id: case.id.clone(),
         category: case.category.clone(),
@@ -1221,12 +1717,20 @@ fn failed_case_report(
         download_url: case.download_url.clone(),
         input_path: repo_root.join(case.relative_input.as_deref().unwrap_or("")),
         output_path: output_root.join(&case.id),
+        visual_profile: visual_profile.profile_name().to_string(),
+        visual_profile_kind: visual_profile.profile_kind().to_string(),
+        visual_profile_path: visual_profile.profile_path_string(),
+        config_hash: visual_profile.config_hash,
         original_copy_path: None,
         original_bytes: 0,
         cleaned_bytes: None,
         reduction_ratio: None,
+        original_uncompressed_bytes: None,
+        cleaned_uncompressed_bytes: None,
+        uncompressed_reduction_ratio: None,
         analysis_mode: false,
         failures: vec![failure],
+        sheet_size_details: Vec::new(),
         top_sheet_reductions: Vec::new(),
         analysis_details: Vec::new(),
         value_comparison_details: None,
@@ -1235,23 +1739,29 @@ fn failed_case_report(
     }
 }
 
-fn top_sheet_reductions_by_uncompressed_xml(
+fn sheet_size_details_by_uncompressed_xml(
     original_path: &Path,
     cleaned_path: &Path,
-    limit: usize,
 ) -> anyhow::Result<Vec<SheetReductionDetail>> {
     let original_sheets = worksheet_xml_sizes(original_path)?;
     let cleaned_sheets = worksheet_xml_sizes(cleaned_path)?;
 
-    let mut reductions = Vec::new();
-    for (sheet_file, original_size) in original_sheets {
+    let mut sheet_files = original_sheets
+        .keys()
+        .chain(cleaned_sheets.keys())
+        .cloned()
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    sheet_files.sort();
+
+    let mut details = Vec::new();
+    for sheet_file in sheet_files {
+        let original_size = original_sheets.get(&sheet_file).copied().unwrap_or(0);
         let cleaned_size = cleaned_sheets.get(&sheet_file).copied().unwrap_or(0);
         let reduction_bytes = original_size as i64 - cleaned_size as i64;
-        if reduction_bytes <= 0 {
-            continue;
-        }
 
-        reductions.push(SheetReductionDetail {
+        details.push(SheetReductionDetail {
             sheet_file,
             original_sheet_xml_bytes: original_size,
             cleaned_sheet_xml_bytes: cleaned_size,
@@ -1264,6 +1774,18 @@ fn top_sheet_reductions_by_uncompressed_xml(
         });
     }
 
+    Ok(details)
+}
+
+fn top_sheet_reductions_from_details(
+    details: &[SheetReductionDetail],
+    limit: usize,
+) -> Vec<SheetReductionDetail> {
+    let mut reductions = details
+        .iter()
+        .filter(|detail| detail.reduction_bytes_uncompressed_xml > 0)
+        .cloned()
+        .collect::<Vec<_>>();
     reductions.sort_by(|left, right| {
         right
             .reduction_bytes_uncompressed_xml
@@ -1271,7 +1793,7 @@ fn top_sheet_reductions_by_uncompressed_xml(
             .then_with(|| left.sheet_file.cmp(&right.sheet_file))
     });
     reductions.truncate(limit);
-    Ok(reductions)
+    reductions
 }
 
 fn worksheet_xml_sizes(path: &Path) -> anyhow::Result<HashMap<String, u64>> {
@@ -1299,6 +1821,19 @@ fn worksheet_xml_sizes(path: &Path) -> anyhow::Result<HashMap<String, u64>> {
     }
 
     Ok(sizes)
+}
+
+fn workbook_uncompressed_bytes(path: &Path) -> anyhow::Result<u64> {
+    let file = fs::File::open(path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    let mut total = 0_u64;
+
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index)?;
+        total = total.saturating_add(entry.size());
+    }
+
+    Ok(total)
 }
 
 fn summarize_top_sheet_reductions(reductions: &[SheetReductionDetail]) -> String {
@@ -1364,6 +1899,747 @@ fn aggregate_report(reports: &[CaseReport], expectation: &AggregateExpectation) 
     }
 }
 
+fn measurement_profile_from_report(
+    report: &RegressionReport,
+    report_path: &Path,
+) -> RegressionMeasurementProfile {
+    let cases = report
+        .cases
+        .iter()
+        .map(|case| {
+            let screenshot_report_path = case
+                .excel_screenshot_details
+                .as_ref()
+                .map(|details| details.report_path.clone());
+            RegressionCaseMeasurement {
+                id: case.id.clone(),
+                category: case.category.clone(),
+                input_path: case.input_path.clone(),
+                output_path: case.output_path.clone(),
+                original_bytes: case.original_bytes,
+                cleaned_bytes: case.cleaned_bytes,
+                reduction_ratio: case.reduction_ratio,
+                original_uncompressed_bytes: case.original_uncompressed_bytes,
+                cleaned_uncompressed_bytes: case.cleaned_uncompressed_bytes,
+                uncompressed_reduction_ratio: case.uncompressed_reduction_ratio,
+                sheet_size_details: case.sheet_size_details.clone(),
+                visual_diff_summary: case
+                    .excel_screenshot_details
+                    .as_ref()
+                    .map(|details| details.difference_summary.clone()),
+                screenshot_report_path: screenshot_report_path.clone(),
+                screenshot_output_dir: case
+                    .excel_screenshot_details
+                    .as_ref()
+                    .map(|details| details.output_dir.clone()),
+                entropy_changed_diff_details: screenshot_report_path
+                    .as_deref()
+                    .map(load_entropy_changed_diff_details)
+                    .unwrap_or_default(),
+                open_timings: case
+                    .excel_screenshot_details
+                    .as_ref()
+                    .map(|details| details.open_timings.clone())
+                    .unwrap_or_default(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let aggregate = measurement_aggregate(&cases);
+
+    RegressionMeasurementProfile {
+        visual_profile: report.visual_profile.clone(),
+        visual_profile_kind: report.visual_profile_kind.clone(),
+        visual_profile_path: report.visual_profile_path.clone(),
+        config_hash: report.config_hash.clone(),
+        report_path: report_path.to_path_buf(),
+        cases,
+        aggregate,
+    }
+}
+
+fn measurement_aggregate(cases: &[RegressionCaseMeasurement]) -> RegressionMeasurementAggregate {
+    let successful = cases
+        .iter()
+        .filter(|case| case.cleaned_bytes.is_some())
+        .collect::<Vec<_>>();
+    let total_original_bytes = successful
+        .iter()
+        .map(|case| case.original_bytes)
+        .sum::<u64>();
+    let total_cleaned_bytes = successful
+        .iter()
+        .filter_map(|case| case.cleaned_bytes)
+        .sum::<u64>();
+    let total_original_uncompressed_bytes = successful
+        .iter()
+        .filter_map(|case| case.original_uncompressed_bytes)
+        .sum::<u64>();
+    let total_cleaned_uncompressed_bytes = successful
+        .iter()
+        .filter_map(|case| case.cleaned_uncompressed_bytes)
+        .sum::<u64>();
+    let total_original_sheet_xml_bytes = successful
+        .iter()
+        .flat_map(|case| &case.sheet_size_details)
+        .map(|sheet| sheet.original_sheet_xml_bytes)
+        .sum::<u64>();
+    let total_cleaned_sheet_xml_bytes = successful
+        .iter()
+        .flat_map(|case| &case.sheet_size_details)
+        .map(|sheet| sheet.cleaned_sheet_xml_bytes)
+        .sum::<u64>();
+
+    let mut aggregate = RegressionMeasurementAggregate {
+        case_count: cases.len(),
+        successful_case_count: successful.len(),
+        total_original_bytes,
+        total_cleaned_bytes,
+        total_reduction_ratio: ratio_reduced(total_original_bytes, total_cleaned_bytes),
+        total_original_uncompressed_bytes,
+        total_cleaned_uncompressed_bytes,
+        total_uncompressed_reduction_ratio: ratio_reduced(
+            total_original_uncompressed_bytes,
+            total_cleaned_uncompressed_bytes,
+        ),
+        total_original_sheet_xml_bytes,
+        total_cleaned_sheet_xml_bytes,
+        total_sheet_xml_reduction_ratio: ratio_reduced(
+            total_original_sheet_xml_bytes,
+            total_cleaned_sheet_xml_bytes,
+        ),
+        avg_original_open_ms: average_open_duration_ms(cases, "original"),
+        avg_shrunk_open_ms: average_open_duration_ms(cases, "shrunk"),
+        ..RegressionMeasurementAggregate::default()
+    };
+
+    for summary in cases
+        .iter()
+        .filter_map(|case| case.visual_diff_summary.as_ref())
+    {
+        aggregate.visual_total_differences += summary.total_differences;
+        aggregate.visual_shift_only_differences += summary.shift_only_differences;
+        aggregate.visual_entropy_changed_differences += summary.entropy_changed_differences;
+        aggregate.visual_screenshot_error_differences += summary.screenshot_error_differences;
+        aggregate.visual_diff_pixels = aggregate
+            .visual_diff_pixels
+            .saturating_add(summary.diff_pixels);
+        aggregate.visual_shift_movement_px = aggregate
+            .visual_shift_movement_px
+            .saturating_add(summary.shift_movement_px);
+    }
+
+    aggregate
+}
+
+fn ratio_reduced(original: u64, cleaned: u64) -> f64 {
+    if original == 0 {
+        0.0
+    } else {
+        (original as f64 - cleaned as f64) / original as f64
+    }
+}
+
+fn load_entropy_changed_diff_details(report_path: &Path) -> Vec<RegressionVisualDiffDetail> {
+    let Ok(bytes) = fs::read(report_path) else {
+        return Vec::new();
+    };
+    let Ok(differences) = serde_json::from_slice::<Vec<MeasurementScreenshotDifference>>(&bytes)
+    else {
+        return Vec::new();
+    };
+
+    let mut details = differences
+        .into_iter()
+        .filter(|difference| {
+            difference.screenshot_error.is_none()
+                && !vertical_reflow_proof_is_shift_only(difference.vertical_reflow_proof.as_ref())
+        })
+        .map(|difference| {
+            let vertical_reflow_residual_diff_pixels = difference
+                .vertical_reflow_proof
+                .as_ref()
+                .and_then(vertical_reflow_residual_diff_pixels_path);
+            RegressionVisualDiffDetail {
+                screenshot_report_path: report_path.to_path_buf(),
+                sheet_index: difference.sheet_index,
+                sheet_name: difference.sheet_name,
+                tile_index: difference.tile_index,
+                sheet_file: difference.sheet_file,
+                diff_pixel_count: difference.diff_pixel_count,
+                approximate_cells: difference.approximate_cells,
+                original_crop: difference.original_crop,
+                shrunk_crop: difference.shrunk_crop,
+                diff_pixels: difference.diff_pixels,
+                vertical_reflow_proof: difference.vertical_reflow_proof,
+                vertical_reflow_residual_diff_pixels,
+                original_image: difference.original_image,
+                shrunk_image: difference.shrunk_image,
+                sheet_xml_diff: difference.sheet_xml_diff,
+                sheet_xml_visual_diff: difference.sheet_xml_visual_diff,
+            }
+        })
+        .collect::<Vec<_>>();
+    details.sort_by(|left, right| {
+        right
+            .diff_pixel_count
+            .unwrap_or(0)
+            .cmp(&left.diff_pixel_count.unwrap_or(0))
+    });
+    details
+}
+
+fn vertical_reflow_proof_is_shift_only(proof: Option<&serde_json::Value>) -> bool {
+    let Some(proof) = proof else {
+        return false;
+    };
+    proof
+        .get("reconstructs_original")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+        && proof
+            .get("residual_diff_pixels")
+            .and_then(serde_json::Value::as_u64)
+            == Some(0)
+        && proof
+            .get("uses_only_spacer_rows")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true)
+}
+
+fn vertical_reflow_residual_diff_pixels_path(proof: &serde_json::Value) -> Option<PathBuf> {
+    proof
+        .get("residual_diff_pixels_image")
+        .and_then(serde_json::Value::as_str)
+        .map(PathBuf::from)
+}
+
+fn average_open_duration_ms(cases: &[RegressionCaseMeasurement], label: &str) -> Option<f64> {
+    let mut total = 0_u64;
+    let mut count = 0_u64;
+    for timing in cases.iter().flat_map(|case| &case.open_timings) {
+        if timing.label.eq_ignore_ascii_case(label) {
+            total = total.saturating_add(timing.duration_ms);
+            count += 1;
+        }
+    }
+    (count > 0).then_some(total as f64 / count as f64)
+}
+
+fn measurement_chart_html(report: &RegressionMeasurementReport) -> String {
+    let mut html = String::new();
+    let _ = writeln!(
+        html,
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>excel-shrink regression measurements</title>"
+    );
+    let _ = writeln!(
+        html,
+        "<style>body{{font-family:Arial,sans-serif;margin:24px;color:#1f2933;background:#f8fafc}}h1{{font-size:22px;margin:0 0 6px}}h2{{font-size:16px;margin:28px 0 10px}}.meta{{color:#52606d;margin-bottom:18px}}svg{{background:#fff;border:1px solid #d9e2ec}}table{{border-collapse:collapse;background:#fff;margin-top:12px;width:100%;font-size:13px}}th,td{{border:1px solid #d9e2ec;padding:7px 9px;text-align:right}}th:first-child,td:first-child{{text-align:left}}th{{background:#edf2f7}}.legend{{font-size:13px;color:#323f4b;margin:8px 0 18px}}.swatch{{display:inline-block;width:11px;height:11px;margin-right:5px;vertical-align:-1px}}</style></head><body>"
+    );
+    let _ = writeln!(html, "<h1>excel-shrink regression measurements</h1>");
+    let _ = writeln!(
+        html,
+        "<div class=\"meta\">mode={} profiles={} output_root={}</div>",
+        html_escape(&report.mode),
+        report.profiles.len(),
+        html_escape(&report.output_root.display().to_string())
+    );
+    html.push_str("<h2>Size reduction and visual diffs</h2>");
+    html.push_str("<div class=\"legend\"><span class=\"swatch\" style=\"background:#5d6675\"></span>case workbook reduction points <span class=\"swatch\" style=\"background:#1f77b4\"></span>aggregate XLSX reduction <span class=\"swatch\" style=\"background:#6b46c1\"></span>aggregate uncompressed workbook reduction <span class=\"swatch\" style=\"background:#2f855a\"></span>aggregate worksheet XML reduction <span class=\"swatch\" style=\"background:#b7791f\"></span>shift-only diffs <span class=\"swatch\" style=\"background:#c53030\"></span>entropy-changing diffs</div>");
+    html.push_str(&measurement_overview_svg(report));
+    html.push_str("<h2>Excel open time</h2>");
+    html.push_str("<div class=\"legend\"><span class=\"swatch\" style=\"background:#3b82f6\"></span>original/repaired original <span class=\"swatch\" style=\"background:#ef4444\"></span>shrunk</div>");
+    html.push_str(&measurement_open_time_svg(report));
+    html.push_str("<h2>Profile summary</h2>");
+    html.push_str(&measurement_summary_table(report));
+    html.push_str("<h2>Entropy-changing screenshot diffs</h2>");
+    html.push_str(&measurement_entropy_diff_table(report));
+    html.push_str("</body></html>");
+    html
+}
+
+fn measurement_overview_svg(report: &RegressionMeasurementReport) -> String {
+    const WIDTH: f64 = 1180.0;
+    const HEIGHT: f64 = 500.0;
+    const LEFT: f64 = 76.0;
+    const RIGHT: f64 = 84.0;
+    const TOP: f64 = 28.0;
+    const BOTTOM: f64 = 108.0;
+
+    let plot_width = WIDTH - LEFT - RIGHT;
+    let plot_height = HEIGHT - TOP - BOTTOM;
+    let bottom_y = HEIGHT - BOTTOM;
+    let max_diff = report
+        .profiles
+        .iter()
+        .map(|profile| {
+            profile.aggregate.visual_shift_only_differences
+                + profile.aggregate.visual_entropy_changed_differences
+        })
+        .max()
+        .unwrap_or(0)
+        .max(1) as f64;
+
+    let mut svg = String::new();
+    let _ = writeln!(
+        svg,
+        "<svg viewBox=\"0 0 {WIDTH} {HEIGHT}\" width=\"100%\" height=\"500\" role=\"img\">"
+    );
+    svg.push_str("<line x1=\"76\" y1=\"28\" x2=\"76\" y2=\"392\" stroke=\"#94a3b8\"/><line x1=\"76\" y1=\"392\" x2=\"1096\" y2=\"392\" stroke=\"#94a3b8\"/><line x1=\"1096\" y1=\"28\" x2=\"1096\" y2=\"392\" stroke=\"#94a3b8\"/>");
+    for tick in [0.0, 0.25, 0.5, 0.75, 1.0] {
+        let y = bottom_y - tick * plot_height;
+        let _ = writeln!(
+            svg,
+            "<line x1=\"70\" y1=\"{y:.1}\" x2=\"1096\" y2=\"{y:.1}\" stroke=\"#e2e8f0\"/><text x=\"62\" y=\"{:.1}\" text-anchor=\"end\" font-size=\"11\" fill=\"#52606d\">{:.0}%</text>",
+            y + 4.0,
+            tick * 100.0
+        );
+    }
+    for tick in 0..=4 {
+        let value = (max_diff * tick as f64 / 4.0).round();
+        let y = bottom_y - (value / max_diff) * plot_height;
+        let _ = writeln!(
+            svg,
+            "<text x=\"1104\" y=\"{:.1}\" font-size=\"11\" fill=\"#52606d\">{value:.0}</text>",
+            y + 4.0
+        );
+    }
+
+    let workbook_points = report
+        .profiles
+        .iter()
+        .enumerate()
+        .map(|(index, profile)| {
+            (
+                profile_x(index, report.profiles.len(), LEFT, plot_width),
+                ratio_y(
+                    profile.aggregate.total_reduction_ratio,
+                    bottom_y,
+                    plot_height,
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let sheet_points = report
+        .profiles
+        .iter()
+        .enumerate()
+        .map(|(index, profile)| {
+            (
+                profile_x(index, report.profiles.len(), LEFT, plot_width),
+                ratio_y(
+                    profile.aggregate.total_sheet_xml_reduction_ratio,
+                    bottom_y,
+                    plot_height,
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let uncompressed_workbook_points = report
+        .profiles
+        .iter()
+        .enumerate()
+        .map(|(index, profile)| {
+            (
+                profile_x(index, report.profiles.len(), LEFT, plot_width),
+                ratio_y(
+                    profile.aggregate.total_uncompressed_reduction_ratio,
+                    bottom_y,
+                    plot_height,
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let shift_points = report
+        .profiles
+        .iter()
+        .enumerate()
+        .map(|(index, profile)| {
+            let x = profile_x(index, report.profiles.len(), LEFT, plot_width);
+            let y = bottom_y
+                - (profile.aggregate.visual_shift_only_differences as f64 / max_diff) * plot_height;
+            (x, y)
+        })
+        .collect::<Vec<_>>();
+    let entropy_points = report
+        .profiles
+        .iter()
+        .enumerate()
+        .map(|(index, profile)| {
+            let x = profile_x(index, report.profiles.len(), LEFT, plot_width);
+            let y = bottom_y
+                - (profile.aggregate.visual_entropy_changed_differences as f64 / max_diff)
+                    * plot_height;
+            (x, y)
+        })
+        .collect::<Vec<_>>();
+
+    svg.push_str(&polyline_svg(&workbook_points, "#1f77b4", 3.0, None));
+    svg.push_str(&polyline_svg(
+        &uncompressed_workbook_points,
+        "#6b46c1",
+        2.5,
+        None,
+    ));
+    svg.push_str(&polyline_svg(&sheet_points, "#2f855a", 3.0, None));
+    svg.push_str(&polyline_svg(&shift_points, "#b7791f", 2.0, Some("6 4")));
+    svg.push_str(&polyline_svg(&entropy_points, "#c53030", 2.0, Some("6 4")));
+
+    for (index, profile) in report.profiles.iter().enumerate() {
+        let x = profile_x(index, report.profiles.len(), LEFT, plot_width);
+        let _ = writeln!(
+            svg,
+            "<line x1=\"{x:.1}\" y1=\"392\" x2=\"{x:.1}\" y2=\"398\" stroke=\"#94a3b8\"/><text x=\"{x:.1}\" y=\"414\" transform=\"rotate(35 {x:.1} 414)\" font-size=\"11\" fill=\"#323f4b\">{}</text>",
+            svg_escape(&profile.visual_profile)
+        );
+
+        for (case_index, case) in profile.cases.iter().enumerate() {
+            let Some(ratio) = case.reduction_ratio else {
+                continue;
+            };
+            let jitter = ((case_index % 7) as f64 - 3.0) * 3.0;
+            let y = ratio_y(ratio, bottom_y, plot_height);
+            let _ = writeln!(
+                svg,
+                "<circle cx=\"{:.1}\" cy=\"{y:.1}\" r=\"4\" fill=\"#5d6675\" opacity=\"0.72\"><title>{}: xlsx {} -> {} ({}); uncompressed {} -> {}</title></circle>",
+                x + jitter,
+                svg_escape(&case.id),
+                format_bytes(case.original_bytes),
+                case.cleaned_bytes.map(format_bytes).unwrap_or_else(|| "n/a".to_string()),
+                format_pct(case.reduction_ratio),
+                case.original_uncompressed_bytes
+                    .map(format_bytes)
+                    .unwrap_or_else(|| "n/a".to_string()),
+                case.cleaned_uncompressed_bytes
+                    .map(format_bytes)
+                    .unwrap_or_else(|| "n/a".to_string())
+            );
+        }
+    }
+
+    svg.push_str("<text x=\"76\" y=\"18\" font-size=\"12\" fill=\"#52606d\">size reduction</text><text x=\"1096\" y=\"18\" text-anchor=\"end\" font-size=\"12\" fill=\"#52606d\">visual diff count</text>");
+    svg.push_str("</svg>");
+    svg
+}
+
+fn measurement_open_time_svg(report: &RegressionMeasurementReport) -> String {
+    const WIDTH: f64 = 1180.0;
+    const HEIGHT: f64 = 320.0;
+    const LEFT: f64 = 76.0;
+    const TOP: f64 = 24.0;
+    const BOTTOM: f64 = 82.0;
+    const RIGHT: f64 = 42.0;
+
+    let plot_width = WIDTH - LEFT - RIGHT;
+    let plot_height = HEIGHT - TOP - BOTTOM;
+    let bottom_y = HEIGHT - BOTTOM;
+    let max_ms = report
+        .profiles
+        .iter()
+        .flat_map(|profile| {
+            [
+                profile.aggregate.avg_original_open_ms,
+                profile.aggregate.avg_shrunk_open_ms,
+            ]
+        })
+        .flatten()
+        .fold(0.0_f64, f64::max)
+        .max(1.0);
+
+    let mut svg = String::new();
+    let _ = writeln!(
+        svg,
+        "<svg viewBox=\"0 0 {WIDTH} {HEIGHT}\" width=\"100%\" height=\"320\" role=\"img\">"
+    );
+    svg.push_str("<line x1=\"76\" y1=\"24\" x2=\"76\" y2=\"238\" stroke=\"#94a3b8\"/><line x1=\"76\" y1=\"238\" x2=\"1138\" y2=\"238\" stroke=\"#94a3b8\"/>");
+    for tick in 0..=4 {
+        let value = max_ms * tick as f64 / 4.0;
+        let y = bottom_y - (value / max_ms) * plot_height;
+        let _ = writeln!(
+            svg,
+            "<line x1=\"70\" y1=\"{y:.1}\" x2=\"1138\" y2=\"{y:.1}\" stroke=\"#e2e8f0\"/><text x=\"62\" y=\"{:.1}\" text-anchor=\"end\" font-size=\"11\" fill=\"#52606d\">{}</text>",
+            y + 4.0,
+            format_ms(Some(value))
+        );
+    }
+
+    let bar_width = (plot_width / report.profiles.len().max(1) as f64).min(44.0) / 3.0;
+    for (index, profile) in report.profiles.iter().enumerate() {
+        let x = profile_x(index, report.profiles.len(), LEFT, plot_width);
+        draw_open_bar(
+            &mut svg,
+            x - bar_width - 2.0,
+            bar_width,
+            profile.aggregate.avg_original_open_ms,
+            max_ms,
+            bottom_y,
+            plot_height,
+            "#3b82f6",
+            "original",
+            profile,
+        );
+        draw_open_bar(
+            &mut svg,
+            x + 2.0,
+            bar_width,
+            profile.aggregate.avg_shrunk_open_ms,
+            max_ms,
+            bottom_y,
+            plot_height,
+            "#ef4444",
+            "shrunk",
+            profile,
+        );
+        let _ = writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"260\" transform=\"rotate(35 {x:.1} 260)\" font-size=\"11\" fill=\"#323f4b\">{}</text>",
+            svg_escape(&profile.visual_profile)
+        );
+    }
+
+    svg.push_str(
+        "<text x=\"76\" y=\"16\" font-size=\"12\" fill=\"#52606d\">average open time</text></svg>",
+    );
+    svg
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_open_bar(
+    svg: &mut String,
+    x: f64,
+    width: f64,
+    value: Option<f64>,
+    max_ms: f64,
+    bottom_y: f64,
+    plot_height: f64,
+    color: &str,
+    label: &str,
+    profile: &RegressionMeasurementProfile,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    let height = (value / max_ms) * plot_height;
+    let y = bottom_y - height;
+    let _ = writeln!(
+        svg,
+        "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{width:.1}\" height=\"{height:.1}\" fill=\"{color}\" opacity=\"0.85\"><title>{} {} {}</title></rect>",
+        svg_escape(&profile.visual_profile),
+        label,
+        format_ms(Some(value))
+    );
+}
+
+fn measurement_summary_table(report: &RegressionMeasurementReport) -> String {
+    let mut table = String::new();
+    table.push_str("<table><thead><tr><th>profile</th><th>cases</th><th>XLSX reduction</th><th>uncompressed workbook reduction</th><th>sheet XML reduction</th><th>shift-only diffs</th><th>entropy-changing diffs</th><th>avg original open</th><th>avg shrunk open</th></tr></thead><tbody>");
+    for profile in &report.profiles {
+        let _ = writeln!(
+            table,
+            "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            html_escape(&profile.visual_profile),
+            profile.aggregate.successful_case_count,
+            profile.aggregate.case_count,
+            format_pct(Some(profile.aggregate.total_reduction_ratio)),
+            format_pct(Some(profile.aggregate.total_uncompressed_reduction_ratio)),
+            format_pct(Some(profile.aggregate.total_sheet_xml_reduction_ratio)),
+            profile.aggregate.visual_shift_only_differences,
+            profile.aggregate.visual_entropy_changed_differences,
+            format_ms(profile.aggregate.avg_original_open_ms),
+            format_ms(profile.aggregate.avg_shrunk_open_ms)
+        );
+    }
+    table.push_str("</tbody></table>");
+    table
+}
+
+fn measurement_entropy_diff_table(report: &RegressionMeasurementReport) -> String {
+    let mut rows = Vec::new();
+    for profile in &report.profiles {
+        for case in &profile.cases {
+            for detail in &case.entropy_changed_diff_details {
+                rows.push((profile, case, detail));
+            }
+        }
+    }
+    rows.sort_by(|(_, _, left), (_, _, right)| {
+        right
+            .diff_pixel_count
+            .unwrap_or(0)
+            .cmp(&left.diff_pixel_count.unwrap_or(0))
+    });
+
+    if rows.is_empty() {
+        return "<div class=\"meta\">No entropy-changing screenshot diffs were recorded.</div>"
+            .to_string();
+    }
+
+    let mut table = String::new();
+    table.push_str("<table><thead><tr><th>profile</th><th>case</th><th>sheet</th><th>pixels</th><th>cells</th><th>report</th><th>original</th><th>shrunk</th><th>diff</th><th>reflow residual</th><th>XML</th></tr></thead><tbody>");
+    for (profile, case, detail) in rows {
+        let sheet = match detail.tile_index {
+            Some(tile_index) => format!(
+                "{} {} tile {}",
+                detail.sheet_index, detail.sheet_name, tile_index
+            ),
+            None => format!("{} {}", detail.sheet_index, detail.sheet_name),
+        };
+        let cells = detail
+            .approximate_cells
+            .as_ref()
+            .map(|cells| format!("{}:{}", cells.top_left, cells.bottom_right))
+            .unwrap_or_else(|| "n/a".to_string());
+        let original = detail
+            .original_crop
+            .as_ref()
+            .or(detail.original_image.as_ref())
+            .map(|path| file_link(path, "original"))
+            .unwrap_or_else(|| "n/a".to_string());
+        let shrunk = detail
+            .shrunk_crop
+            .as_ref()
+            .or(detail.shrunk_image.as_ref())
+            .map(|path| file_link(path, "shrunk"))
+            .unwrap_or_else(|| "n/a".to_string());
+        let diff = detail
+            .diff_pixels
+            .as_ref()
+            .map(|path| file_link(path, "pixels"))
+            .unwrap_or_else(|| "n/a".to_string());
+        let residual = detail
+            .vertical_reflow_residual_diff_pixels
+            .as_ref()
+            .map(|path| file_link(path, "residual"))
+            .unwrap_or_else(|| "n/a".to_string());
+        let xml = detail
+            .sheet_xml_visual_diff
+            .as_ref()
+            .or(detail.sheet_xml_diff.as_ref())
+            .map(|path| file_link(path, "xml"))
+            .unwrap_or_else(|| "n/a".to_string());
+        let _ = writeln!(
+            table,
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{original}</td><td>{shrunk}</td><td>{diff}</td><td>{residual}</td><td>{xml}</td></tr>",
+            html_escape(&profile.visual_profile),
+            html_escape(&case.id),
+            html_escape(&sheet),
+            detail
+                .diff_pixel_count
+                .map(|pixels| pixels.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+            html_escape(&cells),
+            file_link(&detail.screenshot_report_path, "json")
+        );
+    }
+    table.push_str("</tbody></table>");
+    table
+}
+
+fn profile_x(index: usize, profile_count: usize, left: f64, plot_width: f64) -> f64 {
+    if profile_count <= 1 {
+        return left + plot_width / 2.0;
+    }
+    left + (index as f64 / (profile_count - 1) as f64) * plot_width
+}
+
+fn ratio_y(ratio: f64, bottom_y: f64, plot_height: f64) -> f64 {
+    bottom_y - ratio.clamp(0.0, 1.0) * plot_height
+}
+
+fn polyline_svg(points: &[(f64, f64)], color: &str, width: f64, dash: Option<&str>) -> String {
+    if points.is_empty() {
+        return String::new();
+    }
+    let point_text = points
+        .iter()
+        .map(|(x, y)| format!("{x:.1},{y:.1}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let dash_attr = dash
+        .map(|dash| format!(" stroke-dasharray=\"{}\"", svg_escape(dash)))
+        .unwrap_or_default();
+    format!(
+        "<polyline points=\"{point_text}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width}\" stroke-linecap=\"round\" stroke-linejoin=\"round\"{dash_attr}/>"
+    )
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} {}", UNITS[unit])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+fn format_pct(value: Option<f64>) -> String {
+    value
+        .map(|value| format!("{:.1}%", value * 100.0))
+        .unwrap_or_else(|| "n/a".to_string())
+}
+
+fn format_ms(value: Option<f64>) -> String {
+    value
+        .map(|value| {
+            if value >= 1000.0 {
+                format!("{:.1}s", value / 1000.0)
+            } else {
+                format!("{value:.0}ms")
+            }
+        })
+        .unwrap_or_else(|| "n/a".to_string())
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn svg_escape(value: &str) -> String {
+    html_escape(value)
+}
+
+fn file_link(path: &Path, label: &str) -> String {
+    format!(
+        "<a href=\"{}\">{}</a>",
+        html_escape(&file_href(path)),
+        html_escape(label)
+    )
+}
+
+fn file_href(path: &Path) -> String {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    let url = if normalized.starts_with('/') {
+        format!("file://{normalized}")
+    } else {
+        format!("file:///{normalized}")
+    };
+    percent_encode_file_url(&url)
+}
+
+fn percent_encode_file_url(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b':' | b'/' | b'.' | b'-' | b'_' | b'~' => {
+                encoded.push(*byte as char)
+            }
+            _ => {
+                let _ = write!(encoded, "%{byte:02X}");
+            }
+        }
+    }
+    encoded
+}
+
 fn build_cli(
     input: &Path,
     output_dir: &Path,
@@ -1403,6 +2679,142 @@ fn analysis_mode(defaults: Option<&SuiteDefaults>, case: &RegressionCase) -> boo
             .analysis_checks
             .as_ref()
             .is_some_and(|checks| !checks.is_empty())
+}
+
+fn existing_default_corpus_root(repo_root: &Path) -> Option<PathBuf> {
+    [
+        cached_corpus_root(repo_root),
+        sibling_corpus_root(repo_root),
+    ]
+    .into_iter()
+    .find(|path| path.exists())
+}
+
+fn discover_corpus_cases(corpus_root: &Path) -> anyhow::Result<Vec<RegressionCase>> {
+    anyhow::ensure!(
+        corpus_root.exists(),
+        "corpus root does not exist: {}",
+        corpus_root.display()
+    );
+    anyhow::ensure!(
+        corpus_root.is_dir(),
+        "corpus root is not a directory: {}",
+        corpus_root.display()
+    );
+
+    let mut files = Vec::new();
+    collect_xlsx_files(corpus_root, &mut files)?;
+    files.sort();
+
+    let mut ids = HashMap::<String, usize>::new();
+    let cases = files
+        .into_iter()
+        .map(|path| {
+            let relative = path
+                .strip_prefix(corpus_root)
+                .unwrap_or(path.as_path())
+                .to_string_lossy()
+                .replace('\\', "/");
+            let base_id = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(sanitize_case_id)
+                .filter(|id| !id.is_empty())
+                .unwrap_or_else(|| "workbook".to_string());
+            let seen = ids.entry(base_id.clone()).or_insert(0);
+            *seen += 1;
+            let id = if *seen == 1 {
+                base_id
+            } else {
+                format!("{base_id}-{}", *seen)
+            };
+
+            RegressionCase {
+                id,
+                category: Some("Corpus".to_string()),
+                reason: Some("Auto-discovered full-corpus workbook.".to_string()),
+                dominant_cleanup: None,
+                notes: None,
+                source_repository_url: None,
+                source_file_url: None,
+                input_path: None,
+                relative_input: Some(relative),
+                download_url: None,
+                cached_file_name: None,
+                cli_args: None,
+                analysis_mode: None,
+                max_output_bytes: None,
+                min_reduction_ratio: None,
+                analysis_checks: None,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    anyhow::ensure!(
+        !cases.is_empty(),
+        "no .xlsx files found under corpus root: {}",
+        corpus_root.display()
+    );
+
+    Ok(cases)
+}
+
+fn collect_xlsx_files(dir: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            collect_xlsx_files(&path, files)?;
+            continue;
+        }
+        if !file_type.is_file() || !is_xlsx_path(&path) {
+            continue;
+        }
+        files.push(path);
+    }
+    Ok(())
+}
+
+fn is_xlsx_path(path: &Path) -> bool {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    !file_name.starts_with("~$")
+        && path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("xlsx"))
+}
+
+fn sanitize_case_id(value: &str) -> String {
+    let mut id = String::new();
+    let mut last_dash = false;
+    for ch in value.chars() {
+        let mapped = if ch.is_ascii_alphanumeric() {
+            Some(ch.to_ascii_lowercase())
+        } else if ch == '-' || ch == '_' || ch.is_whitespace() {
+            Some('-')
+        } else {
+            None
+        };
+        let Some(ch) = mapped else {
+            continue;
+        };
+        if ch == '-' {
+            if !last_dash && !id.is_empty() {
+                id.push(ch);
+                last_dash = true;
+            }
+        } else {
+            id.push(ch);
+            last_dash = false;
+        }
+    }
+    while id.ends_with('-') {
+        id.pop();
+    }
+    id
 }
 
 fn resolve_case_input(
@@ -1675,6 +3087,173 @@ fn normalize_cli_path(path: PathBuf) -> PathBuf {
     }
 
     path
+}
+
+fn regression_report_root(repo_root: &Path, profile: &ResolvedVisualProfile) -> PathBuf {
+    repo_root
+        .join("regression/reports")
+        .join(profile.profile_path())
+}
+
+#[cfg(test)]
+mod visual_profile_matrix_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn regression_cli_parses_all_visual_profile_checks() {
+        let cli =
+            RegressionCli::parse_from(["excel-shrink", "smoke", "--all-visual-profile-checks"]);
+
+        match cli.command {
+            RegressionCommand::Smoke(args) => {
+                assert!(args.all_visual_profile_checks);
+                assert!(!args.all_visual_profiles);
+            }
+            RegressionCommand::Corpus(_) => panic!("expected smoke command"),
+        }
+    }
+
+    #[test]
+    fn visual_profile_matrix_allows_non_visual_extra_cli_args() {
+        ensure_no_visual_profile_cli_args(&["--store-output".to_string()])
+            .expect("non-visual extra args should be accepted");
+    }
+
+    #[test]
+    fn visual_profile_matrix_rejects_visual_extra_cli_args() {
+        let error = ensure_no_visual_profile_cli_args(&[
+            "--remove-unreferenced-whitespace-cells".to_string()
+        ])
+        .expect_err("visual args should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("--remove-unreferenced-whitespace-cells"));
+    }
+
+    #[test]
+    fn detects_visual_profile_cli_args_with_inline_values() {
+        assert_eq!(
+            visual_profile_cli_arg_name("--inactive-protection-cell-policy=keep-all"),
+            Some("inactive-protection-cell-policy")
+        );
+        assert_eq!(visual_profile_cli_arg_name("--store-output"), None);
+    }
+
+    #[test]
+    fn default_regression_report_root_is_not_temporary() {
+        let repo_root = PathBuf::from("repo");
+        let profile = ResolvedVisualProfile::from_config(
+            crate::visual_profile::VisualProfileConfig::default(),
+        );
+
+        assert_eq!(
+            regression_report_root(&repo_root, &profile),
+            PathBuf::from("repo").join("regression/reports/default")
+        );
+    }
+
+    #[test]
+    fn entropy_diff_loader_ignores_shift_only_and_screenshot_errors() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-entropy-diff-index-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(&test_dir)?;
+        let report_path = test_dir.join("screenshot-differences.json");
+        fs::write(
+            &report_path,
+            serde_json::to_vec_pretty(&serde_json::json!([
+                {
+                    "sheet_index": 1,
+                    "sheet_name": "Changed",
+                    "diff_pixel_count": 42,
+                    "diff_pixels": test_dir.join("1-diff-pixels.png"),
+                    "approximate_cells": {
+                        "top_left": "A1",
+                        "bottom_right": "B2"
+                    }
+                },
+                {
+                    "sheet_index": 2,
+                    "sheet_name": "Shift",
+                    "diff_pixel_count": 200,
+                    "vertical_reflow_proof": {
+                        "classification": "vertical_suffix_reflow",
+                        "reconstructs_original": true,
+                        "residual_diff_pixels": 0
+                    }
+                },
+                {
+                    "sheet_index": 4,
+                    "sheet_name": "Repair",
+                    "diff_pixel_count": 12,
+                    "vertical_reflow_proof": {
+                        "classification": "vertical_suffix_reflow_repair",
+                        "reconstructs_original": false,
+                        "residual_diff_pixels": 3,
+                        "residual_diff_pixels_image": test_dir.join("4-residual.png")
+                    }
+                },
+                {
+                    "sheet_index": 3,
+                    "sheet_name": "Error",
+                    "screenshot_error": "capture failed"
+                }
+            ]))?,
+        )?;
+
+        let details = load_entropy_changed_diff_details(&report_path);
+
+        assert_eq!(details.len(), 2);
+        assert_eq!(details[0].sheet_index, 1);
+        assert_eq!(details[0].diff_pixel_count, Some(42));
+        assert_eq!(
+            details[0]
+                .approximate_cells
+                .as_ref()
+                .map(|cells| (cells.top_left.as_str(), cells.bottom_right.as_str())),
+            Some(("A1", "B2"))
+        );
+        assert_eq!(details[1].sheet_index, 4);
+        assert_eq!(
+            details[1].vertical_reflow_residual_diff_pixels.as_deref(),
+            Some(test_dir.join("4-residual.png").as_path())
+        );
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
+
+    #[test]
+    fn discovers_corpus_cases_from_xlsx_tree() -> anyhow::Result<()> {
+        let test_dir = std::env::temp_dir().join(format!(
+            "excel-shrink-corpus-discovery-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(test_dir.join("nested"))?;
+        fs::write(test_dir.join("Alpha.xlsx"), b"")?;
+        fs::write(test_dir.join("~$Alpha.xlsx"), b"")?;
+        fs::write(test_dir.join("nested").join("Beta File.xlsx"), b"")?;
+        fs::write(test_dir.join("nested").join("ignore.txt"), b"")?;
+
+        let cases = discover_corpus_cases(&test_dir)?;
+
+        assert_eq!(cases.len(), 2);
+        assert_eq!(cases[0].id, "alpha");
+        assert_eq!(cases[0].relative_input.as_deref(), Some("Alpha.xlsx"));
+        assert_eq!(cases[1].id, "beta-file");
+        assert_eq!(
+            cases[1].relative_input.as_deref(),
+            Some("nested/Beta File.xlsx")
+        );
+
+        let _ = fs::remove_dir_all(&test_dir);
+        Ok(())
+    }
 }
 
 #[cfg(all(test, unix))]

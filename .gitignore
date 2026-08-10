@@ -26,3 +26,4 @@ regression/reports/
 #.idea/
 /.tmp
 /logs/
+/regression/measurements
