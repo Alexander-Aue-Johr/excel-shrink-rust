@@ -16,7 +16,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use xlsx_value_compare::{CellValueDifference, MissingCellPolicy, WorkbookComparisonReport};
 
 mod excel_automation;
@@ -183,6 +183,7 @@ struct CaseReport {
     original_bytes: u64,
     cleaned_bytes: Option<u64>,
     reduction_ratio: Option<f64>,
+    shrink_duration_ms: Option<u128>,
     original_uncompressed_bytes: Option<u64>,
     cleaned_uncompressed_bytes: Option<u64>,
     uncompressed_reduction_ratio: Option<f64>,
@@ -274,6 +275,7 @@ struct RegressionCaseMeasurement {
     original_bytes: u64,
     cleaned_bytes: Option<u64>,
     reduction_ratio: Option<f64>,
+    shrink_duration_ms: Option<u128>,
     original_uncompressed_bytes: Option<u64>,
     cleaned_uncompressed_bytes: Option<u64>,
     uncompressed_reduction_ratio: Option<f64>,
@@ -375,6 +377,8 @@ struct RegressionMeasurementAggregate {
     visual_screenshot_error_differences: usize,
     visual_diff_pixels: u64,
     visual_shift_movement_px: u64,
+    total_shrink_duration_ms: u128,
+    avg_shrink_duration_ms: Option<f64>,
     avg_original_open_ms: Option<f64>,
     avg_shrunk_open_ms: Option<f64>,
 }
@@ -1328,7 +1332,10 @@ fn run_case(
 
     let mut failures = Vec::new();
     fs::remove_file(&output_path).ok();
-    if let Err(error) = process_files(vec![input.clone()], &cli) {
+    let shrink_started = Instant::now();
+    let shrink_result = process_files(vec![input.clone()], &cli);
+    let shrink_duration_ms = Some(shrink_started.elapsed().as_millis());
+    if let Err(error) = shrink_result {
         failures.push(format!("excel-shrink failed: {error:#}"));
     } else if output_path.exists() {
         if let Err(error) = excel_automation::replace_workbook_with_shared_cache_link(
@@ -1507,6 +1514,7 @@ fn run_case(
         original_bytes,
         cleaned_bytes,
         reduction_ratio,
+        shrink_duration_ms,
         original_uncompressed_bytes,
         cleaned_uncompressed_bytes,
         uncompressed_reduction_ratio,
@@ -1725,6 +1733,7 @@ fn failed_case_report(
         original_bytes: 0,
         cleaned_bytes: None,
         reduction_ratio: None,
+        shrink_duration_ms: None,
         original_uncompressed_bytes: None,
         cleaned_uncompressed_bytes: None,
         uncompressed_reduction_ratio: None,
@@ -1919,6 +1928,7 @@ fn measurement_profile_from_report(
                 original_bytes: case.original_bytes,
                 cleaned_bytes: case.cleaned_bytes,
                 reduction_ratio: case.reduction_ratio,
+                shrink_duration_ms: case.shrink_duration_ms,
                 original_uncompressed_bytes: case.original_uncompressed_bytes,
                 cleaned_uncompressed_bytes: case.cleaned_uncompressed_bytes,
                 uncompressed_reduction_ratio: case.uncompressed_reduction_ratio,
@@ -2007,6 +2017,11 @@ fn measurement_aggregate(cases: &[RegressionCaseMeasurement]) -> RegressionMeasu
             total_original_sheet_xml_bytes,
             total_cleaned_sheet_xml_bytes,
         ),
+        total_shrink_duration_ms: successful
+            .iter()
+            .filter_map(|case| case.shrink_duration_ms)
+            .sum(),
+        avg_shrink_duration_ms: average_shrink_duration_ms(&successful),
         avg_original_open_ms: average_open_duration_ms(cases, "original"),
         avg_shrunk_open_ms: average_open_duration_ms(cases, "shrunk"),
         ..RegressionMeasurementAggregate::default()
@@ -2123,6 +2138,16 @@ fn average_open_duration_ms(cases: &[RegressionCaseMeasurement], label: &str) ->
         }
     }
     (count > 0).then_some(total as f64 / count as f64)
+}
+
+fn average_shrink_duration_ms(cases: &[&RegressionCaseMeasurement]) -> Option<f64> {
+    let mut total = 0u128;
+    let mut count = 0usize;
+    for duration_ms in cases.iter().filter_map(|case| case.shrink_duration_ms) {
+        total = total.saturating_add(duration_ms);
+        count += 1;
+    }
+    (count > 0).then(|| total as f64 / count as f64)
 }
 
 fn measurement_chart_html(report: &RegressionMeasurementReport) -> String {
@@ -2431,17 +2456,19 @@ fn draw_open_bar(
 
 fn measurement_summary_table(report: &RegressionMeasurementReport) -> String {
     let mut table = String::new();
-    table.push_str("<table><thead><tr><th>profile</th><th>cases</th><th>XLSX reduction</th><th>uncompressed workbook reduction</th><th>sheet XML reduction</th><th>shift-only diffs</th><th>entropy-changing diffs</th><th>avg original open</th><th>avg shrunk open</th></tr></thead><tbody>");
+    table.push_str("<table><thead><tr><th>profile</th><th>cases</th><th>XLSX reduction</th><th>uncompressed workbook reduction</th><th>sheet XML reduction</th><th>shrink total</th><th>avg shrink</th><th>shift-only diffs</th><th>entropy-changing diffs</th><th>avg original open</th><th>avg shrunk open</th></tr></thead><tbody>");
     for profile in &report.profiles {
         let _ = writeln!(
             table,
-            "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             html_escape(&profile.visual_profile),
             profile.aggregate.successful_case_count,
             profile.aggregate.case_count,
             format_pct(Some(profile.aggregate.total_reduction_ratio)),
             format_pct(Some(profile.aggregate.total_uncompressed_reduction_ratio)),
             format_pct(Some(profile.aggregate.total_sheet_xml_reduction_ratio)),
+            format_ms(Some(profile.aggregate.total_shrink_duration_ms as f64)),
+            format_ms(profile.aggregate.avg_shrink_duration_ms),
             profile.aggregate.visual_shift_only_differences,
             profile.aggregate.visual_entropy_changed_differences,
             format_ms(profile.aggregate.avg_original_open_ms),
