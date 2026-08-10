@@ -70,6 +70,7 @@ impl<'a> ParsedCell<'a> {
             col: self.col_num,
             row: digits_byte_string_to_integer(self.row),
             kept_only_for_protection,
+            is_tail_anchor: false,
         }
     }
 
@@ -224,7 +225,7 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
 
     let Some(style) = style else {
         if !has_cell_content {
-            if keep_default_empty_cell {
+            if keep_default_empty_cell || keep_other_empty_cell {
                 let out = generate_self_closing_cell_xml(cell.attr);
                 record_kept_cell(params, metrics, cell, None, has_cell_content, false);
                 return Cow::Owned(out);
@@ -256,6 +257,7 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
 
     if style.has_no_empty_cell_visible_style {
         if keep_no_empty_cell_visible_style_cell
+            || keep_other_empty_cell
             || keep_column_font_style_cell
             || has_effective_fill_or_border
         {
@@ -339,13 +341,12 @@ fn record_kept_cell(
         kept_only_for_protection,
     );
 
-    metrics
-        .kept_cell_states
-        .push(cell.to_cell_attributes_with_protection_only(kept_only_for_protection));
+    let mut attributes = cell.to_cell_attributes_with_protection_only(kept_only_for_protection);
+    attributes.is_tail_anchor = is_tail_anchor;
+    metrics.kept_cell_states.push(attributes);
 
     if is_tail_anchor {
-        metrics.tail_anchor_max_row =
-            Some(metrics.tail_anchor_max_row.map_or(row, |old| old.max(row)));
+        metrics.record_tail_anchor_row(row);
     }
 }
 

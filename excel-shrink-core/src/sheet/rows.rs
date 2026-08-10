@@ -260,6 +260,8 @@ fn clean_cells<'a>(
                 && cell
                     .style_id
                     .is_some_and(|style_id| !kept_represented_style_ids.contains(&style_id));
+            let keep_empty_merged_style_cell =
+                empty_styled_cell_is_inside_merge_range(&cell, params, metrics, has_cell_content);
             let keep_default_empty_cell = empty_style_representative_policy.keep_default_styleless
                 && !kept_default_style_cell
                 && empty_cell_has_default_style(&cell, has_cell_content);
@@ -275,7 +277,7 @@ fn clean_cells<'a>(
                 metrics,
                 has_cell_content,
                 keep_empty_font_only_style_cell,
-                false,
+                keep_empty_merged_style_cell,
                 keep_default_empty_cell,
             );
 
@@ -346,6 +348,30 @@ fn record_represented_cell_style(
     }
 }
 
+fn empty_styled_cell_is_inside_merge_range(
+    cell: &ParsedCell<'_>,
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+    has_cell_content: bool,
+) -> bool {
+    if has_cell_content || cell.style_id.is_none() {
+        return false;
+    }
+
+    let row = digits_byte_string_to_integer(cell.row);
+    if !metrics
+        .merge_cell_ranges
+        .iter()
+        .any(|range| range.contains(cell.col_num, row))
+    {
+        return false;
+    }
+
+    cell.style_id
+        .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id))
+        .map_or(true, |style| style.has_no_empty_cell_visible_style)
+}
+
 fn remove_tentative_style_representatives(
     mut row_content: Vec<u8>,
     representatives: Vec<TentativeStyleRepresentative>,
@@ -407,17 +433,14 @@ fn remove_tentative_representatives_from_metrics(
     metrics: &mut CleanSheetMetrics,
     removed: &[RemovedStyleRepresentative],
 ) {
-    let removed_tail_anchor = metrics.tail_anchor_max_row.is_some_and(|tail_row| {
-        removed
-            .iter()
-            .any(|removed| removed.representative.row == tail_row)
-    });
-
     for removed in removed {
         if let Some(index) = metrics.kept_cell_states.iter().position(|cell| {
             cell.col == removed.representative.col && cell.row == removed.representative.row
         }) {
-            metrics.kept_cell_states.remove(index);
+            let removed_cell = metrics.kept_cell_states.remove(index);
+            if removed_cell.is_tail_anchor {
+                metrics.remove_tail_anchor_row(removed_cell.row);
+            }
         }
         metrics
             .deleted_cell_states
@@ -425,11 +448,8 @@ fn remove_tentative_representatives_from_metrics(
                 col: removed.representative.col,
                 row: removed.representative.row,
                 kept_only_for_protection: false,
+                is_tail_anchor: false,
             });
-    }
-
-    if removed_tail_anchor {
-        metrics.tail_anchor_max_row = None;
     }
 }
 
@@ -603,11 +623,7 @@ fn record_visible_row_bounds(row_attributes: &RowAttributes, metrics: &mut Clean
     };
 
     metrics.visible_content_bounds.include_row(row_num);
-    metrics.tail_anchor_max_row = Some(
-        metrics
-            .tail_anchor_max_row
-            .map_or(row_num, |old| old.max(row_num)),
-    );
+    metrics.record_tail_anchor_row(row_num);
 }
 
 fn generate_and_log_self_closing_row(

@@ -57,8 +57,7 @@ pub fn build_clean_sheet_xml_with_progress(
     );
     if let Some(row) = drawing_anchor_bounds.max_row {
         metrics.visible_content_bounds.include_row(row);
-        metrics.tail_anchor_max_row =
-            Some(metrics.tail_anchor_max_row.map_or(row, |old| old.max(row)));
+        metrics.record_tail_anchor_row(row);
     }
     if let Some(column) = drawing_anchor_bounds.max_col {
         metrics.visible_content_bounds.include_col(column);
@@ -1421,6 +1420,8 @@ mod tests {
             .clean_sheet_metrics
             .max_merge_cells_column_and_row =
             crate::sheet::merge_cells::find_max_merge_cells(merge_cells);
+        preprocessed.clean_sheet_metrics.merge_cell_ranges =
+            crate::sheet::merge_cells::find_merge_cell_ranges(merge_cells);
 
         let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
         let xml = String::from_utf8_lossy(&cleaned.xml);
@@ -1451,6 +1452,8 @@ mod tests {
             .clean_sheet_metrics
             .max_merge_cells_column_and_row =
             crate::sheet::merge_cells::find_max_merge_cells(merge_cells);
+        preprocessed.clean_sheet_metrics.merge_cell_ranges =
+            crate::sheet::merge_cells::find_merge_cell_ranges(merge_cells);
 
         let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
         let xml = String::from_utf8_lossy(&cleaned.xml);
@@ -1463,6 +1466,31 @@ mod tests {
         assert!(!xml.contains(r#"r="A95""#));
         assert!(!xml.contains(r#"r="96""#));
         assert!(xml.contains(r#"<mergeCell ref="A93:M95"/>"#));
+    }
+
+    #[test]
+    fn keeps_empty_styled_cells_inside_merged_range_under_aggressive_textless_cleanup() {
+        let mut params = params_with_styles(&[(2170, font_only_style())]);
+        params.cleanup.keep_textless_style_representatives = false;
+
+        let merge_cells = br#"<mergeCells count="1"><mergeCell ref="A1:C1"/></mergeCells>"#;
+        let mut preprocessed = preprocessed_with_sheet_data(
+            br#"<row r="1" spans="1:3" s="499" customFormat="1" ht="11.1" customHeight="1"><c r="A1" s="2170" t="s"><v>48</v></c><c r="B1" s="2170"/><c r="C1" s="2170"/></row>"#,
+            None,
+        );
+        preprocessed.in_merge_cells_node_output_chunks = merge_cells.to_vec();
+        preprocessed
+            .clean_sheet_metrics
+            .max_merge_cells_column_and_row =
+            crate::sheet::merge_cells::find_max_merge_cells(merge_cells);
+        preprocessed.clean_sheet_metrics.merge_cell_ranges =
+            crate::sheet::merge_cells::find_merge_cell_ranges(merge_cells);
+
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(xml.contains(r#"<c r="B1" s="2170"/>"#), "{xml}");
+        assert!(xml.contains(r#"<c r="C1" s="2170"/>"#), "{xml}");
     }
 
     #[test]

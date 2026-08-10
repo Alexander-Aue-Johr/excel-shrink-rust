@@ -1,5 +1,5 @@
 use derive_builder::Builder;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Builder)]
 #[builder(default)]
@@ -53,6 +53,20 @@ impl XfBuilder {
 pub struct CellCoordinate {
     pub column: Vec<u8>,
     pub row: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CellRange {
+    pub start_col: u32,
+    pub start_row: u32,
+    pub end_col: u32,
+    pub end_row: u32,
+}
+
+impl CellRange {
+    pub fn contains(self, col: u32, row: u32) -> bool {
+        self.start_col <= col && col <= self.end_col && self.start_row <= row && row <= self.end_row
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -301,6 +315,7 @@ pub struct CellAttributes {
     pub col: u32,
     pub row: u32,
     pub kept_only_for_protection: bool,
+    pub is_tail_anchor: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -342,6 +357,7 @@ pub struct CleanSheetMetrics {
     pub rows_with_kept_content_cells: HashSet<Vec<u8>>,
     pub row_attributes: HashMap<Vec<u8>, RowAttributes>,
     pub max_merge_cells_column_and_row: Option<CellCoordinate>,
+    pub merge_cell_ranges: Vec<CellRange>,
 
     pub whitespace_candidates: usize,
     pub hidden_candidates: usize,
@@ -351,8 +367,62 @@ pub struct CleanSheetMetrics {
     pub sheet_protection_enabled: bool,
     pub visible_content_bounds: VisibleContentBounds,
     pub visible_data_range_bounds: VisibleContentBounds,
+    pub tail_anchor_rows: BTreeMap<u32, usize>,
     pub tail_anchor_max_row: Option<u32>,
     pub has_hints: bool,
+}
+
+impl CleanSheetMetrics {
+    pub fn record_tail_anchor_row(&mut self, row: u32) {
+        *self.tail_anchor_rows.entry(row).or_default() += 1;
+        self.tail_anchor_max_row = Some(self.tail_anchor_max_row.map_or(row, |old| old.max(row)));
+    }
+
+    pub fn remove_tail_anchor_row(&mut self, row: u32) {
+        let mut remove_entry = false;
+        if let Some(count) = self.tail_anchor_rows.get_mut(&row) {
+            if *count > 1 {
+                *count -= 1;
+            } else {
+                remove_entry = true;
+            }
+        }
+
+        if remove_entry {
+            self.tail_anchor_rows.remove(&row);
+        }
+
+        if self.tail_anchor_max_row == Some(row) && !self.tail_anchor_rows.contains_key(&row) {
+            self.refresh_tail_anchor_max_row();
+        }
+    }
+
+    pub fn remove_all_tail_anchors_for_row(&mut self, row: u32) {
+        let removed = self.tail_anchor_rows.remove(&row).is_some();
+        if removed || self.tail_anchor_max_row == Some(row) {
+            self.refresh_tail_anchor_max_row();
+        }
+    }
+
+    pub fn clear_tail_anchor_rows(&mut self) {
+        self.tail_anchor_rows.clear();
+        self.tail_anchor_max_row = None;
+    }
+
+    pub fn merge_tail_anchor_rows(&mut self, rows: BTreeMap<u32, usize>) {
+        for (row, count) in rows {
+            if count == 0 {
+                continue;
+            }
+            *self.tail_anchor_rows.entry(row).or_default() += count;
+            self.tail_anchor_max_row =
+                Some(self.tail_anchor_max_row.map_or(row, |old| old.max(row)));
+        }
+    }
+
+    fn refresh_tail_anchor_max_row(&mut self) {
+        self.tail_anchor_max_row = self.tail_anchor_rows.keys().next_back().copied();
+    }
 }
 
 #[derive(Debug, Clone)]

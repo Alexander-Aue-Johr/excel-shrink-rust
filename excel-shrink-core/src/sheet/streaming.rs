@@ -3,7 +3,7 @@ use crate::models::{
     CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, ColumnRangeMap, SheetStreamingState,
 };
 use crate::sheet::cols::process_cols_node;
-use crate::sheet::merge_cells::find_max_merge_cells;
+use crate::sheet::merge_cells::{find_max_merge_cells, find_merge_cell_ranges};
 use crate::sheet::sheet_data::{pre_process_sheet_data_chunk, SheetDataPreprocessState};
 use crate::sheet::worksheet::{process_worksheet_node, WorksheetTag};
 use crate::xml::rfind_bytes;
@@ -273,6 +273,7 @@ pub fn preprocess_sheet_xml_streamwise_with_progress(
 
                 result.clean_sheet_metrics.max_merge_cells_column_and_row =
                     find_max_merge_cells(&content);
+                result.clean_sheet_metrics.merge_cell_ranges = find_merge_cell_ranges(&content);
                 result.in_merge_cells_node_output_chunks = content;
 
                 buffer = buffer[idx..].to_vec();

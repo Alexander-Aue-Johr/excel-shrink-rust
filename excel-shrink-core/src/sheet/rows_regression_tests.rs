@@ -3,6 +3,7 @@ use crate::models::{
     CleanSheetMetrics, CleanSheetParameters, CleanupSwitches, ColumnDefinition,
     SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
 };
+use crate::sheet::output::trim_trailing_layout_only_rows;
 use crate::sheet::sheet_data::clean_sheet_rows_and_cells_in_cell_range;
 use regex::bytes::Regex;
 use std::collections::HashMap;
@@ -605,6 +606,25 @@ fn visible_row_style_keeps_column_font_style_representative_as_tail_part() {
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert!(metrics.deleted_cell_states.is_empty());
     assert_eq!(metrics.tail_anchor_max_row, Some(3));
+}
+
+#[test]
+fn removing_later_custom_height_representative_recomputes_tail_anchor() {
+    let params = params_with_styles(&[]);
+    let sheet_data = br#"<row r="10"><c r="A10"><v>keep</v></c></row><row r="20" customFormat="1" ht="12.75" customHeight="1"><c r="A20"/></row>"#;
+    let mut metrics = CleanSheetMetrics::default();
+
+    let cleaned = clean_sheet_rows_and_cells_in_cell_range(sheet_data, &params, &mut metrics)
+        .expect("row cleanup should succeed");
+
+    assert_eq!(metrics.tail_anchor_max_row, Some(10));
+    assert!(!String::from_utf8_lossy(&cleaned).contains(r#"r="A20""#));
+    let trimmed = trim_trailing_layout_only_rows(&cleaned, &params, &mut metrics);
+    let trimmed = String::from_utf8_lossy(&trimmed);
+
+    assert!(trimmed.contains(r#"r="10""#));
+    assert!(trimmed.contains(r#"<v>keep</v>"#));
+    assert!(!trimmed.contains(r#"r="20""#));
 }
 
 #[test]

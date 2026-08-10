@@ -914,11 +914,8 @@ fn invalidate_tail_anchor_for_touched_rows(
     metrics: &mut CleanSheetMetrics,
     touched_rows: &HashSet<u32>,
 ) {
-    if metrics
-        .tail_anchor_max_row
-        .is_some_and(|row| touched_rows.contains(&row))
-    {
-        metrics.tail_anchor_max_row = None;
+    for row in touched_rows {
+        metrics.remove_all_tail_anchors_for_row(*row);
     }
 }
 

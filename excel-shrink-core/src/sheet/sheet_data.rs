@@ -388,7 +388,7 @@ fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {
     metrics.candidates.clear();
 
     metrics.visible_content_bounds = Default::default();
-    metrics.tail_anchor_max_row = None;
+    metrics.clear_tail_anchor_rows();
 
     metrics.cleanup_stats = if base.cleanup_stats.enabled {
         crate::models::CleanupStats::enabled()
@@ -419,6 +419,7 @@ fn merge_chunk_metrics(target: &mut CleanSheetMetrics, chunk: CleanSheetMetrics)
     if let Some(row) = chunk.visible_content_bounds.max_row {
         target.visible_content_bounds.include_row(row);
     }
+    target.merge_tail_anchor_rows(chunk.tail_anchor_rows);
     if let Some(row) = chunk.tail_anchor_max_row {
         target.tail_anchor_max_row =
             Some(target.tail_anchor_max_row.map_or(row, |old| old.max(row)));
