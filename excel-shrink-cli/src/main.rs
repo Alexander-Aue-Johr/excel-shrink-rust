@@ -8,6 +8,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 mod pipeline;
 mod regression;
+mod visual_profile;
 
 #[derive(Parser, Debug)]
 #[command(name = "excel-shrink", about = "Clean and shrink XLSX files.")]
