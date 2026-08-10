@@ -16,8 +16,14 @@ regression/
 |- baselines/
 |  |- smoke.json
 |  `- corpus.json
-|- reports/          # generated, gitignored
 `- tmp/              # generated outputs, gitignored
+
+.tmp/
+|- reports/<visual-profile>/
+|- screenshots/<visual-profile>/
+|- screenshots/shared/cache/
+|- workbooks/shared/<workbook-hash>/
+`- baselines/<visual-profile>/
 ```
 
 ## Runner
@@ -40,13 +46,13 @@ If no corpus root is provided, the runner first checks the gitignored local cach
 
 - intended for frequent local checks
 - contains representative category-oriented single-workbook cases
-- uses `regression/baselines/smoke.json`
+- uses `regression/baselines/<visual-profile>/smoke.json` when present, otherwise `regression/baselines/smoke.json`
 
 `cargo run --release -p excel-shrink-cli -- regression corpus`
 
 - intended for heavier full-corpus runs
 - may contain many cases plus aggregate expectations
-- uses `regression/baselines/corpus.json`
+- uses `regression/baselines/<visual-profile>/corpus.json` when present, otherwise `regression/baselines/corpus.json`
 
 ## Baseline format
 
@@ -196,7 +202,21 @@ cargo run --release -p excel-shrink-cli -- regression smoke --excel-screenshot-c
 ```
 
 This opens the original and shrunk workbooks in Excel, captures each used range, and writes cropped difference images plus approximate cell coordinates under the case output directory. The check requires Microsoft Excel automation. On Windows it invokes PowerShell directly; under WSL it tries `powershell.exe` and converts `/mnt/<drive>/...` paths for the Windows side.
-Full per-sheet original/shrunk screenshots are cached under the workspace `.tmp/excel-screenshot-cache` directory. Test output directories contain only the diff artifacts and reports.
+Full per-sheet original/shrunk screenshots are cached under `.tmp/screenshots/shared/cache`. Newly captured PNGs are materialized below `by-sheet-xml/<capture-range-hash>/<sheet-xml-hash>/` and the per-workbook manifests point at those shared files, so identical sheet XML can be reused across visual profiles. Screenshot difference artifacts for a run are written under the case output directory, for example `regression/tmp/<run>/<case-id>/excel-screenshots/`.
+
+Generated and preserved XLSX artifacts are deduplicated under `.tmp/workbooks/shared/<workbook-hash>/`. The visible workbook paths in regression case directories, Excel automation work directories, and recalc output directories are recreated as file links to those shared workbooks after each write. Mutable repair inputs are the exception: they are temporary real copies while being repaired, then removed after the repaired result has been written back through the shared workbook store.
+
+The visual profile is derived from cleanup and visualization-relevant CLI options. Known profiles such as `default`, `remove-basic-textless-representatives`, `maximum-cleaning`, and `keep-all-inactive-protection-cells` get their own folders. Other combinations use `custom/<stable-config-hash>`.
+
+Sheet XML and XML diff artifacts written by screenshot validation are compressed as single-file `.zip` artifacts to keep large visual-diff runs manageable. The cropped PNG diff artifacts remain plain image files.
+
+Run every predefined visual profile with Excel value/recalculation and screenshot validation:
+
+```bash
+cargo run --release -p excel-shrink-cli -- regression smoke --all-visual-profile-checks
+```
+
+This ignores baseline-level default cleanup args for the matrix and supplies each predefined profile explicitly. Use `--all-visual-profiles` instead when you want the same profile matrix without forcing both Excel-backed checks.
 
 ## VS Code debugging
 
@@ -230,6 +250,7 @@ It only:
 
 - runs the CLI
 - compares actual results to versioned expectations
-- writes a JSON report under `regression/reports/`
+- writes a JSON report under `.tmp/reports/<visual-profile>/`
+- writes profile metadata under `.tmp/reports/<visual-profile>/`, `.tmp/screenshots/<visual-profile>/`, and `.tmp/baselines/<visual-profile>/`
 
 If a baseline needs to change, do that as an explicit reviewed code change with a stated reason. That prevents real regressions from being normalized away.
