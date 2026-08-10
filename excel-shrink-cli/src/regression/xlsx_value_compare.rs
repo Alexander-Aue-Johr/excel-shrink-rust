@@ -30,6 +30,43 @@ pub struct CellValueDifference {
     pub right_value: Option<String>,
 }
 
+impl CellValueDifference {
+    fn missing_right(sheet_file: &str, cell_ref: &[u8], left_value: &CellValue) -> Self {
+        Self {
+            sheet_file: sheet_file.to_string(),
+            cell_ref: bytes_to_lossy_string(cell_ref),
+            kind: CellDifferenceKind::MissingRight,
+            left_value: Some(left_value.to_report_string()),
+            right_value: None,
+        }
+    }
+
+    fn extra_right(sheet_file: &str, cell_ref: &[u8], right_value: &CellValue) -> Self {
+        Self {
+            sheet_file: sheet_file.to_string(),
+            cell_ref: bytes_to_lossy_string(cell_ref),
+            kind: CellDifferenceKind::ExtraRight,
+            left_value: None,
+            right_value: Some(right_value.to_report_string()),
+        }
+    }
+
+    fn changed(
+        sheet_file: &str,
+        cell_ref: &[u8],
+        left_value: &CellValue,
+        right_value: &CellValue,
+    ) -> Self {
+        Self {
+            sheet_file: sheet_file.to_string(),
+            cell_ref: bytes_to_lossy_string(cell_ref),
+            kind: CellDifferenceKind::Changed,
+            left_value: Some(left_value.to_report_string()),
+            right_value: Some(right_value.to_report_string()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CellDifferenceKind {
@@ -110,8 +147,7 @@ pub fn compare_workbook_values(
 }
 
 pub fn workbook_sheet_order(path: &Path) -> anyhow::Result<Vec<String>> {
-    let mut file_bytes = Vec::new();
-    File::open(path)?.read_to_end(&mut file_bytes)?;
+    let file_bytes = read_file_bytes(path)?;
     let mut archive = ZipArchive::new(Cursor::new(file_bytes.as_slice()))?;
     read_workbook_sheet_order(&mut archive)
 }
@@ -130,58 +166,16 @@ fn compare_workbooks(
     only_sheets: Option<&HashSet<String>>,
 ) -> WorkbookComparisonReport {
     let mut differences = Vec::new();
-    let mut sheet_names: Vec<_> = left
-        .sheets
-        .keys()
-        .chain(right.sheets.keys())
-        .filter(|sheet| only_sheets.map_or(true, |only| only.contains(*sheet)))
-        .cloned()
-        .collect();
-    sheet_names.sort();
-    sheet_names.dedup();
+    let sheet_names = compared_sheet_names(left, right, only_sheets);
 
     for sheet_file in &sheet_names {
-        let left_sheet = left.sheets.get(sheet_file);
-        let right_sheet = right.sheets.get(sheet_file);
-
-        match (left_sheet, right_sheet) {
-            (Some(left_sheet), Some(right_sheet)) => compare_sheets(
-                sheet_file,
-                left_sheet,
-                right_sheet,
-                missing_policy,
-                &mut differences,
-            ),
-            (Some(left_sheet), None) => {
-                for (cell_ref, value) in &left_sheet.cells {
-                    if missing_right_cell_is_allowed(left_sheet, cell_ref, value, missing_policy) {
-                        continue;
-                    }
-                    differences.push(CellValueDifference {
-                        sheet_file: sheet_file.clone(),
-                        cell_ref: bytes_to_lossy_string(cell_ref),
-                        kind: CellDifferenceKind::MissingRight,
-                        left_value: Some(value.to_report_string()),
-                        right_value: None,
-                    });
-                }
-            }
-            (None, Some(right_sheet)) => {
-                for (cell_ref, value) in &right_sheet.cells {
-                    if value.is_empty() {
-                        continue;
-                    }
-                    differences.push(CellValueDifference {
-                        sheet_file: sheet_file.clone(),
-                        cell_ref: bytes_to_lossy_string(cell_ref),
-                        kind: CellDifferenceKind::ExtraRight,
-                        left_value: None,
-                        right_value: Some(value.to_report_string()),
-                    });
-                }
-            }
-            (None, None) => {}
-        }
+        compare_workbook_sheet(
+            sheet_file,
+            left.sheets.get(sheet_file),
+            right.sheets.get(sheet_file),
+            missing_policy,
+            &mut differences,
+        );
     }
 
     WorkbookComparisonReport {
@@ -192,6 +186,77 @@ fn compare_workbooks(
     }
 }
 
+fn compared_sheet_names(
+    left: &WorkbookCells,
+    right: &WorkbookCells,
+    only_sheets: Option<&HashSet<String>>,
+) -> Vec<String> {
+    let mut sheet_names: Vec<_> = left
+        .sheets
+        .keys()
+        .chain(right.sheets.keys())
+        .filter(|sheet| only_sheets.map_or(true, |only| only.contains(*sheet)))
+        .cloned()
+        .collect();
+    sheet_names.sort();
+    sheet_names.dedup();
+    sheet_names
+}
+
+fn compare_workbook_sheet(
+    sheet_file: &str,
+    left_sheet: Option<&SheetCells>,
+    right_sheet: Option<&SheetCells>,
+    missing_policy: MissingCellPolicy,
+    differences: &mut Vec<CellValueDifference>,
+) {
+    match (left_sheet, right_sheet) {
+        (Some(left_sheet), Some(right_sheet)) => compare_sheets(
+            sheet_file,
+            left_sheet,
+            right_sheet,
+            missing_policy,
+            differences,
+        ),
+        (Some(left_sheet), None) => {
+            append_missing_sheet_differences(sheet_file, left_sheet, missing_policy, differences);
+        }
+        (None, Some(right_sheet)) => {
+            append_extra_sheet_differences(sheet_file, right_sheet, differences);
+        }
+        (None, None) => {}
+    }
+}
+
+fn append_missing_sheet_differences(
+    sheet_file: &str,
+    left_sheet: &SheetCells,
+    missing_policy: MissingCellPolicy,
+    differences: &mut Vec<CellValueDifference>,
+) {
+    for (cell_ref, value) in &left_sheet.cells {
+        if !missing_right_cell_is_allowed(left_sheet, cell_ref, value, missing_policy) {
+            differences.push(CellValueDifference::missing_right(
+                sheet_file, cell_ref, value,
+            ));
+        }
+    }
+}
+
+fn append_extra_sheet_differences(
+    sheet_file: &str,
+    right_sheet: &SheetCells,
+    differences: &mut Vec<CellValueDifference>,
+) {
+    for (cell_ref, value) in &right_sheet.cells {
+        if !value.is_empty() {
+            differences.push(CellValueDifference::extra_right(
+                sheet_file, cell_ref, value,
+            ));
+        }
+    }
+}
+
 fn compare_sheets(
     sheet_file: &str,
     left_sheet: &SheetCells,
@@ -199,6 +264,20 @@ fn compare_sheets(
     missing_policy: MissingCellPolicy,
     differences: &mut Vec<CellValueDifference>,
 ) {
+    for cell_ref in compared_cell_refs(left_sheet, right_sheet) {
+        if let Some(difference) = compare_cell_values(
+            sheet_file,
+            &cell_ref,
+            left_sheet,
+            right_sheet,
+            missing_policy,
+        ) {
+            differences.push(difference);
+        }
+    }
+}
+
+fn compared_cell_refs(left_sheet: &SheetCells, right_sheet: &SheetCells) -> Vec<Vec<u8>> {
     let mut cell_refs: Vec<_> = left_sheet
         .cells
         .keys()
@@ -207,53 +286,45 @@ fn compare_sheets(
         .collect();
     cell_refs.sort();
     cell_refs.dedup();
-
-    for cell_ref in cell_refs {
-        let left_value = left_sheet.cells.get(&cell_ref).unwrap_or(&CellValue::Empty);
-        let right_value = right_sheet
-            .cells
-            .get(&cell_ref)
-            .unwrap_or(&CellValue::Empty);
-
-        if left_value == right_value {
-            continue;
-        }
-
-        if !left_value.is_empty() && right_value.is_empty() {
-            if missing_right_cell_is_allowed(left_sheet, &cell_ref, left_value, missing_policy) {
-                continue;
-            }
-            differences.push(CellValueDifference {
-                sheet_file: sheet_file.to_string(),
-                cell_ref: bytes_to_lossy_string(&cell_ref),
-                kind: CellDifferenceKind::MissingRight,
-                left_value: Some(left_value.to_report_string()),
-                right_value: None,
-            });
-            continue;
-        }
-
-        if left_value.is_empty() && !right_value.is_empty() {
-            differences.push(CellValueDifference {
-                sheet_file: sheet_file.to_string(),
-                cell_ref: bytes_to_lossy_string(&cell_ref),
-                kind: CellDifferenceKind::ExtraRight,
-                left_value: None,
-                right_value: Some(right_value.to_report_string()),
-            });
-            continue;
-        }
-
-        differences.push(CellValueDifference {
-            sheet_file: sheet_file.to_string(),
-            cell_ref: bytes_to_lossy_string(&cell_ref),
-            kind: CellDifferenceKind::Changed,
-            left_value: Some(left_value.to_report_string()),
-            right_value: Some(right_value.to_report_string()),
-        });
-    }
+    cell_refs
 }
 
+fn compare_cell_values(
+    sheet_file: &str,
+    cell_ref: &[u8],
+    left_sheet: &SheetCells,
+    right_sheet: &SheetCells,
+    missing_policy: MissingCellPolicy,
+) -> Option<CellValueDifference> {
+    let left_value = left_sheet.cells.get(cell_ref).unwrap_or(&CellValue::Empty);
+    let right_value = right_sheet.cells.get(cell_ref).unwrap_or(&CellValue::Empty);
+
+    if left_value == right_value {
+        return None;
+    }
+
+    if !left_value.is_empty() && right_value.is_empty() {
+        return (!missing_right_cell_is_allowed(left_sheet, cell_ref, left_value, missing_policy))
+            .then(|| CellValueDifference::missing_right(sheet_file, cell_ref, left_value));
+    }
+
+    if left_value.is_empty() {
+        return Some(CellValueDifference::extra_right(
+            sheet_file,
+            cell_ref,
+            right_value,
+        ));
+    }
+
+    Some(CellValueDifference::changed(
+        sheet_file,
+        cell_ref,
+        left_value,
+        right_value,
+    ))
+}
+
+#[inline]
 fn missing_right_cell_is_allowed(
     left_sheet: &SheetCells,
     cell_ref: &[u8],
@@ -270,24 +341,11 @@ fn missing_right_cell_is_allowed(
 }
 
 fn read_workbook_cells(path: &Path) -> anyhow::Result<WorkbookCells> {
-    let mut file_bytes = Vec::new();
-    File::open(path)?.read_to_end(&mut file_bytes)?;
+    let file_bytes = read_file_bytes(path)?;
     let mut archive = ZipArchive::new(Cursor::new(file_bytes.as_slice()))?;
     let sheet_order = read_workbook_sheet_order(&mut archive)?;
     let shared_strings = read_shared_strings(&mut archive)?;
-    let mut sheets = HashMap::new();
-
-    for index in 0..archive.len() {
-        let mut file = archive.by_index(index)?;
-        let name = file.name().to_string();
-        if !is_worksheet_xml(&name) {
-            continue;
-        }
-
-        let mut xml = Vec::new();
-        file.read_to_end(&mut xml)?;
-        sheets.insert(name, parse_sheet_cells(&xml, &shared_strings));
-    }
+    let sheets = read_worksheet_cells(&mut archive, &shared_strings)?;
 
     Ok(WorkbookCells {
         sheet_order,
@@ -295,25 +353,48 @@ fn read_workbook_cells(path: &Path) -> anyhow::Result<WorkbookCells> {
     })
 }
 
+fn read_file_bytes(path: &Path) -> anyhow::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    File::open(path)?.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+fn read_worksheet_cells(
+    archive: &mut ZipArchive<Cursor<&[u8]>>,
+    shared_strings: &[Vec<u8>],
+) -> anyhow::Result<HashMap<String, SheetCells>> {
+    let mut sheets = HashMap::new();
+
+    for index in 0..archive.len() {
+        if let Some((name, sheet)) = read_worksheet_cells_at(archive, index, shared_strings)? {
+            sheets.insert(name, sheet);
+        }
+    }
+
+    Ok(sheets)
+}
+
+fn read_worksheet_cells_at(
+    archive: &mut ZipArchive<Cursor<&[u8]>>,
+    index: usize,
+    shared_strings: &[Vec<u8>],
+) -> anyhow::Result<Option<(String, SheetCells)>> {
+    let mut file = archive.by_index(index)?;
+    let name = file.name().to_string();
+    if !is_worksheet_xml(&name) {
+        return Ok(None);
+    }
+
+    let mut xml = Vec::new();
+    file.read_to_end(&mut xml)?;
+    Ok(Some((name, parse_sheet_cells(&xml, shared_strings))))
+}
+
 fn workbook_capture_ranges(
     workbook: &WorkbookCells,
     only_sheets: Option<&HashSet<String>>,
 ) -> Vec<WorksheetCaptureRange> {
-    let mut ordered_sheet_files = if workbook.sheet_order.is_empty() {
-        let mut sheet_files = workbook.sheets.keys().cloned().collect::<Vec<_>>();
-        sheet_files.sort_by_key(|name| worksheet_sort_key(name));
-        sheet_files
-    } else {
-        workbook.sheet_order.clone()
-    };
-
-    for sheet_file in workbook.sheets.keys() {
-        if !ordered_sheet_files.contains(sheet_file) {
-            ordered_sheet_files.push(sheet_file.clone());
-        }
-    }
-
-    ordered_sheet_files
+    ordered_sheet_files(workbook)
         .into_iter()
         .enumerate()
         .filter(|(_, sheet_file)| only_sheets.map_or(true, |only| only.contains(sheet_file)))
@@ -326,21 +407,34 @@ fn workbook_capture_ranges(
         .collect()
 }
 
+fn ordered_sheet_files(workbook: &WorkbookCells) -> Vec<String> {
+    let mut ordered = if workbook.sheet_order.is_empty() {
+        let mut sheet_files = workbook.sheets.keys().cloned().collect::<Vec<_>>();
+        sheet_files.sort_by_key(|name| worksheet_sort_key(name));
+        sheet_files
+    } else {
+        workbook.sheet_order.clone()
+    };
+
+    for sheet_file in workbook.sheets.keys() {
+        if !ordered.contains(sheet_file) {
+            ordered.push(sheet_file.clone());
+        }
+    }
+
+    ordered
+}
+
 fn read_workbook_sheet_order(
     archive: &mut ZipArchive<Cursor<&[u8]>>,
 ) -> anyhow::Result<Vec<String>> {
-    let Ok(mut workbook) = archive.by_name("xl/workbook.xml") else {
+    let Some(workbook_xml) = read_optional_zip_entry(archive, "xl/workbook.xml")? else {
         return Ok(Vec::new());
     };
-    let mut workbook_xml = Vec::new();
-    workbook.read_to_end(&mut workbook_xml)?;
-    drop(workbook);
 
-    let Ok(mut rels) = archive.by_name("xl/_rels/workbook.xml.rels") else {
+    let Some(rels_xml) = read_optional_zip_entry(archive, "xl/_rels/workbook.xml.rels")? else {
         return Ok(Vec::new());
     };
-    let mut rels_xml = Vec::new();
-    rels.read_to_end(&mut rels_xml)?;
 
     let relationship_targets = parse_workbook_relationship_targets(&rels_xml);
     Ok(parse_workbook_sheet_relationship_ids(&workbook_xml)
@@ -348,6 +442,19 @@ fn read_workbook_sheet_order(
         .filter_map(|relationship_id| relationship_targets.get(&relationship_id).cloned())
         .filter(|target| is_worksheet_xml(target))
         .collect())
+}
+
+fn read_optional_zip_entry(
+    archive: &mut ZipArchive<Cursor<&[u8]>>,
+    name: &str,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    let Ok(mut file) = archive.by_name(name) else {
+        return Ok(None);
+    };
+
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    Ok(Some(bytes))
 }
 
 fn parse_workbook_sheet_relationship_ids(workbook_xml: &[u8]) -> Vec<Vec<u8>> {
@@ -515,12 +622,10 @@ impl SheetCaptureBounds {
 }
 
 fn read_shared_strings(archive: &mut ZipArchive<Cursor<&[u8]>>) -> anyhow::Result<Vec<Vec<u8>>> {
-    let Ok(mut file) = archive.by_name("xl/sharedStrings.xml") else {
+    let Some(xml) = read_optional_zip_entry(archive, "xl/sharedStrings.xml")? else {
         return Ok(Vec::new());
     };
 
-    let mut xml = Vec::new();
-    file.read_to_end(&mut xml)?;
     Ok(parse_shared_strings(&xml))
 }
 
