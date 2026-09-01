@@ -1,4 +1,6 @@
-use crate::models::{ProtectedCellRefs, ProtectedWorkbookRefs, SheetScanBuffer};
+use crate::models::{
+    ProtectedCellRefs, ProtectedWorkbookRefs, SheetReferenceSummary, SheetScanBuffer,
+};
 use crate::utils::letters_byte_string_to_integer;
 use regex::bytes::Regex;
 use std::collections::HashMap;
@@ -196,6 +198,33 @@ pub fn scan_for_references_by_sheet(
     }
 
     ScanResult::Safe
+}
+
+pub fn scan_sheet_fragment(
+    xml: &[u8],
+    sheet_file: &str,
+    sheet_name_to_file: &HashMap<String, String>,
+) -> SheetReferenceSummary {
+    let patterns = sheet_scan_patterns();
+    let mut protected_refs = ProtectedWorkbookRefs::default();
+    let buffer = SheetScanBuffer {
+        sheet_file,
+        sheet_name: "",
+        xml,
+    };
+    let unsafe_reason = scan_sheet_buffer(
+        &buffer,
+        &mut protected_refs,
+        sheet_name_to_file,
+        None,
+        &patterns,
+    );
+
+    SheetReferenceSummary {
+        protected_refs,
+        unsafe_reason,
+        complete: false,
+    }
 }
 
 fn build_sheet_name_to_file_map(

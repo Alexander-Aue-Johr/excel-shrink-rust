@@ -1,15 +1,18 @@
 use crate::error::{Result, ShrinkError};
 use crate::models::{
-    CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, ColumnRangeMap, SheetStreamingState,
+    CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, SheetStreamingState,
+    VisibleContentBounds,
 };
+use crate::reference_scanner::scan_sheet_fragment;
 use crate::sheet::cols::process_cols_node;
 use crate::sheet::merge_cells::{find_max_merge_cells, find_merge_cell_ranges};
-use crate::sheet::sheet_data::{pre_process_sheet_data_chunk, SheetDataPreprocessState};
+use crate::sheet::preprocess_chunks::SheetDataChunkExecutor;
 use crate::sheet::worksheet::{process_worksheet_node, WorksheetTag};
 use crate::xml::{find_byte_from, find_bytes, rfind_bytes};
 use regex::bytes::Regex;
+use std::collections::HashMap;
 use std::io::Read;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 static WORKSHEET_START_RE: OnceLock<Regex> = OnceLock::new();
 
@@ -24,6 +27,12 @@ pub struct PreprocessedSheetXml {
     pub in_merge_cells_node_output_chunks: Vec<u8>,
     pub until_worksheet_end_output_chunks: Vec<u8>,
     pub clean_sheet_metrics: CleanSheetMetrics,
+    pub preprocessed_visible_data_bounds: Option<VisibleContentBounds>,
+}
+
+#[derive(Clone, Default)]
+pub struct SheetReferenceScanOptions {
+    pub sheet_name_to_file: Arc<HashMap<String, String>>,
 }
 
 pub fn clean_sheet_data_streamwise(
@@ -50,9 +59,35 @@ pub fn clean_sheet_data_streamwise_with_progress(
     parallel_range_chunk_size: usize,
     progress: &mut impl FnMut(&'static str),
 ) -> Result<CleanedSheetData> {
+    clean_sheet_data_streamwise_with_reference_scan_and_progress(
+        stream,
+        params,
+        chunk_size,
+        disable_sheetdata_splitting,
+        parallel_range_chunk_size,
+        None,
+        progress,
+    )
+}
+
+pub fn clean_sheet_data_streamwise_with_reference_scan_and_progress(
+    stream: impl Read,
+    params: &CleanSheetParameters,
+    chunk_size: usize,
+    disable_sheetdata_splitting: bool,
+    parallel_range_chunk_size: usize,
+    reference_scan: Option<SheetReferenceScanOptions>,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<CleanedSheetData> {
     progress("preprocess_sheet_xml_streamwise");
-    let preprocessed =
-        preprocess_sheet_xml_streamwise_with_progress(stream, params, chunk_size, progress)?;
+    let preprocessed = preprocess_sheet_xml_streamwise_parallel_with_progress(
+        stream,
+        params,
+        chunk_size,
+        parallel_range_chunk_size,
+        reference_scan,
+        progress,
+    )?;
 
     progress("build_clean_sheet_xml");
     crate::sheet::output::build_clean_sheet_xml_with_progress(
@@ -62,22 +97,6 @@ pub fn clean_sheet_data_streamwise_with_progress(
         parallel_range_chunk_size,
         progress,
     )
-}
-
-fn get_or_create_sheet_data_preprocess_state<'a>(
-    state: &'a mut Option<SheetDataPreprocessState>,
-    column_definitions: &Option<ColumnRangeMap>,
-    params: &CleanSheetParameters,
-) -> &'a mut SheetDataPreprocessState {
-    if state.is_none() {
-        let empty_column_definitions = ColumnRangeMap::default();
-        let columns = column_definitions
-            .as_ref()
-            .unwrap_or(&empty_column_definitions);
-        *state = Some(SheetDataPreprocessState::new(columns, params));
-    }
-
-    state.as_mut().unwrap()
 }
 
 pub fn preprocess_sheet_xml_streamwise(
@@ -94,7 +113,28 @@ pub fn preprocess_sheet_xml_streamwise_with_progress(
     chunk_size: usize,
     progress: &mut impl FnMut(&'static str),
 ) -> Result<PreprocessedSheetXml> {
-    SheetXmlPreprocessor::new(stream, params, chunk_size, progress).run()
+    preprocess_sheet_xml_streamwise_parallel_with_progress(
+        stream, params, chunk_size, 0, None, progress,
+    )
+}
+
+fn preprocess_sheet_xml_streamwise_parallel_with_progress(
+    stream: impl Read,
+    params: &CleanSheetParameters,
+    read_chunk_size: usize,
+    work_chunk_size: usize,
+    reference_scan: Option<SheetReferenceScanOptions>,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<PreprocessedSheetXml> {
+    SheetXmlPreprocessor::new(
+        stream,
+        params,
+        read_chunk_size,
+        work_chunk_size,
+        reference_scan,
+        progress,
+    )
+    .run()
 }
 
 struct SheetXmlPreprocessor<'a, R, P> {
@@ -108,8 +148,7 @@ struct SheetXmlPreprocessor<'a, R, P> {
     reached_eof: bool,
     processed_tags: Vec<WorksheetTag>,
     result: PreprocessedSheetXml,
-    column_definitions: Option<ColumnRangeMap>,
-    sheet_data_preprocess_state: Option<SheetDataPreprocessState>,
+    sheet_data_executor: SheetDataChunkExecutor,
 }
 
 impl<'a, R, P> SheetXmlPreprocessor<'a, R, P>
@@ -120,7 +159,9 @@ where
     fn new(
         stream: R,
         params: &'a CleanSheetParameters,
-        chunk_size: usize,
+        read_chunk_size: usize,
+        work_chunk_size: usize,
+        reference_scan: Option<SheetReferenceScanOptions>,
         progress: &'a mut P,
     ) -> Self {
         let mut result = PreprocessedSheetXml::default();
@@ -131,14 +172,17 @@ where
             params,
             progress,
             buffer: Vec::new(),
-            read_buffer: vec![0u8; chunk_size],
+            read_buffer: vec![0u8; read_chunk_size],
             state: SheetStreamingState::SeekWorksheetNode,
             last_reported_state: None,
             reached_eof: false,
             processed_tags: Vec::new(),
             result,
-            column_definitions: None,
-            sheet_data_preprocess_state: None,
+            sheet_data_executor: SheetDataChunkExecutor::new(
+                params,
+                work_chunk_size,
+                reference_scan,
+            ),
         }
     }
 
@@ -151,6 +195,9 @@ where
                 break;
             }
         }
+
+        self.sheet_data_executor.finish(&mut self.result)?;
+        self.finish_reference_scan();
 
         Ok(self.result)
     }
@@ -252,11 +299,8 @@ where
     fn configure_column_definitions(&mut self, content: &[u8]) {
         let column_definitions = process_cols_node(content, self.params);
         self.result.clean_sheet_metrics.column_definitions = column_definitions.clone();
-        self.sheet_data_preprocess_state = Some(SheetDataPreprocessState::new(
-            &column_definitions,
-            self.params,
-        ));
-        self.column_definitions = Some(column_definitions);
+        self.sheet_data_executor
+            .configure_columns(column_definitions);
     }
 
     fn process_sheet_data_node(&mut self) -> Result<bool> {
@@ -276,20 +320,35 @@ where
     }
 
     fn preprocess_sheet_data_prefix(&mut self, end: usize) -> Result<()> {
-        let preprocess_state = get_or_create_sheet_data_preprocess_state(
-            &mut self.sheet_data_preprocess_state,
-            &self.column_definitions,
-            self.params,
-        );
-        let cleaned_chunk = pre_process_sheet_data_chunk(
-            &self.buffer[..end],
-            self.params,
-            preprocess_state,
-            &mut self.result.clean_sheet_metrics,
-        )?;
+        self.sheet_data_executor
+            .push(&self.buffer[..end], &mut self.result)
+    }
 
-        extend_without_large_growth(&mut self.result.sheet_data, &cleaned_chunk);
-        Ok(())
+    fn finish_reference_scan(&mut self) {
+        let Some(scan) = self.sheet_data_executor.reference_scan.clone() else {
+            return;
+        };
+        let chunks = [
+            self.result.until_worksheet_start_output_chunks.as_slice(),
+            self.result.before_cols_node_output_chunks.as_slice(),
+            self.result.in_cols_node_output_chunks.as_slice(),
+            self.result.before_sheet_data_node_output_chunks.as_slice(),
+            self.result.before_merge_cells_node_output_chunks.as_slice(),
+            self.result.in_merge_cells_node_output_chunks.as_slice(),
+            self.result.until_worksheet_end_output_chunks.as_slice(),
+        ];
+
+        for chunk in chunks {
+            self.result
+                .clean_sheet_metrics
+                .reference_summary
+                .merge(scan_sheet_fragment(
+                    chunk,
+                    &self.params.zip_info_filename,
+                    &scan.sheet_name_to_file,
+                ));
+        }
+        self.result.clean_sheet_metrics.reference_summary.complete = true;
     }
 
     fn process_merge_cells_node(&mut self) -> Result<bool> {
@@ -347,10 +406,102 @@ fn progress_label(state: SheetStreamingState) -> &'static str {
 }
 
 #[inline]
-fn extend_without_large_growth(out: &mut Vec<u8>, bytes: &[u8]) {
+pub(super) fn extend_without_large_growth(out: &mut Vec<u8>, bytes: &[u8]) {
     let spare = out.capacity().saturating_sub(out.len());
     if spare < bytes.len() {
         out.reserve_exact((bytes.len() - spare).max(16 * 1024 * 1024));
     }
     out.extend_from_slice(bytes);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{CleanupSwitches, SheetPreprocessConfig, WorkbookSpecificPatterns};
+    use zip::CompressionMethod;
+
+    fn params() -> CleanSheetParameters {
+        CleanSheetParameters {
+            xlsx_file_path: "test.xlsx".to_string(),
+            zip_info_filename: "xl/worksheets/sheet1.xml".to_string(),
+            compress_method: CompressionMethod::Deflated,
+            patterns: WorkbookSpecificPatterns {
+                xfs_by_index: HashMap::new(),
+                no_empty_cell_visible_style_ids: Vec::new(),
+                fill_or_border_or_protection_ids: Vec::new(),
+                whitespace_indices: None,
+            },
+            advanced_cleanup: None,
+            preprocess: SheetPreprocessConfig::default(),
+            cleanup: CleanupSwitches::default(),
+            collect_cleanup_stats: true,
+        }
+    }
+
+    fn worksheet() -> &'static [u8] {
+        br#"<worksheet><cols><col min="1" max="1"/></cols><sheetData><row r="1"><c r="A1"><v>1</v></c></row><row r="2"><c r="B2"><f>'Other Sheet'!$C$3</f><v>2</v></c></row><row r="3"/></sheetData><mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells></worksheet>"#
+    }
+
+    #[test]
+    fn online_chunks_preserve_serial_preprocessing_output() {
+        let params = params();
+        let serial = preprocess_sheet_xml_streamwise_parallel_with_progress(
+            worksheet(),
+            &params,
+            17,
+            0,
+            None,
+            &mut |_| {},
+        )
+        .unwrap();
+        let parallel = preprocess_sheet_xml_streamwise_parallel_with_progress(
+            worksheet(),
+            &params,
+            17,
+            48,
+            None,
+            &mut |_| {},
+        )
+        .unwrap();
+
+        assert_eq!(parallel.sheet_data, serial.sheet_data);
+        assert_eq!(
+            parallel.preprocessed_visible_data_bounds,
+            serial.preprocessed_visible_data_bounds
+        );
+        assert_eq!(
+            parallel.clean_sheet_metrics.merge_cell_ranges,
+            serial.clean_sheet_metrics.merge_cell_ranges
+        );
+    }
+
+    #[test]
+    fn online_chunks_collect_cross_sheet_references() {
+        let params = params();
+        let names = Arc::new(HashMap::from([
+            (
+                "Other Sheet".to_string(),
+                "xl/worksheets/sheet2.xml".to_string(),
+            ),
+            ("Sheet1".to_string(), "xl/worksheets/sheet1.xml".to_string()),
+        ]));
+        let preprocessed = preprocess_sheet_xml_streamwise_parallel_with_progress(
+            worksheet(),
+            &params,
+            13,
+            40,
+            Some(SheetReferenceScanOptions {
+                sheet_name_to_file: names,
+            }),
+            &mut |_| {},
+        )
+        .unwrap();
+
+        assert!(preprocessed.clean_sheet_metrics.reference_summary.complete);
+        assert!(preprocessed
+            .clean_sheet_metrics
+            .reference_summary
+            .protected_refs
+            .contains("xl/worksheets/sheet2.xml", 3, 3));
+    }
 }

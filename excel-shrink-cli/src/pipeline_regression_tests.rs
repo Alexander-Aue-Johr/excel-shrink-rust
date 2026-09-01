@@ -180,6 +180,48 @@ fn default_sheet_params() -> CleanSheetParameters {
     }
 }
 
+fn processed_sheet_with_metrics(metrics: CleanSheetMetrics) -> ProcessedSheetResult {
+    Ok(ProcessedSheet {
+        params: default_sheet_params(),
+        zip_index: 0,
+        xml: b"<worksheet><sheetData/></worksheet>".to_vec(),
+        sheet_data_range: 11..23,
+        metrics,
+        started: Instant::now(),
+        original_size: 36,
+    })
+}
+
+#[test]
+fn candidate_free_sheet_bypasses_workbook_reference_barrier() {
+    let reference_map = SheetReferenceMap::default();
+    let mut coordinator =
+        DeferredCleanupCoordinator::new(true, Some(b"<workbook/>"), Some(&reference_map));
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.reference_summary.complete = true;
+
+    let ready = coordinator.accept(processed_sheet_with_metrics(metrics));
+
+    assert_eq!(ready.len(), 1);
+    let (pending, validation) = coordinator.finish();
+    assert!(pending.is_empty());
+    assert!(validation.safe_to_clean);
+}
+
+#[test]
+fn disabled_reference_sensitive_cleanup_does_not_wait_for_candidates() {
+    let mut coordinator = DeferredCleanupCoordinator::new(false, None, None);
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.candidates.push(candidate_s41());
+
+    let ready = coordinator.accept(processed_sheet_with_metrics(metrics));
+
+    assert_eq!(ready.len(), 1);
+    let (pending, validation) = coordinator.finish();
+    assert!(pending.is_empty());
+    assert!(!validation.safe_to_clean);
+}
+
 #[test]
 fn phase3_removes_unprotected_hidden_candidate_cell() {
     let xml = br#"<sheetData><row r="41"><c r="S41"><v>secret</v></c><c r="A1"><v>x</v></c></row></sheetData>"#

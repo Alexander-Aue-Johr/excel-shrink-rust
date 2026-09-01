@@ -19,10 +19,12 @@ use excel_shrink_core::models::{
 };
 use excel_shrink_core::reference_scanner::{scan_for_references_by_sheet, ScanResult};
 use excel_shrink_core::shared_strings::find_whitespace_sst_indices;
-use excel_shrink_core::sheet::clean_sheet_data_streamwise_with_progress;
 use excel_shrink_core::sheet::output::trim_trailing_layout_only_rows_vec;
 use excel_shrink_core::sheet::sheet_data::{
     clean_empty_rows_from_after_cell_range, clean_selected_rows_and_cells_in_cell_range,
+};
+use excel_shrink_core::sheet::streaming::{
+    clean_sheet_data_streamwise_with_reference_scan_and_progress, SheetReferenceScanOptions,
 };
 use excel_shrink_core::styles::parse_xfs;
 use excel_shrink_core::workbook::clean_workbook_with_stats;
@@ -242,6 +244,14 @@ struct ReferenceValidation {
     safe_to_clean: bool,
 }
 
+struct DeferredCleanupCoordinator {
+    enabled: bool,
+    protected_refs: ProtectedWorkbookRefs,
+    unsafe_reason: Option<String>,
+    scan_incomplete: bool,
+    pending: Vec<ProcessedSheetResult>,
+}
+
 #[derive(Clone, Copy)]
 struct AdvancedCleanupSelection {
     remove_whitespace: bool,
@@ -309,12 +319,14 @@ struct SheetFinalizer<'a> {
     compression_level: i32,
 }
 
+#[derive(Clone)]
 struct InitialSheetProcessor {
     source_zip_bytes: Arc<Vec<u8>>,
     active_tasks: ActiveTasks,
     chunk_size: usize,
     disable_splitting: bool,
     parallel_range_chunk_size: usize,
+    reference_scan: Option<SheetReferenceScanOptions>,
 }
 
 struct ActiveSheetGuard {
@@ -1373,12 +1385,13 @@ impl InitialSheetProcessor {
         let (active_guard, started) =
             ActiveSheetGuard::start(&params, original_size, self.active_tasks.clone());
         let mut report_progress = active_guard.progress_reporter();
-        let result = clean_sheet_data_streamwise_with_progress(
+        let result = clean_sheet_data_streamwise_with_reference_scan_and_progress(
             &mut sheet_file,
             &params,
             self.chunk_size,
             self.disable_splitting,
             self.parallel_range_chunk_size,
+            self.reference_scan.clone(),
             &mut report_progress,
         );
 
@@ -1733,10 +1746,9 @@ fn queue_precompressed_entry(
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct SheetReferenceMap {
     name_to_file: HashMap<String, String>,
-    file_to_name: HashMap<String, String>,
     files_in_workbook_order: Vec<String>,
 }
 
@@ -1746,129 +1758,132 @@ impl SheetReferenceMap {
             .zip(workbook_rels)
             .map(|(workbook, relationships)| build_sheet_name_to_file_map(workbook, relationships))
             .unwrap_or_default();
-        let file_to_name = name_to_file
-            .iter()
-            .map(|(sheet_name, sheet_file)| (sheet_file.clone(), sheet_name.clone()))
-            .collect();
-
         Self {
             name_to_file,
-            file_to_name,
             files_in_workbook_order,
         }
     }
 }
 
-impl ReferenceValidation {
-    fn disabled() -> Self {
-        Self {
+impl DeferredCleanupCoordinator {
+    fn new(
+        enabled: bool,
+        workbook_xml: Option<&[u8]>,
+        reference_map: Option<&SheetReferenceMap>,
+    ) -> Self {
+        let mut coordinator = Self {
+            enabled,
             protected_refs: ProtectedWorkbookRefs::default(),
-            safe_to_clean: false,
+            unsafe_reason: None,
+            scan_incomplete: false,
+            pending: Vec::new(),
+        };
+        if enabled {
+            coordinator.scan_workbook(workbook_xml, reference_map);
+        }
+        coordinator
+    }
+
+    fn sheet_scan_enabled(&self) -> bool {
+        self.enabled && self.unsafe_reason.is_none() && !self.scan_incomplete
+    }
+
+    fn require_all_reference_source_sheets(&mut self, all_sheets_selected: bool) {
+        if self.enabled && !all_sheets_selected {
+            self.scan_incomplete = true;
         }
     }
-}
 
-fn validate_deferred_references(
-    processed_sheets: &[ProcessedSheetResult],
-    workbook_xml: Option<&[u8]>,
-    workbook_rels: Option<&[u8]>,
-    input_display: &str,
-) -> ReferenceValidation {
-    let Some(scan_selection) = deferred_reference_scan_selection(processed_sheets) else {
-        return ReferenceValidation::disabled();
-    };
-    let reference_map = SheetReferenceMap::from_workbook(workbook_xml, workbook_rels);
-    let scan_buffers = build_reference_scan_buffers(
-        processed_sheets,
-        &scan_selection,
-        &reference_map,
-        workbook_xml,
-    );
+    fn accept(&mut self, mut result: ProcessedSheetResult) -> Vec<ProcessedSheetResult> {
+        self.absorb_reference_summary(&mut result);
 
-    scan_deferred_references(&scan_buffers, &reference_map, input_display)
-}
-
-fn deferred_reference_scan_selection(
-    processed_sheets: &[ProcessedSheetResult],
-) -> Option<Vec<bool>> {
-    let mut has_candidates = false;
-    let mut include_sheet = Vec::with_capacity(processed_sheets.len());
-
-    for result in processed_sheets {
-        let Some(metrics) = result.as_ref().ok().map(|sheet| &sheet.metrics) else {
-            include_sheet.push(false);
-            continue;
+        let immediate = match &result {
+            Ok(sheet) => {
+                sheet.metrics.candidates.is_empty()
+                    || !self.enabled
+                    || self.unsafe_reason.is_some()
+                    || self.scan_incomplete
+            }
+            Err(_) => true,
         };
-        has_candidates |= !metrics.candidates.is_empty();
-        include_sheet.push(metrics.has_hints || !metrics.candidates.is_empty());
-    }
-
-    has_candidates.then_some(include_sheet)
-}
-
-fn build_reference_scan_buffers<'a>(
-    processed_sheets: &'a [ProcessedSheetResult],
-    scan_selection: &[bool],
-    reference_map: &'a SheetReferenceMap,
-    workbook_xml: Option<&'a [u8]>,
-) -> Vec<SheetScanBuffer<'a>> {
-    let mut buffers = Vec::new();
-
-    for (result, include) in processed_sheets.iter().zip(scan_selection) {
-        if !*include {
-            continue;
+        if immediate {
+            let mut ready = vec![result];
+            if self.unsafe_reason.is_some() || self.scan_incomplete {
+                ready.append(&mut self.pending);
+            }
+            ready
+        } else {
+            self.pending.push(result);
+            Vec::new()
         }
-        let Ok(sheet) = result else {
-            continue;
-        };
-        let sheet_name = reference_map
-            .file_to_name
-            .get(&sheet.params.zip_info_filename)
-            .map(String::as_str)
-            .unwrap_or("Unknown");
-        buffers.push(SheetScanBuffer {
-            sheet_file: &sheet.params.zip_info_filename,
-            sheet_name,
-            xml: &sheet.xml,
-        });
     }
 
-    if let Some(xml) = workbook_xml {
-        buffers.push(SheetScanBuffer {
-            sheet_file: "xl/workbook.xml",
-            sheet_name: "Workbook",
-            xml,
-        });
+    fn finish(mut self) -> (Vec<ProcessedSheetResult>, ReferenceValidation) {
+        let safe_to_clean = self.enabled && self.unsafe_reason.is_none() && !self.scan_incomplete;
+        (
+            std::mem::take(&mut self.pending),
+            ReferenceValidation {
+                protected_refs: self.protected_refs,
+                safe_to_clean,
+            },
+        )
     }
 
-    buffers
-}
-
-fn scan_deferred_references(
-    scan_buffers: &[SheetScanBuffer<'_>],
-    reference_map: &SheetReferenceMap,
-    input_display: &str,
-) -> ReferenceValidation {
-    let mut protected_refs = ProtectedWorkbookRefs::default();
-    let safe_to_clean = match scan_for_references_by_sheet(
-        scan_buffers,
-        &mut protected_refs,
-        Some(&reference_map.name_to_file),
-        Some(&reference_map.files_in_workbook_order),
-    ) {
-        ScanResult::Safe => true,
-        ScanResult::Unsafe(reason) => {
+    fn report_cleanup_blocker(&self, input_display: &str) {
+        if let Some(reason) = &self.unsafe_reason {
             warn!(
                 "Unsafe dynamic reference found: {}. Skipping deferred cleanup for {}.",
                 reason, input_display
             );
-            false
+        } else if self.enabled && self.scan_incomplete {
+            warn!(
+                "Reference scan incomplete. Skipping deferred cleanup for {}.",
+                input_display
+            );
         }
-    };
+    }
 
-    ReferenceValidation {
-        protected_refs,
-        safe_to_clean,
+    fn absorb_reference_summary(&mut self, result: &mut ProcessedSheetResult) {
+        if !self.sheet_scan_enabled() {
+            return;
+        }
+        let Ok(sheet) = result else {
+            self.scan_incomplete = true;
+            return;
+        };
+        let summary = std::mem::take(&mut sheet.metrics.reference_summary);
+        if !summary.complete {
+            self.scan_incomplete = true;
+            return;
+        }
+        self.protected_refs.merge(summary.protected_refs);
+        if self.unsafe_reason.is_none() {
+            self.unsafe_reason = summary.unsafe_reason;
+        }
+    }
+
+    fn scan_workbook(
+        &mut self,
+        workbook_xml: Option<&[u8]>,
+        reference_map: Option<&SheetReferenceMap>,
+    ) {
+        let Some((xml, reference_map)) = workbook_xml.zip(reference_map) else {
+            self.scan_incomplete = true;
+            return;
+        };
+        let workbook_buffer = [SheetScanBuffer {
+            sheet_file: "xl/workbook.xml",
+            sheet_name: "Workbook",
+            xml,
+        }];
+        if let ScanResult::Unsafe(reason) = scan_for_references_by_sheet(
+            &workbook_buffer,
+            &mut self.protected_refs,
+            Some(&reference_map.name_to_file),
+            Some(&reference_map.files_in_workbook_order),
+        ) {
+            self.unsafe_reason = Some(reason);
+        }
     }
 }
 
@@ -2275,23 +2290,58 @@ fn process_initial_sheets(
     source_zip_bytes: Arc<Vec<u8>>,
     active_tasks: ActiveTasks,
     advanced_cleanup: AdvancedCleanupSelection,
+    reference_map: Option<&SheetReferenceMap>,
     cli: &Cli,
-) -> Vec<ProcessedSheetResult> {
+    mut consume: impl FnMut(ProcessedSheetResult) + Send,
+) {
     let processor = InitialSheetProcessor {
         source_zip_bytes,
         active_tasks,
         chunk_size: cli.chunk_size,
         disable_splitting: cli.disable_sheetdata_splitting,
         parallel_range_chunk_size: cli.parallel_range_chunk_size,
+        reference_scan: reference_map.map(|map| SheetReferenceScanOptions {
+            sheet_name_to_file: Arc::new(map.name_to_file.clone()),
+        }),
     };
     let advanced_config = advanced_cleanup.config();
-    let process_sheet = |task| processor.process(task, advanced_config.clone());
 
     if cli.disable_multiprocessing {
-        sheet_tasks.into_iter().map(process_sheet).collect()
-    } else {
-        sheet_tasks.into_par_iter().map(process_sheet).collect()
+        for task in sheet_tasks {
+            consume(processor.process(task, advanced_config.clone()));
+        }
+        return;
     }
+
+    let task_count = sheet_tasks.len();
+    let (sender, receiver) = mpsc::channel();
+    rayon::scope(move |scope| {
+        for task in sheet_tasks {
+            let processor = processor.clone();
+            let advanced_config = advanced_config.clone();
+            let sender = sender.clone();
+            scope.spawn(move |_| {
+                let _ = sender.send(processor.process(task, advanced_config));
+            });
+        }
+        drop(sender);
+
+        for _ in 0..task_count {
+            loop {
+                match receiver.try_recv() {
+                    Ok(result) => {
+                        consume(result);
+                        break;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => {
+                        rayon::yield_now();
+                        std::thread::yield_now();
+                    }
+                    Err(mpsc::TryRecvError::Disconnected) => return,
+                }
+            }
+        }
+    });
 }
 
 fn process_file(
@@ -2383,20 +2433,55 @@ fn process_file(
     let sheet_tasks =
         prioritize_sheet_tasks(sheet_tasks, &input_display, cli.parallel_range_chunk_size);
 
-    let processed_sheets =
-        process_initial_sheets(sheet_tasks, file_bytes, active_tasks, advanced_cleanup, cli);
+    let reference_map = do_advanced.then(|| {
+        SheetReferenceMap::from_workbook(
+            workbook_xml_for_scan.as_deref(),
+            workbook_rels_for_scan.as_deref(),
+        )
+    });
+    let mut deferred = DeferredCleanupCoordinator::new(
+        do_advanced,
+        workbook_xml_for_scan.as_deref(),
+        reference_map.as_ref(),
+    );
+    deferred.require_all_reference_source_sheets(selected_sheets.is_empty());
+    let sheet_reference_map = deferred
+        .sheet_scan_enabled()
+        .then_some(reference_map.as_ref())
+        .flatten();
+    let known_cells_by_sheet_file = Mutex::new(HashMap::new());
+    let no_protected_refs = ProtectedWorkbookRefs::default();
+    let immediate_finalizer = SheetFinalizer {
+        tx: &tx,
+        analysis_tx: analysis_tx.as_ref(),
+        known_cells_by_sheet_file: &known_cells_by_sheet_file,
+        protected_refs: &no_protected_refs,
+        safe_to_clean: false,
+        attribution_safe_analysis,
+        store_output: cli.store_output,
+        compression_level: cli.compression_level,
+    };
+    process_initial_sheets(
+        sheet_tasks,
+        file_bytes,
+        active_tasks,
+        advanced_cleanup,
+        sheet_reference_map,
+        cli,
+        |result| {
+            for ready in deferred.accept(result) {
+                immediate_finalizer.finalize(ready);
+            }
+        },
+    );
 
+    deferred.report_cleanup_blocker(&input_display);
+    let (processed_sheets, validation) = deferred.finish();
     let ReferenceValidation {
         protected_refs,
         safe_to_clean,
-    } = validate_deferred_references(
-        &processed_sheets,
-        workbook_xml_for_scan.as_deref(),
-        workbook_rels_for_scan.as_deref(),
-        &input_display,
-    );
+    } = validation;
 
-    let known_cells_by_sheet_file = Mutex::new(HashMap::new());
     let finalizer = SheetFinalizer {
         tx: &tx,
         analysis_tx: analysis_tx.as_ref(),

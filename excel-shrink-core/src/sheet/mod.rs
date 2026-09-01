@@ -4,6 +4,7 @@ pub mod drawings;
 pub mod merge_cells;
 pub mod output;
 pub mod patterns;
+mod preprocess_chunks;
 pub mod ranges;
 pub mod rows;
 pub mod sheet_data;

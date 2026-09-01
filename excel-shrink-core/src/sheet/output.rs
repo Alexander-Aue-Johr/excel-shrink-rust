@@ -103,15 +103,25 @@ pub fn build_clean_sheet_xml_with_progress(
     progress("assemble_clean_sheet_xml");
     let assembled = assemble_clean_sheet_xml(&preprocessed, &columns, &final_sheet_data);
 
-    progress("scan_reference_hints");
     let mut metrics = preprocessed.clean_sheet_metrics;
-    metrics.has_hints = crate::reference_scanner::check_for_reference_hints(&assembled.xml);
+    if reference_sensitive_cleanup_enabled(params) && !metrics.reference_summary.complete {
+        progress("scan_reference_hints");
+        metrics.has_hints = crate::reference_scanner::check_for_reference_hints(&assembled.xml);
+    }
 
     Ok(CleanedSheetData {
         xml: assembled.xml,
         sheet_data_range: assembled.sheet_data_range,
         metrics,
     })
+}
+
+fn reference_sensitive_cleanup_enabled(params: &CleanSheetParameters) -> bool {
+    params.cleanup.unreferenced_whitespace_cells
+        || params.cleanup.unreferenced_hidden_content_cells
+        || params.advanced_cleanup.as_ref().is_some_and(|cleanup| {
+            cleanup.remove_unreferenced_whitespace || cleanup.remove_unreferenced_hidden_content
+        })
 }
 
 fn prepare_sheet_metrics(
@@ -122,11 +132,15 @@ fn prepare_sheet_metrics(
     progress("build_prepare_sheet_metrics");
     let sheet_protection_enabled = worksheet_has_enabled_sheet_protection(preprocessed);
     let drawing_anchor_bounds = find_worksheet_drawing_anchor_bounds(preprocessed, params);
-    let visible_data_range_bounds = find_visible_content_bounds(
-        &preprocessed.sheet_data,
-        params,
-        &preprocessed.clean_sheet_metrics.column_definitions,
-    );
+    let visible_data_range_bounds = preprocessed
+        .preprocessed_visible_data_bounds
+        .unwrap_or_else(|| {
+            find_visible_content_bounds(
+                &preprocessed.sheet_data,
+                params,
+                &preprocessed.clean_sheet_metrics.column_definitions,
+            )
+        });
 
     let metrics = &mut preprocessed.clean_sheet_metrics;
     metrics.cleanup_stats.enabled |= params.collect_cleanup_stats;
@@ -1097,7 +1111,7 @@ fn parse_cell_reference(reference: &[u8]) -> Option<(u32, u32)> {
 
 #[cfg(test)]
 mod tests {
-    use super::build_clean_sheet_xml;
+    use super::{build_clean_sheet_xml, build_clean_sheet_xml_with_progress};
     use crate::models::{
         CleanSheetMetrics, CleanSheetParameters, CleanupCause, InactiveProtectionCellPolicy,
         SheetPreprocessConfig, WorkbookSpecificPatterns, Xf,
@@ -1201,6 +1215,7 @@ mod tests {
             in_merge_cells_node_output_chunks: Vec::new(),
             until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
             clean_sheet_metrics: CleanSheetMetrics::default(),
+            preprocessed_visible_data_bounds: None,
         }
     }
 
@@ -1230,6 +1245,23 @@ mod tests {
     }
 
     #[test]
+    fn disabled_reference_sensitive_cleanup_skips_formula_hint_scan() {
+        let params = default_params();
+        let preprocessed = preprocessed_with_sheet_data(
+            br#"<row r="1"><c r="A1"><f>'Other Sheet'!A1</f><v>1</v></c></row>"#,
+            None,
+        );
+        let mut progress = Vec::new();
+
+        build_clean_sheet_xml_with_progress(preprocessed, &params, false, 0, &mut |phase| {
+            progress.push(phase)
+        })
+        .unwrap();
+
+        assert!(!progress.contains(&"scan_reference_hints"));
+    }
+
+    #[test]
     fn col_definitions_do_not_extend_max_column_when_sheet_has_no_cells_or_merges() {
         let params = default_params();
 
@@ -1243,6 +1275,7 @@ mod tests {
             in_merge_cells_node_output_chunks: b"".to_vec(),
             until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
             clean_sheet_metrics: CleanSheetMetrics::default(),
+            preprocessed_visible_data_bounds: None,
         };
 
         let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
@@ -1279,6 +1312,7 @@ mod tests {
             in_merge_cells_node_output_chunks: b"".to_vec(),
             until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
             clean_sheet_metrics: metrics,
+            preprocessed_visible_data_bounds: None,
         };
 
         let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
@@ -1324,6 +1358,7 @@ mod tests {
             in_merge_cells_node_output_chunks: b"".to_vec(),
             until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
             clean_sheet_metrics: metrics,
+            preprocessed_visible_data_bounds: None,
         };
 
         let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
@@ -1362,6 +1397,7 @@ mod tests {
             in_merge_cells_node_output_chunks: b"".to_vec(),
             until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
             clean_sheet_metrics: metrics,
+            preprocessed_visible_data_bounds: None,
         };
 
         let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();

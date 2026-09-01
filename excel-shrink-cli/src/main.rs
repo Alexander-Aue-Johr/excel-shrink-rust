@@ -32,8 +32,9 @@ pub struct Cli {
     #[arg(long, default_value_t = 16_777_216)]
     chunk_size: usize,
 
-    /// Maximum uncompressed XML bytes per parallel range chunk.
-    /// If a concrete range is at or below this size, it is processed sequentially.
+    /// Maximum uncompressed XML bytes per online preprocessing or parallel range chunk.
+    /// Chunks are aligned to complete worksheet rows. If a concrete range is at or below
+    /// this size, it is processed sequentially.
     /// Set to 0 to disable range chunking completely.
     #[arg(long, default_value_t = 134_217_728)]
     parallel_range_chunk_size: usize,

@@ -377,6 +377,7 @@ pub struct CleanSheetMetrics {
     pub tail_anchor_rows: BTreeMap<u32, usize>,
     pub tail_anchor_max_row: Option<u32>,
     pub has_hints: bool,
+    pub reference_summary: SheetReferenceSummary,
 }
 
 impl CleanSheetMetrics {
@@ -517,6 +518,13 @@ impl ProtectedWorkbookRefs {
     pub fn refs_for_sheet_mut(&mut self, sheet: &str) -> &mut ProtectedCellRefs {
         self.by_sheet.entry(sheet.to_string()).or_default()
     }
+
+    pub fn merge(&mut self, other: ProtectedWorkbookRefs) {
+        for (sheet, refs) in other.by_sheet {
+            self.refs_for_sheet_mut(&sheet).merge(refs);
+        }
+        self.global_or_unknown.merge(other.global_or_unknown);
+    }
 }
 
 pub struct SheetScanBuffer<'a> {
@@ -552,6 +560,28 @@ impl ProtectedCellRefs {
     pub fn contains(&self, col: u32, row: u32) -> bool {
         self.cells.contains(&encode_coord(col, row))
             || self.ranges.iter().any(|range| range.contains(col, row))
+    }
+
+    pub fn merge(&mut self, other: ProtectedCellRefs) {
+        self.cells.extend(other.cells);
+        self.ranges.extend(other.ranges);
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SheetReferenceSummary {
+    pub protected_refs: ProtectedWorkbookRefs,
+    pub unsafe_reason: Option<String>,
+    pub complete: bool,
+}
+
+impl SheetReferenceSummary {
+    pub fn merge(&mut self, other: SheetReferenceSummary) {
+        self.protected_refs.merge(other.protected_refs);
+        if self.unsafe_reason.is_none() {
+            self.unsafe_reason = other.unsafe_reason;
+        }
+        self.complete |= other.complete;
     }
 }
 
