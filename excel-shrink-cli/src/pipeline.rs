@@ -29,6 +29,15 @@ use excel_shrink_core::workbook::clean_workbook_with_stats;
 use excel_shrink_core::xml::{find_byte_from, find_bytes};
 
 use crate::Cli;
+use excel_shrink_core::profiling::{self, Handoff, ResourceGuard};
+
+struct QueuedWriteJob {
+    job: WriteJob,
+    handoff: Handoff,
+    queued_at: Instant,
+    pending_jobs: ResourceGuard,
+    pending_bytes: ResourceGuard,
+}
 
 enum WriteJob {
     CopyOriginal {
@@ -79,12 +88,14 @@ impl WorkbookLimiter {
         }
     }
 
-    fn acquire(&self) -> WorkbookPermit {
+    fn acquire(&self, xlsx: &str) -> WorkbookPermit {
         let mut active = self.inner.active.lock().unwrap();
         while *active >= self.inner.max_active {
+            let _wait = profiling::phase("wait_workbook_permit", xlsx, "");
             active = self.inner.available.wait(active).unwrap();
         }
         *active += 1;
+        tracing::info!(target: "excel_shrink::profile", event = "active_workbooks", value = *active as u64);
 
         WorkbookPermit {
             inner: self.inner.clone(),
@@ -96,6 +107,7 @@ impl Drop for WorkbookPermit {
     fn drop(&mut self) {
         let mut active = self.inner.active.lock().unwrap();
         *active = active.saturating_sub(1);
+        tracing::info!(target: "excel_shrink::profile", event = "active_workbooks", value = *active as u64);
         self.inner.available.notify_one();
     }
 }
@@ -199,6 +211,9 @@ struct ProcessedSheet {
     metrics: CleanSheetMetrics,
     started: Instant,
     original_size: usize,
+    buffered_bytes: ResourceGuard,
+    initial_finished: Instant,
+    handoff: Handoff,
 }
 
 struct FailedSheet {
@@ -213,6 +228,7 @@ struct SheetTask {
     params: CleanSheetParameters,
     zip_index: usize,
     original_xml_size: usize,
+    handoff: Handoff,
 }
 
 struct ArchivePlan {
@@ -278,7 +294,7 @@ struct ArchivePlanningContext<'a> {
     cleanup: &'a CleanupSwitches,
     collect_cleanup_stats: bool,
     selected_sheets: &'a HashSet<String>,
-    tx: &'a mpsc::Sender<WriteJob>,
+    tx: &'a mpsc::Sender<QueuedWriteJob>,
     advanced_cleanup_enabled: bool,
     analysis_tx: Option<&'a mpsc::Sender<AnalysisCsvRow>>,
     attribution_safe_analysis: bool,
@@ -299,7 +315,7 @@ enum ArchiveEntryPlan {
 }
 
 struct SheetFinalizer<'a> {
-    tx: &'a mpsc::Sender<WriteJob>,
+    tx: &'a mpsc::Sender<QueuedWriteJob>,
     analysis_tx: Option<&'a mpsc::Sender<AnalysisCsvRow>>,
     known_cells_by_sheet_file: &'a Mutex<HashMap<String, HashSet<String>>>,
     protected_refs: &'a ProtectedWorkbookRefs,
@@ -649,6 +665,7 @@ fn build_sheet_id_to_file_map(
 }
 
 fn collect_cell_refs(xml: &[u8]) -> HashSet<String> {
+    let _profile = profiling::phase("collect_cell_references", "", "");
     let mut refs = HashSet::new();
     let re = regex::bytes::Regex::new(r#"(?s)<c\b[^>]*\br="([A-Z]+\d+)"[^>]*(?:/|>)"#).unwrap();
 
@@ -786,6 +803,7 @@ fn precompress_entry(
     method: CompressionMethod,
     compression_level: i32,
 ) -> anyhow::Result<Vec<u8>> {
+    let _profile = tracing::info_span!(target: "excel_shrink::profile", "compress_entry", sheet = filename, input_bytes = data.len(), compression_level).entered();
     let mut cursor = Cursor::new(Vec::new());
     {
         let mut zip_writer = ZipWriter::new(&mut cursor);
@@ -819,12 +837,15 @@ fn spawn_xlsx_writer(
     writer_pool: &ThreadPool,
     input_path: PathBuf,
     out_path: PathBuf,
-    rx: mpsc::Receiver<WriteJob>,
+    rx: mpsc::Receiver<QueuedWriteJob>,
     input_display: String,
     mut progress: XlsxProgress,
     workbook_permit: WorkbookPermit,
 ) {
+    let handoff = Handoff::start("writer_scheduled", &input_display, "");
     writer_pool.execute(move || {
+        handoff.finish();
+        let _profile = profiling::phase("writer_lifecycle_including_wait", &input_display, "");
         write_xlsx(
             input_path,
             out_path,
@@ -839,7 +860,7 @@ fn spawn_xlsx_writer(
 fn write_xlsx(
     input_path: PathBuf,
     out_path: PathBuf,
-    rx: mpsc::Receiver<WriteJob>,
+    rx: mpsc::Receiver<QueuedWriteJob>,
     input_display: String,
     progress: &mut XlsxProgress,
     workbook_permit: WorkbookPermit,
@@ -856,7 +877,8 @@ fn write_xlsx(
     };
 
     let mut zip_writer = ZipWriter::new(buffered_output);
-    let jobs_total = copy_write_jobs(rx, &mut source_archive, &mut zip_writer, &input_display);
+    let timings = copy_write_jobs(rx, &mut source_archive, &mut zip_writer, &input_display);
+    info!(event = "writer_timing", xlsx = %input_display, receive_wait_ms = timings.wait.as_millis(), copy_entries_ms = timings.copy.as_millis(), "Writer receive wait and entry-copy wall times");
     if !finish_output_archive(zip_writer, &partial_out_path, &out_path, &input_display) {
         return;
     }
@@ -865,7 +887,7 @@ fn write_xlsx(
         "file_written",
         true,
         writer_start.elapsed().as_millis(),
-        Some(jobs_total),
+        Some(timings.jobs),
         "Finished writing XLSX",
     );
 }
@@ -935,18 +957,40 @@ fn remove_stale_partial_output(partial_out_path: &Path, input_display: &str) -> 
     true
 }
 
+#[derive(Default)]
+struct WriterTimings {
+    jobs: usize,
+    wait: Duration,
+    copy: Duration,
+}
+
 fn copy_write_jobs(
-    rx: mpsc::Receiver<WriteJob>,
+    rx: mpsc::Receiver<QueuedWriteJob>,
     source_archive: &mut ZipArchive<File>,
     zip_writer: &mut ZipWriter<BufWriter<File>>,
     input_display: &str,
-) -> usize {
-    let mut jobs_total = 0;
-    while let Ok(job) = rx.recv() {
-        jobs_total += 1;
-        copy_write_job(job, source_archive, zip_writer, input_display);
+) -> WriterTimings {
+    let mut timings = WriterTimings::default();
+    loop {
+        let started = Instant::now();
+        let waiting = profiling::phase("writer_wait_for_job", input_display, "");
+        let received = rx.recv();
+        profiling::drop_value("writer.waiting_span", waiting);
+        timings.wait += started.elapsed();
+        let Ok(queued) = received else {
+            break;
+        };
+        profiling::drop_value("writer.pending_jobs", queued.pending_jobs);
+        profiling::drop_value("writer.pending_bytes", queued.pending_bytes);
+        queued.handoff.finish();
+        tracing::info!(target: "excel_shrink::profile", event = "writer_queue_delay",
+            xlsx = input_display, queue_wait_us = queued.queued_at.elapsed().as_micros() as u64);
+        timings.jobs += 1;
+        let started = Instant::now();
+        copy_write_job(queued.job, source_archive, zip_writer, input_display);
+        timings.copy += started.elapsed();
     }
-    jobs_total
+    timings
 }
 
 fn copy_write_job(
@@ -955,6 +999,12 @@ fn copy_write_job(
     zip_writer: &mut ZipWriter<BufWriter<File>>,
     input_display: &str,
 ) {
+    let filename = match &job {
+        WriteJob::CopyOriginal { filename, .. } | WriteJob::CopyPrecompressed { filename, .. } => {
+            filename
+        }
+    };
+    let _profile = profiling::phase("writer_copy_entry", input_display, filename);
     match job {
         WriteJob::CopyOriginal { index, filename } => {
             copy_original_entry(index, &filename, source_archive, zip_writer, input_display)
@@ -995,6 +1045,7 @@ fn finish_output_archive(
     out_path: &Path,
     input_display: &str,
 ) -> bool {
+    let _profile = profiling::phase("finish_zip", input_display, "");
     let mut buffered_output = match zip_writer.finish() {
         Ok(writer) => writer,
         Err(error) => {
@@ -1006,7 +1057,7 @@ fn finish_output_archive(
         error!(event = "file_flush_failed", xlsx = %input_display, output = %partial_out_path.display(), error = %error, "Failed to flush partial output XLSX");
         return false;
     }
-    drop(buffered_output);
+    profiling::drop_value("writer.buffered_output", buffered_output);
     replace_output_file(partial_out_path, out_path, input_display)
 }
 
@@ -1030,8 +1081,26 @@ fn partial_output_path(out_path: &Path) -> PathBuf {
     PathBuf::from(partial)
 }
 
-fn send_write_job(tx: &mpsc::Sender<WriteJob>, job: WriteJob, xlsx: &str) -> bool {
-    if let Err(e) = tx.send(job) {
+fn send_write_job(tx: &mpsc::Sender<QueuedWriteJob>, job: WriteJob, xlsx: &str) -> bool {
+    let (filename, bytes) = match &job {
+        WriteJob::CopyOriginal { filename, .. } => (filename.as_str(), 0),
+        WriteJob::CopyPrecompressed {
+            filename,
+            zip_bytes,
+        } => (filename.as_str(), zip_bytes.len()),
+    };
+    let handoff = Handoff::start("writer_job", xlsx, filename);
+    tracing::info!(target: "excel_shrink::profile", event = "writer_job_queued", xlsx, sheet = filename, compressed_buffer_bytes = bytes as u64);
+    let pending_jobs = ResourceGuard::add("writer_pending_jobs", 1);
+    let pending_bytes = ResourceGuard::add("writer_pending_compressed_bytes", bytes as u64);
+    let queued = QueuedWriteJob {
+        job,
+        handoff,
+        queued_at: Instant::now(),
+        pending_jobs,
+        pending_bytes,
+    };
+    if let Err(e) = tx.send(queued) {
         error!(event = "writer_channel_closed", xlsx = %xlsx, error = %e, "Cannot queue ZIP write job");
         return false;
     }
@@ -1109,6 +1178,8 @@ where
         return Ok((xml.to_vec(), sheet_data_range.start..sheet_data_range.start));
     }
 
+    let _profile = profiling::phase("rebuild_sheet_data_pass", "", "");
+    tracing::info!(target: "excel_shrink::profile", event = "xml_rebuild", scanned_sheet_data_bytes = sheet_data_range.len() as u64, input_xml_bytes = xml.len() as u64);
     let cleaned_sheet_data = transform(&xml[sheet_data_range.clone()])?;
     let mut out = Vec::with_capacity(xml.len() - sheet_data_range.len() + cleaned_sheet_data.len());
     out.extend_from_slice(&xml[..sheet_data_range.start]);
@@ -1271,6 +1342,7 @@ fn inactive_protection_policy(cli: &Cli) -> InactiveProtectionCellPolicy {
 }
 
 fn read_input_file(input: &Path) -> Option<Arc<Vec<u8>>> {
+    let _profile = tracing::info_span!(target: "excel_shrink::profile", "read_input_archive", xlsx = %input.display()).entered();
     let mut file = match File::open(input) {
         Ok(file) => file,
         Err(error) => {
@@ -1303,6 +1375,7 @@ fn load_workbook_patterns<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     include_whitespace_indices: bool,
 ) -> WorkbookSpecificPatterns {
+    let _profile = profiling::phase("load_styles_and_shared_strings", "", "");
     let all_xfs = read_zip_entry(archive, "xl/styles.xml")
         .and_then(|styles| parse_xfs(&styles).ok())
         .unwrap_or_default();
@@ -1352,7 +1425,14 @@ impl InitialSheetProcessor {
             mut params,
             zip_index,
             original_xml_size: planned_original_size,
+            handoff,
         } = task;
+        handoff.finish();
+        let _profile = profiling::phase(
+            "sheet_initial_cleanup",
+            &params.xlsx_file_path,
+            &params.zip_info_filename,
+        );
         params.advanced_cleanup = advanced_cleanup;
 
         let mut archive = match ZipArchive::new(Cursor::new(self.source_zip_bytes.as_slice())) {
@@ -1372,7 +1452,7 @@ impl InitialSheetProcessor {
         let original_size = usize::try_from(sheet_file.size()).unwrap_or(planned_original_size);
         let (active_guard, started) =
             ActiveSheetGuard::start(&params, original_size, self.active_tasks.clone());
-        let mut report_progress = active_guard.progress_reporter();
+        let mut report_progress = active_guard.progress_reporter(&params);
         let result = clean_sheet_data_streamwise_with_progress(
             &mut sheet_file,
             &params,
@@ -1382,6 +1462,7 @@ impl InitialSheetProcessor {
             &mut report_progress,
         );
 
+        profiling::drop_value("sheet.progress_reporter", report_progress);
         match result {
             Ok(cleaned) => {
                 complete_initial_sheet(params, zip_index, cleaned, started, original_size)
@@ -1428,10 +1509,19 @@ impl ActiveSheetGuard {
         )
     }
 
-    fn progress_reporter(&self) -> impl FnMut(&'static str) {
+    fn progress_reporter(&self, params: &CleanSheetParameters) -> impl FnMut(&'static str) {
         let active_tasks = self.active_tasks.clone();
         let task_key = self.task_key.clone();
+        let xlsx = params.xlsx_file_path.clone();
+        let sheet = params.zip_info_filename.clone();
+        let mut phase_span = None;
+        let mut previous_phase = None;
         move |phase| {
+            if previous_phase != Some(phase) {
+                profiling::drop_optional("sheet.previous_phase_span", phase_span.take());
+                phase_span = Some(profiling::phase(phase, &xlsx, &sheet));
+                previous_phase = Some(phase);
+            }
             let mut guard = active_tasks.lock().unwrap();
             if let Some(task) = guard.get_mut(&task_key) {
                 if task.phase != phase {
@@ -1460,7 +1550,17 @@ fn complete_initial_sheet(
         elapsed_ms = started.elapsed().as_millis(),
         "Finished sheet cleanup"
     );
+    let handoff = Handoff::start(
+        "sheet_awaiting_finalization",
+        &params.xlsx_file_path,
+        &params.zip_info_filename,
+    );
+    let buffered_bytes =
+        ResourceGuard::add("initial_results_buffered_bytes", cleaned.xml.len() as u64);
     Ok(ProcessedSheet {
+        buffered_bytes,
+        initial_finished: Instant::now(),
+        handoff,
         params,
         zip_index,
         xml: cleaned.xml,
@@ -1479,6 +1579,7 @@ fn plan_archive<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     context: &ArchivePlanningContext<'_>,
 ) -> Option<ArchivePlan> {
+    let _profile = profiling::phase("plan_archive", context.input_display, "");
     let mut plan = ArchivePlan::new();
 
     for index in 0..archive.len() {
@@ -1572,6 +1673,7 @@ fn build_sheet_task(
         },
         zip_index: index,
         original_xml_size: usize::try_from(original_size).unwrap_or(usize::MAX),
+        handoff: Handoff::start("sheet_scheduled", context.input_display, filename),
     }
 }
 
@@ -1697,7 +1799,7 @@ fn read_archive_entry(file: &mut impl Read) -> std::io::Result<Vec<u8>> {
 }
 
 fn queue_original_entry(
-    tx: &mpsc::Sender<WriteJob>,
+    tx: &mpsc::Sender<QueuedWriteJob>,
     index: usize,
     filename: String,
     input_display: &str,
@@ -1714,7 +1816,7 @@ fn queue_original_entry(
 }
 
 fn queue_precompressed_entry(
-    tx: &mpsc::Sender<WriteJob>,
+    tx: &mpsc::Sender<QueuedWriteJob>,
     filename: String,
     zip_bytes: Vec<u8>,
     input_display: &str,
@@ -1774,6 +1876,7 @@ fn validate_deferred_references(
     workbook_rels: Option<&[u8]>,
     input_display: &str,
 ) -> ReferenceValidation {
+    let _profile = profiling::phase("validate_references", input_display, "");
     let Some(scan_selection) = deferred_reference_scan_selection(processed_sheets) else {
         return ReferenceValidation::disabled();
     };
@@ -1877,8 +1980,50 @@ impl SheetFinalizer<'_> {
         let Some(mut sheet) = self.cleaned_sheet_or_queue_original(result) else {
             return;
         };
+        profiling::drop_value(
+            "sheet.buffered_bytes",
+            std::mem::take(&mut sheet.buffered_bytes),
+        );
+        std::mem::take(&mut sheet.handoff).finish();
+        let _profile = profiling::phase(
+            "sheet_finalize",
+            &sheet.params.xlsx_file_path,
+            &sheet.params.zip_info_filename,
+        );
+        let initial_ms = sheet
+            .initial_finished
+            .duration_since(sheet.started)
+            .as_millis();
+        let wait_ms = sheet.initial_finished.elapsed().as_millis();
+        let xlsx = sheet.params.xlsx_file_path.clone();
+        let sheet_file = sheet.params.zip_info_filename.clone();
+        let finalized_at = Instant::now();
         self.apply_deferred_cleanup(&mut sheet);
         self.queue_cleaned_sheet(sheet);
+        let finalize_ms = finalized_at.elapsed().as_millis();
+        debug!(
+            event = "sheet_timing",
+            xlsx,
+            sheet = sheet_file,
+            initial_cleanup_ms = initial_ms,
+            wait_before_finalize_ms = wait_ms,
+            finalize_ms,
+            "Sheet phase wall times (not CPU times)"
+        );
+        tracing::info!(target: "excel_shrink::profile", event = "sheet_timing", xlsx, sheet = sheet_file,
+            initial_cleanup_ms = initial_ms as u64, wait_before_finalize_ms = wait_ms as u64,
+            finalize_ms = finalize_ms as u64);
+        if initial_ms > 5000 || finalize_ms > 5000 {
+            warn!(
+                event = "slow_sheet_phase",
+                xlsx,
+                sheet = sheet_file,
+                initial_cleanup_ms = initial_ms,
+                wait_before_finalize_ms = wait_ms,
+                finalize_ms,
+                "Slow sheet phase; time before finalization is reported separately"
+            );
+        }
     }
 
     fn cleaned_sheet_or_queue_original(
@@ -1902,11 +2047,18 @@ impl SheetFinalizer<'_> {
     }
 
     fn apply_deferred_cleanup(&self, sheet: &mut ProcessedSheet) {
+        let _profile = profiling::phase(
+            "deferred_cleanup",
+            &sheet.params.xlsx_file_path,
+            &sheet.params.zip_info_filename,
+        );
         if !self.safe_to_clean || sheet.metrics.candidates.is_empty() {
             return;
         }
 
+        tracing::info!(target: "excel_shrink::profile", event = "cleanup_candidates", candidates = sheet.metrics.candidates.len() as u64);
         let touched_rows = self.remove_deferred_candidates(sheet);
+        tracing::info!(target: "excel_shrink::profile", event = "changed_rows", rows = touched_rows.len() as u64);
         invalidate_tail_anchor_for_touched_rows(&mut sheet.metrics, &touched_rows);
         if !touched_rows.is_empty() {
             self.reclean_touched_rows(sheet, &touched_rows);
@@ -1918,6 +2070,11 @@ impl SheetFinalizer<'_> {
     }
 
     fn remove_deferred_candidates(&self, sheet: &mut ProcessedSheet) -> HashSet<u32> {
+        let _profile = profiling::phase(
+            "remove_candidates",
+            &sheet.params.xlsx_file_path,
+            &sheet.params.zip_info_filename,
+        );
         let ProcessedSheet {
             params,
             xml,
@@ -1951,6 +2108,11 @@ impl SheetFinalizer<'_> {
     }
 
     fn reclean_touched_rows(&self, sheet: &mut ProcessedSheet, touched_rows: &HashSet<u32>) {
+        let _profile = profiling::phase(
+            "reclean_touched_rows",
+            &sheet.params.xlsx_file_path,
+            &sheet.params.zip_info_filename,
+        );
         let ProcessedSheet {
             params,
             xml,
@@ -1958,7 +2120,6 @@ impl SheetFinalizer<'_> {
             metrics,
             ..
         } = sheet;
-        clear_row_cleanup_state(metrics);
         match transform_sheet_data_range(xml, sheet_data_range.clone(), |sheet_data| {
             clean_selected_rows_and_cells_in_cell_range(sheet_data, params, metrics, touched_rows)
         }) {
@@ -1973,6 +2134,11 @@ impl SheetFinalizer<'_> {
     }
 
     fn remove_empty_rows(&self, sheet: &mut ProcessedSheet) {
+        let _profile = profiling::phase(
+            "remove_empty_rows_after_candidates",
+            &sheet.params.xlsx_file_path,
+            &sheet.params.zip_info_filename,
+        );
         let ProcessedSheet {
             params,
             xml,
@@ -1980,7 +2146,6 @@ impl SheetFinalizer<'_> {
             metrics,
             ..
         } = sheet;
-        clear_row_cleanup_state(metrics);
         match transform_sheet_data_range(xml, sheet_data_range.clone(), |sheet_data| {
             clean_empty_rows_from_after_cell_range(sheet_data, params, metrics)
         }) {
@@ -1995,6 +2160,11 @@ impl SheetFinalizer<'_> {
     }
 
     fn trim_trailing_layout_rows(&self, sheet: &mut ProcessedSheet) {
+        let _profile = profiling::phase(
+            "trim_tail_after_candidates",
+            &sheet.params.xlsx_file_path,
+            &sheet.params.zip_info_filename,
+        );
         let ProcessedSheet {
             params,
             xml,
@@ -2025,14 +2195,12 @@ impl SheetFinalizer<'_> {
             zip_index,
             xml,
             metrics,
-            started,
             original_size,
             ..
         } = sheet;
         let cleaned_size = xml.len();
         let reduction = original_size.saturating_sub(cleaned_size);
         let cleaned_cell_refs = collect_cell_refs(&xml);
-        warn_if_sheet_is_slow(&params, started, cleaned_size, reduction);
         let output_method = output_compression_method(params.compress_method, self.store_output);
 
         match precompress_entry(
@@ -2064,6 +2232,11 @@ impl SheetFinalizer<'_> {
         cleaned_cell_refs: HashSet<String>,
         zip_bytes: Vec<u8>,
     ) {
+        let queue_phase = profiling::phase(
+            "record_stats_and_queue_sheet",
+            &params.xlsx_file_path,
+            &params.zip_info_filename,
+        );
         debug!(
             xlsx = %params.xlsx_file_path,
             sheet = %params.zip_info_filename,
@@ -2080,10 +2253,13 @@ impl SheetFinalizer<'_> {
             cleaned_size,
             self.attribution_safe_analysis,
         );
-        self.known_cells_by_sheet_file
-            .lock()
-            .unwrap()
-            .insert(params.zip_info_filename.clone(), cleaned_cell_refs);
+        {
+            let _profile = profiling::phase("publish_cell_references", "", "");
+            self.known_cells_by_sheet_file
+                .lock()
+                .unwrap()
+                .insert(params.zip_info_filename.clone(), cleaned_cell_refs);
+        }
         send_write_job(
             self.tx,
             WriteJob::CopyPrecompressed {
@@ -2092,6 +2268,11 @@ impl SheetFinalizer<'_> {
             },
             &params.xlsx_file_path,
         );
+        profiling::drop_value("sheet.queue_phase_span", queue_phase);
+        // Destruction of per-cell maps can dominate finalization on large sheets.
+        // Keep that work visible instead of hiding it after compression/queuing.
+        let _release = profiling::phase("release_sheet_metrics", "", "");
+        profiling::drop_sheet_metrics(metrics);
     }
 
     fn queue_original_after_compression_error(
@@ -2112,42 +2293,12 @@ impl SheetFinalizer<'_> {
     }
 }
 
-fn clear_row_cleanup_state(metrics: &mut CleanSheetMetrics) {
-    metrics.row_attributes.clear();
-    metrics.kept_row_states.clear();
-    metrics.deleted_row_states.clear();
-}
-
-fn warn_if_sheet_is_slow(
-    params: &CleanSheetParameters,
-    started: Instant,
-    cleaned_size: usize,
-    reduction: usize,
-) {
-    let elapsed = started.elapsed();
-    if elapsed.as_secs_f64() < 5.0 {
-        return;
-    }
-    warn!(
-        xlsx = %params.xlsx_file_path,
-        sheet = %params.zip_info_filename,
-        cleaned_xml_bytes = cleaned_size,
-        reduction_bytes = reduction,
-        elapsed_ms = elapsed.as_millis(),
-        "Slow Sheet in {} / {}: Clean size {} bytes, reduction {} bytes, time {:.2?}",
-        params.xlsx_file_path,
-        params.zip_info_filename,
-        cleaned_size,
-        reduction,
-        elapsed
-    );
-}
-
 fn finalize_sheets(
     processed_sheets: Vec<ProcessedSheetResult>,
     finalizer: &SheetFinalizer<'_>,
     disable_multiprocessing: bool,
 ) {
+    let _profile = profiling::phase("finalize_sheets_fork_join", "", "");
     if disable_multiprocessing {
         processed_sheets
             .into_iter()
@@ -2164,11 +2315,12 @@ fn queue_calculation_chain(
     workbook_xml: Option<&[u8]>,
     workbook_rels: Option<&[u8]>,
     known_cells_by_sheet_file: &Mutex<HashMap<String, HashSet<String>>>,
-    tx: &mpsc::Sender<WriteJob>,
+    tx: &mpsc::Sender<QueuedWriteJob>,
     input_display: &str,
     store_output: bool,
     compression_level: i32,
 ) -> bool {
+    let _profile = profiling::phase("clean_calc_chain", input_display, "");
     let Some((index, method, calc_chain_xml)) = calc_chain_part else {
         return true;
     };
@@ -2193,7 +2345,7 @@ fn queue_calculation_chain(
 }
 
 fn queue_cleaned_calc_chain(
-    tx: &mpsc::Sender<WriteJob>,
+    tx: &mpsc::Sender<QueuedWriteJob>,
     index: usize,
     method: CompressionMethod,
     xml: Vec<u8>,
@@ -2219,7 +2371,7 @@ fn queue_cleaned_calc_chain(
 }
 
 fn queue_original_calc_chain(
-    tx: &mpsc::Sender<WriteJob>,
+    tx: &mpsc::Sender<QueuedWriteJob>,
     index: usize,
     input_display: &str,
 ) -> bool {
@@ -2277,6 +2429,7 @@ fn process_initial_sheets(
     advanced_cleanup: AdvancedCleanupSelection,
     cli: &Cli,
 ) -> Vec<ProcessedSheetResult> {
+    let _profile = profiling::phase("initial_sheets_fork_join", "", "");
     let processor = InitialSheetProcessor {
         source_zip_bytes,
         active_tasks,
@@ -2303,9 +2456,10 @@ fn process_file(
     active_tasks: &ActiveTasks,
     analysis_tx: Option<mpsc::Sender<AnalysisCsvRow>>,
 ) {
-    let workbook_permit = workbook_limiter.acquire();
-    let file_start = Instant::now();
     let input_display = input.display().to_string();
+    let _profile = profiling::phase("workbook_orchestration", &input_display, "");
+    let workbook_permit = workbook_limiter.acquire(&input_display);
+    let file_start = Instant::now();
     let active_tasks = active_tasks.clone();
     let mut file_progress = batch_progress.start_file(input_display.clone());
 
@@ -2335,7 +2489,7 @@ fn process_file(
     let advanced_cleanup = advanced_cleanup_selection(cli);
     let do_advanced = advanced_cleanup.enabled();
 
-    let (tx, rx) = mpsc::channel::<WriteJob>();
+    let (tx, rx) = mpsc::channel::<QueuedWriteJob>();
     spawn_xlsx_writer(
         writer_pool,
         input.clone(),
@@ -2369,7 +2523,7 @@ fn process_file(
     let Some(archive_plan) = plan_archive(&mut archive, &planning_context) else {
         return;
     };
-    drop(archive);
+    profiling::drop_value("workbook.archive", archive);
 
     let ArchivePlan {
         sheet_tasks,
@@ -2425,6 +2579,7 @@ fn process_file(
 }
 
 pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()> {
+    let _profile = profiling::phase("batch", "", "");
     ensure_output_directory(cli)?;
     let (analysis_tx, analysis_handle) = start_optional_analysis_writer(cli)?;
     let batch_progress = BatchProgress::new(input_files.len());
@@ -2530,13 +2685,21 @@ fn finish_batch(
     stop_watchdog_tx: mpsc::Sender<()>,
     watchdog_handle: std::thread::JoinHandle<()>,
 ) {
-    drop(analysis_tx);
+    let _profile = profiling::phase("batch_completion", "", "");
+    profiling::drop_value("batch.analysis_sender", analysis_tx);
     if let Some(handle) = analysis_handle {
+        let _wait = profiling::phase("wait_analysis_writer", "", "");
         handle.join().ok();
     }
-    writer_pool.join();
+    {
+        let _wait = profiling::phase("wait_writer_pool", "", "");
+        writer_pool.join();
+    }
     let _ = stop_watchdog_tx.send(());
-    watchdog_handle.join().ok();
+    {
+        let _wait = profiling::phase("wait_watchdog", "", "");
+        watchdog_handle.join().ok();
+    }
 }
 
 #[cfg(test)]

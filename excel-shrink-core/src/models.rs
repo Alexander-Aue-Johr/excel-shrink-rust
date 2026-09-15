@@ -1,5 +1,5 @@
 use derive_builder::Builder;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Builder)]
 #[builder(default)]
@@ -302,17 +302,6 @@ impl ColumnRangeMap {
 }
 
 #[derive(Debug, Clone)]
-pub struct RowAttributes {
-    pub row_attr: Vec<u8>,
-    pub ref_: Vec<u8>,
-    pub hidden: bool,
-    pub style: Option<Xf>,
-    pub has_height: bool,
-    pub has_custom_height: bool,
-    pub is_empty: bool,
-}
-
-#[derive(Debug, Clone)]
 pub struct CellAttributes {
     pub col: u32,
     pub row: u32,
@@ -357,12 +346,8 @@ impl VisibleContentBounds {
 #[derive(Debug, Clone, Default)]
 pub struct CleanSheetMetrics {
     pub column_definitions: ColumnRangeMap,
-    pub kept_row_states: Vec<RowAttributes>,
-    pub deleted_row_states: Vec<RowAttributes>,
     pub kept_cell_states: Vec<CellAttributes>,
     pub deleted_cell_states: Vec<CellAttributes>,
-    pub rows_with_kept_content_cells: HashSet<Vec<u8>>,
-    pub row_attributes: HashMap<Vec<u8>, RowAttributes>,
     pub max_merge_cells_column_and_row: Option<CellCoordinate>,
     pub merge_cell_ranges: Vec<CellRange>,
 

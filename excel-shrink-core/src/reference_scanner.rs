@@ -184,6 +184,7 @@ pub fn scan_for_references_by_sheet(
     let sheet_name_to_file = build_sheet_name_to_file_map(buffers, sheet_name_to_file_seed);
 
     for buffer in buffers {
+        let _profile = tracing::info_span!(target: "excel_shrink::profile", "scan_sheet_references", sheet = buffer.sheet_file, input_bytes = buffer.xml.len()).entered();
         if let Some(function) = scan_sheet_buffer(
             buffer,
             protected_refs,

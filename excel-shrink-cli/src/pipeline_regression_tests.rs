@@ -16,12 +16,13 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -> Cli {
     Cli {
+        trace_file: None,
         path: PathBuf::from("input.xlsx"),
         output: PathBuf::from("out"),
         recursive: false,
         disable_multiprocessing: false,
         chunk_size: 16_777_216,
-        parallel_range_chunk_size: 134_217_728,
+        parallel_range_chunk_size: crate::DEFAULT_PARALLEL_RANGE_CHUNK_SIZE,
         force_overwrite: false,
         sheets: Vec::new(),
         only_clean_workbook: false,

@@ -5,6 +5,10 @@ members = [
 ]
 resolver = "2"
 
+[profile.profiling]
+inherits = "release"
+debug = "full"
+
 [workspace.dependencies]
 thiserror = "1.0"
 tracing = "0.1"

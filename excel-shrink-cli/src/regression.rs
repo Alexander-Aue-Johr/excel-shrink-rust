@@ -28,6 +28,10 @@ mod xlsx_value_compare;
     about = "Run real-file regression suites."
 )]
 pub struct RegressionCli {
+    /// Write a Perfetto-compatible trace to a new JSON file.
+    #[arg(long, global = true)]
+    pub trace_file: Option<PathBuf>,
+
     /// Console log level for the regression runner.
     #[arg(long, value_enum, default_value_t = LogLevel::Info, global = true)]
     console_log_level: LogLevel,
@@ -385,12 +389,7 @@ struct RegressionMeasurementAggregate {
 
 static DOWNLOAD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
-pub fn run_from_args<I, T>(args: I) -> anyhow::Result<()>
-where
-    I: IntoIterator<Item = T>,
-    T: Into<std::ffi::OsString> + Clone,
-{
-    let cli = RegressionCli::parse_from(args);
+pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
     let console_log_level = cli.console_log_level;
     match cli.command {
         RegressionCommand::Smoke(args) => run_suite_or_visual_profile_matrix(

@@ -3,7 +3,7 @@
   "tasks": [
     {
       "label": "cargo build",
-      "type": "shell",
+      "type": "process",
       "command": "cargo",
       "args": [
         "build",
@@ -18,11 +18,25 @@
       "group": {
         "kind": "build",
         "isDefault": true
+      },
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+        }
+      },
+      "windows": {
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "PATH": "${env:PATH};${userHome}/.cargo/bin"
+          }
+        }
       }
     },
     {
       "label": "cargo build release",
-      "type": "shell",
+      "type": "process",
       "command": "cargo",
       "args": [
         "build",
@@ -38,7 +52,173 @@
       "group": {
         "kind": "build",
         "isDefault": false
+      },
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+        }
+      },
+      "windows": {
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "PATH": "${env:PATH};${userHome}/.cargo/bin"
+          }
+        }
       }
+    },
+    {
+      "label": "Release smoke test (pick case, no debugger)",
+      "type": "process",
+      "command": "cargo",
+      "args": [
+        "run",
+        "--release",
+        "-p",
+        "excel-shrink-cli",
+        "--bin",
+        "excel-shrink-cli",
+        "--",
+        "regression",
+        "smoke",
+        "--case-id",
+        "${input:corpusRegressionCaseId}",
+        "--console-log-level",
+        "info"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "test",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+        }
+      },
+      "windows": {
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "PATH": "${env:PATH};${userHome}/.cargo/bin"
+          }
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Release smoke visual profile matrix (pick case, no debugger)",
+      "type": "process",
+      "command": "cargo",
+      "args": [
+        "run",
+        "--release",
+        "-p",
+        "excel-shrink-cli",
+        "--bin",
+        "excel-shrink-cli",
+        "--",
+        "regression",
+        "smoke",
+        "--case-id",
+        "${input:corpusRegressionCaseId}",
+        "--all-visual-profile-checks",
+        "--console-log-level",
+        "info"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "test",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+        }
+      },
+      "windows": {
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "PATH": "${env:PATH};${userHome}/.cargo/bin"
+          }
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Profile smoke test (pick case, Perfetto, no debugger)",
+      "type": "process",
+      "command": "cargo",
+      "args": [
+        "run",
+        "--profile",
+        "profiling",
+        "-p",
+        "excel-shrink-cli",
+        "--bin",
+        "excel-shrink-cli",
+        "--",
+        "regression",
+        "smoke",
+        "--case-id",
+        "${input:corpusRegressionCaseId}",
+        "--console-log-level",
+        "info",
+        "--trace-file",
+        "${workspaceFolder}/.tmp/profiles/smoke-{timestamp}.json"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "test",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+        }
+      },
+      "windows": {
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "PATH": "${env:PATH};${userHome}/.cargo/bin"
+          }
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "corpusRegressionCaseId",
+      "type": "pickString",
+      "description": "Corpus regression smoke case",
+      "options": [
+        "overall-reduction",
+        "empty-cells",
+        "empty-rows",
+        "trailing-layout-rows",
+        "empty-row-attributes",
+        "column-range-merge",
+        "unreferenced-whitespace",
+        "unreferenced-hidden-content",
+        "hidden-empty-rows"
+      ],
+      "default": "empty-cells"
     }
   ]
 }

@@ -52,6 +52,8 @@ Options:
 ```
 
 The default chunk size is `16777216` bytes, which is 16 MiB.
+The separate `--parallel-range-chunk-size` option also defaults to 16 MiB of uncompressed
+XML per row-aligned work item. Use `0` to disable range chunking.
 
 ### Visual-preservation cleanup flags
 
@@ -410,7 +412,55 @@ These features are especially useful when tracing execution paths through `pipel
 
 ### Debugging
 
+For a timeline of parallel cleanup work and waits, run the VS Code task
+**Profile smoke test (pick case, Perfetto, no debugger)**. It writes a unique trace
+under `.tmp/profiles/` for [Perfetto](https://ui.perfetto.dev). See the
+[profiling guide](tools/profiling/README.md) for interpreting wall times, buffer
+counters, CPU sampling, and repeatable performance comparisons.
+
+For an optimized regression run **without a debugger**, use **Terminal > Run Task**:
+
+* **Release smoke test (pick case, no debugger)** runs one selected smoke case using
+  its baseline cleanup settings and checks. This is the short functional check.
+* **Release smoke visual profile matrix (pick case, no debugger)** runs the selected
+  case across all visual profiles, including Excel recalculation and screenshots.
+
+Both tasks build automatically with `cargo run --release`. They do not start CodeLLDB.
+The first run may include dependency compilation and downloading the test workbook.
+The JSON regression report records `shrink_duration_ms` for the cleaning pipeline
+separately from those setup costs and subsequent validation. Some smoke cases enable
+analysis to check cleanup causes, so their timings include that analysis overhead.
+Use repeated runs with the same case and settings when comparing performance.
+The matrix's total duration also includes Excel and screenshot work and is not a
+measurement of cleaning speed alone.
+
 The repository includes VS Code debug configurations in `.vscode/launch.json`.
+
+Install the recommended CodeLLDB extension in the environment where the repository is
+opened (for WSL, install it in WSL). Launch configurations build through Cargo and use
+the executable path reported by Cargo, including the Windows `.exe` suffix or a custom
+Cargo target directory.
+
+Launch configurations and build tasks add the current user's standard Rustup directory
+(`~/.cargo/bin`, or `%USERPROFILE%\.cargo\bin` on Windows) to the inherited PATH.
+This handles a VS Code extension host started before Rust was installed: running
+`source "$HOME/.cargo/env"` in a terminal only updates that terminal's environment.
+For a nonstandard Cargo installation, put its bin directory on VS Code's PATH before
+starting VS Code. No personal absolute paths are required in the repository.
+
+The workspace's `.vscode/settings.json` also adds the Rustup bin directory to the
+debugger's own environment before it loads Rust formatters. Cargo's build environment
+and the debugger's environment are separate. On Unix, the debugger passes `SIGCHLD`
+through without stopping or notifying: the regression runner starts child processes,
+and their exit notifications should not interrupt debugging. Other signals retain
+their normal debugger behavior.
+
+Cleanup configurations prompt for input and output paths, relative to the workspace
+unless absolute paths are entered. For regression configurations, leave the optional
+corpus root empty to use the cache, sibling corpus, or configured download URL.
+The visual profile matrix additionally requires Windows Excel and PowerShell access
+for recalculation and screenshots. Rust source (`rustup component add rust-src`) is
+useful for source navigation but does not fix Cargo executable discovery.
 
 Useful debugging features include:
 

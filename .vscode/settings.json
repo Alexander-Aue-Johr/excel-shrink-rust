@@ -1,0 +1,8 @@
+{
+    "lldb.launch.initCommands": [
+        "script import os; os.environ['PATH'] = os.environ.get('PATH', '') + os.pathsep + os.path.join(os.path.expanduser('~'), '.cargo', 'bin')"
+    ],
+    "lldb.launch.preRunCommands": [
+        "script import os; lldb.debugger.HandleCommand('process handle SIGCHLD -s false -n false -p true') if os.name != 'nt' else None"
+    ]
+}

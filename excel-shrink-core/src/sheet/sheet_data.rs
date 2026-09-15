@@ -1,6 +1,9 @@
 use crate::error::{Result, ShrinkError};
 use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, ColumnRangeMap};
-use crate::sheet::rows::{replace_empty_row_after_cell_range_bytes, replace_row_bytes};
+use crate::profiling;
+use crate::sheet::rows::{
+    replace_empty_row_after_cell_range_bytes, replace_row_bytes, replace_row_bytes_sampled,
+};
 use crate::xml::{find_byte_from, find_bytes};
 use rayon::prelude::*;
 use std::borrow::Cow;
@@ -80,6 +83,18 @@ pub fn clean_sheet_rows_and_cells_in_cell_range(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
 ) -> Result<Vec<u8>> {
+    if tracing::enabled!(target: "excel_shrink::profile", tracing::Level::INFO) {
+        return Ok(apply_row_byte_substitution_impl::<true, _>(
+            sheet_data,
+            |row, sampled| {
+                if sampled {
+                    replace_row_bytes_sampled(row.raw, row.attr, row.content, params, metrics)
+                } else {
+                    replace_row_bytes(row.raw, row.attr, row.content, params, metrics)
+                }
+            },
+        ));
+    }
     Ok(apply_row_byte_substitution(sheet_data, |row| {
         replace_row_bytes(row.raw, row.attr, row.content, params, metrics)
     }))
@@ -163,7 +178,6 @@ fn clean_empty_row_after_cell_range<'a>(
     metrics: &mut CleanSheetMetrics,
 ) -> Cow<'a, [u8]> {
     if row.content.is_some_and(|content| !content.is_empty()) {
-        metrics.kept_row_states.clear();
         return Cow::Borrowed(row.raw);
     }
 
@@ -427,7 +441,13 @@ fn clean_row_aligned_chunks_by_max_size(
     sheet_name: &str,
     clean_chunk: CleanChunkFn,
 ) -> Result<Vec<u8>> {
+    let planning = profiling::phase(
+        "plan_row_chunks",
+        &params.xlsx_file_path,
+        &params.zip_info_filename,
+    );
     let chunks = plan_row_aligned_chunks_by_max_size(sheet_data, max_chunk_size);
+    profiling::drop_value("range.planning_span", planning);
     if chunks.len() <= 1 {
         return clean_chunk(sheet_data, params, metrics);
     }
@@ -477,11 +497,39 @@ fn clean_chunks_in_parallel(
     chunks: &[RowAlignedChunk],
     clean_chunk: CleanChunkFn,
 ) -> Result<Vec<CleanedChunk>> {
-    let base_metrics = metrics.clone();
-    chunks
-        .par_iter()
+    let _profile = profiling::phase(
+        "range_chunks_fork_join",
+        &params.xlsx_file_path,
+        &params.zip_info_filename,
+    );
+    let cloning = profiling::phase("clone_base_metrics", "", "");
+    let base_metrics = make_chunk_metrics(metrics);
+    profiling::drop_value("range.clone_base_metrics_span", cloning);
+    if !tracing::enabled!(target: "excel_shrink::profile", tracing::Level::INFO) {
+        return chunks
+            .par_iter()
+            .map(|chunk| {
+                clean_chunk_in_isolation(sheet_data, params, &base_metrics, *chunk, clean_chunk)
+            })
+            .collect();
+    }
+    let jobs: Vec<_> = chunks
+        .iter()
         .map(|chunk| {
-            clean_chunk_in_isolation(sheet_data, params, &base_metrics, *chunk, clean_chunk)
+            (
+                *chunk,
+                profiling::Handoff::start(
+                    "range_chunk",
+                    &params.xlsx_file_path,
+                    &params.zip_info_filename,
+                ),
+            )
+        })
+        .collect();
+    jobs.into_par_iter()
+        .map(|(chunk, handoff)| {
+            handoff.finish();
+            clean_chunk_in_isolation(sheet_data, params, &base_metrics, chunk, clean_chunk)
         })
         .collect()
 }
@@ -493,7 +541,13 @@ fn clean_chunk_in_isolation(
     chunk: RowAlignedChunk,
     clean_chunk: CleanChunkFn,
 ) -> Result<CleanedChunk> {
+    let _profile = tracing::info_span!(target: "excel_shrink::profile", "clean_range_chunk",
+        xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, chunk = chunk.index,
+        input_bytes = chunk.end - chunk.start)
+    .entered();
+    let cloning = profiling::phase("clone_chunk_metrics", "", "");
     let mut chunk_metrics = make_chunk_metrics(base_metrics);
+    profiling::drop_value("range.clone_chunk_metrics_span", cloning);
     let xml = clean_chunk(
         &sheet_data[chunk.start..chunk.end],
         params,
@@ -512,12 +566,19 @@ fn assemble_cleaned_chunks(
     input_size: usize,
     metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
+    let _profile = profiling::phase("assemble_range_chunks", "", "");
     cleaned_chunks.sort_by_key(|chunk| chunk.index);
 
     let mut output = Vec::with_capacity(input_size.min(64 * 1024 * 1024));
     for chunk in cleaned_chunks {
-        extend_without_large_growth(&mut output, &chunk.xml);
-        merge_chunk_metrics(metrics, chunk.metrics);
+        {
+            let _copy = profiling::phase("append_chunk_xml", "", "");
+            extend_without_large_growth(&mut output, &chunk.xml);
+        }
+        {
+            let _merge = profiling::phase("merge_chunk_metrics", "", "");
+            merge_chunk_metrics(metrics, chunk.metrics);
+        }
     }
     output
 }
@@ -566,40 +627,25 @@ fn find_next_row_block(sheet_data: &[u8], position: usize) -> Option<LocatedRowB
 }
 
 fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {
-    let mut metrics = base.clone();
-
-    metrics.kept_row_states.clear();
-    metrics.deleted_row_states.clear();
-    metrics.kept_cell_states.clear();
-    metrics.deleted_cell_states.clear();
-    metrics.rows_with_kept_content_cells.clear();
-    metrics.row_attributes.clear();
-
-    metrics.whitespace_candidates = 0;
-    metrics.hidden_candidates = 0;
-    metrics.candidates.clear();
-
-    metrics.visible_content_bounds = Default::default();
-    metrics.clear_tail_anchor_rows();
-
-    metrics.cleanup_stats = if base.cleanup_stats.enabled {
-        crate::models::CleanupStats::enabled()
-    } else {
-        crate::models::CleanupStats::default()
-    };
-
-    metrics
+    CleanSheetMetrics {
+        column_definitions: base.column_definitions.clone(),
+        max_merge_cells_column_and_row: base.max_merge_cells_column_and_row.clone(),
+        merge_cell_ranges: base.merge_cell_ranges.clone(),
+        sheet_protection_enabled: base.sheet_protection_enabled,
+        visible_data_range_bounds: base.visible_data_range_bounds.clone(),
+        has_hints: base.has_hints,
+        cleanup_stats: if base.cleanup_stats.enabled {
+            crate::models::CleanupStats::enabled()
+        } else {
+            crate::models::CleanupStats::default()
+        },
+        ..Default::default()
+    }
 }
 
 fn merge_chunk_metrics(target: &mut CleanSheetMetrics, chunk: CleanSheetMetrics) {
-    target.kept_row_states.extend(chunk.kept_row_states);
-    target.deleted_row_states.extend(chunk.deleted_row_states);
     target.kept_cell_states.extend(chunk.kept_cell_states);
     target.deleted_cell_states.extend(chunk.deleted_cell_states);
-    target
-        .rows_with_kept_content_cells
-        .extend(chunk.rows_with_kept_content_cells);
-    target.row_attributes.extend(chunk.row_attributes);
 
     target.whitespace_candidates += chunk.whitespace_candidates;
     target.hidden_candidates += chunk.hidden_candidates;
@@ -625,17 +671,69 @@ fn apply_row_byte_substitution<F>(sheet_data: &[u8], mut replace: F) -> Vec<u8>
 where
     F: for<'a> FnMut(ParsedRowBlock<'a>) -> Cow<'a, [u8]>,
 {
+    apply_row_byte_substitution_impl::<false, _>(sheet_data, |row, _| replace(row))
+}
+
+fn apply_row_byte_substitution_impl<const PROFILED: bool, F>(
+    sheet_data: &[u8],
+    mut replace: F,
+) -> Vec<u8>
+where
+    F: for<'a> FnMut(ParsedRowBlock<'a>, bool) -> Cow<'a, [u8]>,
+{
+    const MEAN_SAMPLE_INTERVAL: usize = 4096;
     let mut output = Vec::with_capacity(sheet_data.len().min(64 * 1024 * 1024));
     let mut position = 0;
+    let mut row_index = 0;
+    let mut sampled_rows = 0;
+    let mut next_sample_row = 0;
+    // Jitter avoids repeatedly landing on power-of-two Vec/HashMap growth points.
+    // This is deterministic sampling, not a source of cryptographic randomness.
+    let mut sample_state = (sheet_data.len() as u64) ^ 0x9e3779b97f4a7c15;
 
-    while let Some(block) = find_next_row_block(sheet_data, position) {
+    while position < sheet_data.len() {
+        let sampled = PROFILED && row_index == next_sample_row;
+        let sample_span = sampled.then(|| {
+            tracing::info_span!(target: "excel_shrink::profile", "sampled_row",
+            row_index, byte_offset = position, row = tracing::field::Empty, row_bytes = tracing::field::Empty)
+            .entered()
+        });
+        let scanning = sampled.then(|| profiling::phase("row_find_block", "", ""));
+        let Some(block) = find_next_row_block(sheet_data, position) else {
+            break;
+        };
+        profiling::drop_optional("row.scanning_span", scanning);
+        if let Some(span) = &sample_span {
+            span.record("row_bytes", block.row.raw.len());
+            if let Some(row) = extract_xml_attr_value(block.row.attr, b"r") {
+                span.record("row", String::from_utf8_lossy(row).as_ref());
+            }
+            sampled_rows += 1;
+            sample_state ^= sample_state << 13;
+            sample_state ^= sample_state >> 7;
+            sample_state ^= sample_state << 17;
+            next_sample_row = row_index
+                + MEAN_SAMPLE_INTERVAL / 2
+                + (sample_state as usize % MEAN_SAMPLE_INTERVAL);
+        }
+        let copying = sampled.then(|| profiling::phase("row_copy_prefix", "", ""));
         extend_without_large_growth(&mut output, &sheet_data[position..block.start]);
-        let replacement = replace(block.row);
+        profiling::drop_optional("row.copying_span", copying);
+        let replacement = replace(block.row, sampled);
+        let _appending = sampled.then(|| profiling::phase("row_append_output", "", ""));
         extend_without_large_growth(&mut output, replacement.as_ref());
         position = block.end;
+        if PROFILED {
+            row_index += 1;
+        }
     }
 
     extend_without_large_growth(&mut output, &sheet_data[position..]);
+    if PROFILED {
+        tracing::info!(target: "excel_shrink::profile", event = "range_row_samples",
+            total_rows = row_index, sampled_rows, mean_sample_interval_rows = MEAN_SAMPLE_INTERVAL,
+            input_bytes = sheet_data.len(), output_bytes = output.len());
+    }
     output
 }
 
@@ -913,10 +1011,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(parallel, sequential);
-        assert_eq!(
-            parallel_metrics.kept_row_states.len(),
-            sequential_metrics.kept_row_states.len()
-        );
         assert_eq!(
             parallel_metrics.kept_cell_states.len(),
             sequential_metrics.kept_cell_states.len()

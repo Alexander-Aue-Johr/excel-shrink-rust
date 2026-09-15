@@ -673,3 +673,130 @@ fn postprocess_preserves_hidden_empty_rows_but_cleans_attributes() {
     );
     assert!(cleaned.contains("dyDescent"));
 }
+
+#[test]
+fn row_view_borrows_header_and_style_in_arbitrary_attribute_order() {
+    use crate::sheet::row_view::RowView;
+    let params = params_with_styles(&[(7, relevant_style())]);
+    let attributes = br#" customHeight='1' data-note='hidden="1" r="999"' ht = "12" s='7' r='42' spans='1:8' hidden='0'"#;
+    let row = RowView::parse(attributes, &params).unwrap();
+    assert_eq!(row.reference, b"42");
+    assert_eq!(row.number, Some(42));
+    assert!(!row.hidden);
+    assert!(row.has_height && row.has_custom_height);
+    assert!(std::ptr::eq(
+        row.raw_attributes.as_ptr(),
+        attributes.as_ptr()
+    ));
+    assert!(std::ptr::eq(
+        row.style.unwrap(),
+        &params.patterns.xfs_by_index[&7]
+    ));
+    let (start, end) = row.spans.unwrap();
+    assert_eq!(&attributes[start..end], b"1:8");
+}
+
+#[test]
+fn invalid_row_header_is_preserved_without_partial_cleanup() {
+    use super::replace_row_bytes;
+    let params = params_with_styles(&[]);
+    let raw = br#"<row r="7" hidden="1><c r="A7"/></row>"#;
+    let mut metrics = CleanSheetMetrics::default();
+    let result = replace_row_bytes(
+        raw,
+        br#" r="7" hidden="1"#,
+        Some(br#"<c r="A7"/>"#),
+        &params,
+        &mut metrics,
+    );
+    assert!(matches!(result, std::borrow::Cow::Borrowed(_)));
+    assert_eq!(result.as_ref(), raw);
+    assert!(metrics.kept_cell_states.is_empty() && metrics.deleted_cell_states.is_empty());
+}
+
+#[test]
+fn self_closing_row_stays_borrowed_and_still_records_visible_style() {
+    let params = params_with_styles(&[(7, relevant_style())]);
+    let raw = br#"<row r="42" s="7"/>"#;
+    let attr = br#" r="42" s="7""#;
+    for after_range in [false, true] {
+        let mut metrics = CleanSheetMetrics::default();
+        let result = if after_range {
+            super::replace_empty_row_after_cell_range_bytes(raw, attr, &params, &mut metrics)
+        } else {
+            super::replace_row_bytes(raw, attr, None, &params, &mut metrics)
+        };
+        assert!(matches!(result, std::borrow::Cow::Borrowed(_)));
+        assert_eq!(result.as_ref(), raw);
+        assert_eq!(metrics.visible_content_bounds.max_row, Some(42));
+        assert_eq!(metrics.tail_anchor_max_row, Some(42));
+    }
+}
+
+#[test]
+fn recleaned_row_does_not_reuse_old_content_or_remove_old_cell_records() {
+    let params = params_with_styles(&[(9, font_only_style())]);
+    let mut metrics = CleanSheetMetrics::default();
+    let original =
+        br#"<row r="3" customHeight="1"><c r="A3"><v>keep</v></c><c r="B3" s="9"/></row>"#;
+    let first = replace_single_row_with_metrics(original, &params, &mut metrics);
+    assert_eq!(first, original);
+    let previous_cells = metrics.kept_cell_states.len();
+    // The reference pass removed the content cell. The remaining representative
+    // must be judged against the current row, even with older metrics present.
+    let changed = br#"<row r="3" customHeight="1"><c r="B3" s="9"/></row>"#;
+    let second = replace_single_row_with_metrics(changed, &params, &mut metrics);
+    assert_eq!(second, br#"<row r="3" customHeight="1"/>"#);
+    assert_eq!(metrics.kept_cell_states.len(), previous_cells);
+    assert_eq!(metrics.kept_cell_states[1].col, 2);
+}
+
+#[test]
+fn spans_use_only_current_row_cells_after_recleaning() {
+    let mut params = params_with_styles(&[]);
+    params.cleanup.keep_textless_default_font_representatives = false;
+    let mut metrics = CleanSheetMetrics::default();
+    let previous = br#"<row r="3" spans="1:26"><c r="Z3"><v>old</v></c></row>"#;
+    replace_single_row_with_metrics(previous, &params, &mut metrics);
+    let current = br#"<row r="3" spans="1:26"><c r="A3"><v>keep</v></c><c r="Z3"/></row>"#;
+    let cleaned = replace_single_row_with_metrics(current, &params, &mut metrics);
+    assert_eq!(
+        cleaned,
+        br#"<row r="3" spans="1:1"><c r="A3"><v>keep</v></c></row>"#
+    );
+}
+
+#[test]
+fn spans_exclude_pruned_representatives_but_include_retained_visible_cells() {
+    let params = params_with_styles(&[(7, relevant_style()), (9, font_only_style())]);
+    let original =
+        br#"<row r="3" spans="1:26" customHeight="1"><c r="A3" s="7"/><c r="Z3" s="9"/></row>"#;
+    assert_eq!(
+        replace_single_row(original, &params),
+        br#"<row r="3" spans="1:1" customHeight="1"><c r="A3" s="7"/></row>"#
+    );
+}
+
+#[test]
+fn cell_attributes_are_scanned_once_in_any_order_and_quoted_values_are_skipped() {
+    let params = params_with_styles(&[(7, relevant_style())]);
+    let original = br#"<row r="3"><c s = '7' data-note='r="Z99" s="0"' r='A3'/></row>"#;
+    let mut metrics = CleanSheetMetrics::default();
+    let cleaned =
+        clean_sheet_rows_and_cells_in_cell_range(original, &params, &mut metrics).unwrap();
+    assert_eq!(cleaned, original);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.kept_cell_states[0].col, 1);
+    assert_eq!(metrics.kept_cell_states[0].row, 3);
+}
+
+#[test]
+fn spans_match_numeric_row_references_with_leading_zeroes() {
+    let mut params = params_with_styles(&[]);
+    params.cleanup.keep_textless_default_font_representatives = false;
+    let original = br#"<row r="03" spans="1:26"><c r="A3"><v>keep</v></c><c r="Z3"/></row>"#;
+    assert_eq!(
+        replace_single_row(original, &params),
+        br#"<row r="03" spans="1:1"><c r="A3"><v>keep</v></c></row>"#
+    );
+}

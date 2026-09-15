@@ -7,12 +7,19 @@ use tracing_appender::rolling;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 mod pipeline;
+mod profiling;
 mod regression;
 mod visual_profile;
+
+pub(crate) const DEFAULT_PARALLEL_RANGE_CHUNK_SIZE: usize = 16 * 1024 * 1024;
 
 #[derive(Parser, Debug)]
 #[command(name = "excel-shrink", about = "Clean and shrink XLSX files.")]
 pub struct Cli {
+    /// Write a Perfetto-compatible trace to a new JSON file. Use {timestamp} for unique recordings.
+    #[arg(long)]
+    trace_file: Option<PathBuf>,
+
     /// Path to xlsx file or directory containing xlsx files
     path: PathBuf,
 
@@ -35,7 +42,7 @@ pub struct Cli {
     /// Maximum uncompressed XML bytes per parallel range chunk.
     /// If a concrete range is at or below this size, it is processed sequentially.
     /// Set to 0 to disable range chunking completely.
-    #[arg(long, default_value_t = 134_217_728)]
+    #[arg(long, default_value_t = DEFAULT_PARALLEL_RANGE_CHUNK_SIZE)]
     parallel_range_chunk_size: usize,
 
     /// Force overwrite existing files
@@ -224,14 +231,23 @@ fn main() -> anyhow::Result<()> {
 fn run_regression_command(program: OsString, args: Vec<OsString>) -> anyhow::Result<()> {
     let console_log_level = regression_console_log_level(&args).unwrap_or(LogLevel::Info);
     let regression_args = std::iter::once(program).chain(args);
-    let _guard = init_logging(console_log_level, None)?;
-    regression::run_from_args(regression_args)
+    let parsed = regression::RegressionCli::parse_from(regression_args);
+    let guard = init_logging(console_log_level, None, parsed.trace_file.as_deref())?;
+    let result = regression::run(parsed);
+    guard.finish()?;
+    result
 }
 
 fn run_cleanup_command(cli: Cli) -> anyhow::Result<()> {
     set_working_directory(&cli)?;
-    let _guard = init_logging(cli.console_log_level, cli.file_log_level)?;
-    run_cleanup_pipeline(&cli)
+    let guard = init_logging(
+        cli.console_log_level,
+        cli.file_log_level,
+        cli.trace_file.as_deref(),
+    )?;
+    let result = run_cleanup_pipeline(&cli);
+    guard.finish()?;
+    result
 }
 
 fn set_working_directory(cli: &Cli) -> anyhow::Result<()> {
@@ -296,10 +312,25 @@ fn parse_log_level(value: &str) -> Option<LogLevel> {
     }
 }
 
+struct LoggingGuard {
+    trace: Option<profiling::TraceGuard>,
+    _logs: tracing_appender::non_blocking::WorkerGuard,
+}
+
+impl LoggingGuard {
+    fn finish(mut self) -> std::io::Result<()> {
+        if let Some(trace) = self.trace.take() {
+            trace.finish()?;
+        }
+        Ok(())
+    }
+}
+
 fn init_logging(
     console_log_level: LogLevel,
     file_log_level: Option<LogLevel>,
-) -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
+    trace_file: Option<&std::path::Path>,
+) -> anyhow::Result<LoggingGuard> {
     std::fs::create_dir_all("logs")?;
 
     let file_appender = rolling::never("logs", "excel-shrink-run.log");
@@ -322,12 +353,27 @@ fn init_logging(
         .with_writer(std::io::stderr)
         .with_filter(console_filter);
 
+    let (trace_layer, trace_guard) = match trace_file {
+        Some(path) => {
+            let (layer, guard) = profiling::create(path)?;
+            (Some(layer), Some(guard))
+        }
+        None => (None, None),
+    };
+    let profile_filter =
+        tracing_subscriber::filter::filter_fn(|metadata| metadata.target() == profiling::TARGET);
+    let log_filter =
+        tracing_subscriber::filter::filter_fn(|metadata| metadata.target() != profiling::TARGET);
     tracing_subscriber::registry()
-        .with(file_layer)
-        .with(console_layer)
+        .with(trace_layer.map(|layer| layer.with_filter(profile_filter)))
+        .with(file_layer.with_filter(log_filter.clone()))
+        .with(console_layer.with_filter(log_filter))
         .try_init()?;
 
-    Ok(guard)
+    Ok(LoggingGuard {
+        trace: trace_guard,
+        _logs: guard,
+    })
 }
 
 fn gather_files(path: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>> {

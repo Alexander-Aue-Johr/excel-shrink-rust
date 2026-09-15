@@ -4368,12 +4368,13 @@ fn repair_original_workbook_xml_only(
     let _ = fs::remove_file(&repaired_path);
 
     let cli = Cli {
+        trace_file: None,
         path: repair_input.clone(),
         output: repair_output_dir,
         recursive: false,
         disable_multiprocessing: true,
         chunk_size: 16_777_216,
-        parallel_range_chunk_size: 134_217_728,
+        parallel_range_chunk_size: crate::DEFAULT_PARALLEL_RANGE_CHUNK_SIZE,
         force_overwrite: true,
         sheets: Vec::new(),
         only_clean_workbook: true,

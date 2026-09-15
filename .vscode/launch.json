@@ -5,7 +5,6 @@
             "name": "Debug excel-shrink-cli (enter input and output directories)",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/debug/excel-shrink-cli.exe",
             "args": [
                 "${input:excelShrinkInputDir}",
                 "${input:excelShrinkOutputDir}",
@@ -13,22 +12,56 @@
                 "--force-overwrite"
             ],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "cargo build",
             "sourceLanguages": [
                 "rust"
             ],
             "env": {
                 "RUST_BACKTRACE": "1"
+            },
+            "cargo": {
+                "args": [
+                    "build",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+                }
+            },
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "build",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
             }
         },
         {
             "name": "Debug hidden row preprocess real file",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/debug/excel-shrink-cli.exe",
             "args": [
-                "K:\\original_data_gov_xlsx_files\\frpp_public_dataset_fy24_07022025_af7affc7a554.xlsx",
-                "${workspaceFolder}\\.tmp_debug_hidden_rows",
+                "${input:excelShrinkInputDir}",
+                "${input:excelShrinkOutputDir}",
                 "--force-overwrite",
                 "--disable-multiprocessing",
                 "--writer-workers",
@@ -37,108 +70,354 @@
                 "sheet1.xml",
                 "--chunk-size",
                 "1048576",
-                "--preprocess-hidden-rows",
                 "--preprocess-empty-cells",
                 "--compression-level",
                 "1"
             ],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "cargo build",
             "sourceLanguages": [
                 "rust"
             ],
             "env": {
                 "RUST_BACKTRACE": "1"
+            },
+            "cargo": {
+                "args": [
+                    "build",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+                }
+            },
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "build",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
             }
         },
         {
             "name": "Debug excel-shrink-cli",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
             "args": [
-                "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded",
-                "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded_ws_hd6",
+                "${input:excelShrinkInputDir}",
+                "${input:excelShrinkOutputDir}",
                 "--recursive"
             ],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "cargo build",
             "sourceLanguages": [
                 "rust"
-            ]
+            ],
+            "cargo": {
+                "args": [
+                    "build",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+                }
+            },
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "build",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
+            }
         },
         {
             "name": "Debug excel-shrink-cli Wanderungen",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
             "args": [
-                "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/downloaded_wanderungen/",
-                "/mnt/c/Users/aue-johr/AppData/Local/repositories/github/excel-shrink-paper/scripts/scrape_destatis_xlsx_files/dowloaded_wanderungen_hd3",
+                "${input:excelShrinkInputDir}",
+                "${input:excelShrinkOutputDir}",
                 "--recursive",
                 "--force-overwrite"
             ],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "cargo build",
             "sourceLanguages": [
                 "rust"
-            ]
+            ],
+            "cargo": {
+                "args": [
+                    "build",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+                }
+            },
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "build",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
+            }
         },
         {
             "name": "Wanderungen no hidden content cells",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
             "args": [
-                "/mnt/c/Users/aue-johr/Downloads/downloaded",
-                "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust",
-                "--keep-unreferenced-whitespace-cells",
-                "--force-overwrite"
+                "${input:excelShrinkInputDir}",
+                "${input:excelShrinkOutputDir}",
+                "--force-overwrite",
+                "--keep-unreferenced-hidden-content-cells"
             ],
-            "preLaunchTask": "cargo build",
             "sourceLanguages": [
                 "rust"
-            ]
+            ],
+            "cargo": {
+                "args": [
+                    "build",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+                }
+            },
+            "cwd": "${workspaceFolder}",
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "build",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
+            }
         },
         {
             "name": "Wanderungen hidden content cells",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/debug/excel-shrink-cli",
             "args": [
-                "/mnt/c/Users/aue-johr/Downloads/downloaded",
-                "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust_cleaned_hidden2",
+                "${input:excelShrinkInputDir}",
+                "${input:excelShrinkOutputDir}",
                 "--force-overwrite"
             ],
-            "preLaunchTask": "cargo build",
             "sourceLanguages": [
                 "rust"
-            ]
+            ],
+            "cargo": {
+                "args": [
+                    "build",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+                }
+            },
+            "cwd": "${workspaceFolder}",
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "build",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
+            }
         },
         {
             "name": "Release: Wanderungen no hidden content cells",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/release/excel-shrink-cli",
             "args": [
-                "/mnt/c/Users/aue-johr/Downloads/downloaded",
-                "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust",
-                "--keep-unreferenced-whitespace-cells",
-                "--force-overwrite"
+                "${input:excelShrinkInputDir}",
+                "${input:excelShrinkOutputDir}",
+                "--force-overwrite",
+                "--keep-unreferenced-hidden-content-cells"
             ],
-            "preLaunchTask": "cargo build release"
+            "cargo": {
+                "args": [
+                    "build",
+                    "--release",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+                }
+            },
+            "cwd": "${workspaceFolder}",
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "build",
+                        "--release",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
+            }
         },
         {
             "name": "Release: Wanderungen hidden content cells",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/release/excel-shrink-cli",
             "args": [
-                "/mnt/c/Users/aue-johr/Downloads/downloaded",
-                "/mnt/c/Users/aue-johr/Downloads/downloaded_shrunk_rust_cleaned_hidden5",
+                "${input:excelShrinkInputDir}",
+                "${input:excelShrinkOutputDir}",
                 "--force-overwrite"
             ],
-            "preLaunchTask": "cargo build release"
+            "cargo": {
+                "args": [
+                    "build",
+                    "--release",
+                    "-p",
+                    "excel-shrink-cli",
+                    "--bin",
+                    "excel-shrink-cli"
+                ],
+                "filter": {
+                    "name": "excel-shrink-cli",
+                    "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+                }
+            },
+            "cwd": "${workspaceFolder}",
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "build",
+                        "--release",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
+            }
         },
         {
             "name": "Debug corpus regression tests (smoke suite)",
@@ -157,6 +436,10 @@
                 "filter": {
                     "name": "excel-shrink-cli",
                     "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
                 }
             },
             "args": [
@@ -177,6 +460,27 @@
                 "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS": "${input:corpusRegressionKeepEmptyStyleSentinelCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}"
+            },
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "test",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli",
+                        "--no-run",
+                        "corpus_regression_smoke_suite"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
             }
         },
         {
@@ -198,6 +502,10 @@
                 "filter": {
                     "name": "excel-shrink-cli",
                     "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
                 }
             },
             "args": [
@@ -221,6 +529,29 @@
                 "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS": "${input:corpusRegressionKeepEmptyStyleSentinelCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}"
+            },
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "test",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli",
+                        "--features",
+                        "cell-tracing",
+                        "--no-run",
+                        "corpus_regression_selected_smoke_case"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
             }
         },
         {
@@ -242,6 +573,10 @@
                 "filter": {
                     "name": "excel-shrink-cli",
                     "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
                 }
             },
             "args": [
@@ -260,6 +595,29 @@
                 "EXCEL_SHRINK_CORPUS_REGRESSION_KEEP_EMPTY_STYLE_SENTINEL_CELLS": "${input:corpusRegressionKeepEmptyStyleSentinelCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}"
+            },
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "test",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli",
+                        "--features",
+                        "cell-tracing",
+                        "--no-run",
+                        "${input:cellTraceRegressionTest}"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
             }
         },
         {
@@ -281,6 +639,10 @@
                 "filter": {
                     "name": "excel-shrink-cli",
                     "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
                 }
             },
             "args": [
@@ -305,6 +667,29 @@
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_WHITESPACE_CELLS": "${input:corpusRegressionRemoveUnreferencedWhitespaceCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_REMOVE_UNREFERENCED_HIDDEN_CONTENT_CELLS": "${input:corpusRegressionRemoveUnreferencedHiddenContentCells}",
                 "EXCEL_SHRINK_CORPUS_REGRESSION_EXCEL_SCREENSHOT_CHECK": "1"
+            },
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "test",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli",
+                        "--features",
+                        "cell-tracing",
+                        "--no-run",
+                        "corpus_regression_selected_smoke_case"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
             }
         },
         {
@@ -322,6 +707,10 @@
                 "filter": {
                     "name": "excel-shrink-cli",
                     "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
                 }
             },
             "args": [
@@ -330,8 +719,6 @@
                 "--case-id",
                 "${input:corpusRegressionCaseId}",
                 "--all-visual-profile-checks",
-                "--corpus-root",
-                "${input:corpusRegressionCorpusRoot}",
                 "--console-log-level",
                 "${input:corpusRegressionConsoleLogLevel}"
             ],
@@ -340,7 +727,27 @@
                 "rust"
             ],
             "env": {
-                "RUST_BACKTRACE": "1"
+                "RUST_BACKTRACE": "1",
+                "EXCEL_SHRINK_CORPUS_ROOT": "${input:corpusRegressionCorpusRoot}"
+            },
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "build",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
             }
         },
         {
@@ -359,6 +766,10 @@
                 "filter": {
                     "name": "excel-shrink-cli",
                     "kind": "bin"
+                },
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:PATH}:${userHome}/.cargo/bin"
                 }
             },
             "args": [
@@ -367,8 +778,6 @@
                 "--case-id",
                 "${input:corpusRegressionCaseId}",
                 "--all-visual-profile-checks",
-                "--corpus-root",
-                "${input:corpusRegressionCorpusRoot}",
                 "--console-log-level",
                 "${input:corpusRegressionConsoleLogLevel}"
             ],
@@ -377,7 +786,28 @@
                 "rust"
             ],
             "env": {
-                "RUST_BACKTRACE": "1"
+                "RUST_BACKTRACE": "1",
+                "EXCEL_SHRINK_CORPUS_ROOT": "${input:corpusRegressionCorpusRoot}"
+            },
+            "windows": {
+                "cargo": {
+                    "args": [
+                        "build",
+                        "--release",
+                        "-p",
+                        "excel-shrink-cli",
+                        "--bin",
+                        "excel-shrink-cli"
+                    ],
+                    "filter": {
+                        "name": "excel-shrink-cli",
+                        "kind": "bin"
+                    },
+                    "cwd": "${workspaceFolder}",
+                    "env": {
+                        "PATH": "${env:PATH};${userHome}/.cargo/bin"
+                    }
+                }
             }
         }
     ],
@@ -386,13 +816,13 @@
             "id": "excelShrinkInputDir",
             "type": "promptString",
             "description": "Input directory or XLSX file",
-            "default": "${workspaceFolder}"
+            "default": "."
         },
         {
             "id": "excelShrinkOutputDir",
             "type": "promptString",
             "description": "Output directory",
-            "default": "${workspaceFolder}\\.tmp_excel_shrink_output"
+            "default": ".tmp/excel-shrink-output"
         },
         {
             "id": "corpusRegressionCaseId",
@@ -415,7 +845,7 @@
             "id": "corpusRegressionCorpusRoot",
             "type": "promptString",
             "description": "Optional local corpus root. Leave empty to use downloaded cache.",
-            "default": "${workspaceFolder}\\..\\original_destatis_xlsx_files"
+            "default": ""
         },
         {
             "id": "corpusRegressionSheets",
@@ -490,7 +920,7 @@
                 "67108864",
                 "134217728"
             ],
-            "default": "134217728"
+            "default": "16777216"
         },
         {
             "id": "corpusRegressionKeepEmptyStyleSentinelCells",

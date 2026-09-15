@@ -2,6 +2,7 @@
 pub mod cleaning_trace;
 pub mod error;
 pub mod models;
+pub mod profiling;
 pub mod reference_scanner;
 pub mod shared_strings;
 pub mod sheet;

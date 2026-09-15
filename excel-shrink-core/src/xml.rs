@@ -1,3 +1,5 @@
+pub(crate) mod attributes;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WhereToSlice {
     BeforeTag,

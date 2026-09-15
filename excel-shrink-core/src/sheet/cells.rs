@@ -4,6 +4,7 @@ use crate::models::{
     CellAttributes, CleanSheetMetrics, CleanSheetParameters, CleanupCandidate, CleanupCause,
     InactiveProtectionCellPolicy, Xf,
 };
+use crate::sheet::row_view::RowView;
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
 use regex::bytes::Captures;
 use std::borrow::Cow;
@@ -21,7 +22,8 @@ macro_rules! trace_cell_decision {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ParsedCell<'a> {
+pub(crate) struct ParsedCell<'a, 'r> {
+    pub(crate) row_view: Option<&'r RowView<'r, 'r>>,
     pub(crate) raw: &'a [u8],
     pub(crate) attr: &'a [u8],
     pub(crate) reference_attr: &'a [u8],
@@ -30,7 +32,7 @@ pub(crate) struct ParsedCell<'a> {
     pub(crate) style_id: Option<u32>,
 }
 
-impl<'a> ParsedCell<'a> {
+impl<'a, 'r> ParsedCell<'a, 'r> {
     fn from_captures(caps: &Captures<'a>) -> Option<Self> {
         let raw = caps.get(0)?.as_bytes();
         let attr = caps.get(1)?.as_bytes();
@@ -44,6 +46,7 @@ impl<'a> ParsedCell<'a> {
             .map(|m| digits_byte_string_to_integer(m.as_bytes()));
 
         Some(Self {
+            row_view: None,
             raw,
             attr,
             reference_attr,
@@ -51,6 +54,11 @@ impl<'a> ParsedCell<'a> {
             col_num,
             style_id,
         })
+    }
+
+    #[inline]
+    fn row_view(&self) -> Option<&RowView<'_, '_>> {
+        self.row_view.filter(|row| row.reference == self.row)
     }
 
     #[inline]
@@ -126,18 +134,20 @@ struct InheritedCellStyles<'a> {
 
 pub fn replace_cell(
     caps: &Captures,
+    row_view: Option<&RowView<'_, '_>>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
 ) -> Vec<u8> {
-    let Some(cell) = ParsedCell::from_captures(caps) else {
+    let Some(mut cell) = ParsedCell::from_captures(caps) else {
         return caps.get(0).unwrap().as_bytes().to_vec();
     };
 
+    cell.row_view = row_view;
     replace_parsed_cell(&cell, params, metrics).into_owned()
 }
 
-pub(crate) fn replace_parsed_cell<'a>(
-    cell: &ParsedCell<'a>,
+pub(crate) fn replace_parsed_cell<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
 ) -> Cow<'a, [u8]> {
@@ -152,8 +162,8 @@ pub(crate) fn replace_parsed_cell<'a>(
     )
 }
 
-pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
-    cell: &ParsedCell<'a>,
+pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     has_cell_content: bool,
@@ -195,8 +205,8 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a>(
     clean_visible_cell(cell, params, metrics, style, style_policy, has_cell_content)
 }
 
-fn keep_reference_sensitive_candidate<'a>(
-    cell: &ParsedCell<'a>,
+fn keep_reference_sensitive_candidate<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     style: Option<&Xf>,
@@ -229,7 +239,7 @@ fn keep_reference_sensitive_candidate<'a>(
 }
 
 fn reference_sensitive_candidate_cause(
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     cleanup: ReferenceSensitiveCleanup,
@@ -254,8 +264,8 @@ fn reference_sensitive_candidate_cause(
     None
 }
 
-fn clean_hidden_cell<'a>(
-    cell: &ParsedCell<'a>,
+fn clean_hidden_cell<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     style: Option<&Xf>,
@@ -286,7 +296,7 @@ fn clean_hidden_cell<'a>(
 }
 
 fn hidden_style_representative_is_protection_only(
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     style: Option<&Xf>,
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
@@ -298,8 +308,8 @@ fn hidden_style_representative_is_protection_only(
     })
 }
 
-fn remove_hidden_empty_cell<'a>(
-    cell: &ParsedCell<'a>,
+fn remove_hidden_empty_cell<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     metrics: &mut CleanSheetMetrics,
 ) -> Cow<'a, [u8]> {
     metrics
@@ -309,8 +319,8 @@ fn remove_hidden_empty_cell<'a>(
     Cow::Owned(Vec::new())
 }
 
-fn clean_visible_cell<'a>(
-    cell: &ParsedCell<'a>,
+fn clean_visible_cell<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     style: Option<&Xf>,
@@ -326,8 +336,8 @@ fn clean_visible_cell<'a>(
     }
 }
 
-fn clean_visible_unstyled_cell<'a>(
-    cell: &ParsedCell<'a>,
+fn clean_visible_unstyled_cell<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     style_policy: EmptyCellStylePolicy,
@@ -350,8 +360,8 @@ fn clean_visible_unstyled_cell<'a>(
     )
 }
 
-fn clean_visible_styled_empty_cell<'a>(
-    cell: &ParsedCell<'a>,
+fn clean_visible_styled_empty_cell<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     style: &Xf,
@@ -395,8 +405,8 @@ fn clean_visible_styled_empty_cell<'a>(
     )
 }
 
-fn clean_empty_cell_with_nonvisible_style<'a>(
-    cell: &ParsedCell<'a>,
+fn clean_empty_cell_with_nonvisible_style<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     style: &Xf,
@@ -420,8 +430,8 @@ fn clean_empty_cell_with_nonvisible_style<'a>(
     )
 }
 
-fn keep_cell_unchanged<'a>(
-    cell: &ParsedCell<'a>,
+fn keep_cell_unchanged<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     style: Option<&Xf>,
@@ -436,12 +446,11 @@ fn keep_cell_unchanged<'a>(
         has_cell_content,
         kept_only_for_protection,
     );
-    record_kept_content_cell_row(metrics, cell, has_cell_content);
     Cow::Borrowed(cell.raw)
 }
 
-fn keep_empty_cell_as_self_closing<'a>(
-    cell: &ParsedCell<'a>,
+fn keep_empty_cell_as_self_closing<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     style: Option<&Xf>,
@@ -460,7 +469,7 @@ fn keep_empty_cell_as_self_closing<'a>(
 }
 
 pub(crate) fn parsed_empty_cell_has_effective_fill_or_border(
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
     has_cell_content: bool,
@@ -476,7 +485,7 @@ pub(crate) fn parsed_empty_cell_has_effective_fill_or_border(
 fn record_kept_cell(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     cell_style: Option<&Xf>,
     has_cell_content: bool,
     kept_only_for_protection: bool,
@@ -503,7 +512,7 @@ fn record_kept_cell(
 fn kept_cell_is_tail_anchor(
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     cell_style: Option<&Xf>,
     has_cell_content: bool,
     kept_only_for_protection: bool,
@@ -550,25 +559,13 @@ fn kept_cell_is_tail_anchor(
     false
 }
 
-fn record_kept_content_cell_row(
-    metrics: &mut CleanSheetMetrics,
-    cell: &ParsedCell<'_>,
-    has_cell_content: bool,
-) {
-    if has_cell_content {
-        metrics
-            .rows_with_kept_content_cells
-            .insert(cell.row.to_vec());
-    }
-}
-
 #[inline]
-pub(crate) fn parsed_cell_has_content(cell: &ParsedCell<'_>) -> bool {
+pub(crate) fn parsed_cell_has_content(cell: &ParsedCell<'_, '_>) -> bool {
     has_content(cell.raw)
 }
 
-fn remove_or_keep_empty_cell<'a>(
-    cell: &ParsedCell<'a>,
+fn remove_or_keep_empty_cell<'a, 'r>(
+    cell: &ParsedCell<'a, 'r>,
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     cause: CleanupCause,
@@ -624,7 +621,7 @@ fn extract_attr_assignment<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [
 }
 
 fn empty_hidden_cell_is_style_representative(
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     cell_style: Option<&Xf>,
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
@@ -669,12 +666,8 @@ fn unreferenced_hidden_content_cleanup_enabled(params: &CleanSheetParameters) ->
 }
 
 #[inline]
-fn cell_is_hidden(cell: &ParsedCell<'_>, metrics: &CleanSheetMetrics) -> bool {
-    if metrics
-        .row_attributes
-        .get(cell.row)
-        .is_some_and(|row| row.hidden)
-    {
+fn cell_is_hidden(cell: &ParsedCell<'_, '_>, metrics: &CleanSheetMetrics) -> bool {
+    if cell.row_view().is_some_and(|row| row.hidden) {
         return true;
     }
 
@@ -686,7 +679,7 @@ fn cell_is_hidden(cell: &ParsedCell<'_>, metrics: &CleanSheetMetrics) -> bool {
 
 fn cell_has_effective_visual_style(
     cell_style: &Xf,
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     metrics: &CleanSheetMetrics,
 ) -> bool {
     let inherited = inherited_cell_styles(cell, metrics);
@@ -699,7 +692,7 @@ fn cell_has_effective_visual_style(
 
 fn cell_has_effective_fill_or_border(
     cell_style: &Xf,
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     metrics: &CleanSheetMetrics,
 ) -> bool {
     let inherited = inherited_cell_styles(cell, metrics);
@@ -708,23 +701,20 @@ fn cell_has_effective_fill_or_border(
 }
 
 fn inherited_cell_styles<'a>(
-    cell: &ParsedCell<'_>,
+    cell: &'a ParsedCell<'_, '_>,
     metrics: &'a CleanSheetMetrics,
 ) -> InheritedCellStyles<'a> {
     let column = metrics
         .column_definitions
         .get(cell.col_num)
         .and_then(|column| column.cell_xf.as_ref());
-    let row = metrics
-        .row_attributes
-        .get(cell.row)
-        .and_then(|row| row.style.as_ref());
+    let row = cell.row_view().and_then(|row| row.style);
 
     InheritedCellStyles { row, column }
 }
 
 fn record_visible_cell_bounds(
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     cell_style: Option<&Xf>,
     metrics: &mut CleanSheetMetrics,
     has_cell_content: bool,
@@ -794,7 +784,7 @@ fn cell_has_effective_border(
 }
 
 fn empty_cell_has_column_font_style_override(
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     cell_style: &Xf,
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
@@ -805,7 +795,7 @@ fn empty_cell_has_column_font_style_override(
     }
 
     let cell_font_id = cell_style.font_id.unwrap_or(0);
-    let row_attributes = metrics.row_attributes.get(cell.row);
+    let row_attributes = cell.row_view();
     let row_uses_auto_height =
         row_attributes.is_some_and(|row| row.has_height && !row.has_custom_height);
 
@@ -825,7 +815,7 @@ fn empty_cell_has_column_font_style_override(
 
     if row_uses_auto_height
         && row_attributes
-            .and_then(|row| row.style.as_ref())
+            .and_then(|row| row.style)
             .is_some_and(|row_style| {
                 cell_style.font_id.unwrap_or(column_font_id) != row_style.font_id.unwrap_or(0)
             })
@@ -837,7 +827,7 @@ fn empty_cell_has_column_font_style_override(
 }
 
 fn parsed_empty_cell_has_column_font_style_override(
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
     has_cell_content: bool,
@@ -941,7 +931,7 @@ fn shared_string_index(cell: &[u8]) -> Option<usize> {
 }
 
 fn cell_has_protection_style(
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     cell_style: Option<&Xf>,
     metrics: &CleanSheetMetrics,
 ) -> bool {
@@ -949,10 +939,9 @@ fn cell_has_protection_style(
         return true;
     }
 
-    if metrics
-        .row_attributes
-        .get(cell.row)
-        .and_then(|row| row.style.as_ref())
+    if cell
+        .row_view()
+        .and_then(|row| row.style)
         .is_some_and(|style| style.has_apply_protection)
     {
         return true;
@@ -966,7 +955,7 @@ fn cell_has_protection_style(
 }
 
 fn cell_has_relevant_protection_style(
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     cell_style: Option<&Xf>,
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
@@ -981,7 +970,7 @@ fn cell_has_relevant_protection_style(
 }
 
 fn inactive_protection_policy_keeps_cell(
-    cell: &ParsedCell<'_>,
+    cell: &ParsedCell<'_, '_>,
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
 ) -> bool {

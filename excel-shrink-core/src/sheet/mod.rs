@@ -5,6 +5,7 @@ pub mod merge_cells;
 pub mod output;
 pub mod patterns;
 pub mod ranges;
+pub mod row_view;
 pub mod rows;
 pub mod sheet_data;
 pub mod streaming;
