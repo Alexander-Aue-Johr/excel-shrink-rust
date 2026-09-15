@@ -203,3 +203,20 @@ zero allocations for repeated header inspection and both unchanged-empty-row pat
 The public core API replaces owned `RowAttributes` and the four row collections in
 `CleanSheetMetrics` with `RowView`; `cells::replace_cell` now accepts an optional
 borrowed row view for callers that clean individual regex matches.
+
+### Further allocation reductions
+
+Attribute lookups in the bounds/range and output passes use static complete byte
+patterns, as does formula detection. `deleted_cell_count` replaces the unused
+per-deleted-cell history. The chunk planner consumes row ends directly and retains
+only chunk boundaries. Preprocessing stores numeric relevant-style IDs and no
+longer keeps the ineffective checked-ID cache; canonical byte-key behavior is
+preserved for zero-padded or invalid IDs. Additional allocation tests cover the
+visible-bounds scan and formula detection with reusable metrics.
+
+Temporary style representatives now borrow their reference attribute from the
+stable input row. Already self-closing retained cells return borrowed XML as well,
+which avoids allocating a cell buffer and triggering an otherwise unnecessary row
+rewrite. Changed rows still use output buffers; this is not a full direct-writer
+redesign. Allocation regressions measure bounds scanning and formula detection
+separately from necessary output/metadata allocations.

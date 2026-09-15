@@ -67,10 +67,6 @@ impl<'a, 'r> ParsedCell<'a, 'r> {
             .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id))
     }
 
-    fn to_cell_attributes(&self) -> CellAttributes {
-        self.to_cell_attributes_with_protection_only(false)
-    }
-
     fn to_cell_attributes_with_protection_only(
         &self,
         kept_only_for_protection: bool,
@@ -315,7 +311,7 @@ fn remove_hidden_empty_cell<'a, 'r>(
     metrics
         .cleanup_stats
         .record_removed(CleanupCause::EmptyHiddenCells, cell.raw.len());
-    metrics.deleted_cell_states.push(cell.to_cell_attributes());
+    metrics.deleted_cell_count += 1;
     Cow::Owned(Vec::new())
 }
 
@@ -456,7 +452,11 @@ fn keep_empty_cell_as_self_closing<'a, 'r>(
     style: Option<&Xf>,
     kept_only_for_protection: bool,
 ) -> Cow<'a, [u8]> {
-    let output = generate_self_closing_cell_xml(cell.attr);
+    let output = if cell.raw.ends_with(b"/>") {
+        Cow::Borrowed(cell.raw)
+    } else {
+        Cow::Owned(generate_self_closing_cell_xml(cell.attr))
+    };
     record_kept_cell(
         params,
         metrics,
@@ -465,7 +465,7 @@ fn keep_empty_cell_as_self_closing<'a, 'r>(
         false,
         kept_only_for_protection,
     );
-    Cow::Owned(output)
+    output
 }
 
 pub(crate) fn parsed_empty_cell_has_effective_fill_or_border(
@@ -573,7 +573,7 @@ fn remove_or_keep_empty_cell<'a, 'r>(
 ) -> Cow<'a, [u8]> {
     if params.cleanup.empty_cells_without_content {
         metrics.cleanup_stats.record_removed(cause, cell.raw.len());
-        metrics.deleted_cell_states.push(cell.to_cell_attributes());
+        metrics.deleted_cell_count += 1;
         trace_cell_decision!(CellDecisionEvent {
             sheet_file: &params.zip_info_filename,
             col: cell.col_num,
@@ -886,16 +886,12 @@ fn has_content(cell: &[u8]) -> bool {
 }
 
 fn has_formula(cell: &[u8]) -> bool {
-    has_child_tag(cell, b"f")
+    has_child_tag(cell, b"<f")
 }
 
-fn has_child_tag(cell: &[u8], tag_name: &[u8]) -> bool {
-    let mut needle = Vec::with_capacity(tag_name.len() + 1);
-    needle.push(b'<');
-    needle.extend_from_slice(tag_name);
-
+fn has_child_tag(cell: &[u8], needle: &[u8]) -> bool {
     let mut pos = 0;
-    while let Some(rel) = crate::xml::find_bytes(&cell[pos..], &needle) {
+    while let Some(rel) = crate::xml::find_bytes(&cell[pos..], needle) {
         let start = pos + rel;
         let next = cell.get(start + needle.len()).copied();
         if matches!(next, Some(b' ' | b'/' | b'>')) {

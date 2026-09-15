@@ -15,12 +15,8 @@ pub struct SheetDataPreprocessState {
     any_column_has_non_default_fill_or_border: bool,
     active_row_has_non_default_fill_or_border_style: bool,
 
-    /// Style IDs whose XF can apply a visible fill or border to empty cells.
-    /// Keys are the raw ASCII bytes of the style index, e.g. b"429".
-    fill_or_border_style_ids_by_bytes: HashSet<Vec<u8>>,
-
-    /// Cache for row style IDs we have already checked.
-    checked_row_style_ids: HashSet<Vec<u8>>,
+    /// Numeric style IDs whose XF can apply a visible fill or border.
+    fill_or_border_style_ids: HashSet<u32>,
 }
 
 impl SheetDataPreprocessState {
@@ -28,28 +24,34 @@ impl SheetDataPreprocessState {
         let any_column_has_non_default_fill_or_border =
             column_definitions.has_any_non_default_fill_or_border_style();
 
-        let fill_or_border_style_ids_by_bytes = params
+        let fill_or_border_style_ids = params
             .patterns
             .xfs_by_index
             .iter()
             .filter(|(_, xf)| xf.applies_visible_fill_or_border())
-            .map(|(style_id, _)| style_id.to_string().into_bytes())
+            .map(|(style_id, _)| *style_id)
             .collect();
 
         Self {
             any_column_has_non_default_fill_or_border,
             active_row_has_non_default_fill_or_border_style: false,
-            fill_or_border_style_ids_by_bytes,
-            checked_row_style_ids: HashSet::new(),
+            fill_or_border_style_ids,
         }
     }
 
-    fn row_style_id_has_non_default_fill_or_border(&mut self, style_id: &[u8]) -> bool {
-        if !self.checked_row_style_ids.contains(style_id) {
-            self.checked_row_style_ids.insert(style_id.to_vec());
+    fn row_style_id_has_non_default_fill_or_border(&self, style_id: &[u8]) -> bool {
+        // The previous byte-key table contained canonical decimal spellings.
+        // Preserve that behavior for malformed or zero-padded IDs.
+        if style_id.is_empty() || (style_id.len() > 1 && style_id[0] == b'0') {
+            return false;
         }
-
-        self.fill_or_border_style_ids_by_bytes.contains(style_id)
+        let id = style_id.iter().try_fold(0u32, |value, byte| {
+            if !byte.is_ascii_digit() {
+                return None;
+            }
+            value.checked_mul(10)?.checked_add(u32::from(byte - b'0'))
+        });
+        id.is_some_and(|id| self.fill_or_border_style_ids.contains(&id))
     }
 
     fn empty_cell_style_id_is_removable(&self, _style_id: &[u8]) -> bool {
@@ -334,12 +336,11 @@ fn plan_row_aligned_chunks_by_max_size(
         return vec![full_range_chunk(sheet_data.len())];
     }
 
-    let row_ends = collect_row_end_positions(sheet_data);
-    if row_ends.is_empty() {
-        return vec![full_range_chunk(sheet_data.len())];
-    }
-
-    let chunks = build_row_aligned_chunks(sheet_data.len(), max_chunk_size, &row_ends);
+    let chunks = build_row_aligned_chunks(
+        sheet_data.len(),
+        max_chunk_size,
+        row_end_positions(sheet_data),
+    );
     if chunks.is_empty() {
         vec![full_range_chunk(sheet_data.len())]
     } else {
@@ -359,24 +360,19 @@ fn full_range_chunk(data_len: usize) -> RowAlignedChunk {
 fn build_row_aligned_chunks(
     data_len: usize,
     max_chunk_size: usize,
-    row_ends: &[usize],
+    row_ends: impl Iterator<Item = usize>,
 ) -> Vec<RowAlignedChunk> {
+    let mut row_ends = row_ends.peekable();
     let mut chunks = Vec::new();
     let mut start = 0usize;
-    let mut row_end_index = 0usize;
-
     while start < data_len {
-        let end = next_row_aligned_chunk_end(
-            row_ends,
-            &mut row_end_index,
-            start,
-            max_chunk_size,
-            data_len,
-        );
-        if end <= start {
-            break;
+        let target = start.saturating_add(max_chunk_size).min(data_len);
+        let mut last_fit = None;
+        while row_ends.peek().is_some_and(|end| *end <= target) {
+            last_fit = row_ends.next();
         }
-
+        // An oversized row stays intact; the final suffix is also retained.
+        let end = last_fit.or_else(|| row_ends.next()).unwrap_or(data_len);
         chunks.push(RowAlignedChunk {
             index: chunks.len(),
             start,
@@ -384,52 +380,7 @@ fn build_row_aligned_chunks(
         });
         start = end;
     }
-
     chunks
-}
-
-fn next_row_aligned_chunk_end(
-    row_ends: &[usize],
-    row_end_index: &mut usize,
-    start: usize,
-    max_chunk_size: usize,
-    data_len: usize,
-) -> usize {
-    skip_consumed_row_ends(row_ends, row_end_index, start);
-
-    let target_end = start.saturating_add(max_chunk_size).min(data_len);
-    let first_candidate = *row_end_index;
-    let last_fit = take_row_ends_through_target(row_ends, row_end_index, start, target_end);
-
-    last_fit.unwrap_or_else(|| {
-        row_ends
-            .get(first_candidate)
-            .copied()
-            .filter(|end| *end > start)
-            .unwrap_or(data_len)
-    })
-}
-
-fn skip_consumed_row_ends(row_ends: &[usize], row_end_index: &mut usize, start: usize) {
-    while *row_end_index < row_ends.len() && row_ends[*row_end_index] <= start {
-        *row_end_index += 1;
-    }
-}
-
-fn take_row_ends_through_target(
-    row_ends: &[usize],
-    row_end_index: &mut usize,
-    start: usize,
-    target_end: usize,
-) -> Option<usize> {
-    let mut last_fit = None;
-    while *row_end_index < row_ends.len() && row_ends[*row_end_index] <= target_end {
-        if row_ends[*row_end_index] > start {
-            last_fit = Some(row_ends[*row_end_index]);
-        }
-        *row_end_index += 1;
-    }
-    last_fit
 }
 
 fn clean_row_aligned_chunks_by_max_size(
@@ -583,16 +534,13 @@ fn assemble_cleaned_chunks(
     output
 }
 
-fn collect_row_end_positions(sheet_data: &[u8]) -> Vec<usize> {
-    let mut row_ends = Vec::new();
+fn row_end_positions(sheet_data: &[u8]) -> impl Iterator<Item = usize> + '_ {
     let mut position = 0;
-
-    while let Some(block) = find_next_row_block(sheet_data, position) {
-        row_ends.push(block.end);
+    std::iter::from_fn(move || {
+        let block = find_next_row_block(sheet_data, position)?;
         position = block.end;
-    }
-
-    row_ends
+        Some(position)
+    })
 }
 
 fn find_next_row_block(sheet_data: &[u8], position: usize) -> Option<LocatedRowBlock<'_>> {
@@ -645,7 +593,7 @@ fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {
 
 fn merge_chunk_metrics(target: &mut CleanSheetMetrics, chunk: CleanSheetMetrics) {
     target.kept_cell_states.extend(chunk.kept_cell_states);
-    target.deleted_cell_states.extend(chunk.deleted_cell_states);
+    target.deleted_cell_count += chunk.deleted_cell_count;
 
     target.whitespace_candidates += chunk.whitespace_candidates;
     target.hidden_candidates += chunk.hidden_candidates;
@@ -1016,8 +964,8 @@ mod tests {
             sequential_metrics.kept_cell_states.len()
         );
         assert_eq!(
-            parallel_metrics.deleted_cell_states.len(),
-            sequential_metrics.deleted_cell_states.len()
+            parallel_metrics.deleted_cell_count,
+            sequential_metrics.deleted_cell_count
         );
         assert_eq!(
             parallel_metrics.candidates.len(),
@@ -1119,5 +1067,75 @@ mod tests {
         let cleaned = remove_consecutive_empty_cells(chunk, &state, &mut metrics);
 
         assert_eq!(cleaned.as_ref(), chunk);
+    }
+}
+
+#[cfg(test)]
+mod allocation_regressions {
+    use super::*;
+
+    #[test]
+    fn streaming_chunk_boundaries_match_materialized_reference() {
+        let inputs: &[&[u8]] = &[
+            b"",
+            b"no rows",
+            b"<row r=\"1\"/>",
+            b"prefix<row r=\"1\"/><row r=\"2\"><c r=\"A2\"><v>longer row</v></c></row>suffix",
+            b"<row r=\"1\"/><row r=\"2\"/><row broken",
+        ];
+        for &input in inputs {
+            let ends: Vec<_> = row_end_positions(input).collect();
+            for maximum in 1..=input.len() + 1 {
+                let mut expected = Vec::new();
+                let mut start = 0;
+                if input.len() <= maximum {
+                    expected.push((0, input.len()));
+                    start = input.len();
+                }
+                while start < input.len() {
+                    let target = start.saturating_add(maximum).min(input.len());
+                    let end = ends
+                        .iter()
+                        .copied()
+                        .filter(|end| *end > start && *end <= target)
+                        .last()
+                        .or_else(|| ends.iter().copied().find(|end| *end > start))
+                        .unwrap_or(input.len());
+                    expected.push((start, end));
+                    start = end;
+                }
+                if expected.is_empty() {
+                    expected.push((0, input.len()));
+                }
+                let actual: Vec<_> = plan_row_aligned_chunks_by_max_size(input, maximum)
+                    .into_iter()
+                    .map(|chunk| (chunk.start, chunk.end))
+                    .collect();
+                assert_eq!(actual, expected, "maximum={maximum}, input={input:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn numeric_style_lookup_preserves_canonical_byte_key_behavior() {
+        let state = SheetDataPreprocessState {
+            any_column_has_non_default_fill_or_border: false,
+            active_row_has_non_default_fill_or_border_style: false,
+            fill_or_border_style_ids: [0, 429, u32::MAX].into_iter().collect(),
+        };
+        for id in [b"0".as_slice(), b"429", b"4294967295"] {
+            assert!(state.row_style_id_has_non_default_fill_or_border(id));
+        }
+        for id in [
+            b"".as_slice(),
+            b"0429",
+            b"00",
+            b"+429",
+            b"429x",
+            b"4294967296",
+            b"5",
+        ] {
+            assert!(!state.row_style_id_has_non_default_fill_or_border(id));
+        }
     }
 }

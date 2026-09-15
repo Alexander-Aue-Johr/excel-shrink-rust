@@ -347,7 +347,8 @@ impl VisibleContentBounds {
 pub struct CleanSheetMetrics {
     pub column_definitions: ColumnRangeMap,
     pub kept_cell_states: Vec<CellAttributes>,
-    pub deleted_cell_states: Vec<CellAttributes>,
+    /// Number of removed cells; individual deleted coordinates are not retained.
+    pub deleted_cell_count: usize,
     pub max_merge_cells_column_and_row: Option<CellCoordinate>,
     pub merge_cell_ranges: Vec<CellRange>,
 

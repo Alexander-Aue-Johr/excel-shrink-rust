@@ -491,7 +491,7 @@ fn captured_cell_has_reference(
         .or_else(|| captures.get(2))
         .map_or(b"".as_slice(), |capture| capture.as_bytes());
 
-    extract_attribute_value(attributes, b"r")
+    extract_attribute_value(attributes, b"r=\"")
         .and_then(parse_cell_reference)
         .is_some_and(|reference| references.contains(&reference))
 }
@@ -887,7 +887,8 @@ fn row_is_protected_tail_boundary(row: &[u8], preserve_through_row: Option<u32>)
 
 fn row_number(row: &[u8]) -> Option<u32> {
     let open_end = find_byte_from(row, b'>', 0)?;
-    extract_attribute_value(&row[..open_end], b"r").map(crate::utils::digits_byte_string_to_integer)
+    extract_attribute_value(&row[..open_end], b"r=\"")
+        .map(crate::utils::digits_byte_string_to_integer)
 }
 
 fn find_row_end(data: &[u8], row_start: usize) -> Option<usize> {
@@ -1039,20 +1040,16 @@ fn sheet_protection_chunk_is_enabled(chunk: &[u8]) -> bool {
 }
 
 fn sheet_protection_tag_is_enabled(tag: &[u8]) -> bool {
-    match extract_attribute_value(tag, b"sheet") {
+    match extract_attribute_value(tag, b"sheet=\"") {
         Some(value) if value == b"0" || value.eq_ignore_ascii_case(b"false") => false,
         _ => true,
     }
 }
 
-fn extract_attribute_value<'a>(tag: &'a [u8], attr: &[u8]) -> Option<&'a [u8]> {
-    let mut needle = Vec::with_capacity(attr.len() + 2);
-    needle.extend_from_slice(attr);
-    needle.extend_from_slice(b"=\"");
-
+fn extract_attribute_value<'a>(tag: &'a [u8], needle: &[u8]) -> Option<&'a [u8]> {
     let mut search_start = 0;
     while search_start < tag.len() {
-        let relative = find_bytes(&tag[search_start..], &needle)?;
+        let relative = find_bytes(&tag[search_start..], needle)?;
         let attribute_start = search_start + relative;
 
         if attribute_name_has_left_boundary(tag, attribute_start) {

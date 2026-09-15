@@ -186,7 +186,7 @@ fn parallel_cleanup_trace_preserves_output_and_records_balanced_resources_and_ha
         "writer.buffered_output",
         "sheet.metrics",
         "sheet.metrics.kept_cell_states",
-        "sheet.metrics.deleted_cell_states",
+        "sheet.metrics.deleted_cell_count",
         "batch.analysis_sender",
     ] {
         assert!(

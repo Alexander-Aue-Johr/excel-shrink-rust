@@ -112,3 +112,55 @@ fn unchanged_empty_rows_allocate_nothing_in_both_cleanup_paths() {
     });
     assert_eq!(allocations, 0);
 }
+
+#[test]
+fn visible_bounds_scan_allocates_nothing() {
+    use excel_shrink_core::sheet::ranges::find_visible_content_bounds;
+    let params = params();
+    let columns = Default::default();
+    let xml = br#"<row r="1"><c r="A1"/><c r="Z1"><v>7</v></c></row><row r="2" s="4"><c r="B2" s="5"/></row>"#;
+    let allocations = count_allocations(|| {
+        for _ in 0..10_000 {
+            black_box(find_visible_content_bounds(
+                black_box(xml),
+                &params,
+                &columns,
+            ));
+        }
+    });
+    assert_eq!(allocations, 0);
+    assert_eq!(
+        find_visible_content_bounds(xml, &params, &columns).max_col,
+        Some(26)
+    );
+}
+
+#[test]
+fn formula_detection_allocates_nothing_with_reusable_metrics() {
+    let params = params();
+    let mut metrics = CleanSheetMetrics::default();
+    let raw = br#"<row r="1"><c r="A1"><f t="shared" si="0"/></c></row>"#;
+    let attr = br#" r="1""#;
+    let cells = br#"<c r="A1"><f t="shared" si="0"/></c>"#;
+    black_box(replace_row_bytes(
+        raw,
+        attr,
+        Some(cells),
+        &params,
+        &mut metrics,
+    ));
+    let allocations = count_allocations(|| {
+        for _ in 0..10_000 {
+            metrics.kept_cell_states.clear();
+            black_box(replace_row_bytes(
+                black_box(raw),
+                attr,
+                Some(cells),
+                &params,
+                &mut metrics,
+            ));
+        }
+    });
+    assert_eq!(allocations, 0);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+}

@@ -496,7 +496,7 @@ fn keeps_column_font_style_representative_without_tail_anchor_when_row_has_no_cu
 
     assert_eq!(cleaned, row_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert!(metrics.deleted_cell_states.is_empty());
+    assert!((metrics.deleted_cell_count == 0));
     assert_eq!(metrics.tail_anchor_max_row, None);
 }
 
@@ -514,7 +514,7 @@ fn keeps_hidden_column_font_style_representative_without_tail_anchor_when_row_ha
 
     assert_eq!(cleaned, row_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert!(metrics.deleted_cell_states.is_empty());
+    assert!((metrics.deleted_cell_count == 0));
     assert_eq!(metrics.tail_anchor_max_row, None);
 }
 
@@ -531,7 +531,7 @@ fn keeps_column_font_style_representative_when_row_has_content_cell() {
 
     assert_eq!(cleaned, row_xml);
     assert_eq!(metrics.kept_cell_states.len(), 2);
-    assert!(metrics.deleted_cell_states.is_empty());
+    assert!((metrics.deleted_cell_count == 0));
     assert_eq!(metrics.tail_anchor_max_row, Some(3));
 }
 
@@ -561,7 +561,7 @@ fn keeps_column_font_style_representative_when_only_other_content_cell_is_hidden
 
     assert_eq!(cleaned, row_xml);
     assert_eq!(metrics.kept_cell_states.len(), 2);
-    assert!(metrics.deleted_cell_states.is_empty());
+    assert!((metrics.deleted_cell_count == 0));
 }
 
 #[test]
@@ -582,7 +582,7 @@ fn keeps_column_font_style_representative_when_row_has_visible_fill_cell() {
 
     assert_eq!(cleaned, row_xml);
     assert_eq!(metrics.kept_cell_states.len(), 2);
-    assert!(metrics.deleted_cell_states.is_empty());
+    assert!((metrics.deleted_cell_count == 0));
     assert_eq!(metrics.tail_anchor_max_row, Some(3));
 }
 
@@ -604,7 +604,7 @@ fn visible_row_style_keeps_column_font_style_representative_as_tail_part() {
 
     assert_eq!(cleaned, row_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert!(metrics.deleted_cell_states.is_empty());
+    assert!((metrics.deleted_cell_count == 0));
     assert_eq!(metrics.tail_anchor_max_row, Some(3));
 }
 
@@ -711,7 +711,7 @@ fn invalid_row_header_is_preserved_without_partial_cleanup() {
     );
     assert!(matches!(result, std::borrow::Cow::Borrowed(_)));
     assert_eq!(result.as_ref(), raw);
-    assert!(metrics.kept_cell_states.is_empty() && metrics.deleted_cell_states.is_empty());
+    assert!(metrics.kept_cell_states.is_empty() && (metrics.deleted_cell_count == 0));
 }
 
 #[test]

@@ -128,7 +128,7 @@ fn row_end_containing_row_reference(
     }
 
     let row_tag = &sheet_data[row_start..row_open_end];
-    let row = extract_attr_value(row_tag, b"r").map(digits_byte_string_to_integer)?;
+    let row = extract_attr_value(row_tag, b"r=\"").map(digits_byte_string_to_integer)?;
     if row != expected_row {
         return None;
     }
@@ -151,7 +151,8 @@ fn scan_last_row_end_at_or_before_from(
             break;
         };
         let row_tag = &sheet_data[row_start..row_open_end];
-        let Some(row_number) = extract_attr_value(row_tag, b"r").map(digits_byte_string_to_integer)
+        let Some(row_number) =
+            extract_attr_value(row_tag, b"r=\"").map(digits_byte_string_to_integer)
         else {
             pos = row_open_end;
             continue;
@@ -304,7 +305,7 @@ fn scan_visible_rows_and_cells(
 
 fn visible_row_number(row_tag: &[u8], params: &CleanSheetParameters) -> Option<u32> {
     style_for_tag(row_tag, params).filter(|style| style_has_visible_fill_or_border(style))?;
-    extract_attr_value(row_tag, b"r").map(digits_byte_string_to_integer)
+    extract_attr_value(row_tag, b"r=\"").map(digits_byte_string_to_integer)
 }
 
 fn scan_visible_cells(
@@ -349,7 +350,7 @@ fn cell_is_visible(
 }
 
 fn style_for_tag<'a>(tag: &[u8], params: &'a CleanSheetParameters) -> Option<&'a Xf> {
-    let style_id = extract_attr_value(tag, b"s").map(digits_byte_string_to_integer)?;
+    let style_id = extract_attr_value(tag, b"s=\"").map(digits_byte_string_to_integer)?;
     params.patterns.xfs_by_index.get(&style_id)
 }
 
@@ -422,7 +423,7 @@ fn find_cell_end(data: &[u8], cell_open_end: usize) -> Option<usize> {
 }
 
 fn extract_cell_coordinate(cell_tag: &[u8]) -> Option<(u32, u32)> {
-    let reference = extract_attr_value(cell_tag, b"r")?;
+    let reference = extract_attr_value(cell_tag, b"r=\"")?;
     let split = reference
         .iter()
         .position(|byte| byte.is_ascii_digit())
@@ -434,15 +435,11 @@ fn extract_cell_coordinate(cell_tag: &[u8]) -> Option<(u32, u32)> {
     Some((col, row))
 }
 
-fn extract_attr_value<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
-    let mut needle = Vec::with_capacity(attr_name.len() + 2);
-    needle.extend_from_slice(attr_name);
-    needle.extend_from_slice(b"=\"");
-
+fn extract_attr_value<'a>(data: &'a [u8], needle: &[u8]) -> Option<&'a [u8]> {
     let mut search_start = 0;
 
     while search_start < data.len() {
-        let Some(pos_relative) = find_bytes(&data[search_start..], &needle) else {
+        let Some(pos_relative) = find_bytes(&data[search_start..], needle) else {
             return None;
         };
         let pos = search_start + pos_relative;
@@ -495,7 +492,7 @@ fn row_end_at_or_before_position(sheet_data: &[u8], pos: usize) -> Option<RowEnd
 fn row_end_from_start(sheet_data: &[u8], row_start: usize) -> Option<RowEndPosition> {
     let row_open_end = find_tag_open_end(sheet_data, row_start)?;
     let row_tag = &sheet_data[row_start..row_open_end];
-    let row = extract_attr_value(row_tag, b"r").map(digits_byte_string_to_integer)?;
+    let row = extract_attr_value(row_tag, b"r=\"").map(digits_byte_string_to_integer)?;
     let end = find_row_end(sheet_data, row_open_end)?;
 
     Some(RowEndPosition { row, end })

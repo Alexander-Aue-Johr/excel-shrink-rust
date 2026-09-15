@@ -77,7 +77,7 @@ impl EmptyStyleRepresentativePolicy {
 
 struct CleanCellsResult<'a> {
     row_content: Cow<'a, [u8]>,
-    tentative_style_representatives: Vec<TentativeStyleRepresentative>,
+    tentative_style_representatives: Vec<TentativeStyleRepresentative<'a>>,
     cells_removed: bool,
     has_kept_content: bool,
     max_kept_col: Option<u32>,
@@ -85,19 +85,19 @@ struct CleanCellsResult<'a> {
 }
 
 #[derive(Debug, Clone)]
-struct TentativeStyleRepresentative {
-    reference_attr: Vec<u8>,
+struct TentativeStyleRepresentative<'a> {
+    reference_attr: &'a [u8],
     col: u32,
     row: u32,
 }
 
-struct RepresentativeRemovalResult {
+struct RepresentativeRemovalResult<'a> {
     row_content: Vec<u8>,
-    removed: Vec<RemovedStyleRepresentative>,
+    removed: Vec<RemovedStyleRepresentative<'a>>,
 }
 
-struct RemovedStyleRepresentative {
-    representative: TentativeStyleRepresentative,
+struct RemovedStyleRepresentative<'a> {
+    representative: TentativeStyleRepresentative<'a>,
     bytes_removed: usize,
 }
 
@@ -126,7 +126,7 @@ impl EmptyStyleRepresentativeDecision {
     }
 }
 
-struct RowCellCleanupState {
+struct RowCellCleanupState<'a> {
     output: Option<Vec<u8>>,
     position: usize,
     cells_removed: bool,
@@ -134,11 +134,11 @@ struct RowCellCleanupState {
     max_kept_col: Option<u32>,
     kept_cells_start: usize,
     kept_default_style_cell: bool,
-    tentative_style_representatives: Vec<TentativeStyleRepresentative>,
+    tentative_style_representatives: Vec<TentativeStyleRepresentative<'a>>,
     kept_represented_style_ids: std::collections::HashSet<u32>,
 }
 
-impl RowCellCleanupState {
+impl<'a> RowCellCleanupState<'a> {
     fn new(kept_cells_start: usize) -> Self {
         Self {
             output: None,
@@ -201,7 +201,7 @@ impl RowCellCleanupState {
 
     fn record_kept_empty_representative(
         &mut self,
-        cell: &ParsedCell<'_, '_>,
+        cell: &ParsedCell<'a, '_>,
         decision: EmptyStyleRepresentativeDecision,
         policy: EmptyStyleRepresentativePolicy,
     ) {
@@ -214,14 +214,14 @@ impl RowCellCleanupState {
         if decision.is_tentative(policy) {
             self.tentative_style_representatives
                 .push(TentativeStyleRepresentative {
-                    reference_attr: cell.reference_attr.to_vec(),
+                    reference_attr: cell.reference_attr,
                     col: cell.col_num,
                     row: digits_byte_string_to_integer(cell.row),
                 });
         }
     }
 
-    fn finish<'a>(self, row_content: &'a [u8]) -> CleanCellsResult<'a> {
+    fn finish(self, row_content: &'a [u8]) -> CleanCellsResult<'a> {
         let row_content = if let Some(mut output) = self.output {
             output.extend_from_slice(&row_content[self.position..]);
             Cow::Owned(output)
@@ -375,7 +375,7 @@ fn remove_unneeded_style_representatives<'a>(
 
 fn record_style_representative_removal(
     metrics: &mut CleanSheetMetrics,
-    removed: &[RemovedStyleRepresentative],
+    removed: &[RemovedStyleRepresentative<'_>],
     kept_cells_start: usize,
 ) {
     for removed_cell in removed {
@@ -517,7 +517,7 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     style_policy: EmptyStyleRepresentativePolicy,
-    state: &mut RowCellCleanupState,
+    state: &mut RowCellCleanupState<'a>,
     timings: &mut CellTimings<SAMPLED>,
     row: &RowView<'_, '_>,
 ) -> Cow<'a, [u8]> {
@@ -573,7 +573,7 @@ fn select_empty_style_representative(
     metrics: &CleanSheetMetrics,
     has_cell_content: bool,
     policy: EmptyStyleRepresentativePolicy,
-    state: &RowCellCleanupState,
+    state: &RowCellCleanupState<'_>,
 ) -> EmptyStyleRepresentativeDecision {
     let keep_font_only = policy.keep_font_styles
         && empty_cell_has_no_empty_cell_visible_style(cell, params, has_cell_content)
@@ -646,16 +646,16 @@ fn empty_styled_cell_is_inside_merge_range(
         .map_or(true, |style| style.has_no_empty_cell_visible_style)
 }
 
-fn remove_tentative_style_representatives(
+fn remove_tentative_style_representatives<'a>(
     mut row_content: Vec<u8>,
-    representatives: Vec<TentativeStyleRepresentative>,
-) -> RepresentativeRemovalResult {
+    representatives: Vec<TentativeStyleRepresentative<'a>>,
+) -> RepresentativeRemovalResult<'a> {
     let mut removed = Vec::new();
     let mut search_start = 0usize;
 
     for representative in representatives {
         let Some(reference_start) =
-            find_bytes_from(&row_content, &representative.reference_attr, search_start)
+            find_bytes_from(&row_content, representative.reference_attr, search_start)
         else {
             continue;
         };
@@ -705,7 +705,7 @@ fn find_cell_end_from_start(row_content: &[u8], cell_start: usize) -> Option<usi
 
 fn remove_tentative_representatives_from_metrics(
     metrics: &mut CleanSheetMetrics,
-    removed: &[RemovedStyleRepresentative],
+    removed: &[RemovedStyleRepresentative<'_>],
     kept_cells_start: usize,
 ) {
     for removed in removed {
@@ -720,14 +720,7 @@ fn remove_tentative_representatives_from_metrics(
                 metrics.remove_tail_anchor_row(removed_cell.row);
             }
         }
-        metrics
-            .deleted_cell_states
-            .push(crate::models::CellAttributes {
-                col: removed.representative.col,
-                row: removed.representative.row,
-                kept_only_for_protection: false,
-                is_tail_anchor: false,
-            });
+        metrics.deleted_cell_count += 1;
     }
 }
 

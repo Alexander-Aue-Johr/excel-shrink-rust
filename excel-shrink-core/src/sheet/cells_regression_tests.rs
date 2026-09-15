@@ -260,7 +260,7 @@ fn keeps_hidden_cell_with_content_without_advanced_cleanup() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -281,7 +281,7 @@ fn removes_empty_hidden_cell_without_style_representative() {
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -303,8 +303,9 @@ fn keeps_empty_hidden_column_cell_when_style_has_visible_fill() {
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
     assert_eq!(cleaned.as_ref(), cell_xml);
+    assert!(matches!(cleaned, std::borrow::Cow::Borrowed(_)));
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -329,7 +330,7 @@ fn keeps_empty_cell_when_apply_font_differs_from_column_apply_font() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
     assert_eq!(metrics.tail_anchor_max_row, None);
 }
 
@@ -355,7 +356,7 @@ fn removes_empty_hidden_column_cell_when_apply_font_differs_from_column_apply_fo
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
     assert_eq!(metrics.tail_anchor_max_row, None);
 }
 
@@ -389,7 +390,7 @@ fn removes_empty_hidden_column_cell_when_only_font_differs_from_column_font() {
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
     assert_eq!(metrics.tail_anchor_max_row, None);
 }
 
@@ -415,7 +416,7 @@ fn keeps_empty_cell_when_nonzero_font_differs_from_column_without_cell_apply_fon
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
     assert_eq!(metrics.tail_anchor_max_row, None);
 }
 
@@ -441,7 +442,7 @@ fn keeps_empty_cell_when_apply_font_resets_column_font_to_default() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
     assert_eq!(metrics.tail_anchor_max_row, None);
 }
 
@@ -467,7 +468,7 @@ fn keeps_empty_cell_when_apply_font_differs_from_column_font_without_column_appl
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
     assert_eq!(metrics.tail_anchor_max_row, Some(3));
 }
 
@@ -493,7 +494,7 @@ fn removes_empty_cell_when_apply_font_matches_column_apply_font() {
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -518,7 +519,7 @@ fn removes_empty_cell_when_apply_font_matches_column_font_without_column_apply_f
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -543,7 +544,7 @@ fn removes_empty_cell_when_default_font_differs_from_column_without_cell_apply_f
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -582,7 +583,7 @@ fn keeps_empty_default_font_cell_in_auto_height_row_when_column_font_differs() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -626,7 +627,7 @@ fn keeps_empty_cell_in_auto_height_row_when_column_font_matches_cell_but_row_fon
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -651,7 +652,7 @@ fn removes_empty_cell_when_default_font_and_same_fill_do_not_apply_font() {
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -677,7 +678,7 @@ fn opt_out_removes_empty_cell_when_apply_font_differs_from_column_apply_font() {
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -693,7 +694,7 @@ fn keeps_formula_cell_with_attributes_and_empty_cached_value() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -716,7 +717,7 @@ fn keeps_empty_cell_when_style_applies_default_border_override() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -741,7 +742,7 @@ fn removes_empty_cell_when_default_border_override_matches_borderless_column_sty
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -776,7 +777,7 @@ fn keeps_empty_cell_when_default_border_override_clears_visible_row_border() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -799,7 +800,7 @@ fn keeps_empty_cell_when_style_applies_default_fill_override() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -824,7 +825,7 @@ fn removes_empty_cell_when_default_fill_override_matches_fillless_column_style()
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -856,7 +857,7 @@ fn keeps_empty_cell_when_default_fill_override_clears_visible_row_fill() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -884,7 +885,7 @@ fn does_not_mark_hidden_formula_cell_as_advanced_cleanup_candidate() {
     assert_eq!(metrics.hidden_candidates, 0);
     assert_eq!(metrics.candidates.len(), 0);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -1100,7 +1101,7 @@ fn keeps_empty_font_only_cell_when_row_has_non_default_fill() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -1129,7 +1130,7 @@ fn removes_empty_cell_with_fill_zero_when_column_has_non_default_fill_without_ap
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -1174,7 +1175,7 @@ fn removes_empty_cell_when_row_and_column_apply_same_fill_as_cell() {
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -1221,7 +1222,7 @@ fn keeps_empty_cell_when_row_and_column_apply_fill_and_only_column_differs() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -1255,7 +1256,7 @@ fn removes_empty_cell_when_row_applies_same_visible_fill_as_cell() {
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -1282,7 +1283,7 @@ fn removes_empty_cell_when_column_applies_same_visible_fill_as_cell() {
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]
@@ -1299,7 +1300,7 @@ fn keeps_empty_cell_when_no_row_or_column_apply_fill_and_cell_has_visible_fill()
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -1333,7 +1334,7 @@ fn keeps_empty_cell_when_row_applies_fill_and_cell_overrides_with_default_fill()
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 0);
 }
 
 #[test]
@@ -1466,7 +1467,7 @@ fn traces_d1048576_removed_when_empty_cell_style_only_affects_font() {
 
     assert!(cleaned.is_empty());
     assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_states.len(), 1);
+    assert_eq!(metrics.deleted_cell_count, 1);
     assert_eq!(
         cleaning_trace::recorded_cell_decisions(),
         vec![RecordedCellDecision {

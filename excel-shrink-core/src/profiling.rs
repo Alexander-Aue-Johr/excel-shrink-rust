@@ -67,7 +67,7 @@ pub fn drop_sheet_metrics(metrics: crate::models::CleanSheetMetrics) {
         fields!(
             column_definitions,
             kept_cell_states,
-            deleted_cell_states,
+            deleted_cell_count,
             max_merge_cells_column_and_row,
             merge_cell_ranges,
             whitespace_candidates,
