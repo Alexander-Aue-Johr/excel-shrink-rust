@@ -65,6 +65,26 @@ python3 tools/profiling/summarize.py .tmp/profiles/<recording>.json
   begins. This is not total RSS or all buffers alive inside the cleaner.
 - `xml_rebuild`, `cleanup_candidates`, `changed_rows`: work volume at deferred passes.
 
+### Inside streaming preprocessing
+
+`preprocess_sheet_data_node` includes stream reads while in the sheet-data state.
+Its new child phases separate:
+
+- `preprocess_read_decompress`: `Read::read`, including ZIP decompression for XLSX input; not pure decompressor CPU time. Its `requested_bytes` and `bytes_read` arguments show buffer size and actual uncompressed bytes returned (zero means EOF; a failed read can leave `bytes_read` absent).
+- `preprocess_append_input`: copying newly read bytes into the input buffer, including growth.
+- `preprocess_find_sheet_data_end` / `preprocess_find_row_boundary`: locating a processable prefix.
+- `preprocess_sheet_data_prefix`: inclusive parent of preprocessing a prefix.
+- `preprocess_check_cdata`: unsupported CDATA scan.
+- `preprocess_check_style_risk`: row/column style safety checks, only when early empty-cell cleanup is enabled.
+- `preprocess_remove_empty_cells`: cell scanning and optional rewritten output construction; absent when style risk skips cleanup.
+- `preprocess_append_result`: appending the processed prefix to retained sheet XML, including allocation/growth.
+- `preprocess_retain_buffer_suffix`: copying the unconsumed suffix and releasing the old input buffer.
+
+Read/input/suffix phases can also occur under other streaming states. These are
+per-buffer phases, not per-cell events. They measure inclusive wall time; do not
+add `preprocess_sheet_data_prefix` to its children. They do not separate allocator
+CPU time from copying, or cell scanning from rewritten-buffer creation.
+
 ### Before and after explicit drops
 
 Explicit drops in the cleanup pipeline and row/chunk processing emit `before_drop`
@@ -289,3 +309,15 @@ binary, no debugger/trace) measured median summed cleanup time 9.737 s before an
 across 72 case runs. 242 workspace tests passed with the corpus wrapper filtered;
 the corpus cases were executed by the benchmark runner. Measurements are specific
 to these inputs and host. Artifacts: `.tmp/profiles/next-three/columns/`.
+
+### Visible sheet labels
+
+Sheet-owned spans use labels such as `[sheet84] clean_range_chunk`, including child phases inherited from that sheet. The number comes from the ZIP part `xl/worksheets/sheet84.xml`, not the workbook tab order. `args.sheet` and `args.xlsx` retain full identity; `args.chunk` retains the chunk index. `args.phase_name` preserves the original phase for grouping across sheets. The summary script supports both old and prefixed traces. Across workbooks, use `args.xlsx` to distinguish identical sheet labels.
+
+### Reusable reference scanner
+
+`PreparedReferenceScanner::new` prepares the complete sheet-name mapping and regex references once. Its `scan(&self, ...)` borrows that immutable context; concurrent callers use separate `ProtectedWorkbookRefs` outputs. Include every sheet name when preparing, even if later scans only examine a subset. The compatibility function still prepares per call. The CLI prepares once before initial sheet processing. Sheets without deferred candidates publish their reference information and finalize early. Early scans currently serialize updates to the shared protection map; immutable scanner lookup data needs no lock itself. Remaining sheets finalize after the aggregate reference check.
+
+### Byte lookup experiment
+
+Prepared scanner sheet-name keys and retained calcChain cell-reference keys use owned byte vectors, with borrowed byte lookups. Only escaped sheet names allocate a temporary lookup buffer. Reference storage still allocates per distinct address. Checked unsigned ASCII parsing avoids UTF-8 intermediates in numeric cleanup fields; malformed-header UTF-8 fallback is retained. Final untraced nine-case comparison: 6919.5 → 6916.5 ms median, no demonstrated overall speedup; all 72 outputs match per ZIP entry. Artifacts: `.tmp/profiles/byte-lookups/final/`.
