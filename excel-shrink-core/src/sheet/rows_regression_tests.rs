@@ -800,3 +800,90 @@ fn spans_match_numeric_row_references_with_leading_zeroes() {
         br#"<row r="03" spans="1:1"><c r="A3"><v>keep</v></c></row>"#
     );
 }
+
+fn reference_cell_block(bytes: &[u8]) -> Option<(usize, bool)> {
+    let tag_end = crate::xml::find_byte_from(bytes, b'>', 0)?;
+    let end = if tag_end > 0 && bytes[tag_end - 1] == b'/' {
+        tag_end + 1
+    } else {
+        tag_end + 1 + crate::xml::find_bytes(&bytes[tag_end + 1..], b"</c>")? + 4
+    };
+    Some((end, crate::sheet::cells::has_content(&bytes[..end])))
+}
+
+#[test]
+fn fused_cell_scan_preserves_content_and_boundary_semantics() {
+    let headers = ["<c r=\"A1\">", "<c a=\"<v>\">", "<c>"];
+    let contents = [
+        "",
+        "<v>1</v>",
+        "<f/>",
+        "<f x=\"1\">A1</f>",
+        "<is><t>text</t></is>",
+        "<foo/>",
+        "<f\tx=\"1\"/>",
+        "<!-- <v> -->",
+        "<extension/>",
+        "<is >x</is>",
+    ];
+    for header in headers {
+        for content in contents {
+            let xml = format!("{header}{content}</c><c><v>next</v></c>");
+            for end in 0..=xml.len() {
+                let bytes = &xml.as_bytes()[..end];
+                assert_eq!(
+                    super::parse_cell_block(bytes, 0).map(|c| (c.end, c.has_content)),
+                    reference_cell_block(bytes)
+                );
+            }
+        }
+    }
+    for bytes in [
+        b"<c/>".as_slice(),
+        b"<c a=\"<v>\"/>",
+        b"<c/><c><v>next</v></c>",
+    ] {
+        assert_eq!(
+            super::parse_cell_block(bytes, 0).map(|c| (c.end, c.has_content)),
+            reference_cell_block(bytes)
+        );
+    }
+}
+
+#[test]
+#[ignore = "manual timing with CELL_SCAN_FIXTURE; no timing assertion"]
+fn benchmark_fused_cell_scan() {
+    let bytes =
+        std::fs::read(std::env::var("CELL_SCAN_FIXTURE").expect("set CELL_SCAN_FIXTURE")).unwrap();
+    let mut cells = Vec::new();
+    let mut position = 0;
+    while let Some(relative) = crate::xml::find_bytes(&bytes[position..], b"<c ") {
+        let start = position + relative;
+        let (length, _) = reference_cell_block(&bytes[start..]).unwrap();
+        cells.push(&bytes[start..start + length]);
+        position = start + length;
+    }
+    assert!(!cells.is_empty());
+    for candidate in [false, true, true, false, true, false, false, true] {
+        let start = std::time::Instant::now();
+        let mut checksum = 0;
+        for _ in 0..100 {
+            for &cell in &cells {
+                let cell = std::hint::black_box(cell);
+                let (end, content) = if candidate {
+                    let block = super::parse_cell_block(cell, 0).unwrap();
+                    (block.end, block.has_content)
+                } else {
+                    reference_cell_block(cell).unwrap()
+                };
+                checksum += end + usize::from(content);
+            }
+        }
+        std::hint::black_box(checksum);
+        eprintln!(
+            "candidate={candidate} cells={} elapsed_us={} checksum={checksum}",
+            cells.len(),
+            start.elapsed().as_micros()
+        );
+    }
+}

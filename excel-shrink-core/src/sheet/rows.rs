@@ -1,8 +1,8 @@
 use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause};
 use crate::profiling;
 use crate::sheet::cells::{
-    parsed_cell_has_content, parsed_empty_cell_has_effective_fill_or_border,
-    replace_parsed_cell_with_empty_style_policy, ParsedCell,
+    parsed_empty_cell_has_effective_fill_or_border, replace_parsed_cell_with_empty_style_policy,
+    ParsedCell,
 };
 use crate::sheet::row_view::RowView;
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
@@ -103,6 +103,7 @@ struct RemovedStyleRepresentative<'a> {
 
 #[derive(Debug, Clone, Copy)]
 struct ParsedCellBlock<'a> {
+    has_content: bool,
     start: usize,
     end: usize,
     raw: &'a [u8],
@@ -496,20 +497,45 @@ fn parse_cell_block(row_content: &[u8], cell_start: usize) -> Option<ParsedCellB
     let attr_start = cell_start + b"<c".len();
     let attr_end = if self_closing { tag_end - 1 } else { tag_end };
 
-    let cell_end = if self_closing {
-        tag_end + 1
+    let (cell_end, mut has_content) = if self_closing {
+        (tag_end + 1, false)
     } else {
-        let content_start = tag_end + 1;
-        let close_rel = find_bytes(&row_content[content_start..], b"</c>")?;
-        content_start + close_rel + b"</c>".len()
+        scan_cell_content(row_content, tag_end + 1)?
     };
+    // Preserve the previous substring behavior even for malformed headers
+    // containing literal '<' bytes. Valid XML attribute values escape these.
+    if memchr::memchr(b'<', &row_content[attr_start..tag_end]).is_some() {
+        has_content = crate::sheet::cells::has_content(&row_content[cell_start..cell_end]);
+    }
 
     Some(ParsedCellBlock {
+        has_content,
         start: cell_start,
         end: cell_end,
         raw: &row_content[cell_start..cell_end],
         attr: &row_content[attr_start..attr_end],
     })
+}
+
+/// Inspect markup until the closing cell or the first content marker. After a
+/// marker is known, only the closing-cell search remains necessary.
+fn scan_cell_content(bytes: &[u8], mut position: usize) -> Option<(usize, bool)> {
+    while let Some(relative) = memchr::memchr(b'<', &bytes[position..]) {
+        position += relative;
+        let tail = &bytes[position..];
+        if tail.starts_with(b"</c>") {
+            return Some((position + 4, false));
+        }
+        if tail.starts_with(b"<v>")
+            || tail.starts_with(b"<is>")
+            || (tail.starts_with(b"<f") && matches!(tail.get(2), Some(b' ' | b'/' | b'>')))
+        {
+            let end = find_bytes(tail, b"</c>")?;
+            return Some((position + end + 4, true));
+        }
+        position += 1;
+    }
+    None
 }
 
 fn clean_cell_block<'a, const SAMPLED: bool>(
@@ -525,7 +551,7 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
         timings.measure(CellStage::ParseAttributesAndContent, || {
             let mut cell = parse_cell_from_parts(block.raw, block.attr)?;
             cell.row_view = Some(row);
-            let has_content = parsed_cell_has_content(&cell);
+            let has_content = block.has_content;
             Some((cell, has_content))
         })
     else {

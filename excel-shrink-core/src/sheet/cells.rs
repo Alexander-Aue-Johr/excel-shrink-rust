@@ -879,7 +879,7 @@ fn generate_self_closing_cell_xml(cell_attr: &[u8]) -> Vec<u8> {
     out
 }
 
-fn has_content(cell: &[u8]) -> bool {
+pub(crate) fn has_content(cell: &[u8]) -> bool {
     crate::xml::find_bytes(cell, b"<v>").is_some()
         || has_formula(cell)
         || crate::xml::find_bytes(cell, b"<is>").is_some()

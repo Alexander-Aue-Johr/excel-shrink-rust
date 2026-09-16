@@ -251,3 +251,26 @@ across all eight outputs. 241 workspace tests passed, six existing tests ignored
 full corpus suite filtered. This is evidence for the tested workbook/profile,
 not a guarantee for every input. No additional smoke corpus inputs were available
 locally. Reports, saved binaries and hashes: `.tmp/profiles/finder-reuse/`.
+
+### Combine cell-boundary and content inspection
+
+Row cleanup now detects value/formula/inline-string markers while locating the
+cell block's end. Self-closing cells need no separate content search. Once a
+content marker is found, the remaining scan only locates `</c>`. Literal '<' bytes
+in malformed headers retain the old substring-based fallback. The regex-based
+individual-cell entry point retains its existing content check. Sampled cell
+profiling now attributes content detection to `ParseBlock`; comparisons with old
+`ParseAttributesAndContent` timings must account for this move.
+
+A manual optimized benchmark over 65,711 real cells from four worksheets measured
+median 241.777 ms before and 187.099 ms after for 100 repetitions (22.6% lower).
+Run the ignored test `benchmark_fused_cell_scan` with `CELL_SCAN_FIXTURE` pointing
+to XML containing complete `<c ...>` blocks. It has no timing assertion.
+
+An untraced optimized ABBA/BAAB full-workbook comparison measured 4.120 s before
+and 3.581 s after (13.1% lower median, four runs per binary). Both blocks improved;
+all 225 unpacked ZIP entries match across eight outputs. 242 workspace tests pass;
+six pre-existing tests and the manual benchmark are ignored in normal runs, and
+the full corpus suite is filtered. The manual benchmark was run separately.
+Results cover one workbook/profile and are not a general speed guarantee.
+Artifacts and binary hashes: `.tmp/profiles/fused-cell-scan/`.
