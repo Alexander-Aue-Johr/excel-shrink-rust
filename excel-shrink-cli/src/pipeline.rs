@@ -312,7 +312,7 @@ enum ArchiveEntryPlan {
 struct SheetFinalizer<'a> {
     tx: &'a mpsc::Sender<QueuedWriteJob>,
     analysis_tx: Option<&'a mpsc::Sender<AnalysisCsvRow>>,
-    known_cells_by_sheet_file: &'a Mutex<HashMap<String, HashSet<String>>>,
+    known_cells_by_sheet_file: &'a Mutex<HashMap<String, HashSet<Vec<u8>>>>,
     protected_refs: &'a ProtectedWorkbookRefs,
     safe_to_clean: bool,
     attribution_safe_analysis: bool,
@@ -598,6 +598,12 @@ fn extract_rid_to_target(workbook_rels_xml: &[u8]) -> HashMap<String, String> {
 }
 
 fn extract_attr_string(element: &[u8], attr_name: &[u8]) -> Option<String> {
+    std::str::from_utf8(extract_attr_bytes(element, attr_name)?)
+        .ok()
+        .map(str::to_owned)
+}
+
+fn extract_attr_bytes<'a>(element: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {
     let mut pos = 0;
     while pos + attr_name.len() + 2 <= element.len() {
         let rel = find_bytes(&element[pos..], attr_name)?;
@@ -611,9 +617,7 @@ fn extract_attr_string(element: &[u8], attr_name: &[u8]) -> Option<String> {
                 let value_start = quote_pos + 1;
                 let value_end =
                     value_start + element[value_start..].iter().position(|b| *b == b'"')?;
-                return std::str::from_utf8(&element[value_start..value_end])
-                    .ok()
-                    .map(str::to_string);
+                return Some(&element[value_start..value_end]);
             }
         }
         pos = after_name;
@@ -659,16 +663,14 @@ fn build_sheet_id_to_file_map(
     map
 }
 
-fn collect_cell_refs(xml: &[u8]) -> HashSet<String> {
+fn collect_cell_refs(xml: &[u8]) -> HashSet<Vec<u8>> {
     let _profile = profiling::phase("collect_cell_references", "", "");
     let mut refs = HashSet::new();
     let re = regex::bytes::Regex::new(r#"(?s)<c\b[^>]*\br="([A-Z]+\d+)"[^>]*(?:/|>)"#).unwrap();
 
     for caps in re.captures_iter(xml) {
         if let Some(reference) = caps.get(1) {
-            if let Ok(reference) = std::str::from_utf8(reference.as_bytes()) {
-                refs.insert(reference.to_string());
-            }
+            refs.insert(reference.as_bytes().to_vec());
         }
     }
 
@@ -678,7 +680,7 @@ fn collect_cell_refs(xml: &[u8]) -> HashSet<String> {
 fn clean_calc_chain(
     calc_chain_xml: Vec<u8>,
     sheet_id_to_file: &HashMap<String, String>,
-    known_cells_by_sheet_file: &HashMap<String, HashSet<String>>,
+    known_cells_by_sheet_file: &HashMap<String, HashSet<Vec<u8>>>,
 ) -> Vec<u8> {
     if known_cells_by_sheet_file.is_empty() {
         return calc_chain_xml;
@@ -697,13 +699,15 @@ fn clean_calc_chain(
             current_sheet_id = Some("1".to_string());
         }
 
-        let remove = extract_attr_string(entry, b"r").is_some_and(|cell_ref| {
-            current_sheet_id
-                .as_deref()
-                .and_then(|sheet_id| sheet_id_to_file.get(sheet_id))
-                .and_then(|sheet_file| known_cells_by_sheet_file.get(sheet_file))
-                .is_some_and(|known_cells| !known_cells.contains(&cell_ref))
-        });
+        let remove = extract_attr_bytes(entry, b"r")
+            .filter(|value| value.is_ascii() || std::str::from_utf8(value).is_ok())
+            .is_some_and(|cell_ref| {
+                current_sheet_id
+                    .as_deref()
+                    .and_then(|sheet_id| sheet_id_to_file.get(sheet_id))
+                    .and_then(|sheet_file| known_cells_by_sheet_file.get(sheet_file))
+                    .is_some_and(|known_cells| !known_cells.contains(cell_ref))
+            });
 
         out.extend_from_slice(&calc_chain_xml[last_end..m.start()]);
         if !remove {
@@ -2166,7 +2170,7 @@ impl SheetFinalizer<'_> {
         original_size: usize,
         cleaned_size: usize,
         reduction: usize,
-        cleaned_cell_refs: HashSet<String>,
+        cleaned_cell_refs: HashSet<Vec<u8>>,
         zip_bytes: Vec<u8>,
     ) {
         let queue_phase = profiling::phase(
@@ -2251,7 +2255,7 @@ fn queue_calculation_chain(
     calc_chain_part: Option<(usize, CompressionMethod, Vec<u8>)>,
     workbook_xml: Option<&[u8]>,
     workbook_rels: Option<&[u8]>,
-    known_cells_by_sheet_file: &Mutex<HashMap<String, HashSet<String>>>,
+    known_cells_by_sheet_file: &Mutex<HashMap<String, HashSet<Vec<u8>>>>,
     tx: &mpsc::Sender<QueuedWriteJob>,
     input_display: &str,
     store_output: bool,

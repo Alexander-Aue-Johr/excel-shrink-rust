@@ -187,7 +187,7 @@ pub fn scan_for_references_by_sheet(
 /// Immutable workbook context reusable across independent, possibly concurrent scans.
 /// Supply all sheet names when preparing: scan() does not extend the mapping.
 pub struct PreparedReferenceScanner<'a> {
-    sheet_name_to_file: HashMap<String, String>,
+    sheet_name_to_file: HashMap<Vec<u8>, String>,
     sheet_files_by_index: Option<&'a [String]>,
     patterns: SheetScanPatterns,
 }
@@ -229,20 +229,25 @@ impl<'a> PreparedReferenceScanner<'a> {
 fn build_sheet_name_to_file_map(
     buffers: &[SheetScanBuffer<'_>],
     seed: Option<&HashMap<String, String>>,
-) -> HashMap<String, String> {
-    let mut map = seed.cloned().unwrap_or_default();
-    map.extend(
-        buffers
-            .iter()
-            .map(|buffer| (buffer.sheet_name.to_string(), buffer.sheet_file.to_string())),
-    );
+) -> HashMap<Vec<u8>, String> {
+    let mut map: HashMap<Vec<u8>, String> = seed
+        .into_iter()
+        .flat_map(|map| map.iter())
+        .map(|(name, file)| (name.as_bytes().to_vec(), file.clone()))
+        .collect();
+    map.extend(buffers.iter().map(|buffer| {
+        (
+            buffer.sheet_name.as_bytes().to_vec(),
+            buffer.sheet_file.to_string(),
+        )
+    }));
     map
 }
 
 fn scan_sheet_buffer(
     buffer: &SheetScanBuffer<'_>,
     protected_refs: &mut ProtectedWorkbookRefs,
-    sheet_name_to_file: &HashMap<String, String>,
+    sheet_name_to_file: &HashMap<Vec<u8>, String>,
     sheet_files_by_index: Option<&[String]>,
     patterns: &SheetScanPatterns,
 ) -> Option<String> {
@@ -267,7 +272,7 @@ fn scan_sheet_buffer(
 fn scan_sheet_formulas(
     buffer: &SheetScanBuffer<'_>,
     protected_refs: &mut ProtectedWorkbookRefs,
-    sheet_name_to_file: &HashMap<String, String>,
+    sheet_name_to_file: &HashMap<Vec<u8>, String>,
     patterns: &SheetScanPatterns,
 ) -> Option<String> {
     for captures in patterns.formula.captures_iter(buffer.xml) {
@@ -289,7 +294,7 @@ fn scan_sheet_formulas(
 fn scan_sheet_defined_names(
     buffer: &SheetScanBuffer<'_>,
     protected_refs: &mut ProtectedWorkbookRefs,
-    sheet_name_to_file: &HashMap<String, String>,
+    sheet_name_to_file: &HashMap<Vec<u8>, String>,
     sheet_files_by_index: Option<&[String]>,
     patterns: &SheetScanPatterns,
 ) -> Option<String> {
@@ -335,7 +340,7 @@ fn default_defined_name_sheet<'a>(
 fn scan_sheet_reference_attributes(
     buffer: &SheetScanBuffer<'_>,
     protected_refs: &mut ProtectedWorkbookRefs,
-    sheet_name_to_file: &HashMap<String, String>,
+    sheet_name_to_file: &HashMap<Vec<u8>, String>,
     patterns: &SheetScanPatterns,
 ) {
     for captures in patterns.reference_attribute.captures_iter(buffer.xml) {
@@ -384,10 +389,8 @@ fn extract_coordinates(text: &[u8], protected: &mut ProtectedCellRefs, coord_re:
         };
 
         let col = letters_byte_string_to_integer(col_bytes);
-        if let Ok(row_str) = std::str::from_utf8(row_bytes) {
-            if let Ok(row) = row_str.parse::<u32>() {
-                protected.insert_cell(col, row);
-            }
+        if let Some(row) = crate::utils::parse_unsigned_bytes::<u32>(row_bytes) {
+            protected.insert_cell(col, row);
         }
     }
 }
@@ -411,7 +414,7 @@ fn defined_name_should_be_ignored(attrs: &[u8]) -> bool {
 fn extract_tokens_for_sheet(
     text: &[u8],
     default_sheet_for_unprefixed: Option<&str>,
-    sheet_name_to_file: &std::collections::HashMap<String, String>,
+    sheet_name_to_file: &std::collections::HashMap<Vec<u8>, String>,
     protected: &mut ProtectedWorkbookRefs,
     token_re: &Regex,
 ) {
@@ -439,7 +442,7 @@ fn extract_range(text: &[u8], protected: &mut ProtectedCellRefs) -> bool {
 fn extract_range_for_sheet(
     text: &[u8],
     current_sheet: &str,
-    sheet_name_to_file: &std::collections::HashMap<String, String>,
+    sheet_name_to_file: &std::collections::HashMap<Vec<u8>, String>,
     protected: &mut ProtectedWorkbookRefs,
 ) {
     for token in text.split(u8::is_ascii_whitespace) {
@@ -468,7 +471,7 @@ fn extract_reference_token_bytes(token: &[u8], protected: &mut ProtectedCellRefs
 fn extract_reference_token_for_sheet_bytes(
     token: &[u8],
     default_sheet_for_unprefixed: Option<&str>,
-    sheet_name_to_file: &HashMap<String, String>,
+    sheet_name_to_file: &HashMap<Vec<u8>, String>,
     protected: &mut ProtectedWorkbookRefs,
 ) {
     let (sheet_prefix, raw_reference) = split_sheet_prefix_bytes(trim_ascii(token));
@@ -534,15 +537,27 @@ fn split_sheet_prefix_bytes(reference: &[u8]) -> (Option<&[u8]>, &[u8]) {
 
 fn resolve_sheet_name<'a>(
     mut sheet: &[u8],
-    sheet_name_to_file: &'a HashMap<String, String>,
+    sheet_name_to_file: &'a HashMap<Vec<u8>, String>,
 ) -> Option<&'a str> {
     if sheet.first() == Some(&b'\'') && sheet.last() == Some(&b'\'') && sheet.len() >= 2 {
         sheet = &sheet[1..sheet.len() - 1];
     }
-    let s = std::str::from_utf8(sheet).unwrap_or("");
+    if !sheet.windows(2).any(|pair| pair == b"''") {
+        return sheet_name_to_file.get(sheet).map(String::as_str);
+    }
+    let mut unescaped = Vec::with_capacity(sheet.len());
+    let mut index = 0;
+    while index < sheet.len() {
+        unescaped.push(sheet[index]);
+        index += if sheet[index..].starts_with(b"''") {
+            2
+        } else {
+            1
+        };
+    }
     sheet_name_to_file
-        .get(&s.replace("''", "'"))
-        .map(|s| s.as_str())
+        .get(unescaped.as_slice())
+        .map(String::as_str)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -596,8 +611,7 @@ fn trim_ascii(bytes: &[u8]) -> &[u8] {
 
 fn extract_local_sheet_id(attrs: &[u8]) -> Option<usize> {
     let raw = extract_quoted_attr_value(attrs, b"localSheetId")?;
-    let value = std::str::from_utf8(raw).ok()?;
-    value.parse::<usize>().ok()
+    crate::utils::parse_unsigned_bytes(raw)
 }
 
 fn extract_quoted_attr_value<'a>(attrs: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> {

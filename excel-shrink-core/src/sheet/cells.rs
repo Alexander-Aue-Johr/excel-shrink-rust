@@ -724,10 +724,7 @@ fn record_visible_cell_bounds(
     metrics: &mut CleanSheetMetrics,
     has_cell_content: bool,
 ) {
-    let Ok(row_str) = std::str::from_utf8(cell.row) else {
-        return;
-    };
-    let Ok(row_num) = row_str.parse::<u32>() else {
+    let Some(row_num) = crate::utils::parse_unsigned_bytes::<u32>(cell.row) else {
         return;
     };
 
@@ -925,8 +922,7 @@ fn shared_string_index(cell: &[u8]) -> Option<usize> {
     let value_tag = crate::xml::find_bytes(cell, b"<v>")?;
     let value_start = value_tag + b"<v>".len();
     let value_length = crate::xml::find_bytes(&cell[value_start..], b"</v>")?;
-    let value = std::str::from_utf8(&cell[value_start..value_start + value_length]).ok()?;
-    value.parse().ok()
+    crate::utils::parse_unsigned_bytes(&cell[value_start..value_start + value_length])
 }
 
 fn cell_has_protection_style(

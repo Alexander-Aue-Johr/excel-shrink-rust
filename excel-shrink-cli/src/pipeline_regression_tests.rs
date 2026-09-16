@@ -529,7 +529,7 @@ fn calc_chain_removes_missing_cells_for_processed_sheet_only() {
     let mut known_cells_by_sheet = HashMap::new();
     known_cells_by_sheet.insert(
         "xl/worksheets/sheet1.xml".to_string(),
-        ["A1".to_string(), "C3".to_string()].into_iter().collect(),
+        [b"A1".to_vec(), b"C3".to_vec()].into_iter().collect(),
     );
 
     let cleaned = clean_calc_chain(

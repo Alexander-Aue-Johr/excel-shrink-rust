@@ -433,3 +433,23 @@ fn prepared_scanner_shares_names_across_parallel_subset_scans() {
         ScanResult::Unsafe(_)
     ));
 }
+
+#[test]
+fn byte_sheet_names_preserve_unicode_and_escaped_apostrophes() {
+    let names: HashMap<Vec<u8>, String> = [
+        ("Umsätze".as_bytes().to_vec(), "sheet1".to_owned()),
+        (b"O'Brien".to_vec(), "sheet2".to_owned()),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        resolve_sheet_name("Umsätze".as_bytes(), &names),
+        Some("sheet1")
+    );
+    assert_eq!(
+        resolve_sheet_name("'Umsätze'".as_bytes(), &names),
+        Some("sheet1")
+    );
+    assert_eq!(resolve_sheet_name(b"'O''Brien'", &names), Some("sheet2"));
+    assert_eq!(resolve_sheet_name(b"Unknown", &names), None);
+}

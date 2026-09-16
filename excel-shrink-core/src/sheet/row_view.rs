@@ -51,7 +51,12 @@ impl<'xml, 'styles> RowView<'xml, 'styles> {
             match attribute.name {
                 b"r" => {
                     row.reference = attribute.value;
-                    row.number = std::str::from_utf8(attribute.value).ok()?.parse().ok();
+                    // Preserve malformed UTF-8 header fallback; normal ASCII rows
+                    // need neither a text view nor string parsing.
+                    if !attribute.value.is_ascii() {
+                        std::str::from_utf8(attribute.value).ok()?;
+                    }
+                    row.number = crate::utils::parse_unsigned_bytes(attribute.value);
                 }
                 b"s" => {
                     let id = crate::utils::digits_byte_string_to_integer(attribute.value);

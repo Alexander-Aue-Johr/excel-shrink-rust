@@ -281,11 +281,7 @@ fn extract_attr_value<'a>(data: &'a [u8], attr_name: &[u8]) -> Option<&'a [u8]> 
 }
 
 fn extract_u32(data: &[u8], attr_name: &[u8]) -> Option<u32> {
-    extract_attr_value(data, attr_name).and_then(|value| {
-        std::str::from_utf8(value)
-            .ok()
-            .and_then(|value| value.parse().ok())
-    })
+    extract_attr_value(data, attr_name).and_then(|value| crate::utils::parse_unsigned_bytes(value))
 }
 
 fn extract_bool(data: &[u8], attr_name: &[u8]) -> bool {
