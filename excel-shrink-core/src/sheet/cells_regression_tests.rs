@@ -88,6 +88,7 @@ fn parsed_a3_cell<'a>(
     style_id: Option<u32>,
 ) -> ParsedCell<'a, 'static> {
     ParsedCell {
+        column: None,
         row_view: None,
         raw,
         attr,
@@ -104,6 +105,7 @@ fn parsed_x4_cell<'a>(
     style_id: Option<u32>,
 ) -> ParsedCell<'a, 'static> {
     ParsedCell {
+        column: None,
         row_view: None,
         raw,
         attr,
@@ -252,6 +254,7 @@ fn keeps_hidden_cell_with_content_without_advanced_cleanup() {
     let cell_xml = br#"<c r="A3"><v>secret</v></c>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3""#, None);
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -273,6 +276,7 @@ fn removes_empty_hidden_cell_without_style_representative() {
     let cell_xml = br#"<c r="A3"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3""#, None);
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -377,6 +381,7 @@ fn removes_empty_hidden_column_cell_when_only_font_differs_from_column_font() {
 
     let cell_xml = br#"<c r="XFD49" s="8"/>"#;
     let cell = ParsedCell {
+        column: None,
         row_view: None,
         raw: cell_xml,
         attr: br#" r="XFD49" s="8""#,
@@ -575,6 +580,7 @@ fn keeps_empty_default_font_cell_in_auto_height_row_when_column_font_differs() {
     let cell_xml = br#"<c r="A3" s="8"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="8""#, Some(8));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -619,6 +625,7 @@ fn keeps_empty_cell_in_auto_height_row_when_column_font_matches_cell_but_row_fon
     let cell_xml = br#"<c r="A3" s="1186"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="1186""#, Some(1186));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -704,6 +711,7 @@ fn keeps_empty_cell_when_style_applies_default_border_override() {
 
     let cell_xml = br#"<c r="F2" s="43"/>"#;
     let cell = ParsedCell {
+        column: None,
         row_view: None,
         raw: cell_xml,
         attr: br#" r="F2" s="43""#,
@@ -769,6 +777,7 @@ fn keeps_empty_cell_when_default_border_override_clears_visible_row_border() {
     let cell_xml = br#"<c r="A3" s="43"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="43""#, Some(43));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -787,6 +796,7 @@ fn keeps_empty_cell_when_style_applies_default_fill_override() {
 
     let cell_xml = br#"<c r="G2" s="44"/>"#;
     let cell = ParsedCell {
+        column: None,
         row_view: None,
         raw: cell_xml,
         attr: br#" r="G2" s="44""#,
@@ -849,6 +859,7 @@ fn keeps_empty_cell_when_default_fill_override_clears_visible_row_fill() {
     let cell_xml = br#"<c r="A3" s="44"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="44""#, Some(44));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -875,6 +886,7 @@ fn does_not_mark_hidden_formula_cell_as_advanced_cleanup_candidate() {
     let cell_xml = br#"<c r="A3" s="39" t="str"><f t="shared" si="0"/><v/></c>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="39" t="str""#, Some(39));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -904,6 +916,7 @@ fn marks_hidden_content_as_candidate_with_advanced_cleanup() {
     let cell_xml = br#"<c r="A3"><v>secret</v></c>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3""#, None);
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -932,6 +945,7 @@ fn does_not_mark_hidden_content_candidate_when_cell_is_style_representative() {
     let cell_xml = br#"<c r="A3"><v>secret</v></c>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3""#, None);
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -971,6 +985,7 @@ fn does_not_mark_candidate_when_cell_style_has_apply_protection_and_sheet_is_pro
     let cell_xml = br#"<c r="A3" s="7"><v>secret</v></c>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="7""#, Some(7));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -999,6 +1014,7 @@ fn default_marks_candidate_when_cell_style_has_apply_protection_without_sheet_pr
     let cell_xml = br#"<c r="A3" s="7"><v>secret</v></c>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="7""#, Some(7));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -1058,6 +1074,7 @@ fn keep_all_does_not_mark_candidate_when_cell_style_has_apply_protection_without
     let cell_xml = br#"<c r="A3" s="7"><v>secret</v></c>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="7""#, Some(7));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -1093,6 +1110,7 @@ fn keeps_empty_font_only_cell_when_row_has_non_default_fill() {
     let cell_xml = br#"<c r="A3" s="10"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -1167,6 +1185,7 @@ fn removes_empty_cell_when_row_and_column_apply_same_fill_as_cell() {
     let cell_xml = br#"<c r="A3" s="10"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -1214,6 +1233,7 @@ fn keeps_empty_cell_when_row_and_column_apply_fill_and_only_column_differs() {
     let cell_xml = br#"<c r="A3" s="10"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -1248,6 +1268,7 @@ fn removes_empty_cell_when_row_applies_same_visible_fill_as_cell() {
     let cell_xml = br#"<c r="A3" s="10"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -1326,6 +1347,7 @@ fn keeps_empty_cell_when_row_applies_fill_and_cell_overrides_with_default_fill()
     let cell_xml = br#"<c r="A3" s="10"/>"#;
     let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="10""#, Some(10));
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..cell
     };
@@ -1446,6 +1468,7 @@ fn traces_d1048576_removed_when_empty_cell_style_only_affects_font() {
         style_id: Option<u32>,
     ) -> ParsedCell<'a, 'static> {
         ParsedCell {
+            column: None,
             row_view: None,
             raw,
             attr,
@@ -1489,6 +1512,7 @@ fn row_context_does_not_apply_to_a_different_cell_reference() {
     let mut metrics = CleanSheetMetrics::default();
     let raw = br#"<c r="X4"><v>visible</v></c>"#;
     let cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..parsed_x4_cell(raw, br#" r="X4""#, None)
     };
@@ -1498,6 +1522,7 @@ fn row_context_does_not_apply_to_a_different_cell_reference() {
 
     let hidden_raw = br#"<c r="A3"><v>hidden</v></c>"#;
     let hidden_cell = ParsedCell {
+        column: None,
         row_view: Some(&row_view),
         ..parsed_a3_cell(hidden_raw, br#" r="A3""#, None)
     };

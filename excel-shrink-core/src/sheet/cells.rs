@@ -2,7 +2,7 @@
 use crate::cleaning_trace::{CellDecision, CellDecisionEvent};
 use crate::models::{
     CellAttributes, CleanSheetMetrics, CleanSheetParameters, CleanupCandidate, CleanupCause,
-    InactiveProtectionCellPolicy, Xf,
+    ColumnDefinition, InactiveProtectionCellPolicy, Xf,
 };
 use crate::sheet::row_view::RowView;
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
@@ -24,6 +24,7 @@ macro_rules! trace_cell_decision {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ParsedCell<'a, 'r> {
     pub(crate) row_view: Option<&'r RowView<'r, 'r>>,
+    pub(crate) column: Option<Option<&'r ColumnDefinition>>,
     pub(crate) raw: &'a [u8],
     pub(crate) attr: &'a [u8],
     pub(crate) reference_attr: &'a [u8],
@@ -46,6 +47,7 @@ impl<'a, 'r> ParsedCell<'a, 'r> {
             .map(|m| digits_byte_string_to_integer(m.as_bytes()));
 
         Some(Self {
+            column: None,
             row_view: None,
             raw,
             attr,
@@ -59,6 +61,12 @@ impl<'a, 'r> ParsedCell<'a, 'r> {
     #[inline]
     fn row_view(&self) -> Option<&RowView<'_, '_>> {
         self.row_view.filter(|row| row.reference == self.row)
+    }
+
+    #[inline]
+    fn column<'s>(&'s self, metrics: &'s CleanSheetMetrics) -> Option<&'s ColumnDefinition> {
+        self.column
+            .unwrap_or_else(|| metrics.column_definitions.get(self.col_num))
     }
 
     #[inline]
@@ -139,6 +147,8 @@ pub fn replace_cell(
     };
 
     cell.row_view = row_view;
+    let column = metrics.column_definitions.get(cell.col_num).cloned();
+    cell.column = Some(column.as_ref());
     replace_parsed_cell(&cell, params, metrics).into_owned()
 }
 
@@ -532,9 +542,8 @@ fn kept_cell_is_tail_anchor(
         return true;
     }
 
-    let column_style = metrics
-        .column_definitions
-        .get(cell.col_num)
+    let column_style = cell
+        .column(metrics)
         .and_then(|column| column.cell_xf.as_ref());
     if column_style.is_some_and(|style| style.has_fill_or_border) {
         return true;
@@ -671,10 +680,7 @@ fn cell_is_hidden(cell: &ParsedCell<'_, '_>, metrics: &CleanSheetMetrics) -> boo
         return true;
     }
 
-    metrics
-        .column_definitions
-        .get(cell.col_num)
-        .is_some_and(|column| column.hidden)
+    cell.column(metrics).is_some_and(|column| column.hidden)
 }
 
 fn cell_has_effective_visual_style(
@@ -704,9 +710,8 @@ fn inherited_cell_styles<'a>(
     cell: &'a ParsedCell<'_, '_>,
     metrics: &'a CleanSheetMetrics,
 ) -> InheritedCellStyles<'a> {
-    let column = metrics
-        .column_definitions
-        .get(cell.col_num)
+    let column = cell
+        .column(metrics)
         .and_then(|column| column.cell_xf.as_ref());
     let row = cell.row_view().and_then(|row| row.style);
 
@@ -726,9 +731,8 @@ fn record_visible_cell_bounds(
         return;
     };
 
-    let column_style = metrics
-        .column_definitions
-        .get(cell.col_num)
+    let column_style = cell
+        .column(metrics)
         .and_then(|column| column.cell_xf.as_ref());
 
     let is_visible = has_cell_content
@@ -803,9 +807,8 @@ fn empty_cell_has_column_font_style_override(
         return false;
     }
 
-    let Some(column_style) = metrics
-        .column_definitions
-        .get(cell.col_num)
+    let Some(column_style) = cell
+        .column(metrics)
         .and_then(|column| column.cell_xf.as_ref())
     else {
         return false;
@@ -943,9 +946,7 @@ fn cell_has_protection_style(
         return true;
     }
 
-    metrics
-        .column_definitions
-        .get(cell.col_num)
+    cell.column(metrics)
         .and_then(|column| column.cell_xf.as_ref())
         .is_some_and(|style| style.has_apply_protection)
 }

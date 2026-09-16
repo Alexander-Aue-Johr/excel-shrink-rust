@@ -547,7 +547,7 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
     timings: &mut CellTimings<SAMPLED>,
     row: &RowView<'_, '_>,
 ) -> Cow<'a, [u8]> {
-    let Some((cell, has_cell_content)) =
+    let Some((mut cell, has_cell_content)) =
         timings.measure(CellStage::ParseAttributesAndContent, || {
             let mut cell = parse_cell_from_parts(block.raw, block.attr)?;
             cell.row_view = Some(row);
@@ -558,6 +558,10 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
         return Cow::Borrowed(block.raw);
     };
 
+    // ColumnDefinition/Xf contain only scalar values: this stack snapshot has
+    // no heap allocation and lets policy code mutate the remaining metrics.
+    let column = metrics.column_definitions.get(cell.col_num).cloned();
+    cell.column = Some(column.as_ref());
     record_cell_visit(params, &cell);
     let representative = timings.measure(CellStage::SelectRepresentative, || {
         select_empty_style_representative(
@@ -802,6 +806,7 @@ fn parse_cell_from_parts<'a, 'r>(raw: &'a [u8], attr: &'a [u8]) -> Option<Parsed
         return None;
     }
     Some(ParsedCell {
+        column: None,
         row_view: None,
         raw,
         attr,

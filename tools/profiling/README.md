@@ -274,3 +274,18 @@ six pre-existing tests and the manual benchmark are ignored in normal runs, and
 the full corpus suite is filtered. The manual benchmark was run separately.
 Results cover one workbook/profile and are not a general speed guarantee.
 Artifacts and binary hashes: `.tmp/profiles/fused-cell-scan/`.
+
+### Reuse column context per cell
+
+The row cleaner and regex cell entry point resolve the column definition once,
+then pass a borrowed view of a local scalar-only snapshot through cell policy
+checks. Copying ColumnDefinition/Xf here allocates no heap storage and permits
+mutation of cleanup metrics. Cached absence is distinguished from an unresolved
+lookup; test/helper callers without context retain the original lookup fallback.
+
+A full nine-case smoke comparison (eight workbooks, ABBA/BAAB, four suite runs per
+binary, no debugger/trace) measured median summed cleanup time 9.737 s before and
+9.003 s after (7.5% lower). Every case's median improved; outputs match per ZIP entry
+across 72 case runs. 242 workspace tests passed with the corpus wrapper filtered;
+the corpus cases were executed by the benchmark runner. Measurements are specific
+to these inputs and host. Artifacts: `.tmp/profiles/next-three/columns/`.
