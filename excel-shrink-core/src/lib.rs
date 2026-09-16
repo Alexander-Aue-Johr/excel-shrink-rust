@@ -13,3 +13,5 @@ pub mod xml;
 
 #[cfg(test)]
 mod tests;
+
+pub mod work_priority;

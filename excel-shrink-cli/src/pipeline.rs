@@ -2386,14 +2386,30 @@ fn process_initial_sheets(
         sheet_tasks.into_iter().filter_map(process_sheet).collect()
     } else {
         let workers = rayon::current_num_threads().min(sheet_tasks.len());
-        let pending = Mutex::new(sheet_tasks.into_iter().enumerate());
+        let pending = Mutex::new(sheet_tasks.into_iter().enumerate().peekable());
         let mut results: Vec<_> = (0..workers)
             .into_par_iter()
             .map(|_| {
                 let mut results = Vec::new();
                 loop {
                     // Claim one sheet in size order; never reserve a batch for a worker.
-                    let next = pending.lock().unwrap().next();
+                    let next = {
+                        let mut queue = pending.lock().unwrap();
+                        match queue.peek() {
+                            None => break,
+                            Some((_, task)) => {
+                                let bytes = task.original_xml_size;
+                                excel_shrink_core::work_priority::admit_sheet(bytes, || {
+                                    queue.next()
+                                })
+                            }
+                        }
+                    };
+                    let Some(next) = next else {
+                        let _span = profiling::phase("yield_sheet_to_larger_chunk", "", "");
+                        rayon::yield_now();
+                        continue;
+                    };
                     let Some((index, task)) = next else {
                         break;
                     };

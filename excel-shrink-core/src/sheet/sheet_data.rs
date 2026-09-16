@@ -465,19 +465,12 @@ fn clean_chunks_in_parallel(
     let cloning = profiling::phase("clone_base_metrics", "", "");
     let base_metrics = make_chunk_metrics(metrics);
     profiling::drop_value("range.clone_base_metrics_span", cloning);
-    if !tracing::enabled!(target: "excel_shrink::profile", tracing::Level::INFO) {
-        return chunks
-            .par_iter()
-            .map(|chunk| {
-                clean_chunk_in_isolation(sheet_data, params, &base_metrics, *chunk, clean_chunk)
-            })
-            .collect();
-    }
     let jobs: Vec<_> = chunks
         .iter()
         .map(|chunk| {
             (
                 *chunk,
+                crate::work_priority::PendingChunk::new(chunk.end - chunk.start),
                 profiling::Handoff::start(
                     "range_chunk",
                     &params.xlsx_file_path,
@@ -487,7 +480,8 @@ fn clean_chunks_in_parallel(
         })
         .collect();
     jobs.into_par_iter()
-        .map(|(chunk, handoff)| {
+        .map(|(chunk, pending, handoff)| {
+            drop(pending);
             handoff.finish();
             clean_chunk_in_isolation(sheet_data, params, &base_metrics, chunk, clean_chunk)
         })
