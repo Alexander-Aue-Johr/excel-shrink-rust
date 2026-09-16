@@ -233,3 +233,21 @@ per binary) measured median cleanup time 5.867 s before and 4.595 s after (21.7%
 lower). All 225 unpacked ZIP entries match across all eight runs. Workspace tests:
 240 passed, six existing ignored, full corpus suite filtered. Raw reports and
 binary hashes: `.tmp/profiles/optimization-series/step1/results.json`.
+
+### Reuse fixed XML token searchers
+
+`xml::find_bytes` retains immutable `memmem::Finder` instances for the eight common
+cell, row, value, formula and inline-string tokens. Each finder is initialized once
+per process through `OnceLock` and shared by workers. Other byte patterns retain
+the general search path. This does not change substring/tag-boundary semantics.
+A regression compares all substrings of a mixed XML/byte fixture against the
+original search, including truncated tokens, empty and uncached patterns.
+
+After CPU sampling identified repeated Finder preparation, an optimized untraced
+ABBA/BAAB comparison on `overall-reduction` measured 4.893 s before versus 4.2235 s
+after (13.7% lower median, four runs each). Every changed run was faster than every
+baseline run; both four-run blocks improved. All 225 unpacked ZIP entries match
+across all eight outputs. 241 workspace tests passed, six existing tests ignored,
+full corpus suite filtered. This is evidence for the tested workbook/profile,
+not a guarantee for every input. No additional smoke corpus inputs were available
+locally. Reports, saved binaries and hashes: `.tmp/profiles/finder-reuse/`.

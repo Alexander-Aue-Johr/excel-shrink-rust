@@ -121,7 +121,66 @@ pub fn replace_xml_block(
 
 #[inline]
 pub fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    memchr::memmem::find(haystack, needle)
+    // Fixed XML tokens recur millions of times. Reuse their immutable search
+    // preparation across sheets/workers; arbitrary needles keep the general path.
+    // Literal callers can inline away the token dispatch.
+    match needle {
+        b"<c" => {
+            static CELL: std::sync::OnceLock<memchr::memmem::Finder<'static>> =
+                std::sync::OnceLock::new();
+            CELL.get_or_init(|| memchr::memmem::Finder::new(b"<c"))
+                .find(haystack)
+        }
+        b"</c>" => {
+            static CELL_END: std::sync::OnceLock<memchr::memmem::Finder<'static>> =
+                std::sync::OnceLock::new();
+            CELL_END
+                .get_or_init(|| memchr::memmem::Finder::new(b"</c>"))
+                .find(haystack)
+        }
+        b"<row" => {
+            static ROW: std::sync::OnceLock<memchr::memmem::Finder<'static>> =
+                std::sync::OnceLock::new();
+            ROW.get_or_init(|| memchr::memmem::Finder::new(b"<row"))
+                .find(haystack)
+        }
+        b"</row>" => {
+            static ROW_END: std::sync::OnceLock<memchr::memmem::Finder<'static>> =
+                std::sync::OnceLock::new();
+            ROW_END
+                .get_or_init(|| memchr::memmem::Finder::new(b"</row>"))
+                .find(haystack)
+        }
+        b"<v>" => {
+            static VALUE: std::sync::OnceLock<memchr::memmem::Finder<'static>> =
+                std::sync::OnceLock::new();
+            VALUE
+                .get_or_init(|| memchr::memmem::Finder::new(b"<v>"))
+                .find(haystack)
+        }
+        b"</v>" => {
+            static VALUE_END: std::sync::OnceLock<memchr::memmem::Finder<'static>> =
+                std::sync::OnceLock::new();
+            VALUE_END
+                .get_or_init(|| memchr::memmem::Finder::new(b"</v>"))
+                .find(haystack)
+        }
+        b"<f" => {
+            static FORMULA: std::sync::OnceLock<memchr::memmem::Finder<'static>> =
+                std::sync::OnceLock::new();
+            FORMULA
+                .get_or_init(|| memchr::memmem::Finder::new(b"<f"))
+                .find(haystack)
+        }
+        b"<is>" => {
+            static INLINE_STRING: std::sync::OnceLock<memchr::memmem::Finder<'static>> =
+                std::sync::OnceLock::new();
+            INLINE_STRING
+                .get_or_init(|| memchr::memmem::Finder::new(b"<is>"))
+                .find(haystack)
+        }
+        _ => memchr::memmem::find(haystack, needle),
+    }
 }
 
 #[inline]
@@ -140,4 +199,29 @@ pub fn find_byte_from(haystack: &[u8], needle: u8, start: usize) -> Option<usize
         .iter()
         .position(|b| *b == needle)
         .map(|idx| start + idx)
+}
+
+#[cfg(test)]
+mod finder_tests {
+    #[test]
+    fn cached_tokens_preserve_general_search_semantics() {
+        let needles: &[&[u8]] = &[
+            b"<c", b"</c>", b"<row", b"</row>", b"<v>", b"</v>", b"<f", b"<is>", b"", b"custom",
+            b"\xff",
+        ];
+        let xml =
+            b"\xff<row r=\"1\"><c r=\"A1\"><v>1</v><f/><is>custom</is></c></row><rowish><custom/>";
+        // All suffixes and truncations exercise empty inputs, incomplete tokens,
+        // repeated matches and byte positions rather than tag-name semantics.
+        for start in 0..=xml.len() {
+            for end in start..=xml.len() {
+                for &needle in needles {
+                    assert_eq!(
+                        super::find_bytes(&xml[start..end], needle),
+                        memchr::memmem::find(&xml[start..end], needle)
+                    );
+                }
+            }
+        }
+    }
 }
