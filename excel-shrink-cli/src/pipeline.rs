@@ -17,7 +17,7 @@ use excel_shrink_core::models::{
     CleanupStats, CleanupSwitches, InactiveProtectionCellPolicy, ProtectedWorkbookRefs,
     SheetPreprocessConfig, SheetScanBuffer, WorkbookSpecificPatterns,
 };
-use excel_shrink_core::reference_scanner::{scan_for_references_by_sheet, ScanResult};
+use excel_shrink_core::reference_scanner::{PreparedReferenceScanner, ScanResult};
 use excel_shrink_core::shared_strings::find_whitespace_sst_indices;
 use excel_shrink_core::sheet::clean_sheet_data_streamwise_with_progress;
 use excel_shrink_core::sheet::output::trim_trailing_layout_only_rows_vec;
@@ -251,11 +251,6 @@ impl ArchivePlan {
             calc_chain_part: None,
         }
     }
-}
-
-struct ReferenceValidation {
-    protected_refs: ProtectedWorkbookRefs,
-    safe_to_clean: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -1861,36 +1856,6 @@ impl SheetReferenceMap {
     }
 }
 
-impl ReferenceValidation {
-    fn disabled() -> Self {
-        Self {
-            protected_refs: ProtectedWorkbookRefs::default(),
-            safe_to_clean: false,
-        }
-    }
-}
-
-fn validate_deferred_references(
-    processed_sheets: &[ProcessedSheetResult],
-    workbook_xml: Option<&[u8]>,
-    workbook_rels: Option<&[u8]>,
-    input_display: &str,
-) -> ReferenceValidation {
-    let _profile = profiling::phase("validate_references", input_display, "");
-    let Some(scan_selection) = deferred_reference_scan_selection(processed_sheets) else {
-        return ReferenceValidation::disabled();
-    };
-    let reference_map = SheetReferenceMap::from_workbook(workbook_xml, workbook_rels);
-    let scan_buffers = build_reference_scan_buffers(
-        processed_sheets,
-        &scan_selection,
-        &reference_map,
-        workbook_xml,
-    );
-
-    scan_deferred_references(&scan_buffers, &reference_map, input_display)
-}
-
 fn deferred_reference_scan_selection(
     processed_sheets: &[ProcessedSheetResult],
 ) -> Option<Vec<bool>> {
@@ -1945,34 +1910,6 @@ fn build_reference_scan_buffers<'a>(
     }
 
     buffers
-}
-
-fn scan_deferred_references(
-    scan_buffers: &[SheetScanBuffer<'_>],
-    reference_map: &SheetReferenceMap,
-    input_display: &str,
-) -> ReferenceValidation {
-    let mut protected_refs = ProtectedWorkbookRefs::default();
-    let safe_to_clean = match scan_for_references_by_sheet(
-        scan_buffers,
-        &mut protected_refs,
-        Some(&reference_map.name_to_file),
-        Some(&reference_map.files_in_workbook_order),
-    ) {
-        ScanResult::Safe => true,
-        ScanResult::Unsafe(reason) => {
-            warn!(
-                "Unsafe dynamic reference found: {}. Skipping deferred cleanup for {}.",
-                reason, input_display
-            );
-            false
-        }
-    };
-
-    ReferenceValidation {
-        protected_refs,
-        safe_to_clean,
-    }
 }
 
 impl SheetFinalizer<'_> {
@@ -2428,6 +2365,7 @@ fn process_initial_sheets(
     active_tasks: ActiveTasks,
     advanced_cleanup: AdvancedCleanupSelection,
     cli: &Cli,
+    complete: impl Fn(ProcessedSheetResult) -> Option<ProcessedSheetResult> + Sync,
 ) -> Vec<ProcessedSheetResult> {
     let _profile = profiling::phase("initial_sheets_fork_join", "", "");
     let processor = InitialSheetProcessor {
@@ -2438,12 +2376,15 @@ fn process_initial_sheets(
         parallel_range_chunk_size: cli.parallel_range_chunk_size,
     };
     let advanced_config = advanced_cleanup.config();
-    let process_sheet = |task| processor.process(task, advanced_config.clone());
+    let process_sheet = |task| complete(processor.process(task, advanced_config.clone()));
 
     if cli.disable_multiprocessing {
-        sheet_tasks.into_iter().map(process_sheet).collect()
+        sheet_tasks.into_iter().filter_map(process_sheet).collect()
     } else {
-        sheet_tasks.into_par_iter().map(process_sheet).collect()
+        sheet_tasks
+            .into_par_iter()
+            .filter_map(process_sheet)
+            .collect()
     }
 }
 
@@ -2537,20 +2478,108 @@ fn process_file(
     let sheet_tasks =
         prioritize_sheet_tasks(sheet_tasks, &input_display, cli.parallel_range_chunk_size);
 
-    let processed_sheets =
-        process_initial_sheets(sheet_tasks, file_bytes, active_tasks, advanced_cleanup, cli);
-
-    let ReferenceValidation {
-        protected_refs,
-        safe_to_clean,
-    } = validate_deferred_references(
-        &processed_sheets,
+    let known_cells_by_sheet_file = Mutex::new(HashMap::new());
+    let reference_map = SheetReferenceMap::from_workbook(
         workbook_xml_for_scan.as_deref(),
         workbook_rels_for_scan.as_deref(),
-        &input_display,
     );
-
-    let known_cells_by_sheet_file = Mutex::new(HashMap::new());
+    // Include the same aliases as the original complete scan, including Workbook.
+    let mut complete_names = reference_map.name_to_file.clone();
+    for task in &sheet_tasks {
+        let file = &task.params.zip_info_filename;
+        let name = reference_map
+            .file_to_name
+            .get(file)
+            .map(String::as_str)
+            .unwrap_or("Unknown");
+        complete_names.insert(name.to_owned(), file.clone());
+    }
+    if workbook_xml_for_scan.is_some() {
+        complete_names.insert("Workbook".into(), "xl/workbook.xml".into());
+    }
+    let scanner = PreparedReferenceScanner::new(
+        &[],
+        Some(&complete_names),
+        Some(&reference_map.files_in_workbook_order),
+    );
+    let accumulated = Mutex::new((ProtectedWorkbookRefs::default(), true));
+    let empty_refs = ProtectedWorkbookRefs::default();
+    let early_finalizer = SheetFinalizer {
+        tx: &tx,
+        analysis_tx: analysis_tx.as_ref(),
+        known_cells_by_sheet_file: &known_cells_by_sheet_file,
+        protected_refs: &empty_refs,
+        safe_to_clean: false,
+        attribution_safe_analysis,
+        store_output: cli.store_output,
+        compression_level: cli.compression_level,
+    };
+    let complete = |result: ProcessedSheetResult| {
+        let Ok(sheet) = &result else {
+            return Some(result);
+        };
+        if !sheet.metrics.candidates.is_empty() {
+            return Some(result);
+        }
+        // Without a complete name map retain the original all-buffer scan.
+        if sheet.metrics.has_hints && reference_map.name_to_file.is_empty() {
+            return Some(result);
+        }
+        if sheet.metrics.has_hints {
+            let _span = profiling::phase(
+                "early_reference_scan",
+                &sheet.params.xlsx_file_path,
+                &sheet.params.zip_info_filename,
+            );
+            let mut accumulated = accumulated.lock().unwrap();
+            let buffer = SheetScanBuffer {
+                sheet_file: &sheet.params.zip_info_filename,
+                sheet_name: reference_map
+                    .file_to_name
+                    .get(&sheet.params.zip_info_filename)
+                    .map(String::as_str)
+                    .unwrap_or("Unknown"),
+                xml: &sheet.xml,
+            };
+            if let ScanResult::Unsafe(reason) = scanner.scan(&[buffer], &mut accumulated.0) {
+                warn!("Unsafe early reference: {}", reason);
+                accumulated.1 = false;
+            }
+        }
+        let _span = profiling::phase(
+            "early_sheet_finalize",
+            &sheet.params.xlsx_file_path,
+            &sheet.params.zip_info_filename,
+        );
+        early_finalizer.finalize(result);
+        None
+    };
+    let processed_sheets = process_initial_sheets(
+        sheet_tasks,
+        file_bytes,
+        active_tasks,
+        advanced_cleanup,
+        cli,
+        complete,
+    );
+    let (mut protected_refs, mut safe_to_clean) = accumulated.into_inner().unwrap();
+    {
+        let _span = profiling::phase("validate_references", &input_display, "");
+        if let Some(selection) = deferred_reference_scan_selection(&processed_sheets) {
+            let buffers = build_reference_scan_buffers(
+                &processed_sheets,
+                &selection,
+                &reference_map,
+                workbook_xml_for_scan.as_deref(),
+            );
+            if let ScanResult::Unsafe(reason) = scanner.scan(&buffers, &mut protected_refs) {
+                warn!("Unsafe deferred reference: {}", reason);
+                safe_to_clean = false;
+            }
+        } else {
+            safe_to_clean = false;
+        }
+    }
     let finalizer = SheetFinalizer {
         tx: &tx,
         analysis_tx: analysis_tx.as_ref(),

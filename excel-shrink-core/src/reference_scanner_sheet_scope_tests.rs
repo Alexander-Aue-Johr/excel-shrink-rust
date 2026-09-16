@@ -394,3 +394,42 @@ fn defined_names_parent_tag_is_not_scanned_as_defined_name() {
         "S41 must not be inserted into global_or_unknown"
     );
 }
+
+#[test]
+fn prepared_scanner_shares_names_across_parallel_subset_scans() {
+    use super::PreparedReferenceScanner;
+    let buffers = [
+        SheetScanBuffer { sheet_file: "xl/worksheets/sheet1.xml", sheet_name: "Source", xml: br#"<worksheet><sheetData><row><c><f>Target!B7</f></c></row></sheetData></worksheet>"# },
+        SheetScanBuffer { sheet_file: "xl/worksheets/sheet2.xml", sheet_name: "Target", xml: b"<worksheet/>" },
+    ];
+    let scanner = PreparedReferenceScanner::new(&buffers, None, None);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..2)
+            .map(|_| {
+                let scanner = &scanner;
+                let buffers = &buffers;
+                scope.spawn(move || {
+                    let mut refs = ProtectedWorkbookRefs::default();
+                    assert!(matches!(
+                        scanner.scan(&buffers[..1], &mut refs),
+                        ScanResult::Safe
+                    ));
+                    assert!(refs.contains("xl/worksheets/sheet2.xml", 2, 7));
+                    assert!(!refs.contains("xl/worksheets/sheet1.xml", 2, 7));
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    });
+    let unsafe_buffer = SheetScanBuffer {
+        sheet_file: "xl/worksheets/sheet1.xml",
+        sheet_name: "Source",
+        xml: br#"<worksheet><c><f>INDIRECT("Target!A1")</f></c></worksheet>"#,
+    };
+    assert!(matches!(
+        scanner.scan(&[unsafe_buffer], &mut ProtectedWorkbookRefs::default()),
+        ScanResult::Unsafe(_)
+    ));
+}

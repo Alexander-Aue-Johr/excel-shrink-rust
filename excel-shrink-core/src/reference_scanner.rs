@@ -180,23 +180,50 @@ pub fn scan_for_references_by_sheet(
     sheet_name_to_file_seed: Option<&HashMap<String, String>>,
     sheet_files_by_index: Option<&[String]>,
 ) -> ScanResult {
-    let patterns = sheet_scan_patterns();
-    let sheet_name_to_file = build_sheet_name_to_file_map(buffers, sheet_name_to_file_seed);
+    PreparedReferenceScanner::new(buffers, sheet_name_to_file_seed, sheet_files_by_index)
+        .scan(buffers, protected_refs)
+}
 
-    for buffer in buffers {
-        let _profile = tracing::info_span!(target: "excel_shrink::profile", "scan_sheet_references", sheet = buffer.sheet_file, input_bytes = buffer.xml.len()).entered();
-        if let Some(function) = scan_sheet_buffer(
-            buffer,
-            protected_refs,
-            &sheet_name_to_file,
+/// Immutable workbook context reusable across independent, possibly concurrent scans.
+/// Supply all sheet names when preparing: scan() does not extend the mapping.
+pub struct PreparedReferenceScanner<'a> {
+    sheet_name_to_file: HashMap<String, String>,
+    sheet_files_by_index: Option<&'a [String]>,
+    patterns: SheetScanPatterns,
+}
+
+impl<'a> PreparedReferenceScanner<'a> {
+    pub fn new(
+        buffers: &[SheetScanBuffer<'_>],
+        seed: Option<&HashMap<String, String>>,
+        sheet_files_by_index: Option<&'a [String]>,
+    ) -> Self {
+        Self {
+            sheet_name_to_file: build_sheet_name_to_file_map(buffers, seed),
             sheet_files_by_index,
-            &patterns,
-        ) {
-            return ScanResult::Unsafe(function);
+            patterns: sheet_scan_patterns(),
         }
     }
 
-    ScanResult::Safe
+    pub fn scan(
+        &self,
+        buffers: &[SheetScanBuffer<'_>],
+        protected_refs: &mut ProtectedWorkbookRefs,
+    ) -> ScanResult {
+        for buffer in buffers {
+            let _profile = tracing::info_span!(target: "excel_shrink::profile", "scan_sheet_references", sheet = buffer.sheet_file, input_bytes = buffer.xml.len()).entered();
+            if let Some(function) = scan_sheet_buffer(
+                buffer,
+                protected_refs,
+                &self.sheet_name_to_file,
+                self.sheet_files_by_index,
+                &self.patterns,
+            ) {
+                return ScanResult::Unsafe(function);
+            }
+        }
+        ScanResult::Safe
+    }
 }
 
 fn build_sheet_name_to_file_map(
