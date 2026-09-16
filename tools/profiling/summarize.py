@@ -12,6 +12,8 @@ def main():
     args = parser.parse_args()
     trace = json.loads(args.trace.read_text(encoding='utf-8'))
     events = trace['traceEvents']
+    for event in events:
+        event['name'] = event.get('args', {}).get('phase_name', event.get('name', ''))
     dropped = trace.get('otherData', {}).get('dropped_events', 0)
     print(f'Trace: {args.trace}\nDropped events: {dropped}')
     print('Durations include nested work and scheduling. Do not add overlapping phases.\n')

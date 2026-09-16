@@ -196,6 +196,42 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for TraceLayer {
             .and_then(Value::as_str)
             .unwrap_or(attrs.metadata().name())
             .to_owned();
+        // Preserve the machine-readable phase while making sheet ownership visible.
+        // Explicit ownership wins over the worker's enclosing execution context.
+        for key in ["sheet", "xlsx"] {
+            if fields
+                .0
+                .get(key)
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                if let Some(parent) = span.parent() {
+                    if let Some(data) = parent.extensions().get::<SpanData>() {
+                        if let Some(value) = data.args.get(key) {
+                            fields.0.insert(key.to_owned(), value.clone());
+                        }
+                    }
+                }
+            }
+        }
+        fields.0.insert("phase_name".into(), json!(name));
+        let name = match fields
+            .0
+            .get("sheet")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            Some(sheet) => {
+                let label = sheet
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(sheet)
+                    .strip_suffix(".xml")
+                    .unwrap_or(sheet);
+                format!("[{label}] {name}")
+            }
+            None => name,
+        };
         span.extensions_mut().insert(SpanData {
             name,
             args: fields.0,
@@ -359,9 +395,18 @@ mod tests {
         let trace: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         let events = trace["traceEvents"].as_array().unwrap();
         assert_eq!(trace["otherData"]["dropped_events"], 0);
-        let parent = events.iter().find(|e| e["name"] == "parent").unwrap();
-        let child = events.iter().find(|e| e["name"] == "child").unwrap();
-        let nested = events.iter().find(|e| e["name"] == "nested").unwrap();
+        let parent = events
+            .iter()
+            .find(|e| e["args"]["phase_name"] == "parent")
+            .unwrap();
+        let child = events
+            .iter()
+            .find(|e| e["args"]["phase_name"] == "child")
+            .unwrap();
+        let nested = events
+            .iter()
+            .find(|e| e["args"]["phase_name"] == "nested")
+            .unwrap();
         assert_ne!(parent["tid"], child["tid"]);
         assert_eq!(parent["args"]["xlsx"], "quoted\"workbook.xlsx");
         assert_eq!(nested["args"]["parent_span_id"], child["args"]["span_id"]);

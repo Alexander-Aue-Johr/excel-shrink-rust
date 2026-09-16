@@ -98,7 +98,24 @@ fn parallel_cleanup_trace_preserves_output_and_records_balanced_resources_and_ha
     let trace: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root.0.join("trace.json")).unwrap()).unwrap();
     assert_eq!(trace["otherData"]["dropped_events"], 0);
-    let events = trace["traceEvents"].as_array().unwrap();
+    let mut normalized = trace["traceEvents"].as_array().unwrap().clone();
+    let chunks: Vec<_> = normalized
+        .iter()
+        .filter(|e| e["args"]["phase_name"] == "clean_range_chunk")
+        .collect();
+    assert!(!chunks.is_empty());
+    for chunk in chunks {
+        let sheet = chunk["args"]["sheet"].as_str().unwrap();
+        let label = sheet.rsplit('/').next().unwrap().trim_end_matches(".xml");
+        assert_eq!(chunk["name"], format!("[{label}] clean_range_chunk"));
+        assert!(chunk["args"]["chunk"].is_u64());
+    }
+    for event in &mut normalized {
+        if let Some(name) = event["args"]["phase_name"].as_str().map(str::to_owned) {
+            event["name"] = name.into();
+        }
+    }
+    let events = &normalized;
     let starts: HashMap<_, _> = events
         .iter()
         .filter(|e| e["ph"] == "s")
@@ -140,8 +157,28 @@ fn parallel_cleanup_trace_preserves_output_and_records_balanced_resources_and_ha
         "row_append_output",
         "sampled_cell_work",
         "range_row_samples",
+        "preprocess_read_decompress",
+        "preprocess_append_input",
+        "preprocess_find_sheet_data_end",
+        "preprocess_sheet_data_prefix",
+        "preprocess_check_cdata",
+        "preprocess_append_result",
+        "preprocess_retain_buffer_suffix",
     ] {
         assert!(events.iter().any(|e| e["name"] == name), "missing {name}");
+    }
+    let reads: Vec<_> = events
+        .iter()
+        .filter(|event| event["name"] == "preprocess_read_decompress")
+        .collect();
+    assert!(!reads.is_empty());
+    assert!(reads
+        .iter()
+        .any(|event| event["args"]["bytes_read"].as_u64().unwrap() > 0));
+    for event in reads {
+        let requested = event["args"]["requested_bytes"].as_u64().unwrap();
+        let actual = event["args"]["bytes_read"].as_u64().unwrap();
+        assert!(actual <= requested);
     }
     let sampled_cells: u64 = events
         .iter()

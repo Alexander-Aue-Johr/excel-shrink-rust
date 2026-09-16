@@ -2,6 +2,7 @@ use crate::error::{Result, ShrinkError};
 use crate::models::{
     CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, ColumnRangeMap, SheetStreamingState,
 };
+use crate::profiling;
 use crate::sheet::cols::process_cols_node;
 use crate::sheet::merge_cells::{find_max_merge_cells, find_merge_cell_ranges};
 use crate::sheet::sheet_data::{pre_process_sheet_data_chunk, SheetDataPreprocessState};
@@ -169,10 +170,22 @@ where
             return Ok(());
         }
 
-        let bytes_read = self.stream.read(&mut self.read_buffer)?;
+        let bytes_read = {
+            let span = tracing::info_span!(
+                target: "excel_shrink::profile",
+                "preprocess_read_decompress",
+                requested_bytes = self.read_buffer.len(),
+                bytes_read = tracing::field::Empty,
+            );
+            let _entered = span.enter();
+            let bytes_read = self.stream.read(&mut self.read_buffer)?;
+            span.record("bytes_read", bytes_read);
+            bytes_read
+        };
         if bytes_read == 0 {
             self.reached_eof = true;
         } else {
+            let _span = profiling::phase("preprocess_append_input", "", "");
             self.buffer
                 .extend_from_slice(&self.read_buffer[..bytes_read]);
         }
@@ -260,14 +273,22 @@ where
     }
 
     fn process_sheet_data_node(&mut self) -> Result<bool> {
-        if let Some(closing_start) = rfind_bytes(&self.buffer, b"</sheetData>") {
+        let closing_start = {
+            let _span = profiling::phase("preprocess_find_sheet_data_end", "", "");
+            rfind_bytes(&self.buffer, b"</sheetData>")
+        };
+        if let Some(closing_start) = closing_start {
             self.preprocess_sheet_data_prefix(closing_start)?;
             self.discard_buffer_prefix(closing_start);
             self.state = SheetStreamingState::InWorksheetNode;
             return Ok(false);
         }
 
-        if let Some(row_start) = rfind_bytes(&self.buffer, b"<row").filter(|start| *start > 0) {
+        let row_start = {
+            let _span = profiling::phase("preprocess_find_row_boundary", "", "");
+            rfind_bytes(&self.buffer, b"<row").filter(|start| *start > 0)
+        };
+        if let Some(row_start) = row_start {
             self.preprocess_sheet_data_prefix(row_start)?;
             self.discard_buffer_prefix(row_start);
         }
@@ -276,6 +297,7 @@ where
     }
 
     fn preprocess_sheet_data_prefix(&mut self, end: usize) -> Result<()> {
+        let _span = profiling::phase("preprocess_sheet_data_prefix", "", "");
         let preprocess_state = get_or_create_sheet_data_preprocess_state(
             &mut self.sheet_data_preprocess_state,
             &self.column_definitions,
@@ -288,7 +310,10 @@ where
             &mut self.result.clean_sheet_metrics,
         )?;
 
-        extend_without_large_growth(&mut self.result.sheet_data, &cleaned_chunk);
+        {
+            let _span = profiling::phase("preprocess_append_result", "", "");
+            extend_without_large_growth(&mut self.result.sheet_data, &cleaned_chunk);
+        }
         Ok(())
     }
 
@@ -323,6 +348,7 @@ where
     }
 
     fn discard_buffer_prefix(&mut self, index: usize) {
+        let _span = profiling::phase("preprocess_retain_buffer_suffix", "", "");
         self.buffer = self.buffer[index..].to_vec();
     }
 }

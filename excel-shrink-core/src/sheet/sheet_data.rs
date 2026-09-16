@@ -65,7 +65,11 @@ pub fn pre_process_sheet_data_chunk<'a>(
     state: &mut SheetDataPreprocessState,
     metrics: &mut CleanSheetMetrics,
 ) -> Result<Cow<'a, [u8]>> {
-    if find_bytes(chunk, b"<![CDATA[").is_some() {
+    let has_cdata = {
+        let _span = profiling::phase("preprocess_check_cdata", "", "");
+        find_bytes(chunk, b"<![CDATA[").is_some()
+    };
+    if has_cdata {
         return Err(ShrinkError::UnsupportedCData);
     }
 
@@ -73,10 +77,15 @@ pub fn pre_process_sheet_data_chunk<'a>(
         return Ok(Cow::Borrowed(chunk));
     }
 
-    if should_skip_empty_cell_cleanup_for_chunk(chunk, state) {
+    let skip_cleanup = {
+        let _span = profiling::phase("preprocess_check_style_risk", "", "");
+        should_skip_empty_cell_cleanup_for_chunk(chunk, state)
+    };
+    if skip_cleanup {
         return Ok(Cow::Borrowed(chunk));
     }
 
+    let _span = profiling::phase("preprocess_remove_empty_cells", "", "");
     Ok(remove_consecutive_empty_cells(chunk, state, metrics))
 }
 
