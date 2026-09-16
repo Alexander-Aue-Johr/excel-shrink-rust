@@ -2381,10 +2381,29 @@ fn process_initial_sheets(
     if cli.disable_multiprocessing {
         sheet_tasks.into_iter().filter_map(process_sheet).collect()
     } else {
-        sheet_tasks
+        let workers = rayon::current_num_threads().min(sheet_tasks.len());
+        let pending = Mutex::new(sheet_tasks.into_iter().enumerate());
+        let mut results: Vec<_> = (0..workers)
             .into_par_iter()
-            .filter_map(process_sheet)
-            .collect()
+            .map(|_| {
+                let mut results = Vec::new();
+                loop {
+                    // Claim one sheet in size order; never reserve a batch for a worker.
+                    let next = pending.lock().unwrap().next();
+                    let Some((index, task)) = next else {
+                        break;
+                    };
+                    if let Some(result) = process_sheet(task) {
+                        results.push((index, result));
+                    }
+                }
+                results
+            })
+            .flatten()
+            .collect();
+        // Keep the original order for reference scan/fallback semantics.
+        results.sort_by_key(|(index, _)| *index);
+        results.into_iter().map(|(_, result)| result).collect()
     }
 }
 
