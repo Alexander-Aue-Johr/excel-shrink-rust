@@ -321,3 +321,7 @@ Sheet-owned spans use labels such as `[sheet84] clean_range_chunk`, including ch
 ### Byte lookup experiment
 
 Prepared scanner sheet-name keys and retained calcChain cell-reference keys use owned byte vectors, with borrowed byte lookups. Only escaped sheet names allocate a temporary lookup buffer. Reference storage still allocates per distinct address. Checked unsigned ASCII parsing avoids UTF-8 intermediates in numeric cleanup fields; malformed-header UTF-8 fallback is retained. Final untraced nine-case comparison: 6919.5 → 6916.5 ms median, no demonstrated overall speedup; all 72 outputs match per ZIP entry. Artifacts: `.tmp/profiles/byte-lookups/final/`.
+
+### Direct chunk boundary planning
+
+The planner searches near each byte target for complete row boundaries instead of enumerating every row end. Oversized rows stay intact; recognized incomplete/overlapping boundary candidates use the sequential fallback. Boundary parity tests cover all target sizes on representative valid and malformed fixtures. Two untraced nine-case suite comparisons measured 7245 → 6867 ms and 7251.5 → 7062.5 ms median totals. All 144 case outputs match by unpacked ZIP entries. Individual workloads fluctuate and some small-case medians regress; no universal speedup is claimed. Overall trace planning dropped from 1754.55 ms summed wall time to 0.214 ms; overlapping phase times are not end-to-end savings. Artifacts: `.tmp/profiles/direct-chunk-plan/`.

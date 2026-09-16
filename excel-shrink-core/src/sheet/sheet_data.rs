@@ -345,16 +345,51 @@ fn plan_row_aligned_chunks_by_max_size(
         return vec![full_range_chunk(sheet_data.len())];
     }
 
-    let chunks = build_row_aligned_chunks(
-        sheet_data.len(),
-        max_chunk_size,
-        row_end_positions(sheet_data),
-    );
-    if chunks.is_empty() {
-        vec![full_range_chunk(sheet_data.len())]
-    } else {
-        chunks
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < sheet_data.len() {
+        let target = start.saturating_add(max_chunk_size).min(sheet_data.len());
+        let mut search_end = target;
+        let mut end = None;
+        while let Some(relative) = crate::xml::rfind_bytes(&sheet_data[start..search_end], b"<row")
+        {
+            let row_start = start + relative;
+            if let Some(previous) = crate::xml::rfind_bytes(&sheet_data[start..row_start], b"<row")
+            {
+                if find_next_row_block(sheet_data, start + previous)
+                    .is_none_or(|row| row.end > row_start)
+                {
+                    return build_row_aligned_chunks(
+                        sheet_data.len(),
+                        max_chunk_size,
+                        row_end_positions(sheet_data),
+                    );
+                }
+            }
+            let Some(row) = find_next_row_block(sheet_data, row_start) else {
+                return build_row_aligned_chunks(
+                    sheet_data.len(),
+                    max_chunk_size,
+                    row_end_positions(sheet_data),
+                );
+            };
+            if row.end <= target {
+                end = Some(row.end);
+                break;
+            }
+            search_end = row_start;
+        }
+        let end = end.unwrap_or_else(|| {
+            find_next_row_block(sheet_data, start).map_or(sheet_data.len(), |row| row.end)
+        });
+        chunks.push(RowAlignedChunk {
+            index: chunks.len(),
+            start,
+            end,
+        });
+        start = end;
     }
+    chunks
 }
 
 #[inline]
@@ -1082,6 +1117,9 @@ mod allocation_regressions {
         let inputs: &[&[u8]] = &[
             b"",
             b"no rows",
+            b"<row><row/></row><row/>",
+            b"<row/><row><c><v>unfinished",
+            b"<row/><row><c><v>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</v></c></row><row/>",
             b"<row r=\"1\"/>",
             b"prefix<row r=\"1\"/><row r=\"2\"><c r=\"A2\"><v>longer row</v></c></row>suffix",
             b"<row r=\"1\"/><row r=\"2\"/><row broken",
