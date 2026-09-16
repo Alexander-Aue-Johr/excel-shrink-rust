@@ -220,3 +220,16 @@ which avoids allocating a cell buffer and triggering an otherwise unnecessary ro
 rewrite. Changed rows still use output buffers; this is not a full direct-writer
 redesign. Allocation regressions measure bounds scanning and formula detection
 separately from necessary output/metadata allocations.
+
+### Conditional original-data bounds
+
+The full original visible-data scan runs only for `KeepInDataRange`, its only
+consumer. Other policies leave `visible_data_range_bounds` empty; actual visible
+content/tail bounds continue to be collected during cleanup. Existing protection
+and later-visible-content regression tests cover the policy behavior.
+
+An optimized, untraced `overall-reduction` comparison (ABBA then BAAB, four runs
+per binary) measured median cleanup time 5.867 s before and 4.595 s after (21.7%
+lower). All 225 unpacked ZIP entries match across all eight runs. Workspace tests:
+240 passed, six existing ignored, full corpus suite filtered. Raw reports and
+binary hashes: `.tmp/profiles/optimization-series/step1/results.json`.

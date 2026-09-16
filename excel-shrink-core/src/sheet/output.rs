@@ -122,11 +122,19 @@ fn prepare_sheet_metrics(
     progress("build_prepare_sheet_metrics");
     let sheet_protection_enabled = worksheet_has_enabled_sheet_protection(preprocessed);
     let drawing_anchor_bounds = find_worksheet_drawing_anchor_bounds(preprocessed, params);
-    let visible_data_range_bounds = find_visible_content_bounds(
-        &preprocessed.sheet_data,
-        params,
-        &preprocessed.clean_sheet_metrics.column_definitions,
-    );
+    // Only this policy consults the original visible data rectangle. Other
+    // policies can avoid a complete preliminary scan of every row and cell.
+    let visible_data_range_bounds = if params.cleanup.inactive_protection_cell_policy
+        == crate::models::InactiveProtectionCellPolicy::KeepInDataRange
+    {
+        find_visible_content_bounds(
+            &preprocessed.sheet_data,
+            params,
+            &preprocessed.clean_sheet_metrics.column_definitions,
+        )
+    } else {
+        VisibleContentBounds::default()
+    };
 
     let metrics = &mut preprocessed.clean_sheet_metrics;
     metrics.cleanup_stats.enabled |= params.collect_cleanup_stats;

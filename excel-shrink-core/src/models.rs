@@ -359,6 +359,7 @@ pub struct CleanSheetMetrics {
     pub cleanup_stats: CleanupStats,
     pub sheet_protection_enabled: bool,
     pub visible_content_bounds: VisibleContentBounds,
+    /// Original visible data bounds, populated only for KeepInDataRange policy.
     pub visible_data_range_bounds: VisibleContentBounds,
     pub tail_anchor_rows: BTreeMap<u32, usize>,
     pub tail_anchor_max_row: Option<u32>,
