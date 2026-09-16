@@ -291,6 +291,7 @@ struct ArchivePlanningContext<'a> {
     selected_sheets: &'a HashSet<String>,
     tx: &'a mpsc::Sender<QueuedWriteJob>,
     advanced_cleanup_enabled: bool,
+    has_calc_chain: bool,
     analysis_tx: Option<&'a mpsc::Sender<AnalysisCsvRow>>,
     attribution_safe_analysis: bool,
 }
@@ -312,7 +313,7 @@ enum ArchiveEntryPlan {
 struct SheetFinalizer<'a> {
     tx: &'a mpsc::Sender<QueuedWriteJob>,
     analysis_tx: Option<&'a mpsc::Sender<AnalysisCsvRow>>,
-    known_cells_by_sheet_file: &'a Mutex<HashMap<String, HashSet<Vec<u8>>>>,
+    known_cells_by_sheet_file: Option<&'a Mutex<HashMap<String, HashSet<Vec<u8>>>>>,
     protected_refs: &'a ProtectedWorkbookRefs,
     safe_to_clean: bool,
     attribution_safe_analysis: bool,
@@ -1699,7 +1700,9 @@ fn plan_workbook_entry(
     if context.advanced_cleanup_enabled {
         plan.workbook_xml_for_scan = Some(cleaned.clone());
     }
-    plan.workbook_xml_for_calc_chain = Some(cleaned.clone());
+    if context.has_calc_chain {
+        plan.workbook_xml_for_calc_chain = Some(cleaned.clone());
+    }
 
     let output_method = output_compression_method(compression, context.cli.store_output);
     match precompress_entry(
@@ -1757,9 +1760,14 @@ fn plan_relationships_entry(
     context: &ArchivePlanningContext<'_>,
     plan: &mut ArchivePlan,
 ) -> ArchiveEntryPlan {
+    if !context.has_calc_chain && !context.advanced_cleanup_enabled {
+        return queue_original_entry(context.tx, index, filename, context.input_display);
+    }
     match read_archive_entry(file) {
         Ok(relationships) => {
-            plan.workbook_rels_for_calc_chain = Some(relationships.clone());
+            if context.has_calc_chain {
+                plan.workbook_rels_for_calc_chain = Some(relationships.clone());
+            }
             if context.advanced_cleanup_enabled {
                 plan.workbook_rels_for_scan = Some(relationships);
             }
@@ -2141,7 +2149,9 @@ impl SheetFinalizer<'_> {
         } = sheet;
         let cleaned_size = xml.len();
         let reduction = original_size.saturating_sub(cleaned_size);
-        let cleaned_cell_refs = collect_cell_refs(&xml);
+        let cleaned_cell_refs = self
+            .known_cells_by_sheet_file
+            .map(|_| collect_cell_refs(&xml));
         let output_method = output_compression_method(params.compress_method, self.store_output);
 
         match precompress_entry(
@@ -2170,7 +2180,7 @@ impl SheetFinalizer<'_> {
         original_size: usize,
         cleaned_size: usize,
         reduction: usize,
-        cleaned_cell_refs: HashSet<Vec<u8>>,
+        cleaned_cell_refs: Option<HashSet<Vec<u8>>>,
         zip_bytes: Vec<u8>,
     ) {
         let queue_phase = profiling::phase(
@@ -2194,9 +2204,11 @@ impl SheetFinalizer<'_> {
             cleaned_size,
             self.attribution_safe_analysis,
         );
+        if let Some((known_cells, cleaned_cell_refs)) =
+            self.known_cells_by_sheet_file.zip(cleaned_cell_refs)
         {
             let _profile = profiling::phase("publish_cell_references", "", "");
-            self.known_cells_by_sheet_file
+            known_cells
                 .lock()
                 .unwrap()
                 .insert(params.zip_info_filename.clone(), cleaned_cell_refs);
@@ -2255,17 +2267,20 @@ fn queue_calculation_chain(
     calc_chain_part: Option<(usize, CompressionMethod, Vec<u8>)>,
     workbook_xml: Option<&[u8]>,
     workbook_rels: Option<&[u8]>,
-    known_cells_by_sheet_file: &Mutex<HashMap<String, HashSet<Vec<u8>>>>,
+    known_cells_by_sheet_file: Option<&Mutex<HashMap<String, HashSet<Vec<u8>>>>>,
     tx: &mpsc::Sender<QueuedWriteJob>,
     input_display: &str,
     store_output: bool,
     compression_level: i32,
 ) -> bool {
-    let _profile = profiling::phase("clean_calc_chain", input_display, "");
     let Some((index, method, calc_chain_xml)) = calc_chain_part else {
         return true;
     };
-    let Some((workbook_xml, workbook_rels)) = workbook_xml.zip(workbook_rels) else {
+    let _profile = profiling::phase("clean_calc_chain", input_display, "");
+    let Some(((workbook_xml, workbook_rels), known_cells_by_sheet_file)) = workbook_xml
+        .zip(workbook_rels)
+        .zip(known_cells_by_sheet_file)
+    else {
         return queue_original_calc_chain(tx, index, input_display);
     };
     let sheet_id_to_file = build_sheet_id_to_file_map(workbook_xml, workbook_rels);
@@ -2497,6 +2512,7 @@ fn process_file(
         selected_sheets: &selected_sheets,
         tx: &tx,
         advanced_cleanup_enabled: do_advanced,
+        has_calc_chain: archive.file_names().any(|name| name == "xl/calcChain.xml"),
         analysis_tx: analysis_tx.as_ref(),
         attribution_safe_analysis,
     };
@@ -2517,7 +2533,11 @@ fn process_file(
     let sheet_tasks =
         prioritize_sheet_tasks(sheet_tasks, &input_display, cli.parallel_range_chunk_size);
 
-    let known_cells_by_sheet_file = Mutex::new(HashMap::new());
+    // Cell addresses are used only to remove stale calcChain entries.
+    let known_cells_by_sheet_file = (calc_chain_part.is_some()
+        && workbook_xml_for_calc_chain.is_some()
+        && workbook_rels_for_calc_chain.is_some())
+    .then(|| Mutex::new(HashMap::new()));
     let reference_map = SheetReferenceMap::from_workbook(
         workbook_xml_for_scan.as_deref(),
         workbook_rels_for_scan.as_deref(),
@@ -2546,7 +2566,7 @@ fn process_file(
     let early_finalizer = SheetFinalizer {
         tx: &tx,
         analysis_tx: analysis_tx.as_ref(),
-        known_cells_by_sheet_file: &known_cells_by_sheet_file,
+        known_cells_by_sheet_file: known_cells_by_sheet_file.as_ref(),
         protected_refs: &empty_refs,
         safe_to_clean: false,
         attribution_safe_analysis,
@@ -2622,7 +2642,7 @@ fn process_file(
     let finalizer = SheetFinalizer {
         tx: &tx,
         analysis_tx: analysis_tx.as_ref(),
-        known_cells_by_sheet_file: &known_cells_by_sheet_file,
+        known_cells_by_sheet_file: known_cells_by_sheet_file.as_ref(),
         protected_refs: &protected_refs,
         safe_to_clean,
         attribution_safe_analysis,
@@ -2635,7 +2655,7 @@ fn process_file(
         calc_chain_part,
         workbook_xml_for_calc_chain.as_deref(),
         workbook_rels_for_calc_chain.as_deref(),
-        &known_cells_by_sheet_file,
+        known_cells_by_sheet_file.as_ref(),
         &tx,
         &input_display,
         cli.store_output,

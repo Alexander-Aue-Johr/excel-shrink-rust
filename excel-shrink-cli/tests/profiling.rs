@@ -116,6 +116,17 @@ fn parallel_cleanup_trace_preserves_output_and_records_balanced_resources_and_ha
         }
     }
     let events = &normalized;
+    // These workbooks have no calcChain: no address scan or publication is needed.
+    for name in [
+        "collect_cell_references",
+        "publish_cell_references",
+        "clean_calc_chain",
+    ] {
+        assert!(
+            !events.iter().any(|e| e["name"] == name),
+            "unexpected {name}"
+        );
+    }
     let starts: HashMap<_, _> = events
         .iter()
         .filter(|e| e["ph"] == "s")
