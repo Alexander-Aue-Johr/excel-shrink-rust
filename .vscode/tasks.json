@@ -243,6 +243,36 @@
         "panel": "dedicated",
         "clear": true
       }
+    },
+    {
+      "label": "Excel Shrink: Performance Demo",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\demo-kernhaushalte.ps1",
+        "-ExcelShrinkExe",
+        "${workspaceFolder}\\target\\release\\excel-shrink-cli.exe"
+      ],
+      "dependsOn": [
+        "cargo build release"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "focus": false,
+        "showReuseMessage": false
+      },
+      "runOptions": {
+        "reevaluateOnRerun": true
+      }
     }
   ],
   "inputs": [
