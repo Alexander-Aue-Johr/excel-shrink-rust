@@ -139,7 +139,8 @@ impl BatchProgress {
             files_completed,
             files_remaining,
             files_active,
-            "Started XLSX processing"
+            "Started XLSX processing: {}",
+            xlsx
         );
 
         XlsxProgress {
@@ -163,6 +164,7 @@ impl XlsxProgress {
         output_written: bool,
         elapsed_ms: u128,
         jobs_total: Option<usize>,
+        out_path: Option<&Path>,
         message: &'static str,
     ) {
         if !self.finished {
@@ -174,18 +176,35 @@ impl XlsxProgress {
                 .fetch_sub(1, Ordering::Relaxed)
                 .saturating_sub(1);
             let files_remaining = self.batch.files_total.saturating_sub(files_completed);
-            info!(
-                event,
-                xlsx = %self.xlsx,
-                output_written,
-                elapsed_ms,
-                jobs_total,
-                files_total = self.batch.files_total,
-                files_completed,
-                files_remaining,
-                files_active,
-                "{message}"
-            );
+            if let Some(out_path) = out_path {
+                info!(
+                    event,
+                    xlsx = %self.xlsx,
+                    output_written,
+                    elapsed_ms,
+                    jobs_total,
+                    files_total = self.batch.files_total,
+                    files_completed,
+                    files_remaining,
+                    files_active,
+                    "{message}: {}",
+                    out_path.display()
+                );
+            } else {
+                info!(
+                    event,
+                    xlsx = %self.xlsx,
+                    output_written,
+                    elapsed_ms,
+                    jobs_total,
+                    files_total = self.batch.files_total,
+                    files_completed,
+                    files_remaining,
+                    files_active,
+                    "{message}: {}",
+                    self.xlsx
+                );
+            }
         }
     }
 }
@@ -197,6 +216,7 @@ impl Drop for XlsxProgress {
                 "file_processing_stopped",
                 false,
                 0,
+                None,
                 None,
                 "XLSX processing stopped before output was written",
             );
@@ -888,6 +908,7 @@ fn write_xlsx(
         true,
         writer_start.elapsed().as_millis(),
         Some(timings.jobs),
+        Some(&out_path),
         "Finished writing XLSX",
     );
 }
@@ -2466,6 +2487,7 @@ fn process_file(
             false,
             file_start.elapsed().as_millis(),
             None,
+            Some(&out_path),
             "Skipped XLSX because output file already exists",
         );
         return;
