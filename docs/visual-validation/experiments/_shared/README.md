@@ -19,5 +19,7 @@ The Rust host is cross-compiled from WSL to `x86_64-pc-windows-gnu`, cached unde
 Its experiment-only dependencies are declared by the Cargo manifest in this directory
 and do not participate in the repository root Cargo workspace.
 
-The ASP.NET Core host has its own `.csproj`; a Windows .NET 8 SDK is needed only when
-that variant is selected.
+The ASP.NET Core host has its own `.csproj`. When that variant is selected, the
+runner first reuses any Windows .NET 8 SDK already available on `PATH` or in the
+existing per-user repo-toolchain cache. If none is available, it installs .NET 8
+without administrator rights below `%LOCALAPPDATA%\excel-shrink-rust\repo-toolchains\`.

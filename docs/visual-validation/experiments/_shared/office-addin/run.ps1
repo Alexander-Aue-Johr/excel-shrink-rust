@@ -114,35 +114,259 @@ Copy-Item `
     -Force
 Copy-Item -LiteralPath $FileListPath -Destination $HostFileList -Force
 
+# Source Context patch: restore repo-local .NET 8 fallback.
+function Test-DotNet8Sdk([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+
+    try {
+        $sdks = @(& $Path --list-sdks 2>$null)
+
+        if ($LASTEXITCODE -ne 0) {
+            return $false
+        }
+
+        return @($sdks | Where-Object { $_ -match '^\s*8\.' }).Count -gt 0
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-StableStringSha256([string]$Value) {
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($Value)
+        $hash = $sha256.ComputeHash($bytes)
+
+        return (
+            [BitConverter]::ToString($hash)
+        ).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
+function Get-RepoDotNetPaths {
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        throw @"
+LOCALAPPDATA is not available.
+
+The visual-validation ASP.NET host needs a writable per-user directory for its
+repo-local Windows .NET 8 SDK fallback. No administrator rights are required.
+"@
+    }
+
+    $toolchainId = (
+        Get-StableStringSha256 $RepoRoot
+    ).Substring(0, 16)
+
+    $root = Join-Path `
+        $env:LOCALAPPDATA `
+        "excel-shrink-rust\repo-toolchains\$toolchainId"
+
+    $dotnetRoot = Join-Path $root 'dotnet-win-x64'
+
+    return [pscustomobject]@{
+        ToolchainRoot = $root
+        DotNetRoot = $dotnetRoot
+        DotNetExe = (Join-Path $dotnetRoot 'dotnet.exe')
+        InstallScript = (Join-Path $root 'dotnet-install.ps1')
+    }
+}
+
 function Find-DotNet8 {
-    foreach ($candidate in @(
-        (Get-Command dotnet.exe -ErrorAction SilentlyContinue).Source,
-        (Join-Path $env:LOCALAPPDATA 'excel-shrink-rust\repo-toolchains\dotnet-win-x64\dotnet.exe')
-    )) {
-        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
-        if (-not (Test-Path -LiteralPath $candidate)) { continue }
-        try {
-            $sdks = @(& $candidate --list-sdks 2>$null)
-            if (@($sdks | Where-Object { $_ -match '^\s*8\.' }).Count -gt 0) {
-                return $candidate
+    $candidates = New-Object 'System.Collections.Generic.List[string]'
+
+    $global = Get-Command dotnet.exe -ErrorAction SilentlyContinue
+    if ($null -ne $global) {
+        $candidates.Add([string]$global.Source)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $repoToolchains = Join-Path `
+            $env:LOCALAPPDATA `
+            'excel-shrink-rust\repo-toolchains'
+
+        # Also accept the short-lived un-hashed layout used by one experiment
+        # revision, then scan the older repo-hashed caches.
+        $candidates.Add(
+            (Join-Path $repoToolchains 'dotnet-win-x64\dotnet.exe')
+        )
+
+        if (Test-Path -LiteralPath $repoToolchains -PathType Container) {
+            foreach ($candidate in @(
+                Get-ChildItem `
+                    -LiteralPath $repoToolchains `
+                    -Recurse `
+                    -File `
+                    -Filter 'dotnet.exe' `
+                    -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.FullName -like '*\dotnet-win-x64\dotnet.exe'
+                } |
+                Sort-Object FullName
+            )) {
+                $candidates.Add($candidate.FullName)
             }
         }
-        catch {
+    }
+
+    $seen = @{}
+
+    foreach ($candidate in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+
+        $key = $candidate.ToLowerInvariant()
+        if ($seen.ContainsKey($key)) {
+            continue
+        }
+        $seen[$key] = $true
+
+        if (Test-DotNet8Sdk $candidate) {
+            return $candidate
         }
     }
+
     return $null
 }
 
-function Ensure-DotNetHost {
-    $dotnet = Find-DotNet8
-    if ($null -eq $dotnet) {
-        throw @"
-The ASP.NET experiment host requires a Windows .NET 8 SDK.
-This dependency is experiment-only; Excel Shrink itself does not require .NET.
+function Install-RepoLocalDotNet8Sdk {
+    $paths = Get-RepoDotNetPaths
 
-Install .NET 8 or use the Office.js Rust host variant.
+    New-Item `
+        -ItemType Directory `
+        -Path $paths.ToolchainRoot `
+        -Force | Out-Null
+
+    if (
+        (Test-Path -LiteralPath $paths.DotNetRoot) -and
+        -not (Test-DotNet8Sdk $paths.DotNetExe)
+    ) {
+        Write-ExperimentLog (
+            'Removing incomplete repo-local .NET SDK cache: ' +
+            $paths.DotNetRoot
+        ) 'WARN'
+
+        Remove-Item `
+            -LiteralPath $paths.DotNetRoot `
+            -Recurse `
+            -Force
+    }
+
+    New-Item `
+        -ItemType Directory `
+        -Path $paths.DotNetRoot `
+        -Force | Out-Null
+
+    if (-not (Test-Path -LiteralPath $paths.InstallScript -PathType Leaf)) {
+        Write-ExperimentLog (
+            'Downloading Microsoft dotnet-install.ps1 to ' +
+            $paths.InstallScript
+        )
+
+        $previousSecurityProtocol = [Net.ServicePointManager]::SecurityProtocol
+
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = `
+                [Net.SecurityProtocolType]::Tls12
+
+            Invoke-WebRequest `
+                -UseBasicParsing `
+                -Uri 'https://dot.net/v1/dotnet-install.ps1' `
+                -OutFile $paths.InstallScript
+        }
+        finally {
+            [Net.ServicePointManager]::SecurityProtocol = `
+                $previousSecurityProtocol
+        }
+    }
+    else {
+        Write-ExperimentLog (
+            'Reusing cached Microsoft dotnet-install.ps1: ' +
+            $paths.InstallScript
+        )
+    }
+
+    Unblock-File `
+        -LiteralPath $paths.InstallScript `
+        -ErrorAction SilentlyContinue
+
+    Write-ExperimentLog (
+        'Installing repo-local Windows .NET 8 SDK without admin rights: ' +
+        $paths.DotNetRoot
+    )
+
+    $windowsPowerShell = Join-Path $PSHOME 'powershell.exe'
+
+    & $windowsPowerShell `
+        -NoLogo `
+        -NoProfile `
+        -ExecutionPolicy Bypass `
+        -File $paths.InstallScript `
+        -Channel '8.0' `
+        -Quality 'GA' `
+        -Architecture 'x64' `
+        -InstallDir $paths.DotNetRoot `
+        -NoPath `
+        -Verbose
+
+    $installExitCode = $LASTEXITCODE
+
+    if ($installExitCode -ne 0) {
+        throw (
+            'Repo-local .NET 8 SDK installation failed with exit code ' +
+            "$installExitCode. Install directory: $($paths.DotNetRoot)"
+        )
+    }
+
+    if (-not (Test-DotNet8Sdk $paths.DotNetExe)) {
+        throw @"
+The repo-local .NET installer completed, but no usable .NET 8 SDK was found.
+
+Expected executable:
+  $($paths.DotNetExe)
 "@
     }
+
+    return $paths.DotNetExe
+}
+
+function Get-DotNet8 {
+    $dotnet = Find-DotNet8
+
+    if ($null -ne $dotnet) {
+        Write-ExperimentLog "Using Windows .NET 8 SDK: $dotnet"
+        return $dotnet
+    }
+
+    Write-ExperimentLog (
+        'No usable Windows .NET 8 SDK was found; using the per-user ' +
+        'repo-local fallback.'
+    )
+
+    return Install-RepoLocalDotNet8Sdk
+}
+
+function Ensure-DotNetHost {
+    $dotnet = Get-DotNet8
+
+    # The direct dotnet.exe invocation already resolves its SDK relative to itself,
+    # but DOTNET_ROOT is also inherited by the cached Kestrel host process.
+    $env:DOTNET_ROOT = Split-Path -Parent $dotnet
+    $env:DOTNET_CLI_UI_LANGUAGE = 'en-us'
+    $env:DOTNET_NOLOGO = '1'
+    $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+    $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
 
     $source = Join-Path $PSScriptRoot 'hosts\dotnet'
     $cache = Join-Path $BuildCache 'dotnet-host'
@@ -164,7 +388,7 @@ Install .NET 8 or use the Office.js Rust host variant.
         Write-ExperimentLog 'ASP.NET host source changed; building cached Release host...'
         Remove-Item -LiteralPath $sourceCache -Recurse -Force -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Path $sourceCache -Force | Out-Null
-        Copy-Item -LiteralPath (Join-Path $source '*') -Destination $sourceCache -Recurse
+        Copy-Item -Path (Join-Path $source '*') -Destination $sourceCache -Recurse
         & $dotnet build `
             (Join-Path $sourceCache 'VisualValidationExperimentHost.csproj') `
             -c Release `
@@ -206,9 +430,14 @@ function Ensure-RustHost {
     $buildLinux = $wsl.LinuxPath + '/build-rust-host.sh'
     Write-ExperimentLog 'Checking cached Rust/MinGW Office host...'
 
+    # Use a login shell so rustup's ~/.cargo/bin PATH setup is available.
+    # The script itself does not need the executable bit because bash opens it.
     & wsl.exe `
         -d $wsl.Distribution `
         -- bash `
+        -lc `
+        'bash "$1"' `
+        bash `
         $buildLinux
 
     if ($LASTEXITCODE -ne 0) {

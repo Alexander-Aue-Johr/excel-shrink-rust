@@ -26,11 +26,23 @@
         }
       },
       "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\tools\\invoke-wsl-repo.ps1",
+          "-RepoRoot",
+          "${workspaceFolder}",
+          "-Executable",
+          "cargo",
+          "-ArgumentsJson",
+          "[\"build\",\"-p\",\"excel-shrink-cli\",\"--bin\",\"excel-shrink-cli\"]"
+        ],
         "options": {
-          "cwd": "${workspaceFolder}",
-          "env": {
-            "PATH": "${env:PATH};${userHome}/.cargo/bin"
-          }
+          "cwd": "${env:TEMP}"
         }
       }
     },
@@ -60,11 +72,23 @@
         }
       },
       "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\tools\\invoke-wsl-repo.ps1",
+          "-RepoRoot",
+          "${workspaceFolder}",
+          "-Executable",
+          "cargo",
+          "-ArgumentsJson",
+          "[\"build\",\"--release\",\"-p\",\"excel-shrink-cli\",\"--bin\",\"excel-shrink-cli\"]"
+        ],
         "options": {
-          "cwd": "${workspaceFolder}",
-          "env": {
-            "PATH": "${env:PATH};${userHome}/.cargo/bin"
-          }
+          "cwd": "${env:TEMP}"
         }
       }
     },
@@ -98,11 +122,23 @@
         }
       },
       "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\tools\\invoke-wsl-repo.ps1",
+          "-RepoRoot",
+          "${workspaceFolder}",
+          "-Executable",
+          "cargo",
+          "-ArgumentsJson",
+          "[\"run\",\"--release\",\"-p\",\"excel-shrink-cli\",\"--bin\",\"excel-shrink-cli\",\"--\",\"regression\",\"smoke\",\"--case-id\",\"${input:corpusRegressionCaseId}\",\"--console-log-level\",\"info\"]"
+        ],
         "options": {
-          "cwd": "${workspaceFolder}",
-          "env": {
-            "PATH": "${env:PATH};${userHome}/.cargo/bin"
-          }
+          "cwd": "${env:TEMP}"
         }
       },
       "presentation": {
@@ -142,11 +178,23 @@
         }
       },
       "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\tools\\invoke-wsl-repo.ps1",
+          "-RepoRoot",
+          "${workspaceFolder}",
+          "-Executable",
+          "cargo",
+          "-ArgumentsJson",
+          "[\"run\",\"--release\",\"-p\",\"excel-shrink-cli\",\"--bin\",\"excel-shrink-cli\",\"--\",\"regression\",\"smoke\",\"--case-id\",\"${input:corpusRegressionCaseId}\",\"--all-visual-profile-checks\",\"--console-log-level\",\"info\"]"
+        ],
         "options": {
-          "cwd": "${workspaceFolder}",
-          "env": {
-            "PATH": "${env:PATH};${userHome}/.cargo/bin"
-          }
+          "cwd": "${env:TEMP}"
         }
       },
       "presentation": {
@@ -188,11 +236,23 @@
         }
       },
       "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\tools\\invoke-wsl-repo.ps1",
+          "-RepoRoot",
+          "${workspaceFolder}",
+          "-Executable",
+          "cargo",
+          "-ArgumentsJson",
+          "[\"run\",\"--profile\",\"profiling\",\"-p\",\"excel-shrink-cli\",\"--bin\",\"excel-shrink-cli\",\"--\",\"regression\",\"smoke\",\"--case-id\",\"${input:corpusRegressionCaseId}\",\"--console-log-level\",\"info\",\"--trace-file\",\"${workspaceFolder}/.tmp/profiles/smoke-{timestamp}.json\"]"
+        ],
         "options": {
-          "cwd": "${workspaceFolder}",
-          "env": {
-            "PATH": "${env:PATH};${userHome}/.cargo/bin"
-          }
+          "cwd": "${env:TEMP}"
         }
       },
       "presentation": {
@@ -556,11 +616,23 @@
         }
       },
       "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\tools\\invoke-wsl-repo.ps1",
+          "-RepoRoot",
+          "${workspaceFolder}",
+          "-Executable",
+          "cargo",
+          "-ArgumentsJson",
+          "[\"test\",\"--manifest-path\",\"${workspaceFolder}/tools/excel-lab/native/Cargo.toml\",\"--target-dir\",\"${workspaceFolder}/.tmp/excel-lab-rust-target\"]"
+        ],
         "options": {
-          "cwd": "${workspaceFolder}",
-          "env": {
-            "PATH": "${env:PATH};${userHome}/.cargo/bin"
-          }
+          "cwd": "${env:TEMP}"
         }
       },
       "problemMatcher": [
@@ -593,6 +665,23 @@
       },
       "runOptions": {
         "instanceLimit": 1
+      },
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-STA",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\docs\\visual-validation\\experiments\\run.ps1",
+          "-CorpusRoot",
+          "${workspaceFolder}\\corpus-local"
+        ],
+        "options": {
+          "cwd": "${env:TEMP}"
+        }
       }
     }
   ],

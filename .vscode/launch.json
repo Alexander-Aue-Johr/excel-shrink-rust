@@ -814,7 +814,7 @@
             "name": "Experiment: visual validation",
             "type": "node-terminal",
             "request": "launch",
-            "command": "printf 'Experiment task finished.\\n'",
+            "command": "echo Experiment task finished.",
             "preLaunchTask": "Experiment: visual validation"
         }
     ],
