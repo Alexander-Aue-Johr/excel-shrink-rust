@@ -370,36 +370,69 @@ function Ensure-DotNetHost {
 
     $source = Join-Path $PSScriptRoot 'hosts\dotnet'
     $cache = Join-Path $BuildCache 'dotnet-host'
-    $sourceCache = Join-Path $cache 'src'
-    $fingerprintPath = Join-Path $cache 'source.sha256'
     $fingerprint = Get-SourceFingerprint @($source)
-    $current = if (Test-Path -LiteralPath $fingerprintPath) {
-        [IO.File]::ReadAllText($fingerprintPath).Trim()
-    } else { '' }
 
+    # Source Context patch: fingerprint-specific ASP.NET build cache.
+    # Never rebuild on top of a DLL that may still be mapped by an old host
+    # process. A source change gets a new immutable build directory instead.
+    $cacheKey = $fingerprint.Substring(0, 16)
+    $sourceCache = Join-Path $cache ('src-' + $cacheKey)
     $dll = Join-Path `
         $sourceCache `
         'bin\Release\net8.0\VisualValidationExperimentHost.dll'
 
-    if (
-        $current -ne $fingerprint -or
-        -not (Test-Path -LiteralPath $dll)
-    ) {
-        Write-ExperimentLog 'ASP.NET host source changed; building cached Release host...'
-        Remove-Item -LiteralPath $sourceCache -Recurse -Force -ErrorAction SilentlyContinue
-        New-Item -ItemType Directory -Path $sourceCache -Force | Out-Null
-        Copy-Item -Path (Join-Path $source '*') -Destination $sourceCache -Recurse
-        & $dotnet build `
-            (Join-Path $sourceCache 'VisualValidationExperimentHost.csproj') `
-            -c Release `
-            --nologo
-        if ($LASTEXITCODE -ne 0) {
-            throw "ASP.NET experiment host build failed with exit code $LASTEXITCODE"
+    if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) {
+        Write-ExperimentLog (
+            'ASP.NET host source changed; building fingerprint cache ' +
+            "$cacheKey..."
+        )
+
+        if (Test-Path -LiteralPath $sourceCache) {
+            # A previous failed build for exactly this fingerprint may have left
+            # a partial directory. No process can be running a successful DLL
+            # from it, because the expected DLL does not exist.
+            Remove-Item `
+                -LiteralPath $sourceCache `
+                -Recurse `
+                -Force `
+                -ErrorAction Stop
         }
-        Write-Utf8NoBom $fingerprintPath ($fingerprint + "`n")
+
+        New-Item -ItemType Directory -Path $sourceCache -Force | Out-Null
+        Copy-Item `
+            -Path (Join-Path $source '*') `
+            -Destination $sourceCache `
+            -Recurse `
+            -Force
+
+        $project = Join-Path $sourceCache 'VisualValidationExperimentHost.csproj'
+        $buildOutput = @(
+            & $dotnet build `
+                $project `
+                -c Release `
+                --nologo `
+                2>&1
+        )
+        $buildExitCode = $LASTEXITCODE
+
+        foreach ($line in $buildOutput) {
+            Write-Host ([string]$line)
+        }
+
+        if ($buildExitCode -ne 0) {
+            throw (
+                'ASP.NET experiment host build failed with exit code ' +
+                "$buildExitCode. Build directory retained for inspection: " +
+                $sourceCache
+            )
+        }
+
+        if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) {
+            throw "ASP.NET build succeeded but did not produce expected DLL: $dll"
+        }
     }
     else {
-        Write-ExperimentLog 'Reusing cached ASP.NET host.'
+        Write-ExperimentLog "Reusing cached ASP.NET host: $cacheKey"
     }
 
     Write-ExperimentLog 'Checking trusted ASP.NET Core localhost certificate...'
