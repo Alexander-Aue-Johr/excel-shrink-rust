@@ -366,6 +366,33 @@
     });
   }
 
+  function officeErrorDetail(error) {
+    const message = error && error.message ? error.message : String(error);
+    const code = error && error.code ? String(error.code) : '';
+    let debugInfo = '';
+
+    try {
+      if (error && error.debugInfo) {
+        debugInfo = JSON.stringify(error.debugInfo);
+      }
+    } catch (_) {
+    }
+
+    return [
+      message,
+      code ? `code=${code}` : '',
+      debugInfo ? `debugInfo=${debugInfo}` : ''
+    ].filter(Boolean).join(' | ');
+  }
+
+  async function syncStage(context, stage) {
+    try {
+      await context.sync();
+    } catch (error) {
+      throw new Error(`${stage}: ${officeErrorDetail(error)}`);
+    }
+  }
+
   async function captureProbePair(
     workbookName,
     entry,
@@ -379,6 +406,9 @@
     return Excel.run(async (context) => {
       const sheet = context.workbook.worksheets.getItem(entry.sheet);
       const probe = sheet.getRange(address);
+
+      // Keep the full probe-range emptiness guard: the XOR strategy is only
+      // meaningful when the area outside the content boundary is actually empty.
       const constants = probe.getSpecialCellsOrNullObject(
         Excel.SpecialCellType.constants
       );
@@ -386,7 +416,7 @@
         Excel.SpecialCellType.formulas
       );
 
-      await context.sync();
+      await syncStage(context, `probe emptiness check (${entry.sheet}, ${axis})`);
 
       if (!constants.isNullObject || !formulas.isNullObject) {
         return {
@@ -395,19 +425,56 @@
         };
       }
 
+      // The old implementation copied a space into *every cell* of the complete
+      // screenshot-sized probe and then cleared that complete range again. On
+      // large worksheets this can touch hundreds of thousands of cells and Excel
+      // may fail the final context.sync() with a generic RichApi internal error.
+      //
+      // A blocker is only needed directly at the content boundary:
+      //   horizontal overflow -> first column to the right
+      //   vertical overflow   -> first row below
+      // The image still covers the complete probe range, so the measured XOR
+      // extent is unchanged while the mutation is dramatically smaller.
+      const blocker = axis === 'horizontal'
+        ? sheet.getRangeByIndexes(
+            0,
+            startIndex,
+            Math.max(1, Number(entry.contentBottomRow) + 1),
+            1
+          )
+        : sheet.getRangeByIndexes(
+            startIndex,
+            0,
+            1,
+            Math.max(1, Number(entry.contentRightColumn) + 1)
+          );
+
       const before = probe.getImage();
-      await context.sync();
+      await syncStage(context, `probe before image (${entry.sheet}, ${axis})`);
 
-      const seed = probe.getCell(0, 0);
+      const seed = blocker.getCell(0, 0);
       seed.values = [[' ']];
-      probe.copyFrom(seed, Excel.RangeCopyType.values);
-      await context.sync();
+      blocker.copyFrom(seed, Excel.RangeCopyType.values);
 
-      const after = probe.getImage();
-      await context.sync();
+      let blockerWritten = false;
+      let after;
 
-      probe.clear(Excel.ClearApplyTo.contents);
-      await context.sync();
+      try {
+        await syncStage(context, `write overflow blocker (${entry.sheet}, ${axis})`);
+        blockerWritten = true;
+
+        after = probe.getImage();
+        await syncStage(context, `probe after image (${entry.sheet}, ${axis})`);
+      } finally {
+        if (blockerWritten) {
+          blocker.clear(Excel.ClearApplyTo.contents);
+          try {
+            await syncStage(context, `clear overflow blocker (${entry.sheet}, ${axis})`);
+          } catch (cleanupError) {
+            throw cleanupError;
+          }
+        }
+      }
 
       const response = await fetch('/probe-batch', {
         method: 'POST',

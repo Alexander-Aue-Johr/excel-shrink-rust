@@ -430,14 +430,12 @@ function Ensure-RustHost {
     $buildLinux = $wsl.LinuxPath + '/build-rust-host.sh'
     Write-ExperimentLog 'Checking cached Rust/MinGW Office host...'
 
-    # Use a login shell so rustup's ~/.cargo/bin PATH setup is available.
-    # The script itself does not need the executable bit because bash opens it.
+    # Keep the Windows -> WSL bridge deliberately simple. The build script
+    # itself owns Rust PATH setup, so this also works when Windows PowerShell
+    # was launched from a VS Code task running inside WSL.
     & wsl.exe `
         -d $wsl.Distribution `
         -- bash `
-        -lc `
-        'bash "$1"' `
-        bash `
         $buildLinux
 
     if ($LASTEXITCODE -ne 0) {

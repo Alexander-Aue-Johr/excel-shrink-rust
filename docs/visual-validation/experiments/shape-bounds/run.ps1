@@ -66,8 +66,8 @@ if ([string]::IsNullOrWhiteSpace($Implementation)) {
             'VSTO',
             'PowerShell COM',
             'Rust COM',
-            'Office.js · Rust host',
-            'Office.js · ASP.NET host'
+            'Office.js - Rust host',
+            'Office.js - ASP.NET host'
         ) 0
 
         $Implementation = switch ($choice) {
@@ -77,8 +77,8 @@ if ([string]::IsNullOrWhiteSpace($Implementation)) {
             'VSTO' { 'vsto' }
             'PowerShell COM' { 'powershell-com' }
             'Rust COM' { 'rust-com' }
-            'Office.js · Rust host' { 'officejs-rust' }
-            'Office.js · ASP.NET host' { 'officejs-dotnet' }
+            'Office.js - Rust host' { 'officejs-rust' }
+            'Office.js - ASP.NET host' { 'officejs-dotnet' }
         }
     }
 }

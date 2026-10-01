@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# rustup installs Cargo here for a normal per-user WSL setup. Do not rely on
+# the caller being a login shell: this script is also invoked through wsl.exe
+# from Windows PowerShell.
+export PATH="$HOME/.cargo/bin:$PATH"
+
 target="x86_64-pc-windows-gnu"
 script_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_root/../../../../.." && pwd)"

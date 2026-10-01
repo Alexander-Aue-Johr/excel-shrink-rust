@@ -73,11 +73,11 @@ if ([string]::IsNullOrWhiteSpace($Strategy)) {
     if ($NonInteractive) { $Strategy = 'A' }
     else {
         $choice = Choose 'Bounds strategy' @(
-            'A · UsedRange prefetch',
-            'B · UsedRange immediately before each picture batch',
-            'C · content + drawings + 10 row/column margin',
-            'D · C bounds + measured horizontal overflow',
-            'E · D + measured vertical overflow',
+            'A - UsedRange prefetch',
+            'B - UsedRange immediately before each picture batch',
+            'C - content + drawings + 10 row/column margin',
+            'D - C bounds + measured horizontal overflow',
+            'E - D + measured vertical overflow',
             'Run all strategies'
         ) 0
         $Strategy = switch -Regex ($choice) {
@@ -95,8 +95,8 @@ if ([string]::IsNullOrWhiteSpace($Implementation)) {
     if ($NonInteractive) { $Implementation = 'officejs-rust' }
     else {
         $choice = Choose 'Implementation' @(
-            'Office.js · Rust host',
-            'Office.js · ASP.NET host',
+            'Office.js - Rust host',
+            'Office.js - ASP.NET host',
             'VBA CopyPicture baseline',
             'Run all implementations'
         ) 0
@@ -164,8 +164,8 @@ foreach ($currentStrategy in $strategies) {
         Write-Host ''
         Write-Host ('=' * 76)
         Write-Host (
-            "Get picture · strategy $currentStrategy · " +
-            "$currentImplementation · batch $BatchSize"
+            "Get picture - strategy $currentStrategy - " +
+            "$currentImplementation - batch $BatchSize"
         )
         Write-Host ('=' * 76)
 
