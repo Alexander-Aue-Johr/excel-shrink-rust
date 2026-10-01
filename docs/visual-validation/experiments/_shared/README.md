@@ -16,8 +16,9 @@ same localhost protocol.
 
 The Rust host is cross-compiled from WSL to `x86_64-pc-windows-gnu`, cached under
 `.tmp/visual-validation/`, and copied to the current user's local application data.
-Its experiment-only dependencies are declared by the Cargo manifest in this directory
-and do not participate in the repository root Cargo workspace.
+Its experiment-only dependencies are declared by the Cargo manifest in this directory.
+That manifest declares its own empty Cargo workspace so Cargo does not attach the nested
+experiment package to the repository root workspace.
 
 The ASP.NET Core host has its own `.csproj`. When that variant is selected, the
 runner first reuses any Windows .NET 8 SDK already available on `PATH` or in the
