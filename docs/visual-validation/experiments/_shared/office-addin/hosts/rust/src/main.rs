@@ -396,6 +396,12 @@ async fn status(
 async fn reset_diagnostics(State(state): State<Arc<Shared>>) -> impl IntoResponse {
     state.errors.lock().unwrap().clear();
     state.events.lock().unwrap().clear();
+
+    // Keep retries isolated just like the ASP.NET host. Dropping JoinHandles
+    // does not cancel already-running analysis tasks, but it removes their
+    // logical keys so the next workbook attempt can submit fresh probes.
+    state.probes.lock().unwrap().clear();
+
     Json(json!({ "ok": true }))
 }
 
@@ -496,15 +502,29 @@ async fn probe_batch(
         None => return (StatusCode::BAD_REQUEST, "probe axis missing").into_response(),
     };
     let key = format!("{workbook}\n{sheet}\n{axis}");
-    let cloned = payload.clone();
 
+    {
+        let probes = state.probes.lock().unwrap();
+        if probes.contains_key(&key) {
+            drop(probes);
+            state.record("probe_duplicate_ignored", json!({
+                "workbook": workbook,
+                "sheet": sheet,
+                "axis": axis
+            }));
+            return Json(json!({
+                "accepted": true,
+                "duplicate": true
+            })).into_response();
+        }
+    }
+
+    let cloned = payload.clone();
     let handle = tokio::task::spawn_blocking(move || {
         analyze_probe(cloned).map_err(|error| format!("{error:#}"))
     });
 
-    if state.probes.lock().unwrap().insert(key, handle).is_some() {
-        return (StatusCode::BAD_REQUEST, "duplicate probe").into_response();
-    }
+    state.probes.lock().unwrap().insert(key, handle);
 
     state.record("probe_received", json!({
         "workbook": workbook,
@@ -512,7 +532,10 @@ async fn probe_batch(
         "axis": axis
     }));
 
-    Json(json!({ "accepted": true })).into_response()
+    Json(json!({
+        "accepted": true,
+        "duplicate": false
+    })).into_response()
 }
 
 async fn probe_status(

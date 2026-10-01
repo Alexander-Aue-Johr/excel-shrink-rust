@@ -267,6 +267,12 @@ app.MapPost("/reset-diagnostics", () =>
 {
     while (errors.TryDequeue(out _)) { }
     while (events.TryDequeue(out _)) { }
+
+    // A retry of the same workbook must start with a clean probe namespace.
+    // Tasks that were already running may finish in the background, but they
+    // are no longer addressable by a later attempt.
+    probeTasks.Clear();
+
     return Results.Json(new { ok = true });
 });
 
@@ -367,11 +373,15 @@ app.MapPost("/probe-batch", async (HttpRequest request) =>
             key,
             Task.Run(() => AnalyzeProbe((JsonObject)payload.DeepClone()))))
         {
-            throw new InvalidOperationException($"Duplicate probe: {sheet} / {axis}");
+            // Multiple Office task panes or a late request from a previous
+            // retry can submit the same logical probe. The first accepted
+            // probe owns the result; later identical keys are idempotent.
+            Record("probe_duplicate_ignored", new { workbook, sheet, axis });
+            return Results.Json(new { accepted = true, duplicate = true });
         }
 
         Record("probe_received", new { workbook, sheet, axis });
-        return Results.Json(new { accepted = true });
+        return Results.Json(new { accepted = true, duplicate = false });
     }
     catch (Exception exception)
     {
@@ -394,6 +404,11 @@ app.MapGet("/probe-status", async (string workbook) =>
     {
         foreach (var pair in relevant)
         {
+            // Match the Rust host: completed probes are one-shot state.
+            // Removing them here also prevents a later retry of the same
+            // workbook/sheet/axis from colliding with stale completed tasks.
+            probeTasks.TryRemove(pair.Key, out _);
+
             var result = await pair.Value;
             resultArray.Add(JsonSerializer.SerializeToNode(result));
         }
