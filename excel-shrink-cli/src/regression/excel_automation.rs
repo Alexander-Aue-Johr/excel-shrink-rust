@@ -20,7 +20,9 @@ use std::time::{Duration, Instant, SystemTime};
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
-const SCREENSHOT_CACHE_VERSION: u32 = 10;
+const SCREENSHOT_CACHE_VERSION: u32 = 15;
+include!("visual_drawing_bounds.rs");
+include!("visual_combined_overflow.rs");
 include!("visual_cache_support.rs");
 include!("visual_render_inputs.rs");
 include!("baseline_recalculation.rs");
@@ -161,6 +163,34 @@ pub fn save_recalculated_copy(
     })
 }
 
+fn save_visual_dimension_copy(input: &Path, work_dir: &Path) -> anyhow::Result<PathBuf> {
+    let _phase = visual_diagnostics::phase("excel.dimension_save", input.display().to_string());
+    fs::create_dir_all(work_dir)?;
+    let before = super::artifact_cache::snapshot(input)?;
+    let transfer = RecalculationTransfer::new()?;
+    let source = transfer.0.join("input.xlsx");
+    let result = transfer.0.join("output.xlsx");
+    let script = transfer.0.join("dimension-save.ps1");
+    let progress = transfer.0.join("progress.log");
+    fs::copy(input, &source)?;
+    fs::write(&script, include_str!("excel_dimension_save.ps1"))?;
+    let status = run_power_shell_script(&script, &[
+        ("InputPath", power_shell_path(&source)?),
+        ("OutputPath", power_shell_path(&result)?),
+        ("ProgressPath", power_shell_path(&progress)?),
+    ]);
+    if progress.is_file() { fs::copy(&progress, work_dir.join("dimension-save-progress.log"))?; }
+    status?;
+    anyhow::ensure!(result.is_file(), "Excel dimension save produced no workbook");
+    let output = work_dir.join("shrunk-excel-saved.xlsx");
+    // Remove a prior artifact first: never overwrite the target of a hardlink.
+    if output.exists() { fs::remove_file(&output)?; }
+    fs::copy(&result, &output)?;
+    super::artifact_cache::assert_snapshot_unchanged(&before, input, &work_dir.join("dimension-source-mutation"))?;
+    super::artifact_cache::record_stage_change(&before, &output, &work_dir.join("dimension-save-package-changes"))?;
+    Ok(output)
+}
+
 pub fn compare_sheet_screenshots(
     original_path: &Path,
     shrunk_path: &Path,
@@ -176,6 +206,26 @@ pub fn compare_sheet_screenshots(
     // The caller has already performed workbook.xml-only repair. Never retry
     // by silently changing a screenshot input after its cache key was computed.
     cache::assert_shrink_invariants(original_path, shrunk_path, &output_dir.join("package-audit"))?;
+    // Excel normalization is a separate validation stage, not a shrink mutation.
+    let saved_shrunk = save_visual_dimension_copy(shrunk_path, work_dir)?;
+    let saved_values = super::xlsx_value_compare::compare_saved_visual_values(shrunk_path, &saved_shrunk)?;
+    fs::write(work_dir.join("dimension-save-values.json"), serde_json::to_vec_pretty(&saved_values)?)?;
+    anyhow::ensure!(saved_values.difference_count == 0,
+        "Excel dimension save changed cell values; see {}", work_dir.join("dimension-save-values.json").display());
+    let mut dimension_ranges = range_limits.to_vec();
+    for saved in &saved_values.right_capture_ranges {
+        if let Some(range) = dimension_ranges.iter_mut().find(|r| r.sheet_index == saved.sheet_index) {
+            if saved.max_row > range.max_row { range.max_row = saved.max_row; range.max_row_source = saved.max_row_source.clone(); }
+            if saved.max_column > range.max_column { range.max_column = saved.max_column; range.max_column_source = saved.max_column_source.clone(); }
+            let mut n = range.max_column; let mut col = String::new();
+            while n > 0 { n -= 1; col.insert(0, (b'A' + (n % 26) as u8) as char); n /= 26; }
+            range.max_cell = format!("{col}{}", range.max_row);
+        } else { dimension_ranges.push(saved.clone()); }
+    }
+    dimension_ranges.sort_by_key(|r| r.sheet_index);
+    let range_limits = dimension_ranges.as_slice();
+    let shrunk_path = saved_shrunk.as_path();
+
     let before_original = cache::snapshot(original_path)?;
     let before_shrunk = cache::snapshot(shrunk_path)?;
     let profile_root = screenshot_profile_root(work_dir, visual_profile);
@@ -185,6 +235,9 @@ pub fn compare_sheet_screenshots(
         cache_root = cache_root.join(format!("refresh-{}-{}", std::process::id(), SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_nanos()));
     }
     fs::create_dir_all(&cache_root)?;
+    let (visual_ranges, visual_limits_json) = prepare_visual_capture_limits(original_path, shrunk_path, range_limits)?;
+    let range_limits = visual_ranges.as_slice();
+    fs::write(output_dir.join("screenshot-rust-bounds.json"), serde_json::to_vec_pretty(&visual_limits_json)?)?;
     let ranges_hash = capture_range_hash(range_limits)?;
     let mut original_cache = WorkbookScreenshotCache::new(original_path, &cache_root, &ranges_hash)?.with_range_limits(range_limits)?;
     let mut shrunk_cache = WorkbookScreenshotCache::new(shrunk_path, &cache_root, &ranges_hash)?.with_range_limits(range_limits)?;
@@ -224,7 +277,7 @@ pub fn compare_sheet_screenshots(
         write_visual_capture_support_files(&transfer.0)?;
         write_visual_capture_support_files(work_dir)?;
         let local_limits = transfer.0.join("limits.json");
-        fs::write(&local_limits, serde_json::to_vec_pretty(range_limits)?)?;
+        fs::write(&local_limits, serde_json::to_vec_pretty(&visual_limits_json)?)?;
         let local_skip = transfer.0.join("skip.json");
         fs::write(&local_skip, serde_json::to_vec(&skipped)?)?;
         let local_manifest = transfer.0.join("captures.json");
@@ -4030,14 +4083,24 @@ fn run_power_shell_script_with_status_and_stall_timeout(
     progress_path: &Path,
     stall_timeout: Duration,
 ) -> anyhow::Result<PowerShellScriptOutcome> {
+    let limits = args.iter().find(|(name, _)| *name == "RangeLimitPath")
+        .map(|(_, value)| normalize_automation_path(&PathBuf::from(value)))
+        .ok_or_else(|| anyhow::anyhow!("combined capture requires RangeLimitPath"))?;
+    let root = script_path.parent().ok_or_else(|| anyhow::anyhow!("capture script has no directory"))?;
+    let mut overflow = CombinedOverflowService::new(root, &limits)?;
     let _ = fs::remove_file(progress_path);
     let mut progress = ExcelProgressTail::new(&script_path.display().to_string());
     let process = power_shell_script_command(script_path, args)?.spawn()
         .map_err(|e| anyhow::anyhow!("failed to start PowerShell automation: {e}"))?;
     let mut child = ManagedAutomationChild { process, progress_path: Some(progress_path.to_path_buf()), finished: false };
     let mut last_progress_at = Instant::now();
+    let mut last_log_poll = Instant::now() - EXCEL_SCREENSHOT_POLL_INTERVAL;
     loop {
-        if progress.poll(progress_path)? { last_progress_at = Instant::now(); }
+        if overflow.poll()? { last_progress_at = Instant::now(); }
+        if last_log_poll.elapsed() >= EXCEL_SCREENSHOT_POLL_INTERVAL {
+            if progress.poll(progress_path)? { last_progress_at = Instant::now(); }
+            last_log_poll = Instant::now();
+        }
         if let Some(status) = child.process.try_wait()? {
             child.finish(status.success());
             let _ = progress.poll(progress_path);
@@ -4048,7 +4111,7 @@ fn run_power_shell_script_with_status_and_stall_timeout(
             child.terminate();
             return Ok(PowerShellScriptOutcome::TimedOut { stalled_for });
         }
-        thread::sleep(EXCEL_SCREENSHOT_POLL_INTERVAL);
+        thread::sleep(Duration::from_millis(10));
     }
 }
 

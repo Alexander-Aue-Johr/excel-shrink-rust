@@ -1,0 +1,5 @@
+variant,geometry_total_ms,timing_source,sum_sheet_duration_ms,workbook_count,sheet_count,timed_sheet_count
+"VBA" 92.887100 sum_sheet_duration_ms 92.887100 8 466 466
+"C# Excel-DNA" 114.319800 sum_sheet_duration_ms 114.319800 8 466 466
+"PowerShell COM" 7010.496800 sum_sheet_duration_ms 7010.496800 8 466 466
+"Rust COM" 5651.572600 sum_sheet_duration_ms 5651.572600 8 466 466

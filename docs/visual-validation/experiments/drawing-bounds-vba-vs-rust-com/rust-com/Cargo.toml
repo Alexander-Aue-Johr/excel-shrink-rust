@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "drawing-bounds-rust-com"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+excel-com = {
+    git = "https://github.com/Alexander-Aue-Johr/excel-api",
+    branch = "fix-shape-variant-types"
+}
+serde_json = "1.0"
+
+ 

@@ -259,3 +259,34 @@ fn v9_benchmark_value_comparison() -> Result<()> {
     }
     println!("V9_VALUE_BENCHMARK {}",serde_json::json!({"synthetic":synthetic,"rows":rows,"left":a,"right":b,"allocation_instrumentation_enabled":track,"samples":samples}));Ok(())
 }
+
+#[test]
+fn saved_dimension_checks_survive_digest_cache_hits() -> Result<()> {
+    let f = Fixture::new(); let left = f.0.join("left.xlsx"); let right = f.0.join("right.xlsx");
+    let a = br#"<worksheet><dimension ref="A1:XFD1000"/><sheetData><row r="1"><c r="B1"><v>2</v></c></row></sheetData></worksheet>"#;
+    let b = br#"<worksheet><dimension ref="A1:C22"/><sheetData><row r="1"><c r="B1"><v>2</v></c></row></sheetData></worksheet>"#;
+    workbook(&left, a, None)?; workbook(&right, b, None)?;
+    for _ in 0..2 {
+        let report = compare_saved_visual_values(&left, &right)?;
+        assert_eq!(report.difference_count, 0);
+        assert_eq!((report.right_capture_ranges[0].max_row, report.right_capture_ranges[0].max_column), (22, 3));
+        assert_eq!(report.left_capture_ranges[0].max_column, 2);
+    }
+    workbook(&right, br#"<worksheet><dimension ref="A1"/><sheetData><row r="1"><c r="B1"><v>2</v></c></row></sheetData></worksheet>"#, None)?;
+    assert!(compare_saved_visual_values(&left, &right).is_err());
+    Ok(())
+}
+
+#[test]
+fn combined_overflow_columns_are_read_in_value_pass_and_cached() -> Result<()> {
+    let fixture=Fixture::new();let path=fixture.0.join("columns.xlsx");
+    workbook(&path, br#"<worksheet><sheetFormatPr defaultColWidth="12.5"/><cols><col min="1" max="3" width="20"/><col min="4" max="103" hidden="1" width="18"/><col min="104" max="104" width="0"/><col min="105" max="106" style="2"/></cols><sheetData/></worksheet>"#,None)?;
+    for _ in 0..2 {
+        let plans=workbook_capture_columns(&path)?;let plan=&plans[&1];
+        assert_eq!(plan.default_width,12.5);assert_eq!(plan.spans.len(),4);
+        assert_eq!(plan.spans[0].width,Some(20.0));assert!(plan.spans[1].hidden);
+        assert_eq!((plan.spans[1].min,plan.spans[1].max),(4,103));
+        assert_eq!(plan.spans[2].width,Some(0.0));assert_eq!(plan.spans[3].width,None);
+    }
+    Ok(())
+}

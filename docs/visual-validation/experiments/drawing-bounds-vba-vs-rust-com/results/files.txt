@@ -1,0 +1,8 @@
+\\wsl.localhost\Ubuntu-26.04\home\aue-johr\repos\excel-shrink-rust\corpus-local\original_destatis_xlsx_files\statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx
+\\wsl.localhost\Ubuntu-26.04\home\aue-johr\repos\excel-shrink-rust\corpus-local\original_destatis_xlsx_files\krankenhausverzeichnis-3500100227005.xlsx
+\\wsl.localhost\Ubuntu-26.04\home\aue-johr\repos\excel-shrink-rust\corpus-local\original_destatis_xlsx_files\foerderprogramme-5411206209005.xlsx
+\\wsl.localhost\Ubuntu-26.04\home\aue-johr\repos\excel-shrink-rust\corpus-local\original_destatis_xlsx_files\wanderungen-2010120217005.xlsx
+\\wsl.localhost\Ubuntu-26.04\home\aue-johr\repos\excel-shrink-rust\corpus-local\original_destatis_xlsx_files\seeschifffahrt-monat-2080500221095.xlsx
+\\wsl.localhost\Ubuntu-26.04\home\aue-johr\repos\excel-shrink-rust\corpus-local\original_destatis_xlsx_files\statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx
+\\wsl.localhost\Ubuntu-26.04\home\aue-johr\repos\excel-shrink-rust\corpus-local\original_destatis_xlsx_files\verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx
+\\wsl.localhost\Ubuntu-26.04\home\aue-johr\repos\excel-shrink-rust\corpus-local\original_destatis_xlsx_files\jahresbericht-5422701207005.xlsx

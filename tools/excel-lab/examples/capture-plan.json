@@ -1,0 +1,23 @@
+{
+  "captures": [
+    {
+      "pair": "000000",
+      "sheet": "Tabelle1",
+      "range": "A1:N60",
+      "appearance": 1,
+      "format": 2,
+      "storage": "png",
+      "transparent": false
+    },
+    {
+      "pair": "000000",
+      "sheet": "Tabelle1",
+      "range": "A1:N60",
+      "appearance": 1,
+      "format": -4147,
+      "storage": "png",
+      "transparent": true
+    }
+  ],
+  "overflow": []
+}

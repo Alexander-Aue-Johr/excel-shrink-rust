@@ -200,35 +200,402 @@
         "panel": "dedicated",
         "clear": true
       }
-    }
-  ,
-        {
-            "label": "Excel Shrink: Clear validation caches",
-            "type": "shell",
-            "command": "python3",
-            "args": [
-                "tools/clean_generated.py",
-                "--cache-only"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Excel Shrink: Reset local generated state",
-            "type": "shell",
-            "command": "python3",
-            "args": [
-                "tools/clean_generated.py",
-                "--fresh"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "problemMatcher": []
+    },
+    {
+      "label": "Excel Shrink: Clear validation caches",
+      "type": "shell",
+      "command": "python3",
+      "args": [
+        "tools/clean_generated.py",
+        "--cache-only"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Excel Shrink: Reset local generated state",
+      "type": "shell",
+      "command": "python3",
+      "args": [
+        "tools/clean_generated.py",
+        "--fresh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Excel tools: Shrink only",
+      "type": "process",
+      "command": "python3",
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "${workspaceFolder}/tools/excel-height-check/run.py",
+        "--profile",
+        "${input:heightShrinkProfile}",
+        "--only-file",
+        "${input:heightCorpusFile}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Excel tools: Default heights",
+      "type": "process",
+      "command": "python3",
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "${workspaceFolder}/tools/excel-height-check/run.py",
+        "--profile",
+        "default",
+        "--height",
+        "--only-file",
+        "${input:heightCorpusFile}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Excel tools: Maximum Cleaning heights",
+      "type": "process",
+      "command": "python3",
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "${workspaceFolder}/tools/excel-height-check/run.py",
+        "--profile",
+        "maximum-cleaning",
+        "--height",
+        "--only-file",
+        "${input:heightCorpusFile}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Excel tools: All profile heights",
+      "type": "process",
+      "command": "python3",
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "${workspaceFolder}/tools/excel-height-check/run.py",
+        "--profile",
+        "all",
+        "--height",
+        "--only-file",
+        "${input:heightCorpusFile}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Excel tools: Default heights after Excel save",
+      "type": "process",
+      "command": "python3",
+      "windows": {
+        "command": "python"
+      },
+      "args": [
+        "${workspaceFolder}/tools/excel-height-check/run.py",
+        "--profile",
+        "default",
+        "--height",
+        "--resave-originals",
+        "--only-file",
+        "${input:heightCorpusFile}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Excel tools: Select file or folder - Shrink - JSON diff",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tools/excel-lab/run.ps1"
+      ],
+      "linux": {
+        "command": "bash",
+        "args": [
+          "${workspaceFolder}/tools/excel-lab/run_wsl.sh"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Excel lab: Build macro host",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tools/excel-lab/run.ps1",
+        "-Action",
+        "build"
+      ],
+      "linux": {
+        "command": "bash",
+        "args": [
+          "${workspaceFolder}/tools/excel-lab/run_wsl.sh",
+          "build"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Excel lab: Excel and clipboard self-test",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tools/excel-lab/run.ps1",
+        "-Action",
+        "self-test"
+      ],
+      "linux": {
+        "command": "bash",
+        "args": [
+          "${workspaceFolder}/tools/excel-lab/run_wsl.sh",
+          "self-test"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Excel lab: Pure PowerShell tests",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tools/excel-lab/tests/pure.ps1"
+      ],
+      "linux": {
+        "command": "bash",
+        "args": [
+          "${workspaceFolder}/tools/excel-lab/tests/pure_wsl.sh"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Excel lab: Legacy exhaustive row JSON diff",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tools/excel-height-check/json_diff.ps1"
+      ],
+      "linux": {
+        "command": "bash",
+        "args": [
+          "${workspaceFolder}/tools/excel-height-check/json_diff_wsl.sh"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Excel lab: Rust image tests",
+      "type": "process",
+      "command": "cargo",
+      "args": [
+        "test",
+        "--manifest-path",
+        "${workspaceFolder}/tools/excel-lab/native/Cargo.toml",
+        "--target-dir",
+        "${workspaceFolder}/.tmp/excel-lab-rust-target"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:PATH}:${userHome}/.cargo/bin"
         }
-    ],
+      },
+      "windows": {
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "PATH": "${env:PATH};${userHome}/.cargo/bin"
+          }
+        }
+      },
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Experiment: drawing bounds execution models",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "script=\"$(wslpath -w '${workspaceFolder}/docs/visual-validation/experiments/drawing-bounds-vba-vs-rust-com/run-all.ps1')\"; corpus=\"$(wslpath -w '${workspaceFolder}/corpus-local')\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -CorpusRoot \"$corpus\""
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true,
+        "group": "experiments"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    }
+  ],
   "inputs": [
     {
       "id": "corpusRegressionCaseId",
@@ -246,6 +613,22 @@
         "hidden-empty-rows"
       ],
       "default": "empty-cells"
+    },
+    {
+      "id": "heightCorpusFile",
+      "type": "promptString",
+      "description": "Exact XLSX filename in local corpus, or * for all files",
+      "default": "*"
+    },
+    {
+      "id": "heightShrinkProfile",
+      "type": "pickString",
+      "description": "Shrink profile",
+      "options": [
+        "default",
+        "maximum-cleaning"
+      ],
+      "default": "default"
     }
   ]
 }

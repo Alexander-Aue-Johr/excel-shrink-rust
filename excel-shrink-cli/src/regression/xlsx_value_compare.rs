@@ -58,7 +58,7 @@ pub struct WorksheetCaptureRange {
 
 #[path = "value_views.rs"]
 mod views;
-pub use views::{compare_workbook_preservation, compare_workbook_values, workbook_visual_sheet_order};
+pub use views::{CaptureColumns, workbook_capture_columns, compare_saved_visual_values, compare_workbook_preservation, compare_workbook_values, workbook_visual_sheet_order};
 
 /// Both source and cleaned visible content must be represented in screenshots.
 pub fn combined_capture_ranges(report: &WorkbookComparisonReport) -> Vec<WorksheetCaptureRange> {

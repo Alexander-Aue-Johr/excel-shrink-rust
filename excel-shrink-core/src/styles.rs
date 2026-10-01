@@ -9,13 +9,56 @@ pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
     let cell_styles = find_xml_block(styles_xml_or_cell_xfs, b"cellXfs")
         .map_or(styles_xml_or_cell_xfs, |block| block);
     let mut xfs = Vec::new();
+    let mut row_fonts = std::collections::HashMap::new();
+    let mut non_font_groups = std::collections::HashMap::new();
     let mut pos = 0;
 
-    while let Some(tag) = find_next_tag(cell_styles, b"xf", pos) {
-        xfs.push(parse_xf(tag.raw, &visibility));
+    while let Some(tag) = find_next_element(cell_styles, b"xf", pos) {
+        let mut xf = parse_xf(tag.raw, &visibility);
+        let header_end = tag.open_end - tag.start - if tag.self_closing { 2 } else { 1 };
+        let attrs: Option<Vec<_>> =
+            crate::xml::attributes::Attributes::new(&tag.raw[3..header_end])
+                .map(|a| a.ok().map(|a| (a.name.to_vec(), a.value.to_vec())))
+                .collect();
+        if let Some(mut attrs) = attrs {
+            attrs.retain(|(name, _)| name != b"fontId" && name != b"applyFont");
+            attrs.sort();
+            let children = if tag.self_closing {
+                &[][..]
+            } else {
+                &tag.raw[tag.open_end - tag.start..tag.raw.len() - 5]
+            };
+            let next = non_font_groups.len() as u32;
+            xf.non_font_style_id = Some(
+                *non_font_groups
+                    .entry((attrs, children.to_vec()))
+                    .or_insert(next),
+            );
+        }
+        // Reuse only an explicitly font-only XF. Alignment, protection, base
+        // named styles and other components must not leak onto an entire row.
+        if tag.self_closing
+            && xf.apply_font
+            && crate::xml::attributes::Attributes::new(&tag.raw[3..tag.raw.len() - 2]).all(|a| {
+                a.is_ok_and(|a| match a.name {
+                    b"fontId" => true,
+                    b"applyFont" => a.value == b"1",
+                    b"numFmtId" | b"fillId" | b"borderId" | b"xfId" => a.value == b"0",
+                    _ => false,
+                })
+            })
+        {
+            row_fonts
+                .entry(xf.font_id.unwrap_or(0))
+                .or_insert(xfs.len() as u32);
+        }
+        xfs.push(xf);
         pos = tag.end;
     }
 
+    for xf in &mut xfs {
+        xf.row_font_style_id = row_fonts.get(&xf.font_id.unwrap_or(0)).copied();
+    }
     Ok(xfs)
 }
 

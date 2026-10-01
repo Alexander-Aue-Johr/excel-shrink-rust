@@ -1,0 +1,61 @@
+{
+  "generated_by": "excel-lab-v2-20260928",
+  "source": "excel-shrink-cli/src/visual_profile.rs",
+  "definition_sha256": "6fa97c2b60650ae89374168f49a055474bf676c2e358f813db276f6686b37195",
+  "profiles": [
+    {
+      "name": "default",
+      "flags": []
+    },
+    {
+      "name": "remove-basic-textless-representatives",
+      "flags": [
+        "--remove-textless-default-font-representatives",
+        "--remove-textless-style-representatives"
+      ]
+    },
+    {
+      "name": "remove-all-textless-representatives",
+      "flags": [
+        "--remove-textless-default-font-representatives",
+        "--remove-textless-style-representatives",
+        "--remove-textless-column-style-representatives"
+      ]
+    },
+    {
+      "name": "remove-unreferenced-whitespace-cells",
+      "flags": [
+        "--remove-unreferenced-whitespace-cells"
+      ]
+    },
+    {
+      "name": "keep-unreferenced-hidden-content-cells",
+      "flags": [
+        "--keep-unreferenced-hidden-content-cells"
+      ]
+    },
+    {
+      "name": "keep-inactive-protection-cells-in-data-range",
+      "flags": [
+        "--inactive-protection-cell-policy",
+        "keep-in-data-range"
+      ]
+    },
+    {
+      "name": "keep-all-inactive-protection-cells",
+      "flags": [
+        "--inactive-protection-cell-policy",
+        "keep-all"
+      ]
+    },
+    {
+      "name": "maximum-cleaning",
+      "flags": [
+        "--remove-textless-default-font-representatives",
+        "--remove-textless-style-representatives",
+        "--remove-textless-column-style-representatives",
+        "--remove-unreferenced-whitespace-cells"
+      ]
+    }
+  ]
+}

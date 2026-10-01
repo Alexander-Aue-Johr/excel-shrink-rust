@@ -6,6 +6,7 @@ use tracing::info;
 use tracing_appender::rolling;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
+mod console_writer;
 mod pipeline;
 mod profiling;
 mod regression;
@@ -357,7 +358,7 @@ fn init_logging(
     let console_layer = fmt::layer()
         .compact()
         .with_target(false)
-        .with_writer(std::io::stderr)
+        .with_writer(console_writer::stderr)
         .with_filter(console_filter);
 
     let (trace_layer, trace_guard) = match trace_file {

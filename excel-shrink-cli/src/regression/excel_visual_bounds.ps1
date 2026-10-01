@@ -114,96 +114,9 @@ function Get-VisualColumnGeometry($worksheet, [int]$column, $columns) {
     }
     return $columns[$column]
 }
-function Add-ComVisualShape($shape, $state, [string]$label) {
-    try { if ([int]$shape.Visible -eq 0) { return } } catch { }
-    $corner = $null
-    try { $corner = $shape.BottomRightCell } catch { }
-    try {
-        $left = Get-VisualNumber $shape 'Left' $label; $top = Get-VisualNumber $shape 'Top' $label
-        $width = Get-VisualNumber $shape 'Width' $label; $height = Get-VisualNumber $shape 'Height' $label
-        if ($width -lt 0 -or $height -lt 0) { throw "Negative extent on $label" }
-        $rotation = Convert-VisualFiniteNumber $shape.Rotation
-        if ($null -eq $rotation) {
-            # Unknown rotation: a diagonal envelope bounds every rotation.
-            $rotWidth = [Math]::Sqrt($width * $width + $height * $height); $rotHeight = $rotWidth
-        } else {
-            $angle = $rotation * [Math]::PI / 180.0
-            $rotWidth = [Math]::Abs($width * [Math]::Cos($angle)) + [Math]::Abs($height * [Math]::Sin($angle))
-            $rotHeight = [Math]::Abs($width * [Math]::Sin($angle)) + [Math]::Abs($height * [Math]::Cos($angle))
-        }
-        $state.right = [Math]::Max($state.right, $left + $width / 2 + [Math]::Max($width, $rotWidth) / 2 + 12)
-        $state.bottom = [Math]::Max($state.bottom, $top + $height / 2 + [Math]::Max($height, $rotHeight) / 2 + 12)
-    } catch {
-        Write-ProgressLine "bounds shape numeric fallback label='$label' error='$($_.Exception.Message)'"
-        if ($null -eq $corner) { throw "No trustworthy geometry for $label; refusing to certify a clipped screenshot." }
-        $cornerRight = (Get-VisualNumber $corner 'Left' $label) + (Get-VisualNumber $corner 'Width' $label)
-        $cornerBottom = (Get-VisualNumber $corner 'Top' $label) + (Get-VisualNumber $corner 'Height' $label)
-        $state.right = [Math]::Max($state.right, $cornerRight + 12)
-        $state.bottom = [Math]::Max($state.bottom, $cornerBottom + 12)
-    }
-    if ($null -ne $corner) {
-        $state.maxRow = [Math]::Max($state.maxRow, [int]$corner.Row)
-        $state.maxColumn = [Math]::Max($state.maxColumn, [int]$corner.Column)
-    }
-    $state.comShapes++
-}
-function Add-VisualShapes($worksheet, $plan, $state) {
-    if ($null -ne $plan) {
-        if ($plan.FastTwoCellShapes -gt 0) {
-            # Monotone row/column positions: max(position) + max(offset) is a
-            # conservative envelope, even when the maxima belong to different shapes.
-            $corner = $worksheet.Cells.Item([int]$plan.MaxMarkerRow, [int]$plan.MaxMarkerColumn)
-            $state.right = [Math]::Max($state.right, [double]$corner.Left + $plan.MaxColumnOffset + $plan.Padding)
-            $state.bottom = [Math]::Max($state.bottom, [double]$corner.Top + $plan.MaxRowOffset + $plan.Padding)
-        }
-        $rowTops = @{}; $columnLefts = @{}
-        foreach ($anchor in $plan.PointAnchors) {
-            $left = [double]$anchor.X; $top = [double]$anchor.Y
-            if ($anchor.Row -gt 0) {
-                if (-not $rowTops.ContainsKey($anchor.Row)) { $rowTops[$anchor.Row] = [double]$worksheet.Rows.Item([int]$anchor.Row).Top }
-                if (-not $columnLefts.ContainsKey($anchor.Column)) { $columnLefts[$anchor.Column] = [double]$worksheet.Columns.Item([int]$anchor.Column).Left }
-                $left += $columnLefts[$anchor.Column]; $top += $rowTops[$anchor.Row]
-            }
-            $state.right = [Math]::Max($state.right, $left + $anchor.Width + $anchor.Padding)
-            $state.bottom = [Math]::Max($state.bottom, $top + $anchor.Height + $anchor.Padding)
-        }
-    }
-    $failures = New-Object 'System.Collections.Generic.List[string]'
-    $all = $null -eq $plan -or $plan.AllShapesNeedCom
-    $ambiguousFallbackNames = @{}
-    if (-not $all) {
-        foreach ($shapeName in @($plan.AmbiguousFallbackShapes)) {
-            if (-not [string]::IsNullOrWhiteSpace([string]$shapeName)) { $ambiguousFallbackNames[[string]$shapeName] = $true }
-        }
-    }
-    $shapeKeys = @()
-    if ($all) {
-        $shapeCount = [int]$worksheet.Shapes.Count
-        if ($shapeCount -gt 0) { $shapeKeys = @(1..$shapeCount) }
-    } else {
-        $shapeKeys = @($plan.FallbackShapes | Where-Object { -not $ambiguousFallbackNames.ContainsKey([string]$_) } | Select-Object -Unique)
-    }
-    $timer = [Diagnostics.Stopwatch]::StartNew(); $done = 0
-    foreach ($key in $shapeKeys) {
-        try { $shape = $worksheet.Shapes.Item($key); Add-ComVisualShape $shape $state "worksheet=$($worksheet.Name) shape=$($shape.Name)" }
-        catch { [void]$failures.Add($_.Exception.Message); Write-ProgressLine "bounds shape unresolved key='$key' error='$($_.Exception.Message)'" }
-        $done++
-        if ($timer.Elapsed.TotalSeconds -ge 2) { Write-ProgressLine "bounds shapes fallback worksheet='$($worksheet.Name)' done=$done total=$($shapeKeys.Count)"; $timer.Restart() }
-    }
-    if (-not $all -and $ambiguousFallbackNames.Count -gt 0) {
-        # Only Shape.Name is enumerated for ambiguous names; geometry is queried only for matches.
-        $shapeCount = [int]$worksheet.Shapes.Count
-        Write-ProgressLine "bounds ambiguous shape-name fallback worksheet='$($worksheet.Name)' names=$($ambiguousFallbackNames.Count) shapes=$shapeCount"
-        for ($shapeIndex = 1; $shapeIndex -le $shapeCount; $shapeIndex++) {
-            try {
-                $shape = $worksheet.Shapes.Item($shapeIndex); $shapeName = [string]$shape.Name
-                if ($ambiguousFallbackNames.ContainsKey($shapeName)) { Add-ComVisualShape $shape $state "worksheet=$($worksheet.Name) shape_index=$shapeIndex shape=$shapeName" }
-            } catch { [void]$failures.Add($_.Exception.Message); Write-ProgressLine "bounds ambiguous shape unresolved index=$shapeIndex error='$($_.Exception.Message)'" }
-        }
-    }
-    Write-ProgressLine "bounds shapes summary worksheet='$($worksheet.Name)' ooxml_two_cell=$(if ($plan) {$plan.FastTwoCellShapes} else {0}) ooxml_point_anchors=$(if ($plan) {$plan.PointAnchors.Count} else {0}) com_shapes=$($state.comShapes) unresolved=$($failures.Count)"
-    if ($failures.Count -gt 0) { throw ($failures -join '; ') }
-}
+# Legacy entry points deliberately fail instead of reintroducing COM Shapes.
+function Add-ComVisualShape { throw 'COM drawing geometry is disabled; use Rust bounds.' }
+function Add-VisualShapes { throw 'COM drawing geometry is disabled; use Rust bounds.' }
 function Add-LiveVisualTextCell($worksheet, $cell, [string]$text, $state, $graphics, $fonts) {
     if ([bool]$cell.EntireRow.Hidden) { return }
     $area = $cell.MergeArea

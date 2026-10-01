@@ -1,0 +1,5 @@
+# Generated macro host and machine-specific manifest; sources remain reviewable.
+ExcelLabHost.xlsm
+ExcelLabHost.manifest.json
+# Native Cargo.lock is deliberately NOT ignored: review and commit after build.
+native/target/

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory=$true)][string]$OriginalPath,
     [Parameter(Mandatory=$true)][string]$ShrunkPath,
     [Parameter(Mandatory=$true)][string]$OutputDir,
@@ -18,14 +18,7 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 . (Join-Path $PSScriptRoot 'excel_visual_bounds.ps1')
 . (Join-Path $PSScriptRoot 'excel_visual_clipboard.ps1')
-Add-Type -AssemblyName System.IO.Compression
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-Add-Type -AssemblyName System.Xml.Linq
-if (-not ('ExcelShrink.Visual.WorkbookPlan' -as [type])) {
-    Add-Type -Path (Join-Path $PSScriptRoot 'excel_visual_plan.cs') -ReferencedAssemblies @(
-        'System.dll', 'System.Core.dll', 'System.Xml.dll', 'System.Xml.Linq.dll',
-        'System.IO.Compression.dll', 'System.IO.Compression.FileSystem.dll')
-}
+. (Join-Path $PSScriptRoot 'excel_visual_overflow.ps1')
 
 if (-not ('ExcelShrinkScreenshotWin32' -as [type])) {
     Add-Type @"
@@ -166,17 +159,11 @@ function Try-SelectAllRangeFromMaxCell($worksheet, $baseRange, [string]$label) {
 }
 
 function Resolve-CaptureRange($worksheet, $rangeLimit) {
-    $baseRange = $null
-    if ($null -ne $rangeLimit) {
-        $row = [int]$rangeLimit.max_row; $column = [int]$rangeLimit.max_column
-        if ($row -gt 0 -and $column -gt 0) {
-            $baseRange = $worksheet.Range($worksheet.Cells.Item(1, 1), $worksheet.Cells.Item($row, $column))
-        }
-    }
-    if ($null -eq $baseRange) {
-        $baseRange = Worksheet-RangeFromA1ThroughBottomRight $worksheet $worksheet.UsedRange
-    }
-    return ,(Expand-VisualCaptureRange $worksheet $baseRange)
+    if ($null -eq $rangeLimit) { throw 'Rust capture bounds are required; refusing an unbounded UsedRange fallback.' }
+    $row = [int]$rangeLimit.max_row; $column = [int]$rangeLimit.max_column
+    if($row -lt 1 -or $row -gt 1048576 -or $column -lt 1 -or $column -gt 16384){throw 'Invalid Rust capture bounds'}
+    $baseRange=$worksheet.Range("A1:$(Column-Name $column)$row")
+    return ,$baseRange
 }
 
 function Hide-ActiveGridlines($worksheet, [string]$label) {
@@ -184,7 +171,6 @@ function Hide-ActiveGridlines($worksheet, [string]$label) {
         $window = $worksheet.Application.ActiveWindow
         if ($null -ne $window) {
             $window.DisplayGridlines = $false
-            $window.Zoom = 100
         }
     }
     catch {
@@ -278,14 +264,7 @@ function Save-RangeImage($worksheet, $range, [string]$path, [string]$label, [str
     $backgroundRgba = Get-RangePaddingBackgroundRgba $range
     $image = $null
     try {
-        $image = Invoke-VisualClipboardImage {
-            [void]$worksheet.Parent.Activate(); [void]$worksheet.Activate()
-            Hide-ActiveGridlines $worksheet $label
-            [void]$range.Select()
-            Start-Sleep -Milliseconds 100
-            # Use the intended Range, not Application.Selection after a focus change.
-            [void]$range.CopyPicture(1, 2)
-        } $label ([uint32]$script:ExcelCaptureProcessId)
+        $image = Read-VerifiedRangeImage $worksheet $range $label
         $width = [int]$image.Width; $height = [int]$image.Height
         $saveTimer = [Diagnostics.Stopwatch]::StartNew()
         $image.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
@@ -677,7 +656,7 @@ function Prefer-ColumnSplitForRangePair($origRange, $shrunkRange) {
 function Worksheet-RangeByBounds($worksheet, [int]$startRow, [int]$startColumn, [int]$rows, [int]$columns) {
     $endRow = $startRow + $rows - 1
     $endColumn = $startColumn + $columns - 1
-    return ,$worksheet.Range($worksheet.Cells.Item($startRow, $startColumn), $worksheet.Cells.Item($endRow, $endColumn))
+    return ,$worksheet.Range("$(Column-Name $startColumn)${startRow}:$(Column-Name $endColumn)$endRow")
 }
 
 function Split-RangePair($origSheet, $shrunkSheet, $origRange, $shrunkRange, [bool]$preferColumns) {
@@ -957,7 +936,6 @@ function Assert-ManualCaptureMode {
 function Ensure-OriginalWorkbook {
     if ($null -eq $script:original) {
         Write-ProgressLine 'opening original lazily: missing screenshot or larger required geometry'
-        Initialize-VisualPlanner $localOriginal
         $script:original = Open-WorkbookWithRetry $excel $localOriginal 'original'
         Assert-ManualCaptureMode
         if ([int]$script:original.Worksheets.Count -ne [int]$shrunk.Worksheets.Count -or [int]$script:original.Charts.Count -ne [int]$shrunk.Charts.Count) {
@@ -974,7 +952,7 @@ function Add-WorksheetCapture([int]$index, [string]$name, $set, [string]$errorMe
         tiles=@($set.tiles)
     })
 }
-function Capture-WorksheetPair([int]$index, $rightSheet, $limit, $leftCache, $rightCache) {
+function Capture-WorksheetPairWithoutOverflow([int]$index, $rightSheet, $limit, $leftCache, $rightCache) {
     $baseName = '{0:D3}' -f $index
     if ($null -eq $original -and $null -ne $leftCache -and $null -ne $leftCache.capture_info) {
         try {
@@ -1008,13 +986,12 @@ function Capture-WorksheetPair([int]$index, $rightSheet, $limit, $leftCache, $ri
         }
         return Capture-RangeImageSetWithPartialCache $leftSheet $rightSheet $leftRange $rightRange $OriginalCacheDir $ShrunkCacheDir $baseName "sheet $index" 'rust_bounds_visual' $null $leftCache $rightCache
     } catch {
-        $reason = $_.Exception.Message
-        Write-ProgressLine "primary range failed index=$index; uncached used-range fallback error='$reason'"
-        $leftRange = Resolve-VisualPairRange $leftSheet $rightSheet $null $null $null
-        $rightRange = Matching-WorksheetRange $rightSheet $leftRange
-        return Capture-RangeImageSet $leftSheet $rightSheet $leftRange $rightRange $OriginalCacheDir $ShrunkCacheDir $baseName "sheet $index fallback" 'used_range_after_primary_failure' $reason
+        throw
+
     }
 }
+
+. (Join-Path $PSScriptRoot 'excel_combined_overflow.ps1')
 
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 New-Item -ItemType Directory -Path $OriginalCacheDir -Force | Out-Null
@@ -1051,9 +1028,10 @@ try {
     Copy-Item -LiteralPath $ShrunkPath -Destination $localShrunk
     $originalArchiveHash = (Get-FileHash -LiteralPath $localOriginal -Algorithm SHA256).Hash
     $shrunkArchiveHash = (Get-FileHash -LiteralPath $localShrunk -Algorithm SHA256).Hash
-    Initialize-VisualPlanner $localShrunk
     $shrunk = Open-WorkbookWithRetry $excel $localShrunk 'shrunk'
     Assert-ManualCaptureMode
+    $referenceSheet=$settingsBook.Worksheets.Item(1)
+    try { Initialize-OverflowCalibration $referenceSheet } finally { Release-OverflowCom $referenceSheet }
     $settingsBook.Close($false); $settingsBook=$null
     $sheetCount = [int]$shrunk.Worksheets.Count
     for ($i=1; $i -le $sheetCount; $i++) {

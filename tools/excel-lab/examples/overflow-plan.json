@@ -1,0 +1,14 @@
+{
+  "captures": [],
+  "overflow": [
+    {
+      "pair": "000000",
+      "variant": "original",
+      "sheet": "Tabelle1",
+      "capture": "A1:E3",
+      "probe": "B1:E1",
+      "source": "A1",
+      "method": "counterfactual"
+    }
+  ]
+}

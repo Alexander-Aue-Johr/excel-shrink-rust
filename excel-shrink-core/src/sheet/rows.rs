@@ -69,6 +69,7 @@ impl EmptyStyleRepresentativePolicy {
     fn for_row(params: &CleanSheetParameters, row: &RowView<'_, '_>) -> Self {
         Self {
             keep_default_styleless: params.cleanup.keep_textless_default_font_representatives,
+            // Empty fonts can also affect text baselines at a fixed height.
             keep_font_styles: params.cleanup.keep_textless_style_representatives,
             require_content_in_row: row.has_custom_height,
         }
@@ -137,6 +138,7 @@ struct RowCellCleanupState<'a> {
     kept_default_style_cell: bool,
     tentative_style_representatives: Vec<TentativeStyleRepresentative<'a>>,
     kept_represented_style_ids: std::collections::HashSet<u32>,
+    kept_font_ids: std::collections::HashSet<u32>,
 }
 
 impl<'a> RowCellCleanupState<'a> {
@@ -151,6 +153,7 @@ impl<'a> RowCellCleanupState<'a> {
             kept_default_style_cell: false,
             tentative_style_representatives: Vec::new(),
             kept_represented_style_ids: std::collections::HashSet::new(),
+            kept_font_ids: std::collections::HashSet::new(),
         }
     }
 
@@ -289,6 +292,33 @@ fn replace_row_bytes_impl<'a, const SAMPLED: bool>(
         return Cow::Borrowed(row_raw);
     };
     profiling::drop_optional("row.header_span", inspecting);
+    if let Some(style_id) =
+        choose_promoted_row_style(&row, row_content.unwrap_or_default(), params, metrics)
+    {
+        let mut attributes = row_attr.to_vec();
+        attributes.extend_from_slice(format!(" s=\"{style_id}\" customFormat=\"1\"").as_bytes());
+        let mut promoted = RowView::parse(&attributes, params).expect("validated row attributes");
+        promoted.promoted_style_id = Some(style_id);
+        record_visible_row_bounds(&promoted, metrics);
+        metrics.cleanup_stats.record_delta(
+            CleanupCause::EmptyCellsWithoutContent,
+            row_attr.len(),
+            attributes.len(),
+        );
+        let raw = generate_row_xml(&attributes, row_content.unwrap_or_default());
+        let clean = clean_row_content::<SAMPLED>(
+            params,
+            metrics,
+            row_content.unwrap_or_default(),
+            EmptyStyleRepresentativePolicy::for_row(params, &promoted),
+            &promoted,
+        );
+        tracing::debug!(target: "excel_shrink::profile", event = "row_font_promoted",
+            sheet = %params.zip_info_filename, row = ?row.number, style_id);
+        return Cow::Owned(
+            render_cleaned_row::<SAMPLED>(&raw, clean, params, metrics, &promoted).into_owned(),
+        );
+    }
     {
         let _summary = profiling::sampled_phase::<SAMPLED>("row_record_summary");
         record_visible_row_bounds(&row, metrics);
@@ -303,6 +333,111 @@ fn replace_row_bytes_impl<'a, const SAMPLED: bool>(
     );
     let _render = profiling::sampled_phase::<SAMPLED>("row_render_xml");
     render_cleaned_row::<SAMPLED>(row_raw, clean_result, params, metrics, &row)
+}
+
+/// Promote only existing XFs; unknown styles, existing row formats, implicit
+/// cells with a different font and malformed/out-of-order cells are a fallback.
+/// This bounded look-ahead scans the current row, never the worksheet again.
+fn choose_promoted_row_style(
+    row: &RowView<'_, '_>,
+    content: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+) -> Option<u32> {
+    if !params.cleanup.empty_cells_without_content
+        || !row.has_custom_height
+        || row.hidden
+        || row.style.is_some()
+        || content.len() < 64
+        || metrics.sheet_protection_enabled
+    {
+        return None;
+    }
+    for attr in Attributes::new(row.raw_attributes) {
+        if matches!(attr.ok()?.name, b"s" | b"customFormat") {
+            return None;
+        }
+    }
+    let row_num = row.number?;
+    let row_has_merge = metrics
+        .merge_cell_ranges
+        .iter()
+        .any(|r| r.start_row <= row_num && row_num <= r.end_row);
+    let mut counts = std::collections::BTreeMap::<u32, usize>::new();
+    let mut gaps = Vec::new();
+    let mut pos = 0;
+    let mut previous_col = 0;
+    while let Some(offset) = find_bytes(&content[pos..], b"<c") {
+        let start = pos + offset;
+        if !is_cell_tag_start(content, start) {
+            return None;
+        }
+        let block = parse_cell_block(content, start)?;
+        // Reject extension elements outside cells as well as nonstandard cell
+        // metadata: preserve them through the ordinary cleanup path.
+        if !content[pos..start].iter().all(u8::is_ascii_whitespace) {
+            return None;
+        }
+        let cell = parse_cell_from_parts(block.raw, block.attr)?;
+        if cell.row != row.reference || cell.col_num <= previous_col || cell.col_num > 16384 {
+            return None;
+        }
+        for a in Attributes::new(block.attr) {
+            if !matches!(a.ok()?.name, b"r" | b"s" | b"t") {
+                return None;
+            }
+        }
+        let id = cell.style_id?; // An unstyled value would acquire the new row style.
+        let xf = params.patterns.xfs_by_index.get(&id)?;
+        if cell.col_num > previous_col + 1 {
+            gaps.push((previous_col + 1, cell.col_num - 1));
+        }
+        previous_col = cell.col_num;
+        if !block.has_content && !xf.has_apply_protection {
+            *counts.entry(id).or_default() += 1;
+        }
+        pos = block.end;
+    }
+    if !content[pos..].iter().all(u8::is_ascii_whitespace) {
+        return None;
+    }
+    if previous_col < 16384 {
+        gaps.push((previous_col + 1, 16384));
+    }
+    let (&dominant, &count) = counts
+        .iter()
+        .max_by_key(|(id, count)| (**count, std::cmp::Reverse(**id)))?;
+    if count < 2 {
+        return None;
+    }
+    let xf = params.patterns.xfs_by_index.get(&dominant)?;
+    // The entire row was explicit: moving an identical full XF changes no
+    // previously implicit position. Restrict this path to real dense bloat.
+    if gaps.is_empty() && count >= 1024 && xf.apply_font && xf.has_no_empty_cell_visible_style {
+        return Some(dominant);
+    }
+    // A dense row retains its explicit merged cells through the normal merge
+    // policy; sparse merged rows need a stronger inheritance proof.
+    if row_has_merge {
+        return None;
+    }
+    // Every previously absent cell in a sparse row must already inherit the
+    // proposed format, including hidden/trailing columns and non-font parts.
+    let default = params.patterns.xfs_by_index.get(&0)?;
+    // Prefer the font-only XF, but preserve other inherited components too.
+    // If needed, the original empty-cell XF can serve as the row default.
+    [xf.row_font_style_id, Some(dominant)]
+        .into_iter()
+        .flatten()
+        .find(|id| {
+            let target = &params.patterns.xfs_by_index[id];
+            target.apply_font
+                && gaps.iter().all(|&(a, b)| {
+                    metrics
+                        .column_definitions
+                        .inherits_row_style(a, b, target, default)
+                })
+        })
 }
 
 fn clean_row_content<'a, const SAMPLED: bool>(
@@ -395,6 +530,9 @@ fn render_cleaned_row<'a, const SAMPLED: bool>(
     metrics: &mut CleanSheetMetrics,
     row: &RowView<'a, '_>,
 ) -> Cow<'a, [u8]> {
+    if clean_result.row_content.is_empty() && row.promoted_style_id.is_some() {
+        return Cow::Owned(generate_self_closing_row_xml(row.raw_attributes));
+    }
     if clean_result.row_content.is_empty() {
         return render_empty_row::<SAMPLED>(row_raw, row.raw_attributes, params, metrics);
     }
@@ -587,6 +725,10 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
 
     if !cleaned_cell.is_empty() {
         state.record_kept_cell(&cell, row, has_cell_content);
+        // Both visible and hidden kept cells can already represent this font.
+        if let Some(font) = representative_font_id(&cell, params) {
+            state.kept_font_ids.insert(font);
+        }
     }
     if !cleaned_cell.is_empty() && !has_cell_content {
         timings.measure(CellStage::RecordRepresentative, || {
@@ -597,6 +739,19 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
     cleaned_cell
 }
 
+// Unknown styles do not establish a representative: retaining an extra cell
+// is safer than claiming a font was already supplied by malformed metadata.
+fn representative_font_id(cell: &ParsedCell<'_, '_>, params: &CleanSheetParameters) -> Option<u32> {
+    if let Some(id) = cell.style_id {
+        return params.patterns.xfs_by_index.get(&id).map(|style| style.font_id.unwrap_or(0));
+    }
+    if let Some(style) = cell.row_view.and_then(|row| row.style) {
+        return Some(style.font_id.unwrap_or(0));
+    }
+    Some(cell.column.flatten().and_then(|column| column.cell_xf.as_ref())
+        .and_then(|style| style.font_id).unwrap_or(0))
+}
+
 fn select_empty_style_representative(
     cell: &ParsedCell<'_, '_>,
     params: &CleanSheetParameters,
@@ -605,11 +760,31 @@ fn select_empty_style_representative(
     policy: EmptyStyleRepresentativePolicy,
     state: &RowCellCleanupState<'_>,
 ) -> EmptyStyleRepresentativeDecision {
-    let keep_font_only = policy.keep_font_styles
+    let row_represents_font = cell.row_view.is_some_and(|r| {
+        r.promoted_style_id.is_some()
+            && r.style.and_then(|s| s.font_id)
+                == cell
+                    .style_id
+                    .and_then(|id| params.patterns.xfs_by_index.get(&id))
+                    .and_then(|s| s.font_id)
+    });
+    let hidden_column = cell.column.flatten().is_some_and(|column| column.hidden);
+    let hidden_auto_height = hidden_column && cell.row_view.is_some_and(|row| {
+        !row.hidden && !(row.has_height && row.has_custom_height)
+    });
+    // Hidden font representatives share the row's represented-font set. Keep
+    // only the first needed one, including when textless cleanup is aggressive:
+    // these cells affect automatic row height rather than hidden appearance.
+    let hidden_font_representative = hidden_auto_height && !has_cell_content
+        && !row_represents_font
+        && representative_font_id(cell, params)
+            .is_some_and(|font| !state.kept_font_ids.contains(&font));
+    let keep_font_only = hidden_font_representative || (!hidden_auto_height && policy.keep_font_styles
+        && !row_represents_font
         && empty_cell_has_no_empty_cell_visible_style(cell, params, has_cell_content)
         && cell
             .style_id
-            .is_some_and(|style_id| !state.kept_represented_style_ids.contains(&style_id));
+            .is_some_and(|style_id| !state.kept_represented_style_ids.contains(&style_id)));
     let keep_merged =
         empty_styled_cell_is_inside_merge_range(cell, params, metrics, has_cell_content);
     let keep_default = policy.keep_default_styleless

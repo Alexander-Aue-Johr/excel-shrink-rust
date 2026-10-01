@@ -809,6 +809,13 @@
                     }
                 }
             }
+        },
+        {
+            "name": "Experiment: drawing bounds execution models",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "printf 'Experiment task finished.\\n'",
+            "preLaunchTask": "Experiment: drawing bounds execution models"
         }
     ],
     "inputs": [

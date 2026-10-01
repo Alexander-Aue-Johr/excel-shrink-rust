@@ -71,6 +71,7 @@ fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
 
 fn hidden_row_3() -> RowView<'static, 'static> {
     RowView {
+        promoted_style_id: None,
         raw_attributes: br#" r="3" hidden="1""#,
         reference: b"3",
         hidden: true,
@@ -567,6 +568,7 @@ fn keeps_empty_default_font_cell_in_auto_height_row_when_column_font_differs() {
     });
     metrics.column_definitions.finalize();
     let row_view = RowView {
+        promoted_style_id: None,
         raw_attributes: br#" r="3" ht="12.75""#,
         reference: b"3",
         hidden: false,
@@ -612,6 +614,7 @@ fn keeps_empty_cell_in_auto_height_row_when_column_font_matches_cell_but_row_fon
     });
     metrics.column_definitions.finalize();
     let row_view = RowView {
+        promoted_style_id: None,
         raw_attributes: br#" r="3" s="161" customFormat="1" ht="9.75""#,
         reference: b"3",
         hidden: false,
@@ -764,6 +767,7 @@ fn keeps_empty_cell_when_default_border_override_clears_visible_row_border() {
 
     let mut metrics = CleanSheetMetrics::default();
     let row_view = RowView {
+        promoted_style_id: None,
         raw_attributes: br#" r="3" s="4" customFormat="1""#,
         reference: b"3",
         hidden: false,
@@ -846,6 +850,7 @@ fn keeps_empty_cell_when_default_fill_override_clears_visible_row_fill() {
 
     let mut metrics = CleanSheetMetrics::default();
     let row_view = RowView {
+        promoted_style_id: None,
         raw_attributes: br#" r="3" s="4" customFormat="1""#,
         reference: b"3",
         hidden: false,
@@ -1097,6 +1102,7 @@ fn keeps_empty_font_only_cell_when_row_has_non_default_fill() {
     let mut metrics = CleanSheetMetrics::default();
 
     let row_view = RowView {
+        promoted_style_id: None,
         raw_attributes: br#" r="3" s="4" customFormat="1""#,
         reference: b"3",
         hidden: false,
@@ -1164,6 +1170,7 @@ fn removes_empty_cell_when_row_and_column_apply_same_fill_as_cell() {
     let mut metrics = CleanSheetMetrics::default();
 
     let row_view = RowView {
+        promoted_style_id: None,
         raw_attributes: br#" r="3" s="4" customFormat="1""#,
         reference: b"3",
         hidden: false,
@@ -1212,6 +1219,7 @@ fn keeps_empty_cell_when_row_and_column_apply_fill_and_only_column_differs() {
     let mut metrics = CleanSheetMetrics::default();
 
     let row_view = RowView {
+        promoted_style_id: None,
         raw_attributes: br#" r="3" s="4" customFormat="1""#,
         reference: b"3",
         hidden: false,
@@ -1255,6 +1263,7 @@ fn removes_empty_cell_when_row_applies_same_visible_fill_as_cell() {
     let mut metrics = CleanSheetMetrics::default();
 
     let row_view = RowView {
+        promoted_style_id: None,
         raw_attributes: br#" r="3" s="4" customFormat="1""#,
         reference: b"3",
         hidden: false,
@@ -1334,6 +1343,7 @@ fn keeps_empty_cell_when_row_applies_fill_and_cell_overrides_with_default_fill()
     let mut metrics = CleanSheetMetrics::default();
 
     let row_view = RowView {
+        promoted_style_id: None,
         raw_attributes: br#" r="3" s="4" customFormat="1""#,
         reference: b"3",
         hidden: false,
@@ -1528,4 +1538,84 @@ fn row_context_does_not_apply_to_a_different_cell_reference() {
     };
     replace_parsed_cell(&hidden_cell, &params, &mut metrics);
     assert_eq!(metrics.candidates.len(), 1);
+}
+
+#[test]
+fn fixed_height_still_requires_column_font_override_protection() {
+    for keep in [false, true] {
+        for fixed in [false, true] {
+            for visible_border in [false, true] {
+                let column_style = apply_font_only_style(4);
+                let mut cell_style = apply_font_only_style(8);
+                if visible_border {
+                    cell_style.border_id = Some(1);
+                    cell_style.has_visible_border = true;
+                    cell_style.has_fill_or_border = true;
+                    cell_style.has_no_empty_cell_visible_style = false;
+                }
+                let mut params = params_with_styles(&[(4, column_style.clone()), (8, cell_style)]);
+                params.cleanup.keep_textless_column_style_representatives = keep;
+                let mut metrics = CleanSheetMetrics::default();
+                metrics.column_definitions.add(ColumnDefinition {
+                    min: 1,
+                    max: 1,
+                    cell_xf: Some(column_style),
+                    hidden: false,
+                });
+                metrics.column_definitions.finalize();
+                let row = RowView {
+                    promoted_style_id: None,
+                    raw_attributes: br#" r="3" ht="20.25""#,
+                    reference: b"3",
+                    hidden: false,
+                    style: None,
+                    has_height: true,
+                    has_custom_height: fixed,
+                    number: Some(3),
+                    spans: None,
+                };
+                let raw = br#"<c r="A3" s="8"/>"#;
+                let cell = ParsedCell {
+                    row_view: Some(&row),
+                    ..parsed_a3_cell(raw, br#" r="A3" s="8""#, Some(8))
+                };
+                let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+                assert_eq!(
+                    !cleaned.is_empty(),
+                    visible_border || keep,
+                    "fixed={fixed} keep={keep} border={visible_border}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn hidden_column_content_preserves_automatic_row_height() {
+    for hidden_row in [false, true] {
+        for fixed_height in [false, true] {
+            let mut params = default_params();
+            params.cleanup.unreferenced_hidden_content_cells = true;
+            params.cleanup.unreferenced_whitespace_cells = true;
+            let mut metrics = CleanSheetMetrics::default();
+            metrics.column_definitions.add(ColumnDefinition {
+                min: 1, max: 1, cell_xf: None, hidden: true,
+            });
+            metrics.column_definitions.finalize();
+            let row = RowView {
+                promoted_style_id: None, raw_attributes: b"", reference: b"3",
+                hidden: hidden_row, style: None, has_height: true,
+                has_custom_height: fixed_height, number: Some(3), spans: None,
+            };
+            let raw = br#"<c r="A3" t="inlineStr"><is><t>Heading
+second line</t></is></c>"#;
+            let cell = ParsedCell {
+                column: None, row_view: Some(&row),
+                ..parsed_a3_cell(raw, br#" r="A3" t="inlineStr""#, None)
+            };
+            let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+            assert_eq!(cleaned.as_ref(), raw);
+            assert_eq!(metrics.candidates.len(), usize::from(hidden_row || fixed_height));
+        }
+    }
 }

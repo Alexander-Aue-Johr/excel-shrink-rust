@@ -1,0 +1,438 @@
+{
+  "_meta": {
+    "geometry_total_ms": 60,
+    "timing_scope": "Office.js batched ShapeCollection property load plus local rotation-aware envelope calculation. Workbook open, add-in startup, web-server startup, and sideload registration are excluded.",
+    "excel_api_requirement_set": "1.11",
+    "web_host": "ASP.NET Core Kestrel / HTTPS localhost"
+  },
+  "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx": {
+    "Titel": {
+      "right": 915.000079,
+      "bottom": 450
+    },
+    "Inhalts\u00FCbersicht": {
+      "right": 0,
+      "bottom": 0
+    },
+    "GENESIS-Online": {
+      "right": 917.058819,
+      "bottom": 461.249921
+    },
+    "Impressum": {
+      "right": 0,
+      "bottom": 0
+    },
+    "Informationen zur Statistik": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-01": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-02": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-03": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-04": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-05": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-06": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-07": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-08": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-09": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-10": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-11": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-12": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-13": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-14": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-15": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-16": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-17": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-18": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-19": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-20": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-21": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-22": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-23": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-24": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-25": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-26": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-27": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-28": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-29": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-30": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-31": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-32": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-33": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-34": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-35": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-36": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-37": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-38": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-39": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-40": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-41": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-42": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-43": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-44": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-45": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-46": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-47": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-48": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-49": {
+      "right": 712.046299,
+      "bottom": 4443.9
+    },
+    "71717-50": {
+      "right": 0,
+      "bottom": 0
+    },
+    "71717-51": {
+      "right": 552.75,
+      "bottom": 1567.5
+    },
+    "71717-52": {
+      "right": 468,
+      "bottom": 1826.25
+    },
+    "71717-53": {
+      "right": 0,
+      "bottom": 0
+    },
+    "Erl\u00E4uterung zu CSV-Tabellen": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-01": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-02": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-03": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-04": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-05": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-06": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-07": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-08": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-09": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-10": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-11": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-12": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-13": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-14": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-15": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-16": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-17": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-18": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-19": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-20": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-21": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-22": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-23": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-24": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-25": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-26": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-27": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-28": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-29": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-30": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-31": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-32": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-33": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-34": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-35": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-36": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-37": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-38": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-39": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-40": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-41": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-42": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-43": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-44": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-45": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-46": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-47": {
+      "right": 0,
+      "bottom": 0
+    },
+    "csv-71717-48": {
+      "right": 0,
+      "bottom": 0
+    }
+  }
+}

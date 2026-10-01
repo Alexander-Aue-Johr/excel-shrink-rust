@@ -1,0 +1,235 @@
+﻿# Shared startup/teardown for the legacy row probe and the Excel Lab.
+Set-StrictMode -Version 2.0
+
+function Write-LabStatus([string]$Message) {
+    [Console]::WriteLine('[excel-lab] ' + $Message)
+    [Console]::Out.Flush()
+}
+function Release-LabCom($Value) {
+    if ($null -ne $Value -and [Runtime.InteropServices.Marshal]::IsComObject($Value)) {
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($Value)
+    }
+}
+function Format-LabException($Record) {
+    $e = $Record.Exception
+    $parts = [Collections.Generic.List[string]]::new()
+    while ($null -ne $e) {
+        $parts.Add(('{0}: {1} (HRESULT 0x{2})' -f $e.GetType().FullName, $e.Message, $e.HResult.ToString('X8')))
+        $e = $e.InnerException
+    }
+    return $parts.ToArray() -join ' -> '
+}
+function Invoke-LabComMethod {
+    param([Parameter(Mandatory=$true)]$Target, [Parameter(Mandatory=$true)][string]$Method,
+          [object[]]$Arguments = @())
+    # Use an actual method dispatch, with explicit LCID, and do not let the
+    # PowerShell pipeline enumerate a returned COM Workbook/collection.
+    $flags = [Reflection.BindingFlags]::InvokeMethod -bor [Reflection.BindingFlags]::OptionalParamBinding -bor [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Instance
+    $value = $Target.GetType().InvokeMember($Method, $flags, $null, $Target, $Arguments, [Globalization.CultureInfo]::GetCultureInfo(1033))
+    return ,$value
+}
+function Test-LabWorkbookPackage {
+    param([Parameter(Mandatory=$true)][string]$Path, [switch]$RequireVba)
+    if (-not [IO.File]::Exists($Path)) { throw "Workbook does not exist: $Path" }
+    if (([IO.FileInfo]$Path).Length -eq 0) { throw "Workbook is empty: $Path" }
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = $null
+    try {
+        $archive = [IO.Compression.ZipFile]::OpenRead($Path)
+        foreach ($name in @('[Content_Types].xml','xl/workbook.xml')) {
+            if ($null -eq $archive.GetEntry($name)) { throw "Not a valid OOXML workbook: missing $name" }
+        }
+        if ($RequireVba -and $null -eq $archive.GetEntry('xl/vbaProject.bin')) {
+            throw 'The helper contains no xl/vbaProject.bin. Saving an XLSX with an XLSM extension does not add VBA.'
+        }
+    } catch { throw ('Workbook package preflight failed: ' + $Path + '; ' + (Format-LabException $_)) }
+    finally { if ($null -ne $archive) { $archive.Dispose() } }
+}
+function Open-LabWorkbook {
+    param([Parameter(Mandatory=$true)]$Excel, [Parameter(Mandatory=$true)]$Books,
+          [Parameter(Mandatory=$true)][string]$Path, [switch]$Helper)
+    Test-LabWorkbookPackage -Path $Path -RequireVba:$Helper
+    $absolute = [IO.Path]::GetFullPath($Path)
+    Write-LabStatus ('BEGIN Workbooks.Open: {0}; bytes={1}; helper={2}; Excel={3}; PowerShell={4}' -f $absolute, ([IO.FileInfo]$absolute).Length, [bool]$Helper, $Excel.Version, $PSVersionTable.PSVersion)
+    $Excel.AutomationSecurity = 3
+    if ($Helper) { $Excel.AutomationSecurity = 1 }
+    try {
+        # A controlled helper needs only Filename, UpdateLinks, ReadOnly. Avoid
+        # the previous 15-argument late-bound call and its optional-VARIANT path.
+        $arguments = [object[]]@([string]$absolute, [int]0, [bool]$true)
+        if (-not $Helper) {
+            $arguments = [object[]]@([string]$absolute, [int]0, [bool]$true, [Type]::Missing, [string]'', [string]'', [bool]$true)
+        }
+        $book = Invoke-LabComMethod -Target $Books -Method 'Open' -Arguments $arguments
+        if ($null -eq $book) { throw 'Workbooks.Open returned null.' }
+        Write-LabStatus ('DONE Workbooks.Open: ' + [string]$book.Name)
+        return ,$book
+    } catch {
+        throw ("Workbooks.Open failed for $absolute. " + (Format-LabException $_) +
+            ' Check that the local helper opens normally in Excel. File corruption, Protected View, policy, add-ins and COM dispatch are different possible causes; no security setting is changed or bypassed here.')
+    } finally { $Excel.AutomationSecurity = 3 }
+}
+function Write-LabJson($Value, [string]$Path) {
+    [IO.File]::WriteAllText($Path, (ConvertTo-Json -InputObject $Value -Depth 50), [Text.UTF8Encoding]::new($false))
+}
+function Start-LabExcel {
+    param([string]$StateFile, [string]$OwnerToken)
+    if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Desktop Excel requires Windows PowerShell, also when launched through WSL.' }
+    if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') { throw 'Use powershell.exe -STA.' }
+    if (-not ('ExcelLabWindowPid' -as [type])) {
+        Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class ExcelLabWindowPid {
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+}
+'@
+    }
+    $before = @([Diagnostics.Process]::GetProcessesByName('EXCEL') | ForEach-Object { try { $_.Id } finally { $_.Dispose() } })
+    Write-LabStatus 'BEGIN Excel.Application COM activation'
+    $excel = $null; $books = $null; $owned = $false
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        [uint32]$excelPid = 0
+        [void][ExcelLabWindowPid]::GetWindowThreadProcessId([IntPtr]$excel.Hwnd, [ref]$excelPid)
+        if ($excelPid -eq 0 -or $before -contains [int]$excelPid) { throw 'Could not establish a new isolated Excel process; refusing to touch an existing session.' }
+        $owned = $true
+        $process = [Diagnostics.Process]::GetProcessById([int]$excelPid)
+        try { $ticks = $process.StartTime.ToUniversalTime().Ticks.ToString() } finally { $process.Dispose() }
+        $state = [ordered]@{ owner_token=$OwnerToken; pid=$excelPid; start_ticks=$ticks; quit_requested=$false; cleanup_attempted=$false }
+        Write-LabJson $state $StateFile
+        $excel.Visible = $false; $excel.DisplayAlerts = $false; $excel.EnableEvents = $false
+        $excel.AskToUpdateLinks = $false; $excel.AutomationSecurity = 3
+        $books = $excel.Workbooks
+        Write-LabStatus "DONE Excel COM activation excel_pid=$excelPid"
+        return [pscustomobject]@{ Excel=$excel; Books=$books; Owned=$owned; State=$state; StateFile=$StateFile }
+    } catch {
+        if ($owned -and $null -ne $excel) { try { $excel.Quit() } catch { } }
+        Release-LabCom $books; Release-LabCom $excel
+        throw
+    }
+}
+function Close-LabExcel($Session) {
+    if ($null -eq $Session) { return }
+    try {
+        if ($Session.Owned) {
+            if ($null -ne $Session.Books) {
+                for ($i=$Session.Books.Count; $i -ge 1; $i--) {
+                    $book = $null
+                    try { $book = $Session.Books.Item($i); $book.Close($false) }
+                    catch { Write-LabStatus ('Close(false) warning: ' + (Format-LabException $_)) }
+                    finally { Release-LabCom $book }
+                }
+            }
+            Write-LabStatus 'BEGIN Excel.Quit (owned instance)'
+            $Session.Excel.Quit()
+            $Session.State.quit_requested = $true
+            Write-LabJson $Session.State $Session.StateFile
+            Write-LabStatus 'DONE Excel.Quit requested; process exit is checked separately'
+        }
+    } catch { Write-LabStatus ('Excel.Quit warning: ' + (Format-LabException $_)) }
+    finally {
+        Release-LabCom $Session.Books; Release-LabCom $Session.Excel
+        $Session.Books=$null; $Session.Excel=$null
+        [GC]::Collect(); [GC]::WaitForPendingFinalizers(); [GC]::Collect()
+    }
+}
+function Stop-LabOwnedExcel {
+    param([string]$StateFile, [string]$OwnerToken, [int]$GraceMilliseconds=4000)
+    if (-not $StateFile -or -not [IO.File]::Exists($StateFile)) { return }
+    if (-not (Get-Variable -Name LabCleanupSeen -Scope Script -ErrorAction SilentlyContinue)) { $script:LabCleanupSeen = @{} }
+    $process=$null
+    try {
+        $state = [IO.File]::ReadAllText($StateFile) | ConvertFrom-Json
+        if ($state.owner_token -cne $OwnerToken) { throw 'Ownership token mismatch; cleanup refused.' }
+        $identity = '{0}:{1}:{2}' -f $state.owner_token, $state.pid, $state.start_ticks
+        if ($script:LabCleanupSeen.ContainsKey($identity)) { return }
+        $script:LabCleanupSeen[$identity]=$true
+        if ($state.PSObject.Properties['cleanup_attempted'] -and $state.cleanup_attempted) { return }
+        try { $process = [Diagnostics.Process]::GetProcessById([int]$state.pid) } catch { return }
+        if ($process.HasExited) { return }
+        if ($process.ProcessName -ine 'EXCEL' -or $process.StartTime.ToUniversalTime().Ticks.ToString() -cne [string]$state.start_ticks) { throw 'Process identity changed; cleanup refused.' }
+        if ($process.WaitForExit($GraceMilliseconds)) { Write-LabStatus "Excel exited normally pid=$($state.pid)"; return }
+        # Recheck identity after grace and mark the attempt before Kill. Never
+        # elevate or terminate by process name; never retry an access denial.
+        $process.Refresh()
+        if ($process.HasExited) { return }
+        if ($process.StartTime.ToUniversalTime().Ticks.ToString() -cne [string]$state.start_ticks) { throw 'Process identity changed after grace.' }
+        Add-Member -InputObject $state -NotePropertyName cleanup_attempted -NotePropertyValue $true -Force
+        Write-LabJson $state $StateFile
+        Write-LabStatus "Grace expired; terminating owned Excel pid=$($state.pid)"
+        $process.Kill(); [void]$process.WaitForExit(5000)
+    } catch {
+        # Primary operation failure stays primary; do not spam or auto-escalate.
+        [Console]::Error.WriteLine('[excel-lab cleanup warning, not retried] ' + (Format-LabException $_))
+    } finally { if ($null -ne $process) { $process.Dispose() } }
+}
+function Get-LabSources([string]$ToolRoot) {
+    $repo = [IO.Path]::GetFullPath((Join-Path $ToolRoot '../..'))
+    $paths = @((Join-Path $repo 'tools/excel-height-check/HeightProbe.bas'), (Join-Path $repo 'tools/excel-height-check/JsonDiffProbe.bas'))
+    $paths += @(Get-ChildItem -LiteralPath (Join-Path $ToolRoot 'vba') -Filter '*.bas' -File | ForEach-Object { $_.FullName })
+    $names = @{}; $items = [Collections.Generic.List[object]]::new()
+    foreach ($path in $paths) {
+        $text = [IO.File]::ReadAllText($path)
+        $match = [regex]::Match($text, '(?im)^Attribute VB_Name\s*=\s*"([A-Za-z][A-Za-z0-9_]*)"\s*$')
+        $name = if ($match.Success) { $match.Groups[1].Value } else { [IO.Path]::GetFileNameWithoutExtension($path) }
+        if ($name -notmatch '^[A-Za-z][A-Za-z0-9_]{0,30}$' -or $name -eq 'LabBuild' -or $names.ContainsKey($name)) { throw "Duplicate/reserved/invalid VBA module name: $name" }
+        $names[$name]=$true
+        $items.Add([pscustomobject]@{ name=$name; path=[IO.Path]::GetFullPath($path); sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() })
+    }
+    return @($items.ToArray() | Sort-Object name)
+}
+function Get-LabSignature($Sources) {
+    $canonical = (@($Sources | ForEach-Object { $_.name + ':' + $_.sha256 }) -join "`n") + "`n"
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant() }
+    finally { $sha.Dispose() }
+}
+function Get-LabHost([string]$ToolRoot) {
+    $sources = @(Get-LabSources $ToolRoot)
+    $signature = Get-LabSignature $sources
+    $path = Join-Path $ToolRoot 'ExcelLabHost.xlsm'
+    $metadata = Join-Path $ToolRoot 'ExcelLabHost.manifest.json'
+    if (-not [IO.File]::Exists($path) -or -not [IO.File]::Exists($metadata)) { throw 'Common VBA host is missing. Run the task Excel lab: Build macro host.' }
+    $info = [IO.File]::ReadAllText($metadata) | ConvertFrom-Json
+    if ($info.signature -cne $signature) { throw 'BAS sources changed. Rebuild the common VBA host using Excel lab: Build macro host.' }
+    if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine $info.host_sha256) { throw 'Host binary changed outside the managed build. Rebuild and review the source modules.' }
+    return [pscustomobject]@{ Path=$path; Signature=$signature; Sources=$sources }
+}
+
+function New-LabProgressCursor([string]$Path) {
+    return [pscustomobject]@{Path=$Path; Offset=[long]0; Pending=''}
+}
+function Read-LabProgress {
+    param($Cursor, [switch]$FlushPending)
+    $lines=[Collections.Generic.List[string]]::new()
+    $advanced=$false; $stream=$null
+    if ($Cursor.Path -and [IO.File]::Exists($Cursor.Path)) {
+        try {
+            $stream=[IO.File]::Open($Cursor.Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+            if ($stream.Length -lt $Cursor.Offset) { $Cursor.Offset=[long]0; $Cursor.Pending='' }
+            [void]$stream.Seek($Cursor.Offset,[IO.SeekOrigin]::Begin)
+            $bytes=New-Object byte[] 262144
+            $count=$stream.Read($bytes,0,$bytes.Length)
+            if ($count -gt 0) {
+                $Cursor.Offset+=$count; $advanced=$true
+                # VBA logs JSON-escaped ASCII; a bounded read can split a line,
+                # but cannot split a multibyte character in this protocol.
+                $text=$Cursor.Pending+[Text.Encoding]::ASCII.GetString($bytes,0,$count)
+                $parts=$text.Split([char]10)
+                for ($i=0; $i -lt $parts.Length-1; $i++) { $lines.Add($parts[$i].TrimEnd([char]13)) }
+                $Cursor.Pending=$parts[$parts.Length-1]
+            }
+        } catch {
+            $exception=$_.Exception
+            while ($null -ne $exception.InnerException) { $exception=$exception.InnerException }
+            $native=$exception.HResult -band 65535
+            # FSO's very short append may deny a concurrent read. Retry on the
+            # next poll, but do not suppress permission or malformed-path errors.
+            if ($native -notin @(2,3,32,33)) { throw }
+        } finally { if ($null -ne $stream) { $stream.Dispose() } }
+    }
+    if ($FlushPending -and $Cursor.Pending) { $lines.Add($Cursor.Pending.TrimEnd([char]13)); $Cursor.Pending='' }
+    return [pscustomobject]@{Lines=$lines.ToArray(); Advanced=$advanced}
+}
