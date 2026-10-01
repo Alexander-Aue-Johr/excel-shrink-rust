@@ -201,7 +201,34 @@
         "clear": true
       }
     }
-  ],
+  ,
+        {
+            "label": "Excel Shrink: Clear validation caches",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "tools/clean_generated.py",
+                "--cache-only"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Excel Shrink: Reset local generated state",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "tools/clean_generated.py",
+                "--fresh"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        }
+    ],
   "inputs": [
     {
       "id": "corpusRegressionCaseId",

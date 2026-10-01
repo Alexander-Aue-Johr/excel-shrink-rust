@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tracing::info;
 use tracing_appender::rolling;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
@@ -331,10 +331,17 @@ fn init_logging(
     file_log_level: Option<LogLevel>,
     trace_file: Option<&std::path::Path>,
 ) -> anyhow::Result<LoggingGuard> {
-    std::fs::create_dir_all("logs")?;
-
-    let file_appender = rolling::never("logs", "excel-shrink-run.log");
+    let log_dir = PathBuf::from("logs").join("runs");
+    std::fs::create_dir_all(&log_dir)?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let log_file_name = format!("excel-shrink-run-{stamp}-{}.log", std::process::id());
+    let log_path = log_dir.join(&log_file_name);
+    let file_appender = rolling::never(&log_dir, &log_file_name);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    eprintln!("[excel-shrink] run log: {}", log_path.display());
 
     let file_filter = match file_log_level {
         Some(level) => EnvFilter::new(level.as_filter()),

@@ -27,3 +27,7 @@ regression/reports/
 /.tmp
 /logs/
 /regression/measurements
+
+# Local generated Excel Shrink state
+/.tmp/
+/regression/tmp/

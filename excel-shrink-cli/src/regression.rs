@@ -19,8 +19,11 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use xlsx_value_compare::{CellValueDifference, MissingCellPolicy, WorkbookComparisonReport};
 
+mod visual_diagnostics;
 mod excel_automation;
 mod xlsx_value_compare;
+mod artifact_cache;
+mod xml_views;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -206,10 +209,17 @@ struct ExcelRecalcValidationReport {
     original_vs_shrunk: WorkbookComparisonReport,
     shrunk_recalculated: ExcelSavedWorkbook,
     shrunk_vs_recalculated: WorkbookComparisonReport,
+    #[serde(skip_serializing_if = "Option::is_none")]
     original_recalculated: Option<ExcelSavedWorkbook>,
-    original_vs_recalculated_for_changed_sheets: Option<WorkbookComparisonReport>,
-    volatile_difference_count: usize,
     real_recalc_differences: Vec<CellValueDifference>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recalculated_baseline_vs_shrunk: Option<WorkbookComparisonReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    baseline_reference_cache_hit: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    baseline_reference_cacheable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    baseline_reference_kind: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -624,7 +634,7 @@ pub fn run_seeschifffahrt_sheet11_trace_removed_cells_for_corpus_regression_test
     let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case, LogLevel::Info)
         .unwrap_or_else(|e| panic!("failed to resolve seeschifffahrt input: {e:#}"));
     let output_root = repo_root
-        .join("regression/tmp")
+        .join(".tmp").join("regression")
         .join(format!("cell-trace-{}", timestamp()));
     fs::create_dir_all(&output_root)
         .unwrap_or_else(|e| panic!("failed to create cell trace output directory: {e}"));
@@ -698,7 +708,7 @@ pub fn run_kernhaushalt_sheet84_trace_removed_cell_for_corpus_regression_test() 
     let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case, LogLevel::Info)
         .unwrap_or_else(|e| panic!("failed to resolve kernhaushalt input: {e:#}"));
     let output_root = repo_root
-        .join("regression/tmp")
+        .join(".tmp").join("regression")
         .join(format!("cell-trace-{}", timestamp()));
     fs::create_dir_all(&output_root)
         .unwrap_or_else(|e| panic!("failed to create cell trace output directory: {e}"));
@@ -808,7 +818,7 @@ fn run_single_smoke_case_trace_cell_for_corpus_regression_test(
     let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case, LogLevel::Info)
         .unwrap_or_else(|e| panic!("failed to resolve {label} input: {e:#}"));
     let output_root = repo_root
-        .join("regression/tmp")
+        .join(".tmp").join("regression")
         .join(format!("cell-trace-{}", timestamp()));
     fs::create_dir_all(&output_root)
         .unwrap_or_else(|e| panic!("failed to create cell trace output directory: {e}"));
@@ -940,7 +950,7 @@ fn run_suite(
         .map(|path| resolve_path(&repo_root, path))
         .unwrap_or_else(|| {
             repo_root
-                .join("regression/tmp")
+                .join(".tmp").join("regression")
                 .join(format!("{mode_name}-{timestamp}"))
         });
     fs::create_dir_all(&output_root)?;
@@ -1134,7 +1144,7 @@ fn run_visual_profile_matrix(
         .clone()
         .map(|path| resolve_path(&repo_root, path))
         .unwrap_or_else(|| {
-            repo_root.join("regression/tmp").join(format!(
+            repo_root.join(".tmp").join("regression").join(format!(
                 "{mode_name}-all-visual-profiles-{matrix_timestamp}"
             ))
         });
@@ -1308,9 +1318,20 @@ fn run_case(
     console_log_level: LogLevel,
     case: &RegressionCase,
 ) -> anyhow::Result<CaseReport> {
-    let input = resolve_case_input(repo_root, corpus_root, case, console_log_level)?;
+    let _phase = visual_diagnostics::phase("regression.case", &case.id);
+    let source_input = resolve_case_input(repo_root, corpus_root, case, console_log_level)?;
     let case_output_dir = output_root.join(&case.id);
     fs::create_dir_all(&case_output_dir)?;
+    // Keep ordinary cleanup/statistics tests unchanged. Excel-backed validation
+    // starts from an explicit workbook.xml-only repaired, immutable baseline.
+    let input = if excel_recalc_check || excel_screenshot_check {
+        let prepared = artifact_cache::prepare_baseline(&source_input)?;
+        artifact_cache::atomic_write(&case_output_dir.join("baseline-provenance.json"),
+            &serde_json::to_vec_pretty(&prepared)?)?;
+        prepared.snapshot.path
+    } else {
+        source_input.clone()
+    };
     let analysis_mode = analysis_mode(defaults, case);
     let analysis_csv_path = case_output_dir.join("analysis.csv");
     let cli = build_cli(
@@ -1332,11 +1353,25 @@ fn run_case(
     let mut failures = Vec::new();
     fs::remove_file(&output_path).ok();
     let shrink_started = Instant::now();
-    let shrink_result = process_files(vec![input.clone()], &cli);
+    let shrink_result = {
+        let _phase = visual_diagnostics::phase("regression.shrink", input.display().to_string());
+        process_files(vec![input.clone()], &cli)
+    };
     let shrink_duration_ms = Some(shrink_started.elapsed().as_millis());
     if let Err(error) = shrink_result {
         failures.push(format!("excel-shrink failed: {error:#}"));
     } else if output_path.exists() {
+        if excel_recalc_check || excel_screenshot_check {
+            if let Err(error) = artifact_cache::assert_shrink_invariants(
+                &input, &output_path, &case_output_dir.join("package-audit")) {
+                failures.push(format!("package invariant failed: {error:#}"));
+            }
+            let history_key = format!("{}:{}", case.id, visual_profile.profile_name());
+            if let Err(error) = artifact_cache::record_output(&source_input, &history_key,
+                &output_path, &case_output_dir.join("output-history")) {
+                failures.push(format!("output history failed: {error:#}"));
+            }
+        }
         if let Err(error) = excel_automation::replace_workbook_with_shared_cache_link(
             &output_path,
             &case_output_dir,
@@ -1460,7 +1495,7 @@ fn run_case(
         let work_dir = case_output_dir.join("excel-automation");
         let range_limits = value_comparison_details
             .as_ref()
-            .map(|report| report.right_capture_ranges.clone())
+            .map(xlsx_value_compare::combined_capture_ranges)
             .unwrap_or_default();
         match excel_automation::compare_sheet_screenshots(
             &input,
@@ -1553,7 +1588,8 @@ fn compare_original_and_shrunk_values(
     shrunk_path: &Path,
     cli: &Cli,
 ) -> anyhow::Result<WorkbookComparisonReport> {
-    xlsx_value_compare::compare_workbook_values(
+    let _phase = visual_diagnostics::phase("regression.value_validation", original_path.display().to_string());
+    xlsx_value_compare::compare_workbook_preservation(
         original_path,
         shrunk_path,
         missing_cell_policy(cli),
@@ -1561,27 +1597,30 @@ fn compare_original_and_shrunk_values(
     )
 }
 
+
 fn validate_excel_recalculation(
     original_path: &Path,
     shrunk_path: &Path,
     case_output_dir: &Path,
     cli: &Cli,
 ) -> anyhow::Result<(ExcelRecalcValidationReport, Vec<String>)> {
+    let _phase = visual_diagnostics::phase(
+        "regression.recalculation_validation",
+        original_path.display().to_string(),
+    );
     let excel_dir = case_output_dir.join("excel-recalc");
     let automation_dir = case_output_dir.join("excel-automation");
     fs::create_dir_all(&excel_dir)?;
 
-    let original_vs_shrunk = compare_original_and_shrunk_values(original_path, shrunk_path, cli)?;
-
-    let shrunk_recalculated_path = excel_dir
-        .join("shrunk-recalculated")
-        .join(file_name(shrunk_path)?);
+    let original_vs_shrunk =
+        compare_original_and_shrunk_values(original_path, shrunk_path, cli)?;
     let shrunk_recalculated = excel_automation::save_recalculated_copy(
         shrunk_path,
-        &shrunk_recalculated_path,
-        &automation_dir,
+        &excel_dir
+            .join("shrunk-recalculated")
+            .join(file_name(shrunk_path)?),
+        &automation_dir.join("shrunk"),
     )?;
-
     let shrunk_vs_recalculated = xlsx_value_compare::compare_workbook_values(
         shrunk_path,
         &shrunk_recalculated.path,
@@ -1595,48 +1634,52 @@ fn validate_excel_recalculation(
     }
 
     let mut original_recalculated = None;
-    let mut original_vs_recalculated_for_changed_sheets = None;
-    let mut volatile_difference_count = 0;
+    let mut recalculated_baseline_vs_shrunk = None;
     let mut real_recalc_differences = Vec::new();
+    let mut baseline_reference_cache_hit = None;
+    let mut baseline_reference_cacheable = None;
+    let mut baseline_reference_kind = None;
 
-    if !shrunk_vs_recalculated.differences.is_empty() {
+    if shrunk_vs_recalculated.differences.is_empty() {
+        tracing::info!(
+            "[recalc] shrunk stored values are unchanged after Excel recalculation; baseline Excel open skipped"
+        );
+    } else {
         let changed_sheets = sheets_with_differences(&shrunk_vs_recalculated.differences);
-        let original_recalculated_path = excel_dir
-            .join("original-recalculated")
-            .join(excel_saved_file_name(original_path)?);
-        let saved_original = excel_automation::save_recalculated_copy(
+        tracing::info!(
+            changed_sheets = changed_sheets.len(),
+            changed_values = shrunk_vs_recalculated.difference_count,
+            "[recalc] shrunk values changed after recalculation; recalculating paired baseline"
+        );
+        let reference = excel_automation::baseline_recalculation_reference(
             original_path,
-            &original_recalculated_path,
+            &excel_dir,
             &automation_dir,
         )?;
-        let original_recalc_report = xlsx_value_compare::compare_workbook_values(
-            original_path,
-            &saved_original.path,
-            MissingCellPolicy::strict(),
+        let paired = xlsx_value_compare::compare_workbook_values(
+            &reference.workbook.path,
+            &shrunk_recalculated.path,
+            missing_cell_policy(cli),
             Some(&changed_sheets),
         )?;
-        let volatile_keys =
-            xlsx_value_compare::difference_keys(&original_recalc_report.differences);
-
-        for difference in &shrunk_vs_recalculated.differences {
-            let key = (difference.sheet_file.clone(), difference.cell_ref.clone());
-            if volatile_keys.contains(&key) {
-                volatile_difference_count += 1;
-            } else {
-                real_recalc_differences.push(difference.clone());
-            }
-        }
-
+        real_recalc_differences = paired.differences.clone();
         if !real_recalc_differences.is_empty() {
             failures.push(format!(
-                "shrunk workbook changed after Excel recalculation in {} non-volatile cells: {}",
+                "recalculated baseline-vs-shrunk comparison found {} differences: {}{}. No address-only volatile exemption was applied.",
                 real_recalc_differences.len(),
-                summarize_cell_differences(&real_recalc_differences)
+                summarize_cell_differences(&real_recalc_differences),
+                if reference.cacheable {
+                    ""
+                } else {
+                    "; this workbook has unverified/volatile/external calculation inputs; differences may be environmental, but are not a PASS"
+                }
             ));
         }
-
-        original_recalculated = Some(saved_original);
-        original_vs_recalculated_for_changed_sheets = Some(original_recalc_report);
+        baseline_reference_cache_hit = Some(reference.cache_hit);
+        baseline_reference_cacheable = Some(reference.cacheable);
+        baseline_reference_kind = Some(reference.kind);
+        original_recalculated = Some(reference.workbook);
+        recalculated_baseline_vs_shrunk = Some(paired);
     }
 
     Ok((
@@ -1645,9 +1688,11 @@ fn validate_excel_recalculation(
             shrunk_recalculated,
             shrunk_vs_recalculated,
             original_recalculated,
-            original_vs_recalculated_for_changed_sheets,
-            volatile_difference_count,
             real_recalc_differences,
+            recalculated_baseline_vs_shrunk,
+            baseline_reference_cache_hit,
+            baseline_reference_cacheable,
+            baseline_reference_kind,
         },
         failures,
     ))
@@ -1698,14 +1743,6 @@ fn file_name(path: &Path) -> anyhow::Result<&std::ffi::OsStr> {
         .ok_or_else(|| anyhow::anyhow!("path has no file name: {}", path.display()))
 }
 
-fn excel_saved_file_name(path: &Path) -> anyhow::Result<String> {
-    let stem = path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .ok_or_else(|| anyhow::anyhow!("path has no UTF-8 file stem: {}", path.display()))?;
-    Ok(format!("{stem}.excel-saved.xlsx"))
-}
-
 fn failed_case_report(
     repo_root: &Path,
     output_root: &Path,
@@ -1751,6 +1788,7 @@ fn sheet_size_details_by_uncompressed_xml(
     original_path: &Path,
     cleaned_path: &Path,
 ) -> anyhow::Result<Vec<SheetReductionDetail>> {
+    let _phase = visual_diagnostics::phase("regression.sheet_sizes", "ZIP entry sizes");
     let original_sheets = worksheet_xml_sizes(original_path)?;
     let cleaned_sheets = worksheet_xml_sizes(cleaned_path)?;
 
@@ -1911,6 +1949,7 @@ fn measurement_profile_from_report(
     report: &RegressionReport,
     report_path: &Path,
 ) -> RegressionMeasurementProfile {
+    let _phase = visual_diagnostics::phase("regression.measurement_report", "measurement aggregation");
     let cases = report
         .cases
         .iter()
@@ -2849,6 +2888,7 @@ fn resolve_case_input(
     case: &RegressionCase,
     console_log_level: LogLevel,
 ) -> anyhow::Result<PathBuf> {
+    let _phase = visual_diagnostics::phase("regression.resolve_input", &case.id);
     if let Some(input_path) = &case.input_path {
         let path = normalize_cli_path(PathBuf::from(input_path));
         anyhow::ensure!(
