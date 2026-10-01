@@ -2,6 +2,8 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$CorpusRoot,
 
+    [string]$OnlyWorkbookPath,
+
     [string]$OutputPath,
 
     [string]$ImageOutputDir,
@@ -132,6 +134,20 @@ $files = @(
 
 if ($files.Count -eq 0) {
     throw "No .xlsx files found below corpus: $CorpusRoot"
+}
+
+# Optional single-workbook filter supplied by the shared range-image runner.
+if (-not [string]::IsNullOrWhiteSpace($OnlyWorkbookPath)) {
+    $wanted = [IO.Path]::GetFullPath($OnlyWorkbookPath)
+    $files = @(
+        $files | Where-Object {
+            [IO.Path]::GetFullPath($_.FullName) -ieq $wanted
+        }
+    )
+
+    if ($files.Count -ne 1) {
+        throw "VBA workbook filter did not resolve exactly one file: $OnlyWorkbookPath"
+    }
 }
 
 New-Item -ItemType Directory -Path $ResultsDir -Force | Out-Null

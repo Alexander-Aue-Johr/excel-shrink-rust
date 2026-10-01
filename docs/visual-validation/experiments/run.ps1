@@ -4,6 +4,8 @@ param(
 
     [string]$CorpusRoot,
 
+    [string]$Workbook,
+
     [switch]$NonInteractive
 )
 
@@ -56,6 +58,13 @@ $args = @{}
 
 if (-not [string]::IsNullOrWhiteSpace($CorpusRoot)) {
     $args.CorpusRoot = $CorpusRoot
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Workbook)) {
+    if ($Experiment -ne 'range-image') {
+        throw '-Workbook is only valid for the Get picture / range-image experiment.'
+    }
+    $args.Workbook = $Workbook
 }
 
 if ($NonInteractive) {

@@ -286,9 +286,164 @@
     return performance.now() - started;
   }
 
-  async function probeEndColumnByPixelWidth(sheetName, startColumn, targetPoints) {
+  async function readColumnHidden(sheetName, startColumn, endColumn) {
+    if (endColumn < startColumn) return true;
+
+    return Excel.run(async (context) => {
+      const range = context.workbook.worksheets
+        .getItem(sheetName)
+        .getRangeByIndexes(
+          0,
+          startColumn,
+          1,
+          endColumn - startColumn + 1
+        );
+      range.load('columnHidden');
+      await context.sync();
+      return range.columnHidden === true;
+    });
+  }
+
+  async function readRowHidden(sheetName, startRow, endRow) {
+    if (endRow < startRow) return true;
+
+    return Excel.run(async (context) => {
+      const range = context.workbook.worksheets
+        .getItem(sheetName)
+        .getRangeByIndexes(
+          startRow,
+          0,
+          endRow - startRow + 1,
+          1
+        );
+      range.load('rowHidden');
+      await context.sync();
+      return range.rowHidden === true;
+    });
+  }
+
+  async function findFirstVisibleProbeColumn(sheetName, startColumn) {
+    if (startColumn >= MAX_COLUMNS) return -1;
+
+    if (!(await readColumnHidden(sheetName, startColumn, startColumn))) {
+      return startColumn;
+    }
+
+    if (await readColumnHidden(sheetName, startColumn, MAX_COLUMNS - 1)) {
+      return -1;
+    }
+
+    let low = startColumn + 1;
+    let high = MAX_COLUMNS - 1;
+
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (await readColumnHidden(sheetName, startColumn, mid)) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+
+    return low;
+  }
+
+  async function findLastVisibleProbeColumn(sheetName, startColumn) {
+    if (startColumn >= MAX_COLUMNS) return -1;
+    if (await readColumnHidden(sheetName, startColumn, MAX_COLUMNS - 1)) {
+      return -1;
+    }
+
     let low = startColumn;
     let high = MAX_COLUMNS - 1;
+
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (await readColumnHidden(sheetName, mid, MAX_COLUMNS - 1)) {
+        high = mid - 1;
+      } else {
+        low = mid;
+      }
+    }
+
+    return low;
+  }
+
+  async function findFirstVisibleProbeRow(sheetName, startRow) {
+    if (startRow >= MAX_ROWS) return -1;
+
+    if (!(await readRowHidden(sheetName, startRow, startRow))) {
+      return startRow;
+    }
+
+    if (await readRowHidden(sheetName, startRow, MAX_ROWS - 1)) {
+      return -1;
+    }
+
+    let low = startRow + 1;
+    let high = MAX_ROWS - 1;
+
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (await readRowHidden(sheetName, startRow, mid)) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+
+    return low;
+  }
+
+  async function findLastVisibleProbeRow(sheetName, startRow) {
+    if (startRow >= MAX_ROWS) return -1;
+    if (await readRowHidden(sheetName, startRow, MAX_ROWS - 1)) {
+      return -1;
+    }
+
+    let low = startRow;
+    let high = MAX_ROWS - 1;
+
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (await readRowHidden(sheetName, mid, MAX_ROWS - 1)) {
+        high = mid - 1;
+      } else {
+        low = mid;
+      }
+    }
+
+    return low;
+  }
+
+  async function probeEndColumnByPixelWidth(sheetName, startColumn, targetPoints) {
+    const totalVisibleWidth = await Excel.run(async (context) => {
+      const range = context.workbook.worksheets
+        .getItem(sheetName)
+        .getRangeByIndexes(
+          0,
+          startColumn,
+          1,
+          MAX_COLUMNS - startColumn
+        );
+      range.load('width');
+      await context.sync();
+      return Number(range.width);
+    });
+
+    let low = startColumn;
+    let high = MAX_COLUMNS - 1;
+
+    // If the remaining visible width is smaller than the requested probe width,
+    // stop at the last visible column instead of extending through a trailing
+    // run of hidden columns all the way to XFD.
+    if (totalVisibleWidth < targetPoints) {
+      const lastVisible = await findLastVisibleProbeColumn(
+        sheetName,
+        startColumn
+      );
+      return lastVisible >= 0 ? lastVisible : startColumn;
+    }
 
     while (low < high) {
       const mid = Math.floor((low + high) / 2);
@@ -309,8 +464,27 @@
   }
 
   async function probeEndRowByPixelHeight(sheetName, startRow, targetPoints) {
+    const totalVisibleHeight = await Excel.run(async (context) => {
+      const range = context.workbook.worksheets
+        .getItem(sheetName)
+        .getRangeByIndexes(
+          startRow,
+          0,
+          MAX_ROWS - startRow,
+          1
+        );
+      range.load('height');
+      await context.sync();
+      return Number(range.height);
+    });
+
     let low = startRow;
     let high = MAX_ROWS - 1;
+
+    if (totalVisibleHeight < targetPoints) {
+      const lastVisible = await findLastVisibleProbeRow(sheetName, startRow);
+      return lastVisible >= 0 ? lastVisible : startRow;
+    }
 
     while (low < high) {
       const mid = Math.floor((low + high) / 2);
@@ -431,8 +605,8 @@
       // may fail the final context.sync() with a generic RichApi internal error.
       //
       // A blocker is only needed directly at the content boundary:
-      //   horizontal overflow -> first column to the right
-      //   vertical overflow   -> first row below
+      //   horizontal overflow -> first visible column to the right
+      //   vertical overflow   -> first visible row below
       // The image still covers the complete probe range, so the measured XOR
       // extent is unchanged while the mutation is dramatically smaller.
       const blocker = axis === 'horizontal'
@@ -559,65 +733,91 @@
       );
 
       if (horizontal && entry.rightColumn < MAX_COLUMNS - 1) {
-        const startColumn = entry.rightColumn + 1;
-        const targetPoints = Number(config.overflow_probe_width_px || 1920) * 72 / 96;
-        const endColumn = await probeEndColumnByPixelWidth(
+        const requestedStartColumn = entry.rightColumn + 1;
+        const startColumn = await findFirstVisibleProbeColumn(
           entry.sheet,
-          startColumn,
-          targetPoints
-        );
-        const boundaries = await getColumnBoundaries(
-          entry.sheet,
-          startColumn,
-          endColumn
-        );
-        const address =
-          `${columnName(startColumn)}1:` +
-          `${columnName(endColumn)}${Math.max(1, entry.contentBottomRow + 1)}`;
-
-        const result = await captureProbePair(
-          workbookName,
-          entry,
-          'horizontal',
-          startColumn,
-          endColumn,
-          address,
-          boundaries,
-          boundaries.length ? boundaries[boundaries.length - 1] : 0
+          requestedStartColumn
         );
 
-        if (!result.skipped) submitted += 1;
+        if (startColumn < 0) {
+          ExperimentUi.log(
+            `Skipping horizontal overflow probe for ${entry.sheet}: ` +
+            'all remaining columns are hidden.'
+          );
+        } else {
+          const targetPoints =
+            Number(config.overflow_probe_width_px || 1920) * 72 / 96;
+          const endColumn = await probeEndColumnByPixelWidth(
+            entry.sheet,
+            startColumn,
+            targetPoints
+          );
+          const boundaries = await getColumnBoundaries(
+            entry.sheet,
+            startColumn,
+            endColumn
+          );
+          const address =
+            `${columnName(startColumn)}1:` +
+            `${columnName(endColumn)}${Math.max(1, entry.contentBottomRow + 1)}`;
+
+          const result = await captureProbePair(
+            workbookName,
+            entry,
+            'horizontal',
+            startColumn,
+            endColumn,
+            address,
+            boundaries,
+            boundaries.length ? boundaries[boundaries.length - 1] : 0
+          );
+
+          if (!result.skipped) submitted += 1;
+        }
       }
 
       if (vertical && entry.bottomRow < MAX_ROWS - 1) {
-        const startRow = entry.bottomRow + 1;
-        const targetPoints = Number(config.overflow_probe_height_px || 1080) * 72 / 96;
-        const endRow = await probeEndRowByPixelHeight(
+        const requestedStartRow = entry.bottomRow + 1;
+        const startRow = await findFirstVisibleProbeRow(
           entry.sheet,
-          startRow,
-          targetPoints
-        );
-        const boundaries = await getRowBoundaries(
-          entry.sheet,
-          startRow,
-          endRow
-        );
-        const lastColumn = Math.max(0, entry.contentRightColumn);
-        const address =
-          `A${startRow + 1}:${columnName(lastColumn)}${endRow + 1}`;
-
-        const result = await captureProbePair(
-          workbookName,
-          entry,
-          'vertical',
-          startRow,
-          endRow,
-          address,
-          boundaries,
-          boundaries.length ? boundaries[boundaries.length - 1] : 0
+          requestedStartRow
         );
 
-        if (!result.skipped) submitted += 1;
+        if (startRow < 0) {
+          ExperimentUi.log(
+            `Skipping vertical overflow probe for ${entry.sheet}: ` +
+            'all remaining rows are hidden.'
+          );
+        } else {
+          const targetPoints =
+            Number(config.overflow_probe_height_px || 1080) * 72 / 96;
+          const endRow = await probeEndRowByPixelHeight(
+            entry.sheet,
+            startRow,
+            targetPoints
+          );
+          const boundaries = await getRowBoundaries(
+            entry.sheet,
+            startRow,
+            endRow
+          );
+          const lastColumn = Math.max(0, entry.contentRightColumn);
+          const address =
+            `A${startRow + 1}:${columnName(lastColumn)}${endRow + 1}`;
+
+          const result = await captureProbePair(
+            workbookName,
+            entry,
+            'vertical',
+            startRow,
+            endRow,
+            address,
+            boundaries,
+            boundaries.length ? boundaries[boundaries.length - 1] : 0
+          );
+
+          if (!result.skipped) submitted += 1;
+        }
       }
     }
 

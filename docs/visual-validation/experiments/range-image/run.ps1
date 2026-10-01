@@ -19,6 +19,8 @@ param(
     [ValidateSet('excel-x', 'rust-com')]
     [string]$RustExcelLaunchMode = 'rust-com',
 
+    [string]$Workbook,
+
     [switch]$NonInteractive
 )
 
@@ -135,6 +137,54 @@ if ($files.Count -eq 0) {
     throw "No .xlsx files found below corpus: $CorpusRoot"
 }
 
+# Workbook selection: default to the complete corpus. The interactive VS Code
+# terminal task reaches this runner through experiments/run.ps1, so no extra
+# tasks.json input is needed.
+$allFiles = @($files)
+
+if (-not [string]::IsNullOrWhiteSpace($Workbook) -and $Workbook -notin @('all', '*')) {
+    $matches = @(
+        $allFiles | Where-Object {
+            $_.Name -ieq $Workbook -or
+            $_.FullName -ieq $Workbook
+        }
+    )
+
+    if ($matches.Count -eq 0) {
+        throw "Requested workbook was not found below the corpus: $Workbook"
+    }
+    if ($matches.Count -gt 1) {
+        throw "Workbook name is ambiguous; pass the full path instead: $Workbook"
+    }
+
+    $files = @($matches[0])
+}
+elseif (-not $NonInteractive) {
+    $workbookOptions = @('All workbooks') + @(
+        $allFiles | ForEach-Object { $_.Name }
+    )
+    $workbookChoice = Choose 'Workbook' $workbookOptions 0
+
+    if ($workbookChoice -ne 'All workbooks') {
+        $matches = @($allFiles | Where-Object { $_.Name -ieq $workbookChoice })
+        if ($matches.Count -ne 1) {
+            throw "Workbook selection is ambiguous: $workbookChoice"
+        }
+        $files = @($matches[0])
+    }
+}
+
+$selectionSuffix = ''
+if ($files.Count -eq 1 -and $allFiles.Count -gt 1) {
+    $baseName = [IO.Path]::GetFileNameWithoutExtension($files[0].Name)
+    $safeName = $baseName -replace '[^A-Za-z0-9._-]', '_'
+    if ($safeName.Length -gt 80) {
+        $safeName = $safeName.Substring(0, 80)
+    }
+    $selectionSuffix = '-workbook-' + $safeName
+}
+
+$FileList = Join-Path $ResultsRoot ("files$selectionSuffix.txt")
 $utf8 = New-Object Text.UTF8Encoding($false)
 [IO.File]::WriteAllText(
     $FileList,
@@ -142,8 +192,11 @@ $utf8 = New-Object Text.UTF8Encoding($false)
     $utf8
 )
 
-Write-Host "Prepared $($files.Count) workbook paths:"
-Write-Host "  $FileList"
+Write-Host "Prepared $($files.Count) workbook path(s):"
+foreach ($file in $files) {
+    Write-Host "  $($file.Name)"
+}
+Write-Host "File list: $FileList"
 
 $strategies = if ($Strategy -eq 'all') {
     @('A', 'B', 'C', 'D', 'E')
@@ -179,12 +232,19 @@ foreach ($currentStrategy in $strategies) {
                 continue
             }
 
-            $output = Join-Path $ResultsRoot 'a-used-range-prefetch\vba.json'
-            $images = Join-Path $ImageRoot 'a\vba'
-            & $VbaRunner `
-                -CorpusRoot $CorpusRoot `
-                -OutputPath $output `
-                -ImageOutputDir $images
+            $output = Join-Path `
+                $ResultsRoot `
+                ("a-used-range-prefetch\vba$selectionSuffix.json")
+            $images = Join-Path $ImageRoot ("a\vba$selectionSuffix")
+            $vbaArgs = @{
+                CorpusRoot = $CorpusRoot
+                OutputPath = $output
+                ImageOutputDir = $images
+            }
+            if ($files.Count -lt $allFiles.Count) {
+                $vbaArgs.OnlyWorkbookPath = $files[0].FullName
+            }
+            & $VbaRunner @vbaArgs
             continue
         }
 
@@ -205,10 +265,10 @@ foreach ($currentStrategy in $strategies) {
         $hostLabel = if ($hostKind -eq 'rust') { 'rust' } else { 'dotnet' }
         $output = Join-Path `
             $ResultsRoot `
-            ($strategyDirectory + "\officejs-$hostLabel-batch$BatchSize.json")
+            ($strategyDirectory + "\officejs-$hostLabel-batch$BatchSize$selectionSuffix.json")
         $images = Join-Path `
             $ImageRoot `
-            ($currentStrategy.ToLowerInvariant() + "\officejs-$hostLabel-batch$BatchSize")
+            ($currentStrategy.ToLowerInvariant() + "\officejs-$hostLabel-batch$BatchSize$selectionSuffix")
 
         $args = @{
             FileListPath = $FileList
