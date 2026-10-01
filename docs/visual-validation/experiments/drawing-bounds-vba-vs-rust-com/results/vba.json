@@ -1,2348 +1,2349 @@
+# VBA
 {
   "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx": {
     "Titel": {
       "right": 915.000076,
       "bottom": 450.000000,
-      "duration_ms": 9.946000
+      "duration_ms": 2.968900
     },
     "Inhaltsübersicht": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.041000
+      "duration_ms": 0.085400
     },
     "GENESIS-Online": {
       "right": 697.852995,
       "bottom": 475.500000,
-      "duration_ms": 0.279300
+      "duration_ms": 0.195500
     },
     "Impressum": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.026100
+      "duration_ms": 0.056200
     },
     "Informationen zur Statistik": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018300
+      "duration_ms": 0.034700
     },
     "79932-01 ": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017700
+      "duration_ms": 0.047700
     },
     "79932-02": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016300
+      "duration_ms": 0.059300
     },
     "79932-03": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015700
+      "duration_ms": 0.021700
     },
     "79932-04": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016200
+      "duration_ms": 0.044200
     },
     "79932-05": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017800
+      "duration_ms": 0.020500
     },
     "79932-06": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016300
+      "duration_ms": 0.020400
     },
     "79932-07": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.215100
+      "duration_ms": 0.029000
     },
     "79932-08": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.056000
+      "duration_ms": 0.019600
     },
     "79932-09": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.033800
+      "duration_ms": 0.019100
     },
     "79932-10": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.100400
+      "duration_ms": 0.028700
     },
     "79932-11": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.026700
+      "duration_ms": 0.119200
     },
     "Erläuterung zu CSV-Tabellen ": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.025400
+      "duration_ms": 0.062600
     },
     "csv-79932-01": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.026000
+      "duration_ms": 0.049200
     },
     "csv-79932-02-11": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.022700
+      "duration_ms": 0.034700
     }
   },
   "krankenhausverzeichnis-3500100227005.xlsx": {
     "Titelblatt": {
       "right": 436.112762,
       "bottom": 631.051680,
-      "duration_ms": 0.128800
+      "duration_ms": 0.170800
     },
     "Impressum": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.033800
+      "duration_ms": 0.058400
     },
     "Inhalt": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.020400
+      "duration_ms": 0.035600
     },
     "Vorbemerkungen": {
       "right": 203.250000,
       "bottom": 237.750000,
-      "duration_ms": 1.240100
+      "duration_ms": 0.304800
     },
     " KHV_2022": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.051900
+      "duration_ms": 0.034000
     },
     "RHV_2022": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018900
+      "duration_ms": 0.025600
     },
     "DSB_KHV_2022": {
       "right": 171.750000,
       "bottom": 1947.750122,
-      "duration_ms": 0.405400
+      "duration_ms": 1.007400
     },
     "DSB_RHV_2022": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.021200
+      "duration_ms": 0.039100
     },
     "Land": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018100
+      "duration_ms": 0.027600
     },
     "Kreis": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016000
+      "duration_ms": 0.024100
     },
     "Statistische Ämter": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015600
+      "duration_ms": 0.023000
     }
   },
   "foerderprogramme-5411206209005.xlsx": {
     "Titelseite": {
       "right": 563.320953,
       "bottom": 551.149994,
-      "duration_ms": 0.150200
+      "duration_ms": 0.407300
     },
     "Inhalt": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.033000
+      "duration_ms": 0.070100
     },
     "Erläuterungen": {
       "right": 402.750000,
       "bottom": 633.000000,
-      "duration_ms": 0.063300
+      "duration_ms": 0.206300
     },
     "Allgemeines": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.022600
+      "duration_ms": 0.057000
     },
     "0901_T_D": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017700
+      "duration_ms": 0.046600
     },
     "0901_T_BW": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016400
+      "duration_ms": 0.058900
     },
     "0901_T_BY": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015900
+      "duration_ms": 0.056200
     },
     "0901_T_BE": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016100
+      "duration_ms": 0.045300
     },
     "0901_T_BB": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.020300
+      "duration_ms": 0.057200
     },
     "0901_T_HB": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017300
+      "duration_ms": 0.054100
     },
     "0901_T_HH": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016700
+      "duration_ms": 0.046800
     },
     "0901_T_HE": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.059100
     },
     "0901_T_MV": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016100
+      "duration_ms": 0.060700
     },
     "0901_T_NI": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015400
+      "duration_ms": 0.045200
     },
     "0901_T_NW": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016500
+      "duration_ms": 0.043500
     },
     "0901_T_RP": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.070700
     },
     "0901_T_SL": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016600
+      "duration_ms": 0.066300
     },
     "0901_T_SN": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016600
+      "duration_ms": 0.075000
     },
     "0901_T_ST": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017500
+      "duration_ms": 0.061300
     },
     "0901_T_SH": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016500
+      "duration_ms": 0.063700
     },
     "0901_T_TH": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015300
+      "duration_ms": 0.067100
     },
     "0902_T_D": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.050500
     },
     "0902_T_BW": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016300
+      "duration_ms": 0.047800
     },
     "0902_T_BY": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016600
+      "duration_ms": 0.063000
     },
     "0902_T_BE": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016500
+      "duration_ms": 0.066000
     },
     "0902_T_BB": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018200
+      "duration_ms": 0.057900
     },
     "0902_T_HB": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.059000
     },
     "0902_T_HH": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018300
+      "duration_ms": 0.048200
     },
     "0902_T_HE": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016800
+      "duration_ms": 0.058700
     },
     "0902_T_MV": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016100
+      "duration_ms": 0.070500
     },
     "0902_T_NI": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016300
+      "duration_ms": 0.065300
     },
     "0902_T_NW": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015400
+      "duration_ms": 0.073400
     },
     "0902_T_RP": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016500
+      "duration_ms": 0.091300
     },
     "0902_T_SL": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015700
+      "duration_ms": 0.066300
     },
     "0902_T_SN": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015800
+      "duration_ms": 0.064400
     },
     "0902_T_ST": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017900
+      "duration_ms": 0.052400
     },
     "0902_T_SH": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017500
+      "duration_ms": 0.048400
     },
     "0902_T_TH": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.051800
     }
   },
   "wanderungen-2010120217005.xlsx": {
     "Titelseite": {
       "right": 586.533957,
       "bottom": 576.338577,
-      "duration_ms": 0.203300
+      "duration_ms": 0.243000
     },
     "Inhalt": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.032000
+      "duration_ms": 0.055200
     },
     "Vorbemerkung": {
       "right": 284.988739,
       "bottom": 2947.499756,
-      "duration_ms": 0.042800
+      "duration_ms": 0.065700
     },
     "Tabelle 1.1 ": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.020700
+      "duration_ms": 0.028100
     },
     "Tabelle 1.2.1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016900
+      "duration_ms": 0.023700
     },
     "Tabelle 1.2.2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016500
+      "duration_ms": 0.038000
     },
     "Tabelle 1.2.3": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016800
+      "duration_ms": 0.025800
     },
     "Tabelle1.3": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018100
+      "duration_ms": 0.029400
     },
     "Tabelle 1.4 ": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.019100
+      "duration_ms": 0.023100
     },
     "Tabelle 1.5": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016900
+      "duration_ms": 0.020700
     },
     "Tabelle 1.6": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017200
+      "duration_ms": 0.023800
     },
     "Tabelle 1.7": {
       "right": 193.500000,
       "bottom": 108.000000,
-      "duration_ms": 0.694600
+      "duration_ms": 0.196400
     },
     "Tabelle 2.1.1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.028100
+      "duration_ms": 0.037400
     },
     "Tabelle 2.1.2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.019200
+      "duration_ms": 0.025400
     },
     "Tabelle 2.1.3": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.020600
+      "duration_ms": 0.022600
     },
     "Tabelle 2.2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017500
+      "duration_ms": 0.021100
     },
     "Tabelle 2.3": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017500
+      "duration_ms": 0.038600
     },
     "Tabelle 2.4": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017200
+      "duration_ms": 0.024100
     },
     "Tabelle 2.5": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018100
+      "duration_ms": 0.026600
     },
     "Tabelle 2.6.1": {
       "right": 142.500000,
       "bottom": 128.250000,
-      "duration_ms": 0.058700
+      "duration_ms": 0.060100
     },
     "Tabelle 2.6.2": {
       "right": 142.500000,
       "bottom": 127.500000,
-      "duration_ms": 0.067200
+      "duration_ms": 0.052700
     },
     "Tabelle 2.6.3": {
       "right": 142.500000,
       "bottom": 127.500000,
-      "duration_ms": 0.053200
+      "duration_ms": 0.052100
     },
     "Tabelle 2.6.4": {
       "right": 142.500000,
       "bottom": 127.500000,
-      "duration_ms": 0.043500
+      "duration_ms": 0.058300
     },
     "Tabelle 2.6.5": {
       "right": 142.500000,
       "bottom": 127.500000,
-      "duration_ms": 0.042700
+      "duration_ms": 0.050000
     },
     "Tabelle 2.6.6": {
       "right": 142.500000,
       "bottom": 127.500000,
-      "duration_ms": 0.049700
+      "duration_ms": 0.049200
     },
     "Tabelle 2.7": {
       "right": 177.750000,
       "bottom": 87.000000,
-      "duration_ms": 0.043400
+      "duration_ms": 0.050600
     },
     "Tabelle 2.8": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.021900
+      "duration_ms": 0.026500
     },
     "Tabelle 3.1  ": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016700
+      "duration_ms": 0.062100
     },
     " Tabelle 3.2 ": {
       "right": 219.000000,
       "bottom": 78.750000,
-      "duration_ms": 0.123100
+      "duration_ms": 0.280300
     },
     "Tabelle 3.3": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.029500
+      "duration_ms": 0.061000
     },
     "Tabelle 3.4 ": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017900
+      "duration_ms": 0.027100
     },
     "Tabelle 3.5 Zugezogene  ": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018300
+      "duration_ms": 0.025800
     },
     "Tabelle 3.5 Fortgezogene": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016900
+      "duration_ms": 0.023400
     },
     " Tabelle 3.6 ": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015700
+      "duration_ms": 0.023700
     },
     "Anhang": {
       "right": 284.988739,
       "bottom": 2787.000000,
-      "duration_ms": 0.043600
+      "duration_ms": 0.071200
     },
     "Qualitätsbericht": {
       "right": 497.250000,
       "bottom": 660.000000,
-      "duration_ms": 0.059500
+      "duration_ms": 0.078000
     }
   },
   "seeschifffahrt-monat-2080500221095.xlsx": {
     "Titel": {
       "right": 586.533957,
       "bottom": 575.338577,
-      "duration_ms": 0.201500
+      "duration_ms": 0.253700
     },
     "Inhalt": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.032900
+      "duration_ms": 0.042400
     },
     "Methodik": {
       "right": 134.250000,
       "bottom": 205.500000,
-      "duration_ms": 0.065400
+      "duration_ms": 0.089800
     },
     "Zeichenerklärung": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.021800
+      "duration_ms": 0.027700
     },
     "1.1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018400
+      "duration_ms": 0.023900
     },
     "1.2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016300
+      "duration_ms": 0.026000
     },
     "1.3": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.020900
     },
     "1.4": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.020600
+      "duration_ms": 0.030500
     },
     "1.4.1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016900
+      "duration_ms": 0.028600
     },
     "1.4.2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017400
+      "duration_ms": 0.022800
     },
     "1.5": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016600
+      "duration_ms": 0.021200
     },
     "1.5.1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017200
+      "duration_ms": 0.049000
     },
     "1.5.2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016700
+      "duration_ms": 0.029500
     },
     "1.6": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016800
+      "duration_ms": 0.023200
     },
     "1.6.1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017400
+      "duration_ms": 0.029200
     },
     "1.6.2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017300
+      "duration_ms": 0.023800
     },
     "1.7": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016600
+      "duration_ms": 0.020700
     },
     "1.8": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017400
+      "duration_ms": 0.022400
     },
     "1.9": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016700
+      "duration_ms": 0.021100
     },
     "1.9.1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016800
+      "duration_ms": 0.021100
     },
     "1.9.2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016800
+      "duration_ms": 0.020800
     },
     "1.10": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016100
+      "duration_ms": 0.020400
     },
     "1.10.1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015000
+      "duration_ms": 0.020400
     },
     "1.10.2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.020700
+      "duration_ms": 0.021000
     },
     "2.1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.019300
+      "duration_ms": 0.022800
     },
     "2.2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.021700
     },
     "3.1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016300
+      "duration_ms": 0.021100
     },
     "Anhang NST-2007": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016200
+      "duration_ms": 0.025900
     },
     "Qualitätsbericht": {
       "right": 138.000000,
       "bottom": 206.250000,
-      "duration_ms": 0.056000
+      "duration_ms": 0.088500
     }
   },
   "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx": {
     "Titel": {
       "right": 915.000076,
       "bottom": 450.000000,
-      "duration_ms": 0.157700
+      "duration_ms": 0.251500
     },
     "Inhaltsübersicht": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.032900
+      "duration_ms": 0.041400
     },
     "GENESIS-Online": {
       "right": 917.058807,
       "bottom": 461.249908,
-      "duration_ms": 0.093100
+      "duration_ms": 0.112200
     },
     "Impressum": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.020500
+      "duration_ms": 0.022300
     },
     "Informationen zur Statistik": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016600
+      "duration_ms": 0.018700
     },
     "71717-01": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017100
+      "duration_ms": 0.018600
     },
     "71717-02": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017900
+      "duration_ms": 0.019400
     },
     "71717-03": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016700
+      "duration_ms": 0.018000
     },
     "71717-04": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016000
+      "duration_ms": 0.019300
     },
     "71717-05": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017300
+      "duration_ms": 0.018500
     },
     "71717-06": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.017300
     },
     "71717-07": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017900
+      "duration_ms": 0.018100
     },
     "71717-08": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016300
+      "duration_ms": 0.021100
     },
     "71717-09": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015200
+      "duration_ms": 0.019600
     },
     "71717-10": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016800
+      "duration_ms": 0.027300
     },
     "71717-11": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017100
+      "duration_ms": 0.018900
     },
     "71717-12": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017800
+      "duration_ms": 0.018300
     },
     "71717-13": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015400
+      "duration_ms": 0.017600
     },
     "71717-14": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015700
+      "duration_ms": 0.019200
     },
     "71717-15": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015300
+      "duration_ms": 0.018000
     },
     "71717-16": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015300
+      "duration_ms": 0.018200
     },
     "71717-17": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015800
+      "duration_ms": 0.018400
     },
     "71717-18": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016300
+      "duration_ms": 0.018500
     },
     "71717-19": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016400
+      "duration_ms": 0.022600
     },
     "71717-20": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.054800
+      "duration_ms": 0.027100
     },
     "71717-21": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.037600
+      "duration_ms": 0.019400
     },
     "71717-22": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.031800
+      "duration_ms": 0.024000
     },
     "71717-23": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.029800
+      "duration_ms": 0.022700
     },
     "71717-24": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.028900
+      "duration_ms": 0.017800
     },
     "71717-25": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.029400
+      "duration_ms": 0.017900
     },
     "71717-26": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.029900
+      "duration_ms": 0.017800
     },
     "71717-27": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.032300
+      "duration_ms": 0.018300
     },
     "71717-28": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.038400
+      "duration_ms": 0.029100
     },
     "71717-29": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.031500
+      "duration_ms": 0.019700
     },
     "71717-30": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.031100
+      "duration_ms": 0.018200
     },
     "71717-31": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.047100
+      "duration_ms": 0.018400
     },
     "71717-32": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.030200
+      "duration_ms": 0.018700
     },
     "71717-33": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016000
+      "duration_ms": 0.019300
     },
     "71717-34": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.019500
     },
     "71717-35": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016800
+      "duration_ms": 0.018000
     },
     "71717-36": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.023600
+      "duration_ms": 0.019200
     },
     "71717-37": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016200
+      "duration_ms": 0.018100
     },
     "71717-38": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015200
+      "duration_ms": 0.021500
     },
     "71717-39": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015000
+      "duration_ms": 0.018800
     },
     "71717-40": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015300
+      "duration_ms": 0.018700
     },
     "71717-41": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.014400
+      "duration_ms": 0.018800
     },
     "71717-42": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.014700
+      "duration_ms": 0.018500
     },
     "71717-43": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015300
+      "duration_ms": 0.017100
     },
     "71717-44": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015300
+      "duration_ms": 0.017500
     },
     "71717-45": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015300
+      "duration_ms": 0.017500
     },
     "71717-46": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015300
+      "duration_ms": 0.017500
     },
     "71717-47": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015700
+      "duration_ms": 0.017700
     },
     "71717-48": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015800
+      "duration_ms": 0.017900
     },
     "71717-49": {
       "right": 712.046329,
       "bottom": 4443.899902,
-      "duration_ms": 22.105100
+      "duration_ms": 26.342400
     },
     "71717-50": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.050500
+      "duration_ms": 0.056800
     },
     "71717-51": {
       "right": 552.750000,
       "bottom": 1567.500000,
-      "duration_ms": 0.137300
+      "duration_ms": 0.155400
     },
     "71717-52": {
       "right": 468.000000,
       "bottom": 1826.249878,
-      "duration_ms": 3.442100
+      "duration_ms": 3.785300
     },
     "71717-53": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.032700
+      "duration_ms": 0.039500
     },
     "Erläuterung zu CSV-Tabellen": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.019200
+      "duration_ms": 0.019600
     },
     "csv-71717-01": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.069500
+      "duration_ms": 0.019200
     },
     "csv-71717-02": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.061400
+      "duration_ms": 0.029700
     },
     "csv-71717-03": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.021400
+      "duration_ms": 0.028100
     },
     "csv-71717-04": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.020300
+      "duration_ms": 0.023100
     },
     "csv-71717-05": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017800
+      "duration_ms": 0.020100
     },
     "csv-71717-06": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017600
+      "duration_ms": 0.017200
     },
     "csv-71717-07": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017700
+      "duration_ms": 0.017300
     },
     "csv-71717-08": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.019000
+      "duration_ms": 0.017800
     },
     "csv-71717-09": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017900
+      "duration_ms": 0.017800
     },
     "csv-71717-10": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017400
+      "duration_ms": 0.018700
     },
     "csv-71717-11": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.022800
+      "duration_ms": 0.017600
     },
     "csv-71717-12": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.022900
+      "duration_ms": 0.017900
     },
     "csv-71717-13": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017600
+      "duration_ms": 0.017400
     },
     "csv-71717-14": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018000
+      "duration_ms": 0.017600
     },
     "csv-71717-15": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016600
+      "duration_ms": 0.017700
     },
     "csv-71717-16": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016300
+      "duration_ms": 0.016400
     },
     "csv-71717-17": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.021700
     },
     "csv-71717-18": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016000
+      "duration_ms": 0.020000
     },
     "csv-71717-19": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016600
+      "duration_ms": 0.017600
     },
     "csv-71717-20": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016300
+      "duration_ms": 0.019000
     },
     "csv-71717-21": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017600
+      "duration_ms": 0.019200
     },
     "csv-71717-22": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016100
+      "duration_ms": 0.017300
     },
     "csv-71717-23": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016000
+      "duration_ms": 0.017800
     },
     "csv-71717-24": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016800
+      "duration_ms": 0.017400
     },
     "csv-71717-25": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016100
+      "duration_ms": 0.017300
     },
     "csv-71717-26": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015600
+      "duration_ms": 0.017000
     },
     "csv-71717-27": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015900
+      "duration_ms": 0.016600
     },
     "csv-71717-28": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.092400
+      "duration_ms": 0.016900
     },
     "csv-71717-29": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.035500
+      "duration_ms": 0.017700
     },
     "csv-71717-30": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.068400
+      "duration_ms": 0.017700
     },
     "csv-71717-31": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.019000
+      "duration_ms": 0.016800
     },
     "csv-71717-32": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017000
+      "duration_ms": 0.019000
     },
     "csv-71717-33": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017600
+      "duration_ms": 0.017200
     },
     "csv-71717-34": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018100
+      "duration_ms": 0.017100
     },
     "csv-71717-35": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017500
+      "duration_ms": 0.032300
     },
     "csv-71717-36": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017100
+      "duration_ms": 0.017200
     },
     "csv-71717-37": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016700
+      "duration_ms": 0.017300
     },
     "csv-71717-38": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.019100
+      "duration_ms": 0.016400
     },
     "csv-71717-39": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.027000
+      "duration_ms": 0.017800
     },
     "csv-71717-40": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017100
+      "duration_ms": 0.017800
     },
     "csv-71717-41": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017300
+      "duration_ms": 0.017400
     },
     "csv-71717-42": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016200
+      "duration_ms": 0.016400
     },
     "csv-71717-43": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015400
+      "duration_ms": 0.018300
     },
     "csv-71717-44": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016200
+      "duration_ms": 0.017000
     },
     "csv-71717-45": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016500
+      "duration_ms": 0.016400
     },
     "csv-71717-46": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.015800
+      "duration_ms": 0.016000
     },
     "csv-71717-47": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.019500
+      "duration_ms": 0.016100
     },
     "csv-71717-48": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.016700
+      "duration_ms": 0.017800
     }
   },
   "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx": {
     "Vorblatt": {
       "right": 555.000000,
       "bottom": 575.250000,
-      "duration_ms": 0.288600
+      "duration_ms": 0.240000
     },
     "Inhalt": {
       "right": 142.644257,
       "bottom": 1866.750122,
-      "duration_ms": 0.123700
+      "duration_ms": 0.110000
     },
     "1.1": {
       "right": 1310.515121,
       "bottom": 915.208560,
-      "duration_ms": 0.097600
+      "duration_ms": 0.084200
     },
     "1.2": {
       "right": 1302.754257,
       "bottom": 948.000000,
-      "duration_ms": 0.275300
+      "duration_ms": 0.225000
     },
     "1.3": {
       "right": 1680.000000,
       "bottom": 944.250000,
-      "duration_ms": 0.123000
+      "duration_ms": 0.103900
     },
     "1.4": {
       "right": 1250.873459,
       "bottom": 902.250000,
-      "duration_ms": 0.094400
+      "duration_ms": 0.080500
     },
     "2_(1)": {
       "right": 284.250000,
       "bottom": 871.500000,
-      "duration_ms": 0.133200
+      "duration_ms": 0.114700
     },
     "2_(2)": {
       "right": 465.000000,
       "bottom": 888.750000,
-      "duration_ms": 0.072600
+      "duration_ms": 0.060400
     },
     "2_(3)": {
       "right": 500.250000,
       "bottom": 788.250000,
-      "duration_ms": 0.346000
+      "duration_ms": 0.307600
     },
     "2_(4)": {
       "right": 501.000000,
       "bottom": 816.000000,
-      "duration_ms": 0.168600
+      "duration_ms": 0.149900
     },
     "3.1_(1)": {
       "right": 506.250000,
       "bottom": 816.721011,
-      "duration_ms": 1.548500
+      "duration_ms": 19.630500
     },
     "3.1_(2)": {
       "right": 468.750000,
       "bottom": 826.507504,
-      "duration_ms": 0.156200
+      "duration_ms": 0.131400
     },
     "3.1_(3)": {
       "right": 471.750000,
       "bottom": 834.000000,
-      "duration_ms": 0.138000
+      "duration_ms": 0.109000
     },
     "3.1_(4)": {
       "right": 465.749969,
       "bottom": 877.443477,
-      "duration_ms": 0.091100
+      "duration_ms": 0.074000
     },
     "3.1_(5)": {
       "right": 467.249969,
       "bottom": 875.193477,
-      "duration_ms": 0.089100
+      "duration_ms": 0.079900
     },
     "3.1_(6)": {
       "right": 500.250000,
       "bottom": 812.250000,
-      "duration_ms": 0.354300
+      "duration_ms": 0.264900
     },
     "3.1_(7)": {
       "right": 264.750000,
       "bottom": 831.913071,
-      "duration_ms": 1.615100
+      "duration_ms": 1.537200
     },
     "3.1_(8)": {
       "right": 264.750000,
       "bottom": 938.420472,
-      "duration_ms": 0.219400
+      "duration_ms": 0.196600
     },
     "3.1_(9)": {
       "right": 264.750000,
       "bottom": 927.750000,
-      "duration_ms": 0.159400
+      "duration_ms": 0.079800
     },
     "Technisch bedingte Leerseite ": {
       "right": 142.044876,
       "bottom": 739.500000,
-      "duration_ms": 0.081200
+      "duration_ms": 0.067400
     },
     "3_2_(1)": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.102800
+      "duration_ms": 0.038300
     },
     "3_2_(2) ": {
       "right": 1027.500000,
       "bottom": 986.597322,
-      "duration_ms": 1.092600
+      "duration_ms": 0.572800
     },
     "3.2_(3)": {
       "right": 972.000000,
       "bottom": 869.679449,
-      "duration_ms": 0.606600
+      "duration_ms": 0.444900
     },
     "3.2_(4)": {
       "right": 681.600555,
       "bottom": 918.772205,
-      "duration_ms": 0.083000
+      "duration_ms": 0.062000
     },
     "3.2_(5)": {
       "right": 717.451187,
       "bottom": 968.266324,
-      "duration_ms": 1.431300
+      "duration_ms": 1.406800
     },
     "3.2_(6)": {
       "right": 720.035858,
       "bottom": 1015.309819,
-      "duration_ms": 0.164000
+      "duration_ms": 0.088900
     },
     "3.2_(7)": {
       "right": 714.599976,
       "bottom": 983.780854,
-      "duration_ms": 0.149100
+      "duration_ms": 0.068400
     },
     "3.2_(8)": {
       "right": 681.601807,
       "bottom": 868.500000,
-      "duration_ms": 0.081200
+      "duration_ms": 0.066700
     },
     "3.2_(9)": {
       "right": 1002.750000,
       "bottom": 923.250000,
-      "duration_ms": 0.538600
+      "duration_ms": 0.474200
     },
     "3.2_(10)": {
       "right": 975.000000,
       "bottom": 885.750000,
-      "duration_ms": 0.507300
+      "duration_ms": 0.443800
     },
     "3.2_(11)": {
       "right": 678.750000,
       "bottom": 920.254634,
-      "duration_ms": 0.719500
+      "duration_ms": 0.299900
     },
     "3.2_(12)": {
       "right": 687.000000,
       "bottom": 976.516717,
-      "duration_ms": 0.313000
+      "duration_ms": 0.299500
     },
     "3.2_(13)": {
       "right": 899.101501,
       "bottom": 970.750000,
-      "duration_ms": 0.453900
+      "duration_ms": 0.257100
     },
     "3_2_(14)": {
       "right": 682.500000,
       "bottom": 977.250000,
-      "duration_ms": 0.079600
+      "duration_ms": 0.073500
     },
     "3.3_(1)": {
       "right": 150.750000,
       "bottom": 838.500000,
-      "duration_ms": 0.075000
+      "duration_ms": 0.067700
     },
     "3.3_(2)": {
       "right": 150.750000,
       "bottom": 837.750000,
-      "duration_ms": 0.086800
+      "duration_ms": 0.077400
     },
     "3.3_(3)": {
       "right": 147.750000,
       "bottom": 859.250079,
-      "duration_ms": 0.063600
+      "duration_ms": 0.046500
     },
     "3.3_(4)": {
       "right": 141.452988,
       "bottom": 933.000000,
-      "duration_ms": 0.051500
+      "duration_ms": 0.047800
     },
     "3.3_(5)": {
       "right": 141.452988,
       "bottom": 913.500025,
-      "duration_ms": 0.048800
+      "duration_ms": 0.044800
     },
     "3.3_(6)": {
       "right": 145.952988,
       "bottom": 903.000025,
-      "duration_ms": 0.153200
+      "duration_ms": 0.146500
     },
     "3.4_(1)": {
       "right": 148.795044,
       "bottom": 880.500000,
-      "duration_ms": 0.057900
+      "duration_ms": 0.065600
     },
     "3.4_(2)": {
       "right": 148.795044,
       "bottom": 882.750000,
-      "duration_ms": 0.050000
+      "duration_ms": 0.048600
     },
     "3.4_(3)": {
       "right": 166.497559,
       "bottom": 918.750000,
-      "duration_ms": 0.050600
+      "duration_ms": 0.046100
     },
     "3.5_(1)": {
       "right": 144.750000,
       "bottom": 904.807087,
-      "duration_ms": 0.048400
+      "duration_ms": 0.044800
     },
     "3.5_(2)": {
       "right": 144.750000,
       "bottom": 852.736759,
-      "duration_ms": 0.047800
+      "duration_ms": 0.043200
     },
     "3.6_(1)": {
       "right": 514.500000,
       "bottom": 891.750000,
-      "duration_ms": 0.068400
+      "duration_ms": 0.062800
     },
     "3.6_(2)": {
       "right": 514.500000,
       "bottom": 912.000000,
-      "duration_ms": 0.067500
+      "duration_ms": 0.063500
     },
     "3.7_(1)": {
       "right": 144.294876,
       "bottom": 809.250000,
-      "duration_ms": 0.046600
+      "duration_ms": 0.042700
     },
     "3.7 (2)": {
       "right": 142.044876,
       "bottom": 808.500000,
-      "duration_ms": 0.045900
+      "duration_ms": 0.041900
     },
     "Technisch_bedingte Leerseite ": {
       "right": 142.044876,
       "bottom": 739.500000,
-      "duration_ms": 0.045600
+      "duration_ms": 0.040800
     },
     "3.8_(1)": {
       "right": 693.000000,
       "bottom": 990.829067,
-      "duration_ms": 0.082600
+      "duration_ms": 0.071500
     },
     "3.8_(2)": {
       "right": 671.250000,
       "bottom": 908.250061,
-      "duration_ms": 0.069400
+      "duration_ms": 0.061400
     },
     "3.9.1_(1)": {
       "right": 1017.750000,
       "bottom": 835.241248,
-      "duration_ms": 0.368600
+      "duration_ms": 0.367800
     },
     "3.9.1 (2)": {
       "right": 1017.750000,
       "bottom": 869.250000,
-      "duration_ms": 0.371400
+      "duration_ms": 0.340600
     },
     "3.9.2_(1)": {
       "right": 663.446686,
       "bottom": 824.999982,
-      "duration_ms": 0.071900
+      "duration_ms": 0.064700
     },
     "3.9.2_(2)": {
       "right": 664.044876,
       "bottom": 863.587741,
-      "duration_ms": 0.074400
+      "duration_ms": 0.062700
     },
     "3.9.3_(1)": {
       "right": 664.044876,
       "bottom": 828.916693,
-      "duration_ms": 0.068000
+      "duration_ms": 0.062100
     },
     "3.9.3_(2)": {
       "right": 664.044876,
       "bottom": 869.250000,
-      "duration_ms": 0.066900
+      "duration_ms": 0.059800
     },
     "3.9.4_(1)": {
       "right": 664.045044,
       "bottom": 825.750000,
-      "duration_ms": 0.077500
+      "duration_ms": 0.063200
     },
     "3.9.4_(2)": {
       "right": 662.409134,
       "bottom": 860.250000,
-      "duration_ms": 0.067100
+      "duration_ms": 0.061300
     },
     "3.10_(1)": {
       "right": 151.500000,
       "bottom": 840.000000,
-      "duration_ms": 0.046600
+      "duration_ms": 0.044500
     },
     "3.10_(2)": {
       "right": 151.500000,
       "bottom": 844.500000,
-      "duration_ms": 0.044100
+      "duration_ms": 0.041900
     },
     "3.11": {
       "right": 139.195190,
       "bottom": 890.289279,
-      "duration_ms": 0.045800
+      "duration_ms": 0.042800
     },
     "3.12 _3.13 ": {
       "right": 141.750000,
       "bottom": 855.000000,
-      "duration_ms": 0.047000
+      "duration_ms": 0.041900
     },
     "3.14_(1)": {
       "right": 160.201569,
       "bottom": 800.123211,
-      "duration_ms": 0.045700
+      "duration_ms": 0.044100
     },
     "3.14_(2)": {
       "right": 160.948029,
       "bottom": 796.361636,
-      "duration_ms": 0.047000
+      "duration_ms": 0.043800
     },
     "3.14_(3)": {
       "right": 151.351974,
       "bottom": 784.349976,
-      "duration_ms": 0.056300
+      "duration_ms": 0.044800
     },
     "3.14_(4)": {
       "right": 151.952759,
       "bottom": 799.349976,
-      "duration_ms": 0.047400
+      "duration_ms": 0.044600
     },
     "4.1_(1)": {
       "right": 382.500000,
       "bottom": 887.250000,
-      "duration_ms": 0.101200
+      "duration_ms": 0.095900
     },
     "4_1_(2)": {
       "right": 385.500000,
       "bottom": 819.988952,
-      "duration_ms": 0.099300
+      "duration_ms": 0.092300
     },
     "4_1_(3)": {
       "right": 399.750000,
       "bottom": 831.000019,
-      "duration_ms": 0.098700
+      "duration_ms": 0.090300
     },
     "4_2_(1)": {
       "right": 155.999954,
       "bottom": 817.500061,
-      "duration_ms": 0.066800
+      "duration_ms": 0.060900
     },
     "4_2_(2)": {
       "right": 127.499962,
       "bottom": 540.750061,
-      "duration_ms": 0.054900
+      "duration_ms": 0.044400
     },
     "4_3_(1)": {
       "right": 148.351334,
       "bottom": 975.749921,
-      "duration_ms": 0.084400
+      "duration_ms": 0.383100
     },
     "4_3_(2)": {
       "right": 148.350784,
       "bottom": 870.749921,
-      "duration_ms": 0.066200
+      "duration_ms": 0.225900
     },
     "4.4_(1)": {
       "right": 503.250015,
       "bottom": 868.500000,
-      "duration_ms": 0.110900
+      "duration_ms": 0.111800
     },
     "4.4_(2)": {
       "right": 503.250015,
       "bottom": 891.000000,
-      "duration_ms": 0.064100
+      "duration_ms": 0.065800
     },
     "4.4_(3)": {
       "right": 503.250015,
       "bottom": 877.500000,
-      "duration_ms": 0.086400
+      "duration_ms": 0.079700
     },
     "4.5_(1)": {
       "right": 146.250000,
       "bottom": 876.000000,
-      "duration_ms": 0.062400
+      "duration_ms": 0.045100
     },
     "4.5_(2)": {
       "right": 141.000000,
       "bottom": 874.500000,
-      "duration_ms": 0.046900
+      "duration_ms": 0.043800
     },
     "4.5_(3)": {
       "right": 517.799225,
       "bottom": 874.500000,
-      "duration_ms": 0.122700
+      "duration_ms": 0.136900
     },
     "4.6_(1)": {
       "right": 158.702682,
       "bottom": 861.750000,
-      "duration_ms": 0.064800
+      "duration_ms": 0.065300
     },
     "4.6_(2)": {
       "right": 157.202682,
       "bottom": 865.500000,
-      "duration_ms": 0.063900
+      "duration_ms": 0.061900
     },
     "4.6_(3)": {
       "right": 155.702682,
       "bottom": 930.000000,
-      "duration_ms": 2.330900
+      "duration_ms": 1.451300
     },
     "4.6_(4)": {
       "right": 155.702682,
       "bottom": 917.250000,
-      "duration_ms": 0.088400
+      "duration_ms": 0.113800
     },
     "4.6_(5)": {
       "right": 503.250000,
       "bottom": 875.250000,
-      "duration_ms": 0.118500
+      "duration_ms": 0.252000
     },
     "4.6_(6)": {
       "right": 158.701569,
       "bottom": 884.250000,
-      "duration_ms": 0.078000
+      "duration_ms": 0.114400
     },
     "4.7_(1)": {
       "right": 488.250000,
       "bottom": 852.000000,
-      "duration_ms": 0.293500
+      "duration_ms": 0.814300
     },
     "4.7_(2)": {
       "right": 495.750000,
       "bottom": 877.500000,
-      "duration_ms": 0.271600
+      "duration_ms": 0.271000
     },
     "4.8_(1)": {
       "right": 141.000000,
       "bottom": 864.165827,
-      "duration_ms": 0.051800
+      "duration_ms": 0.046400
     },
     "4.8_(2)": {
       "right": 142.500000,
       "bottom": 871.489224,
-      "duration_ms": 0.048000
+      "duration_ms": 0.043800
     },
     "4.9_(1)": {
       "right": 564.000000,
       "bottom": 869.750079,
-      "duration_ms": 0.221900
+      "duration_ms": 0.200800
     },
     "4.9_(2)": {
       "right": 564.000000,
       "bottom": 869.750079,
-      "duration_ms": 0.236700
+      "duration_ms": 0.229500
     },
     "4.9_(3)": {
       "right": 159.470322,
       "bottom": 867.500079,
-      "duration_ms": 0.216000
+      "duration_ms": 0.168100
     },
     "4.9_(4)": {
       "right": 159.470322,
       "bottom": 867.500079,
-      "duration_ms": 0.375500
+      "duration_ms": 0.179700
     },
     "4.10.1 ": {
       "right": 332.250000,
       "bottom": 824.250000,
-      "duration_ms": 0.161800
+      "duration_ms": 0.148100
     },
     "4.10.2 ": {
       "right": 333.000031,
       "bottom": 799.499982,
-      "duration_ms": 0.246000
+      "duration_ms": 0.136300
     },
     "4.10.3": {
       "right": 336.750000,
       "bottom": 823.500000,
-      "duration_ms": 0.166700
+      "duration_ms": 0.294600
     },
     "4.10.4": {
       "right": 336.750031,
       "bottom": 834.000000,
-      "duration_ms": 0.165100
+      "duration_ms": 0.229400
     },
     "4.11.1": {
       "right": 502.500000,
       "bottom": 846.750000,
-      "duration_ms": 0.349100
+      "duration_ms": 0.337800
     },
     "4.11.2": {
       "right": 334.500000,
       "bottom": 855.750000,
-      "duration_ms": 0.269300
+      "duration_ms": 0.235600
     },
     "4.11.3": {
       "right": 327.750031,
       "bottom": 818.250000,
-      "duration_ms": 0.132700
+      "duration_ms": 0.120600
     },
     "4.11.4": {
       "right": 330.000031,
       "bottom": 819.166693,
-      "duration_ms": 1.332400
+      "duration_ms": 1.315800
     },
     "5.1.1_(1)": {
       "right": 487.500000,
       "bottom": 858.468267,
-      "duration_ms": 1.327800
+      "duration_ms": 1.279900
     },
     "5.1.1_(2)": {
       "right": 489.000031,
       "bottom": 835.218267,
-      "duration_ms": 0.210000
+      "duration_ms": 0.191300
     },
     "5.1.1_(3)": {
       "right": 158.400711,
       "bottom": 830.718267,
-      "duration_ms": 0.069300
+      "duration_ms": 0.063900
     },
     "5.1.2_(1)": {
       "right": 469.499969,
       "bottom": 830.718267,
-      "duration_ms": 0.105800
+      "duration_ms": 0.100900
     },
     "5.1.2_(2)": {
       "right": 477.000031,
       "bottom": 830.718267,
-      "duration_ms": 0.216100
+      "duration_ms": 0.211200
     },
     "5.1.2_(3)": {
       "right": 458.250000,
       "bottom": 830.718267,
-      "duration_ms": 0.170600
+      "duration_ms": 0.167300
     },
     "5.1.3_(1)": {
       "right": 480.749969,
       "bottom": 830.718267,
-      "duration_ms": 0.101700
+      "duration_ms": 0.099200
     },
     "5.1.3_(2)": {
       "right": 479.250000,
       "bottom": 830.718267,
-      "duration_ms": 0.169800
+      "duration_ms": 0.184400
     },
     "5.1.3_(3)": {
       "right": 472.499969,
       "bottom": 830.718267,
-      "duration_ms": 0.172000
+      "duration_ms": 0.167300
     },
     "5.1.4_(1)": {
       "right": 363.750000,
       "bottom": 866.718267,
-      "duration_ms": 0.114100
+      "duration_ms": 0.113500
     },
     "5.1.4_(2)": {
       "right": 363.750000,
       "bottom": 853.218267,
-      "duration_ms": 1.625600
+      "duration_ms": 1.677700
     },
     "5.1.4_(3)": {
       "right": 362.250000,
       "bottom": 868.218267,
-      "duration_ms": 0.379800
+      "duration_ms": 0.556200
     },
     "5.1.5_(1)": {
       "right": 364.500000,
       "bottom": 883.218267,
-      "duration_ms": 0.104000
+      "duration_ms": 0.112700
     },
     "5.1.5_(2)": {
       "right": 364.500000,
       "bottom": 883.218267,
-      "duration_ms": 0.137200
+      "duration_ms": 0.137100
     },
     "5.1.5_(3)": {
       "right": 359.250000,
       "bottom": 892.218267,
-      "duration_ms": 0.133000
+      "duration_ms": 0.134600
     },
     "5.2_(1)": {
       "right": 152.250000,
       "bottom": 891.750000,
-      "duration_ms": 0.198100
+      "duration_ms": 0.211600
     },
     "5.2_(2)": {
       "right": 152.250000,
       "bottom": 915.000000,
-      "duration_ms": 0.191800
+      "duration_ms": 0.198000
     },
     "5.2_(3)": {
       "right": 152.250000,
       "bottom": 918.750000,
-      "duration_ms": 0.450300
+      "duration_ms": 0.179000
     },
     "5.2_(4)": {
       "right": 153.000000,
       "bottom": 865.500000,
-      "duration_ms": 0.441600
+      "duration_ms": 0.170700
     },
     "5.3.1_(1)": {
       "right": 141.446533,
       "bottom": 879.000000,
-      "duration_ms": 0.113500
+      "duration_ms": 0.051800
     },
     "5.3.1_(2)": {
       "right": 142.952988,
       "bottom": 894.750000,
-      "duration_ms": 0.051200
+      "duration_ms": 0.048800
     },
     "5.3.1_(3)": {
       "right": 141.446533,
       "bottom": 877.663622,
-      "duration_ms": 0.095600
+      "duration_ms": 0.050000
     },
     "5.3.1_(4)": {
       "right": 142.952988,
       "bottom": 882.921836,
-      "duration_ms": 0.051900
+      "duration_ms": 0.047900
     },
     "5.3.2_(1)": {
       "right": 144.895584,
       "bottom": 876.750000,
-      "duration_ms": 0.048400
+      "duration_ms": 0.048600
     },
     "5.3.2_(2)": {
       "right": 142.792999,
       "bottom": 865.500000,
-      "duration_ms": 0.046200
+      "duration_ms": 0.046500
     },
     "5.3.2_(3)": {
       "right": 141.441254,
       "bottom": 871.500000,
-      "duration_ms": 0.050500
+      "duration_ms": 0.049100
     },
     "5.3.2_(4)": {
       "right": 139.941254,
       "bottom": 887.250000,
-      "duration_ms": 0.054500
+      "duration_ms": 0.045600
     },
     "5.4_(1)": {
       "right": 142.950470,
       "bottom": 867.000000,
-      "duration_ms": 0.063100
+      "duration_ms": 0.047800
     },
     "5.4_(2)": {
       "right": 489.905350,
       "bottom": 914.250000,
-      "duration_ms": 0.127200
+      "duration_ms": 0.198300
     },
     "5.4_(3)": {
       "right": 142.196533,
       "bottom": 870.750000,
-      "duration_ms": 0.045600
+      "duration_ms": 0.049100
     },
     "5.4_(4)": {
       "right": 142.955505,
       "bottom": 861.750000,
-      "duration_ms": 0.045300
+      "duration_ms": 0.046800
     },
     "5.5_(1)": {
       "right": 160.942368,
       "bottom": 900.750000,
-      "duration_ms": 0.051400
+      "duration_ms": 0.095700
     },
     "5.5_(2)": {
       "right": 159.442368,
       "bottom": 874.676456,
-      "duration_ms": 0.054300
+      "duration_ms": 0.055100
     },
     "5.5_(3)": {
       "right": 169.640549,
       "bottom": 888.000000,
-      "duration_ms": 0.053400
+      "duration_ms": 0.064700
     },
     "5.5_(4)": {
       "right": 172.997559,
       "bottom": 881.250000,
-      "duration_ms": 0.048600
+      "duration_ms": 0.064600
     },
     "5.6.1_(1)": {
       "right": 155.249924,
       "bottom": 871.500000,
-      "duration_ms": 0.045500
+      "duration_ms": 0.047100
     },
     "5.6.1_(2)": {
       "right": 137.851578,
       "bottom": 880.670000,
-      "duration_ms": 0.046400
+      "duration_ms": 0.046200
     },
     "5.6.1_(3)": {
       "right": 137.701813,
       "bottom": 882.000000,
-      "duration_ms": 0.074700
+      "duration_ms": 0.043600
     },
     "5.6.2_(1)": {
       "right": 139.500000,
       "bottom": 875.250000,
-      "duration_ms": 0.051500
+      "duration_ms": 0.046400
     },
     "5.6.2_(2)": {
       "right": 136.500000,
       "bottom": 886.500000,
-      "duration_ms": 0.046500
+      "duration_ms": 0.045500
     },
     "5.6.2_(3)": {
       "right": 136.201813,
       "bottom": 889.500000,
-      "duration_ms": 0.046300
+      "duration_ms": 0.062200
     },
     "5.6.3_(1)": {
       "right": 147.750000,
       "bottom": 878.250061,
-      "duration_ms": 0.045800
+      "duration_ms": 0.048900
     },
     "5.6.3_(2)": {
       "right": 145.000000,
       "bottom": 864.750000,
-      "duration_ms": 0.047700
+      "duration_ms": 0.047300
     },
     "5.6.3_(3)": {
       "right": 136.201813,
       "bottom": 892.500000,
-      "duration_ms": 0.044200
+      "duration_ms": 0.046000
     },
     "5.6.4_(1)": {
       "right": 144.444016,
       "bottom": 876.750000,
-      "duration_ms": 0.044700
+      "duration_ms": 0.077300
     },
     "5.6.4_(2)": {
       "right": 145.944016,
       "bottom": 878.250000,
-      "duration_ms": 0.045000
+      "duration_ms": 0.046800
     },
     "5.6.4_(3)": {
       "right": 145.952911,
       "bottom": 883.500000,
-      "duration_ms": 0.044500
+      "duration_ms": 0.044600
     },
     "5.7_(1)": {
       "right": 151.500000,
       "bottom": 902.250000,
-      "duration_ms": 0.077500
+      "duration_ms": 0.081900
     },
     "5.7_(2)": {
       "right": 153.000000,
       "bottom": 906.750000,
-      "duration_ms": 0.075100
+      "duration_ms": 0.077200
     },
     "5.7_(3)": {
       "right": 152.249954,
       "bottom": 909.750000,
-      "duration_ms": 0.077000
+      "duration_ms": 0.124100
     },
     "5.7_(4)": {
       "right": 152.250000,
       "bottom": 904.500000,
-      "duration_ms": 0.077700
+      "duration_ms": 0.097700
     },
     "5.7_(5)": {
       "right": 152.250000,
       "bottom": 909.750000,
-      "duration_ms": 0.075200
+      "duration_ms": 0.079200
     },
     "6.1_(1)": {
       "right": 139.500000,
       "bottom": 921.000025,
-      "duration_ms": 0.043300
+      "duration_ms": 0.044700
     },
     "6.1_(2)": {
       "right": 158.704880,
       "bottom": 962.250000,
-      "duration_ms": 0.047400
+      "duration_ms": 0.044600
     },
     "6.2_(1)": {
       "right": 419.250000,
       "bottom": 831.750000,
-      "duration_ms": 0.062800
+      "duration_ms": 0.063800
     },
     "6.2_(2)": {
       "right": 418.500000,
       "bottom": 818.250000,
-      "duration_ms": 0.059800
+      "duration_ms": 0.061900
     },
     "6.3_(1)": {
       "right": 492.000000,
       "bottom": 854.250017,
-      "duration_ms": 0.078600
+      "duration_ms": 0.084300
     },
     "6.3_(2)": {
       "right": 492.000000,
       "bottom": 852.000000,
-      "duration_ms": 0.094700
+      "duration_ms": 0.129900
     },
     "6.3_(3)": {
       "right": 492.000000,
       "bottom": 853.460012,
-      "duration_ms": 0.297400
+      "duration_ms": 0.228600
     },
     "6.4_(1)": {
       "right": 456.750000,
       "bottom": 849.750000,
-      "duration_ms": 0.387700
+      "duration_ms": 0.244000
     },
     "6.4_(2)": {
       "right": 456.750000,
       "bottom": 856.500000,
-      "duration_ms": 0.369400
+      "duration_ms": 0.227300
     },
     "6.4_(3)": {
       "right": 456.750000,
       "bottom": 855.000000,
-      "duration_ms": 0.215100
+      "duration_ms": 0.271300
     },
     "6.5_(1)": {
       "right": 471.750000,
       "bottom": 873.750000,
-      "duration_ms": 0.110600
+      "duration_ms": 0.118400
     },
     "6.5_(2)": {
       "right": 471.750000,
       "bottom": 891.750000,
-      "duration_ms": 0.124300
+      "duration_ms": 0.132600
     },
     "6.6_Innerhalb": {
       "right": 207.452988,
       "bottom": 825.479764,
-      "duration_ms": 0.175500
+      "duration_ms": 0.177200
     },
     "6.6_Außerhalb": {
       "right": 152.100706,
       "bottom": 823.500000,
-      "duration_ms": 0.048000
+      "duration_ms": 0.048300
     },
     "6.6_Inner_u_Außerhalb": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.037300
+      "duration_ms": 0.035600
     },
     "6.7_(1)": {
       "right": 177.448273,
       "bottom": 865.500000,
-      "duration_ms": 0.044000
+      "duration_ms": 0.044900
     },
     "6.7_(2)": {
       "right": 175.655594,
       "bottom": 861.750000,
-      "duration_ms": 0.051800
+      "duration_ms": 0.042700
     },
     "7.1_1": {
       "right": 498.450943,
       "bottom": 903.000000,
-      "duration_ms": 0.111100
+      "duration_ms": 0.118500
     },
     "7.1_2": {
       "right": 498.450943,
       "bottom": 899.250000,
-      "duration_ms": 0.127100
+      "duration_ms": 0.114600
     },
     "7.1_3": {
       "right": 498.148499,
       "bottom": 903.000000,
-      "duration_ms": 0.169200
+      "duration_ms": 0.168800
     },
     "Technisch_bedingte_Leerseit": {
       "right": 148.500000,
       "bottom": 791.250000,
-      "duration_ms": 1.363400
+      "duration_ms": 1.310500
     },
     "7.2_(1)": {
       "right": 956.250000,
       "bottom": 868.500000,
-      "duration_ms": 0.406000
+      "duration_ms": 0.411700
     },
     "7.2_(2)": {
       "right": 956.250000,
       "bottom": 861.750000,
-      "duration_ms": 0.265600
+      "duration_ms": 0.278400
     },
     "7.2_(3)": {
       "right": 956.250000,
       "bottom": 873.750000,
-      "duration_ms": 0.424000
+      "duration_ms": 0.277300
     },
     "7.3": {
       "right": 141.886063,
       "bottom": 795.791247,
-      "duration_ms": 0.086400
+      "duration_ms": 0.150800
     },
     "7.4": {
       "right": 445.500000,
       "bottom": 793.541247,
-      "duration_ms": 0.257400
+      "duration_ms": 0.196600
     },
     "7.5 (1)": {
       "right": 510.000000,
       "bottom": 937.500000,
-      "duration_ms": 0.763400
+      "duration_ms": 0.472600
     },
     "7.5 (2)": {
       "right": 510.000000,
       "bottom": 930.000000,
-      "duration_ms": 0.451900
+      "duration_ms": 0.445200
     },
     "7.6": {
       "right": 561.750000,
       "bottom": 841.500000,
-      "duration_ms": 0.106200
+      "duration_ms": 0.100000
     },
     "7.7": {
       "right": 487.500000,
       "bottom": 805.500000,
-      "duration_ms": 0.144200
+      "duration_ms": 0.148900
     },
     "7.8": {
       "right": 474.145599,
       "bottom": 842.250000,
-      "duration_ms": 0.107900
+      "duration_ms": 0.111600
     },
     "8.1": {
       "right": 500.250000,
       "bottom": 812.250000,
-      "duration_ms": 0.529100
+      "duration_ms": 0.434600
     },
     "8.2": {
       "right": 146.702911,
       "bottom": 837.757729,
-      "duration_ms": 0.108500
+      "duration_ms": 0.061400
     },
     "8.3": {
       "right": 141.000000,
       "bottom": 800.250000,
-      "duration_ms": 0.084100
+      "duration_ms": 0.059100
     },
     "8.4": {
       "right": 144.000000,
       "bottom": 787.500000,
-      "duration_ms": 0.077700
+      "duration_ms": 0.046600
     },
     "9.1_(1)": {
       "right": 454.500000,
       "bottom": 851.250000,
-      "duration_ms": 1.210700
+      "duration_ms": 1.213200
     },
     "9.1_(2)": {
       "right": 454.500000,
       "bottom": 856.447704,
-      "duration_ms": 0.903900
+      "duration_ms": 1.908800
     },
     "10.1": {
       "right": 422.250000,
       "bottom": 560.250000,
-      "duration_ms": 1.796800
+      "duration_ms": 1.625400
     },
     "10.2": {
       "right": 434.318176,
       "bottom": 548.181824,
-      "duration_ms": 0.236200
+      "duration_ms": 0.312400
     },
     "10.3": {
       "right": 435.750000,
       "bottom": 77.250000,
-      "duration_ms": 1.752000
+      "duration_ms": 1.480000
     },
     "10.4": {
       "right": 491.551331,
       "bottom": 77.250000,
-      "duration_ms": 0.276500
+      "duration_ms": 0.390500
     },
     "10.5": {
       "right": 489.301331,
       "bottom": 80.250000,
-      "duration_ms": 0.235500
+      "duration_ms": 0.221600
     },
     "11": {
       "right": 146.695358,
       "bottom": 870.750000,
-      "duration_ms": 0.085800
+      "duration_ms": 0.066500
     },
     "12": {
       "right": 501.000000,
       "bottom": 903.750000,
-      "duration_ms": 1.039000
+      "duration_ms": 1.022900
     },
     "Rechtsgrundlage": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.042400
+      "duration_ms": 0.036200
     },
     "Grundbegriffe_Unfallstatistik": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.026500
+      "duration_ms": 0.021400
     },
     "Beteiligte_Verunglückte": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.025700
+      "duration_ms": 0.019600
     },
     "Unfallursachenverzeichnis_1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.023800
+      "duration_ms": 0.019200
     },
     "Unfallursachenverzeichnis_2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.021900
+      "duration_ms": 0.018200
     },
     "Unfallursachenverzeichnis_3": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.024700
+      "duration_ms": 0.018700
     },
     "Unfalltyp": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.021500
+      "duration_ms": 0.018400
     },
     "Unfallart": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.146600
+      "duration_ms": 0.019500
     },
     "Verkehrsbeteiligungsart_1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.039000
+      "duration_ms": 0.017800
     },
     "Verkehrsbeteiligungsart_2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.032400
+      "duration_ms": 0.018300
     },
     "Unfallkategorien": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.041300
+      "duration_ms": 0.019400
     },
     "Verkehrsunfallanzeige_1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.032100
+      "duration_ms": 0.019500
     },
     "Verkehrsunfallanzeige_2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.023300
+      "duration_ms": 0.017000
     },
     "Verkehrsunfallanzeige_3": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.023900
+      "duration_ms": 0.016900
     },
     "Verkehrsunfallanzeige_4": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.026500
+      "duration_ms": 0.017100
     },
     "Stichwortverzeichnis": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.022600
+      "duration_ms": 0.016900
     }
   },
   "jahresbericht-5422701207005.xlsx": {
     "Deckblatt": {
       "right": 549.750000,
       "bottom": 574.500000,
-      "duration_ms": 0.188400
+      "duration_ms": 0.206300
     },
     "Inhalt": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.042300
+      "duration_ms": 0.033200
     },
     "Einführung": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.021600
+      "duration_ms": 0.021100
     },
     "Länder-1": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018900
+      "duration_ms": 0.019700
     },
     "Länder-2": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018100
+      "duration_ms": 0.023200
     },
     "DL-Beschäftigung": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017800
+      "duration_ms": 0.027200
     },
     "DL-Umsätze": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017600
+      "duration_ms": 0.034200
     },
     "AL-Beschäftigung": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.017600
+      "duration_ms": 0.024400
     },
     "AL-Umsätze": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018900
+      "duration_ms": 0.022500
     },
     "NL-Beschäftigung": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018200
+      "duration_ms": 0.018400
     },
     "NL-Umsätze": {
       "right": 0.000000,
       "bottom": 0.000000,
-      "duration_ms": 0.018400
+      "duration_ms": 0.017600
     }
   }
 }

@@ -1,0 +1,2348 @@
+{
+  "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx": {
+    "Titel": {
+      "right": 915.000076,
+      "bottom": 450.000000,
+      "duration_ms": 9.946000
+    },
+    "Inhaltsübersicht": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.041000
+    },
+    "GENESIS-Online": {
+      "right": 697.852995,
+      "bottom": 475.500000,
+      "duration_ms": 0.279300
+    },
+    "Impressum": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.026100
+    },
+    "Informationen zur Statistik": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018300
+    },
+    "79932-01 ": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017700
+    },
+    "79932-02": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016300
+    },
+    "79932-03": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015700
+    },
+    "79932-04": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016200
+    },
+    "79932-05": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017800
+    },
+    "79932-06": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016300
+    },
+    "79932-07": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.215100
+    },
+    "79932-08": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.056000
+    },
+    "79932-09": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.033800
+    },
+    "79932-10": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.100400
+    },
+    "79932-11": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.026700
+    },
+    "Erläuterung zu CSV-Tabellen ": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.025400
+    },
+    "csv-79932-01": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.026000
+    },
+    "csv-79932-02-11": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.022700
+    }
+  },
+  "krankenhausverzeichnis-3500100227005.xlsx": {
+    "Titelblatt": {
+      "right": 436.112762,
+      "bottom": 631.051680,
+      "duration_ms": 0.128800
+    },
+    "Impressum": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.033800
+    },
+    "Inhalt": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.020400
+    },
+    "Vorbemerkungen": {
+      "right": 203.250000,
+      "bottom": 237.750000,
+      "duration_ms": 1.240100
+    },
+    " KHV_2022": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.051900
+    },
+    "RHV_2022": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018900
+    },
+    "DSB_KHV_2022": {
+      "right": 171.750000,
+      "bottom": 1947.750122,
+      "duration_ms": 0.405400
+    },
+    "DSB_RHV_2022": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.021200
+    },
+    "Land": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018100
+    },
+    "Kreis": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016000
+    },
+    "Statistische Ämter": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015600
+    }
+  },
+  "foerderprogramme-5411206209005.xlsx": {
+    "Titelseite": {
+      "right": 563.320953,
+      "bottom": 551.149994,
+      "duration_ms": 0.150200
+    },
+    "Inhalt": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.033000
+    },
+    "Erläuterungen": {
+      "right": 402.750000,
+      "bottom": 633.000000,
+      "duration_ms": 0.063300
+    },
+    "Allgemeines": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.022600
+    },
+    "0901_T_D": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017700
+    },
+    "0901_T_BW": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016400
+    },
+    "0901_T_BY": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015900
+    },
+    "0901_T_BE": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016100
+    },
+    "0901_T_BB": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.020300
+    },
+    "0901_T_HB": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017300
+    },
+    "0901_T_HH": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016700
+    },
+    "0901_T_HE": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    },
+    "0901_T_MV": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016100
+    },
+    "0901_T_NI": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015400
+    },
+    "0901_T_NW": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016500
+    },
+    "0901_T_RP": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    },
+    "0901_T_SL": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016600
+    },
+    "0901_T_SN": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016600
+    },
+    "0901_T_ST": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017500
+    },
+    "0901_T_SH": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016500
+    },
+    "0901_T_TH": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015300
+    },
+    "0902_T_D": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    },
+    "0902_T_BW": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016300
+    },
+    "0902_T_BY": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016600
+    },
+    "0902_T_BE": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016500
+    },
+    "0902_T_BB": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018200
+    },
+    "0902_T_HB": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    },
+    "0902_T_HH": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018300
+    },
+    "0902_T_HE": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016800
+    },
+    "0902_T_MV": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016100
+    },
+    "0902_T_NI": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016300
+    },
+    "0902_T_NW": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015400
+    },
+    "0902_T_RP": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016500
+    },
+    "0902_T_SL": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015700
+    },
+    "0902_T_SN": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015800
+    },
+    "0902_T_ST": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017900
+    },
+    "0902_T_SH": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017500
+    },
+    "0902_T_TH": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    }
+  },
+  "wanderungen-2010120217005.xlsx": {
+    "Titelseite": {
+      "right": 586.533957,
+      "bottom": 576.338577,
+      "duration_ms": 0.203300
+    },
+    "Inhalt": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.032000
+    },
+    "Vorbemerkung": {
+      "right": 284.988739,
+      "bottom": 2947.499756,
+      "duration_ms": 0.042800
+    },
+    "Tabelle 1.1 ": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.020700
+    },
+    "Tabelle 1.2.1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016900
+    },
+    "Tabelle 1.2.2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016500
+    },
+    "Tabelle 1.2.3": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016800
+    },
+    "Tabelle1.3": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018100
+    },
+    "Tabelle 1.4 ": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.019100
+    },
+    "Tabelle 1.5": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016900
+    },
+    "Tabelle 1.6": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017200
+    },
+    "Tabelle 1.7": {
+      "right": 193.500000,
+      "bottom": 108.000000,
+      "duration_ms": 0.694600
+    },
+    "Tabelle 2.1.1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.028100
+    },
+    "Tabelle 2.1.2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.019200
+    },
+    "Tabelle 2.1.3": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.020600
+    },
+    "Tabelle 2.2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017500
+    },
+    "Tabelle 2.3": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017500
+    },
+    "Tabelle 2.4": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017200
+    },
+    "Tabelle 2.5": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018100
+    },
+    "Tabelle 2.6.1": {
+      "right": 142.500000,
+      "bottom": 128.250000,
+      "duration_ms": 0.058700
+    },
+    "Tabelle 2.6.2": {
+      "right": 142.500000,
+      "bottom": 127.500000,
+      "duration_ms": 0.067200
+    },
+    "Tabelle 2.6.3": {
+      "right": 142.500000,
+      "bottom": 127.500000,
+      "duration_ms": 0.053200
+    },
+    "Tabelle 2.6.4": {
+      "right": 142.500000,
+      "bottom": 127.500000,
+      "duration_ms": 0.043500
+    },
+    "Tabelle 2.6.5": {
+      "right": 142.500000,
+      "bottom": 127.500000,
+      "duration_ms": 0.042700
+    },
+    "Tabelle 2.6.6": {
+      "right": 142.500000,
+      "bottom": 127.500000,
+      "duration_ms": 0.049700
+    },
+    "Tabelle 2.7": {
+      "right": 177.750000,
+      "bottom": 87.000000,
+      "duration_ms": 0.043400
+    },
+    "Tabelle 2.8": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.021900
+    },
+    "Tabelle 3.1  ": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016700
+    },
+    " Tabelle 3.2 ": {
+      "right": 219.000000,
+      "bottom": 78.750000,
+      "duration_ms": 0.123100
+    },
+    "Tabelle 3.3": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.029500
+    },
+    "Tabelle 3.4 ": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017900
+    },
+    "Tabelle 3.5 Zugezogene  ": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018300
+    },
+    "Tabelle 3.5 Fortgezogene": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016900
+    },
+    " Tabelle 3.6 ": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015700
+    },
+    "Anhang": {
+      "right": 284.988739,
+      "bottom": 2787.000000,
+      "duration_ms": 0.043600
+    },
+    "Qualitätsbericht": {
+      "right": 497.250000,
+      "bottom": 660.000000,
+      "duration_ms": 0.059500
+    }
+  },
+  "seeschifffahrt-monat-2080500221095.xlsx": {
+    "Titel": {
+      "right": 586.533957,
+      "bottom": 575.338577,
+      "duration_ms": 0.201500
+    },
+    "Inhalt": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.032900
+    },
+    "Methodik": {
+      "right": 134.250000,
+      "bottom": 205.500000,
+      "duration_ms": 0.065400
+    },
+    "Zeichenerklärung": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.021800
+    },
+    "1.1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018400
+    },
+    "1.2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016300
+    },
+    "1.3": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    },
+    "1.4": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.020600
+    },
+    "1.4.1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016900
+    },
+    "1.4.2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017400
+    },
+    "1.5": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016600
+    },
+    "1.5.1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017200
+    },
+    "1.5.2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016700
+    },
+    "1.6": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016800
+    },
+    "1.6.1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017400
+    },
+    "1.6.2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017300
+    },
+    "1.7": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016600
+    },
+    "1.8": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017400
+    },
+    "1.9": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016700
+    },
+    "1.9.1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016800
+    },
+    "1.9.2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016800
+    },
+    "1.10": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016100
+    },
+    "1.10.1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015000
+    },
+    "1.10.2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.020700
+    },
+    "2.1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.019300
+    },
+    "2.2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    },
+    "3.1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016300
+    },
+    "Anhang NST-2007": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016200
+    },
+    "Qualitätsbericht": {
+      "right": 138.000000,
+      "bottom": 206.250000,
+      "duration_ms": 0.056000
+    }
+  },
+  "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx": {
+    "Titel": {
+      "right": 915.000076,
+      "bottom": 450.000000,
+      "duration_ms": 0.157700
+    },
+    "Inhaltsübersicht": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.032900
+    },
+    "GENESIS-Online": {
+      "right": 917.058807,
+      "bottom": 461.249908,
+      "duration_ms": 0.093100
+    },
+    "Impressum": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.020500
+    },
+    "Informationen zur Statistik": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016600
+    },
+    "71717-01": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017100
+    },
+    "71717-02": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017900
+    },
+    "71717-03": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016700
+    },
+    "71717-04": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016000
+    },
+    "71717-05": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017300
+    },
+    "71717-06": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    },
+    "71717-07": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017900
+    },
+    "71717-08": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016300
+    },
+    "71717-09": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015200
+    },
+    "71717-10": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016800
+    },
+    "71717-11": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017100
+    },
+    "71717-12": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017800
+    },
+    "71717-13": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015400
+    },
+    "71717-14": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015700
+    },
+    "71717-15": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015300
+    },
+    "71717-16": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015300
+    },
+    "71717-17": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015800
+    },
+    "71717-18": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016300
+    },
+    "71717-19": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016400
+    },
+    "71717-20": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.054800
+    },
+    "71717-21": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.037600
+    },
+    "71717-22": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.031800
+    },
+    "71717-23": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.029800
+    },
+    "71717-24": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.028900
+    },
+    "71717-25": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.029400
+    },
+    "71717-26": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.029900
+    },
+    "71717-27": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.032300
+    },
+    "71717-28": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.038400
+    },
+    "71717-29": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.031500
+    },
+    "71717-30": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.031100
+    },
+    "71717-31": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.047100
+    },
+    "71717-32": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.030200
+    },
+    "71717-33": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016000
+    },
+    "71717-34": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    },
+    "71717-35": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016800
+    },
+    "71717-36": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.023600
+    },
+    "71717-37": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016200
+    },
+    "71717-38": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015200
+    },
+    "71717-39": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015000
+    },
+    "71717-40": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015300
+    },
+    "71717-41": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.014400
+    },
+    "71717-42": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.014700
+    },
+    "71717-43": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015300
+    },
+    "71717-44": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015300
+    },
+    "71717-45": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015300
+    },
+    "71717-46": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015300
+    },
+    "71717-47": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015700
+    },
+    "71717-48": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015800
+    },
+    "71717-49": {
+      "right": 712.046329,
+      "bottom": 4443.899902,
+      "duration_ms": 22.105100
+    },
+    "71717-50": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.050500
+    },
+    "71717-51": {
+      "right": 552.750000,
+      "bottom": 1567.500000,
+      "duration_ms": 0.137300
+    },
+    "71717-52": {
+      "right": 468.000000,
+      "bottom": 1826.249878,
+      "duration_ms": 3.442100
+    },
+    "71717-53": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.032700
+    },
+    "Erläuterung zu CSV-Tabellen": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.019200
+    },
+    "csv-71717-01": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.069500
+    },
+    "csv-71717-02": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.061400
+    },
+    "csv-71717-03": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.021400
+    },
+    "csv-71717-04": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.020300
+    },
+    "csv-71717-05": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017800
+    },
+    "csv-71717-06": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017600
+    },
+    "csv-71717-07": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017700
+    },
+    "csv-71717-08": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.019000
+    },
+    "csv-71717-09": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017900
+    },
+    "csv-71717-10": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017400
+    },
+    "csv-71717-11": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.022800
+    },
+    "csv-71717-12": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.022900
+    },
+    "csv-71717-13": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017600
+    },
+    "csv-71717-14": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018000
+    },
+    "csv-71717-15": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016600
+    },
+    "csv-71717-16": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016300
+    },
+    "csv-71717-17": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    },
+    "csv-71717-18": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016000
+    },
+    "csv-71717-19": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016600
+    },
+    "csv-71717-20": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016300
+    },
+    "csv-71717-21": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017600
+    },
+    "csv-71717-22": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016100
+    },
+    "csv-71717-23": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016000
+    },
+    "csv-71717-24": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016800
+    },
+    "csv-71717-25": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016100
+    },
+    "csv-71717-26": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015600
+    },
+    "csv-71717-27": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015900
+    },
+    "csv-71717-28": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.092400
+    },
+    "csv-71717-29": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.035500
+    },
+    "csv-71717-30": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.068400
+    },
+    "csv-71717-31": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.019000
+    },
+    "csv-71717-32": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017000
+    },
+    "csv-71717-33": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017600
+    },
+    "csv-71717-34": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018100
+    },
+    "csv-71717-35": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017500
+    },
+    "csv-71717-36": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017100
+    },
+    "csv-71717-37": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016700
+    },
+    "csv-71717-38": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.019100
+    },
+    "csv-71717-39": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.027000
+    },
+    "csv-71717-40": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017100
+    },
+    "csv-71717-41": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017300
+    },
+    "csv-71717-42": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016200
+    },
+    "csv-71717-43": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015400
+    },
+    "csv-71717-44": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016200
+    },
+    "csv-71717-45": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016500
+    },
+    "csv-71717-46": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.015800
+    },
+    "csv-71717-47": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.019500
+    },
+    "csv-71717-48": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.016700
+    }
+  },
+  "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx": {
+    "Vorblatt": {
+      "right": 555.000000,
+      "bottom": 575.250000,
+      "duration_ms": 0.288600
+    },
+    "Inhalt": {
+      "right": 142.644257,
+      "bottom": 1866.750122,
+      "duration_ms": 0.123700
+    },
+    "1.1": {
+      "right": 1310.515121,
+      "bottom": 915.208560,
+      "duration_ms": 0.097600
+    },
+    "1.2": {
+      "right": 1302.754257,
+      "bottom": 948.000000,
+      "duration_ms": 0.275300
+    },
+    "1.3": {
+      "right": 1680.000000,
+      "bottom": 944.250000,
+      "duration_ms": 0.123000
+    },
+    "1.4": {
+      "right": 1250.873459,
+      "bottom": 902.250000,
+      "duration_ms": 0.094400
+    },
+    "2_(1)": {
+      "right": 284.250000,
+      "bottom": 871.500000,
+      "duration_ms": 0.133200
+    },
+    "2_(2)": {
+      "right": 465.000000,
+      "bottom": 888.750000,
+      "duration_ms": 0.072600
+    },
+    "2_(3)": {
+      "right": 500.250000,
+      "bottom": 788.250000,
+      "duration_ms": 0.346000
+    },
+    "2_(4)": {
+      "right": 501.000000,
+      "bottom": 816.000000,
+      "duration_ms": 0.168600
+    },
+    "3.1_(1)": {
+      "right": 506.250000,
+      "bottom": 816.721011,
+      "duration_ms": 1.548500
+    },
+    "3.1_(2)": {
+      "right": 468.750000,
+      "bottom": 826.507504,
+      "duration_ms": 0.156200
+    },
+    "3.1_(3)": {
+      "right": 471.750000,
+      "bottom": 834.000000,
+      "duration_ms": 0.138000
+    },
+    "3.1_(4)": {
+      "right": 465.749969,
+      "bottom": 877.443477,
+      "duration_ms": 0.091100
+    },
+    "3.1_(5)": {
+      "right": 467.249969,
+      "bottom": 875.193477,
+      "duration_ms": 0.089100
+    },
+    "3.1_(6)": {
+      "right": 500.250000,
+      "bottom": 812.250000,
+      "duration_ms": 0.354300
+    },
+    "3.1_(7)": {
+      "right": 264.750000,
+      "bottom": 831.913071,
+      "duration_ms": 1.615100
+    },
+    "3.1_(8)": {
+      "right": 264.750000,
+      "bottom": 938.420472,
+      "duration_ms": 0.219400
+    },
+    "3.1_(9)": {
+      "right": 264.750000,
+      "bottom": 927.750000,
+      "duration_ms": 0.159400
+    },
+    "Technisch bedingte Leerseite ": {
+      "right": 142.044876,
+      "bottom": 739.500000,
+      "duration_ms": 0.081200
+    },
+    "3_2_(1)": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.102800
+    },
+    "3_2_(2) ": {
+      "right": 1027.500000,
+      "bottom": 986.597322,
+      "duration_ms": 1.092600
+    },
+    "3.2_(3)": {
+      "right": 972.000000,
+      "bottom": 869.679449,
+      "duration_ms": 0.606600
+    },
+    "3.2_(4)": {
+      "right": 681.600555,
+      "bottom": 918.772205,
+      "duration_ms": 0.083000
+    },
+    "3.2_(5)": {
+      "right": 717.451187,
+      "bottom": 968.266324,
+      "duration_ms": 1.431300
+    },
+    "3.2_(6)": {
+      "right": 720.035858,
+      "bottom": 1015.309819,
+      "duration_ms": 0.164000
+    },
+    "3.2_(7)": {
+      "right": 714.599976,
+      "bottom": 983.780854,
+      "duration_ms": 0.149100
+    },
+    "3.2_(8)": {
+      "right": 681.601807,
+      "bottom": 868.500000,
+      "duration_ms": 0.081200
+    },
+    "3.2_(9)": {
+      "right": 1002.750000,
+      "bottom": 923.250000,
+      "duration_ms": 0.538600
+    },
+    "3.2_(10)": {
+      "right": 975.000000,
+      "bottom": 885.750000,
+      "duration_ms": 0.507300
+    },
+    "3.2_(11)": {
+      "right": 678.750000,
+      "bottom": 920.254634,
+      "duration_ms": 0.719500
+    },
+    "3.2_(12)": {
+      "right": 687.000000,
+      "bottom": 976.516717,
+      "duration_ms": 0.313000
+    },
+    "3.2_(13)": {
+      "right": 899.101501,
+      "bottom": 970.750000,
+      "duration_ms": 0.453900
+    },
+    "3_2_(14)": {
+      "right": 682.500000,
+      "bottom": 977.250000,
+      "duration_ms": 0.079600
+    },
+    "3.3_(1)": {
+      "right": 150.750000,
+      "bottom": 838.500000,
+      "duration_ms": 0.075000
+    },
+    "3.3_(2)": {
+      "right": 150.750000,
+      "bottom": 837.750000,
+      "duration_ms": 0.086800
+    },
+    "3.3_(3)": {
+      "right": 147.750000,
+      "bottom": 859.250079,
+      "duration_ms": 0.063600
+    },
+    "3.3_(4)": {
+      "right": 141.452988,
+      "bottom": 933.000000,
+      "duration_ms": 0.051500
+    },
+    "3.3_(5)": {
+      "right": 141.452988,
+      "bottom": 913.500025,
+      "duration_ms": 0.048800
+    },
+    "3.3_(6)": {
+      "right": 145.952988,
+      "bottom": 903.000025,
+      "duration_ms": 0.153200
+    },
+    "3.4_(1)": {
+      "right": 148.795044,
+      "bottom": 880.500000,
+      "duration_ms": 0.057900
+    },
+    "3.4_(2)": {
+      "right": 148.795044,
+      "bottom": 882.750000,
+      "duration_ms": 0.050000
+    },
+    "3.4_(3)": {
+      "right": 166.497559,
+      "bottom": 918.750000,
+      "duration_ms": 0.050600
+    },
+    "3.5_(1)": {
+      "right": 144.750000,
+      "bottom": 904.807087,
+      "duration_ms": 0.048400
+    },
+    "3.5_(2)": {
+      "right": 144.750000,
+      "bottom": 852.736759,
+      "duration_ms": 0.047800
+    },
+    "3.6_(1)": {
+      "right": 514.500000,
+      "bottom": 891.750000,
+      "duration_ms": 0.068400
+    },
+    "3.6_(2)": {
+      "right": 514.500000,
+      "bottom": 912.000000,
+      "duration_ms": 0.067500
+    },
+    "3.7_(1)": {
+      "right": 144.294876,
+      "bottom": 809.250000,
+      "duration_ms": 0.046600
+    },
+    "3.7 (2)": {
+      "right": 142.044876,
+      "bottom": 808.500000,
+      "duration_ms": 0.045900
+    },
+    "Technisch_bedingte Leerseite ": {
+      "right": 142.044876,
+      "bottom": 739.500000,
+      "duration_ms": 0.045600
+    },
+    "3.8_(1)": {
+      "right": 693.000000,
+      "bottom": 990.829067,
+      "duration_ms": 0.082600
+    },
+    "3.8_(2)": {
+      "right": 671.250000,
+      "bottom": 908.250061,
+      "duration_ms": 0.069400
+    },
+    "3.9.1_(1)": {
+      "right": 1017.750000,
+      "bottom": 835.241248,
+      "duration_ms": 0.368600
+    },
+    "3.9.1 (2)": {
+      "right": 1017.750000,
+      "bottom": 869.250000,
+      "duration_ms": 0.371400
+    },
+    "3.9.2_(1)": {
+      "right": 663.446686,
+      "bottom": 824.999982,
+      "duration_ms": 0.071900
+    },
+    "3.9.2_(2)": {
+      "right": 664.044876,
+      "bottom": 863.587741,
+      "duration_ms": 0.074400
+    },
+    "3.9.3_(1)": {
+      "right": 664.044876,
+      "bottom": 828.916693,
+      "duration_ms": 0.068000
+    },
+    "3.9.3_(2)": {
+      "right": 664.044876,
+      "bottom": 869.250000,
+      "duration_ms": 0.066900
+    },
+    "3.9.4_(1)": {
+      "right": 664.045044,
+      "bottom": 825.750000,
+      "duration_ms": 0.077500
+    },
+    "3.9.4_(2)": {
+      "right": 662.409134,
+      "bottom": 860.250000,
+      "duration_ms": 0.067100
+    },
+    "3.10_(1)": {
+      "right": 151.500000,
+      "bottom": 840.000000,
+      "duration_ms": 0.046600
+    },
+    "3.10_(2)": {
+      "right": 151.500000,
+      "bottom": 844.500000,
+      "duration_ms": 0.044100
+    },
+    "3.11": {
+      "right": 139.195190,
+      "bottom": 890.289279,
+      "duration_ms": 0.045800
+    },
+    "3.12 _3.13 ": {
+      "right": 141.750000,
+      "bottom": 855.000000,
+      "duration_ms": 0.047000
+    },
+    "3.14_(1)": {
+      "right": 160.201569,
+      "bottom": 800.123211,
+      "duration_ms": 0.045700
+    },
+    "3.14_(2)": {
+      "right": 160.948029,
+      "bottom": 796.361636,
+      "duration_ms": 0.047000
+    },
+    "3.14_(3)": {
+      "right": 151.351974,
+      "bottom": 784.349976,
+      "duration_ms": 0.056300
+    },
+    "3.14_(4)": {
+      "right": 151.952759,
+      "bottom": 799.349976,
+      "duration_ms": 0.047400
+    },
+    "4.1_(1)": {
+      "right": 382.500000,
+      "bottom": 887.250000,
+      "duration_ms": 0.101200
+    },
+    "4_1_(2)": {
+      "right": 385.500000,
+      "bottom": 819.988952,
+      "duration_ms": 0.099300
+    },
+    "4_1_(3)": {
+      "right": 399.750000,
+      "bottom": 831.000019,
+      "duration_ms": 0.098700
+    },
+    "4_2_(1)": {
+      "right": 155.999954,
+      "bottom": 817.500061,
+      "duration_ms": 0.066800
+    },
+    "4_2_(2)": {
+      "right": 127.499962,
+      "bottom": 540.750061,
+      "duration_ms": 0.054900
+    },
+    "4_3_(1)": {
+      "right": 148.351334,
+      "bottom": 975.749921,
+      "duration_ms": 0.084400
+    },
+    "4_3_(2)": {
+      "right": 148.350784,
+      "bottom": 870.749921,
+      "duration_ms": 0.066200
+    },
+    "4.4_(1)": {
+      "right": 503.250015,
+      "bottom": 868.500000,
+      "duration_ms": 0.110900
+    },
+    "4.4_(2)": {
+      "right": 503.250015,
+      "bottom": 891.000000,
+      "duration_ms": 0.064100
+    },
+    "4.4_(3)": {
+      "right": 503.250015,
+      "bottom": 877.500000,
+      "duration_ms": 0.086400
+    },
+    "4.5_(1)": {
+      "right": 146.250000,
+      "bottom": 876.000000,
+      "duration_ms": 0.062400
+    },
+    "4.5_(2)": {
+      "right": 141.000000,
+      "bottom": 874.500000,
+      "duration_ms": 0.046900
+    },
+    "4.5_(3)": {
+      "right": 517.799225,
+      "bottom": 874.500000,
+      "duration_ms": 0.122700
+    },
+    "4.6_(1)": {
+      "right": 158.702682,
+      "bottom": 861.750000,
+      "duration_ms": 0.064800
+    },
+    "4.6_(2)": {
+      "right": 157.202682,
+      "bottom": 865.500000,
+      "duration_ms": 0.063900
+    },
+    "4.6_(3)": {
+      "right": 155.702682,
+      "bottom": 930.000000,
+      "duration_ms": 2.330900
+    },
+    "4.6_(4)": {
+      "right": 155.702682,
+      "bottom": 917.250000,
+      "duration_ms": 0.088400
+    },
+    "4.6_(5)": {
+      "right": 503.250000,
+      "bottom": 875.250000,
+      "duration_ms": 0.118500
+    },
+    "4.6_(6)": {
+      "right": 158.701569,
+      "bottom": 884.250000,
+      "duration_ms": 0.078000
+    },
+    "4.7_(1)": {
+      "right": 488.250000,
+      "bottom": 852.000000,
+      "duration_ms": 0.293500
+    },
+    "4.7_(2)": {
+      "right": 495.750000,
+      "bottom": 877.500000,
+      "duration_ms": 0.271600
+    },
+    "4.8_(1)": {
+      "right": 141.000000,
+      "bottom": 864.165827,
+      "duration_ms": 0.051800
+    },
+    "4.8_(2)": {
+      "right": 142.500000,
+      "bottom": 871.489224,
+      "duration_ms": 0.048000
+    },
+    "4.9_(1)": {
+      "right": 564.000000,
+      "bottom": 869.750079,
+      "duration_ms": 0.221900
+    },
+    "4.9_(2)": {
+      "right": 564.000000,
+      "bottom": 869.750079,
+      "duration_ms": 0.236700
+    },
+    "4.9_(3)": {
+      "right": 159.470322,
+      "bottom": 867.500079,
+      "duration_ms": 0.216000
+    },
+    "4.9_(4)": {
+      "right": 159.470322,
+      "bottom": 867.500079,
+      "duration_ms": 0.375500
+    },
+    "4.10.1 ": {
+      "right": 332.250000,
+      "bottom": 824.250000,
+      "duration_ms": 0.161800
+    },
+    "4.10.2 ": {
+      "right": 333.000031,
+      "bottom": 799.499982,
+      "duration_ms": 0.246000
+    },
+    "4.10.3": {
+      "right": 336.750000,
+      "bottom": 823.500000,
+      "duration_ms": 0.166700
+    },
+    "4.10.4": {
+      "right": 336.750031,
+      "bottom": 834.000000,
+      "duration_ms": 0.165100
+    },
+    "4.11.1": {
+      "right": 502.500000,
+      "bottom": 846.750000,
+      "duration_ms": 0.349100
+    },
+    "4.11.2": {
+      "right": 334.500000,
+      "bottom": 855.750000,
+      "duration_ms": 0.269300
+    },
+    "4.11.3": {
+      "right": 327.750031,
+      "bottom": 818.250000,
+      "duration_ms": 0.132700
+    },
+    "4.11.4": {
+      "right": 330.000031,
+      "bottom": 819.166693,
+      "duration_ms": 1.332400
+    },
+    "5.1.1_(1)": {
+      "right": 487.500000,
+      "bottom": 858.468267,
+      "duration_ms": 1.327800
+    },
+    "5.1.1_(2)": {
+      "right": 489.000031,
+      "bottom": 835.218267,
+      "duration_ms": 0.210000
+    },
+    "5.1.1_(3)": {
+      "right": 158.400711,
+      "bottom": 830.718267,
+      "duration_ms": 0.069300
+    },
+    "5.1.2_(1)": {
+      "right": 469.499969,
+      "bottom": 830.718267,
+      "duration_ms": 0.105800
+    },
+    "5.1.2_(2)": {
+      "right": 477.000031,
+      "bottom": 830.718267,
+      "duration_ms": 0.216100
+    },
+    "5.1.2_(3)": {
+      "right": 458.250000,
+      "bottom": 830.718267,
+      "duration_ms": 0.170600
+    },
+    "5.1.3_(1)": {
+      "right": 480.749969,
+      "bottom": 830.718267,
+      "duration_ms": 0.101700
+    },
+    "5.1.3_(2)": {
+      "right": 479.250000,
+      "bottom": 830.718267,
+      "duration_ms": 0.169800
+    },
+    "5.1.3_(3)": {
+      "right": 472.499969,
+      "bottom": 830.718267,
+      "duration_ms": 0.172000
+    },
+    "5.1.4_(1)": {
+      "right": 363.750000,
+      "bottom": 866.718267,
+      "duration_ms": 0.114100
+    },
+    "5.1.4_(2)": {
+      "right": 363.750000,
+      "bottom": 853.218267,
+      "duration_ms": 1.625600
+    },
+    "5.1.4_(3)": {
+      "right": 362.250000,
+      "bottom": 868.218267,
+      "duration_ms": 0.379800
+    },
+    "5.1.5_(1)": {
+      "right": 364.500000,
+      "bottom": 883.218267,
+      "duration_ms": 0.104000
+    },
+    "5.1.5_(2)": {
+      "right": 364.500000,
+      "bottom": 883.218267,
+      "duration_ms": 0.137200
+    },
+    "5.1.5_(3)": {
+      "right": 359.250000,
+      "bottom": 892.218267,
+      "duration_ms": 0.133000
+    },
+    "5.2_(1)": {
+      "right": 152.250000,
+      "bottom": 891.750000,
+      "duration_ms": 0.198100
+    },
+    "5.2_(2)": {
+      "right": 152.250000,
+      "bottom": 915.000000,
+      "duration_ms": 0.191800
+    },
+    "5.2_(3)": {
+      "right": 152.250000,
+      "bottom": 918.750000,
+      "duration_ms": 0.450300
+    },
+    "5.2_(4)": {
+      "right": 153.000000,
+      "bottom": 865.500000,
+      "duration_ms": 0.441600
+    },
+    "5.3.1_(1)": {
+      "right": 141.446533,
+      "bottom": 879.000000,
+      "duration_ms": 0.113500
+    },
+    "5.3.1_(2)": {
+      "right": 142.952988,
+      "bottom": 894.750000,
+      "duration_ms": 0.051200
+    },
+    "5.3.1_(3)": {
+      "right": 141.446533,
+      "bottom": 877.663622,
+      "duration_ms": 0.095600
+    },
+    "5.3.1_(4)": {
+      "right": 142.952988,
+      "bottom": 882.921836,
+      "duration_ms": 0.051900
+    },
+    "5.3.2_(1)": {
+      "right": 144.895584,
+      "bottom": 876.750000,
+      "duration_ms": 0.048400
+    },
+    "5.3.2_(2)": {
+      "right": 142.792999,
+      "bottom": 865.500000,
+      "duration_ms": 0.046200
+    },
+    "5.3.2_(3)": {
+      "right": 141.441254,
+      "bottom": 871.500000,
+      "duration_ms": 0.050500
+    },
+    "5.3.2_(4)": {
+      "right": 139.941254,
+      "bottom": 887.250000,
+      "duration_ms": 0.054500
+    },
+    "5.4_(1)": {
+      "right": 142.950470,
+      "bottom": 867.000000,
+      "duration_ms": 0.063100
+    },
+    "5.4_(2)": {
+      "right": 489.905350,
+      "bottom": 914.250000,
+      "duration_ms": 0.127200
+    },
+    "5.4_(3)": {
+      "right": 142.196533,
+      "bottom": 870.750000,
+      "duration_ms": 0.045600
+    },
+    "5.4_(4)": {
+      "right": 142.955505,
+      "bottom": 861.750000,
+      "duration_ms": 0.045300
+    },
+    "5.5_(1)": {
+      "right": 160.942368,
+      "bottom": 900.750000,
+      "duration_ms": 0.051400
+    },
+    "5.5_(2)": {
+      "right": 159.442368,
+      "bottom": 874.676456,
+      "duration_ms": 0.054300
+    },
+    "5.5_(3)": {
+      "right": 169.640549,
+      "bottom": 888.000000,
+      "duration_ms": 0.053400
+    },
+    "5.5_(4)": {
+      "right": 172.997559,
+      "bottom": 881.250000,
+      "duration_ms": 0.048600
+    },
+    "5.6.1_(1)": {
+      "right": 155.249924,
+      "bottom": 871.500000,
+      "duration_ms": 0.045500
+    },
+    "5.6.1_(2)": {
+      "right": 137.851578,
+      "bottom": 880.670000,
+      "duration_ms": 0.046400
+    },
+    "5.6.1_(3)": {
+      "right": 137.701813,
+      "bottom": 882.000000,
+      "duration_ms": 0.074700
+    },
+    "5.6.2_(1)": {
+      "right": 139.500000,
+      "bottom": 875.250000,
+      "duration_ms": 0.051500
+    },
+    "5.6.2_(2)": {
+      "right": 136.500000,
+      "bottom": 886.500000,
+      "duration_ms": 0.046500
+    },
+    "5.6.2_(3)": {
+      "right": 136.201813,
+      "bottom": 889.500000,
+      "duration_ms": 0.046300
+    },
+    "5.6.3_(1)": {
+      "right": 147.750000,
+      "bottom": 878.250061,
+      "duration_ms": 0.045800
+    },
+    "5.6.3_(2)": {
+      "right": 145.000000,
+      "bottom": 864.750000,
+      "duration_ms": 0.047700
+    },
+    "5.6.3_(3)": {
+      "right": 136.201813,
+      "bottom": 892.500000,
+      "duration_ms": 0.044200
+    },
+    "5.6.4_(1)": {
+      "right": 144.444016,
+      "bottom": 876.750000,
+      "duration_ms": 0.044700
+    },
+    "5.6.4_(2)": {
+      "right": 145.944016,
+      "bottom": 878.250000,
+      "duration_ms": 0.045000
+    },
+    "5.6.4_(3)": {
+      "right": 145.952911,
+      "bottom": 883.500000,
+      "duration_ms": 0.044500
+    },
+    "5.7_(1)": {
+      "right": 151.500000,
+      "bottom": 902.250000,
+      "duration_ms": 0.077500
+    },
+    "5.7_(2)": {
+      "right": 153.000000,
+      "bottom": 906.750000,
+      "duration_ms": 0.075100
+    },
+    "5.7_(3)": {
+      "right": 152.249954,
+      "bottom": 909.750000,
+      "duration_ms": 0.077000
+    },
+    "5.7_(4)": {
+      "right": 152.250000,
+      "bottom": 904.500000,
+      "duration_ms": 0.077700
+    },
+    "5.7_(5)": {
+      "right": 152.250000,
+      "bottom": 909.750000,
+      "duration_ms": 0.075200
+    },
+    "6.1_(1)": {
+      "right": 139.500000,
+      "bottom": 921.000025,
+      "duration_ms": 0.043300
+    },
+    "6.1_(2)": {
+      "right": 158.704880,
+      "bottom": 962.250000,
+      "duration_ms": 0.047400
+    },
+    "6.2_(1)": {
+      "right": 419.250000,
+      "bottom": 831.750000,
+      "duration_ms": 0.062800
+    },
+    "6.2_(2)": {
+      "right": 418.500000,
+      "bottom": 818.250000,
+      "duration_ms": 0.059800
+    },
+    "6.3_(1)": {
+      "right": 492.000000,
+      "bottom": 854.250017,
+      "duration_ms": 0.078600
+    },
+    "6.3_(2)": {
+      "right": 492.000000,
+      "bottom": 852.000000,
+      "duration_ms": 0.094700
+    },
+    "6.3_(3)": {
+      "right": 492.000000,
+      "bottom": 853.460012,
+      "duration_ms": 0.297400
+    },
+    "6.4_(1)": {
+      "right": 456.750000,
+      "bottom": 849.750000,
+      "duration_ms": 0.387700
+    },
+    "6.4_(2)": {
+      "right": 456.750000,
+      "bottom": 856.500000,
+      "duration_ms": 0.369400
+    },
+    "6.4_(3)": {
+      "right": 456.750000,
+      "bottom": 855.000000,
+      "duration_ms": 0.215100
+    },
+    "6.5_(1)": {
+      "right": 471.750000,
+      "bottom": 873.750000,
+      "duration_ms": 0.110600
+    },
+    "6.5_(2)": {
+      "right": 471.750000,
+      "bottom": 891.750000,
+      "duration_ms": 0.124300
+    },
+    "6.6_Innerhalb": {
+      "right": 207.452988,
+      "bottom": 825.479764,
+      "duration_ms": 0.175500
+    },
+    "6.6_Außerhalb": {
+      "right": 152.100706,
+      "bottom": 823.500000,
+      "duration_ms": 0.048000
+    },
+    "6.6_Inner_u_Außerhalb": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.037300
+    },
+    "6.7_(1)": {
+      "right": 177.448273,
+      "bottom": 865.500000,
+      "duration_ms": 0.044000
+    },
+    "6.7_(2)": {
+      "right": 175.655594,
+      "bottom": 861.750000,
+      "duration_ms": 0.051800
+    },
+    "7.1_1": {
+      "right": 498.450943,
+      "bottom": 903.000000,
+      "duration_ms": 0.111100
+    },
+    "7.1_2": {
+      "right": 498.450943,
+      "bottom": 899.250000,
+      "duration_ms": 0.127100
+    },
+    "7.1_3": {
+      "right": 498.148499,
+      "bottom": 903.000000,
+      "duration_ms": 0.169200
+    },
+    "Technisch_bedingte_Leerseit": {
+      "right": 148.500000,
+      "bottom": 791.250000,
+      "duration_ms": 1.363400
+    },
+    "7.2_(1)": {
+      "right": 956.250000,
+      "bottom": 868.500000,
+      "duration_ms": 0.406000
+    },
+    "7.2_(2)": {
+      "right": 956.250000,
+      "bottom": 861.750000,
+      "duration_ms": 0.265600
+    },
+    "7.2_(3)": {
+      "right": 956.250000,
+      "bottom": 873.750000,
+      "duration_ms": 0.424000
+    },
+    "7.3": {
+      "right": 141.886063,
+      "bottom": 795.791247,
+      "duration_ms": 0.086400
+    },
+    "7.4": {
+      "right": 445.500000,
+      "bottom": 793.541247,
+      "duration_ms": 0.257400
+    },
+    "7.5 (1)": {
+      "right": 510.000000,
+      "bottom": 937.500000,
+      "duration_ms": 0.763400
+    },
+    "7.5 (2)": {
+      "right": 510.000000,
+      "bottom": 930.000000,
+      "duration_ms": 0.451900
+    },
+    "7.6": {
+      "right": 561.750000,
+      "bottom": 841.500000,
+      "duration_ms": 0.106200
+    },
+    "7.7": {
+      "right": 487.500000,
+      "bottom": 805.500000,
+      "duration_ms": 0.144200
+    },
+    "7.8": {
+      "right": 474.145599,
+      "bottom": 842.250000,
+      "duration_ms": 0.107900
+    },
+    "8.1": {
+      "right": 500.250000,
+      "bottom": 812.250000,
+      "duration_ms": 0.529100
+    },
+    "8.2": {
+      "right": 146.702911,
+      "bottom": 837.757729,
+      "duration_ms": 0.108500
+    },
+    "8.3": {
+      "right": 141.000000,
+      "bottom": 800.250000,
+      "duration_ms": 0.084100
+    },
+    "8.4": {
+      "right": 144.000000,
+      "bottom": 787.500000,
+      "duration_ms": 0.077700
+    },
+    "9.1_(1)": {
+      "right": 454.500000,
+      "bottom": 851.250000,
+      "duration_ms": 1.210700
+    },
+    "9.1_(2)": {
+      "right": 454.500000,
+      "bottom": 856.447704,
+      "duration_ms": 0.903900
+    },
+    "10.1": {
+      "right": 422.250000,
+      "bottom": 560.250000,
+      "duration_ms": 1.796800
+    },
+    "10.2": {
+      "right": 434.318176,
+      "bottom": 548.181824,
+      "duration_ms": 0.236200
+    },
+    "10.3": {
+      "right": 435.750000,
+      "bottom": 77.250000,
+      "duration_ms": 1.752000
+    },
+    "10.4": {
+      "right": 491.551331,
+      "bottom": 77.250000,
+      "duration_ms": 0.276500
+    },
+    "10.5": {
+      "right": 489.301331,
+      "bottom": 80.250000,
+      "duration_ms": 0.235500
+    },
+    "11": {
+      "right": 146.695358,
+      "bottom": 870.750000,
+      "duration_ms": 0.085800
+    },
+    "12": {
+      "right": 501.000000,
+      "bottom": 903.750000,
+      "duration_ms": 1.039000
+    },
+    "Rechtsgrundlage": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.042400
+    },
+    "Grundbegriffe_Unfallstatistik": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.026500
+    },
+    "Beteiligte_Verunglückte": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.025700
+    },
+    "Unfallursachenverzeichnis_1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.023800
+    },
+    "Unfallursachenverzeichnis_2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.021900
+    },
+    "Unfallursachenverzeichnis_3": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.024700
+    },
+    "Unfalltyp": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.021500
+    },
+    "Unfallart": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.146600
+    },
+    "Verkehrsbeteiligungsart_1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.039000
+    },
+    "Verkehrsbeteiligungsart_2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.032400
+    },
+    "Unfallkategorien": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.041300
+    },
+    "Verkehrsunfallanzeige_1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.032100
+    },
+    "Verkehrsunfallanzeige_2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.023300
+    },
+    "Verkehrsunfallanzeige_3": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.023900
+    },
+    "Verkehrsunfallanzeige_4": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.026500
+    },
+    "Stichwortverzeichnis": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.022600
+    }
+  },
+  "jahresbericht-5422701207005.xlsx": {
+    "Deckblatt": {
+      "right": 549.750000,
+      "bottom": 574.500000,
+      "duration_ms": 0.188400
+    },
+    "Inhalt": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.042300
+    },
+    "Einführung": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.021600
+    },
+    "Länder-1": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018900
+    },
+    "Länder-2": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018100
+    },
+    "DL-Beschäftigung": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017800
+    },
+    "DL-Umsätze": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017600
+    },
+    "AL-Beschäftigung": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.017600
+    },
+    "AL-Umsätze": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018900
+    },
+    "NL-Beschäftigung": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018200
+    },
+    "NL-Umsätze": {
+      "right": 0.000000,
+      "bottom": 0.000000,
+      "duration_ms": 0.018400
+    }
+  }
+}

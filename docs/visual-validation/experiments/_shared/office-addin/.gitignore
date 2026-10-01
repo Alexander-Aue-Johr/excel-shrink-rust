@@ -1,0 +1,3 @@
+hosts/dotnet/bin/
+hosts/dotnet/obj/
+hosts/rust/target/

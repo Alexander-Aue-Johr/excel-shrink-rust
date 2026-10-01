@@ -41,7 +41,7 @@ $CSharpSourcePath = Join-Path $CSharpProjectRoot 'DrawingBoundsCommands.cs'
 
 $ExperimentCacheRoot = Join-Path `
     $RepoRoot `
-    '.tmp\visual-validation\drawing-bounds-vba-vs-rust-com'
+    '.tmp\visual-validation\shape-bounds'
 
 $VbaCacheRoot = Join-Path $ExperimentCacheRoot 'vba-host'
 $VbaHostPath = Join-Path $VbaCacheRoot 'drawing-bounds-host.xlsm'
@@ -237,7 +237,7 @@ function Read-RustSourceHashes([string]$Path) {
 function Assert-RustHelperFresh {
     $buildCommand = (
         'bash ./docs/visual-validation/experiments/' +
-        'drawing-bounds-vba-vs-rust-com/build-rust-com.sh'
+        'shape-bounds/build-rust-com.sh'
     )
 
     if (-not (Test-Path -LiteralPath $RustExe)) {

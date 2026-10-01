@@ -573,12 +573,12 @@
       }
     },
     {
-      "label": "Experiment: drawing bounds execution models",
+      "label": "Experiment: visual validation",
       "type": "process",
       "command": "bash",
       "args": [
         "-lc",
-        "script=\"$(wslpath -w '${workspaceFolder}/docs/visual-validation/experiments/drawing-bounds-vba-vs-rust-com/run-all.ps1')\"; corpus=\"$(wslpath -w '${workspaceFolder}/corpus-local')\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -CorpusRoot \"$corpus\""
+        "script=\"$(wslpath -w '${workspaceFolder}/docs/visual-validation/experiments/run.ps1')\"; corpus=\"$(wslpath -w '${workspaceFolder}/corpus-local')\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -CorpusRoot \"$corpus\""
       ],
       "options": {
         "cwd": "${workspaceFolder}"

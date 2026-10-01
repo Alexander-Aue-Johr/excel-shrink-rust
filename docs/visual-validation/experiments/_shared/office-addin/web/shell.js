@@ -1,0 +1,210 @@
+/* global Office */
+'use strict';
+
+(function () {
+  const state = {
+    startedAt: performance.now(),
+    completedImages: 0,
+    totalImages: 0,
+    totalCaptureMs: 0,
+    completedBatches: 0,
+    totalBatches: 0,
+    batches: []
+  };
+
+  function byId(id) { return document.getElementById(id); }
+  function fixed(value, digits = 1) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(digits) : '—';
+  }
+  function log(message) {
+    const now = new Date().toLocaleTimeString();
+    const target = byId('technical-log');
+    if (target) {
+      target.textContent += `${now} ${message}\n`;
+      target.scrollTop = target.scrollHeight;
+    }
+  }
+  function setText(id, value) {
+    const element = byId(id);
+    if (element) element.textContent = value;
+  }
+  function setPhase(value) { setText('phase', value); log(value); }
+  function setWorkbook(value) { setText('workbook-name', value || '—'); }
+  function setConnection(ok, text) {
+    const light = byId('server-light');
+    if (light) light.className = `status-light ${ok ? 'good' : 'bad'}`;
+    setText('server-status', text);
+  }
+  function updateProgress(completed, total) {
+    state.completedImages = completed;
+    state.totalImages = total;
+    const pct = total > 0 ? Math.max(0, Math.min(100, completed * 100 / total)) : 0;
+    const bar = byId('progress-bar');
+    if (bar) bar.style.width = `${pct}%`;
+    setText('progress-text', `${completed} / ${total} sheets`);
+
+    const elapsedMs = performance.now() - state.startedAt;
+    setText('elapsed', `${fixed(elapsedMs / 1000)} s`);
+    if (completed > 0 && total > completed) {
+      const per = elapsedMs / completed;
+      setText('eta', `ETA ~${fixed((total - completed) * per / 1000)} s`);
+    } else if (completed >= total && total > 0) {
+      setText('eta', 'Done');
+    }
+  }
+  function startBatch(index, total, sheets) {
+    state.totalBatches = total;
+    setText('batch-number', `${index} / ${total}`);
+    setText('current-sheets', sheets.join('\n'));
+    setPhase(`Rendering batch ${index} / ${total}`);
+    renderBatchRows(index, total, 'running', null);
+  }
+  function completeBatch(index, total, count, renderMs, persistMs) {
+    const totalMs = Number(renderMs) + Number(persistMs);
+    state.completedBatches += 1;
+    state.totalCaptureMs += totalMs;
+    state.completedImages += count;
+    setText('batch-summary', `${state.completedBatches} complete`);
+
+    const average = state.completedImages > 0
+      ? state.totalCaptureMs / state.completedImages
+      : 0;
+    setText('average-ms', fixed(average));
+    updateProgress(state.completedImages, state.totalImages);
+    renderBatchRows(index, total, 'done', {
+      count, renderMs, persistMs, totalMs,
+      perImage: count > 0 ? totalMs / count : 0
+    });
+  }
+  function renderBatchRows(index, total, status, timing) {
+    const list = byId('batch-list');
+    if (!list) return;
+    let row = byId(`batch-${index}`);
+    if (!row) {
+      row = document.createElement('div');
+      row.id = `batch-${index}`;
+      row.className = 'batch-row';
+      row.innerHTML =
+        `<span class="batch-icon"></span>` +
+        `<span class="batch-detail"></span>` +
+        `<span class="batch-time"></span>`;
+      list.appendChild(row);
+    }
+    const icon = row.querySelector('.batch-icon');
+    const detail = row.querySelector('.batch-detail');
+    const time = row.querySelector('.batch-time');
+    if (status === 'done') {
+      icon.textContent = '✓';
+      detail.textContent = `Batch ${index} · ${timing.count} images`;
+      time.textContent = `${fixed(timing.totalMs)} ms · ${fixed(timing.perImage)} ms/img`;
+    } else {
+      icon.textContent = '●';
+      detail.textContent = `Batch ${index}`;
+      time.textContent = 'rendering…';
+    }
+  }
+  function showAnalysis(complete, total, text) {
+    const panel = byId('analysis-panel');
+    if (panel) panel.classList.remove('hidden');
+    setText('analysis-summary', `${complete} / ${total}`);
+    setText('analysis-text', text);
+  }
+
+  window.ExperimentUi = {
+    state,
+    log,
+    setPhase,
+    setWorkbook,
+    setConnection,
+    updateProgress,
+    startBatch,
+    completeBatch,
+    showAnalysis,
+    setTotalImages(value) {
+      state.totalImages = value;
+      updateProgress(state.completedImages, value);
+    },
+    configure(config) {
+      setText(
+        'experiment-title',
+        config.experiment === 'range-image'
+          ? `Get Picture · Strategy ${config.strategy}`
+          : 'Get shape bounds'
+      );
+      setText('host-kind', config.host_kind || '—');
+      setText('batch-size', config.batch_size || '—');
+    },
+    fail(message) {
+      setConnection(false, 'Experiment host error');
+      setPhase(`ERROR: ${message}`);
+    }
+  };
+
+  async function postEvent(stage, detail = null) {
+    try {
+      await fetch('/client-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage,
+          detail,
+          href: window.location.href,
+          user_agent: navigator.userAgent
+        })
+      });
+    } catch (_) {
+    }
+  }
+
+  window.ExperimentEvents = { post: postEvent };
+
+  async function main() {
+    const configResponse = await fetch('/config');
+    if (!configResponse.ok) {
+      throw new Error(`Config request failed: HTTP ${configResponse.status}`);
+    }
+    const config = await configResponse.json();
+
+    window.ExperimentUi.configure(config);
+    window.ExperimentUi.setConnection(true, 'Experiment host connected');
+    await postEvent('shell_loaded', { experiment: config.experiment });
+
+    const script = document.createElement('script');
+    script.src = '/mode.js';
+    script.defer = true;
+    script.onerror = () => window.ExperimentUi.fail('Could not load experiment mode script.');
+    document.head.appendChild(script);
+  }
+
+  window.setInterval(() => {
+    postEvent('heartbeat', {
+      phase: byId('phase') ? byId('phase').textContent : null,
+      elapsed_ms: performance.now() - state.startedAt,
+      completed_images: state.completedImages,
+      total_images: state.totalImages
+    });
+  }, 5000);
+
+  Office.onReady(async (info) => {
+    await postEvent('office_ready', { host: info.host });
+    try {
+      if (info.host !== Office.HostType.Excel) {
+        throw new Error('This experiment requires Excel.');
+      }
+      await main();
+    } catch (error) {
+      const detail = error && error.stack ? error.stack : String(error);
+      window.ExperimentUi.fail(detail);
+      await postEvent('error', { message: detail });
+      try {
+        await fetch('/error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: detail })
+        });
+      } catch (_) {
+      }
+    }
+  });
+}());

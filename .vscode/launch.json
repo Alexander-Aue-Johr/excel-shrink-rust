@@ -811,11 +811,11 @@
             }
         },
         {
-            "name": "Experiment: drawing bounds execution models",
+            "name": "Experiment: visual validation",
             "type": "node-terminal",
             "request": "launch",
             "command": "printf 'Experiment task finished.\\n'",
-            "preLaunchTask": "Experiment: drawing bounds execution models"
+            "preLaunchTask": "Experiment: visual validation"
         }
     ],
     "inputs": [

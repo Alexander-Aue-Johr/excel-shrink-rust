@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Excel Shrink Visual Validation Lab</title>
+  <link rel="stylesheet" href="/taskpane.css">
+  <script src="/bootstrap.js"></script>
+  <script src="https://officeapis.public.onecdn.static.microsoft/1/office.js"></script>
+  <script defer src="/shell.js"></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div class="eyebrow">Excel Shrink</div>
+      <h1>Visual Validation Lab</h1>
+      <div id="experiment-title" class="subtitle">Preparing experiment…</div>
+    </header>
+
+    <section class="status-card">
+      <div class="connection-row">
+        <span id="server-light" class="status-light pending"></span>
+        <span id="server-status">Connecting to experiment host…</span>
+      </div>
+
+      <div class="workbook-name" id="workbook-name">Waiting for Excel…</div>
+      <div class="phase" id="phase">Starting</div>
+
+      <div class="progress-track" aria-label="Workbook progress">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+      <div class="progress-caption">
+        <span id="progress-text">0 / 0 sheets</span>
+        <span id="eta">ETA —</span>
+      </div>
+    </section>
+
+    <section class="metric-grid">
+      <div class="metric">
+        <span class="metric-label">Average</span>
+        <strong id="average-ms">—</strong>
+        <span class="metric-unit">ms / image</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Elapsed</span>
+        <strong id="elapsed">0.0 s</strong>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Host</span>
+        <strong id="host-kind">—</strong>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Batch size</span>
+        <strong id="batch-size">—</strong>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>Current batch</h2>
+        <span id="batch-number">—</span>
+      </div>
+      <div id="current-sheets" class="sheet-list muted">No batch yet.</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>Batches</h2>
+        <span id="batch-summary">0 complete</span>
+      </div>
+      <div id="batch-list" class="batch-list"></div>
+    </section>
+
+    <section id="analysis-panel" class="panel hidden">
+      <div class="panel-heading">
+        <h2>Overflow analysis</h2>
+        <span id="analysis-summary">—</span>
+      </div>
+      <div id="analysis-text" class="muted">Waiting for probes.</div>
+    </section>
+
+    <details class="technical">
+      <summary>Technical log</summary>
+      <pre id="technical-log"></pre>
+    </details>
+  </main>
+</body>
+</html>

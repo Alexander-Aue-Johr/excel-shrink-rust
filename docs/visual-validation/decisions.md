@@ -47,7 +47,7 @@ Select the implementation after VSTO and Office.js have also been measured and t
 fastest candidates have been repeated enough to rule out obvious run-to-run noise.
 
 Evidence:
-[`drawing-bounds-vba-vs-rust-com`](experiments/drawing-bounds-vba-vs-rust-com/)
+[`shape-bounds`](experiments/shape-bounds/)
 
 ## Text overflow
 
@@ -61,6 +61,10 @@ capture-bound logic.
 
 **Revisit if:** real regression cases show relevant visible text being clipped by
 the chosen minimum width.
+
+The `range-image` experiment deliberately includes exact-overflow strategies D/E as
+an engineering investigation. Running those strategies does not change this production
+decision until their cost/reliability has been evaluated.
 
 ## Screenshot persistence
 
