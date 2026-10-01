@@ -467,9 +467,30 @@
         await syncStage(context, `probe after image (${entry.sheet}, ${axis})`);
       } finally {
         if (blockerWritten) {
-          blocker.clear(Excel.ClearApplyTo.contents);
           try {
-            await syncStage(context, `clear overflow blocker (${entry.sheet}, ${axis})`);
+            // Range.clear() has produced a reproducible GeneralException on
+            // otherwise writable empty blocker ranges in desktop Excel.
+            //
+            // Restore through the same value-copy path that successfully wrote
+            // the blocker: an empty string clears the seed cell, and
+            // skipBlanks=false makes copyFrom propagate that blank value across
+            // the complete blocker range.
+            seed.values = [['']];
+            await syncStage(
+              context,
+              `clear overflow blocker seed (${entry.sheet}, ${axis})`
+            );
+
+            blocker.copyFrom(
+              seed,
+              Excel.RangeCopyType.values,
+              false,
+              false
+            );
+            await syncStage(
+              context,
+              `restore overflow blocker (${entry.sheet}, ${axis})`
+            );
           } catch (cleanupError) {
             throw cleanupError;
           }
