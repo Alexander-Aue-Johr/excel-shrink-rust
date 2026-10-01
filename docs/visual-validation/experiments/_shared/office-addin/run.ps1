@@ -515,10 +515,39 @@ function Ensure-RustHost {
     $trustedPath = 'Cert:\CurrentUser\Root\' + $certificate.Thumbprint
 
     if (-not (Test-Path -LiteralPath $trustedPath)) {
-        Write-ExperimentLog 'Trusting Rust-host localhost certificate for the current user...'
-        Import-Certificate `
-            -FilePath $certDer `
-            -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+        Write-ExperimentLog (
+            'Trusting Rust-host localhost certificate non-interactively for ' +
+            'the current user...'
+        )
+
+        # Import-Certificate into Trusted Root can surface a Windows trust prompt.
+        # When this runner is launched from a WSL-backed VS Code task that prompt
+        # can exist behind the terminal: the task appears frozen and only the
+        # Windows system sound is noticeable. X509Store.Add writes the exact same
+        # CurrentUser\Root store through the non-UI certificate-store API.
+        $store = New-Object `
+            Security.Cryptography.X509Certificates.X509Store `
+            'Root', `
+            ([Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+
+        try {
+            $store.Open(
+                [Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite
+            )
+            $store.Add($certificate)
+        }
+        finally {
+            $store.Close()
+        }
+
+        if (-not (Test-Path -LiteralPath $trustedPath)) {
+            throw (
+                'Rust-host certificate write returned, but the certificate is not ' +
+                "present in CurrentUser\Root: $($certificate.Thumbprint)"
+            )
+        }
+
+        Write-ExperimentLog 'Rust-host localhost certificate trust verified.'
     }
     else {
         Write-ExperimentLog 'Rust-host localhost certificate is already trusted.'
@@ -529,6 +558,119 @@ function Ensure-RustHost {
         Args = @('serve', $certPem, $keyPem)
     }
 }
+
+function Get-ListeningProcessIds([int]$Port) {
+    $result = New-Object 'System.Collections.Generic.List[int]'
+
+    $getNetTcp = Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue
+    if ($null -ne $getNetTcp) {
+        try {
+            foreach ($connection in @(
+                Get-NetTCPConnection `
+                    -State Listen `
+                    -LocalPort $Port `
+                    -ErrorAction Stop
+            )) {
+                if ($null -ne $connection.OwningProcess) {
+                    $result.Add([int]$connection.OwningProcess)
+                }
+            }
+        }
+        catch {
+        }
+    }
+
+    if ($result.Count -eq 0) {
+        foreach ($line in @(netstat.exe -ano -p tcp 2>$null)) {
+            if (
+                $line -match '^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$' -and
+                [int]$Matches[1] -eq $Port
+            ) {
+                $result.Add([int]$Matches[2])
+            }
+        }
+    }
+
+    return @($result | Sort-Object -Unique)
+}
+
+
+function Get-ProcessCommandLine([int]$ProcessId) {
+    try {
+        $info = Get-CimInstance `
+            -ClassName Win32_Process `
+            -Filter "ProcessId = $ProcessId" `
+            -ErrorAction Stop
+
+        if ($null -ne $info.CommandLine) {
+            return [string]$info.CommandLine
+        }
+    }
+    catch {
+    }
+
+    return ''
+}
+
+
+function Stop-StaleVisualValidationHosts {
+    $listenerIds = New-Object 'System.Collections.Generic.HashSet[int]'
+
+    foreach ($port in @(3000, 3001)) {
+        foreach ($processId in @(Get-ListeningProcessIds $port)) {
+            [void]$listenerIds.Add([int]$processId)
+        }
+    }
+
+    foreach ($processId in $listenerIds) {
+        $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+        if ($null -eq $process) { continue }
+
+        $commandLine = Get-ProcessCommandLine $processId
+        $isDotNetExperimentHost = (
+            $process.ProcessName -eq 'dotnet' -and
+            $commandLine -match 'VisualValidationExperimentHost\.dll'
+        )
+        $isRustExperimentHost = (
+            $process.ProcessName -eq 'visual-validation-office-host' -or
+            $commandLine -match 'visual-validation-office-host(?:\.exe)?'
+        )
+
+        if (-not ($isDotNetExperimentHost -or $isRustExperimentHost)) {
+            throw (
+                'Visual-validation localhost port 3000/3001 is already owned by ' +
+                "an unrelated process. PID=$processId, Name=$($process.ProcessName), " +
+                "CommandLine=$commandLine"
+            )
+        }
+
+        Write-ExperimentLog (
+            'Stopping stale visual-validation host before starting this run: ' +
+            "PID=$processId, Name=$($process.ProcessName)"
+        ) 'WARN'
+
+        Stop-Process -Id $processId -Force -ErrorAction Stop
+    }
+
+    if ($listenerIds.Count -eq 0) { return }
+
+    for ($attempt = 0; $attempt -lt 50; $attempt++) {
+        Start-Sleep -Milliseconds 100
+        $remaining = @()
+        foreach ($port in @(3000, 3001)) {
+            $remaining += @(Get-ListeningProcessIds $port)
+        }
+        if (@($remaining | Sort-Object -Unique).Count -eq 0) { return }
+    }
+
+    throw (
+        'A stale visual-validation host was stopped, but localhost port ' +
+        '3000/3001 did not become free.'
+    )
+}
+
+
+Stop-StaleVisualValidationHosts
 
 $hostCommand = if ($HostKind -eq 'rust') {
     Ensure-RustHost

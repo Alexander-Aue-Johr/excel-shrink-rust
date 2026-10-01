@@ -108,23 +108,145 @@
     });
   }
 
-  async function collectContentAndShapeBounds(sheetNames) {
+  async function collectTrailingHiddenBounds(sheetNames) {
+    const states = sheetNames.map((sheet) => ({
+      sheet,
+      column: { terminalHidden: false, low: 0, high: MAX_COLUMNS - 1 },
+      row: { terminalHidden: false, low: 0, high: MAX_ROWS - 1 }
+    }));
+    const started = performance.now();
+
+    await Excel.run(async (context) => {
+      const workbook = context.workbook;
+      const probes = [];
+
+      for (const state of states) {
+        const sheet = workbook.worksheets.getItem(state.sheet);
+        const lastColumn = sheet.getRangeByIndexes(0, MAX_COLUMNS - 1, 1, 1);
+        const lastRow = sheet.getRangeByIndexes(MAX_ROWS - 1, 0, 1, 1);
+        lastColumn.load('columnHidden');
+        lastRow.load('rowHidden');
+        probes.push({ state, lastColumn, lastRow });
+      }
+
+      await context.sync();
+
+      for (const probe of probes) {
+        probe.state.column.terminalHidden = probe.lastColumn.columnHidden === true;
+        probe.state.row.terminalHidden = probe.lastRow.rowHidden === true;
+      }
+    });
+
+    while (states.some((state) =>
+      (state.column.terminalHidden && state.column.low < state.column.high) ||
+      (state.row.terminalHidden && state.row.low < state.row.high)
+    )) {
+      await Excel.run(async (context) => {
+        const workbook = context.workbook;
+        const probes = [];
+
+        for (const state of states) {
+          const sheet = workbook.worksheets.getItem(state.sheet);
+
+          if (state.column.terminalHidden && state.column.low < state.column.high) {
+            const mid = Math.floor((state.column.low + state.column.high) / 2);
+            const range = sheet.getRangeByIndexes(
+              0,
+              mid,
+              1,
+              MAX_COLUMNS - mid
+            );
+            range.load('columnHidden');
+            probes.push({ axis: 'column', state, mid, range });
+          }
+
+          if (state.row.terminalHidden && state.row.low < state.row.high) {
+            const mid = Math.floor((state.row.low + state.row.high) / 2);
+            const range = sheet.getRangeByIndexes(
+              mid,
+              0,
+              MAX_ROWS - mid,
+              1
+            );
+            range.load('rowHidden');
+            probes.push({ axis: 'row', state, mid, range });
+          }
+        }
+
+        await context.sync();
+
+        for (const probe of probes) {
+          const entirelyHidden = probe.axis === 'column'
+            ? probe.range.columnHidden === true
+            : probe.range.rowHidden === true;
+
+          if (entirelyHidden) {
+            if (probe.axis === 'column') probe.state.column.high = probe.mid;
+            else probe.state.row.high = probe.mid;
+          } else {
+            if (probe.axis === 'column') probe.state.column.low = probe.mid + 1;
+            else probe.state.row.low = probe.mid + 1;
+          }
+        }
+      });
+    }
+
+    return {
+      elapsed_ms: performance.now() - started,
+      entries: states.map((state) => ({
+        sheet: state.sheet,
+        trailingHiddenColumnStart: state.column.terminalHidden
+          ? state.column.low
+          : null,
+        trailingHiddenRowStart: state.row.terminalHidden
+          ? state.row.low
+          : null,
+        rightColumn: state.column.terminalHidden
+          ? Math.max(0, state.column.low - 1)
+          : null,
+        bottomRow: state.row.terminalHidden
+          ? Math.max(0, state.row.low - 1)
+          : null
+      }))
+    };
+  }
+
+  async function collectContentAndShapeBounds(sheetNames, trailingBounds) {
+    const trailingBySheet = new Map(
+      trailingBounds.map((entry) => [entry.sheet, entry])
+    );
+
     return Excel.run(async (context) => {
       const workbook = context.workbook;
       const entries = [];
 
       for (const sheetName of sheetNames) {
         const sheet = workbook.worksheets.getItem(sheetName);
-        const content = sheet.getUsedRangeOrNullObject(true);
-        content.load('address,rowIndex,columnIndex,rowCount,columnCount,left,top,width,height');
+        const trailing = trailingBySheet.get(sheetName) || {};
+        const horizontalFixed = Number.isInteger(trailing.rightColumn);
+        const verticalFixed = Number.isInteger(trailing.bottomRow);
+        let content = null;
+        let shapes = null;
 
-        const shapes = sheet.shapes;
-        shapes.load(
-          'items/left,items/top,items/width,items/height,' +
-          'items/rotation,items/visible'
-        );
+        if (!horizontalFixed || !verticalFixed) {
+          content = sheet.getUsedRangeOrNullObject(true);
+          content.load('address,rowIndex,columnIndex,rowCount,columnCount,left,top,width,height');
 
-        entries.push({ sheetName, content, shapes });
+          shapes = sheet.shapes;
+          shapes.load(
+            'items/left,items/top,items/width,items/height,' +
+            'items/rotation,items/visible'
+          );
+        }
+
+        entries.push({
+          sheetName,
+          trailing,
+          horizontalFixed,
+          verticalFixed,
+          content,
+          shapes
+        });
       }
 
       const started = performance.now();
@@ -134,7 +256,7 @@
       return {
         elapsed_ms: elapsed,
         entries: entries.map((entry) => {
-          const content = entry.content.isNullObject
+          const content = entry.content === null || entry.content.isNullObject
             ? {
                 rowIndex: 0,
                 columnIndex: 0,
@@ -162,28 +284,34 @@
           let shapeBottomPoints = 0;
           let visibleShapeCount = 0;
 
-          for (const shape of entry.shapes.items) {
-            if (!shape.visible) continue;
-            visibleShapeCount += 1;
+          if (entry.shapes !== null) {
+            for (const shape of entry.shapes.items) {
+              if (!shape.visible) continue;
+              visibleShapeCount += 1;
 
-            const angle = Number(shape.rotation) * Math.PI / 180.0;
-            const width = Number(shape.width);
-            const height = Number(shape.height);
-            const rotatedWidth =
-              Math.abs(width * Math.cos(angle)) +
-              Math.abs(height * Math.sin(angle));
-            const rotatedHeight =
-              Math.abs(width * Math.sin(angle)) +
-              Math.abs(height * Math.cos(angle));
+              const angle = Number(shape.rotation) * Math.PI / 180.0;
+              const width = Number(shape.width);
+              const height = Number(shape.height);
+              const rotatedWidth =
+                Math.abs(width * Math.cos(angle)) +
+                Math.abs(height * Math.sin(angle));
+              const rotatedHeight =
+                Math.abs(width * Math.sin(angle)) +
+                Math.abs(height * Math.cos(angle));
 
-            shapeRightPoints = Math.max(
-              shapeRightPoints,
-              Number(shape.left) + width / 2 + rotatedWidth / 2
-            );
-            shapeBottomPoints = Math.max(
-              shapeBottomPoints,
-              Number(shape.top) + height / 2 + rotatedHeight / 2
-            );
+              if (!entry.horizontalFixed) {
+                shapeRightPoints = Math.max(
+                  shapeRightPoints,
+                  Number(shape.left) + width / 2 + rotatedWidth / 2
+                );
+              }
+              if (!entry.verticalFixed) {
+                shapeBottomPoints = Math.max(
+                  shapeBottomPoints,
+                  Number(shape.top) + height / 2 + rotatedHeight / 2
+                );
+              }
+            }
           }
 
           const contentRightColumn =
@@ -203,8 +331,17 @@
             shapeRightPoints,
             shapeBottomPoints,
             visibleShapeCount,
-            rightColumn: contentRightColumn,
-            bottomRow: contentBottomRow
+            trailingHiddenColumnStart: entry.trailing.trailingHiddenColumnStart ?? null,
+            trailingHiddenRowStart: entry.trailing.trailingHiddenRowStart ?? null,
+            rightBoundSource: entry.horizontalFixed ? 'trailing-hidden' : 'content-drawing',
+            bottomBoundSource: entry.verticalFixed ? 'trailing-hidden' : 'content-drawing',
+            rightColumn: entry.horizontalFixed
+              ? Number(entry.trailing.rightColumn)
+              : contentRightColumn,
+            bottomRow: entry.verticalFixed
+              ? Number(entry.trailing.bottomRow)
+              : contentBottomRow,
+            overflowProbes: []
           };
         })
       };
@@ -213,7 +350,10 @@
 
   async function mapPointBoundsToGrid(entries) {
     const horizontal = entries
-      .filter((entry) => entry.shapeRightPoints > entry.contentRightPoints + 0.01)
+      .filter((entry) =>
+        entry.rightBoundSource !== 'trailing-hidden' &&
+        entry.shapeRightPoints > entry.contentRightPoints + 0.01
+      )
       .map((entry) => ({
         entry,
         low: Math.max(0, entry.contentRightColumn),
@@ -222,7 +362,10 @@
       }));
 
     const vertical = entries
-      .filter((entry) => entry.shapeBottomPoints > entry.contentBottomPoints + 0.01)
+      .filter((entry) =>
+        entry.bottomBoundSource !== 'trailing-hidden' &&
+        entry.shapeBottomPoints > entry.contentBottomPoints + 0.01
+      )
       .map((entry) => ({
         entry,
         low: Math.max(0, entry.contentBottomRow),
@@ -286,7 +429,58 @@
     return performance.now() - started;
   }
 
-  async function readColumnHidden(sheetName, startColumn, endColumn) {
+    async function applyVisibleStrategyCMargin(entries, marginCount) {
+    return Excel.run(async (context) => {
+      const workbook = context.workbook;
+      const checks = [];
+
+      for (const entry of entries) {
+        const sheet = workbook.worksheets.getItem(entry.sheet);
+        const columns = [];
+        const rows = [];
+
+        if (entry.rightBoundSource !== 'trailing-hidden') {
+          for (let offset = 1; offset <= marginCount; offset += 1) {
+            const columnIndex = entry.rightColumn + offset;
+            if (columnIndex >= MAX_COLUMNS) break;
+
+            const cell = sheet.getRangeByIndexes(0, columnIndex, 1, 1);
+            cell.load('columnHidden');
+            columns.push({ index: columnIndex, cell });
+          }
+        }
+
+        if (entry.bottomBoundSource !== 'trailing-hidden') {
+          for (let offset = 1; offset <= marginCount; offset += 1) {
+            const rowIndex = entry.bottomRow + offset;
+            if (rowIndex >= MAX_ROWS) break;
+
+            const cell = sheet.getRangeByIndexes(rowIndex, 0, 1, 1);
+            cell.load('rowHidden');
+            rows.push({ index: rowIndex, cell });
+          }
+        }
+
+        checks.push({ entry, columns, rows });
+      }
+
+      await context.sync();
+
+      for (const check of checks) {
+        for (const column of check.columns) {
+          if (column.cell.columnHidden === true) break;
+          check.entry.rightColumn = column.index;
+        }
+
+        for (const row of check.rows) {
+          if (row.cell.rowHidden === true) break;
+          check.entry.bottomRow = row.index;
+        }
+      }
+    });
+  }
+
+async function readColumnHidden(sheetName, startColumn, endColumn) {
     if (endColumn < startColumn) return true;
 
     return Excel.run(async (context) => {
@@ -569,6 +763,7 @@
 
   async function captureProbePair(
     workbookName,
+    probeId,
     entry,
     axis,
     startIndex,
@@ -613,14 +808,14 @@
         ? sheet.getRangeByIndexes(
             0,
             startIndex,
-            Math.max(1, Number(entry.contentBottomRow) + 1),
+            Math.max(1, Number(entry.bottomRow) + 1),
             1
           )
         : sheet.getRangeByIndexes(
             startIndex,
             0,
             1,
-            Math.max(1, Number(entry.contentRightColumn) + 1)
+            Math.max(1, Number(entry.rightColumn) + 1)
           );
 
       const before = probe.getImage();
@@ -676,6 +871,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           workbook: workbookName,
+          probe_id: probeId,
           sheet: entry.sheet,
           axis,
           start_index: startIndex,
@@ -732,7 +928,11 @@
         `Probe ${index + 1} / ${entries.length}: ${entry.sheet}`
       );
 
-      if (horizontal && entry.rightColumn < MAX_COLUMNS - 1) {
+      if (
+        horizontal &&
+        entry.rightBoundSource !== 'trailing-hidden' &&
+        entry.rightColumn < MAX_COLUMNS - 1
+      ) {
         const requestedStartColumn = entry.rightColumn + 1;
         const startColumn = await findFirstVisibleProbeColumn(
           entry.sheet,
@@ -759,10 +959,11 @@
           );
           const address =
             `${columnName(startColumn)}1:` +
-            `${columnName(endColumn)}${Math.max(1, entry.contentBottomRow + 1)}`;
+            `${columnName(endColumn)}${Math.max(1, entry.bottomRow + 1)}`;
 
           const result = await captureProbePair(
             workbookName,
+            `h${String(index + 1).padStart(5, '0')}`,
             entry,
             'horizontal',
             startColumn,
@@ -776,7 +977,11 @@
         }
       }
 
-      if (vertical && entry.bottomRow < MAX_ROWS - 1) {
+      if (
+        vertical &&
+        entry.bottomBoundSource !== 'trailing-hidden' &&
+        entry.bottomRow < MAX_ROWS - 1
+      ) {
         const requestedStartRow = entry.bottomRow + 1;
         const startRow = await findFirstVisibleProbeRow(
           entry.sheet,
@@ -801,12 +1006,13 @@
             startRow,
             endRow
           );
-          const lastColumn = Math.max(0, entry.contentRightColumn);
+          const lastColumn = Math.max(0, entry.rightColumn);
           const address =
             `A${startRow + 1}:${columnName(lastColumn)}${endRow + 1}`;
 
           const result = await captureProbePair(
             workbookName,
+            `v${String(index + 1).padStart(5, '0')}`,
             entry,
             'vertical',
             startRow,
@@ -830,6 +1036,17 @@
       if (!entry) continue;
 
       const extent = Number(result.extent_units || 0);
+      entry.overflowProbes.push({
+        probe_id: result.probe_id || null,
+        axis: result.axis,
+        start_index: Number(result.start_index),
+        extent_units: extent,
+        changed_pixel: Number(result.changed_pixel),
+        changed_points: Number(result.changed_points),
+        before_png: result.before_png || null,
+        after_png: result.after_png || null,
+        xor_png: result.xor_png || null
+      });
 
       if (result.axis === 'horizontal') {
         entry.rightColumn = Math.min(
@@ -939,6 +1156,7 @@
 
     const planning = {
       used_range_ms: 0,
+      trailing_hidden_bounds_ms: 0,
       content_shape_ms: 0,
       point_to_grid_ms: 0,
       overflow_probe_ms: 0
@@ -962,15 +1180,19 @@
         address: null
       }));
     } else {
-      const bounds = await collectContentAndShapeBounds(sheetNames);
+      ExperimentUi.setPhase('Checking trailing hidden rows/columns');
+      const trailing = await collectTrailingHiddenBounds(sheetNames);
+      planning.trailing_hidden_bounds_ms += trailing.elapsed_ms;
+
+      const bounds = await collectContentAndShapeBounds(
+        sheetNames,
+        trailing.entries
+      );
       planning.content_shape_ms += bounds.elapsed_ms;
       planning.point_to_grid_ms += await mapPointBoundsToGrid(bounds.entries);
 
       if (config.strategy === 'C') {
-        for (const entry of bounds.entries) {
-          entry.rightColumn = Math.min(MAX_COLUMNS - 1, entry.rightColumn + 10);
-          entry.bottomRow = Math.min(MAX_ROWS - 1, entry.bottomRow + 10);
-        }
+        await applyVisibleStrategyCMargin(bounds.entries, 10);
       }
 
       if (config.strategy === 'D' || config.strategy === 'E') {
@@ -987,7 +1209,12 @@
         content_bottom_row: entry.contentBottomRow,
         drawing_right_points: fixed(entry.shapeRightPoints),
         drawing_bottom_points: fixed(entry.shapeBottomPoints),
-        visible_shape_count: entry.visibleShapeCount
+        visible_shape_count: entry.visibleShapeCount,
+        right_bound_source: entry.rightBoundSource,
+        bottom_bound_source: entry.bottomBoundSource,
+        trailing_hidden_column_start: entry.trailingHiddenColumnStart,
+        trailing_hidden_row_start: entry.trailingHiddenRowStart,
+        overflow_probes: entry.overflowProbes
       }));
     }
 

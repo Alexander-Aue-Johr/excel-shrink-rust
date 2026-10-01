@@ -10,7 +10,7 @@ use axum::{
 use axum_server::tls_rustls::RustlsConfig;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use excel_com::{ComApartment, OwnedApplication, SaveChanges, WorkbookCloseOptions};
-use image::ImageReader;
+use image::{ImageReader, Rgba, RgbaImage};
 use rcgen::generate_simple_self_signed;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -57,12 +57,16 @@ struct EventEntry {
 #[derive(Clone, Serialize)]
 struct ProbeResult {
     workbook: String,
+    probe_id: String,
     sheet: String,
     axis: String,
     start_index: usize,
     extent_units: usize,
     changed_pixel: i64,
     changed_points: f64,
+    before_png: String,
+    after_png: String,
+    xor_png: String,
 }
 
 struct Shared {
@@ -276,10 +280,14 @@ fn read_png_dimensions(bytes: &[u8]) -> Result<(u32, u32)> {
     Ok((width, height))
 }
 
-fn analyze_probe(payload: Value) -> Result<ProbeResult> {
+fn analyze_probe(payload: Value, image_root: &Path) -> Result<ProbeResult> {
     let workbook = payload["workbook"]
         .as_str()
         .context("probe workbook")?
+        .to_owned();
+    let probe_id = payload["probe_id"]
+        .as_str()
+        .unwrap_or("probe")
         .to_owned();
     let sheet = payload["sheet"].as_str().context("probe sheet")?.to_owned();
     let axis = payload["axis"].as_str().context("probe axis")?.to_owned();
@@ -296,11 +304,11 @@ fn analyze_probe(payload: Value) -> Result<ProbeResult> {
         .filter_map(Value::as_f64)
         .collect();
 
-    let before_image = ImageReader::new(Cursor::new(before))
+    let before_image = ImageReader::new(Cursor::new(&before))
         .with_guessed_format()?
         .decode()?
         .to_rgba8();
-    let after_image = ImageReader::new(Cursor::new(after))
+    let after_image = ImageReader::new(Cursor::new(&after))
         .with_guessed_format()?
         .decode()?
         .to_rgba8();
@@ -309,18 +317,53 @@ fn analyze_probe(payload: Value) -> Result<ProbeResult> {
         bail!("probe image dimensions differ");
     }
 
+    let diagnostic_dir = image_root
+        .join(safe_file_name(&workbook))
+        .join("_overflow-probes");
+    fs::create_dir_all(&diagnostic_dir)?;
+
+    let stem = format!(
+        "{}-{}-{}",
+        safe_file_name(&probe_id),
+        safe_file_name(&sheet),
+        safe_file_name(&axis)
+    );
+    let before_file_name = format!("{stem}-before.png");
+    let after_file_name = format!("{stem}-after.png");
+    let xor_file_name = format!("{stem}-xor.png");
+    fs::write(diagnostic_dir.join(&before_file_name), &before)?;
+    fs::write(diagnostic_dir.join(&after_file_name), &after)?;
+
     let (width, height) = before_image.dimensions();
+    let mut xor_image = RgbaImage::new(width, height);
     let mut rightmost = -1_i64;
     let mut bottommost = -1_i64;
 
     for y in 0..height {
         for x in 0..width {
-            if before_image.get_pixel(x, y) != after_image.get_pixel(x, y) {
+            let before_pixel = before_image.get_pixel(x, y);
+            let after_pixel = after_image.get_pixel(x, y);
+            let changed = before_pixel != after_pixel;
+
+            xor_image.put_pixel(
+                x,
+                y,
+                Rgba([
+                    before_pixel[0] ^ after_pixel[0],
+                    before_pixel[1] ^ after_pixel[1],
+                    before_pixel[2] ^ after_pixel[2],
+                    if changed { 255 } else { 0 },
+                ]),
+            );
+
+            if changed {
                 rightmost = rightmost.max(x as i64);
                 bottommost = bottommost.max(y as i64);
             }
         }
     }
+
+    xor_image.save(diagnostic_dir.join(&xor_file_name))?;
 
     let changed_pixel = if axis == "horizontal" { rightmost } else { bottommost };
     let pixel_extent = if axis == "horizontal" { width } else { height };
@@ -340,14 +383,29 @@ fn analyze_probe(payload: Value) -> Result<ProbeResult> {
         }
     }
 
+    let relative = |file_name: &str| {
+        format!(
+            "{}/_overflow-probes/{}",
+            safe_file_name(&workbook),
+            file_name
+        )
+    };
+    let before_png = relative(&before_file_name);
+    let after_png = relative(&after_file_name);
+    let xor_png = relative(&xor_file_name);
+
     Ok(ProbeResult {
         workbook,
+        probe_id,
         sheet,
         axis,
         start_index,
         extent_units,
         changed_pixel,
         changed_points,
+        before_png,
+        after_png,
+        xor_png,
     })
 }
 
@@ -520,8 +578,9 @@ async fn probe_batch(
     }
 
     let cloned = payload.clone();
+    let image_root = state.config.image_root.clone();
     let handle = tokio::task::spawn_blocking(move || {
-        analyze_probe(cloned).map_err(|error| format!("{error:#}"))
+        analyze_probe(cloned, &image_root).map_err(|error| format!("{error:#}"))
     });
 
     state.probes.lock().unwrap().insert(key, handle);

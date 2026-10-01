@@ -1,0 +1,3153 @@
+{
+  "_meta": {
+    "experiment": "range-image",
+    "strategy": "C",
+    "host_kind": "dotnet",
+    "batch_size": 4,
+    "completed_workbooks": 1,
+    "expected_workbooks": 1,
+    "generated_utc": "2026-10-01T21:21:04.8329329\u002B00:00"
+  },
+  "workbooks": {
+    "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx": {
+      "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+      "strategy": "C",
+      "planning": {
+        "used_range_ms": 0,
+        "content_shape_ms": 966.5,
+        "point_to_grid_ms": 135.6,
+        "overflow_probe_ms": 0
+      },
+      "render_total_ms": 18517.6,
+      "persist_total_ms": 1780.9,
+      "capture_total_ms": 20298.5,
+      "image_batch_size": 4,
+      "capture_count": 215,
+      "batches": [
+        {
+          "batch_index": 1,
+          "capture_count": 4,
+          "sheets": [
+            "Vorblatt",
+            "Inhalt",
+            "1.1",
+            "1.2"
+          ],
+          "render_ms": 552.2,
+          "persist_ms": 53.7,
+          "total_ms": 605.9,
+          "amortized_ms_per_image": 151.475
+        },
+        {
+          "batch_index": 2,
+          "capture_count": 4,
+          "sheets": [
+            "1.3",
+            "1.4",
+            "2_(1)",
+            "2_(2)"
+          ],
+          "render_ms": 421.8,
+          "persist_ms": 41.9,
+          "total_ms": 463.7,
+          "amortized_ms_per_image": 115.925
+        },
+        {
+          "batch_index": 3,
+          "capture_count": 4,
+          "sheets": [
+            "2_(3)",
+            "2_(4)",
+            "3.1_(1)",
+            "3.1_(2)"
+          ],
+          "render_ms": 447,
+          "persist_ms": 40.7,
+          "total_ms": 487.7,
+          "amortized_ms_per_image": 121.925
+        },
+        {
+          "batch_index": 4,
+          "capture_count": 4,
+          "sheets": [
+            "3.1_(3)",
+            "3.1_(4)",
+            "3.1_(5)",
+            "3.1_(6)"
+          ],
+          "render_ms": 262.1,
+          "persist_ms": 32.6,
+          "total_ms": 294.7,
+          "amortized_ms_per_image": 73.675
+        },
+        {
+          "batch_index": 5,
+          "capture_count": 4,
+          "sheets": [
+            "3.1_(7)",
+            "3.1_(8)",
+            "3.1_(9)",
+            "Technisch bedingte Leerseite "
+          ],
+          "render_ms": 347.4,
+          "persist_ms": 26.7,
+          "total_ms": 374.1,
+          "amortized_ms_per_image": 93.525
+        },
+        {
+          "batch_index": 6,
+          "capture_count": 4,
+          "sheets": [
+            "3_2_(1)",
+            "3_2_(2) ",
+            "3.2_(3)",
+            "3.2_(4)"
+          ],
+          "render_ms": 425.4,
+          "persist_ms": 39.3,
+          "total_ms": 464.7,
+          "amortized_ms_per_image": 116.175
+        },
+        {
+          "batch_index": 7,
+          "capture_count": 4,
+          "sheets": [
+            "3.2_(5)",
+            "3.2_(6)",
+            "3.2_(7)",
+            "3.2_(8)"
+          ],
+          "render_ms": 539.4,
+          "persist_ms": 48.2,
+          "total_ms": 587.6,
+          "amortized_ms_per_image": 146.9
+        },
+        {
+          "batch_index": 8,
+          "capture_count": 4,
+          "sheets": [
+            "3.2_(9)",
+            "3.2_(10)",
+            "3.2_(11)",
+            "3.2_(12)"
+          ],
+          "render_ms": 463.4,
+          "persist_ms": 35.2,
+          "total_ms": 498.6,
+          "amortized_ms_per_image": 124.65
+        },
+        {
+          "batch_index": 9,
+          "capture_count": 4,
+          "sheets": [
+            "3.2_(13)",
+            "3_2_(14)",
+            "3.3_(1)",
+            "3.3_(2)"
+          ],
+          "render_ms": 381.5,
+          "persist_ms": 37.5,
+          "total_ms": 419,
+          "amortized_ms_per_image": 104.75
+        },
+        {
+          "batch_index": 10,
+          "capture_count": 4,
+          "sheets": [
+            "3.3_(3)",
+            "3.3_(4)",
+            "3.3_(5)",
+            "3.3_(6)"
+          ],
+          "render_ms": 342.4,
+          "persist_ms": 34.7,
+          "total_ms": 377.1,
+          "amortized_ms_per_image": 94.275
+        },
+        {
+          "batch_index": 11,
+          "capture_count": 4,
+          "sheets": [
+            "3.4_(1)",
+            "3.4_(2)",
+            "3.4_(3)",
+            "3.5_(1)"
+          ],
+          "render_ms": 265.8,
+          "persist_ms": 33.9,
+          "total_ms": 299.7,
+          "amortized_ms_per_image": 74.925
+        },
+        {
+          "batch_index": 12,
+          "capture_count": 4,
+          "sheets": [
+            "3.5_(2)",
+            "3.6_(1)",
+            "3.6_(2)",
+            "3.7_(1)"
+          ],
+          "render_ms": 282.9,
+          "persist_ms": 34.1,
+          "total_ms": 317,
+          "amortized_ms_per_image": 79.25
+        },
+        {
+          "batch_index": 13,
+          "capture_count": 4,
+          "sheets": [
+            "3.7 (2)",
+            "Technisch_bedingte Leerseite ",
+            "3.8_(1)",
+            "3.8_(2)"
+          ],
+          "render_ms": 350.6,
+          "persist_ms": 29.9,
+          "total_ms": 380.5,
+          "amortized_ms_per_image": 95.125
+        },
+        {
+          "batch_index": 14,
+          "capture_count": 4,
+          "sheets": [
+            "3.9.1_(1)",
+            "3.9.1 (2)",
+            "3.9.2_(1)",
+            "3.9.2_(2)"
+          ],
+          "render_ms": 423,
+          "persist_ms": 34.4,
+          "total_ms": 457.4,
+          "amortized_ms_per_image": 114.35
+        },
+        {
+          "batch_index": 15,
+          "capture_count": 4,
+          "sheets": [
+            "3.9.3_(1)",
+            "3.9.3_(2)",
+            "3.9.4_(1)",
+            "3.9.4_(2)"
+          ],
+          "render_ms": 496.4,
+          "persist_ms": 33.2,
+          "total_ms": 529.6,
+          "amortized_ms_per_image": 132.4
+        },
+        {
+          "batch_index": 16,
+          "capture_count": 4,
+          "sheets": [
+            "3.10_(1)",
+            "3.10_(2)",
+            "3.11",
+            "3.12 _3.13 "
+          ],
+          "render_ms": 274.8,
+          "persist_ms": 27.8,
+          "total_ms": 302.6,
+          "amortized_ms_per_image": 75.65
+        },
+        {
+          "batch_index": 17,
+          "capture_count": 4,
+          "sheets": [
+            "3.14_(1)",
+            "3.14_(2)",
+            "3.14_(3)",
+            "3.14_(4)"
+          ],
+          "render_ms": 275.8,
+          "persist_ms": 30.5,
+          "total_ms": 306.3,
+          "amortized_ms_per_image": 76.575
+        },
+        {
+          "batch_index": 18,
+          "capture_count": 4,
+          "sheets": [
+            "4.1_(1)",
+            "4_1_(2)",
+            "4_1_(3)",
+            "4_2_(1)"
+          ],
+          "render_ms": 343.2,
+          "persist_ms": 28.1,
+          "total_ms": 371.3,
+          "amortized_ms_per_image": 92.825
+        },
+        {
+          "batch_index": 19,
+          "capture_count": 4,
+          "sheets": [
+            "4_2_(2)",
+            "4_3_(1)",
+            "4_3_(2)",
+            "4.4_(1)"
+          ],
+          "render_ms": 291.4,
+          "persist_ms": 27.7,
+          "total_ms": 319.1,
+          "amortized_ms_per_image": 79.775
+        },
+        {
+          "batch_index": 20,
+          "capture_count": 4,
+          "sheets": [
+            "4.4_(2)",
+            "4.4_(3)",
+            "4.5_(1)",
+            "4.5_(2)"
+          ],
+          "render_ms": 315,
+          "persist_ms": 32.1,
+          "total_ms": 347.1,
+          "amortized_ms_per_image": 86.775
+        },
+        {
+          "batch_index": 21,
+          "capture_count": 4,
+          "sheets": [
+            "4.5_(3)",
+            "4.6_(1)",
+            "4.6_(2)",
+            "4.6_(3)"
+          ],
+          "render_ms": 324.3,
+          "persist_ms": 27,
+          "total_ms": 351.3,
+          "amortized_ms_per_image": 87.825
+        },
+        {
+          "batch_index": 22,
+          "capture_count": 4,
+          "sheets": [
+            "4.6_(4)",
+            "4.6_(5)",
+            "4.6_(6)",
+            "4.7_(1)"
+          ],
+          "render_ms": 266.6,
+          "persist_ms": 32.1,
+          "total_ms": 298.7,
+          "amortized_ms_per_image": 74.675
+        },
+        {
+          "batch_index": 23,
+          "capture_count": 4,
+          "sheets": [
+            "4.7_(2)",
+            "4.8_(1)",
+            "4.8_(2)",
+            "4.9_(1)"
+          ],
+          "render_ms": 442.2,
+          "persist_ms": 27.6,
+          "total_ms": 469.8,
+          "amortized_ms_per_image": 117.45
+        },
+        {
+          "batch_index": 24,
+          "capture_count": 4,
+          "sheets": [
+            "4.9_(2)",
+            "4.9_(3)",
+            "4.9_(4)",
+            "4.10.1 "
+          ],
+          "render_ms": 345.8,
+          "persist_ms": 27,
+          "total_ms": 372.8,
+          "amortized_ms_per_image": 93.2
+        },
+        {
+          "batch_index": 25,
+          "capture_count": 4,
+          "sheets": [
+            "4.10.2 ",
+            "4.10.3",
+            "4.10.4",
+            "4.11.1"
+          ],
+          "render_ms": 300.8,
+          "persist_ms": 31.1,
+          "total_ms": 331.9,
+          "amortized_ms_per_image": 82.975
+        },
+        {
+          "batch_index": 26,
+          "capture_count": 4,
+          "sheets": [
+            "4.11.2",
+            "4.11.3",
+            "4.11.4",
+            "5.1.1_(1)"
+          ],
+          "render_ms": 483.1,
+          "persist_ms": 31.3,
+          "total_ms": 514.4,
+          "amortized_ms_per_image": 128.6
+        },
+        {
+          "batch_index": 27,
+          "capture_count": 4,
+          "sheets": [
+            "5.1.1_(2)",
+            "5.1.1_(3)",
+            "5.1.2_(1)",
+            "5.1.2_(2)"
+          ],
+          "render_ms": 264.2,
+          "persist_ms": 35.4,
+          "total_ms": 299.6,
+          "amortized_ms_per_image": 74.9
+        },
+        {
+          "batch_index": 28,
+          "capture_count": 4,
+          "sheets": [
+            "5.1.2_(3)",
+            "5.1.3_(1)",
+            "5.1.3_(2)",
+            "5.1.3_(3)"
+          ],
+          "render_ms": 391,
+          "persist_ms": 41.3,
+          "total_ms": 432.3,
+          "amortized_ms_per_image": 108.075
+        },
+        {
+          "batch_index": 29,
+          "capture_count": 4,
+          "sheets": [
+            "5.1.4_(1)",
+            "5.1.4_(2)",
+            "5.1.4_(3)",
+            "5.1.5_(1)"
+          ],
+          "render_ms": 352.1,
+          "persist_ms": 31.8,
+          "total_ms": 383.9,
+          "amortized_ms_per_image": 95.975
+        },
+        {
+          "batch_index": 30,
+          "capture_count": 4,
+          "sheets": [
+            "5.1.5_(2)",
+            "5.1.5_(3)",
+            "5.2_(1)",
+            "5.2_(2)"
+          ],
+          "render_ms": 323.5,
+          "persist_ms": 33.1,
+          "total_ms": 356.6,
+          "amortized_ms_per_image": 89.15
+        },
+        {
+          "batch_index": 31,
+          "capture_count": 4,
+          "sheets": [
+            "5.2_(3)",
+            "5.2_(4)",
+            "5.3.1_(1)",
+            "5.3.1_(2)"
+          ],
+          "render_ms": 352.7,
+          "persist_ms": 74.5,
+          "total_ms": 427.2,
+          "amortized_ms_per_image": 106.8
+        },
+        {
+          "batch_index": 32,
+          "capture_count": 4,
+          "sheets": [
+            "5.3.1_(3)",
+            "5.3.1_(4)",
+            "5.3.2_(1)",
+            "5.3.2_(2)"
+          ],
+          "render_ms": 359.4,
+          "persist_ms": 44.6,
+          "total_ms": 404,
+          "amortized_ms_per_image": 101
+        },
+        {
+          "batch_index": 33,
+          "capture_count": 4,
+          "sheets": [
+            "5.3.2_(3)",
+            "5.3.2_(4)",
+            "5.4_(1)",
+            "5.4_(2)"
+          ],
+          "render_ms": 391.9,
+          "persist_ms": 30.9,
+          "total_ms": 422.8,
+          "amortized_ms_per_image": 105.7
+        },
+        {
+          "batch_index": 34,
+          "capture_count": 4,
+          "sheets": [
+            "5.4_(3)",
+            "5.4_(4)",
+            "5.5_(1)",
+            "5.5_(2)"
+          ],
+          "render_ms": 282,
+          "persist_ms": 23.4,
+          "total_ms": 305.4,
+          "amortized_ms_per_image": 76.35
+        },
+        {
+          "batch_index": 35,
+          "capture_count": 4,
+          "sheets": [
+            "5.5_(3)",
+            "5.5_(4)",
+            "5.6.1_(1)",
+            "5.6.1_(2)"
+          ],
+          "render_ms": 276,
+          "persist_ms": 34,
+          "total_ms": 310,
+          "amortized_ms_per_image": 77.5
+        },
+        {
+          "batch_index": 36,
+          "capture_count": 4,
+          "sheets": [
+            "5.6.1_(3)",
+            "5.6.2_(1)",
+            "5.6.2_(2)",
+            "5.6.2_(3)"
+          ],
+          "render_ms": 348,
+          "persist_ms": 25.3,
+          "total_ms": 373.3,
+          "amortized_ms_per_image": 93.325
+        },
+        {
+          "batch_index": 37,
+          "capture_count": 4,
+          "sheets": [
+            "5.6.3_(1)",
+            "5.6.3_(2)",
+            "5.6.3_(3)",
+            "5.6.4_(1)"
+          ],
+          "render_ms": 327.8,
+          "persist_ms": 27,
+          "total_ms": 354.8,
+          "amortized_ms_per_image": 88.7
+        },
+        {
+          "batch_index": 38,
+          "capture_count": 4,
+          "sheets": [
+            "5.6.4_(2)",
+            "5.6.4_(3)",
+            "5.7_(1)",
+            "5.7_(2)"
+          ],
+          "render_ms": 308.3,
+          "persist_ms": 28.6,
+          "total_ms": 336.9,
+          "amortized_ms_per_image": 84.225
+        },
+        {
+          "batch_index": 39,
+          "capture_count": 4,
+          "sheets": [
+            "5.7_(3)",
+            "5.7_(4)",
+            "5.7_(5)",
+            "6.1_(1)"
+          ],
+          "render_ms": 333.6,
+          "persist_ms": 28,
+          "total_ms": 361.6,
+          "amortized_ms_per_image": 90.4
+        },
+        {
+          "batch_index": 40,
+          "capture_count": 4,
+          "sheets": [
+            "6.1_(2)",
+            "6.2_(1)",
+            "6.2_(2)",
+            "6.3_(1)"
+          ],
+          "render_ms": 299.2,
+          "persist_ms": 34.9,
+          "total_ms": 334.1,
+          "amortized_ms_per_image": 83.525
+        },
+        {
+          "batch_index": 41,
+          "capture_count": 4,
+          "sheets": [
+            "6.3_(2)",
+            "6.3_(3)",
+            "6.4_(1)",
+            "6.4_(2)"
+          ],
+          "render_ms": 333.9,
+          "persist_ms": 26.7,
+          "total_ms": 360.6,
+          "amortized_ms_per_image": 90.15
+        },
+        {
+          "batch_index": 42,
+          "capture_count": 4,
+          "sheets": [
+            "6.4_(3)",
+            "6.5_(1)",
+            "6.5_(2)",
+            "6.6_Innerhalb"
+          ],
+          "render_ms": 263.9,
+          "persist_ms": 30.6,
+          "total_ms": 294.5,
+          "amortized_ms_per_image": 73.625
+        },
+        {
+          "batch_index": 43,
+          "capture_count": 4,
+          "sheets": [
+            "6.6_Au\u00DFerhalb",
+            "6.6_Inner_u_Au\u00DFerhalb",
+            "6.7_(1)",
+            "6.7_(2)"
+          ],
+          "render_ms": 386.2,
+          "persist_ms": 23.1,
+          "total_ms": 409.3,
+          "amortized_ms_per_image": 102.325
+        },
+        {
+          "batch_index": 44,
+          "capture_count": 4,
+          "sheets": [
+            "7.1_1",
+            "7.1_2",
+            "7.1_3",
+            "Technisch_bedingte_Leerseit"
+          ],
+          "render_ms": 353.8,
+          "persist_ms": 24.7,
+          "total_ms": 378.5,
+          "amortized_ms_per_image": 94.625
+        },
+        {
+          "batch_index": 45,
+          "capture_count": 4,
+          "sheets": [
+            "7.2_(1)",
+            "7.2_(2)",
+            "7.2_(3)",
+            "7.3"
+          ],
+          "render_ms": 321.3,
+          "persist_ms": 30.1,
+          "total_ms": 351.4,
+          "amortized_ms_per_image": 87.85
+        },
+        {
+          "batch_index": 46,
+          "capture_count": 4,
+          "sheets": [
+            "7.4",
+            "7.5 (1)",
+            "7.5 (2)",
+            "7.6"
+          ],
+          "render_ms": 318.7,
+          "persist_ms": 31.2,
+          "total_ms": 349.9,
+          "amortized_ms_per_image": 87.475
+        },
+        {
+          "batch_index": 47,
+          "capture_count": 4,
+          "sheets": [
+            "7.7",
+            "7.8",
+            "8.1",
+            "8.2"
+          ],
+          "render_ms": 300.5,
+          "persist_ms": 29.6,
+          "total_ms": 330.1,
+          "amortized_ms_per_image": 82.525
+        },
+        {
+          "batch_index": 48,
+          "capture_count": 4,
+          "sheets": [
+            "8.3",
+            "8.4",
+            "9.1_(1)",
+            "9.1_(2)"
+          ],
+          "render_ms": 243.5,
+          "persist_ms": 28.9,
+          "total_ms": 272.4,
+          "amortized_ms_per_image": 68.1
+        },
+        {
+          "batch_index": 49,
+          "capture_count": 4,
+          "sheets": [
+            "10.1",
+            "10.2",
+            "10.3",
+            "10.4"
+          ],
+          "render_ms": 392.9,
+          "persist_ms": 28.1,
+          "total_ms": 421,
+          "amortized_ms_per_image": 105.25
+        },
+        {
+          "batch_index": 50,
+          "capture_count": 4,
+          "sheets": [
+            "10.5",
+            "11",
+            "12",
+            "Rechtsgrundlage"
+          ],
+          "render_ms": 334.9,
+          "persist_ms": 32.3,
+          "total_ms": 367.2,
+          "amortized_ms_per_image": 91.8
+        },
+        {
+          "batch_index": 51,
+          "capture_count": 4,
+          "sheets": [
+            "Grundbegriffe_Unfallstatistik",
+            "Beteiligte_Verungl\u00FCckte",
+            "Unfallursachenverzeichnis_1",
+            "Unfallursachenverzeichnis_2"
+          ],
+          "render_ms": 225.1,
+          "persist_ms": 33.6,
+          "total_ms": 258.7,
+          "amortized_ms_per_image": 64.675
+        },
+        {
+          "batch_index": 52,
+          "capture_count": 4,
+          "sheets": [
+            "Unfallursachenverzeichnis_3",
+            "Unfalltyp",
+            "Unfallart",
+            "Verkehrsbeteiligungsart_1"
+          ],
+          "render_ms": 231.1,
+          "persist_ms": 29.3,
+          "total_ms": 260.4,
+          "amortized_ms_per_image": 65.1
+        },
+        {
+          "batch_index": 53,
+          "capture_count": 4,
+          "sheets": [
+            "Verkehrsbeteiligungsart_2",
+            "Unfallkategorien",
+            "Verkehrsunfallanzeige_1",
+            "Verkehrsunfallanzeige_2"
+          ],
+          "render_ms": 303.1,
+          "persist_ms": 33.5,
+          "total_ms": 336.6,
+          "amortized_ms_per_image": 84.15
+        },
+        {
+          "batch_index": 54,
+          "capture_count": 3,
+          "sheets": [
+            "Verkehrsunfallanzeige_3",
+            "Verkehrsunfallanzeige_4",
+            "Stichwortverzeichnis"
+          ],
+          "render_ms": 234.7,
+          "persist_ms": 28.1,
+          "total_ms": 262.8,
+          "amortized_ms_per_image": 87.6
+        }
+      ],
+      "captures": [
+        {
+          "id": "c00001",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Vorblatt",
+          "address": "A1:R61",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00001.png",
+          "png_bytes": 37670,
+          "png_width": 783,
+          "png_height": 1207,
+          "sha256": "562246e0a5daf1f4f5135bbe588d9e4eae7771fdb9c422469d2516c2ef5d2259"
+        },
+        {
+          "id": "c00002",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Inhalt",
+          "address": "A1:S167",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00002.png",
+          "png_bytes": 211645,
+          "png_width": 687,
+          "png_height": 2493,
+          "sha256": "5bb6f74d370361d90e7943b4e62a1438bdbaf564b3b30b29c8700ab0e60b005d"
+        },
+        {
+          "id": "c00003",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "1.1",
+          "address": "A1:AK93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00003.png",
+          "png_bytes": 132838,
+          "png_width": 2306,
+          "png_height": 1251,
+          "sha256": "424f071cc109dee8d4e3081b28f2489bc54eb0a8951be1b1e9e9b952be84f65f"
+        },
+        {
+          "id": "c00004",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "1.2",
+          "address": "A1:AK95",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00004.png",
+          "png_bytes": 138054,
+          "png_width": 2262,
+          "png_height": 1270,
+          "sha256": "02f2b1d7f95ad5d8616dc3038fa50aa36c2ed8b7ab88d1c6002280ccde7a1b8b"
+        },
+        {
+          "id": "c00005",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "1.3",
+          "address": "A1:AK95",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00005.png",
+          "png_bytes": 123000,
+          "png_width": 2241,
+          "png_height": 1260,
+          "sha256": "c61eeceaeb8a930e5a8ef5293beb7025393290ab68860701e8211b979a7da4bf"
+        },
+        {
+          "id": "c00006",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "1.4",
+          "address": "A1:AK96",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00006.png",
+          "png_bytes": 128408,
+          "png_width": 2220,
+          "png_height": 1208,
+          "sha256": "6548e571ef08263128c8fe8e6f388fb89a2d3f8f61c4c5284e30f7734cefb9e4"
+        },
+        {
+          "id": "c00007",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "2_(1)",
+          "address": "A1:V100",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00007.png",
+          "png_bytes": 57615,
+          "png_width": 665,
+          "png_height": 1164,
+          "sha256": "a28a8a7e614ca71a8b2eac8123bcb1752c30d8afb1f3e193eada298f014ae75e"
+        },
+        {
+          "id": "c00008",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "2_(2)",
+          "address": "A1:V104",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00008.png",
+          "png_bytes": 58048,
+          "png_width": 665,
+          "png_height": 1187,
+          "sha256": "0185425afb99a3643430632aa5858879e425d14013d48b66b78e08ac2bfae58b"
+        },
+        {
+          "id": "c00009",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "2_(3)",
+          "address": "A1:V80",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00009.png",
+          "png_bytes": 64093,
+          "png_width": 668,
+          "png_height": 1057,
+          "sha256": "b6db1b6f3a9d4e97967f0ea36e3259fad089ab032d6fcb92c3ddb27d865e0521"
+        },
+        {
+          "id": "c00010",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "2_(4)",
+          "address": "A1:V93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00010.png",
+          "png_bytes": 70782,
+          "png_width": 677,
+          "png_height": 1094,
+          "sha256": "c2cbb12e9472ed42762488801a8b12bf5ea028ff49558128b5402180a1b54cf2"
+        },
+        {
+          "id": "c00011",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.1_(1)",
+          "address": "A1:T106",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00011.png",
+          "png_bytes": 61931,
+          "png_width": 676,
+          "png_height": 1099,
+          "sha256": "fb106663479a96122b630acf87d9684dbbfe1ff121ce2da36f29ea37b518e5f4"
+        },
+        {
+          "id": "c00012",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.1_(2)",
+          "address": "A1:T76",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00012.png",
+          "png_bytes": 55012,
+          "png_width": 679,
+          "png_height": 1112,
+          "sha256": "f86e9bcfb4a03076b3655a99709ffef3305ac2769f5ee942267d3dc454a48cbd"
+        },
+        {
+          "id": "c00013",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.1_(3)",
+          "address": "A1:T77",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00013.png",
+          "png_bytes": 53991,
+          "png_width": 681,
+          "png_height": 1117,
+          "sha256": "b1361517ab408c34d44874694cc9eebe0eb2286b6fcdbc4aab277b1b65dd4e8c"
+        },
+        {
+          "id": "c00014",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.1_(4)",
+          "address": "A1:T83",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00014.png",
+          "png_bytes": 49588,
+          "png_width": 676,
+          "png_height": 1180,
+          "sha256": "55fbcf01e62aa4c53a6b93f7b1156ba2244d6764abf5fe79648bb7444ca83ca9"
+        },
+        {
+          "id": "c00015",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.1_(5)",
+          "address": "A1:T81",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00015.png",
+          "png_bytes": 52244,
+          "png_width": 680,
+          "png_height": 1181,
+          "sha256": "78525ce51c1b24177443577b622024efa0fb27669736f0c247c4de0ebc57dce0"
+        },
+        {
+          "id": "c00016",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.1_(6)",
+          "address": "A1:S93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00016.png",
+          "png_bytes": 56763,
+          "png_width": 668,
+          "png_height": 1084,
+          "sha256": "a7fd32f1dddcf5111cf9f2a9f350a36e9d4ffb4f0315f0419a02669981cd3d2d"
+        },
+        {
+          "id": "c00017",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.1_(7)",
+          "address": "A1:S96",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00017.png",
+          "png_bytes": 57775,
+          "png_width": 668,
+          "png_height": 1121,
+          "sha256": "1f3d3a89dc2dc290c75628e0b578645dadfe6e8ee8fb632058fceb4e2567e086"
+        },
+        {
+          "id": "c00018",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.1_(8)",
+          "address": "A1:S111",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00018.png",
+          "png_bytes": 59123,
+          "png_width": 668,
+          "png_height": 1259,
+          "sha256": "ac04397d08749786386dde845121ebf952f43de67ca59e376ff8d6fc6a089fc3"
+        },
+        {
+          "id": "c00019",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.1_(9)",
+          "address": "A1:S106",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00019.png",
+          "png_bytes": 59831,
+          "png_width": 668,
+          "png_height": 1246,
+          "sha256": "4788c829a2602ce347fa9b648d9a925a837394334726241a34ea6b9bb1df1832"
+        },
+        {
+          "id": "c00020",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Technisch bedingte Leerseite ",
+          "address": "A1:Q58",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00020.png",
+          "png_bytes": 15015,
+          "png_width": 561,
+          "png_height": 991,
+          "sha256": "1025403459f786c037a3c76ff82527a679afa38a1c9990c6c0ea9dd577e1e956"
+        },
+        {
+          "id": "c00021",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3_2_(1)",
+          "address": "A1:T112",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00021.png",
+          "png_bytes": 129575,
+          "png_width": 1265,
+          "png_height": 1261,
+          "sha256": "65391c7eb3cf92964927459dd785a9eb3564ad916fdb98e9dbaa712a4cd0e232"
+        },
+        {
+          "id": "c00022",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3_2_(2) ",
+          "address": "A1:AD115",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00022.png",
+          "png_bytes": 107198,
+          "png_width": 1451,
+          "png_height": 1318,
+          "sha256": "462030e3f567444c9cb089bb37706cdd2b1578862f58323f919b085f04106945"
+        },
+        {
+          "id": "c00023",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(3)",
+          "address": "A1:AD99",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00023.png",
+          "png_bytes": 82041,
+          "png_width": 1375,
+          "png_height": 1155,
+          "sha256": "1f2af437d52e95da719e87a7e1142d1f50fc2b779767e9a08a79d8f95bd5cf67"
+        },
+        {
+          "id": "c00024",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(4)",
+          "address": "A1:AD109",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00024.png",
+          "png_bytes": 114732,
+          "png_width": 1375,
+          "png_height": 1230,
+          "sha256": "8f27f41972b89fa67e75e198fb7234e19b8567f0eaf7c5a91e5fd3f723faa2a5"
+        },
+        {
+          "id": "c00025",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(5)",
+          "address": "A1:AD113",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00025.png",
+          "png_bytes": 133153,
+          "png_width": 1451,
+          "png_height": 1304,
+          "sha256": "a1fe1b3edb79e03cd4cd36b72efbc7a3f814061197dd71e24f4ada8fdeb5811e"
+        },
+        {
+          "id": "c00026",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(6)",
+          "address": "A1:AD120",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00026.png",
+          "png_bytes": 120196,
+          "png_width": 1451,
+          "png_height": 1359,
+          "sha256": "cbe8d01a5090b4aa71f610b2bfdd7e1c5647b9dfb3269b422cf8ea4ffa1e8639"
+        },
+        {
+          "id": "c00027",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(7)",
+          "address": "A1:AD117",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00027.png",
+          "png_bytes": 121240,
+          "png_width": 1451,
+          "png_height": 1316,
+          "sha256": "f79d72c1118fc15567014048cccbbe4dbf1bed64f94f7bb92a2d3073fcfaed42"
+        },
+        {
+          "id": "c00028",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(8)",
+          "address": "A1:JD115",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00028.png",
+          "png_bytes": 112787,
+          "png_width": 1375,
+          "png_height": 1165,
+          "sha256": "0ab98dbf8c81020c0807a86b3ced8022ddfe0bc88ff7e2cc79a904c85f2c11a3"
+        },
+        {
+          "id": "c00029",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(9)",
+          "address": "A1:JD106",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00029.png",
+          "png_bytes": 87414,
+          "png_width": 1415,
+          "png_height": 1236,
+          "sha256": "3ea8d6307d167e5b7f6d6293e3b68b54f0b56c5e7c842632bc69c9774fadf8ea"
+        },
+        {
+          "id": "c00030",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(10)",
+          "address": "A1:JD104",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00030.png",
+          "png_bytes": 75776,
+          "png_width": 1375,
+          "png_height": 1186,
+          "sha256": "2828f63ca3f04aa340979e5d9125c7594ae6661c3e3521b6ee1cf9a8230055d4"
+        },
+        {
+          "id": "c00031",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(11)",
+          "address": "A1:AD114",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00031.png",
+          "png_bytes": 97019,
+          "png_width": 1375,
+          "png_height": 1234,
+          "sha256": "d555b84d5a2124755c60b7c78b8e85cfb74379287cee9322329ec01d192cd6c8"
+        },
+        {
+          "id": "c00032",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(12)",
+          "address": "A1:AD114",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00032.png",
+          "png_bytes": 107211,
+          "png_width": 1411,
+          "png_height": 1308,
+          "sha256": "e10d9544937fb7474f46cf6cd4be51bb05fbff9a67bc12cb80a1c30a72ed14c1"
+        },
+        {
+          "id": "c00033",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.2_(13)",
+          "address": "A1:AD114",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00033.png",
+          "png_bytes": 98242,
+          "png_width": 1375,
+          "png_height": 1302,
+          "sha256": "4ce0021ebd4fecc233d82e005fcead6abc2b953a384b67ee58349cee36086bcd"
+        },
+        {
+          "id": "c00034",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3_2_(14)",
+          "address": "A1:AD116",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00034.png",
+          "png_bytes": 96157,
+          "png_width": 1375,
+          "png_height": 1305,
+          "sha256": "5719268e9f46edfea656823cba536c731c7c960e2b8e042d7508c63cbdd4d431"
+        },
+        {
+          "id": "c00035",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.3_(1)",
+          "address": "A1:JF88",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00035.png",
+          "png_bytes": 71609,
+          "png_width": 668,
+          "png_height": 1119,
+          "sha256": "aa16b7092fc5e9015c2b5f0970542bc9f80b032b2dcd0356ec5b8af153f26a4c"
+        },
+        {
+          "id": "c00036",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.3_(2)",
+          "address": "A1:X91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00036.png",
+          "png_bytes": 63360,
+          "png_width": 668,
+          "png_height": 1118,
+          "sha256": "89ed1b174a6d63a26394b75702791277de361b2ecd7535a0de15affc5333558f"
+        },
+        {
+          "id": "c00037",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.3_(3)",
+          "address": "A1:X94",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00037.png",
+          "png_bytes": 76939,
+          "png_width": 668,
+          "png_height": 1156,
+          "sha256": "542d0a001698efaf74d6a7d28b384771b052d3a25596911d9c7a9c0015c23131"
+        },
+        {
+          "id": "c00038",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.3_(4)",
+          "address": "A1:X109",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00038.png",
+          "png_bytes": 80907,
+          "png_width": 668,
+          "png_height": 1250,
+          "sha256": "f7f4d5e474e2502ad28103b9d5f66e7a789c36e882592a046523dbba6c43bffe"
+        },
+        {
+          "id": "c00039",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.3_(5)",
+          "address": "A1:X100",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00039.png",
+          "png_bytes": 57567,
+          "png_width": 668,
+          "png_height": 1228,
+          "sha256": "343a14196ccce1837af4b888feb7a1ae1e7a4f75151a2b763fea8a8443187215"
+        },
+        {
+          "id": "c00040",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.3_(6)",
+          "address": "A1:X96",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00040.png",
+          "png_bytes": 68672,
+          "png_width": 668,
+          "png_height": 1205,
+          "sha256": "86630e820199ca5da07e8bd6f80392f969d09631b886734c25b71bf484f11b2c"
+        },
+        {
+          "id": "c00041",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.4_(1)",
+          "address": "A1:S98",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00041.png",
+          "png_bytes": 60219,
+          "png_width": 678,
+          "png_height": 1184,
+          "sha256": "08bfa6b3145904f6fcc713f8b0b003fab6fbe9f56d79b5c24239b5db4c007034"
+        },
+        {
+          "id": "c00042",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.4_(2)",
+          "address": "A1:S98",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00042.png",
+          "png_bytes": 51713,
+          "png_width": 678,
+          "png_height": 1184,
+          "sha256": "cd55deb21ce7d17025c44170c0c0417915ae577a4a7fceecd1557b8c18d00599"
+        },
+        {
+          "id": "c00043",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.4_(3)",
+          "address": "A1:JF101",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00043.png",
+          "png_bytes": 58262,
+          "png_width": 676,
+          "png_height": 1237,
+          "sha256": "21fa647e239362a707e79cf4ee30b3e6b3944248f2fbf8e140228a9c7698d837"
+        },
+        {
+          "id": "c00044",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.5_(1)",
+          "address": "A1:U89",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00044.png",
+          "png_bytes": 53819,
+          "png_width": 696,
+          "png_height": 1217,
+          "sha256": "5d143b18eca3a240ba7dfa8463d77fb59aa8362e2bcea30913820c8e2ec0e139"
+        },
+        {
+          "id": "c00045",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.5_(2)",
+          "address": "A1:U88",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00045.png",
+          "png_bytes": 44689,
+          "png_width": 694,
+          "png_height": 1144,
+          "sha256": "466a4e605ec497edd0156357e4d34d339a342f61f6a140a2246a38974353ee3c"
+        },
+        {
+          "id": "c00046",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.6_(1)",
+          "address": "A1:K86",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00046.png",
+          "png_bytes": 55606,
+          "png_width": 687,
+          "png_height": 1198,
+          "sha256": "0e0df3a2e02a41006f0e64490d4cc93c3d5fe7ec70318b227daf82450107926a"
+        },
+        {
+          "id": "c00047",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.6_(2)",
+          "address": "A1:K90",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00047.png",
+          "png_bytes": 47049,
+          "png_width": 687,
+          "png_height": 1223,
+          "sha256": "233476bbbf0fc7ceafdbfd4eda4d31bcbe1c2b8867ae66c584f4dbeaf967aa93"
+        },
+        {
+          "id": "c00048",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.7_(1)",
+          "address": "A1:T79",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00048.png",
+          "png_bytes": 52436,
+          "png_width": 637,
+          "png_height": 1089,
+          "sha256": "6cefaa8c886ac638c016975f54303fdb8c7ce7b8dfe5f19830189411ec1d79ab"
+        },
+        {
+          "id": "c00049",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.7 (2)",
+          "address": "A1:T80",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00049.png",
+          "png_bytes": 50870,
+          "png_width": 635,
+          "png_height": 1088,
+          "sha256": "e53da6dcb4bb251a02714bb281fddded8be9fc3556a9ba2aca1b86cde6afba55"
+        },
+        {
+          "id": "c00050",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Technisch_bedingte Leerseite ",
+          "address": "A1:Q58",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00050.png",
+          "png_bytes": 14992,
+          "png_width": 561,
+          "png_height": 991,
+          "sha256": "787691265f9bdec18e30c8c4e68e12a55ee3ee61198367ac3b98659594ec3b8a"
+        },
+        {
+          "id": "c00051",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.8_(1)",
+          "address": "A1:S108",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00051.png",
+          "png_bytes": 92732,
+          "png_width": 1358,
+          "png_height": 1327,
+          "sha256": "579a575d731c40ba3e7c237be83dd99e4cdad7a4bf24d3ed04fa68aa74d51594"
+        },
+        {
+          "id": "c00052",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.8_(2)",
+          "address": "A1:AC87",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00052.png",
+          "png_bytes": 77272,
+          "png_width": 1344,
+          "png_height": 1220,
+          "sha256": "11e94538e28fbabb5c01f47d63db785afd9dbacf06338306cf37765415433f00"
+        },
+        {
+          "id": "c00053",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.9.1_(1)",
+          "address": "A1:AB110",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00053.png",
+          "png_bytes": 88413,
+          "png_width": 1358,
+          "png_height": 1119,
+          "sha256": "ce73cec43c4bf6b912b81a8d0b242ad7cff461d61c46a21024de7dbc89653293"
+        },
+        {
+          "id": "c00054",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.9.1 (2)",
+          "address": "A1:AB125",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00054.png",
+          "png_bytes": 78496,
+          "png_width": 1358,
+          "png_height": 1166,
+          "sha256": "c2706c7403544299d1f197a6061556e85b7dd55fe4d89428e4833f6c76f925a2"
+        },
+        {
+          "id": "c00055",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.9.2_(1)",
+          "address": "A1:JD109",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00055.png",
+          "png_bytes": 68955,
+          "png_width": 1358,
+          "png_height": 1105,
+          "sha256": "ec03068ea575d557e2a20fa5a9aef3b5341204b1599697d1ef771edbdf31de2a"
+        },
+        {
+          "id": "c00056",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.9.2_(2)",
+          "address": "A1:AB89",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00056.png",
+          "png_bytes": 65776,
+          "png_width": 1358,
+          "png_height": 1156,
+          "sha256": "8e5a4360eaab79df760e417fcf9977fe1cd8478b48dfffd5797cbfbb32d9938e"
+        },
+        {
+          "id": "c00057",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.9.3_(1)",
+          "address": "A1:AC109",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00057.png",
+          "png_bytes": 81240,
+          "png_width": 1358,
+          "png_height": 1110,
+          "sha256": "6c86aba8b4458a49cb86dd31f65848682c35aac82e0dca294b27bc1c21582fe5"
+        },
+        {
+          "id": "c00058",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.9.3_(2)",
+          "address": "A1:AC93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00058.png",
+          "png_bytes": 73683,
+          "png_width": 1358,
+          "png_height": 1164,
+          "sha256": "116968beca5929e6c761acedb235952d42500af5ff7ae30bb1d701a9d22be8ff"
+        },
+        {
+          "id": "c00059",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.9.4_(1)",
+          "address": "A1:AB109",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00059.png",
+          "png_bytes": 84866,
+          "png_width": 1358,
+          "png_height": 1107,
+          "sha256": "58f70e153b1f82bfc67c7699d5b297a1b068bc2580b06954c77b2b94a5244e16"
+        },
+        {
+          "id": "c00060",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.9.4_(2)",
+          "address": "A1:AB91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00060.png",
+          "png_bytes": 75494,
+          "png_width": 1358,
+          "png_height": 1151,
+          "sha256": "261a74e4af723707c7f89c0e195fb5329492102b3f12cfe872dbc3584c889205"
+        },
+        {
+          "id": "c00061",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.10_(1)",
+          "address": "A1:T87",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00061.png",
+          "png_bytes": 49652,
+          "png_width": 638,
+          "png_height": 1124,
+          "sha256": "1277b51cb978a1f31ce3fe26a313386c387426da8fa2e4e14a3544d29dcf268c"
+        },
+        {
+          "id": "c00062",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.10_(2)",
+          "address": "A1:T92",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00062.png",
+          "png_bytes": 38270,
+          "png_width": 638,
+          "png_height": 1135,
+          "sha256": "23bc5a17e2271b9fc0b96564bdef61786b653acc49c9eddc20a73ff47a32e0aa"
+        },
+        {
+          "id": "c00063",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.11",
+          "address": "A1:T109",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00063.png",
+          "png_bytes": 69915,
+          "png_width": 626,
+          "png_height": 1193,
+          "sha256": "96eec7a9c146640990286c844ae08279864c54193b6695e3ec17d8491a1d0470"
+        },
+        {
+          "id": "c00064",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.12 _3.13 ",
+          "address": "A1:J101",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00064.png",
+          "png_bytes": 53885,
+          "png_width": 618,
+          "png_height": 1149,
+          "sha256": "f9cb49448aa329311099ede650f47aff4d80601e3a546025a740c0dc0f98e335"
+        },
+        {
+          "id": "c00065",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.14_(1)",
+          "address": "A1:T77",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00065.png",
+          "png_bytes": 51546,
+          "png_width": 616,
+          "png_height": 1076,
+          "sha256": "78077fcb65b492da234678d00531c6a7d986a829173a5e3fc55fba0d96ba2ca6"
+        },
+        {
+          "id": "c00066",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.14_(2)",
+          "address": "A1:T81",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00066.png",
+          "png_bytes": 51468,
+          "png_width": 616,
+          "png_height": 1069,
+          "sha256": "b988d70c62116996dcffd81aeb1579b129c70318834a457ae3706404d7e58465"
+        },
+        {
+          "id": "c00067",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.14_(3)",
+          "address": "A1:T75",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00067.png",
+          "png_bytes": 48637,
+          "png_width": 616,
+          "png_height": 1055,
+          "sha256": "ab7e7b5146d4a3d5a2d70175c4306a650f663969475a41b9b3826f1e68b75891"
+        },
+        {
+          "id": "c00068",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "3.14_(4)",
+          "address": "A1:T81",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00068.png",
+          "png_bytes": 49169,
+          "png_width": 616,
+          "png_height": 1074,
+          "sha256": "f890e3fd11c98d842883958a7ee25c059c6ab8fbc43c684b5162382fdb10b46b"
+        },
+        {
+          "id": "c00069",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.1_(1)",
+          "address": "A1:M93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00069.png",
+          "png_bytes": 65103,
+          "png_width": 668,
+          "png_height": 1189,
+          "sha256": "859461b7ba0da4f82bd48cb8b85aba8320c6b79a9491f1fdff70a905e4f4ec24"
+        },
+        {
+          "id": "c00070",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4_1_(2)",
+          "address": "A1:M87",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00070.png",
+          "png_bytes": 60659,
+          "png_width": 674,
+          "png_height": 1099,
+          "sha256": "aa506a36d22ea9ed050a9537340966b6fd14c0526eeecb0c993b2f296a1f9f63"
+        },
+        {
+          "id": "c00071",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4_1_(3)",
+          "address": "A1:M85",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00071.png",
+          "png_bytes": 65815,
+          "png_width": 690,
+          "png_height": 1119,
+          "sha256": "7f161a225f9cb98bd62d26c034ac840dd672150d3c294b05e4f167f88ce12284"
+        },
+        {
+          "id": "c00072",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4_2_(1)",
+          "address": "A1:W109",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00072.png",
+          "png_bytes": 77472,
+          "png_width": 689,
+          "png_height": 1318,
+          "sha256": "92670fd50ddca1b7a2c64810f21b16694df34f637995beadc751f8a93559bdbb"
+        },
+        {
+          "id": "c00073",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4_2_(2)",
+          "address": "A1:W87",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00073.png",
+          "png_bytes": 58249,
+          "png_width": 653,
+          "png_height": 1156,
+          "sha256": "645ff91a050855d5a1d76467e0ccb638c7273c26b65de7cf4d9480a70b865987"
+        },
+        {
+          "id": "c00074",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4_3_(1)",
+          "address": "A1:JF111",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00074.png",
+          "png_bytes": 80717,
+          "png_width": 642,
+          "png_height": 1308,
+          "sha256": "fc5cf6dd6faf8d5763264ea785ccd0a8fef258b31ec9d93b399ddbd3f45c106e"
+        },
+        {
+          "id": "c00075",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4_3_(2)",
+          "address": "A1:JF93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00075.png",
+          "png_bytes": 58384,
+          "png_width": 638,
+          "png_height": 1171,
+          "sha256": "6f81d7ae6180452f487605b8644e57bbbebc203c86855d466c04f58917aa7b2e"
+        },
+        {
+          "id": "c00076",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.4_(1)",
+          "address": "A1:U91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00076.png",
+          "png_bytes": 56070,
+          "png_width": 672,
+          "png_height": 1159,
+          "sha256": "61e032c1570b0a7cce8c6dd223758c53c82c49391e629545685aaff095139eda"
+        },
+        {
+          "id": "c00077",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.4_(2)",
+          "address": "A1:U94",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00077.png",
+          "png_bytes": 54665,
+          "png_width": 672,
+          "png_height": 1189,
+          "sha256": "efe563b6fe2336641a098c2ddb0b4867914009df262c5a32b8fb78f9fd0287fc"
+        },
+        {
+          "id": "c00078",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.4_(3)",
+          "address": "A1:U84",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00078.png",
+          "png_bytes": 58677,
+          "png_width": 672,
+          "png_height": 1171,
+          "sha256": "7a04470564c30d9afc08f5d4a9f0d4c805fb77447962f9258c55bb71e5a7785d"
+        },
+        {
+          "id": "c00079",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.5_(1)",
+          "address": "A1:U92",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00079.png",
+          "png_bytes": 57250,
+          "png_width": 690,
+          "png_height": 1172,
+          "sha256": "886c33305607342e9693add04fb6fe348be1af6687c5d47b2486aabc68ceef83"
+        },
+        {
+          "id": "c00080",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.5_(2)",
+          "address": "A1:U92",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00080.png",
+          "png_bytes": 54481,
+          "png_width": 692,
+          "png_height": 1173,
+          "sha256": "8a37587b147a072643eeed8f25bb09c7eb5f5c562096c405d6e6c78bb14e35b1"
+        },
+        {
+          "id": "c00081",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.5_(3)",
+          "address": "A1:U91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00081.png",
+          "png_bytes": 58181,
+          "png_width": 692,
+          "png_height": 1167,
+          "sha256": "815a2513f68f6a0bea89579a9fa7f03b869ff41d0167a52476361aafee6f58e1"
+        },
+        {
+          "id": "c00082",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.6_(1)",
+          "address": "A1:U79",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00082.png",
+          "png_bytes": 53368,
+          "png_width": 690,
+          "png_height": 1150,
+          "sha256": "7627bfdd8e54d82786f0d35b1f317f10b5de2f38d5a502f735dc094bdc7f530f"
+        },
+        {
+          "id": "c00083",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.6_(2)",
+          "address": "A1:U79",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00083.png",
+          "png_bytes": 51028,
+          "png_width": 690,
+          "png_height": 1155,
+          "sha256": "a44cf1ce722ccfd7ef165f2203d192d4134655af57cdb5cfd0e1cab2ba8fe90f"
+        },
+        {
+          "id": "c00084",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.6_(3)",
+          "address": "A1:U95",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00084.png",
+          "png_bytes": 55758,
+          "png_width": 672,
+          "png_height": 1246,
+          "sha256": "8f37daf0d0af12f08a92bd819b99253c6d09dac8c04a31d6c4ff368d7f99b9b3"
+        },
+        {
+          "id": "c00085",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.6_(4)",
+          "address": "A1:U84",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00085.png",
+          "png_bytes": 53404,
+          "png_width": 672,
+          "png_height": 1225,
+          "sha256": "601bb0aacecad175d3260624a3927b5edbc4312e259057785445ce71fabb19c1"
+        },
+        {
+          "id": "c00086",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.6_(5)",
+          "address": "A1:U84",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00086.png",
+          "png_bytes": 52402,
+          "png_width": 672,
+          "png_height": 1168,
+          "sha256": "077125a3e93e4309052a237702a5b03b7c55d1238c7f755c425e234329ce0c88"
+        },
+        {
+          "id": "c00087",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.6_(6)",
+          "address": "A1:U86",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00087.png",
+          "png_bytes": 52880,
+          "png_width": 672,
+          "png_height": 1180,
+          "sha256": "0c2f7fdee8b22e39e19df44fa12c1f97e7c6569f78d837a4ced86e21d5d82d13"
+        },
+        {
+          "id": "c00088",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.7_(1)",
+          "address": "A1:W91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00088.png",
+          "png_bytes": 67395,
+          "png_width": 652,
+          "png_height": 1146,
+          "sha256": "2cd806cfd86f7cb1272f7f517ed5316f14ab0c56c477739ce3a81ce2c3d2de06"
+        },
+        {
+          "id": "c00089",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.7_(2)",
+          "address": "A1:W94",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00089.png",
+          "png_bytes": 68649,
+          "png_width": 662,
+          "png_height": 1176,
+          "sha256": "337548f66c1e4502374658d5735b8cd694e3e6d3b6455437ab94f904d5661580"
+        },
+        {
+          "id": "c00090",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.8_(1)",
+          "address": "A1:T92",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00090.png",
+          "png_bytes": 41096,
+          "png_width": 679,
+          "png_height": 1157,
+          "sha256": "1ff063621af8d0856975d32f3f3e42fa1a67c0c3841f56a681638ff10eb6cd2b"
+        },
+        {
+          "id": "c00091",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.8_(2)",
+          "address": "A1:T95",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00091.png",
+          "png_bytes": 40390,
+          "png_width": 677,
+          "png_height": 1170,
+          "sha256": "5979de6eb2376fda36415174f2eecc8b1a1dff5aca9b2c0ba1d1e50b602f6c8c"
+        },
+        {
+          "id": "c00092",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.9_(1)",
+          "address": "A1:J111",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00092.png",
+          "png_bytes": 57911,
+          "png_width": 753,
+          "png_height": 1166,
+          "sha256": "3d523de4a1117bc6e1e5b3cf85bb1372494a2a53f89453df797bd92b88be8d79"
+        },
+        {
+          "id": "c00093",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.9_(2)",
+          "address": "A1:J111",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00093.png",
+          "png_bytes": 57476,
+          "png_width": 753,
+          "png_height": 1166,
+          "sha256": "61ddc359bd7ce4c17450ff2227feaba237f1356d7666c7e33599e195334c7133"
+        },
+        {
+          "id": "c00094",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.9_(3)",
+          "address": "A1:J111",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00094.png",
+          "png_bytes": 56195,
+          "png_width": 753,
+          "png_height": 1166,
+          "sha256": "743be1a0b27b928495bd3f9cd21f67577af60f498deb43d5838974c14f8be474"
+        },
+        {
+          "id": "c00095",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.9_(4)",
+          "address": "A1:I111",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00095.png",
+          "png_bytes": 54791,
+          "png_width": 765,
+          "png_height": 1166,
+          "sha256": "0a8b5864daf3bcc065db2d796213912a77ee9b9e4f467fbb87773f1e577b1ef4"
+        },
+        {
+          "id": "c00096",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.10.1 ",
+          "address": "A1:M94",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00096.png",
+          "png_bytes": 58764,
+          "png_width": 667,
+          "png_height": 1106,
+          "sha256": "f0d9d4d5840e9a16b7edc3139bc383799bb6859cd2ac5de7982d9e8cd4610e10"
+        },
+        {
+          "id": "c00097",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.10.2 ",
+          "address": "A1:M90",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00097.png",
+          "png_bytes": 56691,
+          "png_width": 667,
+          "png_height": 1067,
+          "sha256": "44816d2c34263963d0d61b42c067eeb6d5957908907e93a67d120fc52d85cc3a"
+        },
+        {
+          "id": "c00098",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.10.3",
+          "address": "A1:W93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00098.png",
+          "png_bytes": 61547,
+          "png_width": 669,
+          "png_height": 1103,
+          "sha256": "5715140301aff59d0517d43d33b03da2494ad98734a862152b9e0907aa21ba50"
+        },
+        {
+          "id": "c00099",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.10.4",
+          "address": "A1:W92",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00099.png",
+          "png_bytes": 57310,
+          "png_width": 669,
+          "png_height": 1120,
+          "sha256": "604dd715decd13643e06934914635768494a510b29bb27a110ab14a041736368"
+        },
+        {
+          "id": "c00100",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.11.1",
+          "address": "A1:W92",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00100.png",
+          "png_bytes": 59347,
+          "png_width": 671,
+          "png_height": 1130,
+          "sha256": "f5f72a71c30843b4dca7f1f19d3e9af9dcfbc0086086348a29c61cbf9a9b65c5"
+        },
+        {
+          "id": "c00101",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.11.2",
+          "address": "A1:W91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00101.png",
+          "png_bytes": 57158,
+          "png_width": 671,
+          "png_height": 1149,
+          "sha256": "f923d36628952e7e0dfeadd5f4651fa07edcd03cee8caf70f4d9d1e17cfb306e"
+        },
+        {
+          "id": "c00102",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.11.3",
+          "address": "A1:W92",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00102.png",
+          "png_bytes": 62843,
+          "png_width": 666,
+          "png_height": 1102,
+          "sha256": "aba18d3bf142fe638d00defebb6d4b30226bedfd446a3dbe3e989c490ae33781"
+        },
+        {
+          "id": "c00103",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "4.11.4",
+          "address": "A1:W91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00103.png",
+          "png_bytes": 58250,
+          "png_width": 666,
+          "png_height": 1096,
+          "sha256": "3d715d9fd03eed3a7d1a6b24114ccc7afc7982f0a8b732bcc3b28a166a63057f"
+        },
+        {
+          "id": "c00104",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.1_(1)",
+          "address": "A1:X78",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00104.png",
+          "png_bytes": 62378,
+          "png_width": 733,
+          "png_height": 1172,
+          "sha256": "5f4fa037c228f3c37ac13b9afa973eb95e0f6a22c954231585c32e515fa31645"
+        },
+        {
+          "id": "c00105",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.1_(2)",
+          "address": "A1:X76",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00105.png",
+          "png_bytes": 59826,
+          "png_width": 733,
+          "png_height": 1141,
+          "sha256": "1e2040d108afb68c5fa8a2fee278f1f2abdca302545b1c7de5961a1b645be069"
+        },
+        {
+          "id": "c00106",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.1_(3)",
+          "address": "A1:X76",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00106.png",
+          "png_bytes": 62090,
+          "png_width": 750,
+          "png_height": 1135,
+          "sha256": "2d08cb84c4d8f413df40079dcde973561dee4c754d8e4d505d295eb1e275eef9"
+        },
+        {
+          "id": "c00107",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.2_(1)",
+          "address": "A1:X76",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00107.png",
+          "png_bytes": 50524,
+          "png_width": 692,
+          "png_height": 1135,
+          "sha256": "3fc743656fe5f4e47255aa2c3c899e5339281a7a270cebc327799fce45956e49"
+        },
+        {
+          "id": "c00108",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.2_(2)",
+          "address": "A1:X76",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00108.png",
+          "png_bytes": 52013,
+          "png_width": 697,
+          "png_height": 1135,
+          "sha256": "2a2345f68197e3de0534462d0733d7099b4eda02e0570634914f497734bf547a"
+        },
+        {
+          "id": "c00109",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.2_(3)",
+          "address": "A1:X76",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00109.png",
+          "png_bytes": 53390,
+          "png_width": 686,
+          "png_height": 1135,
+          "sha256": "3022716deea67bb19ff5e1bbab681c0709eb261ec98e3369e3fc5df2003362c7"
+        },
+        {
+          "id": "c00110",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.3_(1)",
+          "address": "A1:X76",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00110.png",
+          "png_bytes": 60277,
+          "png_width": 718,
+          "png_height": 1135,
+          "sha256": "87fa8ecdc1f1168d30f7f089bdf2c9734e112766466ba7c9cf78bf94c6cba89c"
+        },
+        {
+          "id": "c00111",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.3_(2)",
+          "address": "A1:X76",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00111.png",
+          "png_bytes": 58273,
+          "png_width": 718,
+          "png_height": 1135,
+          "sha256": "6ccd6aa991e9a9c2954d3c7465f747a7470ffaa3435cced5356c1578e37a2990"
+        },
+        {
+          "id": "c00112",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.3_(3)",
+          "address": "A1:X76",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00112.png",
+          "png_bytes": 60861,
+          "png_width": 710,
+          "png_height": 1135,
+          "sha256": "7c4e56290facf488a0dae7cf2f1eb4bf08a9489119583052676fa53a7e69c983"
+        },
+        {
+          "id": "c00113",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.4_(1)",
+          "address": "A1:X70",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00113.png",
+          "png_bytes": 50784,
+          "png_width": 718,
+          "png_height": 1183,
+          "sha256": "d542f5791118a47b5e5e45f6d4c0903e65e651e58aaa4dc3c515fcd974c778f3"
+        },
+        {
+          "id": "c00114",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.4_(2)",
+          "address": "A1:X73",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00114.png",
+          "png_bytes": 49377,
+          "png_width": 718,
+          "png_height": 1165,
+          "sha256": "f1b1f44a03cbaeb511c72b203fe0023d896a5712fe61aecd6121065c0c086886"
+        },
+        {
+          "id": "c00115",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.4_(3)",
+          "address": "A1:X62",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00115.png",
+          "png_bytes": 51729,
+          "png_width": 714,
+          "png_height": 1185,
+          "sha256": "a581062d305ac3ef29a64c5ac60e1985408cd29fa39225e6b4b112d368942a94"
+        },
+        {
+          "id": "c00116",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.5_(1)",
+          "address": "A1:X63",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00116.png",
+          "png_bytes": 53004,
+          "png_width": 709,
+          "png_height": 1205,
+          "sha256": "072101684b69f5b098184eaad7aa660a315ec690ce7c9dc4246976738f1eed90"
+        },
+        {
+          "id": "c00117",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.5_(2)",
+          "address": "A1:X63",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00117.png",
+          "png_bytes": 51320,
+          "png_width": 709,
+          "png_height": 1205,
+          "sha256": "a2f1d9f146385e68548f933ca7377192b2a9696242730b67482662b3e413bed4"
+        },
+        {
+          "id": "c00118",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.1.5_(3)",
+          "address": "A1:X64",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00118.png",
+          "png_bytes": 53564,
+          "png_width": 699,
+          "png_height": 1217,
+          "sha256": "e2fd4cbaff787af13c91b6701c8c72b3a98cd50f68fd3a04e68790ffff9cc8a6"
+        },
+        {
+          "id": "c00119",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.2_(1)",
+          "address": "A1:X80",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00119.png",
+          "png_bytes": 56725,
+          "png_width": 667,
+          "png_height": 1195,
+          "sha256": "dc0aefc5edf27b314cb4dbe402bb58692f5b222e9a91cacd57287be7484926fd"
+        },
+        {
+          "id": "c00120",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.2_(2)",
+          "address": "A1:X83",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00120.png",
+          "png_bytes": 45762,
+          "png_width": 667,
+          "png_height": 1228,
+          "sha256": "3318f302cf48918af1bf27a426bc7182a3b1853edc6cb61c97764ac95b532fdb"
+        },
+        {
+          "id": "c00121",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.2_(3)",
+          "address": "A1:X88",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00121.png",
+          "png_bytes": 56360,
+          "png_width": 667,
+          "png_height": 1230,
+          "sha256": "46da930695da1cedf45e0384e5adae355edc4bffd489339f71e8a9f878574ba2"
+        },
+        {
+          "id": "c00122",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.2_(4)",
+          "address": "A1:X85",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00122.png",
+          "png_bytes": 67786,
+          "png_width": 667,
+          "png_height": 1164,
+          "sha256": "344333846e30e160929d11cf532002d0015cc6a695232fed37aac4de7a0eabf0"
+        },
+        {
+          "id": "c00123",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.3.1_(1)",
+          "address": "A1:X88",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00123.png",
+          "png_bytes": 69735,
+          "png_width": 666,
+          "png_height": 1176,
+          "sha256": "9d165d26cd7e983cefe6cfe9edb57c91909c62f89c2ec2a208d8c37c3022e5eb"
+        },
+        {
+          "id": "c00124",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.3.1_(2)",
+          "address": "A1:X98",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00124.png",
+          "png_bytes": 57474,
+          "png_width": 666,
+          "png_height": 1204,
+          "sha256": "d8273a9d054c7c19f6610846df321c482b23077a261393004f02c6b8e7cb7829"
+        },
+        {
+          "id": "c00125",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.3.1_(3)",
+          "address": "A1:X90",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00125.png",
+          "png_bytes": 51661,
+          "png_width": 666,
+          "png_height": 1178,
+          "sha256": "bbdd58e19fc0452dc7d41acaf1784a246fcb4c1db5edec04f7aacce6f93a5a45"
+        },
+        {
+          "id": "c00126",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.3.1_(4)",
+          "address": "A1:X95",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00126.png",
+          "png_bytes": 45602,
+          "png_width": 666,
+          "png_height": 1186,
+          "sha256": "815cd9bdba31380256e61c4578545d756aab23a7aca78a44c398173b7456d53d"
+        },
+        {
+          "id": "c00127",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.3.2_(1)",
+          "address": "A1:M100",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00127.png",
+          "png_bytes": 58070,
+          "png_width": 668,
+          "png_height": 1176,
+          "sha256": "b220e6d640b0161b9284c6c38b546d18079a9608fa93a814ed8c215de32e67e0"
+        },
+        {
+          "id": "c00128",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.3.2_(2)",
+          "address": "A1:M95",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00128.png",
+          "png_bytes": 48421,
+          "png_width": 668,
+          "png_height": 1165,
+          "sha256": "5d0cb5558965bfd004bbeb114ffe20c435b6d9ac3712b9b0e633779f3b1d216a"
+        },
+        {
+          "id": "c00129",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.3.2_(3)",
+          "address": "A1:JF112",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00129.png",
+          "png_bytes": 47370,
+          "png_width": 668,
+          "png_height": 1165,
+          "sha256": "6a74c6e779ff920d03a06645b5514615049f5405e6d2fa1d0b32ad881eccacb8"
+        },
+        {
+          "id": "c00130",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.3.2_(4)",
+          "address": "A1:M95",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00130.png",
+          "png_bytes": 41698,
+          "png_width": 668,
+          "png_height": 1194,
+          "sha256": "0b5c216e59a36a51c2a8ab1260f5625005dc1dd058983b2863472e2197e54bd4"
+        },
+        {
+          "id": "c00131",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.4_(1)",
+          "address": "A1:R98",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00131.png",
+          "png_bytes": 55204,
+          "png_width": 668,
+          "png_height": 1164,
+          "sha256": "d613c20f47dceee38d8d838fb1cb2b981e0f5591377c8f6c07767071df1a400f"
+        },
+        {
+          "id": "c00132",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.4_(2)",
+          "address": "A1:R99",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00132.png",
+          "png_bytes": 44536,
+          "png_width": 668,
+          "png_height": 1220,
+          "sha256": "e8b40fb2f2bd4433493c91108971d6e97e0ad352131fbe4473b37f60d644e73c"
+        },
+        {
+          "id": "c00133",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.4_(3)",
+          "address": "A1:R97",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00133.png",
+          "png_bytes": 55163,
+          "png_width": 668,
+          "png_height": 1166,
+          "sha256": "f0dfc055074eaf6916a84477403ac6324ce24466ade871fd2c0c9b21e078c3d5"
+        },
+        {
+          "id": "c00134",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.4_(4)",
+          "address": "A1:R96",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00134.png",
+          "png_bytes": 50063,
+          "png_width": 668,
+          "png_height": 1158,
+          "sha256": "fb59327bf9563ebcefbda4c4d6e5feabb12f2ca0a8994f87b33ccce2ce30b20b"
+        },
+        {
+          "id": "c00135",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.5_(1)",
+          "address": "A1:R80",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00135.png",
+          "png_bytes": 44188,
+          "png_width": 668,
+          "png_height": 1215,
+          "sha256": "bfd9f79a44231bb961320694e0a188c16280295984f512c797faa949ee49cb67"
+        },
+        {
+          "id": "c00136",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.5_(2)",
+          "address": "A1:R75",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00136.png",
+          "png_bytes": 38681,
+          "png_width": 668,
+          "png_height": 1174,
+          "sha256": "7ce6e3959e7d097c58845122fe9e320a8211fbc9a6b69aa5719dc2bb5c26b815"
+        },
+        {
+          "id": "c00137",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.5_(3)",
+          "address": "A1:R81",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00137.png",
+          "png_bytes": 44121,
+          "png_width": 668,
+          "png_height": 1191,
+          "sha256": "3ac0aaf6981d814b21819c38e11697b26385c7442a41d976f0ff85fe599ce3e8"
+        },
+        {
+          "id": "c00138",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.5_(4)",
+          "address": "A1:R94",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00138.png",
+          "png_bytes": 49001,
+          "png_width": 668,
+          "png_height": 1185,
+          "sha256": "028bb5c1208833e3f2be06817aedbdf5b29c3d5e5864441e23e0659b9426efb6"
+        },
+        {
+          "id": "c00139",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.1_(1)",
+          "address": "A1:X92",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00139.png",
+          "png_bytes": 68575,
+          "png_width": 666,
+          "png_height": 1171,
+          "sha256": "89a1fd569aaad157b32684feaeff72edb3f237fa1efb0c1ded208ca9a12013e3"
+        },
+        {
+          "id": "c00140",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.1_(2)",
+          "address": "A1:X94",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00140.png",
+          "png_bytes": 64668,
+          "png_width": 666,
+          "png_height": 1199,
+          "sha256": "c387f48351ce22aae3f35dd6e17fa5edd936a02bd115f9e7cd9531c03ca7f771"
+        },
+        {
+          "id": "c00141",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.1_(3)",
+          "address": "A1:X87",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00141.png",
+          "png_bytes": 46384,
+          "png_width": 666,
+          "png_height": 1194,
+          "sha256": "c96679932346fdbf048f4a23d422966597766591b683284ed2aad1cd597e0814"
+        },
+        {
+          "id": "c00142",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.2_(1)",
+          "address": "A1:X89",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00142.png",
+          "png_bytes": 51499,
+          "png_width": 666,
+          "png_height": 1178,
+          "sha256": "64ebe27b3b98837091e12b43ee1d5a2ad51bc50313413b36f843f27e26466195"
+        },
+        {
+          "id": "c00143",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.2_(2)",
+          "address": "A1:X90",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00143.png",
+          "png_bytes": 47296,
+          "png_width": 666,
+          "png_height": 1183,
+          "sha256": "1f2118988dde30d5afd2a9490f2e36c2e4bec317adffcbe4599f3910f25ef58d"
+        },
+        {
+          "id": "c00144",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.2_(3)",
+          "address": "A1:X93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00144.png",
+          "png_bytes": 37292,
+          "png_width": 666,
+          "png_height": 1198,
+          "sha256": "ffdea3cfbcb8a8d381de886e54005bdbf965e630e1e947c1c3ef3a86068f6e9e"
+        },
+        {
+          "id": "c00145",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.3_(1)",
+          "address": "A1:X93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00145.png",
+          "png_bytes": 63255,
+          "png_width": 665,
+          "png_height": 1184,
+          "sha256": "40154b8d43a949ab2f531f9b23c3b6369b0364c45ec8e3253d06259951d442bd"
+        },
+        {
+          "id": "c00146",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.3_(2)",
+          "address": "A1:X91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00146.png",
+          "png_bytes": 59167,
+          "png_width": 665,
+          "png_height": 1161,
+          "sha256": "1e071d690133c34d48467d246b634b024078f441aa34816ce91f3a20baf7f20e"
+        },
+        {
+          "id": "c00147",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.3_(3)",
+          "address": "A1:X95",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00147.png",
+          "png_bytes": 43064,
+          "png_width": 665,
+          "png_height": 1201,
+          "sha256": "4b895909b43d676750e47a956e60c0b5474e1cd1b77e068183abfbc922959f5a"
+        },
+        {
+          "id": "c00148",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.4_(1)",
+          "address": "A1:X91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00148.png",
+          "png_bytes": 68065,
+          "png_width": 668,
+          "png_height": 1179,
+          "sha256": "73ff2f81ccb4de9c45a1372141b3974038d4d2a4f27c7ec367e11e67a652a52b"
+        },
+        {
+          "id": "c00149",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.4_(2)",
+          "address": "A1:X93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00149.png",
+          "png_bytes": 64165,
+          "png_width": 668,
+          "png_height": 1184,
+          "sha256": "c6087942482cc85e1bfd33e5d20b09934e226200544ae691929f92b1ffdaa2a6"
+        },
+        {
+          "id": "c00150",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.6.4_(3)",
+          "address": "A1:X87",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00150.png",
+          "png_bytes": 46789,
+          "png_width": 671,
+          "png_height": 1189,
+          "sha256": "c396281b986fee3bf360fd2ccc50ad2fc42778e41f9d6a841adc63210b48f233"
+        },
+        {
+          "id": "c00151",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.7_(1)",
+          "address": "A1:M89",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00151.png",
+          "png_bytes": 47643,
+          "png_width": 684,
+          "png_height": 1214,
+          "sha256": "745740930783962eca6b870a7ea301045ac1b89be933f0f2a9123423aaf1b4e7"
+        },
+        {
+          "id": "c00152",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.7_(2)",
+          "address": "A1:M89",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00152.png",
+          "png_bytes": 41346,
+          "png_width": 684,
+          "png_height": 1218,
+          "sha256": "f18afe859515004c03fd9627750a9bf6f1fb90254445d352564a5c2d18d2209f"
+        },
+        {
+          "id": "c00153",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.7_(3)",
+          "address": "A1:JF91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00153.png",
+          "png_bytes": 47372,
+          "png_width": 682,
+          "png_height": 1223,
+          "sha256": "00e48c897f165a3d7bc01cdd7a7f082fe74b5488ab54bfe37ac8813d8924dc3b"
+        },
+        {
+          "id": "c00154",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.7_(4)",
+          "address": "A1:M91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00154.png",
+          "png_bytes": 45075,
+          "png_width": 682,
+          "png_height": 1218,
+          "sha256": "b51acb672ac256ecc2f1e59cce809f42dbb7605bd750430ed18a0c68f2e50921"
+        },
+        {
+          "id": "c00155",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "5.7_(5)",
+          "address": "A1:JF91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00155.png",
+          "png_bytes": 47276,
+          "png_width": 682,
+          "png_height": 1227,
+          "sha256": "c31668f31988732c4d88e209e4b47544dc0249bcafff5243d33432e5c64f94f6"
+        },
+        {
+          "id": "c00156",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.1_(1)",
+          "address": "A1:U100",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00156.png",
+          "png_bytes": 57932,
+          "png_width": 668,
+          "png_height": 1229,
+          "sha256": "4382e3469cbd033a9e919542258e3259fa0504d71c0e720925d9a8c4ef21cc1e"
+        },
+        {
+          "id": "c00157",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.1_(2)",
+          "address": "A1:U101",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00157.png",
+          "png_bytes": 58109,
+          "png_width": 668,
+          "png_height": 1300,
+          "sha256": "2fd244ff87485696ae68be357f24d438fe0e0982f287d1be21364811a5b1b43c"
+        },
+        {
+          "id": "c00158",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.2_(1)",
+          "address": "A1:S91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00158.png",
+          "png_bytes": 44764,
+          "png_width": 642,
+          "png_height": 1110,
+          "sha256": "ef05d394f2c2a64f3bb0d7552653a4c9f7a85bc70cbdec706dbf900d457d97f1"
+        },
+        {
+          "id": "c00159",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.2_(2)",
+          "address": "A1:S85",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00159.png",
+          "png_bytes": 40069,
+          "png_width": 645,
+          "png_height": 1102,
+          "sha256": "7ce1e593cf02d4561bf1aed2ddea6b8122d0ace017f0a49355d25e16a95a8e9c"
+        },
+        {
+          "id": "c00160",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.3_(1)",
+          "address": "A1:G95",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00160.png",
+          "png_bytes": 37796,
+          "png_width": 668,
+          "png_height": 1140,
+          "sha256": "a4a5f2dec50632fb61e0819d913f9cee43ad9b6f63b01b365cd0335e29eb49af"
+        },
+        {
+          "id": "c00161",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.3_(2)",
+          "address": "A1:G84",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00161.png",
+          "png_bytes": 43046,
+          "png_width": 668,
+          "png_height": 1146,
+          "sha256": "1dc934b5697c9d74c15b4ab6d57ddd57c0fce33f3d9d0e2e0c889e56d43bf949"
+        },
+        {
+          "id": "c00162",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.3_(3)",
+          "address": "A1:Q90",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00162.png",
+          "png_bytes": 41214,
+          "png_width": 668,
+          "png_height": 1145,
+          "sha256": "0f0877408c1b23dbf85f3c005b8db1b1ccaf6b9d03051828a59b828fecb7ce99"
+        },
+        {
+          "id": "c00163",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.4_(1)",
+          "address": "A1:Q91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00163.png",
+          "png_bytes": 34605,
+          "png_width": 610,
+          "png_height": 1122,
+          "sha256": "aff8f12e99fdee5bb76c798a7bff778415203f5f24d8957efa59674e5e1f59a2"
+        },
+        {
+          "id": "c00164",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.4_(2)",
+          "address": "A1:Q83",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00164.png",
+          "png_bytes": 37259,
+          "png_width": 610,
+          "png_height": 1143,
+          "sha256": "6803b1359dfa7b9ceda867306f3cc745200621fb5aba8d4bf91529eeb504a05b"
+        },
+        {
+          "id": "c00165",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.4_(3)",
+          "address": "A1:Q86",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00165.png",
+          "png_bytes": 37739,
+          "png_width": 610,
+          "png_height": 1151,
+          "sha256": "7026adbd8feb606125c07a47dc6e319097481e1fd76d312479ac0ac84de2ef1d"
+        },
+        {
+          "id": "c00166",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.5_(1)",
+          "address": "A1:Q82",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00166.png",
+          "png_bytes": 48603,
+          "png_width": 630,
+          "png_height": 1166,
+          "sha256": "6f28665c8f14814fdc91a77421d78ad280e7c1ebd019548189f457e917dd1d0d"
+        },
+        {
+          "id": "c00167",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.5_(2)",
+          "address": "A1:Q117",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00167.png",
+          "png_bytes": 40622,
+          "png_width": 630,
+          "png_height": 1190,
+          "sha256": "8d2e4fffed2295ee8e512efe051ec13299c72a213330b98cacb301c320be0cf7"
+        },
+        {
+          "id": "c00168",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.6_Innerhalb",
+          "address": "A1:Q72",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00168.png",
+          "png_bytes": 38197,
+          "png_width": 564,
+          "png_height": 1107,
+          "sha256": "c810805eb4fd40e470251e8bf71ebee24a0fef6b84cffbb48a06551d62d6ceac"
+        },
+        {
+          "id": "c00169",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.6_Au\u00DFerhalb",
+          "address": "A1:Q72",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00169.png",
+          "png_bytes": 39767,
+          "png_width": 596,
+          "png_height": 1111,
+          "sha256": "466bcb82426af1d1926ebc158179a4c08fb0f749acca2a4f9d696a18cae8355b"
+        },
+        {
+          "id": "c00170",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.6_Inner_u_Au\u00DFerhalb",
+          "address": "A1:Q77",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00170.png",
+          "png_bytes": 39660,
+          "png_width": 597,
+          "png_height": 1069,
+          "sha256": "e45625b128f042f3fdccd34376055dcf4182c30651f9336f07bf335c90cc890d"
+        },
+        {
+          "id": "c00171",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.7_(1)",
+          "address": "A1:Q87",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00171.png",
+          "png_bytes": 43454,
+          "png_width": 675,
+          "png_height": 1162,
+          "sha256": "40c9182b037eeb86b18d3d1d7a36b291821f36e2a7addb10d58ba847f38c732e"
+        },
+        {
+          "id": "c00172",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "6.7_(2)",
+          "address": "A1:Q82",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00172.png",
+          "png_bytes": 43583,
+          "png_width": 675,
+          "png_height": 1158,
+          "sha256": "89a3905e4863ce942c41770634ec36172f0736d516d136027871fc923b04c71f"
+        },
+        {
+          "id": "c00173",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.1_1",
+          "address": "A1:W101",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00173.png",
+          "png_bytes": 54523,
+          "png_width": 667,
+          "png_height": 1205,
+          "sha256": "7d008948b445082d53417aa60c436b66b733d93481f90e7ac725bee4149ab7a3"
+        },
+        {
+          "id": "c00174",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.1_2",
+          "address": "A1:W102",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00174.png",
+          "png_bytes": 53997,
+          "png_width": 667,
+          "png_height": 1200,
+          "sha256": "4357c08a249418c9fdf93758b7bdc18b48960863f1f0ff2569adcb1cdc6646c6"
+        },
+        {
+          "id": "c00175",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.1_3",
+          "address": "A1:W99",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00175.png",
+          "png_bytes": 53714,
+          "png_width": 667,
+          "png_height": 1216,
+          "sha256": "cc29cb5134e763bcc96d1343b9ea53453b75b441ad47570843ce79af74041304"
+        },
+        {
+          "id": "c00176",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Technisch_bedingte_Leerseit",
+          "address": "A1:R63",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00176.png",
+          "png_bytes": 17865,
+          "png_width": 641,
+          "png_height": 1076,
+          "sha256": "03bdb7023b1cca3de01ef20d648914e24c106aee8630b5e8c987ead1d28062ae"
+        },
+        {
+          "id": "c00177",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.2_(1)",
+          "address": "A1:AD82",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00177.png",
+          "png_bytes": 103203,
+          "png_width": 1276,
+          "png_height": 1159,
+          "sha256": "8c82fa80c720def7acce9ead9ca1a1ffe5a17814788ddd269203af7024335f38"
+        },
+        {
+          "id": "c00178",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.2_(2)",
+          "address": "A1:AD88",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00178.png",
+          "png_bytes": 85234,
+          "png_width": 1276,
+          "png_height": 1150,
+          "sha256": "ae6265fcd7249f23abcf704956c0a2ef41a5557ac27aed8037aec39c9933474d"
+        },
+        {
+          "id": "c00179",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.2_(3)",
+          "address": "A1:AD84",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00179.png",
+          "png_bytes": 86190,
+          "png_width": 1276,
+          "png_height": 1166,
+          "sha256": "945d4aa39f59ffefd33ec73aa1f89aeb1755416cb29eaa84de258411f65250b9"
+        },
+        {
+          "id": "c00180",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.3",
+          "address": "A1:P91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00180.png",
+          "png_bytes": 48216,
+          "png_width": 667,
+          "png_height": 1072,
+          "sha256": "8f1d1ce21ebd1f93167a6dac50942816660cff9207c59592a24826833b529624"
+        },
+        {
+          "id": "c00181",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.4",
+          "address": "A1:U93",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00181.png",
+          "png_bytes": 60227,
+          "png_width": 666,
+          "png_height": 1069,
+          "sha256": "ee8fe29f555fc7422e161ed23d21514ea5cecaeba733ecb817c5823b97b444e1"
+        },
+        {
+          "id": "c00182",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.5 (1)",
+          "address": "A1:U89",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00182.png",
+          "png_bytes": 64341,
+          "png_width": 681,
+          "png_height": 1251,
+          "sha256": "b09b146dbeac5f0b94ee915376157c0457b3590c1f3d6daaeb8ebca19973b083"
+        },
+        {
+          "id": "c00183",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.5 (2)",
+          "address": "A1:U88",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00183.png",
+          "png_bytes": 69508,
+          "png_width": 681,
+          "png_height": 1241,
+          "sha256": "36a5fec8dfcd92f18632e745fe91707e01c4f8d22c139e70a7392e8378db5c3b"
+        },
+        {
+          "id": "c00184",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.6",
+          "address": "A1:W87",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00184.png",
+          "png_bytes": 71848,
+          "png_width": 755,
+          "png_height": 1126,
+          "sha256": "db423dbcbf2a2a3088af7655bab5b550ade183f6daf0048bad8a9567d09e2ecd"
+        },
+        {
+          "id": "c00185",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.7",
+          "address": "A1:W82",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00185.png",
+          "png_bytes": 43471,
+          "png_width": 651,
+          "png_height": 1075,
+          "sha256": "5066c528b1e190682529feca0dffc27c53a1959c5a7fb484a951f1a3263fb040"
+        },
+        {
+          "id": "c00186",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "7.8",
+          "address": "A1:O85",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00186.png",
+          "png_bytes": 73941,
+          "png_width": 634,
+          "png_height": 1124,
+          "sha256": "0590b588cb33d72c582e27d33c51e2f4844cecb12298c4cdab684d605cbccae9"
+        },
+        {
+          "id": "c00187",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "8.1",
+          "address": "A1:S92",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00187.png",
+          "png_bytes": 54141,
+          "png_width": 668,
+          "png_height": 1084,
+          "sha256": "b04c541f859cdcaee132b99697d29775f31e220f7e52e5143496f84052ec6c89"
+        },
+        {
+          "id": "c00188",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "8.2",
+          "address": "A1:S90",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00188.png",
+          "png_bytes": 48748,
+          "png_width": 668,
+          "png_height": 1121,
+          "sha256": "5f8262dd0f0f8cb3edbcad2bb5dbb35876653d0ecd1f3a429ab81b3c627be605"
+        },
+        {
+          "id": "c00189",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "8.3",
+          "address": "A1:AY67",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00189.png",
+          "png_bytes": 40870,
+          "png_width": 665,
+          "png_height": 1086,
+          "sha256": "650259173200196fa856094fc54e3741244738b25fa780539560aba179c45bf4"
+        },
+        {
+          "id": "c00190",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "8.4",
+          "address": "A1:AY59",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00190.png",
+          "png_bytes": 37816,
+          "png_width": 665,
+          "png_height": 1051,
+          "sha256": "fd514c535cf69fff950a45af80c08c7e084d70f5a4ef57f58d2c432d4b5b695b"
+        },
+        {
+          "id": "c00191",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "9.1_(1)",
+          "address": "A1:V90",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00191.png",
+          "png_bytes": 73948,
+          "png_width": 607,
+          "png_height": 1136,
+          "sha256": "2a6eed4fab4ef978cd9ed27ddef331ddc416fb9d90607d5f798618ea83048349"
+        },
+        {
+          "id": "c00192",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "9.1_(2)",
+          "address": "A1:V90",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00192.png",
+          "png_bytes": 70056,
+          "png_width": 607,
+          "png_height": 1151,
+          "sha256": "cf07336f34ada4f76c04a6b9c528d1d3ade40c1882e361e9d2f3c2f845423bcc"
+        },
+        {
+          "id": "c00193",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "10.1",
+          "address": "A1:R90",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00193.png",
+          "png_bytes": 62056,
+          "png_width": 645,
+          "png_height": 1071,
+          "sha256": "879e4fe7b00b6be7c348ea3a28bfc2e4b2795cc3cda9ef25e4afce6b52fc3446"
+        },
+        {
+          "id": "c00194",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "10.2",
+          "address": "A1:R96",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00194.png",
+          "png_bytes": 55076,
+          "png_width": 660,
+          "png_height": 1155,
+          "sha256": "ea56f27b6fd5d2440b7d7977e2804a7de16a3e91d5007a5883f3186c9ee55061"
+        },
+        {
+          "id": "c00195",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "10.3",
+          "address": "A1:R91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00195.png",
+          "png_bytes": 63369,
+          "png_width": 662,
+          "png_height": 1085,
+          "sha256": "2ce91d892bb0b916a66938eaad7b8bddcd9967e81f07274bd21bdabc7175f3d8"
+        },
+        {
+          "id": "c00196",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "10.4",
+          "address": "A1:XFD91",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00196.png",
+          "png_bytes": 61400,
+          "png_width": 656,
+          "png_height": 1090,
+          "sha256": "470aaf32c48daaf1ead2faad544810ddbc89fd08f26b1bb7c0e727190ef796fb"
+        },
+        {
+          "id": "c00197",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "10.5",
+          "address": "A1:XFD60",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00197.png",
+          "png_bytes": 38652,
+          "png_width": 653,
+          "png_height": 827,
+          "sha256": "388582d555712e80a8c6cd6fdeb4496df4c3e565ed54fe3483df7bd07348db3a"
+        },
+        {
+          "id": "c00198",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "11",
+          "address": "A1:I90",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00198.png",
+          "png_bytes": 66462,
+          "png_width": 692,
+          "png_height": 1162,
+          "sha256": "7f15b36333c17b6265216c7c1310b13ec2d34f8b3052ed0598d2290c8eca701a"
+        },
+        {
+          "id": "c00199",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "12",
+          "address": "A1:T104",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00199.png",
+          "png_bytes": 65676,
+          "png_width": 669,
+          "png_height": 1210,
+          "sha256": "0bb3d53e7716dc35a528e4de6362c57d3154bd711c790cb91989412851b6c13d"
+        },
+        {
+          "id": "c00200",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Rechtsgrundlage",
+          "address": "A1:I61",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00200.png",
+          "png_bytes": 74098,
+          "png_width": 731,
+          "png_height": 1188,
+          "sha256": "f100fa46894c1e7c3c6d50e791796715a7fb66db2c352f5896512e6b48415103"
+        },
+        {
+          "id": "c00201",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Grundbegriffe_Unfallstatistik",
+          "address": "A1:K56",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00201.png",
+          "png_bytes": 78727,
+          "png_width": 801,
+          "png_height": 1099,
+          "sha256": "1f9c564f6c125429ab9edbc752aae359061263e0ccf22b04b3bbbe9cd2f7f846"
+        },
+        {
+          "id": "c00202",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Beteiligte_Verungl\u00FCckte",
+          "address": "A1:K58",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00202.png",
+          "png_bytes": 63786,
+          "png_width": 803,
+          "png_height": 1095,
+          "sha256": "5b78cb7d866207054db8c27a7b718ab7807ca8336b64fa9cf26c9afeae409ea2"
+        },
+        {
+          "id": "c00203",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Unfallursachenverzeichnis_1",
+          "address": "A1:M75",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00203.png",
+          "png_bytes": 93928,
+          "png_width": 774,
+          "png_height": 1328,
+          "sha256": "1bf56f8d8f83ca88919442e13dde7e0f0f56d23b7e9b211d6287131a8b0c51b0"
+        },
+        {
+          "id": "c00204",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Unfallursachenverzeichnis_2",
+          "address": "A1:M65",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00204.png",
+          "png_bytes": 59433,
+          "png_width": 774,
+          "png_height": 1222,
+          "sha256": "4e6c25f48750269445aa9881b1b5eb00d785dd159792e735df52b8620d65f492"
+        },
+        {
+          "id": "c00205",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Unfallursachenverzeichnis_3",
+          "address": "A1:L58",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00205.png",
+          "png_bytes": 47373,
+          "png_width": 801,
+          "png_height": 972,
+          "sha256": "fdbb766092ac8e825d174df1e21c29598512d453516e8951053bef6acc8335a8"
+        },
+        {
+          "id": "c00206",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Unfalltyp",
+          "address": "A1:K63",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00206.png",
+          "png_bytes": 82836,
+          "png_width": 801,
+          "png_height": 1176,
+          "sha256": "4d1fb51552d834a19d30a0289a4ba8ccef2e0ef594d806928a38b31dbd099e9f"
+        },
+        {
+          "id": "c00207",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Unfallart",
+          "address": "A1:K63",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00207.png",
+          "png_bytes": 70875,
+          "png_width": 795,
+          "png_height": 1071,
+          "sha256": "93fa6e61c141d4a8c5c6285d90a06b903e431ccb4ede21d7173df60b086aa796"
+        },
+        {
+          "id": "c00208",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Verkehrsbeteiligungsart_1",
+          "address": "A1:L75",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00208.png",
+          "png_bytes": 72722,
+          "png_width": 779,
+          "png_height": 1280,
+          "sha256": "2f51569d760546c578f1ea59e8e5b48f1abfc9aadd4dc28624f80d7f2c630f94"
+        },
+        {
+          "id": "c00209",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Verkehrsbeteiligungsart_2",
+          "address": "A1:L79",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00209.png",
+          "png_bytes": 61480,
+          "png_width": 801,
+          "png_height": 1157,
+          "sha256": "54799b0d6417694d96dd95a119e05ea2a7f518f846bfc038e499658eda42f907"
+        },
+        {
+          "id": "c00210",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Unfallkategorien",
+          "address": "A1:D48",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00210.png",
+          "png_bytes": 62529,
+          "png_width": 820,
+          "png_height": 1151,
+          "sha256": "a368c781aa950de6a5c2a9c2a0287ff8c7b2dc2aef46bd39288d254ee55d1be0"
+        },
+        {
+          "id": "c00211",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Verkehrsunfallanzeige_1",
+          "address": "A1:K65",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00211.png",
+          "png_bytes": 83367,
+          "png_width": 801,
+          "png_height": 1279,
+          "sha256": "19ff214e45f3d98008159420de8d5b067065420cf3746e8f8206ebe44e0b2015"
+        },
+        {
+          "id": "c00212",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Verkehrsunfallanzeige_2",
+          "address": "A1:K67",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00212.png",
+          "png_bytes": 72908,
+          "png_width": 801,
+          "png_height": 1284,
+          "sha256": "2f5107f4db03c92c632f848937819a8f137a4b2b22ab36c840855855e1d976ea"
+        },
+        {
+          "id": "c00213",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Verkehrsunfallanzeige_3",
+          "address": "A1:K60",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00213.png",
+          "png_bytes": 64085,
+          "png_width": 801,
+          "png_height": 1142,
+          "sha256": "09845efedc18096c93bdd9f06f0eaf393c5d4f6d778bcedb6f4c0583043a8470"
+        },
+        {
+          "id": "c00214",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Verkehrsunfallanzeige_4",
+          "address": "A1:K68",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00214.png",
+          "png_bytes": 55096,
+          "png_width": 801,
+          "png_height": 1264,
+          "sha256": "c4c8f1093936f460076b5898cd2c36a14d93af69257714a2390cfd15e637ad2d"
+        },
+        {
+          "id": "c00215",
+          "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+          "sheet": "Stichwortverzeichnis",
+          "address": "A1:V158",
+          "relative_png": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx/c00215.png",
+          "png_bytes": 87185,
+          "png_width": 669,
+          "png_height": 1914,
+          "sha256": "67f5b7e38a5fa66f5f10b3740c76ce242a9e2f7501b65774edf627a240586d9c"
+        }
+      ],
+      "excel_api_requirement_set": "1.11"
+    }
+  }
+}

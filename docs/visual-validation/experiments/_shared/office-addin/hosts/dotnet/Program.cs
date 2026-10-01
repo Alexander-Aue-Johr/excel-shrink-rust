@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -102,9 +103,10 @@ static (int Width, int Height) PngSize(byte[] bytes)
     return (ReadInt(bytes, 16), ReadInt(bytes, 20));
 }
 
-static ProbeResult AnalyzeProbe(JsonObject payload)
+static ProbeResult AnalyzeProbe(JsonObject payload, string imageRoot)
 {
     var workbook = payload["workbook"]!.GetValue<string>();
+    var probeId = payload["probe_id"]?.GetValue<string>() ?? Guid.NewGuid().ToString("N");
     var sheet = payload["sheet"]!.GetValue<string>();
     var axis = payload["axis"]!.GetValue<string>();
     var startIndex = payload["start_index"]!.GetValue<int>();
@@ -126,6 +128,24 @@ static ProbeResult AnalyzeProbe(JsonObject payload)
             + $"{afterImage.Width}x{afterImage.Height}");
     }
 
+    var diagnosticDirectory = Path.Combine(
+        imageRoot,
+        SafeFileName(workbook),
+        "_overflow-probes");
+    Directory.CreateDirectory(diagnosticDirectory);
+
+    var stem = $"{SafeFileName(probeId)}-{SafeFileName(sheet)}-{SafeFileName(axis)}";
+    var beforeFileName = stem + "-before.png";
+    var afterFileName = stem + "-after.png";
+    var xorFileName = stem + "-xor.png";
+    var beforePath = Path.Combine(diagnosticDirectory, beforeFileName);
+    var afterPath = Path.Combine(diagnosticDirectory, afterFileName);
+    var xorPath = Path.Combine(diagnosticDirectory, xorFileName);
+
+    File.WriteAllBytes(beforePath, before);
+    File.WriteAllBytes(afterPath, after);
+
+    using var xorImage = new Image<Rgba32>(beforeImage.Width, beforeImage.Height);
     var rightmost = -1;
     var bottommost = -1;
 
@@ -133,13 +153,25 @@ static ProbeResult AnalyzeProbe(JsonObject payload)
     {
         for (var x = 0; x < beforeImage.Width; x++)
         {
-            if (!beforeImage[x, y].Equals(afterImage[x, y]))
+            var beforePixel = beforeImage[x, y];
+            var afterPixel = afterImage[x, y];
+            var changed = !beforePixel.Equals(afterPixel);
+
+            xorImage[x, y] = new Rgba32(
+                (byte)(beforePixel.R ^ afterPixel.R),
+                (byte)(beforePixel.G ^ afterPixel.G),
+                (byte)(beforePixel.B ^ afterPixel.B),
+                changed ? (byte)255 : (byte)0);
+
+            if (changed)
             {
                 if (x > rightmost) rightmost = x;
                 if (y > bottommost) bottommost = y;
             }
         }
     }
+
+    xorImage.SaveAsPng(xorPath);
 
     var changedPixel = axis == "horizontal" ? rightmost : bottommost;
     var pixelExtent = axis == "horizontal" ? beforeImage.Width : beforeImage.Height;
@@ -160,14 +192,22 @@ static ProbeResult AnalyzeProbe(JsonObject payload)
         }
     }
 
+    string RelativeDiagnostic(string fileName) =>
+        Path.Combine(SafeFileName(workbook), "_overflow-probes", fileName)
+            .Replace('\\', '/');
+
     return new ProbeResult(
         workbook,
+        probeId,
         sheet,
         axis,
         startIndex,
         extentUnits,
         changedPixel,
-        changedPoints);
+        changedPoints,
+        RelativeDiagnostic(beforeFileName),
+        RelativeDiagnostic(afterFileName),
+        RelativeDiagnostic(xorFileName));
 }
 
 async Task WriteOutputAsync()
@@ -371,7 +411,7 @@ app.MapPost("/probe-batch", async (HttpRequest request) =>
 
         if (!probeTasks.TryAdd(
             key,
-            Task.Run(() => AnalyzeProbe((JsonObject)payload.DeepClone()))))
+            Task.Run(() => AnalyzeProbe((JsonObject)payload.DeepClone(), imageRoot))))
         {
             // Multiple Office task panes or a late request from a previous
             // retry can submit the same logical probe. The first accepted
@@ -505,10 +545,14 @@ sealed record EventEntry(
     JsonNode? Detail);
 
 sealed record ProbeResult(
-    string Workbook,
-    string Sheet,
-    string Axis,
-    int StartIndex,
-    int ExtentUnits,
-    int ChangedPixel,
-    double ChangedPoints);
+    [property: JsonPropertyName("workbook")] string Workbook,
+    [property: JsonPropertyName("probe_id")] string ProbeId,
+    [property: JsonPropertyName("sheet")] string Sheet,
+    [property: JsonPropertyName("axis")] string Axis,
+    [property: JsonPropertyName("start_index")] int StartIndex,
+    [property: JsonPropertyName("extent_units")] int ExtentUnits,
+    [property: JsonPropertyName("changed_pixel")] int ChangedPixel,
+    [property: JsonPropertyName("changed_points")] double ChangedPoints,
+    [property: JsonPropertyName("before_png")] string BeforePng,
+    [property: JsonPropertyName("after_png")] string AfterPng,
+    [property: JsonPropertyName("xor_png")] string XorPng);

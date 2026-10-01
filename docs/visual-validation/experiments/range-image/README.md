@@ -18,6 +18,18 @@ does not depend on production `tools/` code.
 - **E — horizontal + vertical overflow XOR:** D plus an analogous screen-height probe
   below the content.
 
+For strategies C-E, trailing hidden worksheet geometry takes precedence over content,
+drawing, margin, and overflow planning on the affected axis. The planner first checks
+the terminal column/row (XFD / row 1,048,576). If it is hidden, it binary-searches the
+first column/row of the all-hidden suffix. Hidden columns/rows in the middle of visible
+geometry do not create a bound; a visible terminal column/row means there is no
+trailing-hidden bound. When an axis is fixed this way, content/drawing discovery and
+overflow probing for that axis are skipped.
+
+D/E persist each overflow probe's before, after, and XOR PNG below the workbook's
+`_overflow-probes/` image directory, and the result JSON records those relative paths
+together with the pixel/extent decision.
+
 Office.js intentionally captures each final sheet as one `Range.getImage()` call,
 including extreme aspect ratios. The VBA baseline may tile internally.
 
