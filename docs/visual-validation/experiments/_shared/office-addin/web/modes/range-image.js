@@ -734,6 +734,293 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     });
   }
 
+  function captureColumnsToWidths(columns) {
+    const defaultWidth = Number(columns && columns.default_width);
+    const fallback = Number.isFinite(defaultWidth) && defaultWidth >= 0
+      ? defaultWidth
+      : 8.43;
+    const widths = new Array(MAX_COLUMNS).fill(fallback);
+    for (const span of (columns && columns.spans) || []) {
+      const first = Math.max(0, Number(span.min) - 1);
+      const last = Math.min(MAX_COLUMNS - 1, Number(span.max) - 1);
+      const explicit = span.width === null || span.width === undefined
+        ? fallback
+        : Number(span.width);
+      const width = span.hidden ? 0 : explicit;
+      if (!Number.isFinite(width) || width < 0 || first > last) {
+        throw new Error('Invalid Rust column plan.');
+      }
+      for (let column = first; column <= last; column += 1) {
+        widths[column] = width;
+      }
+    }
+    return widths;
+  }
+
+  function probeEndByVisibleColumns(widths, baseColumn, visibleCount) {
+    let found = 0;
+    for (let column = Number(baseColumn) + 1; column < MAX_COLUMNS; column += 1) {
+      if (Number(widths[column]) > 0) {
+        found += 1;
+        if (found >= visibleCount) return column;
+      }
+    }
+    return found === 0 ? Number(baseColumn) : MAX_COLUMNS - 1;
+  }
+
+  async function fetchRustVisualPlan(workbookName) {
+    const started = performance.now();
+    const response = await fetch(
+      `/visual-plan?workbook=${encodeURIComponent(workbookName)}`
+    );
+    if (!response.ok) throw new Error(await response.text());
+    return {
+      plan: await response.json(),
+      fetch_ms: performance.now() - started
+    };
+  }
+
+  function rustEntriesFromPlan(sheetNames, plan) {
+    const byName = new Map((plan.sheets || []).map((sheet) => [sheet.sheet, sheet]));
+    return sheetNames.map((sheetName) => {
+      const source = byName.get(sheetName);
+      if (!source) {
+        throw new Error(`Rust visual plan has no visible worksheet named ${sheetName}.`);
+      }
+      return {
+        sheet: sheetName,
+        contentRightColumn: Number(source.content_right_column || 0),
+        contentBottomRow: Number(source.content_bottom_row || 0),
+        contentRightPoints: 0,
+        contentBottomPoints: 0,
+        shapeRightPoints: 0,
+        shapeBottomPoints: 0,
+        visibleShapeCount: 0,
+        drawingRightColumn: Number(source.drawing_right_column || 0),
+        drawingBottomRow: Number(source.drawing_bottom_row || 0),
+        drawingFallbackRequired: Boolean(source.drawing_fallback_required),
+        drawingAnchorCount: Number(source.drawing_anchor_count || 0),
+        trailingHiddenColumnStart: source.trailing_hidden_column_start ?? null,
+        trailingHiddenRowStart: source.trailing_hidden_row_start ?? null,
+        rightBoundSource: source.right_bound_source || 'rust-xml-content-drawing',
+        bottomBoundSource: source.bottom_bound_source || 'rust-xml-content-drawing',
+        rightColumn: Number(source.base_right_column || 0),
+        bottomRow: Number(source.bottom_row || 0),
+        hasText: Boolean(source.has_text),
+        horizontalOverflowRequired: Boolean(source.horizontal_overflow_required),
+        columns: source.columns || { default_width: 8.43, spans: [] },
+        columnWidths: captureColumnsToWidths(source.columns || {}),
+        overflowProbes: []
+      };
+    });
+  }
+
+  async function collectFallbackShapeBounds(entries) {
+    const targets = entries.filter((entry) =>
+      entry.drawingFallbackRequired &&
+      (entry.rightBoundSource !== 'trailing-hidden' ||
+       entry.bottomBoundSource !== 'trailing-hidden')
+    );
+    if (targets.length === 0) return 0;
+
+    const started = performance.now();
+    await Excel.run(async (context) => {
+      const workbook = context.workbook;
+      const pending = [];
+      for (const entry of targets) {
+        const shapes = workbook.worksheets.getItem(entry.sheet).shapes;
+        shapes.load(
+          'items/left,items/top,items/width,items/height,' +
+          'items/rotation,items/visible'
+        );
+        pending.push({ entry, shapes });
+      }
+      await context.sync();
+
+      for (const item of pending) {
+        let right = 0;
+        let bottom = 0;
+        let count = 0;
+        for (const shape of item.shapes.items) {
+          if (!shape.visible) continue;
+          count += 1;
+          const angle = Number(shape.rotation) * Math.PI / 180.0;
+          const width = Number(shape.width);
+          const height = Number(shape.height);
+          const rotatedWidth =
+            Math.abs(width * Math.cos(angle)) + Math.abs(height * Math.sin(angle));
+          const rotatedHeight =
+            Math.abs(width * Math.sin(angle)) + Math.abs(height * Math.cos(angle));
+          right = Math.max(
+            right,
+            Number(shape.left) + width / 2 + rotatedWidth / 2
+          );
+          bottom = Math.max(
+            bottom,
+            Number(shape.top) + height / 2 + rotatedHeight / 2
+          );
+        }
+        item.entry.shapeRightPoints = right;
+        item.entry.shapeBottomPoints = bottom;
+        item.entry.visibleShapeCount = count;
+      }
+    });
+    return performance.now() - started;
+  }
+
+  function rustPlannedItems(entries) {
+    return entries.map((entry, index) => {
+      const initialExtra = 8;
+      const requestedEnd = probeEndByVisibleColumns(
+        entry.columnWidths,
+        entry.rightColumn,
+        initialExtra
+      );
+      const overflowProbe =
+        entry.rightBoundSource !== 'trailing-hidden' &&
+        entry.hasText &&
+        entry.horizontalOverflowRequired &&
+        requestedEnd > entry.rightColumn;
+      const endColumn = overflowProbe ? requestedEnd : entry.rightColumn;
+      return {
+        id: `c${String(index + 1).padStart(5, '0')}`,
+        sheet: entry.sheet,
+        address: addressA1To(entry.bottomRow, endColumn),
+        base_right_column: entry.rightColumn,
+        bottom_row: entry.bottomRow,
+        end_column: endColumn,
+        overflow_probe: overflowProbe,
+        probe_extra: overflowProbe ? initialExtra : 0,
+        content_right_column: entry.contentRightColumn,
+        content_bottom_row: entry.contentBottomRow,
+        drawing_right_column: entry.drawingRightColumn,
+        drawing_bottom_row: entry.drawingBottomRow,
+        drawing_fallback_required: entry.drawingFallbackRequired,
+        visible_shape_count: entry.visibleShapeCount,
+        right_bound_source: entry.rightBoundSource,
+        bottom_bound_source: entry.bottomBoundSource,
+        trailing_hidden_column_start: entry.trailingHiddenColumnStart,
+        trailing_hidden_row_start: entry.trailingHiddenRowStart
+      };
+    });
+  }
+
+  async function renderRustPlannedBatch(workbookName, items, batchIndex, batchCount) {
+    ExperimentUi.startBatch(
+      batchIndex,
+      batchCount,
+      items.map((item) => item.sheet)
+    );
+
+    let pending = items.map((item) => ({ ...item }));
+    const captures = [];
+    let renderMs = 0;
+    let persistMs = 0;
+    let analysisMs = 0;
+    let iteration = 0;
+
+    while (pending.length > 0) {
+      iteration += 1;
+      const rendered = await Excel.run(async (context) => {
+        const workbook = context.workbook;
+        const requests = [];
+        const started = performance.now();
+        for (const item of pending) {
+          const address = addressA1To(item.bottom_row, item.end_column);
+          const image = workbook.worksheets
+            .getItem(item.sheet)
+            .getRange(address)
+            .getImage();
+          requests.push({ item, address, image });
+        }
+        await context.sync();
+        return {
+          render_ms: performance.now() - started,
+          images: requests.map((request) => ({
+            id: request.item.id,
+            sheet: request.item.sheet,
+            address: request.address,
+            base_right_column: request.item.base_right_column,
+            bottom_row: request.item.bottom_row,
+            end_column: request.item.end_column,
+            overflow_probe: request.item.overflow_probe,
+            probe_extra: request.item.probe_extra,
+            base64: request.image.value
+          }))
+        };
+      });
+      renderMs += rendered.render_ms;
+
+      const persistStarted = performance.now();
+      const response = await fetch('/planned-image-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workbook: workbookName,
+          batch_index: batchIndex,
+          images: rendered.images
+        })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const result = await response.json();
+      persistMs += performance.now() - persistStarted;
+      analysisMs += Number(result.analysis_ms || 0);
+      captures.push(...(result.captures || []));
+
+      const nextById = new Map(
+        (result.pending || []).map((item) => [item.id, item])
+      );
+      const nextPending = [];
+      for (const item of pending) {
+        const next = nextById.get(item.id);
+        if (!next) continue;
+        const nextColumn = Number(next.next_column);
+        if (!Number.isInteger(nextColumn) || nextColumn <= item.end_column) {
+          throw new Error(`Rust overflow planning made no progress for ${item.sheet}.`);
+        }
+        nextPending.push({
+          ...item,
+          end_column: nextColumn,
+          probe_extra: Number(next.next_extra || item.probe_extra * 2)
+        });
+      }
+      pending = nextPending;
+      ExperimentUi.showAnalysis(
+        captures.length,
+        items.length,
+        pending.length === 0
+          ? 'Rust XML/render overflow analysis complete.'
+          : `Rust overflow pass ${iteration}: ${pending.length} sheet(s) need a wider image.`
+      );
+    }
+
+    captures.sort((left, right) => String(left.id).localeCompare(String(right.id)));
+
+    ExperimentUi.completeBatch(
+      batchIndex,
+      batchCount,
+      items.length,
+      renderMs,
+      persistMs
+    );
+    await ExperimentEvents.post('batch_completed', {
+      workbook: workbookName,
+      batch_index: batchIndex,
+      batch_count: batchCount,
+      image_count: items.length,
+      sheets: items.map((item) => item.sheet),
+      render_ms: fixed(renderMs),
+      persist_ms: fixed(persistMs),
+      rust_overflow_analysis_ms: fixed(analysisMs)
+    });
+    return {
+      render_ms: renderMs,
+      persist_ms: persistMs,
+      analysis_ms: analysisMs,
+      captures
+    };
+  }
+
   function officeErrorDetail(error) {
     const message = error && error.message ? error.message : String(error);
     const code = error && error.code ? String(error.code) : '';
@@ -1159,10 +1446,14 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       trailing_hidden_bounds_ms: 0,
       content_shape_ms: 0,
       point_to_grid_ms: 0,
-      overflow_probe_ms: 0
+      overflow_probe_ms: 0,
+      rust_xml_plan_ms: 0,
+      rust_plan_fetch_ms: 0,
+      fallback_shape_ms: 0
     };
 
     let plans = [];
+    let rustVisualPlan = null;
 
     if (config.strategy === 'A') {
       const used = await resolveUsedRanges(sheetNames, false);
@@ -1179,6 +1470,24 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         sheet,
         address: null
       }));
+    } else if (config.strategy === 'F') {
+      ExperimentUi.setPhase('Loading Rust OOXML visual plan');
+      const loadedPlan = await fetchRustVisualPlan(workbookName);
+      rustVisualPlan = loadedPlan.plan;
+      planning.rust_xml_plan_ms += Number(rustVisualPlan.rust_plan_ms || 0);
+      planning.rust_plan_fetch_ms += loadedPlan.fetch_ms;
+
+      const entries = rustEntriesFromPlan(sheetNames, rustVisualPlan);
+      planning.fallback_shape_ms += await collectFallbackShapeBounds(entries);
+      const fallbackEntries = entries.filter((entry) => entry.drawingFallbackRequired);
+      planning.point_to_grid_ms += await mapPointBoundsToGrid(fallbackEntries);
+      for (const entry of entries) {
+        entry.horizontalOverflowRequired =
+          entry.rightBoundSource !== 'trailing-hidden' &&
+          entry.hasText &&
+          entry.rightColumn < MAX_COLUMNS - 1;
+      }
+      plans = rustPlannedItems(entries);
     } else {
       ExperimentUi.setPhase('Checking trailing hidden rows/columns');
       const trailing = await collectTrailingHiddenBounds(sheetNames);
@@ -1244,15 +1553,23 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         }
       }
 
-      const result = await renderAddressBatch(
-        workbookName,
-        batch,
-        batchIndex,
-        batchCount
-      );
+      const result = config.strategy === 'F'
+        ? await renderRustPlannedBatch(
+            workbookName,
+            batch,
+            batchIndex,
+            batchCount
+          )
+        : await renderAddressBatch(
+            workbookName,
+            batch,
+            batchIndex,
+            batchCount
+          );
 
       renderTotal += result.render_ms;
       persistTotal += result.persist_ms;
+      planning.overflow_probe_ms += Number(result.analysis_ms || 0);
       persistedCaptures.push(...result.captures);
 
       const total = result.render_ms + result.persist_ms;
@@ -1279,7 +1596,9 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       image_batch_size: batchSize,
       capture_count: persistedCaptures.length,
       batches,
+      capture_plans: plans,
       captures: persistedCaptures,
+      rust_visual_plan: rustVisualPlan,
       excel_api_requirement_set: '1.11'
     };
 

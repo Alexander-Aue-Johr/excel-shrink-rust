@@ -14,10 +14,12 @@ excel-com = {
     branch = "fix-shape-variant-types"
 }
 image = { version = "0.25", default-features = false, features = ["png"] }
+memchr = "2.7"
 rcgen = "0.13"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 tokio = { version = "1", features = ["full"] }
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
 
 [workspace]

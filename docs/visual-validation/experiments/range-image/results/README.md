@@ -7,6 +7,7 @@ New runs are grouped by bounds strategy:
 - `c-content-shapes-margin/`
 - `d-horizontal-overflow-xor/`
 - `e-horizontal-vertical-overflow-xor/`
+- `f-rust-xml-horizontal-overflow/`
 
 PNG files are intentionally stored below `.tmp/visual-validation/range-image/images/`
 instead of this Git-facing results tree.

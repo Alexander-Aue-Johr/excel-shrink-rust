@@ -1,7 +1,7 @@
 param(
     [string]$CorpusRoot,
 
-    [ValidateSet('A', 'B', 'C', 'D', 'E', 'all')]
+    [ValidateSet('A', 'B', 'C', 'D', 'E', 'F', 'all')]
     [string]$Strategy,
 
     [ValidateSet('vba', 'officejs-rust', 'officejs-dotnet', 'all')]
@@ -80,6 +80,7 @@ if ([string]::IsNullOrWhiteSpace($Strategy)) {
             'C - content + drawings + 10 row/column margin',
             'D - C bounds + measured horizontal overflow',
             'E - D + measured vertical overflow',
+            'F - Rust OOXML bounds + horizontal render overflow',
             'Run all strategies'
         ) 0
         $Strategy = switch -Regex ($choice) {
@@ -88,6 +89,7 @@ if ([string]::IsNullOrWhiteSpace($Strategy)) {
             '^C ' { 'C' }
             '^D ' { 'D' }
             '^E ' { 'E' }
+            '^F ' { 'F' }
             default { 'all' }
         }
     }
@@ -109,6 +111,13 @@ if ([string]::IsNullOrWhiteSpace($Implementation)) {
             default { 'all' }
         }
     }
+}
+
+if (
+    $Strategy -eq 'F' -and
+    $Implementation -notin @('officejs-rust', 'all')
+) {
+    throw 'Strategy F requires Office.js - Rust host.'
 }
 
 if (
@@ -199,7 +208,7 @@ foreach ($file in $files) {
 Write-Host "File list: $FileList"
 
 $strategies = if ($Strategy -eq 'all') {
-    @('A', 'B', 'C', 'D', 'E')
+    @('A', 'B', 'C', 'D', 'E', 'F')
 }
 else {
     @($Strategy)
@@ -226,7 +235,7 @@ foreach ($currentStrategy in $strategies) {
             if ($currentStrategy -ne 'A') {
                 Write-Warning (
                     "VBA currently serves as the CopyPicture baseline for strategy A. " +
-                    "Strategies B-E are Office.js planning experiments; skipping VBA " +
+                    "Strategies B-F are Office.js planning experiments; skipping VBA " +
                     "for strategy $currentStrategy."
                 )
                 continue
@@ -248,6 +257,14 @@ foreach ($currentStrategy in $strategies) {
             continue
         }
 
+        if ($currentStrategy -eq 'F' -and $currentImplementation -ne 'officejs-rust') {
+            Write-Warning (
+                'Strategy F deliberately runs only with Office.js + Rust host; ' +
+                "skipping $currentImplementation."
+            )
+            continue
+        }
+
         $hostKind = if ($currentImplementation -eq 'officejs-rust') {
             'rust'
         } else {
@@ -260,6 +277,7 @@ foreach ($currentStrategy in $strategies) {
             'C' { 'c-content-shapes-margin' }
             'D' { 'd-horizontal-overflow-xor' }
             'E' { 'e-horizontal-vertical-overflow-xor' }
+            'F' { 'f-rust-xml-horizontal-overflow' }
         }
 
         $hostLabel = if ($hostKind -eq 'rust') { 'rust' } else { 'dotnet' }

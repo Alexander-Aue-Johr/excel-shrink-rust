@@ -11,7 +11,7 @@ param(
     [ValidateSet('shape-bounds', 'range-image')]
     [string]$Experiment = 'range-image',
 
-    [ValidateSet('A', 'B', 'C', 'D', 'E')]
+    [ValidateSet('A', 'B', 'C', 'D', 'E', 'F')]
     [string]$Strategy = 'A',
 
     [ValidateSet('dotnet', 'rust')]
@@ -71,6 +71,10 @@ if ($paths.Count -eq 0) {
 
 if ($HostKind -eq 'dotnet' -and $ExcelLaunchMode -eq 'rust-com') {
     throw 'ExcelLaunchMode rust-com is only valid with HostKind rust.'
+}
+
+if ($Strategy -eq 'F' -and $HostKind -ne 'rust') {
+    throw 'Strategy F requires the Rust host because OOXML planning and single-image overflow analysis run there.'
 }
 
 $RepoRoot = [IO.Path]::GetFullPath(
@@ -764,6 +768,23 @@ try {
         $workbookOrdinal++
         $workbookName = [IO.Path]::GetFileName($sourcePath)
         $completed = $false
+
+        if ($Strategy -eq 'F') {
+            $encodedPlanWorkbook = [Uri]::EscapeDataString($workbookName)
+            Write-ExperimentLog "Preparing Rust OOXML visual plan before Excel starts: $workbookName"
+            $planStarted = [Diagnostics.Stopwatch]::StartNew()
+            $visualPlan = Invoke-RestMethod `
+                -Uri ('http://127.0.0.1:3001/visual-plan?workbook=' + $encodedPlanWorkbook) `
+                -Method Get
+            Write-ExperimentLog (
+                'Rust OOXML visual plan ready in ' +
+                ('{0:0.00}' -f $planStarted.Elapsed.TotalMilliseconds) +
+                ' ms (Rust parse ' +
+                ('{0:0.00}' -f [double]$visualPlan.rust_plan_ms) +
+                ' ms, ' +
+                "$(@($visualPlan.sheets).Count) worksheet(s))."
+            )
+        }
 
         for (
             $attemptNumber = 1;

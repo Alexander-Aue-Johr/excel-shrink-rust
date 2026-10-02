@@ -3,7 +3,7 @@ param(
     [ValidateRange(1, 64)]
     [int]$OfficeJsBatchSize = 8,
 
-    [ValidateSet('A', 'B', 'C', 'D', 'E')]
+    [ValidateSet('A', 'B', 'C', 'D', 'E', 'F')]
     [string]$Strategy = 'A',
 
     [ValidateSet('rust', 'dotnet')]

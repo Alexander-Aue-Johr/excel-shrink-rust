@@ -17,6 +17,14 @@ does not depend on production `tools/` code.
   a worker. The final right bound is calculated from the changed pixels.
 - **E — horizontal + vertical overflow XOR:** D plus an analogous screen-height probe
   below the content.
+- **F — Rust OOXML bounds + horizontal render overflow:** before Excel starts, the Rust
+  host scans worksheet XML for content/merge bounds, column definitions, trailing-hidden
+  column/row tails, and drawing anchors. Office.js consumes that plan instead of asking
+  Excel for UsedRange/hidden tails/normal drawing bounds. Only sheets that still need it
+  get a horizontal render probe; the Rust host analyses that same PNG and crops it to the
+  detected right edge, so there is no whitespace blocker, XOR pair, vertical overflow
+  probe, or second final capture. Unsupported drawing anchors use a narrow Office.js
+  shape fallback on those sheets only. Strategy F intentionally requires the Rust host.
 
 For strategies C-E, trailing hidden worksheet geometry takes precedence over content,
 drawing, margin, and overflow planning on the affected axis. The planner first checks
@@ -29,6 +37,10 @@ overflow probing for that axis are skipped.
 D/E persist each overflow probe's before, after, and XOR PNG below the workbook's
 `_overflow-probes/` image directory, and the result JSON records those relative paths
 together with the pixel/extent decision.
+
+F does not persist intermediate overflow probes. The current probe PNG becomes the final
+artifact when the Rust analysis can close the right edge; it is cropped in the host and
+only widened/re-rendered when content reaches the current probe edge.
 
 Office.js intentionally captures each final sheet as one `Range.getImage()` call,
 including extreme aspect ratios. The VBA baseline may tile internally.
@@ -94,5 +106,5 @@ The runner is also scriptable, for example:
 
 The existing VBA `CopyPicture -> Chart.Paste -> Chart.Export` path remains the
 reference baseline. In this refactor it is currently wired to strategy A's all-visible
-sheet plan. Strategies B–E are the Office.js planning experiments; their VBA
+sheet plan. Strategies B–F are the Office.js planning experiments; their VBA
 equivalents can be added later without changing the shared Office.js protocol.

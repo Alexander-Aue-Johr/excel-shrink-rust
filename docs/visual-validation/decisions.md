@@ -62,7 +62,7 @@ capture-bound logic.
 **Revisit if:** real regression cases show relevant visible text being clipped by
 the chosen minimum width.
 
-The `range-image` experiment deliberately includes exact-overflow strategies D/E as
+The `range-image` experiment deliberately includes exact-overflow strategies D/E/F as
 an engineering investigation. Running those strategies does not change this production
 decision until their cost/reliability has been evaluated.
 
