@@ -1,15 +1,11 @@
 use crate::visual_xml::{Kind, Reader, decode_attr, decimal, truth};
-use anyhow::{Context, Result, bail, ensure};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use image::{DynamicImage, ImageFormat, ImageReader, Rgba, RgbaImage};
+use anyhow::{Context, Result, ensure};
 use memchr::memmem;
 use serde::Serialize;
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
-    fs::{self, File},
-    io::{Cursor, Read},
+    fs::File,
+    io::Read,
     path::Path,
     time::Instant,
 };
@@ -393,8 +389,6 @@ fn scan_sheet(bytes: &[u8]) -> Result<SheetXmlSummary> {
     let mut current_column = 0u32;
     let mut in_sheet_data = false;
     let mut in_row = false;
-    let mut previous_explicit_row = None;
-    let mut previous_row_hidden = false;
 
     while let Some(tag) = reader.next()? {
         let local = tag.local();
@@ -437,16 +431,16 @@ fn scan_sheet(bytes: &[u8]) -> Result<SheetXmlSummary> {
             current_column = 0;
             let hidden = truth(tag.attr(b"hidden")?);
             if hidden {
-                let continues = previous_row_hidden
-                    && previous_explicit_row.is_some_and(|row| row.checked_add(1) == Some(current_row));
-                if !continues {
+                // Visual-tail heuristic requested by the experiment: once an
+                // explicit hidden row starts a trailing suffix, omitted row
+                // definitions do not cancel it. A later explicit visible row
+                // does cancel it and may start a new suffix further down.
+                if summary.trailing_hidden_row_start.is_none() {
                     summary.trailing_hidden_row_start = Some(current_row);
                 }
             } else {
                 summary.trailing_hidden_row_start = None;
             }
-            previous_explicit_row = Some(current_row);
-            previous_row_hidden = hidden;
             in_row = tag.kind == Kind::Start;
             continue;
         }
@@ -674,11 +668,11 @@ pub(crate) fn build_workbook_visual_plan(path: &Path) -> Result<WorkbookVisualPl
 
         let (base_right_column, right_bound_source) = match trailing_column {
             Some(start) => (start.saturating_sub(1), "trailing-hidden".to_string()),
-            None => (natural_right, "rust-xml-content-drawing".to_string()),
+            None => (natural_right, "wsl-rust-xml-content-drawing".to_string()),
         };
         let (bottom_row, bottom_bound_source) = match trailing_row {
             Some(start) => (start.saturating_sub(1), "trailing-hidden".to_string()),
-            None => (natural_bottom, "rust-xml-content-drawing".to_string()),
+            None => (natural_bottom, "wsl-rust-xml-content-drawing".to_string()),
         };
 
         sheets.push(SheetVisualPlan {
@@ -716,372 +710,6 @@ pub(crate) fn build_workbook_visual_plan(path: &Path) -> Result<WorkbookVisualPl
     })
 }
 
-fn safe_file_name(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| match ch {
-            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
-            _ => ch,
-        })
-        .collect()
-}
-
-fn column_name(index_zero_based: u32) -> String {
-    let mut value = index_zero_based + 1;
-    let mut name = String::new();
-    while value > 0 {
-        value -= 1;
-        name.insert(0, (b'A' + (value % 26) as u8) as char);
-        value /= 26;
-    }
-    name
-}
-
-fn capture_address(end_column: u32, bottom_row: u32) -> String {
-    format!("A1:{}{}", column_name(end_column), bottom_row + 1)
-}
-
-fn end_column_for_visible_count(widths: &[f64], base: u32, extra: u32) -> u32 {
-    let mut found = 0u32;
-    for column in base.saturating_add(1)..MAX_COLUMNS {
-        if widths[column as usize] > 0.0 {
-            found += 1;
-            if found >= extra {
-                return column;
-            }
-        }
-    }
-    if found == 0 { base } else { MAX_COLUMNS - 1 }
-}
-
-fn column_edges(widths: &[f64], end_column: u32, image_width: u32) -> Result<Vec<u32>> {
-    ensure!(end_column < MAX_COLUMNS && image_width > 0, "invalid probe image extent");
-    let slice = &widths[..=end_column as usize];
-    let total: f64 = slice.iter().sum();
-    ensure!(total.is_finite() && total > 0.0, "capture has no visible XML column width");
-    let mut edges = Vec::with_capacity(slice.len() + 1);
-    edges.push(0);
-    let mut cumulative = 0.0;
-    for width in slice {
-        cumulative += *width;
-        edges.push((cumulative / total * f64::from(image_width)).round() as u32);
-    }
-    if let Some(last) = edges.last_mut() {
-        *last = image_width;
-    }
-    Ok(edges)
-}
-
-fn estimate_background(
-    image: &RgbaImage,
-    edges: &[u32],
-    base_column: u32,
-    end_column: u32,
-) -> Rgba<u8> {
-    let start_column = base_column.saturating_add(1).min(end_column);
-    let x0 = edges
-        .get(start_column as usize)
-        .copied()
-        .unwrap_or(0)
-        .min(image.width().saturating_sub(1));
-    let x1 = edges
-        .get(end_column as usize + 1)
-        .copied()
-        .unwrap_or(image.width())
-        .max(x0 + 1)
-        .min(image.width());
-    let area = u64::from(x1.saturating_sub(x0)) * u64::from(image.height());
-    let stride = ((area / 100_000).max(1) as f64).sqrt().floor().max(1.0) as u32;
-    let mut histogram = HashMap::<u16, u32>::new();
-    let mut y = 0;
-    while y < image.height() {
-        let mut x = x0;
-        while x < x1 {
-            let pixel = image.get_pixel(x, y);
-            let key = (u16::from(pixel[0] >> 4) << 8)
-                | (u16::from(pixel[1] >> 4) << 4)
-                | u16::from(pixel[2] >> 4);
-            *histogram.entry(key).or_default() += 1;
-            x = x.saturating_add(stride);
-        }
-        y = y.saturating_add(stride);
-    }
-    let key = histogram
-        .into_iter()
-        .max_by_key(|(_, count)| *count)
-        .map(|(key, _)| key)
-        .unwrap_or(0x0fff);
-    Rgba([
-        (((key >> 8) & 0xf) as u8) * 16 + 8,
-        (((key >> 4) & 0xf) as u8) * 16 + 8,
-        ((key & 0xf) as u8) * 16 + 8,
-        255,
-    ])
-}
-
-fn differs(pixel: &Rgba<u8>, background: &Rgba<u8>) -> bool {
-    pixel[3] > 0
-        && (pixel[0].abs_diff(background[0]) > 14
-            || pixel[1].abs_diff(background[1]) > 14
-            || pixel[2].abs_diff(background[2]) > 14)
-}
-
-fn horizontal_rule_mask(image: &RgbaImage, background: &Rgba<u8>) -> Vec<bool> {
-    let mut candidates = vec![false; image.height() as usize];
-    if image.width() < 16 {
-        return candidates;
-    }
-    for y in 1..image.height().saturating_sub(1) {
-        let reference = *image.get_pixel(1, y);
-        if !differs(&reference, background) {
-            continue;
-        }
-        candidates[y as usize] = (2..image.width().saturating_sub(1)).all(|x| {
-            let pixel = image.get_pixel(x, y);
-            (0..3).all(|channel| pixel[channel].abs_diff(reference[channel]) <= 8)
-        });
-    }
-    let mut mask = vec![false; candidates.len()];
-    let mut start = 1usize;
-    while start < candidates.len() {
-        if !candidates[start] {
-            start += 1;
-            continue;
-        }
-        let mut end = start + 1;
-        while end < candidates.len() && candidates[end] {
-            end += 1;
-        }
-        if end - start <= 4 {
-            mask[start..end].fill(true);
-        }
-        start = end;
-    }
-    mask
-}
-
-struct OverflowDecision {
-    keep_column: u32,
-    done: bool,
-    next_column: u32,
-    next_extra: u32,
-    scanned_pixels: u64,
-}
-
-fn analyze_overflow(
-    image: &RgbaImage,
-    widths: &[f64],
-    base_column: u32,
-    end_column: u32,
-    extra: u32,
-) -> Result<OverflowDecision> {
-    ensure!(base_column <= end_column && end_column < MAX_COLUMNS, "invalid overflow bounds");
-    let edges = column_edges(widths, end_column, image.width())?;
-    let background = estimate_background(image, &edges, base_column, end_column);
-    let rules = horizontal_rule_mask(image, &background);
-    let last_visible = (base_column.saturating_add(1)..=end_column)
-        .rev()
-        .find(|column| widths[*column as usize] > 0.0);
-    let more_visible = (end_column.saturating_add(1)..MAX_COLUMNS)
-        .any(|column| widths[column as usize] > 0.0);
-    let mut keep = base_column;
-    let mut edge_content = false;
-    let mut scanned_pixels = 0u64;
-
-    for column in base_column.saturating_add(1)..=end_column {
-        if widths[column as usize] <= 0.0 {
-            continue;
-        }
-        let left = edges[column as usize];
-        let right = edges[column as usize + 1].min(image.width());
-        if right.saturating_sub(left) <= 2 {
-            continue;
-        }
-        let mut content = false;
-        'scan: for y in 1..image.height().saturating_sub(1) {
-            if rules.get(y as usize).copied().unwrap_or(false) {
-                continue;
-            }
-            for x in left.saturating_add(1)..right.saturating_sub(1) {
-                scanned_pixels += 1;
-                if differs(image.get_pixel(x, y), &background) {
-                    content = true;
-                    break 'scan;
-                }
-            }
-        }
-        if content {
-            keep = keep.max(column);
-            if Some(column) == last_visible {
-                edge_content = true;
-            }
-        }
-    }
-
-    let next_extra = if extra < 8 {
-        8
-    } else {
-        extra.saturating_mul(2).min(MAX_COLUMNS)
-    };
-    let next_column = end_column_for_visible_count(widths, base_column, next_extra);
-    let done = !edge_content || !more_visible || next_column <= end_column;
-    Ok(OverflowDecision {
-        keep_column: keep,
-        done,
-        next_column,
-        next_extra,
-        scanned_pixels,
-    })
-}
-
-fn encode_png(image: RgbaImage) -> Result<Vec<u8>> {
-    let mut cursor = Cursor::new(Vec::new());
-    DynamicImage::ImageRgba8(image).write_to(&mut cursor, ImageFormat::Png)?;
-    Ok(cursor.into_inner())
-}
-
-fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32)> {
-    ensure!(bytes.len() >= 24 && &bytes[..8] == b"\x89PNG\r\n\x1a\n", "payload is not a PNG");
-    let width = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
-    let height = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
-    Ok((width, height))
-}
-
-fn persist_capture(
-    workbook: &str,
-    id: &str,
-    sheet: &str,
-    address: &str,
-    bytes: &[u8],
-    image_root: &Path,
-    extra: Value,
-) -> Result<Value> {
-    let workbook_dir = image_root.join(safe_file_name(workbook));
-    fs::create_dir_all(&workbook_dir)?;
-    let file_name = format!("{id}.png");
-    fs::write(workbook_dir.join(&file_name), bytes)?;
-    let (width, height) = png_dimensions(bytes)?;
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let mut value = json!({
-        "id": id,
-        "workbook": workbook,
-        "sheet": sheet,
-        "address": address,
-        "relative_png": format!("{}/{}", safe_file_name(workbook), file_name),
-        "png_bytes": bytes.len(),
-        "png_width": width,
-        "png_height": height,
-        "sha256": format!("{:x}", hasher.finalize())
-    });
-    if let (Value::Object(target), Value::Object(source)) = (&mut value, extra) {
-        target.extend(source);
-    }
-    Ok(value)
-}
-
-pub(crate) fn process_planned_image_batch(
-    plan: &WorkbookVisualPlan,
-    payload: &Value,
-    image_root: &Path,
-) -> Result<Value> {
-    let started = Instant::now();
-    let workbook = payload["workbook"].as_str().context("workbook")?;
-    ensure!(workbook == plan.workbook, "visual plan workbook mismatch");
-    let images = payload["images"].as_array().context("images")?;
-    let mut captures = Vec::new();
-    let mut pending = Vec::new();
-    let mut scanned_pixels = 0u64;
-
-    for value in images {
-        let id = value["id"].as_str().context("image id")?;
-        let sheet = value["sheet"].as_str().context("image sheet")?;
-        let bottom_row = value["bottom_row"].as_u64().context("bottom_row")? as u32;
-        let base_right_column = value["base_right_column"].as_u64().context("base_right_column")? as u32;
-        let end_column = value["end_column"].as_u64().context("end_column")? as u32;
-        let overflow_probe = value["overflow_probe"].as_bool().unwrap_or(false);
-        let probe_extra = value["probe_extra"].as_u64().unwrap_or(0) as u32;
-        let bytes = BASE64.decode(value["base64"].as_str().context("image base64")?)?;
-
-        if !overflow_probe {
-            captures.push(persist_capture(
-                workbook,
-                id,
-                sheet,
-                &capture_address(end_column, bottom_row),
-                &bytes,
-                image_root,
-                json!({
-                    "rust_xml_base_right_column": base_right_column,
-                    "overflow_checked": false
-                }),
-            )?);
-            continue;
-        }
-
-        let sheet_plan = plan.sheet(sheet).with_context(|| format!("missing visual plan for sheet {sheet}"))?;
-        let widths = sheet_plan.columns.expanded_widths()?;
-        let decoded = ImageReader::new(Cursor::new(&bytes))
-            .with_guessed_format()?
-            .decode()?
-            .to_rgba8();
-        let decision = analyze_overflow(
-            &decoded,
-            &widths,
-            base_right_column,
-            end_column,
-            probe_extra,
-        )?;
-        scanned_pixels += decision.scanned_pixels;
-
-        if !decision.done {
-            pending.push(json!({
-                "id": id,
-                "sheet": sheet,
-                "next_column": decision.next_column,
-                "next_extra": decision.next_extra
-            }));
-            continue;
-        }
-
-        let edges = column_edges(&widths, end_column, decoded.width())?;
-        let crop_width = edges[(decision.keep_column + 1) as usize]
-            .max(1)
-            .min(decoded.width());
-        let cropped = image::imageops::crop_imm(
-            &decoded,
-            0,
-            0,
-            crop_width,
-            decoded.height(),
-        )
-        .to_image();
-        let cropped_bytes = encode_png(cropped)?;
-        captures.push(persist_capture(
-            workbook,
-            id,
-            sheet,
-            &capture_address(decision.keep_column, bottom_row),
-            &cropped_bytes,
-            image_root,
-            json!({
-                "rust_xml_base_right_column": base_right_column,
-                "overflow_checked": true,
-                "overflow_capture_end_column": end_column,
-                "overflow_keep_column": decision.keep_column,
-                "overflow_probe_extra": probe_extra,
-                "overflow_scanned_pixels": decision.scanned_pixels
-            }),
-        )?);
-    }
-
-    Ok(json!({
-        "captures": captures,
-        "pending": pending,
-        "analysis_ms": started.elapsed().as_secs_f64() * 1000.0,
-        "scanned_pixels": scanned_pixels
-    }))
-}
 
 #[cfg(test)]
 mod tests {
@@ -1115,12 +743,25 @@ mod tests {
     #[test]
     fn explicit_trailing_hidden_rows_are_a_visual_tail_heuristic() {
         let xml = br#"<worksheet><sheetData>
+            <row r="101" hidden="1"/>
+            <row r="102"><c r="A102"><v>1</v></c></row>
             <row r="105"><c r="A105"><v>1</v></c></row>
             <row r="106" hidden="1"/><row r="107" hidden="1"/><row r="108" hidden="1"/>
         </sheetData></worksheet>"#;
         let summary = scan_sheet(xml).unwrap();
         assert_eq!(summary.trailing_hidden_row_start, Some(106));
         assert_eq!(summary.max_row, 105);
+    }
+
+    #[test]
+    fn omitted_rows_do_not_cancel_the_visual_hidden_tail() {
+        let xml = br#"<worksheet><sheetData>
+            <row r="105"><c r="A105"><v>1</v></c></row>
+            <row r="106" hidden="1"/>
+            <row r="108" hidden="1"/>
+        </sheetData></worksheet>"#;
+        let summary = scan_sheet(xml).unwrap();
+        assert_eq!(summary.trailing_hidden_row_start, Some(106));
     }
 
     #[test]
@@ -1144,13 +785,5 @@ mod tests {
         let plan = parse_drawing(drawing).unwrap();
         assert!(plan.fallback_required);
         assert_eq!((plan.max_row, plan.max_column), (8, 5));
-    }
-
-    #[test]
-    fn visible_probe_budget_counts_visible_columns_not_sheet_indices() {
-        let mut widths = vec![10.0; MAX_COLUMNS as usize];
-        widths[1] = 0.0;
-        widths[2] = 0.0;
-        assert_eq!(end_column_for_visible_count(&widths, 0, 2), 4);
     }
 }

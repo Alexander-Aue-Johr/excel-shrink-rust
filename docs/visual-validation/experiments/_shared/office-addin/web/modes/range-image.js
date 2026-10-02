@@ -748,7 +748,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         : Number(span.width);
       const width = span.hidden ? 0 : explicit;
       if (!Number.isFinite(width) || width < 0 || first > last) {
-        throw new Error('Invalid Rust column plan.');
+        throw new Error('Invalid precomputed column plan.');
       }
       for (let column = first; column <= last; column += 1) {
         widths[column] = width;
@@ -768,24 +768,36 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     return found === 0 ? Number(baseColumn) : MAX_COLUMNS - 1;
   }
 
-  async function fetchRustVisualPlan(workbookName) {
+  async function fetchPrecomputedVisualPlan(workbookName) {
     const started = performance.now();
-    const response = await fetch(
-      `/visual-plan?workbook=${encodeURIComponent(workbookName)}`
-    );
+    const response = await fetch('/visual-plan.json', { cache: 'no-store' });
     if (!response.ok) throw new Error(await response.text());
+    const document = await response.json();
+    const plan = (document.workbooks || []).find(
+      (candidate) => String(candidate.workbook || '').toLowerCase() ===
+        String(workbookName || '').toLowerCase()
+    );
+    if (!plan) {
+      throw new Error(
+        `Precomputed WSL Rust visual plan has no workbook named ${workbookName}.`
+      );
+    }
     return {
-      plan: await response.json(),
-      fetch_ms: performance.now() - started
+      plan,
+      fetch_ms: performance.now() - started,
+      total_rust_plan_ms: Number(document.total_rust_plan_ms || 0),
+      schema: document.schema || null
     };
   }
 
-  function rustEntriesFromPlan(sheetNames, plan) {
+  function entriesFromPrecomputedPlan(sheetNames, plan) {
     const byName = new Map((plan.sheets || []).map((sheet) => [sheet.sheet, sheet]));
     return sheetNames.map((sheetName) => {
       const source = byName.get(sheetName);
       if (!source) {
-        throw new Error(`Rust visual plan has no visible worksheet named ${sheetName}.`);
+        throw new Error(
+          `Precomputed WSL Rust visual plan has no visible worksheet named ${sheetName}.`
+        );
       }
       return {
         sheet: sheetName,
@@ -802,8 +814,8 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         drawingAnchorCount: Number(source.drawing_anchor_count || 0),
         trailingHiddenColumnStart: source.trailing_hidden_column_start ?? null,
         trailingHiddenRowStart: source.trailing_hidden_row_start ?? null,
-        rightBoundSource: source.right_bound_source || 'rust-xml-content-drawing',
-        bottomBoundSource: source.bottom_bound_source || 'rust-xml-content-drawing',
+        rightBoundSource: source.right_bound_source || 'wsl-rust-xml-content-drawing',
+        bottomBoundSource: source.bottom_bound_source || 'wsl-rust-xml-content-drawing',
         rightColumn: Number(source.base_right_column || 0),
         bottomRow: Number(source.bottom_row || 0),
         hasText: Boolean(source.has_text),
@@ -868,7 +880,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     return performance.now() - started;
   }
 
-  function rustPlannedItems(entries) {
+  function precomputedPlannedItems(entries) {
     return entries.map((entry, index) => {
       const initialExtra = 8;
       const requestedEnd = probeEndByVisibleColumns(
@@ -900,18 +912,286 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         right_bound_source: entry.rightBoundSource,
         bottom_bound_source: entry.bottomBoundSource,
         trailing_hidden_column_start: entry.trailingHiddenColumnStart,
-        trailing_hidden_row_start: entry.trailingHiddenRowStart
+        trailing_hidden_row_start: entry.trailingHiddenRowStart,
+        column_widths: entry.columnWidths,
+        overflow_passes: []
       };
     });
   }
 
-  async function renderRustPlannedBatch(workbookName, items, batchIndex, batchCount) {
+  function columnEdgesFromWidths(widths, endColumn, imageWidth) {
+    if (
+      !Number.isInteger(endColumn) ||
+      endColumn < 0 ||
+      endColumn >= MAX_COLUMNS ||
+      imageWidth <= 0
+    ) {
+      throw new Error('Invalid render-overflow image extent.');
+    }
+
+    let total = 0;
+    for (let column = 0; column <= endColumn; column += 1) {
+      total += Number(widths[column] || 0);
+    }
+    if (!Number.isFinite(total) || total <= 0) {
+      throw new Error('Render-overflow capture has no visible XML column width.');
+    }
+
+    const scaleWidth = Math.max(1, imageWidth - 1);
+    const edges = [0];
+    let cumulative = 0;
+    for (let column = 0; column <= endColumn; column += 1) {
+      cumulative += Number(widths[column] || 0);
+      edges.push(Math.round(cumulative / total * scaleWidth));
+    }
+    edges[edges.length - 1] = scaleWidth;
+    return edges;
+  }
+
+  function pixelOffset(image, x, y) {
+    return (y * image.width + x) * 4;
+  }
+
+  function pixelDiffers(image, offset, background) {
+    const data = image.data;
+    return data[offset + 3] > 0 &&
+      (
+        Math.abs(data[offset] - background[0]) > 14 ||
+        Math.abs(data[offset + 1] - background[1]) > 14 ||
+        Math.abs(data[offset + 2] - background[2]) > 14
+      );
+  }
+
+  function estimateRenderBackground(image, edges, baseColumn, endColumn) {
+    const startColumn = Math.min(baseColumn + 1, endColumn);
+    const x0 = Math.min(
+      image.width - 1,
+      Math.max(0, Number(edges[startColumn] || 0))
+    );
+    const x1 = Math.min(
+      image.width,
+      Math.max(x0 + 1, Number(edges[endColumn + 1] || image.width))
+    );
+    const area = Math.max(1, (x1 - x0) * image.height);
+    const stride = Math.max(1, Math.floor(Math.sqrt(Math.max(1, area / 100000))));
+    const histogram = new Map();
+
+    for (let y = 0; y < image.height; y += stride) {
+      for (let x = x0; x < x1; x += stride) {
+        const offset = pixelOffset(image, x, y);
+        const key =
+          ((image.data[offset] >> 4) << 8) |
+          ((image.data[offset + 1] >> 4) << 4) |
+          (image.data[offset + 2] >> 4);
+        histogram.set(key, Number(histogram.get(key) || 0) + 1);
+      }
+    }
+
+    let bestKey = 0x0fff;
+    let bestCount = -1;
+    for (const [key, count] of histogram.entries()) {
+      if (count > bestCount) {
+        bestKey = key;
+        bestCount = count;
+      }
+    }
+    return [
+      ((bestKey >> 8) & 0x0f) * 16 + 8,
+      ((bestKey >> 4) & 0x0f) * 16 + 8,
+      (bestKey & 0x0f) * 16 + 8,
+      255
+    ];
+  }
+
+  function horizontalRuleMask(image, background) {
+    const candidates = new Uint8Array(image.height);
+    if (image.width < 16 || image.height < 3) return candidates;
+
+    for (let y = 1; y < image.height - 1; y += 1) {
+      const referenceOffset = pixelOffset(image, 1, y);
+      if (!pixelDiffers(image, referenceOffset, background)) continue;
+
+      const r = image.data[referenceOffset];
+      const g = image.data[referenceOffset + 1];
+      const b = image.data[referenceOffset + 2];
+      let uniform = true;
+
+      for (let x = 2; x < image.width - 1; x += 1) {
+        const offset = pixelOffset(image, x, y);
+        if (
+          Math.abs(image.data[offset] - r) > 8 ||
+          Math.abs(image.data[offset + 1] - g) > 8 ||
+          Math.abs(image.data[offset + 2] - b) > 8
+        ) {
+          uniform = false;
+          break;
+        }
+      }
+      if (uniform) candidates[y] = 1;
+    }
+
+    const mask = new Uint8Array(image.height);
+    let start = 1;
+    while (start < candidates.length) {
+      if (!candidates[start]) {
+        start += 1;
+        continue;
+      }
+      let end = start + 1;
+      while (end < candidates.length && candidates[end]) end += 1;
+      if (end - start <= 4) mask.fill(1, start, end);
+      start = end;
+    }
+    return mask;
+  }
+
+  function analyzeRenderOverflow(image, widths, baseColumn, endColumn, extra) {
+    const edges = columnEdgesFromWidths(widths, endColumn, image.width);
+    const background = estimateRenderBackground(
+      image,
+      edges,
+      baseColumn,
+      endColumn
+    );
+    const rules = horizontalRuleMask(image, background);
+
+    let lastVisible = -1;
+    for (let column = baseColumn + 1; column <= endColumn; column += 1) {
+      if (Number(widths[column]) > 0) lastVisible = column;
+    }
+
+    let moreVisible = false;
+    for (let column = endColumn + 1; column < MAX_COLUMNS; column += 1) {
+      if (Number(widths[column]) > 0) {
+        moreVisible = true;
+        break;
+      }
+    }
+
+    let keepColumn = baseColumn;
+    let edgeContent = false;
+    let scannedPixels = 0;
+    let ignoredRuleRows = 0;
+    for (let y = 0; y < rules.length; y += 1) {
+      if (rules[y]) ignoredRuleRows += 1;
+    }
+
+    for (let column = baseColumn + 1; column <= endColumn; column += 1) {
+      if (Number(widths[column]) <= 0) continue;
+      const left = Math.max(0, Number(edges[column] || 0));
+      const right = Math.min(image.width, Number(edges[column + 1] || image.width));
+      if (right - left <= 2) continue;
+
+      let content = false;
+      scanColumn:
+      for (let y = 1; y < image.height - 1; y += 1) {
+        if (rules[y]) continue;
+        for (let x = left + 1; x < right - 1; x += 1) {
+          scannedPixels += 1;
+          if (pixelDiffers(image, pixelOffset(image, x, y), background)) {
+            content = true;
+            break scanColumn;
+          }
+        }
+      }
+
+      if (content) {
+        keepColumn = Math.max(keepColumn, column);
+        if (column === lastVisible) edgeContent = true;
+      }
+    }
+
+    const nextExtra = extra < 8
+      ? 8
+      : Math.min(MAX_COLUMNS, Math.max(8, extra * 2));
+    const nextColumn = probeEndByVisibleColumns(widths, baseColumn, nextExtra);
+    const done = !edgeContent || !moreVisible || nextColumn <= endColumn;
+
+    return {
+      done,
+      keep_column: keepColumn,
+      next_column: nextColumn,
+      next_extra: nextExtra,
+      scanned_pixels: scannedPixels,
+      ignored_rule_rows: ignoredRuleRows,
+      background_rgba: background,
+      edges
+    };
+  }
+
+  async function decodePngForOverflow(base64) {
+    const imageElement = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Could not decode Range.getImage() PNG.'));
+      image.src = `data:image/png;base64,${base64}`;
+    });
+
+    const width = Number(imageElement.naturalWidth || imageElement.width);
+    const height = Number(imageElement.naturalHeight || imageElement.height);
+    if (!(width > 0 && height > 0)) {
+      throw new Error('Decoded Range.getImage() PNG has invalid dimensions.');
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Canvas 2D context is unavailable.');
+    context.drawImage(imageElement, 0, 0);
+    const imageData = context.getImageData(0, 0, width, height);
+
+    return {
+      width,
+      height,
+      data: imageData.data,
+      canvas
+    };
+  }
+
+  function cropOverflowBase64(image, edges, keepColumn, originalBase64) {
+    const rightEdge = Number(edges[keepColumn + 1] || image.width - 1);
+    const cropWidth = Math.max(
+      1,
+      Math.min(image.width, Math.round(rightEdge) + 1)
+    );
+    if (cropWidth >= image.width) return originalBase64;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = cropWidth;
+    canvas.height = image.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas 2D context is unavailable for crop.');
+    context.drawImage(
+      image.canvas,
+      0,
+      0,
+      cropWidth,
+      image.height,
+      0,
+      0,
+      cropWidth,
+      image.height
+    );
+    const dataUrl = canvas.toDataURL('image/png');
+    const comma = dataUrl.indexOf(',');
+    if (comma < 0) throw new Error('Canvas PNG encoding did not return a data URL.');
+    return dataUrl.slice(comma + 1);
+  }
+
+  async function renderPrecomputedPlannedBatch(
+    workbookName,
+    items,
+    batchIndex,
+    batchCount
+  ) {
     ExperimentUi.startBatch(
       batchIndex,
       batchCount,
       items.map((item) => item.sheet)
     );
 
+    const planById = new Map(items.map((item) => [item.id, item]));
     let pending = items.map((item) => ({ ...item }));
     const captures = [];
     let renderMs = 0;
@@ -937,60 +1217,128 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         return {
           render_ms: performance.now() - started,
           images: requests.map((request) => ({
-            id: request.item.id,
-            sheet: request.item.sheet,
+            item: request.item,
             address: request.address,
-            base_right_column: request.item.base_right_column,
-            bottom_row: request.item.bottom_row,
-            end_column: request.item.end_column,
-            overflow_probe: request.item.overflow_probe,
-            probe_extra: request.item.probe_extra,
             base64: request.image.value
           }))
         };
       });
       renderMs += rendered.render_ms;
 
-      const persistStarted = performance.now();
-      const response = await fetch('/planned-image-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workbook: workbookName,
-          batch_index: batchIndex,
-          images: rendered.images
-        })
-      });
-      if (!response.ok) throw new Error(await response.text());
-      const result = await response.json();
-      persistMs += performance.now() - persistStarted;
-      analysisMs += Number(result.analysis_ms || 0);
-      captures.push(...(result.captures || []));
-
-      const nextById = new Map(
-        (result.pending || []).map((item) => [item.id, item])
-      );
+      const finalized = [];
       const nextPending = [];
-      for (const item of pending) {
-        const next = nextById.get(item.id);
-        if (!next) continue;
-        const nextColumn = Number(next.next_column);
-        if (!Number.isInteger(nextColumn) || nextColumn <= item.end_column) {
-          throw new Error(`Rust overflow planning made no progress for ${item.sheet}.`);
+      const analysisStarted = performance.now();
+
+      for (const renderedImage of rendered.images) {
+        const item = renderedImage.item;
+        const canonical = planById.get(item.id);
+        if (!canonical) {
+          throw new Error(`Missing Strategy F capture plan for ${item.id}.`);
         }
-        nextPending.push({
-          ...item,
-          end_column: nextColumn,
-          probe_extra: Number(next.next_extra || item.probe_extra * 2)
+
+        if (!item.overflow_probe) {
+          canonical.address = renderedImage.address;
+          canonical.end_column = item.end_column;
+          canonical.overflow_checked = false;
+          finalized.push({
+            id: item.id,
+            sheet: item.sheet,
+            address: renderedImage.address,
+            base64: renderedImage.base64
+          });
+          continue;
+        }
+
+        const decoded = await decodePngForOverflow(renderedImage.base64);
+        const decision = analyzeRenderOverflow(
+          decoded,
+          item.column_widths,
+          item.base_right_column,
+          item.end_column,
+          item.probe_extra
+        );
+        const pass = {
+          capture_end_column: item.end_column,
+          probe_extra: item.probe_extra,
+          keep_column: decision.keep_column,
+          edge_reached: !decision.done,
+          scanned_pixels: decision.scanned_pixels,
+          ignored_rule_rows: decision.ignored_rule_rows,
+          background_rgba: decision.background_rgba
+        };
+        const passes = [...(item.overflow_passes || []), pass];
+
+        if (!decision.done) {
+          if (
+            !Number.isInteger(decision.next_column) ||
+            decision.next_column <= item.end_column
+          ) {
+            throw new Error(
+              `Browser overflow planning made no progress for ${item.sheet}.`
+            );
+          }
+          canonical.end_column = decision.next_column;
+          canonical.probe_extra = decision.next_extra;
+          canonical.overflow_passes = passes;
+          nextPending.push({
+            ...item,
+            end_column: decision.next_column,
+            probe_extra: decision.next_extra,
+            overflow_passes: passes
+          });
+          continue;
+        }
+
+        const finalAddress = addressA1To(item.bottom_row, decision.keep_column);
+        const finalBase64 = cropOverflowBase64(
+          decoded,
+          decision.edges,
+          decision.keep_column,
+          renderedImage.base64
+        );
+        canonical.address = finalAddress;
+        canonical.end_column = decision.keep_column;
+        canonical.overflow_checked = true;
+        canonical.overflow_keep_column = decision.keep_column;
+        canonical.overflow_passes = passes;
+        canonical.overflow_scanned_pixels = passes.reduce(
+          (sum, current) => sum + Number(current.scanned_pixels || 0),
+          0
+        );
+        finalized.push({
+          id: item.id,
+          sheet: item.sheet,
+          address: finalAddress,
+          base64: finalBase64
         });
       }
+
+      analysisMs += performance.now() - analysisStarted;
+
+      if (finalized.length > 0) {
+        const persistStarted = performance.now();
+        const response = await fetch('/image-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workbook: workbookName,
+            batch_index: batchIndex,
+            images: finalized
+          })
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const result = await response.json();
+        persistMs += performance.now() - persistStarted;
+        captures.push(...(result.captures || []));
+      }
+
       pending = nextPending;
       ExperimentUi.showAnalysis(
         captures.length,
         items.length,
         pending.length === 0
-          ? 'Rust XML/render overflow analysis complete.'
-          : `Rust overflow pass ${iteration}: ${pending.length} sheet(s) need a wider image.`
+          ? 'Precomputed WSL Rust bounds + browser overflow analysis complete.'
+          : `Overflow pass ${iteration}: ${pending.length} sheet(s) need a wider image.`
       );
     }
 
@@ -1011,7 +1359,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       sheets: items.map((item) => item.sheet),
       render_ms: fixed(renderMs),
       persist_ms: fixed(persistMs),
-      rust_overflow_analysis_ms: fixed(analysisMs)
+      browser_overflow_analysis_ms: fixed(analysisMs)
     });
     return {
       render_ms: renderMs,
@@ -1471,13 +1819,13 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         address: null
       }));
     } else if (config.strategy === 'F') {
-      ExperimentUi.setPhase('Loading Rust OOXML visual plan');
-      const loadedPlan = await fetchRustVisualPlan(workbookName);
+      ExperimentUi.setPhase('Loading precomputed WSL Rust OOXML visual plan');
+      const loadedPlan = await fetchPrecomputedVisualPlan(workbookName);
       rustVisualPlan = loadedPlan.plan;
       planning.rust_xml_plan_ms += Number(rustVisualPlan.rust_plan_ms || 0);
       planning.rust_plan_fetch_ms += loadedPlan.fetch_ms;
 
-      const entries = rustEntriesFromPlan(sheetNames, rustVisualPlan);
+      const entries = entriesFromPrecomputedPlan(sheetNames, rustVisualPlan);
       planning.fallback_shape_ms += await collectFallbackShapeBounds(entries);
       const fallbackEntries = entries.filter((entry) => entry.drawingFallbackRequired);
       planning.point_to_grid_ms += await mapPointBoundsToGrid(fallbackEntries);
@@ -1487,7 +1835,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
           entry.hasText &&
           entry.rightColumn < MAX_COLUMNS - 1;
       }
-      plans = rustPlannedItems(entries);
+      plans = precomputedPlannedItems(entries);
     } else {
       ExperimentUi.setPhase('Checking trailing hidden rows/columns');
       const trailing = await collectTrailingHiddenBounds(sheetNames);
@@ -1554,7 +1902,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       }
 
       const result = config.strategy === 'F'
-        ? await renderRustPlannedBatch(
+        ? await renderPrecomputedPlannedBatch(
             workbookName,
             batch,
             batchIndex,
@@ -1598,7 +1946,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       batches,
       capture_plans: plans,
       captures: persistedCaptures,
-      rust_visual_plan: rustVisualPlan,
+      precomputed_wsl_rust_visual_plan: rustVisualPlan,
       excel_api_requirement_set: '1.11'
     };
 

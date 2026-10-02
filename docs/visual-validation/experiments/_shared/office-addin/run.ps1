@@ -44,6 +44,8 @@ param(
     [ValidateRange(0, 60)]
     [int]$RetryDelaySeconds = 10,
 
+    [string]$VisualPlanPath,
+
     [switch]$TemporaryDeveloperRegistration
 )
 
@@ -73,8 +75,14 @@ if ($HostKind -eq 'dotnet' -and $ExcelLaunchMode -eq 'rust-com') {
     throw 'ExcelLaunchMode rust-com is only valid with HostKind rust.'
 }
 
-if ($Strategy -eq 'F' -and $HostKind -ne 'rust') {
-    throw 'Strategy F requires the Rust host because OOXML planning and single-image overflow analysis run there.'
+if ($Strategy -eq 'F') {
+    if ([string]::IsNullOrWhiteSpace($VisualPlanPath)) {
+        throw 'Strategy F requires a precomputed WSL Rust visual-plan JSON file.'
+    }
+    $VisualPlanPath = [IO.Path]::GetFullPath($VisualPlanPath)
+    if (-not (Test-Path -LiteralPath $VisualPlanPath -PathType Leaf)) {
+        throw "Precomputed visual plan does not exist: $VisualPlanPath"
+    }
 }
 
 $RepoRoot = [IO.Path]::GetFullPath(
@@ -117,6 +125,13 @@ Copy-Item `
     -Recurse `
     -Force
 Copy-Item -LiteralPath $FileListPath -Destination $HostFileList -Force
+if ($Strategy -eq 'F') {
+    Copy-Item `
+        -LiteralPath $VisualPlanPath `
+        -Destination (Join-Path $StaticStage 'visual-plan.json') `
+        -Force
+    Write-ExperimentLog "Staged precomputed WSL Rust visual plan: $VisualPlanPath"
+}
 
 # Source Context patch: restore repo-local .NET 8 fallback.
 function Test-DotNet8Sdk([string]$Path) {
@@ -768,23 +783,6 @@ try {
         $workbookOrdinal++
         $workbookName = [IO.Path]::GetFileName($sourcePath)
         $completed = $false
-
-        if ($Strategy -eq 'F') {
-            $encodedPlanWorkbook = [Uri]::EscapeDataString($workbookName)
-            Write-ExperimentLog "Preparing Rust OOXML visual plan before Excel starts: $workbookName"
-            $planStarted = [Diagnostics.Stopwatch]::StartNew()
-            $visualPlan = Invoke-RestMethod `
-                -Uri ('http://127.0.0.1:3001/visual-plan?workbook=' + $encodedPlanWorkbook) `
-                -Method Get
-            Write-ExperimentLog (
-                'Rust OOXML visual plan ready in ' +
-                ('{0:0.00}' -f $planStarted.Elapsed.TotalMilliseconds) +
-                ' ms (Rust parse ' +
-                ('{0:0.00}' -f [double]$visualPlan.rust_plan_ms) +
-                ' ms, ' +
-                "$(@($visualPlan.sheets).Count) worksheet(s))."
-            )
-        }
 
         for (
             $attemptNumber = 1;

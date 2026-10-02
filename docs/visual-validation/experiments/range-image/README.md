@@ -17,14 +17,16 @@ does not depend on production `tools/` code.
   a worker. The final right bound is calculated from the changed pixels.
 - **E — horizontal + vertical overflow XOR:** D plus an analogous screen-height probe
   below the content.
-- **F — Rust OOXML bounds + horizontal render overflow:** before Excel starts, the Rust
-  host scans worksheet XML for content/merge bounds, column definitions, trailing-hidden
-  column/row tails, and drawing anchors. Office.js consumes that plan instead of asking
-  Excel for UsedRange/hidden tails/normal drawing bounds. Only sheets that still need it
-  get a horizontal render probe; the Rust host analyses that same PNG and crops it to the
-  detected right edge, so there is no whitespace blocker, XOR pair, vertical overflow
-  probe, or second final capture. Unsupported drawing anchors use a narrow Office.js
-  shape fallback on those sheets only. Strategy F intentionally requires the Rust host.
+- **F — WSL Rust OOXML bounds + horizontal render overflow:** before either Office.js
+  host starts, a small native Rust preplanner runs inside WSL and scans worksheet XML for
+  content/merge bounds, column definitions, trailing-hidden column/row tails, and drawing
+  anchors. It writes a host-neutral JSON plan that is staged with the add-in. Office.js
+  consumes that plan instead of asking Excel for UsedRange/hidden tails/normal drawing
+  bounds. Only sheets that still need it get a horizontal render probe. The task-pane
+  WebView analyses and crops that same PNG with Canvas, so there is no whitespace blocker,
+  XOR pair, vertical overflow probe, second final capture, or strategy-specific host code.
+  Unsupported drawing anchors use a narrow Office.js shape fallback on those sheets only.
+  Strategy F therefore works with both the Rust and ASP.NET Office.js hosts.
 
 For strategies C-E, trailing hidden worksheet geometry takes precedence over content,
 drawing, margin, and overflow planning on the affected axis. The planner first checks
@@ -39,8 +41,8 @@ D/E persist each overflow probe's before, after, and XOR PNG below the workbook'
 together with the pixel/extent decision.
 
 F does not persist intermediate overflow probes. The current probe PNG becomes the final
-artifact when the Rust analysis can close the right edge; it is cropped in the host and
-only widened/re-rendered when content reaches the current probe edge.
+artifact when the task-pane Canvas analysis can close the right edge; it is cropped in
+the WebView and only widened/re-rendered when content reaches the current probe edge.
 
 Office.js intentionally captures each final sheet as one `Range.getImage()` call,
 including extreme aspect ratios. The VBA baseline may tile internally.

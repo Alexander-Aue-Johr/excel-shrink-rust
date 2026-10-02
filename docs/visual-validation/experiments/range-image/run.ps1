@@ -60,6 +60,17 @@ function Choose(
     }
 }
 
+function Convert-WslUncToLinuxPath([string]$Path) {
+    $full = [IO.Path]::GetFullPath($Path)
+    if ($full -match '^\\\\wsl(?:\.localhost|\$)?\\([^\\]+)\\(.*)$') {
+        return [pscustomobject]@{
+            Distribution = $Matches[1]
+            LinuxPath = '/' + ($Matches[2] -replace '\\', '/')
+        }
+    }
+    return $null
+}
+
 if ([string]::IsNullOrWhiteSpace($CorpusRoot)) {
     $CorpusRoot = Join-Path $RepoRoot 'corpus-local'
 }
@@ -80,7 +91,7 @@ if ([string]::IsNullOrWhiteSpace($Strategy)) {
             'C - content + drawings + 10 row/column margin',
             'D - C bounds + measured horizontal overflow',
             'E - D + measured vertical overflow',
-            'F - Rust OOXML bounds + horizontal render overflow',
+            'F - WSL Rust OOXML bounds + horizontal render overflow',
             'Run all strategies'
         ) 0
         $Strategy = switch -Regex ($choice) {
@@ -111,13 +122,6 @@ if ([string]::IsNullOrWhiteSpace($Implementation)) {
             default { 'all' }
         }
     }
-}
-
-if (
-    $Strategy -eq 'F' -and
-    $Implementation -notin @('officejs-rust', 'all')
-) {
-    throw 'Strategy F requires Office.js - Rust host.'
 }
 
 if (
@@ -221,6 +225,64 @@ else {
     @($Implementation)
 }
 
+$FVisualPlanPath = $null
+$needsFOfficeJs = (
+    $strategies -contains 'F' -and
+    @($implementations | Where-Object { $_ -like 'officejs-*' }).Count -gt 0
+)
+
+if ($needsFOfficeJs) {
+    $repoWsl = Convert-WslUncToLinuxPath $RepoRoot
+    $fileListWsl = Convert-WslUncToLinuxPath $FileList
+    $prepareScript = Join-Path $PSScriptRoot 'prepare-visual-plan.sh'
+    $prepareScriptWsl = Convert-WslUncToLinuxPath $prepareScript
+
+    if ($null -eq $repoWsl -or $null -eq $fileListWsl -or $null -eq $prepareScriptWsl) {
+        throw (
+            'Strategy F requires the repository and selected file list to live inside ' +
+            'WSL so the native Rust OOXML preplanner can run before Excel starts.'
+        )
+    }
+
+    if (
+        $repoWsl.Distribution -ne $fileListWsl.Distribution -or
+        $repoWsl.Distribution -ne $prepareScriptWsl.Distribution
+    ) {
+        throw 'Strategy F paths resolve to different WSL distributions.'
+    }
+
+    $planRoot = Join-Path $RepoRoot '.tmp\visual-validation\range-image\plans'
+    New-Item -ItemType Directory -Path $planRoot -Force | Out-Null
+    $FVisualPlanPath = Join-Path $planRoot ("strategy-f$selectionSuffix.json")
+    $planWsl = Convert-WslUncToLinuxPath $FVisualPlanPath
+    if ($null -eq $planWsl -or $planWsl.Distribution -ne $repoWsl.Distribution) {
+        throw 'Could not convert the Strategy F visual-plan output path to WSL.'
+    }
+
+    Write-Host ''
+    Write-Host 'Preparing Strategy F OOXML metadata with native Rust in WSL...'
+    $planStarted = [Diagnostics.Stopwatch]::StartNew()
+    & wsl.exe `
+        -d $repoWsl.Distribution `
+        -- bash `
+        $prepareScriptWsl.LinuxPath `
+        $fileListWsl.LinuxPath `
+        $planWsl.LinuxPath
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Strategy F WSL Rust preplanner failed with exit code $LASTEXITCODE"
+    }
+    if (-not (Test-Path -LiteralPath $FVisualPlanPath -PathType Leaf)) {
+        throw "Strategy F preplanner did not produce: $FVisualPlanPath"
+    }
+
+    Write-Host (
+        'Strategy F OOXML plan prepared before host startup in ' +
+        ('{0:0.00}' -f $planStarted.Elapsed.TotalMilliseconds) +
+        " ms: $FVisualPlanPath"
+    )
+}
+
 foreach ($currentStrategy in $strategies) {
     foreach ($currentImplementation in $implementations) {
         Write-Host ''
@@ -254,14 +316,6 @@ foreach ($currentStrategy in $strategies) {
                 $vbaArgs.OnlyWorkbookPath = $files[0].FullName
             }
             & $VbaRunner @vbaArgs
-            continue
-        }
-
-        if ($currentStrategy -eq 'F' -and $currentImplementation -ne 'officejs-rust') {
-            Write-Warning (
-                'Strategy F deliberately runs only with Office.js + Rust host; ' +
-                "skipping $currentImplementation."
-            )
             continue
         }
 
@@ -305,6 +359,10 @@ foreach ($currentStrategy in $strategies) {
         }
         else {
             $args.ExcelLaunchMode = 'excel-x'
+        }
+
+        if ($currentStrategy -eq 'F') {
+            $args.VisualPlanPath = $FVisualPlanPath
         }
 
         & $SharedOfficeRunner @args

@@ -513,6 +513,7 @@ app.MapGet("/taskpane.css", () => StaticFile("taskpane.css", "text/css; charset=
 app.MapGet("/bootstrap.js", () => StaticFile("bootstrap.js", "application/javascript; charset=utf-8"));
 app.MapGet("/shell.js", () => StaticFile("shell.js", "application/javascript; charset=utf-8"));
 app.MapGet("/commands.html", () => StaticFile("commands.html", "text/html; charset=utf-8"));
+app.MapGet("/visual-plan.json", () => StaticFile("visual-plan.json", "application/json; charset=utf-8"));
 app.MapGet("/mode.js", () =>
     StaticFile(
         experiment == "range-image"

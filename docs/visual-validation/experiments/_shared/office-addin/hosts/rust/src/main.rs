@@ -32,9 +32,6 @@ use std::{
 };
 use tokio::task::JoinHandle;
 
-mod visual_plan;
-mod visual_xml;
-
 #[derive(Clone)]
 struct Config {
     experiment: String,
@@ -76,8 +73,6 @@ struct Shared {
     config: Config,
     expected: Vec<String>,
     expected_set: HashSet<String>,
-    source_paths: HashMap<String, PathBuf>,
-    visual_plans: Mutex<HashMap<String, visual_plan::WorkbookVisualPlan>>,
     results: Mutex<HashMap<String, Value>>,
     errors: Mutex<Vec<String>>,
     events: Mutex<Vec<EventEntry>>,
@@ -111,11 +106,6 @@ struct StatusQuery {
 
 #[derive(Deserialize)]
 struct ProbeStatusQuery {
-    workbook: String,
-}
-
-#[derive(Deserialize)]
-struct WorkbookQuery {
     workbook: String,
 }
 
@@ -495,99 +485,6 @@ async fn beacon(
     StatusCode::NO_CONTENT
 }
 
-async fn visual_plan_endpoint(
-    State(state): State<Arc<Shared>>,
-    Query(query): Query<WorkbookQuery>,
-) -> Response {
-    if state.config.strategy != "F" {
-        return (
-            StatusCode::BAD_REQUEST,
-            "Rust OOXML visual planning is only available for strategy F",
-        ).into_response();
-    }
-
-    if let Some(plan) = state.visual_plans.lock().unwrap().get(&query.workbook).cloned() {
-        return Json(plan).into_response();
-    }
-
-    let Some(path) = state.source_paths.get(&query.workbook).cloned() else {
-        return (
-            StatusCode::NOT_FOUND,
-            format!("workbook is not in the experiment file list: {}", query.workbook),
-        ).into_response();
-    };
-    let workbook = query.workbook.clone();
-    let built = tokio::task::spawn_blocking(move || {
-        visual_plan::build_workbook_visual_plan(&path)
-            .map_err(|error| format!("{error:#}"))
-    }).await;
-
-    match built {
-        Ok(Ok(plan)) => {
-            state.visual_plans.lock().unwrap().insert(workbook.clone(), plan.clone());
-            state.record("rust_visual_plan_ready", json!({
-                "workbook": workbook,
-                "sheets": plan.sheets.len(),
-                "rust_plan_ms": plan.rust_plan_ms
-            }));
-            Json(plan).into_response()
-        }
-        Ok(Err(message)) => {
-            state.error(message.clone());
-            (StatusCode::BAD_REQUEST, message).into_response()
-        }
-        Err(error) => {
-            let message = error.to_string();
-            state.error(message.clone());
-            (StatusCode::INTERNAL_SERVER_ERROR, message).into_response()
-        }
-    }
-}
-
-async fn planned_image_batch(
-    State(state): State<Arc<Shared>>,
-    Json(payload): Json<Value>,
-) -> Response {
-    let Some(workbook) = payload["workbook"].as_str().map(str::to_owned) else {
-        return (StatusCode::BAD_REQUEST, "workbook missing").into_response();
-    };
-    let Some(plan) = state.visual_plans.lock().unwrap().get(&workbook).cloned() else {
-        return (
-            StatusCode::BAD_REQUEST,
-            format!("visual plan is not cached for workbook {workbook}"),
-        ).into_response();
-    };
-    let image_root = state.config.image_root.clone();
-    let batch_index = payload["batch_index"].as_u64().unwrap_or(0);
-    let image_count = payload["images"].as_array().map_or(0, Vec::len);
-    let result = tokio::task::spawn_blocking(move || {
-        visual_plan::process_planned_image_batch(&plan, &payload, &image_root)
-            .map_err(|error| format!("{error:#}"))
-    }).await;
-
-    match result {
-        Ok(Ok(value)) => {
-            state.record("rust_planned_image_batch", json!({
-                "workbook": workbook,
-                "batch_index": batch_index,
-                "image_count": image_count,
-                "pending": value["pending"].as_array().map_or(0, Vec::len),
-                "analysis_ms": value["analysis_ms"].clone()
-            }));
-            Json(value).into_response()
-        }
-        Ok(Err(message)) => {
-            state.error(message.clone());
-            (StatusCode::BAD_REQUEST, message).into_response()
-        }
-        Err(error) => {
-            let message = error.to_string();
-            state.error(message.clone());
-            (StatusCode::INTERNAL_SERVER_ERROR, message).into_response()
-        }
-    }
-}
-
 async fn image_batch(
     State(state): State<Arc<Shared>>,
     Json(payload): Json<Value>,
@@ -941,8 +838,6 @@ fn router(state: Arc<Shared>) -> Router {
         .route("/reset-diagnostics", post(reset_diagnostics))
         .route("/client-event", post(client_event))
         .route("/client-beacon", get(beacon))
-        .route("/visual-plan", get(visual_plan_endpoint))
-        .route("/planned-image-batch", post(planned_image_batch))
         .route("/image-batch", post(image_batch))
         .route("/probe-batch", post(probe_batch))
         .route("/probe-status", get(probe_status))
@@ -955,6 +850,7 @@ fn router(state: Arc<Shared>) -> Router {
         .route("/bootstrap.js", get(|state| static_file(state, "bootstrap.js", "application/javascript; charset=utf-8")))
         .route("/shell.js", get(|state| static_file(state, "shell.js", "application/javascript; charset=utf-8")))
         .route("/commands.html", get(|state| static_file(state, "commands.html", "text/html; charset=utf-8")))
+        .route("/visual-plan.json", get(|state| static_file(state, "visual-plan.json", "application/json; charset=utf-8")))
         .route("/mode.js", get(mode_js))
         .with_state(state)
 }
@@ -1012,27 +908,23 @@ async fn main() -> Result<()> {
 
     let config = load_config()?;
     let expected_paths = fs::read_to_string(&config.file_list)?;
-    let mut expected = Vec::new();
-    let mut source_paths = HashMap::new();
-    for line in expected_paths.lines().map(str::trim).filter(|line| !line.is_empty()) {
-        let path = PathBuf::from(line);
-        let name = path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or(line)
-            .to_owned();
-        if source_paths.insert(name.clone(), path).is_some() {
-            bail!("duplicate workbook file name in experiment file list: {name}");
-        }
-        expected.push(name);
-    }
+    let expected: Vec<String> = expected_paths
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            Path::new(line)
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or(line)
+                .to_owned()
+        })
+        .collect();
 
     let state = Arc::new(Shared {
         config: config.clone(),
         expected_set: expected.iter().cloned().collect(),
         expected,
-        source_paths,
-        visual_plans: Mutex::new(HashMap::new()),
         results: Mutex::new(HashMap::new()),
         errors: Mutex::new(Vec::new()),
         events: Mutex::new(Vec::new()),

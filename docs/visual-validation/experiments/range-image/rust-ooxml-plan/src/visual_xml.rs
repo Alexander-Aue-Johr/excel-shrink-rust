@@ -1,4 +1,4 @@
-//! Small borrowed XML reader for the visual-validation experiment host.
+//! Small borrowed XML reader for the Strategy F WSL OOXML preplanner.
 //! It intentionally mirrors the allocation-light regression XML views without
 //! depending on production crates.
 use anyhow::{Result, bail, ensure};
