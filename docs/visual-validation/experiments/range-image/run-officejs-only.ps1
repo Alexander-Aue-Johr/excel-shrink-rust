@@ -7,7 +7,10 @@ param(
     [string]$Strategy = 'A',
 
     [ValidateSet('rust', 'dotnet')]
-    [string]$Host = 'dotnet'
+    [string]$Host = 'dotnet',
+
+    # Source Context patch: forward Office.js DevTools switch.
+    [switch]$AutoOpenDevTools
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,4 +27,5 @@ else {
     -Strategy $Strategy `
     -Implementation $implementation `
     -BatchSize $OfficeJsBatchSize `
+    -AutoOpenDevTools:$AutoOpenDevTools `
     -NonInteractive

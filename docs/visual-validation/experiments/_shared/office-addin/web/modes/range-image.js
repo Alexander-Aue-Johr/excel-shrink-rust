@@ -1213,7 +1213,20 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
             .getImage();
           requests.push({ item, address, image });
         }
-        await context.sync();
+
+        // Source Context patch: diagnostic breakpoints around Strategy F getImage sync.
+        // Pause before Excel executes the batched Range.getImage() requests.
+        debugger;
+        try {
+          await context.sync();
+        } catch (error) {
+          // Pause again with the actual RichApi error and request list in scope.
+          debugger;
+          const detail = officeErrorDetail(error);
+          throw new Error(
+            `Strategy F Range.getImage context.sync failed: ${detail}`
+          );
+        }
         return {
           render_ms: performance.now() - started,
           images: requests.map((request) => ({

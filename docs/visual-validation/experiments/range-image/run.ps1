@@ -21,6 +21,8 @@ param(
 
     [string]$Workbook,
 
+    [switch]$AutoOpenDevTools,
+
     [switch]$NonInteractive
 )
 
@@ -132,6 +134,22 @@ if (
         '1', '2', '4', '8', '16', '32', '64'
     ) 3
     $BatchSize = [int]$batchChoice
+}
+
+# Source Context patch: Office.js DevTools CLI option.
+if (
+    -not $NonInteractive -and
+    ($Implementation -like 'officejs-*' -or $Implementation -eq 'all') -and
+    -not $PSBoundParameters.ContainsKey('AutoOpenDevTools')
+) {
+    $devToolsChoice = Choose 'Office.js DevTools' @(
+        'Off',
+        'Auto-open DevTools'
+    ) 0
+
+    if ($devToolsChoice -eq 'Auto-open DevTools') {
+        $AutoOpenDevTools = $true
+    }
 }
 
 New-Item -ItemType Directory -Path $ResultsRoot -Force | Out-Null
@@ -352,6 +370,10 @@ foreach ($currentStrategy in $strategies) {
             BatchSize = $BatchSize
             OverflowProbeWidthPx = $OverflowProbeWidthPx
             OverflowProbeHeightPx = $OverflowProbeHeightPx
+        }
+
+        if ($AutoOpenDevTools) {
+            $args.AutoOpenDevTools = $true
         }
 
         if ($hostKind -eq 'rust') {

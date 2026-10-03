@@ -46,6 +46,8 @@ param(
 
     [string]$VisualPlanPath,
 
+    [switch]$AutoOpenDevTools,
+
     [switch]$TemporaryDeveloperRegistration
 )
 
@@ -117,6 +119,7 @@ Write-ExperimentLog "Strategy: $Strategy"
 Write-ExperimentLog "Office.js host: $HostKind"
 Write-ExperimentLog "Excel launch mode: $ExcelLaunchMode"
 Write-ExperimentLog "Batch size: $BatchSize"
+Write-ExperimentLog "Office.js DevTools auto-open: $AutoOpenDevTools"
 
 Write-ExperimentLog 'Staging Office add-in web files...'
 Copy-Item `
@@ -709,7 +712,8 @@ foreach ($name in @(
     'VV_IMAGE_ROOT',
     'VV_BATCH_SIZE',
     'VV_OVERFLOW_WIDTH_PX',
-    'VV_OVERFLOW_HEIGHT_PX'
+    'VV_OVERFLOW_HEIGHT_PX',
+    'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'
 )) {
     $oldEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
@@ -724,6 +728,40 @@ $env:VV_IMAGE_ROOT = $HostImageRoot
 $env:VV_BATCH_SIZE = [string]$BatchSize
 $env:VV_OVERFLOW_WIDTH_PX = [string]$OverflowProbeWidthPx
 $env:VV_OVERFLOW_HEIGHT_PX = [string]$OverflowProbeHeightPx
+
+# Source Context patch: auto-open WebView2 DevTools.
+if ($AutoOpenDevTools) {
+    $devToolsFlag = '--auto-open-devtools-for-tabs'
+    $existingWebView2Arguments = [string](
+        [Environment]::GetEnvironmentVariable(
+            'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'
+        )
+    )
+
+    if ([string]::IsNullOrWhiteSpace($existingWebView2Arguments)) {
+        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $devToolsFlag
+    }
+    elseif (
+        $existingWebView2Arguments -notmatch
+        '(?i)(^|\s)--auto-open-devtools-for-tabs($|\s)'
+    ) {
+        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = (
+            $existingWebView2Arguments.Trim() + ' ' + $devToolsFlag
+        )
+    }
+    else {
+        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $existingWebView2Arguments
+    }
+
+    Write-ExperimentLog (
+        'WebView2 browser arguments: ' +
+        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+    )
+    Write-ExperimentLog (
+        'Debugger mode disables workbook startup, inactivity, and absolute timeouts ' +
+        'while JavaScript is paused.'
+    ) 'WARN'
+}
 
 $hostProcess = $null
 $registrationState = $null
@@ -906,7 +944,10 @@ try {
                 $absoluteSeconds = ($now - $absoluteStarted).TotalSeconds
                 $inactiveSeconds = ($now - $lastActivityLocal).TotalSeconds
 
-                if ($absoluteSeconds -gt $AbsoluteWorkbookTimeoutSeconds) {
+                if (
+                    -not $AutoOpenDevTools -and
+                    $absoluteSeconds -gt $AbsoluteWorkbookTimeoutSeconds
+                ) {
                     Write-ExperimentLog (
                         "Absolute workbook timeout after " +
                         "$AbsoluteWorkbookTimeoutSeconds s."
@@ -915,6 +956,7 @@ try {
                 }
 
                 if (
+                    -not $AutoOpenDevTools -and
                     -not $sawActivity -and
                     $launchStarted.Elapsed.TotalSeconds -gt $StartupTimeoutSeconds
                 ) {
@@ -926,6 +968,7 @@ try {
                 }
 
                 if (
+                    -not $AutoOpenDevTools -and
                     $sawActivity -and
                     $inactiveSeconds -gt $InactivityTimeoutSeconds
                 ) {
