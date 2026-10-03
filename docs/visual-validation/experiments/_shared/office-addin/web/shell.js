@@ -12,6 +12,9 @@
     batches: []
   };
 
+  // Source Context patch: optional manual start gate for debugger setup.
+  let modeLoaded = false;
+
   function byId(id) { return document.getElementById(id); }
   function fixed(value, digits = 1) {
     const number = Number(value);
@@ -159,6 +162,71 @@
 
   window.ExperimentEvents = { post: postEvent };
 
+  // Source Context patch: Office.js diagnostic setup.
+  async function configureOfficeDiagnostics(config) {
+    if (config.extended_error_logging) {
+      if (
+        typeof window.OfficeExtension === 'undefined' ||
+        !window.OfficeExtension.config
+      ) {
+        throw new Error(
+          'Extended Office.js error logging was requested, but OfficeExtension.config is unavailable.'
+        );
+      }
+
+      window.OfficeExtension.config.extendedErrorLogging = true;
+      log('OfficeExtension.config.extendedErrorLogging = true');
+      await postEvent('office_extended_error_logging_enabled', { enabled: true });
+    }
+
+    if (config.office_js_debug) {
+      log('Using Microsoft office.debug.js for this task pane.');
+      await postEvent('office_debug_library_enabled', { enabled: true });
+    }
+  }
+
+  function loadExperimentMode() {
+    if (modeLoaded) return;
+    modeLoaded = true;
+
+    const script = document.createElement('script');
+    script.src = `/mode.js?run=${Date.now()}`;
+    script.onerror = () => window.ExperimentUi.fail('Could not load experiment mode script.');
+    document.head.appendChild(script);
+  }
+
+  async function waitForManualStart(config) {
+    const panel = byId('manual-start-panel');
+    const button = byId('start-experiment');
+    if (!panel || !button) {
+      throw new Error('Manual-start UI is missing from the task pane.');
+    }
+
+    panel.classList.remove('hidden');
+    window.ExperimentUi.setPhase(
+      'Ready to debug · open DevTools, configure breakpoints, then click Start experiment'
+    );
+    await postEvent('manual_start_waiting', {
+      experiment: config.experiment,
+      strategy: config.strategy
+    });
+
+    await new Promise((resolve) => {
+      button.addEventListener('click', () => {
+        button.disabled = true;
+        button.textContent = 'Starting…';
+        resolve();
+      }, { once: true });
+    });
+
+    panel.classList.add('hidden');
+    window.ExperimentUi.setPhase('Starting experiment');
+    await postEvent('manual_start_clicked', {
+      experiment: config.experiment,
+      strategy: config.strategy
+    });
+  }
+
   async function main() {
     const configResponse = await fetch('/config');
     if (!configResponse.ok) {
@@ -166,15 +234,16 @@
     }
     const config = await configResponse.json();
 
+    await configureOfficeDiagnostics(config);
     window.ExperimentUi.configure(config);
     window.ExperimentUi.setConnection(true, 'Experiment host connected');
     await postEvent('shell_loaded', { experiment: config.experiment });
 
-    const script = document.createElement('script');
-    script.src = '/mode.js';
-    script.defer = true;
-    script.onerror = () => window.ExperimentUi.fail('Could not load experiment mode script.');
-    document.head.appendChild(script);
+    if (config.wait_for_start) {
+      await waitForManualStart(config);
+    }
+
+    loadExperimentMode();
   }
 
   window.setInterval(() => {

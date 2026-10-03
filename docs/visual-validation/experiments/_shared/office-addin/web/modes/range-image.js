@@ -1183,7 +1183,8 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     workbookName,
     items,
     batchIndex,
-    batchCount
+    batchCount,
+    config
   ) {
     ExperimentUi.startBatch(
       batchIndex,
@@ -1205,12 +1206,38 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         const workbook = context.workbook;
         const requests = [];
         const started = performance.now();
+        const traceGetImage = Boolean(
+          config &&
+          (
+            config.wait_for_start ||
+            config.extended_error_logging ||
+            config.office_js_debug
+          )
+        );
+
+        // Source Context patch: trace Strategy F getImage queue execution.
         for (const item of pending) {
           const address = addressA1To(item.bottom_row, item.end_column);
+          const requestNumber = requests.length + 1;
+          if (traceGetImage) {
+            context.trace(
+              `Strategy F #${requestNumber} BEFORE Range.getImage ` +
+              `sheet=${item.sheet} address=${address}`
+            );
+          }
+
           const image = workbook.worksheets
             .getItem(item.sheet)
             .getRange(address)
             .getImage();
+
+          if (traceGetImage) {
+            context.trace(
+              `Strategy F #${requestNumber} AFTER Range.getImage ` +
+              `sheet=${item.sheet} address=${address}`
+            );
+          }
+
           requests.push({ item, address, image });
         }
 
@@ -1220,7 +1247,24 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         try {
           await context.sync();
         } catch (error) {
-          // Pause again with the actual RichApi error and request list in scope.
+          const requestSummary = requests.map((request, index) => ({
+            request: index + 1,
+            sheet: request.item.sheet,
+            address: request.address
+          }));
+          const traceMessages = error && Array.isArray(error.traceMessages)
+            ? error.traceMessages
+            : [];
+
+          console.error('Strategy F Range.getImage context.sync failed', {
+            error,
+            requestSummary,
+            traceMessages,
+            debugInfo: error && error.debugInfo ? error.debugInfo : null
+          });
+
+          // Pause again with the RichApi error, request mapping, traces,
+          // and extended debugInfo/fullStatements in scope.
           debugger;
           const detail = officeErrorDetail(error);
           throw new Error(
@@ -1386,6 +1430,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     const message = error && error.message ? error.message : String(error);
     const code = error && error.code ? String(error.code) : '';
     let debugInfo = '';
+    let traceMessages = '';
 
     try {
       if (error && error.debugInfo) {
@@ -1394,9 +1439,17 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     } catch (_) {
     }
 
+    try {
+      if (error && Array.isArray(error.traceMessages)) {
+        traceMessages = JSON.stringify(error.traceMessages);
+      }
+    } catch (_) {
+    }
+
     return [
       message,
       code ? `code=${code}` : '',
+      traceMessages ? `traceMessages=${traceMessages}` : '',
       debugInfo ? `debugInfo=${debugInfo}` : ''
     ].filter(Boolean).join(' | ');
   }
@@ -1919,7 +1972,8 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
             workbookName,
             batch,
             batchIndex,
-            batchCount
+            batchCount,
+            config
           )
         : await renderAddressBatch(
             workbookName,

@@ -9,8 +9,13 @@ param(
     [ValidateSet('rust', 'dotnet')]
     [string]$Host = 'dotnet',
 
-    # Source Context patch: forward Office.js DevTools switch.
-    [switch]$AutoOpenDevTools
+    # Source Context patch: forward manual task-pane start mode.
+    [switch]$WaitForStart,
+
+    # Source Context patch: forward Office.js diagnostics.
+    [switch]$ExtendedErrorLogging,
+
+    [switch]$UseOfficeDebugJs
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,5 +32,7 @@ else {
     -Strategy $Strategy `
     -Implementation $implementation `
     -BatchSize $OfficeJsBatchSize `
-    -AutoOpenDevTools:$AutoOpenDevTools `
+    -WaitForStart:$WaitForStart `
+    -ExtendedErrorLogging:$ExtendedErrorLogging `
+    -UseOfficeDebugJs:$UseOfficeDebugJs `
     -NonInteractive

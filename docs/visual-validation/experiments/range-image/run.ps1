@@ -21,7 +21,11 @@ param(
 
     [string]$Workbook,
 
-    [switch]$AutoOpenDevTools,
+    [switch]$WaitForStart,
+
+    [switch]$ExtendedErrorLogging,
+
+    [switch]$UseOfficeDebugJs,
 
     [switch]$NonInteractive
 )
@@ -136,19 +140,43 @@ if (
     $BatchSize = [int]$batchChoice
 }
 
-# Source Context patch: Office.js DevTools CLI option.
+# Source Context patch: optional manual task-pane start for debugging.
 if (
     -not $NonInteractive -and
     ($Implementation -like 'officejs-*' -or $Implementation -eq 'all') -and
-    -not $PSBoundParameters.ContainsKey('AutoOpenDevTools')
+    -not $PSBoundParameters.ContainsKey('WaitForStart')
 ) {
-    $devToolsChoice = Choose 'Office.js DevTools' @(
-        'Off',
-        'Auto-open DevTools'
+    $startupChoice = Choose 'Office.js startup' @(
+        'Start immediately',
+        'Wait for Start button in task pane'
     ) 0
 
-    if ($devToolsChoice -eq 'Auto-open DevTools') {
-        $AutoOpenDevTools = $true
+    if ($startupChoice -eq 'Wait for Start button in task pane') {
+        $WaitForStart = $true
+    }
+}
+
+# Source Context patch: configurable Office.js diagnostics.
+if (
+    -not $NonInteractive -and
+    ($Implementation -like 'officejs-*' -or $Implementation -eq 'all') -and
+    -not $PSBoundParameters.ContainsKey('ExtendedErrorLogging') -and
+    -not $PSBoundParameters.ContainsKey('UseOfficeDebugJs')
+) {
+    $diagnosticsChoice = Choose 'Office.js diagnostics' @(
+        'Normal',
+        'Extended error logging',
+        'Extended error logging + office.debug.js'
+    ) 0
+
+    switch ($diagnosticsChoice) {
+        'Extended error logging' {
+            $ExtendedErrorLogging = $true
+        }
+        'Extended error logging + office.debug.js' {
+            $ExtendedErrorLogging = $true
+            $UseOfficeDebugJs = $true
+        }
     }
 }
 
@@ -213,6 +241,14 @@ if ($files.Count -eq 1 -and $allFiles.Count -gt 1) {
         $safeName = $safeName.Substring(0, 80)
     }
     $selectionSuffix = '-workbook-' + $safeName
+}
+
+$officeDiagnosticSuffix = ''
+if ($ExtendedErrorLogging) {
+    $officeDiagnosticSuffix += '-extended-errors'
+}
+if ($UseOfficeDebugJs) {
+    $officeDiagnosticSuffix += '-office-debug'
 }
 
 $FileList = Join-Path $ResultsRoot ("files$selectionSuffix.txt")
@@ -355,10 +391,10 @@ foreach ($currentStrategy in $strategies) {
         $hostLabel = if ($hostKind -eq 'rust') { 'rust' } else { 'dotnet' }
         $output = Join-Path `
             $ResultsRoot `
-            ($strategyDirectory + "\officejs-$hostLabel-batch$BatchSize$selectionSuffix.json")
+            ($strategyDirectory + "\officejs-$hostLabel-batch$BatchSize$selectionSuffix$officeDiagnosticSuffix.json")
         $images = Join-Path `
             $ImageRoot `
-            ($currentStrategy.ToLowerInvariant() + "\officejs-$hostLabel-batch$BatchSize$selectionSuffix")
+            ($currentStrategy.ToLowerInvariant() + "\officejs-$hostLabel-batch$BatchSize$selectionSuffix$officeDiagnosticSuffix")
 
         $args = @{
             FileListPath = $FileList
@@ -372,8 +408,14 @@ foreach ($currentStrategy in $strategies) {
             OverflowProbeHeightPx = $OverflowProbeHeightPx
         }
 
-        if ($AutoOpenDevTools) {
-            $args.AutoOpenDevTools = $true
+        if ($WaitForStart) {
+            $args.WaitForStart = $true
+        }
+        if ($ExtendedErrorLogging) {
+            $args.ExtendedErrorLogging = $true
+        }
+        if ($UseOfficeDebugJs) {
+            $args.UseOfficeDebugJs = $true
         }
 
         if ($hostKind -eq 'rust') {

@@ -44,6 +44,9 @@ struct Config {
     batch_size: usize,
     overflow_width_px: usize,
     overflow_height_px: usize,
+    wait_for_start: bool,
+    extended_error_logging: bool,
+    office_js_debug: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -261,6 +264,19 @@ fn env_usize(name: &str, fallback: usize) -> usize {
         .unwrap_or(fallback)
 }
 
+// Source Context patch: manual task-pane start configuration.
+// Source Context patch: Office.js diagnostic configuration.
+fn env_bool(name: &str, fallback: bool) -> bool {
+    let Ok(value) = env::var(name) else {
+        return fallback;
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => true,
+        "0" | "false" | "no" | "off" => false,
+        _ => fallback,
+    }
+}
+
 fn safe_file_name(value: &str) -> String {
     value
         .chars()
@@ -420,7 +436,10 @@ async fn config(State(state): State<Arc<Shared>>) -> impl IntoResponse {
         "host_kind": state.config.host_kind,
         "batch_size": state.config.batch_size,
         "overflow_probe_width_px": state.config.overflow_width_px,
-        "overflow_probe_height_px": state.config.overflow_height_px
+        "overflow_probe_height_px": state.config.overflow_height_px,
+        "wait_for_start": state.config.wait_for_start,
+        "extended_error_logging": state.config.extended_error_logging,
+        "office_js_debug": state.config.office_js_debug
     }))
 }
 
@@ -867,6 +886,9 @@ fn load_config() -> Result<Config> {
         batch_size: env_usize("VV_BATCH_SIZE", 8),
         overflow_width_px: env_usize("VV_OVERFLOW_WIDTH_PX", 1920),
         overflow_height_px: env_usize("VV_OVERFLOW_HEIGHT_PX", 1080),
+        wait_for_start: env_bool("VV_WAIT_FOR_START", false),
+        extended_error_logging: env_bool("VV_EXTENDED_ERROR_LOGGING", false),
+        office_js_debug: env_bool("VV_OFFICE_JS_DEBUG", false),
     })
 }
 

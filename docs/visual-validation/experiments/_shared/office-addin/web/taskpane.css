@@ -64,6 +64,24 @@ h1 { margin: 4px 0 3px; font-size: 23px; line-height: 1.1; }
 }
 .phase { margin: 5px 0 11px; font-size: 12px; opacity: .72; }
 
+/* Source Context patch: manual debugger start button. */
+.start-button {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.start-button:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
 .progress-track {
   height: 9px;
   border-radius: 999px;

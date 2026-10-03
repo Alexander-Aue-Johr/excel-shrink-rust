@@ -43,6 +43,20 @@ var imageRoot = Path.GetFullPath(RequireEnv("VV_IMAGE_ROOT"));
 var batchSize = EnvInt("VV_BATCH_SIZE", 8);
 var overflowWidthPx = EnvInt("VV_OVERFLOW_WIDTH_PX", 1920);
 var overflowHeightPx = EnvInt("VV_OVERFLOW_HEIGHT_PX", 1080);
+// Source Context patch: manual task-pane start configuration.
+var waitForStart = string.Equals(
+    Environment.GetEnvironmentVariable("VV_WAIT_FOR_START"),
+    "1",
+    StringComparison.OrdinalIgnoreCase);
+// Source Context patch: Office.js diagnostic configuration.
+var extendedErrorLogging = string.Equals(
+    Environment.GetEnvironmentVariable("VV_EXTENDED_ERROR_LOGGING"),
+    "1",
+    StringComparison.OrdinalIgnoreCase);
+var officeJsDebug = string.Equals(
+    Environment.GetEnvironmentVariable("VV_OFFICE_JS_DEBUG"),
+    "1",
+    StringComparison.OrdinalIgnoreCase);
 
 Directory.CreateDirectory(imageRoot);
 
@@ -282,7 +296,10 @@ app.MapGet("/config", () => Results.Json(new
     host_kind = hostKind,
     batch_size = batchSize,
     overflow_probe_width_px = overflowWidthPx,
-    overflow_probe_height_px = overflowHeightPx
+    overflow_probe_height_px = overflowHeightPx,
+    wait_for_start = waitForStart,
+    extended_error_logging = extendedErrorLogging,
+    office_js_debug = officeJsDebug
 }));
 
 app.MapGet("/status", (string? workbook, long? after) =>

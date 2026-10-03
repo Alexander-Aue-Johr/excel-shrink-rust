@@ -46,7 +46,11 @@ param(
 
     [string]$VisualPlanPath,
 
-    [switch]$AutoOpenDevTools,
+    [switch]$WaitForStart,
+
+    [switch]$ExtendedErrorLogging,
+
+    [switch]$UseOfficeDebugJs,
 
     [switch]$TemporaryDeveloperRegistration
 )
@@ -119,7 +123,9 @@ Write-ExperimentLog "Strategy: $Strategy"
 Write-ExperimentLog "Office.js host: $HostKind"
 Write-ExperimentLog "Excel launch mode: $ExcelLaunchMode"
 Write-ExperimentLog "Batch size: $BatchSize"
-Write-ExperimentLog "Office.js DevTools auto-open: $AutoOpenDevTools"
+Write-ExperimentLog "Wait for task-pane Start button: $WaitForStart"
+Write-ExperimentLog "Extended Office.js error logging: $ExtendedErrorLogging"
+Write-ExperimentLog "Office.js debug library: $UseOfficeDebugJs"
 
 Write-ExperimentLog 'Staging Office add-in web files...'
 Copy-Item `
@@ -127,6 +133,32 @@ Copy-Item `
     -Destination $StaticStage `
     -Recurse `
     -Force
+
+# Source Context patch: Office.js diagnostic environment.
+if ($UseOfficeDebugJs) {
+    $stagedTaskpane = Join-Path $StaticStage 'taskpane.html'
+    $taskpaneText = [IO.File]::ReadAllText($stagedTaskpane, $script:StrictUtf8)
+    $normalOfficeJs = 'https://officeapis.public.onecdn.static.microsoft/1/office.js'
+    $debugOfficeJs = 'https://appsforoffice.microsoft.com/lib/1/hosted/office.debug.js'
+    $referenceCount = (
+        [regex]::Matches(
+            $taskpaneText,
+            [regex]::Escape($normalOfficeJs)
+        )
+    ).Count
+
+    if ($referenceCount -ne 1) {
+        throw (
+            'Expected exactly one normal Office.js reference in staged taskpane.html, ' +
+            "found $referenceCount."
+        )
+    }
+
+    $taskpaneText = $taskpaneText.Replace($normalOfficeJs, $debugOfficeJs)
+    Write-Utf8NoBom $stagedTaskpane $taskpaneText
+    Write-ExperimentLog "Staged Office.js debug library: $debugOfficeJs"
+}
+
 Copy-Item -LiteralPath $FileListPath -Destination $HostFileList -Force
 if ($Strategy -eq 'F') {
     Copy-Item `
@@ -713,7 +745,9 @@ foreach ($name in @(
     'VV_BATCH_SIZE',
     'VV_OVERFLOW_WIDTH_PX',
     'VV_OVERFLOW_HEIGHT_PX',
-    'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'
+    'VV_WAIT_FOR_START',
+    'VV_EXTENDED_ERROR_LOGGING',
+    'VV_OFFICE_JS_DEBUG'
 )) {
     $oldEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
@@ -729,37 +763,15 @@ $env:VV_BATCH_SIZE = [string]$BatchSize
 $env:VV_OVERFLOW_WIDTH_PX = [string]$OverflowProbeWidthPx
 $env:VV_OVERFLOW_HEIGHT_PX = [string]$OverflowProbeHeightPx
 
-# Source Context patch: auto-open WebView2 DevTools.
-if ($AutoOpenDevTools) {
-    $devToolsFlag = '--auto-open-devtools-for-tabs'
-    $existingWebView2Arguments = [string](
-        [Environment]::GetEnvironmentVariable(
-            'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'
-        )
-    )
+# Source Context patch: expose manual task-pane start mode.
+$env:VV_WAIT_FOR_START = if ($WaitForStart) { '1' } else { '0' }
+$env:VV_EXTENDED_ERROR_LOGGING = if ($ExtendedErrorLogging) { '1' } else { '0' }
+$env:VV_OFFICE_JS_DEBUG = if ($UseOfficeDebugJs) { '1' } else { '0' }
 
-    if ([string]::IsNullOrWhiteSpace($existingWebView2Arguments)) {
-        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $devToolsFlag
-    }
-    elseif (
-        $existingWebView2Arguments -notmatch
-        '(?i)(^|\s)--auto-open-devtools-for-tabs($|\s)'
-    ) {
-        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = (
-            $existingWebView2Arguments.Trim() + ' ' + $devToolsFlag
-        )
-    }
-    else {
-        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $existingWebView2Arguments
-    }
-
+if ($WaitForStart) {
     Write-ExperimentLog (
-        'WebView2 browser arguments: ' +
-        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
-    )
-    Write-ExperimentLog (
-        'Debugger mode disables workbook startup, inactivity, and absolute timeouts ' +
-        'while JavaScript is paused.'
+        'Manual debug start enabled. Open DevTools in the task pane, configure ' +
+        'breakpoints, then click Start experiment.'
     ) 'WARN'
 }
 
@@ -945,7 +957,7 @@ try {
                 $inactiveSeconds = ($now - $lastActivityLocal).TotalSeconds
 
                 if (
-                    -not $AutoOpenDevTools -and
+                    -not $WaitForStart -and
                     $absoluteSeconds -gt $AbsoluteWorkbookTimeoutSeconds
                 ) {
                     Write-ExperimentLog (
@@ -956,7 +968,6 @@ try {
                 }
 
                 if (
-                    -not $AutoOpenDevTools -and
                     -not $sawActivity -and
                     $launchStarted.Elapsed.TotalSeconds -gt $StartupTimeoutSeconds
                 ) {
@@ -968,7 +979,7 @@ try {
                 }
 
                 if (
-                    -not $AutoOpenDevTools -and
+                    -not $WaitForStart -and
                     $sawActivity -and
                     $inactiveSeconds -gt $InactivityTimeoutSeconds
                 ) {
