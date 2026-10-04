@@ -1367,7 +1367,8 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     ExperimentUi.startBatch(batchIndex,batchCount,items.map(x=>x.sheet));
     for (const item of items) {
       const sheetRecord={id:item.id,sheet:item.sheet,sheet_index:item.sheet_index,office_position:item.office_position,
-        status:'planning',requested_address:item.address,initial_bounds:boundsOnly(item),tiles:[],overflow_passes:[]};
+        status:'planning',requested_address:item.address,initial_bounds:boundsOnly(item),tiles:[],overflow_passes:[],
+        overflow_mode:config.capture_options?.overflow_mode || 'heuristic'};
       s.state.sheets.push(sheetRecord);
       await s.checkpoint('sheet_started',{sheet:item.sheet,address:item.address});
       try {
@@ -1385,13 +1386,20 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
             for (let c=end+1;c<MAX_COLUMNS;c++) measuredWidths[c]=Number(item.column_widths[c] || 0);
           }
           let keep=item.base_right_column, done=true, scanned=0;
-          const edgeEvidence=[];
+          const edgeEvidence=[]; let sparseUnresolved=false;
           const result=await s.capturePlan(item.sheet,tiles,`${item.id}-p${pass}`, measuredWidths ? async(base64,tile)=>{
             if(tile.rect.c0!==0 || tile.rect.c1!==end+1) throw SafeCapture.fault('OVERFLOW_CONTEXT_SPLIT','Recovery needed a horizontal split; exact overflow remains inconclusive.',{sheet:item.sheet,rect:tile.rect},true);
             let decoded;
             try {
               decoded=await decodePngForOverflow(base64);
-              const decision=analyzeRenderOverflow(decoded,measuredWidths,item.base_right_column,end,extra);
+              let decision=analyzeRenderOverflow(decoded,measuredWidths,item.base_right_column,end,extra);
+              if(config.capture_options?.overflow_mode==='selective') {
+                if(typeof SelectiveOverflow==='undefined')throw SafeCapture.fault('SPARSE_HELPER_MISSING','Selective helper is unavailable.',{},true);
+                const differential=await SelectiveOverflow.verify(s,item,tile,decoded,decision,
+                  columnEdgesFromWidths(measuredWidths,end,decoded.width),end);
+                decision={...decision,...differential,heuristic_keep_column:decision.keep_column,heuristic_done:decision.done};
+                sparseUnresolved=sparseUnresolved||!!differential.unresolved;
+              }
               keep=Math.max(keep,decision.keep_column); done=done && decision.done;
               scanned+=decision.scanned_pixels;
               if (!decision.done) edgeEvidence.push({tile_id:tile.id,address:tile.address,
@@ -1400,16 +1408,23 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
               return {keep_column:decision.keep_column,edge_reached:!decision.done,
                 scanned_pixels:decision.scanned_pixels,ignored_rule_rows:decision.ignored_rule_rows,
                 ignored_probe_rule_rows:decision.ignored_probe_rule_rows,edge_hits:decision.edge_hits,
-                background_rgba:decision.background_rgba,rule_scope:decision.rule_scope};
+                background_rgba:decision.background_rgba,rule_scope:decision.rule_scope,selective_checks:decision.checks||[],
+                overflow_mode:config.capture_options?.overflow_mode || 'heuristic',unresolved:!!decision.unresolved,reason:decision.reason||null};
             } finally {
               if(decoded) { decoded.data=null; if(decoded.canvas) {decoded.canvas.width=0;decoded.canvas.height=0;} }
             }
           } : null);
           sheetRecord.overflow_passes.push({pass,address:SafeCapture.address(rect),keep_column:keep,
             done,scanned_pixels:scanned,tile_count:result.length,horizontal_split:splitX,
-            edge_evidence:edgeEvidence,extra_visible_columns:extra});
+            edge_evidence:edgeEvidence,extra_visible_columns:extra,overflow_mode:config.capture_options?.overflow_mode||'heuristic',
+            selective_unresolved:sparseUnresolved});
           await recordBounds('overflow_pass_result', item, {...sheetRecord.overflow_passes.at(-1),
             proposed_address:addressA1To(item.bottom_row,keep)});
+          if (sparseUnresolved) {
+            accepted=result;end=rect.c1-1;item.overflow_checked=false;sheetRecord.status='inconclusive';
+            sheetRecord.warning='Selective verification was inconclusive. Original probe bounds are retained; no further expansion or inferred crop.';
+            break;
+          }
           if (item.overflow_probe && splitX) {
             // Never infer 'no overflow' from tiles that omit potential text sources to their left.
             accepted=result; end=rect.c1-1;
@@ -1858,6 +1873,11 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     if (!configResponse.ok) throw new Error(await configResponse.text());
     const config = await configResponse.json();
     captureRunId = config.capture_run_id || config.diagnostic_run_id || null;
+    const optionsResponse=await fetch('/capture-options.json',{cache:'no-store'});
+    if(!optionsResponse.ok)throw new Error('Capture options are unavailable. No unconfigured capture was started.');
+    config.capture_options=await optionsResponse.json();
+    if(!['heuristic','selective'].includes(config.capture_options.overflow_mode))throw new Error('Invalid overflow mode.');
+    if(config.capture_options.overflow_mode==='selective' && config.strategy!=='F')throw new Error('Selective verification requires Strategy F.');
 
     const workbookInfo = await getWorkbookAndVisibleSheets();
     const workbookName = workbookInfo.workbookName;

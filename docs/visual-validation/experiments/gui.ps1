@@ -327,6 +327,15 @@ $xaml = @"
               <ComboBox x:Name="StrategyBox" Grid.Column="1"/>
             </Grid>
 
+            <Grid Margin="0,0,0,9"><Grid.ColumnDefinitions><ColumnDefinition Width="175"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Overflow verification (F)"/><ComboBox x:Name="OverflowModeBox" Grid.Column="1"/>
+            </Grid>
+            <Grid Margin="0,0,0,9"><Grid.ColumnDefinitions><ColumnDefinition Width="175"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Capture pixel budget"/><ComboBox x:Name="TileBudgetBox" Grid.Column="1"/>
+            </Grid>
+            <Grid Margin="0,0,0,9"><Grid.ColumnDefinitions><ColumnDefinition Width="175"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Tile packing"/><ComboBox x:Name="TilePackingBox" Grid.Column="1"/>
+            </Grid>
             <Grid Margin="0,0,0,9">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="175"/>
@@ -516,6 +525,9 @@ $DiagnosticBreakBox.IsChecked = $null -ne $last -and [bool]$last.diagnostic_brea
 $DiagnosticDebugJsBox.IsChecked = $null -ne $last -and [bool]$last.diagnostic_debug_js
 $ShapeBoundsGroup = $window.FindName('ShapeBoundsGroup')
 $StrategyBox = $window.FindName('StrategyBox')
+$OverflowModeBox = $window.FindName('OverflowModeBox')
+$TileBudgetBox = $window.FindName('TileBudgetBox')
+$TilePackingBox = $window.FindName('TilePackingBox')
 $ImplementationBox = $window.FindName('ImplementationBox')
 $WorkbookBox = $window.FindName('WorkbookBox')
 $BatchSizeBox = $window.FindName('BatchSizeBox')
@@ -552,6 +564,18 @@ Set-ChoiceItems $ExperimentBox @(
     (New-ChoiceItem 'Get shape bounds' 'shape-bounds')
 ) $(if ($null -ne $last -and $last.experiment) { [string]$last.experiment } else { 'range-image' })
 
+Set-ChoiceItems $OverflowModeBox @(
+    (New-ChoiceItem 'A - Current pixel heuristic' 'heuristic'),
+    (New-ChoiceItem 'B - Selective whitespace verification' 'selective'),
+    (New-ChoiceItem 'Compare A and B (fresh workbook per arm)' 'compare')
+) $(if ($null -ne $last -and $last.overflow_mode) { [string]$last.overflow_mode } else { 'heuristic' })
+Set-ChoiceItems $TileBudgetBox @(
+    (New-ChoiceItem '16 MP - Standard' '16'), (New-ChoiceItem '32 MP - Larger tiles (experimental)' '32'),
+    (New-ChoiceItem '64 MP - Large tiles (experimental)' '64')
+) $(if ($null -ne $last -and $last.tile_megapixels) { [string]$last.tile_megapixels } else { '16' })
+Set-ChoiceItems $TilePackingBox @(
+    (New-ChoiceItem 'Budget-aware row boundaries' 'budget'), (New-ChoiceItem 'Balanced subdivision (previous baseline)' 'balanced')
+) $(if ($null -ne $last -and $last.tile_packing) { [string]$last.tile_packing } else { 'budget' })
 Set-ChoiceItems $StrategyBox @(
     (New-ChoiceItem 'A - UsedRange prefetch' 'A'),
     (New-ChoiceItem 'B - UsedRange immediately before each picture batch' 'B'),
@@ -761,6 +785,8 @@ function Update-ExperimentVisibility {
     }
 }
 
+$StrategyBox.Add_SelectionChanged({ $OverflowModeBox.IsEnabled = ((Get-ChoiceValue $StrategyBox) -eq 'F') })
+$OverflowModeBox.IsEnabled = ((Get-ChoiceValue $StrategyBox) -eq 'F')
 $ExperimentBox.Add_SelectionChanged({
     Update-ExperimentVisibility
 })
@@ -807,6 +833,9 @@ $RunButton.Add_Click({
                 experiment = 'range-image'
                 corpus_root = $corpus
                 strategy = Get-ChoiceValue $StrategyBox
+                overflow_mode = $(if ((Get-ChoiceValue $StrategyBox) -eq 'F') { Get-ChoiceValue $OverflowModeBox } else { 'heuristic' })
+                tile_megapixels = [int](Get-ChoiceValue $TileBudgetBox)
+                tile_packing = Get-ChoiceValue $TilePackingBox
                 implementation = Get-ChoiceValue $ImplementationBox
                 workbook = $workbookValue
                 batch_size = [int](Get-ChoiceValue $BatchSizeBox)
@@ -929,6 +958,9 @@ if ($selection.experiment -eq 'range-image') {
     $runnerArgs = @{
         CorpusRoot = [string]$selection.corpus_root
         Strategy = [string]$selection.strategy
+        OverflowMode = [string]$selection.overflow_mode
+        TileMegapixels = [int]$selection.tile_megapixels
+        TilePacking = [string]$selection.tile_packing
         Implementation = [string]$selection.implementation
         BatchSize = [int]$selection.batch_size
         OverflowProbeWidthPx = [int]$selection.overflow_probe_width_px

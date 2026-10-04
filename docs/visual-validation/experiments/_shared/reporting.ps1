@@ -1,4 +1,5 @@
 . (Join-Path $PSScriptRoot 'report\inspector.ps1')
+. (Join-Path $PSScriptRoot 'report\history.ps1')
 # Shared report ownership for ALL visual-validation experiment entry points.
 # Reports are durable from the beginning; caches and input workbooks are never cleanup targets.
 function Write-VVJson([string]$Path, $Value) {
@@ -57,23 +58,7 @@ function Get-VVRunList([string]$ReportRoot) {
     } | Sort-Object Name -Descending)
 }
 function Update-VVIndex([string]$ReportRoot) {
-    [IO.Directory]::CreateDirectory($ReportRoot) | Out-Null
-    $cards = [Text.StringBuilder]::new()
-    $items = @(Get-VVRunList $ReportRoot)
-    foreach ($item in $items) {
-        $h = [Net.WebUtility]::HtmlEncode([string]$item.Meta.experiment)
-        $status = [Net.WebUtility]::HtmlEncode([string]$item.Meta.status)
-        if ($item.Meta.status -eq 'running' -and -not $item.Active) { $status='interrupted (report can be recovered)' }
-        [void]$cards.AppendLine("<tr><td>$($item.Name)</td><td>$h</td><td>$status</td><td><a href='runs/$($item.Name)/report.html'>Report</a> | <a href='runs/$($item.Name)/review.zip'>ZIP</a></td></tr>")
-    }
-    $html=@"
-<!doctype html><html lang="en"><meta charset="utf-8"><title>Visual validation - Run history</title>
-<style>body{font:16px system-ui;max-width:1200px;margin:40px auto;padding:0 20px}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:12px;border-bottom:1px solid #ccc}a{color:#145e9b}p{line-height:1.6}</style>
-<h1>Visual validation - Run history</h1><p>Capture results, diagnostics and review bundles. Most recent runs appear first.</p>
-<p>Retention applies to completed managed runs only. Input workbooks, baselines and build caches are excluded.</p>
-<table><thead><tr><th>Run (UTC)</th><th>Experiment</th><th>Status</th><th>Artifacts</th></tr></thead><tbody>$cards</tbody></table></html>
-"@
-    [IO.File]::WriteAllText((Join-Path $ReportRoot 'index.html'),$html,[Text.UTF8Encoding]::new($false))
+    Write-VVHistory -ReportRoot $ReportRoot -Items @(Get-VVRunList $ReportRoot)
 }
 function Start-VVReport([string]$Start, [string]$Experiment, $Arguments) {
     if (-not [string]::IsNullOrWhiteSpace($env:VV_REPORT_DIR)) {
@@ -159,7 +144,8 @@ function Get-VVCaptureRollup([string]$RunRoot) {
             foreach($property in @($data.workbooks.PSObject.Properties)) {
                 $safe=$property.Value.safe_capture
                 if($null -eq $safe){continue}
-                [void]$finalKeys.Add(([string]$safe.workbook+'|'+[string]$safe.strategy))
+                $sourceKey=($file.FullName.Replace('\','/') -replace '/data/','/artifacts/') -replace '\.json$',''
+                [void]$finalKeys.Add(([string]$safe.workbook+'|'+$sourceKey))
                 $sessions.Add([pscustomobject]@{Data=$safe;Source=$file.FullName})
             }
         } catch { Write-Warning ('Capture summary cannot read '+$file.FullName+': '+$_.Exception.Message) }
@@ -168,7 +154,8 @@ function Get-VVCaptureRollup([string]$RunRoot) {
         try {
             $safe=Read-VVJson $file.FullName
             if($null -eq $safe.sheets -or $null -eq $safe.attempts){continue}
-            $key=[string]$safe.workbook+'|'+[string]$safe.strategy
+            $sourceKey=$file.FullName.Replace('\','/') -replace '/_progress/.*$',''
+            $key=[string]$safe.workbook+'|'+$sourceKey
             if($finalKeys.Contains($key)){continue}
             [void]$finalKeys.Add($key)
             $sessions.Add([pscustomobject]@{Data=$safe;Source=$file.FullName})

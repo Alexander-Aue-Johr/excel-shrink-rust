@@ -703,6 +703,8 @@ app.MapGet("/taskpane.css", () => StaticFile("taskpane.css", "text/css; charset=
 app.MapGet("/bootstrap.js", () => StaticFile("bootstrap.js", "application/javascript; charset=utf-8"));
 app.MapGet("/shell.js", () => StaticFile("shell.js", "application/javascript; charset=utf-8"));
 app.MapGet("/safe-capture.js", () => StaticFile("safe-capture.js", "application/javascript; charset=utf-8"));
+app.MapGet("/selective-overflow.js", () => StaticFile("selective-overflow.js", "application/javascript; charset=utf-8"));
+app.MapGet("/capture-options.json", () => StaticFile("capture-options.json", "application/json; charset=utf-8"));
 app.MapGet("/render-diagnostics.js", () => StaticFile("render-diagnostics.js", "application/javascript; charset=utf-8"));
 app.MapGet("/row-height-diagnostics.js", () => StaticFile("row-height-diagnostics.js", "application/javascript; charset=utf-8"));
 app.MapGet("/commands.html", () => StaticFile("commands.html", "text/html; charset=utf-8"));

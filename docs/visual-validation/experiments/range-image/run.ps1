@@ -21,6 +21,15 @@ param(
 
     [string]$Workbook,
 
+    [ValidateSet('heuristic','selective','compare')]
+    [string]$OverflowMode = 'heuristic',
+
+    [ValidateSet(16,32,64)]
+    [int]$TileMegapixels = 16,
+
+    [ValidateSet('budget','balanced')]
+    [string]$TilePacking = 'budget',
+
     [switch]$WaitForStart,
 
     [switch]$ExtendedErrorLogging,
@@ -341,6 +350,10 @@ if ($needsFOfficeJs) {
     )
 }
 
+if ($OverflowMode -ne 'heuristic' -and ($Strategy -ne 'F' -or $Implementation -eq 'vba')) {
+    throw 'Selective overflow and the A/B comparison require Strategy F with an Office.js implementation.'
+}
+$overflowArms = if ($OverflowMode -eq 'compare') { @('heuristic','selective') } else { @($OverflowMode) }
 foreach ($currentStrategy in $strategies) {
     foreach ($currentImplementation in $implementations) {
         Write-Host ''
@@ -392,15 +405,24 @@ foreach ($currentStrategy in $strategies) {
             'F' { 'f-rust-xml-horizontal-overflow' }
         }
 
+        foreach ($overflowArm in $overflowArms) {
         $hostLabel = if ($hostKind -eq 'rust') { 'rust' } else { 'dotnet' }
+        $armSuffix = "-$overflowArm-$TileMegapixels" + 'mp'
+        Write-Host "Overflow mode: $overflowArm | Tile budget: $TileMegapixels MP | Packing: $TilePacking"
+
         $output = Join-Path `
             $ResultsRoot `
-            ($currentStrategy.ToLowerInvariant() + "\$hostLabel-b$BatchSize.json")
+            ($currentStrategy.ToLowerInvariant() + "\$hostLabel-b$BatchSize$armSuffix.json")
         $images = Join-Path `
             $ImageRoot `
-            ($currentStrategy.ToLowerInvariant() + "\$hostLabel-b$BatchSize")
+            ($currentStrategy.ToLowerInvariant() + "\$hostLabel-b$BatchSize$armSuffix")
 
+        $captureOptionsPath = $output + '.options.json'
+        Write-VVJson $captureOptionsPath @{schema='capture-options-v1';overflow_mode=$overflowArm;tile_megapixels=$TileMegapixels;
+            tile_packing=$TilePacking;comparison_requested=($OverflowMode -eq 'compare');arm_order='A-then-B';
+            note='Sequential fresh-workbook comparison; warm-cache/order effects are not controlled by a single pair.'}
         $args = @{
+            CaptureOptionsPath = $captureOptionsPath
             FileListPath = $FileList
             OutputPath = $output
             ImageOutputDir = $images
@@ -433,7 +455,13 @@ foreach ($currentStrategy in $strategies) {
             $args.VisualPlanPath = $FVisualPlanPath
         }
 
-        & $SharedOfficeRunner @args
+        try { & $SharedOfficeRunner @args }
+        catch {
+            if ($OverflowMode -ne 'compare') { throw }
+            Write-VVFailure $_ ($PSCommandPath + ':' + $overflowArm)
+            Write-Warning "Arm $overflowArm failed; its artifacts are retained. Continuing with the next isolated arm."
+        }
+        } # overflow arms
     }
 }
 

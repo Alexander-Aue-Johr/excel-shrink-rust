@@ -77,3 +77,16 @@ reusable cache and inspectable failure artifacts.
 
 **Revisit if:** persistent image I/O becomes a demonstrated bottleneck that is not
 offset by cache reuse.
+
+
+## Selective overflow verification and tile packing
+
+**Status:** experimental (2026-10-05)
+
+Compare the current Strategy F heuristic with a candidate-row whitespace intervention.
+Maintain the existing production overflow decision until native correctness and cost
+are evaluated. Preserve both successful and inconclusive evidence. Capture budgets
+limit both pixel area and edge length; maximal edge utilization is not the goal by itself.
+
+See [experiment map and protocol](experiments/OVERFLOW-AB.md). Historical line-triggered
+overexpansion, Canvas crop failure and the result-publication race are separate incidents.

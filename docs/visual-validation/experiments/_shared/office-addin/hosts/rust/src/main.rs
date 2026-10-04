@@ -965,6 +965,8 @@ fn router(state: Arc<Shared>) -> Router {
         .route("/visual-plan.json", get(|state| static_file(state, "visual-plan.json", "application/json; charset=utf-8")))
         .route("/mode.js", get(mode_js))
         .route("/safe-capture.js", get(|state| static_file(state,"safe-capture.js","application/javascript; charset=utf-8")))
+        .route("/selective-overflow.js", get(|state| static_file(state,"selective-overflow.js","application/javascript; charset=utf-8")))
+        .route("/capture-options.json", get(|state| static_file(state,"capture-options.json","application/json; charset=utf-8")))
         .layer(axum::middleware::from_fn_with_state(state.clone(),capture_guard))
         .layer(axum::extract::DefaultBodyLimit::max(128 * 1024 * 1024))
         .with_state(state)

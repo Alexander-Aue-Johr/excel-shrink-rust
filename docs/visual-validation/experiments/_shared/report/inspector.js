@@ -40,7 +40,7 @@ function buildModel(input){
        index_basis:number(id.sheet_index)!==null?'Office worksheet position + 1':r.sheet_index_basis||
          (number(r.sheet_index)!==null?'Rust plan: visible worksheet order (legacy)':'Not recorded'),
        office_position:number(id.office_position),worksheet_id:id.worksheet_id,show_gridlines:id.show_gridlines,
-       rust:r,status:'not-captured',bounds:[],passes:[],images:[],history:[],calibrations:[],issues:[],source:document.path});
+       rust:r,status:'not-captured',bounds:[],passes:[],images:[],history:[],calibrations:[],tile_plans:[],sparse_checks:[],issues:[],source:document.path});
     }return sheetMap.get(name);}
    for(const x of catalog)sheet(x.name);
    for(const x of list(rust.sheets))sheet(x.sheet);
@@ -66,6 +66,8 @@ function buildModel(input){
    for(const sh of sheetMap.values())sh.history.sort((a,b)=>String(a.timestamp_utc||'').localeCompare(String(b.timestamp_utc||'')));
    for(const plan of list(w.capture_plans))sheet(plan.sheet).plan=plan;
    for(const x of list(safe.calibrations))sheet(x.sheet).calibrations.push(x);
+   for(const x of list(safe.tile_plans))sheet(x.sheet).tile_plans.push(x);
+   for(const x of list(safe.sparse_overflow_checks))sheet(x.sheet).sparse_checks.push(x);
    const imagesByPath=new Map();
    function addImage(item,sh,kind,priority){
     if(!item||typeof item!=='object')return;
@@ -87,6 +89,8 @@ function buildModel(input){
      addImage({...sample,raster_profile:{scale_x:cal.x?.scale,scale_y:cal.y?.scale}},sheet(cal.sheet),'calibration',5);
    if(!list(safe.captures).length)for(const capture of list(w.captures))addImage(capture,sheet(capture.sheet),'diagnostic',1);
    for(const probe of list(w.probes))if(probe.relative_png)addImage(probe,sheet(probe.sheet),probe.error?'failed':'diagnostic',2);
+   for(const check of list(safe.sparse_overflow_checks))for(const artifact of list(check.artifacts))
+     addImage({...artifact,address:check.address,check_id:check.id,restoration:check.restoration,verdict:check.verdict},sheet(check.sheet),'verification',6);
    for(const im of imagesByPath.values())sheet(im.sheet).images.push(im);
    for(const sh of sheetMap.values()){
     if(!sh.record&&sh.images.length)sh.status='captured';
@@ -113,7 +117,7 @@ function buildModel(input){
    }
    const sheets=[...sheetMap.values()].sort((a,b)=>(a.index??Infinity)-(b.index??Infinity)||a.name.localeCompare(b.name));
    sessions.push({key,name,status:w.status||safe.status||'not-recorded',source:document.path,sheets,
-     timings:w.safe_capture_timings||null,environment:safe.environment||w.environment||{},current:safe.current||{},strategy:w.strategy||safe.strategy||document.meta?.strategy||null});
+     options:safe.capture_options||{},tile_calls:list(safe.attempts).length,checks:list(safe.sparse_overflow_checks),timings:w.safe_capture_timings||null,environment:safe.environment||w.environment||{},current:safe.current||{},strategy:w.strategy||safe.strategy||document.meta?.strategy||null});
   }
  }
  const unassigned=files.filter(f=>/\.png$/i.test(f.path)&&!claimed.has(f.path)&&safePath(f.path));
@@ -142,6 +146,17 @@ function mount(input,host){
  const counts=el('div','metrics');append(header,counts);
  const sheets=m.sessions.flatMap(s=>s.sheets),stats=[['Worksheets',sheets.length],['Complete',sheets.filter(s=>s.status==='complete').length],['Attention',sheets.filter(s=>!['complete','captured','not-captured'].includes(s.status)).length],['Images',m.image_count]];
  for(const [label,v]of stats)append(counts,append(el('div','metric'),el('strong','',format(v)),el('span','',label)));
+ const compared=m.sessions.filter(s=>s.options.overflow_mode);
+ if(compared.length){
+  append(main,el('h2','','Capture variants'));
+  const table=el('table','bounds-table'),body=el('tbody');append(main,append(el('div','table-scroll'),table));
+  append(table,append(el('thead'),append(el('tr'),['Variant / workbook','State','Tile calls','Verification calls','Blocker cells','Write / restore','Render','Analysis (inclusive)'].map(v=>el('th','',v)))),body);
+  for(const s of compared){const calls=s.checks.reduce((n,c)=>n+list(c.artifacts).filter(a=>a.role!=='xor').length,0),cells=s.checks.filter(c=>c.restoration!=='not-required').reduce((n,c)=>n+(c.blocker_count||0),0),ms=k=>s.checks.reduce((n,c)=>n+(c.timings?.[k]||0),0);
+    const label=(s.options.overflow_mode==='selective'?'B · Selective blockers':'A · Pixel heuristic')+` · ${s.options.tile_megapixels||16} MP · ${s.options.tile_packing||'balanced'}`;
+    append(body,append(el('tr'),append(el('td'),el('strong','',label),el('div','muted',s.name)),append(el('td'),badge(s.status)),el('td','',format(s.tile_calls)),el('td','',format(calls)),el('td','',format(cells)),el('td','',`${format(ms('write_ms'),1)} / ${format(ms('restore_ms'),1)} ms`),el('td','',`${format(s.timings?.render_ms,1)} ms`),el('td','',`${format(s.timings?.analysis_ms,1)} ms`)));
+  }
+  append(main,el('p','muted','A/B uses separate working copies. Fixed A-then-B order does not control cache/order effects. Analysis includes selective verification time; timing columns overlap and must not be added. A successful capture is not yet a visual regression comparison.'));
+ }
  if(m.warnings.length)append(header,raw('Report warnings',m.warnings));
  const errors=list(m.result.errors);if(errors.length)append(header,raw(`Run errors (${errors.length})`,errors));
  const observer=typeof IntersectionObserver!=='undefined'?new IntersectionObserver(entries=>{
@@ -167,7 +182,7 @@ function mount(input,host){
  function picture(c){
   const card=el('article','capture');card.dataset.captureId=c.id||'';
   const head=el('div','capture-head');append(card,head);append(head,el('code','',c.address||'Range not recorded'),badge(c.kind));
-  append(card,el('div','capture-meta',`${c.id||''}  |  ${format(c.width)} × ${format(c.height)} px  |  ${format((c.bytes||0)/1024,1)} KiB`));
+  append(card,el('div','capture-meta',`${c.id||''}${c.role?' · '+c.role:''}  |  ${format(c.width)} × ${format(c.height)} px  |  ${format((c.bytes||0)/1024,1)} KiB`));
   const a=link('',c.path,'image-link'),img=el('img','capture-image');
   img.alt=`${c.sheet||''} ${c.address||''} · ${c.kind} · ${c.id||''}`;img.loading='lazy';img.decoding='async';
   if(number(c.width)>0)img.width=c.width;if(number(c.height)>0)img.height=c.height;
@@ -180,15 +195,15 @@ function mount(input,host){
   if(c.valid_rect_px)append(card,el('div','capture-meta',`Valid rectangle: x=${c.valid_rect_px.x}, y=${c.valid_rect_px.y}, ${c.valid_rect_px.width} × ${c.valid_rect_px.height} px`));
   if(c.sheet_offset_px)append(card,el('div','capture-meta',`Sheet offset: x=${c.sheet_offset_px.x}, y=${c.sheet_offset_px.y} px`));
   const det=details('Capture details');append(det,el('pre','json',JSON.stringify({address:c.address,logical_address:c.logical_address,rect:c.rect,geometry_points:c.geometry,
-    raster_profile:c.raster_profile,analysis:c.analysis,error:c.error,source:c.source,render_ms:c.render_ms,relative_png:c.path,sha256:c.sha256},null,2)));append(card,det);
+    raster_profile:c.raster_profile,packing:c.packing,role:c.role,restoration:c.restoration,analysis:c.analysis,error:c.error,source:c.source,render_ms:c.render_ms,relative_png:c.path,sha256:c.sha256},null,2)));append(card,det);
   return card;
  }
  const sections=[];let index=0;
  for(const session of m.sessions){
   const group=el('section','workbook');append(main,group);
-  append(group,el('div','eyebrow','WORKBOOK'),el('h2','workbook-name',session.name),el('p','muted',`Strategy ${session.strategy||'?'} · ${session.source}`));
+  append(group,el('div','eyebrow','WORKBOOK'),el('h2','workbook-name',session.name),el('p','muted',`Strategy ${session.strategy||'?'} · ${session.options.overflow_mode==='selective'?'B · Selective blockers':session.options.overflow_mode==='heuristic'?'A · Pixel heuristic':'Legacy configuration'} · ${session.source}`));
   if(session.timings)append(group,raw('Timing and render environment',{timings_ms:session.timings,environment:session.environment}));
-  append(nav,el('div','nav-workbook',session.name));
+  append(nav,el('div','nav-workbook',`${session.options.overflow_mode==='selective'?'B · ':session.options.overflow_mode==='heuristic'?'A · ':''}${session.name}`));
   for(const sh of session.sheets){
     const id='worksheet-'+(++index),sec=el('section','worksheet');sec.id=id;const navItem=el('a','nav-link',`${sh.index==null?'?':String(sh.index).padStart(2,'0')} · ${JSON.stringify(sh.name)}`);
     navItem.href='#'+id;append(nav,navItem);append(group,sec);
@@ -211,16 +226,25 @@ function mount(input,host){
     if(sh.passes.length){
       const t=el('table','passes-table'),tb=el('tbody');append(sec,el('h4','','Overflow passes'),append(el('div','table-scroll'),t));
       append(t,append(el('thead'),append(el('tr'),['Pass','Requested range','Proposed last column','Tiles','Decision','Edge evidence'].map(x=>el('th','',x)))),tb);
-      for(const pass of sh.passes){const decision=pass.horizontal_split?'Context split — inconclusive':pass.done?'Closed':'Expand';
+      for(const pass of sh.passes){const decision=pass.selective_unresolved?'Verification inconclusive':pass.horizontal_split?'Context split — inconclusive':pass.done?'Closed':'Expand';
        const cell=el('td');const evidence=list(pass.edge_evidence);if(evidence.length)append(cell,raw('Inspect evidence',evidence));else cell.textContent=pass.horizontal_split?'Not evaluated':'Not recorded';
        append(tb,append(el('tr'),el('td','',pass.pass),append(el('td'),el('code','',pass.address)),el('td','',col(pass.keep_column)),el('td','',pass.tile_count),el('td','',decision),cell));}
+    }
+    if(sh.tile_plans.length){
+      const p=sh.tile_plans.at(-1);
+      append(sec,el('h4','','Tile budget'),el('p','geometry',`Packing: ${p.method||'recorded'} · tile budget: ${format((p.limits?.max_pixels||0)/1000000)} MP · edge ceiling: ${format(p.limits?.max_edge_px)} px · full width: ${format(p.full_predicted?.width)} px · allowed strip height: ${format(p.allowed_height_px)} px · planned tiles: ${format(p.tiles?.length)}`),raw('Tile planning evidence',sh.tile_plans));
+    }
+    if(sh.sparse_checks.length){
+      append(sec,el('h4','','Selective overflow verification'));
+      for(const c of sh.sparse_checks){const details=raw(`${c.id} · rows ${list(c.rows).join(', ')} · ${c.verdict||c.status} · restore: ${c.restoration}`,c);append(sec,details);}
+      append(sec,el('p','muted','Before, blocked, restored and XOR images are in the Verification gallery. Unchanged pixels rule out blocker-sensitive text overflow only in the verified row region; they do not erase borders or other meaningful layout.'));
     }
     if(sh.history.length)append(sec,raw('Planning events (chronological)',sh.history));
     append(sec,raw('Recorded bounds and calibration',{rust:sh.rust,addin_initial:sh.record?.initial_bounds,addin_result:sh.plan,calibrations:sh.calibrations,
       source_file:sh.source,current:session.current}));
     const gallery=details(`Screenshots (${sh.images.length})`,index===1),tools=el('div','gallery-tools'),grid=el('div','gallery');append(sec,gallery);append(gallery,tools,grid);
     const select=el('select');select.setAttribute('aria-label','Screenshot category');const countKind=kind=>sh.images.filter(x=>kind==='all'||(kind==='final'?['final','retained'].includes(x.kind):x.kind===kind)).length;
-    for(const [v,label]of [['final','Final / retained'],['probe','Overflow probes'],['calibration','Calibration'],['failed','Failed attempts'],['diagnostic','Diagnostics'],['all','All images']]){
+    for(const [v,label]of [['final','Final / retained'],['probe','Overflow probes'],['verification','Verification'],['calibration','Calibration'],['failed','Failed attempts'],['diagnostic','Diagnostics'],['all','All images']]){
      const op=el('option','',`${label} (${countKind(v)})`);op.value=v;append(select,op);}
     select.value=countKind('final')?'final':'all';append(tools,el('label','','View'),select,el('span','muted','Original PNGs load near the viewport. Open an image for full resolution.'));
     let drawn=false;

@@ -48,6 +48,8 @@ param(
 
     [string]$DiagnosticConfigPath,
 
+    [string]$CaptureOptionsPath,
+
     [switch]$WaitForStart,
 
     [switch]$ExtendedErrorLogging,
@@ -156,6 +158,12 @@ if ($IsRenderDiagnostic -and -not [string]::IsNullOrWhiteSpace($DiagnosticConfig
     if (-not (Test-Path -LiteralPath $DiagnosticConfigPath -PathType Leaf)) { throw "Diagnostic config missing: $DiagnosticConfigPath" }
     Copy-Item -LiteralPath $DiagnosticConfigPath -Destination (Join-Path $StaticStage 'diagnostic-config.json') -Force
 }
+
+# Explicit per-arm options are staged, not inherited from another task pane.
+if (-not [string]::IsNullOrWhiteSpace($CaptureOptionsPath)) {
+    if (-not (Test-Path -LiteralPath $CaptureOptionsPath -PathType Leaf)) { throw "Capture options missing: $CaptureOptionsPath" }
+    Copy-Item -LiteralPath $CaptureOptionsPath -Destination (Join-Path $StaticStage 'capture-options.json') -Force
+} else { Write-VVJson (Join-Path $StaticStage 'capture-options.json') @{overflow_mode='heuristic';tile_megapixels=16;tile_packing='budget'} }
 
 # Source Context patch: Office.js diagnostic environment.
 if ($UseOfficeDebugJs) {
@@ -928,6 +936,7 @@ try {
             $sawActivity = $false
             $lastActivityLocal = [DateTimeOffset]::UtcNow
             $absoluteStarted = [DateTimeOffset]::UtcNow
+            $publishWaitStarted = $null
 
             while ($true) {
                 Start-Sleep -Milliseconds 250
@@ -972,14 +981,24 @@ try {
                     }
 
                     if ($status.done) {
-                        $completed = $true
                         $resultState = 'received'
-                        if ($Experiment -eq 'range-image' -and (Test-Path -LiteralPath $HostOutput)) {
+                        if ($Experiment -eq 'range-image') {
                             $finishedDocument = Read-VVJson $HostOutput
-                            $finishedProperty = $finishedDocument.workbooks.PSObject.Properties[$workbookName]
-                            if ($null -ne $finishedProperty) { $resultState = [string]$finishedProperty.Value.status }
-                            if ($resultState -ne 'complete') { $captureValidationIncomplete = $true }
+                            $finishedProperty = if ($null -ne $finishedDocument.workbooks) { $finishedDocument.workbooks.PSObject.Properties[$workbookName] } else { $null }
+                            # The native host's in-memory completion may precede durable JSON publication.
+                            # Missing or running status is not failure and does not end the polling loop.
+                            if ($null -eq $finishedProperty -or [string]$finishedProperty.Value.status -in @('','running','starting')) {
+                                if ($null -eq $publishWaitStarted) { $publishWaitStarted = [DateTimeOffset]::UtcNow }
+                                if (([DateTimeOffset]::UtcNow - $publishWaitStarted).TotalSeconds -gt 15) {
+                                    throw 'Experiment host reported: completion was signalled but the durable workbook result was not published within 15 seconds.'
+                                }
+                                Start-Sleep -Milliseconds 100
+                                continue
+                            }
+                            $resultState = [string]$finishedProperty.Value.status
+                            $captureValidationIncomplete = $captureValidationIncomplete -or ($resultState -ne 'complete')
                         }
+                        $completed = $true
                         $severity = if ($resultState -in @('failed','partial','inconclusive')) { 'WARN' } else { 'INFO' }
                         Write-ExperimentLog (
                             "$workbookName result received: status=$resultState; " +

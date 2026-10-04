@@ -132,10 +132,16 @@
   class Session {
     constructor(workbook, config = {}) {
       this.workbook = workbook; this.config = config;
-      this.limits = { ...DEFAULTS }; // These are engineering budgets, not alleged API maxima.
+      this.limits = { ...DEFAULTS }; // Engineering budgets, not alleged API maxima.
+      const options=config.capture_options || {};
+      const megapixels=Number(options.tile_megapixels || 16);
+      if (![16,32,64].includes(megapixels)) throw fault('INVALID_CAPTURE_OPTIONS','Tile budget must be 16, 32 or 64 megapixels.',{megapixels},true);
+      this.limits.max_pixels=megapixels*1000000;
+      this.packing=options.tile_packing || 'budget';
+      if (!['budget','balanced'].includes(this.packing)) throw fault('INVALID_CAPTURE_OPTIONS','Unknown tile packing.',{packing:this.packing},true);
       this.runId = config.capture_run_id || config.diagnostic_run_id || null;
       this.dead = false; this.sequence = 0; this.tileCount = 0; this.calibrations = new Map();
-      this.state = { schema:'safe-capture-v1', workbook, strategy:config.strategy,
+      this.state = { schema:'safe-capture-v1', workbook, strategy:config.strategy, capture_options:options, tile_plans:[], sparse_overflow_checks:[],
         status:'running', implementation:'safe-capture-calibrated-v2', limits:this.limits, sheets:[], attempts:[], captures:[], calibrations:[],
         environment:{ browser: typeof navigator!=='undefined'?navigator.userAgent:null,
           office: root.Office && root.Office.context && root.Office.context.diagnostics || null,
@@ -192,7 +198,7 @@
         clearTimeout(timer);
         const elapsed=performance.now()-nativeStarted;
         if(stage==='geometry') this.timings.geometry_ms+=elapsed;
-        else if(stage==='tile_render' || stage==='recovery_control' || stage==='calibration_render') this.timings.render_ms+=elapsed;
+        else if(stage==='tile_render' || stage==='recovery_control' || stage==='calibration_render' || stage==='sparse_render') this.timings.render_ms+=elapsed;
       }
     }
     async geometries(sheet, rects) {
@@ -298,7 +304,7 @@
         await this.checkpoint('raster_calibration_failed',{sheet,id:record.id});throw e;
       } finally {this.timings.calibration_ms+=performance.now()-started;}
     }
-    async plan(sheet, rect) {
+    async planBalanced(sheet, rect) {
       const initial=(await this.geometries(sheet,[rect]))[0];
       if(initial.right===initial.left || initial.bottom===initial.top){
         await this.event('invisible_tile',{sheet,address:address(rect),rect,geometry:initial});
@@ -326,10 +332,82 @@
         pending=next;
       }
       final.sort((a,b)=>a.rect.r0-b.rect.r0 || a.rect.c0-b.rect.c0);
-      await this.event('tile_plan', {sheet, address:address(rect), tile_count:final.length,
+      const record={sheet, address:address(rect), method:'Balanced subdivision', packing:'balanced', tile_count:final.length,
+        full_predicted:pixels(initial,limits),allowed_height_px:Math.min(limits.max_edge_px,Math.floor(limits.max_pixels/pixels(initial,limits).width)),
         horizontal_split:final.some(t=>t.rect.c0 !== rect.c0 || t.rect.c1 !== rect.c1),
-        limits:limits, tiles:final.map(t=>({rect:t.rect, geometry:t.geometry, predicted:pixels(t.geometry,limits), invisible:!!t.invisible})) });
+        limits,tiles:final.map(t=>({rect:t.rect, geometry:t.geometry, predicted:pixels(t.geometry,limits), invisible:!!t.invisible}))};
+      this.state.tile_plans.push(record);await this.event('tile_plan',record);
       return final;
+    }
+    // Measured full-width packing; use the largest fitting row boundary instead of
+    // rounding the tile count up to a power of two. No cell-content scan is performed.
+    async plan(sheet, rect) {
+      if (this.packing === 'balanced') return this.planBalanced(sheet, rect);
+      const first=(await this.geometries(sheet,[rect]))[0];
+      if(first.right===first.left || first.bottom===first.top) return [{rect,geometry:first,invisible:true}];
+      await this.ensureCalibration(sheet,rect);
+      const limits=this.limitsFor(sheet), fullPixels=pixels(first,limits);
+      if(fullPixels.width>limits.max_edge_px || rect.r1-rect.r0<=1) return this.planBalanced(sheet,rect);
+      const cache=new Map([[rect.r0,first.top],[rect.r1,first.bottom]]);
+      const top=async index=>{
+        if(!cache.has(index)) {
+          const rr={r0:index===ROWS?ROWS-1:index,r1:index===ROWS?ROWS:index+1,c0:rect.c0,c1:rect.c0+1};
+          const g=(await this.geometries(sheet,[rr]))[0];cache.set(index,index===ROWS?g.bottom:g.top);
+        }
+        return cache.get(index);
+      };
+      const maxHeight=Math.min(limits.max_edge_px,Math.floor(limits.max_pixels/fullPixels.width));
+      const targetPoints=Math.max(0,(maxHeight-limits.border_px-1)/limits.scale_y);
+      const final=[];let start=rect.r0;
+      while(start<rect.r1) {
+        if(final.length>=limits.max_tiles)throw fault('TILE_PLAN_BUDGET','Measured packing exceeded tile count.',{sheet,rect},true);
+        const y0=await top(start), yEnd=await top(rect.r1);
+        const geom=end=>({left:first.left,right:first.right,top:y0,bottom:cache.get(end),terminal_fallback:end===ROWS});
+        let good=start,bad=rect.r1+1,probe=rect.r1;
+        if(!fits(geom(rect.r1),limits)) {
+          probe=Math.max(start+1,Math.min(rect.r1, start+Math.floor((rect.r1-start)*targetPoints/Math.max(0.001,yEnd-y0))));
+        }
+        let tries=0;
+        while(true) {
+          if(++tries>64)throw fault('TILE_SEARCH_BUDGET','Could not bracket a stable row boundary.',{sheet,start},true);
+          await top(probe);
+          const g=geom(probe),flat=g.bottom===g.top;
+          if(flat || fits(g,limits)) {
+            good=probe;
+            if(good===rect.r1)break;
+            // Certify local maximality. Hidden rows have zero height and may be included.
+            if(probe+1<bad) {
+              await top(probe+1);
+              if(fits(geom(probe+1),limits) || geom(probe+1).bottom===y0) {
+                good=probe+1;
+                if(good===rect.r1)break;
+                const perRow=(cache.get(good)-y0)/(good-start);
+                const jump=Math.max(1,Math.floor((targetPoints-(cache.get(good)-y0))/Math.max(perRow,0.001)));
+                probe=Math.min(bad-1,rect.r1,Math.max(good+1,good+jump));continue;
+              }
+              bad=probe+1;
+            }
+          } else bad=probe;
+          if(bad-good<=1)break;
+          probe=Math.floor((good+bad)/2);
+        }
+        if(good===start) {
+          // A very tall single row needs horizontal splitting or a terminal failure.
+          const one={...rect,r0:start,r1:start+1};
+          final.push(...await this.planBalanced(sheet,one));start++;continue;
+        }
+        const r={...rect,r0:start,r1:good},g=geom(good),p=pixels(g,limits);
+        final.push({rect:r,geometry:g,invisible:g.bottom===g.top,
+          packing:{method:'measured-row-boundary',limiting_budget:maxHeight===limits.max_edge_px?'edge':'pixel-area',
+            allowed_height_px:maxHeight,predicted_pixels:p.width*p.height,area_utilization:p.width*p.height/limits.max_pixels,
+            next_row_exceeds_budget:good<rect.r1}});
+        start=good;
+      }
+      const record={sheet,address:address(rect),method:'Budget-aware row boundaries',packing:'budget',limits,allowed_height_px:maxHeight,tile_count:final.length,
+        horizontal_split:final.some(t=>t.rect.c0!==rect.c0||t.rect.c1!==rect.c1),max_pixels:limits.max_pixels,
+        max_edge_px:limits.max_edge_px,full_predicted:fullPixels,allowed_height_at_full_width_px:maxHeight,
+        tiles:final.map(t=>({rect:t.rect,predicted:pixels(t.geometry,limits),packing:t.packing}))};
+      this.state.tile_plans.push(record);await this.event('tile_plan',record);return final;
     }
     async columnWidths(sheet, end) {
       const rects = [];
@@ -390,13 +468,13 @@
               observed_scale_x:(header.width-1)/(after.right-after.left),observed_scale_y:(header.height-1)/(after.bottom-after.top)},true);
         if (!actualFits(header,limits) || !fits(after,limits))
           throw fault('PNG_ACTUAL_BUDGET','Actual PNG exceeds a capture budget; no Canvas decode was attempted.',{header,expected,after});
-        const capture={...saved,sheet_index:attempt.sheet_index,rect,geometry:after,logical_id:logicalId,
+        const capture={...saved,sheet_index:attempt.sheet_index,rect,geometry:after,logical_id:logicalId,packing:tile.packing || {method:'balanced-subdivision'},
           raster_profile:{calibration_id:limits.calibration_id,scale_x:limits.scale_x,scale_y:limits.scale_y,border_px:1},
           content_box_px:{x:0,y:0,width:header.width,height:header.height},
           seam_extra_pixel:limits.border_px};
         const analysisStart=performance.now();
         const detail=onImage ? await onImage(base64,capture) : null;
-        this.timings.analysis_ms+=performance.now()-analysisStart;
+        this.timings.analysis_ms+=performance.now()-analysisStart; // Includes selective verification: use its phase timings for attribution.
         attempt.status='complete'; capture.analysis=detail;
         this.state.captures.push(capture);
         await this.checkpoint('tile_complete',{sheet,address:a,id});
