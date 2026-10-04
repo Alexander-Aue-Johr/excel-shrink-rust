@@ -4,8 +4,11 @@ This tree is intentionally isolated from production code. Experiments may share 
 only through `_shared/`; production `src/`, `crates/`, and `tools/` must not depend on
 anything here.
 
-The primary entry point is `run.ps1`. It dynamically asks for the experiment and only
-then asks for choices relevant to that experiment.
+The primary entry point is `run.ps1`. In CLI mode it dynamically asks for the experiment
+and only then asks for choices relevant to that experiment. The VS Code task can also
+select a WPF launcher; it runs the same experiment scripts non-interactively and stores
+the last submitted GUI configuration in
+`.tmp/visual-validation/launcher-last-config.json`.
 
 Directory layout:
 

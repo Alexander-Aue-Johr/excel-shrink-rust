@@ -1,4 +1,7 @@
 param(
+    [ValidateSet('cli', 'gui')]
+    [string]$InterfaceMode = 'cli',
+
     [ValidateSet('range-image', 'shape-bounds')]
     [string]$Experiment,
 
@@ -10,6 +13,28 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+$GuiRunner = Join-Path $PSScriptRoot 'gui.ps1'
+
+if ($InterfaceMode -eq 'gui') {
+    if (-not (Test-Path -LiteralPath $GuiRunner -PathType Leaf)) {
+        throw "Visual-validation GUI runner does not exist: $GuiRunner"
+    }
+
+    $guiArgs = @{}
+    if (-not [string]::IsNullOrWhiteSpace($CorpusRoot)) {
+        $guiArgs.CorpusRoot = $CorpusRoot
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Workbook)) {
+        $guiArgs.Workbook = $Workbook
+    }
+
+    & $GuiRunner @guiArgs
+    if (-not $?) {
+        exit 1
+    }
+    return
+}
 
 function Choose([string]$Title, [string[]]$Options, [int]$DefaultIndex = 0) {
     Write-Host ''

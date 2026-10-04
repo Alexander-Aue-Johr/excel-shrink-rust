@@ -650,7 +650,7 @@
       "command": "bash",
       "args": [
         "-lc",
-        "script=\"$(wslpath -w '${workspaceFolder}/docs/visual-validation/experiments/run.ps1')\"; corpus=\"$(wslpath -w '${workspaceFolder}/corpus-local')\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -CorpusRoot \"$corpus\""
+        "script=\"$(wslpath -w '${workspaceFolder}/docs/visual-validation/experiments/run.ps1')\"; corpus=\"$(wslpath -w '${workspaceFolder}/corpus-local')\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -CorpusRoot \"$corpus\" -InterfaceMode '${input:visualValidationInterfaceMode}'"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -677,7 +677,9 @@
           "-File",
           "${workspaceFolder}\\docs\\visual-validation\\experiments\\run.ps1",
           "-CorpusRoot",
-          "${workspaceFolder}\\corpus-local"
+          "${workspaceFolder}\\corpus-local",
+          "-InterfaceMode",
+          "${input:visualValidationInterfaceMode}"
         ],
         "options": {
           "cwd": "${env:TEMP}"
@@ -686,6 +688,16 @@
     }
   ],
   "inputs": [
+    {
+      "id": "visualValidationInterfaceMode",
+      "type": "pickString",
+      "description": "Visual validation interface",
+      "options": [
+        "cli",
+        "gui"
+      ],
+      "default": "cli"
+    },
     {
       "id": "corpusRegressionCaseId",
       "type": "pickString",

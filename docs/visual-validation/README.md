@@ -25,8 +25,13 @@ Use the VS Code task:
 Experiment: visual validation
 ```
 
-It opens a terminal dispatcher. The first choice is `Get picture` or
-`Get shape bounds`; later choices depend on that first selection.
+The VS Code task first asks for `cli` or `gui`. `cli` keeps the current terminal
+dispatcher. `gui` opens a Windows Presentation Foundation (WPF) launcher for the same
+experiment runners. The WPF launcher reloads the last submitted GUI configuration from
+`.tmp/visual-validation/launcher-last-config.json`.
+
+The first experiment choice remains `Get picture` or `Get shape bounds`; later controls
+depend on that selection.
 
 Direct scripted entry point:
 
