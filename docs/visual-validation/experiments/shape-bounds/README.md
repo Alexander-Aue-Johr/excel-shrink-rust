@@ -1,5 +1,10 @@
 # Get Shape Bounds experiment
 
+> Current runs: see [consolidated capture/report contract](../CONSOLIDATED-CAPTURE.md). Output is now central
+> at `docs/visual-validation/results/`. Historical paths and monolithic timing notes below
+> describe the earlier experiments, not the current safe range-image capture path.
+
+
 This is the execution-model benchmark for visible drawing bounds used by Excel
 Shrink visual validation.
 

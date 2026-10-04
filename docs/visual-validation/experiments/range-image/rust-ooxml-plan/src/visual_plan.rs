@@ -85,6 +85,8 @@ impl CaptureColumns {
 pub(crate) struct SheetVisualPlan {
     pub sheet: String,
     pub sheet_index: usize,
+    pub sheet_index_basis: String,
+    pub bounds_evidence: BoundsEvidence,
     pub sheet_file: String,
     pub content_right_column: u32,
     pub content_bottom_row: u32,
@@ -155,6 +157,7 @@ impl Coordinate {
 
 #[derive(Debug)]
 struct SheetDescriptor {
+    index: usize,
     name: String,
     file: String,
 }
@@ -166,8 +169,41 @@ struct Relationship {
     external: bool,
 }
 
+// Witness references explain an envelope without exporting cell contents or changing policy.
+#[derive(Debug, Clone, Default, Serialize)]
+pub(crate) struct BoundsEvidence {
+    dimension_ref: Option<String>,
+    content_cells: usize,
+    cells_without_content: usize,
+    merge_count: usize,
+    rightmost_content: Option<BoundsWitness>,
+    bottommost_content: Option<BoundsWitness>,
+    rightmost_merge: Option<BoundsWitness>,
+    bottommost_merge: Option<BoundsWitness>,
+}
+#[derive(Debug, Clone, Serialize)]
+struct BoundsWitness {
+    reference: String,
+    row_1based: u32,
+    column_1based: u32,
+    kind: String,
+}
+fn witness(slot: &mut Option<BoundsWitness>, coordinate: Coordinate, reference: &str, kind: &str, horizontal: bool) {
+    let previous = slot.as_ref().map(|w| if horizontal { w.column_1based } else { w.row_1based }).unwrap_or(0);
+    let current = if horizontal { coordinate.column } else { coordinate.row };
+    if current > previous {
+        *slot = Some(BoundsWitness { reference: reference.to_owned(), row_1based: coordinate.row,
+            column_1based: coordinate.column, kind: kind.to_owned() });
+    }
+}
+fn coordinate_reference(coordinate: Coordinate) -> String {
+    let mut n=coordinate.column; let mut letters=Vec::new();
+    while n>0 { n-=1; letters.push((b'A'+(n%26) as u8) as char); n/=26; }
+    format!("{}{}", letters.into_iter().rev().collect::<String>(), coordinate.row)
+}
 #[derive(Debug, Default)]
 struct SheetXmlSummary {
+    evidence: BoundsEvidence,
     max_row: u32,
     max_column: u32,
     has_text: bool,
@@ -258,10 +294,12 @@ fn workbook_sheets<R: Read + std::io::Seek>(zip: &mut ZipArchive<R>) -> Result<V
 
     let mut sheets = Vec::new();
     let mut reader = Reader::<64>::new(&workbook)?;
+    let mut workbook_index = 0usize;
     while let Some(tag) = reader.next()? {
         if tag.kind == Kind::End || tag.local() != b"sheet" {
             continue;
         }
+        workbook_index += 1;
         let state = tag.attr(b"state")?.unwrap_or(b"visible");
         if !state.eq_ignore_ascii_case(b"visible") {
             continue;
@@ -277,6 +315,7 @@ fn workbook_sheets<R: Read + std::io::Seek>(zip: &mut ZipArchive<R>) -> Result<V
         };
         if file.starts_with("xl/worksheets/") {
             sheets.push(SheetDescriptor {
+                index: workbook_index,
                 name,
                 file: file.clone(),
             });
@@ -356,8 +395,12 @@ fn cell_body_flags(body: &[u8]) -> Result<(bool, bool)> {
 }
 
 fn include_merge(summary: &mut SheetXmlSummary, reference: &[u8]) -> Result<()> {
+    summary.evidence.merge_count += 1;
+    let reference_text = decode_attr(reference)?;
     for cell in reference.split(|byte| *byte == b':') {
         let coordinate = Coordinate::parse(cell)?;
+        witness(&mut summary.evidence.rightmost_merge, coordinate, &reference_text, "merge", true);
+        witness(&mut summary.evidence.bottommost_merge, coordinate, &reference_text, "merge", false);
         summary.max_row = summary.max_row.max(coordinate.row);
         summary.max_column = summary.max_column.max(coordinate.column);
     }
@@ -401,6 +444,11 @@ fn scan_sheet(bytes: &[u8]) -> Result<SheetXmlSummary> {
             continue;
         }
 
+        if tag.depth == 1 && local == b"dimension" {
+            summary.evidence.dimension_ref = tag.attr(b"ref")?.map(decode_attr).transpose()?;
+            let _ = reader.element(tag)?;
+            continue;
+        }
         if tag.depth == 1 && local == b"sheetFormatPr" {
             if let Some(width) = tag.attr(b"defaultColWidth")? {
                 summary.columns.default_width = parse_column_width(width)?;
@@ -459,11 +507,16 @@ fn scan_sheet(bytes: &[u8]) -> Result<SheetXmlSummary> {
             let element = reader.element(tag)?;
             let (content, inline_text) = cell_body_flags(element.body)?;
             if content {
+                summary.evidence.content_cells += 1;
+                let reference_text = coordinate_reference(coordinate);
+                let kind = String::from_utf8_lossy(cell_type);
+                witness(&mut summary.evidence.rightmost_content, coordinate, &reference_text, &kind, true);
+                witness(&mut summary.evidence.bottommost_content, coordinate, &reference_text, &kind, false);
                 summary.max_row = summary.max_row.max(coordinate.row);
                 summary.max_column = summary.max_column.max(coordinate.column);
                 summary.has_text |= inline_text
                     || matches!(cell_type, b"s" | b"inlineStr" | b"str");
-            }
+            } else { summary.evidence.cells_without_content += 1; }
             continue;
         }
         if tag.depth == 1 {
@@ -652,7 +705,7 @@ pub(crate) fn build_workbook_visual_plan(path: &Path) -> Result<WorkbookVisualPl
     let descriptors = workbook_sheets(&mut zip)?;
     let mut sheets = Vec::with_capacity(descriptors.len());
 
-    for (index, descriptor) in descriptors.into_iter().enumerate() {
+    for descriptor in descriptors {
         let sheet_xml = read_zip_entry(&mut zip, &descriptor.file)?;
         let xml = scan_sheet(&sheet_xml)?;
         let drawing = drawing_summary(&mut zip, &descriptor.file)?;
@@ -677,7 +730,9 @@ pub(crate) fn build_workbook_visual_plan(path: &Path) -> Result<WorkbookVisualPl
 
         sheets.push(SheetVisualPlan {
             sheet: descriptor.name,
-            sheet_index: index + 1,
+            sheet_index: descriptor.index,
+            sheet_index_basis: "workbook-sheet-order-1-based".to_owned(),
+            bounds_evidence: xml.evidence,
             sheet_file: descriptor.file,
             content_right_column: content_right,
             content_bottom_row: content_bottom,
@@ -786,4 +841,59 @@ mod tests {
         assert!(plan.fallback_required);
         assert_eq!((plan.max_row, plan.max_column), (8, 5));
     }
+    #[test]
+    fn diagnostic_witnesses_explain_bounds_without_using_dimension() {
+        let xml = br#"<worksheet><dimension ref="A1:XFD1048576"/><sheetData>
+            <row r="2"><c r="C2" t="s"><v>0</v></c><c r="ZZ2" s="3"/></row>
+            <row r="9"><c r="B9"><v>42</v></c></row>
+        </sheetData><mergeCells><mergeCell ref="A10:K12"/></mergeCells></worksheet>"#;
+        let summary = scan_sheet(xml).unwrap();
+        assert_eq!((summary.max_row, summary.max_column), (12, 11));
+        assert_eq!(summary.evidence.dimension_ref.as_deref(), Some("A1:XFD1048576"));
+        assert_eq!(summary.evidence.content_cells, 2);
+        assert_eq!(summary.evidence.cells_without_content, 1);
+        assert_eq!(summary.evidence.merge_count, 1);
+        assert_eq!(summary.evidence.rightmost_content.unwrap().reference, "C2");
+        assert_eq!(summary.evidence.bottommost_content.unwrap().reference, "B9");
+        assert_eq!(summary.evidence.rightmost_merge.unwrap().reference, "A10:K12");
+    }
+
+    #[test]
+    fn witness_payload_never_contains_cell_text_or_formula_text() {
+        let xml = br#"<worksheet><sheetData><row r="1">
+            <c r="A1" t="inlineStr"><is><t>PRIVATE-CELL-TEXT</t></is></c>
+            <c r="B1"><f>PRIVATE-FORMULA</f></c>
+        </row></sheetData></worksheet>"#;
+        let summary = scan_sheet(xml).unwrap();
+        let json = serde_json::to_string(&summary.evidence).unwrap();
+        assert!(!json.contains("PRIVATE"));
+        assert_eq!(summary.evidence.content_cells, 2);
+    }
+
+    #[test]
+    fn worksheet_indices_retain_hidden_sheet_positions() {
+        use std::io::{Cursor, Write};
+        use zip::write::SimpleFileOptions;
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::<u8>::new()));
+        writer.start_file("xl/workbook.xml", SimpleFileOptions::default()).unwrap();
+        writer.write_all(br#"<workbook xmlns:r="r"><sheets>
+            <sheet name="First" sheetId="4" r:id="rId1"/>
+            <sheet name="Hidden" sheetId="9" state="hidden" r:id="rId2"/>
+            <sheet name=" Third" sheetId="20" r:id="rId3"/>
+        </sheets></workbook>"#).unwrap();
+        writer.start_file("xl/_rels/workbook.xml.rels", SimpleFileOptions::default()).unwrap();
+        writer.write_all(br#"<Relationships>
+            <Relationship Id="rId1" Target="worksheets/sheet1.xml"/>
+            <Relationship Id="rId2" Target="worksheets/sheet2.xml"/>
+            <Relationship Id="rId3" Target="worksheets/sheet3.xml"/>
+        </Relationships>"#).unwrap();
+        let buffer = writer.finish().unwrap();
+        let mut archive = ZipArchive::new(Cursor::new(buffer.into_inner())).unwrap();
+        let descriptors = workbook_sheets(&mut archive).unwrap();
+        assert_eq!(descriptors.len(), 2);
+        assert_eq!(descriptors[0].index, 1);
+        assert_eq!(descriptors[1].index, 3);
+        assert_eq!(descriptors[1].name, " Third");
+    }
+
 }

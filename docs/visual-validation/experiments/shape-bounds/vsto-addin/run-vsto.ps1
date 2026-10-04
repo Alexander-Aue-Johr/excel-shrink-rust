@@ -9,7 +9,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ProgId = 'ExcelShrink.DrawingBoundsVstoExperiment'
+. (Join-Path $PSScriptRoot '..\..\_shared\reporting.ps1')
+$vvReportOwner = Start-VVReport -Start $PSScriptRoot -Experiment 'shape-bounds-vsto' -Arguments $PSBoundParameters
+try {
+$ErrorActionPreference = 'Stop'
+if (-not $OutputPath.StartsWith($env:VV_REPORT_DIR,[StringComparison]::OrdinalIgnoreCase)) {
+    $step=New-VVStep 'vsto'; $OutputPath=Join-Path $step 'result.json'
+}
+New-Item -ItemType Directory -Path (Split-Path -Parent $OutputPath) -Force | Out-Null
+$ProgId = 'ExcelShrink.DrawingBoundsVstoExperiment' 
 $StatusPath = Join-Path (Split-Path -Parent $OutputPath) 'vsto-status.json'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
@@ -125,4 +133,12 @@ finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
+}
+
+} catch {
+    $vvCaughtError = $_
+    try { Write-VVFailure $vvCaughtError $PSCommandPath } catch { Write-Warning ('Could not persist error: ' + $_.Exception.Message) }
+    throw $vvCaughtError
+} finally {
+    Stop-VVReport $vvReportOwner
 }

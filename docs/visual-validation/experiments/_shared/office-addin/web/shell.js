@@ -14,6 +14,7 @@
 
   // Source Context patch: optional manual start gate for debugger setup.
   let modeLoaded = false;
+  let diagnosticRunId = null;
 
   function byId(id) { return document.getElementById(id); }
   function fixed(value, digits = 1) {
@@ -133,7 +134,11 @@
         'experiment-title',
         config.experiment === 'range-image'
           ? `Get Picture · Strategy ${config.strategy}`
-          : 'Get shape bounds'
+          : config.experiment === 'range-image-height-limit'
+            ? 'Get Picture · Height plateau'
+            : config.experiment === 'range-image-calibration'
+              ? 'Get Picture · Units and markers'
+              : 'Get shape bounds'
       );
       setText('host-kind', config.host_kind || '—');
       setText('batch-size', config.batch_size || '—');
@@ -148,7 +153,7 @@
     try {
       await fetch('/client-event', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(diagnosticRunId ? { 'X-VV-Run-Id': diagnosticRunId } : {}) },
         body: JSON.stringify({
           stage,
           detail,
@@ -185,14 +190,20 @@
     }
   }
 
-  function loadExperimentMode() {
+  async function loadExperimentMode(config) {
     if (modeLoaded) return;
     modeLoaded = true;
-
-    const script = document.createElement('script');
-    script.src = `/mode.js?run=${Date.now()}`;
-    script.onerror = () => window.ExperimentUi.fail('Could not load experiment mode script.');
-    document.head.appendChild(script);
+    const load = (url) => new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = url;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Could not load ' + url));
+      document.head.appendChild(script);
+    });
+    const run = encodeURIComponent(config.diagnostic_run_id || String(Date.now()));
+    if (config.diagnostic_run_id) await load('/render-diagnostics.js?run=' + run);
+    if (config.experiment === 'range-image') await load('/safe-capture.js?run=' + run);
+    await load('/mode.js?run=' + run);
   }
 
   async function waitForManualStart(config) {
@@ -233,6 +244,7 @@
       throw new Error(`Config request failed: HTTP ${configResponse.status}`);
     }
     const config = await configResponse.json();
+    diagnosticRunId = config.capture_run_id || config.diagnostic_run_id || null;
 
     await configureOfficeDiagnostics(config);
     window.ExperimentUi.configure(config);
@@ -243,7 +255,7 @@
       await waitForManualStart(config);
     }
 
-    loadExperimentMode();
+    await loadExperimentMode(config);
   }
 
   window.setInterval(() => {
@@ -269,7 +281,7 @@
       try {
         await fetch('/error', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(diagnosticRunId ? { 'X-VV-Run-Id': diagnosticRunId } : {}) },
           body: JSON.stringify({ message: detail })
         });
       } catch (_) {

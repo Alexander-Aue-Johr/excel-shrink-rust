@@ -4,6 +4,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\_shared\reporting.ps1')
+$vvReportOwner = Start-VVReport -Start $PSScriptRoot -Experiment 'shape-bounds-native' -Arguments $PSBoundParameters
+try {
+$ErrorActionPreference = 'Stop'
 
 # Keep repository-authored experiment output stable across localized Windows hosts.
 $env:DOTNET_CLI_UI_LANGUAGE = 'en-us'
@@ -686,7 +690,7 @@ Write-Host "  $CorpusRoot"
 Ensure-VbaHost
 Ensure-CSharpAddIn
 
-$results = Join-Path $PSScriptRoot 'results'
+$results = Join-Path $env:VV_REPORT_DIR 'data\shape-bounds'
 
 New-Item -ItemType Directory -Path $results -Force | Out-Null
 
@@ -754,15 +758,15 @@ New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 $stagedList = Join-Path $tempRoot 'files.txt'
 
 $stagedVbaHost = Join-Path $tempRoot 'drawing-bounds-host.xlsm'
-$stagedVbaOutput = Join-Path $tempRoot 'vba.json'
+$stagedVbaOutput = Join-Path $results 'vba.json'
 
 $stagedCSharpXll = Join-Path $tempRoot 'DrawingBoundsAddIn-AddIn64-packed.xll'
-$stagedCSharpOutput = Join-Path $tempRoot 'csharp-addin.json'
+$stagedCSharpOutput = Join-Path $results 'csharp-addin.json'
 
-$stagedPowerShellOutput = Join-Path $tempRoot 'powershell-com.json'
+$stagedPowerShellOutput = Join-Path $results 'powershell-com.json'
 
 $stagedRustExe = Join-Path $tempRoot 'drawing-bounds-rust-com.exe'
-$stagedRustOutput = Join-Path $tempRoot 'rust-com.json'
+$stagedRustOutput = Join-Path $results 'rust-com.json'
 
 Copy-Item -LiteralPath $fileListPath -Destination $stagedList
 Copy-Item -LiteralPath $VbaHostPath -Destination $stagedVbaHost
@@ -773,6 +777,7 @@ Copy-Item -LiteralPath $RustExe -Destination $stagedRustExe
 try {
     Write-Host
     Write-Host '=== VBA inside Excel ==='
+    Write-VVEvent 'native_implementation_started' @{implementation='vba'}
 
     $excel = $null
     $workbooks = $null
@@ -827,6 +832,7 @@ try {
 
     Write-Host
     Write-Host '=== C# Excel-DNA inside Excel ==='
+    Write-VVEvent 'native_implementation_started' @{implementation='excel-dna'}
 
     $excel = $null
 
@@ -928,9 +934,20 @@ try {
     }
 }
 finally {
+    foreach($partial in @(Get-ChildItem -LiteralPath $tempRoot -File -ErrorAction SilentlyContinue | Where-Object {$_.Extension -in @('.json','.jsonl','.log','.txt')})) {
+        Copy-Item -LiteralPath $partial.FullName -Destination $results -Force -ErrorAction Continue
+    }
     Remove-Item `
         -LiteralPath $tempRoot `
         -Recurse `
         -Force `
         -ErrorAction SilentlyContinue
+}
+
+} catch {
+    $vvCaughtError = $_
+    try { Write-VVFailure $vvCaughtError $PSCommandPath } catch { Write-Warning ('Could not persist error: ' + $_.Exception.Message) }
+    throw $vvCaughtError
+} finally {
+    Stop-VVReport $vvReportOwner
 }

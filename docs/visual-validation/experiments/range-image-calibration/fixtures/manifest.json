@@ -1,0 +1,305 @@
+{
+  "schema": "render-diagnostics-fixtures-v2",
+  "created_from": "minimal OOXML, not a transformed corpus workbook",
+  "fixtures": [
+    {
+      "workbook": "vv-render-calibri11.xlsx",
+      "kind": "units",
+      "normal_font": "Calibri",
+      "normal_font_size_pt": 11,
+      "widths": [
+        0.5,
+        1,
+        2,
+        5,
+        8.43,
+        8.7109375,
+        10,
+        11.42578125,
+        12,
+        12.5703125,
+        20,
+        30,
+        35.7109375
+      ],
+      "heights": [
+        8.25,
+        11.25,
+        12,
+        12.6,
+        12.75,
+        15,
+        15.95,
+        18,
+        24,
+        30,
+        72
+      ],
+      "fractional_row_height_pt": 12.6,
+      "fractional_column_width_xml": 8.43,
+      "sha256": "c5e68f225e8c00b91d2ad4cd58c121e6a83c8811d4848885c0c6a6927a8a7261"
+    },
+    {
+      "workbook": "vv-render-arial10.xlsx",
+      "kind": "units",
+      "normal_font": "Arial",
+      "normal_font_size_pt": 10,
+      "widths": [
+        0.5,
+        1,
+        2,
+        5,
+        8.43,
+        8.7109375,
+        10,
+        11.42578125,
+        12,
+        12.5703125,
+        20,
+        30,
+        35.7109375
+      ],
+      "heights": [
+        8.25,
+        11.25,
+        12,
+        12.6,
+        12.75,
+        15,
+        15.95,
+        18,
+        24,
+        30,
+        72
+      ],
+      "fractional_row_height_pt": 12.6,
+      "fractional_column_width_xml": 8.43,
+      "sha256": "8b31c1c177fbab0a580d83f6dc11529523bb5a4f70e0b0f5dd87be4b18f2e5fd"
+    },
+    {
+      "workbook": "vv-render-calibri16.xlsx",
+      "kind": "units",
+      "normal_font": "Calibri",
+      "normal_font_size_pt": 16,
+      "widths": [
+        0.5,
+        1,
+        2,
+        5,
+        8.43,
+        8.7109375,
+        10,
+        11.42578125,
+        12,
+        12.5703125,
+        20,
+        30,
+        35.7109375
+      ],
+      "heights": [
+        8.25,
+        11.25,
+        12,
+        12.6,
+        12.75,
+        15,
+        15.95,
+        18,
+        24,
+        30,
+        72
+      ],
+      "fractional_row_height_pt": 12.6,
+      "fractional_column_width_xml": 8.43,
+      "sha256": "18798f53c20bc1cd2622770eeccff84f0795474e2102b5b942b218bdd07c38ee"
+    },
+    {
+      "workbook": "vv-render-markers.xlsx",
+      "kind": "markers",
+      "normal_font": "Calibri",
+      "normal_font_size_pt": 11,
+      "row_height_pt": 12.75,
+      "column_width_xml": 10,
+      "tall_rows": 4096,
+      "wide_columns": 800,
+      "tall_markers": [
+        {
+          "name": "band-1-at-1",
+          "start_index": 1,
+          "end_index": 4,
+          "rgb": "E6194B",
+          "style": 2
+        },
+        {
+          "name": "band-2-at-128",
+          "start_index": 128,
+          "end_index": 131,
+          "rgb": "3CB44B",
+          "style": 3
+        },
+        {
+          "name": "band-3-at-512",
+          "start_index": 512,
+          "end_index": 515,
+          "rgb": "4363D8",
+          "style": 4
+        },
+        {
+          "name": "band-4-at-1024",
+          "start_index": 1024,
+          "end_index": 1027,
+          "rgb": "F58231",
+          "style": 5
+        },
+        {
+          "name": "band-5-at-1500",
+          "start_index": 1500,
+          "end_index": 1503,
+          "rgb": "911EB4",
+          "style": 6
+        },
+        {
+          "name": "band-6-at-1900",
+          "start_index": 1900,
+          "end_index": 1903,
+          "rgb": "42D4F4",
+          "style": 7
+        },
+        {
+          "name": "band-7-at-2100",
+          "start_index": 2100,
+          "end_index": 2103,
+          "rgb": "F032E6",
+          "style": 8
+        },
+        {
+          "name": "band-8-at-2500",
+          "start_index": 2500,
+          "end_index": 2503,
+          "rgb": "BFEF45",
+          "style": 9
+        },
+        {
+          "name": "band-9-at-3000",
+          "start_index": 3000,
+          "end_index": 3003,
+          "rgb": "FABED4",
+          "style": 10
+        },
+        {
+          "name": "band-10-at-3500",
+          "start_index": 3500,
+          "end_index": 3503,
+          "rgb": "469990",
+          "style": 11
+        },
+        {
+          "name": "band-11-at-4000",
+          "start_index": 4000,
+          "end_index": 4003,
+          "rgb": "9A6324",
+          "style": 12
+        },
+        {
+          "name": "band-12-at-4092",
+          "start_index": 4092,
+          "end_index": 4095,
+          "rgb": "800000",
+          "style": 13
+        }
+      ],
+      "wide_markers": [
+        {
+          "name": "band-1-at-1",
+          "start_index": 1,
+          "end_index": 4,
+          "rgb": "E6194B",
+          "style": 2
+        },
+        {
+          "name": "band-2-at-32",
+          "start_index": 32,
+          "end_index": 35,
+          "rgb": "3CB44B",
+          "style": 3
+        },
+        {
+          "name": "band-3-at-128",
+          "start_index": 128,
+          "end_index": 131,
+          "rgb": "4363D8",
+          "style": 4
+        },
+        {
+          "name": "band-4-at-256",
+          "start_index": 256,
+          "end_index": 259,
+          "rgb": "F58231",
+          "style": 5
+        },
+        {
+          "name": "band-5-at-384",
+          "start_index": 384,
+          "end_index": 387,
+          "rgb": "911EB4",
+          "style": 6
+        },
+        {
+          "name": "band-6-at-448",
+          "start_index": 448,
+          "end_index": 451,
+          "rgb": "42D4F4",
+          "style": 7
+        },
+        {
+          "name": "band-7-at-480",
+          "start_index": 480,
+          "end_index": 483,
+          "rgb": "F032E6",
+          "style": 8
+        },
+        {
+          "name": "band-8-at-512",
+          "start_index": 512,
+          "end_index": 515,
+          "rgb": "BFEF45",
+          "style": 9
+        },
+        {
+          "name": "band-9-at-600",
+          "start_index": 600,
+          "end_index": 603,
+          "rgb": "FABED4",
+          "style": 10
+        },
+        {
+          "name": "band-10-at-700",
+          "start_index": 700,
+          "end_index": 703,
+          "rgb": "469990",
+          "style": 11
+        },
+        {
+          "name": "band-11-at-750",
+          "start_index": 750,
+          "end_index": 753,
+          "rgb": "9A6324",
+          "style": 12
+        },
+        {
+          "name": "band-12-at-796",
+          "start_index": 796,
+          "end_index": 799,
+          "rgb": "800000",
+          "style": 13
+        }
+      ],
+      "sha256": "d8c22220bcc3351d97e036da807d92d9b35dd2912f4bdc85ca1594f32b04e65a"
+    }
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.column",
+    "https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.row",
+    "https://learn.microsoft.com/en-us/javascript/api/excel/excel.range"
+  ]
+}

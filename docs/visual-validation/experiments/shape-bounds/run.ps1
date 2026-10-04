@@ -20,11 +20,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\_shared\reporting.ps1')
+$vvReportOwner = Start-VVReport -Start $PSScriptRoot -Experiment 'shape-bounds' -Arguments $PSBoundParameters
+try {
+$ErrorActionPreference = 'Stop'
 
 $ExperimentsRoot = Split-Path -Parent $PSScriptRoot
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $ExperimentsRoot '..\..\..'))
 $SharedOfficeRunner = Join-Path $ExperimentsRoot '_shared\office-addin\run.ps1'
-$Results = Join-Path $PSScriptRoot 'results'
+$Results = Join-Path $env:VV_REPORT_DIR 'data\shape-bounds'
 $FileList = Join-Path $Results 'files.txt'
 
 function Choose([string]$Title, [string[]]$Options, [int]$DefaultIndex = 0) {
@@ -139,8 +143,8 @@ foreach ($office in @(
     }
 
     $imageRoot = Join-Path `
-        $RepoRoot `
-        ('.tmp\visual-validation\shape-bounds\' + $office.Name)
+        $env:VV_REPORT_DIR `
+        ('artifacts\shape-bounds\' + $office.Name)
 
     $args = @{
         FileListPath = $FileList
@@ -173,4 +177,12 @@ if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'summarize-results.ps1')) {
             $_.Exception.Message
         )
     }
+}
+
+} catch {
+    $vvCaughtError = $_
+    try { Write-VVFailure $vvCaughtError $PSCommandPath } catch { Write-Warning ('Could not persist error: ' + $_.Exception.Message) }
+    throw $vvCaughtError
+} finally {
+    Stop-VVReport $vvReportOwner
 }

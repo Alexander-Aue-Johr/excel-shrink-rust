@@ -58,13 +58,21 @@ var officeJsDebug = string.Equals(
     "1",
     StringComparison.OrdinalIgnoreCase);
 
+// Diagnostic run IDs prevent still-open task panes from previous runs contaminating this run.
+var isRenderDiagnostic = experiment is "range-image-height-limit" or "range-image-calibration";
+var diagnosticRunId = isRenderDiagnostic ? Guid.NewGuid().ToString("N") : null;
+var captureRunId = experiment == "range-image" ? (Environment.GetEnvironmentVariable("VV_CAPTURE_RUN_ID") ?? Guid.NewGuid().ToString("N")) : null;
+var diagnosticConfigPath = Path.Combine(staticRoot, "diagnostic-config.json");
+JsonNode? diagnosticOptions = isRenderDiagnostic && File.Exists(diagnosticConfigPath)
+    ? JsonNode.Parse(File.ReadAllText(diagnosticConfigPath)) : null;
+
 Directory.CreateDirectory(imageRoot);
 
 var strictUtf8 = new UTF8Encoding(false, true);
 var expectedNames = File.ReadAllLines(fileListPath, strictUtf8)
     .Select(line => line.Trim())
     .Where(line => line.Length != 0)
-    .Select(Path.GetFileName)
+    .Select(line => Path.GetFileName(line) ?? throw new InvalidOperationException("Invalid workbook path"))
     .ToArray();
 
 var expectedNameSet = new HashSet<string>(
@@ -80,6 +88,11 @@ var probeTasks = new ConcurrentDictionary<string, Task<ProbeResult>>(
     StringComparer.OrdinalIgnoreCase);
 var writeGate = new SemaphoreSlim(1, 1);
 var lastActivity = DateTimeOffset.UtcNow;
+var journalGate = new object();
+var progressGate = new SemaphoreSlim(1,1);
+var captureOwners = new ConcurrentDictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+var journalPath = outputPath + ".events.jsonl";
 
 void Record(string stage, object? detail = null)
 {
@@ -92,6 +105,11 @@ void Record(string stage, object? detail = null)
         lastActivity,
         stage,
         detailJson);
+    lock (journalGate)
+    {
+        File.AppendAllText(journalPath, JsonSerializer.Serialize(new { sequence=entry.Sequence,
+            timestamp_utc=entry.Timestamp, source="dotnet", stage, detail=detailJson }) + "\n", new UTF8Encoding(false));
+    }
     events.Enqueue(entry);
     Console.WriteLine(
         $"[{entry.Timestamp:HH:mm:ss.fff}] {stage}"
@@ -250,6 +268,7 @@ async Task WriteOutputAsync()
                 ["expected_workbooks"] = expectedNames.Length,
                 ["generated_utc"] = DateTimeOffset.UtcNow.ToString("O")
             },
+            ["errors"] = JsonSerializer.SerializeToNode(errors.ToArray()),
             ["workbooks"] = workbooks
         };
 
@@ -260,9 +279,10 @@ async Task WriteOutputAsync()
         }
 
         await File.WriteAllTextAsync(
-            outputPath,
+            outputPath + ".new",
             document.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n",
             strictUtf8);
+        File.Move(outputPath + ".new", outputPath, overwrite:true);
     }
     finally
     {
@@ -278,6 +298,62 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.WebHost.UseUrls("https://localhost:3000", "http://127.0.0.1:3001");
 
 var app = builder.Build();
+await WriteOutputAsync(); // A valid partial result exists before Excel is started.
+
+if (captureRunId is not null)
+{
+    app.Use(async (context,next) => {
+        var path=context.Request.Path.Value ?? "";
+        if (context.Request.Method == "POST" && path is ("/capture-claim" or "/capture-progress" or "/image-batch" or "/result" or "/client-event" or "/error" or "/probe-batch"))
+        {
+            if (!string.Equals(context.Request.Headers["X-VV-Run-Id"].ToString(), captureRunId, StringComparison.Ordinal))
+            { context.Response.StatusCode=409; await context.Response.WriteAsJsonAsync(new {error="stale-capture-run"}); return; }
+        }
+        await next();
+    });
+}
+app.MapPost("/capture-claim", async (HttpRequest request) => {
+    var body=(await JsonNode.ParseAsync(request.Body))!.AsObject();
+    var workbook=body["workbook"]?.GetValue<string>() ?? "";
+    var client=body["client_id"]?.GetValue<string>() ?? "";
+    if (!expectedNameSet.Contains(workbook) || client.Length is < 1 or > 200) return Results.BadRequest(new {error="Invalid capture claim"});
+    var owner=captureOwners.GetOrAdd(workbook,client);
+    return Results.Json(new {acquired=string.Equals(owner,client,StringComparison.Ordinal)});
+});
+app.MapPost("/capture-progress", async (HttpRequest request) => {
+    var body=(await JsonNode.ParseAsync(request.Body))!.AsObject();
+    var workbook=body["workbook"]?.GetValue<string>() ?? "";
+    if (!expectedNameSet.Contains(workbook)) return Results.BadRequest(new {error="Unexpected workbook"});
+    var dir=Path.Combine(imageRoot,"_progress"); Directory.CreateDirectory(dir);
+    var path=Path.Combine(dir,SafeFileName(workbook)+".progress.json");
+    await progressGate.WaitAsync();
+    try {
+        await File.WriteAllTextAsync(path+".new",body.ToJsonString(new JsonSerializerOptions{WriteIndented=true}),new UTF8Encoding(false));
+        File.Move(path+".new",path,overwrite:true);
+    } finally {progressGate.Release();}
+    return Results.Json(new {ok=true});
+});
+
+if (isRenderDiagnostic)
+{
+    var diagnosticWrites = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "/client-event", "/client-beacon", "/error", "/result", "/image-batch",
+        "/diagnostic-progress", "/diagnostic-claim", "/diagnostic-markers"
+    };
+    app.Use(async (context, next) =>
+    {
+        if (diagnosticWrites.Contains(context.Request.Path.Value ?? "") &&
+            !string.Equals(context.Request.Headers["X-VV-Run-Id"].ToString(), diagnosticRunId, StringComparison.Ordinal))
+        {
+            context.Response.StatusCode = 409;
+            await context.Response.WriteAsJsonAsync(new { error = "stale-or-untagged-diagnostic-request" });
+            return;
+        }
+        await next();
+    });
+    DiagnosticEndpoints.Map(app, imageRoot, expectedNameSet);
+}
 
 app.Use(async (context, next) =>
 {
@@ -299,7 +375,10 @@ app.MapGet("/config", () => Results.Json(new
     overflow_probe_height_px = overflowHeightPx,
     wait_for_start = waitForStart,
     extended_error_logging = extendedErrorLogging,
-    office_js_debug = officeJsDebug
+    office_js_debug = officeJsDebug,
+    capture_run_id = captureRunId,
+    diagnostic_run_id = diagnosticRunId,
+    diagnostic_options = diagnosticOptions
 }));
 
 app.MapGet("/status", (string? workbook, long? after) =>
@@ -362,6 +441,7 @@ app.MapPost("/image-batch", async (HttpRequest request) =>
             ?? throw new InvalidOperationException("Image batch must be an object.");
         var workbook = payload["workbook"]?.GetValue<string>()
             ?? throw new InvalidOperationException("Image batch has no workbook.");
+        if (!expectedNameSet.Contains(workbook)) throw new InvalidOperationException("Unexpected image workbook");
         var batchIndex = payload["batch_index"]?.GetValue<int>() ?? 0;
         var images = payload["images"]?.AsArray()
             ?? throw new InvalidOperationException("Image batch has no images.");
@@ -374,10 +454,95 @@ app.MapPost("/image-batch", async (HttpRequest request) =>
         {
             var image = node!.AsObject();
             var id = image["id"]!.GetValue<string>();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(id, @"^[A-Za-z0-9_-]{1,100}$")) throw new InvalidOperationException("Unsafe capture ID");
             var sheet = image["sheet"]!.GetValue<string>();
             var address = image["address"]!.GetValue<string>();
-            var bytes = Convert.FromBase64String(image["base64"]!.GetValue<string>());
-            var (width, height) = PngSize(bytes);
+            var base64 = image["base64"]?.GetValue<string>() ?? "";
+            var base64Prefix = base64[..Math.Min(32, base64.Length)];
+
+            Record("image_batch_item_received", new
+            {
+                workbook,
+                batch_index = batchIndex,
+                id,
+                sheet,
+                address,
+                base64_chars = base64.Length,
+                base64_prefix = base64Prefix
+            });
+
+            byte[] bytes;
+            try
+            {
+                bytes = Convert.FromBase64String(base64);
+            }
+            catch (Exception exception)
+            {
+                Record("image_payload_invalid", new
+                {
+                    workbook,
+                    batch_index = batchIndex,
+                    id,
+                    sheet,
+                    address,
+                    base64_chars = base64.Length,
+                    base64_prefix = base64Prefix,
+                    reason = "base64-decode-failed",
+                    exception = exception.Message
+                });
+                throw new InvalidOperationException(
+                    $"Invalid image base64 for workbook={JsonSerializer.Serialize(workbook)}, " +
+                    $"batch={batchIndex}, id={id}, sheet={JsonSerializer.Serialize(sheet)}, " +
+                    $"address={address}, base64_chars={base64.Length}.",
+                    exception);
+            }
+
+            int width;
+            int height;
+            try
+            {
+                (width, height) = PngSize(bytes);
+            }
+            catch (Exception exception)
+            {
+                var bytePrefix = Convert.ToHexString(
+                    bytes.AsSpan(0, Math.Min(24, bytes.Length)))
+                    .ToLowerInvariant();
+                Record("image_payload_invalid", new
+                {
+                    workbook,
+                    batch_index = batchIndex,
+                    id,
+                    sheet,
+                    address,
+                    base64_chars = base64.Length,
+                    decoded_bytes = bytes.Length,
+                    base64_prefix = base64Prefix,
+                    byte_prefix_hex = bytePrefix,
+                    reason = exception.Message
+                });
+                throw new InvalidOperationException(
+                    $"Invalid PNG payload for workbook={JsonSerializer.Serialize(workbook)}, " +
+                    $"batch={batchIndex}, id={id}, sheet={JsonSerializer.Serialize(sheet)}, " +
+                    $"address={address}, base64_chars={base64.Length}, " +
+                    $"decoded_bytes={bytes.Length}, byte_prefix_hex={bytePrefix}: " +
+                    exception.Message,
+                    exception);
+            }
+
+            Record("image_payload_validated", new
+            {
+                workbook,
+                batch_index = batchIndex,
+                id,
+                sheet,
+                address,
+                base64_chars = base64.Length,
+                decoded_bytes = bytes.Length,
+                png_width = width,
+                png_height = height
+            });
+
             var fileName = id + ".png";
             var path = Path.Combine(workbookDirectory, fileName);
             await File.WriteAllBytesAsync(path, bytes);
@@ -398,6 +563,8 @@ app.MapPost("/image-batch", async (HttpRequest request) =>
             });
         }
 
+        Record("image_batch_persisted", new { workbook, batch_index=batchIndex, captures=persisted });
+        if (experiment == "range-image") await WriteOutputAsync();
         Record("image_batch_received", new
         {
             workbook,
@@ -410,7 +577,12 @@ app.MapPost("/image-batch", async (HttpRequest request) =>
     catch (Exception exception)
     {
         errors.Enqueue(exception.ToString());
-        Record("server_error", new { message = exception.Message });
+        await WriteOutputAsync();
+        Record("server_error", new
+        {
+            message = exception.Message,
+            exception = exception.ToString()
+        });
         return Results.Json(new { error = exception.ToString() }, statusCode: 400);
     }
 });
@@ -512,6 +684,7 @@ app.MapPost("/error", async (HttpRequest request) =>
     var body = await reader.ReadToEndAsync();
     errors.Enqueue(body);
     Record("client_error", new { message = body });
+    await WriteOutputAsync();
     return Results.Json(new { ok = true });
 });
 
@@ -529,13 +702,20 @@ app.MapGet("/taskpane.html", () =>
 app.MapGet("/taskpane.css", () => StaticFile("taskpane.css", "text/css; charset=utf-8"));
 app.MapGet("/bootstrap.js", () => StaticFile("bootstrap.js", "application/javascript; charset=utf-8"));
 app.MapGet("/shell.js", () => StaticFile("shell.js", "application/javascript; charset=utf-8"));
+app.MapGet("/safe-capture.js", () => StaticFile("safe-capture.js", "application/javascript; charset=utf-8"));
+app.MapGet("/render-diagnostics.js", () => StaticFile("render-diagnostics.js", "application/javascript; charset=utf-8"));
+app.MapGet("/row-height-diagnostics.js", () => StaticFile("row-height-diagnostics.js", "application/javascript; charset=utf-8"));
 app.MapGet("/commands.html", () => StaticFile("commands.html", "text/html; charset=utf-8"));
 app.MapGet("/visual-plan.json", () => StaticFile("visual-plan.json", "application/json; charset=utf-8"));
 app.MapGet("/mode.js", () =>
     StaticFile(
-        experiment == "range-image"
-            ? "modes/range-image.js"
-            : "modes/shape-bounds.js",
+        experiment switch
+        {
+            "range-image" => "modes/range-image.js",
+            "range-image-height-limit" => "modes/range-image-height-limit.js",
+            "range-image-calibration" => "modes/range-image-calibration.js",
+            _ => "modes/shape-bounds.js"
+        },
         "application/javascript; charset=utf-8"));
 app.MapGet("/icon-32.png", () => Results.Bytes(
     Convert.FromBase64String(

@@ -1,4 +1,4 @@
-/* global Excel, ExperimentUi, ExperimentEvents */
+/* global Excel, ExperimentUi, ExperimentEvents, SafeCapture */
 'use strict';
 
 (async function () {
@@ -43,14 +43,15 @@
       const workbook = context.workbook;
       const sheets = workbook.worksheets;
       workbook.load('name');
-      sheets.load('items/name,items/visibility');
+      sheets.load('items/name,items/visibility,items/position,items/id,items/showGridlines');
       await context.sync();
 
       return {
         workbookName: workbook.name,
         sheets: sheets.items
           .filter(visibleWorksheet)
-          .map((sheet) => ({ name: sheet.name }))
+          .map((sheet) => ({ name: sheet.name, sheet_index: Number(sheet.position) + 1,
+            office_position: Number(sheet.position), worksheet_id: sheet.id, show_gridlines: sheet.showGridlines }))
       };
     });
   }
@@ -1003,12 +1004,13 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     ];
   }
 
-  function horizontalRuleMask(image, background) {
+  function horizontalRuleMask(image, background, x0 = 1, x1 = image.width - 1) {
     const candidates = new Uint8Array(image.height);
-    if (image.width < 16 || image.height < 3) return candidates;
+    x0=Math.max(1,Math.ceil(x0)); x1=Math.min(image.width-1,Math.floor(x1));
+    if (x1 - x0 < 16 || image.height < 3) return candidates;
 
     for (let y = 1; y < image.height - 1; y += 1) {
-      const referenceOffset = pixelOffset(image, 1, y);
+      const referenceOffset = pixelOffset(image, x0, y);
       if (!pixelDiffers(image, referenceOffset, background)) continue;
 
       const r = image.data[referenceOffset];
@@ -1016,7 +1018,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       const b = image.data[referenceOffset + 2];
       let uniform = true;
 
-      for (let x = 2; x < image.width - 1; x += 1) {
+      for (let x = x0 + 1; x < x1; x += 1) {
         const offset = pixelOffset(image, x, y);
         if (
           Math.abs(image.data[offset] - r) > 8 ||
@@ -1054,6 +1056,16 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       endColumn
     );
     const rules = horizontalRuleMask(image, background);
+    // Thin horizontal rules can be interrupted by content inside the base bounds.
+    // Require a uniform band across AT LEAST two visible probe columns; no color-only text deletion.
+    const visibleProbeColumns=[];
+    for(let c=baseColumn+1;c<=endColumn;c++) if(Number(widths[c])>0) visibleProbeColumns.push(c);
+    const probeRules=visibleProbeColumns.length>=2
+      ? horizontalRuleMask(image,background,edges[baseColumn+1]+1,edges[endColumn+1]-1)
+      : new Uint8Array(image.height);
+    const edgeHits=[];
+    let ignoredProbeRows=0;
+    for(let y=0;y<rules.length;y++) if(probeRules[y]) {if(!rules[y]) ignoredProbeRows++; rules[y]=1;}
 
     let lastVisible = -1;
     for (let column = baseColumn + 1; column <= endColumn; column += 1) {
@@ -1090,6 +1102,10 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
           scannedPixels += 1;
           if (pixelDiffers(image, pixelOffset(image, x, y), background)) {
             content = true;
+            if(column===lastVisible && edgeHits.length<8) {
+              const o=pixelOffset(image,x,y);
+              edgeHits.push({x,y,column,rgba:Array.from(image.data.slice(o,o+4))});
+            }
             break scanColumn;
           }
         }
@@ -1115,6 +1131,8 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       scanned_pixels: scannedPixels,
       ignored_rule_rows: ignoredRuleRows,
       background_rgba: background,
+      edge_hits:edgeHits,ignored_probe_rule_rows:ignoredProbeRows,
+      rule_scope:'full-width and multi-column probe-band thin uniform rules (maximum 4 px)',
       edges
     };
   }
@@ -1133,6 +1151,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       throw new Error('Decoded Range.getImage() PNG has invalid dimensions.');
     }
 
+    if (width > SafeCapture.DEFAULTS.max_edge_px || height > SafeCapture.DEFAULTS.max_edge_px || width * height > SafeCapture.DEFAULTS.max_pixels) throw SafeCapture.fault('CANVAS_BUDGET', 'Refusing oversized Canvas decode', {width,height});
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
@@ -1175,255 +1194,319 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     );
     const dataUrl = canvas.toDataURL('image/png');
     const comma = dataUrl.indexOf(',');
-    if (comma < 0) throw new Error('Canvas PNG encoding did not return a data URL.');
-    return dataUrl.slice(comma + 1);
+    if (!dataUrl.startsWith('data:image/png;base64,') || comma < 0 || dataUrl.length <= comma + 1) throw SafeCapture.fault('CANVAS_EMPTY_PNG', 'Canvas encoder returned no PNG (including data:,)', {width:canvas.width,height:canvas.height,prefix:dataUrl.slice(0,64)});
+    const encoded = dataUrl.slice(comma + 1);
+    SafeCapture.png(encoded);
+    canvas.width = 0; canvas.height = 0;
+    return encoded;
   }
 
-  async function renderPrecomputedPlannedBatch(
-    workbookName,
-    items,
-    batchIndex,
-    batchCount,
-    config
-  ) {
-    ExperimentUi.startBatch(
-      batchIndex,
-      batchCount,
-      items.map((item) => item.sheet)
-    );
+  // Source Context patch: validate and diagnose every Strategy F Range.getImage()
+  // payload. Previously only overflow-probe images were decoded in the browser, so a
+  // non-overflow sheet could return an empty/short getImage() value and fail later in
+  // the host as the context-free error "PNG payload is too short."
+  function strategyFPngSummary(base64) {
+    const text = typeof base64 === 'string' ? base64 : '';
+    const padding = text.endsWith('==') ? 2 : (text.endsWith('=') ? 1 : 0);
+    const decodedBytesEstimate = text.length === 0
+      ? 0
+      : Math.max(0, Math.floor(text.length * 3 / 4) - padding);
+    const summary = {
+      value_type: typeof base64,
+      base64_chars: text.length,
+      decoded_bytes_estimate: decodedBytesEstimate,
+      base64_prefix: text.slice(0, 32),
+      png_signature: false,
+      png_width: null,
+      png_height: null,
+      header_error: null
+    };
 
-    const planById = new Map(items.map((item) => [item.id, item]));
-    let pending = items.map((item) => ({ ...item }));
-    const captures = [];
-    let renderMs = 0;
-    let persistMs = 0;
-    let analysisMs = 0;
-    let iteration = 0;
+    if (text.length < 32 || decodedBytesEstimate < 24) return summary;
 
-    while (pending.length > 0) {
-      iteration += 1;
-      const rendered = await Excel.run(async (context) => {
-        const workbook = context.workbook;
-        const requests = [];
-        const started = performance.now();
-        const traceGetImage = Boolean(
-          config &&
-          (
-            config.wait_for_start ||
-            config.extended_error_logging ||
-            config.office_js_debug
-          )
-        );
+    try {
+      // 32 base64 characters encode exactly the first 24 bytes, which is enough
+      // for the PNG signature plus IHDR width/height. Do not decode the whole image
+      // merely to validate it; large worksheet captures can be very large strings.
+      const header = atob(text.slice(0, 32));
+      if (header.length < 24) return summary;
+      const byte = (index) => header.charCodeAt(index) & 0xff;
+      summary.png_signature =
+        byte(0) === 137 && byte(1) === 80 && byte(2) === 78 && byte(3) === 71 &&
+        byte(4) === 13 && byte(5) === 10 && byte(6) === 26 && byte(7) === 10;
+      if (!summary.png_signature) return summary;
 
-        // Source Context patch: trace Strategy F getImage queue execution.
-        for (const item of pending) {
-          const address = addressA1To(item.bottom_row, item.end_column);
-          const requestNumber = requests.length + 1;
-          if (traceGetImage) {
-            context.trace(
-              `Strategy F #${requestNumber} BEFORE Range.getImage ` +
-              `sheet=${item.sheet} address=${address}`
-            );
-          }
-
-          const image = workbook.worksheets
-            .getItem(item.sheet)
-            .getRange(address)
-            .getImage();
-
-          if (traceGetImage) {
-            context.trace(
-              `Strategy F #${requestNumber} AFTER Range.getImage ` +
-              `sheet=${item.sheet} address=${address}`
-            );
-          }
-
-          requests.push({ item, address, image });
-        }
-
-        // Source Context patch: diagnostic breakpoints around Strategy F getImage sync.
-        // Pause before Excel executes the batched Range.getImage() requests.
-        debugger;
-        try {
-          await context.sync();
-        } catch (error) {
-          const requestSummary = requests.map((request, index) => ({
-            request: index + 1,
-            sheet: request.item.sheet,
-            address: request.address
-          }));
-          const traceMessages = error && Array.isArray(error.traceMessages)
-            ? error.traceMessages
-            : [];
-
-          console.error('Strategy F Range.getImage context.sync failed', {
-            error,
-            requestSummary,
-            traceMessages,
-            debugInfo: error && error.debugInfo ? error.debugInfo : null
-          });
-
-          // Pause again with the RichApi error, request mapping, traces,
-          // and extended debugInfo/fullStatements in scope.
-          debugger;
-          const detail = officeErrorDetail(error);
-          throw new Error(
-            `Strategy F Range.getImage context.sync failed: ${detail}`
-          );
-        }
-        return {
-          render_ms: performance.now() - started,
-          images: requests.map((request) => ({
-            item: request.item,
-            address: request.address,
-            base64: request.image.value
-          }))
-        };
-      });
-      renderMs += rendered.render_ms;
-
-      const finalized = [];
-      const nextPending = [];
-      const analysisStarted = performance.now();
-
-      for (const renderedImage of rendered.images) {
-        const item = renderedImage.item;
-        const canonical = planById.get(item.id);
-        if (!canonical) {
-          throw new Error(`Missing Strategy F capture plan for ${item.id}.`);
-        }
-
-        if (!item.overflow_probe) {
-          canonical.address = renderedImage.address;
-          canonical.end_column = item.end_column;
-          canonical.overflow_checked = false;
-          finalized.push({
-            id: item.id,
-            sheet: item.sheet,
-            address: renderedImage.address,
-            base64: renderedImage.base64
-          });
-          continue;
-        }
-
-        const decoded = await decodePngForOverflow(renderedImage.base64);
-        const decision = analyzeRenderOverflow(
-          decoded,
-          item.column_widths,
-          item.base_right_column,
-          item.end_column,
-          item.probe_extra
-        );
-        const pass = {
-          capture_end_column: item.end_column,
-          probe_extra: item.probe_extra,
-          keep_column: decision.keep_column,
-          edge_reached: !decision.done,
-          scanned_pixels: decision.scanned_pixels,
-          ignored_rule_rows: decision.ignored_rule_rows,
-          background_rgba: decision.background_rgba
-        };
-        const passes = [...(item.overflow_passes || []), pass];
-
-        if (!decision.done) {
-          if (
-            !Number.isInteger(decision.next_column) ||
-            decision.next_column <= item.end_column
-          ) {
-            throw new Error(
-              `Browser overflow planning made no progress for ${item.sheet}.`
-            );
-          }
-          canonical.end_column = decision.next_column;
-          canonical.probe_extra = decision.next_extra;
-          canonical.overflow_passes = passes;
-          nextPending.push({
-            ...item,
-            end_column: decision.next_column,
-            probe_extra: decision.next_extra,
-            overflow_passes: passes
-          });
-          continue;
-        }
-
-        const finalAddress = addressA1To(item.bottom_row, decision.keep_column);
-        const finalBase64 = cropOverflowBase64(
-          decoded,
-          decision.edges,
-          decision.keep_column,
-          renderedImage.base64
-        );
-        canonical.address = finalAddress;
-        canonical.end_column = decision.keep_column;
-        canonical.overflow_checked = true;
-        canonical.overflow_keep_column = decision.keep_column;
-        canonical.overflow_passes = passes;
-        canonical.overflow_scanned_pixels = passes.reduce(
-          (sum, current) => sum + Number(current.scanned_pixels || 0),
-          0
-        );
-        finalized.push({
-          id: item.id,
-          sheet: item.sheet,
-          address: finalAddress,
-          base64: finalBase64
-        });
-      }
-
-      analysisMs += performance.now() - analysisStarted;
-
-      if (finalized.length > 0) {
-        const persistStarted = performance.now();
-        const response = await fetch('/image-batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            workbook: workbookName,
-            batch_index: batchIndex,
-            images: finalized
-          })
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const result = await response.json();
-        persistMs += performance.now() - persistStarted;
-        captures.push(...(result.captures || []));
-      }
-
-      pending = nextPending;
-      ExperimentUi.showAnalysis(
-        captures.length,
-        items.length,
-        pending.length === 0
-          ? 'Precomputed WSL Rust bounds + browser overflow analysis complete.'
-          : `Overflow pass ${iteration}: ${pending.length} sheet(s) need a wider image.`
+      const readU32 = (offset) => (
+        byte(offset) * 0x1000000 +
+        byte(offset + 1) * 0x10000 +
+        byte(offset + 2) * 0x100 +
+        byte(offset + 3)
       );
+      summary.png_width = readU32(16);
+      summary.png_height = readU32(20);
+    } catch (error) {
+      summary.header_error = error && error.message ? error.message : String(error);
     }
 
-    captures.sort((left, right) => String(left.id).localeCompare(String(right.id)));
+    return summary;
+  }
 
-    ExperimentUi.completeBatch(
-      batchIndex,
-      batchCount,
-      items.length,
-      renderMs,
-      persistMs
+  function strategyFPngIsValid(summary) {
+    return Boolean(
+      summary &&
+      summary.png_signature &&
+      Number(summary.decoded_bytes_estimate) >= 24 &&
+      Number(summary.png_width) > 0 &&
+      Number(summary.png_height) > 0
     );
-    await ExperimentEvents.post('batch_completed', {
+  }
+
+  function strategyFImageDetail(workbookName, batchIndex, batchCount, iteration, renderedImage) {
+    const item = renderedImage.item;
+    return {
       workbook: workbookName,
       batch_index: batchIndex,
       batch_count: batchCount,
-      image_count: items.length,
-      sheets: items.map((item) => item.sheet),
-      render_ms: fixed(renderMs),
-      persist_ms: fixed(persistMs),
-      browser_overflow_analysis_ms: fixed(analysisMs)
-    });
-    return {
-      render_ms: renderMs,
-      persist_ms: persistMs,
-      analysis_ms: analysisMs,
-      captures
+      iteration,
+      id: item.id,
+      sheet: item.sheet,
+      address: renderedImage.address,
+      bottom_row: item.bottom_row,
+      base_right_column: item.base_right_column,
+      end_column: item.end_column,
+      overflow_probe: Boolean(item.overflow_probe),
+      probe_extra: Number(item.probe_extra || 0),
+      right_bound_source: item.right_bound_source || null,
+      bottom_bound_source: item.bottom_bound_source || null,
+      trailing_hidden_column_start: item.trailing_hidden_column_start ?? null,
+      trailing_hidden_row_start: item.trailing_hidden_row_start ?? null,
+      ...strategyFPngSummary(renderedImage.base64)
     };
+  }
+
+  async function retryStrategyFImage(item, address, config) {
+    return Excel.run(async (context) => {
+      const started = performance.now();
+      const traceGetImage = Boolean(
+        config &&
+        (config.wait_for_start || config.extended_error_logging || config.office_js_debug)
+      );
+      const range = context.workbook.worksheets
+        .getItem(item.sheet)
+        .getRange(address);
+      if (traceGetImage) {
+        context.trace(
+          `Strategy F isolated retry BEFORE Range.getImage ` +
+          `sheet=${item.sheet} address=${address}`
+        );
+      }
+      const image = range.getImage();
+      if (traceGetImage) {
+        context.trace(
+          `Strategy F isolated retry AFTER Range.getImage ` +
+          `sheet=${item.sheet} address=${address}`
+        );
+      }
+
+      // The initial capture already returned an invalid payload. Pause immediately
+      // before the isolated retry is executed so DevTools can inspect item/address.
+      if (window.VV_BREAK_ON_ERROR) { debugger; }
+      try {
+        await context.sync();
+      } catch (error) {
+        console.error('Strategy F isolated Range.getImage retry failed', {
+          error,
+          sheet: item.sheet,
+          address,
+          debugInfo: error && error.debugInfo ? error.debugInfo : null,
+          traceMessages: error && Array.isArray(error.traceMessages)
+            ? error.traceMessages
+            : []
+        });
+        if (window.VV_BREAK_ON_ERROR) { debugger; }
+        throw new Error(
+          `Strategy F isolated Range.getImage retry failed for ` +
+          `sheet=${JSON.stringify(item.sheet)} address=${address}: ` +
+          officeErrorDetail(error)
+        );
+      }
+
+      return {
+        base64: image.value,
+        render_ms: performance.now() - started
+      };
+    });
+  }
+
+  // Compact, immutable provenance: capture coordinates are not evidence of content.
+  function boundsOnly(item) {
+    const fields = ['id','sheet','sheet_index','office_position','address','initial_address',
+      'base_right_column','bottom_row','end_column','content_right_column','content_bottom_row',
+      'drawing_right_column','drawing_bottom_row','drawing_right_points','drawing_bottom_points',
+      'drawing_fallback_required','visible_shape_count','right_bound_source','bottom_bound_source',
+      'trailing_hidden_column_start','trailing_hidden_row_start','overflow_probe','probe_extra','overflow_probes'];
+    return Object.fromEntries(fields.filter(k => item[k] !== undefined).map(k => [k,item[k]]));
+  }
+  async function recordBounds(stage, item, detail = {}) {
+    const entry = { stage, timestamp_utc:new Date().toISOString(), sheet:item.sheet,
+      sheet_index:item.sheet_index ?? null, logical_id:item.id, ...detail };
+    (safeSession.state.bounds_history ||= []).push(entry);
+    await safeSession.event('bounds_stage', entry);
+    await safeSession.checkpoint(stage, {sheet:item.sheet, sheet_index:item.sheet_index ?? null, address:detail.address || item.address});
+  }
+  // Shared capture safety; content bounds remain the existing strategy's responsibility.
+  let safeSession = null;
+  let captureRunId = null;
+  async function fetch(input, init) {
+    const options = {...(init || {})};
+    if (captureRunId) options.headers = {...(options.headers || {}), 'X-VV-Run-Id':captureRunId};
+    return window.fetch(input, options);
+  }
+  async function renderPrecomputedPlannedBatch(workbookName, items, batchIndex, batchCount, config) {
+    const s=safeSession, initial={...s.timings}, captures=[];
+    ExperimentUi.startBatch(batchIndex,batchCount,items.map(x=>x.sheet));
+    for (const item of items) {
+      const sheetRecord={id:item.id,sheet:item.sheet,sheet_index:item.sheet_index,office_position:item.office_position,
+        status:'planning',requested_address:item.address,initial_bounds:boundsOnly(item),tiles:[],overflow_passes:[]};
+      s.state.sheets.push(sheetRecord);
+      await s.checkpoint('sheet_started',{sheet:item.sheet,address:item.address});
+      try {
+        let end=item.end_column, extra=item.probe_extra, accepted=[];
+        for (let pass=1;pass<=12;pass++) {
+          const rect={r0:0,r1:item.bottom_row+1,c0:0,c1:end+1};
+          await recordBounds('overflow_pass_requested', item, {pass,address:SafeCapture.address(rect),
+            base_address:addressA1To(item.bottom_row,item.base_right_column), extra_visible_columns:extra});
+          const tiles=await s.plan(item.sheet,rect);
+          const splitX=tiles.some(t=>t.rect.c0!==0 || t.rect.c1!==end+1);
+          let measuredWidths=null;
+          if (item.overflow_probe && !splitX) {
+            measuredWidths=await s.columnWidths(item.sheet,end);
+            // Only unmeasured widths beyond this pass remain XML hints for choosing a wider probe.
+            for (let c=end+1;c<MAX_COLUMNS;c++) measuredWidths[c]=Number(item.column_widths[c] || 0);
+          }
+          let keep=item.base_right_column, done=true, scanned=0;
+          const edgeEvidence=[];
+          const result=await s.capturePlan(item.sheet,tiles,`${item.id}-p${pass}`, measuredWidths ? async(base64,tile)=>{
+            if(tile.rect.c0!==0 || tile.rect.c1!==end+1) throw SafeCapture.fault('OVERFLOW_CONTEXT_SPLIT','Recovery needed a horizontal split; exact overflow remains inconclusive.',{sheet:item.sheet,rect:tile.rect},true);
+            let decoded;
+            try {
+              decoded=await decodePngForOverflow(base64);
+              const decision=analyzeRenderOverflow(decoded,measuredWidths,item.base_right_column,end,extra);
+              keep=Math.max(keep,decision.keep_column); done=done && decision.done;
+              scanned+=decision.scanned_pixels;
+              if (!decision.done) edgeEvidence.push({tile_id:tile.id,address:tile.address,
+                edge_hits:decision.edge_hits,background_rgba:decision.background_rgba,
+                ignored_probe_rule_rows:decision.ignored_probe_rule_rows});
+              return {keep_column:decision.keep_column,edge_reached:!decision.done,
+                scanned_pixels:decision.scanned_pixels,ignored_rule_rows:decision.ignored_rule_rows,
+                ignored_probe_rule_rows:decision.ignored_probe_rule_rows,edge_hits:decision.edge_hits,
+                background_rgba:decision.background_rgba,rule_scope:decision.rule_scope};
+            } finally {
+              if(decoded) { decoded.data=null; if(decoded.canvas) {decoded.canvas.width=0;decoded.canvas.height=0;} }
+            }
+          } : null);
+          sheetRecord.overflow_passes.push({pass,address:SafeCapture.address(rect),keep_column:keep,
+            done,scanned_pixels:scanned,tile_count:result.length,horizontal_split:splitX,
+            edge_evidence:edgeEvidence,extra_visible_columns:extra});
+          await recordBounds('overflow_pass_result', item, {...sheetRecord.overflow_passes.at(-1),
+            proposed_address:addressA1To(item.bottom_row,keep)});
+          if (item.overflow_probe && splitX) {
+            // Never infer 'no overflow' from tiles that omit potential text sources to their left.
+            accepted=result; end=rect.c1-1;
+            sheetRecord.status='inconclusive'; sheetRecord.warning='Horizontal split required: full source context for exact overflow not proved. Extra columns are retained.';
+            item.overflow_checked=false;
+            break;
+          }
+          if (!item.overflow_probe || done) {
+            accepted=result;
+            end=item.overflow_probe?keep:end;
+            item.overflow_checked=!!item.overflow_probe;
+            sheetRecord.status='complete'; break;
+          }
+          const nextExtra=Math.min(MAX_COLUMNS,Math.max(8,extra*2));
+          if (nextExtra > 64) {
+            accepted=result; end=rect.c1-1; item.overflow_checked=false;
+            sheetRecord.status='inconclusive';
+            sheetRecord.warning='Overflow expansion budget reached (64 extra visible columns). The last captured extent is retained; content beyond it is not proven absent.';
+            await recordBounds('overflow_expansion_stopped', item, {pass,address:SafeCapture.address(rect),
+              reason:'extra-column-budget',next_extra:nextExtra,edge_evidence:edgeEvidence});
+            break;
+          }
+          extra=nextExtra;
+          const wider=probeEndByVisibleColumns(item.column_widths,item.base_right_column,extra);
+          if(wider<=end) throw SafeCapture.fault('OVERFLOW_NO_PROGRESS','Overflow expansion made no progress',{sheet:item.sheet,end,extra});
+          end=wider;
+          await s.checkpoint('overflow_expansion',{sheet:item.sheet,end_column:end,pass});
+        }
+        if(!accepted.length && sheetRecord.status !== 'complete') throw SafeCapture.fault('OVERFLOW_PASS_LIMIT','Overflow did not close within the pass budget',{sheet:item.sheet});
+        item.end_column=end; item.address=addressA1To(item.bottom_row,end);
+        item.overflow_passes=sheetRecord.overflow_passes;
+        item.representation='tiles-with-valid-rect-v1';
+        // Raw PNGs retain the probe margin. This metadata selects the final logical rectangle.
+        // No Canvas crop/re-encode and no giant full-sheet bitmap allocation.
+        const finalRect={r0:0,r1:item.bottom_row+1,c0:0,c1:end+1};
+        const extent=(await s.geometries(item.sheet,[finalRect]))[0];
+        sheetRecord.address=item.address; sheetRecord.extent_points=extent;
+        sheetRecord.representation=item.representation;
+        for(const tile of accepted) {
+          const width=Math.max(0,Math.min(tile.png_width,Math.round((extent.right-tile.geometry.left)*tile.raster_profile.scale_x)+tile.raster_profile.border_px));
+          if(width<=1 || tile.rect.c0>end) { tile.excluded_probe_margin=true; continue; }
+          tile.valid_rect_px={x:0,y:0,width,height:tile.png_height};
+          tile.sheet_offset_px={x:Math.round((tile.geometry.left-extent.left)*tile.raster_profile.scale_x),
+            y:Math.round((tile.geometry.top-extent.top)*tile.raster_profile.scale_y)};
+          tile.logical_address=item.address; tile.logical_id=item.id;
+          sheetRecord.tiles.push(tile); captures.push(tile);
+        }
+        item.tiles=sheetRecord.tiles;
+        await recordBounds('final_capture_bounds', item, {address:item.address,status:sheetRecord.status,
+          extent_points:extent,tile_count:sheetRecord.tiles.length,overflow_checked:item.overflow_checked});
+        await s.event('sheet_completed',{sheet:item.sheet,address:item.address,status:sheetRecord.status,tile_count:sheetRecord.tiles.length});
+      } catch(e) {
+        sheetRecord.status='failed'; sheetRecord.error=SafeCapture.errorInfo(e);
+        await s.event('sheet_failed',{sheet:item.sheet,error:sheetRecord.error});
+        if(e.fatal || s.dead) { s.state.status='failed'; await s.checkpoint('fatal_error',{sheet:item.sheet}); throw e; }
+      }
+      await s.checkpoint('sheet_finished',{sheet:item.sheet,status:sheetRecord.status});
+    }
+    const delta=k=>s.timings[k]-initial[k];
+    ExperimentUi.completeBatch(batchIndex,batchCount,items.length,delta('render_ms'),delta('persist_ms'));
+    await s.event('batch_completed',{batch_index:batchIndex,sheets:items.map(x=>x.sheet),tile_count:captures.length,
+      geometry_ms:delta('geometry_ms'),render_ms:delta('render_ms'),persist_ms:delta('persist_ms'),analysis_ms:delta('analysis_ms')});
+    return {render_ms:delta('render_ms'),persist_ms:delta('persist_ms'),analysis_ms:delta('analysis_ms'),captures};
+  }
+  async function renderAddressBatch(workbookName,items,batchIndex,batchCount) {
+    const s=safeSession, initial={...s.timings}, captures=[];
+    ExperimentUi.startBatch(batchIndex,batchCount,items.map(x=>x.sheet));
+    for(const item of items) {
+      const record={id:item.id,sheet:item.sheet,sheet_index:item.sheet_index,office_position:item.office_position,
+        address:item.address,requested_address:item.address,initial_bounds:boundsOnly(item),status:'planning',tiles:[]};
+      s.state.sheets.push(record); await s.checkpoint('sheet_started',{sheet:item.sheet,address:item.address});
+      try {
+        await recordBounds('capture_requested',item,{address:item.address});
+        const rect=SafeCapture.parse(item.address), plan=await s.plan(item.sheet,rect);
+        const tiles=await s.capturePlan(item.sheet,plan,item.id);
+        const g=(await s.geometries(item.sheet,[rect]))[0];
+        for(const tile of tiles) {
+          tile.valid_rect_px={x:0,y:0,width:tile.png_width,height:tile.png_height};
+          tile.sheet_offset_px={x:Math.round((tile.geometry.left-g.left)*tile.raster_profile.scale_x),y:Math.round((tile.geometry.top-g.top)*tile.raster_profile.scale_y)};
+          tile.logical_address=item.address;
+        }
+        record.tiles=tiles; record.status='complete'; record.extent_points=g;
+        record.representation=item.representation='tiles-with-valid-rect-v1'; item.tiles=tiles;
+        captures.push(...tiles);
+        if(plan.some(t=>t.rect.c0!==rect.c0)) {record.status='inconclusive';record.warning='Horizontal tile seams/context require pixel-level validation before production use.';}
+      } catch(e) {
+        record.status='failed'; record.error=SafeCapture.errorInfo(e);
+        await s.event('sheet_failed',{sheet:item.sheet,error:record.error});
+        if(e.fatal || s.dead) {s.state.status='failed';await s.checkpoint('fatal_error',{sheet:item.sheet});throw e;}
+      }
+      await recordBounds('final_capture_bounds',item,{address:item.address,status:record.status,
+        extent_points:record.extent_points,tile_count:record.tiles.length});
+      await s.checkpoint('sheet_finished',{sheet:item.sheet,status:record.status});
+    }
+    const delta=k=>s.timings[k]-initial[k];
+    ExperimentUi.completeBatch(batchIndex,batchCount,items.length,delta('render_ms'),delta('persist_ms'));
+    return {render_ms:delta('render_ms'),persist_ms:delta('persist_ms'),captures};
   }
 
   function officeErrorDetail(error) {
@@ -1473,6 +1556,13 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     boundariesPoints,
     totalPoints
   ) {
+    const probeRect = SafeCapture.parse(address);
+    await safeSession.ensureCalibration(entry.sheet,probeRect);
+    const probeGeometry = (await safeSession.geometries(entry.sheet,[probeRect]))[0];
+    if (!SafeCapture.fits(probeGeometry,safeSession.limitsFor(entry.sheet))) {
+      throw SafeCapture.fault('XOR_PROBE_BUDGET', 'Legacy XOR probe exceeds the safe image budget; no screenshot or blocker mutation was queued. Use Strategy F for the tiled overflow path.', {sheet:entry.sheet,address,axis,geometry:probeGeometry},true);
+    }
+    await safeSession.checkpoint('xor_probe_started',{sheet:entry.sheet,address,axis});
     return Excel.run(async (context) => {
       const sheet = context.workbook.worksheets.getItem(entry.sheet);
       const probe = sheet.getRange(address);
@@ -1526,7 +1616,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       seed.values = [[' ']];
       blocker.copyFrom(seed, Excel.RangeCopyType.values);
 
-      let blockerWritten = false;
+      let blockerWritten = true; // The write is already queued; attempt restoration even when sync throws.
       let after;
 
       try {
@@ -1763,87 +1853,22 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     }
   }
 
-  async function renderAddressBatch(workbookName, items, batchIndex, batchCount) {
-    ExperimentUi.startBatch(
-      batchIndex,
-      batchCount,
-      items.map((item) => item.sheet)
-    );
-
-    const rendered = await Excel.run(async (context) => {
-      const workbook = context.workbook;
-      const requests = [];
-      const started = performance.now();
-
-      for (const item of items) {
-        const range = workbook.worksheets
-          .getItem(item.sheet)
-          .getRange(item.address);
-        const image = range.getImage();
-        requests.push({ item, image });
-      }
-
-      await context.sync();
-
-      return {
-        render_ms: performance.now() - started,
-        images: requests.map((request) => ({
-          id: request.item.id,
-          sheet: request.item.sheet,
-          address: request.item.address,
-          base64: request.image.value
-        }))
-      };
-    });
-
-    const persistStarted = performance.now();
-    const response = await fetch('/image-batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        workbook: workbookName,
-        batch_index: batchIndex,
-        images: rendered.images
-      })
-    });
-
-    if (!response.ok) throw new Error(await response.text());
-    const persisted = await response.json();
-    const persistMs = performance.now() - persistStarted;
-
-    ExperimentUi.completeBatch(
-      batchIndex,
-      batchCount,
-      items.length,
-      rendered.render_ms,
-      persistMs
-    );
-
-    await ExperimentEvents.post('batch_completed', {
-      workbook: workbookName,
-      batch_index: batchIndex,
-      batch_count: batchCount,
-      image_count: items.length,
-      sheets: items.map((item) => item.sheet),
-      render_ms: fixed(rendered.render_ms),
-      persist_ms: fixed(persistMs)
-    });
-
-    return {
-      render_ms: rendered.render_ms,
-      persist_ms: persistMs,
-      captures: persisted.captures || []
-    };
-  }
-
   async function execute() {
     const configResponse = await fetch('/config');
     if (!configResponse.ok) throw new Error(await configResponse.text());
     const config = await configResponse.json();
+    captureRunId = config.capture_run_id || config.diagnostic_run_id || null;
 
     const workbookInfo = await getWorkbookAndVisibleSheets();
     const workbookName = workbookInfo.workbookName;
     const sheetNames = workbookInfo.sheets.map((sheet) => sheet.name);
+    if (typeof SafeCapture === 'undefined') throw new Error('safe-capture.js is missing. No unguarded screenshot will be attempted.');
+    safeSession = new SafeCapture.Session(workbookName, config);
+    if (!await safeSession.claim()) { ExperimentUi.setPhase('Another task pane owns this workbook capture.'); return; }
+    safeSession.state.sheet_catalog = workbookInfo.sheets;
+    safeSession.state.bounds_history = [];
+    await safeSession.event('worksheet_catalog', { sheets: workbookInfo.sheets });
+    await safeSession.checkpoint('planning_started', { strategy:config.strategy });
 
     ExperimentUi.setWorkbook(workbookName);
     ExperimentUi.setPhase(`Planning strategy ${config.strategy}`);
@@ -1888,6 +1913,8 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       ExperimentUi.setPhase('Loading precomputed WSL Rust OOXML visual plan');
       const loadedPlan = await fetchPrecomputedVisualPlan(workbookName);
       rustVisualPlan = loadedPlan.plan;
+      safeSession.state.precomputed_wsl_rust_visual_plan = rustVisualPlan;
+      await safeSession.checkpoint('rust_bounds_loaded', { schema: loadedPlan.schema });
       planning.rust_xml_plan_ms += Number(rustVisualPlan.rust_plan_ms || 0);
       planning.rust_plan_fetch_ms += loadedPlan.fetch_ms;
 
@@ -1941,6 +1968,13 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       }));
     }
 
+    for (const item of plans) {
+      const identity = workbookInfo.sheets.find(x => x.name === item.sheet);
+      item.sheet_index = identity ? identity.sheet_index : null;
+      item.office_position = identity ? identity.office_position : null;
+      item.initial_address = item.address;
+      await recordBounds('addin_initial_plan', item, { bounds: boundsOnly(item) });
+    }
     const batchSize = Math.max(1, Number(config.batch_size || 8));
     const batchCount = Math.ceil(plans.length / batchSize);
     let renderTotal = 0;
@@ -1964,6 +1998,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         const bySheet = new Map(used.entries.map((entry) => [entry.sheet, entry]));
         for (const item of batch) {
           item.address = bySheet.get(item.sheet).address;
+          await recordBounds('used_range_resolved',item,{address:item.address,bounds:boundsOnly(item)});
         }
       }
 
@@ -1990,16 +2025,33 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       const total = result.render_ms + result.persist_ms;
       batches.push({
         batch_index: batchIndex,
-        capture_count: batch.length,
+        logical_sheet_count: batch.length,
+        capture_count: result.captures.length,
+        actual_image_request_batch_size: 1,
         sheets: batch.map((item) => item.sheet),
         render_ms: fixed(result.render_ms),
         persist_ms: fixed(result.persist_ms),
         total_ms: fixed(total),
-        amortized_ms_per_image: fixed(total / Math.max(1, batch.length))
+        amortized_ms_per_image: fixed(total / Math.max(1, result.captures.length)),
+        amortized_ms_per_sheet: fixed(total / Math.max(1, batch.length))
       });
     }
 
+    const sheetResults=safeSession.state.sheets;
+    const goodSheets=sheetResults.filter(s=>s.status==='complete').length;
+    const failedSheets=sheetResults.filter(s=>s.status==='failed').length;
+    safeSession.state.summary={sheet_count:sheetResults.length,complete_sheets:goodSheets,failed_sheets:failedSheets,
+      accepted_tiles:persistedCaptures.length,rendered_tile_attempts:safeSession.state.attempts.length,
+      calibration_images:safeSession.state.calibrations.reduce((n,c)=>n+c.observations.filter(o=>o.png).length,0)};
+    safeSession.state.status = sheetResults.length && goodSheets===sheetResults.length ? 'complete' :
+      (failedSheets>0 && goodSheets===0 ? 'failed' : 'partial');
+    await safeSession.checkpoint('workbook_finished');
     const payload = {
+      status: safeSession.state.status,
+      representation: 'tiles-with-valid-rect-v1',
+      safe_capture: safeSession.state,
+      safe_capture_timings: safeSession.timings,
+      actual_image_request_batch_size: 1,
       workbook: workbookName,
       strategy: config.strategy,
       planning: Object.fromEntries(
@@ -2031,13 +2083,14 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       capture_total_ms: payload.capture_total_ms
     });
 
-    ExperimentUi.setPhase('Complete · waiting for host to close workbook');
+    ExperimentUi.setPhase(`${safeSession.state.status === 'complete' ? 'Capture complete' : 'Partial / failed sheets retained'} · waiting for host to close workbook`);
   }
 
   try {
     await execute();
   } catch (error) {
     const detail = error && error.stack ? error.stack : String(error);
+    if (safeSession) { safeSession.state.status='failed'; try { await safeSession.checkpoint('fatal_error',{error:SafeCapture.errorInfo(error)}); } catch (_) {} }
     ExperimentUi.fail(detail);
     await ExperimentEvents.post('error', { message: detail });
     try {

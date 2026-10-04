@@ -2,7 +2,7 @@ param(
     [ValidateSet('cli', 'gui')]
     [string]$InterfaceMode = 'cli',
 
-    [ValidateSet('range-image', 'shape-bounds')]
+    [ValidateSet('range-image', 'range-image-height-limit', 'range-image-calibration', 'shape-bounds')]
     [string]$Experiment,
 
     [string]$CorpusRoot,
@@ -66,14 +66,16 @@ if ([string]::IsNullOrWhiteSpace($Experiment)) {
     else {
         $choice = Choose 'Visual validation experiment' @(
             'Get picture',
+            'Get picture height limit',
+            'Get picture units and markers',
             'Get shape bounds'
         ) 0
 
-        $Experiment = if ($choice -eq 'Get picture') {
-            'range-image'
-        }
-        else {
-            'shape-bounds'
+        $Experiment = switch ($choice) {
+            'Get picture' { 'range-image' }
+            'Get picture height limit' { 'range-image-height-limit' }
+            'Get picture units and markers' { 'range-image-calibration' }
+            default { 'shape-bounds' }
         }
     }
 }

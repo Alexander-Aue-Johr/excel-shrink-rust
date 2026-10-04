@@ -685,6 +685,51 @@
           "cwd": "${env:TEMP}"
         }
       }
+    },
+    {
+      "label": "Experiment: PNG diagnostics (choose test)",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/run.ps1\")\"; corpus=\"$(wslpath -w \"$1/corpus-local\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -CorpusRoot \"$corpus\" -Experiment \"$2\" -NonInteractive",
+        "vv-diagnostics",
+        "${workspaceFolder}",
+        "${input:pngDiagnosticExperiment}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-STA",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\docs\\visual-validation\\experiments\\run.ps1",
+          "-CorpusRoot",
+          "${workspaceFolder}\\corpus-local",
+          "-Experiment",
+          "${input:pngDiagnosticExperiment}",
+          "-NonInteractive"
+        ],
+        "options": {
+          "cwd": "${env:TEMP}"
+        }
+      }
     }
   ],
   "inputs": [
@@ -730,6 +775,16 @@
         "maximum-cleaning"
       ],
       "default": "default"
+    },
+    {
+      "id": "pngDiagnosticExperiment",
+      "type": "pickString",
+      "description": "PNG diagnostic experiment",
+      "options": [
+        "range-image-height-limit",
+        "range-image-calibration"
+      ],
+      "default": "range-image-height-limit"
     }
   ]
 }

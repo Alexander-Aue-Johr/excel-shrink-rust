@@ -31,14 +31,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\_shared\reporting.ps1')
+$vvReportOwner = Start-VVReport -Start $PSScriptRoot -Experiment 'range-image' -Arguments $PSBoundParameters
+try {
+$ErrorActionPreference = 'Stop'
 
 $ExperimentsRoot = Split-Path -Parent $PSScriptRoot
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $ExperimentsRoot '..\..\..'))
 $SharedOfficeRunner = Join-Path $ExperimentsRoot '_shared\office-addin\run.ps1'
 $VbaRunner = Join-Path $PSScriptRoot 'vba\run.ps1'
-$ResultsRoot = Join-Path $PSScriptRoot 'results'
+$ResultsRoot = Join-Path $env:VV_REPORT_DIR 'data\range-image'
 $FileList = Join-Path $ResultsRoot 'files.txt'
-$ImageRoot = Join-Path $RepoRoot '.tmp\visual-validation\range-image\images'
+$ImageRoot = Join-Path $env:VV_REPORT_DIR 'artifacts\range-image'
 
 function Choose(
     [string]$Title,
@@ -305,9 +309,9 @@ if ($needsFOfficeJs) {
         throw 'Strategy F paths resolve to different WSL distributions.'
     }
 
-    $planRoot = Join-Path $RepoRoot '.tmp\visual-validation\range-image\plans'
+    $planRoot = Join-Path $env:VV_REPORT_DIR 'inputs\plans'
     New-Item -ItemType Directory -Path $planRoot -Force | Out-Null
-    $FVisualPlanPath = Join-Path $planRoot ("strategy-f$selectionSuffix.json")
+    $FVisualPlanPath = Join-Path $planRoot 'strategy-f.json'
     $planWsl = Convert-WslUncToLinuxPath $FVisualPlanPath
     if ($null -eq $planWsl -or $planWsl.Distribution -ne $repoWsl.Distribution) {
         throw 'Could not convert the Strategy F visual-plan output path to WSL.'
@@ -359,8 +363,8 @@ foreach ($currentStrategy in $strategies) {
 
             $output = Join-Path `
                 $ResultsRoot `
-                ("a-used-range-prefetch\vba$selectionSuffix.json")
-            $images = Join-Path $ImageRoot ("a\vba$selectionSuffix")
+                ('a\vba.json')
+            $images = Join-Path $ImageRoot ('a\vba')
             $vbaArgs = @{
                 CorpusRoot = $CorpusRoot
                 OutputPath = $output
@@ -391,10 +395,10 @@ foreach ($currentStrategy in $strategies) {
         $hostLabel = if ($hostKind -eq 'rust') { 'rust' } else { 'dotnet' }
         $output = Join-Path `
             $ResultsRoot `
-            ($strategyDirectory + "\officejs-$hostLabel-batch$BatchSize$selectionSuffix$officeDiagnosticSuffix.json")
+            ($currentStrategy.ToLowerInvariant() + "\$hostLabel-b$BatchSize.json")
         $images = Join-Path `
             $ImageRoot `
-            ($currentStrategy.ToLowerInvariant() + "\officejs-$hostLabel-batch$BatchSize$selectionSuffix$officeDiagnosticSuffix")
+            ($currentStrategy.ToLowerInvariant() + "\$hostLabel-b$BatchSize")
 
         $args = @{
             FileListPath = $FileList
@@ -431,4 +435,12 @@ foreach ($currentStrategy in $strategies) {
 
         & $SharedOfficeRunner @args
     }
+}
+
+} catch {
+    $vvCaughtError = $_
+    try { Write-VVFailure $vvCaughtError $PSCommandPath } catch { Write-Warning ('Could not persist error: ' + $_.Exception.Message) }
+    throw $vvCaughtError
+} finally {
+    Stop-VVReport $vvReportOwner
 }

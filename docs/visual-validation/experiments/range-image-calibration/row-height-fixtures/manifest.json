@@ -1,0 +1,3307 @@
+{
+  "schema": "row-height-fixtures-v1",
+  "purpose": "Separate Normal font, cell font, sheet customHeight, row customHeight, read order and raster rounding.",
+  "no_expected_heights_hardcoded": true,
+  "fixtures": [
+    {
+      "workbook": "vv-row-height-calibri11.xlsx",
+      "kind": "row-heights",
+      "normal_font": "Calibri",
+      "normal_font_size_pt": 11,
+      "sha256": "d7ee9a14f3a2eac65e67ec79e8dccccc3c23065ff7b1c1350e6e11f1702ed218",
+      "matrices": [
+        {
+          "sheet": "Auto126",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": null,
+          "row_ht": null,
+          "row_custom_height": null,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": false,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        },
+        {
+          "sheet": "Auto300",
+          "default_row_height_pt": 30,
+          "sheet_custom_height": null,
+          "row_ht": null,
+          "row_custom_height": null,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": false,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        },
+        {
+          "sheet": "SheetCustom126",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": 1,
+          "row_ht": null,
+          "row_custom_height": null,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": false,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        },
+        {
+          "sheet": "SheetCustom0",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": 0,
+          "row_ht": null,
+          "row_custom_height": null,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": false,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        },
+        {
+          "sheet": "HtNoFlag126",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": null,
+          "row_ht": 12.6,
+          "row_custom_height": null,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": null
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        },
+        {
+          "sheet": "RowCustom0",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": null,
+          "row_ht": 12.6,
+          "row_custom_height": 0,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 0
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        },
+        {
+          "sheet": "RowFixed126",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": null,
+          "row_ht": 12.6,
+          "row_custom_height": 1,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        },
+        {
+          "sheet": "RowFixed300",
+          "default_row_height_pt": 30,
+          "sheet_custom_height": null,
+          "row_ht": 30,
+          "row_custom_height": 1,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": 30,
+              "xml_custom_height": 1
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        }
+      ],
+      "runtime_controls": [
+        {
+          "sheet": "RuntimeAuto",
+          "address": "A1:D1",
+          "row_count": 1,
+          "last_column": "D",
+          "default_row_height_pt": 12.6,
+          "row_ht": null,
+          "row_custom_height": null
+        },
+        {
+          "sheet": "RuntimeFixed",
+          "address": "A1:D1",
+          "row_count": 1,
+          "last_column": "D",
+          "default_row_height_pt": 12.6,
+          "row_ht": 12.6,
+          "row_custom_height": 1
+        }
+      ]
+    },
+    {
+      "workbook": "vv-row-height-calibri16.xlsx",
+      "kind": "row-heights",
+      "normal_font": "Calibri",
+      "normal_font_size_pt": 16,
+      "sha256": "3d44adda0f9cd4a87c38a5978a3f38b871cfa2c601b48052a168d5dc897a61a6",
+      "matrices": [
+        {
+          "sheet": "Auto126",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": null,
+          "row_ht": null,
+          "row_custom_height": null,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": false,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        },
+        {
+          "sheet": "SheetCustom126",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": 1,
+          "row_ht": null,
+          "row_custom_height": null,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": false,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": null,
+              "xml_custom_height": null
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        },
+        {
+          "sheet": "RowFixed126",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": null,
+          "row_ht": 12.6,
+          "row_custom_height": 1,
+          "cases": [
+            {
+              "id": "no-row-no-cell",
+              "omit_row": true,
+              "row": 1,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-only",
+              "row": 2,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-cell-no-style",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "row": 3,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 4,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "number-inherits-normal",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  null,
+                  123
+                ]
+              ],
+              "row": 5,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "explicit-normal-text",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  0,
+                  null
+                ]
+              ],
+              "row": 6,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-font8",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  1,
+                  null
+                ]
+              ],
+              "row": 7,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font8",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 8,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font11",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  2,
+                  null
+                ]
+              ],
+              "row": 9,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-font24",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  3,
+                  null
+                ]
+              ],
+              "row": 10,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font24",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  3,
+                  null
+                ]
+              ],
+              "row": 11,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "blank-font48",
+              "cells": [
+                [
+                  "A",
+                  null,
+                  4,
+                  null
+                ]
+              ],
+              "row": 12,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "text-font48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 13,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "mixed-font8-and48",
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ],
+                [
+                  "C",
+                  "Hgj",
+                  4,
+                  null
+                ]
+              ],
+              "row": 14,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-font48-no-cell",
+              "row_style": 4,
+              "row": 15,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-font48-inherited-text",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  null,
+                  null
+                ]
+              ],
+              "row": 16,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "row-font48-cell-font8",
+              "row_style": 4,
+              "cells": [
+                [
+                  "A",
+                  "Hgj",
+                  1,
+                  null
+                ]
+              ],
+              "row": 17,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "wrap-font8-three-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj\nHgj",
+                  5,
+                  null
+                ]
+              ],
+              "row": 18,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            },
+            {
+              "id": "wrap-font24-two-lines",
+              "cells": [
+                [
+                  "A",
+                  "Hgj\nHgj",
+                  6,
+                  null
+                ]
+              ],
+              "row": 19,
+              "xml_row_present": true,
+              "xml_ht": 12.6,
+              "xml_custom_height": 1
+            }
+          ],
+          "address": "A1:D19",
+          "row_count": 19,
+          "last_column": "D"
+        }
+      ],
+      "runtime_controls": []
+    },
+    {
+      "workbook": "vv-row-height-geometry.xlsx",
+      "kind": "row-heights",
+      "normal_font": "Calibri",
+      "normal_font_size_pt": 16,
+      "sha256": "7fc7c8fcdb9eac6ff3dc94e2e81b76d2f0ab474f7d6d1562a53f9f0dec19e49a",
+      "geometry": [
+        {
+          "sheet": "GeoDefaults",
+          "pair": "Defaults",
+          "measurement_order": "geometry-first",
+          "address": "A1:A1000",
+          "row_count": 1000,
+          "last_column": "A",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": 1,
+          "row_ht": null,
+          "row_custom_height": null
+        },
+        {
+          "sheet": "ImgDefaults",
+          "pair": "Defaults",
+          "measurement_order": "image-first",
+          "address": "A1:A1000",
+          "row_count": 1000,
+          "last_column": "A",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": 1,
+          "row_ht": null,
+          "row_custom_height": null
+        },
+        {
+          "sheet": "GeoAuto",
+          "pair": "Auto",
+          "measurement_order": "geometry-first",
+          "address": "A1:A1000",
+          "row_count": 1000,
+          "last_column": "A",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": null,
+          "row_ht": null,
+          "row_custom_height": null
+        },
+        {
+          "sheet": "ImgAuto",
+          "pair": "Auto",
+          "measurement_order": "image-first",
+          "address": "A1:A1000",
+          "row_count": 1000,
+          "last_column": "A",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": null,
+          "row_ht": null,
+          "row_custom_height": null
+        },
+        {
+          "sheet": "GeoFixed126",
+          "pair": "Fixed126",
+          "measurement_order": "geometry-first",
+          "address": "A1:A1000",
+          "row_count": 1000,
+          "last_column": "A",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": null,
+          "row_ht": 12.6,
+          "row_custom_height": 1
+        },
+        {
+          "sheet": "ImgFixed126",
+          "pair": "Fixed126",
+          "measurement_order": "image-first",
+          "address": "A1:A1000",
+          "row_count": 1000,
+          "last_column": "A",
+          "default_row_height_pt": 12.6,
+          "sheet_custom_height": null,
+          "row_ht": 12.6,
+          "row_custom_height": 1
+        },
+        {
+          "sheet": "GeoFixed1275",
+          "pair": "Fixed1275",
+          "measurement_order": "geometry-first",
+          "address": "A1:A1000",
+          "row_count": 1000,
+          "last_column": "A",
+          "default_row_height_pt": 12.75,
+          "sheet_custom_height": null,
+          "row_ht": 12.75,
+          "row_custom_height": 1
+        },
+        {
+          "sheet": "ImgFixed1275",
+          "pair": "Fixed1275",
+          "measurement_order": "image-first",
+          "address": "A1:A1000",
+          "row_count": 1000,
+          "last_column": "A",
+          "default_row_height_pt": 12.75,
+          "sheet_custom_height": null,
+          "row_ht": 12.75,
+          "row_custom_height": 1
+        }
+      ],
+      "rounding": {
+        "sheet": "Rounding",
+        "address": "A1:A28",
+        "row_count": 28,
+        "last_column": "A",
+        "default_row_height_pt": 15,
+        "heights": [
+          11.95,
+          12.0,
+          12.05,
+          12.1,
+          12.15,
+          12.2,
+          12.25,
+          12.3,
+          12.35,
+          12.4,
+          12.45,
+          12.5,
+          12.55,
+          12.6,
+          12.65,
+          12.7,
+          12.75,
+          12.8,
+          12.85,
+          12.9,
+          12.95,
+          13.0,
+          13.05,
+          15.7,
+          15.75,
+          15.8,
+          15.95,
+          16.0
+        ],
+        "row_custom_height": 1
+      }
+    }
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.row",
+    "https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.sheetformatproperties",
+    "https://learn.microsoft.com/en-us/javascript/api/excel/excel.rangeformat"
+  ]
+}

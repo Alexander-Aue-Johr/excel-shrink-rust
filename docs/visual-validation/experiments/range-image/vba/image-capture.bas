@@ -130,6 +130,9 @@ Public Sub RunRangeImageCaptureBatch( _
         elapsedMs = 0#
         pngBytes = 0#
 
+        WriteUtf8Text resultPath & ".current.json", _
+            "{""status"":""capture_started"",""workbook"":" & QuoteJson(workbookName) & _
+            ",""sheet"":" & QuoteJson(sheetName) & ",""address"":" & QuoteJson(rangeAddress) & "}"
         CaptureRangeToPng _
             wb, _
             sheetName, _
@@ -178,6 +181,8 @@ Public Sub RunRangeImageCaptureBatch( _
 
         firstCapture = False
         capturesJson = capturesJson & entryJson
+        WriteUtf8Text resultPath & ".progress.json", _
+            "{""status"":""running"",""captures"":[" & capturesJson & "]}"
 
 ContinueLoop:
     Next i
@@ -202,6 +207,9 @@ ContinueLoop:
         "}" & vbLf
 
     WriteUtf8Text resultPath, resultJson
+    WriteUtf8Text resultPath & ".current.json", "{""status"":""capture_loop_finished""}"
+    WriteUtf8Text resultPath & ".progress.json", _
+        "{""status"":""complete"",""captures"":[" & capturesJson & "]}"
 
 CleanExit:
     On Error Resume Next
@@ -323,6 +331,17 @@ Private Function TryCaptureRangeToPngOnce( _
         Kill pngPath
     End If
     On Error GoTo Failed
+
+    ' Engineering allocation budgets, not a universal CopyPicture API limit.
+    Dim predictedWidth As Double
+    Dim predictedHeight As Double
+    predictedWidth = rng.Width * 4# / 3# + 1#
+    predictedHeight = rng.Height * 4# / 3# + 1#
+    If predictedWidth > 16000# Or predictedHeight > 16000# Or _
+        predictedWidth * predictedHeight > 16000000# Then
+        Err.Raise vbObjectError + 7319, "TryCaptureRangeToPngOnce", _
+            "SAFE_CAPTURE_BUDGET: unmodified VBA baseline does not tile; range refused before CopyPicture: " & rng.Address
+    End If
 
     rng.CopyPicture _
         Appearance:=xlScreen, _

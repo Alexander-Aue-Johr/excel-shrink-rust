@@ -1,1 +1,0 @@
-\\wsl.localhost\Ubuntu-26.04\home\aue-johr\repos\excel-shrink-rust\corpus-local\original_destatis_xlsx_files\foerderprogramme-5411206209005.xlsx

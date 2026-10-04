@@ -15,6 +15,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\..\_shared\reporting.ps1')
+$vvReportOwner = Start-VVReport -Start $PSScriptRoot -Experiment 'range-image-vba' -Arguments $PSBoundParameters
+try {
+$ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 $ExperimentRoot = Split-Path -Parent $PSScriptRoot
@@ -23,14 +27,17 @@ $RepoRoot = [IO.Path]::GetFullPath(
 )
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $ExperimentRoot 'results\vba.json'
+    $OutputPath = Join-Path $env:VV_REPORT_DIR 'data\vba\result.json'
 }
 if ([string]::IsNullOrWhiteSpace($ImageOutputDir)) {
     $ImageOutputDir = Join-Path `
-        $RepoRoot `
-        '.tmp\visual-validation\range-image\images\vba'
+        $env:VV_REPORT_DIR `
+        'artifacts\vba'
 }
 
+if (-not $OutputPath.StartsWith($env:VV_REPORT_DIR,[StringComparison]::OrdinalIgnoreCase)) {
+    $step=New-VVStep 'vba'; $OutputPath=Join-Path $step 'result.json'; $ImageOutputDir=Join-Path $step 'artifacts'
+}
 $ResultsDir = Split-Path -Parent $OutputPath
 $FileListPath = Join-Path $ResultsDir 'files-vba.txt'
 $PlanPath = Join-Path $ResultsDir 'capture-plan-vba.tsv'
@@ -176,8 +183,9 @@ $temp = Join-Path `
     ('range-image-vba-' + [Guid]::NewGuid().ToString('N'))
 $stagedHost = Join-Path $temp 'host.xlsm'
 $stagedPlan = Join-Path $temp 'capture-plan.tsv'
-$stagedImages = Join-Path $temp 'images'
-$stagedResult = Join-Path $temp 'result.json'
+$stagedImages = $ImageOutputDir
+$stagedResult = $OutputPath
+New-Item -ItemType Directory -Path $temp -Force | Out-Null
 New-Item -ItemType Directory -Path $stagedImages -Force | Out-Null
 Copy-Item -LiteralPath $HostPath -Destination $stagedHost
 Copy-Item -LiteralPath $PlanPath -Destination $stagedPlan
@@ -209,20 +217,23 @@ try {
         throw 'VBA benchmark produced no result JSON.'
     }
 
-    Copy-Item -LiteralPath $stagedResult -Destination $OutputPath -Force
-    Remove-Item -LiteralPath $ImageOutputDir -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Path $ImageOutputDir -Force | Out-Null
-    foreach ($item in Get-ChildItem -LiteralPath $stagedImages -Force) {
-        Copy-Item -LiteralPath $item.FullName -Destination $ImageOutputDir -Recurse
-    }
-
+    # VBA writes checkpoints and images directly into the run report.
     Log "VBA result: $OutputPath"
 }
 finally {
+    Write-VVEvent 'vba_capture_finished' @{output=$OutputPath;images=$ImageOutputDir}
     if ($null -ne $hostBook) { try { $hostBook.Close($false) } catch {} }
     Release-ComObject $hostBook
     Release-ComObject $workbooks
     if ($null -ne $excel) { try { $excel.Quit() } catch {} }
     Release-ComObject $excel
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+} catch {
+    $vvCaughtError = $_
+    try { Write-VVFailure $vvCaughtError $PSCommandPath } catch { Write-Warning ('Could not persist error: ' + $_.Exception.Message) }
+    throw $vvCaughtError
+} finally {
+    Stop-VVReport $vvReportOwner
 }

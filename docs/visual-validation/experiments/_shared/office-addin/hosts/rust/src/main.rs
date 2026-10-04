@@ -19,7 +19,7 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     fs,
-    io::Cursor,
+    io::{Cursor, Write},
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::{
@@ -47,6 +47,7 @@ struct Config {
     wait_for_start: bool,
     extended_error_logging: bool,
     office_js_debug: bool,
+    capture_run_id: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -83,6 +84,8 @@ struct Shared {
     last_activity: AtomicI64,
     probes: Mutex<HashMap<String, JoinHandle<Result<ProbeResult, String>>>>,
     com: ComController,
+    progress_gate: Mutex<()>,
+    capture_owners: Mutex<HashMap<String,String>>,
 }
 
 #[derive(Clone)]
@@ -137,12 +140,13 @@ impl Shared {
         self.last_activity.store(timestamp, Ordering::SeqCst);
         let stage = stage.into();
         eprintln!("[{timestamp}] {stage} {detail}");
-        self.events.lock().unwrap().push(EventEntry {
-            sequence,
-            timestamp_unix_ms: timestamp,
-            stage,
-            detail,
-        });
+        let entry=EventEntry {sequence,timestamp_unix_ms:timestamp,stage,detail};
+        let mut events=self.events.lock().unwrap();
+        let path=self.config.output.with_extension("json.events.jsonl");
+        if let Ok(mut file)=fs::OpenOptions::new().create(true).append(true).open(path) {
+            if let Ok(line)=serde_json::to_string(&entry) { let _=writeln!(file,"{line}"); let _=file.flush(); }
+        }
+        events.push(entry);
     }
 
     fn error(&self, message: impl Into<String>) {
@@ -288,8 +292,19 @@ fn safe_file_name(value: &str) -> String {
 }
 
 fn read_png_dimensions(bytes: &[u8]) -> Result<(u32, u32)> {
-    if bytes.len() < 24 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" {
-        bail!("payload is not a PNG");
+    if bytes.len() < 24 {
+        bail!("PNG payload is too short: decoded_bytes={}", bytes.len());
+    }
+    if &bytes[..8] != b"\x89PNG\r\n\x1a\n" {
+        let prefix_hex = bytes
+            .iter()
+            .take(24)
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        bail!(
+            "payload is not PNG: decoded_bytes={}, byte_prefix_hex={prefix_hex}",
+            bytes.len()
+        );
     }
     let width = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
     let height = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
@@ -439,7 +454,8 @@ async fn config(State(state): State<Arc<Shared>>) -> impl IntoResponse {
         "overflow_probe_height_px": state.config.overflow_height_px,
         "wait_for_start": state.config.wait_for_start,
         "extended_error_logging": state.config.extended_error_logging,
-        "office_js_debug": state.config.office_js_debug
+        "office_js_debug": state.config.office_js_debug,
+        "capture_run_id": state.config.capture_run_id
     }))
 }
 
@@ -510,6 +526,7 @@ async fn image_batch(
 ) -> Response {
     let result = (|| -> Result<Value> {
         let workbook = payload["workbook"].as_str().context("workbook")?;
+        if !state.expected_set.contains(workbook) { bail!("Unexpected image workbook"); }
         let batch_index = payload["batch_index"].as_u64().unwrap_or(0);
         let images = payload["images"].as_array().context("images")?;
         let workbook_dir = state.config.image_root.join(safe_file_name(workbook));
@@ -519,10 +536,50 @@ async fn image_batch(
 
         for image in images {
             let id = image["id"].as_str().context("image id")?;
+            if id.is_empty() || id.len()>100 || !id.bytes().all(|b|b.is_ascii_alphanumeric() || b==b'-' || b==b'_') {bail!("Unsafe image ID");}
             let sheet = image["sheet"].as_str().context("image sheet")?;
             let address = image["address"].as_str().context("image address")?;
-            let bytes = BASE64.decode(image["base64"].as_str().context("image base64")?)?;
-            let (width, height) = read_png_dimensions(&bytes)?;
+            let base64 = image["base64"].as_str().context("image base64")?;
+            let base64_prefix: String = base64.chars().take(32).collect();
+
+            state.record("image_batch_item_received", json!({
+                "workbook": workbook,
+                "batch_index": batch_index,
+                "id": id,
+                "sheet": sheet,
+                "address": address,
+                "base64_chars": base64.len(),
+                "base64_prefix": base64_prefix
+            }));
+
+            let bytes = BASE64
+                .decode(base64)
+                .with_context(|| {
+                    format!(
+                        "decode image base64 workbook={workbook:?}, batch={batch_index}, id={id}, sheet={sheet:?}, address={address}, base64_chars={}",
+                        base64.len()
+                    )
+                })?;
+            let (width, height) = read_png_dimensions(&bytes).with_context(|| {
+                format!(
+                    "validate PNG workbook={workbook:?}, batch={batch_index}, id={id}, sheet={sheet:?}, address={address}, base64_chars={}, decoded_bytes={}",
+                    base64.len(),
+                    bytes.len()
+                )
+            })?;
+
+            state.record("image_payload_validated", json!({
+                "workbook": workbook,
+                "batch_index": batch_index,
+                "id": id,
+                "sheet": sheet,
+                "address": address,
+                "base64_chars": base64.len(),
+                "decoded_bytes": bytes.len(),
+                "png_width": width,
+                "png_height": height
+            }));
+
             let file_name = format!("{id}.png");
             let path = workbook_dir.join(&file_name);
             fs::write(&path, &bytes)?;
@@ -544,6 +601,8 @@ async fn image_batch(
             }));
         }
 
+        state.record("image_batch_persisted", json!({"workbook":workbook,"batch_index":batch_index,"captures":persisted}));
+        write_output(&state)?;
         state.record("image_batch_received", json!({
             "workbook": workbook,
             "batch_index": batch_index,
@@ -734,6 +793,7 @@ fn write_output(state: &Shared) -> Result<()> {
             "expected_workbooks": state.expected.len(),
             "generated_unix_ms": now_ms()
         },
+        "errors": state.errors.lock().unwrap().clone(),
         "workbooks": workbooks
     });
 
@@ -741,10 +801,9 @@ fn write_output(state: &Shared) -> Result<()> {
         fs::create_dir_all(parent)?;
     }
 
-    fs::write(
-        &state.config.output,
-        serde_json::to_string_pretty(&document)? + "\n",
-    )?;
+    let temporary=state.config.output.with_extension("json.new");
+    fs::write(&temporary, serde_json::to_string_pretty(&document)? + "\n")?;
+    fs::rename(&temporary,&state.config.output)?;
 
     Ok(())
 }
@@ -832,6 +891,8 @@ async fn taskpane(State(state): State<Arc<Shared>>) -> Response {
 async fn mode_js(State(state): State<Arc<Shared>>) -> Response {
     let relative = if state.config.experiment == "range-image" {
         "modes/range-image.js"
+    } else if state.config.experiment == "range-image-height-limit" {
+        "modes/range-image-height-limit.js"
     } else {
         "modes/shape-bounds.js"
     };
@@ -849,6 +910,36 @@ async fn mode_js(State(state): State<Arc<Shared>>) -> Response {
     }
 }
 
+async fn capture_claim(State(state): State<Arc<Shared>>, Json(payload): Json<Value>) -> Response {
+    let workbook=payload["workbook"].as_str().unwrap_or("");
+    let client=payload["client_id"].as_str().unwrap_or("");
+    if !state.expected_set.contains(workbook) || client.is_empty() || client.len()>200 {return (StatusCode::BAD_REQUEST,"invalid claim").into_response();}
+    let mut owners=state.capture_owners.lock().unwrap();
+    let owner=owners.entry(workbook.to_owned()).or_insert_with(||client.to_owned());
+    Json(json!({"acquired":owner.as_str()==client})).into_response()
+}
+async fn capture_progress(State(state): State<Arc<Shared>>, Json(payload): Json<Value>) -> Response {
+    let result=(|| -> Result<()> {
+        let workbook=payload["workbook"].as_str().context("workbook")?;
+        if !state.expected_set.contains(workbook) {bail!("Unexpected workbook");}
+        let _gate=state.progress_gate.lock().unwrap();
+        let dir=state.config.image_root.join("_progress"); fs::create_dir_all(&dir)?;
+        let path=dir.join(format!("{}.progress.json",safe_file_name(workbook)));
+        let temp=path.with_extension("json.new");
+        fs::write(&temp,serde_json::to_vec_pretty(&payload)?)?;
+        fs::rename(&temp,&path)?; Ok(())
+    })();
+    match result {Ok(())=>Json(json!({"ok":true})).into_response(),Err(e)=>(StatusCode::BAD_REQUEST,format!("{e:#}")).into_response()}
+}
+async fn capture_guard(State(state): State<Arc<Shared>>, request: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    if state.config.experiment=="range-image" && request.method()==axum::http::Method::POST &&
+        matches!(request.uri().path(),"/capture-claim"|"/capture-progress"|"/image-batch"|"/result"|"/client-event"|"/error"|"/probe-batch") &&
+        request.headers().get("X-VV-Run-Id").and_then(|x|x.to_str().ok())!=Some(state.config.capture_run_id.as_str()) {
+        return (StatusCode::CONFLICT,"stale-capture-run").into_response();
+    }
+    next.run(request).await
+}
+
 fn router(state: Arc<Shared>) -> Router {
     Router::new()
         .route("/health", get(health))
@@ -858,6 +949,8 @@ fn router(state: Arc<Shared>) -> Router {
         .route("/client-event", post(client_event))
         .route("/client-beacon", get(beacon))
         .route("/image-batch", post(image_batch))
+        .route("/capture-progress", post(capture_progress))
+        .route("/capture-claim", post(capture_claim))
         .route("/probe-batch", post(probe_batch))
         .route("/probe-status", get(probe_status))
         .route("/result", post(result))
@@ -871,6 +964,9 @@ fn router(state: Arc<Shared>) -> Router {
         .route("/commands.html", get(|state| static_file(state, "commands.html", "text/html; charset=utf-8")))
         .route("/visual-plan.json", get(|state| static_file(state, "visual-plan.json", "application/json; charset=utf-8")))
         .route("/mode.js", get(mode_js))
+        .route("/safe-capture.js", get(|state| static_file(state,"safe-capture.js","application/javascript; charset=utf-8")))
+        .layer(axum::middleware::from_fn_with_state(state.clone(),capture_guard))
+        .layer(axum::extract::DefaultBodyLimit::max(128 * 1024 * 1024))
         .with_state(state)
 }
 
@@ -889,6 +985,7 @@ fn load_config() -> Result<Config> {
         wait_for_start: env_bool("VV_WAIT_FOR_START", false),
         extended_error_logging: env_bool("VV_EXTENDED_ERROR_LOGGING", false),
         office_js_debug: env_bool("VV_OFFICE_JS_DEBUG", false),
+        capture_run_id: env::var("VV_CAPTURE_RUN_ID").unwrap_or_default(),
     })
 }
 
@@ -954,6 +1051,8 @@ async fn main() -> Result<()> {
         last_activity: AtomicI64::new(now_ms()),
         probes: Mutex::new(HashMap::new()),
         com: ComController::start(),
+        progress_gate: Mutex::new(()),
+        capture_owners: Mutex::new(HashMap::new()),
     });
 
     state.record("server_starting", json!({
@@ -961,6 +1060,7 @@ async fn main() -> Result<()> {
         "strategy": config.strategy
     }));
 
+    write_output(&state)?;
     let app = router(state.clone());
     let tls = RustlsConfig::from_pem_file(cert_pem, key_pem).await?;
 

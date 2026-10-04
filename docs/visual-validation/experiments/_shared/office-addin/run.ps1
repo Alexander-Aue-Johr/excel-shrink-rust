@@ -8,7 +8,7 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$ImageOutputDir,
 
-    [ValidateSet('shape-bounds', 'range-image')]
+    [ValidateSet('shape-bounds', 'range-image', 'range-image-height-limit', 'range-image-calibration')]
     [string]$Experiment = 'range-image',
 
     [ValidateSet('A', 'B', 'C', 'D', 'E', 'F')]
@@ -46,6 +46,8 @@ param(
 
     [string]$VisualPlanPath,
 
+    [string]$DiagnosticConfigPath,
+
     [switch]$WaitForStart,
 
     [switch]$ExtendedErrorLogging,
@@ -56,12 +58,25 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\reporting.ps1')
+$vvReportOwner = Start-VVReport -Start $PSScriptRoot -Experiment $Experiment -Arguments $PSBoundParameters
+try {
+$ErrorActionPreference = 'Stop'
+$IsRenderDiagnostic = $Experiment -in @('range-image-height-limit', 'range-image-calibration')
+if ($Experiment -eq 'range-image') { $AttemptsPerWorkbook=1; $ExtendedErrorLogging=$true }
+if ($IsRenderDiagnostic -and $HostKind -ne 'dotnet') {
+    throw 'These diagnostic modes require HostKind dotnet (host-side marker analysis and run isolation).'
+}
 
 . (Join-Path $PSScriptRoot 'powershell\common.ps1')
 
 $FileListPath = [IO.Path]::GetFullPath($FileListPath)
 $OutputPath = [IO.Path]::GetFullPath($OutputPath)
 $ImageOutputDir = [IO.Path]::GetFullPath($ImageOutputDir)
+if (-not $OutputPath.StartsWith($env:VV_REPORT_DIR, [StringComparison]::OrdinalIgnoreCase)) {
+    $step=New-VVStep ("$Experiment-$HostKind-$Strategy")
+    $OutputPath=Join-Path $step 'result.json'; $ImageOutputDir=Join-Path $step 'artifacts'
+}
 
 if (-not (Test-Path -LiteralPath $FileListPath)) {
     throw "File list does not exist: $FileListPath"
@@ -106,11 +121,14 @@ $RuntimeRoot = Join-Path `
     ('excel-shrink-visual-validation-' + [Guid]::NewGuid().ToString('N'))
 $StaticStage = Join-Path $RuntimeRoot 'web'
 $DocumentRoot = Join-Path $RuntimeRoot 'documents'
-$HostOutput = Join-Path $RuntimeRoot 'result.json'
-$HostImageRoot = Join-Path $RuntimeRoot 'images'
-$HostStdout = Join-Path $RuntimeRoot 'host.stdout.txt'
-$HostStderr = Join-Path $RuntimeRoot 'host.stderr.txt'
-$HostFileList = Join-Path $RuntimeRoot 'files.txt'
+$HostOutput = $OutputPath
+$HostImageRoot = $ImageOutputDir
+$HostStdout = $OutputPath + '.host.stdout.txt'
+$HostStderr = $OutputPath + '.host.stderr.txt'
+$HostFileList = $OutputPath + '.files.txt'
+New-Item -ItemType Directory -Path (Split-Path -Parent $OutputPath) -Force | Out-Null
+Write-VVJson $OutputPath @{_meta=@{experiment=$Experiment;expected_workbooks=$paths.Count;completed_workbooks=0};workbooks=@{};status='starting'}
+Write-VVEvent 'office_runner_started' @{experiment=$Experiment;strategy=$Strategy;output=$OutputPath;images=$ImageOutputDir;host=$HostKind}
 
 New-Item -ItemType Directory -Path $BuildCache -Force | Out-Null
 New-Item -ItemType Directory -Path $RegistrationRoot -Force | Out-Null
@@ -133,6 +151,11 @@ Copy-Item `
     -Destination $StaticStage `
     -Recurse `
     -Force
+
+if ($IsRenderDiagnostic -and -not [string]::IsNullOrWhiteSpace($DiagnosticConfigPath)) {
+    if (-not (Test-Path -LiteralPath $DiagnosticConfigPath -PathType Leaf)) { throw "Diagnostic config missing: $DiagnosticConfigPath" }
+    Copy-Item -LiteralPath $DiagnosticConfigPath -Destination (Join-Path $StaticStage 'diagnostic-config.json') -Force
+}
 
 # Source Context patch: Office.js diagnostic environment.
 if ($UseOfficeDebugJs) {
@@ -747,11 +770,13 @@ foreach ($name in @(
     'VV_OVERFLOW_HEIGHT_PX',
     'VV_WAIT_FOR_START',
     'VV_EXTENDED_ERROR_LOGGING',
-    'VV_OFFICE_JS_DEBUG'
+    'VV_OFFICE_JS_DEBUG',
+    'VV_CAPTURE_RUN_ID'
 )) {
     $oldEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
 
+$env:VV_CAPTURE_RUN_ID = [Guid]::NewGuid().ToString('N')
 $env:VV_EXPERIMENT = $Experiment
 $env:VV_STRATEGY = $Strategy
 $env:VV_HOST_KIND = $HostKind
@@ -776,8 +801,18 @@ if ($WaitForStart) {
 }
 
 $hostProcess = $null
+$launchProcess = $null
+$captureValidationIncomplete = $false
 $registrationState = $null
 $excelExecutable = Find-ExcelExecutable
+if ($IsRenderDiagnostic -and $excelExecutable) {
+    $diagnosticPath = Join-Path $StaticStage 'diagnostic-config.json'
+    $diagnosticMeta = if (Test-Path -LiteralPath $diagnosticPath) {
+        [IO.File]::ReadAllText($diagnosticPath, $script:StrictUtf8) | ConvertFrom-Json
+    } else { [pscustomobject]@{} }
+    $diagnosticMeta | Add-Member -NotePropertyName excel_file_version -NotePropertyValue ([Diagnostics.FileVersionInfo]::GetVersionInfo($excelExecutable).FileVersion) -Force
+    Write-Utf8NoBom $diagnosticPath (($diagnosticMeta | ConvertTo-Json -Depth 30) + "`n")
+}
 
 try {
     Write-ExperimentLog "Starting $HostKind Office.js host..."
@@ -938,11 +973,19 @@ try {
 
                     if ($status.done) {
                         $completed = $true
+                        $resultState = 'received'
+                        if ($Experiment -eq 'range-image' -and (Test-Path -LiteralPath $HostOutput)) {
+                            $finishedDocument = Read-VVJson $HostOutput
+                            $finishedProperty = $finishedDocument.workbooks.PSObject.Properties[$workbookName]
+                            if ($null -ne $finishedProperty) { $resultState = [string]$finishedProperty.Value.status }
+                            if ($resultState -ne 'complete') { $captureValidationIncomplete = $true }
+                        }
+                        $severity = if ($resultState -in @('failed','partial','inconclusive')) { 'WARN' } else { 'INFO' }
                         Write-ExperimentLog (
-                            "$workbookName completed in " +
+                            "$workbookName result received: status=$resultState; " +
                             ('{0:0.00}' -f $launchStarted.Elapsed.TotalSeconds) +
-                            ' s; closing immediately.'
-                        )
+                            ' s; closing this workbook. PNG persistence is not a successful validation.'
+                        ) $severity
                         break
                     }
                 }
@@ -1006,6 +1049,7 @@ try {
                 Stop-BenchmarkExcelProcess $launchProcess
                 if ($null -ne $launchProcess) {
                     try { $launchProcess.Dispose() } catch {}
+                    $launchProcess = $null
                 }
             }
         }
@@ -1022,37 +1066,26 @@ try {
         throw "Host completed without result file: $HostOutput"
     }
 
-    New-Item `
-        -ItemType Directory `
-        -Path (Split-Path -Parent $OutputPath) `
-        -Force | Out-Null
-    Copy-Item -LiteralPath $HostOutput -Destination $OutputPath -Force
-
-    Remove-Item `
-        -LiteralPath $ImageOutputDir `
-        -Recurse `
-        -Force `
-        -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Path $ImageOutputDir -Force | Out-Null
-
-    foreach ($item in Get-ChildItem -LiteralPath $HostImageRoot -Force) {
-        Copy-Item `
-            -LiteralPath $item.FullName `
-            -Destination $ImageOutputDir `
-            -Recurse `
-            -Force
-    }
-
+    # Host results/images were written directly to their durable run directory.
     Write-ExperimentLog "Result: $OutputPath"
     Write-ExperimentLog "Images: $ImageOutputDir"
+    if ($captureValidationIncomplete) {
+        throw 'Capture validation contains failed/partial sheets. All existing results and PNGs are retained in the review bundle.'
+    }
 }
 finally {
+    Stop-BenchmarkExcelProcess $launchProcess
     if ($TemporaryDeveloperRegistration -and $null -ne $registrationState) {
         Restore-DeveloperAddIn $addInId $registrationState
     }
 
-    if ($null -ne $hostProcess -and -not $hostProcess.HasExited) {
-        try { Stop-Process -Id $hostProcess.Id -Force } catch {}
+    if ($null -ne $hostProcess) {
+        try {
+            $ownedHostId = $hostProcess.Id
+            if ($null -ne $ownedHostId -and [int]$ownedHostId -gt 0 -and -not $hostProcess.HasExited) {
+                Stop-Process -Id $ownedHostId -Force -ErrorAction Stop
+            }
+        } catch { Write-ExperimentLog ('Host cleanup: ' + $_.Exception.Message) 'WARN' }
     }
 
     foreach ($name in $oldEnvironment.Keys) {
@@ -1063,9 +1096,20 @@ finally {
         }
     }
 
+    # Never delete logs, pictures or progress on either successful or failed runs.
+    Write-VVEvent 'office_runner_finished' @{output=$OutputPath;images=$ImageOutputDir;stdout=$HostStdout;stderr=$HostStderr}
+
     Remove-Item `
         -LiteralPath $RuntimeRoot `
         -Recurse `
         -Force `
         -ErrorAction SilentlyContinue
+}
+
+} catch {
+    $vvCaughtError = $_
+    try { Write-VVFailure $vvCaughtError $PSCommandPath } catch { Write-Warning ('Could not persist error: ' + $_.Exception.Message) }
+    throw $vvCaughtError
+} finally {
+    Stop-VVReport $vvReportOwner
 }

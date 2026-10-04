@@ -12,6 +12,8 @@ Add-Type -AssemblyName WindowsBase
 $ExperimentsRoot = $PSScriptRoot
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $ExperimentsRoot '..\..\..'))
 $RangeRunner = Join-Path $ExperimentsRoot 'range-image\run.ps1'
+$HeightLimitRunner = Join-Path $ExperimentsRoot 'range-image-height-limit\run.ps1'
+$CalibrationRunner = Join-Path $ExperimentsRoot 'range-image-calibration\run.ps1'
 $ShapeRunner = Join-Path $ExperimentsRoot 'shape-bounds\run.ps1'
 $StateRoot = Join-Path $RepoRoot '.tmp\visual-validation'
 $StatePath = Join-Path $StateRoot 'launcher-last-config.json'
@@ -403,6 +405,21 @@ $xaml = @"
           </StackPanel>
         </GroupBox>
 
+        <GroupBox x:Name="HeightLimitGroup" Header="Get picture diagnostics" Padding="12" Margin="0,0,0,12" Visibility="Collapsed">
+          <StackPanel>
+            <TextBlock x:Name="DiagnosticDescription" TextWrapping="Wrap"/>
+            <StackPanel x:Name="DiagnosticSuitePanel" Margin="0,10,0,0">
+              <TextBlock Text="Synthetic test suite"/>
+              <ComboBox x:Name="DiagnosticSuiteBox"/>
+            </StackPanel>
+            <CheckBox x:Name="DiagnosticWaitBox" Margin="0,10,0,0" Content="Wait for Start in task pane (open DevTools first)"/>
+            <CheckBox x:Name="DiagnosticBreakBox" Margin="0,6,0,0" Content="Pause with debugger; when an error occurs"/>
+            <CheckBox x:Name="DiagnosticDebugJsBox" Margin="0,6,0,0" Content="Use office.debug.js (otherwise normal Office.js)"/>
+            <TextBlock Margin="0,10,0,0" Foreground="#666666" TextWrapping="Wrap"
+                Text="Extended errors and persistent per-probe diagnostics are always enabled. The 32766 value is a hypothesis, not a hard-coded pass/fail threshold."/>
+          </StackPanel>
+        </GroupBox>
+
         <GroupBox
             x:Name="ShapeBoundsGroup"
             Header="Get shape bounds"
@@ -431,7 +448,15 @@ $xaml = @"
       </StackPanel>
     </ScrollViewer>
 
-    <Grid Grid.Row="2" Margin="0,14,0,0">
+    <StackPanel Grid.Row="2" Margin="0,14,0,0">
+    <WrapPanel Margin="0,0,0,10">
+      <Button x:Name="OpenReportsButton" Padding="10,5" Margin="0,0,8,0" Content="Reports"/>
+      <Button x:Name="OpenLatestReportButton" Padding="10,5" Margin="0,0,8,0" Content="Latest report"/>
+      <Button x:Name="CleanReportsButton" Padding="10,5" Margin="0,0,8,0" Content="Prune history (keep 10)"/>
+      <Button x:Name="RefreshReportsButton" Padding="10,5" Margin="0,0,8,0" Content="Rebuild report views"/>
+      <Button x:Name="RecoverReportsButton" Padding="10,5" Content="Recover interrupted runs"/>
+    </WrapPanel>
+    <Grid>
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="Auto"/>
@@ -460,6 +485,7 @@ $xaml = @"
           IsDefault="True"
           Content="Run"/>
     </Grid>
+    </StackPanel>
   </Grid>
 </Window>
 "@
@@ -472,6 +498,22 @@ $ExperimentBox = $window.FindName('ExperimentBox')
 $CorpusRootBox = $window.FindName('CorpusRootBox')
 $RefreshWorkbooksButton = $window.FindName('RefreshWorkbooksButton')
 $RangeImageGroup = $window.FindName('RangeImageGroup')
+$HeightLimitGroup = $window.FindName('HeightLimitGroup')
+$DiagnosticDescription = $window.FindName('DiagnosticDescription')
+$DiagnosticSuitePanel = $window.FindName('DiagnosticSuitePanel')
+$DiagnosticSuiteBox = $window.FindName('DiagnosticSuiteBox')
+$DiagnosticWaitBox = $window.FindName('DiagnosticWaitBox')
+$DiagnosticBreakBox = $window.FindName('DiagnosticBreakBox')
+$DiagnosticDebugJsBox = $window.FindName('DiagnosticDebugJsBox')
+Set-ChoiceItems $DiagnosticSuiteBox @(
+    (New-ChoiceItem 'All original units/marker diagnostics' 'all'),
+    (New-ChoiceItem 'XML units, fonts, zoom and rounding' 'units'),
+    (New-ChoiceItem 'Saturation and clipping/scaling markers' 'markers'),
+    (New-ChoiceItem 'Row heights: fonts, customHeight and geometry timing' 'row-heights')
+) $(if ($null -ne $last -and $last.diagnostic_suite) { [string]$last.diagnostic_suite } else { 'all' })
+$DiagnosticWaitBox.IsChecked = $null -ne $last -and [bool]$last.diagnostic_wait
+$DiagnosticBreakBox.IsChecked = $null -ne $last -and [bool]$last.diagnostic_break
+$DiagnosticDebugJsBox.IsChecked = $null -ne $last -and [bool]$last.diagnostic_debug_js
 $ShapeBoundsGroup = $window.FindName('ShapeBoundsGroup')
 $StrategyBox = $window.FindName('StrategyBox')
 $ImplementationBox = $window.FindName('ImplementationBox')
@@ -486,9 +528,27 @@ $ShapeParametersPanel = $window.FindName('ShapeParametersPanel')
 $StatePathText = $window.FindName('StatePathText')
 $StatusText = $window.FindName('StatusText')
 $RunButton = $window.FindName('RunButton')
+$window.FindName('RefreshReportsButton').Add_Click({
+    & (Join-Path $ExperimentsRoot 'reports.ps1') -Action Refresh
+})
+$window.FindName('OpenReportsButton').Add_Click({
+    & (Join-Path $PSScriptRoot 'reports.ps1') -Action Open
+})
+$window.FindName('OpenLatestReportButton').Add_Click({
+    & (Join-Path $PSScriptRoot 'reports.ps1') -Action Latest
+})
+$window.FindName('CleanReportsButton').Add_Click({
+    & (Join-Path $PSScriptRoot 'reports.ps1') -Action Clean -KeepLast 10 -ConfirmInGui
+})
+$window.FindName('RecoverReportsButton').Add_Click({
+    & (Join-Path $PSScriptRoot 'reports.ps1') -Action Recover
+    & (Join-Path $PSScriptRoot 'reports.ps1') -Action Latest
+})
 
 Set-ChoiceItems $ExperimentBox @(
     (New-ChoiceItem 'Get picture' 'range-image'),
+    (New-ChoiceItem 'Get picture height limit / plateau' 'range-image-height-limit'),
+    (New-ChoiceItem 'Get picture units and markers' 'range-image-calibration'),
     (New-ChoiceItem 'Get shape bounds' 'shape-bounds')
 ) $(if ($null -ne $last -and $last.experiment) { [string]$last.experiment } else { 'range-image' })
 
@@ -674,13 +734,30 @@ Refresh-WorkbookBox $preferredWorkbook
 
 function Update-ExperimentVisibility {
     $experiment = Get-ChoiceValue $ExperimentBox
-    if ($experiment -eq 'shape-bounds') {
-        $RangeImageGroup.Visibility = [Windows.Visibility]::Collapsed
-        $ShapeBoundsGroup.Visibility = [Windows.Visibility]::Visible
-    }
-    else {
-        $RangeImageGroup.Visibility = [Windows.Visibility]::Visible
-        $ShapeBoundsGroup.Visibility = [Windows.Visibility]::Collapsed
+
+    $RangeImageGroup.Visibility = [Windows.Visibility]::Collapsed
+    $HeightLimitGroup.Visibility = [Windows.Visibility]::Collapsed
+    $ShapeBoundsGroup.Visibility = [Windows.Visibility]::Collapsed
+
+    switch ($experiment) {
+        'range-image' {
+            $RangeImageGroup.Visibility = [Windows.Visibility]::Visible
+        }
+        'range-image-height-limit' {
+            $HeightLimitGroup.Visibility = [Windows.Visibility]::Visible
+            $HeightLimitGroup.Header = 'Hospital workbook: height plateau'
+            $DiagnosticDescription.Text = 'Fixed workbook krankenhausverzeichnis-3500100227005.xlsx, sheet " KHV_2022", columns A:FX. Calibrate PNG scale, binary-search the first plateau row and repeat nearby rows.'
+            $DiagnosticSuitePanel.Visibility = [Windows.Visibility]::Collapsed
+        }
+        'range-image-calibration' {
+            $HeightLimitGroup.Visibility = [Windows.Visibility]::Visible
+            $HeightLimitGroup.Header = 'Synthetic OOXML: units and markers'
+            $DiagnosticDescription.Text = 'Synthetic OOXML suites: units and markers, or row-height follow-up (fonts, default versus custom height, geometry timing). Row-height follow-up produces a review ZIP. No corpus workbook needed.'
+            $DiagnosticSuitePanel.Visibility = [Windows.Visibility]::Visible
+        }
+        'shape-bounds' {
+            $ShapeBoundsGroup.Visibility = [Windows.Visibility]::Visible
+        }
     }
 }
 
@@ -698,8 +775,8 @@ $script:Selection = $null
 
 $RunButton.Add_Click({
     try {
-        $corpus = Resolve-ExistingCorpus $CorpusRootBox.Text
         $experiment = Get-ChoiceValue $ExperimentBox
+        $corpus = if ($experiment -eq 'range-image-calibration') { [string]$CorpusRootBox.Text } else { Resolve-ExistingCorpus $CorpusRootBox.Text }
 
         if ($experiment -eq 'range-image') {
             $width = 0
@@ -738,6 +815,27 @@ $RunButton.Add_Click({
                 overflow_probe_height_px = $height
                 wait_for_start = [bool]$WaitForStartBox.IsChecked
                 diagnostics = Get-ChoiceValue $DiagnosticsBox
+                shape_parameters = [ordered]@{}
+            }
+        }
+        elseif ($experiment -in @('range-image-height-limit', 'range-image-calibration')) {
+            $selection = [ordered]@{
+                schema = 1
+                experiment = $experiment
+                corpus_root = $corpus
+                diagnostic_suite = Get-ChoiceValue $DiagnosticSuiteBox
+                diagnostic_wait = [bool]$DiagnosticWaitBox.IsChecked
+                diagnostic_break = [bool]$DiagnosticBreakBox.IsChecked
+                diagnostic_debug_js = [bool]$DiagnosticDebugJsBox.IsChecked
+                strategy = 'A'
+                implementation = 'officejs-dotnet'
+                workbook = 'krankenhausverzeichnis-3500100227005.xlsx'
+                batch_size = 1
+                rust_excel_launch_mode = 'excel-x'
+                overflow_probe_width_px = 1920
+                overflow_probe_height_px = 1080
+                wait_for_start = [bool]$DiagnosticWaitBox.IsChecked
+                diagnostics = 'extended'
                 shape_parameters = [ordered]@{}
             }
         }
@@ -861,6 +959,21 @@ if ($selection.experiment -eq 'range-image') {
     }
 
     & $RangeRunner @runnerArgs
+}
+elseif ($selection.experiment -in @('range-image-height-limit', 'range-image-calibration')) {
+    $diagnosticArgs = @{
+        CorpusRoot = [string]$selection.corpus_root
+        NonInteractive = $true
+        WaitForStart = [bool]$selection.diagnostic_wait
+        BreakOnError = [bool]$selection.diagnostic_break
+        UseOfficeDebugJs = [bool]$selection.diagnostic_debug_js
+    }
+    if ($selection.experiment -eq 'range-image-calibration') {
+        $diagnosticArgs.Suite = [string]$selection.diagnostic_suite
+        & $CalibrationRunner @diagnosticArgs
+    } else {
+        & $HeightLimitRunner @diagnosticArgs
+    }
 }
 else {
     $runnerArgs = @{
