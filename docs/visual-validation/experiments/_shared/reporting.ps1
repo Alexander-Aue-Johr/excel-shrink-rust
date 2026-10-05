@@ -162,12 +162,27 @@ function Get-VVCaptureRollup([string]$RunRoot) {
         } catch { Write-Warning ('Capture progress cannot be read: '+$file.FullName) }
     }
     $complete=0; $failed=0; $inconclusive=0; $pending=0; $accepted=0; $attempts=0; $calibrationImages=0
-    $sheetErrors=@();$attemptErrors=@();$calibrations=@()
+    $sheetErrors=@();$attemptErrors=@();$calibrations=@();$verificationIssues=@();$confirmedBlockers=0
     foreach($session in $sessions) {
         $safe=$session.Data
         $attempts+=@($safe.attempts | Where-Object {$null -ne $_}).Count
         foreach($attempt in @($safe.attempts | Where-Object {$null -ne $_.error})) {
             $attemptErrors+=[pscustomobject]@{code=[string]$attempt.error.code;sheet=[string]$attempt.sheet;workbook=[string]$safe.workbook}
+        }
+        foreach($scan in @($safe.sparse_overflow_scans | Where-Object {$null -ne $_ -and $_.status -ne 'complete'})) {
+            $verificationIssues+=[pscustomobject]@{code=[string]$scan.reason;sheet=[string]$scan.sheet;address=[string]$scan.address;
+                scan_id=[string]$scan.id;source_tile=[string]$scan.source_tile;workbook=[string]$safe.workbook}
+        }
+        if($null -eq $safe.sparse_overflow_scans) {
+            # Historical results do not contain scan records; keep their original semantics.
+            foreach($attempt in @($safe.captures | Where-Object {$_.analysis.unresolved})) {
+                $verificationIssues+=[pscustomobject]@{code=[string]$attempt.analysis.reason;sheet=[string]$attempt.sheet;
+                    address=[string]$attempt.address;source_tile=[string]$attempt.id;workbook=[string]$safe.workbook}
+            }
+        }
+        foreach($check in @($safe.sparse_overflow_checks | Where-Object {$null -ne $_})) {
+            if($null -ne $check.write_confirmed_cells){$confirmedBlockers+=[int]$check.write_confirmed_cells}
+            elseif($check.restoration -eq 'verified'){$confirmedBlockers+=[int]$check.blocker_count}
         }
         foreach($cal in @($safe.calibrations | Where-Object {$null -ne $_})) {
             $calibrationImages+=@($cal.observations | Where-Object {$null -ne $_.png}).Count
@@ -193,7 +208,7 @@ function Get-VVCaptureRollup([string]$RunRoot) {
     return [pscustomobject]@{sessions=$sessions.Count;complete_sheets=$complete;failed_sheets=$failed;
         inconclusive_sheets=$inconclusive;pending_sheets=$pending;accepted_tiles=$accepted;
         rendered_tile_attempts=$attempts;calibration_images=$calibrationImages;
-        sheet_errors=$sheetErrors;attempt_error_groups=$groups;calibrations=$calibrations}
+        sheet_errors=$sheetErrors;attempt_error_groups=$groups;calibrations=$calibrations;verification_issues=$verificationIssues;confirmed_blocker_cells=$confirmedBlockers}
 }
 function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
     $meta=Read-VVJson (Join-Path $RunRoot 'run.json')
@@ -262,6 +277,8 @@ function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
     if($captureSummary.sessions -gt 0) {
         $sum+="`nCAPTURE SUMMARY`nACCEPTED TILES: $($captureSummary.accepted_tiles)`nCOMPLETE SHEETS: $($captureSummary.complete_sheets)`nFAILED SHEETS: $($captureSummary.failed_sheets)`nINCONCLUSIVE SHEETS: $($captureSummary.inconclusive_sheets)`nPENDING SHEETS: $($captureSummary.pending_sheets)`nRAW TILE ATTEMPTS: $($captureSummary.rendered_tile_attempts)`nCALIBRATION IMAGES: $($captureSummary.calibration_images)`n"
         foreach($group in $captureSummary.attempt_error_groups){$sum+="`nATTEMPT ERROR: $($group.code) x$($group.attempt_count); sheets: $($group.sheets -join ', ')`n"}
+        $sum+="`nCONFIRMED BLOCKER CELLS: $($captureSummary.confirmed_blocker_cells)`n"
+        foreach($issue in $captureSummary.verification_issues){$sum+="VERIFICATION: $($issue.code) sheet=$($issue.sheet) range=$($issue.address) tile=$($issue.source_tile)`n"}
         foreach($cal in $captureSummary.calibrations){$sum+="RASTER SCALE: sheet=$($cal.sheet); status=$($cal.status); x=$($cal.scale_x); y=$($cal.scale_y) px/point`n"}
     }
     foreach($e in $errors){$sum+="`nERROR: $($e.code) sheet=$($e.sheet): $($e.message)`n"}

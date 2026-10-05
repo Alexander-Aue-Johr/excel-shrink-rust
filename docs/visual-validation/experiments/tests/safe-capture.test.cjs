@@ -81,7 +81,7 @@ async function test(name,fn){await fn();count++;console.log('PASS '+name);}
    const code=fs.readFileSync(path.join(web,'modes/range-image.js'),'utf8');
    const cut=code.lastIndexOf('  try {\n    await execute();');assert.ok(cut>0);
    const hooked=code.slice(0,cut)+`globalThis.hooks={run:renderPrecomputedPlannedBatch,set:s=>{safeSession=s}}; }());`;
-   class Img { set src(s){const p=S.png(s.split(',')[1]);this.width=this.naturalWidth=p.width;this.height=this.naturalHeight=p.height;queueMicrotask(()=>this.onload());} }
+   class Img { set src(s){if(!s)return;const p=S.png(s.split(',')[1]);this.width=this.naturalWidth=p.width;this.height=this.naturalHeight=p.height;queueMicrotask(()=>this.onload());} }
    const ui=new Proxy({}, {get:()=>()=>{}});
    const win={fetch:global.fetch,setTimeout,SafeCapture:S};
    const ctx={window:win,SafeCapture:S,Excel:global.Excel,performance,console,atob,Map,Uint8Array,Number,Image:Img,
@@ -145,6 +145,36 @@ async function test(name,fn){await fn();count++;console.log('PASS '+name);}
    await s.plan('One',S.parse('A1:D40'));assert.equal(m.calls.length,4);
    scale=2;await s.plan('Two',S.parse('A1:D20'));assert.equal(m.calls.length,8);
    assert.equal(s.limitsFor('Two').scale_x,2);assert.ok(Math.abs(s.limitsFor('One').scale_x-4/3)<1e-12);
+ });
+
+ await test('nonfatal analysis failure never recaptures a successfully persisted tile',async()=>{
+   const m=install();const s=new S.Session('x');const plan=await s.plan('S',S.parse('A1:D8'));
+   const before=m.calls.length;
+   await assert.rejects(s.capturePlan('S',plan,'analysis',async()=>{
+     await new Promise(resolve=>setTimeout(resolve,2));throw S.fault('CANVAS_BUDGET','analysis budget mismatch',{},false);
+   }),e=>e.code==='CANVAS_BUDGET');
+   assert.equal(m.calls.length-before,1);assert.equal(s.state.attempts.length,1);
+   assert.equal(s.state.attempts[0].failure_stage,'analysis');assert.ok(s.state.attempts[0].relative_png);
+   assert.ok(s.timings.analysis_ms>0);assert.ok(!m.events.some(e=>e.stage==='recovery_control_started'));
+ });
+ await test('overflow decoder uses selected 16/32/64 MP before allocation and releases failed canvases',async()=>{
+   const code=fs.readFileSync(path.join(web,'modes/range-image.js'),'utf8');
+   const cut=code.lastIndexOf('  try {\n    await execute();');
+   const hook=code.slice(0,cut)+`globalThis.decode=decodePngForOverflow; }());`;
+   let allocations=0,canvas=null;
+   class Img{set src(value){if(!value)return;const h=S.png(value.split(',')[1]);this.naturalWidth=h.width;this.naturalHeight=h.height;queueMicrotask(()=>this.onload());}}
+   const context={Image:Img,SafeCapture:S,window:{fetch:async()=>({})},performance,console,atob,Uint8Array,
+     document:{createElement(){allocations++;canvas={width:0,height:0,getContext(){return{drawImage(){},getImageData(){return{data:new Uint8ClampedArray(4)}}}}};return canvas;}}};
+   vm.createContext(context);vm.runInContext(hook,context);
+   for(const [mp,h]of [[16,1036],[32,2072],[64,4142]]){
+     const p=await context.decode(image(15440,h),{...S.DEFAULTS,max_pixels:mp*1000000});
+     assert.equal(p.width,15440);assert.equal(p.height,h);p.canvas.width=0;p.canvas.height=0;
+   }
+   const before=allocations;await assert.rejects(context.decode(image(15440,2072),{...S.DEFAULTS,max_pixels:16000000}),e=>e.code==='CANVAS_BUDGET');
+   assert.equal(allocations,before); // header guard precedes Image/Canvas work
+   context.document.createElement=()=>{canvas={width:0,height:0,getContext:()=>null};return canvas;};
+   await assert.rejects(context.decode(image(100,100),S.DEFAULTS),e=>e.code==='CANVAS_UNAVAILABLE');
+   assert.equal(canvas.width,0);assert.equal(canvas.height,0);
  });
  console.log(`${count} safe-capture tests passed (algorithm/protocol mocks, not Excel).`);
 })().catch(e=>{console.error(e);process.exitCode=1});

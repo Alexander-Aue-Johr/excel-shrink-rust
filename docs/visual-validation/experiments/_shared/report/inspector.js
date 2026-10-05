@@ -40,7 +40,7 @@ function buildModel(input){
        index_basis:number(id.sheet_index)!==null?'Office worksheet position + 1':r.sheet_index_basis||
          (number(r.sheet_index)!==null?'Rust plan: visible worksheet order (legacy)':'Not recorded'),
        office_position:number(id.office_position),worksheet_id:id.worksheet_id,show_gridlines:id.show_gridlines,
-       rust:r,status:'not-captured',bounds:[],passes:[],images:[],history:[],calibrations:[],tile_plans:[],sparse_checks:[],issues:[],source:document.path});
+       rust:r,status:'not-captured',bounds:[],passes:[],images:[],history:[],calibrations:[],tile_plans:[],sparse_checks:[],sparse_scans:[],issues:[],source:document.path});
     }return sheetMap.get(name);}
    for(const x of catalog)sheet(x.name);
    for(const x of list(rust.sheets))sheet(x.sheet);
@@ -68,6 +68,7 @@ function buildModel(input){
    for(const x of list(safe.calibrations))sheet(x.sheet).calibrations.push(x);
    for(const x of list(safe.tile_plans))sheet(x.sheet).tile_plans.push(x);
    for(const x of list(safe.sparse_overflow_checks))sheet(x.sheet).sparse_checks.push(x);
+   for(const x of list(safe.sparse_overflow_scans))sheet(x.sheet).sparse_scans.push(x);
    const imagesByPath=new Map();
    function addImage(item,sh,kind,priority){
     if(!item||typeof item!=='object')return;
@@ -151,7 +152,7 @@ function mount(input,host){
   append(main,el('h2','','Capture variants'));
   const table=el('table','bounds-table'),body=el('tbody');append(main,append(el('div','table-scroll'),table));
   append(table,append(el('thead'),append(el('tr'),['Variant / workbook','State','Tile calls','Verification calls','Blocker cells','Write / restore','Render','Analysis (inclusive)'].map(v=>el('th','',v)))),body);
-  for(const s of compared){const calls=s.checks.reduce((n,c)=>n+list(c.artifacts).filter(a=>a.role!=='xor').length,0),cells=s.checks.filter(c=>c.restoration!=='not-required').reduce((n,c)=>n+(c.blocker_count||0),0),ms=k=>s.checks.reduce((n,c)=>n+(c.timings?.[k]||0),0);
+  for(const s of compared){const calls=s.checks.reduce((n,c)=>n+list(c.artifacts).filter(a=>a.role!=='xor').length,0),cells=s.checks.reduce((n,c)=>n+(typeof c.write_confirmed_cells==='number'?c.write_confirmed_cells:(c.restoration!=='not-required'?(c.blocker_count||0):0)),0),ms=k=>s.checks.reduce((n,c)=>n+(c.timings?.[k]||0),0);
     const label=(s.options.overflow_mode==='selective'?'B · Selective blockers':'A · Pixel heuristic')+` · ${s.options.tile_megapixels||16} MP · ${s.options.tile_packing||'balanced'}`;
     append(body,append(el('tr'),append(el('td'),el('strong','',label),el('div','muted',s.name)),append(el('td'),badge(s.status)),el('td','',format(s.tile_calls)),el('td','',format(calls)),el('td','',format(cells)),el('td','',`${format(ms('write_ms'),1)} / ${format(ms('restore_ms'),1)} ms`),el('td','',`${format(s.timings?.render_ms,1)} ms`),el('td','',`${format(s.timings?.analysis_ms,1)} ms`)));
   }
@@ -233,6 +234,17 @@ function mount(input,host){
     if(sh.tile_plans.length){
       const p=sh.tile_plans.at(-1);
       append(sec,el('h4','','Tile budget'),el('p','geometry',`Packing: ${p.method||'recorded'} · tile budget: ${format((p.limits?.max_pixels||0)/1000000)} MP · edge ceiling: ${format(p.limits?.max_edge_px)} px · full width: ${format(p.full_predicted?.width)} px · allowed strip height: ${format(p.allowed_height_px)} px · planned tiles: ${format(p.tiles?.length)}`),raw('Tile planning evidence',sh.tile_plans));
+    }
+    if(sh.sparse_scans.length){
+      append(sec,el('h4','','Verification workload'));
+      const dense=sh.sparse_scans.filter(x=>x.candidate_density>0.5);
+      const groups=sh.sparse_scans.reduce((n,x)=>n+(x.group_count||0),0);
+      const rows=sh.sparse_scans.reduce((n,x)=>n+list(x.candidate_sheet_rows).length,0);
+      append(sec,el('p','geometry',`${format(rows)} candidate rows · ${format(groups)} measured evidence groups · ${format(dense.length)} dense tiles (>50% candidate pixel rows)`));
+      if(dense.length)append(sec,el('p','callout','This audit is not sparse on every tile. Raw gridlines and other background structure remain candidates until verified; no gridline color is silently treated as absent text.'));
+      const unresolved=sh.sparse_scans.filter(x=>x.status!=='complete');
+      if(unresolved.length)append(sec,raw('Unresolved verification scans',unresolved));
+      append(sec,raw('Candidate mapping and evidence budgets',sh.sparse_scans));
     }
     if(sh.sparse_checks.length){
       append(sec,el('h4','','Selective overflow verification'));

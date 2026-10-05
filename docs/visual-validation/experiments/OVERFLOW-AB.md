@@ -110,3 +110,66 @@ node docs/visual-validation/experiments/tests/history.test.cjs
 Node native/render tests are protocol mocks, not actual Excel tests. PowerShell/WPF,
 Excel and host integration must be verified on Windows. No real speedup is asserted by
 these tests. Successful image capture does not itself assert a baseline image match.
+
+
+## 2026-10-05 review: budget consistency and dense candidates
+
+Status: implementation defects identified; corrected implementation needs a native rerun.
+Evidence: review(3).zip (run 20261004T235041658Z-b9b8f410), review(4).zip
+(run 20261004T235322225Z-3293bcdc), review(5).zip
+(run 20261004T235617404Z-38fdb10f). All three selected **B only**, not Compare A and B.
+They all used Strategy F, the ASP.NET host, batch 1 and budget-aware packing.
+
+| Selected MP | Initial KHV tiles | Actual KHV retained tiles | All tile attempts | Accepted tiles | Canvas-budget rejections | Runner workbook seconds |
+|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 47 | 47 | 64 | 64 | 0 | 60.68 |
+| 32 | 24 | 70 | 137 | 87 | 50 | 112.60 |
+| 64 | 12 | 78 | 167 | 95 | 72 | 160.84 |
+
+Nine sheets completed and two (KHV/RHV) were inconclusive in each run. The root
+wrapper reported failed because the required capture validation was incomplete.
+No native render exception was recorded in these tile attempts. `CANVAS_BUDGET`
+was thrown by our own decoder *after* Excel had returned and the host saved the PNG.
+Do not interpret these timings as evidence that Excel is intrinsically slower at
+32/64 MP or that the selective method beats/loses to A.
+
+Defects and corrections:
+
+- The planner used the selected 16/32/64 MP budget while the decoder still read
+  `SafeCapture.DEFAULTS.max_pixels` (16 MP). The decoder now receives per-sheet limits,
+  validates the PNG header before allocating a browser image/canvas, and frees failed
+  allocations. 32/64 MP remain opt-in experiments, not proven memory-safe defaults.
+- Any nonfatal exception, including analysis errors after a saved PNG, used to trigger
+  a native recovery screenshot and recursive subdivision. Recovery is now limited to
+  render/payload failure and explicit capture-size rejection. Analysis and persistence
+  failures retain the saved image, record the failure stage and propagate, without
+  recapturing it. Failed-analysis time is no longer dropped from timing counters.
+- Fixed groups of 16 candidate rows were not a pixel budget. The first KHV group was
+  15440 x 288 = 4,446,720 pixels, above the independent 4-MP evidence budget. Groups
+  are now packed from measured candidate-row boundaries *before* native evidence captures or writes. At most 16
+  blocker cells can be active in one group. A single oversized row remains inconclusive.
+- The old 128-candidate limit was a whole-tile mapping limit, not a simultaneous-write
+  safety limit. Mapping is bounded at 2048 candidates, while each write retains the
+  smaller group limit. Candidate and group plans are persisted even when no intervention
+  can proceed. Counters distinguish planned, attempted and confirmed cell writes.
+
+There is also a substantive cost observation: on the first KHV tile the raw detector
+selects all 1034 interior pixel rows. Seven vertical gridlines in the probe region are
+sufficient to trigger this. This is not an isolated two-row signal. The raw scanner
+has deliberately NOT been weakened in this correction: ignoring grid colors or
+silently substituting A's line heuristic would change the meaning of the B audit.
+A dense verification scan can still be costly after the budget defects are fixed.
+Reports show candidate density, measured evidence groups and unresolved reasons.
+
+Seventy-three completed interventions were independently decoded and checked across
+the three archives: every restored image was pixel-identical to its before image,
+and every full-image changed-pixel count matched the recorded count. There were
+27 blocker-sensitive outcomes (nine repeated across three runs), 46 unchanged outcomes,
+and 732 confirmed cell writes in these completed checks. These are not 73 independent
+workbook cases and do not establish a general text-versus-decoration classifier.
+In particular, the KHV 16-MP checks never wrote any blockers: they stopped at preflight.
+
+Next native run: F / ASP.NET / batch 1 / Compare A and B / 16 MP / budget-aware rows,
+on the hospital workbook. Do not run the full budget sweep before verifying this
+correction. Keep the production minimum-width policy unchanged. Source control tests
+and mocks do not substitute for an Excel/Windows run.

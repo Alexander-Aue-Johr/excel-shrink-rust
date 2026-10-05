@@ -4,6 +4,10 @@
 (function(root){
 'use strict';
 const S=()=>root.SafeCapture;
+const EVIDENCE_MAX_PIXELS=4000000, GROUP_MAX_ROWS=16;
+// This is a bounded candidate list, NOT a simultaneous write. Each active group
+// has at most sixteen cells and its own measured four-MP image budget.
+const MAX_CANDIDATE_ROWS_PER_TILE=2048;
 const fail=(code,message,detail,fatal=false)=>S().fault(code,message,detail,fatal);
 const bands=ys=>{const out=[];for(const y of ys){const p=out.at(-1);if(p&&y<=p[1]+1)p[1]=y;else out.push([y,y]);}return out;};
 function scanCandidates(image,edges,base,end,background){
@@ -38,7 +42,7 @@ function release(im){if(!im)return;im.data=null;if(im.canvas){im.canvas.width=0;
 async function decode(base64){
  const header=S().png(base64);
  // Narrow row groups only. This secondary budget is independent of the large tile budget.
- if(header.width*header.height>4000000)throw fail('SPARSE_DECODE_BUDGET','Sparse evidence image exceeds four million pixels.',header);
+ if(header.width*header.height>EVIDENCE_MAX_PIXELS)throw fail('SPARSE_DECODE_BUDGET','Sparse evidence image exceeds four million pixels.',header);
  const image=new root.Image();await new Promise((ok,no)=>{image.onload=ok;image.onerror=()=>no(fail('SPARSE_DECODE_FAILED','Cannot decode sparse evidence PNG.'));image.src='data:image/png;base64,'+base64;});
  const canvas=root.document.createElement('canvas');canvas.width=header.width;canvas.height=header.height;
  const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)throw fail('SPARSE_CANVAS_FAILED','Canvas 2D is unavailable.');
@@ -53,8 +57,8 @@ function encodeDiff(diff,width,height){
   const value=url.slice(url.indexOf(',')+1);S().png(value);return value;
  }finally{canvas.width=0;canvas.height=0;}
 }
-async function pixelRowsToSheetRows(session,sheet,tile,pixelBands,maxRows=128){
- if(pixelBands.length>128)throw fail('SPARSE_CANDIDATE_BUDGET','Too many independent candidate bands.',{bands:pixelBands.length});
+async function pixelRowsToSheetRows(session,sheet,tile,pixelBands,maxRows=MAX_CANDIDATE_ROWS_PER_TILE){
+ if(pixelBands.length>MAX_CANDIDATE_ROWS_PER_TILE)throw fail('SPARSE_CANDIDATE_BUDGET','Too many independent candidate bands.',{bands:pixelBands.length,max_bands:MAX_CANDIDATE_ROWS_PER_TILE});
  const sy=tile.raster_profile.scale_y,r=tile.rect,cache=new Map([[r.r0,tile.geometry.top],[r.r1,tile.geometry.bottom]]);
  // Batch simultaneous binary searches for all band boundaries; no full-sheet row scan.
  const requests=pixelBands.flatMap(([a,b])=>[{target:tile.geometry.top+(a-1)/sy,lo:r.r0,hi:r.r1},{target:tile.geometry.top+(b+1)/sy,lo:r.r0,hi:r.r1}]);
@@ -65,11 +69,46 @@ async function pixelRowsToSheetRows(session,sheet,tile,pixelBands,maxRows=128){
   for(const q of requests){if(q.hi-q.lo<=1)continue;const mid=Math.floor((q.lo+q.hi)/2);if(cache.get(mid)<=q.target)q.lo=mid;else q.hi=mid;}
  }
  const found=new Set();for(let i=0;i<requests.length;i+=2)for(let row=requests[i].lo;row<=requests[i+1].lo&&row<r.r1;row++){
-  found.add(row);if(found.size>maxRows)throw fail('SPARSE_CANDIDATE_BUDGET','Candidate rows exceed the sparse mutation budget.',{rows:found.size,max_rows:maxRows});
+  found.add(row);if(found.size>maxRows)throw fail('SPARSE_CANDIDATE_BUDGET','Candidate list exceeds its bounded planning budget; no mutation was queued.',{rows:found.size,max_rows:maxRows});
  }
  return [...found].sort((a,b)=>a-b);
 }
 function groupedRows(rows,maxSpan=16){const out=[];for(const row of rows){const p=out.at(-1);if(p&&row===p.at(-1)+1&&p.length<maxSpan)p.push(row);else out.push([row]);}return out;}
+function evidenceLimits(session,sheet){
+ const limits=session.limitsFor(sheet);
+ return {...limits,max_pixels:Math.min(limits.max_pixels,EVIDENCE_MAX_PIXELS)};
+}
+async function planGroups(session,sheet,tile,rows){
+ // Load geometry only for selected candidate rows, in bounded batches. Greedily
+ // use the evidence budget; fixed sixteen-row windows can repeatedly overflow it.
+ const limits=evidenceLimits(session,sheet),measured=[];
+ for(let offset=0;offset<rows.length;offset+=256){
+  const chunk=rows.slice(offset,offset+256);
+  const gs=await session.geometries(sheet,chunk.map(row=>({...tile.rect,r0:row,r1:row+1})));
+  chunk.forEach((row,i)=>measured.push({row,geometry:gs[i]}));
+ }
+ const completed=[];let current=null;
+ for(const {row,geometry} of measured){
+  const rect={...tile.rect,r0:row,r1:row+1},predicted=S().pixels(geometry,limits);
+  if(!S().fits(geometry,limits))throw fail('SPARSE_INDIVISIBLE_ROW',
+    'One candidate row exceeds the evidence budget or has no visible extent; no blocker was written.',
+    {sheet,row:row+1,address:S().address(rect),geometry,predicted,limits});
+  if(current && row===current.rows.at(-1)+1 && current.rows.length<GROUP_MAX_ROWS){
+    const g={...current.geometry,bottom:geometry.bottom};
+    const stable=Math.abs(current.geometry.left-geometry.left)<=0.01 &&
+      Math.abs(current.geometry.right-geometry.right)<=0.01 &&
+      Math.abs(current.geometry.bottom-geometry.top)<=0.01;
+    if(stable && S().fits(g,limits)){
+      current.rows.push(row);current.rect.r1=row+1;current.geometry=g;current.predicted=S().pixels(g,limits);continue;
+    }
+  }
+  if(current)completed.push(current);
+  current={rows:[row],rect,geometry,predicted};
+ }
+ if(current)completed.push(current);
+ return {groups:completed,limits};
+}
+
 function guardsOk(c){return c.value_type==='Empty'&&(c.value===''||c.value===null)&&
  (c.formula===''||c.formula===null)&&c.has_spill===false&&c.merged===false&&c.table_count===0&&c.pivot_count===0;}
 async function readGuards(session,sheet,rows,column){
@@ -100,7 +139,7 @@ async function save(session,record,role,base64,rect){
 async function take(session,record,role,rect,expected){
  const a=S().address(rect),gs=(await session.geometries(record.sheet,[rect]))[0];
  if(['top','bottom','left','right'].some(k=>Math.abs(gs[k]-expected[k])>0.01))throw fail('SPARSE_GEOMETRY_CHANGED','Geometry changed before sparse evidence capture.',{before:expected,after:gs});
- const limits={...session.limitsFor(record.sheet),max_pixels:4000000};if(!S().fits(gs,limits))throw fail('SPARSE_CAPTURE_BUDGET','Sparse row image exceeds its four-million-pixel budget.',{a,gs});
+ const limits=evidenceLimits(session,record.sheet);if(!S().fits(gs,limits))throw fail('SPARSE_CAPTURE_BUDGET','Sparse row image exceeds its four-million-pixel budget.',{a,gs});
  let base64=await session.office('sparse_render',{sheet:record.sheet,address:a,role,check_id:record.id},async context=>{
   const result=context.workbook.worksheets.getItem(record.sheet).getRange(a).getImage();await context.sync();return result.value;
  });
@@ -124,6 +163,7 @@ async function mutate(session,record,rows,column,value){
 async function verifyGroup(session,sheet,tile,rows,column,edges,originalImage=null){
  const record={id:`sparse${String(session.state.sparse_overflow_checks.length+1).padStart(6,'0')}`,sheet,
    source_tile:tile.id,rows:rows.map(x=>x+1),blocker_column:column+1,blocker_count:rows.length,
+   write_attempted_cells:0,write_confirmed_cells:0,restore_attempted_cells:0,restore_confirmed_cells:0,
    status:'started',restoration:'not-required',artifacts:[],timings:{write_ms:0,restore_ms:0},
    note:'No change means no blocker-sensitive pixels in the tested probe rows, not proof about arbitrary worksheet content.'};
  session.state.sparse_overflow_checks.push(record);
@@ -159,7 +199,7 @@ async function verifyGroup(session,sheet,tile,rows,column,edges,originalImage=nu
   }
   // Flush the intended write and restoration recipe BEFORE queueing native mutation.
   record.restoration='pending';await session.checkpoint('sparse_write_pending',{sheet,check_id:record.id,rows:record.rows,blocker_column:column+1});
-  mutationQueued=true;
+  mutationQueued=true; record.write_attempted_cells=rows.length;
   try{
    await mutate(session,record,rows,column,' ');
    const written=await session.office('sparse_verify_write',{sheet,check_id:record.id},async context=>{
@@ -167,13 +207,15 @@ async function verifyGroup(session,sheet,tile,rows,column,edges,originalImage=nu
     return cells.every(c=>c.values[0][0]===' '&&c.formulas[0][0]===' ');
    });
    if(!written)throw fail('SPARSE_WRITE_NOT_CONFIRMED','The whitespace write was not confirmed.');
+   record.write_confirmed_cells=rows.length;
    blocked=await take(session,record,'blocked',rect,geometry);
   }finally{
    if(session.dead){record.restoration='unknown-native-timeout';throw fail('SPARSE_RESTORE_UNCONFIRMED','Native call timed out; no further calls queued. Discard this working copy.',{check_id:record.id},true);}
+   record.restore_attempted_cells=rows.length;
    await mutate(session,record,rows,column,'');
    const restoredGuards=await readGuards(session,sheet,rows,column);
    if(!restoredGuards.every(guardsOk))throw fail('SPARSE_RESTORE_FAILED','Blocker contents were not restored.',{check_id:record.id},true);
-   record.restoration='contents-restored';mutationQueued=false;
+   record.restoration='contents-restored';record.restore_confirmed_cells=rows.length;mutationQueued=false;
   }
   restored=await take(session,record,'restored',rect,geometry);
   record.roundtrip_identical=exactEqual(before,restored);
@@ -202,28 +244,55 @@ async function verifyGroup(session,sheet,tile,rows,column,edges,originalImage=nu
 }
 async function verify(session,item,tile,image,decision,edges,end){
  const start=performance.now(),scan=scanCandidates(image,edges,item.base_right_column,end,decision.background_rgba);
- if(!scan.pixel_rows)return {keep_column:item.base_right_column,done:true,scanned_pixels:scan.scanned_pixels,mode:'selective',checks:[]};
+ if(!session.state.sparse_overflow_scans)session.state.sparse_overflow_scans=[];
+ const scanRecord={id:`scan${String(session.state.sparse_overflow_scans.length+1).padStart(6,'0')}`,sheet:item.sheet,
+  source_tile:tile.id,address:tile.address||S().address(tile.rect),status:'started',checks:[],
+  candidate_pixel_rows:scan.pixel_rows,image_interior_rows:Math.max(0,image.height-2),
+  candidate_density:scan.pixel_rows/Math.max(1,image.height-2),candidate_pixel_bands:scan.pixel_bands,
+  candidate_sheet_rows:[],evidence_max_pixels:Math.min(session.limitsFor(item.sheet).max_pixels,EVIDENCE_MAX_PIXELS),
+  max_candidate_rows:MAX_CANDIDATE_ROWS_PER_TILE,
+  detection_scope:'Raw probe pixels before line filtering; gridlines may create dense candidates.'};
+ session.state.sparse_overflow_scans.push(scanRecord);
+ const result=fields=>({...fields,scan_id:scanRecord.id,candidate_pixel_rows:scan.pixel_rows,
+  candidate_sheet_rows:scanRecord.candidate_sheet_rows,verification_group_count:scanRecord.group_count||0});
  try{
+  await session.checkpoint('sparse_candidates',{sheet:item.sheet,...scanRecord});
+  if(!scan.pixel_rows){scanRecord.status='complete';return result({keep_column:item.base_right_column,done:true,scanned_pixels:scan.scanned_pixels,mode:'selective',checks:[]});}
   if(root.Office?.context?.requirements&&!root.Office.context.requirements.isSetSupported('ExcelApi','1.13'))
     throw fail('SPARSE_API_UNAVAILABLE','Selective verification needs ExcelApi 1.13 for safe merged/spill guards.');
   const rows=await pixelRowsToSheetRows(session,item.sheet,tile,scan.pixel_bands);
+  scanRecord.candidate_sheet_rows=rows.map(x=>x+1);
   let column=item.base_right_column+1;while(column<=end&&edges[column+1]===edges[column])column++;
   if(column>end)throw fail('SPARSE_NO_VISIBLE_BLOCKER','No visible empty blocker column exists in the probe.');
-  const groups=groupedRows(rows),checks=[];let keep=item.base_right_column;
-  for(const group of groups){const check=await verifyGroup(session,item.sheet,tile,group,column,edges,image);checks.push(check.id);
-    if(check.status!=='complete')return {unresolved:true,done:false,keep_column:end,checks,reason:check.error?.code,mode:'selective'};
+  const planned=await planGroups(session,item.sheet,tile,rows);
+  scanRecord.group_count=planned.groups.length;
+  scanRecord.groups=planned.groups.map(g=>({rows:g.rows.map(x=>x+1),address:S().address(g.rect),predicted:g.predicted}));
+  await session.checkpoint('sparse_group_plan',{sheet:item.sheet,...scanRecord});
+  const checks=scanRecord.checks;let keep=item.base_right_column;
+  for(const group of planned.groups){
+    const check=await verifyGroup(session,item.sheet,tile,group.rows,column,edges,image);checks.push(check.id);
+    if(check.status!=='complete'){
+      scanRecord.status='inconclusive';scanRecord.reason=check.error?.code;
+      return result({unresolved:true,done:false,keep_column:end,checks,reason:scanRecord.reason,mode:'selective'});
+    }
     const x=check.difference.rightmost_changed_x;
     if(x>=0){let c=column;while(c<end&&edges[c+1]<=x)c++;keep=Math.max(keep,c);}
   }
   let last=end;while(last>item.base_right_column&&edges[last+1]===edges[last])last--;
-  return {mode:'selective',done:keep<last,keep_column:keep,checks,scanned_pixels:scan.scanned_pixels,
-    candidate_pixel_rows:scan.pixel_rows,candidate_sheet_rows:rows.map(x=>x+1),timing_ms:performance.now()-start,
-    note:'Unchanged line/fill pixels are excluded only within verified probe rows; source images are retained.'};
- }catch(e){if(e.fatal)throw e;
-  await session.event('sparse_check_unresolved',{sheet:item.sheet,address:tile.address,error:S().errorInfo(e)});
-  return {mode:'selective',unresolved:true,done:false,keep_column:end,reason:e.code,error:S().errorInfo(e)};
+  scanRecord.status='complete';scanRecord.keep_column=keep;
+  return result({mode:'selective',done:keep<last,keep_column:keep,checks,scanned_pixels:scan.scanned_pixels,
+    timing_ms:performance.now()-start,
+    note:'Unchanged line/fill pixels are excluded only within verified probe rows; source images are retained.'});
+ }catch(e){scanRecord.status=e.fatal?'failed':'inconclusive';scanRecord.error=S().errorInfo(e);scanRecord.reason=e.code;
+  if(e.fatal)throw e;
+  await session.event('sparse_check_unresolved',{sheet:item.sheet,address:tile.address,error:S().errorInfo(e),scan_id:scanRecord.id});
+  return result({mode:'selective',unresolved:true,done:false,keep_column:end,reason:e.code,error:S().errorInfo(e),checks:scanRecord.checks});
+ }finally{
+  scanRecord.total_ms=performance.now()-start;
+  await session.checkpoint('sparse_scan_finished',{sheet:item.sheet,...scanRecord});
  }
 }
-const api={scanCandidates,bands,pixelDiff,exactEqual,pixelRowsToSheetRows,groupedRows,guardsOk,verify,verifyGroup};
+
+const api={scanCandidates,bands,pixelDiff,exactEqual,pixelRowsToSheetRows,groupedRows,guardsOk,verify,verifyGroup,planGroups,evidenceLimits,MAX_CANDIDATE_ROWS_PER_TILE,EVIDENCE_MAX_PIXELS};
 root.SelectiveOverflow=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 }(typeof window!=='undefined'?window:globalThis));

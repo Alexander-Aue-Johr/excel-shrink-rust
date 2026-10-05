@@ -1137,35 +1137,39 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     };
   }
 
-  async function decodePngForOverflow(base64) {
-    const imageElement = await new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error('Could not decode Range.getImage() PNG.'));
-      image.src = `data:image/png;base64,${base64}`;
-    });
-
-    const width = Number(imageElement.naturalWidth || imageElement.width);
-    const height = Number(imageElement.naturalHeight || imageElement.height);
-    if (!(width > 0 && height > 0)) {
-      throw new Error('Decoded Range.getImage() PNG has invalid dimensions.');
+  async function decodePngForOverflow(base64, limits = SafeCapture.DEFAULTS) {
+    // Use the same explicit per-sheet budget as planning; do not fall back to
+    // the 16 MP default after the user selected 32/64 MP. Check before decoding.
+    const header = SafeCapture.png(base64);
+    if (!SafeCapture.actualFits(header, limits)) {
+      throw SafeCapture.fault('CANVAS_BUDGET', 'PNG exceeds the configured analysis budget.',
+        {header, max_pixels:limits.max_pixels, max_edge_px:limits.max_edge_px, stage:'analysis-preflight'});
     }
-
-    if (width > SafeCapture.DEFAULTS.max_edge_px || height > SafeCapture.DEFAULTS.max_edge_px || width * height > SafeCapture.DEFAULTS.max_pixels) throw SafeCapture.fault('CANVAS_BUDGET', 'Refusing oversized Canvas decode', {width,height});
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('Canvas 2D context is unavailable.');
-    context.drawImage(imageElement, 0, 0);
-    const imageData = context.getImageData(0, 0, width, height);
-
-    return {
-      width,
-      height,
-      data: imageData.data,
-      canvas
-    };
+    let imageElement = null, canvas = null, retained = false;
+    try {
+      imageElement = new Image();
+      await new Promise((resolve, reject) => {
+        imageElement.onload = resolve;
+        imageElement.onerror = () => reject(SafeCapture.fault('CANVAS_DECODE_FAILED', 'Cannot decode saved capture PNG.'));
+        imageElement.src = `data:image/png;base64,${base64}`;
+      });
+      const width = Number(imageElement.naturalWidth || imageElement.width);
+      const height = Number(imageElement.naturalHeight || imageElement.height);
+      if (width !== header.width || height !== header.height) {
+        throw SafeCapture.fault('CANVAS_SIZE_CHANGED', 'Decoded dimensions disagree with the PNG header.', {header,width,height});
+      }
+      canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const context = canvas.getContext('2d', {willReadFrequently:true});
+      if (!context) throw SafeCapture.fault('CANVAS_UNAVAILABLE', 'Canvas 2D context is unavailable.');
+      context.drawImage(imageElement, 0, 0);
+      const imageData = context.getImageData(0, 0, width, height);
+      retained = true;
+      return {width,height,data:imageData.data,canvas};
+    } finally {
+      if (imageElement) {imageElement.onload=null; imageElement.onerror=null; imageElement.src='';}
+      if (canvas && !retained) {canvas.width=0; canvas.height=0;}
+    }
   }
 
   function cropOverflowBase64(image, edges, keepColumn, originalBase64) {
@@ -1391,7 +1395,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
             if(tile.rect.c0!==0 || tile.rect.c1!==end+1) throw SafeCapture.fault('OVERFLOW_CONTEXT_SPLIT','Recovery needed a horizontal split; exact overflow remains inconclusive.',{sheet:item.sheet,rect:tile.rect},true);
             let decoded;
             try {
-              decoded=await decodePngForOverflow(base64);
+              decoded=await decodePngForOverflow(base64,s.limitsFor(item.sheet));
               let decision=analyzeRenderOverflow(decoded,measuredWidths,item.base_right_column,end,extra);
               if(config.capture_options?.overflow_mode==='selective') {
                 if(typeof SelectiveOverflow==='undefined')throw SafeCapture.fault('SPARSE_HELPER_MISSING','Selective helper is unavailable.',{},true);
@@ -1409,7 +1413,9 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
                 scanned_pixels:decision.scanned_pixels,ignored_rule_rows:decision.ignored_rule_rows,
                 ignored_probe_rule_rows:decision.ignored_probe_rule_rows,edge_hits:decision.edge_hits,
                 background_rgba:decision.background_rgba,rule_scope:decision.rule_scope,selective_checks:decision.checks||[],
-                overflow_mode:config.capture_options?.overflow_mode || 'heuristic',unresolved:!!decision.unresolved,reason:decision.reason||null};
+                overflow_mode:config.capture_options?.overflow_mode || 'heuristic',unresolved:!!decision.unresolved,reason:decision.reason||null,
+                verification_scan_id:decision.scan_id||null,candidate_pixel_rows:decision.candidate_pixel_rows??null,
+                candidate_sheet_rows:decision.candidate_sheet_rows||[],verification_group_count:decision.verification_group_count??null};
             } finally {
               if(decoded) { decoded.data=null; if(decoded.canvas) {decoded.canvas.width=0;decoded.canvas.height=0;} }
             }

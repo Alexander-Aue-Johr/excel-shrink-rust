@@ -54,5 +54,56 @@ function fixture(options={}){
  await test('narrow crop must reproduce original candidate pixels',async()=>{const f=fixture();mark(f.original,28,8);const c=await X.verifyGroup(f.session,'Sheet1',f.tile,[0],2,[0,10,20,30,40,50],f.original);assert.equal(c.error.code,'SPARSE_CROP_MISMATCH');assert.equal(f.writes.length,0);});
  await test('B integration removes a line signal but retains real text extent',async()=>{global.Office={context:{requirements:{isSetSupported:()=>true}}};for(const hasText of [false,true]){const f=fixture({text:hasText});const result=await X.verify(f.session,{sheet:'Sheet1',base_right_column:1},f.tile,f.original,{background_rgba:[255,255,255]},[0,10,20,30,40,50],4);assert.equal(result.done,true);assert.equal(result.keep_column,hasText?2:1);assert.equal(result.unresolved,undefined);}});
  await test('unsupported API does not mutate or report a false absence',async()=>{global.Office={context:{requirements:{isSetSupported:()=>false}}};const f=fixture();const r=await X.verify(f.session,{sheet:'Sheet1',base_right_column:1},f.tile,f.original,{background_rgba:[255,255,255]},[0,10,20,30,40,50],4);assert.equal(r.unresolved,true);assert.equal(f.writes.length,0);});
+
+ await test('wide sixteen-row evidence groups are planned below four MP before capture',async()=>{
+  const session={limitsFor:()=>({...S.DEFAULTS,scale_x:4/3,scale_y:4/3,border_px:1,max_pixels:64000000}),
+    geometries:async(s,rs)=>rs.map(r=>({left:0,right:11579.25,top:r.r0*12.75,bottom:r.r1*12.75}))};
+  const tile={rect:{r0:0,r1:1000,c0:0,c1:180}};
+  const p=await X.planGroups(session,'S',tile,Array.from({length:16},(_,i)=>i));
+  assert.equal(p.groups.length,2);assert.equal(p.groups[0].rows.length,15);
+  assert.equal(p.limits.max_pixels,4000000);
+  assert.deepEqual(p.groups.flatMap(g=>g.rows),Array.from({length:16},(_,i)=>i));
+  assert.ok(p.groups.every(g=>g.predicted.width*g.predicted.height<=4000000));
+ });
+ await test('more than 128 candidates are mapped but never written in one group',async()=>{
+  const session={limitsFor:()=>({...S.DEFAULTS,scale_x:1,scale_y:1,border_px:1}),
+   geometries:async(s,rs)=>rs.map(r=>({left:0,right:5000,top:r.r0*17,bottom:r.r1*17}))};
+  const tile={rect:{r0:0,r1:160,c0:0,c1:80},geometry:{top:0,bottom:2720},raster_profile:{scale_y:1}};
+  const rows=await X.pixelRowsToSheetRows(session,'S',tile,[[1,2718]]);
+  assert.equal(rows.length,160);
+  const p=await X.planGroups(session,'S',tile,rows);assert.ok(p.groups.every(g=>g.rows.length<=16));
+  assert.equal(p.groups.flatMap(g=>g.rows).length,160);
+ });
+ await test('an indivisible evidence row is rejected before any write or render',async()=>{
+  const session={limitsFor:()=>({...S.DEFAULTS,scale_x:1,scale_y:1,border_px:1}),geometries:async()=>[{left:0,right:20000,top:0,bottom:300}]};
+  await assert.rejects(X.planGroups(session,'S',{rect:{c0:0,c1:300,r0:0,r1:1}},[0]),e=>e.code==='SPARSE_INDIVISIBLE_ROW');
+ });
+ await test('pixel-aware groups preserve gaps and never insert unselected rows',async()=>{
+  const session={limitsFor:()=>({...S.DEFAULTS,scale_x:2,scale_y:2,border_px:1}),geometries:async(s,rs)=>rs.map(r=>({left:0,right:5000,top:r.r0*30,bottom:r.r1*30}))};
+  const rows=[0,1,5,6,7,10];const p=await X.planGroups(session,'S',{rect:{r0:0,r1:20,c0:0,c1:40}},rows);
+  assert.deepEqual(p.groups.flatMap(g=>g.rows),rows);assert.ok(p.groups.every(g=>g.rows.length===g.rect.r1-g.rect.r0));
+ });
+ await test('raw gridlines stay candidates; this correction does not hide their cost',()=>{
+  const im=white(51,21);for(let y=1;y<20;y++)mark(im,30,y,224);
+  const c=X.scanCandidates(im,[0,10,20,30,40,50],1,4,[248,248,248]);assert.equal(c.pixel_rows,19);
+ });
+ await test('confirmed blocker counters and scan records reflect actual work',async()=>{
+  global.Office={context:{requirements:{isSetSupported:()=>true}}};const f=fixture({text:true});
+  const r=await X.verify(f.session,{sheet:'Sheet1',base_right_column:1},f.tile,f.original,{background_rgba:[255,255,255]},[0,10,20,30,40,50],4);
+  assert.equal(f.session.state.sparse_overflow_scans[0].status,'complete');
+  assert.equal(f.session.state.sparse_overflow_scans[0].id,r.scan_id);
+  assert.ok(r.verification_group_count>0);
+  for(const check of f.session.state.sparse_overflow_checks){
+    assert.equal(check.write_confirmed_cells,check.rows.length);assert.equal(check.restore_confirmed_cells,check.rows.length);
+  }
+  const unsafe=fixture({protected:true});const c=await X.verifyGroup(unsafe.session,'Sheet1',unsafe.tile,[0],2,[0,10,20,30,40,50],unsafe.original);
+  assert.equal(c.write_confirmed_cells,0);assert.equal(c.write_attempted_cells,0);
+ });
+ await test('unresolved scan without an intervention is retained in structured results',async()=>{
+  global.Office={context:{requirements:{isSetSupported:()=>false}}};const f=fixture();
+  const r=await X.verify(f.session,{sheet:'Sheet1',base_right_column:1},f.tile,f.original,{background_rgba:[255,255,255]},[0,10,20,30,40,50],4);
+  assert.equal(r.unresolved,true);assert.equal(f.session.state.sparse_overflow_checks.length,0);
+  assert.equal(f.session.state.sparse_overflow_scans[0].reason,'SPARSE_API_UNAVAILABLE');
+ });
  console.log(`${count} selective overflow mock tests passed. No Excel execution.`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

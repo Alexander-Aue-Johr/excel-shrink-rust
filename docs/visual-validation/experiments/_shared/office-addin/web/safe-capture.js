@@ -142,7 +142,7 @@
       this.runId = config.capture_run_id || config.diagnostic_run_id || null;
       this.dead = false; this.sequence = 0; this.tileCount = 0; this.calibrations = new Map();
       this.state = { schema:'safe-capture-v1', workbook, strategy:config.strategy, capture_options:options, tile_plans:[], sparse_overflow_checks:[],
-        status:'running', implementation:'safe-capture-calibrated-v2', limits:this.limits, sheets:[], attempts:[], captures:[], calibrations:[],
+        status:'running', implementation:'safe-capture-calibrated-budgeted-v3', limits:this.limits, sheets:[], attempts:[], captures:[], calibrations:[],
         environment:{ browser: typeof navigator!=='undefined'?navigator.userAgent:null,
           office: root.Office && root.Office.context && root.Office.context.diagnostics || null,
           device_pixel_ratio: typeof root.devicePixelRatio==='number'?root.devicePixelRatio:null,
@@ -437,7 +437,7 @@
         address:a,rect,geometry_before:before,predicted:pixels(before,limits),status:'started'};
       this.state.attempts.push(attempt);
       await this.checkpoint('tile_render_started',{sheet,address:a,id});
-      let base64=null, saved=null;
+      let base64=null, saved=null, failureStage='render';
       try {
         const renderBefore=this.timings.render_ms;
         base64=await this.office('tile_render',{sheet,address:a,id,predicted:attempt.predicted},async context=>{
@@ -446,9 +446,11 @@
           await context.sync(); return image.value;
         });
         attempt.render_ms=this.timings.render_ms-renderBefore;
+        failureStage='payload-validation';
         const header=png(base64); attempt.png=header;
         await this.event('tile_png_received',{sheet,address:a,id,...header,render_ms:attempt.render_ms});
         // Save the original BEFORE browser decoding/analysis. Its bytes are never re-encoded.
+        failureStage='persistence';
         const started=performance.now();
         const response=await this.http('/image-batch',{workbook:this.workbook,batch_index:0,
           images:[{id,sheet,address:a,base64}]});
@@ -456,6 +458,7 @@
         saved=response.captures && response.captures[0];
         if (!saved) throw fault('PERSIST_NO_RECEIPT','Host did not return saved capture metadata',{id},true);
         attempt.relative_png=saved.relative_png;
+        failureStage='post-capture-validation';
         const after=(await this.geometries(sheet,[rect]))[0]; attempt.geometry_after=after;
         const expected=pixels(after,limits);
         const changed=['left','top','right','bottom'].some(k=>Math.abs(before[k]-after[k])>0.01);
@@ -472,19 +475,27 @@
           raster_profile:{calibration_id:limits.calibration_id,scale_x:limits.scale_x,scale_y:limits.scale_y,border_px:1},
           content_box_px:{x:0,y:0,width:header.width,height:header.height},
           seam_extra_pixel:limits.border_px};
-        const analysisStart=performance.now();
-        const detail=onImage ? await onImage(base64,capture) : null;
-        this.timings.analysis_ms+=performance.now()-analysisStart; // Includes selective verification: use its phase timings for attribution.
+        failureStage='analysis';
+        const analysisStart=performance.now(); let detail=null;
+        try {detail=onImage ? await onImage(base64,capture) : null;}
+        finally {this.timings.analysis_ms+=performance.now()-analysisStart;}
+        // Failed analysis time is included too; it is not native rendering time.
+        failureStage='publication';
         attempt.status='complete'; capture.analysis=detail;
         this.state.captures.push(capture);
         await this.checkpoint('tile_complete',{sheet,address:a,id});
         return [capture];
       } catch (e) {
-        attempt.status=e.fatal?'fatal':'failed'; attempt.error=errorInfo(e);
-        await this.event('tile_failed',{sheet,address:a,id,raw_png:saved && saved.relative_png,error:errorInfo(e)});
+        attempt.status=e.fatal?'fatal':'failed'; attempt.error=errorInfo(e); attempt.failure_stage=failureStage;
+        await this.event('tile_failed',{sheet,address:a,id,raw_png:saved && saved.relative_png,failure_stage:failureStage,error:errorInfo(e)});
         await this.checkpoint('tile_failed',{sheet,address:a,id});
         if (this.config.break_on_error || root.VV_BREAK_ON_ERROR) { debugger; }
-        const retryable = !e.fatal && depth<limits.max_depth && (rect.r1-rect.r0>1 || rect.c1-rect.c0>1);
+        // A saved native PNG must not be recaptured because analysis or persistence
+        // failed. Only native rendering/payload failure and explicit size guards
+        // can be made smaller. Otherwise retain the evidence and propagate.
+        const sizeFailure=['PNG_DIMENSION_CAP','PNG_ACTUAL_BUDGET'].includes(e.code);
+        const renderFailure=failureStage==='render' || failureStage==='payload-validation';
+        const retryable = !e.fatal && (renderFailure || sizeFailure) && depth<limits.max_depth && (rect.r1-rect.r0>1 || rect.c1-rect.c0>1);
         if (!retryable) throw e;
         // Do not repeat the same oversized request. A successful small control precedes splitting.
         let control;
