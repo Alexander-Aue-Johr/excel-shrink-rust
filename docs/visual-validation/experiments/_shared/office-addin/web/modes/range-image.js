@@ -1377,7 +1377,17 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       await s.checkpoint('sheet_started',{sheet:item.sheet,address:item.address});
       try {
         let end=item.end_column, extra=item.probe_extra, accepted=[];
+        let overflowDetected=false, passCaptureEnd=end;
+        // Convert the configured pixel buffer using this sheet's measured raster scale.
+        // Historical/mock calls without the config retain their original column margin.
+        if(item.overflow_probe && Number(config.overflow_probe_width_px)>0) {
+          const buffer=await CapturePolicy.probeBuffer(s,item,Number(config.overflow_probe_width_px));
+          end=buffer.end_column;extra=buffer.extra_visible_columns;sheetRecord.probe_buffer=buffer;
+          item.end_column=end;item.probe_extra=extra;item.address=addressA1To(item.bottom_row,end);
+          await recordBounds('measured_probe_buffer',item,{...buffer,address:item.address});
+        }
         for (let pass=1;pass<=12;pass++) {
+          passCaptureEnd=end;
           const rect={r0:0,r1:item.bottom_row+1,c0:0,c1:end+1};
           await recordBounds('overflow_pass_requested', item, {pass,address:SafeCapture.address(rect),
             base_address:addressA1To(item.bottom_row,item.base_right_column), extra_visible_columns:extra});
@@ -1395,8 +1405,12 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
             if(tile.rect.c0!==0 || tile.rect.c1!==end+1) throw SafeCapture.fault('OVERFLOW_CONTEXT_SPLIT','Recovery needed a horizontal split; exact overflow remains inconclusive.',{sheet:item.sheet,rect:tile.rect},true);
             let decoded;
             try {
+              const decodeStart=performance.now();
               decoded=await decodePngForOverflow(base64,s.limitsFor(item.sheet));
+              const compute=(s.state.compute_profile ||= {});compute.tile_decode_ms=(compute.tile_decode_ms||0)+performance.now()-decodeStart;
+              const heuristicStart=performance.now();
               let decision=analyzeRenderOverflow(decoded,measuredWidths,item.base_right_column,end,extra);
+              compute.heuristic_scan_ms=(compute.heuristic_scan_ms||0)+performance.now()-heuristicStart;
               if(config.capture_options?.overflow_mode==='selective') {
                 if(typeof SelectiveOverflow==='undefined')throw SafeCapture.fault('SPARSE_HELPER_MISSING','Selective helper is unavailable.',{},true);
                 const differential=await SelectiveOverflow.verify(s,item,tile,decoded,decision,
@@ -1404,6 +1418,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
                 decision={...decision,...differential,heuristic_keep_column:decision.keep_column,heuristic_done:decision.done};
                 sparseUnresolved=sparseUnresolved||!!differential.unresolved;
               }
+              if(!decision.unresolved && decision.keep_column>item.base_right_column)overflowDetected=true;
               keep=Math.max(keep,decision.keep_column); done=done && decision.done;
               scanned+=decision.scanned_pixels;
               if (!decision.done) edgeEvidence.push({tile_id:tile.id,address:tile.address,
@@ -1460,18 +1475,33 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
           await s.checkpoint('overflow_expansion',{sheet:item.sheet,end_column:end,pass});
         }
         if(!accepted.length && sheetRecord.status !== 'complete') throw SafeCapture.fault('OVERFLOW_PASS_LIMIT','Overflow did not close within the pass budget',{sheet:item.sheet});
+        const detectedEnd=end;
+        const exportPolicy=CapturePolicy.outputPolicy({complete:sheetRecord.status==='complete',checked:!!item.overflow_checked,
+          base:item.base_right_column,end:passCaptureEnd,probe:!!item.overflow_probe,detected:overflowDetected});
+        sheetRecord.export_policy=exportPolicy;
+        sheetRecord.detected_bounds=addressA1To(item.bottom_row,detectedEnd);
+        end=exportPolicy.end;
         item.end_column=end; item.address=addressA1To(item.bottom_row,end);
         item.overflow_passes=sheetRecord.overflow_passes;
         item.representation='tiles-with-valid-rect-v1';
-        // Raw PNGs retain the probe margin. This metadata selects the final logical rectangle.
-        // No Canvas crop/re-encode and no giant full-sheet bitmap allocation.
+        // Original probe PNGs remain immutable evidence. Only a fully resolved no-overflow sheet
+        // receives physically cropped native PNG derivatives, one tile at a time.
         const finalRect={r0:0,r1:item.bottom_row+1,c0:0,c1:end+1};
         const extent=(await s.geometries(item.sheet,[finalRect]))[0];
         sheetRecord.address=item.address; sheetRecord.extent_points=extent;
         sheetRecord.representation=item.representation;
-        for(const tile of accepted) {
+        for(const sourceTile of accepted) {
+          let tile={...sourceTile};
           const width=Math.max(0,Math.min(tile.png_width,Math.round((extent.right-tile.geometry.left)*tile.raster_profile.scale_x)+tile.raster_profile.border_px));
           if(width<=1 || tile.rect.c0>end) { tile.excluded_probe_margin=true; continue; }
+          if(exportPolicy.crop && width<tile.png_width) {
+            const sourceRect={...tile.rect},sourceGeometry={...tile.geometry};
+            const finalTileRect={...tile.rect,c1:Math.min(tile.rect.c1,end+1)};
+            tile=await CapturePolicy.exportTile(s,tile,width,SafeCapture.address(finalTileRect));
+            tile.source_rect=sourceRect;tile.source_geometry=sourceGeometry;
+            tile.rect=finalTileRect;tile.geometry={...sourceGeometry,right:Math.min(sourceGeometry.right,extent.right)};
+            tile.content_box_px={x:0,y:0,width,height:tile.png_height};
+          }
           tile.valid_rect_px={x:0,y:0,width,height:tile.png_height};
           tile.sheet_offset_px={x:Math.round((tile.geometry.left-extent.left)*tile.raster_profile.scale_x),
             y:Math.round((tile.geometry.top-extent.top)*tile.raster_profile.scale_y)};
@@ -1882,6 +1912,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     const optionsResponse=await fetch('/capture-options.json',{cache:'no-store'});
     if(!optionsResponse.ok)throw new Error('Capture options are unavailable. No unconfigured capture was started.');
     config.capture_options=await optionsResponse.json();
+    config.capture_options={...config.capture_options,show_gridlines:false,final_png_policy:'crop-no-overflow-retain-positive-or-unknown',probe_buffer_unit:'calibrated-pixels'};
     if(!['heuristic','selective'].includes(config.capture_options.overflow_mode))throw new Error('Invalid overflow mode.');
     if(config.capture_options.overflow_mode==='selective' && config.strategy!=='F')throw new Error('Selective verification requires Strategy F.');
 
@@ -1891,7 +1922,10 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     if (typeof SafeCapture === 'undefined') throw new Error('safe-capture.js is missing. No unguarded screenshot will be attempted.');
     safeSession = new SafeCapture.Session(workbookName, config);
     if (!await safeSession.claim()) { ExperimentUi.setPhase('Another task pane owns this workbook capture.'); return; }
+    if (typeof CapturePolicy === 'undefined') throw new Error('capture-policy.js is missing; no unconfigured screenshots were started.');
     safeSession.state.sheet_catalog = workbookInfo.sheets;
+    safeSession.state.capture_policy_version = CapturePolicy.VERSION;
+    await CapturePolicy.hideGridlines(safeSession, workbookInfo.sheets);
     safeSession.state.bounds_history = [];
     await safeSession.event('worksheet_catalog', { sheets: workbookInfo.sheets });
     await safeSession.checkpoint('planning_started', { strategy:config.strategy });
@@ -2077,6 +2111,8 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       representation: 'tiles-with-valid-rect-v1',
       safe_capture: safeSession.state,
       safe_capture_timings: safeSession.timings,
+      capture_view: safeSession.state.capture_view,
+      capture_policy_version: CapturePolicy.VERSION,
       actual_image_request_batch_size: 1,
       workbook: workbookName,
       strategy: config.strategy,

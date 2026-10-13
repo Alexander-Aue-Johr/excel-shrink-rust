@@ -173,3 +173,10 @@ Next native run: F / ASP.NET / batch 1 / Compare A and B / 16 MP / budget-aware 
 on the hospital workbook. Do not run the full budget sweep before verifying this
 correction. Keep the production minimum-width policy unchanged. Source control tests
 and mocks do not substitute for an Excel/Windows run.
+
+## 2026-10-05: gridless capture policy
+
+The next capture-policy epoch disables gridlines consistently for both arms, separates
+probe bounds from final PNG exports, and adds CPU-only counters before any WASM port.
+See [GRIDLESS-CAPTURE.md](GRIDLESS-CAPTURE.md). Older grid-visible timing samples and
+artifacts remain evidence; they are not baseline-equivalent to normalized screenshots.

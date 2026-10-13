@@ -204,6 +204,7 @@
     if (config.diagnostic_run_id) await load('/render-diagnostics.js?run=' + run);
     if (config.experiment === 'range-image') {
       await load('/safe-capture.js?run=' + run);
+      await load('/capture-policy.js?run=' + run);
       await load('/selective-overflow.js?run=' + run);
     }
     await load('/mode.js?run=' + run);

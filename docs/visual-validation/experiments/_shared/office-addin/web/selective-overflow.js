@@ -218,12 +218,16 @@ async function verifyGroup(session,sheet,tile,rows,column,edges,originalImage=nu
    record.restoration='contents-restored';record.restore_confirmed_cells=rows.length;mutationQueued=false;
   }
   restored=await take(session,record,'restored',rect,geometry);
+  const equalityStart=performance.now();
   record.roundtrip_identical=exactEqual(before,restored);
+  const equalityProfile=(session.state.compute_profile ||= {});equalityProfile.roundtrip_compare_ms=(equalityProfile.roundtrip_compare_ms||0)+performance.now()-equalityStart;
   if(!record.roundtrip_identical)throw fail('SPARSE_UNSTABLE_ROUNDTRIP','Before and restored images differ. Do not infer absence of overflow.',{check_id:record.id});
   const sy=tile.raster_profile.scale_y;
   const allowed=guards.map(g=>({row:g.row+1,y0:Math.max(1,Math.floor((g.top-geometry.top)*sy)),y1:Math.min(before.height-1,Math.ceil((g.top+g.height-geometry.top)*sy)+1)}));
   const x0=Math.max(1,Math.floor(edges[column])),x1=before.width-1;
+  const diffStart=performance.now();
   const diff=pixelDiff(before,blocked,x0,x1,allowed);
+  const cpu=(session.state.compute_profile ||= {});cpu.pixel_diff_ms=(cpu.pixel_diff_ms||0)+performance.now()-diffStart;
   record.difference={changed_pixels:diff.changed_pixels,outside_changed_pixels:diff.outside_changed_pixels,
     rightmost_changed_x:diff.rightmost_changed_x,rows:diff.rows};
   await save(session,record,'xor',encodeDiff(diff.rgba,before.width,before.height),rect);
@@ -244,6 +248,7 @@ async function verifyGroup(session,sheet,tile,rows,column,edges,originalImage=nu
 }
 async function verify(session,item,tile,image,decision,edges,end){
  const start=performance.now(),scan=scanCandidates(image,edges,item.base_right_column,end,decision.background_rgba);
+ const cpu=(session.state.compute_profile ||= {});cpu.candidate_scan_ms=(cpu.candidate_scan_ms||0)+performance.now()-start;
  if(!session.state.sparse_overflow_scans)session.state.sparse_overflow_scans=[];
  const scanRecord={id:`scan${String(session.state.sparse_overflow_scans.length+1).padStart(6,'0')}`,sheet:item.sheet,
   source_tile:tile.id,address:tile.address||S().address(tile.rect),status:'started',checks:[],

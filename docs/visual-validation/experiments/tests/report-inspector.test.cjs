@@ -78,4 +78,19 @@ test('a single extra column does not enable the new probe-band mask',()=>{
  const w=Array(16384).fill(100);const result=F.analyzeRenderOverflow(im,w,0,1,1);
  assert.equal(result.ignored_probe_rule_rows,0);assert.equal(result.done,false);
 });
+test('physical final images retain raw evidence as a separate image and direct link',()=>{
+ const x=fixture(),safe=x.documents[0].workbooks[0].safe_capture;
+ safe.capture_view={status:'confirmed',after:[{sheet:' Leading name',show_gridlines:false}]};
+ safe.sheet_catalog[0].show_gridlines=false;
+ safe.sheets[0].export_policy={crop:true,reason:'no-overflow-remove-buffer'};
+ safe.sheets[0].tiles=[{id:'tile-final',sheet:' Leading name',relative_png:'Book.xlsx/tile-final.png',raw_png:'Book.xlsx/tile.png',png_width:210,png_height:80,export_kind:'native-right-crop',address:'A1:C4'}];
+ const cropped=file.replace('tile.png','tile-final.png');x.files.push({path:cropped,bytes:700,width:210,height:80});
+ const sh=report.buildModel(x).sessions[0].sheets[0];assert.equal(sh.images.length,2);
+ const im=sh.images.find(x=>x.kind==='final');assert.equal(im.path,cropped);assert.equal(im.raw_path,file);assert.equal(im.width,210);
+ assert.equal(sh.show_gridlines,false);assert.ok(sh.bounds.some(x=>x.source==='no-overflow-remove-buffer'));
+});
+test('failed final export still shows the raw capture as inspectable evidence',()=>{
+ const x=fixture(),safe=x.documents[0].workbooks[0].safe_capture;safe.sheets[0].tiles=[];safe.sheets[0].status='failed';
+ safe.final_exports=[{status:'failed',source_id:'tile'}];const sh=report.buildModel(x).sessions[0].sheets[0];assert.equal(sh.images.length,1);assert.equal(sh.images[0].kind,'probe');
+});
 console.log(count+' report/provenance/overflow tests passed; no native Excel calls.');

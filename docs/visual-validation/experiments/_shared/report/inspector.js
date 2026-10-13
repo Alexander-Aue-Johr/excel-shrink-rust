@@ -69,6 +69,7 @@ function buildModel(input){
    for(const x of list(safe.tile_plans))sheet(x.sheet).tile_plans.push(x);
    for(const x of list(safe.sparse_overflow_checks))sheet(x.sheet).sparse_checks.push(x);
    for(const x of list(safe.sparse_overflow_scans))sheet(x.sheet).sparse_scans.push(x);
+   for(const view of list(safe.capture_view?.after))sheet(view.sheet).capture_view={...safe.capture_view,after:view};
    const imagesByPath=new Map();
    function addImage(item,sh,kind,priority){
     if(!item||typeof item!=='object')return;
@@ -79,7 +80,7 @@ function buildModel(input){
     const f=inventory.get(path),png=obj(item.png),g=item.geometry||item.geometry_after||item.geometry_before;
     const merged={...(current||{}),...item,path,kind,priority,sheet:sh.name,
       width:item.png_width||png.width||current?.width||f.width||null,height:item.png_height||png.height||current?.height||f.height||null,
-      geometry:g||current?.geometry,bytes:item.png_bytes||f.bytes,source:document.path};
+      raw_path:resolveImage(item.raw_png,document.path),geometry:g||current?.geometry,bytes:item.png_bytes||f.bytes,source:document.path};
     imagesByPath.set(path,merged);claimed.add(path);
    }
    for(const capture of list(safe.captures))addImage(capture,sheet(capture.sheet),'probe',1);
@@ -109,6 +110,10 @@ function buildModel(input){
     const last=sh.history.filter(h=>h.stage==='final_capture_bounds').at(-1);
     sh.bounds.push({stage:sh.status==='complete'?'Final logical bounds':'Retained / last known bounds',address:last?.address||rec.address||plan.address||null,
       source:'Add-in overflow / capture result',note:sh.status==='complete'?'Complete according to capture result':'Not proof of complete worksheet coverage'});
+    if(rec.export_policy)sh.bounds.push({stage:'Saved PNG policy',address:rec.address,source:rec.export_policy.reason,
+      note:`Detected bounds: ${rec.detected_bounds||'not recorded'}. Original capture bounds remain in each tile.`});
+    if(rec.probe_buffer)sh.bounds.push({stage:'Measured right buffer',address:sh.history.find(h=>h.stage==='measured_probe_buffer')?.address||rec.requested_address,
+      source:rec.probe_buffer.method,note:`Requested ${rec.probe_buffer.requested_pixels} px; actual ${rec.probe_buffer.actual_pixels} px; ${rec.probe_buffer.extra_visible_columns} visible columns.`});
     sh.extent=last?.extent_points||rec.extent_points;
     const base=range(envelope(r.bottom_row,r.base_right_column)),end=range(rec.address||plan.address);
     if(base&&end&&end.c1>base.c1){sh.expansion_columns=end.c1-base.c1;sh.expansion_ratio=(end.c1-end.c0)/(base.c1-base.c0);}
@@ -118,7 +123,7 @@ function buildModel(input){
    }
    const sheets=[...sheetMap.values()].sort((a,b)=>(a.index??Infinity)-(b.index??Infinity)||a.name.localeCompare(b.name));
    sessions.push({key,name,status:w.status||safe.status||'not-recorded',source:document.path,sheets,
-     options:safe.capture_options||{},tile_calls:list(safe.attempts).length,checks:list(safe.sparse_overflow_checks),timings:w.safe_capture_timings||null,environment:safe.environment||w.environment||{},current:safe.current||{},strategy:w.strategy||safe.strategy||document.meta?.strategy||null});
+     options:safe.capture_options||{},tile_calls:list(safe.attempts).length,checks:list(safe.sparse_overflow_checks),timings:w.safe_capture_timings||null,environment:{...(safe.environment||w.environment||{}),capture_view:safe.capture_view||null,compute_profile:safe.compute_profile||null},current:safe.current||{},strategy:w.strategy||safe.strategy||document.meta?.strategy||null});
   }
  }
  const unassigned=files.filter(f=>/\.png$/i.test(f.path)&&!claimed.has(f.path)&&safePath(f.path));
@@ -140,8 +145,8 @@ function mount(input,host){
  const header=el('header','hero');header.id='overview';append(main,header);
  append(header,el('div','eyebrow',m.meta.experiment||'Visual validation'),el('h1','','Capture report'));
  append(header,el('p','run-id',m.meta.id),badge(m.result.status||m.meta.status));
- const actions=el('div','actions');append(header,actions,el('p','muted','Bounds provenance, capture evidence and diagnostics. Original artifacts remain unchanged.'));
- append(actions,link('Review bundle','review.zip','button primary'),link('Run data','result.json','button'),link('Timeline','timeline.jsonl','button'));
+ const actions=el('div','actions');append(header,actions,el('p','muted','Bounds provenance, capture evidence and diagnostics. Raw evidence is preserved. Final exports may remove a verified empty probe buffer.'));
+ append(actions,link('Metadata bundle · no images','review-metadata.zip','button primary'),link('Full evidence','review.zip','button'),link('Run data','result.json','button'),link('Timeline','timeline.jsonl','button'));
  const overviewLink=el('a','button','All runs');overviewLink.href='../../index.html';append(actions,overviewLink);
  const search=el('input','search');search.type='search';search.placeholder='Filter by workbook, worksheet or range';search.setAttribute('aria-label',search.placeholder);append(nav,search);
  const counts=el('div','metrics');append(header,counts);
@@ -168,7 +173,7 @@ function mount(input,host){
  const viewerTitle=el('strong','viewer-title'),viewerMode=el('select'),viewerBody=el('div','viewer-body'),viewerImage=el('img','viewer-image');
  viewerMode.setAttribute('aria-label','Image scale');
  for(const [value,label]of [['1','100%'],['2','200%'],['fit','Fit width']]){const op=el('option','',label);op.value=value;append(viewerMode,op);}
- const closeViewer=el('button','button','Close'),viewerOriginal=el('a','button','Open original PNG');
+ const closeViewer=el('button','button','Close'),viewerOriginal=el('a','button','Open PNG');
  const viewerBar=el('div','viewer-bar');append(viewerBar,viewerTitle,viewerMode,viewerOriginal,closeViewer);
  append(viewerBody,viewerImage);append(viewer,viewerBar,viewerBody);append(host,viewer);
  let viewedCapture=null;
@@ -176,7 +181,7 @@ function mount(input,host){
    viewerImage.style.width=fit?'100%':`${(viewedCapture.width||viewerImage.naturalWidth)*Number(viewerMode.value)}px`;
    viewerImage.style.height='auto';}
  function openViewer(c){viewedCapture=c;viewerTitle.textContent=`${JSON.stringify(c.sheet)} · ${c.address||'Capture'} · ${format(c.width)} × ${format(c.height)} px`;
-   viewerOriginal.href=safePath(c.path);viewerMode.value='1';viewerImage.alt=viewerTitle.textContent;viewerImage.src=safePath(c.path);
+   viewerOriginal.href=safePath(c.path);viewerOriginal.textContent=c.export_kind==='native-right-crop'?'Open final PNG':'Open original PNG';viewerMode.value='1';viewerImage.alt=viewerTitle.textContent;viewerImage.src=safePath(c.path);
    scaleViewer();viewer.showModal();viewerBody.scrollTop=0;viewerBody.scrollLeft=0;}
  viewerMode.addEventListener('change',scaleViewer);viewerImage.addEventListener('load',scaleViewer);
  closeViewer.addEventListener('click',()=>viewer.close());viewer.addEventListener('close',()=>{viewerImage.removeAttribute('src');viewedCapture=null;});
@@ -192,10 +197,13 @@ function mount(input,host){
   img.addEventListener('error',()=>{if(img.getAttribute('src'))card.classList.add('image-unavailable');});
   append(a,img);a.addEventListener('click',event=>{event.preventDefault();openViewer(c);});
   const inspect=el('button','inspect-button','Inspect image');inspect.addEventListener('click',()=>openViewer(c));
-  append(card,a,append(el('div','image-actions'),inspect,link('Open original PNG',c.path,'small-link')));
+  const imageActions=append(el('div','image-actions'),inspect,link(c.export_kind==='native-right-crop'?'Open final PNG':'Open original PNG',c.path,'small-link'));
+  if(c.raw_path)append(imageActions,link('Raw capture with probe buffer',c.raw_path,'small-link'));
+  append(card,a,imageActions);
   if(c.valid_rect_px)append(card,el('div','capture-meta',`Valid rectangle: x=${c.valid_rect_px.x}, y=${c.valid_rect_px.y}, ${c.valid_rect_px.width} × ${c.valid_rect_px.height} px`));
   if(c.sheet_offset_px)append(card,el('div','capture-meta',`Sheet offset: x=${c.sheet_offset_px.x}, y=${c.sheet_offset_px.y} px`));
   const det=details('Capture details');append(det,el('pre','json',JSON.stringify({address:c.address,logical_address:c.logical_address,rect:c.rect,geometry_points:c.geometry,
+    capture_address:c.capture_address,source_id:c.source_id,raw_png:c.raw_path,raw_sha256:c.raw_sha256,export_kind:c.export_kind,crop_rect_px:c.crop_rect_px,
     raster_profile:c.raster_profile,packing:c.packing,role:c.role,restoration:c.restoration,analysis:c.analysis,error:c.error,source:c.source,render_ms:c.render_ms,relative_png:c.path,sha256:c.sha256},null,2)));append(card,det);
   return card;
  }
@@ -253,7 +261,7 @@ function mount(input,host){
     }
     if(sh.history.length)append(sec,raw('Planning events (chronological)',sh.history));
     append(sec,raw('Recorded bounds and calibration',{rust:sh.rust,addin_initial:sh.record?.initial_bounds,addin_result:sh.plan,calibrations:sh.calibrations,
-      source_file:sh.source,current:session.current}));
+      source_file:sh.source,current:session.current,capture_view:sh.capture_view,export_policy:sh.record?.export_policy,detected_bounds:sh.record?.detected_bounds}));
     const gallery=details(`Screenshots (${sh.images.length})`,index===1),tools=el('div','gallery-tools'),grid=el('div','gallery');append(sec,gallery);append(gallery,tools,grid);
     const select=el('select');select.setAttribute('aria-label','Screenshot category');const countKind=kind=>sh.images.filter(x=>kind==='all'||(kind==='final'?['final','retained'].includes(x.kind):x.kind===kind)).length;
     for(const [v,label]of [['final','Final / retained'],['probe','Overflow probes'],['verification','Verification'],['calibration','Calibration'],['failed','Failed attempts'],['diagnostic','Diagnostics'],['all','All images']]){

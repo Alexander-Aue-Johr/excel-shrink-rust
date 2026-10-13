@@ -16,7 +16,7 @@ function Write-VVHistory([string]$ReportRoot, $Items) {
             arguments = $item.Meta.arguments; rollup = $summary.capture_summary
             errors = @($summary.errors | Select-Object -First 3); warning = $warning
             report = ('runs/' + $item.Name + '/report.html')
-            bundle = $(if (Test-Path -LiteralPath (Join-Path $item.Path 'review.zip') -PathType Leaf) { 'runs/' + $item.Name + '/review.zip' } else { $null })
+            bundle = $(if (Test-Path -LiteralPath (Join-Path $item.Path 'review-metadata.zip') -PathType Leaf) { 'runs/' + $item.Name + '/review-metadata.zip' } elseif (Test-Path -LiteralPath (Join-Path $item.Path 'review.zip') -PathType Leaf) { 'runs/' + $item.Name + '/review.zip' } else { $null })
         }
     }
     $data = [ordered]@{schema='vv-history-v2'; generated_utc=[DateTime]::UtcNow.ToString('o');runs=$runs}

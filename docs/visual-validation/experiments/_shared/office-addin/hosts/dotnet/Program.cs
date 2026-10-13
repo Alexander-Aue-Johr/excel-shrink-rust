@@ -304,7 +304,7 @@ if (captureRunId is not null)
 {
     app.Use(async (context,next) => {
         var path=context.Request.Path.Value ?? "";
-        if (context.Request.Method == "POST" && path is ("/capture-claim" or "/capture-progress" or "/image-batch" or "/result" or "/client-event" or "/error" or "/probe-batch"))
+        if (context.Request.Method == "POST" && path is ("/capture-claim" or "/capture-progress" or "/image-batch" or "/finalize-image" or "/result" or "/client-event" or "/error" or "/probe-batch"))
         {
             if (!string.Equals(context.Request.Headers["X-VV-Run-Id"].ToString(), captureRunId, StringComparison.Ordinal))
             { context.Response.StatusCode=409; await context.Response.WriteAsJsonAsync(new {error="stale-capture-run"}); return; }
@@ -312,6 +312,8 @@ if (captureRunId is not null)
         await next();
     });
 }
+if (experiment == "range-image") FinalImageEndpoints.Map(app, imageRoot, staticRoot, expectedNameSet, SafeFileName, Record);
+
 app.MapPost("/capture-claim", async (HttpRequest request) => {
     var body=(await JsonNode.ParseAsync(request.Body))!.AsObject();
     var workbook=body["workbook"]?.GetValue<string>() ?? "";
@@ -703,6 +705,7 @@ app.MapGet("/taskpane.css", () => StaticFile("taskpane.css", "text/css; charset=
 app.MapGet("/bootstrap.js", () => StaticFile("bootstrap.js", "application/javascript; charset=utf-8"));
 app.MapGet("/shell.js", () => StaticFile("shell.js", "application/javascript; charset=utf-8"));
 app.MapGet("/safe-capture.js", () => StaticFile("safe-capture.js", "application/javascript; charset=utf-8"));
+app.MapGet("/capture-policy.js", () => StaticFile("capture-policy.js", "application/javascript; charset=utf-8"));
 app.MapGet("/selective-overflow.js", () => StaticFile("selective-overflow.js", "application/javascript; charset=utf-8"));
 app.MapGet("/capture-options.json", () => StaticFile("capture-options.json", "application/json; charset=utf-8"));
 app.MapGet("/render-diagnostics.js", () => StaticFile("render-diagnostics.js", "application/javascript; charset=utf-8"));

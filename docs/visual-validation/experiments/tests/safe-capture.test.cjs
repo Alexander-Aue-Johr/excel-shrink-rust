@@ -3,6 +3,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const web=path.resolve(__dirname,'../_shared/office-addin/web');
 const S=require(path.join(web,'safe-capture.js'));
+const CapturePolicy=require(path.join(web,'capture-policy.js'));
 function image(w,h){const b=Buffer.alloc(45);Buffer.from([137,80,78,71,13,10,26,10]).copy(b);b.writeUInt32BE(13,8);b.write('IHDR',12);b.writeUInt32BE(w,16);b.writeUInt32BE(h,20);b.write('IEND',37);return b.toString('base64');}
 function install({row=()=>12.75,col=()=>52.5,fail=()=>false,hang=false,sx=()=>4/3,sy=()=>4/3}={}) {
   const events=[],requests=[],calls=[];
@@ -10,6 +11,7 @@ function install({row=()=>12.75,col=()=>52.5,fail=()=>false,hang=false,sx=()=>4/
   global.fetch=async(url,init={})=>{
     const data=init.body?JSON.parse(init.body):{};requests.push({url,data});
     if(url==='/client-event')events.push(data);
+    if(url==='/finalize-image')return {ok:true,json:async()=>({capture:{id:data.source_id+'-final',sheet:data.sheet,address:data.address,png_width:data.width,png_height:data.source_height,relative_png:'mock/'+data.source_id+'-final.png',sha256:'c'.repeat(64)},crop_ms:1})};
     if(url==='/image-batch')return {ok:true,json:async()=>({captures:data.images.map(x=>{const p=S.png(x.base64);return{id:x.id,sheet:x.sheet,address:x.address,png_width:p.width,png_height:p.height,relative_png:'mock/'+x.id+'.png'};})})};
     return {ok:true,json:async()=>({ok:true})};
   };
@@ -76,7 +78,7 @@ async function test(name,fn){await fn();count++;console.log('PASS '+name);}
    const m=install({row:()=>0});const s=new S.Session('x');const plan=await s.plan('S',S.parse('A1:D8'));
    assert.ok(plan.every(x=>x.invisible));assert.deepEqual(await s.capturePlan('S',plan,'c'),[]);assert.equal(m.calls.length,0);
  });
- for(const factor of [4/3,2]) await test(`F integration at ${factor}: raw PNG, calibrated crop and offsets, no Canvas encoding`,async()=>{
+ for(const factor of [4/3,2]) await test(`F integration at ${factor}: raw PNG, calibrated physical host crop and offsets, no Canvas encoding`,async()=>{
    install({col:()=>15,row:()=>12.75,sx:()=>factor,sy:()=>factor});const session=new S.Session('x',{strategy:'F'});
    const code=fs.readFileSync(path.join(web,'modes/range-image.js'),'utf8');
    const cut=code.lastIndexOf('  try {\n    await execute();');assert.ok(cut>0);
@@ -84,13 +86,13 @@ async function test(name,fn){await fn();count++;console.log('PASS '+name);}
    class Img { set src(s){if(!s)return;const p=S.png(s.split(',')[1]);this.width=this.naturalWidth=p.width;this.height=this.naturalHeight=p.height;queueMicrotask(()=>this.onload());} }
    const ui=new Proxy({}, {get:()=>()=>{}});
    const win={fetch:global.fetch,setTimeout,SafeCapture:S};
-   const ctx={window:win,SafeCapture:S,Excel:global.Excel,performance,console,atob,Map,Uint8Array,Number,Image:Img,
+   const ctx={window:win,SafeCapture:S,CapturePolicy,Excel:global.Excel,performance,console,atob,Map,Uint8Array,Number,Image:Img,
       ExperimentUi:ui,ExperimentEvents:{post:async()=>{}},document:{createElement(){return {width:0,height:0,getContext(){return{drawImage(){},getImageData(x,y,w,h){const data=new Uint8ClampedArray(w*h*4);data.fill(255);return{data}}}},toDataURL(){throw new Error('Canvas encoding must not be called')}};}}};
    vm.createContext(ctx);vm.runInContext(hooked,ctx);ctx.hooks.set(session);
    const item={id:'c00001',sheet:'S',address:'A1:F5',bottom_row:4,base_right_column:2,end_column:5,probe_extra:8,overflow_probe:true,column_widths:new Array(16384).fill(15)};
    const out=await ctx.hooks.run('x',[item],1,1,{strategy:'F'});
    assert.equal(session.state.sheets[0].status,'complete');assert.equal(item.address,'A1:C5');
-   assert.equal(out.captures.length,1);assert.ok(out.captures[0].valid_rect_px.width<out.captures[0].png_width);
+   assert.equal(out.captures.length,1);assert.equal(out.captures[0].valid_rect_px.width,out.captures[0].png_width);assert.ok(out.captures[0].raw_png_width>out.captures[0].png_width);assert.equal(out.captures[0].export_kind,'native-right-crop');
    assert.equal(out.captures[0].valid_rect_px.width,Math.round(45*factor)+1);
    assert.equal(out.captures[0].sheet_offset_px.x,0);assert.equal(out.captures[0].sheet_offset_px.y,0);
  });

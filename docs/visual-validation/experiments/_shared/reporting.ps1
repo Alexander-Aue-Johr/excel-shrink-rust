@@ -84,7 +84,7 @@ function Start-VVReport([string]$Start, [string]$Experiment, $Arguments) {
     Write-VVJson (Join-Path $path 'result.json') @{schema='vv-run-result-v1';status='running';run=$meta;outputs=@();errors=@()}
     [IO.File]::WriteAllText((Join-Path $path 'summary.txt'),"RUNNING: $Experiment`nResults are persisted here even when Excel fails.`n",[Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText((Join-Path $path 'report.html'),'<meta charset="utf-8"><h1>Capture in progress</h1><p>Results and diagnostic logs are being recorded. The report is finalized when the run completes or is recovered.</p>',[Text.UTF8Encoding]::new($false))
-    Write-VVJson (Join-Path $reports 'latest.json') @{id=$id;directory=$path;report=(Join-Path $path 'report.html');zip=(Join-Path $path 'review.zip')}
+    Write-VVJson (Join-Path $reports 'latest.json') @{id=$id;directory=$path;report=(Join-Path $path 'report.html');zip=(Join-Path $path 'review-metadata.zip');full_zip=(Join-Path $path 'review.zip')}
     $transcript=$false
     try { Start-Transcript -LiteralPath (Join-Path $path 'console.log') -Force | Out-Null; $transcript=$true } catch { Write-VVEvent 'transcript_unavailable' @{message=$_.Exception.Message} }
     Write-VVEvent 'run_started' $meta
@@ -107,16 +107,60 @@ function New-VVStep([string]$Name) {
     [IO.Directory]::CreateDirectory($path) | Out-Null
     return $path
 }
+function Export-VVMetadataBundle([string]$RunRoot) {
+    # Keep every local image and the full bundle. This separate transport bundle omits binaries.
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $meta=Read-VVJson (Join-Path $RunRoot 'run.json')
+    if ($null -eq $meta -or $meta.schema -ne 'vv-report-v1') { throw 'Not a managed report.' }
+    $dest=Join-Path $RunRoot 'review-metadata.zip'; $tmp=$dest+'.new'
+    if(Test-Path -LiteralPath $tmp){Remove-Item -LiteralPath $tmp -Force}
+    $prefix=[IO.Path]::GetFullPath($RunRoot).TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
+    $zip=[IO.Compression.ZipFile]::Open($tmp,[IO.Compression.ZipArchiveMode]::Create)
+    $included=[Collections.Generic.List[object]]::new();$omitted=[Collections.Generic.List[object]]::new()
+    $utf8=[Text.UTF8Encoding]::new($false)
+    try {
+        $stack=[Collections.Generic.Stack[string]]::new();$stack.Push([IO.Path]::GetFullPath($RunRoot))
+        while($stack.Count -gt 0) {
+            foreach($file in @(Get-ChildItem -LiteralPath $stack.Pop() -Force)) {
+                if($file.Attributes -band [IO.FileAttributes]::ReparsePoint){continue}
+                if($file.PSIsContainer){$stack.Push($file.FullName);continue}
+                if($file.Name -like 'review*.zip*' -or $file.Name -eq '.active.lock' -or $file.Extension -in @('.new','.previous')){continue}
+                $rel=$file.FullName.Substring($prefix.Length).Replace('\','/')
+                if($file.Extension.ToLowerInvariant() -notin @('.json','.jsonl','.txt','.log','.csv','.md','.html','.css','.js','.xml')) {
+                    $omitted.Add([ordered]@{path=$rel;bytes=$file.Length;reason='binary-artifact'});continue
+                }
+                if($rel -eq 'report.html') {
+                    $text=[IO.File]::ReadAllText($file.FullName,$utf8)
+                    $banner='<aside style="padding:16px;background:#fff3cd;color:#403000">Metadata-only review bundle: screenshots are intentionally omitted. Inspect bundle-manifest.json for the image inventory. Original images remain in the local run directory.</aside>'
+                    if($text.Contains('<body>')){$text=$text.Replace('<body>', '<body>'+$banner)}
+                    else{$text=$text.Replace('<h1>', $banner+'<h1>')}
+                    $entry=$zip.CreateEntry($rel,[IO.Compression.CompressionLevel]::Optimal)
+                    $writer=[IO.StreamWriter]::new($entry.Open(),$utf8);try{$writer.Write($text)}finally{$writer.Dispose()}
+                } else {
+                    [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$file.FullName,$rel,[IO.Compression.CompressionLevel]::Optimal)|Out-Null
+                }
+                $included.Add([ordered]@{path=$rel;source_bytes=$file.Length})
+            }
+        }
+        $entry=$zip.CreateEntry('bundle-manifest.json',[IO.Compression.CompressionLevel]::Optimal)
+        $writer=[IO.StreamWriter]::new($entry.Open(),$utf8)
+        try{$writer.Write((@{schema='vv-review-metadata-v1';run_id=$meta.id;images_included=$false;included=$included;omitted=$omitted;note='Metadata can include cell guards, workbook names and local filesystem paths. Pixel claims cannot be independently rechecked without selected original PNGs.'}|ConvertTo-Json -Depth 20))}finally{$writer.Dispose()}
+    } finally {$zip.Dispose()}
+    if(Test-Path -LiteralPath $dest){[IO.File]::Copy($tmp,$dest,$true);[IO.File]::Delete($tmp)}else{[IO.File]::Move($tmp,$dest)}
+}
+
 function Export-VVBundle([string]$RunRoot) {
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
+    Export-VVMetadataBundle $RunRoot
     $dest=Join-Path $RunRoot 'review.zip'; $tmp=$dest+'.new'
     if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
     $zip=[IO.Compression.ZipFile]::Open($tmp,[IO.Compression.ZipArchiveMode]::Create)
     try {
         $prefix=$RunRoot.TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
         foreach($file in @(Get-ChildItem -LiteralPath $RunRoot -Recurse -File | Sort-Object FullName)) {
-            if ($file.Name -in @('review.zip','review.zip.new','.active.lock') -or $file.Extension -eq '.new') { continue }
+            if ($file.Name -in @('review.zip','review.zip.new','review-metadata.zip','review-metadata.zip.new','.active.lock') -or $file.Extension -eq '.new') { continue }
             if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
             $rel=$file.FullName.Substring($prefix.Length).Replace('\','/')
             $compression=if($file.Extension -in @('.png','.xlsx','.zip')){[IO.Compression.CompressionLevel]::NoCompression}else{[IO.Compression.CompressionLevel]::Fastest}
@@ -271,9 +315,9 @@ function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
     $result=[ordered]@{schema='vv-run-result-v1';status=$status;run=$meta;outputs=$outputs;errors=$errors;capture_summary=$captureSummary;
         note='The original result/progress JSONs are referenced, not flattened or discarded. PNGs may contain probe margins; use valid_rect_px in tiled manifests.'}
     Write-VVJson (Join-Path $RunRoot 'result.json') $result
-    $files=@(Get-ChildItem -LiteralPath $RunRoot -Recurse -File | Where-Object {$_.Name -notin @('review.zip','review.zip.new','.active.lock')})
+    $files=@(Get-ChildItem -LiteralPath $RunRoot -Recurse -File | Where-Object {$_.Name -notin @('review.zip','review.zip.new','review-metadata.zip','review-metadata.zip.new','.active.lock')})
     $images=@($files|Where-Object{$_.Extension -eq '.png'})
-    $sum="STATUS: $status`nEXPERIMENT: $($meta.experiment)`nRUN: $($meta.id)`nPNG FILES: $($images.Count)`nRESULT FILES: $($outputs.Count)`n`nSend review.zip from this directory. It includes existing partial results after failures.`nScreenshots may contain workbook data; logs contain local paths.`n"
+    $sum="STATUS: $status`nEXPERIMENT: $($meta.experiment)`nRUN: $($meta.id)`nPNG FILES: $($images.Count)`nRESULT FILES: $($outputs.Count)`n`nSend review-metadata.zip for routine review. It includes partial results and logs but no images; review.zip preserves the full evidence bundle.`nScreenshots may contain workbook data; logs contain local paths.`n"
     if($captureSummary.sessions -gt 0) {
         $sum+="`nCAPTURE SUMMARY`nACCEPTED TILES: $($captureSummary.accepted_tiles)`nCOMPLETE SHEETS: $($captureSummary.complete_sheets)`nFAILED SHEETS: $($captureSummary.failed_sheets)`nINCONCLUSIVE SHEETS: $($captureSummary.inconclusive_sheets)`nPENDING SHEETS: $($captureSummary.pending_sheets)`nRAW TILE ATTEMPTS: $($captureSummary.rendered_tile_attempts)`nCALIBRATION IMAGES: $($captureSummary.calibration_images)`n"
         foreach($group in $captureSummary.attempt_error_groups){$sum+="`nATTEMPT ERROR: $($group.code) x$($group.attempt_count); sheets: $($group.sheets -join ', ')`n"}
@@ -296,7 +340,7 @@ function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
     $html=@"
 <!doctype html><html lang="en"><meta charset="utf-8"><title>Visual validation - $status</title>
 <style>body{font:16px system-ui;max-width:1100px;margin:32px auto;padding:0 20px}pre{white-space:pre-wrap;background:#f3f5f7;padding:20px}li{margin:6px 0}td{padding:8px;border-bottom:1px solid #ccc}a{color:#145e9b}details{margin:20px 0}</style>
-<h1>$([Net.WebUtility]::HtmlEncode([string]$meta.experiment)) - $status</h1><p><a href='review.zip'>Review bundle</a> | <a href='../../index.html'>All runs</a></p>
+<h1>$([Net.WebUtility]::HtmlEncode([string]$meta.experiment)) - $status</h1><p><a href='review-metadata.zip'>Metadata bundle</a> | <a href='review.zip'>Full evidence</a> | <a href='../../index.html'>All runs</a></p>
 <pre>$([Net.WebUtility]::HtmlEncode($sum))</pre><table>$sheetRows</table>
 <p>Interrupted calls and saved progress are recorded in timeline.jsonl and the progress snapshots. A started call without a completion record is not a successful capture.</p>
 <p>Original tiles can include probe margins. Logical image extents are defined by valid_rect_px and sheet_offset_px in the capture manifest.</p>
@@ -326,7 +370,8 @@ function Stop-VVReport($Owner) {
         Write-Host ''
         Write-Host ('REPORT DIRECTORY: '+$Owner.Path)
         Write-Host ('REPORT:       '+(Join-Path $Owner.Path 'report.html'))
-        if (Test-Path -LiteralPath (Join-Path $Owner.Path 'review.zip')) { Write-Host ('REVIEW BUNDLE:    '+(Join-Path $Owner.Path 'review.zip')) }
+        if (Test-Path -LiteralPath (Join-Path $Owner.Path 'review-metadata.zip')) { Write-Host ('REVIEW BUNDLE (NO IMAGES): '+(Join-Path $Owner.Path 'review-metadata.zip')) }
+        if (Test-Path -LiteralPath (Join-Path $Owner.Path 'review.zip')) { Write-Host ('FULL EVIDENCE BUNDLE: '+(Join-Path $Owner.Path 'review.zip')) }
         else {Write-Host ('REVIEW BUNDLE:    Bundle unavailable; archive this directory: '+$Owner.Path)}
     }
 }

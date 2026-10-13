@@ -32,3 +32,8 @@ Neither dependency set is needed to build or use Excel Shrink itself.
 - [Units and markers](range-image-calibration/): deterministic synthetic OOXML, Normal-font and rounding controls, and clipping/scaling evidence.
 
 Both are available in the CLI/WPF launcher and in the dedicated VS Code PNG diagnostics task. They use the ASP.NET host, preserve raw diagnostic artifacts per run, and do not change production capture policy.
+
+## Gridless capture and compact review bundles
+
+See [capture policy and local HTTP host](GRIDLESS-CAPTURE.md) for normalized gridlines,
+physical final-PNG crops, metadata-only review bundles, and the Rust desktop HTTP path.

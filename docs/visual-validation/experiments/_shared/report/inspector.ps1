@@ -20,7 +20,7 @@ function ConvertTo-VVInspectorWorkbook($Value,[string]$Name) {
     })
     if($null -ne $Value.safe_capture) {
         $out.safe_capture=Select-VVInspectorFields $Value.safe_capture @('schema','workbook','strategy','status','implementation','limits','sheets','attempts','captures','calibrations',
-            'sheet_catalog','bounds_history','precomputed_wsl_rust_visual_plan','environment','current','summary','capture_options','tile_plans','sparse_overflow_checks')
+            'sheet_catalog','bounds_history','precomputed_wsl_rust_visual_plan','environment','current','summary','capture_options','tile_plans','sparse_overflow_checks','sparse_overflow_scans','capture_view','capture_policy_version','final_exports','compute_profile')
         # The final flattened list repeats the same tiles already available in the capture session.
         $out.Remove('captures');$out.Remove('probes')
     }
@@ -33,7 +33,7 @@ function Get-VVInspectorFiles([string]$RunRoot) {
         foreach($entry in @(Get-ChildItem -LiteralPath $dir -Force)) {
             if($entry.Attributes -band [IO.FileAttributes]::ReparsePoint){continue}
             if($entry.PSIsContainer){if($entry.Name -ne 'report-assets'){$stack.Push($entry.FullName)}}
-            elseif($entry.Name -notin @('review.zip','review.zip.new','.active.lock','report-data.json') -and $entry.Extension -ne '.new'){$entry}
+            elseif($entry.Name -notin @('review.zip','review.zip.new','review-metadata.zip','review-metadata.zip.new','.active.lock','report-data.json') -and $entry.Extension -ne '.new'){$entry}
         }
     }
 }

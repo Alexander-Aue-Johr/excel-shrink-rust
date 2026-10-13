@@ -7,11 +7,10 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use axum_server::tls_rustls::RustlsConfig;
+mod final_image;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use excel_com::{ComApartment, OwnedApplication, SaveChanges, WorkbookCloseOptions};
 use image::{ImageReader, Rgba, RgbaImage};
-use rcgen::generate_simple_self_signed;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -86,6 +85,7 @@ struct Shared {
     com: ComController,
     progress_gate: Mutex<()>,
     capture_owners: Mutex<HashMap<String,String>>,
+    export_gate: Mutex<()>,
 }
 
 #[derive(Clone)]
@@ -160,7 +160,18 @@ impl ComController {
     fn start() -> Self {
         let (sender, receiver) = mpsc::channel::<ComCommand>();
 
+        let use_com = env::var("VV_EXCEL_LAUNCH_MODE").unwrap_or_else(|_|"rust-com".into()) == "rust-com";
         thread::spawn(move || {
+            if !use_com {
+                while let Ok(command) = receiver.recv() {
+                    match command {
+                        ComCommand::Open { response, .. } => { let _=response.send(Err("This host uses the external Excel /x launcher".into())); },
+                        ComCommand::Close { response } => { let _=response.send(Ok(())); },
+                        ComCommand::Shutdown => break,
+                    }
+                }
+                return;
+            }
             let apartment = match ComApartment::sta() {
                 Ok(value) => value,
                 Err(error) => {
@@ -932,8 +943,17 @@ async fn capture_progress(State(state): State<Arc<Shared>>, Json(payload): Json<
     match result {Ok(())=>Json(json!({"ok":true})).into_response(),Err(e)=>(StatusCode::BAD_REQUEST,format!("{e:#}")).into_response()}
 }
 async fn capture_guard(State(state): State<Arc<Shared>>, request: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let host = request.headers().get(header::HOST).and_then(|h| h.to_str().ok()).unwrap_or("");
+    let hosts = ["localhost:3000", "127.0.0.1:3000", "localhost:3001", "127.0.0.1:3001"];
+    let origin = request.headers().get(header::ORIGIN).and_then(|h| h.to_str().ok());
+    let same_origin = origin.map(|o| o == format!("http://{host}")).unwrap_or(true);
+    let cross_site = request.headers().get("sec-fetch-site").and_then(|h|h.to_str().ok()) == Some("cross-site");
+    if !hosts.contains(&host) || !same_origin || cross_site {
+        state.record("local_request_rejected", json!({"host":host,"origin":origin,"path":request.uri().path()}));
+        return (StatusCode::FORBIDDEN,"Loopback same-origin requests only").into_response();
+    }
     if state.config.experiment=="range-image" && request.method()==axum::http::Method::POST &&
-        matches!(request.uri().path(),"/capture-claim"|"/capture-progress"|"/image-batch"|"/result"|"/client-event"|"/error"|"/probe-batch") &&
+        matches!(request.uri().path(),"/capture-claim"|"/capture-progress"|"/image-batch"|"/finalize-image"|"/result"|"/client-event"|"/error"|"/probe-batch") &&
         request.headers().get("X-VV-Run-Id").and_then(|x|x.to_str().ok())!=Some(state.config.capture_run_id.as_str()) {
         return (StatusCode::CONFLICT,"stale-capture-run").into_response();
     }
@@ -965,6 +985,8 @@ fn router(state: Arc<Shared>) -> Router {
         .route("/visual-plan.json", get(|state| static_file(state, "visual-plan.json", "application/json; charset=utf-8")))
         .route("/mode.js", get(mode_js))
         .route("/safe-capture.js", get(|state| static_file(state,"safe-capture.js","application/javascript; charset=utf-8")))
+        .route("/capture-policy.js", get(|state| static_file(state,"capture-policy.js","application/javascript; charset=utf-8")))
+        .route("/finalize-image", post(final_image::finalize))
         .route("/selective-overflow.js", get(|state| static_file(state,"selective-overflow.js","application/javascript; charset=utf-8")))
         .route("/capture-options.json", get(|state| static_file(state,"capture-options.json","application/json; charset=utf-8")))
         .layer(axum::middleware::from_fn_with_state(state.clone(),capture_guard))
@@ -991,41 +1013,12 @@ fn load_config() -> Result<Config> {
     })
 }
 
-fn ensure_cert(directory: &Path) -> Result<()> {
-    fs::create_dir_all(directory)?;
-    let cert_pem = directory.join("localhost-cert.pem");
-    let key_pem = directory.join("localhost-key.pem");
-    let cert_der = directory.join("localhost-cert.der");
-
-    if cert_pem.exists() && key_pem.exists() && cert_der.exists() {
-        println!("{}", cert_der.display());
-        return Ok(());
-    }
-
-    let certified = generate_simple_self_signed(vec!["localhost".to_owned()])?;
-    fs::write(&cert_pem, certified.cert.pem())?;
-    fs::write(&key_pem, certified.key_pair.serialize_pem())?;
-    fs::write(&cert_der, certified.cert.der().as_ref())?;
-    println!("{}", cert_der.display());
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
-
-    if args.get(1).map(String::as_str) == Some("ensure-cert") {
-        let directory = args.get(2).context("usage: host ensure-cert <directory>")?;
-        ensure_cert(Path::new(directory))?;
-        return Ok(());
+    if args.len() != 2 || args.get(1).map(String::as_str) != Some("serve") {
+        bail!("usage: visual-validation-office-host serve (local HTTP only)");
     }
-
-    if args.get(1).map(String::as_str) != Some("serve") {
-        bail!("usage: visual-validation-office-host <ensure-cert DIR|serve CERT_PEM KEY_PEM>");
-    }
-
-    let cert_pem = PathBuf::from(args.get(2).context("missing cert PEM path")?);
-    let key_pem = PathBuf::from(args.get(3).context("missing key PEM path")?);
 
     let config = load_config()?;
     let expected_paths = fs::read_to_string(&config.file_list)?;
@@ -1055,6 +1048,7 @@ async fn main() -> Result<()> {
         com: ComController::start(),
         progress_gate: Mutex::new(()),
         capture_owners: Mutex::new(HashMap::new()),
+        export_gate: Mutex::new(()),
     });
 
     state.record("server_starting", json!({
@@ -1064,25 +1058,16 @@ async fn main() -> Result<()> {
 
     write_output(&state)?;
     let app = router(state.clone());
-    let tls = RustlsConfig::from_pem_file(cert_pem, key_pem).await?;
-
-    let https = axum_server::bind_rustls(
-        SocketAddr::from(([127, 0, 0, 1], 3000)),
-        tls,
-    )
-    .serve(app.clone().into_make_service());
-
-    let http = axum_server::bind(SocketAddr::from(([127, 0, 0, 1], 3001)))
-        .serve(app.into_make_service());
-
+    let web = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 3000))).await?;
+    let control = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 3001))).await?;
     state.record("server_ready", json!({
-        "https": "https://localhost:3000",
-        "http": "http://127.0.0.1:3001"
+        "transport":"http-loopback", "web":"http://localhost:3000", "control":"http://127.0.0.1:3001",
+        "certificate_operations":false
     }));
-
+    let web_app = app.clone();
     tokio::select! {
-        result = https => result?,
-        result = http => result?,
+        result = async move { axum::serve(web, web_app.into_make_service()).await } => result?,
+        result = async move { axum::serve(control, app.into_make_service()).await } => result?,
     }
 
     let _ = state.com.sender.send(ComCommand::Shutdown);

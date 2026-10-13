@@ -117,7 +117,7 @@ $LocalRoot = Join-Path `
     $env:LOCALAPPDATA `
     'excel-shrink-rust\visual-validation-experiments'
 $BuildCache = Join-Path $LocalRoot 'build-cache'
-$RegistrationRoot = Join-Path $LocalRoot 'office-addin'
+$RegistrationRoot = Join-Path $LocalRoot $(if ($HostKind -eq 'rust') { 'office-addin-rust-http' } else { 'office-addin' })
 $RuntimeRoot = Join-Path `
     $env:TEMP `
     ('excel-shrink-visual-validation-' + [Guid]::NewGuid().ToString('N'))
@@ -581,67 +581,9 @@ function Ensure-RustHost {
     $exe = Join-Path $cache 'visual-validation-office-host.exe'
     Copy-Item -LiteralPath $builtWindows -Destination $exe -Force
 
-    $certRoot = Join-Path $LocalRoot 'rust-host-certificate'
-    New-Item -ItemType Directory -Path $certRoot -Force | Out-Null
+    Write-ExperimentLog 'Rust host uses loopback HTTP; certificate generation and trust are disabled.'
+    return [pscustomobject]@{ Exe = $exe; Args = @('serve') }
 
-    Write-ExperimentLog 'Ensuring Rust-host localhost certificate...'
-    & $exe ensure-cert $certRoot
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Rust host failed to create/reuse its localhost certificate.'
-    }
-
-    $certDer = Join-Path $certRoot 'localhost-cert.der'
-    $certPem = Join-Path $certRoot 'localhost-cert.pem'
-    $keyPem = Join-Path $certRoot 'localhost-key.pem'
-
-    $certificate = New-Object `
-        Security.Cryptography.X509Certificates.X509Certificate2 `
-        $certDer
-    $trustedPath = 'Cert:\CurrentUser\Root\' + $certificate.Thumbprint
-
-    if (-not (Test-Path -LiteralPath $trustedPath)) {
-        Write-ExperimentLog (
-            'Trusting Rust-host localhost certificate non-interactively for ' +
-            'the current user...'
-        )
-
-        # Import-Certificate into Trusted Root can surface a Windows trust prompt.
-        # When this runner is launched from a WSL-backed VS Code task that prompt
-        # can exist behind the terminal: the task appears frozen and only the
-        # Windows system sound is noticeable. X509Store.Add writes the exact same
-        # CurrentUser\Root store through the non-UI certificate-store API.
-        $store = New-Object `
-            Security.Cryptography.X509Certificates.X509Store `
-            'Root', `
-            ([Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-
-        try {
-            $store.Open(
-                [Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite
-            )
-            $store.Add($certificate)
-        }
-        finally {
-            $store.Close()
-        }
-
-        if (-not (Test-Path -LiteralPath $trustedPath)) {
-            throw (
-                'Rust-host certificate write returned, but the certificate is not ' +
-                "present in CurrentUser\Root: $($certificate.Thumbprint)"
-            )
-        }
-
-        Write-ExperimentLog 'Rust-host localhost certificate trust verified.'
-    }
-    else {
-        Write-ExperimentLog 'Rust-host localhost certificate is already trusted.'
-    }
-
-    return [pscustomobject]@{
-        Exe = $exe
-        Args = @('serve', $certPem, $keyPem)
-    }
 }
 
 function Get-ListeningProcessIds([int]$Port) {
@@ -779,7 +721,8 @@ foreach ($name in @(
     'VV_WAIT_FOR_START',
     'VV_EXTENDED_ERROR_LOGGING',
     'VV_OFFICE_JS_DEBUG',
-    'VV_CAPTURE_RUN_ID'
+    'VV_CAPTURE_RUN_ID',
+    'VV_EXCEL_LAUNCH_MODE'
 )) {
     $oldEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
@@ -788,6 +731,7 @@ $env:VV_CAPTURE_RUN_ID = [Guid]::NewGuid().ToString('N')
 $env:VV_EXPERIMENT = $Experiment
 $env:VV_STRATEGY = $Strategy
 $env:VV_HOST_KIND = $HostKind
+$env:VV_EXCEL_LAUNCH_MODE = $ExcelLaunchMode
 $env:VV_STATIC_ROOT = $StaticStage
 $env:VV_FILE_LIST = $HostFileList
 $env:VV_OUTPUT_PATH = $HostOutput
@@ -860,7 +804,16 @@ try {
     Write-ExperimentLog 'Experiment host is healthy.'
 
     $registrationManifest = Join-Path $RegistrationRoot 'manifest.xml'
-    Copy-Item -LiteralPath $ManifestSource -Destination $registrationManifest -Force
+    $manifestText = [IO.File]::ReadAllText($ManifestSource, $script:StrictUtf8)
+    if ($HostKind -eq 'rust') {
+        # Separate identity avoids loading a cached HTTPS manifest for the HTTP host.
+        $manifestText = $manifestText.Replace('https://localhost:3000', 'http://localhost:3000')
+        $manifestText = $manifestText.Replace('46f974c9-b264-4b71-bbb5-670f65ec1749', '7b0dcce4-d6e3-4c36-bc37-5c4a77c3cbe2')
+    }
+    Write-Utf8NoBom $registrationManifest $manifestText
+    [IO.Directory]::CreateDirectory((Join-Path $env:VV_REPORT_DIR 'inputs/host')) | Out-Null
+    Copy-Item -LiteralPath $registrationManifest -Destination (Join-Path $env:VV_REPORT_DIR ('inputs/host/' + $HostKind + '-manifest.xml')) -Force
+    Write-VVEvent 'host_transport' @{host=$HostKind;web_origin=$(if($HostKind -eq 'rust'){'http://localhost:3000'}else{'https://localhost:3000'});control_origin='http://127.0.0.1:3001';certificate_operations=($HostKind -ne 'rust')}
     $addInId = Get-ManifestId $registrationManifest
     $addInVersion = Get-ManifestVersion $registrationManifest
     $registrationState = Register-DeveloperAddIn $addInId $registrationManifest
