@@ -37,3 +37,7 @@ Both are available in the CLI/WPF launcher and in the dedicated VS Code PNG diag
 
 See [capture policy and local HTTP host](GRIDLESS-CAPTURE.md) for normalized gridlines,
 physical final-PNG crops, metadata-only review bundles, and the Rust desktop HTTP path.
+
+## Configured comparison suite
+
+Use **Visual validation: Run comparison suite** in VS Code. The default `suite.json` runs repeated current candidates; `inventory` covers the experiment families once. See [COMPARISON-SUITE.md](COMPARISON-SUITE.md) for scope, isolation, interpretation and the one-bundle review workflow. Existing individual entry points remain available.

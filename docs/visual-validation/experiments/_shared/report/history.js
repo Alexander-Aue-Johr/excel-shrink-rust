@@ -27,7 +27,8 @@ function mount(data,host){const d=host.ownerDocument,runs=normalize(data),el=(ta
   for(const r of filtered){const card=el('article','history-card'),heading=el('div','history-card-heading');add(card,heading);add(heading,el('h3','',r.experiment),badge(r.status));
    const when=new Date(r.started_utc);add(card,el('p','run-id',r.id),el('p','muted',Number.isFinite(when.getTime())?when.toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'medium'})+' · local time':'Start time not recorded'));
    const args=r.arguments||{},chips=el('div','history-chips');for(const k of ['Strategy','Implementation','OverflowMode','TileMegapixels','TilePacking','Workbook','Suite'])if(args[k]!=null){const value=String(args[k]),display=k==='Workbook'?value.split(/[\\/]/).pop():value;const chip=el('span','history-chip',`${k.replace(/([a-z])([A-Z])/g,'$1 $2')}: ${display}`);chip.title=value;add(chips,chip);}add(card,chips);
-   if(r.rollup)add(card,el('p','muted',`${r.rollup.complete_sheets??0} complete worksheets · ${r.rollup.accepted_tiles??0} retained tiles · ${(r.rollup.failed_sheets??0)+(r.rollup.inconclusive_sheets??0)} require review`));
+   if(r.suite)add(card,el('p','muted',`${r.suite.profile}: ${r.suite.complete??0}/${r.suite.total??0} cases complete · ${r.suite.requires_review??0} require review`));
+   else if(r.rollup)add(card,el('p','muted',`${r.rollup.complete_sheets??0} complete worksheets · ${r.rollup.accepted_tiles??0} retained tiles · ${(r.rollup.failed_sheets??0)+(r.rollup.inconclusive_sheets??0)} require review`));
    if(r.status!=='complete'&&r.rollup?.complete_sheets>0&&!r.rollup.failed_sheets&&!r.rollup.inconclusive_sheets&&!r.rollup.pending_sheets)add(card,el('p','muted','Recorded sheets completed; inspect the run-level error below.'));
    if(r.errors.length){const raw=r.errors[0],message=typeof raw==='string'?raw:raw.message||raw.reason||JSON.stringify(raw);add(card,el('p','history-error',message));}
    if(r.warning)add(card,el('p','history-error',r.warning));
@@ -38,6 +39,7 @@ function mount(data,host){const d=host.ownerDocument,runs=normalize(data),el=(ta
  const catalog=el('section','history-panel');catalog.id='experiments';add(main,catalog,el('footer','muted',`Offline report catalog · Generated ${data.generated_utc||'time not recorded'} · Historical results remain unchanged.`));add(catalog,el('div','eyebrow','EXPERIMENT MAP'),el('h2','','What each experiment answers'));
  const table=el('table','bounds-table'),body=el('tbody');add(catalog,add(el('div','table-scroll'),table));add(table,add(el('thead'),add(el('tr'),['Experiment','Question','Current scope'].map(t=>el('th','',t)))),body);
  for(const row of [
+ ['Configured comparison suite','Which current configurations are reliable, equivalent and fast on the same inputs?','One JSON plan. Repeated current candidates or a one-pass experiment inventory. No automatic deletion.'],
  ['Drawing bounds','Which execution model obtains shape bounds reliably and quickly?','VBA, C# add-ins, Office.js and external COM. Implementation choice remains an engineering comparison.'],
  ['Get picture · A–C','How much do bounds discovery and image capture cost?','UsedRange or content/drawing bounds. Calibrated tiling; persistent image evidence.'],
  ['Get picture · D/E','Can a before/blocked XOR pair determine overflow?','Legacy bounded blocker column / row. Retained for comparison; large probes are guarded.'],

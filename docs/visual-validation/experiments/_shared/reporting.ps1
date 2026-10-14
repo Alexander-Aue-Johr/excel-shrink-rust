@@ -1,5 +1,6 @@
 . (Join-Path $PSScriptRoot 'report\inspector.ps1')
 . (Join-Path $PSScriptRoot 'report\history.ps1')
+. (Join-Path $PSScriptRoot 'suite\report.ps1')
 # Shared report ownership for ALL visual-validation experiment entry points.
 # Reports are durable from the beginning; caches and input workbooks are never cleanup targets.
 function Write-VVJson([string]$Path, $Value) {
@@ -154,6 +155,8 @@ function Export-VVBundle([string]$RunRoot) {
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     Export-VVMetadataBundle $RunRoot
+    $runMeta=Read-VVJson (Join-Path $RunRoot 'run.json')
+    if ($null -ne $runMeta -and $runMeta.experiment -eq 'comparison-suite') { return } # Keep local evidence; do not duplicate every case PNG into another large ZIP.
     $dest=Join-Path $RunRoot 'review.zip'; $tmp=$dest+'.new'
     if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
     $zip=[IO.Compression.ZipFile]::Open($tmp,[IO.Compression.ZipArchiveMode]::Create)
@@ -256,6 +259,10 @@ function Get-VVCaptureRollup([string]$RunRoot) {
 }
 function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
     $meta=Read-VVJson (Join-Path $RunRoot 'run.json')
+    if ($null -ne $meta -and $meta.experiment -eq 'comparison-suite') {
+        Complete-VVSuiteReport -RunRoot $RunRoot -Interrupted:$Interrupted
+        return
+    }
     if ($null -eq $meta -or $meta.schema -ne 'vv-report-v1') { throw 'Not a managed report.' }
     $prefix=$RunRoot.TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
     $errors=@(); $outputs=@(); $sheetRows=[Text.StringBuilder]::new()
@@ -372,6 +379,7 @@ function Stop-VVReport($Owner) {
         Write-Host ('REPORT:       '+(Join-Path $Owner.Path 'report.html'))
         if (Test-Path -LiteralPath (Join-Path $Owner.Path 'review-metadata.zip')) { Write-Host ('REVIEW BUNDLE (NO IMAGES): '+(Join-Path $Owner.Path 'review-metadata.zip')) }
         if (Test-Path -LiteralPath (Join-Path $Owner.Path 'review.zip')) { Write-Host ('FULL EVIDENCE BUNDLE: '+(Join-Path $Owner.Path 'review.zip')) }
-        else {Write-Host ('REVIEW BUNDLE:    Bundle unavailable; archive this directory: '+$Owner.Path)}
+        elseif (-not (Test-Path -LiteralPath (Join-Path $Owner.Path 'review-metadata.zip'))) {Write-Host ('REVIEW BUNDLE:    Bundle unavailable; archive this directory: '+$Owner.Path)}
+        else {Write-Host ('LOCAL EVIDENCE: '+$Owner.Path)}
     }
 }

@@ -13,7 +13,7 @@ function Write-VVHistory([string]$ReportRoot, $Items) {
         $runs += [ordered]@{
             id = $item.Name; experiment = [string]$item.Meta.experiment; status = $status
             started_utc = $item.Meta.started_utc; finished_utc = $item.Meta.completed_utc
-            arguments = $item.Meta.arguments; rollup = $summary.capture_summary
+            arguments = $item.Meta.arguments; rollup = $summary.capture_summary; suite = $summary.suite
             errors = @($summary.errors | Select-Object -First 3); warning = $warning
             report = ('runs/' + $item.Name + '/report.html')
             bundle = $(if (Test-Path -LiteralPath (Join-Path $item.Path 'review-metadata.zip') -PathType Leaf) { 'runs/' + $item.Name + '/review-metadata.zip' } elseif (Test-Path -LiteralPath (Join-Path $item.Path 'review.zip') -PathType Leaf) { 'runs/' + $item.Name + '/review.zip' } else { $null })

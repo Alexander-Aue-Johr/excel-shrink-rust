@@ -1,0 +1,41 @@
+{
+  "schema": "vv-comparison-suite-v1",
+  "default_profile": "recommended",
+  "corpus_root": "corpus-local",
+  "workbooks": ["original_destatis_xlsx_files/krankenhausverzeichnis-3500100227005.xlsx"],
+  "capture": {
+    "batch_size": 1,
+    "tile_megapixels": 16,
+    "tile_packing": "budget",
+    "overflow_probe_width_px": 1920,
+    "overflow_probe_height_px": 1080,
+    "excel_launch_mode": "excel-x"
+  },
+  "execution": {
+    "case_timeout_seconds": 1200,
+    "cooldown_seconds": 2,
+    "open_report": true,
+    "verify_final_pixels": true,
+    "stop_on_input_change": true
+  },
+  "profiles": {
+    "recommended": {
+      "description": "Four current Strategy F configurations; one warm-up and three recorded rounds. Rotating order, not a full factorial sweep.",
+      "warmups": 1,
+      "repetitions": 3,
+      "cases": ["f-dotnet-heuristic", "f-rust-heuristic", "f-dotnet-selective", "f-rust-selective"]
+    },
+    "inventory": {
+      "description": "One attempt per relevant configuration or experiment family. Coverage screening, not a performance ranking.",
+      "warmups": 0,
+      "repetitions": 1,
+      "cases": ["f-dotnet-heuristic", "f-rust-heuristic", "f-dotnet-selective", "f-rust-selective", "a-dotnet", "b-dotnet", "c-dotnet", "d-dotnet", "e-dotnet", "vba-picture", "shape-native-base", "shape-vsto", "shape-officejs-dotnet", "shape-officejs-rust", "units", "markers", "row-heights", "height-plateau"]
+    },
+    "diagnostics": {
+      "description": "Renderer geometry and limitation checks. These are diagnostics, not competing capture implementations.",
+      "warmups": 0,
+      "repetitions": 1,
+      "cases": ["units", "markers", "row-heights", "height-plateau"]
+    }
+  }
+}
