@@ -1,12 +1,13 @@
 ﻿function Get-VVRelative([string]$Root,[string]$Path) {
-    $prefix=[IO.Path]::GetFullPath($Root).TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
-    $full=[IO.Path]::GetFullPath($Path)
+    Initialize-VVReportIO
+    $prefix=[VVReportIO]::FullPath($Root).TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
+    $full=[VVReportIO]::FullPath($Path)
     if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Evidence path leaves its report directory.'}
     return $full.Substring($prefix.Length).Replace('\','/')
 }
 function Get-VVCaseMetrics([string]$CaseRoot,$Job,[switch]$VerifyPixels) {
     $workbooks=@();$documents=@();$errors=@();$captureRows=@();$pixelCache=@{};$pixelMs=0
-    foreach($file in @(Get-ChildItem -LiteralPath (Join-Path $CaseRoot 'data') -File -Recurse -Filter '*.json' -ErrorAction SilentlyContinue)) {
+    foreach($file in @(Get-VVChildItem -LiteralPath (Join-Path $CaseRoot 'data') -File -Recurse -Filter '*.json' -ErrorAction Stop)) {
         if($file.Name -match 'options|manifest|config|plan|files'){continue}
         try {$doc=Read-VVJson $file.FullName}catch{$errors+="Unreadable result: $($file.Name): $($_.Exception.Message)";continue}
         if($null -eq $doc){continue}
@@ -46,19 +47,26 @@ function Get-VVCaseMetrics([string]$CaseRoot,$Job,[switch]$VerifyPixels) {
                         $full=Join-Path $artifactRoot ($p.Replace('/',[IO.Path]::DirectorySeparatorChar))
                         $evidence=Get-VVRelative $CaseRoot $full
                         if($VerifyPixels) {
-                            if(-not(Test-Path -LiteralPath $full -PathType Leaf)){$issue='Final PNG missing locally'}
-                            else {
-                                $sw=[Diagnostics.Stopwatch]::StartNew()
-                                # Encoded digest is checked too; cached digests are only reused for verified identical file bytes.
-                                $hash=(Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash.ToLowerInvariant()
+                            $sw=[Diagnostics.Stopwatch]::StartNew();$pixelStream=$null
+                            try {
+                                if(-not [VVReportIO]::FileExists($full)){throw ('Final PNG is absent: '+$evidence)}
+                                $pixelStream=[VVReportIO]::OpenRead($full)
+                                $hash=[VVReportIO]::HashStream($pixelStream)
                                 if($tile.sha256 -and $hash -ne [string]$tile.sha256){throw 'Stored final-PNG SHA-256 does not match the local file.'}
                                 if($pixelCache.ContainsKey($hash)){$digest=$pixelCache[$hash]}
-                                else {$d=[VVSuitePixels]::Read($full,64000000);$digest=[pscustomobject]@{algorithm=$d.Algorithm;sha256=$d.Sha256;width=$d.Width;height=$d.Height};$pixelCache[$hash]=$digest}
-                                $pixelMs += $sw.Elapsed.TotalMilliseconds
+                                else {
+                                    $pixelStream.Position=0
+                                    $d=[VVSuitePixels]::ReadStream($pixelStream,64000000)
+                                    $digest=[pscustomobject]@{algorithm=$d.Algorithm;sha256=$d.Sha256;width=$d.Width;height=$d.Height}
+                                    $pixelCache[$hash]=$digest
+                                }
                                 if($digest.width -ne $tile.png_width -or $digest.height -ne $tile.png_height){throw 'Final-PNG dimensions disagree with result metadata.'}
+                            }finally{
+                                if($null -ne $pixelStream){$pixelStream.Dispose()}
+                                $sw.Stop();$pixelMs+=$sw.Elapsed.TotalMilliseconds
                             }
                         }
-                    }catch{$issue=$_.Exception.Message}
+                    }catch{$digest=$null;$issue=$_.Exception.Message}
                 }else{$issue='Missing or unsafe final-PNG path'}
                 $captureRows += [pscustomobject]@{workbook=$entry.Name;sheet=$tile.sheet;sheet_index=$tile.sheet_index;
                     address=$tile.address;capture_address=$tile.capture_address;rect=$tile.rect;offset=$tile.sheet_offset_px;
@@ -77,5 +85,8 @@ function Get-VVCaseMetrics([string]$CaseRoot,$Job,[switch]$VerifyPixels) {
     if($Job.candidate.kind -eq 'capture' -and ($captureWbs.Count -eq 0 -or @($captureWbs|Where-Object{$_.sheet_count -eq 0 -or $_.complete_sheets -ne $_.sheet_count}).Count -gt 0)){$status='partial'}
     return [pscustomobject]@{schema='vv-suite-case-metrics-v1';status=$status;workbooks=$workbooks;captures=$captureRows;
         documents=$documents;errors=$errors;pixel_verification_requested=[bool]$VerifyPixels;pixel_verification_ms=$pixelMs;
+        pixel_verification_status=$(if(-not $VerifyPixels){'not-requested'}elseif($captureRows.Count -eq 0){'unverified'}elseif(@($captureRows|Where-Object{$null -eq $_.pixel_digest -or $_.pixel_issue}).Count -gt 0){'unverified'}else{'complete'});
+        pixel_verified_captures=@($captureRows|Where-Object{$null -ne $_.pixel_digest -and -not $_.pixel_issue}).Count;
+        pixel_unverified_captures=$(if($VerifyPixels){@($captureRows|Where-Object{$null -eq $_.pixel_digest -or $_.pixel_issue}).Count}else{0});
         timing_note='Workload wall time is measured by the case worker before offline pixel hashing and report rendering. Named phase timers can overlap; do not add them.'}
 }

@@ -59,12 +59,23 @@ try {
 } finally {
     try {
         # Decode after timing, not inside the capture measurement. No screenshot file is modified.
-        $wantPixels=[bool]$spec.verify_final_pixels -and $spec.job.phase -eq 'measured' -and $spec.job.candidate.kind -eq 'capture'
+        $pixelRequested=[bool]$spec.verify_final_pixels -and $spec.job.phase -eq 'measured' -and $spec.job.candidate.kind -eq 'capture'
+        $wantPixels=$pixelRequested
         if($wantPixels) {
-            try {Add-Type -Path (Join-Path $PSScriptRoot 'SuiteRuntime.cs') -ReferencedAssemblies @('System.dll','WindowsBase.dll','PresentationCore.dll')}
+            try {
+                # Pixel decoding is optional and runs AFTER measurement. WPF is not
+                # required; System.Drawing ships with Windows PowerShell/.NET Framework.
+                Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+                Add-Type -Path (Join-Path $PSScriptRoot 'SuitePixels.cs') -ReferencedAssemblies @('System.dll','System.Drawing.dll') -ErrorAction Stop
+            }
             catch {Write-VVEvent 'offline_pixel_decoder_unavailable' @{message=$_.Exception.Message};$wantPixels=$false}
         }
         $metrics=Get-VVCaseMetrics -CaseRoot $caseRoot -Job $spec.job -VerifyPixels:$wantPixels
+        if($pixelRequested -and -not $wantPixels){
+            $metrics.pixel_verification_requested=$true
+            $metrics.pixel_verification_status='decoder-unavailable'
+            $metrics.pixel_unverified_captures=@($metrics.captures).Count
+        }
         $metrics|Add-Member -NotePropertyName workload_ms -NotePropertyValue $workloadMs
         $metrics|Add-Member -NotePropertyName invocation_error -NotePropertyValue $problem
         if($problem){$metrics.status='failed'}
@@ -76,9 +87,15 @@ try {
         Write-VVJson (Join-Path $caseRoot 'case-metrics.json') @{schema='vv-suite-case-metrics-v1';status='failed';workload_ms=$workloadMs;errors=@($problem);captures=@();workbooks=@();documents=@()}
     }
     if($transcript){try{Stop-Transcript|Out-Null}catch{}}
+    $publication=[ordered]@{status='ready';timestamp_utc=[DateTime]::UtcNow.ToString('o')}
     try{Complete-VVReport $caseRoot;Connect-VVCaseReport $caseRoot;Export-VVMetadataBundle $caseRoot}catch{
+        $publication.status='failed';$publication.message=$_.Exception.Message
         [IO.File]::WriteAllText((Join-Path $caseRoot 'case-report-error.txt'),$_.Exception.ToString(),$utf8)
+        try{Set-VVBundleStatus $caseRoot 'failed' $publication.message}catch{}
     }
-    $active.Dispose()
+    try{
+        $saved=Read-VVJson (Join-Path $caseRoot 'case-metrics.json')
+        if($null -ne $saved){$saved|Add-Member -NotePropertyName report_publication -NotePropertyValue $publication -Force;Write-VVJson (Join-Path $caseRoot 'case-metrics.json') $saved}
+    }finally{$active.Dispose()}
 }
 exit $exitCode

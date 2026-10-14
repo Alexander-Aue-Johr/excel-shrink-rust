@@ -42,6 +42,38 @@
       }
     },
     {
+      "label": "Visual validation: Repair latest suite reports (no Excel)",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/repair-suite.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\"",
+        "vv-repair-suite",
+        "${workspaceFolder}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-STA",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/docs/visual-validation/experiments/repair-suite.ps1"
+        ]
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
       "label": "cargo build",
       "type": "process",
       "command": "cargo",

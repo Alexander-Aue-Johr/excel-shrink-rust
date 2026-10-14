@@ -1,3 +1,4 @@
+. (Join-Path $PSScriptRoot 'report-io.ps1')
 . (Join-Path $PSScriptRoot 'report\inspector.ps1')
 . (Join-Path $PSScriptRoot 'report\history.ps1')
 . (Join-Path $PSScriptRoot 'suite\report.ps1')
@@ -21,7 +22,8 @@ function Write-VVJson([string]$Path, $Value) {
     } else { [IO.File]::Move($tmp, $Path) }
 }
 function Read-VVJson([string]$Path) {
-    if ([IO.File]::Exists($Path)) { return ([IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8) | ConvertFrom-Json) }
+    Initialize-VVReportIO
+    if ([VVReportIO]::FileExists($Path)) { return ([VVReportIO]::ReadAllText($Path) | ConvertFrom-Json) }
     return $null
 }
 function Get-VVRepo([string]$Start) {
@@ -47,7 +49,7 @@ function Test-VVRunActive([string]$Path) {
 function Get-VVRunList([string]$ReportRoot) {
     $runs = Join-Path $ReportRoot 'runs'
     if (-not (Test-Path -LiteralPath $runs)) { return @() }
-    return @(Get-ChildItem -LiteralPath $runs -Directory | Where-Object {
+    return @(Get-VVChildItem -LiteralPath $runs -Directory | Where-Object {
         -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint)
     } | ForEach-Object {
         try {
@@ -108,47 +110,131 @@ function New-VVStep([string]$Name) {
     [IO.Directory]::CreateDirectory($path) | Out-Null
     return $path
 }
+$script:VVBundleStatusSource=Join-Path $PSScriptRoot 'report\bundle-status.js'
+function Set-VVBundleStatus([string]$RunRoot,[string]$Status,[string]$Message='') {
+    $state=[ordered]@{schema='vv-bundle-publication-v1';status=$Status;message=$Message;updated_utc=[DateTime]::UtcNow.ToString('o')}
+    $utf8=[Text.UTF8Encoding]::new($false)
+    Write-VVJson (Join-Path $RunRoot 'bundle-status.json') $state
+    $js='window.VV_BUNDLE_STATE='+($state|ConvertTo-Json -Compress).Replace('<','\u003c').Replace('>','\u003e')+';'
+    [IO.File]::WriteAllText((Join-Path $RunRoot 'bundle-state.js'),$js,$utf8)
+    $assets=Join-Path $RunRoot 'report-assets';[IO.Directory]::CreateDirectory($assets)|Out-Null
+    [IO.File]::Copy($script:VVBundleStatusSource,(Join-Path $assets 'bundle-status.js'),$true)
+    $htmlPath=Join-Path $RunRoot 'report.html'
+    if([IO.File]::Exists($htmlPath)){
+        $html=[IO.File]::ReadAllText($htmlPath,$utf8)
+        if(-not $html.Contains('src="bundle-state.js"')) {
+            $scripts='<script src="bundle-state.js"></script><script src="report-assets/bundle-status.js"></script>'
+            if($html.Contains('</body>')){$html=$html.Replace('</body>',$scripts+'</body>')}
+            elseif($html.Contains('</html>')){$html=$html.Replace('</html>',$scripts+'</html>')}
+            else{$html+=$scripts}
+            [IO.File]::WriteAllText($htmlPath,$html,$utf8)
+        }
+    }
+}
+function Test-VVMetadataZip([string]$Path,[string[]]$Required) {
+    # Validate the manifest, exact entry set, uncompressed lengths and hashes before publication.
+    $zip=[IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $entry=$zip.GetEntry('bundle-manifest.json')
+        if($null -eq $entry){throw 'Archive has no completion manifest.'}
+        $reader=[IO.StreamReader]::new($entry.Open(),[Text.Encoding]::UTF8)
+        try{$manifest=$reader.ReadToEnd()|ConvertFrom-Json}finally{$reader.Dispose()}
+        if($manifest.schema -ne 'vv-review-metadata-v2' -or $manifest.status -ne 'complete'){throw 'Incomplete metadata manifest.'}
+        $wanted=@{}
+        foreach($item in @($manifest.included)) {
+            if($wanted.ContainsKey([string]$item.path)){throw 'Duplicate manifest path.'}
+            $wanted[[string]$item.path]=$item
+        }
+        if($zip.Entries.Count -ne $wanted.Count+1){throw 'Archive entry count disagrees with its manifest.'}
+        $seen=@{}
+        foreach($entry in $zip.Entries) {
+            if($seen.ContainsKey($entry.FullName)){throw 'Duplicate ZIP entry.'};$seen[$entry.FullName]=$true
+            if($entry.FullName -eq 'bundle-manifest.json'){continue}
+            $item=$wanted[$entry.FullName]
+            if($null -eq $item -or $entry.Length -ne [long]$item.stored_bytes){throw ('Unexpected or truncated archive entry: '+$entry.FullName)}
+            $stream=$entry.Open()
+            try{$hash=[VVReportIO]::HashStream($stream)}finally{$stream.Dispose()}
+            if($hash -ne $item.sha256){throw ('Archive content hash mismatch: '+$entry.FullName)}
+        }
+        foreach($requiredPath in $Required){if(-not $seen.ContainsKey($requiredPath)){throw ('Required report metadata missing: '+$requiredPath)}}
+    }finally{$zip.Dispose()}
+}
 function Export-VVMetadataBundle([string]$RunRoot) {
-    # Keep every local image and the full bundle. This separate transport bundle omits binaries.
+    Initialize-VVReportIO
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $meta=Read-VVJson (Join-Path $RunRoot 'run.json')
-    if ($null -eq $meta -or $meta.schema -ne 'vv-report-v1') { throw 'Not a managed report.' }
-    $dest=Join-Path $RunRoot 'review-metadata.zip'; $tmp=$dest+'.new'
-    if(Test-Path -LiteralPath $tmp){Remove-Item -LiteralPath $tmp -Force}
-    $prefix=[IO.Path]::GetFullPath($RunRoot).TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
-    $zip=[IO.Compression.ZipFile]::Open($tmp,[IO.Compression.ZipArchiveMode]::Create)
-    $included=[Collections.Generic.List[object]]::new();$omitted=[Collections.Generic.List[object]]::new()
-    $utf8=[Text.UTF8Encoding]::new($false)
-    try {
-        $stack=[Collections.Generic.Stack[string]]::new();$stack.Push([IO.Path]::GetFullPath($RunRoot))
-        while($stack.Count -gt 0) {
-            foreach($file in @(Get-ChildItem -LiteralPath $stack.Pop() -Force)) {
-                if($file.Attributes -band [IO.FileAttributes]::ReparsePoint){continue}
-                if($file.PSIsContainer){$stack.Push($file.FullName);continue}
-                if($file.Name -like 'review*.zip*' -or $file.Name -eq '.active.lock' -or $file.Extension -in @('.new','.previous')){continue}
-                $rel=$file.FullName.Substring($prefix.Length).Replace('\','/')
-                if($file.Extension.ToLowerInvariant() -notin @('.json','.jsonl','.txt','.log','.csv','.md','.html','.css','.js','.xml')) {
-                    $omitted.Add([ordered]@{path=$rel;bytes=$file.Length;reason='binary-artifact'});continue
-                }
-                if($rel -eq 'report.html') {
-                    $text=[IO.File]::ReadAllText($file.FullName,$utf8)
-                    $banner='<aside style="padding:16px;background:#fff3cd;color:#403000">Metadata-only review bundle: screenshots are intentionally omitted. Inspect bundle-manifest.json for the image inventory. Original images remain in the local run directory.</aside>'
-                    if($text.Contains('<body>')){$text=$text.Replace('<body>', '<body>'+$banner)}
-                    else{$text=$text.Replace('<h1>', $banner+'<h1>')}
-                    $entry=$zip.CreateEntry($rel,[IO.Compression.CompressionLevel]::Optimal)
-                    $writer=[IO.StreamWriter]::new($entry.Open(),$utf8);try{$writer.Write($text)}finally{$writer.Dispose()}
-                } else {
-                    [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$file.FullName,$rel,[IO.Compression.CompressionLevel]::Optimal)|Out-Null
-                }
-                $included.Add([ordered]@{path=$rel;source_bytes=$file.Length})
-            }
+    if($null -eq $meta -or $meta.schema -ne 'vv-report-v1'){throw 'Not a managed report.'}
+    $dest=Join-Path $RunRoot 'review-metadata.zip'
+    $tmp=$dest+'.'+[Guid]::NewGuid().ToString('N')+'.new'
+    $prefix=[VVReportIO]::FullPath($RunRoot).TrimEnd('\')+'\'
+    $required=@('run.json','report.html')
+    if($meta.experiment -eq 'comparison-suite'){
+        $required+=@('suite-state.json','case-results.csv')
+        $suite=Read-VVJson (Join-Path $RunRoot 'suite-state.json')
+        foreach($job in @($suite.jobs|Where-Object{$null -ne $_ -and $_.status -eq 'complete'})){
+            if([string]$job.id -notmatch '^\d{3}-[a-z0-9-]+$'){throw 'Unsafe case ID in suite state.'}
+            $required+=('cases/'+$job.id+'/case-metrics.json')
         }
-        $entry=$zip.CreateEntry('bundle-manifest.json',[IO.Compression.CompressionLevel]::Optimal)
-        $writer=[IO.StreamWriter]::new($entry.Open(),$utf8)
-        try{$writer.Write((@{schema='vv-review-metadata-v1';run_id=$meta.id;images_included=$false;included=$included;omitted=$omitted;note='Metadata can include cell guards, workbook names and local filesystem paths. Pixel claims cannot be independently rechecked without selected original PNGs.'}|ConvertTo-Json -Depth 20))}finally{$writer.Dispose()}
-    } finally {$zip.Dispose()}
-    if(Test-Path -LiteralPath $dest){[IO.File]::Copy($tmp,$dest,$true);[IO.File]::Delete($tmp)}else{[IO.File]::Move($tmp,$dest)}
+    }
+    $zip=$null;$phase='enumeration';$current=$null
+    try {
+        Set-VVBundleStatus $RunRoot 'building' 'Creating and verifying the metadata archive.'
+        # Enumeration must succeed before a ZIP is opened. PNGs are inventoried, not read.
+        $files=@(Get-VVChildItem -LiteralPath $RunRoot -Recurse -File -Force | Sort-Object FullName)
+        $included=[Collections.Generic.List[object]]::new();$omitted=[Collections.Generic.List[object]]::new()
+        $phase='writing'
+        $zip=[IO.Compression.ZipFile]::Open($tmp,[IO.Compression.ZipArchiveMode]::Create)
+        foreach($file in $files){
+            $rel=$file.FullName.Substring($prefix.Length).Replace('\','/');$current=$rel
+            if($file.Name -like 'review*.zip*' -or $file.Name -eq '.active.lock' -or $file.Extension -in @('.new','.previous')){continue}
+            if($file.Attributes -band [IO.FileAttributes]::ReparsePoint){
+                $omitted.Add([ordered]@{path=$rel;bytes=$file.Length;reason='reparse-point-not-followed'});continue
+            }
+            if($file.Extension.ToLowerInvariant() -notin @('.json','.jsonl','.txt','.log','.csv','.md','.html','.css','.js','.xml')){
+                $omitted.Add([ordered]@{path=$rel;bytes=$file.Length;reason='binary-artifact'});continue
+            }
+            if($file.Name -eq 'bundle-state.js') {
+                $text=[VVReportIO]::ReadAllText($file.FullName)+"`nwindow.VV_BUNDLE_STATE.metadata_copy=true;"
+                $record=Add-VVZipText $zip $rel $text
+            } elseif($rel -eq 'report.html'){
+                $text=[VVReportIO]::ReadAllText($file.FullName)
+                $banner='<aside style="padding:12px;font:14px system-ui;background:#fff3cd">Metadata-only review copy. Original screenshots are intentionally omitted. See bundle-manifest.json.</aside>'
+                if($text.Contains('<body>')){$text=$text.Replace('<body>','<body>'+$banner)}
+                else{$text=$banner+$text}
+                $record=Add-VVZipText $zip $rel $text
+            }else{
+                $record=Add-VVZipFile $zip $file.FullName $rel ([IO.Compression.CompressionLevel]::Optimal)
+            }
+            $included.Add($record)
+        }
+        $manifest=[ordered]@{schema='vv-review-metadata-v2';status='complete';run_id=$meta.id;images_included=$false;
+            included=$included;omitted=$omitted;required=$required;
+            note='Source measurements are unchanged. Metadata may contain local paths and cell guards. Missing screenshots cannot be independently rechecked.'}
+        $null=Add-VVZipText $zip 'bundle-manifest.json' ($manifest|ConvertTo-Json -Depth 30)
+        $zip.Dispose();$zip=$null
+        $phase='verification';Test-VVMetadataZip $tmp $required
+        $phase='publication'
+        if([IO.File]::Exists($dest)){
+            try{[IO.File]::Replace($tmp,$dest,$null)}
+            catch{
+                # Providers without ReplaceFile: preserve the old complete archive before moving.
+                $previous=$dest+'.'+[Guid]::NewGuid().ToString('N')+'.previous'
+                [IO.File]::Move($dest,$previous)
+                try{[IO.File]::Move($tmp,$dest)}
+                catch{if(-not [IO.File]::Exists($dest)){[IO.File]::Move($previous,$dest)};throw}
+            }
+        }else{[IO.File]::Move($tmp,$dest)}
+        Set-VVBundleStatus $RunRoot 'ready' 'Metadata archive verified and published.'
+    }catch{
+        $problem=$_
+        try{
+            Write-VVJson (Join-Path $RunRoot 'bundle-error.json') @{schema='vv-bundle-error-v1';phase=$phase;entry=$current;temporary_file=$tmp;
+                message=$problem.Exception.Message;exception=$problem.Exception.ToString();timestamp_utc=[DateTime]::UtcNow.ToString('o')}
+            Set-VVBundleStatus $RunRoot 'failed' ('Archive was not published. Phase: '+$phase+'. Run the report-repair task; capture results are retained.')
+        }catch{Write-Warning 'Could not update bundle status; original files are retained.'}
+        throw $problem
+    }finally{if($null -ne $zip){$zip.Dispose()}}
 }
 
 function Export-VVBundle([string]$RunRoot) {
@@ -162,12 +248,12 @@ function Export-VVBundle([string]$RunRoot) {
     $zip=[IO.Compression.ZipFile]::Open($tmp,[IO.Compression.ZipArchiveMode]::Create)
     try {
         $prefix=$RunRoot.TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
-        foreach($file in @(Get-ChildItem -LiteralPath $RunRoot -Recurse -File | Sort-Object FullName)) {
+        foreach($file in @(Get-VVChildItem -LiteralPath $RunRoot -Recurse -File | Sort-Object FullName)) {
             if ($file.Name -in @('review.zip','review.zip.new','review-metadata.zip','review-metadata.zip.new','.active.lock') -or $file.Extension -eq '.new') { continue }
             if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
             $rel=$file.FullName.Substring($prefix.Length).Replace('\','/')
             $compression=if($file.Extension -in @('.png','.xlsx','.zip')){[IO.Compression.CompressionLevel]::NoCompression}else{[IO.Compression.CompressionLevel]::Fastest}
-            [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$file.FullName,$rel,$compression) | Out-Null
+            $null=Add-VVZipFile $zip $file.FullName $rel $compression
         }
     } finally { $zip.Dispose() }
     if (Test-Path -LiteralPath $dest) {
@@ -185,7 +271,7 @@ function Export-VVBundle([string]$RunRoot) {
 function Get-VVCaptureRollup([string]$RunRoot) {
     $sessions=New-Object 'System.Collections.Generic.List[object]'
     $finalKeys=New-Object 'System.Collections.Generic.HashSet[string]'
-    foreach($file in @(Get-ChildItem -LiteralPath $RunRoot -Recurse -File -Filter '*.json' | Where-Object {$_.FullName -match '[\\/]data[\\/]'})) {
+    foreach($file in @(Get-VVChildItem -LiteralPath $RunRoot -Recurse -File -Filter '*.json' | Where-Object {$_.FullName -match '[\\/]data[\\/]'})) {
         try {
             $data=Read-VVJson $file.FullName
             foreach($property in @($data.workbooks.PSObject.Properties)) {
@@ -197,7 +283,7 @@ function Get-VVCaptureRollup([string]$RunRoot) {
             }
         } catch { Write-Warning ('Capture summary cannot read '+$file.FullName+': '+$_.Exception.Message) }
     }
-    foreach($file in @(Get-ChildItem -LiteralPath $RunRoot -Recurse -File -Filter '*.progress.json')) {
+    foreach($file in @(Get-VVChildItem -LiteralPath $RunRoot -Recurse -File -Filter '*.progress.json')) {
         try {
             $safe=Read-VVJson $file.FullName
             if($null -eq $safe.sheets -or $null -eq $safe.attempts){continue}
@@ -269,7 +355,7 @@ function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
     $failure=Join-Path $RunRoot 'failures.jsonl'
     if(Test-Path -LiteralPath $failure) { foreach($line in [IO.File]::ReadLines($failure)) { try{$errors+=($line|ConvertFrom-Json)}catch{} } }
     $partial=$false; $hasResult=$false
-    foreach($file in @(Get-ChildItem -LiteralPath $RunRoot -Recurse -Filter '*.json' -File)) {
+    foreach($file in @(Get-VVChildItem -LiteralPath $RunRoot -Recurse -Filter '*.json' -File)) {
         if($file.DirectoryName -eq $RunRoot -or $file.FullName -match '[\\/]inputs[\\/]' -or $file.Name -match 'manifest|config|plan|files') {continue}
         try {
             $data=Read-VVJson $file.FullName
@@ -294,13 +380,13 @@ function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
         } catch { $partial=$true; $errors+=@{message='Unreadable partial JSON: '+$file.FullName;exception=$_.Exception.Message} }
     }
     # Native benchmark JSON uses another schema. Retain it without pretending it contains sheet screenshots.
-    $native=@(Get-ChildItem -LiteralPath $RunRoot -Recurse -Filter '*.json' -File | Where-Object {
+    $native=@(Get-VVChildItem -LiteralPath $RunRoot -Recurse -Filter '*.json' -File | Where-Object {
         $_.FullName -match '[\\/]data[\\/]' -and $_.Name -notmatch 'manifest|config|plan|files'
     })
     if($native.Count -gt 0){$hasResult=$true}
     $timeline=New-Object 'System.Collections.Generic.List[object]'
-    foreach($journal in @(Get-ChildItem -LiteralPath $RunRoot -Recurse -File | Where-Object {$_.Name -eq 'events.jsonl' -or $_.Name -like '*.events.jsonl'})) {
-        foreach($line in [IO.File]::ReadLines($journal.FullName)) {
+    foreach($journal in @(Get-VVChildItem -LiteralPath $RunRoot -Recurse -File | Where-Object {$_.Name -eq 'events.jsonl' -or $_.Name -like '*.events.jsonl'})) {
+        foreach($line in [VVReportIO]::ReadLines($journal.FullName)) {
             try {
                 $event=$line | ConvertFrom-Json
                 $time=if($null -ne $event.timestamp_unix_ms){[DateTimeOffset]::FromUnixTimeMilliseconds([long]$event.timestamp_unix_ms).UtcDateTime.ToString('o')}else{[string]$event.timestamp_utc}
@@ -317,12 +403,12 @@ function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
     $status=if($Interrupted){'interrupted'}elseif($errors.Count -gt 0 -or $allCaptureFailed){'failed'}elseif($partial -or $terminalErrors.Count -gt 0){'partial'}elseif($hasResult){'complete'}else{'no-results'}
     foreach($e in $terminalErrors){$errors+=$e}
     $meta.status=$status
-    $meta | Add-Member -NotePropertyName completed_utc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+    if(-not $meta.completed_utc){$meta | Add-Member -NotePropertyName completed_utc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force}
     Write-VVJson (Join-Path $RunRoot 'run.json') $meta
     $result=[ordered]@{schema='vv-run-result-v1';status=$status;run=$meta;outputs=$outputs;errors=$errors;capture_summary=$captureSummary;
         note='The original result/progress JSONs are referenced, not flattened or discarded. PNGs may contain probe margins; use valid_rect_px in tiled manifests.'}
     Write-VVJson (Join-Path $RunRoot 'result.json') $result
-    $files=@(Get-ChildItem -LiteralPath $RunRoot -Recurse -File | Where-Object {$_.Name -notin @('review.zip','review.zip.new','review-metadata.zip','review-metadata.zip.new','.active.lock')})
+    $files=@(Get-VVChildItem -LiteralPath $RunRoot -Recurse -File | Where-Object {$_.Name -notin @('review.zip','review.zip.new','review-metadata.zip','review-metadata.zip.new','.active.lock')})
     $images=@($files|Where-Object{$_.Extension -eq '.png'})
     $sum="STATUS: $status`nEXPERIMENT: $($meta.experiment)`nRUN: $($meta.id)`nPNG FILES: $($images.Count)`nRESULT FILES: $($outputs.Count)`n`nSend review-metadata.zip for routine review. It includes partial results and logs but no images; review.zip preserves the full evidence bundle.`nScreenshots may contain workbook data; logs contain local paths.`n"
     if($captureSummary.sessions -gt 0) {

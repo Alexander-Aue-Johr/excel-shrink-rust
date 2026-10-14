@@ -42,7 +42,7 @@ function Complete-VVSuiteReport([string]$RunRoot,[switch]$Interrupted) {
     $good=@($state.jobs|Where-Object{$_.status -eq 'complete'}).Count
     $status=if($Interrupted -or $pending -gt 0){'interrupted'}elseif(@($state.errors|Where-Object{$_}).Count -gt 0){'failed'}elseif($bad -gt 0){'partial'}elseif($good -gt 0){'complete'}else{'no-results'}
     $state.status=$status
-    $state|Add-Member -NotePropertyName completed_utc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+    if(-not $state.completed_utc){$state|Add-Member -NotePropertyName completed_utc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force}
     $meta.status=$status;$meta|Add-Member -NotePropertyName completed_utc -NotePropertyValue $state.completed_utc -Force
     Write-VVJson (Join-Path $RunRoot 'run.json') $meta
     Write-VVJson (Join-Path $RunRoot 'suite-state.json') $state
@@ -61,6 +61,11 @@ function Complete-VVSuiteReport([string]$RunRoot,[switch]$Interrupted) {
             render_ms=$(if($hasCapture){$render}else{$null});persist_ms=$(if($hasCapture){$persist}else{$null});finalize_ms=$(if($hasCapture){$finalize}else{$null});telemetry_ms=$(if($hasCapture){$telemetry}else{$null});
             complete_sheets=$sheets;tiles=$tileCount;verification_groups=$groups;blocker_cells=$blockers;report=$job.report;error=$job.error}
     }
+    foreach($row in $csv){
+        foreach($column in @('workload_ms','offline_pixel_verification_ms','render_ms','persist_ms','finalize_ms','telemetry_ms')){
+            if($null -ne $row.$column){$row.$column=([double]$row.$column).ToString('R',[Globalization.CultureInfo]::InvariantCulture)}
+        }
+    }
     if($csv.Count){$csv|Export-Csv -LiteralPath (Join-Path $RunRoot 'case-results.csv') -NoTypeInformation -Encoding UTF8}
     $runErrors=@($state.errors|Where-Object{$_})
     foreach($failedJob in @($state.jobs|Where-Object{$_.status -notin @('complete','queued','running')})){$runErrors += [pscustomobject]@{case=$failedJob.id;status=$failedJob.status;message=$(if($failedJob.error){$failedJob.error}else{'Inspect the case report for '+$failedJob.status});report=$failedJob.report}}
@@ -68,7 +73,13 @@ function Complete-VVSuiteReport([string]$RunRoot,[switch]$Interrupted) {
         suite=[ordered]@{profile=$state.profile;total=$state.jobs.Count;complete=$good;requires_review=$bad;pending=$pending};
         outputs=@(@{path='suite-state.json'},@{path='case-results.csv'});errors=$runErrors;
         note='A suite completion is an execution outcome, not proof that all capture methods preserve identical visual content. See comparison gates and per-case reports.'})
-    $summary="STATUS: $status`nPROFILE: $($state.profile)`nCASES: $($state.jobs.Count)`nCOMPLETE: $good`nREQUIRES REVIEW: $bad`nPENDING / INTERRUPTED: $pending`n`nSend this suite's review-metadata.zip. No images are required for routine review.`nRaw images remain under cases/. Warm-up trials are not included in performance statistics.`n"
+    $summary="STATUS: $status`nPROFILE: $($state.profile)`nCASES: $($state.jobs.Count)`nCOMPLETE: $good`nREQUIRES CAPTURE REVIEW: $bad`nPENDING / INTERRUPTED: $pending`n`nSend this suite's review-metadata.zip. No images are required for routine review.`nRaw images remain under cases/. Warm-up trials are not included in performance statistics.`n"
+    $unverified=@($state.jobs|Where-Object{
+        $_.phase -eq 'measured' -and $_.metrics.pixel_verification_requested -and
+        @($_.metrics.captures|Where-Object{$null -eq $_.pixel_digest -or $_.pixel_issue}).Count -gt 0
+    }).Count
+    $reportFailures=@($state.jobs|Where-Object{$_.metrics.report_publication.status -eq 'failed'}).Count
+    $summary+="`nPOST-PROCESSING`nMEASURED CASES WITH UNVERIFIED PIXELS: $unverified`nCASE REPORT FAILURES: $reportFailures`nCapture status and offline verification are separate outcomes. Bundle publication is recorded in bundle-status.json.`n"
     [IO.File]::WriteAllText((Join-Path $RunRoot 'summary.txt'),$summary,[Text.UTF8Encoding]::new($false))
     Write-VVSuiteView $RunRoot $state
 }

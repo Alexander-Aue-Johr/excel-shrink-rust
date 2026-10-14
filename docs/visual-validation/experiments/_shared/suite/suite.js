@@ -14,7 +14,7 @@ function comparison(a,b){
  for(const k of common){const x=am.get(k),y=bm.get(k),dx=x.pixel_digest,dy=y.pixel_digest;
   if(x.raw_sha256&&y.raw_sha256&&x.raw_address===y.raw_address){rawCompared++;if(x.raw_sha256===y.raw_sha256)rawEqual++;}
   if(x.pixel_issue||y.pixel_issue){unknown++;continue;}
-  if(dx?.sha256&&dy?.sha256&&dx.algorithm==='vv-bgra32-v1'&&dx.algorithm===dy.algorithm&&dx.width===dy.width&&dx.height===dy.height){if(dx.sha256===dy.sha256)equal++;else different++;}
+  if(dx?.sha256&&dy?.sha256&&['vv-bgra32-v1','vv-bgra32-gdiplus-v1'].includes(dx.algorithm)&&dx.algorithm===dy.algorithm&&dx.width===dy.width&&dx.height===dy.height){if(dx.sha256===dy.sha256)equal++;else different++;}
   else if(x.encoded_sha256&&x.encoded_sha256===y.encoded_sha256){equal++;}
   else unknown++;
  }
@@ -43,6 +43,10 @@ function mount(data,host){const d=host.ownerDocument,el=(t,c,txt)=>{const x=d.cr
  add(hero,add(el('div','actions'),link('Review bundle · no images','review-metadata.zip','button primary'),link('Results CSV','case-results.csv'),link('Full result data','suite-state.json')));
  if(data.status==='running')add(hero,el('p','callout','The suite is running. Reload this local page after a case finishes to see its latest results.'));
  for(const e of arr(data.errors))add(hero,el('p','suite-error',typeof e==='string'?e:JSON.stringify(e)));
+ const unchecked=measured.filter(j=>j.metrics?.pixel_verification_requested&&arr(j.metrics?.captures).some(c=>!c.pixel_digest||c.pixel_issue));
+ if(unchecked.length)add(hero,el('p','callout',`${unchecked.length} measured cases have incomplete offline pixel verification. Capture completion and pixel equivalence are separate outcomes. Repair existing reports; no new Excel capture is required when the PNGs remain locally available.`));
+ const failedReports=jobs.filter(j=>j.metrics?.report_publication?.status==='failed');
+ if(failedReports.length)add(hero,el('p','suite-error',`${failedReports.length} case reports or bundles failed during post-processing. See their case-report-error.txt files.`));
  add(hero,el('p','muted','Cases run sequentially on frozen workbook copies. Warm-ups, workload time and offline pixel-verification time are separate. A shorter run does not establish equal visual coverage.'));
  function table(parent,headers,rows){const t=el('table','bounds-table'),body=el('tbody');add(t,add(el('thead'),add(el('tr'),headers.map(h=>el('th','',h)))),body);for(const row of rows)add(body,add(el('tr'),row.map(x=>add(el('td'),x?.nodeType?x:el('span','',x??'—')))));add(parent,add(el('div','table-scroll'),t));return t;}
  const candidates=sec('candidates','Candidate summary'),summary=summaries(data);

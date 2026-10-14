@@ -50,7 +50,7 @@ try {
         comparisons_note='Runtime, bounds/coverage and pixel equivalence are separate outcomes. One machine and one workbook do not establish a universally fastest implementation.'}
     Save-VVSuiteState
     Assert-VVSuiteIdle
-    $null=Add-Type -Path (Join-Path $PSScriptRoot '_shared\suite\SuiteRuntime.cs') -ReferencedAssemblies @('System.dll','WindowsBase.dll','PresentationCore.dll')
+    Add-Type -Path (Join-Path $PSScriptRoot '_shared\suite\SuiteRuntime.cs') -ReferencedAssemblies @('System.dll') -ErrorAction Stop
     [IO.Directory]::CreateDirectory($state.staged_corpus)|Out-Null
     Copy-Item -LiteralPath $ConfigPath -Destination (Join-Path $owner.Path 'inputs\suite-config.json')
     foreach($f in $selection.files) {

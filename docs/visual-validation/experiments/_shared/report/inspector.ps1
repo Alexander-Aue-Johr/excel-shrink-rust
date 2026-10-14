@@ -30,7 +30,7 @@ function Get-VVInspectorFiles([string]$RunRoot) {
     $stack=[System.Collections.Generic.Stack[string]]::new();$stack.Push([IO.Path]::GetFullPath($RunRoot))
     while($stack.Count -gt 0) {
         $dir=$stack.Pop()
-        foreach($entry in @(Get-ChildItem -LiteralPath $dir -Force)) {
+        foreach($entry in @(Get-VVChildItem -LiteralPath $dir -Force)) {
             if($entry.Attributes -band [IO.FileAttributes]::ReparsePoint){continue}
             if($entry.PSIsContainer){if($entry.Name -ne 'report-assets'){$stack.Push($entry.FullName)}}
             elseif($entry.Name -notin @('review.zip','review.zip.new','review-metadata.zip','review-metadata.zip.new','.active.lock','report-data.json') -and $entry.Extension -ne '.new'){$entry}
@@ -53,7 +53,7 @@ function Write-VVInspector([string]$RunRoot) {
         if($file.Extension -eq '.png') {
             $handle=$null
             try {
-                $handle=[IO.File]::Open($file.FullName,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+                $handle=[VVReportIO]::OpenRead($file.FullName)
                 $header=New-Object byte[] 24
                 if($handle.Read($header,0,24) -eq 24 -and $header[0] -eq 137 -and $header[1] -eq 80 -and $header[2] -eq 78 -and $header[3] -eq 71) {
                     $record.width=[long]$header[16]*16777216+[long]$header[17]*65536+[long]$header[18]*256+$header[19]
@@ -68,7 +68,7 @@ function Write-VVInspector([string]$RunRoot) {
         try {
             $data=Read-VVJson $file.FullName
             if($rel -match '^inputs/plans/' -and $null -ne $data.workbooks) {
-                $plans.Add([ordered]@{path=$rel;sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant();document=$data})
+                $plans.Add([ordered]@{path=$rel;sha256=[VVReportIO]::HashFile($file.FullName);document=$data})
             } elseif($null -ne $data.workbooks -and $data.workbooks -isnot [array]) {
                 $w=@($data.workbooks.PSObject.Properties | ForEach-Object {ConvertTo-VVInspectorWorkbook $_.Value $_.Name})
                 $documents.Add([ordered]@{path=$rel;meta=$data._meta;workbooks=$w})
