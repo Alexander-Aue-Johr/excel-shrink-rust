@@ -20,7 +20,7 @@ function ConvertTo-VVInspectorWorkbook($Value,[string]$Name) {
     })
     if($null -ne $Value.safe_capture) {
         $out.safe_capture=Select-VVInspectorFields $Value.safe_capture @('schema','workbook','strategy','status','implementation','limits','sheets','attempts','captures','calibrations',
-            'sheet_catalog','bounds_history','precomputed_wsl_rust_visual_plan','environment','current','summary','capture_options','tile_plans','sparse_overflow_checks','sparse_overflow_scans','capture_view','capture_policy_version','final_exports','compute_profile')
+            'sheet_catalog','bounds_history','precomputed_wsl_rust_visual_plan','environment','current','summary','capture_options','tile_plans','sparse_overflow_checks','sparse_overflow_scans','capture_view','capture_policy_version','final_exports','compute_profile','geometry_diagnostics','sheet_continuations','capture_scope','checkpoint_policy')
         # The final flattened list repeats the same tiles already available in the capture session.
         $out.Remove('captures');$out.Remove('probes')
     }

@@ -129,6 +129,64 @@
     }
     throw fault('INDIVISIBLE_OVERSIZE', 'A single cell exceeds the capture budget; no unsafe capture was queued.', { rect:r, geometry:g, pixels:p }, true);
   }
+  const SHEET_LOCAL_CODES = new Set([
+    'CALIBRATION_NO_SAFE_CONTROLS','CALIBRATION_INSUFFICIENT_SPAN',
+    'CALIBRATION_MODEL_REJECTED','CALIBRATION_VALIDATION_FAILED',
+    'CALIBRATION_BOOTSTRAP_BUDGET','CALIBRATION_PNG_BUDGET',
+    'CALIBRATION_GEOMETRY_CHANGED','PNG_GEOMETRY_MISMATCH','GEOMETRY_CHANGED',
+    'INVALID_GEOMETRY','INDIVISIBLE_OVERSIZE','OVERFLOW_CONTEXT_SPLIT'
+  ]);
+  function sheetLocal(e) { return !!e && SHEET_LOCAL_CODES.has(e.code); }
+  function controlReason(g) {
+    const w=g.right-g.left,h=g.bottom-g.top;
+    if(!Number.isFinite(w)||!Number.isFinite(h))return 'nonfinite';
+    if(w<=0)return 'zero-visible-width';
+    if(h<=0)return 'zero-visible-height';
+    if(Math.round(w*8)<1)return 'subpixel-bootstrap-width';
+    if(Math.round(h*8)<1)return 'subpixel-bootstrap-height';
+    if(w*8+1>8192 || h*8+1>8192)return 'bootstrap-edge-budget';
+    if((w*8+1)*(h*8+1)>4000000)return 'bootstrap-area-budget';
+    return null;
+  }
+  function fallbackRectangles(rect, phase) {
+    // Geometry queries only. Never unhide, resize, activate or edit cells.
+    const origins = phase===1 ? [[0,1],[0,4],[0,8],[0,16],[32,1],[32,16]] :
+      [[0,32],[0,64],[64,0],[64,32],[128,64],[256,128]];
+    const shapes=[[1,1],[1,2],[1,4],[2,1],[4,1],[8,1],[16,1],[2,2],[4,4]];
+    const unique=new Map();
+    for(const [dy,dx] of origins)for(const [nr,nc] of shapes) {
+      const r0=Math.min(ROWS-nr,rect.r0+dy),c0=Math.min(COLS-nc,rect.c0+dx);
+      const r={r0,r1:r0+nr,c0,c1:c0+nc};unique.set(address(r),r);
+    }
+    return [...unique.values()];
+  }
+  function independentControls(candidates) {
+    // A very wide visible column may permit a narrow vertical strip and a short
+    // horizontal strip, but no three rectangles spanning both axes together.
+    const triples=[];
+    for(const axis of ['x','y']) {
+      const value=c=>axis==='x'?c.geometry.right-c.geometry.left:c.geometry.bottom-c.geometry.top;
+      const byValue=new Map();
+      for(const c of candidates){const v=value(c),old=byValue.get(v);
+        if(!old || (c.geometry.right-c.geometry.left)*(c.geometry.bottom-c.geometry.top)<
+          (old.geometry.right-old.geometry.left)*(old.geometry.bottom-old.geometry.top))byValue.set(v,c);}
+      const sorted=[...byValue.values()].sort((a,b)=>value(a)-value(b));
+      if(sorted.length<3 || value(sorted.at(-1))-value(sorted[0])<8)
+        throw fault('CALIBRATION_NO_SAFE_CONTROLS','Bounded control search did not span both axes.',{axis,candidate_count:candidates.length},true);
+      triples.push(sorted[0],sorted[Math.floor(sorted.length/2)],sorted.at(-1));
+    }
+    const fitting=[...new Set(triples)];
+    const extra=candidates.find(c=>!fitting.includes(c))||fitting[Math.floor(fitting.length/2)];
+    return [...fitting,extra];
+  }
+  function selectSheetNames(catalog, requested) {
+    if(requested==null)return catalog.map(s=>s.name);
+    if(!Array.isArray(requested)||!requested.length||requested.some(s=>typeof s!=='string'||!s.length)||new Set(requested).size!==requested.length)
+      throw fault('INVALID_SHEET_SELECTION','Expected unique exact sheet names; whitespace is significant.',{},true);
+    const names=new Set(catalog.map(s=>s.name)),missing=requested.filter(s=>!names.has(s));
+    if(missing.length)throw fault('SHEET_SELECTION_MISSING','Requested sheet is absent or not visible.',{missing},true);
+    return catalog.filter(s=>requested.includes(s.name)).map(s=>s.name);
+  }
   class Session {
     constructor(workbook, config = {}) {
       this.workbook = workbook; this.config = config;
@@ -141,14 +199,15 @@
       if (!['budget','balanced'].includes(this.packing)) throw fault('INVALID_CAPTURE_OPTIONS','Unknown tile packing.',{packing:this.packing},true);
       this.runId = config.capture_run_id || config.diagnostic_run_id || null;
       this.dead = false; this.sequence = 0; this.tileCount = 0; this.calibrations = new Map();
+      this.lastCheckpointAt=-Infinity;
       this.state = { schema:'safe-capture-v1', workbook, strategy:config.strategy, capture_options:options, tile_plans:[], sparse_overflow_checks:[],
-        status:'running', implementation:'safe-capture-calibrated-budgeted-v3', limits:this.limits, sheets:[], attempts:[], captures:[], calibrations:[],
+        status:'running', geometry_diagnostics:[], sheet_continuations:[], checkpoint_policy:{interval_ms:2000,sent:0,coalesced:0}, implementation:'safe-capture-visible-controls-v4', limits:this.limits, sheets:[], attempts:[], captures:[], calibrations:[],
         environment:{ browser: typeof navigator!=='undefined'?navigator.userAgent:null,
           office: root.Office && root.Office.context && root.Office.context.diagnostics || null,
           device_pixel_ratio: typeof root.devicePixelRatio==='number'?root.devicePixelRatio:null,
           screen: root.screen?{width:root.screen.width,height:root.screen.height,availWidth:root.screen.availWidth,availHeight:root.screen.availHeight}:null,
           note:'Browser devicePixelRatio is recorded, not used as the Excel PNG scale.' } };
-      this.timings = { geometry_ms:0, render_ms:0, persist_ms:0, analysis_ms:0, telemetry_ms:0, calibration_ms:0 }; 
+      this.timings = { geometry_ms:0, render_ms:0, persist_ms:0, analysis_ms:0, telemetry_ms:0, calibration_ms:0, checkpoint_ms:0, geometry_diagnostics_ms:0 }; 
     }
     async claim() {
       const client=(root.crypto && typeof root.crypto.randomUUID==='function')?root.crypto.randomUUID():`${Date.now()}-${Math.random()}`;
@@ -176,9 +235,16 @@
     }
     async checkpoint(stage, detail = {}) {
       this.state.current = { stage, ...detail };
-      await this.http('/capture-progress', this.state);
+      const now=performance.now(),policy=this.state.checkpoint_policy;
+      const force=/(failed|fatal|finished|complete$|stopped|continuation|diagnostic)/.test(stage) && stage!=='tile_complete';
+      // Native starts and receipts are still individually ACKed in the host journal.
+      // Only redundant full-state snapshots are coalesced, at most two seconds.
+      if(!force && now-this.lastCheckpointAt<policy.interval_ms){policy.coalesced++;return;}
+      const started=performance.now();policy.sent++;
+      try {await this.http('/capture-progress', this.state);this.lastCheckpointAt=performance.now();}
+      finally {this.timings.checkpoint_ms+=performance.now()-started;}
     }
-    async office(stage, detail, action) {
+    async office(stage, detail, action, timeoutMs = this.limits.timeout_ms) {
       if (this.dead) throw fault('NATIVE_SESSION_STOPPED', 'No further Office calls after a native timeout.', detail, true);
       await this.event(stage + '_started', detail); // ACKed and journalled BEFORE native work.
       let timer;
@@ -188,7 +254,7 @@
           timer = setTimeout(() => {
             this.dead = true;
             reject(fault('NATIVE_TIMEOUT', `Office call timed out at ${stage}; native work is not cancelled.`, detail, true));
-          }, this.limits.timeout_ms);
+          }, Math.min(this.limits.timeout_ms,timeoutMs));
         })]);
       } catch (e) {
         await this.event(stage + '_failed', { ...detail, error:errorInfo(e) });
@@ -234,6 +300,87 @@
       return {...this.limits, scale:null, scale_x:calibration.x.scale, scale_y:calibration.y.scale,
         border_px:1, calibration_id:calibration.id};
     }
+    async findCalibrationControls(sheet, rect, initialRects, record) {
+      const candidates=[],seen=new Set();record.control_search=[];
+      for(let phase=0;phase<3;phase++) {
+        const rects=phase===0?initialRects:fallbackRectangles(rect,phase);
+        const gs=await this.geometries(sheet,rects),audit=[];
+        for(let i=0;i<gs.length;i++) {
+          const g=gs[i],width=g.right-g.left,height=g.bottom-g.top,key=`${width}:${height}`;
+          let reason=controlReason(g);
+          if(!reason&&seen.has(key))reason='duplicate-visible-extent';
+          audit.push({address:address(rects[i]),geometry:g,width_points:width,height_points:height,eligible:!reason,reason});
+          if(!reason){seen.add(key);candidates.push({rect:rects[i],geometry:g});}
+        }
+        const pass={phase,method:phase===0?'original-origin':'bounded-offset-windows',candidate_count:candidates.length,examined:audit};
+        record.control_search.push(pass);
+        await this.event('calibration_control_search',{sheet,calibration_id:record.id,...pass});
+        try {
+          const selected=chooseControls(candidates);
+          record.control_selection=phase===0?'original-origin':'offset-visible-controls';
+          if(phase>0)await this.diagnoseGeometry(sheet,'OFFSET_CONTROLS_REQUIRED',rect);
+          return selected;
+        } catch(e) {if(e.code!=='CALIBRATION_NO_SAFE_CONTROLS')throw e;}
+      }
+      record.control_selection='independent-axis-controls';
+      const selected=independentControls(candidates);
+      record.method='bounded visible controls; independently spanned axes plus holdout';
+      await this.diagnoseGeometry(sheet,'INDEPENDENT_AXIS_CONTROLS_REQUIRED',rect);
+      return selected;
+    }
+    async diagnoseGeometry(sheet, reason, rect) {
+      // At most one diagnostic per reason/sheet. This is a small read-only geometry
+      // audit, not a content/UsedRange scan and not a new PNG fit used to waive failure.
+      const key=sheet+'|'+reason;
+      const prior=this.state.geometry_diagnostics.find(x=>x.key===key);
+      if(prior)return prior;
+      const record={key,sheet,reason,address:address(rect),status:'started',columns:[],rows:[]};
+      this.state.geometry_diagnostics.push(record);
+      const started=performance.now();
+      try {
+        const data=await this.office('geometry_diagnostic',{sheet,reason,address:record.address},async context=>{
+          const ws=context.workbook.worksheets.getItem(sheet),columns=[],rows=[];
+          const colIndexes=[...new Set([0,1,2,3,4,5,6,7,8,15,16,31,rect.c0,Math.min(COLS-1,rect.c1)])];
+          const rowIndexes=[...new Set([...Array.from({length:16},(_,i)=>i),rect.r0,
+            Math.max(0,rect.r1-2),Math.min(ROWS-1,rect.r1-1),Math.min(ROWS-1,rect.r1)])];
+          for(const c of colIndexes){const cell=ws.getRangeByIndexes(0,c,1,1);cell.load('left,width,columnHidden');columns.push({c,cell});}
+          for(const r of rowIndexes)for(const c of [...new Set([rect.c0,Math.min(COLS-1,rect.c0+1)])]) {
+            const cell=ws.getRangeByIndexes(r,c,1,1);cell.load('top,left,height,width,rowHidden,columnHidden');
+            if(cell.format&&typeof cell.format.load==='function')cell.format.load('rowHeight');
+            rows.push({r,c,cell});
+          }
+          await context.sync();
+          return {columns:columns.map(x=>({column_1based:x.c+1,column:col(x.c),left_points:Number(x.cell.left),
+              width_points:Number(x.cell.width),hidden:x.cell.columnHidden??null})),
+            rows:rows.map(x=>({row_1based:x.r+1,anchor_column:col(x.c),top_points:Number(x.cell.top),
+              height_points:Number(x.cell.height),width_points:Number(x.cell.width),row_hidden:x.cell.rowHidden??null,
+              anchor_column_hidden:x.cell.columnHidden??null,row_height_points:x.cell.format?.rowHeight??null}))};
+        },10000);
+        Object.assign(record,data,{status:'complete'});
+      } catch(e) {
+        record.status='failed';record.error=errorInfo(e);
+        // A diagnostic timeout poisons the same native session. Never continue it.
+        if(this.dead || e.code==='HOST_HTTP_ERROR')throw e;
+      } finally {record.duration_ms=performance.now()-started;this.timings.geometry_diagnostics_ms+=record.duration_ms;}
+      await this.event('geometry_diagnostic_result',record);
+      await this.checkpoint('geometry_diagnostic_finished',{sheet,reason});return record;
+    }
+    async continueAfterSheetFailure(sheet, error) {
+      if(this.dead || (error.fatal && !sheetLocal(error)))return false;
+      const record={sheet,error:errorInfo(error),scope:'worksheet',status:'checking-session'};
+      this.state.sheet_continuations.push(record);
+      const attempt=[...this.state.attempts].reverse().find(a=>a.sheet===sheet&&a.error);
+      if(attempt && sheetLocal(error))await this.diagnoseGeometry(sheet,error.code,attempt.rect);
+      if(this.dead)return false;
+      try {
+        await this.office('sheet_health_check',{sheet,after_error:error.code},async context=>{
+          const ws=context.workbook.worksheets.getItem(sheet);ws.load('name,visibility');await context.sync();
+        },10000);
+        record.status='healthy-continue';
+        await this.event('sheet_failure_isolated',record);
+        await this.checkpoint('sheet_continuation',{sheet,error_code:error.code});return true;
+      } catch(e) {record.status='stop-session';record.health_error=errorInfo(e);this.dead=true;return false;}
+    }
     async ensureCalibration(sheet, rect) {
       if(this.calibrations.has(sheet))return this.calibrations.get(sheet);
       const started=performance.now();
@@ -247,22 +394,15 @@
         const r0=Math.min(rect.r0,ROWS-32),c0=Math.min(rect.c0,COLS-16);
         const shapes=[[1,1],[2,2],[4,4],[8,8],[16,16],[32,16],[2,4],[4,8],[8,2],[16,1],[1,8],[32,1],[4,2],[8,4]];
         const rects=shapes.map(([nr,nc])=>({r0,r1:r0+nr,c0,c1:c0+nc}));
-        const gs=await this.geometries(sheet,rects),candidates=[];const seen=new Set();
-        for(let i=0;i<gs.length;i++){
-          const g=gs[i],width=g.right-g.left,height=g.bottom-g.top,key=`${width}:${height}`;
-          // A bounded bootstrap hypothesis, not a screen-DPR conversion. Validate the
-          // actual returned header before doing anything with pixels or larger ranges.
-          if(width<=0 || height<=0 || width*8+1>8192 || height*8+1>8192 ||
-              (width*8+1)*(height*8+1)>4000000 || seen.has(key))continue;
-          seen.add(key);candidates.push({rect:rects[i],geometry:g});
-        }
-        const controls=chooseControls(candidates);
+        const controls=await this.findCalibrationControls(sheet,rect,rects,record);
+        const fittingCount=controls.length-1;
+        record.fitting_count=fittingCount;
         for(let i=0;i<controls.length;i++){
           const control=controls[i],a=address(control.rect),id=`${record.id}-${i+1}`;
           const before=(await this.geometries(sheet,[control.rect]))[0];
           if(!fits(before,{...this.limits,scale:8,scale_x:8,scale_y:8,max_edge_px:8192,max_pixels:4000000}))
             throw fault('CALIBRATION_BOOTSTRAP_BUDGET','Calibration geometry changed beyond its small bootstrap budget.',{sheet,address:a,before},true);
-          const sample={id,address:a,role:i<3?'fit':'validation',rect:control.rect,geometry_before:before,status:'started'};
+          const sample={id,address:a,role:i<fittingCount?'fit':'validation',rect:control.rect,geometry_before:before,status:'started'};
           record.observations.push(sample);await this.checkpoint('calibration_render_started',{sheet,address:a,id});
           let base64=null;
           try {
@@ -284,8 +424,8 @@
             sample.status='complete';
             await this.event('raster_calibration_sample',{sheet,...sample});
           } finally {base64=null;}
-          if(i===2){record.x=fitAxis(record.observations,'x');record.y=fitAxis(record.observations,'y');}
-          if(i===3){
+          if(i===fittingCount-1){record.x=fitAxis(record.observations,'x');record.y=fitAxis(record.observations,'y');}
+          if(i===fittingCount){
             const prediction=pixels(sample.geometry,{...this.limits,scale_x:record.x.scale,scale_y:record.y.scale});
             sample.predicted=prediction;
             if(Math.abs(sample.png.width-prediction.width)>1 || Math.abs(sample.png.height-prediction.height)>1)
@@ -300,6 +440,7 @@
         await this.checkpoint('raster_calibrated',{sheet,id:record.id});return record;
       } catch(e){
         e.fatal=true;record.status='failed';record.error=errorInfo(e);
+        if(!this.dead && sheetLocal(e))await this.diagnoseGeometry(sheet,e.code,rect);
         await this.event('raster_calibration_failed',{sheet,id:record.id,error:record.error});
         await this.checkpoint('raster_calibration_failed',{sheet,id:record.id});throw e;
       } finally {this.timings.calibration_ms+=performance.now()-started;}
@@ -500,7 +641,7 @@
         // Do not repeat the same oversized request. A successful small control precedes splitting.
         let control;
         try { control=await this.office('recovery_control',{sheet,after:id},async context=>{
-          const result=context.workbook.worksheets.getItem(sheet).getRange('A1:A1').getImage();
+          const result=context.workbook.worksheets.getItem(sheet).getRange(this.calibrations.get(sheet).observations[0].address).getImage();
           await context.sync(); return result.value;
         }); } catch(controlError) {this.dead=true;controlError.fatal=true;throw controlError;}
         try { png(control); } catch(controlError) {this.dead=true;controlError.fatal=true;throw controlError;}
@@ -518,7 +659,7 @@
       return out;
     }
   }
-  const api={DEFAULTS,Session,parse,address,png,pixels,fits,split,fault,errorInfo,axisScale,actualFits,fitAxis,chooseControls};
+  const api={DEFAULTS,Session,parse,address,png,pixels,fits,split,fault,errorInfo,axisScale,actualFits,fitAxis,chooseControls,independentControls,controlReason,fallbackRectangles,sheetLocal,selectSheetNames};
   root.SafeCapture=api;
   if(typeof module!=='undefined' && module.exports) module.exports=api;
 }(typeof window!=='undefined'?window:globalThis));

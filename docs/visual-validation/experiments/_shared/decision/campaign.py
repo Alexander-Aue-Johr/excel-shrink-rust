@@ -221,7 +221,7 @@ def compact_metrics(value: dict) -> dict:
     for w in value.get('workbooks',[]):
         if not isinstance(w,dict): continue
         out['workbooks'].append({k:w.get(k) for k in ('workbook','status','kind','complete_sheets','sheet_count','failed_sheets','inconclusive_sheets',
-                'capture_count','render_attempts','timings','compute','environment','capture_policy','capture_options','verification_groups','confirmed_blockers','sheets')})
+                'capture_count','render_attempts','timings','compute','environment','capture_policy','capture_options','capture_scope','verification_groups','confirmed_blockers','sheets')})
     return out
 
 def effective_metrics(job: dict) -> dict:
@@ -844,9 +844,10 @@ def render_report(root: Path, state: dict) -> None:
     atomic_json(root/'result.json',{'schema':'vv-run-result-v1','status':state['status'],'run':meta,'outputs':[{'path':'decision.md'},{'path':'decision-summary.json'},{'path':'campaign-state.json'},{'path':'case-results.csv'}],
         'errors':state['errors'],'note':'See distinct execution, quality and every-file coverage outcomes.'})
 
-def write_bundle(root: Path, state: dict) -> None:
+def write_bundle(root: Path, state: dict, renderer=None) -> None:
+    renderer = renderer or render_report
     destination=root/'review-metadata.zip';tmp=root/('review-metadata.zip.'+os.urandom(6).hex()+'.new')
-    atomic_json(root/'bundle-status.json',{'status':'building','updated_utc':utc()});render_report(root,state)
+    atomic_json(root/'bundle-status.json',{'status':'building','updated_utc':utc()});renderer(root,state)
     included=[];omitted=[]
     try:
         files=list(safe_walk(root))
@@ -873,11 +874,11 @@ def write_bundle(root: Path, state: dict) -> None:
                 if name not in z.namelist():raise ValueError('Missing required review file '+name)
         os.replace(tmp,destination)
         atomic_json(root/'bundle-status.json',{'status':'ready','updated_utc':utc(),'path':'review-metadata.zip','bytes':destination.stat().st_size})
-        render_report(root,state)
+        renderer(root,state)
         print('REVIEW BUNDLE (NO IMAGES): '+str(destination),flush=True)
     except Exception as error:
         atomic_json(root/'bundle-status.json',{'status':'failed','updated_utc':utc(),'message':str(error),'temporary':str(tmp)})
-        render_report(root,state);raise
+        renderer(root,state);raise
 
 def main(argv=None):
     if sys.version_info < (3,10):raise RuntimeError('Python 3.10+ is required')
@@ -888,9 +889,19 @@ def main(argv=None):
     parser.add_argument('--parent-pid',type=int,default=0)
     parser.add_argument('--plan',action='store_true')
     parser.add_argument('--report-only',action='store_true')
+    parser.add_argument('--focused',action='store_true',help='Run bounded selected-sheet repair checks, not a strategy comparison')
     args=parser.parse_args(argv)
-    config=args.config or args.repo_root/'docs/visual-validation/experiments/decision-campaign.json'
+    config=args.config or args.repo_root/('docs/visual-validation/experiments/capture-followup.json' if args.focused else 'docs/visual-validation/experiments/decision-campaign.json')
     cfg=read_json(config);validate(cfg)
+    if args.focused:
+        from focus import FocusCampaign, validate_targets, render_focus
+        validate_targets(cfg)
+        if args.plan:
+            print(json.dumps({'profile':'capture-followup','targets':cfg['focused_targets'],'session_budget_seconds':cfg['limits']['session_seconds']},ensure_ascii=False,indent=2));return 0
+        if args.run_root is None:parser.error('--run-root is required except with --plan')
+        if args.report_only:
+            state=read_json(args.run_root/'campaign-state.json');render_focus(args.run_root,state);write_bundle(args.run_root,state,renderer=render_focus);return 0
+        return FocusCampaign(args.repo_root,args.run_root,cfg,args.parent_pid).run()
     if args.plan:
         fs=discover(args.repo_root,cfg);ss=stratified(fs,cfg['screen_max_files'],cfg['selection_seed'])
         print(json.dumps({'files':len(fs),'screen_files':[f['relative_path'] for f in ss],

@@ -38,6 +38,7 @@ try {
                     BatchSize=[int]$cfg.batch_size;TileMegapixels=[int]$cfg.tile_megapixels;TilePacking=[string]$cfg.tile_packing;
                     OverflowMode=[string]$c.overflow_mode;OverflowProbeWidthPx=[int]$cfg.overflow_probe_width_px;
                     OverflowProbeHeightPx=[int]$cfg.overflow_probe_height_px;RustExcelLaunchMode='excel-x';ExtendedErrorLogging=$true;NonInteractive=$true}
+                if($c.sheet_names){$params.SheetNames=[string[]]@($c.sheet_names)}
                 & (Join-Path $exp 'range-image\run.ps1') @params
             }
             'vba-picture' {& (Join-Path $exp 'range-image\run.ps1') -CorpusRoot $corpus -Workbook all -Strategy A -Implementation vba -NonInteractive}

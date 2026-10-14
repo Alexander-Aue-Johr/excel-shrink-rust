@@ -2,6 +2,47 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Visual validation: Check capture fixes (focused)",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/decision-campaign.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -Focused",
+        "vv-focused-capture",
+        "${workspaceFolder}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true,
+        "group": "experiments"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-STA",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\docs\\visual-validation\\experiments\\decision-campaign.ps1",
+          "-Focused"
+        ],
+        "options": {
+          "cwd": "${env:TEMP}"
+        }
+      }
+    },
+    {
       "label": "Visual validation: Decide strategy (all workbooks)",
       "type": "process",
       "command": "bash",

@@ -26,7 +26,15 @@ function Add-VVDecisionEvidence($Metrics,[string]$CaseRoot,$Spec) {
                     $d=[VVStripDigest]::Read($strips.ToArray(),64000000)
                     $result.status='complete';$result.algorithm=$d.Algorithm;$result.sha256=$d.Sha256
                     $result.width=$d.Width;$result.height=$d.Height;$result.overlap_rows_checked=$d.OverlapRowsChecked
-                } catch {$result.error=$_.Exception.Message}
+                } catch {
+                    $result.error=$_.Exception.Message
+                    $cause=$_.Exception.GetBaseException()
+                    if($cause.Data -and $cause.Data['schema'] -eq 'vv-seam-diagnostic-v1'){
+                        $seam=[ordered]@{}
+                        foreach($key in $cause.Data.Keys){$seam[[string]$key]=$cause.Data[$key]}
+                        $result.seam_diagnostic=[pscustomobject]$seam
+                    }
+                }
                 $canonical += [pscustomobject]$result
             }
         } catch {

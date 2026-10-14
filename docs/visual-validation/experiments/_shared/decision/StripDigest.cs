@@ -69,6 +69,7 @@ public static class VVStripDigest {
             extent=next;
         }
         int rowBytes=checked(width*4),written=0;
+        string previousPath=null;
         // Keep two last canonical rows to verify duplicate seam pixels, not merely omit them.
         var tail=new Dictionary<int,byte[]>();
         using(var sha=SHA256.Create()) {
@@ -95,7 +96,29 @@ public static class VVStripDigest {
                                 if(absolute<written){
                                     byte[] before;
                                     if(!tail.TryGetValue(absolute,out before))throw new InvalidDataException("Unverifiable overlap");
-                                    for(int i=0;i<rowBytes;i++)if(before[i]!=row[i])throw new InvalidDataException("Inconsistent seam pixels at image row "+absolute);
+                                    int first=-1,last=-1,changedPixels=0;
+                                    for(int x=0;x<width;x++) {
+                                        int p=4*x;
+                                        if(before[p]!=row[p]||before[p+1]!=row[p+1]||before[p+2]!=row[p+2]||before[p+3]!=row[p+3]) {
+                                            if(first<0)first=x;last=x;changedPixels++;
+                                        }
+                                    }
+                                    if(first>=0) {
+                                        var mismatch=new InvalidDataException("Inconsistent seam pixels at image row "+absolute);
+                                        mismatch.Data["schema"]="vv-seam-diagnostic-v1";
+                                        mismatch.Data["image_row_0based"]=absolute;
+                                        mismatch.Data["first_changed_x_0based"]=first;
+                                        mismatch.Data["last_changed_x_0based"]=last;
+                                        mismatch.Data["changed_pixels"]=changedPixels;
+                                        mismatch.Data["width"]=width;
+                                        mismatch.Data["previous_tile"]=previousPath;
+                                        mismatch.Data["current_tile"]=s.Path;
+                                        mismatch.Data["current_tile_local_row_0based"]=y;
+                                        mismatch.Data["previous_bgra_hex"]=BitConverter.ToString(before,first*4,4);
+                                        mismatch.Data["current_bgra_hex"]=BitConverter.ToString(row,first*4,4);
+                                        mismatch.Data["note"]="Strict overlap check retained. Edge-position differences are evidence, not permission to discard pixels.";
+                                        throw mismatch;
+                                    }
                                     overlaps++;continue;
                                 }
                                 if(absolute!=written)throw new InvalidDataException("Non-contiguous strip stream");
@@ -105,6 +128,7 @@ public static class VVStripDigest {
                         }finally{if(data!=null)bitmap.UnlockBits(data);}
                     }
                 }
+                previousPath=s.Path;
             }
             if(written!=extent)throw new InvalidDataException("Incomplete canonical image");
             sha.TransformFinalBlock(new byte[0],0,0);

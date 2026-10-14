@@ -40,7 +40,7 @@ function buildModel(input){
        index_basis:number(id.sheet_index)!==null?'Office worksheet position + 1':r.sheet_index_basis||
          (number(r.sheet_index)!==null?'Rust plan: visible worksheet order (legacy)':'Not recorded'),
        office_position:number(id.office_position),worksheet_id:id.worksheet_id,show_gridlines:id.show_gridlines,
-       rust:r,status:'not-captured',bounds:[],passes:[],images:[],history:[],calibrations:[],tile_plans:[],sparse_checks:[],sparse_scans:[],issues:[],source:document.path});
+       rust:r,status:'not-captured',bounds:[],passes:[],images:[],history:[],calibrations:[],geometry_diagnostics:[],continuations:[],tile_plans:[],sparse_checks:[],sparse_scans:[],issues:[],source:document.path});
     }return sheetMap.get(name);}
    for(const x of catalog)sheet(x.name);
    for(const x of list(rust.sheets))sheet(x.sheet);
@@ -66,6 +66,9 @@ function buildModel(input){
    for(const sh of sheetMap.values())sh.history.sort((a,b)=>String(a.timestamp_utc||'').localeCompare(String(b.timestamp_utc||'')));
    for(const plan of list(w.capture_plans))sheet(plan.sheet).plan=plan;
    for(const x of list(safe.calibrations))sheet(x.sheet).calibrations.push(x);
+   for(const x of list(safe.geometry_diagnostics))sheet(x.sheet).geometry_diagnostics.push(x);
+   for(const x of list(safe.sheet_continuations))sheet(x.sheet).continuations.push(x);
+   for(const name of list(safe.capture_scope?.not_selected))sheet(name).status='not-selected';
    for(const x of list(safe.tile_plans))sheet(x.sheet).tile_plans.push(x);
    for(const x of list(safe.sparse_overflow_checks))sheet(x.sheet).sparse_checks.push(x);
    for(const x of list(safe.sparse_overflow_scans))sheet(x.sheet).sparse_scans.push(x);
@@ -259,6 +262,24 @@ function mount(input,host){
       for(const c of sh.sparse_checks){const details=raw(`${c.id} · rows ${list(c.rows).join(', ')} · ${c.verdict||c.status} · restore: ${c.restoration}`,c);append(sec,details);}
       append(sec,el('p','muted','Before, blocked, restored and XOR images are in the Verification gallery. Unchanged pixels rule out blocker-sensitive text overflow only in the verified row region; they do not erase borders or other meaningful layout.'));
     }
+    if(sh.calibrations.some(c=>list(c.control_search).length)) {
+      append(sec,el('h4','','Calibration controls'));
+      for(const c of sh.calibrations) {
+        append(sec,el('p','geometry',`${c.id} · ${c.status} · ${c.control_selection||'original controls'} · ${c.observations?.length||0} PNG controls`));
+        append(sec,raw('Control search: visible extents and rejection reasons',c.control_search));
+      }
+    }
+    if(sh.geometry_diagnostics.length){
+      append(sec,el('h4','','Hidden / narrow axes and geometry'));
+      for(const d of sh.geometry_diagnostics){
+        const t=el('table'),tb=el('tbody');
+        append(sec,el('p','geometry',`${d.reason} · ${d.address} · ${d.status}`),append(el('div','table-scroll'),t));
+        append(t,append(el('thead'),append(el('tr'),['Column','Hidden','Left (pt)','Width (pt)'].map(x=>el('th','',x)))),tb);
+        for(const c of list(d.columns))append(tb,append(el('tr'),el('td','',c.column),el('td','',c.hidden===null?'Not returned':String(c.hidden)),el('td','',format(c.left_points)),el('td','',format(c.width_points))));
+        append(sec,raw('Row positions at both anchor columns',d.rows));
+      }
+    }
+    if(sh.continuations.length)append(sec,raw('Worksheet failure isolation and session health',sh.continuations));
     if(sh.history.length)append(sec,raw('Planning events (chronological)',sh.history));
     append(sec,raw('Recorded bounds and calibration',{rust:sh.rust,addin_initial:sh.record?.initial_bounds,addin_result:sh.plan,calibrations:sh.calibrations,
       source_file:sh.source,current:session.current,capture_view:sh.capture_view,export_policy:sh.record?.export_policy,detected_bounds:sh.record?.detected_bounds}));

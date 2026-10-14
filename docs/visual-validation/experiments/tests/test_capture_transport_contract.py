@@ -31,7 +31,7 @@ class Contracts(unittest.TestCase):
    self.assertNotIn('getImage(',s);self.assertNotIn('Resize(',s)
  def test_metadata_bundle_is_separate_and_explicit(self):
   s=(ROOT/'_shared/reporting.ps1').read_text();part=s[s.index('function Export-VVMetadataBundle'):s.index('function Export-VVBundle')]
-  self.assertIn('review-metadata.zip',part);self.assertIn('bundle-manifest.json',part);self.assertIn('images_included=$false',part);self.assertIn('binary-artifact',part);self.assertIn('Metadata-only review bundle',part)
+  self.assertIn('review-metadata.zip',part);self.assertIn('bundle-manifest.json',part);self.assertIn('images_included=$false',part);self.assertIn('binary-artifact',part);self.assertRegex(part,r'Metadata-only review (?:bundle|copy)')
   allowed=part[part.index(".ToLowerInvariant() -notin"):part.index(".ToLowerInvariant() -notin")+160]
   self.assertNotIn("'.png'",allowed);self.assertNotIn("'.xlsx'",allowed)
   self.assertIn('REVIEW BUNDLE (NO IMAGES)',s)

@@ -1515,7 +1515,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       } catch(e) {
         sheetRecord.status='failed'; sheetRecord.error=SafeCapture.errorInfo(e);
         await s.event('sheet_failed',{sheet:item.sheet,error:sheetRecord.error});
-        if(e.fatal || s.dead) { s.state.status='failed'; await s.checkpoint('fatal_error',{sheet:item.sheet}); throw e; }
+        if(!await s.continueAfterSheetFailure(item.sheet,e)) { s.state.status='failed'; await s.checkpoint('fatal_error',{sheet:item.sheet}); throw e; }
       }
       await s.checkpoint('sheet_finished',{sheet:item.sheet,status:sheetRecord.status});
     }
@@ -1549,7 +1549,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       } catch(e) {
         record.status='failed'; record.error=SafeCapture.errorInfo(e);
         await s.event('sheet_failed',{sheet:item.sheet,error:record.error});
-        if(e.fatal || s.dead) {s.state.status='failed';await s.checkpoint('fatal_error',{sheet:item.sheet});throw e;}
+        if(!await s.continueAfterSheetFailure(item.sheet,e)) {s.state.status='failed';await s.checkpoint('fatal_error',{sheet:item.sheet});throw e;}
       }
       await recordBounds('final_capture_bounds',item,{address:item.address,status:record.status,
         extent_points:record.extent_points,tile_count:record.tiles.length});
@@ -1918,12 +1918,14 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
 
     const workbookInfo = await getWorkbookAndVisibleSheets();
     const workbookName = workbookInfo.workbookName;
-    const sheetNames = workbookInfo.sheets.map((sheet) => sheet.name);
     if (typeof SafeCapture === 'undefined') throw new Error('safe-capture.js is missing. No unguarded screenshot will be attempted.');
+    const sheetNames = SafeCapture.selectSheetNames(workbookInfo.sheets,config.capture_options.sheet_names);
     safeSession = new SafeCapture.Session(workbookName, config);
     if (!await safeSession.claim()) { ExperimentUi.setPhase('Another task pane owns this workbook capture.'); return; }
     if (typeof CapturePolicy === 'undefined') throw new Error('capture-policy.js is missing; no unconfigured screenshots were started.');
     safeSession.state.sheet_catalog = workbookInfo.sheets;
+    safeSession.state.capture_scope={mode:config.capture_options.sheet_names?'selected-sheets':'all-visible-sheets',
+      selected_sheets:sheetNames,visible_sheet_count:workbookInfo.sheets.length,not_selected:workbookInfo.sheets.filter(s=>!sheetNames.includes(s.name)).map(s=>s.name)};
     safeSession.state.capture_policy_version = CapturePolicy.VERSION;
     await CapturePolicy.hideGridlines(safeSession, workbookInfo.sheets);
     safeSession.state.bounds_history = [];

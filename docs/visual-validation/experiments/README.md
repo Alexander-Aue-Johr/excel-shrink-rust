@@ -45,3 +45,7 @@ Use **Visual validation: Run comparison suite** in VS Code. The default `suite.j
 ## Bounded strategy decision
 
 Use **Visual validation: Decide strategy (all workbooks)**. See [DECISION-CAMPAIGN.md](DECISION-CAMPAIGN.md) for the predeclared screening/confirmation/all-file plan, baseline-relative deadlines, native scope and generated decision memorandum. This does not run the original-versus-shrunk regression corpus.
+
+## Focused capture repair
+
+Use **Visual validation: Check capture fixes (focused)** for the bounded hidden/narrow-column and geometry follow-up. See [protocol and scope](FOCUSED-CAPTURE-REPAIR.md). It does not repeat the full strategy matrix or change production decisions.

@@ -21,6 +21,8 @@ param(
 
     [string]$Workbook,
 
+    [string[]]$SheetNames,
+
     [ValidateSet('heuristic','selective','compare')]
     [string]$OverflowMode = 'heuristic',
 
@@ -353,6 +355,7 @@ if ($needsFOfficeJs) {
 if ($OverflowMode -ne 'heuristic' -and ($Strategy -ne 'F' -or $Implementation -eq 'vba')) {
     throw 'Selective overflow and the A/B comparison require Strategy F with an Office.js implementation.'
 }
+if($SheetNames -and ($Strategy -ne 'F' -or $Implementation -in @('vba','all'))) { throw 'Exact sheet selection requires Strategy F and one Office.js host.' }
 $overflowArms = if ($OverflowMode -eq 'compare') { @('heuristic','selective') } else { @($OverflowMode) }
 foreach ($currentStrategy in $strategies) {
     foreach ($currentImplementation in $implementations) {
@@ -419,7 +422,7 @@ foreach ($currentStrategy in $strategies) {
 
         $captureOptionsPath = $output + '.options.json'
         Write-VVJson $captureOptionsPath @{schema='capture-options-v1';overflow_mode=$overflowArm;tile_megapixels=$TileMegapixels;
-            tile_packing=$TilePacking;comparison_requested=($OverflowMode -eq 'compare');arm_order='A-then-B';
+            tile_packing=$TilePacking;sheet_names=$SheetNames;comparison_requested=($OverflowMode -eq 'compare');arm_order='A-then-B';
             note='Sequential fresh-workbook comparison; warm-cache/order effects are not controlled by a single pair.'}
         $args = @{
             CaptureOptionsPath = $captureOptionsPath

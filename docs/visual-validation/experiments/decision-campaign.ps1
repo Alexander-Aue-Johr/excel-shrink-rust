@@ -1,12 +1,14 @@
-﻿param([switch]$PlanOnly,[switch]$NewRun,[switch]$ReportOnly,[switch]$NoOpen)
+﻿param([switch]$PlanOnly,[switch]$NewRun,[switch]$ReportOnly,[switch]$NoOpen,[switch]$Focused)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '_shared\reporting.ps1')
 $repo=Get-VVRepo $PSScriptRoot
-$configPath=Join-Path $PSScriptRoot 'decision-campaign.json'
+$experimentName=if($Focused){'capture-followup'}else{'decision-campaign'}
+$configPath=Join-Path $PSScriptRoot $(if($Focused){'capture-followup.json'}else{'decision-campaign.json'})
 $cfg=Read-VVJson $configPath
 $decisionRoot=$PSScriptRoot
 $owner=$null;$exitCode=0
 function Invoke-DecisionPython([string[]]$Extra) {
+    if($Focused){$Extra=@($Extra)+@('--focused')}
     $script=Join-Path $decisionRoot '_shared\decision\campaign.py'
     if($repo -match '^\\\\(?:wsl\.localhost|wsl\$)\\([^\\]+)\\(.*)$') {
         $distro=$Matches[1];$linuxRepo='/'+$Matches[2].Replace('\','/')
@@ -38,7 +40,7 @@ try {
     $reports=Join-Path $repo 'docs\visual-validation\results'
     $existing=@()
     if(-not $NewRun -and ($cfg.auto_resume -or $ReportOnly)){
-        $existing=@(Get-VVRunList $reports|Where-Object{$_.Meta.experiment -eq 'decision-campaign' -and -not $_.Active -and ($ReportOnly -or $_.Meta.status -in @('running','interrupted','partial'))}|Select-Object -First 1)
+        $existing=@(Get-VVRunList $reports|Where-Object{$_.Meta.experiment -eq $experimentName -and -not $_.Active -and ($ReportOnly -or $_.Meta.status -in @('running','interrupted','partial'))}|Select-Object -First 1)
     }
     if($existing.Count){
         $path=$existing[0].Path
@@ -51,7 +53,7 @@ try {
         Write-Host ('RESUMING REPORT DIRECTORY: '+$path)
     } else {
         if($ReportOnly){throw 'No decision campaign exists to rebuild'}
-        $owner=Start-VVReport -Start $PSScriptRoot -Experiment 'decision-campaign' -Arguments $PSBoundParameters
+        $owner=Start-VVReport -Start $PSScriptRoot -Experiment $experimentName -Arguments $PSBoundParameters
         if(-not $owner.Owned){throw 'Start the decision campaign as its own task'}
     }
     if($owner.Transcript){Stop-Transcript|Out-Null;$owner.Transcript=$false}
