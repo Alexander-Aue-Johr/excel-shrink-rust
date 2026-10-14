@@ -124,6 +124,7 @@ $workbooks = $null
 try {
     $excel = New-Object -ComObject Excel.Application
 
+    if(Get-Command Register-VVDecisionExcel -ErrorAction SilentlyContinue){Register-VVDecisionExcel $excel}
     $excel.Visible = $false
     $excel.DisplayAlerts = $false
     $excel.EnableEvents = $false

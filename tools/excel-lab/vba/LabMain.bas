@@ -112,6 +112,8 @@ Public Function RunBatch(ByVal requestPath As String, ByVal progressFile As Stri
     Application.Calculation = xlCalculationManual
     Application.ScreenUpdating = True ' CopyPicture needs a real renderable window.
     LabPixels.MaxPixels = CDbl(LabIO.Attr(options, "max_pixels", "32000000"))
+    LabCapture.SkipImagePersistence = Not LabIO.Flag(options, "persist_images", True)
+    LabCapture.ProgressManifestPath = directory & "\captures.partial.json"
     For Each pair In options.SelectNodes("pairs/pair")
         seq = seq + 1: id = LabIO.Attr(pair, "id"): name = LabIO.Attr(pair, "name")
         LabIO.Progress "BEGIN workbook pair=" & id & " " & name

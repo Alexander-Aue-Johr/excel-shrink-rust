@@ -345,6 +345,10 @@ function Get-VVCaptureRollup([string]$RunRoot) {
 }
 function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
     $meta=Read-VVJson (Join-Path $RunRoot 'run.json')
+    if ($null -ne $meta -and $meta.experiment -eq 'decision-campaign') {
+        Write-Host 'Decision campaign view retained. Use decision-campaign.ps1 -ReportOnly to rebuild it without Excel.'
+        return
+    }
     if ($null -ne $meta -and $meta.experiment -eq 'comparison-suite') {
         Complete-VVSuiteReport -RunRoot $RunRoot -Interrupted:$Interrupted
         return
@@ -468,4 +472,26 @@ function Stop-VVReport($Owner) {
         elseif (-not (Test-Path -LiteralPath (Join-Path $Owner.Path 'review-metadata.zip'))) {Write-Host ('REVIEW BUNDLE:    Bundle unavailable; archive this directory: '+$Owner.Path)}
         else {Write-Host ('LOCAL EVIDENCE: '+$Owner.Path)}
     }
+}
+
+# Decision-campaign-only ownership receipt. Never register an existing/user Excel session.
+function Register-VVDecisionExcel($Excel) {
+    if([string]::IsNullOrWhiteSpace($env:VV_DECISION_OWNER_TOKEN) -or [string]::IsNullOrWhiteSpace($env:VV_DECISION_CASE_ROOT)){return}
+    if($null -eq ('VVDecisionWindowPid' -as [type])){
+        Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class VVDecisionWindowPid {
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint pid);
+}
+'@ -ErrorAction Stop
+    }
+    [uint32]$excelPid=0
+    [void][VVDecisionWindowPid]::GetWindowThreadProcessId([IntPtr]$Excel.Hwnd,[ref]$excelPid)
+    if($excelPid -eq 0 -or ($env:VV_DECISION_PREEXISTING_EXCEL -split ',') -contains [string]$excelPid){throw 'Refusing to register a pre-existing or unidentified Excel session'}
+    $process=[Diagnostics.Process]::GetProcessById([int]$excelPid)
+    try {
+        if($process.ProcessName -ine 'EXCEL'){throw 'Unexpected COM process identity'}
+        Write-VVJson (Join-Path $env:VV_DECISION_CASE_ROOT ('owned-excel-'+$excelPid+'.json')) @{owner_token=$env:VV_DECISION_OWNER_TOKEN;pid=$excelPid;start_ticks=$process.StartTime.ToUniversalTime().Ticks.ToString()}
+    }finally{$process.Dispose()}
 }

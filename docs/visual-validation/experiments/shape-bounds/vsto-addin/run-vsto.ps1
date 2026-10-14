@@ -86,6 +86,8 @@ try {
     New-ItemProperty -Path $registryPath -Name Manifest -Value $manifestUri -PropertyType String -Force | Out-Null
 
     $excel = New-Object -ComObject Excel.Application
+
+    if(Get-Command Register-VVDecisionExcel -ErrorAction SilentlyContinue){Register-VVDecisionExcel $excel}
     $excel.Visible = $false
     $excel.DisplayAlerts = $false
     $excel.EnableEvents = $false

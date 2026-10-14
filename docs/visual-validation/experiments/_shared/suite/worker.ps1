@@ -6,7 +6,7 @@ $utf8=[Text.UTF8Encoding]::new($false)
 $spec=[IO.File]::ReadAllText($SpecPath,$utf8)|ConvertFrom-Json
 $caseRoot=[IO.Path]::GetFullPath($spec.case_root)
 $expected=[IO.Path]::GetFullPath((Join-Path $spec.suite_root ('cases\'+$spec.job.id)))
-if($caseRoot -ne $expected -or $spec.job.id -notmatch '^\d{3}-[a-z0-9-]+$'){throw 'Invalid case specification.'}
+if($caseRoot -ne $expected -or $spec.job.id -notmatch '^\d{3,8}-[a-z0-9-]+$'){throw 'Invalid case specification.'}
 $go=Join-Path $caseRoot '.go'
 $wait=[Diagnostics.Stopwatch]::StartNew()
 # The controller must attach this waiting process to its Job Object before releasing it.
@@ -28,6 +28,8 @@ try {
     $exp=Join-Path $spec.repo_root 'docs\visual-validation\experiments'
     $c=$spec.job.candidate;$cfg=$spec.capture;$corpus=[string]$spec.staged_corpus
     Write-VVEvent 'suite_case_started' @{job=$spec.job;input_manifest=$spec.inputs;transport=$(if($c.host_kind -eq 'rust'){'HTTP'}else{'HTTPS / native'})}
+    if($spec.decision){Write-VVJson (Join-Path $caseRoot 'case-phase.json') @{phase='workload';timestamp_utc=[DateTime]::UtcNow.ToString('o')}}
+    [IO.Directory]::CreateDirectory((Join-Path $caseRoot 'data'))|Out-Null
     $clock=[Diagnostics.Stopwatch]::StartNew()
     try {
         switch([string]$c.kind) {
@@ -50,9 +52,16 @@ try {
                 if($c.suite -eq 'height-plateau'){& (Join-Path $exp 'range-image-height-limit\run.ps1') -CorpusRoot $corpus -NonInteractive}
                 else{& (Join-Path $exp 'range-image-calibration\run.ps1') -Suite $c.suite -NonInteractive}
             }
+            {$_ -in @('lab-setup','lab-capture','lab-memory','lab-rows')} {
+                . (Join-Path $PSScriptRoot '..\decision\native.ps1')
+                Invoke-VVDecisionNative $spec
+            }
             default {throw 'Unsupported suite case kind.'}
         }
-    } finally {$clock.Stop();$workloadMs=$clock.Elapsed.TotalMilliseconds}
+    } finally {
+        $clock.Stop();$workloadMs=$clock.Elapsed.TotalMilliseconds
+        if($spec.decision){Write-VVJson (Join-Path $caseRoot 'case-phase.json') @{phase='postprocess';workload_ms=$workloadMs;timestamp_utc=[DateTime]::UtcNow.ToString('o')}}
+    }
 } catch {
     $problem=$_.Exception.Message;$exitCode=1
     try{Write-VVFailure $_ $PSCommandPath}catch{}
@@ -76,9 +85,13 @@ try {
             $metrics.pixel_verification_status='decoder-unavailable'
             $metrics.pixel_unverified_captures=@($metrics.captures).Count
         }
+        if($spec.decision){
+            . (Join-Path $PSScriptRoot '..\decision\extras.ps1')
+            $metrics=Add-VVDecisionEvidence -Metrics $metrics -CaseRoot $caseRoot -Spec $spec
+        }
         $metrics|Add-Member -NotePropertyName workload_ms -NotePropertyValue $workloadMs
         $metrics|Add-Member -NotePropertyName invocation_error -NotePropertyValue $problem
-        if($problem){$metrics.status='failed'}
+        if($problem -and $metrics.status -ne 'unavailable'){$metrics.status='failed'}
         if($spec.job.candidate.kind -eq 'capture' -and @($metrics.workbooks|Where-Object{$_.kind -eq 'capture'}).Count -ne @($spec.inputs).Count){$metrics.status='partial'}
         Write-VVJson (Join-Path $caseRoot 'case-metrics.json') $metrics
         Write-VVEvent 'suite_case_finished' @{status=$metrics.status;workload_ms=$workloadMs;pixel_verification_ms=$metrics.pixel_verification_ms}
@@ -87,8 +100,9 @@ try {
         Write-VVJson (Join-Path $caseRoot 'case-metrics.json') @{schema='vv-suite-case-metrics-v1';status='failed';workload_ms=$workloadMs;errors=@($problem);captures=@();workbooks=@();documents=@()}
     }
     if($transcript){try{Stop-Transcript|Out-Null}catch{}}
+    if($spec.decision){Write-VVJson (Join-Path $caseRoot 'case-phase.json') @{phase='report';timestamp_utc=[DateTime]::UtcNow.ToString('o')}}
     $publication=[ordered]@{status='ready';timestamp_utc=[DateTime]::UtcNow.ToString('o')}
-    try{Complete-VVReport $caseRoot;Connect-VVCaseReport $caseRoot;Export-VVMetadataBundle $caseRoot}catch{
+    try{Complete-VVReport $caseRoot;Connect-VVCaseReport $caseRoot;if(-not $spec.decision){Export-VVMetadataBundle $caseRoot}else{Set-VVBundleStatus $caseRoot 'building' 'Evidence is included in the parent campaign metadata bundle.'}}catch{
         $publication.status='failed';$publication.message=$_.Exception.Message
         [IO.File]::WriteAllText((Join-Path $caseRoot 'case-report-error.txt'),$_.Exception.ToString(),$utf8)
         try{Set-VVBundleStatus $caseRoot 'failed' $publication.message}catch{}

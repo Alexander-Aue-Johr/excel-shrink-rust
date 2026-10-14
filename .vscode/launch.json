@@ -2,6 +2,13 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Visual validation: Decide strategy (all workbooks)",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "echo Decision campaign task finished.",
+            "preLaunchTask": "Visual validation: Decide strategy (all workbooks)"
+        },
+        {
             "name": "Debug excel-shrink-cli (enter input and output directories)",
             "type": "lldb",
             "request": "launch",

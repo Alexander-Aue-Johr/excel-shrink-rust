@@ -41,3 +41,7 @@ physical final-PNG crops, metadata-only review bundles, and the Rust desktop HTT
 ## Configured comparison suite
 
 Use **Visual validation: Run comparison suite** in VS Code. The default `suite.json` runs repeated current candidates; `inventory` covers the experiment families once. See [COMPARISON-SUITE.md](COMPARISON-SUITE.md) for scope, isolation, interpretation and the one-bundle review workflow. Existing individual entry points remain available.
+
+## Bounded strategy decision
+
+Use **Visual validation: Decide strategy (all workbooks)**. See [DECISION-CAMPAIGN.md](DECISION-CAMPAIGN.md) for the predeclared screening/confirmation/all-file plan, baseline-relative deadlines, native scope and generated decision memorandum. This does not run the original-versus-shrunk regression corpus.

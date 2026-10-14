@@ -25,6 +25,8 @@ public sealed class VVSuiteJob : IDisposable {
     [DllImport("kernel32.dll", SetLastError=true)]
     static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
     [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool IsProcessInJob(IntPtr process, IntPtr job, out bool result);
+    [DllImport("kernel32.dll", SetLastError=true)]
     static extern bool TerminateJobObject(IntPtr job, uint code);
     [DllImport("kernel32.dll", SetLastError=true)]
     static extern bool CloseHandle(IntPtr handle);
@@ -39,6 +41,9 @@ public sealed class VVSuiteJob : IDisposable {
     }
     public void Assign(Process process) {
         if(handle==IntPtr.Zero)throw new ObjectDisposedException("VVSuiteJob");
+        bool already;
+        if(!IsProcessInJob(process.Handle,handle,out already))throw new Win32Exception(Marshal.GetLastWin32Error());
+        if(already)return;
         if(!AssignProcessToJobObject(handle,process.Handle))throw new Win32Exception(Marshal.GetLastWin32Error());
     }
     public void Terminate() {if(handle!=IntPtr.Zero&&!TerminateJobObject(handle,124))throw new Win32Exception(Marshal.GetLastWin32Error());}

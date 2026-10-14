@@ -1,6 +1,9 @@
 Attribute VB_Name = "LabCapture"
 Option Explicit
 
+Public SkipImagePersistence As Boolean
+Public ProgressManifestPath As String
+
 Public Function Tiles(ByVal a As Worksheet, ByVal b As Worksheet, ByVal address As String, ByVal maxPoints As Long, ByVal maxTiles As Long) As Collection
     Dim result As New Collection, area As Range, r As Long, c As Long, re As Long, ce As Long, lastR As Long, lastC As Long
     Set area = a.Range(address)
@@ -61,7 +64,7 @@ Public Sub RunPair(ByVal a As Worksheet, ByVal b As Worksheet, ByVal address As 
         If rangeA.Width <= 0 Or rangeA.Height <= 0 Then Err.Raise 5, , "Original tile has no visible dimensions"
         imageA = LabPixels.Capture(rangeA, appearance, copyFormat, transparent, dpi)
         sequenceA = LabPixels.LastSequence
-        LabPixels.Save imageA, pathA, storage
+        If Not SkipImagePersistence Then LabPixels.Save imageA, pathA, storage
         details = "{""id"":" & LabIO.J(prefix & "-t" & Format$(tile, "00000")) & ",""sheet"":" & LabIO.J(a.Name) & _
             ",""requested_range"":" & LabIO.J(address) & ",""tile_range"":" & LabIO.J(CStr(item)) & _
             ",""appearance"":" & CStr(appearance) & ",""copy_format"":" & CStr(copyFormat) & _
@@ -70,7 +73,7 @@ Public Sub RunPair(ByVal a As Worksheet, ByVal b As Worksheet, ByVal address As 
         If Not b Is Nothing Then
             imageB = LabPixels.Capture(rangeB, appearance, copyFormat, transparent, dpi)
             sequenceB = LabPixels.LastSequence
-            LabPixels.Save imageB, pathB, storage
+            If Not SkipImagePersistence Then LabPixels.Save imageB, pathB, storage
             LabPixels.Size imageB, w, h
             details = details & ",""shrunk"":" & LabIO.J(relativeB) & ",""shrunk_width"":" & CStr(w) & ",""shrunk_height"":" & CStr(h)
             If compareVba Then details = details & ",""vba_visual_compare"":" & LabPixels.Compare(imageA, imageB)
@@ -81,7 +84,12 @@ Public Sub RunPair(ByVal a As Worksheet, ByVal b As Worksheet, ByVal address As 
         details = details & ",""original_width"":" & CStr(w) & ",""original_height"":" & CStr(h) & _
             ",""original_clipboard_sequence"":" & CStr(sequenceA) & ",""shrunk_clipboard_sequence"":" & CStr(sequenceB) & _
             ",""capture_seconds"":" & LabIO.N(LabIO.SecondsSince(started)) & "}"
+        If SkipImagePersistence Then
+            details = Replace$(details, """original"":" & LabIO.J(relativeA), """original"":null")
+            details = Replace$(details, """shrunk"":" & LabIO.J(relativeB), """shrunk"":null")
+        End If
         results.Add details
+        If Len(ProgressManifestPath) > 0 Then LabIO.SaveText ProgressManifestPath, "{""schema"":""excel-lab-captures-partial-v1"",""captures"":" & LabIO.JoinJson(results) & "}"
         LabPixels.Dispose imageA: LabPixels.Dispose imageB
         LabIO.Progress "capture done " & prefix & " tile=" & CStr(tile)
     Next

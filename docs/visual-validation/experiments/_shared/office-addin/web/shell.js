@@ -271,7 +271,32 @@
     });
   }, 5000);
 
-  Office.onReady(async (info) => {
+  async function startWhenOfficeIsAvailable() {
+    const started = performance.now();
+    while (!window.Office || typeof window.Office.onReady !== 'function') {
+      if (performance.now() - started > 30000) {
+        const message = 'Office.js was unavailable for 30 seconds; no capture was started.';
+        window.ExperimentUi.fail(message);
+        await postEvent('office_bootstrap_failed', { message, office_defined: !!window.Office,
+          scripts: Array.from(document.scripts).map(s => s.src).filter(Boolean) });
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    let ready = false;
+    let expired = false;
+    const timer = setTimeout(() => {
+      if (!ready) {
+        expired = true;
+        const message = 'Office.onReady did not complete within 60 seconds.';
+        window.ExperimentUi.fail(message);
+        postEvent('office_ready_timeout', {message});
+      }
+    }, 60000);
+    window.Office.onReady(async (info) => {
+    if (expired || ready) return;
+    ready = true;
+    clearTimeout(timer);
     await postEvent('office_ready', { host: info.host });
     try {
       if (info.host !== Office.HostType.Excel) {
@@ -291,5 +316,10 @@
       } catch (_) {
       }
     }
+    });
+  }
+  startWhenOfficeIsAvailable().catch(error => {
+    window.ExperimentUi.fail(String(error));
+    postEvent('office_bootstrap_failed', { message: String(error) });
   });
 }());
