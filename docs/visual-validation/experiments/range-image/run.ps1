@@ -1,4 +1,5 @@
 param(
+    [ValidateSet('off','first-seam')][string]$ContextValidation='off',
     [string]$CorpusRoot,
 
     [ValidateSet('A', 'B', 'C', 'D', 'E', 'F', 'all')]
@@ -38,6 +39,12 @@ param(
 
     [switch]$UseOfficeDebugJs,
 
+    [ValidateRange(10,1800)][int]$StartupTimeoutSeconds=180,
+    [ValidateRange(0,7200)][int]$CaptureTimeoutSeconds=0,
+    [ValidateRange(10,1800)][int]$InactivityTimeoutSeconds=120,
+    [ValidateRange(60,14400)][int]$AbsoluteWorkbookTimeoutSeconds=900,
+    [ValidateRange(10,600)][int]$NativeCallTimeoutSeconds=90,
+    [ValidateSet('normal','detailed')][string]$DiagnosticLevel='normal',
     [switch]$NonInteractive
 )
 
@@ -422,7 +429,7 @@ foreach ($currentStrategy in $strategies) {
 
         $captureOptionsPath = $output + '.options.json'
         Write-VVJson $captureOptionsPath @{schema='capture-options-v1';overflow_mode=$overflowArm;tile_megapixels=$TileMegapixels;
-            tile_packing=$TilePacking;sheet_names=$SheetNames;comparison_requested=($OverflowMode -eq 'compare');arm_order='A-then-B';
+            tile_packing=$TilePacking;context_validation=$ContextValidation;sheet_names=$SheetNames;native_call_timeout_ms=($NativeCallTimeoutSeconds*1000);diagnostic_level=$DiagnosticLevel;comparison_requested=($OverflowMode -eq 'compare');arm_order='A-then-B';
             note='Sequential fresh-workbook comparison; warm-cache/order effects are not controlled by a single pair.'}
         $args = @{
             CaptureOptionsPath = $captureOptionsPath
@@ -435,6 +442,11 @@ foreach ($currentStrategy in $strategies) {
             BatchSize = $BatchSize
             OverflowProbeWidthPx = $OverflowProbeWidthPx
             OverflowProbeHeightPx = $OverflowProbeHeightPx
+            StartupTimeoutSeconds = $StartupTimeoutSeconds
+            CaptureTimeoutSeconds = $CaptureTimeoutSeconds
+            InactivityTimeoutSeconds = $InactivityTimeoutSeconds
+            AbsoluteWorkbookTimeoutSeconds = $AbsoluteWorkbookTimeoutSeconds
+            FocusDiagnostics = ($DiagnosticLevel -eq 'detailed')
         }
 
         if ($WaitForStart) {

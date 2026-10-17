@@ -53,9 +53,12 @@ fn export(state: &Shared, body: &Value) -> Result<Value> {
     let width = number("width")?;
     let sw = number("source_width")?;
     let sh = number("source_height")?;
+    let x = if body.get("x").is_some() { number("x")? } else { 0 };
+    let y = if body.get("y").is_some() { number("y")? } else { 0 };
+    let height = if body.get("height").is_some() { number("height")? } else { sh };
     let options: Value = serde_json::from_slice(&fs::read(state.config.static_root.join("capture-options.json"))?)?;
     let mp = options["tile_megapixels"].as_u64().unwrap_or(16);
-    if ![16,32,64].contains(&mp) || width == 0 || width > sw || sw == 0 || sh == 0 || sw > 30000 || sh > 30000 ||
+    if ![16,32,64].contains(&mp) || width == 0 || height == 0 || u64::from(x)+u64::from(width)>u64::from(sw) || u64::from(y)+u64::from(height)>u64::from(sh) || sw == 0 || sh == 0 || sw > 30000 || sh > 30000 ||
         u64::from(sw) * u64::from(sh) > mp * 1_000_000 { bail!("Native export pixel budget exceeded"); }
     let dir = state.config.image_root.join(safe_file_name(workbook));
     let source = dir.join(format!("{id}.png"));
@@ -63,13 +66,13 @@ fn export(state: &Shared, body: &Value) -> Result<Value> {
         bail!("Symbolic paths are not valid image sources");
     }
     if fs::metadata(&source)?.len() > 128 * 1024 * 1024 { bail!("Source PNG byte budget exceeded"); }
-    state.record("final_png_started", json!({"workbook":workbook,"sheet":sheet,"address":address,"source_id":id,"width":width,"source_height":sh}));
+    state.record("final_png_started", json!({"workbook":workbook,"sheet":sheet,"address":address,"source_id":id,"width":width,"height":height,"x":x,"y":y,"source_width":sw,"source_height":sh}));
     let bytes = fs::read(&source)?;
     if format!("{:x}", Sha256::digest(&bytes)) != sha { bail!("Source PNG hash changed"); }
     let dimensions = ImageReader::with_format(Cursor::new(&bytes), image::ImageFormat::Png).into_dimensions()?;
     if dimensions != (sw, sh) { bail!("Source PNG dimensions differ from the capture receipt"); }
     let decoded = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)?.to_rgba8();
-    let cropped = image::imageops::crop_imm(&decoded, 0, 0, width, sh).to_image();
+    let cropped = image::imageops::crop_imm(&decoded, x, y, width, height).to_image();
     drop(decoded);
     let output_id = format!("{id}-final");
     let destination = dir.join(format!("{output_id}.png"));
@@ -84,8 +87,8 @@ fn export(state: &Shared, body: &Value) -> Result<Value> {
         let output_bytes = fs::read(&temporary)?;
         fs::rename(&temporary, &destination)?;
         let receipt = json!({"capture":{"id":output_id,"workbook":workbook,"sheet":sheet,"address":address,
-            "relative_png":format!("{}/{}.png",safe_file_name(workbook),output_id),"png_width":width,"png_height":sh,
-            "png_bytes":output_bytes.len(),"sha256":format!("{:x}",Sha256::digest(&output_bytes)),"source_id":id,"export_kind":"native-right-crop"},
+            "relative_png":format!("{}/{}.png",safe_file_name(workbook),output_id),"png_width":width,"png_height":height,
+            "png_bytes":output_bytes.len(),"sha256":format!("{:x}",Sha256::digest(&output_bytes)),"source_id":id,"export_kind":if x != 0 || y != 0 || height != sh { "native-context-crop" } else { "native-right-crop" },"crop_rect_px":{"x":x,"y":y,"width":width,"height":height}},
             "crop_ms":started.elapsed().as_secs_f64()*1000.0});
         state.record("final_png_saved", receipt.clone());
         Ok(receipt)
@@ -102,5 +105,17 @@ fn export(state: &Shared, body: &Value) -> Result<Value> {
         let cut = image::imageops::crop_imm(&im,0,0,3,5).to_image();
         assert_eq!(cut.dimensions(),(3,5));
         for y in 0..5 {for x in 0..3 {assert_eq!(im.get_pixel(x,y),cut.get_pixel(x,y));}}
+    }
+}
+
+#[cfg(test)] mod contextual_tests {
+    #[test] fn non_origin_rectangle_does_not_resample() {
+        let mut input=image::RgbaImage::new(9,10);
+        for y in 0..10 { for x in 0..9 { input.put_pixel(x,y,image::Rgba([x as u8,y as u8,93,255])); }}
+        let core=image::imageops::crop_imm(&input,2,3,4,5).to_image();
+        assert_eq!(core.dimensions(),(4,5));
+        assert_eq!(core.get_pixel(0,0),input.get_pixel(2,3));
+        assert_eq!(core.get_pixel(3,4),input.get_pixel(5,7));
+        assert_eq!(input.dimensions(),(9,10));
     }
 }

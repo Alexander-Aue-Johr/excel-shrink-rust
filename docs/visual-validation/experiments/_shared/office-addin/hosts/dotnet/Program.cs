@@ -61,7 +61,8 @@ var officeJsDebug = string.Equals(
 // Diagnostic run IDs prevent still-open task panes from previous runs contaminating this run.
 var isRenderDiagnostic = experiment is "range-image-height-limit" or "range-image-calibration";
 var diagnosticRunId = isRenderDiagnostic ? Guid.NewGuid().ToString("N") : null;
-var captureRunId = experiment == "range-image" ? (Environment.GetEnvironmentVariable("VV_CAPTURE_RUN_ID") ?? Guid.NewGuid().ToString("N")) : null;
+var hostRunId = Environment.GetEnvironmentVariable("VV_CAPTURE_RUN_ID") ?? Guid.NewGuid().ToString("N");
+var captureRunId = experiment == "range-image" ? hostRunId : null;
 var diagnosticConfigPath = Path.Combine(staticRoot, "diagnostic-config.json");
 JsonNode? diagnosticOptions = isRenderDiagnostic && File.Exists(diagnosticConfigPath)
     ? JsonNode.Parse(File.ReadAllText(diagnosticConfigPath)) : null;
@@ -81,6 +82,7 @@ var expectedNameSet = new HashSet<string>(
 
 var results = new ConcurrentDictionary<string, JsonObject>(
     StringComparer.OrdinalIgnoreCase);
+var publishedResults = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
 var errors = new ConcurrentQueue<string>();
 var events = new ConcurrentQueue<EventEntry>();
 var eventSequence = 0L;
@@ -278,11 +280,11 @@ async Task WriteOutputAsync()
             Directory.CreateDirectory(parent);
         }
 
-        await File.WriteAllTextAsync(
-            outputPath + ".new",
-            document.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n",
-            strictUtf8);
-        File.Move(outputPath + ".new", outputPath, overwrite:true);
+        var text = document.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
+        var publication = await Task.Run(() => VVSnapshotFile.WriteText(outputPath, text));
+        if (publication.Attempts > 1) Record("snapshot_publish_retried", new { path=outputPath, publication.Attempts });
+        // /status must not announce completion until this exact output snapshot was published.
+        foreach (var name in workbooks.Select(item => item.Key)) publishedResults[name] = 1;
     }
     finally
     {
@@ -330,8 +332,8 @@ app.MapPost("/capture-progress", async (HttpRequest request) => {
     var path=Path.Combine(dir,SafeFileName(workbook)+".progress.json");
     await progressGate.WaitAsync();
     try {
-        await File.WriteAllTextAsync(path+".new",body.ToJsonString(new JsonSerializerOptions{WriteIndented=true}),new UTF8Encoding(false));
-        File.Move(path+".new",path,overwrite:true);
+        var text = body.ToJsonString(new JsonSerializerOptions{WriteIndented=true});
+        await Task.Run(() => VVSnapshotFile.WriteText(path, text));
     } finally {progressGate.Release();}
     return Results.Json(new {ok=true});
 });
@@ -378,6 +380,7 @@ app.MapGet("/config", () => Results.Json(new
     wait_for_start = waitForStart,
     extended_error_logging = extendedErrorLogging,
     office_js_debug = officeJsDebug,
+    host_run_id = hostRunId,
     capture_run_id = captureRunId,
     diagnostic_run_id = diagnosticRunId,
     diagnostic_options = diagnosticOptions
@@ -388,8 +391,8 @@ app.MapGet("/status", (string? workbook, long? after) =>
     var since = after ?? 0;
     var snapshot = events.Where(item => item.Sequence > since).ToArray();
     var done = workbook is null
-        ? results.Count == expectedNames.Length
-        : results.ContainsKey(workbook);
+        ? publishedResults.Count == expectedNames.Length
+        : publishedResults.ContainsKey(workbook);
 
     return Results.Json(new
     {
@@ -704,6 +707,8 @@ app.MapGet("/taskpane.html", () =>
 app.MapGet("/taskpane.css", () => StaticFile("taskpane.css", "text/css; charset=utf-8"));
 app.MapGet("/bootstrap.js", () => StaticFile("bootstrap.js", "application/javascript; charset=utf-8"));
 app.MapGet("/shell.js", () => StaticFile("shell.js", "application/javascript; charset=utf-8"));
+app.MapGet("/capture-geometry.js", () => StaticFile("capture-geometry.js", "application/javascript; charset=utf-8"));
+app.MapGet("/context-validation.js", () => StaticFile("context-validation.js", "application/javascript; charset=utf-8"));
 app.MapGet("/safe-capture.js", () => StaticFile("safe-capture.js", "application/javascript; charset=utf-8"));
 app.MapGet("/capture-policy.js", () => StaticFile("capture-policy.js", "application/javascript; charset=utf-8"));
 app.MapGet("/selective-overflow.js", () => StaticFile("selective-overflow.js", "application/javascript; charset=utf-8"));

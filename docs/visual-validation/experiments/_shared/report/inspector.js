@@ -40,7 +40,7 @@ function buildModel(input){
        index_basis:number(id.sheet_index)!==null?'Office worksheet position + 1':r.sheet_index_basis||
          (number(r.sheet_index)!==null?'Rust plan: visible worksheet order (legacy)':'Not recorded'),
        office_position:number(id.office_position),worksheet_id:id.worksheet_id,show_gridlines:id.show_gridlines,
-       rust:r,status:'not-captured',bounds:[],passes:[],images:[],history:[],calibrations:[],geometry_diagnostics:[],continuations:[],tile_plans:[],sparse_checks:[],sparse_scans:[],issues:[],source:document.path});
+       rust:r,status:'not-captured',bounds:[],passes:[],images:[],history:[],calibrations:[],drawing_mapping_audits:[],geometry_diagnostics:[],axis_geometry:[],context_validations:[],continuations:[],tile_plans:[],sparse_checks:[],sparse_scans:[],issues:[],source:document.path});
     }return sheetMap.get(name);}
    for(const x of catalog)sheet(x.name);
    for(const x of list(rust.sheets))sheet(x.sheet);
@@ -66,7 +66,10 @@ function buildModel(input){
    for(const sh of sheetMap.values())sh.history.sort((a,b)=>String(a.timestamp_utc||'').localeCompare(String(b.timestamp_utc||'')));
    for(const plan of list(w.capture_plans))sheet(plan.sheet).plan=plan;
    for(const x of list(safe.calibrations))sheet(x.sheet).calibrations.push(x);
+   for(const x of list(safe.axis_geometry))sheet(x.sheet).axis_geometry.push(x);
+   for(const x of list(safe.context_validations))sheet(x.sheet).context_validations.push(x);
    for(const x of list(safe.geometry_diagnostics))sheet(x.sheet).geometry_diagnostics.push(x);
+   for(const x of list(safe.drawing_mapping_audits))sheet(x.sheet).drawing_mapping_audits.push(x);
    for(const x of list(safe.sheet_continuations))sheet(x.sheet).continuations.push(x);
    for(const name of list(safe.capture_scope?.not_selected))sheet(name).status='not-selected';
    for(const x of list(safe.tile_plans))sheet(x.sheet).tile_plans.push(x);
@@ -92,10 +95,14 @@ function buildModel(input){
      addImage(tile,sheet(record.sheet),record.status==='complete'?'final':'retained',4);
    for(const cal of list(safe.calibrations))for(const sample of list(cal.observations))
      addImage({...sample,raster_profile:{scale_x:cal.x?.scale,scale_y:cal.y?.scale}},sheet(cal.sheet),'calibration',5);
+   for(const cal of list(safe.calibrations))for(const sample of list(cal.degenerate_diagnostic?.observations))
+     addImage({...sample,note:'Degenerate-axis diagnostic, not an accepted calibration'},sheet(cal.sheet),'diagnostic',5);
    if(!list(safe.captures).length)for(const capture of list(w.captures))addImage(capture,sheet(capture.sheet),'diagnostic',1);
    for(const probe of list(w.probes))if(probe.relative_png)addImage(probe,sheet(probe.sheet),probe.error?'failed':'diagnostic',2);
    for(const check of list(safe.sparse_overflow_checks))for(const artifact of list(check.artifacts))
      addImage({...artifact,address:check.address,check_id:check.id,restoration:check.restoration,verdict:check.verdict},sheet(check.sheet),'verification',6);
+   for(const check of list(safe.context_validations))for(const artifact of list(check.artifacts))
+     addImage({...artifact,check_id:check.id},sheet(check.sheet),'verification',6);
    for(const im of imagesByPath.values())sheet(im.sheet).images.push(im);
    for(const sh of sheetMap.values()){
     if(!sh.record&&sh.images.length)sh.status='captured';
@@ -131,7 +138,7 @@ function buildModel(input){
  }
  const unassigned=files.filter(f=>/\.png$/i.test(f.path)&&!claimed.has(f.path)&&safePath(f.path));
  return {meta:input.meta||{},result:input.result||{},sessions,unassigned,files,warnings,
-    image_count:files.filter(f=>/\.png$/i.test(f.path)).length,events:list(input.events)};
+    image_count:files.filter(f=>/\.png$/i.test(f.path)).length,events:list(input.events),focus_lifecycle:input.focus_lifecycle||null};
 }
 function mount(input,host){
  const m=buildModel(input),d=host.ownerDocument;
@@ -143,6 +150,8 @@ function mount(input,host){
  const format=(n,dec=0)=>number(n)!==null?n.toLocaleString('en-US',{maximumFractionDigits:dec}):'Not recorded';
  const badge=(value)=>el('span','badge '+String(value||'unknown').replace(/[^a-z-]/g,''),value||'Not recorded');
  const frame=el('div','layout'),nav=el('nav','sidebar'),main=el('main','main');append(host,frame);append(frame,nav,main);
+ if(m.focus_lifecycle){const section=el('section','card');append(section,el('h2','','Focused run lifecycle'),el('p','',`Phase: ${m.focus_lifecycle.phase} · Last sheet: ${m.focus_lifecycle.last_sheet||'not started'} · Last range: ${m.focus_lifecycle.last_address||'not recorded'}`),link('Phase and owned process evidence','capture-lifecycle.json'),raw('Milestones, deadlines and process sample',m.focus_lifecycle));append(main,section);}
+
  append(nav,el('div','brand','EXCEL SHRINK'),el('h2','','Visual validation'));
  const home=el('a','nav-link','Run overview');home.href='#overview';append(nav,home);
  const header=el('header','hero');header.id='overview';append(main,header);
@@ -207,7 +216,7 @@ function mount(input,host){
   if(c.sheet_offset_px)append(card,el('div','capture-meta',`Sheet offset: x=${c.sheet_offset_px.x}, y=${c.sheet_offset_px.y} px`));
   const det=details('Capture details');append(det,el('pre','json',JSON.stringify({address:c.address,logical_address:c.logical_address,rect:c.rect,geometry_points:c.geometry,
     capture_address:c.capture_address,source_id:c.source_id,raw_png:c.raw_path,raw_sha256:c.raw_sha256,export_kind:c.export_kind,crop_rect_px:c.crop_rect_px,
-    raster_profile:c.raster_profile,packing:c.packing,role:c.role,restoration:c.restoration,analysis:c.analysis,error:c.error,source:c.source,render_ms:c.render_ms,relative_png:c.path,sha256:c.sha256},null,2)));append(card,det);
+    raster_profile:c.raster_profile,capture_rect:c.capture_rect,logical_rect:c.rect,core_box_px:c.core_box_px,crop_rect_px:c.crop_rect_px,guards:c.guards,context_policy:c.context_policy,packing:c.packing,role:c.role,restoration:c.restoration,analysis:c.analysis,error:c.error,source:c.source,render_ms:c.render_ms,relative_png:c.path,sha256:c.sha256},null,2)));append(card,det);
   return card;
  }
  const sections=[];let index=0;
@@ -266,8 +275,17 @@ function mount(input,host){
       append(sec,el('h4','','Calibration controls'));
       for(const c of sh.calibrations) {
         append(sec,el('p','geometry',`${c.id} · ${c.status} · ${c.control_selection||'original controls'} · ${c.observations?.length||0} PNG controls`));
+        if(c.x?.mode==='fixed-span')append(sec,el('p','geometry',`Fixed horizontal interval: ${format(c.x.left)}–${format(c.x.right)} pt · observed width: ${format(c.x.width_px)} px · Y scale: ${format(c.y?.scale)} px/pt`),
+          el('p','muted','No general X scale was fitted. Horizontal splitting, cropping and probe extrapolation are not permitted by this calibration.'),raw('Fixed-span calibration',c.x));
         append(sec,raw('Control search: visible extents and rejection reasons',c.control_search));
       }
+    }
+    if(sh.drawing_mapping_audits.length){
+      append(sec,el('h4','','Drawing-to-grid diagnostics'));
+      for(const d of sh.drawing_mapping_audits)append(sec,raw(`${d.axis} · ${d.status} · target ${d.target_points} pt`,d));
+    }
+    for(const c of sh.calibrations)if(c.degenerate_diagnostic){
+      append(sec,el('h4','','Fixed-span controls — diagnostic only'),raw('Variable-axis samples; calibration still unqualified',c.degenerate_diagnostic));
     }
     if(sh.geometry_diagnostics.length){
       append(sec,el('h4','','Hidden / narrow axes and geometry'));
@@ -278,6 +296,15 @@ function mount(input,host){
         for(const c of list(d.columns))append(tb,append(el('tr'),el('td','',c.column),el('td','',c.hidden===null?'Not returned':String(c.hidden)),el('td','',format(c.left_points)),el('td','',format(c.width_points))));
         append(sec,raw('Row positions at both anchor columns',d.rows));
       }
+    }
+    if(sh.axis_geometry.length){
+      append(sec,el('h4','','Capture geometry and visible-cell context'));
+      for(const a of sh.axis_geometry)append(sec,el('p','geometry',`${a.row_count} measured rows · ${a.column_count} measured columns · ${a.zero_rows} zero-height rows · ${a.read_batches} batched axis reads`),raw('Additive dimensions and native-position diagnostics',a));
+      append(sec,el('p','muted','At internal tile boundaries the raw PNG includes visible neighbouring cells. Final images are exact interior crops; no pixel is rescaled or tolerated. The tile inspector records both ranges and the crop rectangle.'));
+    }
+    if(sh.context_validations.length){
+      append(sec,el('h4','','Whole range versus contextual tiles'));
+      for(const c of sh.context_validations)append(sec,el('p','geometry',`${c.reference_address||'?'} · ${c.status} · overlap differences: ${c.overlap_mismatches??'unverified'} · whole-reference differences: ${c.full_comparison?.different_pixels??'unverified'}`),raw('Exact reference, repeat and crop proof',c));
     }
     if(sh.continuations.length)append(sec,raw('Worksheet failure isolation and session health',sh.continuations));
     if(sh.history.length)append(sec,raw('Planning events (chronological)',sh.history));

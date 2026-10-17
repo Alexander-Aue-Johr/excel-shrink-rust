@@ -5,26 +5,20 @@
 # Shared report ownership for ALL visual-validation experiment entry points.
 # Reports are durable from the beginning; caches and input workbooks are never cleanup targets.
 function Write-VVJson([string]$Path, $Value) {
+    Initialize-VVReportIO
     $parent = Split-Path -Parent $Path
     [IO.Directory]::CreateDirectory($parent) | Out-Null
-    $tmp = $Path + '.new'
-    [IO.File]::WriteAllText($tmp, ($Value | ConvertTo-Json -Depth 100) + "`n", [Text.UTF8Encoding]::new($false))
-    if ([IO.File]::Exists($Path)) {
-        try { [IO.File]::Replace($tmp, $Path, $null) }
-        catch {
-            # Some network/WSL shares do not support ReplaceFile. Keep the previous
-            # complete version if a copy-over fallback is required on that filesystem.
-            if (-not [IO.File]::Exists($tmp)) { throw }
-            [IO.File]::Copy($Path, $Path + '.previous', $true)
-            [IO.File]::Copy($tmp, $Path, $true)
-            [IO.File]::Delete($tmp)
-        }
-    } else { [IO.File]::Move($tmp, $Path) }
+    # Complete serialization before staging. The published destination is never copied over.
+    $text = ($Value | ConvertTo-Json -Depth 100 -ErrorAction Stop) + "`n"
+    [void][VVSnapshotFile]::WriteText([VVReportIO]::FullPath($Path), $text)
 }
 function Read-VVJson([string]$Path) {
     Initialize-VVReportIO
-    if ([VVReportIO]::FileExists($Path)) { return ([VVReportIO]::ReadAllText($Path) | ConvertFrom-Json) }
-    return $null
+    $text = [VVSnapshotFile]::ReadTextOrNull([VVReportIO]::FullPath($Path))
+    if ($null -eq $text) { return $null }
+    # Invalid JSON is an actual error, not a reason to reset the supervisor to setup.
+    if ([string]::IsNullOrWhiteSpace($text)) { throw ('Empty JSON snapshot: ' + $Path) }
+    return ($text | ConvertFrom-Json -ErrorAction Stop)
 }
 function Get-VVRepo([string]$Start) {
     $here = [IO.Path]::GetFullPath($Start)
@@ -319,7 +313,7 @@ function Get-VVCaptureRollup([string]$RunRoot) {
         }
         foreach($cal in @($safe.calibrations | Where-Object {$null -ne $_})) {
             $calibrationImages+=@($cal.observations | Where-Object {$null -ne $_.png}).Count
-            $calibrations+=[pscustomobject]@{workbook=$safe.workbook;sheet=$cal.sheet;status=$cal.status;scale_x=$cal.x.scale;scale_y=$cal.y.scale}
+            $calibrations+=[pscustomobject]@{workbook=$safe.workbook;sheet=$cal.sheet;status=$cal.status;scale_x=$cal.x.scale;scale_y=$cal.y.scale;x_mode=$cal.x.mode;fixed_width_px=$cal.x.width_px}
         }
         foreach($sheet in @($safe.sheets | Where-Object {$null -ne $_})) {
             switch([string]$sheet.status) {
@@ -420,7 +414,7 @@ function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
         foreach($group in $captureSummary.attempt_error_groups){$sum+="`nATTEMPT ERROR: $($group.code) x$($group.attempt_count); sheets: $($group.sheets -join ', ')`n"}
         $sum+="`nCONFIRMED BLOCKER CELLS: $($captureSummary.confirmed_blocker_cells)`n"
         foreach($issue in $captureSummary.verification_issues){$sum+="VERIFICATION: $($issue.code) sheet=$($issue.sheet) range=$($issue.address) tile=$($issue.source_tile)`n"}
-        foreach($cal in $captureSummary.calibrations){$sum+="RASTER SCALE: sheet=$($cal.sheet); status=$($cal.status); x=$($cal.scale_x); y=$($cal.scale_y) px/point`n"}
+        foreach($cal in $captureSummary.calibrations){$x=if($cal.x_mode -eq 'fixed-span'){"fixed width $($cal.fixed_width_px) px; no X scale"}else{"$($cal.scale_x) px/point"};$sum+="RASTER: sheet=$($cal.sheet); status=$($cal.status); x=$x; y=$($cal.scale_y) px/point`n"}
     }
     foreach($e in $errors){$sum+="`nERROR: $($e.code) sheet=$($e.sheet): $($e.message)`n"}
     [IO.File]::WriteAllText((Join-Path $RunRoot 'summary.txt'),$sum,[Text.UTF8Encoding]::new($false))

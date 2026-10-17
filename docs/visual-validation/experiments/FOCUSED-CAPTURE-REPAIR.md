@@ -1,5 +1,7 @@
 # Visible controls and focused capture repair
 
+> Historical six-file repair preset. For current, configurable selections and timeouts, see [Focused capture reproduction](FOCUSED-CAPTURE.md). The original protocol and evidence below are retained.
+
 ## Evidence and scope
 
 The prior decision run stopped on Kernhaushalt worksheet `71717-50` with

@@ -2,7 +2,7 @@
 (function(root){
 'use strict';
 const S=()=>root.SafeCapture;
-const VERSION='gridless-final-png-v1';
+const VERSION='gridless-context-final-png-v2';
 function outputPolicy({complete,checked,base,end,probe,detected=false}){
  if(!Number.isInteger(base)||!Number.isInteger(end)||base<0||end<base)throw S().fault('INVALID_EXPORT_POLICY','Invalid base/probe bounds.',{base,end},true);
  if(!complete)return {crop:false,end,reason:'unresolved-retain-buffer'};
@@ -38,7 +38,10 @@ async function probeBuffer(session,item,requestedPixels){
  if(!Number.isInteger(requestedPixels)||requestedPixels<64||requestedPixels>8192)
   throw S().fault('INVALID_PROBE_BUFFER','Probe buffer must be 64..8192 pixels.',{requestedPixels},true);
  await session.ensureCalibration(item.sheet,S().parse(item.address));
- const scale=session.limitsFor(item.sheet).scale_x,base=item.base_right_column;
+ const limits=session.limitsFor(item.sheet),scale=limits.scale_x,base=item.base_right_column;
+ if(limits.fixed_x)throw S().fault('FIXED_WIDTH_HORIZONTAL_OPERATION',
+  'A right-hand overflow probe needs independently calibrated horizontal geometry. The fixed-span mode does not extrapolate.',
+  {sheet:item.sheet,address:item.address,fixed_x:limits.fixed_x},true);
  // Use Rust visibility hints to skip hidden columns, then verify actual boundary positions.
  const candidates=[];
  for(let col=base+1;col<16384 && candidates.length<64;col++)if(Number(item.column_widths[col])>0)candidates.push(col);
@@ -53,26 +56,32 @@ async function probeBuffer(session,item,requestedPixels){
   method:'measured-column-edges-and-calibrated-scale'};
 }
 async function exportTile(session,tile,width,logicalAddress){
- if(!Number.isInteger(width)||width<1||width>tile.png_width)throw S().fault('INVALID_EXPORT_WIDTH','Invalid final PNG width.',{tile:tile.id,width},true);
- if(width===tile.png_width)return {...tile,export_kind:'retained-original',capture_address:tile.address};
+ const core=tile.core_box_px||{x:0,y:0,width:tile.png_width,height:tile.png_height};
+ if(!Number.isInteger(width)||width<1||width>core.width)throw S().fault('INVALID_EXPORT_WIDTH','Invalid final PNG width.',{tile:tile.id,width,core},true);
+ if(tile.raster_profile?.fixed_x && (width!==tile.raster_profile.fixed_x.width_px || core.x!==0))
+  throw S().fault('FIXED_WIDTH_HORIZONTAL_OPERATION','A final export must preserve the observed fixed width.',{tile:tile.id,width,core},true);
+ const crop={x:core.x,y:core.y,width,height:core.height};
+ if(crop.x===0&&crop.y===0&&width===tile.png_width&&crop.height===tile.png_height)
+  return {...tile,export_kind:'retained-original',capture_address:tile.address,address:logicalAddress};
  const t=performance.now();
  const record={source_id:tile.id,sheet:tile.sheet,capture_address:tile.address,logical_address:logicalAddress,
-  source_width:tile.png_width,source_height:tile.png_height,output_width:width,status:'pending'};
+  source_width:tile.png_width,source_height:tile.png_height,output_width:width,output_height:crop.height,crop_rect_px:crop,status:'pending'};
  (session.state.final_exports ||= []).push(record);
  await session.checkpoint('final_png_pending',record);
  try{
   const receipt=await session.http('/finalize-image',{workbook:session.workbook,source_id:tile.id,source_sha256:tile.sha256,
-   sheet:tile.sheet,address:logicalAddress,width,source_width:tile.png_width,source_height:tile.png_height});
-  if(!receipt.capture || receipt.capture.png_width!==width || receipt.capture.png_height!==tile.png_height)
-   throw S().fault('FINAL_PNG_RECEIPT_MISMATCH','Native crop returned unexpected dimensions.',{source_id:tile.id,expected_width:width,expected_height:tile.png_height,received:receipt.capture||null},true);
+   sheet:tile.sheet,address:logicalAddress,...crop,source_width:tile.png_width,source_height:tile.png_height});
+  if(!receipt.capture || receipt.capture.png_width!==width || receipt.capture.png_height!==crop.height)
+   throw S().fault('FINAL_PNG_RECEIPT_MISMATCH','Native crop returned unexpected dimensions.',{source_id:tile.id,crop,received:receipt.capture||null},true);
   record.status='complete';record.receipt=receipt.capture;record.host_crop_ms=receipt.crop_ms;
   return {...tile,...receipt.capture,source_id:tile.id,raw_png:tile.relative_png,raw_sha256:tile.sha256,
    raw_png_width:tile.png_width,raw_png_height:tile.png_height,capture_address:tile.address,
-   export_kind:'native-right-crop',crop_rect_px:{x:0,y:0,width,height:tile.png_height}};
+   export_kind:(crop.x||crop.y||crop.height!==tile.png_height)?'native-context-crop':'native-right-crop',crop_rect_px:crop};
  }catch(e){record.status='failed';record.error=S().errorInfo(e);throw e;}
  finally{record.total_ms=performance.now()-t;session.timings.finalize_ms=(session.timings.finalize_ms||0)+record.total_ms;
   await session.checkpoint('final_png_finished',{sheet:tile.sheet,source_id:tile.id,status:record.status});}
 }
+
 const api={VERSION,outputPolicy,hideGridlines,probeBuffer,exportTile};root.CapturePolicy=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 }(typeof window!=='undefined'?window:globalThis));

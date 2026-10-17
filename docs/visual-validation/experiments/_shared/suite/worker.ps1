@@ -39,6 +39,18 @@ try {
                     OverflowMode=[string]$c.overflow_mode;OverflowProbeWidthPx=[int]$cfg.overflow_probe_width_px;
                     OverflowProbeHeightPx=[int]$cfg.overflow_probe_height_px;RustExcelLaunchMode='excel-x';ExtendedErrorLogging=$true;NonInteractive=$true}
                 if($c.sheet_names){$params.SheetNames=[string[]]@($c.sheet_names)}
+                if($c.context_validation){$params.ContextValidation=[string]$c.context_validation}
+                if($null -ne $spec.focus_parameters){
+                    $p=$spec.focus_parameters
+                    $params.StartupTimeoutSeconds=[int]$p.startup_timeout_seconds
+                    $params.CaptureTimeoutSeconds=[int]$p.capture_timeout_seconds
+                    $params.InactivityTimeoutSeconds=[int]$p.inactivity_timeout_seconds
+                    $params.AbsoluteWorkbookTimeoutSeconds=[int]$p.startup_timeout_seconds+[int]$p.capture_timeout_seconds+15
+                    $params.NativeCallTimeoutSeconds=[int]$p.native_call_timeout_seconds
+                    $params.DiagnosticLevel=[string]$p.diagnostic_level
+                    $params.WaitForStart=[bool]$p.wait_for_start
+                    $params.UseOfficeDebugJs=[bool]$p.use_office_debug_js
+                }
                 & (Join-Path $exp 'range-image\run.ps1') @params
             }
             'vba-picture' {& (Join-Path $exp 'range-image\run.ps1') -CorpusRoot $corpus -Workbook all -Strategy A -Implementation vba -NonInteractive}
@@ -89,6 +101,9 @@ try {
         if($spec.decision){
             . (Join-Path $PSScriptRoot '..\decision\extras.ps1')
             $metrics=Add-VVDecisionEvidence -Metrics $metrics -CaseRoot $caseRoot -Spec $spec
+        }
+        if($null -ne $spec.focus_parameters){
+            $metrics|Add-Member -NotePropertyName focus_lifecycle -NotePropertyValue (Read-VVJson (Join-Path $caseRoot 'capture-lifecycle.json')) -Force
         }
         $metrics|Add-Member -NotePropertyName workload_ms -NotePropertyValue $workloadMs
         $metrics|Add-Member -NotePropertyName invocation_error -NotePropertyValue $problem

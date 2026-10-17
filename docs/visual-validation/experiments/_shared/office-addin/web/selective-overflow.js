@@ -39,15 +39,16 @@ function pixelDiff(before,after,x0,x1,allowedRows){
 }
 function exactEqual(a,b){if(a.width!==b.width||a.height!==b.height)return false;for(let i=0;i<a.data.length;i++)if(a.data[i]!==b.data[i])return false;return true;}
 function release(im){if(!im)return;im.data=null;if(im.canvas){im.canvas.width=0;im.canvas.height=0;}}
-async function decode(base64){
+async function decode(base64,crop=null){
  const header=S().png(base64);
  // Narrow row groups only. This secondary budget is independent of the large tile budget.
  if(header.width*header.height>EVIDENCE_MAX_PIXELS)throw fail('SPARSE_DECODE_BUDGET','Sparse evidence image exceeds four million pixels.',header);
  const image=new root.Image();await new Promise((ok,no)=>{image.onload=ok;image.onerror=()=>no(fail('SPARSE_DECODE_FAILED','Cannot decode sparse evidence PNG.'));image.src='data:image/png;base64,'+base64;});
  const canvas=root.document.createElement('canvas');canvas.width=header.width;canvas.height=header.height;
  const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)throw fail('SPARSE_CANVAS_FAILED','Canvas 2D is unavailable.');
- ctx.drawImage(image,0,0);const data=ctx.getImageData(0,0,header.width,header.height).data;image.src='';
- return {width:header.width,height:header.height,data,canvas};
+ ctx.drawImage(image,0,0);const box=crop||{x:0,y:0,width:header.width,height:header.height};
+ const data=ctx.getImageData(box.x,box.y,box.width,box.height).data;image.src='';
+ return {width:box.width,height:box.height,data,canvas};
 }
 function encodeDiff(diff,width,height){
  const canvas=root.document.createElement('canvas');canvas.width=width;canvas.height=height;
@@ -78,6 +79,10 @@ function evidenceLimits(session,sheet){
  const limits=session.limitsFor(sheet);
  return {...limits,max_pixels:Math.min(limits.max_pixels,EVIDENCE_MAX_PIXELS)};
 }
+async function contextForGroup(session,sheet,tile,rect,limits){
+ if(!session.axisGeometry)return {capture_rect:rect,capture_geometry:(await session.geometries(sheet,[rect]))[0]};
+ return session.axisGeometry.descriptor(sheet,rect,tile.parent_rect||tile.rect,limits,false);
+}
 async function planGroups(session,sheet,tile,rows){
  // Load geometry only for selected candidate rows, in bounded batches. Greedily
  // use the evidence budget; fixed sixteen-row windows can repeatedly overflow it.
@@ -89,8 +94,8 @@ async function planGroups(session,sheet,tile,rows){
  }
  const completed=[];let current=null;
  for(const {row,geometry} of measured){
-  const rect={...tile.rect,r0:row,r1:row+1},predicted=S().pixels(geometry,limits);
-  if(!S().fits(geometry,limits))throw fail('SPARSE_INDIVISIBLE_ROW',
+  const rect={...tile.rect,r0:row,r1:row+1},context=await contextForGroup(session,sheet,tile,rect,limits),predicted=S().pixels(context.capture_geometry,limits);
+  if(!S().fits(context.capture_geometry,limits))throw fail('SPARSE_INDIVISIBLE_ROW',
     'One candidate row exceeds the evidence budget or has no visible extent; no blocker was written.',
     {sheet,row:row+1,address:S().address(rect),geometry,predicted,limits});
   if(current && row===current.rows.at(-1)+1 && current.rows.length<GROUP_MAX_ROWS){
@@ -98,8 +103,9 @@ async function planGroups(session,sheet,tile,rows){
     const stable=Math.abs(current.geometry.left-geometry.left)<=0.01 &&
       Math.abs(current.geometry.right-geometry.right)<=0.01 &&
       Math.abs(current.geometry.bottom-geometry.top)<=0.01;
-    if(stable && S().fits(g,limits)){
-      current.rows.push(row);current.rect.r1=row+1;current.geometry=g;current.predicted=S().pixels(g,limits);continue;
+    const cg=await contextForGroup(session,sheet,tile,{...current.rect,r1:row+1},limits);
+    if(stable && S().fits(cg.capture_geometry,limits)){
+      current.rows.push(row);current.rect.r1=row+1;current.geometry=g;current.predicted=S().pixels(cg.capture_geometry,limits);continue;
     }
   }
   if(current)completed.push(current);
@@ -137,17 +143,20 @@ async function save(session,record,role,base64,rect){
  const artifact={...saved,id,role,rect,png_width:header.width,png_height:header.height};record.artifacts.push(artifact);return artifact;
 }
 async function take(session,record,role,rect,expected){
- const a=S().address(rect),gs=(await session.geometries(record.sheet,[rect]))[0];
- if(['top','bottom','left','right'].some(k=>Math.abs(gs[k]-expected[k])>0.01))throw fail('SPARSE_GEOMETRY_CHANGED','Geometry changed before sparse evidence capture.',{before:expected,after:gs});
+ const captureRect=record.capture_rect||rect;
+ const core=(await session.geometries(record.sheet,[rect],true))[0];
+ const a=S().address(captureRect),gs=(await session.geometries(record.sheet,[captureRect],true))[0];
+ if(['top','bottom','left','right'].some(k=>Math.abs(core[k]-expected[k])>0.01))throw fail('SPARSE_GEOMETRY_CHANGED','Geometry changed before sparse evidence capture.',{before:expected,after:gs});
  const limits=evidenceLimits(session,record.sheet);if(!S().fits(gs,limits))throw fail('SPARSE_CAPTURE_BUDGET','Sparse row image exceeds its four-million-pixel budget.',{a,gs});
  let base64=await session.office('sparse_render',{sheet:record.sheet,address:a,role,check_id:record.id},async context=>{
   const result=context.workbook.worksheets.getItem(record.sheet).getRange(a).getImage();await context.sync();return result.value;
  });
- try{const h=S().png(base64);await save(session,record,role,base64,rect);
-  const after=(await session.geometries(record.sheet,[rect]))[0],p=S().pixels(after,limits);
-  if(['top','bottom','left','right'].some(k=>Math.abs(after[k]-expected[k])>0.01)||h.width!==p.width||h.height!==p.height||!S().actualFits(h,limits))
+ try{const h=S().png(base64);await save(session,record,role,base64,captureRect);
+  const after=(await session.geometries(record.sheet,[captureRect],true))[0],p=S().pixels(after,limits);
+  if(['top','bottom','left','right'].some(k=>Math.abs(after[k]-gs[k])>0.01)||h.width!==p.width||h.height!==p.height||!S().actualFits(h,limits))
    throw fail('SPARSE_GEOMETRY_CHANGED','Sparse evidence geometry/raster scale was not stable.',{after,expected,header:h});
-  return await decode(base64);
+  const box=session.axisGeometry?root.CaptureGeometry.cropBox(core,after,after,limits,h):null;
+  return await decode(base64,box);
  }finally{base64=null;}
 }
 async function mutate(session,record,rows,column,value){
@@ -184,6 +193,8 @@ async function verifyGroup(session,sheet,tile,rows,column,edges,originalImage=nu
     throw fail('SPARSE_SOURCE_CONTEXT','Rotated or vertically merged source context cannot be verified by a row-local blocker.',{sheet,address:record.address});
   });
   const geometry=(await session.geometries(sheet,[rect]))[0];record.geometry=geometry;
+  const context=await contextForGroup(session,sheet,tile,rect,evidenceLimits(session,sheet));
+  record.capture_rect=context.capture_rect;record.capture_address=S().address(context.capture_rect);
   before=await take(session,record,'before',rect,geometry);
   if(originalImage){
    const dy=Math.round((geometry.top-tile.geometry.top)*tile.raster_profile.scale_y);
@@ -223,7 +234,8 @@ async function verifyGroup(session,sheet,tile,rows,column,edges,originalImage=nu
   const equalityProfile=(session.state.compute_profile ||= {});equalityProfile.roundtrip_compare_ms=(equalityProfile.roundtrip_compare_ms||0)+performance.now()-equalityStart;
   if(!record.roundtrip_identical)throw fail('SPARSE_UNSTABLE_ROUNDTRIP','Before and restored images differ. Do not infer absence of overflow.',{check_id:record.id});
   const sy=tile.raster_profile.scale_y;
-  const allowed=guards.map(g=>({row:g.row+1,y0:Math.max(1,Math.floor((g.top-geometry.top)*sy)),y1:Math.min(before.height-1,Math.ceil((g.top+g.height-geometry.top)*sy)+1)}));
+  const rowBoxes=await session.geometries(sheet,rows.map(r=>({...rect,r0:r,r1:r+1})));
+  const allowed=rows.map((r,i)=>({row:r+1,y0:Math.max(1,Math.floor((rowBoxes[i].top-geometry.top)*sy)),y1:Math.min(before.height-1,Math.ceil((rowBoxes[i].bottom-geometry.top)*sy)+1)}));
   const x0=Math.max(1,Math.floor(edges[column])),x1=before.width-1;
   const diffStart=performance.now();
   const diff=pixelDiff(before,blocked,x0,x1,allowed);
@@ -236,6 +248,7 @@ async function verifyGroup(session,sheet,tile,rows,column,edges,originalImage=nu
   record.verdict=diff.changed_pixels?'blocker-sensitive-signal':'false-positive-for-text-overflow';
   return record;
  }catch(e){error=e;record.status='inconclusive';record.error=S().errorInfo(e);
+  if(session.axisGeometry && record.write_attempted_cells>0 && record.roundtrip_identical!==true){e.fatal=true;session.dead=true;record.status='failed';record.error=S().errorInfo(e);}
   if(mutationQueued&&record.restoration!=='contents-restored'&&record.restoration!=='verified'){
     e.fatal=true;session.dead=true;record.status='failed';record.error=S().errorInfo(e);
   }

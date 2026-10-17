@@ -85,7 +85,8 @@ def validate(cfg: dict) -> None:
     for key,val in cfg['limits'].items():
         if not isinstance(val,(int,float)) or isinstance(val,bool) or not math.isfinite(val) or val <= 0: raise ValueError('Invalid limit '+key)
     limits=cfg['limits']
-    if not 30 <= limits['case_min_seconds'] <= limits['case_default_seconds'] <= limits['case_max_seconds'] <= 3600:
+    max_case = 14400 if cfg.get('focus_parameters') else 3600
+    if not 30 <= limits['case_min_seconds'] <= limits['case_default_seconds'] <= limits['case_max_seconds'] <= max_case:
         raise ValueError('Require 30 <= min <= default <= maximum case seconds <= 3600')
     if limits['session_seconds'] > 86400: raise ValueError('Session limit must not exceed one day')
     if not 1 <= limits['baseline_multiplier'] <= 10: raise ValueError('Invalid baseline multiplier')
@@ -215,13 +216,13 @@ def source_version(repo: Path) -> str:
 def compact_metrics(value: dict) -> dict:
     """Do not embed every PNG receipt in a 10,000-file campaign state."""
     fields=('schema','status','workload_ms','pixel_verification_status','pixel_verified_captures','pixel_unverified_captures',
-            'pixel_verification_ms','invocation_error','report_publication','canonical_sheets','native_summary','reference_details','errors')
+            'pixel_verification_ms','invocation_error','report_publication','canonical_sheets','native_summary','reference_details','errors','focus_lifecycle')
     out={k:value[k] for k in fields if k in value}
     out['workbooks']=[]
     for w in value.get('workbooks',[]):
         if not isinstance(w,dict): continue
         out['workbooks'].append({k:w.get(k) for k in ('workbook','status','kind','complete_sheets','sheet_count','failed_sheets','inconclusive_sheets',
-                'capture_count','render_attempts','timings','compute','environment','capture_policy','capture_options','capture_scope','verification_groups','confirmed_blockers','sheets')})
+                'capture_count','render_attempts','timings','compute','environment','capture_policy','capture_options','capture_scope','context_validations','axis_geometry','context_policy','verification_groups','confirmed_blockers','sheets')})
     return out
 
 def effective_metrics(job: dict) -> dict:
@@ -471,6 +472,9 @@ class Campaign:
               'total_remaining_seconds':remaining,'controller_parent_pid':self.windows_parent,
               'reference_case_root':windows_path(self.root/'cases'/reference_job['id']) if reference_job else None,
               'release_token':os.urandom(16).hex(),'parent_pid':0}
+        if self.cfg.get('focus_parameters'):
+            spec['focus_parameters'] = dict(self.cfg['focus_parameters'])
+            spec['focus_target_id'] = c.get('target_id')
         spec['job']['metrics']=None
         atomic_json(case_root/'case-spec.json',spec)
         self.save();journal(self.root,'case_started',{'id':j['id'],'workbook':j['workbook'],'deadline':budget})
@@ -547,7 +551,8 @@ class Campaign:
         # No fallback can turn a pixel mismatch into equality: missing/invalid evidence
         # remains part of the primary attempt, and changed repeats still fail the gate.
         if not self.has_time(stage): return primary
-        fallback=candidate(c['host_kind'],c['overflow_mode'],16)
+        fallback=copy.deepcopy(c)
+        fallback['tile_megapixels']=16
         fallback['id']='rescue-'+c['id'];fallback['label']='Recovery for '+c['label']+' / fresh 16 MP'
         fallback['group']='recovery';fallback['scope']='Explicit fresh-session recovery, included in parent policy cost'
         rescue=self.run_job(stage,fallback,f,repeat)
@@ -797,6 +802,12 @@ def decision_document(state: dict) -> str:
         'Different tile layouts are compared only by the validated, unscaled canonical strip stream. Gaps, inconsistent overlaps, unsupported horizontal layouts and missing PNGs remain unverified.',
         'Raw and final artifacts remain in each case report. No previous failure or nondeterministic screenshot is removed to make a candidate win.',
         'Ready for author review does not automatically edit decisions.md or select a production regression implementation.', '',
+        '## Contextual capture qualification','',
+        'Current captures retain a visible-cell halo at internal tile edges. The saved core is cropped from interior pixels without resizing. Hidden/zero-sized neighbours do not supply context.',
+        'Additive individual-cell Range.height/width measurements supply geometry; native top/left values are diagnostic only. Budgets include the halo and any merged-cell context.',
+        'When present, the readiness stage validates local whole pictures against two guarded pieces and a repeated whole picture before starting the ranking.',
+        'Historical clipboard, native drawing and synthetic renderer investigations are not automatically repeated by the final qualification profile. Consult their preserved reports; no absent comparison is called successful.',
+        'The normal two-second checkpoint stream omits the immutable Rust plan. It remains archived once under inputs/plans.', '',
         '## Next operational step','',
         'Review the exceptions and this decision, then freeze one production configuration and run the actual original-versus-shrunk regression corpus. Do not automatically launch another parameter sweep.','']
     return '\n'.join(lines)
@@ -812,6 +823,8 @@ def render_report(root: Path, state: dict) -> None:
     cov=''.join(f"<tr><td>{e(f['relative_path'])}</td><td>{e((coverage.get(f['id']) or {}).get('status','pending'))}</td><td>{e((coverage.get(f['id']) or {}).get('job_id',''))}</td></tr>" for f in state['files'])
     stages=''.join(f"<span class='badge'>{e(k)}: {e(v)}</span> " for k,v in state['stages'].items())
     errors=''.join('<p class="warn">'+e(x['message'])+'</p>' for x in state['errors'][-10:])
+    if state.get('readiness'):
+        errors += '<section class="card"><h2>Common capture readiness</h2><p>Additional local whole-versus-tiles checks run before performance ranking.</p><table>'+''.join('<tr><td>'+e(next((f['name'] for f in state['files'] if f['id']==k),k))+'</td><td>'+e('ready' if r['ready'] else 'not qualified')+'</td><td>'+e(r['reason'])+'</td><td><a href="cases/'+e(r['case_id'])+'/report.html">Open evidence</a></td></tr>' for k,r in state['readiness'].items())+'</table></section>'
     reason=selected['reason'] if selected else 'No automatic decision before the predeclared quality gates have been evaluated.'
     status=read_json(root/'bundle-status.json',{})
     bundle='<a class="button" href="review-metadata.zip">Review bundle · no images</a>' if status.get('status')=='ready' else '<span class="button disabled">Review bundle · '+e(status.get('status','available after finalization'))+'</span>'
@@ -837,7 +850,7 @@ def render_report(root: Path, state: dict) -> None:
         writer=csv.DictWriter(f,fieldnames=fields);writer.writeheader()
         for j in state['jobs']:
             row={k:j.get(k) for k in fields};row['candidate']=j['candidate_id'];ms=(j.get('metrics') or {}).get('workload_ms');row['workload_seconds']=ms/1000 if ms is not None else None;writer.writerow(row)
-    atomic_json(root/'decision-summary.json',{'schema':'vv-decision-summary-v1','state_status':state['status'],'selection':selected,'coverage':{'files':len(state['files']),**counts,'pending':len(state['files'])-len(coverage)},'comparisons':rows,'paired_comparisons':paired_results(state),'tile_budget_selection':state['decisions'].get('budget')})
+    atomic_json(root/'decision-summary.json',{'schema':'vv-decision-summary-v1','state_status':state['status'],'selection':selected,'readiness':state.get('readiness'),'coverage':{'files':len(state['files']),**counts,'pending':len(state['files'])-len(coverage)},'comparisons':rows,'paired_comparisons':paired_results(state),'tile_budget_selection':state['decisions'].get('budget')})
     meta=read_json(root/'run.json',{})
     if meta:
         meta['status']=state['status'];meta['completed_utc']=state.get('ended_utc');atomic_json(root/'run.json',meta)
@@ -856,7 +869,7 @@ def write_bundle(root: Path, state: dict, renderer=None) -> None:
                 rel=p.relative_to(root).as_posix()
                 if p.name.startswith('review') and '.zip' in p.name:continue
                 if p.name.startswith('.') or p.suffix in {'.new','.previous'} or 'recovery-backup' in p.parts:continue
-                if p.suffix.lower() not in TEXT_SUFFIXES:
+                if p.suffix.lower() not in TEXT_SUFFIXES and p.name != 'reproduce.ps1':
                     omitted.append({'path':rel,'bytes':p.stat().st_size,'reason':'binary-artifact'});continue
                 data=p.read_bytes()
                 if p.name=='report.html':data=data.replace(b'<body>',b'<body><aside style="padding:12px;background:#fff3cd">Metadata review copy. Images are intentionally omitted.</aside>',1)
@@ -890,14 +903,45 @@ def main(argv=None):
     parser.add_argument('--plan',action='store_true')
     parser.add_argument('--report-only',action='store_true')
     parser.add_argument('--focused',action='store_true',help='Run bounded selected-sheet repair checks, not a strategy comparison')
+    parser.add_argument('--finalize',action='store_true',help='Readiness-gated final comparison; no historical experiment reruns')
+    parser.add_argument('--focus-request',type=Path,help='Focused selectors/settings as a JSON file; preserves exact sheet names across native process boundaries')
+    parser.add_argument('--write-resolved-config',type=Path,help='With --focused --plan: persist the fully validated selection without starting Excel')
+    parser.add_argument('--list-focus-cases',action='store_true')
+    parser.add_argument('--list-focus-sheets',action='store_true')
     args=parser.parse_args(argv)
-    config=args.config or args.repo_root/('docs/visual-validation/experiments/capture-followup.json' if args.focused else 'docs/visual-validation/experiments/decision-campaign.json')
+    if (args.focus_request or args.write_resolved_config or args.list_focus_cases or args.list_focus_sheets) and not args.focused:
+        parser.error('Focused selectors require --focused; they never narrow a qualification run silently')
+    if args.focused and args.finalize:parser.error('--focused and --finalize are mutually exclusive')
+    config=args.config or args.repo_root/('docs/visual-validation/experiments/capture-finalize.json' if args.finalize else ('docs/visual-validation/experiments/capture-followup.json' if args.focused else 'docs/visual-validation/experiments/decision-campaign.json'))
     cfg=read_json(config);validate(cfg)
     if args.focused:
         from focus import FocusCampaign, validate_targets, render_focus
+        import focus_selection as selection
+        if args.list_focus_cases:
+            print(json.dumps(selection.catalogue(args.repo_root),ensure_ascii=False,indent=2));return 0
+        if args.focus_request:
+            request=read_json(args.focus_request)
+            if args.list_focus_sheets:
+                from focus_selection import catalogue
+                request=copy.deepcopy(request)
+                if not request.get('workbook') and not request.get('targets'):
+                    catalog=catalogue(args.repo_root);by_id={x['id']:x for x in catalog['cases']}
+                    ids=request.pop('case_ids',None) or [catalog['default_case']]
+                    if any(i not in by_id for i in ids):raise ValueError('Unknown case ID for -ListSheets')
+                    request['targets']=[{'id':i,'workbook':by_id[i]['workbook']} for i in ids]
+                for t in request.get('targets',[]):t.pop('sheets',None);t.pop('sheet_indexes',None)
+                request.pop('sheets',None);request.pop('sheet_indexes',None)
+            cfg=selection.resolve(args.repo_root,cfg,request)
+        if args.list_focus_sheets:
+            # A ListSheets request uses an explicit workbook, without a sheet filter.
+            fs=discover(args.repo_root,cfg)
+            print(json.dumps([{'workbook':f['relative_path'],'sheets':selection.sheet_catalogue(Path(f['source']))} for f in fs],ensure_ascii=False,indent=2));return 0
+        if args.write_resolved_config:
+            if not args.plan:parser.error('--write-resolved-config requires --plan')
+            atomic_json(args.write_resolved_config,cfg)
         validate_targets(cfg)
         if args.plan:
-            print(json.dumps({'profile':'capture-followup','targets':cfg['focused_targets'],'session_budget_seconds':cfg['limits']['session_seconds']},ensure_ascii=False,indent=2));return 0
+            print(json.dumps(selection.plan(cfg),ensure_ascii=False,indent=2));return 0
         if args.run_root is None:parser.error('--run-root is required except with --plan')
         if args.report_only:
             state=read_json(args.run_root/'campaign-state.json');render_focus(args.run_root,state);write_bundle(args.run_root,state,renderer=render_focus);return 0
@@ -905,7 +949,7 @@ def main(argv=None):
     if args.plan:
         fs=discover(args.repo_root,cfg);ss=stratified(fs,cfg['screen_max_files'],cfg['selection_seed'])
         print(json.dumps({'files':len(fs),'screen_files':[f['relative_path'] for f in ss],
-            'core_screen_configurations':[c['id'] for c in screen_candidates()],
+            'readiness_gate':bool(args.finalize),'core_screen_configurations':[c['id'] for c in screen_candidates()],
             'references':[c['id'] for c in reference_candidates(cfg)],'diagnostics':cfg['diagnostics'],
             'session_budget_seconds':cfg['limits']['session_seconds'],'scope':'All files inventoried; expensive comparisons restricted to the declared screening blocks, then selected candidate covers all files.'},indent=2));return 0
     if args.run_root is None:parser.error('--run-root is required except with --plan')
@@ -913,7 +957,10 @@ def main(argv=None):
         state=read_json(args.run_root/'campaign-state.json')
         if not state or state.get('schema')!=SCHEMA:raise ValueError('No decision campaign state')
         render_report(args.run_root,state);write_bundle(args.run_root,state);return 0
-    campaign=Campaign(args.repo_root,args.run_root,cfg,args.parent_pid)
+    if args.finalize:
+        from finalize import FinalCampaign
+        campaign=FinalCampaign(args.repo_root,args.run_root,cfg,args.parent_pid)
+    else:campaign=Campaign(args.repo_root,args.run_root,cfg,args.parent_pid)
     return campaign.run()
 
 if __name__=='__main__':

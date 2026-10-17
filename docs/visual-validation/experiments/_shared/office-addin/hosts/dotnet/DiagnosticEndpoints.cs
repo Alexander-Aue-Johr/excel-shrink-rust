@@ -40,9 +40,8 @@ static class DiagnosticEndpoints
             {
                 Directory.CreateDirectory(dir);
                 var destination = Path.Combine(dir, workbook + ".progress.json");
-                var temporary = destination + ".new";
-                await File.WriteAllTextAsync(temporary, body.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
-                File.Move(temporary, destination, overwrite: true);
+                var text = body.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+                await Task.Run(() => VVSnapshotFile.WriteText(destination, text));
             }
             finally { gate.Release(); }
             return Results.Json(new { ok = true });

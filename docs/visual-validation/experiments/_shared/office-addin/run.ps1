@@ -29,13 +29,16 @@ param(
     [ValidateRange(64, 8192)]
     [int]$OverflowProbeHeightPx = 1080,
 
-    [ValidateRange(10, 600)]
+    [ValidateRange(10, 1800)]
     [int]$StartupTimeoutSeconds = 180,
 
-    [ValidateRange(10, 600)]
+    [ValidateRange(0,7200)][int]$CaptureTimeoutSeconds=0,
+    [switch]$FocusDiagnostics,
+
+    [ValidateRange(10, 1800)]
     [int]$InactivityTimeoutSeconds = 120,
 
-    [ValidateRange(60, 3600)]
+    [ValidateRange(60, 14400)]
     [int]$AbsoluteWorkbookTimeoutSeconds = 900,
 
     [ValidateRange(1, 10)]
@@ -196,6 +199,9 @@ if ($Strategy -eq 'F') {
         -LiteralPath $VisualPlanPath `
         -Destination (Join-Path $StaticStage 'visual-plan.json') `
         -Force
+    $archivedPlan = Join-Path $env:VV_REPORT_DIR 'inputs\plans\visual-plan.json'
+    [IO.Directory]::CreateDirectory((Split-Path -Parent $archivedPlan)) | Out-Null
+    Copy-Item -LiteralPath $VisualPlanPath -Destination $archivedPlan -Force
     Write-ExperimentLog "Staged precomputed WSL Rust visual plan: $VisualPlanPath"
 }
 
@@ -754,6 +760,13 @@ if ($WaitForStart) {
 
 $hostProcess = $null
 $launchProcess = $null
+$focusObserver = $null
+if($CaptureTimeoutSeconds -gt 0 -or $FocusDiagnostics){
+    . (Join-Path $PSScriptRoot 'powershell\focus-observer.ps1')
+    $focusObserver=New-VVFocusObserver -Root $env:VV_REPORT_DIR -Workbook ([IO.Path]::GetFileName($paths[0])) -Budgets @{
+        startup_seconds=$StartupTimeoutSeconds;capture_seconds=$CaptureTimeoutSeconds;inactivity_seconds=$InactivityTimeoutSeconds;absolute_seconds=$AbsoluteWorkbookTimeoutSeconds}
+    Save-VVFocusObserver $focusObserver -Force
+}
 $captureValidationIncomplete = $false
 $registrationState = $null
 $excelExecutable = Find-ExcelExecutable
@@ -802,6 +815,11 @@ try {
     }
 
     Write-ExperimentLog 'Experiment host is healthy.'
+    # Liveness is not deployment readiness. Verify actual loopback routes and bytes
+    # before registration and before this runner opens the first workbook.
+    . (Join-Path $PSScriptRoot 'powershell\asset-preflight.ps1')
+    Assert-VVWebAssets -StaticRoot $StaticStage -Experiment $Experiment -HostKind $HostKind `
+        -CaptureRunId $env:VV_CAPTURE_RUN_ID -ReportRoot $env:VV_REPORT_DIR
 
     $registrationManifest = Join-Path $RegistrationRoot 'manifest.xml'
     $manifestText = [IO.File]::ReadAllText($ManifestSource, $script:StrictUtf8)
@@ -868,6 +886,9 @@ try {
 
             $launchProcess = $null
             $launchStarted = [Diagnostics.Stopwatch]::StartNew()
+            $measurementStarted = $null
+            if($CaptureTimeoutSeconds -gt 0){$absoluteStarted=[DateTimeOffset]::UtcNow}
+            if($null -ne $focusObserver){$focusObserver.State.workbook=$workbookName;Set-VVFocusPhase $focusObserver 'startup'}
 
             Write-ExperimentLog (
                 "Launching $workbookName attempt " +
@@ -883,6 +904,7 @@ try {
             else {
                 $launchProcess = Start-ExcelX $excelExecutable $documentCopy
                 Write-ExperimentLog ("Excel launcher PID: " + $launchProcess.Id)
+                if($null -ne $focusObserver){$focusObserver.Process=$launchProcess;Save-VVFocusObserver $focusObserver -Force}
             }
 
             $lastSequence = 0L
@@ -903,9 +925,11 @@ try {
                             '&after=' +
                             $lastSequence
                         ) `
-                        -Method Get
+                        -Method Get -TimeoutSec 5
 
                     foreach ($event in @($status.events)) {
+                        if($event.stage -eq 'measurement_started' -and $null -eq $measurementStarted){$measurementStarted=[Diagnostics.Stopwatch]::StartNew()}
+                        if($null -ne $focusObserver){Update-VVFocusEvent $focusObserver $event}
                         $sawActivity = $true
                         $lastActivityLocal = [DateTimeOffset]::UtcNow
                         $lastSequence = [Math]::Max(
@@ -936,7 +960,8 @@ try {
                     if ($status.done) {
                         $resultState = 'received'
                         if ($Experiment -eq 'range-image') {
-                            $finishedDocument = Read-VVJson $HostOutput
+                            try { $finishedDocument = Read-VVJson $HostOutput }
+                            catch { throw ('Experiment host reported: durable result read failed: ' + $_.Exception.Message) }
                             $finishedProperty = if ($null -ne $finishedDocument.workbooks) { $finishedDocument.workbooks.PSObject.Properties[$workbookName] } else { $null }
                             # The native host's in-memory completion may precede durable JSON publication.
                             # Missing or running status is not failure and does not end the polling loop.
@@ -952,6 +977,7 @@ try {
                             $captureValidationIncomplete = $captureValidationIncomplete -or ($resultState -ne 'complete')
                         }
                         $completed = $true
+                        if($null -ne $focusObserver){Complete-VVFocusResult $focusObserver $resultState}
                         $severity = if ($resultState -in @('failed','partial','inconclusive')) { 'WARN' } else { 'INFO' }
                         Write-ExperimentLog (
                             "$workbookName result received: status=$resultState; " +
@@ -967,6 +993,12 @@ try {
                     }
                 }
 
+                if($null -ne $focusObserver){Save-VVFocusObserver $focusObserver}
+                if($CaptureTimeoutSeconds -gt 0 -and $null -ne $measurementStarted -and $measurementStarted.Elapsed.TotalSeconds -ge $CaptureTimeoutSeconds){
+                    $message='Capture phase timeout after '+$CaptureTimeoutSeconds+' s from measurement_started.'
+                    if($null -ne $focusObserver){Stop-VVFocusForTimeout $focusObserver 'capture' $message}
+                    Write-ExperimentLog $message 'WARN';break
+                }
                 $now = [DateTimeOffset]::UtcNow
                 $absoluteSeconds = ($now - $absoluteStarted).TotalSeconds
                 $inactiveSeconds = ($now - $lastActivityLocal).TotalSeconds
@@ -979,28 +1011,31 @@ try {
                         "Absolute workbook timeout after " +
                         "$AbsoluteWorkbookTimeoutSeconds s."
                     ) 'WARN'
+                    if($null -ne $focusObserver){Stop-VVFocusForTimeout $focusObserver 'absolute-workbook' 'Absolute workbook budget exhausted.'}
                     break
                 }
 
                 if (
-                    -not $sawActivity -and
+                    (($CaptureTimeoutSeconds -gt 0 -and $null -eq $measurementStarted) -or ($CaptureTimeoutSeconds -eq 0 -and -not $sawActivity)) -and
                     $launchStarted.Elapsed.TotalSeconds -gt $StartupTimeoutSeconds
                 ) {
                     Write-ExperimentLog (
-                        "No add-in heartbeat within startup timeout " +
+                        "Add-in did not start the measurement within startup timeout " +
                         "$StartupTimeoutSeconds s."
                     ) 'WARN'
+                    if($null -ne $focusObserver){Stop-VVFocusForTimeout $focusObserver 'startup' 'No measurement_started event before the startup deadline.'}
                     break
                 }
 
                 if (
                     -not $WaitForStart -and
-                    $sawActivity -and
+                    $sawActivity -and ($CaptureTimeoutSeconds -eq 0 -or $null -ne $measurementStarted) -and
                     $inactiveSeconds -gt $InactivityTimeoutSeconds
                 ) {
                     Write-ExperimentLog (
                         "No add-in activity for $InactivityTimeoutSeconds s."
                     ) 'WARN'
+                    if($null -ne $focusObserver){Stop-VVFocusForTimeout $focusObserver 'inactivity' 'Add-in stopped reporting activity.'}
                     break
                 }
             }
@@ -1020,6 +1055,7 @@ try {
             else {
                 Stop-BenchmarkExcelProcess $launchProcess
                 if ($null -ne $launchProcess) {
+                    if($null -ne $focusObserver){Detach-VVFocusProcess $focusObserver}
                     try { $launchProcess.Dispose() } catch {}
                     $launchProcess = $null
                 }
@@ -1046,6 +1082,9 @@ try {
     }
 }
 finally {
+    if($null -ne $focusObserver){
+        try{if($focusObserver.State.phase -eq 'result-received'){Set-VVFocusPhase $focusObserver 'finished'}elseif($focusObserver.State.phase -notin @('finished','complete','timeout')){Set-VVFocusPhase $focusObserver 'failed' 'Runner stopped; see invocation error and last native event.'}else{Save-VVFocusObserver $focusObserver -Force}}catch{Write-Warning ('Focused diagnostics: '+$_.Exception.Message)}
+    }
     Stop-BenchmarkExcelProcess $launchProcess
     if ($TemporaryDeveloperRegistration -and $null -ne $registrationState) {
         Restore-DeveloperAddIn $addInId $registrationState

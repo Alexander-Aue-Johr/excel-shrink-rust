@@ -31,6 +31,7 @@ function Get-VVCaseMetrics([string]$CaseRoot,$Job,[switch]$VerifyPixels) {
                 failed_sheets=@($sheets|Where-Object{$_.status -eq 'failed'}).Count;inconclusive_sheets=@($sheets|Where-Object{$_.status -eq 'inconclusive'}).Count;
                 capture_count=$wb.capture_count;actual_image_request_batch_size=$wb.actual_image_request_batch_size;
                 render_attempts=$attempts.Count;timings=$wb.safe_capture_timings;compute=$safe.compute_profile;environment=$safe.environment;
+                context_validations=$safe.context_validations;axis_geometry=$safe.axis_geometry;context_policy=$safe.context_policy;
                 capture_scope=$safe.capture_scope;capture_view=$wb.capture_view;capture_options=$safe.capture_options;capture_policy=$wb.capture_policy_version;
                 verification_groups=$checks.Count;confirmed_blockers=$blockers;
                 sheets=@($sheets|ForEach-Object{[pscustomobject]@{sheet=$_.sheet;sheet_index=$_.sheet_index;address=$_.address;status=$_.status;warning=$_.warning;error=$_.error}})}

@@ -459,6 +459,7 @@ $xaml = @"
 
     <StackPanel Grid.Row="2" Margin="0,14,0,0">
     <WrapPanel Margin="0,0,0,10">
+      <Button x:Name="FocusedChecksButton" Padding="10,5" Margin="0,0,8,0" Content="Focused checks…"/>
       <Button x:Name="OpenReportsButton" Padding="10,5" Margin="0,0,8,0" Content="Reports"/>
       <Button x:Name="OpenLatestReportButton" Padding="10,5" Margin="0,0,8,0" Content="Latest report"/>
       <Button x:Name="CleanReportsButton" Padding="10,5" Margin="0,0,8,0" Content="Prune history (keep 10)"/>
@@ -540,6 +541,10 @@ $ShapeParametersPanel = $window.FindName('ShapeParametersPanel')
 $StatePathText = $window.FindName('StatePathText')
 $StatusText = $window.FindName('StatusText')
 $RunButton = $window.FindName('RunButton')
+$window.FindName('FocusedChecksButton').Add_Click({
+    $script:Selection=@{experiment='capture-followup';corpus_root=$CorpusRootBox.Text}
+    $window.DialogResult=$true
+})
 $window.FindName('RefreshReportsButton').Add_Click({
     & (Join-Path $ExperimentsRoot 'reports.ps1') -Action Refresh
 })
@@ -951,10 +956,15 @@ if ($result -ne $true -or $null -eq $script:Selection) {
 
 $selection = $script:Selection
 Write-Host ''
-Write-Host "Saved GUI configuration: $StatePath"
+if ($selection.experiment -ne 'capture-followup') { Write-Host "Saved GUI configuration: $StatePath" }
 Write-Host "Running visual-validation experiment: $($selection.experiment)"
 
-if ($selection.experiment -eq 'range-image') {
+if ($selection.experiment -eq 'capture-followup') {
+    & (Join-Path $ExperimentsRoot 'decision-campaign.ps1') -Focused -InterfaceMode gui -CorpusRoot $selection.corpus_root
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    return
+}
+elseif ($selection.experiment -eq 'range-image') {
     $runnerArgs = @{
         CorpusRoot = [string]$selection.corpus_root
         Strategy = [string]$selection.strategy

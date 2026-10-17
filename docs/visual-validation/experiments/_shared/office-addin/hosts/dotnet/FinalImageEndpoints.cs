@@ -34,9 +34,12 @@ static class FinalImageEndpoints
                 var width = body["width"]!.GetValue<int>();
                 var sourceWidth = body["source_width"]!.GetValue<int>();
                 var sourceHeight = body["source_height"]!.GetValue<int>();
+                var x = body["x"]?.GetValue<int>() ?? 0;
+                var y = body["y"]?.GetValue<int>() ?? 0;
+                var height = body["height"]?.GetValue<int>() ?? sourceHeight;
                 var options = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(staticRoot, "capture-options.json")));
                 var mp = options?["tile_megapixels"]?.GetValue<int>() ?? 16;
-                if (mp is not (16 or 32 or 64) || width < 1 || width > sourceWidth || sourceWidth < 1 || sourceHeight < 1 ||
+                if (mp is not (16 or 32 or 64) || width < 1 || height < 1 || x < 0 || y < 0 || (long)x+width > sourceWidth || (long)y+height > sourceHeight || sourceWidth < 1 || sourceHeight < 1 ||
                     sourceWidth > 30000 || sourceHeight > 30000 || (long)sourceWidth * sourceHeight > mp * 1_000_000L)
                     throw new InvalidOperationException("Native export pixel budget exceeded.");
                 var dir = Path.Combine(imageRoot, safeName(workbook));
@@ -46,7 +49,7 @@ static class FinalImageEndpoints
                     throw new InvalidOperationException("Reparse paths are not valid image sources.");
                 if (new FileInfo(source).Length > 128L * 1024 * 1024)
                     throw new InvalidOperationException("Source PNG byte budget exceeded.");
-                record("final_png_started", new { workbook, sheet, address, source_id = id, width, source_height = sourceHeight });
+                record("final_png_started", new { workbook, sheet, address, source_id = id, x, y, width, height, source_width = sourceWidth, source_height = sourceHeight });
                 var bytes = await File.ReadAllBytesAsync(source);
                 if (Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant() != sha)
                     throw new InvalidOperationException("Source PNG hash changed.");
@@ -54,7 +57,7 @@ static class FinalImageEndpoints
                 if (info.Width != sourceWidth || info.Height != sourceHeight)
                     throw new InvalidOperationException("Source PNG dimensions differ from the capture receipt.");
                 using var image = Image.Load<Rgba32>(bytes);
-                image.Mutate(x => x.Crop(new Rectangle(0, 0, width, sourceHeight)));
+                image.Mutate(ctx => ctx.Crop(new Rectangle(x, y, width, height)));
                 var outputId = id + "-final";
                 var destination = Path.Combine(dir, outputId + ".png");
                 temporary = destination + "." + Guid.NewGuid().ToString("N") + ".new";
@@ -64,9 +67,9 @@ static class FinalImageEndpoints
                 temporary = null;
                 var capture = new { id = outputId, workbook, sheet, address,
                     relative_png = (safeName(workbook) + "/" + outputId + ".png"),
-                    png_width = width, png_height = sourceHeight, png_bytes = outputBytes.Length,
+                    png_width = width, png_height = height, png_bytes = outputBytes.Length,
                     sha256 = Convert.ToHexString(SHA256.HashData(outputBytes)).ToLowerInvariant(),
-                    source_id = id, export_kind = "native-right-crop" };
+                    source_id = id, export_kind = x != 0 || y != 0 || height != sourceHeight ? "native-context-crop" : "native-right-crop", crop_rect_px = new { x, y, width, height } };
                 record("final_png_saved", new { capture, crop_ms = timer.Elapsed.TotalMilliseconds });
                 return Results.Json(new { capture, crop_ms = timer.Elapsed.TotalMilliseconds });
             }

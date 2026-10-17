@@ -46,8 +46,25 @@
       'No measured raster scale for this sheet; no native capture was queued.', {axis}, true);
     return value;
   }
+  // Fixed-width sheets do not identify an X scale. Keep the measured horizontal
+  // interval and its observed PNG width instead; never extrapolate from one sample.
+  function assertFixedSpan(g, limits) {
+    const f=limits.fixed_x;
+    if(!f || !Number.isFinite(g.left) || !Number.isFinite(g.right) ||
+       Math.abs(g.left-f.left)>1e-8 || Math.abs(g.right-f.right)>1e-8)
+      throw fault('FIXED_WIDTH_SPAN_CHANGED','This calibration covers one horizontal interval only.',{geometry:g,fixed_x:f},true);
+    return f;
+  }
+  function xOffset(from, to, limits) {
+    if(limits.fixed_x) {
+      if(!Number.isFinite(from)||!Number.isFinite(to)||Math.abs(to-from)>1e-8)
+        throw fault('FIXED_WIDTH_HORIZONTAL_OPERATION','A fixed-width calibration cannot place a horizontal subrange.',{from,to,fixed_x:limits.fixed_x},true);
+      return 0;
+    }
+    return Math.round((to-from)*axisScale(limits,'x'));
+  }
   function pixels(g, limits = DEFAULTS) {
-    return { width: Math.round((g.right - g.left) * axisScale(limits,'x')) + limits.border_px,
+    return { width: limits.fixed_x ? assertFixedSpan(g,limits).width_px : Math.round((g.right - g.left) * axisScale(limits,'x')) + limits.border_px,
       height: Math.round((g.bottom - g.top) * axisScale(limits,'y')) + limits.border_px };
   }
   function actualFits(header, limits) {
@@ -117,6 +134,8 @@
   }
   function split(r, g, limits = DEFAULTS) {
     const p = pixels(g, limits), cols = r.c1-r.c0, rows = r.r1-r.r0;
+    if(limits.fixed_x && (p.width>limits.max_edge_px || rows<=1))
+      throw fault('FIXED_WIDTH_HORIZONTAL_OPERATION','The indivisible full-width strip does not fit. No horizontal split was queued.',{rect:r,geometry:g,pixels:p},true);
     // Prefer full-width horizontal strips: this retains all possible left-hand text sources.
     const horizontal = cols > 1 && (p.width > limits.max_edge_px || rows <= 1);
     if (!horizontal && rows > 1) {
@@ -130,11 +149,15 @@
     throw fault('INDIVISIBLE_OVERSIZE', 'A single cell exceeds the capture budget; no unsafe capture was queued.', { rect:r, geometry:g, pixels:p }, true);
   }
   const SHEET_LOCAL_CODES = new Set([
-    'CALIBRATION_NO_SAFE_CONTROLS','CALIBRATION_INSUFFICIENT_SPAN',
+    'FIXED_WIDTH_SPAN_CHANGED','FIXED_WIDTH_HORIZONTAL_OPERATION','FIXED_WIDTH_PNG_MISMATCH',
+    'DRAWING_BOUND_UNRESOLVED','CALIBRATION_NO_SAFE_CONTROLS','CALIBRATION_INSUFFICIENT_SPAN',
     'CALIBRATION_MODEL_REJECTED','CALIBRATION_VALIDATION_FAILED',
     'CALIBRATION_BOOTSTRAP_BUDGET','CALIBRATION_PNG_BUDGET',
     'CALIBRATION_GEOMETRY_CHANGED','PNG_GEOMETRY_MISMATCH','GEOMETRY_CHANGED',
-    'INVALID_GEOMETRY','INDIVISIBLE_OVERSIZE','OVERFLOW_CONTEXT_SPLIT'
+    'INVALID_GEOMETRY','INDIVISIBLE_OVERSIZE','OVERFLOW_CONTEXT_SPLIT',
+    'AXIS_GEOMETRY_INVALID','AXIS_GEOMETRY_CHANGED','AXIS_GEOMETRY_BUDGET','AXIS_DATA_MISSING',
+    'CONTEXT_TOO_THIN','CONTEXT_CROP_BOUNDS','CONTEXT_RASTER_PHASE','CONTEXT_PLAN_BUDGET',
+    'CONTEXT_PNG_MISMATCH','CONTEXT_REFERENCE_MISMATCH','CONTEXT_REFERENCE_BUDGET','CONTEXT_REFERENCE_UNSTABLE'
   ]);
   function sheetLocal(e) { return !!e && SHEET_LOCAL_CODES.has(e.code); }
   function controlReason(g) {
@@ -179,6 +202,35 @@
     const extra=candidates.find(c=>!fitting.includes(c))||fitting[Math.floor(fitting.length/2)];
     return [...fitting,extra];
   }
+  function fixedWidthControls(candidates, rect, geometry) {
+    // Reuse only controls covering the entire *same* physical horizontal interval.
+    // Do not promote an arbitrary narrow control if a wider requested span exists.
+    const pool=candidates.filter(c=>Math.abs(c.geometry.left-geometry.left)<1e-8 &&
+      Math.abs(c.geometry.right-geometry.right)<1e-8 && !controlReason(c.geometry));
+    const byHeight=new Map();
+    for(const c of pool) {
+      const h=c.geometry.bottom-c.geometry.top;
+      if(!byHeight.has(h))byHeight.set(h,{...c,rect:{...c.rect,c0:rect.c0,c1:rect.c1}});
+    }
+    const sorted=[...byHeight.values()].sort((a,b)=>(a.geometry.bottom-a.geometry.top)-(b.geometry.bottom-b.geometry.top));
+    if(sorted.length<3 || (sorted.at(-1).geometry.bottom-sorted.at(-1).geometry.top)-
+       (sorted[0].geometry.bottom-sorted[0].geometry.top)<8) return null;
+    const selected=[sorted[0],sorted[Math.floor(sorted.length/2)],sorted.at(-1)];
+    const holdout=sorted.find(c=>!selected.includes(c)) || selected[1];
+    return [...selected,holdout];
+  }
+  function fitFixedWidth(observations, geometry, rect) {
+    if(observations.length<3)throw fault('CALIBRATION_INSUFFICIENT_SPAN','Fixed width requires three independently sized Y observations.',{},true);
+    const width=observations[0].png.width;
+    for(const o of observations) {
+      if(o.png.width!==width || Math.abs(o.geometry.left-geometry.left)>1e-8 || Math.abs(o.geometry.right-geometry.right)>1e-8 ||
+         o.rect.c0!==rect.c0 || o.rect.c1!==rect.c1)
+        throw fault('FIXED_WIDTH_PNG_MISMATCH','Repeated full-span controls did not confirm the same PNG width.',{width,observation:o},true);
+    }
+    return {mode:'fixed-span',scale:null,left:geometry.left,right:geometry.right,width_px:width,
+      c0:rect.c0,c1:rect.c1,sample_count:observations.length,model:'observed PNG width for this exact horizontal interval',
+      horizontal_operations:'full span only; no horizontal crop, split, offset or probe extrapolation'};
+  }
   function selectSheetNames(catalog, requested) {
     if(requested==null)return catalog.map(s=>s.name);
     if(!Array.isArray(requested)||!requested.length||requested.some(s=>typeof s!=='string'||!s.length)||new Set(requested).size!==requested.length)
@@ -195,19 +247,27 @@
       const megapixels=Number(options.tile_megapixels || 16);
       if (![16,32,64].includes(megapixels)) throw fault('INVALID_CAPTURE_OPTIONS','Tile budget must be 16, 32 or 64 megapixels.',{megapixels},true);
       this.limits.max_pixels=megapixels*1000000;
+      if(options.native_call_timeout_ms!==undefined){
+        const timeout=Number(options.native_call_timeout_ms);
+        if(!Number.isInteger(timeout)||timeout<10000||timeout>600000)throw fault('INVALID_CAPTURE_OPTIONS','Native-call timeout must be 10..600 seconds.',{timeout},true);
+        this.limits.timeout_ms=timeout;
+      }
       this.packing=options.tile_packing || 'budget';
       if (!['budget','balanced'].includes(this.packing)) throw fault('INVALID_CAPTURE_OPTIONS','Unknown tile packing.',{packing:this.packing},true);
       this.runId = config.capture_run_id || config.diagnostic_run_id || null;
       this.dead = false; this.sequence = 0; this.tileCount = 0; this.calibrations = new Map();
       this.lastCheckpointAt=-Infinity;
+      this.axisGeometry=null;
       this.state = { schema:'safe-capture-v1', workbook, strategy:config.strategy, capture_options:options, tile_plans:[], sparse_overflow_checks:[],
-        status:'running', geometry_diagnostics:[], sheet_continuations:[], checkpoint_policy:{interval_ms:2000,sent:0,coalesced:0}, implementation:'safe-capture-visible-controls-v4', limits:this.limits, sheets:[], attempts:[], captures:[], calibrations:[],
+        status:'running', geometry_diagnostics:[], sheet_continuations:[], checkpoint_policy:{interval_ms:2000,sent:0,coalesced:0}, implementation:'safe-capture-fixed-width-v6', limits:this.limits, sheets:[], attempts:[], captures:[], calibrations:[],
         environment:{ browser: typeof navigator!=='undefined'?navigator.userAgent:null,
           office: root.Office && root.Office.context && root.Office.context.diagnostics || null,
           device_pixel_ratio: typeof root.devicePixelRatio==='number'?root.devicePixelRatio:null,
           screen: root.screen?{width:root.screen.width,height:root.screen.height,availWidth:root.screen.availWidth,availHeight:root.screen.availHeight}:null,
           note:'Browser devicePixelRatio is recorded, not used as the Excel PNG scale.' } };
-      this.timings = { geometry_ms:0, render_ms:0, persist_ms:0, analysis_ms:0, telemetry_ms:0, calibration_ms:0, checkpoint_ms:0, geometry_diagnostics_ms:0 }; 
+      this.timings = { geometry_ms:0, render_ms:0, persist_ms:0, analysis_ms:0, telemetry_ms:0, calibration_ms:0, checkpoint_ms:0, geometry_diagnostics_ms:0 };
+      if(root.CaptureGeometry)this.axisGeometry=new root.CaptureGeometry.Ledger(this);
+      this.state.context_policy=this.axisGeometry?'visible-cell-halo-v1':'legacy-unpadded';
     }
     async claim() {
       const client=(root.crypto && typeof root.crypto.randomUUID==='function')?root.crypto.randomUUID():`${Date.now()}-${Math.random()}`;
@@ -236,12 +296,16 @@
     async checkpoint(stage, detail = {}) {
       this.state.current = { stage, ...detail };
       const now=performance.now(),policy=this.state.checkpoint_policy;
-      const force=/(failed|fatal|finished|complete$|stopped|continuation|diagnostic)/.test(stage) && stage!=='tile_complete';
+      const force=/(failed|fatal|sheet_finished|workbook_finished|stopped|continuation|diagnostic|sparse_write_pending)/.test(stage);
       // Native starts and receipts are still individually ACKed in the host journal.
       // Only redundant full-state snapshots are coalesced, at most two seconds.
       if(!force && now-this.lastCheckpointAt<policy.interval_ms){policy.coalesced++;return;}
       const started=performance.now();policy.sent++;
-      try {await this.http('/capture-progress', this.state);this.lastCheckpointAt=performance.now();}
+      try {
+        const snapshot={...this.state,precomputed_wsl_rust_visual_plan:undefined};
+        const text=JSON.stringify(snapshot);policy.estimated_payload_bytes=(policy.estimated_payload_bytes||0)+new TextEncoder().encode(text).length;
+        await this.http('/capture-progress', snapshot);this.lastCheckpointAt=performance.now();
+      }
       finally {this.timings.checkpoint_ms+=performance.now()-started;}
     }
     async office(stage, detail, action, timeoutMs = this.limits.timeout_ms) {
@@ -263,11 +327,12 @@
       } finally {
         clearTimeout(timer);
         const elapsed=performance.now()-nativeStarted;
-        if(stage==='geometry') this.timings.geometry_ms+=elapsed;
-        else if(stage==='tile_render' || stage==='recovery_control' || stage==='calibration_render' || stage==='sparse_render') this.timings.render_ms+=elapsed;
+        if(stage==='geometry' || stage==='axis_geometry' || stage==='context_merge_guard') this.timings.geometry_ms+=elapsed;
+        else if(stage==='tile_render' || stage==='recovery_control' || stage==='calibration_render' || stage==='sparse_render' || stage==='context_reference_render') this.timings.render_ms+=elapsed;
       }
     }
-    async geometries(sheet, rects) {
+    async geometries(sheet, rects, refresh = false) {
+      if(this.axisGeometry)return this.axisGeometry.geometries(sheet,rects,refresh);
       const start = performance.now();
       const out = await this.office('geometry', { sheet, rect_count:rects.length,
         addresses:rects.slice(0,32).map(address) }, async context => {
@@ -298,7 +363,7 @@
       const calibration=this.calibrations.get(sheet);
       if(!calibration || calibration.status!=='complete')throw fault('UNCALIBRATED_CAPTURE','Sheet has no validated calibration.',{sheet},true);
       return {...this.limits, scale:null, scale_x:calibration.x.scale, scale_y:calibration.y.scale,
-        border_px:1, calibration_id:calibration.id};
+        border_px:1, calibration_id:calibration.id, fixed_x:calibration.x.mode==='fixed-span'?calibration.x:null};
     }
     async findCalibrationControls(sheet, rect, initialRects, record) {
       const candidates=[],seen=new Set();record.control_search=[];
@@ -323,10 +388,65 @@
         } catch(e) {if(e.code!=='CALIBRATION_NO_SAFE_CONTROLS')throw e;}
       }
       record.control_selection='independent-axis-controls';
-      const selected=independentControls(candidates);
+      let selected;
+      try{selected=independentControls(candidates);}
+      catch(e){
+        if(e.code==='CALIBRATION_NO_SAFE_CONTROLS' && e.detail?.axis==='x') {
+          const extent=(await this.geometries(sheet,[rect]))[0];
+          const fixed=fixedWidthControls(candidates,rect,extent);
+          if(fixed) {
+            record.control_selection='fixed-width-y-controls';
+            record.method='fixed horizontal interval; three Y controls plus independent/repeated holdout';
+            record.fixed_span={left:extent.left,right:extent.right,c0:rect.c0,c1:rect.c1};
+            return fixed;
+          }
+        }
+        if(this.config.capture_options?.diagnostic_level==='detailed' && e.code==='CALIBRATION_NO_SAFE_CONTROLS'){
+          await this.diagnoseDegenerateControls(sheet,candidates,record);
+        }
+        throw e;
+      }
       record.method='bounded visible controls; independently spanned axes plus holdout';
       await this.diagnoseGeometry(sheet,'INDEPENDENT_AXIS_CONTROLS_REQUIRED',rect);
       return selected;
+    }
+    async diagnoseDegenerateControls(sheet,candidates,record) {
+      // Evidence only: this does NOT admit a fixed-width calibration as successful.
+      const unique=(axis)=>new Set(candidates.map(x=>axis==='x'?x.geometry.right-x.geometry.left:x.geometry.bottom-x.geometry.top)).size;
+      const diagnostic={schema:'vv-degenerate-control-v1',sheet,status:'started',unique_widths:unique('x'),unique_heights:unique('y'),
+        observations:[],qualification:'diagnostic-only; original calibration failure retained'};
+      record.degenerate_diagnostic=diagnostic;
+      if(candidates.length<3){diagnostic.status='insufficient-safe-controls';return;}
+      const axis=diagnostic.unique_heights>=3?'y':'x';
+      const value=x=>axis==='y'?x.geometry.bottom-x.geometry.top:x.geometry.right-x.geometry.left;
+      const sorted=[...new Map(candidates.map(x=>[value(x),x])).values()].sort((a,b)=>value(a)-value(b));
+      if(sorted.length<3){diagnostic.status='insufficient-variable-axis';return;}
+      const controls=[sorted[0],sorted[Math.floor(sorted.length/2)],sorted.at(-1),sorted[0]];
+      try{
+        for(let i=0;i<controls.length;i++){
+          const c=controls[i],id=`${record.id}-diagnostic${i+1}`,a=address(c.rect);
+          const before=(await this.geometries(sheet,[c.rect],true))[0];
+          if(controlReason(before))throw fault('CALIBRATION_BOOTSTRAP_BUDGET','Diagnostic control no longer fits its bounded bootstrap budget.',{sheet,address:a,before},true);
+          let base64=null;
+          try{
+            base64=await this.office('calibration_render',{sheet,address:a,id,diagnostic_only:true},async context=>{
+              const result=context.workbook.worksheets.getItem(sheet).getRange(a).getImage();await context.sync();return result.value;
+            });
+            const header=png(base64);
+            if(!actualFits(header,{...this.limits,max_edge_px:8192,max_pixels:4000000}))throw fault('CALIBRATION_PNG_BUDGET','Diagnostic PNG exceeded its budget.',{sheet,header},true);
+            const receipt=await this.http('/image-batch',{workbook:this.workbook,batch_index:0,images:[{id,sheet,address:a,base64}]});
+            if(!receipt.captures?.[0])throw fault('PERSIST_NO_RECEIPT','Diagnostic image not acknowledged.',{id},true);
+            const after=(await this.geometries(sheet,[c.rect],true))[0];
+            const sample={id,address:a,geometry_before:before,geometry:after,png:header,relative_png:receipt.captures[0].relative_png,
+              geometry_stable:['left','top','right','bottom'].every(k=>Math.abs(before[k]-after[k])<=0.01)};
+            diagnostic.observations.push(sample);await this.event('degenerate_control_sample',{sheet,...sample});
+          }finally{base64=null;}
+        }
+        try{diagnostic.variable_axis=axis;diagnostic.variable_axis_fit=fitAxis(diagnostic.observations.slice(0,3),axis);}catch(e){diagnostic.fit_error=errorInfo(e);}
+        diagnostic.status='evidence-recorded';
+      }catch(e){diagnostic.status='failed';diagnostic.error=errorInfo(e);if(this.dead || e.code==='HOST_HTTP_ERROR')throw e;}
+      await this.event('degenerate_control_diagnostic',diagnostic);
+      await this.checkpoint('degenerate_control_diagnostic',{sheet,status:diagnostic.status});
     }
     async diagnoseGeometry(sheet, reason, rect) {
       // At most one diagnostic per reason/sheet. This is a small read-only geometry
@@ -366,6 +486,7 @@
       await this.checkpoint('geometry_diagnostic_finished',{sheet,reason});return record;
     }
     async continueAfterSheetFailure(sheet, error) {
+      if(this.state.sparse_overflow_checks.some(c=>c.write_attempted_cells>0 && c.restoration!=='verified' && c.roundtrip_identical!==true)){this.dead=true;return false;}
       if(this.dead || (error.fatal && !sheetLocal(error)))return false;
       const record={sheet,error:errorInfo(error),scope:'worksheet',status:'checking-session'};
       this.state.sheet_continuations.push(record);
@@ -399,7 +520,7 @@
         record.fitting_count=fittingCount;
         for(let i=0;i<controls.length;i++){
           const control=controls[i],a=address(control.rect),id=`${record.id}-${i+1}`;
-          const before=(await this.geometries(sheet,[control.rect]))[0];
+          const before=(await this.geometries(sheet,[control.rect],true))[0];
           if(!fits(before,{...this.limits,scale:8,scale_x:8,scale_y:8,max_edge_px:8192,max_pixels:4000000}))
             throw fault('CALIBRATION_BOOTSTRAP_BUDGET','Calibration geometry changed beyond its small bootstrap budget.',{sheet,address:a,before},true);
           const sample={id,address:a,role:i<fittingCount?'fit':'validation',rect:control.rect,geometry_before:before,status:'started'};
@@ -416,7 +537,7 @@
               images:[{id,sheet,address:a,base64}]});this.timings.persist_ms+=performance.now()-t;
             if(!response.captures || !response.captures[0])throw fault('PERSIST_NO_RECEIPT','Calibration PNG was not acknowledged.',{id},true);
             sample.relative_png=response.captures[0].relative_png;
-            const after=(await this.geometries(sheet,[control.rect]))[0];sample.geometry=after;
+            const after=(await this.geometries(sheet,[control.rect],true))[0];sample.geometry=after;
             if(['left','top','right','bottom'].some(k=>Math.abs(after[k]-before[k])>0.01))
               throw fault('CALIBRATION_GEOMETRY_CHANGED','Small control changed geometry while rendering.',{sheet,before,after},true);
             if(!actualFits(sample.png,{...this.limits,max_edge_px:8192,max_pixels:4000000}))
@@ -424,18 +545,24 @@
             sample.status='complete';
             await this.event('raster_calibration_sample',{sheet,...sample});
           } finally {base64=null;}
-          if(i===fittingCount-1){record.x=fitAxis(record.observations,'x');record.y=fitAxis(record.observations,'y');}
+          if(i===fittingCount-1){
+            record.x=record.fixed_span?fitFixedWidth(record.observations,record.fixed_span,rect):fitAxis(record.observations,'x');
+            record.y=fitAxis(record.observations,'y');
+          }
           if(i===fittingCount){
-            const prediction=pixels(sample.geometry,{...this.limits,scale_x:record.x.scale,scale_y:record.y.scale});
+            if(record.fixed_span)record.x=fitFixedWidth(record.observations,record.fixed_span,rect);
+            const prediction=pixels(sample.geometry,{...this.limits,scale_x:record.x.scale,scale_y:record.y.scale,
+              fixed_x:record.fixed_span?record.x:null});
             sample.predicted=prediction;
-            if(Math.abs(sample.png.width-prediction.width)>1 || Math.abs(sample.png.height-prediction.height)>1)
+            if(Math.abs(sample.png.width-prediction.width)>(record.fixed_span?0:1) || Math.abs(sample.png.height-prediction.height)>(record.fixed_span?0:1))
               throw fault('CALIBRATION_VALIDATION_FAILED','Independent small control did not confirm the fitted scale.',{sheet,sample},true);
           }
         }
         record.status='complete';record.duration_ms=performance.now()-started;
         this.calibrations.set(sheet,record);
         await this.event('raster_calibrated',{sheet,id:record.id,scale_x:record.x.scale,scale_y:record.y.scale,border_px:1,
-          validation_count:record.observations.length,effective_dpi_x:record.x.scale*72,effective_dpi_y:record.y.scale*72,
+          calibration_mode:record.fixed_span?'fixed-width':'two-axis',fixed_x:record.fixed_span?record.x:null,
+          validation_count:record.observations.length,effective_dpi_x:record.x.scale===null?null:record.x.scale*72,effective_dpi_y:record.y.scale*72,
           note:'Effective DPI is calculated from measured scale, not a Windows monitor-DPI measurement.'});
         await this.checkpoint('raster_calibrated',{sheet,id:record.id});return record;
       } catch(e){
@@ -482,7 +609,8 @@
     }
     // Measured full-width packing; use the largest fitting row boundary instead of
     // rounding the tile count up to a power of two. No cell-content scan is performed.
-    async plan(sheet, rect) {
+    async plan(sheet, rect, parent = rect) {
+      if(this.axisGeometry)return root.CaptureGeometry.plan(this,sheet,rect,parent);
       if (this.packing === 'balanced') return this.planBalanced(sheet, rect);
       const first=(await this.geometries(sheet,[rect]))[0];
       if(first.right===first.left || first.bottom===first.top) return [{rect,geometry:first,invisible:true}];
@@ -566,16 +694,20 @@
       if (++this.sequence > limits.max_attempts || ++this.tileCount > limits.max_tiles*2)
         throw fault('CAPTURE_BUDGET','Capture/recovery budget exceeded',{sheet},true);
       const id=`${logicalId}-t${String(this.sequence).padStart(6,'0')}`;
-      const rect=tile.rect, a=address(rect), before=(await this.geometries(sheet,[rect]))[0];
+      const rect=tile.rect, captureRect=tile.capture_rect || rect, parent=tile.parent_rect || rect;
+      if(limits.fixed_x && (captureRect.c0!==limits.fixed_x.c0 || captureRect.c1!==limits.fixed_x.c1))
+        throw fault('FIXED_WIDTH_HORIZONTAL_OPERATION','Capture columns differ from the calibrated fixed interval.',{sheet,captureRect,fixed_x:limits.fixed_x},true);
+      const a=address(captureRect), before=(await this.geometries(sheet,[captureRect],true))[0];
       if (!fits(before,limits)) {
         if (depth>=limits.max_depth) throw fault('TILE_DEPTH','Capture split depth exceeded',{sheet,a},true);
-        const children=await this.plan(sheet,rect); const results=[];
+        const children=await this.plan(sheet,rect,parent); const results=[];
         for (const child of children) results.push(...await this.capture(sheet,child,logicalId,onImage,depth+1));
         return results;
       }
       const identity=(this.state.sheet_catalog || []).find(x=>x.name===sheet);
       const attempt={id,sheet,sheet_index:identity ? identity.sheet_index : null,
-        address:a,rect,geometry_before:before,predicted:pixels(before,limits),status:'started'};
+        address:a,rect,capture_rect:captureRect,parent_rect:parent,guards:tile.guards||null,
+        geometry_before:before,predicted:pixels(before,limits),status:'started'};
       this.state.attempts.push(attempt);
       await this.checkpoint('tile_render_started',{sheet,address:a,id});
       let base64=null, saved=null, failureStage='render';
@@ -600,8 +732,10 @@
         if (!saved) throw fault('PERSIST_NO_RECEIPT','Host did not return saved capture metadata',{id},true);
         attempt.relative_png=saved.relative_png;
         failureStage='post-capture-validation';
-        const after=(await this.geometries(sheet,[rect]))[0]; attempt.geometry_after=after;
+        const after=(await this.geometries(sheet,[captureRect],true))[0]; attempt.geometry_after=after;
         const expected=pixels(after,limits);
+        if(limits.fixed_x && header.width!==expected.width)
+          throw fault('FIXED_WIDTH_PNG_MISMATCH','Full-span PNG width changed; no crop or rescaling was accepted.',{header,expected,fixed_x:limits.fixed_x},true);
         const changed=['left','top','right','bottom'].some(k=>Math.abs(before[k]-after[k])>0.01);
         if (changed) throw fault('GEOMETRY_CHANGED','Geometry changed while capturing; no mixed-layout success is reported.',{before,after,header},true);
         if (header.width>=32766 || header.height>=32766)
@@ -612,8 +746,14 @@
               observed_scale_x:(header.width-1)/(after.right-after.left),observed_scale_y:(header.height-1)/(after.bottom-after.top)},true);
         if (!actualFits(header,limits) || !fits(after,limits))
           throw fault('PNG_ACTUAL_BUDGET','Actual PNG exceeds a capture budget; no Canvas decode was attempted.',{header,expected,after});
-        const capture={...saved,sheet_index:attempt.sheet_index,rect,geometry:after,logical_id:logicalId,packing:tile.packing || {method:'balanced-subdivision'},
-          raster_profile:{calibration_id:limits.calibration_id,scale_x:limits.scale_x,scale_y:limits.scale_y,border_px:1},
+        const core=(await this.geometries(sheet,[rect]))[0],envelope=(await this.geometries(sheet,[parent]))[0];
+        const coreBox=this.axisGeometry ? root.CaptureGeometry.cropBox(core,after,envelope,limits,header) : {x:0,y:0,width:header.width,height:header.height};
+        if(this.axisGeometry && (header.width!==expected.width || header.height!==expected.height))
+          throw fault('CONTEXT_PNG_MISMATCH','Exact context crop requires the measured image dimensions; no tolerance or resizing is used.',{header,expected,sheet,address:a},true);
+        const capture={...saved,sheet_index:attempt.sheet_index,rect,geometry:core,logical_id:logicalId,packing:tile.packing || {method:this.axisGeometry?'contextual-row-packing':'balanced-subdivision'},
+          capture_rect:captureRect,capture_geometry:after,parent_rect:parent,core_box_px:coreBox,guards:tile.guards||null,
+          context_policy:this.axisGeometry?'visible-cell-halo-v1':'legacy-unpadded',merge_context:tile.merge_context||[],
+          raster_profile:{calibration_id:limits.calibration_id,scale_x:limits.scale_x,scale_y:limits.scale_y,border_px:1,fixed_x:limits.fixed_x||null},
           content_box_px:{x:0,y:0,width:header.width,height:header.height},
           seam_extra_pixel:limits.border_px};
         failureStage='analysis';
@@ -648,18 +788,20 @@
         await this.event('tile_recovery_split',{sheet,address:a,id});
         const out=[];
         for (const r of split(rect,before,limits)) {
-          for (const child of await this.plan(sheet,r)) out.push(...await this.capture(sheet,child,logicalId,onImage,depth+1));
+          for (const child of await this.plan(sheet,r,parent)) out.push(...await this.capture(sheet,child,logicalId,onImage,depth+1));
         }
         return out;
       } finally { base64=null; }
     }
     async capturePlan(sheet, tiles, logicalId, onImage) {
+      if(this.axisGeometry && this.config.capture_options?.context_validation==='first-seam' && root.ContextValidation)
+        await root.ContextValidation.verify(this,sheet,tiles,logicalId);
       const out=[];
       for (const tile of tiles) out.push(...await this.capture(sheet,tile,logicalId,onImage));
       return out;
     }
   }
-  const api={DEFAULTS,Session,parse,address,png,pixels,fits,split,fault,errorInfo,axisScale,actualFits,fitAxis,chooseControls,independentControls,controlReason,fallbackRectangles,sheetLocal,selectSheetNames};
+  const api={DEFAULTS,Session,parse,address,png,pixels,fits,split,fault,errorInfo,axisScale,actualFits,fitAxis,chooseControls,independentControls,controlReason,fallbackRectangles,sheetLocal,selectSheetNames,assertFixedSpan,xOffset,fixedWidthControls,fitFixedWidth};
   root.SafeCapture=api;
   if(typeof module!=='undefined' && module.exports) module.exports=api;
 }(typeof window!=='undefined'?window:globalThis));

@@ -466,6 +466,7 @@ async fn config(State(state): State<Arc<Shared>>) -> impl IntoResponse {
         "wait_for_start": state.config.wait_for_start,
         "extended_error_logging": state.config.extended_error_logging,
         "office_js_debug": state.config.office_js_debug,
+        "host_run_id": state.config.capture_run_id,
         "capture_run_id": state.config.capture_run_id
     }))
 }
@@ -984,6 +985,8 @@ fn router(state: Arc<Shared>) -> Router {
         .route("/commands.html", get(|state| static_file(state, "commands.html", "text/html; charset=utf-8")))
         .route("/visual-plan.json", get(|state| static_file(state, "visual-plan.json", "application/json; charset=utf-8")))
         .route("/mode.js", get(mode_js))
+        .route("/capture-geometry.js", get(|state| static_file(state,"capture-geometry.js","application/javascript; charset=utf-8")))
+        .route("/context-validation.js", get(|state| static_file(state,"context-validation.js","application/javascript; charset=utf-8")))
         .route("/safe-capture.js", get(|state| static_file(state,"safe-capture.js","application/javascript; charset=utf-8")))
         .route("/capture-policy.js", get(|state| static_file(state,"capture-policy.js","application/javascript; charset=utf-8")))
         .route("/finalize-image", post(final_image::finalize))

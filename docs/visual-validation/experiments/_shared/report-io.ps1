@@ -1,6 +1,10 @@
 ﻿# Report post-processing IO only. Capture transports are unchanged.
 $script:VVReportIOSource=Join-Path $PSScriptRoot 'report-io.cs'
+$script:VVSnapshotSource=Join-Path $PSScriptRoot 'office-addin\hosts\dotnet\SnapshotPublication.cs'
 function Initialize-VVReportIO {
+    if($null -eq ('VVSnapshotFile' -as [type])) {
+        Add-Type -Path $script:VVSnapshotSource -ReferencedAssemblies @('System.dll') -ErrorAction Stop
+    }
     if($null -eq ('VVReportIO' -as [type])) {
         Add-Type -Path $script:VVReportIOSource -ReferencedAssemblies @('System.dll') -ErrorAction Stop
     }

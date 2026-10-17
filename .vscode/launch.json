@@ -2,6 +2,13 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Visual validation: Finalize capture strategy",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "echo Capture qualification task finished.",
+      "preLaunchTask": "Visual validation: Finalize capture strategy"
+    },
+    {
       "name": "Visual validation: Check capture fixes (focused)",
       "type": "node-terminal",
       "request": "launch",

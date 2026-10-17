@@ -1,5 +1,7 @@
 # Visual-validation experiments
 
+For an unresolved workbook/sheet, use [Focused capture reproduction](FOCUSED-CAPTURE.md). The focused GUI and CLI share exact selections and separate phase deadlines; they do not launch a strategy sweep.
+
 > Current runs: see [consolidated capture/report contract](CONSOLIDATED-CAPTURE.md). Output is now central
 > at `docs/visual-validation/results/`. Historical paths and monolithic timing notes below
 > describe the earlier experiments, not the current safe range-image capture path.
@@ -49,3 +51,10 @@ Use **Visual validation: Decide strategy (all workbooks)**. See [DECISION-CAMPAI
 ## Focused capture repair
 
 Use **Visual validation: Check capture fixes (focused)** for the bounded hidden/narrow-column and geometry follow-up. See [protocol and scope](FOCUSED-CAPTURE-REPAIR.md). It does not repeat the full strategy matrix or change production decisions.
+
+## Final contextual capture qualification
+
+Run **Visual validation: Finalize capture strategy** for the readiness-gated final comparison.
+It validates visible-cell capture context and additive geometry first, then runs only
+the remaining host/overflow/16–32–64-MP race. See [protocol and limits](CONTEXT-CAPTURE-QUALIFICATION.md).
+No historical VBA/GDI+ or synthetic diagnostic matrices are rerun by this profile.

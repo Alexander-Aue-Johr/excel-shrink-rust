@@ -2,12 +2,53 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Visual validation: Finalize capture strategy",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/decision-campaign.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -Finalize",
+        "vv-finalize-capture",
+        "${workspaceFolder}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true,
+        "group": "experiments"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-STA",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\docs\\visual-validation\\experiments\\decision-campaign.ps1",
+          "-Finalize"
+        ],
+        "options": {
+          "cwd": "${env:TEMP}"
+        }
+      }
+    },
+    {
       "label": "Visual validation: Check capture fixes (focused)",
       "type": "process",
       "command": "bash",
       "args": [
         "-lc",
-        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/decision-campaign.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -Focused",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/decision-campaign.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -Focused -InterfaceMode gui",
         "vv-focused-capture",
         "${workspaceFolder}"
       ],
@@ -35,12 +76,15 @@
           "Bypass",
           "-File",
           "${workspaceFolder}\\docs\\visual-validation\\experiments\\decision-campaign.ps1",
-          "-Focused"
+          "-Focused",
+          "-InterfaceMode",
+          "gui"
         ],
         "options": {
           "cwd": "${env:TEMP}"
         }
-      }
+      },
+      "detail": "Select exact issue cases or workbook/worksheet scope, phase deadlines and diagnostic settings. No strategy sweep."
     },
     {
       "label": "Visual validation: Decide strategy (all workbooks)",
@@ -48,7 +92,7 @@
       "command": "bash",
       "args": [
         "-lc",
-        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/decision-campaign.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\"",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/decision-campaign.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -Campaign",
         "vv-decision-campaign",
         "${workspaceFolder}"
       ],
@@ -75,12 +119,14 @@
           "-ExecutionPolicy",
           "Bypass",
           "-File",
-          "${workspaceFolder}\\docs\\visual-validation\\experiments\\decision-campaign.ps1"
+          "${workspaceFolder}\\docs\\visual-validation\\experiments\\decision-campaign.ps1",
+          "-Campaign"
         ],
         "options": {
           "cwd": "${env:TEMP}"
         }
-      }
+      },
+      "detail": "Retained broad comparison/inventory. For one unresolved worksheet use Visual validation: Check capture fixes (focused)."
     },
     {
       "label": "Visual validation: Run comparison suite",
@@ -120,7 +166,8 @@
         "options": {
           "cwd": "${env:TEMP}"
         }
-      }
+      },
+      "detail": "Retained broad comparison/inventory. For one unresolved worksheet use Visual validation: Check capture fixes (focused)."
     },
     {
       "label": "Visual validation: Repair latest suite reports (no Excel)",

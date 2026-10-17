@@ -8,6 +8,8 @@ if($root -ne $expected -or $spec.job.id -notmatch '^\d{6,8}-[a-z0-9-]+$' -or $sp
 . (Join-Path $spec.repo_root 'docs\visual-validation\experiments\_shared\reporting.ps1')
 $process=$null;$owner=$null;$clock=[Diagnostics.Stopwatch]::StartNew();$postStarted=$null
 $receipt=[ordered]@{schema='vv-decision-supervisor-v1';status='failed';error=$null;safe_to_continue=$false;elapsed_seconds=0;workload_timeout_seconds=$spec.workload_timeout_seconds;phase='startup';owned_excel=@();native_exit=$null}
+. (Join-Path $PSScriptRoot 'focus-deadlines.ps1')
+$focusPhase='setup';$focusPhaseStarted=0.0
 $owned=@{};$preexisting=@(Get-Process -Name EXCEL -ErrorAction SilentlyContinue|ForEach-Object{$_.Id})
 $priorToken=$env:VV_DECISION_OWNER_TOKEN;$priorCase=$env:VV_DECISION_CASE_ROOT;$priorExisting=$env:VV_DECISION_PREEXISTING_EXCEL
 function Assert-DecisionIdle {
@@ -56,10 +58,19 @@ try {
         $lease=Get-Item -LiteralPath (Join-Path $root '.lease') -ErrorAction SilentlyContinue
         if($clock.Elapsed.TotalSeconds -gt 60 -and ($null -eq $lease -or ([DateTime]::UtcNow-$lease.LastWriteTimeUtc).TotalSeconds -gt 60)){$receipt.status='cancelled';$receipt.error='Campaign heartbeat lease expired';break}
         $phase=Read-VVJson (Join-Path $root 'case-phase.json')
-        if($null -ne $phase -and $phase.phase -in @('postprocess','report')) {
+        $life=if($null -ne $spec.focus_parameters){Read-VVJson (Join-Path $root 'capture-lifecycle.json')}else{$null}
+        $focusFinished=($null -ne $life -and $life.schema -eq 'vv-focus-lifecycle-v1' -and $life.phase -in @('complete','failed','timeout'))
+        if(($null -ne $phase -and $phase.phase -in @('postprocess','report')) -or $focusFinished) {
             if($null -eq $postStarted){$postStarted=$clock.Elapsed.TotalSeconds}
-            $receipt.phase=$phase.phase
+            $receipt.phase=if($null -ne $phase -and $phase.phase -in @('postprocess','report')){$phase.phase}else{'postprocess'}
             if($clock.Elapsed.TotalSeconds-$postStarted -ge [int]$spec.postprocess_timeout_seconds){$receipt.status='timeout';$receipt.error='Post-processing timeout; captured data retained';break}
+        } elseif($null -ne $spec.focus_parameters) {
+            $observed=if($null -ne $life -and $life.schema -eq 'vv-focus-lifecycle-v1'){[string]$life.phase}else{'setup'}
+            if($observed -cne $focusPhase){$focusPhase=$observed;$focusPhaseStarted=$clock.Elapsed.TotalSeconds}
+            $receipt.phase=$focusPhase
+            $receipt.focus_lifecycle=$life
+            $failure=Get-VVFocusDeadlineFailure $spec.focus_parameters $clock.Elapsed.TotalSeconds $focusPhase ($clock.Elapsed.TotalSeconds-$focusPhaseStarted)
+            if($null -ne $failure){$receipt.status='timeout';$receipt.timeout_kind=$failure.kind;$receipt.error=('Focused '+$failure.kind+' deadline exceeded ('+$failure.limit+' s); existing evidence retained.');break}
         } elseif($clock.Elapsed.TotalSeconds -ge [int]$spec.workload_timeout_seconds) {
             $receipt.status='timeout';$receipt.error='Baseline-relative workload deadline exceeded; censored, not successful runtime';break
         }
@@ -74,8 +85,21 @@ try {
         if($null -eq $metrics){$receipt.status='failed';$receipt.error='Worker exited without case metrics'}
         else{$receipt.status=$metrics.status;$receipt.error=$metrics.invocation_error;if($process.ExitCode -ne 0 -and $receipt.status -eq 'complete'){$receipt.status='failed';$receipt.error='Worker returned a nonzero exit code'}}
     }
+    if($null -ne $spec.focus_parameters){
+        $life=Read-VVJson (Join-Path $root 'capture-lifecycle.json');$receipt.focus_lifecycle=$life
+        if($null -ne $life -and $life.timeout_kind){$receipt.status='timeout';$receipt.timeout_kind=$life.timeout_kind;$receipt.error=$life.error}
+    }
     Attach-DecisionExcelOwners
-} catch {$receipt.status='failed';$receipt.error=$_.Exception.Message}
+} catch {
+    $receipt.status='failed';$receipt.error=$_.Exception.Message
+    $cause=$_.Exception
+    while($null -ne $cause -and $cause.GetType().FullName -ne 'VVSnapshotIOException'){$cause=$cause.InnerException}
+    if($null -ne $cause){
+        $receipt.failure_category='report-io'
+        $receipt.report_io_failure=@{operation=$cause.Operation;native_code=$cause.NativeCode;attempts=$cause.Attempts;
+            target=$cause.TargetPath;pending=$cause.PendingPath;pending_complete=$cause.PendingComplete}
+    }
+}
 finally {
     if($null -ne $owner){try{$owner.Dispose()}catch{}}
     if($null -ne $process){$process.Dispose()}
@@ -89,6 +113,9 @@ finally {
     if(-not [IO.File]::Exists((Join-Path $root 'report.html'))){
         $message=[Net.WebUtility]::HtmlEncode([string]$receipt.error)
         [IO.File]::WriteAllText((Join-Path $root 'report.html'),('<!doctype html><html lang="en"><meta charset="utf-8"><title>Interrupted case</title><body><h1>Case '+$receipt.status+'</h1><p>'+$message+'</p><p><a href="worker.stdout.log">Worker stdout</a> · <a href="worker.stderr.log">Worker stderr</a> · <a href="case-metrics.json">Metrics</a> · <a href="../../report.html">Campaign</a></p><p>Existing captures and progress files have not been deleted.</p></body></html>'),$utf8)
+    }
+    if($null -ne ('VVSnapshotFile' -as [type])) {
+        $receipt.report_io=@{policy=[VVSnapshotFile]::Policy;reader_retries=[VVSnapshotFile]::ReadRetries;publisher_retries=[VVSnapshotFile]::PublishRetries}
     }
     Write-VVJson (Join-Path $root 'supervisor-result.json') $receipt
     $env:VV_DECISION_OWNER_TOKEN=$priorToken;$env:VV_DECISION_CASE_ROOT=$priorCase;$env:VV_DECISION_PREEXISTING_EXCEL=$priorExisting

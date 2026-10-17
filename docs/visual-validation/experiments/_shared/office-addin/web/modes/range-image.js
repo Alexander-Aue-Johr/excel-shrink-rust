@@ -350,86 +350,81 @@
   }
 
   async function mapPointBoundsToGrid(entries) {
-    const horizontal = entries
-      .filter((entry) =>
-        entry.rightBoundSource !== 'trailing-hidden' &&
-        entry.shapeRightPoints > entry.contentRightPoints + 0.01
-      )
-      .map((entry) => ({
-        entry,
-        low: Math.max(0, entry.contentRightColumn),
-        high: MAX_COLUMNS - 1,
-        target: entry.shapeRightPoints
-      }));
-
-    const vertical = entries
-      .filter((entry) =>
-        entry.bottomBoundSource !== 'trailing-hidden' &&
-        entry.shapeBottomPoints > entry.contentBottomPoints + 0.01
-      )
-      .map((entry) => ({
-        entry,
-        low: Math.max(0, entry.contentBottomRow),
-        high: MAX_ROWS - 1,
-        target: entry.shapeBottomPoints
-      }));
-
-    const started = performance.now();
-
-    while (
-      horizontal.some((item) => item.low < item.high) ||
-      vertical.some((item) => item.low < item.high)
-    ) {
-      await Excel.run(async (context) => {
-        const workbook = context.workbook;
-        const probes = [];
-
-        for (const item of horizontal) {
-          if (item.low >= item.high) continue;
-          const mid = Math.floor((item.low + item.high) / 2);
-          const cell = workbook.worksheets
-            .getItem(item.entry.sheet)
-            .getRangeByIndexes(0, mid, 1, 1);
-          cell.load('left,width');
-          probes.push({ axis: 'x', item, mid, cell });
+    const s=safeSession, detailed=s?.config?.capture_options?.diagnostic_level==='detailed';
+    const items=[];
+    for(const entry of entries)for(const axis of ['x','y']){
+      const target=axis==='x'?entry.shapeRightPoints:entry.shapeBottomPoints;
+      const content=axis==='x'?entry.contentRightPoints:entry.contentBottomPoints;
+      const source=axis==='x'?entry.rightBoundSource:entry.bottomBoundSource;
+      if(source==='trailing-hidden'||!(target>content+0.01))continue;
+      const minimum=Math.max(0,axis==='x'?entry.contentRightColumn:entry.contentBottomRow);
+      const maximum=(axis==='x'?MAX_COLUMNS:MAX_ROWS)-1;
+      const audit={sheet:entry.sheet,axis,target_points:target,content_points:content,
+        initial_low_0based:minimum,initial_high_0based:maximum,status:'searching',probes:[],
+        original_bounds:{right_column_0based:entry.rightColumn,bottom_row_0based:entry.bottomRow},
+        source_shapes:entry.shapeDiagnostics||[],method:'native-top-left-search-with-explicit-final-bracket-check'};
+      if(s)(s.state.drawing_mapping_audits ||= []).push(audit);
+      items.push({entry,axis,target,low:minimum,high:maximum,minimum,audit});
+    }
+    if (!items.length) return 0;
+    const started=performance.now();let iteration=0;
+    const office=async(stage,detail,action)=>s?s.office(stage,detail,action):Excel.run(action);
+    while(items.some(x=>x.low<x.high)){
+      if(++iteration>32)throw new Error('Drawing bounds search exceeded its bounded iteration count.');
+      const samples=await office('drawing_grid_probe',{iteration,sheets:items.map(x=>x.entry.sheet)},async context=>{
+        const refs=[];
+        for(const item of items){
+          if(item.low>=item.high)continue;
+          const mid=Math.floor((item.low+item.high)/2);
+          const cell=context.workbook.worksheets.getItem(item.entry.sheet)
+            .getRangeByIndexes(item.axis==='y'?mid:0,item.axis==='x'?mid:0,1,1);
+          cell.load('top,left,width,height,rowHidden,columnHidden');refs.push({item,mid,cell});
         }
-
-        for (const item of vertical) {
-          if (item.low >= item.high) continue;
-          const mid = Math.floor((item.low + item.high) / 2);
-          const cell = workbook.worksheets
-            .getItem(item.entry.sheet)
-            .getRangeByIndexes(mid, 0, 1, 1);
-          cell.load('top,height');
-          probes.push({ axis: 'y', item, mid, cell });
-        }
-
         await context.sync();
-
-        for (const probe of probes) {
-          const edge = probe.axis === 'x'
-            ? Number(probe.cell.left) + Number(probe.cell.width)
-            : Number(probe.cell.top) + Number(probe.cell.height);
-
-          if (edge + 0.01 >= probe.item.target) {
-            probe.item.high = probe.mid;
-          } else {
-            probe.item.low = probe.mid + 1;
-          }
-        }
+        return refs.map(({item,mid,cell})=>({item,mid,point:{top:Number(cell.top),left:Number(cell.left),
+          width:Number(cell.width),height:Number(cell.height),row_hidden:cell.rowHidden,column_hidden:cell.columnHidden}}));
       });
+      for(const sample of samples){
+        const {item,mid,point}=sample,edge=item.axis==='x'?point.left+point.width:point.top+point.height;
+        const observation={iteration,index_0based:mid,low_0based:item.low,high_0based:item.high,edge_points:edge,...point};
+        item.audit.probes.push(observation);
+        if(!Number.isFinite(edge)){item.audit.invalid='nonfinite-edge';item.low=item.high;continue;}
+        if(edge+0.01>=item.target)item.high=mid;else item.low=mid+1;
+      }
+      if(detailed&&s)await s.event('drawing_mapping_probes',{iteration,probes:samples.map(x=>({sheet:x.item.entry.sheet,axis:x.item.axis,...x.item.audit.probes.at(-1)}))});
     }
-
-    for (const item of horizontal) {
-      item.entry.rightColumn = Math.max(item.entry.rightColumn, item.low);
+    // A binary search with no upper bracket must not silently yield Excel's last row.
+    // Verify the selected edge and its predecessor; retain failed evidence per sheet.
+    const checks=await office('drawing_grid_verify',{sheets:items.map(x=>x.entry.sheet)},async context=>{
+      const refs=[];
+      for(const item of items)for(const index of [...new Set([item.low,Math.max(item.minimum,item.low-1)])]){
+        const cell=context.workbook.worksheets.getItem(item.entry.sheet)
+          .getRangeByIndexes(item.axis==='y'?index:0,item.axis==='x'?index:0,1,1);
+        cell.load('top,left,width,height,rowHidden,columnHidden');refs.push({item,index,cell});
+      }
+      if(refs.length)await context.sync();
+      return refs.map(({item,index,cell})=>({item,index,top:Number(cell.top),left:Number(cell.left),
+        width:Number(cell.width),height:Number(cell.height),row_hidden:cell.rowHidden,column_hidden:cell.columnHidden}));
+    });
+    for(const item of items){
+      const observed=checks.filter(x=>x.item===item).map(({item:_,...x})=>({...x,edge_points:item.axis==='x'?x.left+x.width:x.top+x.height}));
+      item.audit.final_checks=observed;item.audit.selected_index_0based=item.low;
+      const final=observed.find(x=>x.index===item.low),previous=observed.find(x=>x.index===item.low-1);
+      const ok=!item.audit.invalid&&final&&Number.isFinite(final.edge_points)&&final.edge_points+0.01>=item.target&&
+        (!previous||(Number.isFinite(previous.edge_points)&&previous.edge_points<=final.edge_points+0.01&&previous.edge_points+0.01<item.target));
+      if(!ok){
+        item.audit.status='unresolved';
+        item.entry.mappingError={code:'DRAWING_BOUND_UNRESOLVED',message:'Drawing target was not bracketed by native grid geometry; refusing an unchecked last-row/column capture.',detail:item.audit};
+      }else{
+        item.audit.status='verified-native-bracket';
+        if(item.axis==='x')item.entry.rightColumn=Math.max(item.entry.rightColumn,item.low);
+        else item.entry.bottomRow=Math.max(item.entry.bottomRow,item.low);
+      }
+      if(s)await s.event(ok?'drawing_mapping_verified':'drawing_mapping_failed',item.audit);
     }
-    for (const item of vertical) {
-      item.entry.bottomRow = Math.max(item.entry.bottomRow, item.low);
-    }
-
-    return performance.now() - started;
+    if(s&&items.length)await s.checkpoint(items.some(x=>x.audit.status==='unresolved')?'drawing_mapping_failed':'drawing_mapping_finished');
+    return performance.now()-started;
   }
-
     async function applyVisibleStrategyCMargin(entries, marginCount) {
     return Excel.run(async (context) => {
       const workbook = context.workbook;
@@ -854,6 +849,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         let right = 0;
         let bottom = 0;
         let count = 0;
+        item.entry.shapeDiagnostics=[];
         for (const shape of item.shapes.items) {
           if (!shape.visible) continue;
           count += 1;
@@ -864,6 +860,9 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
             Math.abs(width * Math.cos(angle)) + Math.abs(height * Math.sin(angle));
           const rotatedHeight =
             Math.abs(width * Math.sin(angle)) + Math.abs(height * Math.cos(angle));
+          item.entry.shapeDiagnostics.push({visible_ordinal:count,left:Number(shape.left),top:Number(shape.top),width,height,
+            rotation:Number(shape.rotation),right_points:Number(shape.left)+width/2+rotatedWidth/2,
+            bottom_points:Number(shape.top)+height/2+rotatedHeight/2});
           right = Math.max(
             right,
             Number(shape.left) + width / 2 + rotatedWidth / 2
@@ -909,6 +908,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         drawing_right_column: entry.drawingRightColumn,
         drawing_bottom_row: entry.drawingBottomRow,
         drawing_fallback_required: entry.drawingFallbackRequired,
+        planning_error: entry.mappingError || null,
         visible_shape_count: entry.visibleShapeCount,
         right_bound_source: entry.rightBoundSource,
         bottom_bound_source: entry.bottomBoundSource,
@@ -1137,7 +1137,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     };
   }
 
-  async function decodePngForOverflow(base64, limits = SafeCapture.DEFAULTS) {
+  async function decodePngForOverflow(base64, limits = SafeCapture.DEFAULTS, crop = null) {
     // Use the same explicit per-sheet budget as planning; do not fall back to
     // the 16 MP default after the user selected 32/64 MP. Check before decoding.
     const header = SafeCapture.png(base64);
@@ -1163,9 +1163,12 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       const context = canvas.getContext('2d', {willReadFrequently:true});
       if (!context) throw SafeCapture.fault('CANVAS_UNAVAILABLE', 'Canvas 2D context is unavailable.');
       context.drawImage(imageElement, 0, 0);
-      const imageData = context.getImageData(0, 0, width, height);
+      const box=crop||{x:0,y:0,width,height};
+      if(!['x','y','width','height'].every(k=>Number.isInteger(box[k]))||box.x<0||box.y<0||box.width<1||box.height<1||box.x+box.width>width||box.y+box.height>height)
+        throw SafeCapture.fault('CONTEXT_CROP_BOUNDS','Invalid analysis core rectangle.',{box,width,height},true);
+      const imageData = context.getImageData(box.x,box.y,box.width,box.height);
       retained = true;
-      return {width,height,data:imageData.data,canvas};
+      return {width:box.width,height:box.height,data:imageData.data,canvas};
     } finally {
       if (imageElement) {imageElement.onload=null; imageElement.onerror=null; imageElement.src='';}
       if (canvas && !retained) {canvas.width=0; canvas.height=0;}
@@ -1343,6 +1346,10 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
   }
 
   // Compact, immutable provenance: capture coordinates are not evidence of content.
+  function compactRustPlan(plan) {
+    if(!plan)return null;
+    return {...plan,sheets:(plan.sheets||[]).map(s=>Object.fromEntries(Object.entries(s).filter(([k])=>!['columns','rows','row_heights','column_widths'].includes(k))))};
+  }
   function boundsOnly(item) {
     const fields = ['id','sheet','sheet_index','office_position','address','initial_address',
       'base_right_column','bottom_row','end_column','content_right_column','content_bottom_row',
@@ -1376,6 +1383,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       s.state.sheets.push(sheetRecord);
       await s.checkpoint('sheet_started',{sheet:item.sheet,address:item.address});
       try {
+        if(item.planning_error)throw SafeCapture.fault(item.planning_error.code,item.planning_error.message,item.planning_error.detail,true);
         let end=item.end_column, extra=item.probe_extra, accepted=[];
         let overflowDetected=false, passCaptureEnd=end;
         // Convert the configured pixel buffer using this sheet's measured raster scale.
@@ -1406,7 +1414,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
             let decoded;
             try {
               const decodeStart=performance.now();
-              decoded=await decodePngForOverflow(base64,s.limitsFor(item.sheet));
+              decoded=await decodePngForOverflow(base64,s.limitsFor(item.sheet),tile.core_box_px);
               const compute=(s.state.compute_profile ||= {});compute.tile_decode_ms=(compute.tile_decode_ms||0)+performance.now()-decodeStart;
               const heuristicStart=performance.now();
               let decision=analyzeRenderOverflow(decoded,measuredWidths,item.base_right_column,end,extra);
@@ -1491,22 +1499,22 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
         sheetRecord.address=item.address; sheetRecord.extent_points=extent;
         sheetRecord.representation=item.representation;
         for(const sourceTile of accepted) {
-          let tile={...sourceTile};
-          const width=Math.max(0,Math.min(tile.png_width,Math.round((extent.right-tile.geometry.left)*tile.raster_profile.scale_x)+tile.raster_profile.border_px));
-          if(width<=1 || tile.rect.c0>end) { tile.excluded_probe_margin=true; continue; }
-          if(exportPolicy.crop && width<tile.png_width) {
-            const sourceRect={...tile.rect},sourceGeometry={...tile.geometry};
-            const finalTileRect={...tile.rect,c1:Math.min(tile.rect.c1,end+1)};
-            tile=await CapturePolicy.exportTile(s,tile,width,SafeCapture.address(finalTileRect));
-            tile.source_rect=sourceRect;tile.source_geometry=sourceGeometry;
-            tile.rect=finalTileRect;tile.geometry={...sourceGeometry,right:Math.min(sourceGeometry.right,extent.right)};
-            tile.content_box_px={x:0,y:0,width,height:tile.png_height};
+          const core=sourceTile.core_box_px||{x:0,y:0,width:sourceTile.png_width,height:sourceTile.png_height};
+          if(sourceTile.raster_profile.fixed_x) {
+            SafeCapture.assertFixedSpan(extent,sourceTile.raster_profile);
+            SafeCapture.assertFixedSpan(sourceTile.geometry,sourceTile.raster_profile);
           }
-          tile.valid_rect_px={x:0,y:0,width,height:tile.png_height};
-          tile.sheet_offset_px={x:Math.round((tile.geometry.left-extent.left)*tile.raster_profile.scale_x),
+          const width=sourceTile.raster_profile.fixed_x?core.width:Math.max(0,Math.min(core.width,Math.round((extent.right-sourceTile.geometry.left)*sourceTile.raster_profile.scale_x)+1));
+          if(width<=1 || sourceTile.rect.c0>end)continue;
+          const finalTileRect={...sourceTile.rect,c1:Math.min(sourceTile.rect.c1,end+1)};
+          const tile=await CapturePolicy.exportTile(s,sourceTile,width,SafeCapture.address(finalTileRect));
+          tile.source_rect=sourceTile.capture_rect||sourceTile.rect;tile.source_geometry=sourceTile.capture_geometry||sourceTile.geometry;
+          tile.rect=finalTileRect;tile.geometry={...sourceTile.geometry,right:Math.min(sourceTile.geometry.right,extent.right)};
+          tile.content_box_px=tile.valid_rect_px={x:0,y:0,width,height:tile.png_height};
+          tile.sheet_offset_px={x:SafeCapture.xOffset(extent.left,tile.geometry.left,tile.raster_profile),
             y:Math.round((tile.geometry.top-extent.top)*tile.raster_profile.scale_y)};
-          tile.logical_address=item.address; tile.logical_id=item.id;
-          sheetRecord.tiles.push(tile); captures.push(tile);
+          tile.logical_address=item.address;tile.logical_id=item.id;
+          sheetRecord.tiles.push(tile);captures.push(tile);
         }
         item.tiles=sheetRecord.tiles;
         await recordBounds('final_capture_bounds', item, {address:item.address,status:sheetRecord.status,
@@ -1535,11 +1543,15 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       try {
         await recordBounds('capture_requested',item,{address:item.address});
         const rect=SafeCapture.parse(item.address), plan=await s.plan(item.sheet,rect);
-        const tiles=await s.capturePlan(item.sheet,plan,item.id);
+        const rawTiles=await s.capturePlan(item.sheet,plan,item.id),tiles=[];
+        for(const raw of rawTiles){
+          const core=raw.core_box_px||{width:raw.png_width};
+          tiles.push(await CapturePolicy.exportTile(s,raw,core.width,SafeCapture.address(raw.rect)));
+        }
         const g=(await s.geometries(item.sheet,[rect]))[0];
         for(const tile of tiles) {
           tile.valid_rect_px={x:0,y:0,width:tile.png_width,height:tile.png_height};
-          tile.sheet_offset_px={x:Math.round((tile.geometry.left-g.left)*tile.raster_profile.scale_x),y:Math.round((tile.geometry.top-g.top)*tile.raster_profile.scale_y)};
+          tile.sheet_offset_px={x:SafeCapture.xOffset(g.left,tile.geometry.left,tile.raster_profile),y:Math.round((tile.geometry.top-g.top)*tile.raster_profile.scale_y)};
           tile.logical_address=item.address;
         }
         record.tiles=tiles; record.status='complete'; record.extent_points=g;
@@ -1918,7 +1930,8 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
 
     const workbookInfo = await getWorkbookAndVisibleSheets();
     const workbookName = workbookInfo.workbookName;
-    if (typeof SafeCapture === 'undefined') throw new Error('safe-capture.js is missing. No unguarded screenshot will be attempted.');
+    if (typeof SafeCapture === 'undefined' || typeof CaptureGeometry === 'undefined' || typeof ContextValidation === 'undefined')
+      throw new Error('Capture safety/context modules are missing. No unguarded screenshot will be attempted.');
     const sheetNames = SafeCapture.selectSheetNames(workbookInfo.sheets,config.capture_options.sheet_names);
     safeSession = new SafeCapture.Session(workbookName, config);
     if (!await safeSession.claim()) { ExperimentUi.setPhase('Another task pane owns this workbook capture.'); return; }
@@ -1927,7 +1940,7 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
     safeSession.state.capture_scope={mode:config.capture_options.sheet_names?'selected-sheets':'all-visible-sheets',
       selected_sheets:sheetNames,visible_sheet_count:workbookInfo.sheets.length,not_selected:workbookInfo.sheets.filter(s=>!sheetNames.includes(s.name)).map(s=>s.name)};
     safeSession.state.capture_policy_version = CapturePolicy.VERSION;
-    await CapturePolicy.hideGridlines(safeSession, workbookInfo.sheets);
+    await CapturePolicy.hideGridlines(safeSession, workbookInfo.sheets.filter(sheet=>sheetNames.includes(sheet.name)));
     safeSession.state.bounds_history = [];
     await safeSession.event('worksheet_catalog', { sheets: workbookInfo.sheets });
     await safeSession.checkpoint('planning_started', { strategy:config.strategy });
@@ -1975,7 +1988,8 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       ExperimentUi.setPhase('Loading precomputed WSL Rust OOXML visual plan');
       const loadedPlan = await fetchPrecomputedVisualPlan(workbookName);
       rustVisualPlan = loadedPlan.plan;
-      safeSession.state.precomputed_wsl_rust_visual_plan = rustVisualPlan;
+      safeSession.state.precomputed_wsl_rust_visual_plan = compactRustPlan(rustVisualPlan);
+      safeSession.state.plan_artifact={path:'inputs/plans/visual-plan.json',schema:loadedPlan.schema,workbook:workbookName,immutable:true};
       await safeSession.checkpoint('rust_bounds_loaded', { schema: loadedPlan.schema });
       planning.rust_xml_plan_ms += Number(rustVisualPlan.rust_plan_ms || 0);
       planning.rust_plan_fetch_ms += loadedPlan.fetch_ms;
@@ -2127,10 +2141,10 @@ async function readColumnHidden(sheetName, startColumn, endColumn) {
       image_batch_size: batchSize,
       capture_count: persistedCaptures.length,
       batches,
-      capture_plans: plans,
+      capture_plans: plans.map(p=>Object.fromEntries(Object.entries(p).filter(([k])=>k!=='column_widths'))),
       captures: persistedCaptures,
-      precomputed_wsl_rust_visual_plan: rustVisualPlan,
-      excel_api_requirement_set: '1.11'
+      precomputed_wsl_rust_visual_plan: compactRustPlan(rustVisualPlan),
+      excel_api_requirement_set: '1.13'
     };
 
     const response = await fetch('/result', {

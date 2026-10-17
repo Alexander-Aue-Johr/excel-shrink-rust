@@ -203,7 +203,9 @@
     const run = encodeURIComponent(config.diagnostic_run_id || String(Date.now()));
     if (config.diagnostic_run_id) await load('/render-diagnostics.js?run=' + run);
     if (config.experiment === 'range-image') {
+      await load('/capture-geometry.js?run=' + run);
       await load('/safe-capture.js?run=' + run);
+      await load('/context-validation.js?run=' + run);
       await load('/capture-policy.js?run=' + run);
       await load('/selective-overflow.js?run=' + run);
     }

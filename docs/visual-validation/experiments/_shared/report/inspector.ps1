@@ -20,7 +20,7 @@ function ConvertTo-VVInspectorWorkbook($Value,[string]$Name) {
     })
     if($null -ne $Value.safe_capture) {
         $out.safe_capture=Select-VVInspectorFields $Value.safe_capture @('schema','workbook','strategy','status','implementation','limits','sheets','attempts','captures','calibrations',
-            'sheet_catalog','bounds_history','precomputed_wsl_rust_visual_plan','environment','current','summary','capture_options','tile_plans','sparse_overflow_checks','sparse_overflow_scans','capture_view','capture_policy_version','final_exports','compute_profile','geometry_diagnostics','sheet_continuations','capture_scope','checkpoint_policy')
+            'sheet_catalog','bounds_history','precomputed_wsl_rust_visual_plan','environment','current','summary','capture_options','tile_plans','sparse_overflow_checks','sparse_overflow_scans','capture_view','capture_policy_version','final_exports','compute_profile','geometry_diagnostics','sheet_continuations','capture_scope','checkpoint_policy','axis_geometry','context_policy','context_validations','plan_artifact','drawing_mapping_audits')
         # The final flattened list repeats the same tiles already available in the capture session.
         $out.Remove('captures');$out.Remove('probes')
     }
@@ -91,7 +91,7 @@ function Write-VVInspector([string]$RunRoot) {
         }
     }
     $data=[ordered]@{schema='vv-inspector-v1';meta=$meta;result=(Read-VVJson (Join-Path $root 'result.json'));documents=@($documents.ToArray());
-        plans=@($plans.ToArray());events=@($events.ToArray());files=@($inventory.ToArray());warnings=@($notes.ToArray())}
+        plans=@($plans.ToArray());events=@($events.ToArray());files=@($inventory.ToArray());warnings=@($notes.ToArray());focus_lifecycle=(Read-VVJson (Join-Path $root 'capture-lifecycle.json'))}
     $json=$data|ConvertTo-Json -Depth 100 -Compress
     # Prevent worksheet names or diagnostic text from terminating the inert JSON script element.
     $json=$json.Replace('&','\u0026').Replace('<','\u003c').Replace('>','\u003e').Replace([string][char]0x2028,'\u2028').Replace([string][char]0x2029,'\u2029')
