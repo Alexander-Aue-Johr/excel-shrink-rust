@@ -191,5 +191,10 @@ class SourceContracts(unittest.TestCase):
     def test_parser_preflight_runs_before_pixel_preflight(self):
         text=(EXPERIMENTS/'decision-campaign.ps1').read_text()
         self.assertLess(text.index("_shared\\decision\\focus-preflight.ps1"),text.index("_shared\\decision\\preflight.ps1"))
+    def test_selection_conversion_preserves_scalar_sheet_names(self):
+        text=(EXPERIMENTS/'decision-campaign.ps1').read_text()
+        scalar=text.index('if($Object -is [string] -or $Object -is [ValueType])')
+        object_conversion=text.index('if($Object -is [pscustomobject])',scalar)
+        self.assertLess(scalar,object_conversion)
 
 if __name__=='__main__':unittest.main()

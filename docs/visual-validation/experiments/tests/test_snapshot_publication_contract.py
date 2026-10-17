@@ -23,6 +23,9 @@ class SnapshotPublicationContract(TestCase):
         self.assertIn('Guid.NewGuid().ToString("N")',s)
         self.assertIn('stream.Flush(true)',s)
         self.assertIn('0x1U|0x8U',s)
+        self.assertIn('code!=5 || !TryWslRename(pending,full)',s)
+        self.assertIn('process.WaitForExit(15000)',s)
+        self.assertIn('/usr/bin/mv -f --',s)
         self.assertNotIn('File.Copy(',s)
         self.assertNotIn('File.Delete(',s)
         self.assertNotIn('0x2U',s) # no cross-volume copy fallback

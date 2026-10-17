@@ -43,6 +43,16 @@ No universal atomicity/power-loss guarantee is asserted for arbitrary network
 filesystems. A filesystem that cannot perform the required replacement will fail
 the native preflight rather than fall back to rewriting the live file.
 
+The 2026-10-17 Windows probe on `\\wsl.localhost\Ubuntu-26.04` showed that
+`MoveFileExW` replaces a closed destination but returns Win32 5 while a Windows
+reader holds the old file open, even with delete sharing. A Linux rename of the
+same closed sibling succeeded and the reader retained the old bytes. The helper
+now uses `wsl.exe --exec /usr/bin/mv` only after that specific Win32 5 failure
+on a WSL UNC path. Other filesystems retain the Windows rename and retry policy.
+The Linux command uses explicit arguments, a 15-second bound, and keeps the
+staged file on failure. The WSL preflight checks old-handle consistency under
+this fallback; it still tests bounded permanent conflicts on other filesystems.
+
 ## Two related integration corrections
 
 * `/config` exposes `host_run_id` for all experiment families. Asset preflight

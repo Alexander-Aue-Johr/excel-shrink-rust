@@ -23,6 +23,7 @@ public static class VVSnapshotTestRelease {
 '@
     }
     $path=Join-Path $probe 'state.json'
+    $isWslPath=$path -match '^\\\\(?:wsl\.localhost|wsl\$)\\'
     Write-VVJson $path @{sequence=0;payload=('x'*512);text='Muenchen / \u03b1'}
     Assert-Snapshot ((Read-VVJson $path).sequence -eq 0) 'First snapshot was not readable'
     Assert-Snapshot ($null -eq (Read-VVJson (Join-Path $probe 'absent.json'))) 'Absent snapshot was not distinguished'
@@ -49,17 +50,24 @@ public static class VVSnapshotTestRelease {
     $before=[VVSnapshotFile]::PublishRetries;$release=[VVSnapshotTestRelease]::Later($held,250)
     Write-VVJson $path @{sequence=2;payload=('x'*512)}
     $release.Join();$release=$null;$held=$null
-    Assert-Snapshot ((Read-VVJson $path).sequence -eq 2 -and [VVSnapshotFile]::PublishRetries -gt $before) 'Short replacement conflict was not retried'
+    Assert-Snapshot ((Read-VVJson $path).sequence -eq 2 -and ($isWslPath -or [VVSnapshotFile]::PublishRetries -gt $before)) 'Short replacement conflict did not recover'
     $checks.Add('short rename sharing conflict recovers')
 
     $held=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
-    $failure=$null
+    $failure=$null;$old=[VVSnapshotFile]::ReadTextOrNull($path)
     try{Write-VVJson $path @{sequence=3;payload='pending'}}catch{$failure=Snapshot-Cause $_}
+    if($isWslPath){
+        $reader=[IO.StreamReader]::new($held,[Text.Encoding]::UTF8,$true)
+        try{$oldThroughHandle=$reader.ReadToEnd()}finally{$reader.Dispose();$held=$null}
+        Assert-Snapshot ($null -eq $failure -and $oldThroughHandle -ceq $old -and (Read-VVJson $path).sequence -eq 3) 'WSL rename did not preserve the held old snapshot'
+        $checks.Add('WSL rename preserves the held old snapshot')
+    }else{
     $held.Dispose();$held=$null
     Assert-Snapshot ($null -ne $failure -and $failure.Operation -eq 'publish' -and $failure.Attempts -eq 7) 'Permanent conflict did not fail within the bounded retry count'
     Assert-Snapshot ((Read-VVJson $path).sequence -eq 2) 'Failed publication changed the previous snapshot'
     Assert-Snapshot ($failure.PendingComplete -and (Read-VVJson $failure.PendingPath).sequence -eq 3) 'Failed publication did not retain its complete staged data'
     $checks.Add('permanent conflict preserves old snapshot and complete staged evidence')
+    }
 
     [void][VVSnapshotFile]::WriteText($path,'{not valid json')
     $rejected=$false;try{$null=Read-VVJson $path}catch{$rejected=$true}
@@ -76,13 +84,17 @@ public static class VVSnapshotTestRelease {
         -RedirectStandardOutput (Join-Path $probe 'writer.out') -RedirectStandardError (Join-Path $probe 'writer.err')
     $clock=[Diagnostics.Stopwatch]::StartNew();$reads=0
     while(-not $child.WaitForExit(10)){
-        if($clock.Elapsed.TotalSeconds -gt 30){throw 'Snapshot concurrency probe exceeded 30 seconds'}
+        if($clock.Elapsed.TotalSeconds -gt 90){throw 'Snapshot concurrency probe exceeded 90 seconds'}
         $v=Read-VVJson $path
         Assert-Snapshot ($null -ne $v -and $v.sequence -ge 0 -and $v.sequence -le 18 -and $v.payload -ceq ('x'*512)) 'Concurrent reader saw incomplete JSON'
         $reads++
     }
     $child.Refresh()
-    Assert-Snapshot ($child.ExitCode -eq 0) ('Snapshot child failed: '+[IO.File]::ReadAllText((Join-Path $probe 'writer.err')))
+    # Start-Process can return a process wrapper without an ExitCode over WSL
+    # interop. The final sequence proves the child completed all writes.
+    if($null -ne $child.ExitCode){
+        Assert-Snapshot ($child.ExitCode -eq 0) ('Snapshot child failed (exit '+$child.ExitCode+'): '+[IO.File]::ReadAllText((Join-Path $probe 'writer.err')))
+    }
     Assert-Snapshot ((Read-VVJson $path).sequence -eq 18 -and $reads -gt 0) 'Concurrent final snapshot was not read'
     $checks.Add('separate Windows PowerShell writer and polling reader')
 

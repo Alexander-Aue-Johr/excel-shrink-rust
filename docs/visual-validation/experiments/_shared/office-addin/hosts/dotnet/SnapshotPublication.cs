@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading;
 using System.Runtime.InteropServices;
 using System.ComponentModel;
+using System.Diagnostics;
 using Microsoft.Win32.SafeHandles;
 
 // Shared by Windows PowerShell 5.1 and the ASP.NET host. No Office/WPF/package dependency.
@@ -93,6 +94,36 @@ public static class VVSnapshotFile {
         try{return new FileStream(h,create?FileAccess.Write:FileAccess.Read,65536,false);}
         catch{h.Dispose();throw;}
     }
+    static bool TryWslRename(string pending, string target) {
+        // The Windows WSL UNC provider denies replacement while a Windows reader
+        // holds the old inode, even when that reader shares delete access. Linux
+        // rename preserves the old handle and publishes the closed sibling atomically.
+        const string prefix = @"\\wsl.localhost\";
+        const string legacyPrefix = @"\\wsl$\";
+        string root = target.StartsWith(prefix,StringComparison.OrdinalIgnoreCase) ? prefix :
+            target.StartsWith(legacyPrefix,StringComparison.OrdinalIgnoreCase) ? legacyPrefix : null;
+        if(root==null || !pending.StartsWith(root,StringComparison.OrdinalIgnoreCase))return false;
+        int end=target.IndexOf('\\',root.Length);
+        if(end<0)return false;
+        string distro=target.Substring(root.Length,end-root.Length);
+        if(distro.Length==0)return false;
+        foreach(char c in distro)
+            if(!(Char.IsLetterOrDigit(c) || c=='-' || c=='_' || c=='.'))return false;
+        string linuxTarget=target.Substring(end).Replace('\\','/');
+        string linuxPending=pending.Substring(end).Replace('\\','/');
+        // Windows path components cannot contain double quotes. No shell is used.
+        var start=new ProcessStartInfo("wsl.exe", "-d "+distro+" --exec /usr/bin/mv -f -- \""+
+            linuxPending+"\" \""+linuxTarget+"\"");
+        start.UseShellExecute=false;start.CreateNoWindow=true;start.RedirectStandardError=true;
+        using(var process=Process.Start(start)) {
+            if(!process.WaitForExit(15000)) {
+                process.Kill();throw new IOException("WSL snapshot rename timed out");
+            }
+            if(process.ExitCode!=0)
+                throw new IOException("WSL snapshot rename failed for distro '"+distro+"' (exit "+process.ExitCode+"): "+process.StandardError.ReadToEnd());
+        }
+        return true;
+    }
     public static string ReadTextOrNull(string path) {
         string full=Absolute(path);
         for(int attempt=0;;attempt++) {
@@ -124,8 +155,11 @@ public static class VVSnapshotFile {
         for(int attempt=0;;attempt++) {
             try {
                 // REPLACE_EXISTING | WRITE_THROUGH; deliberately no COPY_ALLOWED.
-                if(!MoveFileExW(Extended(pending),Extended(full),0x1U|0x8U))
-                    throw new Win32Exception(Marshal.GetLastWin32Error(),"Snapshot MoveFileExW");
+                if(!MoveFileExW(Extended(pending),Extended(full),0x1U|0x8U)) {
+                    int code=Marshal.GetLastWin32Error();
+                    if(code!=5 || !TryWslRename(pending,full))
+                        throw new Win32Exception(code,"Snapshot MoveFileExW");
+                }
                 return new VVSnapshotReceipt{Path=full,Bytes=data.LongLength,Attempts=attempt+1};
             } catch(Exception e) {
                 if(!Retryable(e,true) || attempt==Delays.Length)

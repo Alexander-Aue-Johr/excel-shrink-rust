@@ -97,6 +97,7 @@ function Invoke-DecisionPython([string[]]$Extra) {
 }
 function Convert-VVPlainObject($Object) {
     if($null -eq $Object){return $null}
+    if($Object -is [string] -or $Object -is [ValueType]){return $Object}
     if($Object -is [Collections.IDictionary]){$h=@{};foreach($k in $Object.Keys){$h[$k]=Convert-VVPlainObject $Object[$k]};return $h}
     if($Object -is [pscustomobject]){$h=@{};foreach($p in $Object.PSObject.Properties){$h[$p.Name]=Convert-VVPlainObject $p.Value};return $h}
     if($Object -is [array]){return ,@($Object|ForEach-Object{Convert-VVPlainObject $_})}
