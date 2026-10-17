@@ -31,3 +31,7 @@ regression/reports/
 # Local generated Excel Shrink state
 /.tmp/
 /regression/tmp/
+
+# Python bytecode and cache directories at any depth
+__pycache__/
+*.py[cod]
