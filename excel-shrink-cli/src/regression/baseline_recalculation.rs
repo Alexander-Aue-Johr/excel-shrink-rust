@@ -19,8 +19,8 @@ pub(super) fn baseline_recalculation_reference(
     let cacheable = certificate && !std::env::var("EXCEL_SHRINK_RECALC_REFERENCE_CACHE").is_ok_and(|v| v == "0");
     // Includes the entire package, Excel/Office environment and the exact scripts
     // and certificate implementation, never only the current worksheet's XML.
-    let environment = render_environment_key(work_dir)?;
-    let key = cache::sha256(format!("recalc-reference-v9/{}/{}/{}/{}/{}", manifest.package_sha256,
+    let environment = recalculation_environment_key(work_dir)?;
+    let key = cache::sha256(format!("recalc-reference-v10/{}/{}/{}/{}/{}", manifest.package_sha256,
         environment, cache::sha256(RECALCULATE_AND_SAVE_SCRIPT.as_bytes()),
         cache::sha256(include_bytes!("artifact_cache.rs")), cache::sha256(include_bytes!("baseline_recalculation.rs"))).as_bytes());
     let record_path = cache::root()?.join("calculation-references").join(format!("{key}.json"));

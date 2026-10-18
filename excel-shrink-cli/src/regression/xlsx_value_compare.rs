@@ -58,31 +58,7 @@ pub struct WorksheetCaptureRange {
 
 #[path = "value_views.rs"]
 mod views;
-pub use views::{CaptureColumns, workbook_capture_columns, compare_saved_visual_values, compare_workbook_preservation, compare_workbook_values, workbook_visual_sheet_order};
-
-/// Both source and cleaned visible content must be represented in screenshots.
-pub fn combined_capture_ranges(report: &WorkbookComparisonReport) -> Vec<WorksheetCaptureRange> {
-    let mut ranges = report.right_capture_ranges.clone();
-    for left in &report.left_capture_ranges {
-        match ranges.iter_mut().find(|r| r.sheet_index == left.sheet_index) {
-            Some(range) => {
-                if left.max_row > range.max_row { range.max_row = left.max_row; range.max_row_source = left.max_row_source.clone(); }
-                if left.max_column > range.max_column { range.max_column = left.max_column; range.max_column_source = left.max_column_source.clone(); }
-                let mut number = range.max_column;
-                let mut letters = String::new();
-                while number > 0 {
-                    let rem = (number - 1) % 26;
-                    letters.insert(0, (b'A' + rem as u8) as char); number = (number - 1) / 26;
-                }
-                range.max_cell = format!("{}{}", letters, range.max_row);
-            }
-            None => ranges.push(left.clone()),
-        }
-    }
-    ranges.sort_by_key(|r| r.sheet_index);
-    ranges
-}
-
+pub use views::{compare_workbook_preservation, compare_workbook_values};
 
 #[cfg(test)]
 #[path = "xlsx_value_compare_legacy.rs"]

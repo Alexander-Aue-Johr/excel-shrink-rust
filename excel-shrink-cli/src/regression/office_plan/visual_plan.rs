@@ -32,30 +32,6 @@ impl Default for CaptureColumns {
 }
 
 impl CaptureColumns {
-    fn expanded_widths(&self) -> Result<Vec<f64>> {
-        ensure!(
-            self.default_width.is_finite() && self.default_width >= 0.0,
-            "invalid default column width"
-        );
-        let mut widths = vec![self.default_width; MAX_COLUMNS as usize];
-        for span in &self.spans {
-            ensure!(
-                span.min > 0 && span.min <= span.max && span.max <= MAX_COLUMNS,
-                "invalid column span {}:{}",
-                span.min,
-                span.max
-            );
-            let width = if span.hidden {
-                0.0
-            } else {
-                span.width.unwrap_or(self.default_width)
-            };
-            ensure!(width.is_finite() && width >= 0.0, "invalid column width");
-            widths[(span.min - 1) as usize..span.max as usize].fill(width);
-        }
-        Ok(widths)
-    }
-
     fn trailing_hidden_start(&self) -> Result<Option<u32>> {
         let mut hidden = vec![false; MAX_COLUMNS as usize];
         for span in &self.spans {

@@ -1,107 +1,9 @@
-// Included in excel_automation.rs; private helpers share its existing cache types.
-// Package identities use SHA-256 member manifests. Image/geometry cache helpers
-// retain their compact FNV-1a-derived identity inside the current cache namespace.
-fn canonical_workbook_hash(path: &Path) -> anyhow::Result<String> {
-    Ok(super::artifact_cache::manifest(path)?.package_sha256)
-}
-
-fn atomic_cache_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("cache path has no parent"))?;
-    fs::create_dir_all(parent)?;
-    let stamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)?
-        .as_nanos();
-    let pending = parent.join(format!(".pending-{}-{stamp}", std::process::id()));
-    let result = (|| -> anyhow::Result<()> {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&pending)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        drop(file);
-        #[cfg(windows)]
-        {
-            // MoveFileEx replaces an existing cache manifest without an unlink gap.
-            use std::os::windows::ffi::OsStrExt;
-            #[link(name = "kernel32")]
-            unsafe extern "system" {
-                fn MoveFileExW(from: *const u16, to: *const u16, flags: u32) -> i32;
-            }
-            let parent = fs::canonicalize(parent)?;
-            let from: Vec<u16> = parent
-                .join(pending.file_name().unwrap())
-                .as_os_str()
-                .encode_wide()
-                .chain(Some(0))
-                .collect();
-            let to: Vec<u16> = parent
-                .join(path.file_name().unwrap())
-                .as_os_str()
-                .encode_wide()
-                .chain(Some(0))
-                .collect();
-            if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), 0x1 | 0x8) } == 0 {
-                return Err(io::Error::last_os_error().into());
-            }
-        }
-        #[cfg(not(windows))]
-        fs::rename(&pending, path)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(pending);
-    }
-    result
-}
-
-fn capture_geometry_matches(a: &WorkbookScreenshotCapture, b: &WorkbookScreenshotCapture) -> bool {
-    fn same(a: Option<&ScreenshotCaptureInfo>, b: Option<&ScreenshotCaptureInfo>) -> bool {
-        match (a, b) {
-            (Some(a), Some(b)) => {
-                a.start_row == b.start_row
-                    && a.start_column == b.start_column
-                    && a.rows == b.rows
-                    && a.columns == b.columns
-            }
-            _ => false,
-        }
-    }
-    same(a.capture_info.as_ref(), b.capture_info.as_ref())
-        && a.tiles.len() == b.tiles.len()
-        && a.tiles.iter().zip(&b.tiles).all(|(a, b)| {
-            a.tile_index == b.tile_index && same(Some(&a.capture_info), Some(&b.capture_info))
-        })
-}
-fn cached_pair_geometry_is_compatible(
-    a: &WorkbookScreenshotCache,
-    b: &WorkbookScreenshotCache,
-) -> anyhow::Result<bool> {
-    let left = a.valid_current_sheet_captures()?;
-    let right = b.valid_current_sheet_captures()?;
-    Ok(cached_capture_maps_are_compatible(&left, &right))
-}
-
-fn cache_capture_to_windows_paths(capture: &mut WorkbookScreenshotCapture) -> anyhow::Result<()> {
-    if let Some(image) = &mut capture.image {
-        *image = PathBuf::from(power_shell_path(image)?);
-    }
-    for tile in &mut capture.tiles {
-        if let Some(image) = &mut tile.image {
-            *image = PathBuf::from(power_shell_path(image)?);
-        }
-    }
-    Ok(())
-}
-
 #[cfg(not(windows))]
 fn wsl_unc_path(path: &str, current_distro: Option<&str>) -> Option<String> {
     let normalized = path.replace('\\', "/");
     let normalized = normalized
         .strip_prefix("//?/UNC/")
-        .map(|p| format!("//{p}"))
+        .map(|path| format!("//{path}"))
         .unwrap_or(normalized);
     let rest = normalized.strip_prefix("//")?;
     let (server, rest) = rest.split_once('/')?;
@@ -114,48 +16,31 @@ fn wsl_unc_path(path: &str, current_distro: Option<&str>) -> Option<String> {
     {
         return None;
     }
-    // Never silently map another distribution's /home into this distribution.
-    // Without WSL_DISTRO_NAME, wslpath is used instead of guessing the mount.
     current_distro?;
     Some(format!("/{tail}"))
 }
 
-fn render_environment_key(work_dir: &Path) -> anyhow::Result<String> {
+fn recalculation_environment_key(work_dir: &Path) -> anyhow::Result<String> {
     static KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     if let Some(key) = KEY.get() {
         return Ok(key.clone());
     }
-    let _phase = visual_diagnostics::phase(
-        "screenshot.renderer_environment",
-        "Excel version, Windows fonts, DPI, locale, printer",
-    );
     let transfer = RecalculationTransfer::new()?;
     let output = transfer.0.join("environment.json");
     let script = transfer.0.join("environment.ps1");
-    fs::write(
-        work_dir.join("excel-render-environment.ps1"),
-        include_str!("excel_render_environment.ps1"),
-    )?;
-    fs::write(&script, include_str!("excel_render_environment.ps1"))?;
+    const SOURCE: &str = include_str!("excel_render_environment.ps1");
+    fs::write(work_dir.join("excel-render-environment.ps1"), SOURCE)?;
+    fs::write(&script, SOURCE)?;
     run_power_shell_script(&script, &[("OutputPath", power_shell_path(&output)?)])?;
     let environment = fs::read(&output)?;
     anyhow::ensure!(
         !environment.is_empty(),
-        "Excel renderer environment probe returned no data"
+        "Excel environment probe returned no data"
     );
-    let mut hash = fnv_hash_update(fnv_offset_basis(), &SCREENSHOT_CACHE_VERSION.to_le_bytes());
-    hash = fnv_hash_update(hash, SCREENSHOT_COMPARE_SCRIPT.as_bytes());
-    hash = fnv_hash_update(hash, include_str!("excel_visual_bounds.ps1").as_bytes());
-    hash = fnv_hash_update(hash, include_str!("excel_visual_clipboard.ps1").as_bytes());
-    hash = fnv_hash_update(hash, include_str!("excel_visual_plan.cs").as_bytes());
-    hash = fnv_hash_update(hash, &environment);
-    hash = fnv_hash_update(
-        hash,
-        std::env::var("EXCEL_SHRINK_SCREENSHOT_ENVIRONMENT")
-            .unwrap_or_default()
-            .as_bytes(),
-    );
-    let key = format!("v{SCREENSHOT_CACHE_VERSION}-{hash:016x}");
+    let mut material = b"recalc-environment-v1".to_vec();
+    material.extend_from_slice(SOURCE.as_bytes());
+    material.extend_from_slice(&environment);
+    let key = super::artifact_cache::sha256(&material);
     let _ = KEY.set(key.clone());
     Ok(key)
 }
@@ -327,27 +212,7 @@ impl ExcelProgressTail {
             }
 
             self.phase.detail(line.clone());
-            if let Some(step) = line.split("visual step phase=").nth(1) {
-                if let (Some(name), Some(milliseconds)) = (
-                    step.split_whitespace().next(),
-                    step.split_whitespace()
-                        .find_map(|word| word.strip_prefix("duration_ms=")?.parse::<u64>().ok()),
-                ) {
-                    visual_diagnostics::completed(name, &line, Duration::from_millis(milliseconds));
-                }
-            }
-            if line.contains("sheet start")
-                || line.contains("sheet done")
-                || line.contains("opened ")
-                || line.contains("range expanded")
-                || line.contains("recalc ")
-                || line.contains("cache hit")
-                || line.contains("error=")
-                || line.contains("capture finished")
-                || line.contains("bounds scan")
-                || line.contains("bounds shapes summary")
-                || line.contains("visual step phase=")
-            {
+            if line.contains("recalc ") || line.contains("error=") {
                 tracing::info!("[excel-progress] {line}");
             } else {
                 tracing::debug!("[excel-progress] {line}");
@@ -419,97 +284,4 @@ impl Drop for ManagedAutomationChild {
     fn drop(&mut self) {
         self.terminate();
     }
-}
-
-/// A tile manifest is complete only when non-overlapping tile rectangles cover
-/// the entire capture rectangle. Valid image files alone are not enough.
-fn capture_tile_coverage_is_complete(capture: &WorkbookScreenshotCapture) -> bool {
-    fn rect(info: &ScreenshotCaptureInfo) -> Option<(u64, u64, u64, u64)> {
-        if info.start_row == 0 || info.start_column == 0 || info.rows == 0 || info.columns == 0 {
-            return None;
-        }
-        let row = u64::from(info.start_row);
-        let column = u64::from(info.start_column);
-        let bottom = row + u64::from(info.rows);
-        let right = column + u64::from(info.columns);
-        if bottom > 1_048_577 || right > 16_385 {
-            return None;
-        }
-        Some((row, column, bottom, right))
-    }
-    let Some(full) = capture.capture_info.as_ref().and_then(rect) else {
-        return false;
-    };
-    if capture.tiles.is_empty() {
-        return true;
-    }
-    let mut events = Vec::new();
-    let mut area = 0_u128;
-    for (index, tile) in capture.tiles.iter().enumerate() {
-        let Some((top, left, bottom, right)) = rect(&tile.capture_info) else {
-            return false;
-        };
-        if top < full.0 || left < full.1 || bottom > full.2 || right > full.3 {
-            return false;
-        }
-        area += u128::from(bottom - top) * u128::from(right - left);
-        events.push((top, 1_u8, left, right, index));
-        events.push((bottom, 0_u8, left, right, index));
-    }
-    if area != u128::from(full.2 - full.0) * u128::from(full.3 - full.1) {
-        return false;
-    }
-    events.sort_unstable(); // At a row boundary, remove ending intervals first.
-    let mut active: BTreeMap<(u64, usize), u64> = BTreeMap::new();
-    for (_, kind, left, right, index) in events {
-        let key = (left, index);
-        if kind == 0 {
-            active.remove(&key);
-            continue;
-        }
-        if active
-            .range(..key)
-            .next_back()
-            .is_some_and(|(_, end)| *end > left)
-            || active
-                .range(key..)
-                .next()
-                .is_some_and(|((start, _), _)| *start < right)
-        {
-            return false;
-        }
-        active.insert(key, right);
-    }
-    active.is_empty()
-}
-
-fn cached_capture_maps_are_compatible(
-    left: &BTreeMap<usize, WorkbookScreenshotCapture>,
-    right: &BTreeMap<usize, WorkbookScreenshotCapture>,
-) -> bool {
-    !left.is_empty()
-        && left.len() == right.len()
-        && left.iter().all(|(i, a)| {
-            right
-                .get(i)
-                .is_some_and(|b| a.sheet_name == b.sheet_name && capture_geometry_matches(a, b))
-        })
-}
-fn write_visual_capture_support_files(directory: &Path) -> anyhow::Result<()> {
-    for (name, source) in [
-        (
-            "excel_visual_bounds.ps1",
-            include_str!("excel_visual_bounds.ps1"),
-        ),
-        (
-            "excel_visual_clipboard.ps1",
-            include_str!("excel_visual_clipboard.ps1"),
-        ),
-        ("excel_visual_plan.cs", include_str!("excel_visual_plan.cs")),
-        ("excel_visual_overflow.ps1", include_str!("excel_visual_overflow.ps1")),
-        ("excel_combined_overflow.ps1", include_str!("excel_combined_overflow.ps1")),
-    ] {
-        fs::write(directory.join(name), source)?;
-    }
-    Ok(())
 }

@@ -163,12 +163,6 @@ impl Drop for Phase {
 fn should_write_slow(event: &str, elapsed: Duration, threshold: Duration) -> bool {
     matches!(event, "end" | "progress") && elapsed >= threshold
 }
-/// Duration measured inside PowerShell, independent of stdout/progress batching.
-pub(super) fn completed(name: &str, detail: &str, elapsed: Duration) {
-    let mut state = state().lock().unwrap_or_else(|e| e.into_inner());
-    let id = state.next_id; state.next_id += 1;
-    record(&mut state, "end", id, name, detail, elapsed, elapsed, "measured_by_script_stopwatch");
-}
 #[cfg(test)]
 mod visual_diagnostics_tests {
     use super::*;

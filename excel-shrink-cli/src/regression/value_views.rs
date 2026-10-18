@@ -33,28 +33,12 @@ impl Coordinate {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-struct Dimension { first: Coordinate, last: Coordinate }
-impl Dimension {
-    fn parse(bytes: &[u8]) -> Result<Self> {
-        let mut parts = bytes.split(|&b| b == b':');
-        let first = Coordinate::parse(parts.next().context("missing dimension")?)?;
-        let last = match parts.next() { Some(p) => Coordinate::parse(p)?, None => first };
-        ensure!(parts.next().is_none() && first.row <= last.row && first.column <= last.column, "invalid worksheet dimension");
-        Ok(Self { first, last })
-    }
-    fn include(&mut self, c: Coordinate) {
-        self.first.row = self.first.row.min(c.row); self.first.column = self.first.column.min(c.column);
-        self.last.row = self.last.row.max(c.row); self.last.column = self.last.column.max(c.column);
-    }
-    fn contains(&self, v: Self) -> bool {
-        self.first.row <= v.first.row && self.first.column <= v.first.column
-            && self.last.row >= v.last.row && self.last.column >= v.last.column
-    }
-    fn excessive(&self, v: Self) -> bool {
-        self.last.row.saturating_sub(v.last.row) > v.last.row - v.first.row + 1
-            || self.last.column.saturating_sub(v.last.column) > v.last.column - v.first.column + 1
-    }
+fn validate_dimension(bytes: &[u8]) -> Result<()> {
+    let mut parts = bytes.split(|&b| b == b':');
+    let first = Coordinate::parse(parts.next().context("missing dimension")?)?;
+    let last = match parts.next() { Some(p) => Coordinate::parse(p)?, None => first };
+    ensure!(parts.next().is_none() && first.row <= last.row && first.column <= last.column, "invalid worksheet dimension");
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -217,13 +201,6 @@ impl<'a> Bounds<'a> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CaptureColumnSpan { pub min: u32, pub max: u32, pub width: Option<f64>, pub hidden: bool }
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CaptureColumns { pub default_width: f64, pub spans: Vec<CaptureColumnSpan> }
-impl Default for CaptureColumns {
-    fn default() -> Self { Self { default_width: 8.43, spans: Vec::new() } }
-}
 fn column_width(bytes: &[u8]) -> Result<f64> {
     let width: f64 = std::str::from_utf8(bytes)?.parse()?;
     ensure!(width.is_finite() && (0.0..=255.0).contains(&width), "invalid column width");
@@ -233,15 +210,15 @@ fn column_width(bytes: &[u8]) -> Result<f64> {
 pub(super) struct Cells<'a> {
     reader: Reader<'a>, shared: &'a SharedStrings,
     row: u32, column: u32, row_hidden: bool, in_row: bool, in_data: bool,
-    root_seen: bool, data_seen: bool, dimension: Option<Dimension>,
-    hidden_columns: Vec<(u32, u32)>, capture_columns: CaptureColumns,
+    root_seen: bool, data_seen: bool, dimension_seen: bool,
+    hidden_columns: Vec<(u32, u32)>,
     pub ordered: bool, previous: Option<Coordinate>, bounds: Bounds<'a>,
 }
 impl<'a> Cells<'a> {
     pub fn new(bytes: &'a [u8], shared: &'a SharedStrings) -> Result<Self> {
         std::str::from_utf8(bytes)?;
         Ok(Self { reader: Reader::<128>::new(bytes)?, shared, row: 0, column: 0, row_hidden: false, in_row: false,
-            in_data: false, root_seen: false, data_seen: false, dimension: None, hidden_columns: Vec::new(), capture_columns: CaptureColumns::default(), ordered: true,
+            in_data: false, root_seen: false, data_seen: false, dimension_seen: false, hidden_columns: Vec::new(), ordered: true,
             previous: None, bounds: Bounds::new() })
     }
     pub fn next(&mut self) -> Result<Option<CellView<'a>>> {
@@ -258,8 +235,9 @@ impl<'a> Cells<'a> {
                 continue;
             }
             if tag.depth == 1 && name == b"dimension" {
-                ensure!(self.dimension.is_none(), "duplicate worksheet dimension");
-                self.dimension = Some(Dimension::parse(tag.attr(b"ref")?.context("dimension ref missing")?)?);
+                ensure!(!self.dimension_seen, "duplicate worksheet dimension");
+                validate_dimension(tag.attr(b"ref")?.context("dimension ref missing")?)?;
+                self.dimension_seen = true;
                 self.reader.element(tag)?;
                 continue;
             }
@@ -269,7 +247,7 @@ impl<'a> Cells<'a> {
             }
             if tag.depth == 1 && name == b"sheetFormatPr" {
                 if let Some(width) = tag.attr(b"defaultColWidth")? {
-                    self.capture_columns.default_width = column_width(width)?;
+                    column_width(width)?;
                 }
                 self.reader.element(tag)?;
                 continue;
@@ -284,9 +262,8 @@ impl<'a> Cells<'a> {
                         let hi = xml::decimal(col.attr(b"max")?.context("column max is missing")?)?;
                         ensure!(lo > 0 && hi >= lo && hi <= 16_384, "invalid column range");
                         let hidden = xml::truth(col.attr(b"hidden")?);
-                        let width = col.attr(b"width")?.map(column_width).transpose()?;
+                        col.attr(b"width")?.map(column_width).transpose()?;
                         if hidden { self.hidden_columns.push((lo, hi)); }
-                        self.capture_columns.spans.push(CaptureColumnSpan { min: lo, max: hi, width, hidden });
                     }
                 }
                 continue;
@@ -376,7 +353,6 @@ impl<'a> Cells<'a> {
 struct Summary {
     key: String, values_sha256: String, formulas_sha256: String, ordered: bool,
     value_count: usize, formula_count: usize, bounds: WorksheetCaptureRange,
-    dimension: Option<Dimension>, value_extent: Option<Dimension>, columns: CaptureColumns,
 }
 fn summary_key(sheet_hash: &str, sst_hash: &str) -> String {
     static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -394,44 +370,14 @@ fn summarize(bytes: &[u8], sst: &SharedStrings, name: &str, index: usize, key: S
     let mut values = Sha256::new(); values.update(b"typed-values-v9\0");
     let mut formulas = Sha256::new(); formulas.update(b"formula-preservation-v9\0");
     let mut value_count = 0; let mut formula_count = 0;
-    let mut value_extent: Option<Dimension> = None;
     while let Some(cell) = cells.next()? {
-        if !cell.value.is_empty() || cell.formula.is_some() {
-            match &mut value_extent {
-                Some(v) => v.include(cell.coordinate),
-                None => value_extent = Some(Dimension { first: cell.coordinate, last: cell.coordinate }),
-            }
-        }
         if !cell.value.is_empty() { add_coordinate(&mut values, cell.coordinate); cell.value.hash_into(&mut values)?; value_count += 1; }
         if let Some(formula) = cell.formula {
             add_coordinate(&mut formulas, cell.coordinate); formulas.update((formula.len() as u64).to_le_bytes()); formulas.update(formula); formula_count += 1;
         }
     }
     Ok(Summary { key, values_sha256: cache::hex(&values.finalize()), formulas_sha256: cache::hex(&formulas.finalize()),
-        ordered: cells.ordered, value_count, formula_count, dimension: cells.dimension, value_extent, columns: cells.capture_columns.clone(), bounds: cells.bounds.report(index, name) })
-}
-
-impl Summary {
-    fn visual_dimension_bounds(&self, path: &Path) -> Result<WorksheetCaptureRange> {
-        let name = &self.bounds.sheet_file;
-        let d = self.dimension.with_context(|| format!("saved workbook {} sheet {name}: dimension missing", path.display()))?;
-        if let Some(v) = self.value_extent {
-            ensure!(d.contains(v), "saved workbook {} sheet {name}: dimension {}:{} does not contain values {}:{}",
-                path.display(), d.first.name(), d.last.name(), v.first.name(), v.last.name());
-            if d.excessive(v) {
-                tracing::warn!("[dimension] workbook={} sheet={name} dimension={}:{} values={}:{}: overhang exceeds value-range size; check shrink cleanup",
-                    path.display(), d.first.name(), d.last.name(), v.first.name(), v.last.name());
-            }
-        } else {
-            tracing::info!("[dimension] workbook={} sheet={name}: no values/formulas; using dimension {}:{}", path.display(), d.first.name(), d.last.name());
-        }
-        let mut b = self.bounds.clone();
-        if d.last.row > b.max_row { b.max_row = d.last.row; b.max_row_source = Some("dimension".into()); }
-        if d.last.column > b.max_column { b.max_column = d.last.column; b.max_column_source = Some("dimension".into()); }
-        b.max_cell = Coordinate { row: b.max_row, column: b.max_column }.name();
-        tracing::info!("[dimension] workbook={} sheet={name} dimension={}:{} capture={}", path.display(), d.first.name(), d.last.name(), b.max_cell);
-        Ok(b)
-    }
+        ordered: cells.ordered, value_count, formula_count, bounds: cells.bounds.report(index, name) })
 }
 
 struct Workbook {
@@ -441,7 +387,7 @@ impl Workbook {
     fn open(path: &Path) -> Result<Self> {
         let manifest = cache::manifest(path)?;
         let mut zip = ZipArchive::new(File::open(path)?)?;
-        let order = read_order(&mut zip, false)?;
+        let order = read_order(&mut zip)?;
         Ok(Self { zip, manifest, order, sst: None, path: path.to_owned() })
     }
     fn ensure_sst(&mut self) -> Result<()> {
@@ -498,10 +444,10 @@ fn target_name(target: &str) -> Result<String> {
     }
     Ok(parts.join("/"))
 }
-fn read_order(zip: &mut ZipArchive<File>, visual: bool) -> Result<Vec<String>> {
+fn read_order(zip: &mut ZipArchive<File>) -> Result<Vec<String>> {
     let wb = read_optional(zip, "xl/workbook.xml")?;
     let rels = read_optional(zip, "xl/_rels/workbook.xml.rels")?;
-    let mut order = Vec::new(); let mut charts = Vec::new();
+    let mut order = Vec::new();
     if let (Some(wb), Some(rels)) = (wb, rels) {
         let mut reader = Reader::<128>::new(&rels)?; let mut targets = HashMap::new();
         while let Some(tag) = reader.next()? {
@@ -518,7 +464,6 @@ fn read_order(zip: &mut ZipArchive<File>, visual: bool) -> Result<Vec<String>> {
                 let id = decode_attr(tag.attr(b"r:id")?.context("sheet relationship Id missing")?)?;
                 let target = targets.get(&id).context("unresolved sheet relationship")?;
                 if cache::is_sheet(target) { order.push(target.clone()); }
-                else if target.starts_with("xl/chartsheets/") && visual { charts.push(target.clone()); }
             }
         }
     }
@@ -530,36 +475,17 @@ fn read_order(zip: &mut ZipArchive<File>, visual: bool) -> Result<Vec<String>> {
         if cache::is_sheet(name) && !listed.contains(name) { remaining.push(name.to_owned()); }
     }
     remaining.sort_by_key(|n| (n.strip_prefix("xl/worksheets/sheet").and_then(|n| n.strip_suffix(".xml")).and_then(|n| n.parse::<u32>().ok()).unwrap_or(u32::MAX), n.clone()));
-    order.extend(remaining); order.extend(charts);
+    order.extend(remaining);
     Ok(order)
-}
-pub fn workbook_visual_sheet_order(path: &Path) -> Result<Vec<String>> { read_order(&mut ZipArchive::new(File::open(path)?)?, true) }
-
-/// Reuse the summaries produced by the value pass, including column XML metadata.
-pub fn workbook_capture_columns(path: &Path) -> Result<std::collections::BTreeMap<usize, CaptureColumns>> {
-    let _phase = super::super::visual_diagnostics::phase("values.capture_columns", path.display().to_string());
-    let mut book = Workbook::open(path)?;
-    let root = cache::root()?;
-    let use_cache = !std::env::var("EXCEL_SHRINK_VALUE_CACHE").is_ok_and(|v| v == "0");
-    let mut buffer = Vec::new(); let mut columns = std::collections::BTreeMap::new();
-    for name in book.order.clone() {
-        let summary = book.summary(&name, &mut buffer, &root, use_cache)?;
-        columns.insert(summary.bounds.sheet_index, summary.columns);
-    }
-    book.check_unchanged()?;
-    Ok(columns)
 }
 
 pub fn compare_workbook_values(left: &Path, right: &Path, policy: MissingCellPolicy, only: Option<&HashSet<String>>) -> Result<WorkbookComparisonReport> {
-    compare(left, right, policy, only, false, false)
+    compare(left, right, policy, only, false)
 }
 pub fn compare_workbook_preservation(left: &Path, right: &Path, policy: MissingCellPolicy, only: Option<&HashSet<String>>) -> Result<WorkbookComparisonReport> {
-    compare(left, right, policy, only, true, false)
+    compare(left, right, policy, only, true)
 }
-pub fn compare_saved_visual_values(left: &Path, right: &Path) -> Result<WorkbookComparisonReport> {
-    compare(left, right, MissingCellPolicy::strict(), None, false, true)
-}
-fn compare(left: &Path, right: &Path, policy: MissingCellPolicy, only: Option<&HashSet<String>>, formulas: bool, saved_dimensions: bool) -> Result<WorkbookComparisonReport> {
+fn compare(left: &Path, right: &Path, policy: MissingCellPolicy, only: Option<&HashSet<String>>, formulas: bool) -> Result<WorkbookComparisonReport> {
     let _phase = super::super::visual_diagnostics::phase("values.views_compare", format!("{} <-> {}", left.display(), right.display()));
     let mut a = Workbook::open(left)?; let mut b = Workbook::open(right)?;
     let names: BTreeSet<_> = a.order.iter().chain(&b.order).filter(|n| only.is_none_or(|set| set.contains(*n))).cloned().collect();
@@ -572,7 +498,7 @@ fn compare(left: &Path, right: &Path, policy: MissingCellPolicy, only: Option<&H
         let sa = if a.manifest.parts.contains_key(&name) { Some(a.summary(&name, &mut left_buffer, &root, use_cache)?) } else { None };
         let sb = if b.manifest.parts.contains_key(&name) { Some(b.summary(&name, &mut right_buffer, &root, use_cache)?) } else { None };
         if let Some(s) = &sa { report.left_capture_ranges.push(s.bounds.clone()); }
-        if let Some(s) = &sb { report.right_capture_ranges.push(if saved_dimensions { s.visual_dimension_bounds(right)? } else { s.bounds.clone() }); }
+        if let Some(s) = &sb { report.right_capture_ranges.push(s.bounds.clone()); }
         let hashes_equal = match (&sa, &sb) {
             (Some(x), Some(y)) => x.ordered && y.ordered && x.values_sha256 == y.values_sha256 && x.value_count == y.value_count
                 && (!formulas || (x.formulas_sha256 == y.formulas_sha256 && x.formula_count == y.formula_count)),
@@ -659,43 +585,4 @@ pub(super) fn compare_sheet_views(name: &str, left: &[u8], right: &[u8], left_ss
         ensure!(a.ordered && b.ordered, "row-major fast path received unordered cells");
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod dimension_tests {
-    use super::*;
-    fn sample(reference: &str) -> Summary {
-        let bytes = format!("<worksheet><dimension ref=\"{reference}\"/><sheetData><row r=\"3\"><c r=\"B3\"><v>7</v></c></row></sheetData></worksheet>");
-        summarize(bytes.as_bytes(), &SharedStrings::new(Vec::new()).unwrap(), "sheet1.xml", 1, "test".into()).unwrap()
-    }
-    #[test]
-    fn dimension_equal_and_larger_extend_capture() {
-        let equal = sample("A1:B3").visual_dimension_bounds(Path::new("saved.xlsx")).unwrap();
-        assert_eq!((equal.max_row, equal.max_column), (3,2));
-        let larger = sample("A1:C22").visual_dimension_bounds(Path::new("saved.xlsx")).unwrap();
-        assert_eq!((larger.max_row, larger.max_column), (22,3));
-        assert_eq!(larger.max_row_source.as_deref(), Some("dimension"));
-    }
-    #[test]
-    fn dimension_must_contain_value_rectangle_on_both_axes() {
-        for d in ["A1:A3", "A1:B2", "C1:D5", "A4:D5"] {
-            assert!(sample(d).visual_dimension_bounds(Path::new("saved.xlsx")).is_err(), "{d}");
-        }
-    }
-    #[test]
-    fn dimension_warning_uses_extent_not_absolute_coordinate() {
-        let v = Dimension::parse(b"B100:C109").unwrap();
-        assert!(!Dimension::parse(b"A1:E119").unwrap().excessive(v));
-        assert!(Dimension::parse(b"A1:E120").unwrap().excessive(v));
-        assert!(Dimension::parse(b"A1:F119").unwrap().excessive(v));
-        assert!(Dimension::parse(b"C5:B1").is_err());
-        assert!(Dimension::parse(b"A1:B2:C3").is_err());
-    }
-    #[test]
-    fn dimension_missing_fails_visual_validation_but_not_value_summary() {
-        let s = summarize(b"<worksheet><sheetData/></worksheet>", &SharedStrings::new(Vec::new()).unwrap(), "sheet", 1, "test".into()).unwrap();
-        assert!(s.visual_dimension_bounds(Path::new("saved.xlsx")).is_err());
-        let empty = summarize(b"<worksheet><dimension ref='A1:C22'/><sheetData/></worksheet>", &SharedStrings::new(Vec::new()).unwrap(), "sheet", 1, "test".into()).unwrap();
-        assert_eq!(empty.visual_dimension_bounds(Path::new("saved.xlsx")).unwrap().max_row, 22);
-    }
 }

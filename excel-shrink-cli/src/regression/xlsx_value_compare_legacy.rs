@@ -148,46 +148,6 @@ pub fn compare_workbook_values(
     ))
 }
 
-/// Screenshot order preserves existing worksheet indices, then appends chart sheets.
-pub fn workbook_visual_sheet_order(path: &Path) -> anyhow::Result<Vec<String>> {
-    let bytes = read_file_bytes(path)?;
-    let mut archive = ZipArchive::new(Cursor::new(bytes.as_slice()))?;
-    let mut order = read_workbook_sheet_order(&mut archive)?;
-    if let (Some(workbook), Some(rels)) = (
-        read_optional_zip_entry(&mut archive, "xl/workbook.xml")?,
-        read_optional_zip_entry(&mut archive, "xl/_rels/workbook.xml.rels")?,
-    ) {
-        let targets = parse_workbook_relationship_targets(&rels);
-        order.extend(parse_workbook_sheet_relationship_ids(&workbook).into_iter()
-            .filter_map(|id| targets.get(&id).cloned())
-            .filter(|target| target.starts_with("xl/chartsheets/") && target.ends_with(".xml")));
-    }
-    Ok(order)
-}
-
-/// Both source and cleaned visible content must be represented in screenshots.
-pub fn combined_capture_ranges(report: &WorkbookComparisonReport) -> Vec<WorksheetCaptureRange> {
-    let mut ranges = report.right_capture_ranges.clone();
-    for left in &report.left_capture_ranges {
-        match ranges.iter_mut().find(|r| r.sheet_index == left.sheet_index) {
-            Some(range) => {
-                if left.max_row > range.max_row { range.max_row = left.max_row; range.max_row_source = left.max_row_source.clone(); }
-                if left.max_column > range.max_column { range.max_column = left.max_column; range.max_column_source = left.max_column_source.clone(); }
-                let mut number = range.max_column;
-                let mut letters = String::new();
-                while number > 0 {
-                    let rem = (number - 1) % 26;
-                    letters.insert(0, (b'A' + rem as u8) as char); number = (number - 1) / 26;
-                }
-                range.max_cell = format!("{}{}", letters, range.max_row);
-            }
-            None => ranges.push(left.clone()),
-        }
-    }
-    ranges.sort_by_key(|r| r.sheet_index);
-    ranges
-}
-
 fn compare_workbooks(
     left: &WorkbookCells,
     right: &WorkbookCells,
