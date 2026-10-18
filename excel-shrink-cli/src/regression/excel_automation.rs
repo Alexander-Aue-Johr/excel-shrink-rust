@@ -33,16 +33,6 @@ pub struct ExcelScreenshotDifferenceSummary {
     pub row_height_differences: usize,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct WorkbookOpenTiming {
-    pub label: String,
-    pub path: PathBuf,
-    pub attempt: u32,
-    pub duration_ms: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub opened_at: Option<String>,
-}
-
 struct RecalculationTransfer(PathBuf);
 
 impl RecalculationTransfer {

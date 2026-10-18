@@ -5,9 +5,7 @@ use crate::visual_profile::{
 };
 use crate::{Cli, LogLevel};
 use clap::{Parser, Subcommand};
-use excel_automation::{
-    ExcelSavedWorkbook, ExcelScreenshotDifferenceSummary, WorkbookOpenTiming,
-};
+use excel_automation::{ExcelSavedWorkbook, ExcelScreenshotDifferenceSummary};
 use visual_validation::ExcelScreenshotReport;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -305,7 +303,6 @@ struct RegressionCaseMeasurement {
     screenshot_report_path: Option<PathBuf>,
     screenshot_output_dir: Option<PathBuf>,
     entropy_changed_diff_details: Vec<RegressionVisualDiffDetail>,
-    open_timings: Vec<WorkbookOpenTiming>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -403,8 +400,6 @@ struct RegressionMeasurementAggregate {
     visual_shift_movement_px: u64,
     total_shrink_duration_ms: u128,
     avg_shrink_duration_ms: Option<f64>,
-    avg_original_open_ms: Option<f64>,
-    avg_shrunk_open_ms: Option<f64>,
 }
 
 static DOWNLOAD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -1983,11 +1978,6 @@ fn measurement_profile_from_report(
                     .as_deref()
                     .map(load_entropy_changed_diff_details)
                     .unwrap_or_default(),
-                open_timings: case
-                    .excel_screenshot_details
-                    .as_ref()
-                    .map(|details| details.open_timings.clone())
-                    .unwrap_or_default(),
             }
         })
         .collect::<Vec<_>>();
@@ -2059,8 +2049,6 @@ fn measurement_aggregate(cases: &[RegressionCaseMeasurement]) -> RegressionMeasu
             .filter_map(|case| case.shrink_duration_ms)
             .sum(),
         avg_shrink_duration_ms: average_shrink_duration_ms(&successful),
-        avg_original_open_ms: average_open_duration_ms(cases, "original"),
-        avg_shrunk_open_ms: average_open_duration_ms(cases, "shrunk"),
         ..RegressionMeasurementAggregate::default()
     };
 
@@ -2167,18 +2155,6 @@ fn vertical_reflow_residual_diff_pixels_path(proof: &serde_json::Value) -> Optio
         .map(PathBuf::from)
 }
 
-fn average_open_duration_ms(cases: &[RegressionCaseMeasurement], label: &str) -> Option<f64> {
-    let mut total = 0_u64;
-    let mut count = 0_u64;
-    for timing in cases.iter().flat_map(|case| &case.open_timings) {
-        if timing.label.eq_ignore_ascii_case(label) {
-            total = total.saturating_add(timing.duration_ms);
-            count += 1;
-        }
-    }
-    (count > 0).then_some(total as f64 / count as f64)
-}
-
 fn average_shrink_duration_ms(cases: &[&RegressionCaseMeasurement]) -> Option<f64> {
     let mut total = 0u128;
     let mut count = 0usize;
@@ -2210,9 +2186,6 @@ fn measurement_chart_html(report: &RegressionMeasurementReport) -> String {
     html.push_str("<h2>Size reduction and visual diffs</h2>");
     html.push_str("<div class=\"legend\"><span class=\"swatch\" style=\"background:#5d6675\"></span>case workbook reduction points <span class=\"swatch\" style=\"background:#1f77b4\"></span>aggregate XLSX reduction <span class=\"swatch\" style=\"background:#6b46c1\"></span>aggregate uncompressed workbook reduction <span class=\"swatch\" style=\"background:#2f855a\"></span>aggregate worksheet XML reduction <span class=\"swatch\" style=\"background:#b7791f\"></span>row height diffs <span class=\"swatch\" style=\"background:#c53030\"></span>image diffs</div>");
     html.push_str(&measurement_overview_svg(report));
-    html.push_str("<h2>Excel open time</h2>");
-    html.push_str("<div class=\"legend\"><span class=\"swatch\" style=\"background:#3b82f6\"></span>original/repaired original <span class=\"swatch\" style=\"background:#ef4444\"></span>shrunk</div>");
-    html.push_str(&measurement_open_time_svg(report));
     html.push_str("<h2>Profile summary</h2>");
     html.push_str(&measurement_summary_table(report));
     html.push_str("<h2>Image differences</h2>");
@@ -2385,121 +2358,13 @@ fn measurement_overview_svg(report: &RegressionMeasurementReport) -> String {
     svg
 }
 
-fn measurement_open_time_svg(report: &RegressionMeasurementReport) -> String {
-    const WIDTH: f64 = 1180.0;
-    const HEIGHT: f64 = 320.0;
-    const LEFT: f64 = 76.0;
-    const TOP: f64 = 24.0;
-    const BOTTOM: f64 = 82.0;
-    const RIGHT: f64 = 42.0;
-
-    let plot_width = WIDTH - LEFT - RIGHT;
-    let plot_height = HEIGHT - TOP - BOTTOM;
-    let bottom_y = HEIGHT - BOTTOM;
-    let max_ms = report
-        .profiles
-        .iter()
-        .flat_map(|profile| {
-            [
-                profile.aggregate.avg_original_open_ms,
-                profile.aggregate.avg_shrunk_open_ms,
-            ]
-        })
-        .flatten()
-        .fold(0.0_f64, f64::max)
-        .max(1.0);
-
-    let mut svg = String::new();
-    let _ = writeln!(
-        svg,
-        "<svg viewBox=\"0 0 {WIDTH} {HEIGHT}\" width=\"100%\" height=\"320\" role=\"img\">"
-    );
-    svg.push_str("<line x1=\"76\" y1=\"24\" x2=\"76\" y2=\"238\" stroke=\"#94a3b8\"/><line x1=\"76\" y1=\"238\" x2=\"1138\" y2=\"238\" stroke=\"#94a3b8\"/>");
-    for tick in 0..=4 {
-        let value = max_ms * tick as f64 / 4.0;
-        let y = bottom_y - (value / max_ms) * plot_height;
-        let _ = writeln!(
-            svg,
-            "<line x1=\"70\" y1=\"{y:.1}\" x2=\"1138\" y2=\"{y:.1}\" stroke=\"#e2e8f0\"/><text x=\"62\" y=\"{:.1}\" text-anchor=\"end\" font-size=\"11\" fill=\"#52606d\">{}</text>",
-            y + 4.0,
-            format_ms(Some(value))
-        );
-    }
-
-    let bar_width = (plot_width / report.profiles.len().max(1) as f64).min(44.0) / 3.0;
-    for (index, profile) in report.profiles.iter().enumerate() {
-        let x = profile_x(index, report.profiles.len(), LEFT, plot_width);
-        draw_open_bar(
-            &mut svg,
-            x - bar_width - 2.0,
-            bar_width,
-            profile.aggregate.avg_original_open_ms,
-            max_ms,
-            bottom_y,
-            plot_height,
-            "#3b82f6",
-            "original",
-            profile,
-        );
-        draw_open_bar(
-            &mut svg,
-            x + 2.0,
-            bar_width,
-            profile.aggregate.avg_shrunk_open_ms,
-            max_ms,
-            bottom_y,
-            plot_height,
-            "#ef4444",
-            "shrunk",
-            profile,
-        );
-        let _ = writeln!(
-            svg,
-            "<text x=\"{x:.1}\" y=\"260\" transform=\"rotate(35 {x:.1} 260)\" font-size=\"11\" fill=\"#323f4b\">{}</text>",
-            svg_escape(&profile.visual_profile)
-        );
-    }
-
-    svg.push_str(
-        "<text x=\"76\" y=\"16\" font-size=\"12\" fill=\"#52606d\">average open time</text></svg>",
-    );
-    svg
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_open_bar(
-    svg: &mut String,
-    x: f64,
-    width: f64,
-    value: Option<f64>,
-    max_ms: f64,
-    bottom_y: f64,
-    plot_height: f64,
-    color: &str,
-    label: &str,
-    profile: &RegressionMeasurementProfile,
-) {
-    let Some(value) = value else {
-        return;
-    };
-    let height = (value / max_ms) * plot_height;
-    let y = bottom_y - height;
-    let _ = writeln!(
-        svg,
-        "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{width:.1}\" height=\"{height:.1}\" fill=\"{color}\" opacity=\"0.85\"><title>{} {} {}</title></rect>",
-        svg_escape(&profile.visual_profile),
-        label,
-        format_ms(Some(value))
-    );
-}
-
 fn measurement_summary_table(report: &RegressionMeasurementReport) -> String {
     let mut table = String::new();
-    table.push_str("<table><thead><tr><th>profile</th><th>cases</th><th>XLSX reduction</th><th>uncompressed workbook reduction</th><th>sheet XML reduction</th><th>shrink total</th><th>avg shrink</th><th>row height diffs</th><th>image diffs</th><th>avg original open</th><th>avg shrunk open</th></tr></thead><tbody>");
+    table.push_str("<table><thead><tr><th>profile</th><th>cases</th><th>XLSX reduction</th><th>uncompressed workbook reduction</th><th>sheet XML reduction</th><th>shrink total</th><th>avg shrink</th><th>row height diffs</th><th>image diffs</th></tr></thead><tbody>");
     for profile in &report.profiles {
         let _ = writeln!(
             table,
-            "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             html_escape(&profile.visual_profile),
             profile.aggregate.successful_case_count,
             profile.aggregate.case_count,
@@ -2510,8 +2375,6 @@ fn measurement_summary_table(report: &RegressionMeasurementReport) -> String {
             format_ms(profile.aggregate.avg_shrink_duration_ms),
             profile.aggregate.visual_row_height_differences,
             profile.aggregate.visual_entropy_changed_differences,
-            format_ms(profile.aggregate.avg_original_open_ms),
-            format_ms(profile.aggregate.avg_shrunk_open_ms)
         );
     }
     table.push_str("</tbody></table>");

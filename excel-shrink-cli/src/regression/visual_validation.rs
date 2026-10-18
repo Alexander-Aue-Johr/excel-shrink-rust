@@ -1,4 +1,4 @@
-use super::excel_automation::{ExcelScreenshotDifferenceSummary, WorkbookOpenTiming};
+use super::excel_automation::ExcelScreenshotDifferenceSummary;
 use super::office_capture::{capture_images, check_row_heights, plan_pair, PairedImageTile};
 use super::row_heights::RowHeightDifference;
 use super::visual_compare::{compare_images, ImageDifference};
@@ -17,7 +17,6 @@ pub(super) struct ExcelScreenshotReport {
     pub output_dir: PathBuf,
     pub differences_found: bool,
     pub difference_summary: ExcelScreenshotDifferenceSummary,
-    pub open_timings: Vec<WorkbookOpenTiming>,
 }
 
 pub(super) fn compare_sheet_visuals(
@@ -96,7 +95,6 @@ pub(super) fn compare_sheet_visuals(
         output_dir: output_dir.to_owned(),
         differences_found: total_differences > 0,
         difference_summary: summary,
-        open_timings: Vec::new(),
     })
 }
 
