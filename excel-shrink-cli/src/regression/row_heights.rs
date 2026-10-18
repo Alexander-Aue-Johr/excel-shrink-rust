@@ -21,6 +21,7 @@ pub(super) struct SheetExtent {
     pub index: usize,
     pub name: String,
     pub last_row: u32,
+    pub last_checked_row: u32,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -50,6 +51,11 @@ fn validated_sheets<'a>(
         );
     }
     for item in expected {
+        ensure!(
+            (1..=item.last_row).contains(&item.last_checked_row),
+            "invalid row-height check boundary for sheet {}",
+            item.index
+        );
         let sheet = by_index
             .get(&item.index)
             .with_context(|| format!("missing row heights for sheet {}", item.index))?;
@@ -98,7 +104,10 @@ pub(super) fn compare_row_heights(
         let (mut a, mut b) = (0usize, 0usize);
         while a < before.len() && b < after.len() {
             let first = before[a].start_row.max(after[b].start_row);
-            let last = before[a].end_row.min(after[b].end_row);
+            let last = before[a]
+                .end_row
+                .min(after[b].end_row)
+                .min(item.last_checked_row);
             if before[a].height != after[b].height {
                 match differences.last_mut() {
                     Some(previous)
@@ -118,6 +127,9 @@ pub(super) fn compare_row_heights(
                         after: after[b].height,
                     }),
                 }
+            }
+            if last == item.last_checked_row {
+                break;
             }
             if before[a].end_row == last {
                 a += 1;
@@ -154,6 +166,7 @@ mod tests {
             index: 1,
             name: "Sheet 1".into(),
             last_row: 1_048_576,
+            last_checked_row: 1_048_576,
         }]
     }
 
@@ -176,6 +189,25 @@ mod tests {
                 after: 20.0
             }]
         );
+    }
+
+    #[test]
+    fn ignores_capture_margin_heights_but_checks_the_last_visual_row() {
+        let expected = [SheetExtent {
+            index: 1,
+            name: "Sheet 1".into(),
+            last_row: 14,
+            last_checked_row: 13,
+        }];
+        let before = sheet(&[(1, 14, 15.75)]);
+        let margin_changed = sheet(&[(1, 13, 15.75), (14, 14, 12.0)]);
+        assert!(compare_row_heights(&[before.clone()], &[margin_changed], &expected)
+            .unwrap()
+            .is_empty());
+        let content_changed = sheet(&[(1, 12, 15.75), (13, 14, 12.0)]);
+        let differences = compare_row_heights(&[before], &[content_changed], &expected).unwrap();
+        assert_eq!(differences.len(), 1);
+        assert_eq!((differences[0].row, differences[0].end_row), (13, 13));
     }
 
     #[test]

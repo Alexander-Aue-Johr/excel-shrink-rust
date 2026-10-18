@@ -19,6 +19,7 @@ pub(super) struct PairedSheetPlan {
     pub sheet_index: usize,
     pub sheet_name: String,
     pub bottom_row: u32,
+    row_height_bottom_row: u32,
     pub capture_right_column: u32,
     original_config: Value,
     shrunk_config: Value,
@@ -142,6 +143,7 @@ pub(super) fn plan_pair(original: &Path, shrunk: &Path) -> Result<PairedPlan> {
             sheet_index: a.sheet_index,
             sheet_name: a.sheet.clone(),
             bottom_row,
+            row_height_bottom_row: a.row_height_bottom_row.max(b.row_height_bottom_row),
             capture_right_column,
             original_config,
             shrunk_config,
@@ -215,6 +217,7 @@ pub(super) fn check_row_heights(
             index: sheet.sheet_index,
             name: sheet.sheet_name.clone(),
             last_row: sheet.bottom_row + 1,
+            last_checked_row: sheet.row_height_bottom_row + 1,
         })
         .collect::<Vec<_>>();
     row_heights::compare_row_heights(&left.heights, &right.heights, &expected)
@@ -712,6 +715,7 @@ mod tests {
             sheet_index: 1,
             sheet_name: "Sheet 1".into(),
             bottom_row: 2,
+            row_height_bottom_row: 2,
             capture_right_column: 0,
             original_config: Value::Null,
             shrunk_config: Value::Null,

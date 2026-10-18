@@ -61,6 +61,7 @@ pub(crate) struct SheetVisualPlan {
     pub sheet_file: String,
     pub base_right_column: u32,
     pub bottom_row: u32,
+    pub row_height_bottom_row: u32,
     pub trailing_hidden_column_start: Option<u32>,
     pub trailing_hidden_row_start: Option<u32>,
     pub has_text: bool,
@@ -587,13 +588,8 @@ fn parse_drawing(bytes: &[u8]) -> Result<DrawingSummary> {
                     anchor_marker(element.body, b"to"),
                 ) {
                     (Ok(Some(from)), Ok(Some(to))) => {
-                        // Leave a cell past the anchor for borders and offsets at the cell edge.
-                        summary.max_row = summary.max_row
-                            .max(from.row)
-                            .max(to.row.saturating_add(1).min(MAX_ROWS));
-                        summary.max_column = summary.max_column
-                            .max(from.column)
-                            .max(to.column.saturating_add(1).min(MAX_COLUMNS));
+                        summary.max_row = summary.max_row.max(from.row).max(to.row);
+                        summary.max_column = summary.max_column.max(from.column).max(to.column);
                     }
                     _ => summary.fallback_required = true,
                 }
@@ -669,8 +665,10 @@ pub(crate) fn build_workbook_visual_plan(path: &Path) -> Result<WorkbookVisualPl
         let trailing_row = xml.trailing_hidden_row_start.map(|row| row - 1);
         let content_right = xml.max_column.saturating_sub(1);
         let content_bottom = xml.max_row.saturating_sub(1);
-        let drawing_right = drawing.max_column.saturating_sub(1);
-        let drawing_bottom = drawing.max_row.saturating_sub(1);
+        // Capture one cell beyond drawings, but exclude that margin from the height gate.
+        let drawing_right = drawing.max_column.min(MAX_COLUMNS - 1);
+        let drawing_bottom = drawing.max_row.min(MAX_ROWS - 1);
+        let row_height_bottom_row = content_bottom.max(drawing.max_row.saturating_sub(1));
         let natural_right = content_right.max(drawing_right);
         let natural_bottom = content_bottom.max(drawing_bottom);
 
@@ -689,6 +687,7 @@ pub(crate) fn build_workbook_visual_plan(path: &Path) -> Result<WorkbookVisualPl
             sheet_file: descriptor.file,
             base_right_column,
             bottom_row,
+            row_height_bottom_row: row_height_bottom_row.min(bottom_row),
             trailing_hidden_column_start: trailing_column,
             trailing_hidden_row_start: trailing_row,
             has_text: xml.has_text,
@@ -771,7 +770,7 @@ mod tests {
             <xdr:pic/>
         </xdr:twoCellAnchor></xdr:wsDr>"#;
         let plan = parse_drawing(drawing).unwrap();
-        assert_eq!((plan.max_row, plan.max_column), (41, 11));
+        assert_eq!((plan.max_row, plan.max_column), (40, 10));
         assert!(!plan.fallback_required);
     }
 
@@ -793,7 +792,7 @@ mod tests {
             </mc:Fallback></mc:AlternateContent>
         </xdr:wsDr>"#;
         let plan = parse_drawing(drawing).unwrap();
-        assert_eq!((plan.max_row, plan.max_column), (14, 5));
+        assert_eq!((plan.max_row, plan.max_column), (13, 4));
         assert!(plan.fallback_required);
     }
 
