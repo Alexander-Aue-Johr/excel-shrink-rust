@@ -1,0 +1,25 @@
+:root{color-scheme:light dark;font-family:"Segoe UI",system-ui,sans-serif;--surface:rgba(127,127,127,.08);--border:rgba(127,127,127,.22);--accent:#2b579a;--good:#3aa76d;--warn:#d99b22;--bad:#d9534f}
+*{box-sizing:border-box}
+body{margin:0;min-width:260px;background:Canvas;color:CanvasText}
+.app-shell{padding:64px 16px 24px;max-width:520px;margin:0 auto}
+.hero{margin-bottom:18px}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.65}
+h1{margin:4px 0 3px;font-size:23px;line-height:1.1}
+.subtitle{font-size:13px;opacity:.72}
+.status-card,.panel{border:1px solid var(--border);background:var(--surface);border-radius:12px}
+.status-card{padding:14px;margin-bottom:12px}
+.connection-row{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:11px}
+.status-light{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--warn);box-shadow:0 0 0 3px rgba(217,155,34,.14)}
+.status-light.good{background:var(--good);box-shadow:0 0 0 3px rgba(58,167,109,.14)}
+.status-light.bad{background:var(--bad);box-shadow:0 0 0 3px rgba(217,83,79,.14)}
+.workbook-name{font-size:13px;font-weight:650;overflow-wrap:anywhere}
+.phase{margin:5px 0 11px;font-size:12px;overflow-wrap:anywhere}
+.progress-track{height:9px;border-radius:999px;background:rgba(127,127,127,.18);overflow:hidden}
+.progress-bar{width:0;height:100%;background:var(--accent);transition:width 160ms ease}
+.progress-caption{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:11px;opacity:.75}
+.panel{padding:12px;margin-bottom:10px}
+.panel-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px}
+.panel-heading h2{margin:0;font-size:13px}
+.panel-heading span{font-size:11px;opacity:.65}
+.sheet-list{font-size:11px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.muted{opacity:.66}

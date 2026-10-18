@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Excel Shrink Capture</title>
+  <link rel="stylesheet" href="/taskpane.css">
+  <script src="https://officeapis.public.onecdn.static.microsoft/1/office.js"></script>
+  <script defer src="/capture-geometry.js"></script>
+  <script defer src="/capture-overflow.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div class="eyebrow">Excel Shrink</div>
+      <h1>Visual validation</h1>
+      <div class="subtitle">Workbook capture</div>
+    </header>
+    <section class="status-card" aria-live="polite">
+      <div class="connection-row"><span id="light" class="status-light"></span><span id="connection">Connecting…</span></div>
+      <div id="workbook" class="workbook-name">Waiting for Excel…</div>
+      <div id="phase" class="phase">Starting</div>
+      <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress"><div id="progress-bar" class="progress-bar"></div></div>
+      <div class="progress-caption"><span id="progress-text">0 / 0 sheets</span><span id="elapsed">0 s</span></div>
+    </section>
+    <section class="panel"><div class="panel-heading"><h2>Current sheet</h2></div><div id="current-sheet" class="sheet-list muted">—</div></section>
+    <section class="panel"><div class="panel-heading"><h2>Completed</h2><span id="completed-count">0</span></div><div id="completed-sheets" class="sheet-list muted">—</div></section>
+  </main>
+</body>
+</html>
