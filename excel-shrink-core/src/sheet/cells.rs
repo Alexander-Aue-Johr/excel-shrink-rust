@@ -257,6 +257,19 @@ fn reference_sensitive_candidate_cause(
         return None;
     }
 
+    // Hidden columns still participate in Excel's automatic row sizing. Keep
+    // their content (including whitespace) unless the row is itself hidden or
+    // has an explicit fixed height. Cached ht alone does not fix the height.
+    // Use the already parsed row/column metadata; no text/style decoding needed.
+    if is_hidden
+        && has_cell_content
+        && cell.row_view().is_none_or(|row| {
+            !row.hidden && !(row.has_height && row.has_custom_height)
+        })
+    {
+        return None;
+    }
+
     if cleanup.whitespace && is_whitespace_cell(cell.raw, params) {
         metrics.whitespace_candidates += 1;
         return Some(CleanupCause::UnreferencedWhitespaceCells);
@@ -648,7 +661,7 @@ fn empty_hidden_cell_is_style_representative(
         return true;
     }
 
-    if style_policy.keep_no_visible_style && style.has_no_empty_cell_visible_style {
+    if style_policy.keep_no_visible_style {
         return true;
     }
 
@@ -688,6 +701,13 @@ fn cell_has_effective_visual_style(
     cell: &ParsedCell<'_, '_>,
     metrics: &CleanSheetMetrics,
 ) -> bool {
+    if cell
+        .row_view()
+        .is_some_and(|r| r.promoted_style_id.is_some() && r.promoted_style_id == cell.style_id)
+    {
+        // Exact full XF moved from a dense row's cells to its row header.
+        return false;
+    }
     let inherited = inherited_cell_styles(cell, metrics);
 
     cell_has_effective_fill(cell_style, inherited.row, inherited.column)
@@ -795,8 +815,13 @@ fn empty_cell_has_column_font_style_override(
         return false;
     }
 
-    let cell_font_id = cell_style.font_id.unwrap_or(0);
     let row_attributes = cell.row_view();
+    // Fixed height does not freeze the text baseline. A promoted row font,
+    // however, supplies the same override without one empty cell per column.
+    if let Some(row) = row_attributes.filter(|r| r.promoted_style_id.is_some()) {
+        return cell_style.font_id.unwrap_or(0) != row.style.and_then(|s| s.font_id).unwrap_or(0);
+    }
+    let cell_font_id = cell_style.font_id.unwrap_or(0);
     let row_uses_auto_height =
         row_attributes.is_some_and(|row| row.has_height && !row.has_custom_height);
 

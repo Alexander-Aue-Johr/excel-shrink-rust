@@ -4,6 +4,10 @@ use std::collections::{BTreeMap, HashMap};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Builder)]
 #[builder(default)]
 pub struct Xf {
+    /// Existing XF containing only this font; no new workbook styles are allocated.
+    pub row_font_style_id: Option<u32>,
+    /// Workbook-local identity of all XF attributes/children except the font.
+    pub non_font_style_id: Option<u32>,
     pub font_id: Option<u32>,
     pub fill_id: Option<u32>,
     pub border_id: Option<u32>,
@@ -273,6 +277,43 @@ impl ColumnRangeMap {
         } else {
             None
         }
+    }
+
+    /// Check boundaries, including exact overrides and holes, without a 16K scan.
+    fn range_matches(&self, start: u32, end: u32, matches: impl Fn(u32) -> bool) -> bool {
+        if start > end {
+            return true;
+        }
+        matches(start)
+            && self.exact.values().chain(self.intervals.iter()).all(|c| {
+                (c.min < start || c.min > end || matches(c.min))
+                    && (c.max >= end || c.max + 1 < start || matches(c.max + 1))
+            })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_uniform_font(&self, start: u32, end: u32, font: u32) -> bool {
+        self.range_matches(start, end, |col| {
+            self.get(col)
+                .and_then(|c| c.cell_xf.as_ref())
+                .and_then(|s| s.font_id)
+                .unwrap_or(0)
+                == font
+        })
+    }
+
+    pub(crate) fn inherits_row_style(&self, start: u32, end: u32, row: &Xf, default: &Xf) -> bool {
+        let Some(key) = row.non_font_style_id else {
+            return false;
+        };
+        self.range_matches(start, end, |col| {
+            let previous = self
+                .get(col)
+                .and_then(|c| c.cell_xf.as_ref())
+                .unwrap_or(default);
+            previous.font_id.unwrap_or(0) == row.font_id.unwrap_or(0)
+                && previous.non_font_style_id == Some(key)
+        })
     }
 
     pub fn get_last_visible_range(&self, include_protection: bool) -> Option<&ColumnDefinition> {

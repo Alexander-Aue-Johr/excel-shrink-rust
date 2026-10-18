@@ -420,7 +420,7 @@ fn keeps_empty_row_after_cell_range_even_without_height() {
 }
 
 #[test]
-fn keeps_empty_style_representatives_when_custom_height_row_has_content() {
+fn preserves_font_representatives_even_at_fixed_height() {
     let params = params_with_styles(&[(427, font_only_style()), (429, font_only_style())]);
 
     let row_xml = br#"<row r="15" spans="1:8" s="429" customFormat="1" ht="27" customHeight="1"><c r="A15" s="8" t="s"><v>1</v></c><c r="B15" s="427"/><c r="C15" s="429"/><c r="D15" s="429"/></row>"#;
@@ -452,7 +452,7 @@ fn keeps_structural_empty_style_anchor_when_custom_height_row_would_lose_style()
 }
 
 #[test]
-fn keeps_empty_font_only_cell_when_custom_height_row_has_content() {
+fn preserves_distinct_font_only_cell_at_fixed_height() {
     let params = params_with_styles(&[
         (6, no_empty_cell_visible_style()),
         (12, font_only_style()),
@@ -463,24 +463,18 @@ fn keeps_empty_font_only_cell_when_custom_height_row_has_content() {
 
     let cleaned = replace_single_row(row_xml, &params);
 
-    assert_eq!(
-        cleaned,
-        br#"<row r="29" spans="1:13" s="12" customFormat="1" ht="13.2" customHeight="1"><c r="A29" s="12" t="s"><v>1</v></c><c r="C29" s="6"/><c r="D29" s="47" t="s"><v>2</v></c></row>"#
-    );
+    assert_eq!(cleaned, row_xml);
 }
 
 #[test]
-fn keeps_empty_style_representative_in_hidden_custom_height_row_with_content() {
+fn preserves_font_representative_in_hidden_fixed_height_row() {
     let params = params_with_styles(&[(8, font_only_style()), (427, font_only_style())]);
 
     let row_xml = br#"<row r="15" hidden="1" spans="1:8" ht="27" customHeight="1"><c r="A15" s="8" t="s"><v>1</v></c><c r="B15" s="427"/></row>"#;
 
     let cleaned = replace_single_row(row_xml, &params);
 
-    assert_eq!(
-        cleaned,
-        br#"<row r="15" hidden="1" spans="1:8" ht="27" customHeight="1"><c r="A15" s="8" t="s"><v>1</v></c><c r="B15" s="427"/></row>"#
-    );
+    assert_eq!(cleaned, row_xml);
 }
 
 #[test]
@@ -748,7 +742,7 @@ fn recleaned_row_does_not_reuse_old_content_or_remove_old_cell_records() {
     let second = replace_single_row_with_metrics(changed, &params, &mut metrics);
     assert_eq!(second, br#"<row r="3" customHeight="1"/>"#);
     assert_eq!(metrics.kept_cell_states.len(), previous_cells);
-    assert_eq!(metrics.kept_cell_states[1].col, 2);
+    assert_eq!(metrics.kept_cell_states[0].col, 1);
 }
 
 #[test]
@@ -886,4 +880,225 @@ fn benchmark_fused_cell_scan() {
             start.elapsed().as_micros()
         );
     }
+}
+
+fn promotion_params() -> CleanSheetParameters {
+    let xml = br#"<styleSheet><cellXfs count="4">
+      <xf fontId="0" fillId="0" borderId="0" numFmtId="0" xfId="0"/>
+      <xf fontId="8" fillId="0" borderId="0" numFmtId="0" xfId="0" applyFont="1"/>
+      <xf fontId="8" fillId="0" borderId="0" numFmtId="0" xfId="0" applyFont="1"><alignment vertical="center"/></xf>
+      <xf fontId="4" fillId="0" borderId="0" numFmtId="0" xfId="0" applyFont="1"/>
+    </cellXfs></styleSheet>"#;
+    let mut params = params_with_styles(&[]);
+    params.patterns = WorkbookSpecificPatterns::new(crate::styles::parse_xfs(xml).unwrap(), None);
+    params
+}
+
+fn promotion_columns(
+    params: &CleanSheetParameters,
+    trailing_font_matches: bool,
+) -> CleanSheetMetrics {
+    let mut metrics = CleanSheetMetrics::default();
+    for (min, max, style) in [
+        (1, 4, 3),
+        (5, 16384, if trailing_font_matches { 1 } else { 3 }),
+    ] {
+        metrics.column_definitions.add(ColumnDefinition {
+            min,
+            max,
+            cell_xf: Some(params.patterns.xfs_by_index[&style].clone()),
+            hidden: false,
+        });
+    }
+    metrics.column_definitions.finalize();
+    metrics
+}
+
+const PROMOTION_ROW: &[u8] = br#"<row r="1" ht="9" customHeight="1"><c r="A1" s="2"><v>unchanged text</v></c><c r="B1" s="2"/><c r="C1" s="2"/><c r="D1" s="2"/></row>"#;
+
+#[test]
+fn row_font_promotion_reuses_existing_font_xf_and_preserves_text() {
+    let params = promotion_params();
+    assert_eq!(params.patterns.xfs_by_index[&2].row_font_style_id, Some(1));
+    let mut metrics = promotion_columns(&params, true);
+    let result = replace_single_row_with_metrics(PROMOTION_ROW, &params, &mut metrics);
+    assert_eq!(result, br#"<row r="1" ht="9" customHeight="1" s="1" customFormat="1"><c r="A1" s="2"><v>unchanged text</v></c></row>"#);
+    assert_eq!(metrics.deleted_cell_count, 3);
+    let second =
+        replace_single_row_with_metrics(&result, &params, &mut promotion_columns(&params, true));
+    assert_eq!(result, second);
+}
+
+#[test]
+fn row_font_promotion_rejects_different_implicit_font_or_unstyled_value() {
+    let params = promotion_params();
+    let a = replace_single_row_with_metrics(
+        PROMOTION_ROW,
+        &params,
+        &mut promotion_columns(&params, false),
+    );
+    assert!(!String::from_utf8(a).unwrap().contains("customFormat"));
+    let unstyled = String::from_utf8(PROMOTION_ROW.to_vec())
+        .unwrap()
+        .replace("r=\"A1\" s=\"2\"", "r=\"A1\"");
+    let b = replace_single_row_with_metrics(
+        unstyled.as_bytes(),
+        &params,
+        &mut promotion_columns(&params, true),
+    );
+    assert!(!String::from_utf8(b).unwrap().contains("customFormat"));
+}
+
+#[test]
+fn row_font_promotion_keeps_existing_row_formats_and_merged_rows() {
+    let params = promotion_params();
+    let mut metrics = promotion_columns(&params, true);
+    metrics.merge_cell_ranges.push(crate::models::CellRange {
+        start_row: 1,
+        end_row: 1,
+        start_col: 1,
+        end_col: 2,
+    });
+    let a = replace_single_row_with_metrics(PROMOTION_ROW, &params, &mut metrics);
+    assert!(!String::from_utf8(a).unwrap().contains("customFormat"));
+    let existing = String::from_utf8(PROMOTION_ROW.to_vec())
+        .unwrap()
+        .replace("<row ", "<row s=\"3\" customFormat=\"1\" ");
+    let b = replace_single_row_with_metrics(
+        existing.as_bytes(),
+        &params,
+        &mut promotion_columns(&params, true),
+    );
+    assert!(String::from_utf8(b)
+        .unwrap()
+        .starts_with("<row s=\"3\" customFormat=\"1\""));
+}
+
+#[test]
+fn dense_full_width_row_compacts_identical_empty_styles_into_row_header() {
+    let params = promotion_params();
+    let mut input = String::from("<row r=\"1\" ht=\"9\" customHeight=\"1\">");
+    for col in 1..=16384 {
+        let mut n = col;
+        let mut name = Vec::new();
+        while n > 0 {
+            n -= 1;
+            name.push(b'A' + (n % 26) as u8);
+            n /= 26;
+        }
+        name.reverse();
+        let name = String::from_utf8(name).unwrap();
+        if col == 1 {
+            input.push_str("<c r=\"A1\" s=\"3\"><v>keep</v></c>");
+        } else {
+            input.push_str(&format!("<c r=\"{name}1\" s=\"2\"/>"));
+        }
+    }
+    input.push_str("</row>");
+    let mut metrics = promotion_columns(&params, false);
+    let result = replace_single_row_with_metrics(input.as_bytes(), &params, &mut metrics);
+    assert_eq!(result, br#"<row r="1" ht="9" customHeight="1" s="2" customFormat="1"><c r="A1" s="3"><v>keep</v></c></row>"#);
+    assert_eq!(metrics.deleted_cell_count, 16383);
+    let mut merged = promotion_columns(&params, false);
+    merged.merge_cell_ranges.push(crate::models::CellRange {
+        start_col: 3,
+        end_col: 4,
+        start_row: 1,
+        end_row: 1,
+    });
+    let with_merge = replace_single_row_with_metrics(input.as_bytes(), &params, &mut merged);
+    let text = String::from_utf8(with_merge).unwrap();
+    assert!(text.contains("s=\"2\" customFormat=\"1\""));
+    assert!(text.contains("<c r=\"C1\" s=\"2\"/>"));
+    assert!(text.contains("<c r=\"D1\" s=\"2\"/>"));
+    assert_eq!(merged.deleted_cell_count, 16381);
+}
+
+#[test]
+fn column_font_coverage_checks_exact_overrides_inside_ranges() {
+    let params = promotion_params();
+    let mut metrics = promotion_columns(&params, true);
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 50,
+        max: 50,
+        cell_xf: Some(params.patterns.xfs_by_index[&3].clone()),
+        hidden: true,
+    });
+    metrics.column_definitions.finalize();
+    assert!(!metrics.column_definitions.has_uniform_font(5, 16384, 8));
+    assert!(metrics.column_definitions.has_uniform_font(51, 16384, 8));
+}
+
+#[test]
+fn row_font_promotion_does_not_replace_a_different_inherited_fill() {
+    let params = promotion_params();
+    let mut metrics = promotion_columns(&params, true);
+    let mut colored = params.patterns.xfs_by_index[&1].clone();
+    colored.fill_id = Some(4);
+    colored.has_visible_fill = true;
+    colored.has_fill_or_border = true;
+    colored.non_font_style_id = Some(999);
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 50,
+        max: 50,
+        cell_xf: Some(colored),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+    let result = replace_single_row_with_metrics(PROMOTION_ROW, &params, &mut metrics);
+    assert!(!String::from_utf8(result).unwrap().contains("customFormat"));
+}
+
+#[test]
+fn row_font_promotion_reuses_full_style_when_other_inherited_components_match() {
+    let params = promotion_params();
+    let mut metrics = promotion_columns(&params, true);
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 5,
+        max: 16384,
+        cell_xf: Some(params.patterns.xfs_by_index[&2].clone()),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+    let result = replace_single_row_with_metrics(PROMOTION_ROW, &params, &mut metrics);
+    assert_eq!(result, br#"<row r="1" ht="9" customHeight="1" s="2" customFormat="1"><c r="A1" s="2"><v>unchanged text</v></c></row>"#);
+}
+
+#[test]
+fn hidden_font_representatives_are_deduplicated_across_style_ids() {
+    for aggressive in [false, true] {
+        let mut params = params_with_styles(&[(1, apply_font_only_style(3)),
+            (2, apply_font_only_style(3)), (3, apply_font_only_style(4))]);
+        params.cleanup.keep_textless_style_representatives = !aggressive;
+        params.cleanup.keep_textless_column_style_representatives = !aggressive;
+        let mut metrics = CleanSheetMetrics::default();
+        metrics.column_definitions.add(ColumnDefinition {
+            min: 1, max: 3, cell_xf: Some(apply_font_only_style(4)), hidden: true,
+        });
+        metrics.column_definitions.finalize();
+        let cleaned = replace_single_row_with_metrics(
+            br#"<row r="3"><c r="A3" s="1"/><c r="B3" s="2"/><c r="C3" s="1"/><c r="D3" s="3"><v>1</v></c></row>"#,
+            &params, &mut metrics);
+        let text = String::from_utf8(cleaned).unwrap();
+        assert!(text.contains("r=\"A3\""));
+        assert!(!text.contains("r=\"B3\""));
+        assert!(!text.contains("r=\"C3\""));
+    }
+}
+
+#[test]
+fn preceding_visible_content_represents_hidden_font() {
+    let params = params_with_styles(&[(1, apply_font_only_style(3)), (2, apply_font_only_style(3))]);
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 2, max: 3, cell_xf: Some(apply_font_only_style(4)), hidden: true,
+    });
+    metrics.column_definitions.finalize();
+    let cleaned = replace_single_row_with_metrics(
+        br#"<row r="3"><c r="A3" s="1"><v>1</v></c><c r="B3" s="2"/><c r="C3" s="1"/></row>"#,
+        &params, &mut metrics);
+    let text = String::from_utf8(cleaned).unwrap();
+    assert!(text.contains("r=\"A3\""));
+    assert!(!text.contains("r=\"B3\""));
+    assert!(!text.contains("r=\"C3\""));
 }

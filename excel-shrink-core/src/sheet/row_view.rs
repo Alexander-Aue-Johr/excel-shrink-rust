@@ -5,6 +5,8 @@ use crate::xml::attributes::Attributes;
 /// table. No owned byte buffers, allocation, or state surviving the row.
 #[derive(Debug, Clone, Copy)]
 pub struct RowView<'xml, 'styles> {
+    /// Style deliberately promoted by this row pass (not an arbitrary source row style).
+    pub(crate) promoted_style_id: Option<u32>,
     pub(crate) raw_attributes: &'xml [u8],
     pub(crate) reference: &'xml [u8],
     pub(crate) number: Option<u32>,
@@ -22,6 +24,7 @@ impl<'xml, 'styles> RowView<'xml, 'styles> {
         params: &'styles CleanSheetParameters,
     ) -> Option<Self> {
         let mut row = Self {
+            promoted_style_id: None,
             raw_attributes,
             reference: b"",
             number: None,
