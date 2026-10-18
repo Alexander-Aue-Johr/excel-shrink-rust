@@ -47,31 +47,17 @@ recalculation interval, renders the one-line terminal spinner, and enforces
 
 ## Screenshot validation
 
-Screenshots compare the repaired baseline with the direct shrink output and never use
-recalculation-saved workbooks. Workbooks are opened read-only with manual calculation,
-events/macros disabled, and external-link updates disabled.
+Visual validation compares the repaired baseline with the direct shrink output and
+never uses recalculation-saved workbooks. It runs in this order:
 
-Screenshot reuse is guarded by stored render inputs rather than calculation-cache
-eligibility. Ordinary external workbook-link metadata is therefore cacheable when link
-updates are disabled. Volatile/refresh-on-open inputs and external visual relationships
-(linked images, OLE objects, controls) remain runtime-sensitive and disable reuse.
-Contextual sheets such as charts/conditional-formatting sheets retain broader package
-dependencies.
+1. Compare stored values and formulas.
+2. Read and compare row heights with the Office add-in. If a height differs, capture
+   the affected row for the report and stop the full image check for that case.
+3. If all values and heights match, capture paired worksheet images and
+   compare pixels. Save focused original, shrunk, and difference images for changes.
 
-Screenshot cache version 10 intentionally invalidates older identities after these
-rules changed.
-
-### Capture failure and drawing-bound policy
-
-Rust-generated JSON consumed by Windows PowerShell 5.1 is read explicitly as UTF-8.
-Known DrawingML metadata extensions (`a16:creationId`, `a14:hiddenFill`,
-`a14:hiddenLine`) stay on the OOXML fast path; unknown extensions and unsupported
-geometry remain COM fallbacks. Duplicate shape names are treated as ambiguous rather
-than silently deduplicated.
-
-Repeated `Range.CopyPicture` failures and memory-like capture errors trigger recursive
-bisection along the physically longer axis. Clipboard-provenance and file-system/PNG
-failures do not trigger bisection.
+The case report is one scrollable HTML page with all worksheets. A failed or incomplete
+capture remains an error.
 
 Real-world cases are recorded in `tools/visual-tests/REAL_WORLD_VISUAL_CASES.md`.
 
@@ -83,7 +69,6 @@ Repository-local transient state has one root:
 .tmp/
   regression/
   regression-cache/
-  screenshots/
 ```
 
 The old `regression/tmp/` path is retained only as a cleanup target.
@@ -103,7 +88,7 @@ deleting corpus files, baselines, reports, or measurements.
 ```console
 cargo fmt --all -- --check
 cargo check -p excel-shrink-cli --bin excel-shrink-cli
-cargo test -p excel-shrink-cli --bin excel-shrink-cli regression::excel_automation -- --nocapture
+cargo test -p excel-shrink-cli --bin excel-shrink-cli regression:: -- --nocapture
 cargo test -p excel-shrink-cli --bin excel-shrink-cli visual_ -- --nocapture
 python tools/visual-tests/benchmark_value_compare_v9.py --rows 20000
 ```

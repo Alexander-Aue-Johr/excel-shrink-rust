@@ -13,15 +13,13 @@ The rule is:
 
 ```text
 regression/
-|- baselines/
-|  |- smoke.json
-|  `- corpus.json
-`- tmp/              # generated outputs, gitignored
+`- baselines/
+   |- smoke.json
+   `- corpus.json
 
 .tmp/
+|- regression/       # generated outputs, gitignored
 |- reports/<visual-profile>/
-|- screenshots/<visual-profile>/
-|- screenshots/shared/cache/
 |- workbooks/shared/<workbook-hash>/
 `- baselines/<visual-profile>/
 ```
@@ -201,14 +199,11 @@ Run Excel screenshot validation:
 cargo run --release -p excel-shrink-cli -- regression smoke --excel-screenshot-check
 ```
 
-This opens the original and shrunk workbooks in Excel, captures each used range, and writes cropped difference images plus approximate cell coordinates under the case output directory. The check requires Microsoft Excel automation. On Windows it invokes PowerShell directly; under WSL it tries `powershell.exe` and converts `/mnt/<drive>/...` paths for the Windows side.
-Full per-sheet original/shrunk screenshots are cached under `.tmp/screenshots/shared/cache`. Newly captured PNGs are materialized below `by-sheet-xml/<capture-range-hash>/<sheet-xml-hash>/` and the per-workbook manifests point at those shared files, so identical sheet XML can be reused across visual profiles. Screenshot difference artifacts for a run are written under the case output directory, for example `regression/tmp/<run>/<case-id>/excel-screenshots/`.
+The runner first compares stored cell values. It then reads row heights from both workbooks through the Office add-in. If a row height differs, it captures the affected row for the report and skips full image comparison for that case. If values and row heights match, it captures paired worksheet images and compares their pixels. The case output contains a single scrollable `report.html` covering every sheet, with focused original, shrunk, and difference images where applicable. This check requires Windows Excel and the Windows .NET 8 SDK.
 
 Generated and preserved XLSX artifacts are deduplicated under `.tmp/workbooks/shared/<workbook-hash>/`. The visible workbook paths in regression case directories, Excel automation work directories, and recalc output directories are recreated as file links to those shared workbooks after each write. Mutable repair inputs are the exception: they are temporary real copies while being repaired, then removed after the repaired result has been written back through the shared workbook store.
 
 The visual profile is derived from cleanup and visualization-relevant CLI options. Known profiles such as `default`, `remove-basic-textless-representatives`, `maximum-cleaning`, and `keep-all-inactive-protection-cells` get their own folders. Other combinations use `custom/<stable-config-hash>`.
-
-Sheet XML and XML diff artifacts written by screenshot validation are compressed as single-file `.zip` artifacts to keep large visual-diff runs manageable. The cropped PNG diff artifacts remain plain image files.
 
 Run every predefined visual profile with Excel value/recalculation and screenshot validation:
 
@@ -251,33 +246,14 @@ It only:
 - runs the CLI
 - compares actual results to versioned expectations
 - writes a JSON report under `.tmp/reports/<visual-profile>/`
-- writes profile metadata under `.tmp/reports/<visual-profile>/`, `.tmp/screenshots/<visual-profile>/`, and `.tmp/baselines/<visual-profile>/`
+- writes profile metadata under `.tmp/reports/<visual-profile>/` and `.tmp/baselines/<visual-profile>/`
 
 If a baseline needs to change, do that as an explicit reviewed code change with a stated reason. That prevents real regressions from being normalized away.
 
-### Excel automation diagnostics and recovery
+### Excel process and outputs
 
-Excel opens local Windows temporary copies with short names (`original.xlsx`,
-`shrunk.xlsx`, or `input.xlsx`). Recalculation saves to a short temporary path
-before copying the result to a short transfer directory. Rust copies inputs into
-that directory and results back to the case directory, so PowerShell does not
-need to copy workbooks to or from long case paths. The source workbooks are
-not moved. Temporary copies are removed on normal exit; forced process termination
-can leave an `es-*` directory in the Windows temporary directory.
-
-For each case, inspect:
-
-- `excel-screenshots/screenshot-progress.log`: workbook opening, individual captures,
-  cache hits, and completion.
-- `excel-screenshots/screenshot-progress.before-workbook-xml-repair.log`: progress
-  preserved before a repair retry.
-- `excel-automation/excel-screenshots.log` and `excel-recalculation.log`: appended
-  PowerShell transcripts, including automation errors.
-- `logs/excel-shrink-run.log` (relative to the CLI working directory): pipeline and
-  screenshot cache diagnostics. This is a shared log, not a complete terminal transcript.
-
-Capture manifests are checkpointed after each completed sheet. On completion,
-script failure, or watchdog timeout, valid checkpointed captures are imported into
-shared caches before reporting errors or retrying. A completed capture whose
-PowerShell process lingers is retained instead of triggering workbook repair.
-A forced termination of the Rust runner itself can still prevent cache import.
+Excel opens temporary workbook copies; the source workbooks are not moved. The
+capture runner removes its temporary files and closes its Excel instance when the
+run ends. Inspect the case's `report.html` for sheet results and its JSON result
+for machine-readable details. Recalculation output and logs remain separate from
+the visual report.

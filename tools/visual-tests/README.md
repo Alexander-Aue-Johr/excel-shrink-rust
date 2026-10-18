@@ -26,41 +26,17 @@ interactive Excel failure.
 recalculation call. `EXCEL_SHRINK_AUTOMATION_STALL_SECONDS` controls non-recalculation
 automation stalls.
 
-## Screenshot validation and cache
+## Visual validation
 
-Screenshots compare the repaired stored baseline with the direct shrink output; they
-never use Excel-saved recalculation copies. Capture opens workbooks read-only with
-manual calculation, events/macros disabled, and external-link updates disabled.
+The visual check compares the repaired stored baseline with the direct shrink output;
+it does not use recalculation-saved copies. Stored values are checked first. The
+Office add-in then reads row heights from both workbooks. A changed height leads to
+a focused capture of the affected row. If all heights match, the add-in
+captures worksheet images and Rust compares their pixels. The scrollable case
+report presents each affected sheet with its original and shrunk image excerpts.
 
-The screenshot cache is content- and environment-qualified. Ordinary external-link
-metadata no longer disables reuse by itself when Excel is explicitly told not to
-update links. Volatile/refresh-on-open inputs and external visual relationships such
-as linked images/OLE/control content remain non-cacheable. Conditional formatting,
-charts, drawings, and other contextual sheets still receive broader package context.
-
-Current shared screenshot cache entries use the v10 namespace. Changing the guarded
-render-input rules therefore cannot silently reuse older v9 cache entries.
-
-## Screenshot capture hardening
-
-Rust-to-PowerShell JSON is an explicit UTF-8 interface. Cache-plan, range-limit, and
-skip-sheet JSON are read with `-Encoding UTF8`; the native fixture includes the names
-`Inhaltsübersicht` and `Erläuterung zu CSV-Tabellen`.
-
-Drawing bounds remain OOXML-first. Known bounds-neutral metadata extensions used for
-`a16:creationId`, `a14:hiddenFill`, and `a14:hiddenLine` do not force otherwise simple
-anchors through per-shape COM. Unknown extensions and unsupported geometry still
-fall back to Excel. Duplicate OOXML shape names are tracked so fallback does not
-silently collapse shapes into one `Shapes.Item(name)` lookup.
-
-After three consecutive `Range.CopyPicture` exceptions, screenshot capture bisects
-the range along the physically longer direction and retries recursively. Memory-like
-image failures are also splittable. Clipboard-provenance and PNG/file-system failures
-remain explicit failures instead of being hidden by tiling. The split depth is high
-enough to cover Excel's maximum worksheet dimensions.
-
-The renderer key already hashes the screenshot/bounds/clipboard/planner sources, so
-these changes select a new cache identity within the v10 namespace automatically.
+Drawing bounds come from the workbook package and are checked against Excel's
+rendered geometry during capture. An unresolved capture is an error, not a match.
 
 See [`REAL_WORLD_VISUAL_CASES.md`](REAL_WORLD_VISUAL_CASES.md) for research-worthy
 examples and future regression fixtures.
@@ -90,9 +66,8 @@ python tools/visual-tests/summarize_visual_logs.py logs/runs/excel-shrink-run-<r
 
 ## Generated state
 
-Normal regression outputs now live under `.tmp/regression/`; the legacy
-`regression/tmp/` location is no longer used. Validation caches live under
-`.tmp/regression-cache/` and screenshot caches under `.tmp/screenshots/`.
+Normal regression outputs live under `.tmp/regression/`. Validation caches live
+under `.tmp/regression-cache/`.
 
 The helper script can remove generated state without touching corpus files,
 regression baselines, reports, or measurements:
@@ -116,18 +91,7 @@ Equivalent VS Code tasks are installed as:
 ```console
 cargo fmt --all -- --check
 cargo check -p excel-shrink-cli --bin excel-shrink-cli
-cargo test -p excel-shrink-cli --bin excel-shrink-cli regression::excel_automation -- --nocapture
+cargo test -p excel-shrink-cli --bin excel-shrink-cli regression:: -- --nocapture
 cargo test -p excel-shrink-cli --bin excel-shrink-cli regression::xlsx_value_compare -- --nocapture
 cargo test -p excel-shrink-cli --bin excel-shrink-cli visual_ -- --nocapture
 ```
-
-PowerShell parser/native fixture checks:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\visual-tests\verify_visual_fix.ps1
-powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tools\visual-tests\verify_visual_fix.ps1 -LiveExcel
-```
-
-The non-live run covers the OOXML drawing planner, UTF-8 cache boundary, split-error
-classification, and PowerShell parsing. `-LiveExcel` additionally runs interactive
-Excel rendering fixtures.
