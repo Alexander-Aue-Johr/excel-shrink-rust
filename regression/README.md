@@ -254,3 +254,30 @@ It only:
 - writes profile metadata under `.tmp/reports/<visual-profile>/`, `.tmp/screenshots/<visual-profile>/`, and `.tmp/baselines/<visual-profile>/`
 
 If a baseline needs to change, do that as an explicit reviewed code change with a stated reason. That prevents real regressions from being normalized away.
+
+### Excel automation diagnostics and recovery
+
+Excel opens local Windows temporary copies with short names (`original.xlsx`,
+`shrunk.xlsx`, or `input.xlsx`). Recalculation saves to a short temporary path
+before copying the result to a short transfer directory. Rust copies inputs into
+that directory and results back to the case directory, so PowerShell does not
+need to copy workbooks to or from long case paths. The source workbooks are
+not moved. Temporary copies are removed on normal exit; forced process termination
+can leave an `es-*` directory in the Windows temporary directory.
+
+For each case, inspect:
+
+- `excel-screenshots/screenshot-progress.log`: workbook opening, individual captures,
+  cache hits, and completion.
+- `excel-screenshots/screenshot-progress.before-workbook-xml-repair.log`: progress
+  preserved before a repair retry.
+- `excel-automation/excel-screenshots.log` and `excel-recalculation.log`: appended
+  PowerShell transcripts, including automation errors.
+- `logs/excel-shrink-run.log` (relative to the CLI working directory): pipeline and
+  screenshot cache diagnostics. This is a shared log, not a complete terminal transcript.
+
+Capture manifests are checkpointed after each completed sheet. On completion,
+script failure, or watchdog timeout, valid checkpointed captures are imported into
+shared caches before reporting errors or retrying. A completed capture whose
+PowerShell process lingers is retained instead of triggering workbook repair.
+A forced termination of the Rust runner itself can still prevent cache import.

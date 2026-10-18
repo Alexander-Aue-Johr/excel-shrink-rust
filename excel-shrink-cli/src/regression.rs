@@ -209,10 +209,17 @@ struct ExcelRecalcValidationReport {
     original_vs_shrunk: WorkbookComparisonReport,
     shrunk_recalculated: ExcelSavedWorkbook,
     shrunk_vs_recalculated: WorkbookComparisonReport,
+    #[serde(skip_serializing_if = "Option::is_none")]
     original_recalculated: Option<ExcelSavedWorkbook>,
-    original_vs_recalculated_for_changed_sheets: Option<WorkbookComparisonReport>,
-    volatile_difference_count: usize,
     real_recalc_differences: Vec<CellValueDifference>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recalculated_baseline_vs_shrunk: Option<WorkbookComparisonReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    baseline_reference_cache_hit: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    baseline_reference_cacheable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    baseline_reference_kind: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1597,21 +1604,23 @@ fn validate_excel_recalculation(
     case_output_dir: &Path,
     cli: &Cli,
 ) -> anyhow::Result<(ExcelRecalcValidationReport, Vec<String>)> {
+    let _phase = visual_diagnostics::phase(
+        "regression.recalculation_validation",
+        original_path.display().to_string(),
+    );
     let excel_dir = case_output_dir.join("excel-recalc");
     let automation_dir = case_output_dir.join("excel-automation");
     fs::create_dir_all(&excel_dir)?;
 
-    let original_vs_shrunk = compare_original_and_shrunk_values(original_path, shrunk_path, cli)?;
-
-    let shrunk_recalculated_path = excel_dir
-        .join("shrunk-recalculated")
-        .join(file_name(shrunk_path)?);
+    let original_vs_shrunk =
+        compare_original_and_shrunk_values(original_path, shrunk_path, cli)?;
     let shrunk_recalculated = excel_automation::save_recalculated_copy(
         shrunk_path,
-        &shrunk_recalculated_path,
-        &automation_dir,
+        &excel_dir
+            .join("shrunk-recalculated")
+            .join(file_name(shrunk_path)?),
+        &automation_dir.join("shrunk"),
     )?;
-
     let shrunk_vs_recalculated = xlsx_value_compare::compare_workbook_values(
         shrunk_path,
         &shrunk_recalculated.path,
@@ -1625,48 +1634,52 @@ fn validate_excel_recalculation(
     }
 
     let mut original_recalculated = None;
-    let mut original_vs_recalculated_for_changed_sheets = None;
-    let mut volatile_difference_count = 0;
+    let mut recalculated_baseline_vs_shrunk = None;
     let mut real_recalc_differences = Vec::new();
+    let mut baseline_reference_cache_hit = None;
+    let mut baseline_reference_cacheable = None;
+    let mut baseline_reference_kind = None;
 
-    if !shrunk_vs_recalculated.differences.is_empty() {
+    if shrunk_vs_recalculated.differences.is_empty() {
+        tracing::info!(
+            "[recalc] shrunk stored values are unchanged after Excel recalculation; baseline Excel open skipped"
+        );
+    } else {
         let changed_sheets = sheets_with_differences(&shrunk_vs_recalculated.differences);
-        let original_recalculated_path = excel_dir
-            .join("original-recalculated")
-            .join(excel_saved_file_name(original_path)?);
-        let saved_original = excel_automation::save_recalculated_copy(
+        tracing::info!(
+            changed_sheets = changed_sheets.len(),
+            changed_values = shrunk_vs_recalculated.difference_count,
+            "[recalc] shrunk values changed after recalculation; recalculating paired baseline"
+        );
+        let reference = excel_automation::baseline_recalculation_reference(
             original_path,
-            &original_recalculated_path,
+            &excel_dir,
             &automation_dir,
         )?;
-        let original_recalc_report = xlsx_value_compare::compare_workbook_values(
-            original_path,
-            &saved_original.path,
-            MissingCellPolicy::strict(),
+        let paired = xlsx_value_compare::compare_workbook_values(
+            &reference.workbook.path,
+            &shrunk_recalculated.path,
+            missing_cell_policy(cli),
             Some(&changed_sheets),
         )?;
-        let volatile_keys =
-            xlsx_value_compare::difference_keys(&original_recalc_report.differences);
-
-        for difference in &shrunk_vs_recalculated.differences {
-            let key = (difference.sheet_file.clone(), difference.cell_ref.clone());
-            if volatile_keys.contains(&key) {
-                volatile_difference_count += 1;
-            } else {
-                real_recalc_differences.push(difference.clone());
-            }
-        }
-
+        real_recalc_differences = paired.differences.clone();
         if !real_recalc_differences.is_empty() {
             failures.push(format!(
-                "shrunk workbook changed after Excel recalculation in {} non-volatile cells: {}",
+                "recalculated baseline-vs-shrunk comparison found {} differences: {}{}. No address-only volatile exemption was applied.",
                 real_recalc_differences.len(),
-                summarize_cell_differences(&real_recalc_differences)
+                summarize_cell_differences(&real_recalc_differences),
+                if reference.cacheable {
+                    ""
+                } else {
+                    "; this workbook has unverified/volatile/external calculation inputs; differences may be environmental, but are not a PASS"
+                }
             ));
         }
-
-        original_recalculated = Some(saved_original);
-        original_vs_recalculated_for_changed_sheets = Some(original_recalc_report);
+        baseline_reference_cache_hit = Some(reference.cache_hit);
+        baseline_reference_cacheable = Some(reference.cacheable);
+        baseline_reference_kind = Some(reference.kind);
+        original_recalculated = Some(reference.workbook);
+        recalculated_baseline_vs_shrunk = Some(paired);
     }
 
     Ok((
@@ -1675,9 +1688,11 @@ fn validate_excel_recalculation(
             shrunk_recalculated,
             shrunk_vs_recalculated,
             original_recalculated,
-            original_vs_recalculated_for_changed_sheets,
-            volatile_difference_count,
             real_recalc_differences,
+            recalculated_baseline_vs_shrunk,
+            baseline_reference_cache_hit,
+            baseline_reference_cacheable,
+            baseline_reference_kind,
         },
         failures,
     ))
@@ -1726,14 +1741,6 @@ fn summarize_cell_differences(differences: &[CellValueDifference]) -> String {
 fn file_name(path: &Path) -> anyhow::Result<&std::ffi::OsStr> {
     path.file_name()
         .ok_or_else(|| anyhow::anyhow!("path has no file name: {}", path.display()))
-}
-
-fn excel_saved_file_name(path: &Path) -> anyhow::Result<String> {
-    let stem = path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .ok_or_else(|| anyhow::anyhow!("path has no UTF-8 file stem: {}", path.display()))?;
-    Ok(format!("{stem}.excel-saved.xlsx"))
 }
 
 fn failed_case_report(
