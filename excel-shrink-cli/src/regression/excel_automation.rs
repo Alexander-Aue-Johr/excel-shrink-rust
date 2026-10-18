@@ -544,7 +544,7 @@ fn find_power_shell() -> Option<&'static str> {
     None
 }
 
-fn power_shell_path(path: &Path) -> anyhow::Result<String> {
+pub(super) fn power_shell_path(path: &Path) -> anyhow::Result<String> {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {

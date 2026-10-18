@@ -1,7 +1,27 @@
+use anyhow::{ensure, Context};
 use serde_json::Value;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+pub(super) fn open_visual_report(path: &Path) -> anyhow::Result<()> {
+    let launcher = super::repo_root().join("excel-shrink-cli/src/regression/open_report.ps1");
+    let result = Command::new("powershell.exe")
+        .args(["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(super::excel_automation::power_shell_path(&launcher)?)
+        .arg("-ReportPath")
+        .arg(super::excel_automation::power_shell_path(path)?)
+        .output()
+        .context("start the visual report browser")?;
+    ensure!(
+        result.status.success(),
+        "report browser failed ({}): {}",
+        result.status,
+        String::from_utf8_lossy(&result.stderr)
+    );
+    Ok(())
+}
 
 pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::Result<PathBuf> {
     fs::create_dir_all(output_dir)?;

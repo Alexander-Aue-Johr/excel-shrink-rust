@@ -1091,6 +1091,16 @@ fn run_suite(
     if show_info {
         eprintln!("[{mode_name}] Report written to {}", report_path.display());
     }
+    for case in &report.cases {
+        if let Some(visual) = &case.excel_screenshot_details {
+            if let Err(error) = visual_report::open_visual_report(&visual.html_report_path) {
+                eprintln!(
+                    "[{mode_name}] Could not open visual report {}: {error:#}",
+                    visual.html_report_path.display()
+                );
+            }
+        }
+    }
 
     Ok(SuiteRunResult {
         report_path,
