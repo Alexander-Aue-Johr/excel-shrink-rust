@@ -79,13 +79,18 @@ function Build-Host([string]$dotnet, [string]$stage, [string]$outputDirectory) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         throw 'Capture host build exceeded 180 seconds.'
     }
-    if ($process.ExitCode -ne 0) {
+    $process.Refresh()
+    $buildOutputs = @(
+        (Join-Path $localBuild 'OfficeCaptureHost.dll'),
+        (Join-Path $localBuild 'OfficeCaptureHost.runtimeconfig.json'),
+        (Join-Path $localBuild 'OfficeCaptureHost.deps.json')
+    )
+    $missingOutputs = @($buildOutputs | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    if (($null -ne $process.ExitCode -and $process.ExitCode -ne 0) -or $missingOutputs.Count -gt 0) {
         Copy-Item -LiteralPath $stdout -Destination (Join-Path $outputDirectory 'host-build.stdout.log') -Force
         Copy-Item -LiteralPath $stderr -Destination (Join-Path $outputDirectory 'host-build.stderr.log') -Force
-        throw "Capture host build failed with exit code $($process.ExitCode)."
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $localBuild 'OfficeCaptureHost.dll'))) {
-        throw 'Capture host build produced no executable assembly.'
+        $exitCode = if ($null -eq $process.ExitCode) { 'unavailable' } else { [string]$process.ExitCode }
+        throw "Capture host build failed (exit code: $exitCode; missing outputs: $($missingOutputs -join ', ')). See host-build.*.log in $outputDirectory."
     }
     New-Item -ItemType Directory -Path $cache -Force | Out-Null
     Copy-Item -Path (Join-Path $localBuild '*') -Destination $cache -Recurse -Force
