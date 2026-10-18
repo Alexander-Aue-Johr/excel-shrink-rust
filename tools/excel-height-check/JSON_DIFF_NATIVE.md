@@ -1,7 +1,7 @@
 <!-- Managed by patch_excel_json_diff.py. -->
 # Excel JSON diff: Rust + PowerShell + VBA
 
-Der Task **Excel tools: Select file or folder - Shrink - JSON diff** startet jetzt
+Der Task **Experiment: visual validation** startet jetzt
 `json_diff.ps1`, unter WSL ueber den kleinen Launcher `json_diff_wsl.sh`.
 Python ist nur fuer das einmalige Einspielen des Patches erforderlich. Die alten
 Python-Runner und die Regressionstests bleiben unveraendert.

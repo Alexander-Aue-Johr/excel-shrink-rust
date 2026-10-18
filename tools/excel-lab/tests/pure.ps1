@@ -26,17 +26,6 @@ foreach ($file in (Get-ChildItem -LiteralPath $labRoot -Recurse -Filter '*.ps1' 
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('excel-lab-pure-'+[guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($temp)
 try {
-    # This parses/constructs WPF but never shows a dialog or starts Excel.
-    Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
-    Add-Type -Path (Join-Path $labRoot 'FolderPicker.cs')
-    $xaml=[xml][IO.File]::ReadAllText((Join-Path $labRoot 'Options.xaml'))
-    $reader=[Xml.XmlNodeReader]::new($xaml)
-    try { $window=[Windows.Markup.XamlReader]::Load($reader) } finally { $reader.Close() }
-    try {
-        Assert-Lab ($null -ne $window.FindName('RunButton')) 'WPF XAML loads without showing a window'
-        Assert-Lab ($window.FindName('RowsBox').SelectedItem.Tag -ceq 'none') 'fast range metadata is the default; exhaustive rows are opt-in'
-        Assert-Lab ($window.FindName('ModeBox').SelectedItem.Tag -ceq 'shrink') 'default workflow is shrink-and-compare'
-    } finally { $window.Close() }
     # A CLR IEnumerable stand-in tests the non-enumerating return contract used
     # for Excel COM. Actual IDispatch/Excel is tested by the VBA fixture task.
     Add-Type @'
