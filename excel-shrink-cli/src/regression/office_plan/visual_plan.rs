@@ -575,7 +575,8 @@ fn parse_drawing(bytes: &[u8]) -> Result<DrawingSummary> {
             root_seen = true;
             continue;
         }
-        if tag.depth != 1 {
+        if matches!(tag.local(), b"AlternateContent" | b"Choice" | b"Fallback") {
+            summary.fallback_required = true;
             continue;
         }
         let element = reader.element(tag)?;
@@ -586,8 +587,13 @@ fn parse_drawing(bytes: &[u8]) -> Result<DrawingSummary> {
                     anchor_marker(element.body, b"to"),
                 ) {
                     (Ok(Some(from)), Ok(Some(to))) => {
-                        summary.max_row = summary.max_row.max(from.row).max(to.row);
-                        summary.max_column = summary.max_column.max(from.column).max(to.column);
+                        // Leave a cell past the anchor for borders and offsets at the cell edge.
+                        summary.max_row = summary.max_row
+                            .max(from.row)
+                            .max(to.row.saturating_add(1).min(MAX_ROWS));
+                        summary.max_column = summary.max_column
+                            .max(from.column)
+                            .max(to.column.saturating_add(1).min(MAX_COLUMNS));
                     }
                     _ => summary.fallback_required = true,
                 }
@@ -765,8 +771,30 @@ mod tests {
             <xdr:pic/>
         </xdr:twoCellAnchor></xdr:wsDr>"#;
         let plan = parse_drawing(drawing).unwrap();
-        assert_eq!((plan.max_row, plan.max_column), (40, 10));
+        assert_eq!((plan.max_row, plan.max_column), (41, 11));
         assert!(!plan.fallback_required);
+    }
+
+    #[test]
+    fn alternate_drawing_branches_extend_the_capture_bounds() {
+        let drawing = br#"<xdr:wsDr xmlns:xdr="x" xmlns:mc="m">
+            <mc:AlternateContent><mc:Choice Requires="a14">
+                <xdr:twoCellAnchor>
+                    <xdr:from><xdr:col>1</xdr:col><xdr:row>7</xdr:row></xdr:from>
+                    <xdr:to><xdr:col>1</xdr:col><xdr:row>12</xdr:row><xdr:rowOff>157162</xdr:rowOff></xdr:to>
+                    <xdr:sp/>
+                </xdr:twoCellAnchor>
+            </mc:Choice><mc:Fallback>
+                <xdr:twoCellAnchor>
+                    <xdr:from><xdr:col>1</xdr:col><xdr:row>7</xdr:row></xdr:from>
+                    <xdr:to><xdr:col>3</xdr:col><xdr:row>9</xdr:row></xdr:to>
+                    <xdr:pic/>
+                </xdr:twoCellAnchor>
+            </mc:Fallback></mc:AlternateContent>
+        </xdr:wsDr>"#;
+        let plan = parse_drawing(drawing).unwrap();
+        assert_eq!((plan.max_row, plan.max_column), (14, 5));
+        assert!(plan.fallback_required);
     }
 
     #[test]
