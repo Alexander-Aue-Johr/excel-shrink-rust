@@ -39,14 +39,14 @@ function mount(data,host){const d=host.ownerDocument,runs=normalize(data),el=(ta
  const catalog=el('section','history-panel');catalog.id='experiments';add(main,catalog,el('footer','muted',`Offline report catalog · Generated ${data.generated_utc||'time not recorded'} · Historical results remain unchanged.`));add(catalog,el('div','eyebrow','EXPERIMENT MAP'),el('h2','','What each experiment answers'));
  const table=el('table','bounds-table'),body=el('tbody');add(catalog,add(el('div','table-scroll'),table));add(table,add(el('thead'),add(el('tr'),['Experiment','Question','Current scope'].map(t=>el('th','',t)))),body);
  for(const row of [
- ['Configured comparison suite','Which current configurations are reliable, equivalent and fast on the same inputs?','One JSON plan. Repeated current candidates or a one-pass experiment inventory. No automatic deletion.'],
+ ['Capture evaluation','Which host, overflow method and image budget should be selected?','One pinned protocol: coverage, a host/overflow block and a separate tile-budget comparison.'],
  ['Drawing bounds','Which execution model obtains shape bounds reliably and quickly?','VBA, C# add-ins, Office.js and external COM. Implementation choice remains an engineering comparison.'],
  ['Get picture · A–C','How much do bounds discovery and image capture cost?','UsedRange or content/drawing bounds. Calibrated tiling; persistent image evidence.'],
  ['Get picture · D/E','Can a before/blocked XOR pair determine overflow?','Legacy bounded blocker column / row. Retained for comparison; large probes are guarded.'],
  ['Get picture · F · A/B','Does row-selective causal verification avoid false expansions?','A: current pixel heuristic. B: one blocker per candidate row, with verified restoration. Separate original-workbook copies.'],
  ['Height plateau','Where does the native renderer saturate or clip?','Explicit diagnostic. Not the production tile budget.'],
  ['Units / markers / row heights','How do XML, Excel geometry and PNG pixels relate?','Synthetic controls. Raster scale is calibrated per run; exact XML conversion is not assumed.']])add(body,add(el('tr'),row.map(t=>el('td','',t))));
- add(catalog,el('p','callout','Production policy is separate: Rust content bounds, a reasonable minimum screenshot width, and persistent screenshots. Exact-overflow experiments do not silently replace that policy.'));
+ add(catalog,el('p','callout','Selected capture method: Strategy F, .NET host, selective overflow verification, 32 MP, visible context and strict pixel checks. Production original-versus-shrunk validation remains a separate acceptance step.'));
  return {runs,render};
 }
 const api={normalize,filterRuns,safePath,mount};root.VVHistory=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;

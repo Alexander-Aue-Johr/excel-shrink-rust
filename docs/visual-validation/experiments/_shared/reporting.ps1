@@ -1,4 +1,4 @@
-. (Join-Path $PSScriptRoot 'report-io.ps1')
+﻿. (Join-Path $PSScriptRoot 'report-io.ps1')
 . (Join-Path $PSScriptRoot 'report\inspector.ps1')
 . (Join-Path $PSScriptRoot 'report\history.ps1')
 . (Join-Path $PSScriptRoot 'suite\report.ps1')
@@ -339,14 +339,8 @@ function Get-VVCaptureRollup([string]$RunRoot) {
 }
 function Complete-VVReport([string]$RunRoot, [switch]$Interrupted) {
     $meta=Read-VVJson (Join-Path $RunRoot 'run.json')
-    if ($null -ne $meta -and $meta.experiment -eq 'decision-campaign') {
-        Write-Host 'Decision campaign view retained. Use decision-campaign.ps1 -ReportOnly to rebuild it without Excel.'
-        return
-    }
-    if ($null -ne $meta -and $meta.experiment -eq 'comparison-suite') {
-        Complete-VVSuiteReport -RunRoot $RunRoot -Interrupted:$Interrupted
-        return
-    }
+    if ($null -ne $meta -and $meta.experiment -eq 'visual-evaluation' -and (Test-Path -LiteralPath (Join-Path $RunRoot 'evaluation-state.json'))) { return }
+    if ($null -ne $meta -and $meta.experiment -in @('decision-campaign','comparison-suite','capture-followup','capture-finalization')) { return }
     if ($null -eq $meta -or $meta.schema -ne 'vv-report-v1') { throw 'Not a managed report.' }
     $prefix=$RunRoot.TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
     $errors=@(); $outputs=@(); $sheetRows=[Text.StringBuilder]::new()

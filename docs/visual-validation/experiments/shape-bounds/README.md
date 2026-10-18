@@ -1,36 +1,7 @@
-# Get Shape Bounds experiment
+# Drawing bounds
 
-> Current runs: see [consolidated capture/report contract](../CONSOLIDATED-CAPTURE.md). Output is now central
-> at `docs/visual-validation/results/`. Historical paths and monolithic timing notes below
-> describe the earlier experiments, not the current safe range-image capture path.
-
-
-This is the execution-model benchmark for visible drawing bounds used by Excel
-Shrink visual validation.
-
-Established implementations remain local to this directory:
-
-- VBA
-- Excel-DNA
-- VSTO
-- PowerShell COM
-- Rust COM
-
-Office.js now uses the experiment-local shared add-in infrastructure at
-`../_shared/office-addin/` and can be run against either the Rust or ASP.NET host.
-Production code does not depend on any experiment project.
-
-Run through the common dispatcher:
-
-```powershell
-../run.ps1
-```
-
-or directly:
-
-```powershell
-./run.ps1 -Implementation run-all -NonInteractive
-```
-
-The older base runner is intentionally retained because it is the already-validated
-geometry comparison for VBA / Excel-DNA / PowerShell COM / Rust COM.
+Compare geometry from VBA, Excel-DNA, PowerShell COM, Rust COM, VSTO and Office.js.
+These measurements are not a C# screenshot benchmark. Use the common
+[GUI/CLI](../README.md) with experiment `shape-bounds`; select `native`, `vsto`,
+`officejs-dotnet` or `officejs-rust`. Missing prerequisites and visibility differences
+remain explicit in the output.

@@ -1,60 +1,96 @@
-# Visual-validation experiments
+# Capture experiments
 
-For an unresolved workbook/sheet, use [Focused capture reproduction](FOCUSED-CAPTURE.md). The focused GUI and CLI share exact selections and separate phase deadlines; they do not launch a strategy sweep.
+One reproducible protocol and one interface for individual experiments.
 
-> Current runs: see [consolidated capture/report contract](CONSOLIDATED-CAPTURE.md). Output is now central
-> at `docs/visual-validation/results/`. Historical paths and monolithic timing notes below
-> describe the earlier experiments, not the current safe range-image capture path.
+## Requirements
 
+Windows desktop Excel, Windows PowerShell 5.1, Python 3.10+, Node.js for portable
+tests, and .NET 8 SDK for the .NET host. Rust host/planner builds use the existing
+Rust toolchain; WSL cross builds require MinGW-w64 and the Windows GNU target.
+The native reference adapters require their recorded VBA/COM/add-in prerequisites.
+No runner weakens macro security or trusts arbitrary certificates automatically.
 
-This tree is intentionally isolated from production code. Experiments may share code
-only through `_shared/`; production `src/`, `crates/`, and `tools/` must not depend on
-anything here.
+The input registry and hashes are in [reproduce.json](reproduce.json). Place the
+matching XLSX files at the listed paths below `corpus-local`, or pass `-CorpusRoot`.
+The eight files are available from the `original_destatis_xlsx_files` source
+repository identified by `regression/baselines/smoke.json`. Validate hashes rather
+than substituting a newer portal file under the same name.
 
-The primary entry point is `run.ps1`. In CLI mode it dynamically asks for the experiment
-and only then asks for choices relevant to that experiment. The VS Code task can also
-select a WPF launcher; it runs the same experiment scripts non-interactively and stores
-the last submitted GUI configuration in
-`.tmp/visual-validation/launcher-last-config.json`.
+## Reproduce the decision
 
-Directory layout:
+From the repository root in Windows PowerShell:
 
-- `_shared/` — experiment-only Office add-in, host implementations, and orchestration.
-- `shape-bounds/` — drawing-bound execution-model benchmark.
-- `range-image/` — screenshot/bounds/overflow benchmark.
-- `range-image-height-limit/` — isolated Office.js `Range.getImage()` height-limit diagnostic.
+```powershell
+& .\docs\visual-validation\experiments\reproduce.ps1 -PlanOnly
+& .\docs\visual-validation\experiments\reproduce.ps1
+```
 
-Experiment-specific dependency manifests stay inside this tree. Selecting the Rust
-host uses its local `Cargo.toml`; selecting the ASP.NET host uses its local `.csproj`.
-Neither dependency set is needed to build or use Excel Shrink itself.
+The VS Code task **Visual validation: Reproduce capture decision** runs the same
+entry. Close unrelated Excel instances and keep monitor/scaling fixed. The protocol
+has **62 nominal cases**: 8 coverage, 36 host/overflow, 18 budget measurements.
+Bounded recovery can add cases. The default session cap is six hours, not a promise
+that all machines complete within six hours. Input/hash validation runs before Excel.
 
-## PNG rendering diagnostics (v2)
+To run only a declared block, use `-Group tile-budget` (or `coverage`,
+`host-overflow`). Results are scoped to the blocks actually executed. Repetition
+count and timeouts can be changed explicitly; these changes enter the resolved plan.
+They are not silently substituted into a claim about the default protocol.
 
-- [Height plateau](range-image-height-limit/): calibrated actual-PNG plateau search on the fixed hospital worksheet, adjacent-row repetitions, and separate width controls.
-- [Units and markers](range-image-calibration/): deterministic synthetic OOXML, Normal-font and rounding controls, and clipping/scaling evidence.
+## Individual experiments
 
-Both are available in the CLI/WPF launcher and in the dedicated VS Code PNG diagnostics task. They use the ASP.NET host, preserve raw diagnostic artifacts per run, and do not change production capture policy.
+**Experiment: visual validation** opens the WPF interface. The same route is:
 
-## Gridless capture and compact review bundles
+```powershell
+& .\docs\visual-validation\experiments\run.ps1 -InterfaceMode gui
+```
 
-See [capture policy and local HTTP host](GRIDLESS-CAPTURE.md) for normalized gridlines,
-physical final-PNG crops, metadata-only review bundles, and the Rust desktop HTTP path.
+The GUI offers all capture, drawing-bound, row-height and renderer diagnostics,
+including the native bitmap/EMF and memory-pair references. For one selected capture:
 
-## Configured comparison suite
+```powershell
+& .\docs\visual-validation\experiments\run.ps1 -InterfaceMode cli `
+    -Experiment range-image -Workbook 'krankenhausverzeichnis-3500100227005.xlsx' `
+    -Sheet ' KHV_2022' -HostKind dotnet -OverflowMode selective -TileMegapixels 32
+```
 
-Use **Visual validation: Run comparison suite** in VS Code. The default `suite.json` runs repeated current candidates; `inventory` covers the experiment families once. See [COMPARISON-SUITE.md](COMPARISON-SUITE.md) for scope, isolation, interpretation and the one-bundle review workflow. Existing individual entry points remain available.
+Exact worksheet names preserve whitespace. `-SheetIndex` is one-based and uses the
+original workbook order. `-ListSheets` reads only the workbook catalogue; hidden
+worksheets are not unhidden. Use `-ListExperiments` for identifiers. Diagnostics
+with synthetic fixtures require no corpus; the height-plateau diagnostic uses its
+fixed hospital input. Native full-workbook adapters reject unsupported sheet subsets.
 
-## Bounded strategy decision
+A JSON `-SelectionFile` avoids command-shell array ambiguity. It has schema
+`vv-experiment-request-v1`, mode `single`, `experiment`, `workbook`, optional exact
+`sheets`, `settings`, and `limits`. The GUI saves this request under `.tmp`, and the
+resolved local report records all effective settings.
 
-Use **Visual validation: Decide strategy (all workbooks)**. See [DECISION-CAMPAIGN.md](DECISION-CAMPAIGN.md) for the predeclared screening/confirmation/all-file plan, baseline-relative deadlines, native scope and generated decision memorandum. This does not run the original-versus-shrunk regression corpus.
+## Deadlines and continuation
 
-## Focused capture repair
+| Limit | Default seconds |
+|---|---:|
+| Setup | 600 |
+| Excel startup | 300 |
+| Capture | 1200 (coverage uses 1800; comparison blocks 600) |
+| Individual native call | 90 |
+| Add-in inactivity | 120 |
+| Postprocessing | 600 |
+| Session | 21600 |
 
-Use **Visual validation: Check capture fixes (focused)** for the bounded hidden/narrow-column and geometry follow-up. See [protocol and scope](FOCUSED-CAPTURE-REPAIR.md). It does not repeat the full strategy matrix or change production decisions.
+Use named `-StartupTimeoutSeconds`, `-CaptureTimeoutSeconds`,
+`-NativeCallTimeoutSeconds`, `-PostprocessTimeoutSeconds` and
+`-SessionTimeoutSeconds` overrides. Heartbeats never extend absolute deadlines.
+The supervisor terminates only owned processes; unknown Excel ownership pauses work.
 
-## Final contextual capture qualification
+Explicit continuation: `reproduce.ps1 -ResumeRun '<managed run directory>'`.
+Source and inputs must match. Completed cases are not silently rerun. Offline views
+can be regenerated using `-ResumeRun ... -ReportOnly`; existing measurement times
+are not edited. See [reporting](REPORTING.md).
 
-Run **Visual validation: Finalize capture strategy** for the readiness-gated final comparison.
-It validates visible-cell capture context and additive geometry first, then runs only
-the remaining host/overflow/16–32–64-MP race. See [protocol and limits](CONTEXT-CAPTURE-QUALIFICATION.md).
-No historical VBA/GDI+ or synthetic diagnostic matrices are rerun by this profile.
+## Validation
+
+Run **Visual validation: Validate experiment code**, or
+`python tools/validate-visual-experiments.py` for portable tests. The Windows task
+also performs syntax, process-observer, snapshot I/O and local pixel preflights.
+Portable tests and model renderers do not certify native Excel behavior.
+
+[Protocol](PROTOCOL.md) · [Decision](../decisions.md) · [Published evidence](../evidence/index.html)

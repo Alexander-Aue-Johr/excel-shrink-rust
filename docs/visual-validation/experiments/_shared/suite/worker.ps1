@@ -37,7 +37,7 @@ try {
                 $params=@{CorpusRoot=$corpus;Workbook='all';Strategy=$c.strategy;Implementation=('officejs-'+$c.host_kind);
                     BatchSize=[int]$cfg.batch_size;TileMegapixels=[int]$cfg.tile_megapixels;TilePacking=[string]$cfg.tile_packing;
                     OverflowMode=[string]$c.overflow_mode;OverflowProbeWidthPx=[int]$cfg.overflow_probe_width_px;
-                    OverflowProbeHeightPx=[int]$cfg.overflow_probe_height_px;RustExcelLaunchMode='excel-x';ExtendedErrorLogging=$true;NonInteractive=$true}
+                    OverflowProbeHeightPx=[int]$cfg.overflow_probe_height_px;RustExcelLaunchMode=[string]$cfg.excel_launch_mode;ExtendedErrorLogging=$true;NonInteractive=$true}
                 if($c.sheet_names){$params.SheetNames=[string[]]@($c.sheet_names)}
                 if($c.context_validation){$params.ContextValidation=[string]$c.context_validation}
                 if($null -ne $spec.focus_parameters){
@@ -66,7 +66,7 @@ try {
                 else{& (Join-Path $exp 'range-image-calibration\run.ps1') -Suite $c.suite -NonInteractive}
             }
             {$_ -in @('lab-setup','lab-capture','lab-memory','lab-rows')} {
-                . (Join-Path $PSScriptRoot '..\decision\native.ps1')
+                . (Join-Path $PSScriptRoot 'native.ps1')
                 Invoke-VVDecisionNative $spec
             }
             default {throw 'Unsupported suite case kind.'}
@@ -99,7 +99,7 @@ try {
             $metrics.pixel_unverified_captures=@($metrics.captures).Count
         }
         if($spec.decision){
-            . (Join-Path $PSScriptRoot '..\decision\extras.ps1')
+            . (Join-Path $PSScriptRoot 'extras.ps1')
             $metrics=Add-VVDecisionEvidence -Metrics $metrics -CaseRoot $caseRoot -Spec $spec
         }
         if($null -ne $spec.focus_parameters){

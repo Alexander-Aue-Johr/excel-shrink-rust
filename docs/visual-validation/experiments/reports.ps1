@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet('Open','Latest','Clean','Recover','Refresh')][string]$Action='Open',
     [ValidateRange(0,10000)][int]$KeepLast=10,
     [switch]$Apply,
@@ -6,21 +6,26 @@ param(
 )
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '_shared\reporting.ps1')
+. (Join-Path $PSScriptRoot '_shared\suite\controller.ps1')
 $repo=Get-VVRepo $PSScriptRoot
 $root=Join-Path $repo 'docs\visual-validation\results'
 [IO.Directory]::CreateDirectory($root) | Out-Null
-if ($Action -eq 'Recover') {
+if ($Action -eq 'Recover' -or $Action -eq 'Refresh') {
     foreach($run in @(Get-VVRunList $root)) {
-        if($run.Meta.status -ne 'running' -or $run.Active){continue}
-        if($run.Meta.experiment -eq 'decision-campaign'){Write-Host ('Resume/rebuild this campaign with its dedicated task: '+$run.Path);continue}
-        Write-Host ('Recovering interrupted report: '+$run.Path)
-        Complete-VVReport -RunRoot $run.Path -Interrupted
-        Export-VVBundle $run.Path
+        if($run.Active){continue}
+        if($run.Meta.experiment -eq 'visual-evaluation') {
+            $code=Invoke-VVEvaluationPython $repo @('--run-root',$run.Path,'--report-only')
+            if($code){Write-Warning ('Report regeneration failed: '+$run.Path)}
+        } elseif($run.Meta.experiment -in @('decision-campaign','comparison-suite','capture-followup','capture-finalization')) {
+            Write-Host ('Existing report retained: '+$run.Path)
+        } elseif($Action -eq 'Refresh' -or $run.Meta.status -eq 'running') {
+            Complete-VVReport -RunRoot $run.Path -Interrupted:($run.Meta.status -eq 'running');Export-VVBundle $run.Path
+        }
     }
 }
 if ($Action -eq 'Clean') {
     $all=@(Get-VVRunList $root)
-    $finished=@($all | Where-Object {-not $_.Active -and $_.Meta.status -ne 'running' -and -not ($_.Meta.experiment -eq 'decision-campaign' -and $_.Meta.status -in @('interrupted','partial'))})
+    $finished=@($all | Where-Object {-not $_.Active -and $_.Meta.status -ne 'running' -and $_.Meta.status -notin @('interrupted','partial')})
     $remove=@($finished | Select-Object -Skip $KeepLast)
     Write-Host "Keeping the latest $KeepLast finished managed reports; running/unrecognised reports are never removed."
     foreach($run in $remove){Write-Host ('REMOVE: '+$run.Path)}
@@ -43,31 +48,12 @@ if ($Action -eq 'Clean') {
         Remove-Item -LiteralPath $path -Recurse -Force
     }
 }
-if($Action -eq 'Refresh') {
-    foreach($run in @(Get-VVRunList $root)) {
-        if($run.Active -or $run.Meta.status -eq 'running'){continue}
-        if($run.Meta.experiment -eq 'decision-campaign'){Write-Host ('Campaign view retained: '+$run.Path);continue}
-        Write-Host ('Rebuilding report view: '+$run.Name)
-        try {
-            if($run.Meta.experiment -eq 'comparison-suite'){Complete-VVSuiteReport $run.Path}
-            else{Write-VVInspector $run.Path}
-            Export-VVBundle $run.Path
-        }
-        catch { Write-Warning ('Report rebuild failed: '+$run.Path+' - '+$_.Exception.Message) }
-    }
-}
 Update-VVIndex $root
 if($Action -eq 'Latest'){
     $latest=Read-VVJson (Join-Path $root 'latest.json')
     if($null -ne $latest -and (Test-Path -LiteralPath $latest.report)){
         $runPath=Split-Path -Parent $latest.report
         $runMeta=Read-VVJson (Join-Path $runPath 'run.json')
-        $viewAsset=if($runMeta.experiment -eq 'comparison-suite'){'report-assets\suite.js'}else{'report-assets\inspector.js'}
-        if($runMeta.experiment -ne 'decision-campaign' -and -not (Test-VVRunActive $runPath) -and -not (Test-Path -LiteralPath (Join-Path $runPath $viewAsset))) {
-            if($runMeta.experiment -eq 'comparison-suite'){Complete-VVSuiteReport $runPath}
-            else{Write-VVInspector $runPath}
-            try { Export-VVBundle $runPath } catch { Write-Warning ('The HTML view was rebuilt, but the review bundle could not be refreshed: '+$_.Exception.Message) }
-        }
         Start-Process -FilePath $latest.report|Out-Null
     }
     else {Start-Process -FilePath (Join-Path $root 'index.html')|Out-Null}

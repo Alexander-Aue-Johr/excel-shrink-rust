@@ -2,25 +2,18 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Visual validation: Finalize capture strategy",
+      "name": "Visual validation: Reproduce capture decision",
       "type": "node-terminal",
       "request": "launch",
-      "command": "echo Capture qualification task finished.",
-      "preLaunchTask": "Visual validation: Finalize capture strategy"
+      "command": "echo Visual validation task finished.",
+      "preLaunchTask": "Visual validation: Reproduce capture decision"
     },
     {
-      "name": "Visual validation: Check capture fixes (focused)",
+      "name": "Experiment: visual validation",
       "type": "node-terminal",
       "request": "launch",
-      "command": "echo Focused capture task finished.",
-      "preLaunchTask": "Visual validation: Check capture fixes (focused)"
-    },
-    {
-      "name": "Visual validation: Decide strategy (all workbooks)",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "echo Decision campaign task finished.",
-      "preLaunchTask": "Visual validation: Decide strategy (all workbooks)"
+      "command": "echo Visual validation task finished.",
+      "preLaunchTask": "Experiment: visual validation"
     },
     {
       "name": "Debug excel-shrink-cli (enter input and output directories)",
@@ -830,13 +823,6 @@
           }
         }
       }
-    },
-    {
-      "name": "Experiment: visual validation",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "echo Experiment task finished.",
-      "preLaunchTask": "Experiment: visual validation"
     }
   ],
   "inputs": [

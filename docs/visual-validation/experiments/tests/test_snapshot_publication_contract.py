@@ -4,8 +4,8 @@ from unittest import TestCase, main
 from unittest.mock import patch
 import sys,json,re,tempfile
 ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(ROOT/'_shared/decision'))
-import focus
+sys.path.insert(0,str(ROOT/'_shared/suite'))
+import analysis as focus
 
 def text(rel):return (ROOT/rel).read_text(encoding='utf-8-sig')
 
@@ -68,10 +68,10 @@ class SnapshotPublicationContract(TestCase):
         self.assertIn('Experiment host reported: durable result read failed:',text('_shared/office-addin/run.ps1'))
 
     def test_retries_are_reported_not_used_to_change_deadlines(self):
-        s=text('_shared/decision/supervise.ps1')
+        s=text('_shared/suite/supervise.ps1')
         self.assertIn("$receipt.failure_category='report-io'",s)
         self.assertIn('reader_retries=[VVSnapshotFile]::ReadRetries',s)
-        self.assertIn('Get-VVFocusDeadlineFailure',s)
+        self.assertIn('Get-VVPhaseDeadlineFailure',s)
         self.assertIn('total_remaining_seconds',s)
 
     def test_focus_report_separates_infrastructure(self):
@@ -88,7 +88,7 @@ class SnapshotPublicationContract(TestCase):
         self.assertIn('create?0U:7U',s)
 
     def test_native_test_runs_before_excel_on_report_filesystem(self):
-        p=text('_shared/decision/focus-preflight.ps1')
+        p=text('_shared/suite/syntax-preflight.ps1')
         self.assertIn("$snapshotRoot=if($RunRoot){$RunRoot}",p)
         self.assertIn('snapshot-publication.tests.ps1',p)
         self.assertIn('snapshot-preflight.json',p)
@@ -112,29 +112,7 @@ class SnapshotPublicationContract(TestCase):
         self.assertIn('diagnosticRunId, StringComparison.Ordinal',cs)
         self.assertIn('"host_run_id": state.config.capture_run_id',text('_shared/office-addin/hosts/rust/src/main.rs'))
 
-    def test_no_mode_cannot_start_a_campaign(self):
-        s=text('decision-campaign.ps1')
-        guard=s.index('if(-not $Focused -and -not $Finalize -and -not $Campaign)')
-        load=s.index(". (Join-Path $PSScriptRoot '_shared\\reporting.ps1')")
-        self.assertLess(guard,load)
-        self.assertIn('return',s[guard:load])
-        self.assertIn('[switch]$Campaign',s)
 
-    def test_legacy_campaign_task_is_explicit_other_tasks_unchanged(self):
-        root=ROOT.parents[2]
-        task=json.loads((root/'.vscode/tasks.json').read_text('utf-8-sig'))['tasks']
-        t=next(x for x in task if x['label']=='Visual validation: Decide strategy (all workbooks)')
-        self.assertIn('-Campaign',t['windows']['args'])
-        self.assertIn('-Campaign',t['args'][1])
-        f=next(x for x in task if x['label']=='Visual validation: Finalize capture strategy')
-        self.assertIn('-Finalize',f['windows']['args'])
 
-    def test_remaining_selection_does_not_rerun_long_sheet(self):
-        s=json.loads(text('capture-selections/kernhaushalt-remaining.json'))
-        sheets=s['sheets']
-        self.assertEqual(sheets,['csv-71717-'+str(i) for i in range(23,49)])
-        self.assertNotIn('csv-71717-22',sheets)
-        self.assertEqual(s['capture_timeout_seconds'],1800)
-        self.assertEqual(s['host_kind'],'dotnet')
 
 if __name__=='__main__':main()

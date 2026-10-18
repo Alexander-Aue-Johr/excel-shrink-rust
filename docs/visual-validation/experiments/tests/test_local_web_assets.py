@@ -17,8 +17,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[4]
 EXP = ROOT / 'docs/visual-validation/experiments'
 SHARED = EXP / '_shared/office-addin'
-sys.path.insert(0, str(EXP / '_shared/decision'))
-import finalize as F
+sys.path.insert(0, str(EXP / '_shared/suite'))
+import engine as F
 
 
 class AssetContractTests(unittest.TestCase):
@@ -107,49 +107,7 @@ class StartupClassifierTests(unittest.TestCase):
         self.assertEqual(F.startup_failure({'error':'VV_ASSET_PREFLIGHT_FAILED: staged file missing'})['code'],
                          'VV_ASSET_PREFLIGHT_FAILED')
 
-    def test_readiness_stops_after_first_shared_asset_failure(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            obj=F.FinalCampaign.__new__(F.FinalCampaign)
-            obj.root=Path(tmp)
-            obj.files={str(i):{'id':str(i),'name':f'file{i}.xlsx','relative_path':f'file{i}.xlsx','bytes':i+1}
-                       for i in range(8)}
-            obj.state={'screen_ids':list(obj.files),'jobs':[],'readiness':{}}
-            obj.save=lambda:None
-            obj.has_time=lambda stage:True
-            def ensure(stage,c,f):
-                j={'id':f"{int(f['id'])+1:06d}-ready",'stage':stage,'status':'queued','input_id':f['id']}
-                obj.state['jobs'].append(j)
-                return j
-            obj.ensure_job=ensure
-            calls=[]
-            def run(stage,c,f):
-                calls.append(f['id'])
-                j=next(j for j in obj.state['jobs'] if j['input_id']==f['id'])
-                j.update(status='partial',error='Could not load /capture-geometry.js?run=x')
-                return j
-            obj.run_job=run
-            with patch.object(F.C,'read_json',return_value={}),patch.object(F.C,'journal'):
-                self.assertFalse(obj.stage_readiness())
-            self.assertEqual(len(calls),1)
-            self.assertEqual(sum(j['status']=='blocked' for j in obj.state['jobs']),7)
-            self.assertEqual(obj.state['infrastructure_failure']['code'],'VV_LOCAL_SCRIPT_LOAD_FAILED')
 
-    def test_geometry_failure_does_not_block_other_files(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            obj=F.FinalCampaign.__new__(F.FinalCampaign);obj.root=Path(tmp)
-            obj.files={str(i):{'id':str(i),'name':f'f{i}.xlsx','relative_path':f'f{i}.xlsx','bytes':i+1} for i in range(2)}
-            obj.state={'screen_ids':list(obj.files),'jobs':[],'readiness':{}}
-            obj.save=lambda:None;obj.has_time=lambda stage:True
-            def ensure(stage,c,f):
-                obj.state['jobs'].append({'id':f['id'],'stage':stage,'status':'queued','input_id':f['id']})
-            obj.ensure_job=ensure;calls=[]
-            def run(stage,c,f):
-                calls.append(f['id']);j=next(j for j in obj.state['jobs'] if j['input_id']==f['id'])
-                j.update(status='partial',error='CALIBRATION_NO_SAFE_CONTROLS');return j
-            obj.run_job=run
-            with patch.object(F.C,'read_json',return_value={}):obj.stage_readiness()
-            self.assertEqual(len(calls),2)
-            self.assertNotIn('infrastructure_failure',obj.state)
 
 
 if __name__=='__main__':unittest.main()

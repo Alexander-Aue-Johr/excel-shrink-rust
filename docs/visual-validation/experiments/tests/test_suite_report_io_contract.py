@@ -28,10 +28,9 @@ class ReportIOContract(unittest.TestCase):
         self.assertIn('stored_bytes',s)
         self.assertIn('$item.sha256',s)
         self.assertIn("cases/'+$job.id+'/case-metrics.json",s)
-    def test_repair_preserves_timing_and_stays_offline(self):
-        s=(ROOT/'repair-suite.ps1').read_text(encoding='utf-8-sig')
-        self.assertIn("foreach($field in @('workload_ms','invocation_error'))",s)
-        self.assertIn('Save-VVRepairOriginal',s)
-        self.assertNotIn('Start-Process',s)
-        self.assertNotIn('New-Object -ComObject',s)
+    def test_report_only_stays_offline(self):
+        s=(ROOT/'_shared/suite/cli.py').read_text()
+        branch=s.split('if a.report_only:',1)[1].split('cfg=C.read_json',1)[0]
+        self.assertNotIn('Runner(',branch)
+        self.assertIn('write_bundle',branch)
 if __name__=='__main__':unittest.main()

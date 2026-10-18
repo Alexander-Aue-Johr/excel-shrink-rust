@@ -1,0 +1,249 @@
+{
+  "schema": "vv-evaluation-config-v1",
+  "protocol_id": "visual-capture-evaluation-v1",
+  "corpus_root": "corpus-local",
+  "repetitions": 3,
+  "minimum_free_gib": 10,
+  "capture": {
+    "strategy": "F",
+    "host_kind": "dotnet",
+    "overflow_mode": "selective",
+    "tile_megapixels": 32,
+    "batch_size": 1,
+    "tile_packing": "budget",
+    "excel_launch_mode": "excel-x",
+    "overflow_probe_width_px": 1920,
+    "overflow_probe_height_px": 1080
+  },
+  "selected_policy": {
+    "strategy": "F",
+    "host_kind": "dotnet",
+    "overflow_mode": "selective",
+    "tile_megapixels": 32,
+    "batch_size": 1,
+    "tile_packing": "budget",
+    "excel_launch_mode": "excel-x",
+    "overflow_probe_width_px": 1920,
+    "overflow_probe_height_px": 1080,
+    "show_gridlines": false,
+    "context_policy": "visible-cell-halo-v1",
+    "fallback_tile_megapixels": 16
+  },
+  "decision_policy": {
+    "prefer_rust_within_fraction": 0.15,
+    "prefer_selective_within_fraction": 0.15,
+    "prefer_smaller_budget_within_fraction": 0.05
+  },
+  "limits": {
+    "setup_timeout_seconds": 600,
+    "startup_timeout_seconds": 300,
+    "capture_timeout_seconds": 1200,
+    "native_call_timeout_seconds": 90,
+    "inactivity_timeout_seconds": 120,
+    "postprocess_timeout_seconds": 600,
+    "session_timeout_seconds": 21600
+  },
+  "native": {
+    "tile_points": 1200,
+    "max_tiles": 4096,
+    "max_pixels": 32000000
+  },
+  "inputs": [
+    {
+      "path": "original_destatis_xlsx_files/foerderprogramme-5411206209005.xlsx",
+      "sha256": "90083c13bff03b55050277bfbe305d3800f876af51d5c90a0ea152586f3ae352",
+      "bytes": 826940
+    },
+    {
+      "path": "original_destatis_xlsx_files/jahresbericht-5422701207005.xlsx",
+      "sha256": "d714d9b55149d3bda27fac09790cb8afb629604ce42c70d5ac270524b796a45a",
+      "bytes": 1700535
+    },
+    {
+      "path": "original_destatis_xlsx_files/krankenhausverzeichnis-3500100227005.xlsx",
+      "sha256": "acba1b6424496d9281aadf0a7ced67d9cccc62145f40cbd4ace019badfdce40c",
+      "bytes": 2499876
+    },
+    {
+      "path": "original_destatis_xlsx_files/seeschifffahrt-monat-2080500221095.xlsx",
+      "sha256": "a4723d0c895e68ee888cbdb00ea41a963a57b3af73a0dfab79a927b0e9e62ee9",
+      "bytes": 515658
+    },
+    {
+      "path": "original_destatis_xlsx_files/statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "sha256": "b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603",
+      "bytes": 89367137
+    },
+    {
+      "path": "original_destatis_xlsx_files/statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx",
+      "sha256": "aa0bfbdaf21313926547a909ff491ecabce021c4ab2134d6a4d3c7201e4dc054",
+      "bytes": 1432587
+    },
+    {
+      "path": "original_destatis_xlsx_files/verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+      "sha256": "b320dc4f614eec1a1251efc5ca5041948761283ef33e29a5939652eab1fee806",
+      "bytes": 37207883
+    },
+    {
+      "path": "original_destatis_xlsx_files/wanderungen-2010120217005.xlsx",
+      "sha256": "774914b4925b642e1a083da9eb342c047a4e2a681eef937d04783ef0efe8a237",
+      "bytes": 9500138
+    }
+  ],
+  "groups": [
+    {
+      "id": "coverage",
+      "description": "Selected policy on all visible sheets of the eight pinned inputs; local context reference tests on tiled sheets. Not pooled with performance comparisons.",
+      "targets": [
+        {
+          "id": "coverage-1",
+          "workbook": "original_destatis_xlsx_files/foerderprogramme-5411206209005.xlsx"
+        },
+        {
+          "id": "coverage-2",
+          "workbook": "original_destatis_xlsx_files/jahresbericht-5422701207005.xlsx"
+        },
+        {
+          "id": "coverage-3",
+          "workbook": "original_destatis_xlsx_files/krankenhausverzeichnis-3500100227005.xlsx"
+        },
+        {
+          "id": "coverage-4",
+          "workbook": "original_destatis_xlsx_files/seeschifffahrt-monat-2080500221095.xlsx"
+        },
+        {
+          "id": "coverage-5",
+          "workbook": "original_destatis_xlsx_files/statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx"
+        },
+        {
+          "id": "coverage-6",
+          "workbook": "original_destatis_xlsx_files/statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx"
+        },
+        {
+          "id": "coverage-7",
+          "workbook": "original_destatis_xlsx_files/verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx"
+        },
+        {
+          "id": "coverage-8",
+          "workbook": "original_destatis_xlsx_files/wanderungen-2010120217005.xlsx"
+        }
+      ],
+      "variants": [
+        {
+          "host_kind": "dotnet",
+          "overflow_mode": "selective",
+          "tile_megapixels": 32,
+          "context_validation": "first-seam"
+        }
+      ],
+      "repetitions": 1,
+      "limits": {
+        "capture_timeout_seconds": 1800
+      }
+    },
+    {
+      "id": "host-overflow",
+      "description": "Two hosts by two overflow methods at a fixed 32 MP, blocked by the same worksheet scope.",
+      "targets": [
+        {
+          "id": "wide-and-overflow",
+          "workbook": "original_destatis_xlsx_files/krankenhausverzeichnis-3500100227005.xlsx",
+          "sheets": [
+            " KHV_2022",
+            "Inhalt",
+            "DSB_KHV_2022",
+            "DSB_RHV_2022"
+          ]
+        },
+        {
+          "id": "many-sheets",
+          "workbook": "original_destatis_xlsx_files/foerderprogramme-5411206209005.xlsx"
+        },
+        {
+          "id": "geometry",
+          "workbook": "original_destatis_xlsx_files/wanderungen-2010120217005.xlsx",
+          "sheets": [
+            "Titelseite",
+            "Vorbemerkung",
+            "Anhang",
+            "Qualitätsbericht",
+            "Tabelle 2.1.1"
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "host_kind": "dotnet",
+          "overflow_mode": "heuristic",
+          "tile_megapixels": 32,
+          "context_validation": "off"
+        },
+        {
+          "host_kind": "dotnet",
+          "overflow_mode": "selective",
+          "tile_megapixels": 32,
+          "context_validation": "off"
+        },
+        {
+          "host_kind": "rust",
+          "overflow_mode": "heuristic",
+          "tile_megapixels": 32,
+          "context_validation": "off"
+        },
+        {
+          "host_kind": "rust",
+          "overflow_mode": "selective",
+          "tile_megapixels": 32,
+          "context_validation": "off"
+        }
+      ],
+      "limits": {
+        "capture_timeout_seconds": 600
+      }
+    },
+    {
+      "id": "tile-budget",
+      "description": "16/32/64 MP with .NET and Selective held fixed; full failure costs and fresh 16-MP recovery are recorded.",
+      "targets": [
+        {
+          "id": "wide-table",
+          "workbook": "original_destatis_xlsx_files/krankenhausverzeichnis-3500100227005.xlsx",
+          "sheets": [
+            " KHV_2022"
+          ]
+        },
+        {
+          "id": "long-table",
+          "workbook": "original_destatis_xlsx_files/statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+          "sheets": [
+            "csv-71717-22"
+          ]
+        }
+      ],
+      "variants": [
+        {
+          "host_kind": "dotnet",
+          "overflow_mode": "selective",
+          "tile_megapixels": 16,
+          "context_validation": "off"
+        },
+        {
+          "host_kind": "dotnet",
+          "overflow_mode": "selective",
+          "tile_megapixels": 32,
+          "context_validation": "off"
+        },
+        {
+          "host_kind": "dotnet",
+          "overflow_mode": "selective",
+          "tile_megapixels": 64,
+          "context_validation": "off"
+        }
+      ],
+      "limits": {
+        "capture_timeout_seconds": 600
+      },
+      "recovery_16mp": true
+    }
+  ]
+}

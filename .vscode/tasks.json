@@ -2,28 +2,17 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Visual validation: Finalize capture strategy",
+      "label": "Visual validation: Reproduce capture decision",
       "type": "process",
       "command": "bash",
       "args": [
         "-lc",
-        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/decision-campaign.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -Finalize",
-        "vv-finalize-capture",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/reproduce.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\"",
+        "vv-evaluation",
         "${workspaceFolder}"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "focus": true,
-        "panel": "dedicated",
-        "clear": true,
-        "group": "experiments"
-      },
-      "runOptions": {
-        "instanceLimit": 1
       },
       "windows": {
         "command": "powershell.exe",
@@ -34,26 +23,11 @@
           "-ExecutionPolicy",
           "Bypass",
           "-File",
-          "${workspaceFolder}\\docs\\visual-validation\\experiments\\decision-campaign.ps1",
-          "-Finalize"
+          "${workspaceFolder}\\docs\\visual-validation\\experiments\\reproduce.ps1"
         ],
         "options": {
           "cwd": "${env:TEMP}"
         }
-      }
-    },
-    {
-      "label": "Visual validation: Check capture fixes (focused)",
-      "type": "process",
-      "command": "bash",
-      "args": [
-        "-lc",
-        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/decision-campaign.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -Focused -InterfaceMode gui",
-        "vv-focused-capture",
-        "${workspaceFolder}"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": [],
       "presentation": {
@@ -61,10 +35,24 @@
         "focus": true,
         "panel": "dedicated",
         "clear": true,
-        "group": "experiments"
+        "group": "visual-validation"
       },
       "runOptions": {
         "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Experiment: visual validation",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/run.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -InterfaceMode gui",
+        "vv-evaluation",
+        "${workspaceFolder}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
       },
       "windows": {
         "command": "powershell.exe",
@@ -75,8 +63,7 @@
           "-ExecutionPolicy",
           "Bypass",
           "-File",
-          "${workspaceFolder}\\docs\\visual-validation\\experiments\\decision-campaign.ps1",
-          "-Focused",
+          "${workspaceFolder}\\docs\\visual-validation\\experiments\\run.ps1",
           "-InterfaceMode",
           "gui"
         ],
@@ -84,20 +71,45 @@
           "cwd": "${env:TEMP}"
         }
       },
-      "detail": "Select exact issue cases or workbook/worksheet scope, phase deadlines and diagnostic settings. No strategy sweep."
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true,
+        "group": "visual-validation"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
     },
     {
-      "label": "Visual validation: Decide strategy (all workbooks)",
+      "label": "Visual validation: Validate experiment code",
       "type": "process",
       "command": "bash",
       "args": [
         "-lc",
-        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/decision-campaign.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -Campaign",
-        "vv-decision-campaign",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/validate.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\"",
+        "vv-evaluation",
         "${workspaceFolder}"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
+      },
+      "windows": {
+        "command": "powershell.exe",
+        "args": [
+          "-NoLogo",
+          "-NoProfile",
+          "-STA",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}\\docs\\visual-validation\\experiments\\validate.ps1"
+        ],
+        "options": {
+          "cwd": "${env:TEMP}"
+        }
       },
       "problemMatcher": [],
       "presentation": {
@@ -105,10 +117,24 @@
         "focus": true,
         "panel": "dedicated",
         "clear": true,
-        "group": "experiments"
+        "group": "visual-validation"
       },
       "runOptions": {
         "instanceLimit": 1
+      }
+    },
+    {
+      "label": "Visual validation: Publish evidence",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/publish-evidence.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\"",
+        "vv-evaluation",
+        "${workspaceFolder}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
       },
       "windows": {
         "command": "powershell.exe",
@@ -119,27 +145,11 @@
           "-ExecutionPolicy",
           "Bypass",
           "-File",
-          "${workspaceFolder}\\docs\\visual-validation\\experiments\\decision-campaign.ps1",
-          "-Campaign"
+          "${workspaceFolder}\\docs\\visual-validation\\experiments\\publish-evidence.ps1"
         ],
         "options": {
           "cwd": "${env:TEMP}"
         }
-      },
-      "detail": "Retained broad comparison/inventory. For one unresolved worksheet use Visual validation: Check capture fixes (focused)."
-    },
-    {
-      "label": "Visual validation: Run comparison suite",
-      "type": "process",
-      "command": "bash",
-      "args": [
-        "-lc",
-        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/suite.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\"",
-        "vv-comparison-suite",
-        "${workspaceFolder}"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": [],
       "presentation": {
@@ -147,36 +157,20 @@
         "focus": true,
         "panel": "dedicated",
         "clear": true,
-        "group": "experiments"
+        "group": "visual-validation"
       },
       "runOptions": {
         "instanceLimit": 1
-      },
-      "windows": {
-        "command": "powershell.exe",
-        "args": [
-          "-NoLogo",
-          "-NoProfile",
-          "-STA",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-File",
-          "${workspaceFolder}\\docs\\visual-validation\\experiments\\suite.ps1"
-        ],
-        "options": {
-          "cwd": "${env:TEMP}"
-        }
-      },
-      "detail": "Retained broad comparison/inventory. For one unresolved worksheet use Visual validation: Check capture fixes (focused)."
+      }
     },
     {
-      "label": "Visual validation: Repair latest suite reports (no Excel)",
+      "label": "Visual validation: Reports",
       "type": "process",
       "command": "bash",
       "args": [
         "-lc",
-        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/repair-suite.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\"",
-        "vv-repair-suite",
+        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/reports.ps1\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -Action Open",
+        "vv-evaluation",
         "${workspaceFolder}"
       ],
       "options": {
@@ -191,14 +185,24 @@
           "-ExecutionPolicy",
           "Bypass",
           "-File",
-          "${workspaceFolder}/docs/visual-validation/experiments/repair-suite.ps1"
-        ]
+          "${workspaceFolder}\\docs\\visual-validation\\experiments\\reports.ps1",
+          "-Action",
+          "Open"
+        ],
+        "options": {
+          "cwd": "${env:TEMP}"
+        }
       },
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
+        "focus": true,
         "panel": "dedicated",
-        "clear": true
+        "clear": true,
+        "group": "visual-validation"
+      },
+      "runOptions": {
+        "instanceLimit": 1
       }
     },
     {
@@ -628,111 +632,6 @@
       }
     },
     {
-      "label": "Excel tools: Select file or folder - Shrink - JSON diff",
-      "type": "process",
-      "command": "powershell.exe",
-      "args": [
-        "-NoLogo",
-        "-NoProfile",
-        "-STA",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}/tools/excel-lab/run.ps1"
-      ],
-      "linux": {
-        "command": "bash",
-        "args": [
-          "${workspaceFolder}/tools/excel-lab/run_wsl.sh"
-        ]
-      },
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "focus": true,
-        "panel": "dedicated",
-        "clear": true
-      },
-      "runOptions": {
-        "instanceLimit": 1
-      }
-    },
-    {
-      "label": "Excel lab: Build macro host",
-      "type": "process",
-      "command": "powershell.exe",
-      "args": [
-        "-NoLogo",
-        "-NoProfile",
-        "-STA",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}/tools/excel-lab/run.ps1",
-        "-Action",
-        "build"
-      ],
-      "linux": {
-        "command": "bash",
-        "args": [
-          "${workspaceFolder}/tools/excel-lab/run_wsl.sh",
-          "build"
-        ]
-      },
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "focus": true,
-        "panel": "dedicated",
-        "clear": true
-      },
-      "runOptions": {
-        "instanceLimit": 1
-      }
-    },
-    {
-      "label": "Excel lab: Excel and clipboard self-test",
-      "type": "process",
-      "command": "powershell.exe",
-      "args": [
-        "-NoLogo",
-        "-NoProfile",
-        "-STA",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}/tools/excel-lab/run.ps1",
-        "-Action",
-        "self-test"
-      ],
-      "linux": {
-        "command": "bash",
-        "args": [
-          "${workspaceFolder}/tools/excel-lab/run_wsl.sh",
-          "self-test"
-        ]
-      },
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "focus": true,
-        "panel": "dedicated",
-        "clear": true
-      },
-      "runOptions": {
-        "instanceLimit": 1
-      }
-    },
-    {
       "label": "Excel lab: Pure PowerShell tests",
       "type": "process",
       "command": "powershell.exe",
@@ -843,106 +742,9 @@
         "panel": "dedicated",
         "clear": true
       }
-    },
-    {
-      "label": "Experiment: visual validation",
-      "type": "process",
-      "command": "bash",
-      "args": [
-        "-lc",
-        "script=\"$(wslpath -w '${workspaceFolder}/docs/visual-validation/experiments/run.ps1')\"; corpus=\"$(wslpath -w '${workspaceFolder}/corpus-local')\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -CorpusRoot \"$corpus\" -InterfaceMode '${input:visualValidationInterfaceMode}'"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "focus": true,
-        "panel": "dedicated",
-        "clear": true,
-        "group": "experiments"
-      },
-      "runOptions": {
-        "instanceLimit": 1
-      },
-      "windows": {
-        "command": "powershell.exe",
-        "args": [
-          "-NoLogo",
-          "-NoProfile",
-          "-STA",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-File",
-          "${workspaceFolder}\\docs\\visual-validation\\experiments\\run.ps1",
-          "-CorpusRoot",
-          "${workspaceFolder}\\corpus-local",
-          "-InterfaceMode",
-          "${input:visualValidationInterfaceMode}"
-        ],
-        "options": {
-          "cwd": "${env:TEMP}"
-        }
-      }
-    },
-    {
-      "label": "Experiment: PNG diagnostics (choose test)",
-      "type": "process",
-      "command": "bash",
-      "args": [
-        "-lc",
-        "script=\"$(wslpath -w \"$1/docs/visual-validation/experiments/run.ps1\")\"; corpus=\"$(wslpath -w \"$1/corpus-local\")\"; powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File \"$script\" -CorpusRoot \"$corpus\" -Experiment \"$2\" -NonInteractive",
-        "vv-diagnostics",
-        "${workspaceFolder}",
-        "${input:pngDiagnosticExperiment}"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "focus": true,
-        "panel": "dedicated",
-        "clear": true
-      },
-      "runOptions": {
-        "instanceLimit": 1
-      },
-      "windows": {
-        "command": "powershell.exe",
-        "args": [
-          "-NoLogo",
-          "-NoProfile",
-          "-STA",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-File",
-          "${workspaceFolder}\\docs\\visual-validation\\experiments\\run.ps1",
-          "-CorpusRoot",
-          "${workspaceFolder}\\corpus-local",
-          "-Experiment",
-          "${input:pngDiagnosticExperiment}",
-          "-NonInteractive"
-        ],
-        "options": {
-          "cwd": "${env:TEMP}"
-        }
-      }
     }
   ],
   "inputs": [
-    {
-      "id": "visualValidationInterfaceMode",
-      "type": "pickString",
-      "description": "Visual validation interface",
-      "options": [
-        "cli",
-        "gui"
-      ],
-      "default": "cli"
-    },
     {
       "id": "corpusRegressionCaseId",
       "type": "pickString",
@@ -975,16 +777,6 @@
         "maximum-cleaning"
       ],
       "default": "default"
-    },
-    {
-      "id": "pngDiagnosticExperiment",
-      "type": "pickString",
-      "description": "PNG diagnostic experiment",
-      "options": [
-        "range-image-height-limit",
-        "range-image-calibration"
-      ],
-      "default": "range-image-height-limit"
     }
   ]
 }
