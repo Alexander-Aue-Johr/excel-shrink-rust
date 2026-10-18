@@ -27,3 +27,11 @@ regression/reports/
 /.tmp
 /logs/
 /regression/measurements
+
+# Generated Python and local visual-validation artifacts
+__pycache__/
+*.py[cod]
+/docs/visual-validation/results/
+/tools/excel-lab/ExcelLabHost.*
+/excel-shrink-cli/.tmp/
+/excel-shrink-cli/logs/
