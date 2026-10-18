@@ -638,3 +638,8 @@ cargo run --release -- <INPUT_XLSX_OR_DIRECTORY> <OUTPUT_DIRECTORY> --recursive
 ```
 
 The Rust package manager Cargo automatically downloads the required Rust dependencies listed in `Cargo.toml` and locked in `Cargo.lock`.
+
+## Visual capture evaluation
+
+See [Visual validation](docs/visual-validation/README.md) for the selected method,
+reproducible comparison suite, individual-experiment GUI and published evidence.

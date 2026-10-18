@@ -1,0 +1,19 @@
+{
+  "schema": "vv-selected-capture-policy-v1",
+  "decision": "decisions.md",
+  "policy": {
+    "strategy": "F",
+    "host_kind": "dotnet",
+    "overflow_mode": "selective",
+    "tile_megapixels": 32,
+    "batch_size": 1,
+    "tile_packing": "budget",
+    "excel_launch_mode": "excel-x",
+    "overflow_probe_width_px": 1920,
+    "overflow_probe_height_px": 1080,
+    "show_gridlines": false,
+    "context_policy": "visible-cell-halo-v1",
+    "fallback_tile_megapixels": 16
+  },
+  "status": "selected; production integration requires separate acceptance"
+}

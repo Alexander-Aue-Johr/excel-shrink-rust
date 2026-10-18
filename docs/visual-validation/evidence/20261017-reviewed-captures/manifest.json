@@ -1,0 +1,22 @@
+{
+  "schema": "vv-evidence-manifest-v1",
+  "id": "20261017-reviewed-captures",
+  "status": "complete",
+  "files": [
+    {
+      "path": "index.html",
+      "bytes": 24235,
+      "sha256": "013a8f9ac6ee75e94bb3b9cde39a9d069a5544cca5fc9632be3a9b42418f1b9f"
+    },
+    {
+      "path": "results.csv",
+      "bytes": 13014,
+      "sha256": "15a89f0f0f034c758f84dc31a836820e3dc373a9ac09501f91c90fb6230a4535"
+    },
+    {
+      "path": "results.json",
+      "bytes": 342305,
+      "sha256": "3ae2c1630f2841e9bc810ee069ccdde8c7026667674ebbc1cdc098fa4ea6d8af"
+    }
+  ]
+}

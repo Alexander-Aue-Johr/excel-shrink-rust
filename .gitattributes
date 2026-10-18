@@ -1,1 +1,2 @@
 * text=auto eol=lf
+docs/visual-validation/evidence/** -text whitespace=cr-at-eol

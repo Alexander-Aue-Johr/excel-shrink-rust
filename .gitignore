@@ -35,3 +35,7 @@ regression/reports/
 # Python bytecode and cache directories at any depth
 __pycache__/
 *.py[cod]
+
+# Generated run evidence stays local. Curated records are tracked separately.
+/docs/visual-validation/results/
+/docs/visual-validation/experiments/**/results/

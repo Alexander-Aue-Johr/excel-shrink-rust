@@ -1,92 +1,90 @@
-# Visual-validation decisions
+# Capture-method decision
 
-This file records decisions that would otherwise be easy to forget after the
-experimental code has been simplified or removed.
+Status: **selected engineering configuration**, based on the linked measurements.
+The currently packaged execution code still requires native Windows/Excel validation.
 
-## Worksheet cell/content bounds
+## Configuration
 
-**Status:** accepted
+| Component | Selected policy |
+|---|---|
+| Bounds | Rust OOXML metadata plan, Strategy F, supplemented by validated drawing geometry |
+| Native rendering | Excel Office.js `Range.getImage()` |
+| Local host | .NET; the rest of Excel Shrink remains Rust |
+| Overflow | Selective whitespace intervention with exact restoration and pixel comparison |
+| Gridlines | Disabled for both members of a regression pair; explicit cell borders remain |
+| Raw image budget | 32,000,000 pixels and 30,000 pixels per edge, simultaneously |
+| Internal tile boundaries | Visible neighbouring worksheet context; crop the interior without resampling |
+| Geometry | Measured additive individual row heights/column widths; bounded fixed-span handling |
+| Pixel validation | Canonical decoded pixels; no scaling or tolerance |
+| Recovery | Bounded, fresh 16-MP attempt where supported; preserve primary failure and cost |
 
-Use the native Rust regression analysis to determine the last relevant worksheet
-cell bounds.
+The machine-readable settings are in [capture-policy.json](capture-policy.json).
+A recovery must not erase a pixel mismatch, input change or failed restoration.
+The native call, startup, capture and session deadlines remain finite. Incomplete
+captures and failed result publication are never interpreted as image equivalence.
 
-Do not add Excel `Find`, `UsedRange`, or a second Excel-side scan merely to find the
-rightmost/bottommost relevant cell.
+## Evidence and choice
 
-**Revisit if:** a real workbook demonstrates visible cell content that the Rust
-regression analysis does not include.
+The [published record](evidence/20261017-reviewed-captures/index.html) contains the
+relevant individual observations and source/run hashes. Its groups originate from
+different runs and are not pooled into a single factorial experiment.
 
-## Drawing bounds implementation
+**Host.** In the preceding Selective/16-MP screening, five complete, equal-output
+workbook pairs gave a median Rust/.NET workload ratio of approximately **3.34**.
+This evaluates the implemented hosts including their communication and telemetry,
+not an intrinsic performance claim about Rust versus C#. The gap exceeded the
+predeclared 15% maintenance preference for Rust. .NET was selected as the local
+capture companion rather than opening another optimization project.
 
-**Status:** implementation choice pending extended timing
+**Overflow.** Six complete .NET screening pairs gave a median Selective/Heuristic
+workload ratio of approximately **1.089**. Selective provides an explicit blocker
+intervention and confirmed restoration on candidate rows. The overhead was accepted
+within the declared 15% preference for this additional evidence. It is not a proof
+that the method handles every possible Excel drawing or layout.
 
-This experiment is an engineering benchmark for the Excel Shrink visual-regression
-pipeline. It is not intended as a paper experiment. The goal is to find the fastest
-reliable way to obtain Excel drawing bounds before screenshots are captured.
+**Image budget.** The final controlled .NET/Selective experiment ran two selected
+worksheets × three budgets × three repetitions. All 18 cases completed, all 549
+final tiles had local pixel digests, and all 531 checked seam rows agreed. The
+canonical image of each worksheet agreed across all nine corresponding runs.
 
-Compare the available execution models over the same corpus and intended geometry:
+| Budget | Hospital median (s) | Long-table median (s) | Sum of medians (s) | Relative to fastest |
+|---|---:|---:|---:|---:|
+| 16 MP | 92.29 | 162.17 | 254.45 | +9.52% |
+| **32 MP** | **83.33** | **156.60** | **239.93** | **+3.27%** |
+| 64 MP | 77.20 | 155.15 | 232.34 | fastest |
 
-1. VBA running inside Excel.
-2. C# / Excel-DNA running inside Excel.
-3. C# / VSTO running inside Excel.
-4. Office.js running in Excel's web add-in runtime with batched shape loading.
-5. external Windows PowerShell -> Excel COM.
-6. external Rust -> Excel COM.
+The rule, fixed before inspecting the final result, selects the smallest qualified
+budget within **5% of the fastest sum of per-worksheet workload medians**. Therefore
+32 MP is selected. **64 MP was fastest and had no observed failures in this test.**
+It was not rejected as unreliable. The lower raw-image budget is not a measurement
+of halved process memory. Workload includes setup, fresh Excel startup, capture,
+analysis and export, excluding offline digest computation and report generation.
+For a different long-lived production process, the balance may differ.
 
-Geometry correctness is validated against VBA using canonical `right` / `bottom`
-data with timing removed. Canonical geometry is compared in memory and diagnostic
-copies are persisted only for actual mismatches.
+The final budget source run is `20261017T173952378Z-614e6f83`, source fingerprint
+`9b91096b3bc97fed84ea75c5724d0d327df66f10c93511f860ce6449cd45a003`.
 
-The current four-way result set shows geometry agreement across VBA, Excel-DNA,
-PowerShell COM, and Rust COM for the tested corpus. Rust still has a documented
-visibility-filter caveat because the current `excel-com` dependency does not yet map
-`Shape.Visible`'s `MsoTriState` / `VT_I4` representation to the Boolean API expected
-by the helper.
+## Alternatives and scope
 
-Select the implementation after VSTO and Office.js have also been measured and the
-fastest candidates have been repeated enough to rule out obvious run-to-run noise.
+VBA `CopyPicture` uses the shared system clipboard. Existing native screenshot
+references have their own coverage/raster rules and some failed to complete; they
+do not support a fair universal “VBA is X times slower” statement. Clipboard
+corruption is not asserted without specific evidence. Excel-DNA/VSTO benchmarks in
+this repository measure **drawing bounds**, not an independent C# screenshot engine.
+These reference methods remain directly runnable through the individual-experiment GUI.
 
-Evidence:
-[`shape-bounds`](experiments/shape-bounds/)
+Visible-context capture resolves the tested outer-edge discrepancies, and the
+additive and fixed-span geometry modes handle the tested height and single-column
+cases. These are bounded empirical findings, not universal Excel invariance claims.
+The eight-workbook screening corpus cannot establish reliability on 10,000 arbitrary
+files. The actual original/shrunk regression remains a separate acceptance and
+measurement task.
 
-## Text overflow
+## Reproduction and updates
 
-**Status:** accepted
-
-Do not calculate exact text-overflow bounds. Use a reasonable minimum screenshot
-width instead.
-
-This intentionally trades some empty screenshot area for substantially simpler
-capture-bound logic.
-
-**Revisit if:** real regression cases show relevant visible text being clipped by
-the chosen minimum width.
-
-The `range-image` experiment deliberately includes exact-overflow strategies D/E/F as
-an engineering investigation. Running those strategies does not change this production
-decision until their cost/reliability has been evaluated.
-
-## Screenshot persistence
-
-**Status:** accepted
-
-Persist `CopyPicture` results as image files.
-
-An in-memory/GDI comparison can be fast, but persistent screenshots provide both a
-reusable cache and inspectable failure artifacts.
-
-**Revisit if:** persistent image I/O becomes a demonstrated bottleneck that is not
-offset by cache reuse.
-
-
-## Selective overflow verification and tile packing
-
-**Status:** experimental (2026-10-05)
-
-Compare the current Strategy F heuristic with a candidate-row whitespace intervention.
-Maintain the existing production overflow decision until native correctness and cost
-are evaluated. Preserve both successful and inconclusive evidence. Capture budgets
-limit both pixel area and edge length; maximal edge utilization is not the goal by itself.
-
-See [experiment map and protocol](experiments/OVERFLOW-AB.md). Historical line-triggered
-overexpansion, Canvas crop failure and the result-publication race are separate incidents.
+Run [reproduce.ps1](experiments/reproduce.ps1) using the pinned
+[configuration](experiments/reproduce.json). Inspect the new local report and then
+explicitly [publish the compact evidence](experiments/REPORTING.md). The published
+record preserves failures and source identities. New measurements do not silently
+rewrite this decision; amend the table and rationale only after reviewing the new
+scope, environment, repeats and quality conditions.
