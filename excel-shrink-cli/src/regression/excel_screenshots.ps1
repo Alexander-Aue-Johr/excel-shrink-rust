@@ -1,10 +1,10 @@
-
 param(
     [Parameter(Mandatory=$true)][string]$OriginalPath,
     [Parameter(Mandatory=$true)][string]$ShrunkPath,
     [Parameter(Mandatory=$true)][string]$OutputDir,
     [Parameter(Mandatory=$true)][string]$CaptureManifestPath,
     [Parameter(Mandatory=$false)][string]$RangeLimitPath = '',
+    [Parameter(Mandatory=$false)][string]$SkipSheetsPath = '',
     [Parameter(Mandatory=$true)][string]$OriginalCacheDir,
     [Parameter(Mandatory=$true)][string]$ShrunkCacheDir,
     [Parameter(Mandatory=$false)][string]$OriginalSheetCachePath = '',
@@ -16,6 +16,16 @@ param(
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
+. (Join-Path $PSScriptRoot 'excel_visual_bounds.ps1')
+. (Join-Path $PSScriptRoot 'excel_visual_clipboard.ps1')
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+Add-Type -AssemblyName System.Xml.Linq
+if (-not ('ExcelShrink.Visual.WorkbookPlan' -as [type])) {
+    Add-Type -Path (Join-Path $PSScriptRoot 'excel_visual_plan.cs') -ReferencedAssemblies @(
+        'System.dll', 'System.Core.dll', 'System.Xml.dll', 'System.Xml.Linq.dll',
+        'System.IO.Compression.dll', 'System.IO.Compression.FileSystem.dll')
+}
 
 if (-not ('ExcelShrinkScreenshotWin32' -as [type])) {
     Add-Type @"
@@ -31,7 +41,7 @@ public static class ExcelShrinkScreenshotWin32 {
 
 function Write-ProgressLine([string]$message) {
     $timestamp = Get-Date -Format o
-    Add-Content -Path $ProgressPath -Value "$timestamp $message"
+    Add-Content -Encoding UTF8 -Path $ProgressPath -Value "$timestamp $message"
 }
 
 function File-Size([string]$path) {
@@ -156,23 +166,17 @@ function Try-SelectAllRangeFromMaxCell($worksheet, $baseRange, [string]$label) {
 }
 
 function Resolve-CaptureRange($worksheet, $rangeLimit) {
+    $baseRange = $null
     if ($null -ne $rangeLimit) {
-        $maxRow = [int]$rangeLimit.max_row
-        $maxColumn = [int]$rangeLimit.max_column
-        if ($maxRow -gt 0 -and $maxColumn -gt 0) {
-            return ,$worksheet.Range($worksheet.Cells.Item(1, 1), $worksheet.Cells.Item($maxRow, $maxColumn))
-        }
-
-        $maxCell = [string]$rangeLimit.max_cell
-        if (-not [string]::IsNullOrWhiteSpace($maxCell) -and $maxCell -match '^[A-Za-z]+[0-9]+$') {
-            return ,$worksheet.Range("A1:$maxCell")
+        $row = [int]$rangeLimit.max_row; $column = [int]$rangeLimit.max_column
+        if ($row -gt 0 -and $column -gt 0) {
+            $baseRange = $worksheet.Range($worksheet.Cells.Item(1, 1), $worksheet.Cells.Item($row, $column))
         }
     }
-
-    $usedRange = $worksheet.UsedRange
-    $baseRange = Worksheet-RangeFromA1ThroughBottomRight $worksheet $usedRange
-    $selectAllRange = Try-SelectAllRangeFromMaxCell $worksheet $baseRange "worksheet='$($worksheet.Name)'"
-    return ,(Max-WorksheetRange $worksheet $baseRange $selectAllRange)
+    if ($null -eq $baseRange) {
+        $baseRange = Worksheet-RangeFromA1ThroughBottomRight $worksheet $worksheet.UsedRange
+    }
+    return ,(Expand-VisualCaptureRange $worksheet $baseRange)
 }
 
 function Hide-ActiveGridlines($worksheet, [string]$label) {
@@ -180,6 +184,7 @@ function Hide-ActiveGridlines($worksheet, [string]$label) {
         $window = $worksheet.Application.ActiveWindow
         if ($null -ne $window) {
             $window.DisplayGridlines = $false
+            $window.Zoom = 100
         }
     }
     catch {
@@ -271,59 +276,24 @@ function Save-RangeImage($worksheet, $range, [string]$path, [string]$label, [str
     $address = if (-not [string]::IsNullOrWhiteSpace($addressLabel)) { $addressLabel } else { Range-Address $range }
     Write-ProgressLine "capture start $label worksheet='$($worksheet.Name)' range='$address'"
     $backgroundRgba = Get-RangePaddingBackgroundRgba $range
-    Write-ProgressLine "capture background $label rgba=$($backgroundRgba.r),$($backgroundRgba.g),$($backgroundRgba.b),$($backgroundRgba.a)"
-
     $image = $null
-    $lastError = $null
-    for ($attempt = 0; $attempt -lt 20; $attempt++) {
-        try {
-            [void]$worksheet.Parent.Activate()
-            [void]$worksheet.Activate()
+    try {
+        $image = Invoke-VisualClipboardImage {
+            [void]$worksheet.Parent.Activate(); [void]$worksheet.Activate()
             Hide-ActiveGridlines $worksheet $label
             [void]$range.Select()
             Start-Sleep -Milliseconds 100
-            Write-ProgressLine "clipboard clear $label attempt=$attempt"
-            [System.Windows.Forms.Clipboard]::Clear()
-            Write-ProgressLine "copy picture $label attempt=$attempt"
-            $selection = $worksheet.Application.Selection
-            [void]$selection.CopyPicture(1, 2)
-        }
-        catch {
-            $lastError = $_.Exception.Message
-            Write-ProgressLine "copy failed $label attempt=$attempt error='$lastError'"
-            Start-Sleep -Milliseconds 250
-            continue
-        }
-
-        Start-Sleep -Milliseconds 250
-        Write-ProgressLine "clipboard read $label attempt=$attempt"
-        $image = [System.Windows.Forms.Clipboard]::GetImage()
-        if ($null -ne $image) {
-            break
-        }
-    }
-
-    if ($null -eq $image) {
-        $address = Range-Address $range
-        if ($lastError -ne $null) {
-            throw "CopyPicture failed for worksheet '$($worksheet.Name)' range '$address': $lastError"
-        }
-        throw "Clipboard did not contain an image for worksheet '$($worksheet.Name)' range '$address'"
-    }
-    $width = [int]$image.Width
-    $height = [int]$image.Height
-    $image.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-    Write-ProgressLine "capture image $label width=$width height=$height"
-    $image.Dispose()
-    [System.Windows.Forms.Clipboard]::Clear()
-    Write-ProgressLine "capture saved $label path='$path' bytes=$(File-Size $path)"
-    return [pscustomobject]@{
-        path = $path
-        width = $width
-        height = $height
-        pixels = [int64]$width * [int64]$height
-        background_rgba = $backgroundRgba
-    }
+            # Use the intended Range, not Application.Selection after a focus change.
+            [void]$range.CopyPicture(1, 2)
+        } $label ([uint32]$script:ExcelCaptureProcessId)
+        $width = [int]$image.Width; $height = [int]$image.Height
+        $saveTimer = [Diagnostics.Stopwatch]::StartNew()
+        $image.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+        Write-ProgressLine "visual step phase=excel.png_save duration_ms=$($saveTimer.ElapsedMilliseconds) label='$label'"
+        Write-ProgressLine "capture image $label width=$width height=$height"
+        Write-ProgressLine "capture saved $label path='$path' bytes=$(File-Size $path)"
+        return [pscustomobject]@{path=$path; width=$width; height=$height; pixels=[int64]$width * [int64]$height; background_rgba=$backgroundRgba}
+    } finally { if ($null -ne $image) { $image.Dispose() } }
 }
 
 function Use-CachedRangeImage([string]$path, [string]$label) {
@@ -368,7 +338,7 @@ function Open-WorkbookWithRetry($excel, [string]$path, [string]$label) {
             Write-ProgressLine "open workbook start label='$label' attempt=$attempt path='$path'"
             $openedAt = Get-Date -Format o
             $openTimer = [System.Diagnostics.Stopwatch]::StartNew()
-            $workbook = $excel.Workbooks.Open($path, 0, $false)
+            $workbook = $excel.Workbooks.Open($path, 0, $true)
             if ($null -ne $workbook) {
                 Write-ProgressLine "opened $label workbook '$path' attempt=$attempt"
                 Wait-ExcelReady $excel "after open $label" 60
@@ -426,7 +396,7 @@ function Read-SheetCaptureCache([string]$path) {
     }
 
     try {
-        $json = Get-Content -Path $path -Raw | ConvertFrom-Json
+        $json = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
         foreach ($capture in @($json.captures)) {
             if (Test-CachedCaptureFiles $capture) {
                 $map[[int]$capture.sheet_index] = $capture
@@ -672,13 +642,6 @@ function Range-CaptureInfo($range, [string]$strategy, [string]$address, [string]
     }
 }
 
-function Is-MemoryLikeCaptureError([string]$message) {
-    if ([string]::IsNullOrWhiteSpace($message)) {
-        return $false
-    }
-    return $message -match '(?i)(memory|speicher|ressource|resource|not enough|nicht genug|nicht genügend|out of|8007000e|e_outofmemory)'
-}
-
 function Get-RangePointSize($range) {
     $width = [double]0
     $height = [double]0
@@ -787,7 +750,7 @@ function Capture-RangeTileRecursive($origSheet, $shrunkSheet, $origRange, $shrun
         $errorMessage = $_.Exception.Message
         Remove-Item $origPath -Force -ErrorAction SilentlyContinue
         Remove-Item $shrunkPath -Force -ErrorAction SilentlyContinue
-        if (-not (Is-MemoryLikeCaptureError $errorMessage) -or $depth -ge 16) {
+        if (-not (Test-VisualRangeCaptureSplittableError $errorMessage) -or $depth -ge $MaxScreenshotSplitDepth) {
             throw
         }
 
@@ -797,7 +760,7 @@ function Capture-RangeTileRecursive($origSheet, $shrunkSheet, $origRange, $shrun
             throw
         }
 
-        Write-ProgressLine "tile split $tileLabel range='$address' reason='memory_error' error='$errorMessage' split_axis=$(if ($preferColumns) { 'columns' } else { 'rows' })"
+        Write-ProgressLine "tile split $tileLabel range='$address' reason='splittable_capture_error' error='$errorMessage' split_axis=$(if ($preferColumns) { 'columns' } else { 'rows' })"
         $tiles = New-Object System.Collections.ArrayList
         foreach ($part in $parts) {
             foreach ($tile in @(Capture-RangeTileRecursive $origSheet $shrunkSheet $part.original $part.shrunk $originalCacheDir $shrunkCacheDir $baseName $label $strategy $usedRangeError $nextTileIndex ($depth + 1))) {
@@ -809,7 +772,7 @@ function Capture-RangeTileRecursive($origSheet, $shrunkSheet, $origRange, $shrun
 
     $maxPixels = [Math]::Max([int64]$origInfo.pixels, [int64]$shrunkInfo.pixels)
 
-    if ($maxPixels -le $MaxScreenshotPixels -or $depth -ge 16) {
+    if ($maxPixels -le $MaxScreenshotPixels -or $depth -ge $MaxScreenshotSplitDepth) {
         return @([pscustomobject]@{
             tile_index = $tileIndex
             capture_range = $address
@@ -859,6 +822,7 @@ function Capture-RangeTileRecursive($origSheet, $shrunkSheet, $origRange, $shrun
 }
 
 function Capture-RangeImageSet($origSheet, $shrunkSheet, $origRange, $shrunkRange, [string]$originalCacheDir, [string]$shrunkCacheDir, [string]$baseName, [string]$label, [string]$strategy, [string]$usedRangeError) {
+    if ($null -eq $origSheet -or $null -eq $shrunkSheet) { throw 'Full recapture needs both real worksheets; opening baseline is required.' }
     $origPath = Join-Path $originalCacheDir ("{0}.png" -f $baseName)
     $shrunkPath = Join-Path $shrunkCacheDir ("{0}.png" -f $baseName)
     $address = Range-Address $origRange
@@ -870,7 +834,7 @@ function Capture-RangeImageSet($origSheet, $shrunkSheet, $origRange, $shrunkRang
         $errorMessage = $_.Exception.Message
         Remove-Item $origPath -Force -ErrorAction SilentlyContinue
         Remove-Item $shrunkPath -Force -ErrorAction SilentlyContinue
-        if (-not (Is-MemoryLikeCaptureError $errorMessage)) {
+        if (-not (Test-VisualRangeCaptureSplittableError $errorMessage)) {
             throw
         }
 
@@ -880,7 +844,7 @@ function Capture-RangeImageSet($origSheet, $shrunkSheet, $origRange, $shrunkRang
             throw
         }
 
-        Write-ProgressLine "capture split $label range='$address' reason='memory_error' error='$errorMessage' split_axis=$(if ($preferColumns) { 'columns' } else { 'rows' })"
+        Write-ProgressLine "capture split $label range='$address' reason='splittable_capture_error' error='$errorMessage' split_axis=$(if ($preferColumns) { 'columns' } else { 'rows' })"
         $tiles = New-Object System.Collections.ArrayList
         $nextTileIndex = 1
         foreach ($part in $parts) {
@@ -891,8 +855,8 @@ function Capture-RangeImageSet($origSheet, $shrunkSheet, $origRange, $shrunkRang
 
         return [pscustomobject]@{
             capture_range = $address
-            capture_strategy = "${strategy}_tiled_after_memory_error"
-            capture_info = Range-CaptureInfo $origRange "${strategy}_tiled_after_memory_error" $address $usedRangeError
+            capture_strategy = "${strategy}_tiled_after_capture_error"
+            capture_info = Range-CaptureInfo $origRange "${strategy}_tiled_after_capture_error" $address $usedRangeError
             original_image = $null
             shrunk_image = $null
             original_background_rgba = $null
@@ -964,181 +928,221 @@ function Get-WindowProcessId($hwnd) {
     return [int]$processId
 }
 
+# Read-only stored-state capture. The baseline opens lazily, only when its
+# cached image/geometry is insufficient. No Calculate/Save/SaveAs is performed.
+$captureMutex = [Threading.Mutex]::new($false, 'Local\ExcelShrinkVisualCapture')
+$ownsCaptureMutex = $false
+$settingsBook = $null
 $excel = $null
 $original = $null
 $shrunk = $null
+$stage = $null
 $captures = New-Object System.Collections.ArrayList
 $rangeLimitsByIndex = @{}
-$originalSheetCacheByIndex = @{}
-$shrunkSheetCacheByIndex = @{}
-$ProgressPath = Join-Path $OutputDir "screenshot-progress.log"
-$OpenTimingsPath = Join-Path $OutputDir "screenshot-open-timings.json"
+$skipSheets = @{}
+$ProgressPath = Join-Path $OutputDir 'screenshot-progress.log'
+$OpenTimingsPath = Join-Path $OutputDir 'screenshot-open-timings.json'
 $script:OpenTimings = New-Object System.Collections.ArrayList
-$originalAlreadyCachedEnabled = $OriginalAlreadyCached -match '^(1|true|yes)$'
-$shrunkAlreadyCachedEnabled = $ShrunkAlreadyCached -match '^(1|true|yes)$'
 $MaxScreenshotPixels = [int64]80000000
+$MaxScreenshotSplitDepth = 24
 
-if (-not [string]::IsNullOrWhiteSpace($RangeLimitPath) -and (Test-Path $RangeLimitPath)) {
-    $rangeLimits = Get-Content -Path $RangeLimitPath -Raw | ConvertFrom-Json
-    foreach ($rangeLimit in @($rangeLimits)) {
-        $rangeLimitsByIndex[[int]$rangeLimit.sheet_index] = $rangeLimit
+function Save-CaptureCheckpoint {
+    $checkpoint = "$CaptureManifestPath.pending"
+    ConvertTo-Json -InputObject @($captures.ToArray()) -Depth 8 | Set-Content -LiteralPath $checkpoint -Encoding UTF8
+    Move-Item -LiteralPath $checkpoint -Destination $CaptureManifestPath -Force
+}
+function Assert-ManualCaptureMode {
+    if ([int]$excel.Calculation -ne -4135) { throw 'Excel changed calculation mode; refusing to cache a recalculated screenshot.' }
+}
+function Ensure-OriginalWorkbook {
+    if ($null -eq $script:original) {
+        Write-ProgressLine 'opening original lazily: missing screenshot or larger required geometry'
+        Initialize-VisualPlanner $localOriginal
+        $script:original = Open-WorkbookWithRetry $excel $localOriginal 'original'
+        Assert-ManualCaptureMode
+        if ([int]$script:original.Worksheets.Count -ne [int]$shrunk.Worksheets.Count -or [int]$script:original.Charts.Count -ne [int]$shrunk.Charts.Count) {
+            throw 'Worksheet/chart-sheet counts differ; refusing incomplete visual validation.'
+        }
+    }
+}
+function Add-WorksheetCapture([int]$index, [string]$name, $set, [string]$errorMessage) {
+    [void]$captures.Add([pscustomobject]@{
+        sheet_index=$index; sheet_name=$name; capture_range=$set.capture_range
+        capture_strategy=$set.capture_strategy; used_range_error=$errorMessage
+        capture_info=$set.capture_info; original_image=$set.original_image; shrunk_image=$set.shrunk_image
+        original_background_rgba=$set.original_background_rgba; shrunk_background_rgba=$set.shrunk_background_rgba
+        tiles=@($set.tiles)
+    })
+}
+function Capture-WorksheetPair([int]$index, $rightSheet, $limit, $leftCache, $rightCache) {
+    $baseName = '{0:D3}' -f $index
+    if ($null -eq $original -and $null -ne $leftCache -and $null -ne $leftCache.capture_info) {
+        try {
+            $required = Resolve-CaptureRange $rightSheet $limit
+            $info = $leftCache.capture_info
+            $lastRow = [int]$required.Row + [int]$required.Rows.Count - 1
+            $lastColumn = [int]$required.Column + [int]$required.Columns.Count - 1
+            if ([int]$info.start_row -ne 1 -or [int]$info.start_column -ne 1 -or [int]$info.rows -lt $lastRow -or [int]$info.columns -lt $lastColumn) {
+                throw 'Cached baseline geometry does not cover the new visual bounds.'
+            }
+            $rightRange = Worksheet-RangeByBounds $rightSheet 1 1 ([int]$info.rows) ([int]$info.columns)
+            if (-not (Test-CaptureGeometry $rightCache $rightRange)) { $rightCache = $null }
+            Write-ProgressLine "baseline workbook open skipped index=$index; cached baseline geometry covers current shrunk sheet"
+            # The surrogate range is used only for coordinates. The original
+            # pixels come from leftCache. A full recapture requires real sheets.
+            return Capture-RangeImageSetWithPartialCache $null $rightSheet $rightRange $rightRange $OriginalCacheDir $ShrunkCacheDir $baseName "sheet $index cached baseline" 'cached_baseline_geometry' $null $leftCache $rightCache
+        } catch {
+            Write-ProgressLine "cached baseline fast path fallback index=$index error='$($_.Exception.Message)'"
+        }
+    }
+    Ensure-OriginalWorkbook
+    $leftSheet = $original.Worksheets.Item($index)
+    if ($leftSheet.Name -ne $rightSheet.Name) { throw "Worksheet order/name differs at index $index" }
+    try {
+        $leftRange = Resolve-VisualPairRange $leftSheet $rightSheet $limit $leftCache $rightCache
+        $rightRange = Matching-WorksheetRange $rightSheet $leftRange
+        if (-not (Test-CaptureGeometry $leftCache $leftRange)) { $leftCache = $null }
+        if (-not (Test-CaptureGeometry $rightCache $leftRange)) { $rightCache = $null }
+        if ($null -ne $leftCache -and $null -ne $rightCache -and -not (Test-CompatibleCachedPair $leftCache $rightCache)) {
+            $leftCache = $null; $rightCache = $null
+        }
+        return Capture-RangeImageSetWithPartialCache $leftSheet $rightSheet $leftRange $rightRange $OriginalCacheDir $ShrunkCacheDir $baseName "sheet $index" 'rust_bounds_visual' $null $leftCache $rightCache
+    } catch {
+        $reason = $_.Exception.Message
+        Write-ProgressLine "primary range failed index=$index; uncached used-range fallback error='$reason'"
+        $leftRange = Resolve-VisualPairRange $leftSheet $rightSheet $null $null $null
+        $rightRange = Matching-WorksheetRange $rightSheet $leftRange
+        return Capture-RangeImageSet $leftSheet $rightSheet $leftRange $rightRange $OriginalCacheDir $ShrunkCacheDir $baseName "sheet $index fallback" 'used_range_after_primary_failure' $reason
     }
 }
 
+New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+New-Item -ItemType Directory -Path $OriginalCacheDir -Force | Out-Null
+New-Item -ItemType Directory -Path $ShrunkCacheDir -Force | Out-Null
+if (-not [string]::IsNullOrWhiteSpace($RangeLimitPath)) {
+    foreach ($limit in @((Get-Content -LiteralPath $RangeLimitPath -Raw -Encoding UTF8 | ConvertFrom-Json))) { $rangeLimitsByIndex[[int]$limit.sheet_index] = $limit }
+}
+if (-not [string]::IsNullOrWhiteSpace($SkipSheetsPath)) {
+    foreach ($index in @((Get-Content -LiteralPath $SkipSheetsPath -Raw -Encoding UTF8 | ConvertFrom-Json))) { $skipSheets[[int]$index] = $true }
+}
+Set-Content -LiteralPath $ProgressPath -Encoding UTF8 -Value "screenshot capture started $(Get-Date -Format o)"
+Start-Transcript -Path (Join-Path $PSScriptRoot 'excel-screenshots.log') -Append | Out-Null
 try {
-    New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
-    New-Item -ItemType Directory -Path $OriginalCacheDir -Force | Out-Null
-    New-Item -ItemType Directory -Path $ShrunkCacheDir -Force | Out-Null
-    Set-Content -Path $ProgressPath -Value "screenshot capture started $(Get-Date -Format o)"
-    Write-ProgressLine "input original='$OriginalPath'"
-    Write-ProgressLine "input shrunk='$ShrunkPath'"
-    Write-ProgressLine "output_dir='$OutputDir'"
-    Write-ProgressLine "original_cache_dir='$OriginalCacheDir' already_cached=$OriginalAlreadyCached"
-    Write-ProgressLine "shrunk_cache_dir='$ShrunkCacheDir' already_cached=$ShrunkAlreadyCached"
-    Write-ProgressLine "capture_manifest_path='$CaptureManifestPath'"
-    Write-ProgressLine "range_limit_path='$RangeLimitPath' loaded_count=$($rangeLimitsByIndex.Count)"
     $originalSheetCacheByIndex = Read-SheetCaptureCache $OriginalSheetCachePath
     $shrunkSheetCacheByIndex = Read-SheetCaptureCache $ShrunkSheetCachePath
-    Write-ProgressLine "sheet cache summary original_hits=$($originalSheetCacheByIndex.Count) shrunk_hits=$($shrunkSheetCacheByIndex.Count)"
+    Write-ProgressLine "sheet cache summary original_hits=$($originalSheetCacheByIndex.Count) shrunk_hits=$($shrunkSheetCacheByIndex.Count) unchanged=$($skipSheets.Count)"
+    while (-not $ownsCaptureMutex) {
+        try { $ownsCaptureMutex = $captureMutex.WaitOne(5000) }
+        catch [Threading.AbandonedMutexException] { $ownsCaptureMutex = $true }
+        if (-not $ownsCaptureMutex) { Write-ProgressLine 'waiting for Excel clipboard mutex' }
+    }
     $excel = New-Object -ComObject Excel.Application
-    $excel.Visible = $true
-    $excel.ScreenUpdating = $true
-    $excel.DisplayAlerts = $false
-    $excel.AskToUpdateLinks = $false
-    $excel.AutomationSecurity = 3
-    $excelProcessId = Get-WindowProcessId $excel.Hwnd
-    Write-ProgressLine "excel pid=$excelProcessId"
-
-    $original = Open-WorkbookWithRetry $excel $OriginalPath "original"
-    $shrunk = Open-WorkbookWithRetry $excel $ShrunkPath "shrunk"
-    $sheetCount = [Math]::Min($original.Worksheets.Count, $shrunk.Worksheets.Count)
-    Write-ProgressLine "sheet count $sheetCount"
-
-    for ($i = 1; $i -le $sheetCount; $i++) {
-        $origSheet = $original.Worksheets.Item($i)
-        $shrunkSheet = $shrunk.Worksheets.Item($i)
-        $rangeLimit = $rangeLimitsByIndex[$i]
-        $imageBase = "{0:D3}" -f $i
-        $imageName = "$imageBase.png"
-        $origImage = Join-Path $OriginalCacheDir $imageName
-        $shrunkImage = Join-Path $ShrunkCacheDir $imageName
-        $captureRange = $null
-        $captureInfo = $null
-        $captureStrategy = $null
-        $captureTiles = @()
-        $origBackgroundRgba = $null
-        $shrunkBackgroundRgba = $null
-        $usedRangeError = $null
-
-        Write-ProgressLine "sheet start index=$i name='$($origSheet.Name)'"
-
-        $cachedOriginal = $originalSheetCacheByIndex[$i]
-        $cachedShrunk = $shrunkSheetCacheByIndex[$i]
-        if ($null -ne $cachedOriginal -and $null -ne $cachedShrunk) {
-            [void]$captures.Add((New-CachedCapturePair $i $origSheet.Name $cachedOriginal $cachedShrunk))
-            Write-ProgressLine "sheet cache hit index=$i original_hash='$($cachedOriginal.sheet_xml_hash)' shrunk_hash='$($cachedShrunk.sheet_xml_hash)'"
-            Write-ProgressLine "sheet done index=$i"
-            continue
-        }
-        elseif ($null -ne $cachedOriginal -or $null -ne $cachedShrunk) {
-            Write-ProgressLine "sheet cache partial index=$i original_hit=$($null -ne $cachedOriginal) shrunk_hit=$($null -ne $cachedShrunk); capturing missing side only"
-        }
-
+    $excel.Visible=$true; $excel.ScreenUpdating=$true; $excel.DisplayAlerts=$false
+    $excel.AskToUpdateLinks=$false; $excel.AutomationSecurity=3; $excel.EnableEvents=$false
+    $excel.CopyObjectsWithCells=$true;
+    $script:ExcelCaptureProcessId = [uint32](Get-WindowProcessId $excel.Hwnd)
+    Write-ProgressLine "excel pid=$script:ExcelCaptureProcessId"
+    $settingsBook = $excel.Workbooks.Add()
+    $excel.Calculation = -4135
+    $stage = Join-Path ([IO.Path]::GetTempPath()) ('es-' + [guid]::NewGuid().ToString('N').Substring(0,12))
+    New-Item -ItemType Directory -Path $stage | Out-Null
+    $localOriginal=Join-Path $stage 'original.xlsx'; $localShrunk=Join-Path $stage 'shrunk.xlsx'
+    Copy-Item -LiteralPath $OriginalPath -Destination $localOriginal
+    Copy-Item -LiteralPath $ShrunkPath -Destination $localShrunk
+    $originalArchiveHash = (Get-FileHash -LiteralPath $localOriginal -Algorithm SHA256).Hash
+    $shrunkArchiveHash = (Get-FileHash -LiteralPath $localShrunk -Algorithm SHA256).Hash
+    Initialize-VisualPlanner $localShrunk
+    $shrunk = Open-WorkbookWithRetry $excel $localShrunk 'shrunk'
+    Assert-ManualCaptureMode
+    $settingsBook.Close($false); $settingsBook=$null
+    $sheetCount = [int]$shrunk.Worksheets.Count
+    for ($i=1; $i -le $sheetCount; $i++) {
+        if ($skipSheets.ContainsKey($i)) { Write-ProgressLine "sheet unchanged index=$i; no screenshot required"; continue }
+        $rightSheet=$shrunk.Worksheets.Item($i); $name=[string]$rightSheet.Name
+        $leftCache=$originalSheetCacheByIndex[$i]; $rightCache=$shrunkSheetCacheByIndex[$i]
+        Write-ProgressLine "sheet start index=$i name='$name'"
         try {
-            $primaryStrategy = if ($null -ne $rangeLimit) { "rust_bounds" } else { "used_range" }
-            try {
-                $origRange = Resolve-CaptureRange $origSheet $rangeLimit
-                $shrunkRange = Matching-WorksheetRange $shrunkSheet $origRange
-                $captureRange = RangeLimit-Address $rangeLimit $origRange
-                $captureInfo = Range-CaptureInfo $origRange $primaryStrategy $captureRange $null
-                Write-ProgressLine "sheet primary range index=$i strategy=$primaryStrategy range='$captureRange' start_row=$($captureInfo.start_row) start_column=$($captureInfo.start_column) rows=$($captureInfo.rows) columns=$($captureInfo.columns)"
-                $captureSet = Capture-RangeImageSetWithPartialCache $origSheet $shrunkSheet $origRange $shrunkRange $OriginalCacheDir $ShrunkCacheDir $imageBase "sheet $i $primaryStrategy" $primaryStrategy $null $cachedOriginal $cachedShrunk
-                $captureRange = $captureSet.capture_range
-                $captureStrategy = $captureSet.capture_strategy
-                $captureInfo = $captureSet.capture_info
-                $origImage = $captureSet.original_image
-                $shrunkImage = $captureSet.shrunk_image
-                $origBackgroundRgba = $captureSet.original_background_rgba
-                $shrunkBackgroundRgba = $captureSet.shrunk_background_rgba
-                $captureTiles = @($captureSet.tiles)
+            Assert-ManualCaptureMode
+            if ($null -ne $leftCache -and [string]$leftCache.sheet_name -ne $name) {
+                throw "Cached original sheet name differs: cached='$([string]$leftCache.sheet_name)' current='$name'."
             }
-            catch {
-                $usedRangeError = $_.Exception.Message
-                Write-ProgressLine "primary range failed index=$i strategy=$primaryStrategy error='$usedRangeError'"
-                if ($null -eq $cachedOriginal -and -not $originalAlreadyCachedEnabled) {
-                    Remove-Item $origImage -Force -ErrorAction SilentlyContinue
-                    Remove-Item (Join-Path $OriginalCacheDir ("{0}-tile-*.png" -f $imageBase)) -Force -ErrorAction SilentlyContinue
-                }
-                if ($null -eq $cachedShrunk -and -not $shrunkAlreadyCachedEnabled) {
-                    Remove-Item $shrunkImage -Force -ErrorAction SilentlyContinue
-                    Remove-Item (Join-Path $ShrunkCacheDir ("{0}-tile-*.png" -f $imageBase)) -Force -ErrorAction SilentlyContinue
-                }
-
-                $origRange = Resolve-CaptureRange $origSheet $null
-                $shrunkRange = Matching-WorksheetRange $shrunkSheet $origRange
-                $captureRange = Range-Address $origRange
-                $captureInfo = Range-CaptureInfo $origRange "used_range_after_primary_failure" $captureRange $usedRangeError
-                Write-ProgressLine "sheet used range fallback index=$i range='$captureRange' start_row=$($captureInfo.start_row) start_column=$($captureInfo.start_column) rows=$($captureInfo.rows) columns=$($captureInfo.columns)"
-                $captureSet = Capture-RangeImageSetWithPartialCache $origSheet $shrunkSheet $origRange $shrunkRange $OriginalCacheDir $ShrunkCacheDir $imageBase "sheet $i used range fallback" "used_range_after_primary_failure" $usedRangeError $cachedOriginal $cachedShrunk
-                $captureRange = $captureSet.capture_range
-                $captureStrategy = $captureSet.capture_strategy
-                $captureInfo = $captureSet.capture_info
-                $origImage = $captureSet.original_image
-                $shrunkImage = $captureSet.shrunk_image
-                $origBackgroundRgba = $captureSet.original_background_rgba
-                $shrunkBackgroundRgba = $captureSet.shrunk_background_rgba
-                $captureTiles = @($captureSet.tiles)
+            if ($null -ne $rightCache -and [string]$rightCache.sheet_name -ne $name) {
+                throw "Cached shrunk sheet name differs: cached='$([string]$rightCache.sheet_name)' current='$name'."
             }
-
-            [void]$captures.Add([pscustomobject]@{
-                sheet_index = $i
-                sheet_name = $origSheet.Name
-                capture_range = $captureRange
-                capture_strategy = $captureStrategy
-                used_range_error = $usedRangeError
-                capture_info = $captureInfo
-                original_image = $origImage
-                shrunk_image = $shrunkImage
-                original_background_rgba = $origBackgroundRgba
-                shrunk_background_rgba = $shrunkBackgroundRgba
-                tiles = @($captureTiles)
-            })
-            Write-ProgressLine "sheet captured index=$i strategy=$captureStrategy range='$captureRange' tiles=$(@($captureTiles).Count)"
-            Write-ProgressLine "sheet done index=$i"
-        }
-        catch {
-            $capturedOriginalImage = if ($null -ne $origImage -and (Test-Path $origImage)) { $origImage } else { $null }
-            $capturedShrunkImage = if ($null -ne $shrunkImage -and (Test-Path $shrunkImage)) { $shrunkImage } else { $null }
-            $errorCaptureStrategy = if ($null -ne $captureStrategy) { $captureStrategy } elseif ($null -ne $captureInfo) { $captureInfo.strategy } else { $null }
-            [void]$captures.Add([pscustomobject]@{
-                sheet_index = $i
-                sheet_name = $origSheet.Name
-                capture_range = $captureRange
-                capture_strategy = $errorCaptureStrategy
-                used_range_error = $usedRangeError
-                screenshot_error = $_.Exception.Message
-                capture_info = $captureInfo
-                original_image = $capturedOriginalImage
-                shrunk_image = $capturedShrunkImage
-                original_background_rgba = $origBackgroundRgba
-                shrunk_background_rgba = $shrunkBackgroundRgba
-                tiles = @($captureTiles)
-            })
+            if (Test-CompatibleCachedPair $leftCache $rightCache) {
+                [void]$captures.Add((New-CachedCapturePair $i $name $leftCache $rightCache))
+                Write-ProgressLine "sheet cache hit index=$i"
+            } else {
+                $set = Capture-WorksheetPair $i $rightSheet $rangeLimitsByIndex[$i] $leftCache $rightCache
+                Add-WorksheetCapture $i $name $set $null
+            }
+        } catch {
+            [void]$captures.Add([pscustomobject]@{sheet_index=$i;sheet_name=$name;screenshot_error=$_.Exception.Message;tiles=@()})
             Write-ProgressLine "sheet error index=$i error='$($_.Exception.Message)'"
         }
+        Save-CaptureCheckpoint
+        Write-ProgressLine "sheet done index=$i"
+    }
+    for ($chartIndex=1; $chartIndex -le [int]$shrunk.Charts.Count; $chartIndex++) {
+        $i=$sheetCount+$chartIndex
+        if ($skipSheets.ContainsKey($i)) { Write-ProgressLine "sheet unchanged index=$i kind=chart_sheet"; continue }
+        $rightChart=$shrunk.Charts.Item($chartIndex); $name=[string]$rightChart.Name
+        $leftCache=$originalSheetCacheByIndex[$i]; $rightCache=$shrunkSheetCacheByIndex[$i]
+        Write-ProgressLine "sheet start index=$i kind=chart_sheet name='$name'"
+        try {
+            Assert-ManualCaptureMode
+            if ($null -ne $leftCache -and [string]$leftCache.sheet_name -ne $name) { throw 'Cached chart-sheet name differs.' }
+            if ($null -ne $rightCache -and [string]$rightCache.sheet_name -ne $name) { throw 'Cached chart-sheet name differs.' }
+            if (Test-CompatibleCachedPair $leftCache $rightCache) {
+                [void]$captures.Add((New-CachedCapturePair $i $name $leftCache $rightCache))
+            } else {
+                $leftImage = if ($null -ne $leftCache -and $null -ne $leftCache.image) { $leftCache.image } else {
+                    Ensure-OriginalWorkbook
+                    $leftChart=$original.Charts.Item($chartIndex)
+                    if ($leftChart.Name -ne $name) { throw 'Chart-sheet order/name differs.' }
+                    Save-ChartSheetImage $leftChart (Join-Path $OriginalCacheDir ('{0:D3}-chart.png' -f $i)) "original $i"
+                }
+                $rightImage = if ($null -ne $rightCache -and $null -ne $rightCache.image) { $rightCache.image } else {
+                    Save-ChartSheetImage $rightChart (Join-Path $ShrunkCacheDir ('{0:D3}-chart.png' -f $i)) "shrunk $i"
+                }
+                [void]$captures.Add([pscustomobject]@{sheet_index=$i;sheet_name=$name;capture_strategy='chart_sheet';capture_range='A1'
+                    capture_info=[pscustomobject]@{strategy='chart_sheet';address='A1';start_row=1;start_column=1;rows=1;columns=1;used_range_error=$null}
+                    original_image=$leftImage;shrunk_image=$rightImage;tiles=@()})
+            }
+        } catch {
+            [void]$captures.Add([pscustomobject]@{sheet_index=$i;sheet_name=$name;screenshot_error=$_.Exception.Message;tiles=@()})
+            Write-ProgressLine "sheet error index=$i kind=chart_sheet error='$($_.Exception.Message)'"
+        }
+        Save-CaptureCheckpoint
+        Write-ProgressLine "sheet done index=$i kind=chart_sheet"
+    }
+} finally {
+    try {
+        foreach ($book in @($settingsBook,$original,$shrunk)) {
+            if ($null -ne $book) { try { $book.Close($false) } catch { Write-Warning $_.Exception.Message } }
+        }
+        if ($null -ne $excel) { try { $excel.Quit() } catch { Write-Warning $_.Exception.Message } }
+        Close-VisualPlanners
+        # Preserve unexpected writes before deleting the short-path staging area.
+        if ($null -ne $stage) {
+            foreach ($item in @(@($localOriginal,$originalArchiveHash,'original'), @($localShrunk,$shrunkArchiveHash,'shrunk'))) {
+                if ($null -ne $item[0] -and (Test-Path -LiteralPath $item[0]) -and $null -ne $item[1]) {
+                    if ((Get-FileHash -LiteralPath $item[0] -Algorithm SHA256).Hash -ne $item[1]) {
+                        Copy-Item -LiteralPath $item[0] -Destination (Join-Path $OutputDir ("mutated-{0}.xlsx" -f $item[2])) -Force
+                        Write-ProgressLine "validation input mutated side=$($item[2]); preserving exact archive"
+                    }
+                }
+            }
+            Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    } finally {
+        if ($ownsCaptureMutex) { $captureMutex.ReleaseMutex() }
+        $captureMutex.Dispose()
+        ConvertTo-Json -InputObject @($script:OpenTimings.ToArray()) -Depth 4 | Set-Content -LiteralPath $OpenTimingsPath -Encoding UTF8
+        Stop-Transcript | Out-Null
     }
 }
-finally {
-    if ($original -ne $null) { $original.Close($false) }
-    if ($shrunk -ne $null) { $shrunk.Close($false) }
-    if ($excel -ne $null) { $excel.Quit() }
-}
-
-if ($captures.Count -eq 0) {
-    '[]' | Set-Content -Path $CaptureManifestPath -Encoding UTF8
-}
-else {
-    @($captures) | ConvertTo-Json -Depth 8 | Set-Content -Path $CaptureManifestPath -Encoding UTF8
-}
-@($script:OpenTimings) | ConvertTo-Json -Depth 4 | Set-Content -Path $OpenTimingsPath -Encoding UTF8
+Save-CaptureCheckpoint
 Write-ProgressLine "screenshot capture finished captures=$($captures.Count) manifest='$CaptureManifestPath'"
+$original=$null; $shrunk=$null; $excel=$null
+[GC]::Collect(); [GC]::WaitForPendingFinalizers()

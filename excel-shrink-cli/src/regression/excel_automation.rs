@@ -227,6 +227,7 @@ pub fn compare_sheet_screenshots(
 
     let script_path = work_dir.join("excel_compare_screenshots.ps1");
     fs::write(&script_path, SCREENSHOT_COMPARE_SCRIPT)?;
+    write_visual_capture_support_files(work_dir)?;
     let range_limit_path = work_dir.join("screenshot-range-limits.json");
     fs::write(
         &range_limit_path,
@@ -470,6 +471,23 @@ pub fn compare_sheet_screenshots(
         open_timing_path,
         open_timings,
     })
+}
+
+fn write_visual_capture_support_files(directory: &Path) -> anyhow::Result<()> {
+    for (name, source) in [
+        (
+            "excel_visual_bounds.ps1",
+            include_str!("excel_visual_bounds.ps1"),
+        ),
+        (
+            "excel_visual_clipboard.ps1",
+            include_str!("excel_visual_clipboard.ps1"),
+        ),
+        ("excel_visual_plan.cs", include_str!("excel_visual_plan.cs")),
+    ] {
+        fs::write(directory.join(name), source)?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

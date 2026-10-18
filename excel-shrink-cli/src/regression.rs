@@ -1488,7 +1488,7 @@ fn run_case(
         let work_dir = case_output_dir.join("excel-automation");
         let range_limits = value_comparison_details
             .as_ref()
-            .map(|report| report.right_capture_ranges.clone())
+            .map(xlsx_value_compare::combined_capture_ranges)
             .unwrap_or_default();
         match excel_automation::compare_sheet_screenshots(
             &input,
