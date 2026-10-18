@@ -504,17 +504,9 @@ fn validate_image_path(
         "invalid capture image directory"
     );
     let name = parts[parts.len() - 1];
-    let prefix = format!("sheet-{sheet_index:04}-tile-{tile_index:05}-");
-    let id = name
-        .strip_prefix(&prefix)
-        .and_then(|tail| tail.strip_suffix(".png"))
-        .context("capture image filename does not match its sheet and tile")?;
     ensure!(
-        id.len() == 32
-            && id
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()),
-        "capture image filename has an invalid identifier"
+        name == format!("s{sheet_index:04}-t{tile_index:05}.png"),
+        "capture image filename does not match its sheet and tile"
     );
     let root = fs::canonicalize(output_dir)?;
     let images = fs::canonicalize(output_dir.join("images"))?;
@@ -707,7 +699,7 @@ mod tests {
             std::env::temp_dir().join(format!("office-capture-{}-{stamp}", std::process::id()));
         let images = output.join("images");
         fs::create_dir_all(&images).unwrap();
-        let name = "sheet-0001-tile-00000-0123456789abcdef0123456789abcdef.png";
+        let name = "s0001-t00000.png";
         image::RgbImage::new(1, 1).save(images.join(name)).unwrap();
         let capture = |range: &str| ImageTile {
             sheet_index: 1,

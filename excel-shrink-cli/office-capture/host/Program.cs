@@ -80,7 +80,7 @@ app.MapPost("/image", async (HttpRequest request) =>
             var image = Convert.FromBase64String(base64);
             if (image.Length > MaxImageBytes) return Results.BadRequest("Image is too large.");
             var (width, height) = CheckPng(image);
-            var name = $"sheet-{sheetIndex:D4}-tile-{tileIndex:D5}-{Guid.NewGuid():N}.png";
+            var name = $"s{sheetIndex:D4}-t{tileIndex:D5}.png";
             var relativePath = Path.Combine("images", name);
             var localPath = Path.Combine(outputDirectory, relativePath);
             await WriteNewFile(localPath, image);
