@@ -35,7 +35,7 @@ foreach (var sheet in sheets.EnumerateArray())
 }
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("https://localhost:3000", "http://127.0.0.1:3001");
+builder.WebHost.UseUrls("http://localhost:3000", "http://127.0.0.1:3001");
 builder.WebHost.ConfigureKestrel(server => server.Limits.MaxRequestBodySize = MaxImageBytes * 2L);
 var app = builder.Build();
 var configSeen = 0;

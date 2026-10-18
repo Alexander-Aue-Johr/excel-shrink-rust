@@ -204,18 +204,6 @@ function Stop-OwnedProcess($process) {
     } catch {}
 }
 
-function Invoke-CertificateCommand([string]$dotnet, [string]$arguments, [string]$stage, [string]$name, [int]$timeoutSeconds) {
-    $stdout = Join-Path $stage ($name + '.stdout.log')
-    $stderr = Join-Path $stage ($name + '.stderr.log')
-    $process = Start-Process -FilePath $dotnet -ArgumentList $arguments -WorkingDirectory $stage `
-        -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -PassThru
-    if (-not $process.WaitForExit($timeoutSeconds * 1000)) {
-        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-        throw "Certificate setup exceeded $timeoutSeconds seconds."
-    }
-    return $process.ExitCode
-}
-
 function Copy-CompletedOutput([string]$from, [string]$to) {
     $imageFrom = Join-Path $from 'images'
     $imageTo = Join-Path $to 'images'
@@ -263,11 +251,6 @@ try {
     $env:DOTNET_ROOT = Split-Path -Parent $dotnet
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
     $dll = Build-Host $dotnet $stage $destination
-    if ((Invoke-CertificateCommand $dotnet 'dev-certs https --check --trust --quiet' $stage 'certificate-check' 30) -ne 0) {
-        if ((Invoke-CertificateCommand $dotnet 'dev-certs https --trust' $stage 'certificate-trust' 60) -ne 0) {
-            throw 'A trusted localhost HTTPS certificate is required.'
-        }
-    }
 
     $webSource = Join-Path $PSScriptRoot 'web'
     $webStage = Join-Path $stage 'web'
@@ -315,8 +298,8 @@ try {
         } catch {}
     }
     if (-not $hostReady) { throw 'Worksheet capture host did not become ready within 30 seconds.' }
-    $taskpaneResponse = Invoke-WebRequest -UseBasicParsing -Uri 'https://localhost:3000/taskpane.html' -TimeoutSec 10
-    if ($taskpaneResponse.StatusCode -ne 200) { throw 'Office add-in taskpane is unavailable over HTTPS.' }
+    $taskpaneResponse = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:3000/taskpane.html' -TimeoutSec 10
+    if ($taskpaneResponse.StatusCode -ne 200) { throw 'Office add-in taskpane is unavailable over HTTP.' }
 
     $previousRegistration = Register-AddIn $addInId $manifestPath
     $registrationDone = $true

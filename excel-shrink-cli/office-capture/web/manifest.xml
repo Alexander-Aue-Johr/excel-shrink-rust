@@ -10,12 +10,12 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Excel Shrink Capture" />
   <Description DefaultValue="Excel Shrink workbook capture" />
-  <IconUrl DefaultValue="https://localhost:3000/icon-32.png" />
-  <SupportUrl DefaultValue="https://localhost:3000/taskpane.html" />
-  <AppDomains><AppDomain>https://localhost:3000</AppDomain></AppDomains>
+  <IconUrl DefaultValue="http://localhost:3000/icon-32.png" />
+  <SupportUrl DefaultValue="http://localhost:3000/taskpane.html" />
+  <AppDomains><AppDomain>http://localhost:3000</AppDomain></AppDomains>
   <Hosts><Host Name="Workbook" /></Hosts>
   <Requirements><Sets DefaultMinVersion="1.13"><Set Name="ExcelApi" MinVersion="1.13" /></Sets></Requirements>
-  <DefaultSettings><SourceLocation DefaultValue="https://localhost:3000/taskpane.html" /></DefaultSettings>
+  <DefaultSettings><SourceLocation DefaultValue="http://localhost:3000/taskpane.html" /></DefaultSettings>
   <Permissions>ReadWriteDocument</Permissions>
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
     <Requirements><bt:Sets DefaultMinVersion="1.13"><bt:Set Name="ExcelApi" MinVersion="1.13" /></bt:Sets></Requirements>
@@ -32,8 +32,8 @@
       </Group></OfficeTab></ExtensionPoint>
     </DesktopFormFactor></Host></Hosts>
     <Resources>
-      <bt:Images><bt:Image id="Capture.Icon" DefaultValue="https://localhost:3000/icon-32.png" /></bt:Images>
-      <bt:Urls><bt:Url id="Commands.Url" DefaultValue="https://localhost:3000/commands.html" /><bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/taskpane.html" /></bt:Urls>
+      <bt:Images><bt:Image id="Capture.Icon" DefaultValue="http://localhost:3000/icon-32.png" /></bt:Images>
+      <bt:Urls><bt:Url id="Commands.Url" DefaultValue="http://localhost:3000/commands.html" /><bt:Url id="Taskpane.Url" DefaultValue="http://localhost:3000/taskpane.html" /></bt:Urls>
       <bt:ShortStrings><bt:String id="Capture.Group.Label" DefaultValue="Workbook capture" /><bt:String id="Capture.Button.Label" DefaultValue="Open capture" /></bt:ShortStrings>
       <bt:LongStrings><bt:String id="Capture.Button.Tooltip" DefaultValue="Open the workbook capture panel." /></bt:LongStrings>
     </Resources>
