@@ -64,10 +64,38 @@
           typeof sheet.drawing_fallback_required !== 'boolean'))) {
       throw new Error(`Incomplete capture bounds for worksheet ${JSON.stringify(sheet.name)}`);
     }
-    if (captureMode && sheet.drawing_fallback_required) {
-      throw new Error(`Drawing boundary is unresolved for worksheet ${JSON.stringify(sheet.name)}`);
-    }
     return {bottom, right};
+  }
+
+  async function verifyDrawingBounds(sheet, geometry, end) {
+    if (!sheet.drawing_fallback_required) return;
+    const shapes = await office(async context => {
+      const collection = context.workbook.worksheets.getItem(sheet.name).shapes;
+      collection.load('items/left,items/top,items/width,items/height,items/rotation,items/visible');
+      await context.sync();
+      return collection.items.map(shape => ({
+        left: Number(shape.left), top: Number(shape.top),
+        width: Number(shape.width), height: Number(shape.height),
+        rotation: Number(shape.rotation), visible: shape.visible
+      }));
+    });
+    if (!shapes.length) throw new Error(`Drawing boundary is unresolved for worksheet ${JSON.stringify(sheet.name)}`);
+    const maxRight = geometry.x[end + 1];
+    const maxBottom = geometry.y[sheet.bottom_row + 1];
+    for (const shape of shapes) {
+      if (typeof shape.visible !== 'boolean') throw new Error(`Invalid shape visibility on ${sheet.name}`);
+      if (!shape.visible) continue;
+      if (![shape.left, shape.top, shape.width, shape.height, shape.rotation].every(Number.isFinite) ||
+          shape.width < 0 || shape.height < 0) throw new Error(`Invalid shape bounds on ${sheet.name}`);
+      const angle = shape.rotation * Math.PI / 180;
+      const rotatedWidth = Math.abs(shape.width * Math.cos(angle)) + Math.abs(shape.height * Math.sin(angle));
+      const rotatedHeight = Math.abs(shape.width * Math.sin(angle)) + Math.abs(shape.height * Math.cos(angle));
+      const right = shape.left + (shape.width + rotatedWidth) / 2;
+      const bottom = shape.top + (shape.height + rotatedHeight) / 2;
+      if (right > maxRight || bottom > maxBottom) {
+        throw new Error(`Drawing extends beyond the capture range on ${sheet.name}`);
+      }
+    }
   }
 
   async function checkedWorksheet(sheet) {
@@ -137,6 +165,7 @@
     await geometry.calibrate();
     if (probe && geometry.fixedWidth !== null) throw new Error(`Cannot check right-edge overflow on fixed-width sheet ${sheet.name}`);
     const end = sharedEnd !== undefined ? sharedEnd : probe ? probeEnd(geometry, right, 64) : right;
+    await verifyDrawingBounds(sheet, geometry, end);
     const tiles = geometry.tiles(end, targets);
     const captures = [];
     for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
