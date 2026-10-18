@@ -106,8 +106,12 @@ fn read_image(path: &Path) -> Result<RgbaImage> {
     Ok(image)
 }
 
-fn pixel(image: &RgbaImage, x: u32, y: u32) -> Option<&Rgba<u8>> {
-    (x < image.width() && y < image.height()).then(|| image.get_pixel(x, y))
+fn pixel(image: &RgbaImage, x: u32, y: u32) -> Rgba<u8> {
+    if x < image.width() && y < image.height() {
+        *image.get_pixel(x, y)
+    } else {
+        Rgba([255, 255, 255, 255])
+    }
 }
 
 fn difference_bands(
@@ -164,6 +168,21 @@ fn cropped_canvas(image: &RgbaImage, x: u32, y: u32, width: u32, height: u32) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ignores_white_canvas_margins_but_detects_ink_beyond_the_smaller_image() {
+        let mut original = RgbaImage::from_pixel(40, 30, Rgba([255, 255, 255, 255]));
+        let mut shrunk = RgbaImage::from_pixel(30, 20, Rgba([255, 255, 255, 255]));
+        original.put_pixel(5, 5, Rgba([0, 0, 0, 255]));
+        shrunk.put_pixel(5, 5, Rgba([0, 0, 0, 255]));
+        assert!(difference_bands(&original, &shrunk, 40, 30).is_empty());
+
+        original.put_pixel(35, 25, Rgba([0, 0, 0, 255]));
+        let differences = difference_bands(&original, &shrunk, 40, 30);
+        assert_eq!(differences.len(), 1);
+        assert_eq!(differences[0].pixels, 1);
+        assert_eq!((differences[0].left, differences[0].top), (35, 25));
+    }
 
     #[test]
     fn separates_distant_pixel_changes() -> Result<()> {
