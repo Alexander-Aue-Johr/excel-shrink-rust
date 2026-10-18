@@ -18,6 +18,16 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
         .iter()
         .map(|sheet| items(sheet, "image_differences").len())
         .sum();
+    let changed_sheets: Vec<_> = sheets
+        .iter()
+        .enumerate()
+        .filter(|(_, sheet)| has_differences(sheet))
+        .collect();
+    let unchanged = sheets
+        .iter()
+        .filter(|sheet| !has_differences(sheet) && sheet["status"].as_str() == Some("same"))
+        .count();
+    let unchecked = sheets.len() - unchanged - changed_sheets.len();
 
     let mut html = String::new();
     html.push_str(
@@ -39,10 +49,12 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
     <div class="brand">EXCEL SHRINK</div>
     <h2>Visual regression</h2>
     <a class="nav-link" href="#overview">Overview</a>
-    <input id="sheet-search" class="search" type="search" placeholder="Filter worksheets" aria-label="Filter worksheets">
 "##,
     );
-    for (ordinal, sheet) in sheets.iter().enumerate() {
+    if !changed_sheets.is_empty() {
+        html.push_str("    <input id=\"sheet-search\" class=\"search\" type=\"search\" placeholder=\"Filter differences\" aria-label=\"Filter differences\">\n");
+    }
+    for &(ordinal, sheet) in &changed_sheets {
         let index = sheet["index"].as_u64().unwrap_or((ordinal + 1) as u64);
         let name = sheet["name"].as_str().unwrap_or("Unnamed worksheet");
         let _ = writeln!(
@@ -66,7 +78,12 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
         "<p class=\"workbook-name\">{}</p>",
         escape_html(workbook)
     );
-    let _ = write!(html, "<div class=\"metrics\"><div class=\"metric\"><strong>{}</strong><span>Worksheets</span></div><div class=\"metric\"><strong>{}</strong><span>Row height changes</span></div><div class=\"metric\"><strong>{}</strong><span>Image differences</span></div></div>", sheets.len(), row_changes, image_changes);
+    let _ = write!(html, "<p class=\"muted\">{} worksheets</p><div class=\"metrics\"><div class=\"metric\"><strong>{}</strong><span>Unchanged</span></div><div class=\"metric\"><strong>{}</strong><span>With differences</span></div><div class=\"metric\"><strong>{}</strong><span>Not fully checked</span></div></div>", sheets.len(), unchanged, changed_sheets.len(), unchecked);
+    if row_changes > 0 || image_changes > 0 {
+        let _ = write!(html, "<p class=\"muted\">{row_changes} row height changes · {image_changes} image differences</p>");
+    } else if unchanged > 0 && unchanged == sheets.len() {
+        html.push_str("<p>No visual differences found.</p>");
+    }
     if let Some(state) = report["image_comparison"].as_str() {
         let _ = write!(
             html,
@@ -76,18 +93,12 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
     }
     html.push_str("</header>\n");
 
-    for (ordinal, sheet) in sheets.iter().enumerate() {
+    for &(ordinal, sheet) in &changed_sheets {
         let index = sheet["index"].as_u64().unwrap_or((ordinal + 1) as u64);
         let name = sheet["name"].as_str().unwrap_or("Unnamed worksheet");
         let status = sheet["status"].as_str().unwrap_or("unknown");
-        let badge_class = match status {
-            "same" | "passed" | "unchanged" => "complete",
-            "row heights equal" => "neutral",
-            "error" | "failed" => "failed",
-            _ => "changed",
-        };
-        let _ = writeln!(html, "<section id=\"sheet-{}\" class=\"worksheet\" data-search=\"{} {}\"><div class=\"sheet-title\"><h2>Sheet {:02} · {}</h2><span class=\"badge {}\">{}</span></div>",
-            ordinal + 1, index, escape_html(name), index, escape_html(name), badge_class, escape_html(status));
+        let _ = writeln!(html, "<section id=\"sheet-{}\" class=\"worksheet\" data-search=\"{} {}\"><div class=\"sheet-title\"><h2>Sheet {:02} · {}</h2><span class=\"badge changed\">{}</span></div>",
+            ordinal + 1, index, escape_html(name), index, escape_html(name), escape_html(status));
 
         for change in changed_rows(sheet) {
             let _ = writeln!(html, "<article class=\"difference\"><h3>{} · height changed</h3><p class=\"geometry\">{} pt → {} pt</p>",
@@ -106,9 +117,6 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
             image_card(&mut html, &root, "Different pixels", &change["diff_image"]);
             html.push_str("</div></article>\n");
         }
-        if changed_rows(sheet).next().is_none() && items(sheet, "image_differences").is_empty() {
-            html.push_str("<p class=\"muted\">No differences recorded.</p>");
-        }
         html.push_str("</section>\n");
     }
     html.push_str(
@@ -125,7 +133,7 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
 <script>
 'use strict';
 const search = document.querySelector('#sheet-search');
-search.addEventListener('input', () => {
+search?.addEventListener('input', () => {
   const query = search.value.toLocaleLowerCase();
   for (const section of document.querySelectorAll('.worksheet')) {
     const found = section.dataset.search.toLocaleLowerCase().includes(query);
@@ -169,6 +177,10 @@ fn changed_rows(sheet: &Value) -> impl Iterator<Item = &Value> {
     items(sheet, "row_heights")
         .iter()
         .filter(|row| row["before"].as_f64() != row["after"].as_f64())
+}
+
+fn has_differences(sheet: &Value) -> bool {
+    changed_rows(sheet).next().is_some() || !items(sheet, "image_differences").is_empty()
 }
 
 fn row_span_size(change: &Value) -> usize {
@@ -255,6 +267,35 @@ fn escape_html(value: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn lists_only_differences_and_keeps_incomplete_checks_out_of_the_unchanged_count() -> anyhow::Result<()> {
+        let root = std::env::temp_dir().join(format!("visual-report-summary-{}", std::process::id()));
+        let report = json!({"workbook":"Book", "sheets":[
+            {"index":1,"name":"Equal sheet","status":"same"},
+            {"index":2,"name":"Unchecked sheet","status":"row heights equal"},
+            {"index":3,"name":"Changed sheet","status":"changed",
+             "row_heights":[{"row":4,"before":12,"after":16}]}
+        ]});
+        let html = fs::read_to_string(write_visual_report(&root, &report)?)?;
+        assert!(!html.contains("Equal sheet"));
+        assert!(!html.contains("Unchecked sheet"));
+        assert!(html.contains("Changed sheet"));
+        assert_eq!(html.matches("class=\"worksheet\"").count(), 1);
+        for label in ["Unchanged", "With differences", "Not fully checked"] {
+            assert!(html.contains(&format!("<strong>1</strong><span>{label}</span>")));
+        }
+        assert!(!html.contains("No visual differences found."));
+
+        let report = json!({"workbook":"Book", "sheets":[
+            {"index":1,"name":"Equal sheet","status":"same"}
+        ]});
+        let html = fs::read_to_string(write_visual_report(&root, &report)?)?;
+        assert!(html.contains("No visual differences found."));
+        assert!(!html.contains("class=\"worksheet\""));
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn report_escapes_names_and_rejects_images_outside_its_directory() -> anyhow::Result<()> {
