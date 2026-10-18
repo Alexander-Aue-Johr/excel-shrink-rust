@@ -24,6 +24,7 @@ mod excel_automation;
 mod xlsx_value_compare;
 mod artifact_cache;
 mod xml_views;
+mod office_plan;
 
 #[derive(Parser, Debug)]
 #[command(
