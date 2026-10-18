@@ -506,6 +506,8 @@ fn write_visual_capture_support_files(directory: &Path) -> anyhow::Result<()> {
             include_str!("excel_visual_clipboard.ps1"),
         ),
         ("excel_visual_plan.cs", include_str!("excel_visual_plan.cs")),
+        ("excel_visual_overflow.ps1", include_str!("excel_visual_overflow.ps1")),
+        ("excel_combined_overflow.ps1", include_str!("excel_combined_overflow.ps1")),
     ] {
         fs::write(directory.join(name), source)?;
     }

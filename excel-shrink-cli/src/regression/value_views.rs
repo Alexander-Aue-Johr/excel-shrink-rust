@@ -534,7 +534,6 @@ fn read_order(zip: &mut ZipArchive<File>, visual: bool) -> Result<Vec<String>> {
     Ok(order)
 }
 pub fn workbook_visual_sheet_order(path: &Path) -> Result<Vec<String>> { read_order(&mut ZipArchive::new(File::open(path)?)?, true) }
-pub fn workbook_sheet_order(path: &Path) -> Result<Vec<String>> { read_order(&mut ZipArchive::new(File::open(path)?)?, false) }
 
 /// Reuse the summaries produced by the value pass, including column XML metadata.
 pub fn workbook_capture_columns(path: &Path) -> Result<std::collections::BTreeMap<usize, CaptureColumns>> {

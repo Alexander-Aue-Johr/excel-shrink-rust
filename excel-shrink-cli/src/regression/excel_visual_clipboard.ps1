@@ -1,4 +1,4 @@
-# Clipboard metadata only: never log clipboard text or image contents.
+﻿# Clipboard metadata only: never log clipboard text or image contents.
 if (-not ('ExcelShrinkVisualClipboardNative' -as [type])) {
     Add-Type @'
 using System;
@@ -64,8 +64,8 @@ function Invoke-VisualClipboardImage([scriptblock]$copyAction, [string]$label, [
             continue
         }
         # Poll delayed clipboard rendering without rerunning CopyPicture immediately.
-        for ($poll = 0; $poll -lt 10; $poll++) {
-            Start-Sleep -Milliseconds 100
+        for ($poll = 0; $poll -lt 51; $poll++) {
+            if ($poll -gt 0) { Start-Sleep -Milliseconds 10 }
             $beforeRead = Get-VisualClipboardSnapshot
             if ($beforeRead.owner_pid -ne 0 -and $beforeRead.owner_pid -ne $expectedProcess) {
                 $lastError = 'Clipboard owner is not this Excel instance.'
@@ -74,7 +74,7 @@ function Invoke-VisualClipboardImage([scriptblock]$copyAction, [string]$label, [
             }
             if ($beforeRead.owner_pid -eq 0) {
                 $lastError = 'Clipboard owner could not be verified.'
-                if ($poll -eq 9) { Write-VisualClipboardState $label $attempt 'unknown_owner' $beforeRead $lastError }
+                if ($poll -eq 50) { Write-VisualClipboardState $label $attempt 'unknown_owner' $beforeRead $lastError }
                 continue
             }
             $image = $null

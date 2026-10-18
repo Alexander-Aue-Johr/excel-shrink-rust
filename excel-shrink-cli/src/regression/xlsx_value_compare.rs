@@ -58,11 +58,7 @@ pub struct WorksheetCaptureRange {
 
 #[path = "value_views.rs"]
 mod views;
-pub use views::{CaptureColumns, workbook_capture_columns, compare_saved_visual_values, compare_workbook_preservation, compare_workbook_values, workbook_visual_sheet_order, workbook_sheet_order};
-
-pub fn difference_keys(differences: &[CellValueDifference]) -> std::collections::HashSet<(String, String)> {
-    differences.iter().map(|difference| (difference.sheet_file.clone(), difference.cell_ref.clone())).collect()
-}
+pub use views::{CaptureColumns, workbook_capture_columns, compare_saved_visual_values, compare_workbook_preservation, compare_workbook_values, workbook_visual_sheet_order};
 
 /// Both source and cleaned visible content must be represented in screenshots.
 pub fn combined_capture_ranges(report: &WorkbookComparisonReport) -> Vec<WorksheetCaptureRange> {
