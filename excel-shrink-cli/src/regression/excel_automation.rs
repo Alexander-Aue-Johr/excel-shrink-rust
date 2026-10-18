@@ -66,6 +66,7 @@ pub struct ExcelScreenshotDifferenceSummary {
     pub entropy_changed_diff_pixels: u64,
     pub shift_movement_px: u64,
     pub max_shift_movement_px: u32,
+    pub row_height_differences: usize,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

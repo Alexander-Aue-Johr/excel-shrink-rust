@@ -6,8 +6,9 @@ use crate::visual_profile::{
 use crate::{Cli, LogLevel};
 use clap::{Parser, Subcommand};
 use excel_automation::{
-    ExcelSavedWorkbook, ExcelScreenshotDifferenceSummary, ExcelScreenshotReport, WorkbookOpenTiming,
+    ExcelSavedWorkbook, ExcelScreenshotDifferenceSummary, WorkbookOpenTiming,
 };
+use visual_validation::ExcelScreenshotReport;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
@@ -26,6 +27,10 @@ mod artifact_cache;
 mod xml_views;
 mod office_plan;
 mod row_heights;
+mod office_capture;
+mod visual_compare;
+mod visual_report;
+mod visual_validation;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -101,7 +106,7 @@ pub struct RegressionRunArgs {
     #[arg(long)]
     excel_recalc_check: bool,
 
-    /// Open original and shrunk workbooks with Excel, screenshot used ranges, and save cropped differences.
+    /// Compare worksheet row heights and images in Excel.
     #[arg(long)]
     excel_screenshot_check: bool,
 }
@@ -344,6 +349,8 @@ struct MeasurementApproximateCells {
 
 #[derive(Debug, Deserialize)]
 struct MeasurementScreenshotDifference {
+    #[serde(default)]
+    kind: Option<String>,
     sheet_index: usize,
     sheet_name: String,
     #[serde(default)]
@@ -388,6 +395,7 @@ struct RegressionMeasurementAggregate {
     total_cleaned_sheet_xml_bytes: u64,
     total_sheet_xml_reduction_ratio: f64,
     visual_total_differences: usize,
+    visual_row_height_differences: usize,
     visual_shift_only_differences: usize,
     visual_entropy_changed_differences: usize,
     visual_screenshot_error_differences: usize,
@@ -1493,31 +1501,20 @@ fn run_case(
             }
         }
 
-        let screenshot_dir = case_output_dir.join("excel-screenshots");
-        let work_dir = case_output_dir.join("excel-automation");
-        let range_limits = value_comparison_details
-            .as_ref()
-            .map(xlsx_value_compare::combined_capture_ranges)
-            .unwrap_or_default();
-        match excel_automation::compare_sheet_screenshots(
-            &input,
-            &output_path,
-            &screenshot_dir,
-            &work_dir,
-            &range_limits,
-            &visual_profile,
-            console_log_level,
-        ) {
-            Ok(report) => {
-                if report.differences_found {
-                    failures.push(format!(
-                        "Excel screenshot comparison found differences; report: {}",
-                        report.report_path.display()
-                    ));
+        if value_comparison_details.as_ref().is_some_and(|report| report.differences.is_empty()) {
+            let screenshot_dir = case_output_dir.join("excel-screenshots");
+            match visual_validation::compare_sheet_visuals(&input, &output_path, &screenshot_dir) {
+                Ok(report) => {
+                    if report.differences_found {
+                        failures.push(format!(
+                            "Excel visual comparison found differences; report: {}",
+                            report.html_report_path.display()
+                        ));
+                    }
+                    excel_screenshot_details = Some(report);
                 }
-                excel_screenshot_details = Some(report);
+                Err(error) => failures.push(format!("Excel visual comparison failed: {error:#}")),
             }
-            Err(error) => failures.push(format!("Excel screenshot validation failed: {error:#}")),
         }
     }
 
@@ -2072,6 +2069,7 @@ fn measurement_aggregate(cases: &[RegressionCaseMeasurement]) -> RegressionMeasu
         .filter_map(|case| case.visual_diff_summary.as_ref())
     {
         aggregate.visual_total_differences += summary.total_differences;
+        aggregate.visual_row_height_differences += summary.row_height_differences;
         aggregate.visual_shift_only_differences += summary.shift_only_differences;
         aggregate.visual_entropy_changed_differences += summary.entropy_changed_differences;
         aggregate.visual_screenshot_error_differences += summary.screenshot_error_differences;
@@ -2106,7 +2104,8 @@ fn load_entropy_changed_diff_details(report_path: &Path) -> Vec<RegressionVisual
     let mut details = differences
         .into_iter()
         .filter(|difference| {
-            difference.screenshot_error.is_none()
+            difference.kind.as_deref() != Some("row_height")
+                && difference.screenshot_error.is_none()
                 && !vertical_reflow_proof_is_shift_only(difference.vertical_reflow_proof.as_ref())
         })
         .map(|difference| {
@@ -2209,14 +2208,14 @@ fn measurement_chart_html(report: &RegressionMeasurementReport) -> String {
         html_escape(&report.output_root.display().to_string())
     );
     html.push_str("<h2>Size reduction and visual diffs</h2>");
-    html.push_str("<div class=\"legend\"><span class=\"swatch\" style=\"background:#5d6675\"></span>case workbook reduction points <span class=\"swatch\" style=\"background:#1f77b4\"></span>aggregate XLSX reduction <span class=\"swatch\" style=\"background:#6b46c1\"></span>aggregate uncompressed workbook reduction <span class=\"swatch\" style=\"background:#2f855a\"></span>aggregate worksheet XML reduction <span class=\"swatch\" style=\"background:#b7791f\"></span>shift-only diffs <span class=\"swatch\" style=\"background:#c53030\"></span>entropy-changing diffs</div>");
+    html.push_str("<div class=\"legend\"><span class=\"swatch\" style=\"background:#5d6675\"></span>case workbook reduction points <span class=\"swatch\" style=\"background:#1f77b4\"></span>aggregate XLSX reduction <span class=\"swatch\" style=\"background:#6b46c1\"></span>aggregate uncompressed workbook reduction <span class=\"swatch\" style=\"background:#2f855a\"></span>aggregate worksheet XML reduction <span class=\"swatch\" style=\"background:#b7791f\"></span>row height diffs <span class=\"swatch\" style=\"background:#c53030\"></span>image diffs</div>");
     html.push_str(&measurement_overview_svg(report));
     html.push_str("<h2>Excel open time</h2>");
     html.push_str("<div class=\"legend\"><span class=\"swatch\" style=\"background:#3b82f6\"></span>original/repaired original <span class=\"swatch\" style=\"background:#ef4444\"></span>shrunk</div>");
     html.push_str(&measurement_open_time_svg(report));
     html.push_str("<h2>Profile summary</h2>");
     html.push_str(&measurement_summary_table(report));
-    html.push_str("<h2>Entropy-changing screenshot diffs</h2>");
+    html.push_str("<h2>Image differences</h2>");
     html.push_str(&measurement_entropy_diff_table(report));
     html.push_str("</body></html>");
     html
@@ -2237,7 +2236,7 @@ fn measurement_overview_svg(report: &RegressionMeasurementReport) -> String {
         .profiles
         .iter()
         .map(|profile| {
-            profile.aggregate.visual_shift_only_differences
+            profile.aggregate.visual_row_height_differences
                 + profile.aggregate.visual_entropy_changed_differences
         })
         .max()
@@ -2321,7 +2320,7 @@ fn measurement_overview_svg(report: &RegressionMeasurementReport) -> String {
         .map(|(index, profile)| {
             let x = profile_x(index, report.profiles.len(), LEFT, plot_width);
             let y = bottom_y
-                - (profile.aggregate.visual_shift_only_differences as f64 / max_diff) * plot_height;
+                - (profile.aggregate.visual_row_height_differences as f64 / max_diff) * plot_height;
             (x, y)
         })
         .collect::<Vec<_>>();
@@ -2496,7 +2495,7 @@ fn draw_open_bar(
 
 fn measurement_summary_table(report: &RegressionMeasurementReport) -> String {
     let mut table = String::new();
-    table.push_str("<table><thead><tr><th>profile</th><th>cases</th><th>XLSX reduction</th><th>uncompressed workbook reduction</th><th>sheet XML reduction</th><th>shrink total</th><th>avg shrink</th><th>shift-only diffs</th><th>entropy-changing diffs</th><th>avg original open</th><th>avg shrunk open</th></tr></thead><tbody>");
+    table.push_str("<table><thead><tr><th>profile</th><th>cases</th><th>XLSX reduction</th><th>uncompressed workbook reduction</th><th>sheet XML reduction</th><th>shrink total</th><th>avg shrink</th><th>row height diffs</th><th>image diffs</th><th>avg original open</th><th>avg shrunk open</th></tr></thead><tbody>");
     for profile in &report.profiles {
         let _ = writeln!(
             table,
@@ -2509,7 +2508,7 @@ fn measurement_summary_table(report: &RegressionMeasurementReport) -> String {
             format_pct(Some(profile.aggregate.total_sheet_xml_reduction_ratio)),
             format_ms(Some(profile.aggregate.total_shrink_duration_ms as f64)),
             format_ms(profile.aggregate.avg_shrink_duration_ms),
-            profile.aggregate.visual_shift_only_differences,
+            profile.aggregate.visual_row_height_differences,
             profile.aggregate.visual_entropy_changed_differences,
             format_ms(profile.aggregate.avg_original_open_ms),
             format_ms(profile.aggregate.avg_shrunk_open_ms)
@@ -2536,12 +2535,12 @@ fn measurement_entropy_diff_table(report: &RegressionMeasurementReport) -> Strin
     });
 
     if rows.is_empty() {
-        return "<div class=\"meta\">No entropy-changing screenshot diffs were recorded.</div>"
+        return "<div class=\"meta\">No image differences were recorded.</div>"
             .to_string();
     }
 
     let mut table = String::new();
-    table.push_str("<table><thead><tr><th>profile</th><th>case</th><th>sheet</th><th>pixels</th><th>cells</th><th>report</th><th>original</th><th>shrunk</th><th>diff</th><th>reflow residual</th><th>XML</th></tr></thead><tbody>");
+    table.push_str("<table><thead><tr><th>profile</th><th>case</th><th>sheet</th><th>pixels</th><th>report</th></tr></thead><tbody>");
     for (profile, case, detail) in rows {
         let sheet = match detail.tile_index {
             Some(tile_index) => format!(
@@ -2550,42 +2549,15 @@ fn measurement_entropy_diff_table(report: &RegressionMeasurementReport) -> Strin
             ),
             None => format!("{} {}", detail.sheet_index, detail.sheet_name),
         };
-        let cells = detail
-            .approximate_cells
-            .as_ref()
-            .map(|cells| format!("{}:{}", cells.top_left, cells.bottom_right))
-            .unwrap_or_else(|| "n/a".to_string());
-        let original = detail
-            .original_crop
-            .as_ref()
-            .or(detail.original_image.as_ref())
-            .map(|path| file_link(path, "original"))
-            .unwrap_or_else(|| "n/a".to_string());
-        let shrunk = detail
-            .shrunk_crop
-            .as_ref()
-            .or(detail.shrunk_image.as_ref())
-            .map(|path| file_link(path, "shrunk"))
-            .unwrap_or_else(|| "n/a".to_string());
-        let diff = detail
-            .diff_pixels
-            .as_ref()
-            .map(|path| file_link(path, "pixels"))
-            .unwrap_or_else(|| "n/a".to_string());
-        let residual = detail
-            .vertical_reflow_residual_diff_pixels
-            .as_ref()
-            .map(|path| file_link(path, "residual"))
-            .unwrap_or_else(|| "n/a".to_string());
-        let xml = detail
-            .sheet_xml_visual_diff
-            .as_ref()
-            .or(detail.sheet_xml_diff.as_ref())
-            .map(|path| file_link(path, "xml"))
-            .unwrap_or_else(|| "n/a".to_string());
+        let html_report = detail.screenshot_report_path.with_file_name("report.html");
+        let report_link = if html_report.is_file() {
+            file_link(&html_report, "html")
+        } else {
+            file_link(&detail.screenshot_report_path, "json")
+        };
         let _ = writeln!(
             table,
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{original}</td><td>{shrunk}</td><td>{diff}</td><td>{residual}</td><td>{xml}</td></tr>",
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{report_link}</td></tr>",
             html_escape(&profile.visual_profile),
             html_escape(&case.id),
             html_escape(&sheet),
@@ -2593,8 +2565,6 @@ fn measurement_entropy_diff_table(report: &RegressionMeasurementReport) -> Strin
                 .diff_pixel_count
                 .map(|pixels| pixels.to_string())
                 .unwrap_or_else(|| "n/a".to_string()),
-            html_escape(&cells),
-            file_link(&detail.screenshot_report_path, "json")
         );
     }
     table.push_str("</tbody></table>");
