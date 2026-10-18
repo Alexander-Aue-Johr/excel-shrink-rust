@@ -1,4 +1,5 @@
 use super::xlsx_value_compare::{workbook_sheet_order, WorksheetCaptureRange};
+use super::visual_diagnostics;
 use crate::pipeline::process_files;
 use crate::visual_profile::{
     profile_artifact_root, write_visual_profile_metadata, ResolvedVisualProfile,
@@ -75,11 +76,34 @@ pub struct WorkbookOpenTiming {
     pub opened_at: Option<String>,
 }
 
+struct RecalculationTransfer(PathBuf);
+
+impl RecalculationTransfer {
+    fn new() -> io::Result<Self> {
+        let unique = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("es-recalc-{}-{unique}", std::process::id()));
+        fs::create_dir(&path)?;
+        Ok(Self(path))
+    }
+}
+
+impl Drop for RecalculationTransfer {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 pub fn save_recalculated_copy(
     input_path: &Path,
     output_path: &Path,
     work_dir: &Path,
 ) -> anyhow::Result<ExcelSavedWorkbook> {
+    let _visual_phase = visual_diagnostics::phase("excel.recalculate_and_save", input_path.display().to_string());
+    let before = super::artifact_cache::snapshot(input_path)?;
+    anyhow::ensure!(input_path != output_path, "recalculation input and output must differ");
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -89,13 +113,38 @@ pub fn save_recalculated_copy(
     let script_path = work_dir.join("excel_recalculate_and_save.ps1");
     fs::write(&script_path, RECALCULATE_AND_SAVE_SCRIPT)?;
 
-    run_power_shell_script(
-        &script_path,
+    // Keep both Copy-Item endpoints short too: Windows PowerShell can reject
+    // long UNC paths even though Excel itself only sees the local staged paths.
+    let transfer = RecalculationTransfer::new()?;
+    let transfer_input = transfer.0.join("input.xlsx");
+    let transfer_output = transfer.0.join("output.xlsx");
+    fs::copy(input_path, &transfer_input)?;
+    let local_script = transfer.0.join("recalculate.ps1");
+    let local_progress = transfer.0.join("recalc-progress.log");
+    fs::write(&local_script, RECALCULATE_AND_SAVE_SCRIPT)?;
+    let result = run_power_shell_script(
+        &local_script,
         &[
-            ("InputPath", power_shell_path(input_path)?),
-            ("OutputPath", power_shell_path(output_path)?),
+            ("InputPath", power_shell_path(&transfer_input)?),
+            ("OutputPath", power_shell_path(&transfer_output)?),
+            ("ProgressPath", power_shell_path(&local_progress)?),
         ],
-    )?;
+    );
+    if local_progress.is_file() {
+        fs::copy(&local_progress, work_dir.join("excel-recalc-progress.log"))?;
+    }
+    result?;
+    anyhow::ensure!(
+        transfer_output.is_file(),
+        "Excel did not create recalculated transfer workbook: {}",
+        transfer_output.display()
+    );
+    fs::copy(&transfer_output, output_path).map_err(|error| {
+        anyhow::anyhow!(
+            "failed to copy recalculated workbook to '{}': {error}",
+            output_path.display()
+        )
+    })?;
 
     anyhow::ensure!(
         output_path.exists(),
@@ -103,6 +152,8 @@ pub fn save_recalculated_copy(
         output_path.display()
     );
 
+    super::artifact_cache::assert_snapshot_unchanged(&before, input_path, &work_dir.join("source-mutation"))?;
+    super::artifact_cache::record_stage_change(&before, output_path, &work_dir.join("recalc-package-changes"))?;
     replace_workbook_with_shared_cache_link(output_path, work_dir)?;
 
     Ok(ExcelSavedWorkbook {

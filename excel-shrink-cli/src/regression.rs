@@ -19,11 +19,11 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use xlsx_value_compare::{CellValueDifference, MissingCellPolicy, WorkbookComparisonReport};
 
+mod visual_diagnostics;
 mod excel_automation;
 mod xlsx_value_compare;
 mod artifact_cache;
 mod xml_views;
-mod visual_diagnostics;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -627,7 +627,7 @@ pub fn run_seeschifffahrt_sheet11_trace_removed_cells_for_corpus_regression_test
     let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case, LogLevel::Info)
         .unwrap_or_else(|e| panic!("failed to resolve seeschifffahrt input: {e:#}"));
     let output_root = repo_root
-        .join("regression/tmp")
+        .join(".tmp").join("regression")
         .join(format!("cell-trace-{}", timestamp()));
     fs::create_dir_all(&output_root)
         .unwrap_or_else(|e| panic!("failed to create cell trace output directory: {e}"));
@@ -701,7 +701,7 @@ pub fn run_kernhaushalt_sheet84_trace_removed_cell_for_corpus_regression_test() 
     let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case, LogLevel::Info)
         .unwrap_or_else(|e| panic!("failed to resolve kernhaushalt input: {e:#}"));
     let output_root = repo_root
-        .join("regression/tmp")
+        .join(".tmp").join("regression")
         .join(format!("cell-trace-{}", timestamp()));
     fs::create_dir_all(&output_root)
         .unwrap_or_else(|e| panic!("failed to create cell trace output directory: {e}"));
@@ -811,7 +811,7 @@ fn run_single_smoke_case_trace_cell_for_corpus_regression_test(
     let input = resolve_case_input(&repo_root, corpus_root.as_deref(), case, LogLevel::Info)
         .unwrap_or_else(|e| panic!("failed to resolve {label} input: {e:#}"));
     let output_root = repo_root
-        .join("regression/tmp")
+        .join(".tmp").join("regression")
         .join(format!("cell-trace-{}", timestamp()));
     fs::create_dir_all(&output_root)
         .unwrap_or_else(|e| panic!("failed to create cell trace output directory: {e}"));
@@ -943,7 +943,7 @@ fn run_suite(
         .map(|path| resolve_path(&repo_root, path))
         .unwrap_or_else(|| {
             repo_root
-                .join("regression/tmp")
+                .join(".tmp").join("regression")
                 .join(format!("{mode_name}-{timestamp}"))
         });
     fs::create_dir_all(&output_root)?;
@@ -1137,7 +1137,7 @@ fn run_visual_profile_matrix(
         .clone()
         .map(|path| resolve_path(&repo_root, path))
         .unwrap_or_else(|| {
-            repo_root.join("regression/tmp").join(format!(
+            repo_root.join(".tmp").join("regression").join(format!(
                 "{mode_name}-all-visual-profiles-{matrix_timestamp}"
             ))
         });
@@ -1311,9 +1311,20 @@ fn run_case(
     console_log_level: LogLevel,
     case: &RegressionCase,
 ) -> anyhow::Result<CaseReport> {
-    let input = resolve_case_input(repo_root, corpus_root, case, console_log_level)?;
+    let _phase = visual_diagnostics::phase("regression.case", &case.id);
+    let source_input = resolve_case_input(repo_root, corpus_root, case, console_log_level)?;
     let case_output_dir = output_root.join(&case.id);
     fs::create_dir_all(&case_output_dir)?;
+    // Keep ordinary cleanup/statistics tests unchanged. Excel-backed validation
+    // starts from an explicit workbook.xml-only repaired, immutable baseline.
+    let input = if excel_recalc_check || excel_screenshot_check {
+        let prepared = artifact_cache::prepare_baseline(&source_input)?;
+        artifact_cache::atomic_write(&case_output_dir.join("baseline-provenance.json"),
+            &serde_json::to_vec_pretty(&prepared)?)?;
+        prepared.snapshot.path
+    } else {
+        source_input.clone()
+    };
     let analysis_mode = analysis_mode(defaults, case);
     let analysis_csv_path = case_output_dir.join("analysis.csv");
     let cli = build_cli(
@@ -1335,11 +1346,25 @@ fn run_case(
     let mut failures = Vec::new();
     fs::remove_file(&output_path).ok();
     let shrink_started = Instant::now();
-    let shrink_result = process_files(vec![input.clone()], &cli);
+    let shrink_result = {
+        let _phase = visual_diagnostics::phase("regression.shrink", input.display().to_string());
+        process_files(vec![input.clone()], &cli)
+    };
     let shrink_duration_ms = Some(shrink_started.elapsed().as_millis());
     if let Err(error) = shrink_result {
         failures.push(format!("excel-shrink failed: {error:#}"));
     } else if output_path.exists() {
+        if excel_recalc_check || excel_screenshot_check {
+            if let Err(error) = artifact_cache::assert_shrink_invariants(
+                &input, &output_path, &case_output_dir.join("package-audit")) {
+                failures.push(format!("package invariant failed: {error:#}"));
+            }
+            let history_key = format!("{}:{}", case.id, visual_profile.profile_name());
+            if let Err(error) = artifact_cache::record_output(&source_input, &history_key,
+                &output_path, &case_output_dir.join("output-history")) {
+                failures.push(format!("output history failed: {error:#}"));
+            }
+        }
         if let Err(error) = excel_automation::replace_workbook_with_shared_cache_link(
             &output_path,
             &case_output_dir,
@@ -1556,13 +1581,15 @@ fn compare_original_and_shrunk_values(
     shrunk_path: &Path,
     cli: &Cli,
 ) -> anyhow::Result<WorkbookComparisonReport> {
-    xlsx_value_compare::compare_workbook_values(
+    let _phase = visual_diagnostics::phase("regression.value_validation", original_path.display().to_string());
+    xlsx_value_compare::compare_workbook_preservation(
         original_path,
         shrunk_path,
         missing_cell_policy(cli),
         None,
     )
 }
+
 
 fn validate_excel_recalculation(
     original_path: &Path,
@@ -1754,6 +1781,7 @@ fn sheet_size_details_by_uncompressed_xml(
     original_path: &Path,
     cleaned_path: &Path,
 ) -> anyhow::Result<Vec<SheetReductionDetail>> {
+    let _phase = visual_diagnostics::phase("regression.sheet_sizes", "ZIP entry sizes");
     let original_sheets = worksheet_xml_sizes(original_path)?;
     let cleaned_sheets = worksheet_xml_sizes(cleaned_path)?;
 
@@ -1914,6 +1942,7 @@ fn measurement_profile_from_report(
     report: &RegressionReport,
     report_path: &Path,
 ) -> RegressionMeasurementProfile {
+    let _phase = visual_diagnostics::phase("regression.measurement_report", "measurement aggregation");
     let cases = report
         .cases
         .iter()
@@ -2852,6 +2881,7 @@ fn resolve_case_input(
     case: &RegressionCase,
     console_log_level: LogLevel,
 ) -> anyhow::Result<PathBuf> {
+    let _phase = visual_diagnostics::phase("regression.resolve_input", &case.id);
     if let Some(input_path) = &case.input_path {
         let path = normalize_cli_path(PathBuf::from(input_path));
         anyhow::ensure!(
