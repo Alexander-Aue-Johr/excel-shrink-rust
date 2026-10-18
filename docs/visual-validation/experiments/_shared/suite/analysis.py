@@ -45,6 +45,36 @@ def case_diagnostic(root,j):
     category='infrastructure / report I/O' if receipt.get('failure_category')=='report-io' or 'VV_SNAPSHOT_IO:' in error else j['status']
     return {'case_id':j['id'],'category':category,'error':j.get('error')}
 
+def worksheet_issues(jobs):
+    """Group operational worksheet failures without counting repeats as new defects."""
+    grouped = {}
+    for job in jobs:
+        metrics = job.get('metrics') or {}
+        for workbook in metrics.get('workbooks') or []:
+            for sheet in workbook.get('sheets') or []:
+                if sheet.get('status') in {'complete', 'not-selected'}:
+                    continue
+                error = sheet.get('error') or {}
+                error = error if isinstance(error, dict) else {}
+                detail = error.get('detail') or {}
+                detail = detail if isinstance(detail, dict) else {}
+                code = error.get('code') or 'WORKSHEET_INCOMPLETE'
+                key = (workbook.get('workbook'), sheet.get('sheet_index'), sheet.get('sheet'), code)
+                entry = grouped.setdefault(key, dict(workbook=key[0], sheet_index=key[1], sheet=key[2],
+                    code=key[3], cases=[], groups=[], observations=[]))
+                if job['id'] not in entry['cases']:
+                    entry['cases'].append(job['id'])
+                if job['stage'] not in entry['groups']:
+                    entry['groups'].append(job['stage'])
+                edges = [p.get('edge_points') for p in detail.get('final_checks') or []]
+                if not edges:
+                    edges = [p.get('edge_points') for p in detail.get('probes') or []][-2:]
+                observation = dict(axis=detail.get('axis'), target_points=detail.get('target_points'),
+                                   checked_edge_points=edges)
+                if observation not in entry['observations']:
+                    entry['observations'].append(observation)
+    return sorted(grouped.values(), key=lambda row: (str(row['workbook']), row['sheet_index'] or 0, str(row['sheet'])))
+
 def run_row(j):
     c=j['candidate'];m=j.get('metrics') or {};life=m.get('focus_lifecycle') or (j.get('supervisor') or {}).get('focus_lifecycle') or {};mark=life.get('milestones') or {};ms=C.policy_workload(j)
     return {'case_id':j['id'],'group':j['stage'],'block':c.get('block_id'),'variant':c.get('comparison_variant'),'workbook':j['workbook'],'sheets':c.get('sheet_names'),'round':j['round'],'status':j['status'],
@@ -86,4 +116,5 @@ def summarize(state):
         groups.append(dict(id=g['id'],description=g['description'],question=g.get('question','capture'),rows=rows,pairs=pairs,totals=totals,fastest=fastest,selected=chosen,conflicts=conflicts,status='complete' if rows and all(r['all_complete'] for r in rows) and not conflicts else 'with-gaps'))
     primary_keys={j['key'] for j in primary}
     return dict(schema='vv-evaluation-summary-v1',run_id=state['run_id'],status=state['status'],mode=plan['mode'],protocol_id=plan['protocol_id'],source_fingerprint=state['source_version'],selected_policy=plan['selected_policy'],decision_policy=plan['decision_policy'],groups=groups,runs=[run_row(j) for j in primary],recoveries=[run_row(j) for j in state['jobs'] if j['key']not in primary_keys],
+                worksheet_issues=worksheet_issues(state['jobs']),
                 scope='Unchanged-input capture evaluation, not original-versus-shrunk equivalence.',timing_note='Workload includes preparation, Excel startup, capture, analysis and final export; offline pixel checks and reporting are excluded. Recovery includes failed elapsed time plus fresh 16-MP workload. Incomplete rows show successful-time medians descriptively, not as an eligible ranking.')

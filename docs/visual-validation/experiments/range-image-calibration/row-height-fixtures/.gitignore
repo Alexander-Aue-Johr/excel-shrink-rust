@@ -1,1 +1,5 @@
+# Generated variants remain local; these pinned test inputs are versioned.
 *.xlsx
+!vv-row-height-calibri11.xlsx
+!vv-row-height-calibri16.xlsx
+!vv-row-height-geometry.xlsx

@@ -19,7 +19,11 @@ def observation(job,group=None):
             'workload_seconds':m['workload_ms']/1000 if m.get('workload_ms') is not None else None,'policy_seconds':value/1000 if value is not None else None,
             'elapsed_seconds':job.get('case_seconds'),'recovery_status':(job.get('recovery_policy') or {}).get('status'),'canonical_sheets':canonical,'sheets':sheets,'environment':env,
             'pixels_verified':C.quality_fingerprint(job) is not None,'capture_count':sum(w.get('capture_count',0) or 0 for w in m.get('workbooks') or []),
-            'report_published':(m.get('report_publication') or {}).get('status')}
+            'report_published':(m.get('report_publication') or {}).get('status'),
+            'capture_settings':{k:c.get('settings',{}).get(k) for k in ('strategy','host_kind','overflow_mode','tile_megapixels','batch_size','tile_packing','excel_launch_mode','context_validation','overflow_probe_width_px','overflow_probe_height_px')},
+            'phase_limits':{k:v for k,v in c.get('phase_limits',{}).items() if k.endswith('_seconds') and isinstance(v,(int,float))},
+            'qualified':__import__('analysis').is_qualified(job),
+            'issues':__import__('analysis').worksheet_issues([job])}
 
 def write_record(root,record):
     root.mkdir(parents=True,exist_ok=True)
@@ -36,13 +40,20 @@ def write_record(root,record):
         table=[]
         for (block,variant) in sorted({(r['block'],r['variant']) for r in observations},key=str):
             obs=[r for r in observations if r['block']==block and r['variant']==variant]
-            good=[r for r in obs if r['status']=='complete' and r['metrics_status']=='complete' and r['pixels_verified']]
+            good=[r for r in obs if r['status']=='complete' and r['metrics_status']=='complete' and r['pixels_verified'] and r.get('qualified',True)]
             times=[r['policy_seconds'] for r in good if r['policy_seconds']is not None]
-            hashes={C.obj_digest(r['canonical_sheets']) for r in good}
             # Hash comparison excludes tile counts: canonical pixels are layout-independent.
             hashes={C.obj_digest([(s['sheet_index'],s['sheet'],s['width'],s['height'],s['algorithm'],s['sha256']) for s in r['canonical_sheets']]) for r in good}
-            table.append('<tr>'+''.join('<td>'+e(v)+'</td>' for v in (obs[0]['workbook'],variant,f'{len(good)}/{len(obs)}',fmt(statistics.median(times) if times else None),'equal' if len(good)>1 and len(hashes)==1 else 'not fully established'))+'</tr>')
+            table.append('<tr>'+''.join('<td>'+e(v)+'</td>' for v in (obs[0]['workbook'],variant,f'{len(good)}/{len(obs)}',fmt(statistics.median(times) if times else None),'equal' if len(good)==len(obs) and len(good)>1 and len(hashes)==1 and len({C.obj_digest(r.get('environment')) for r in good})==1 else 'not fully established'))+'</tr>')
         blocks.append('<section class="card"><h2>'+e(group)+'</h2><div class="table"><table><tr><th>Workbook scope</th><th>Configuration</th><th>Complete / recorded</th><th>Median s</th><th>Repeat pixels</th></tr>'+''.join(table)+'</table></div></section>')
+    issues = {}
+    for observation in rows:
+        for issue in observation.get('issues') or []:
+            key=(issue['workbook'],issue['sheet_index'],issue['sheet'],issue['code'])
+            issues.setdefault(key,set()).add(observation['case_id'])
+    if issues:
+        problem_rows=''.join('<tr>'+''.join('<td>'+e(x)+'</td>' for x in (*key,len(cases)))+'</tr>' for key,cases in sorted(issues.items(),key=lambda item:str(item[0])))
+        blocks.insert(0,'<section class="card" id="worksheet-issues"><h2>Unresolved worksheet outcomes</h2><p>Methods can be selected while execution qualification still has explicit exceptions. Failed repetitions are not independent new defects.</p><div class="table"><table><tr><th>Workbook</th><th>Index</th><th>Exact sheet</th><th>Code</th><th>Affected cases</th></tr>'+problem_rows+'</table></div></section>')
     sources=''.join('<li>'+e(s['run_id'])+' · '+e(s.get('scope',''))+'<small>Source '+e(s.get('source_fingerprint'))+'; archive SHA-256 '+e(s.get('archive_sha256'))+'</small></li>' for s in record['sources'])
     ledger=''.join('<tr>'+''.join('<td>'+e(x)+'</td>' for x in (r['source_run'],r['case_id'],r['workbook'],json.dumps(r['requested_sheets'],ensure_ascii=False),r['variant'],r['round'],r['status'],fmt(r['policy_seconds'])))+'</tr>' for r in rows)
     decision=record.get('decision') or {};decisiontext=decision.get('text','No automatic change to the selected method. Review the measurements and completeness conditions.')
@@ -70,7 +81,7 @@ def index(evidence,ident):
             items.append('<li><a href="'+html.escape(d.name,quote=True)+'/index.html">'+html.escape(d.name)+'</a></li>')
     (evidence/'index.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Capture evidence</title><style>'+STYLE+'</style><header><h1>Capture evidence</h1></header><main><section class="card"><p><a href="'+html.escape(ident,quote=True)+'/index.html">Current published report</a></p><ul>'+''.join(items)+'</ul><p><a href="../decisions.md">Method decision</a></p></section></main></html>',encoding='utf-8')
 
-def publish(repo,run,replace=False):
+def publish(repo,run):
     run=run.resolve();managed=(repo/'docs/visual-validation/results/runs').resolve()
     if run.parent!=managed or not re.fullmatch(r'[A-Za-z0-9_-]+',run.name):raise ValueError('Select an immediate managed run directory')
     state=C.read_json(run/'evaluation-state.json')
@@ -80,11 +91,8 @@ def publish(repo,run,replace=False):
         if len(z.namelist())!=len(set(z.namelist())):raise ValueError('Duplicate archive paths')
         m=json.loads(z.read('bundle-manifest.json'))
         if m.get('status')!='complete':raise ValueError('Incomplete metadata manifest')
-        rows=m.get('included',[])
-        if {x['path'] for x in rows}|{'bundle-manifest.json'}!=set(z.namelist()):raise ValueError('Archive entry set differs')
-        for x in rows:
-            data=z.read(x['path'])
-            if len(data)!=x['stored_bytes'] or hashlib.sha256(data).hexdigest()!=x['sha256']:raise ValueError('Archive content mismatch')
+        from archive import verify_bundle
+        verify_bundle(archive)
         if z.read('evaluation-state.json')!=(run/'evaluation-state.json').read_bytes():raise ValueError('Published state differs from the verified archive')
     obs=[]
     for j in state['jobs']:
@@ -92,9 +100,11 @@ def publish(repo,run,replace=False):
         obs.append(dict(observation(j),source_run=state['run_id']))
     record={'schema':'vv-published-evidence-v1','id':run.name,'scope':'Current protocol execution on unchanged inputs. This is not a production regression certificate. Status: '+state['status'],
             'sources':[{'run_id':state['run_id'],'source_fingerprint':state['source_version'],'archive_sha256':C.digest(archive),'state_sha256':C.digest(run/'evaluation-state.json'),'scope':state['plan']['protocol_id']}],
+            'inputs':[{k:f.get(k) for k in ('name','relative_path','bytes','sha256')} for f in state.get('files',[])],
+            'protocol':{k:state['plan'].get(k) for k in ('protocol_id','selected_policy','decision_policy','limits','groups')},
             'observations':obs,'decision':{'text':'Office.js / Strategy F / .NET / Selective / 32 MP. Updated observations do not automatically amend decisions.md.'},'summary':__import__('analysis').summarize(state)}
     # Summary contains no machine process data; observations are explicitly allowlisted.
-    record['summary']={k:record['summary'][k] for k in ('schema','status','groups','selected_policy','decision_policy','scope','timing_note')}
+    record['summary']={k:record['summary'][k] for k in ('schema','status','groups','selected_policy','decision_policy','scope','timing_note','worksheet_issues')}
     dest=repo/'docs/visual-validation/evidence'/run.name;dest.parent.mkdir(parents=True,exist_ok=True)
     if dest.exists():raise ValueError('Evidence ID already exists; prior published evidence is immutable')
     staging=Path(tempfile.mkdtemp(prefix='.publish-',dir=dest.parent))

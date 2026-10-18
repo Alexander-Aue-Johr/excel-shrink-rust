@@ -1,96 +1,79 @@
-# Excel-Höhenprüfung
+# Height and metadata comparison
 
+These tools compare original and shrunk workbooks through Excel/VBA. They do not
+select a screenshot strategy. For image capture, use
+[Visual validation](../../docs/visual-validation/README.md).
 
+## Height checks
 
-VS Code: **Terminal → Run Task → Excel tools: …**. Dateiauswahl: `*` für den ganzen lokalen Korpus oder ein exakter XLSX-Dateiname. Alle Tasks bauen zuerst die aktuelle Release-CLI. Bestehende Tasks bleiben erhalten.
-
-
-
-Tasks:
-
-
-
-- **Shrink only**: Default oder Maximum Cleaning wählen; kein Excel nötig.
-
-- **Default heights**: aktueller Standardlauf mit Excel-Höhenprüfung.
-
-- **Maximum Cleaning heights**: aggressive Bereinigung prüfen.
-
-- **All profile heights**: alle acht vordefinierten Profile vergleichen.
-
-- **Default heights after Excel save**: nur Originalkopien vor der Messung mit Excel speichern, schließen und neu öffnen. Shrink verwendet weiterhin die unveränderten Originale.
-
-
-
-Ergebnisse: `.tmp/height-checks/<Zeitstempel-ID>/`. `manifest.json` hält Profile, Quell-Hashes und Shrink-Zeiten fest; `report.md` die Übersicht; `differences.csv` nur Abweichungen; `comparison.json` alle Blattmessungen. Die bereinigten Dateien und Referenzkopien bleiben für Untersuchungen erhalten. Keine Ergebnisse vorheriger Läufe werden überschrieben. Exitcode 0 = erfolgreich/keine Höhenabweichung, 2 = Höhenabweichung, andere Codes = Fehler. Fehlgeschlagene Messungen erzeugen keinen vollständigen Erfolgsbericht.
-
-
-
-## Was gemessen wird
-
-
-
-Die VBA-Funktion ermittelt pro Shrunk-Blatt die UsedRange-Adresse. **Genau dieselbe Adresse** wird im Original gemessen. Verglichen wird Range.Height in Punkten, zusätzlich umgerechnet mit ×4/3 auf Pixeläquivalente bei 96 DPI und 100 %. Keine real gemessenen Screenshot-Pixel. Gleiche Gesamthöhe schließt gegenläufige Änderungen einzelner Zeilen nicht aus. Für sichtbare Unterschiede weiterhin die vorhandenen visuellen Regressionstasks verwenden.
-
-
-
-Je Workbook/Profile erfolgen zwei VBA-Batches statt COM-Aufrufen pro Blatt. Originaldateien bleiben unverändert; nur Kopien können im optionalen Kontrolllauf gespeichert werden. Excel wird in einer eigenen Instanz gestartet; nur diese Instanz wird geschlossen. Makros der XLSX-Dateien bleiben deaktiviert. Nur der mitgelieferte Helfer wird mit aktivierten Makros geöffnet; AccessVBOM und globale Sicherheitseinstellungen werden nicht geändert.
-
-
-
-## Voraussetzungen und Aufruf
-
-
-
-WSL mit Rust/Cargo und Python 3; auf Windows installiertes Desktop-Excel sowie Windows PowerShell 5.1. WSL muss `powershell.exe` starten können. Unter Windows: Python 3 und VS Code auf dem UNC-Pfad des WSL-Repositories (`\\wsl.localhost\<Distro>\…`). Native Windows-Rust-Checkouts unterstützt dieser Runner nicht.
-
-
+The VS Code **Excel tools: …** tasks run the current Release CLI and optionally
+compare heights: Shrink only, Default heights, Maximum Cleaning heights, All profile
+heights, or Default heights after Excel save. Select an exact XLSX filename or `*`.
 
 ```sh
-
 python3 tools/excel-height-check/run.py --profile default --height
-
 python3 tools/excel-height-check/run.py --profile all --height --only-file foerderprogramme-5411206209005.xlsx
-
 python3 tools/excel-height-check/run.py --profile default --height --resave-originals
-
 ```
 
+For each shrunk worksheet, the VBA helper takes its UsedRange and measures that
+same address in the original. `Range.Height` is in points. The additional ×4/3
+quantity is a 96-DPI pixel equivalent, **not a measured screenshot dimension**.
+Equal total height does not rule out compensating changes in individual rows.
+Two VBA batches per workbook/profile avoid external COM calls for every worksheet.
 
+Results remain under `.tmp/height-checks/<id>/`: `manifest.json` records source
+hashes, profiles and shrink timings; `report.md` summarizes the run;
+`differences.csv` contains differences and `comparison.json` the measurements.
+Profile directories use short IDs; the manifest maps them to profiles. Exit 0
+means completed without height differences, 2 means a height difference; other
+codes indicate execution failure, not successful equivalence.
 
-Der Korpus liegt in `corpus-local/original_destatis_xlsx_files`. `HeightProbeHost.xlsm` enthält das getestete Modul `HeightProbe.bas`; beide werden versioniert. Änderungen an der BAS-Datei ändern das eingebettete Makro nicht automatisch: dazu muss der Helfer neu erstellt werden. Der Helfer-Hash wird pro Lauf aufgezeichnet.
+The optional resave control saves only original **copies**, closes and reopens
+those copies before measuring. Shrink still uses the unchanged input originals.
+A failed measurement does not produce a full-success certificate.
 
+## Interactive metadata diff
 
-
-Die Profilflags entsprechen `excel-shrink-cli/src/visual_profile.rs`; bei Änderungen dort auch `PROFILES` im Runner aktualisieren. Die bisherigen Screenshot-/C#-Benchmarks bleiben getrennte Experimente. Dieser Runner konzentriert sich auf den reproduzierbaren Shrink- und Höhenvergleich.
-
-
-
-Die Profilordner heißen `p00`, `p01` usw., um Windows-Pfadgrenzen zu vermeiden; `manifest.json` ordnet die Namen zu. Excel öffnet kurze lokale Arbeitskopien. Validiert: Windows-Default-Aufruf und WSL-Aufruf aller acht Profile inklusive Excel-Speicherkontrolle auf der einblättrigen Inhaltsübersicht aus dem Korpus.
-
-
-
-## Interaktive Datei-/Ordnerauswahl mit VS-Code-JSON-Diff
-
-Task **Experiment: visual validation**:
-
-1. Datei oder Ordner wählen (native Windows-Auswahl). Ordner: alle XLSX-Dateien direkt darin, ohne Unterordner und ohne `~$`-Lockdateien.
-2. Eines der acht Shrink-Profile wählen.
-3. Aktuellen Release-Build erstellen und Kopien der Eingaben bereinigen.
-4. Excel/VBA erfasst Metadaten in eigener Excel-Instanz; Originale bleiben unverändert. Kein Excel-Neuspeichern in diesem Task.
-5. VS Code öffnet `original.json` links und `shrunk.json` rechts über `code --diff`.
-
-Ergebnisse unter `.tmp/excel-json-diff/<Zeitstempel-ID>/`. Dateien in `input` und `shrunk` verwenden kurze IDs gegen Windows-Pfadgrenzen; `manifest.json` ordnet IDs den Originalnamen und Quellpfaden zu. In beiden Vergleichs-JSONs steht derselbe Original-Dateiname. Laufzeiten, Pfade und Hashes stehen getrennt im Manifest bzw. in `excel-timings.json`, nicht als künstliche Unterschiede im Diff.
-
-Pro Worksheet: Blattindex/-name, Sichtbarkeit (`-1` sichtbar, `0` hidden, `2` very hidden), eigene UsedRange-Adresse, erste/letzte Zeile und Spalte, Zeilen-/Spaltenanzahl, Höhe/Breite in Punkten, Standardhöhe in Punkten und Standardspaltenbreite in Excel-Zeicheneinheiten. Unter `shrunk_range_comparison` stehen zusätzlich Höhe/Breite desselben Bereichs: der Shrunk-UsedRange, auch im Original gemessen. Unterschiedliche eigene UsedRange-Höhen sind allein kein Layoutfehler.
-
-Für automatisierte Aufrufe kann die Auswahl übersprungen werden:
+Run `json_diff.py` directly. Without `--input` it uses the existing Windows Forms
+file/folder picker; with `--input` it is noninteractive. This picker belongs to the
+metadata workflow and is independent of the screenshot experiment WPF interface.
+The current **Experiment: visual validation** task does not launch this tool.
 
 ```sh
-python3 tools/excel-height-check/json_diff.py --input /pfad/zur/datei.xlsx --profile default
-python3 tools/excel-height-check/json_diff.py --input /pfad/zum/ordner --profile maximum-cleaning --no-diff
+python3 tools/excel-height-check/json_diff.py --input /path/to/file.xlsx --profile default
+python3 tools/excel-height-check/json_diff.py --input /path/to/folder --profile maximum-cleaning --no-diff
 ```
 
-Aus WSL funktionieren auch Windows-Pfade als `--input`. Auf Windows wird `python` verwendet. Zum automatischen Öffnen muss die VS-Code-CLI `code` erreichbar sein; alternativ wird die übliche Windows-Benutzerinstallation erkannt. Fehlt sie, bleiben beide JSON-Dateien erhalten und die Fehlermeldung nennt den Ergebnisordner. Dialogabbruch startet keinen Shrink-Lauf.
+A selected folder supplies its immediate XLSX files, excluding `~$` locks; it is
+not recursively traversed. The tool builds the CLI, shrinks input copies, measures
+metadata in an owned Excel instance, and opens `original.json` versus `shrunk.json`
+with `code --diff` unless disabled. Results remain under `.tmp/excel-json-diff/<id>/`.
+The manifest maps short input IDs back to filenames. Paths, times and hashes are
+recorded separately, not injected as artificial metadata differences.
 
-Geprüft: Einzeldatei über WSL sowie externer Windows-Ordner mit Leerzeichen/Umlaut, Maximum Cleaning, VBA-Erfassung und erfolgreicher Aufruf des VS-Code-Diff. Der native Picker ist als Windows-Forms-Dialog implementiert; die End-to-End-Tests verwenden die äquivalente `--input`-Schnittstelle.
+The metadata includes worksheet index/name and visibility, each workbook's own
+UsedRange and its dimensions in points, standard row height, and standard column
+width in Excel character units. `shrunk_range_comparison` additionally measures the
+shrunk UsedRange in both workbooks. Different own UsedRanges alone are not a layout
+regression. See [JSON_DIFF_NATIVE.md](JSON_DIFF_NATIVE.md) for the measurement schema.
+
+## Requirements and helper assets
+
+Use Windows desktop Excel, Windows PowerShell 5.1, Python 3 and the existing WSL
+Rust/Cargo toolchain. Windows Python is supported when the repository is on its WSL
+UNC path; this runner does not support an ordinary native Windows Rust checkout.
+From WSL, `powershell.exe` must be reachable. Input Windows paths are accepted by
+the metadata tool. `code` is needed only to open the diff automatically; the two
+JSON files remain available when editor launch fails.
+
+Keep `HeightProbeHost.xlsm` with `HeightProbe.bas`, and `JsonDiffProbeHost.xlsm` with
+`JsonDiffProbe.bas`. These prebuilt helper workbooks are required versioned inputs.
+Changing a BAS file does not update the embedded macro: rebuild/review the matching
+helper before using it. The runner records helper hashes. It does not enable
+AccessVBOM or change global macro security. Only the helper is opened with macros;
+source workbooks stay unchanged and owned Excel instances are closed by the runner.
+
+The profile flags correspond to `excel-shrink-cli/src/visual_profile.rs`; keep the
+runner's `PROFILES` in sync. Runtime measurements and working copies are not source
+artifacts and should not be committed.

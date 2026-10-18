@@ -17,3 +17,10 @@ The evaluation is not the productive original-versus-shrunk regression. Integrat
 acceptance must check an unchanged pair, known visible changes and failure handling
 before a large regression corpus is run. Agreement between capture implementations
 is not an independent oracle of visual completeness.
+
+## Current evidence
+
+The [published replication](evidence/20261017T235702925Z-16893556/index.html) repeats the
+32-MP selection on the controlled budget block. The selected-policy coverage has
+four unresolved drawing-bound worksheet outcomes; see [the decision](decisions.md).
+Method selection and full capture qualification are separate statements.

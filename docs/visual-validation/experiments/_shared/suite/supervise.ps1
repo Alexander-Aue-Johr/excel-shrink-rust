@@ -46,7 +46,7 @@ try {
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $powershell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $owner=New-Object VVSuiteJob
-    $process=Start-Process -FilePath $powershell -NoNewWindow -ArgumentList @('-NoLogo','-NoProfile','-STA','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) `
+    $process=Start-Process -FilePath $powershell -NoNewWindow -ArgumentList @('-NoLogo','-NoProfile','-STA','-ExecutionPolicy','Bypass','-OutputFormat','Text','-EncodedCommand',$encoded) `
         -WorkingDirectory $env:TEMP -RedirectStandardOutput (Join-Path $root 'worker.stdout.log') -RedirectStandardError (Join-Path $root 'worker.stderr.log') -PassThru
     try{$owner.Assign($process)}catch{try{$process.Kill()}catch{};throw}
     [IO.File]::WriteAllText((Join-Path $root '.go'),$spec.release_token,$utf8)

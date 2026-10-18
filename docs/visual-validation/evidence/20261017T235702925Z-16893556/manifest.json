@@ -1,0 +1,22 @@
+{
+  "schema": "vv-evidence-manifest-v1",
+  "id": "20261017T235702925Z-16893556",
+  "status": "complete",
+  "files": [
+    {
+      "path": "index.html",
+      "bytes": 46329,
+      "sha256": "68158d2d40c9aeeae01a9312174bca95f3e956a83a78083a31d5e69aa485aa9f"
+    },
+    {
+      "path": "results.csv",
+      "bytes": 14041,
+      "sha256": "dea2ae54615da103e2b1463a5eee42ce4eca94b6eca3a61f407aed99d316e796"
+    },
+    {
+      "path": "results.json",
+      "bytes": 721122,
+      "sha256": "6f6f5510247b0bf1f4260ca14770b598cbc71f962ee38934e33ab6fc78e16cf3"
+    }
+  ]
+}

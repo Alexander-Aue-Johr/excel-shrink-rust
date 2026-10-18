@@ -11,12 +11,13 @@ def main(argv=None):
     p.add_argument('--repo-root',type=Path,required=True)
     for key in ('config','request','resolved','write-resolved','run-root','publish-run'):p.add_argument('--'+key,type=Path)
     p.add_argument('--parent-pid',type=int,default=0)
-    for key in ('plan','list-sheets','list-experiments','report-only','replace-published'):p.add_argument('--'+key,action='store_true')
+    for key in ('plan','list-sheets','list-experiments','report-only','full-metadata'):p.add_argument('--'+key,action='store_true')
     a=p.parse_args(argv);repo=a.repo_root.resolve()
+    if a.full_metadata and not a.report_only:p.error('--full-metadata requires --report-only')
     if a.list_experiments:print(json.dumps([dict(id=k,label=v) for k,v in P.EXPERIMENTS.items()],indent=2));return 0
     if a.publish_run:
         from publication import publish
-        print('PUBLISHED EVIDENCE: '+str(publish(repo,a.publish_run,replace=a.replace_published)));return 0
+        print('PUBLISHED EVIDENCE: '+str(publish(repo,a.publish_run)));return 0
     if a.report_only:
         if not a.run_root:p.error('--run-root is required')
         state=C.read_json(a.run_root/'evaluation-state.json')
@@ -24,7 +25,7 @@ def main(argv=None):
         if state.get('status')=='running':state['status']='interrupted';state['resumable']=True;C.atomic_json(a.run_root/'evaluation-state.json',state)
         import report
         from archive import write_bundle
-        report.render(a.run_root,state);write_bundle(a.run_root,state,report.render);return 0
+        report.render(a.run_root,state);write_bundle(a.run_root,state,report.render,detail='full' if a.full_metadata else 'compact');return 0
     cfg=C.read_json(a.config or repo/'docs/visual-validation/experiments/reproduce.json');req=C.read_json(a.request,{}) if a.request else {}
     if a.list_sheets:
         root=req.get('corpus_root',cfg['corpus_root'])

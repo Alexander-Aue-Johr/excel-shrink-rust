@@ -7,7 +7,7 @@ an unchanged source/input plan. ReportOnly never opens Excel.
 #>
 [CmdletBinding()]
 param(
-    [switch]$PlanOnly,[switch]$NoOpen,[switch]$Single,[switch]$ReportOnly,[string]$ResumeRun,
+    [switch]$PlanOnly,[switch]$NoOpen,[switch]$Single,[switch]$ReportOnly,[switch]$FullMetadata,[string]$ResumeRun,
     [string]$ConfigPath,[string]$SelectionFile,[string]$CorpusRoot,[string[]]$Group,
     [string]$Experiment='range-image',[string]$Implementation,[string]$Workbook,
     [Alias('SheetNames')][string[]]$Sheet,[int[]]$SheetIndex,[string]$SheetsJson,
@@ -34,8 +34,9 @@ $repo=Get-VVRepo $PSScriptRoot
 $owner=$null;$exitCode=0;$resolved=$null
 try {
     if($ListExperiments){$exitCode=Invoke-VVEvaluationPython $repo @('--list-experiments');if($exitCode){throw 'Cannot load experiments'};return}
+    if($FullMetadata -and -not $ReportOnly){throw 'FullMetadata requires ReportOnly; it does not change the test workload.'}
     if($ReportOnly -and -not $ResumeRun){throw 'ReportOnly requires an explicit ResumeRun directory.'}
-    if($ResumeRun -and @($PSBoundParameters.Keys|Where-Object{$_ -notin @('ResumeRun','NoOpen','ReportOnly')}).Count){throw 'Resume uses the saved plan, not new settings.'}
+    if($ResumeRun -and @($PSBoundParameters.Keys|Where-Object{$_ -notin @('ResumeRun','NoOpen','ReportOnly','FullMetadata')}).Count){throw 'Resume uses the saved plan, not new settings.'}
     if($ResumeRun){
         $reports=Join-Path $repo 'docs\visual-validation\results';$path=[IO.Path]::GetFullPath($ResumeRun)
         if((Split-Path -Parent $path) -ine [IO.Path]::GetFullPath((Join-Path $reports 'runs'))){throw 'ResumeRun must be a managed run directory.'}
@@ -85,7 +86,7 @@ try {
         & (Join-Path $PSScriptRoot '_shared\suite\syntax-preflight.ps1') -RepoRoot $repo -RunRoot $owner.Path
         & (Join-Path $PSScriptRoot '_shared\suite\preflight.ps1') -RunRoot $owner.Path
     }
-    $extra=@('--resolved',$resolved,'--run-root',$owner.Path,'--parent-pid',[string]$PID);if($ReportOnly){$extra+='--report-only'}
+    $extra=@('--resolved',$resolved,'--run-root',$owner.Path,'--parent-pid',[string]$PID);if($ReportOnly){$extra+='--report-only'};if($FullMetadata){$extra+='--full-metadata'}
     $exitCode=Invoke-VVEvaluationPython $repo $extra
 }catch{
     $exitCode=1;Write-Warning $_.Exception.Message

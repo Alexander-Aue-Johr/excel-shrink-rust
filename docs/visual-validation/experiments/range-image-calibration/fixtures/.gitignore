@@ -1,1 +1,6 @@
+# Generated variants remain local; these pinned test inputs are versioned.
 *.xlsx
+!vv-render-arial10.xlsx
+!vv-render-calibri11.xlsx
+!vv-render-calibri16.xlsx
+!vv-render-markers.xlsx

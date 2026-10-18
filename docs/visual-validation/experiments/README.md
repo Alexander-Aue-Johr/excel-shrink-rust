@@ -84,9 +84,15 @@ The supervisor terminates only owned processes; unknown Excel ownership pauses w
 Explicit continuation: `reproduce.ps1 -ResumeRun '<managed run directory>'`.
 Source and inputs must match. Completed cases are not silently rerun. Offline views
 can be regenerated using `-ResumeRun ... -ReportOnly`; existing measurement times
-are not edited. See [reporting](REPORTING.md).
+are not edited. Add `-FullMetadata` only to request the full local textual evidence
+instead of the default compact review projection. See [reporting](REPORTING.md).
 
 ## Validation
+
+The portable validator also reports Git membership separately. `--audit-only` skips
+code tests and writes the read-only findings to `.tmp/visual-validation/repository-audit.json`.
+Required local inputs are not inferred to be tracked merely because they exist.
+
 
 Run **Visual validation: Validate experiment code**, or
 `python tools/validate-visual-experiments.py` for portable tests. The Windows task

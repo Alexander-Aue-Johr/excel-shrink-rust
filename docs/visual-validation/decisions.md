@@ -1,7 +1,9 @@
 # Capture-method decision
 
 Status: **selected engineering configuration**, based on the linked measurements.
-The currently packaged execution code still requires native Windows/Excel validation.
+The replicated image-budget comparison supports 32 MP. Full corpus capture qualification
+remains open for four worksheet outcomes listed below; method selection is not a
+production-regression certificate.
 
 ## Configuration
 
@@ -64,6 +66,49 @@ For a different long-lived production process, the balance may differ.
 The final budget source run is `20261017T173952378Z-614e6f83`, source fingerprint
 `9b91096b3bc97fed84ea75c5724d0d327df66f10c93511f860ce6449cd45a003`.
 
+## Current protocol replication
+
+The [2026-10-18 execution record](evidence/20261017T235702925Z-16893556/index.html)
+contains all 62 observations of `reproduce.json`: **48 complete and 14 failed cases**,
+with status `complete-with-gaps`. All planned cases ran. Twelve failures repeat the
+same two Wanderungen drawing-bound outcomes in the host/overflow block; the two
+coverage failures contain those two outcomes plus two Verkehrsunfälle outcomes.
+They are not 14 independent defects and are not reported as renderer crashes.
+
+The 18 .NET/Selective budget observations all completed without recovery. For each
+of the two worksheet scopes, canonical pixels agree over all nine observations.
+
+| Budget | Hospital median (s) | Long-table median (s) | Sum of medians (s) | Relative to fastest |
+|---|---:|---:|---:|---:|
+| 16 MP | 87.54 | 157.60 | 245.14 | +6.31% |
+| **32 MP** | **81.41** | **154.29** | **235.70** | **+2.22%** |
+| 64 MP | 78.31 | 152.28 | 230.59 | fastest |
+
+The same predeclared 5% rule selects **32 MP** again. This replication does not
+replace or pool the earlier observations. The host/overflow comparison has an
+incomplete geometry block, so it does **not** establish a new overall host ranking.
+
+Coverage with .NET/Selective/32 MP completed six of eight workbooks, including all
+**107 Kernhaushalt worksheets**. Across the coverage cases, 462 of 466 requested
+worksheets were captured. The remaining outcomes are:
+
+| Workbook | Worksheet (original index) | Outcome |
+|---|---|---|
+| Verkehrsunfälle | `2_(1)` (7), `2_(2)` (8) | `DRAWING_BOUND_UNRESOLVED` |
+| Wanderungen | `Vorbemerkung` (3), `Anhang` (35) | `DRAWING_BOUND_UNRESOLVED` |
+
+The observed shape targets extend beyond the final boundary reported by the native
+grid probes. The bounded mapper refuses an unchecked last-row result. These four
+outcomes remain unresolved; no drawing is discarded, no pixel tolerance increased,
+and no smaller range is declared complete to close the gate. `Qualitätsbericht`
+is not one of the failing worksheets in this replication.
+
+Run `20261017T235702925Z-16893556` records source fingerprint
+`edb9085f4f7460c402790ad857157ef5efd4e266baffc562c6b447738b4536e0`.
+The linked record preserves input hashes, settings, case statuses and pixel hashes.
+Post-run documentation and reporting changes are not presented as another native
+execution of the capture methods.
+
 ## Alternatives and scope
 
 VBA `CopyPicture` uses the shared system clipboard. Existing native screenshot
@@ -84,7 +129,7 @@ measurement task.
 
 Run [reproduce.ps1](experiments/reproduce.ps1) using the pinned
 [configuration](experiments/reproduce.json). Inspect the new local report and then
-explicitly [publish the compact evidence](experiments/REPORTING.md). The published
-record preserves failures and source identities. New measurements do not silently
+explicitly [publish the compact evidence](experiments/REPORTING.md). Published
+records preserve failures and source identities. New measurements do not silently
 rewrite this decision; amend the table and rationale only after reviewing the new
 scope, environment, repeats and quality conditions.
