@@ -21,6 +21,9 @@ use xlsx_value_compare::{CellValueDifference, MissingCellPolicy, WorkbookCompari
 
 mod excel_automation;
 mod xlsx_value_compare;
+mod artifact_cache;
+mod xml_views;
+mod visual_diagnostics;
 
 #[derive(Parser, Debug)]
 #[command(
