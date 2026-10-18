@@ -25,6 +25,7 @@ mod xlsx_value_compare;
 mod artifact_cache;
 mod xml_views;
 mod office_plan;
+mod row_heights;
 
 #[derive(Parser, Debug)]
 #[command(
