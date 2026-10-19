@@ -1027,6 +1027,113 @@ fn dense_full_width_row_compacts_identical_empty_styles_into_row_header() {
     assert_eq!(merged.deleted_cell_count, 16381);
 }
 
+fn dense_row_with_missing_cells(missing: &[u32], has_content: bool) -> Vec<u8> {
+    let mut row = String::from("<row r=\"1\" ht=\"9\" customHeight=\"1\">");
+    for column in 1..=16384 {
+        if missing.contains(&column) {
+            continue;
+        }
+        let mut n = column;
+        let mut name = Vec::new();
+        while n > 0 {
+            n -= 1;
+            name.push(b'A' + (n % 26) as u8);
+            n /= 26;
+        }
+        name.reverse();
+        let name = String::from_utf8(name).unwrap();
+        if column == 1 && has_content {
+            row.push_str("<c r=\"A1\" s=\"3\"><v>keep</v></c>");
+        } else {
+            row.push_str(&format!("<c r=\"{name}1\" s=\"2\"/>"));
+        }
+    }
+    row.push_str("</row>");
+    row.into_bytes()
+}
+
+#[test]
+fn dense_row_preserves_internal_and_trailing_column_styles_on_repeat_cleanup() {
+    let params = promotion_params();
+    let input = dense_row_with_missing_cells(&[5, 30, 16383, 16384], true);
+    let mut metrics = promotion_columns(&params, false);
+    let cleaned = replace_single_row_with_metrics(&input, &params, &mut metrics);
+    assert_eq!(cleaned, br#"<row r="1" ht="9" customHeight="1" s="2" customFormat="1"><c r="A1" s="3"><v>keep</v></c><c r="E1" s="3"/><c r="AD1" s="3"/><c r="XFC1" s="3"/><c r="XFD1" s="3"/></row>"#);
+    assert_eq!(metrics.deleted_cell_count, 16379);
+    let second = replace_single_row_with_metrics(
+        &cleaned, &params, &mut promotion_columns(&params, false));
+    assert_eq!(cleaned, second);
+}
+
+#[test]
+fn dense_empty_row_retains_default_font_exceptions_without_column_definitions() {
+    let params = promotion_params();
+    let input = dense_row_with_missing_cells(&[16384], false);
+    let cleaned = replace_single_row_with_metrics(
+        &input, &params, &mut CleanSheetMetrics::default());
+    assert_eq!(cleaned, br#"<row r="1" ht="9" customHeight="1" s="2" customFormat="1"><c r="XFD1" s="0"/></row>"#);
+    let second = replace_single_row_with_metrics(
+        &cleaned, &params, &mut CleanSheetMetrics::default());
+    assert_eq!(cleaned, second);
+}
+
+#[test]
+fn dense_row_restores_full_column_format_including_fill_and_alignment() {
+    let mut params = promotion_params();
+    let xml = br#"<styleSheet><cellXfs>
+      <xf fontId="0" fillId="0" borderId="0"/>
+      <xf fontId="8" fillId="0" borderId="0" applyFont="1"/>
+      <xf fontId="8" fillId="0" borderId="0" applyFont="1"><alignment vertical="center"/></xf>
+      <xf fontId="4" fillId="4" borderId="0" numFmtId="49" applyFill="1" applyFont="1"><alignment horizontal="right"/></xf>
+    </cellXfs></styleSheet>"#;
+    params.patterns = WorkbookSpecificPatterns::new(crate::styles::parse_xfs(xml).unwrap(), None);
+    let input = dense_row_with_missing_cells(&[16384], true);
+    let cleaned = replace_single_row_with_metrics(
+        &input, &params, &mut promotion_columns(&params, false));
+    assert_eq!(cleaned, br#"<row r="1" ht="9" customHeight="1" s="2" customFormat="1"><c r="A1" s="3"><v>keep</v></c><c r="XFD1" s="3"/></row>"#);
+    let second = replace_single_row_with_metrics(
+        &cleaned, &params, &mut promotion_columns(&params, false));
+    assert_eq!(cleaned, second);
+}
+
+#[test]
+fn dense_row_does_not_restore_unknown_or_ambiguous_column_formats() {
+    let params = promotion_params();
+    let input = dense_row_with_missing_cells(&[16384], true);
+    let mut unknown = params.patterns.xfs_by_index[&3].clone();
+    unknown.non_font_style_id = Some(999);
+    let mut same_font = params.patterns.xfs_by_index[&1].clone();
+    same_font.non_font_style_id = Some(999);
+    for (style, hidden) in [
+        (None, false), (Some(unknown), false), (Some(same_font), false),
+        (Some(params.patterns.xfs_by_index[&3].clone()), true),
+    ] {
+        let mut metrics = promotion_columns(&params, false);
+        metrics.column_definitions.add(ColumnDefinition {
+            min: 16384, max: 16384, cell_xf: style, hidden,
+        });
+        metrics.column_definitions.finalize();
+        let cleaned = replace_single_row_with_metrics(&input, &params, &mut metrics);
+        assert!(!String::from_utf8(cleaned).unwrap().contains("customFormat"));
+    }
+}
+
+#[test]
+fn dense_row_limits_added_cells_and_respects_disabled_font_protection() {
+    let mut params = promotion_params();
+    let gaps: Vec<_> = (16320..=16384).collect();
+    let input = dense_row_with_missing_cells(&gaps, true);
+    let cleaned = replace_single_row_with_metrics(
+        &input, &params, &mut promotion_columns(&params, false));
+    assert!(!String::from_utf8(cleaned).unwrap().contains("customFormat"));
+
+    params.cleanup.keep_textless_column_style_representatives = false;
+    let input = dense_row_with_missing_cells(&[16384], true);
+    let cleaned = replace_single_row_with_metrics(
+        &input, &params, &mut promotion_columns(&params, false));
+    assert!(!String::from_utf8(cleaned).unwrap().contains("customFormat"));
+}
+
 #[test]
 fn column_font_coverage_checks_exact_overrides_inside_ranges() {
     let params = promotion_params();

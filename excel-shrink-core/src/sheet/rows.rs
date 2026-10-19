@@ -292,9 +292,12 @@ fn replace_row_bytes_impl<'a, const SAMPLED: bool>(
         return Cow::Borrowed(row_raw);
     };
     profiling::drop_optional("row.header_span", inspecting);
-    if let Some(style_id) =
+    if let Some(promotion) =
         choose_promoted_row_style(&row, row_content.unwrap_or_default(), params, metrics)
     {
+        let style_id = promotion.style_id;
+        let original_content = row_content.unwrap_or_default();
+        let content = promotion.restore_missing_cells(original_content, row.reference);
         let mut attributes = row_attr.to_vec();
         attributes.extend_from_slice(format!(" s=\"{style_id}\" customFormat=\"1\"").as_bytes());
         let mut promoted = RowView::parse(&attributes, params).expect("validated row attributes");
@@ -302,14 +305,14 @@ fn replace_row_bytes_impl<'a, const SAMPLED: bool>(
         record_visible_row_bounds(&promoted, metrics);
         metrics.cleanup_stats.record_delta(
             CleanupCause::EmptyCellsWithoutContent,
-            row_attr.len(),
-            attributes.len(),
+            row_attr.len() + original_content.len(),
+            attributes.len() + content.len(),
         );
-        let raw = generate_row_xml(&attributes, row_content.unwrap_or_default());
+        let raw = generate_row_xml(&attributes, &content);
         let clean = clean_row_content::<SAMPLED>(
             params,
             metrics,
-            row_content.unwrap_or_default(),
+            &content,
             EmptyStyleRepresentativePolicy::for_row(params, &promoted),
             &promoted,
         );
@@ -335,15 +338,49 @@ fn replace_row_bytes_impl<'a, const SAMPLED: bool>(
     render_cleaned_row::<SAMPLED>(row_raw, clean_result, params, metrics, &row)
 }
 
-/// Promote only existing XFs; unknown styles, existing row formats, implicit
-/// cells with a different font and malformed/out-of-order cells are a fallback.
+struct RowStylePromotion {
+    style_id: u32,
+    missing_cells: Vec<(usize, u32, u32)>, // XML offset, column, original inherited XF
+}
+
+impl RowStylePromotion {
+    fn restore_missing_cells<'a>(&self, content: &'a [u8], row: &[u8]) -> Cow<'a, [u8]> {
+        if self.missing_cells.is_empty() {
+            return Cow::Borrowed(content);
+        }
+        let mut output = Vec::with_capacity(content.len() + self.missing_cells.len() * 32);
+        let mut previous = 0;
+        for &(offset, mut column, style_id) in &self.missing_cells {
+            output.extend_from_slice(&content[previous..offset]);
+            previous = offset;
+            let mut letters = [0u8; 3];
+            let mut first = letters.len();
+            while column > 0 {
+                column -= 1;
+                first -= 1;
+                letters[first] = b'A' + (column % 26) as u8;
+                column /= 26;
+            }
+            output.extend_from_slice(b"<c r=\"");
+            output.extend_from_slice(&letters[first..]);
+            output.extend_from_slice(row);
+            output.extend_from_slice(format!("\" s=\"{style_id}\"/>").as_bytes());
+        }
+        output.extend_from_slice(&content[previous..]);
+        Cow::Owned(output)
+    }
+}
+
+/// Promote only existing XFs; unknown styles, existing row formats and
+/// malformed/out-of-order cells are a fallback. Small gaps in dense rows retain
+/// their original formatting as explicit cells before the row style changes.
 /// This bounded look-ahead scans the current row, never the worksheet again.
 fn choose_promoted_row_style(
     row: &RowView<'_, '_>,
     content: &[u8],
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
-) -> Option<u32> {
+) -> Option<RowStylePromotion> {
     if !params.cleanup.empty_cells_without_content
         || !row.has_custom_height
         || row.hidden
@@ -390,7 +427,7 @@ fn choose_promoted_row_style(
         let id = cell.style_id?; // An unstyled value would acquire the new row style.
         let xf = params.patterns.xfs_by_index.get(&id)?;
         if cell.col_num > previous_col + 1 {
-            gaps.push((previous_col + 1, cell.col_num - 1));
+            gaps.push((previous_col + 1, cell.col_num - 1, start));
         }
         previous_col = cell.col_num;
         if !block.has_content && !xf.has_apply_protection {
@@ -402,7 +439,7 @@ fn choose_promoted_row_style(
         return None;
     }
     if previous_col < 16384 {
-        gaps.push((previous_col + 1, 16384));
+        gaps.push((previous_col + 1, 16384, content.len()));
     }
     let (&dominant, &count) = counts
         .iter()
@@ -414,7 +451,15 @@ fn choose_promoted_row_style(
     // The entire row was explicit: moving an identical full XF changes no
     // previously implicit position. Restrict this path to real dense bloat.
     if gaps.is_empty() && count >= 1024 && xf.apply_font && xf.has_no_empty_cell_visible_style {
-        return Some(dominant);
+        return Some(RowStylePromotion { style_id: dominant, missing_cells: Vec::new() });
+    }
+    if count >= 1024 && xf.apply_font && xf.has_no_empty_cell_visible_style
+        && params.cleanup.keep_textless_column_style_representatives
+        && gaps.iter().map(|&(a, b, _)| b - a + 1).sum::<u32>() <= 64
+    {
+        if let Some(missing_cells) = restore_dense_row_gaps(&gaps, xf, params, metrics) {
+            return Some(RowStylePromotion { style_id: dominant, missing_cells });
+        }
     }
     // A dense row retains its explicit merged cells through the normal merge
     // policy; sparse merged rows need a stronger inheritance proof.
@@ -432,12 +477,45 @@ fn choose_promoted_row_style(
         .find(|id| {
             let target = &params.patterns.xfs_by_index[id];
             target.apply_font
-                && gaps.iter().all(|&(a, b)| {
+                && gaps.iter().all(|&(a, b, _)| {
                     metrics
                         .column_definitions
                         .inherits_row_style(a, b, target, default)
                 })
         })
+        .map(|style_id| RowStylePromotion { style_id, missing_cells: Vec::new() })
+}
+
+fn restore_dense_row_gaps(
+    gaps: &[(u32, u32, usize)],
+    row_style: &Xf,
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+) -> Option<Vec<(usize, u32, u32)>> {
+    let mut cells = Vec::new();
+    for &(start, end, offset) in gaps {
+        for column in start..=end {
+            let previous = match metrics.column_definitions.get(column) {
+                Some(definition) if !definition.hidden => definition.cell_xf.as_ref()?,
+                Some(_) => return None,
+                None => params.patterns.xfs_by_index.get(&0)?,
+            };
+            previous.non_font_style_id?;
+            if previous == row_style {
+                continue;
+            }
+            // A font override is retained on subsequent cleanup passes too.
+            // Other differences alone need a stronger inheritance proof.
+            if previous.font_identity() == row_style.font_identity() {
+                return None;
+            }
+            let style_id = params.patterns.xfs_by_index.iter()
+                .filter_map(|(&id, xf)| (xf == previous).then_some(id))
+                .min()?;
+            cells.push((offset, column, style_id));
+        }
+    }
+    Some(cells)
 }
 
 fn clean_row_content<'a, const SAMPLED: bool>(
