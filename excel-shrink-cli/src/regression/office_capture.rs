@@ -3,7 +3,7 @@ use super::row_heights::{self, RowHeightDifference, SheetExtent, SheetHeights};
 use anyhow::{bail, ensure, Context, Result};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -77,6 +77,8 @@ struct ImageTile {
     tile_index: usize,
     image_path: PathBuf,
 }
+
+type ImageTiles = BTreeMap<(usize, usize), ImageTile>;
 
 pub(super) fn plan_pair(original: &Path, shrunk: &Path) -> Result<PairedPlan> {
     let left = build_workbook_visual_plan(original)?;
@@ -247,6 +249,129 @@ fn capture_images_once(
     rows: Option<&BTreeMap<usize, Vec<u32>>>,
     tile_megapixels: u32,
 ) -> Result<Vec<PairedImageTile>> {
+    let (mut left_tiles, mut right_tiles) =
+        capture_tile_pair(plan, original, shrunk, output, rows, tile_megapixels)?;
+    if !same_tile_ranges(&left_tiles, &right_tiles) {
+        // Different widths in empty margins can change the pixel budget's row split.
+        // Split at every boundary from either side so each shared tile fits both.
+        let ranges = shared_tile_rows(&left_tiles, &right_tiles)?;
+        let mut shared = plan.clone();
+        shared.sheets.retain(|sheet| {
+            let on_sheet = |tile: &&ImageTile| tile.sheet_index == sheet.sheet_index;
+            let left = left_tiles.values().filter(on_sheet).map(|tile| &tile.range);
+            let right = right_tiles
+                .values()
+                .filter(on_sheet)
+                .map(|tile| &tile.range);
+            !left.eq(right)
+        });
+        for sheet in &mut shared.sheets {
+            if let Some(tile_rows) = ranges.get(&sheet.sheet_index) {
+                sheet.original_config["tile_rows"] = json!(tile_rows);
+                sheet.shrunk_config["tile_rows"] = json!(tile_rows);
+            }
+        }
+        let selected_rows = rows.map(|rows| {
+            shared
+                .sheets
+                .iter()
+                .map(|sheet| (sheet.sheet_index, rows[&sheet.sheet_index].clone()))
+                .collect::<BTreeMap<_, _>>()
+        });
+        let (left, right) = capture_tile_pair(
+            &shared,
+            original,
+            shrunk,
+            output,
+            selected_rows.as_ref(),
+            tile_megapixels,
+        )?;
+        let recaptured = shared
+            .sheets
+            .iter()
+            .map(|sheet| sheet.sheet_index)
+            .collect::<BTreeSet<_>>();
+        left_tiles.retain(|(index, _), _| !recaptured.contains(index));
+        right_tiles.retain(|(index, _), _| !recaptured.contains(index));
+        left_tiles.extend(left);
+        right_tiles.extend(right);
+    }
+    ensure!(
+        same_tile_ranges(&left_tiles, &right_tiles),
+        "paired image geometry differs after using shared row boundaries"
+    );
+    let mut paired = Vec::with_capacity(left_tiles.len());
+    for (key, a) in left_tiles {
+        let b = &right_tiles[&key];
+        paired.push(PairedImageTile {
+            sheet_index: a.sheet_index,
+            sheet_name: a.sheet_name,
+            range: a.range,
+            tile_index: a.tile_index,
+            original_image: a.image_path,
+            shrunk_image: b.image_path.clone(),
+        });
+    }
+    Ok(paired)
+}
+
+fn same_tile_ranges(left: &ImageTiles, right: &ImageTiles) -> bool {
+    left.len() == right.len()
+        && left.iter().all(|(key, a)| {
+            right
+                .get(key)
+                .is_some_and(|b| a.range == b.range && a.sheet_name == b.sheet_name)
+        })
+}
+
+fn shared_tile_rows(
+    left: &ImageTiles,
+    right: &ImageTiles,
+) -> Result<BTreeMap<usize, Vec<[u32; 2]>>> {
+    let mut spans = BTreeMap::<usize, [Vec<(u32, u32)>; 2]>::new();
+    for (side, tiles) in [left, right].into_iter().enumerate() {
+        for tile in tiles.values() {
+            let (first, last, _, _) = parse_range(&tile.range)?;
+            spans.entry(tile.sheet_index).or_default()[side].push((first - 1, last));
+        }
+    }
+    let mut shared = BTreeMap::new();
+    for (index, sides) in spans {
+        let boundaries = sides
+            .iter()
+            .flatten()
+            .flat_map(|&(first, last)| [first, last])
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut ranges = Vec::new();
+        for pair in boundaries.windows(2) {
+            let covered = |side: usize| {
+                sides[side]
+                    .iter()
+                    .any(|&(a, b)| a <= pair[0] && pair[1] <= b)
+            };
+            ensure!(
+                covered(0) == covered(1),
+                "paired image row coverage differs on sheet {index}"
+            );
+            if covered(0) {
+                ranges.push([pair[0], pair[1]]);
+            }
+        }
+        shared.insert(index, ranges);
+    }
+    Ok(shared)
+}
+
+fn capture_tile_pair(
+    plan: &PairedPlan,
+    original: &Path,
+    shrunk: &Path,
+    output: &Path,
+    rows: Option<&BTreeMap<usize, Vec<u32>>>,
+    tile_megapixels: u32,
+) -> Result<(ImageTiles, ImageTiles)> {
     let selected = selected_sheets(plan, rows)?;
     let left = run_side(
         plan,
@@ -274,29 +399,7 @@ fn capture_images_once(
     let right_dir = right.output_dir;
     let left_tiles = validate_tiles(left.captures, &selected, rows, &left_dir)?;
     let right_tiles = validate_tiles(right.captures, &selected, rows, &right_dir)?;
-    ensure!(
-        left_tiles.keys().eq(right_tiles.keys()),
-        "paired image tile set differs"
-    );
-    let mut paired = Vec::with_capacity(left_tiles.len());
-    for (key, a) in left_tiles {
-        let b = &right_tiles[&key];
-        ensure!(
-            a.range == b.range && a.sheet_name == b.sheet_name,
-            "paired image tile geometry differs on sheet {} tile {}",
-            key.0,
-            key.1
-        );
-        paired.push(PairedImageTile {
-            sheet_index: a.sheet_index,
-            sheet_name: a.sheet_name,
-            range: a.range,
-            tile_index: a.tile_index,
-            original_image: a.image_path,
-            shrunk_image: b.image_path.clone(),
-        });
-    }
-    Ok(paired)
+    Ok((left_tiles, right_tiles))
 }
 
 fn selected_sheets<'a>(
@@ -736,6 +839,52 @@ fn parse_cell(cell: &str) -> Result<(u32, u32)> {
 mod tests {
     use super::*;
 
+    fn tiles(ranges: &[&str]) -> ImageTiles {
+        ranges
+            .iter()
+            .enumerate()
+            .map(|(index, range)| {
+                (
+                    (8, index),
+                    ImageTile {
+                        sheet_index: 8,
+                        sheet_name: "AL-Beschäftigung".into(),
+                        range: (*range).into(),
+                        tile_index: index,
+                        image_path: PathBuf::new(),
+                    },
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn shared_tiles_split_at_boundaries_from_both_workbooks() {
+        let left = tiles(&["A1:BT386", "A387:BT766", "A767:BT873"]);
+        let right = tiles(&["A1:BT387", "A388:BT768", "A769:BT873"]);
+        assert!(!same_tile_ranges(&left, &right));
+        assert_eq!(
+            shared_tile_rows(&left, &right).unwrap()[&8],
+            vec![[0, 386], [386, 387], [387, 766], [766, 768], [768, 873]]
+        );
+    }
+
+    #[test]
+    fn shared_tiles_keep_gaps_between_selected_row_groups() {
+        let left = tiles(&["A2:C5", "A100:C106"]);
+        let right = tiles(&["A2:C3", "A4:C5", "A100:C106"]);
+        assert_eq!(
+            shared_tile_rows(&left, &right).unwrap()[&8],
+            vec![[1, 3], [3, 5], [99, 106]]
+        );
+        assert!(same_tile_ranges(&left, &left));
+    }
+
+    #[test]
+    fn shared_tiles_reject_different_row_coverage() {
+        assert!(shared_tile_rows(&tiles(&["A1:C2"]), &tiles(&["A1:C3"])).is_err());
+    }
+
     #[test]
     fn capture_transfer_keeps_windows_io_out_of_long_report_paths() -> Result<()> {
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
@@ -754,8 +903,14 @@ mod tests {
 
         let transfer = CaptureTransfer::new(&workbook, &config)?;
         assert!(!transfer.0.starts_with(&directory));
-        assert_eq!(fs::read(transfer.0.join("workbook.xlsx"))?, b"workbook bytes");
-        assert_eq!(fs::read(transfer.0.join("config.json"))?, fs::read(&config)?);
+        assert_eq!(
+            fs::read(transfer.0.join("workbook.xlsx"))?,
+            b"workbook bytes"
+        );
+        assert_eq!(
+            fs::read(transfer.0.join("config.json"))?,
+            fs::read(&config)?
+        );
         let output = transfer.0.join("output");
         fs::write(output.join("host.stderr.log"), b"host diagnostic")?;
         transfer.publish(&destination)?;
