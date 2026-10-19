@@ -40,6 +40,11 @@ builder.WebHost.ConfigureKestrel(server => server.Limits.MaxRequestBodySize = Ma
 var app = builder.Build();
 var configSeen = 0;
 var files = new PhysicalFileProvider(webDirectory);
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    await next();
+});
 app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
 app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
 

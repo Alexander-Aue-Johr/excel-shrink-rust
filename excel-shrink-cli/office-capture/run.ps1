@@ -265,8 +265,17 @@ try {
             throw "Office add-in asset is missing: $asset"
         }
     }
+    $taskpanePath = Join-Path $webStage 'taskpane.html'
+    $taskpane = [IO.File]::ReadAllText($taskpanePath, $utf8).Replace('__CAPTURE_RUN_ID__', $runId)
+    [IO.File]::WriteAllText($taskpanePath, $taskpane, $utf8)
     $manifestSource = Join-Path $webStage 'manifest.xml'
     [xml]$manifest = [IO.File]::ReadAllText($manifestSource, $utf8)
+    foreach ($node in $manifest.SelectNodes('//*[@DefaultValue]')) {
+        $url = $node.GetAttribute('DefaultValue')
+        if ($url.StartsWith('http://localhost:3000/')) {
+            $node.SetAttribute('DefaultValue', ($url + '?run=' + $runId))
+        }
+    }
     $idNode = $manifest.SelectSingleNode("/*[local-name()='OfficeApp']/*[local-name()='Id']")
     $versionNode = $manifest.SelectSingleNode("/*[local-name()='OfficeApp']/*[local-name()='Version']")
     if ($null -eq $idNode -or $null -eq $versionNode) { throw 'Office add-in manifest is incomplete.' }
