@@ -366,6 +366,7 @@ try {
     $result = Join-Path $hostOutput 'result.json'
     $captureTimer = [Diagnostics.Stopwatch]::StartNew()
     while (-not (Test-Path -LiteralPath $result -PathType Leaf)) {
+        if ($null -ne $relay -and $relay.IsFaulted) { $relay.GetAwaiter().GetResult() }
         $hostProcess.Refresh()
         if ($hostProcess.HasExited) { throw 'Worksheet capture host exited before writing a result.' }
         if (-not $captureStarted) {

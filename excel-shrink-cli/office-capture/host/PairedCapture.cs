@@ -169,6 +169,8 @@ sealed class PairedCapture : IDisposable
         }
     }
 
+    public bool Complete { get { lock (gate) { return sheetOrdinal == sheets.Length; } } }
+
     public async Task Finish(bool error)
     {
         lock (gate) { failed |= error; }

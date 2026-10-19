@@ -169,6 +169,7 @@ app.MapPost("/result", async (HttpRequest request) =>
                     bool error = node["error"] is not null;
                     if (error || pairedResults.Count == 2)
                     {
+                        if (!error && !paired.Complete) throw new InvalidOperationException("Paired capture has incomplete worksheets.");
                         var result = new JsonObject { ["run_id"] = runId, ["heights"] = new JsonArray(), ["captures"] = new JsonArray() };
                         if (error) result["error"] = node["error"]!.DeepClone();
                         await WriteResultAtomically(resultPath, System.Text.Encoding.UTF8.GetBytes(result.ToJsonString()));
