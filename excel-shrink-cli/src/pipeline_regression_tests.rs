@@ -50,6 +50,89 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
     }
 }
 
+fn copy_test_entry(original: Vec<u8>, cleaned: Vec<u8>) -> ZipArchive<Cursor<Vec<u8>>> {
+    let mut source = ZipArchive::new(Cursor::new(original)).unwrap();
+    let mut output = ZipWriter::new(Cursor::new(Vec::new()));
+    copy_precompressed_entry(&mut source, 0, &mut output, cleaned).unwrap();
+    ZipArchive::new(output.finish().unwrap()).unwrap()
+}
+
+fn compressed_test_entry(xml: &[u8], method: CompressionMethod, level: i32) -> Vec<u8> {
+    precompress_entry("xl/worksheets/sheet1.xml", xml.to_vec(), method, level).unwrap()
+}
+
+fn entry_compressed_size(bytes: &[u8]) -> u64 {
+    ZipArchive::new(Cursor::new(bytes))
+        .unwrap()
+        .by_index(0)
+        .unwrap()
+        .compressed_size()
+}
+
+#[test]
+fn unchanged_xml_keeps_the_smaller_compressed_stream() {
+    let rows: String = (1..=1000)
+        .map(|row| format!(r#"<row r="{row}"><c r="A{row}"><v>7</v></c></row>"#))
+        .collect();
+    let xml = format!("<worksheet><sheetData>{rows}</sheetData></worksheet>");
+    for (original_level, cleaned_level) in [(9, 0), (0, 9)] {
+        let original = compressed_test_entry(
+            xml.as_bytes(),
+            CompressionMethod::Deflated,
+            original_level,
+        );
+        let cleaned = compressed_test_entry(
+            xml.as_bytes(),
+            CompressionMethod::Deflated,
+            cleaned_level,
+        );
+        let original_size = entry_compressed_size(&original);
+        let cleaned_size = entry_compressed_size(&cleaned);
+        assert_ne!(original_size, cleaned_size);
+
+        let mut output = copy_test_entry(original, cleaned);
+        let mut entry = output.by_index(0).unwrap();
+        assert_eq!(entry.compressed_size(), original_size.min(cleaned_size));
+        let mut actual = String::new();
+        entry.read_to_string(&mut actual).unwrap();
+        assert_eq!(actual, xml);
+    }
+}
+
+#[test]
+fn equal_size_and_crc_do_not_hide_changed_xml() {
+    // Equal-length strings with the same CRC32, inside otherwise identical XML.
+    let original_xml = b"<worksheet><!--a02552f76dbdf5fd--></worksheet>";
+    let cleaned_xml = b"<worksheet><!--670009b22c087272--></worksheet>";
+    assert_eq!(original_xml.len(), cleaned_xml.len());
+    assert_eq!(crc32fast::hash(original_xml), crc32fast::hash(cleaned_xml));
+    let original = compressed_test_entry(original_xml, CompressionMethod::Stored, 0);
+    let cleaned = compressed_test_entry(cleaned_xml, CompressionMethod::Stored, 0);
+
+    let mut output = copy_test_entry(original, cleaned);
+    let mut actual = Vec::new();
+    output.by_index(0).unwrap().read_to_end(&mut actual).unwrap();
+    assert_eq!(actual, cleaned_xml);
+}
+
+#[test]
+fn store_output_does_not_reuse_deflated_original_xml() {
+    let xml = b"<worksheet><sheetData/></worksheet>";
+    let original = compressed_test_entry(xml, CompressionMethod::Deflated, 9);
+    let cleaned = compressed_test_entry(
+        xml,
+        output_compression_method(CompressionMethod::Deflated, true),
+        9,
+    );
+
+    let mut output = copy_test_entry(original, cleaned);
+    let mut entry = output.by_index(0).unwrap();
+    assert_eq!(entry.compression(), CompressionMethod::Stored);
+    let mut actual = Vec::new();
+    entry.read_to_end(&mut actual).unwrap();
+    assert_eq!(actual, xml);
+}
+
 #[test]
 fn analysis_csv_implies_attribution_safe_analysis() {
     let cli = cli_with_analysis_flags(false, Some(PathBuf::from("analysis.csv")));

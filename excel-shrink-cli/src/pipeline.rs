@@ -45,6 +45,7 @@ enum WriteJob {
         filename: String,
     },
     CopyPrecompressed {
+        original_index: usize,
         filename: String,
         zip_bytes: Vec<u8>,
     },
@@ -843,14 +844,54 @@ fn precompress_entry(
     Ok(cursor.into_inner())
 }
 
-fn raw_copy_single_entry_zip<W: Write + Seek>(
+fn copy_precompressed_entry<R: Read + Seek, W: Write + Seek>(
+    source_archive: &mut ZipArchive<R>,
+    original_index: usize,
     zip_writer: &mut ZipWriter<W>,
     zip_bytes: Vec<u8>,
 ) -> zip::result::ZipResult<()> {
-    let cursor = Cursor::new(zip_bytes);
-    let mut archive = ZipArchive::new(cursor)?;
-    let file = archive.by_index(0)?;
-    zip_writer.raw_copy_file(file)
+    let mut replacement = ZipArchive::new(Cursor::new(zip_bytes))?;
+    let reuse_original = {
+        let mut cleaned = replacement.by_index(0)?;
+        source_archive
+            .by_index(original_index)
+            .is_ok_and(|mut original| {
+                original_compression_is_reusable(&mut original, &mut cleaned).unwrap_or(false)
+            })
+    };
+    if reuse_original {
+        zip_writer.raw_copy_file(source_archive.by_index(original_index)?)
+    } else {
+        zip_writer.raw_copy_file(replacement.by_index(0)?)
+    }
+}
+
+fn original_compression_is_reusable(
+    original: &mut zip::read::ZipFile<'_>,
+    cleaned: &mut zip::read::ZipFile<'_>,
+) -> std::io::Result<bool> {
+    if original.name() != cleaned.name()
+        || original.compression() != cleaned.compression()
+        || original.compressed_size() > cleaned.compressed_size()
+        || original.size() != cleaned.size()
+        || original.crc32() != cleaned.crc32()
+    {
+        return Ok(false);
+    }
+
+    // CRC and size only filter candidates; compare the XML before reusing it.
+    let mut original_bytes = [0; 8192];
+    let mut cleaned_bytes = [0; 8192];
+    loop {
+        let count = original.read(&mut original_bytes)?;
+        if count == 0 {
+            return Ok(cleaned.read(&mut cleaned_bytes)? == 0);
+        }
+        cleaned.read_exact(&mut cleaned_bytes[..count])?;
+        if original_bytes[..count] != cleaned_bytes[..count] {
+            return Ok(false);
+        }
+    }
 }
 
 fn spawn_xlsx_writer(
@@ -1031,10 +1072,16 @@ fn copy_write_job(
             copy_original_entry(index, &filename, source_archive, zip_writer, input_display)
         }
         WriteJob::CopyPrecompressed {
+            original_index,
             filename,
             zip_bytes,
         } => {
-            if let Err(error) = raw_copy_single_entry_zip(zip_writer, zip_bytes) {
+            if let Err(error) = copy_precompressed_entry(
+                source_archive,
+                original_index,
+                zip_writer,
+                zip_bytes,
+            ) {
                 error!(event = "zip_entry_precompressed_copy_failed", xlsx = %input_display, entry = %filename, error = %error, "Copy precompressed failed");
             }
         }
@@ -1108,6 +1155,7 @@ fn send_write_job(tx: &mpsc::Sender<QueuedWriteJob>, job: WriteJob, xlsx: &str) 
         WriteJob::CopyPrecompressed {
             filename,
             zip_bytes,
+            ..
         } => (filename.as_str(), zip_bytes.len()),
     };
     let handoff = Handoff::start("writer_job", xlsx, filename);
@@ -1742,7 +1790,7 @@ fn plan_workbook_entry(
                 cleaned_size,
                 context.attribution_safe_analysis,
             );
-            queue_precompressed_entry(context.tx, filename, zip_bytes, context.input_display)
+            queue_precompressed_entry(context.tx, index, filename, zip_bytes, context.input_display)
         }
         Err(error) => {
             error!(event = "workbook_precompress_failed", xlsx = %context.input_display, entry = %filename, error = %error, "Failed to precompress cleaned workbook.xml; copying original");
@@ -1845,6 +1893,7 @@ fn queue_original_entry(
 
 fn queue_precompressed_entry(
     tx: &mpsc::Sender<QueuedWriteJob>,
+    original_index: usize,
     filename: String,
     zip_bytes: Vec<u8>,
     input_display: &str,
@@ -1852,6 +1901,7 @@ fn queue_precompressed_entry(
     if send_write_job(
         tx,
         WriteJob::CopyPrecompressed {
+            original_index,
             filename,
             zip_bytes,
         },
@@ -2183,6 +2233,7 @@ impl SheetFinalizer<'_> {
         ) {
             Ok(zip_bytes) => self.queue_precompressed_sheet(
                 params,
+                zip_index,
                 metrics,
                 original_size,
                 cleaned_size,
@@ -2197,6 +2248,7 @@ impl SheetFinalizer<'_> {
     fn queue_precompressed_sheet(
         &self,
         params: CleanSheetParameters,
+        original_index: usize,
         metrics: CleanSheetMetrics,
         original_size: usize,
         cleaned_size: usize,
@@ -2237,6 +2289,7 @@ impl SheetFinalizer<'_> {
         send_write_job(
             self.tx,
             WriteJob::CopyPrecompressed {
+                original_index,
                 filename: params.zip_info_filename,
                 zip_bytes,
             },
@@ -2335,6 +2388,7 @@ fn queue_cleaned_calc_chain(
         Ok(zip_bytes) => send_write_job(
             tx,
             WriteJob::CopyPrecompressed {
+                original_index: index,
                 filename: "xl/calcChain.xml".to_string(),
                 zip_bytes,
             },
