@@ -130,3 +130,39 @@ test('the row-height gate resolves pending layout without taking images', async 
   const runs = await readHeightRuns(deferredLayoutModel(), 'Sheet', 99);
   assert.deepEqual(runs, [{start_row: 1, end_row: 100, height: 12}]);
 });
+
+test('a long hidden tail stays covered by one visible image', async () => {
+  const rows = [...new Array(94).fill(12.75), ...new Array(65530 - 94).fill(0)];
+  const result = await geometry(officeModel({rows}), 65529, 1);
+  const tiles = result.tiles(1, null);
+  assert.equal(tiles.length, 1);
+  assert.deepEqual(tiles[0].core, {r0: 0, r1: 65530, c0: 0, c1: 2});
+  assert.equal(tiles[0].expectedHeight, 1599);
+});
+
+test('tiles cross hidden row runs with complete coverage and visible context', async () => {
+  const rows = [...new Array(4000).fill(12), ...new Array(30000).fill(0), ...new Array(4000).fill(12)];
+  const result = await geometry(officeModel({rows}), rows.length - 1, 1);
+  const tiles = result.tiles(1, null);
+  assert.ok(tiles.length > 1);
+  let nextRow = 0;
+  for (const tile of tiles) {
+    assert.equal(tile.core.r0, nextRow);
+    nextRow = tile.core.r1;
+    assert.ok(tile.cropHeight > 1);
+    assert.ok(tile.cropY + tile.cropHeight <= tile.expectedHeight);
+    assert.ok(tile.width * tile.expectedHeight <= result.maxPixels);
+    assert.ok(tile.expectedHeight <= 30000);
+    assert.ok(result.visibleRows[tile.core.r1] - result.visibleRows[tile.core.r0] <= 8192);
+  }
+  assert.equal(nextRow, rows.length);
+});
+
+test('the tile row limit still bounds visible rows when pixels fit', async () => {
+  const result = await geometry(officeModel({defaultHeight: 0.75}), 9999, 1);
+  const tiles = result.tiles(1, null);
+  assert.equal(tiles.length, 2);
+  assert.equal(tiles[0].core.r1, 8192);
+  assert.equal(tiles[1].core.r0, 8192);
+  assert.equal(tiles[1].core.r1, 10000);
+});

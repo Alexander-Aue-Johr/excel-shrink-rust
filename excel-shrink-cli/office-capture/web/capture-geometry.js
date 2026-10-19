@@ -190,6 +190,8 @@
       this.rows = await this.readSizes('rows', 0, this.bottomRow + 1);
       this.x = prefix(this.columns);
       this.y = prefix(this.rows);
+      // Hidden rows stay in the covered range without consuming render capacity.
+      this.visibleRows = prefix(this.rows.map(height => height > 0 ? 1 : 0));
     }
 
     async calibrate() {
@@ -284,7 +286,6 @@
         }
         last = low;
       }
-      if (last - first > MAX_TILE_ROWS + 2048) throw budgetError('Visible context exceeds the tile row budget');
       return {first, last};
     }
 
@@ -292,6 +293,10 @@
       const width = this.imageWidth(endColumn);
       if (width > MAX_EDGE || width < 2) throw budgetError(`Full-width capture exceeds the image edge budget (${width} px)`);
       const maxHeight = Math.min(MAX_EDGE, Math.floor(this.maxPixels / width));
+      const fits = (start, end, halo) =>
+        this.visibleRows[end] - this.visibleRows[start] <= MAX_TILE_ROWS &&
+        this.visibleRows[halo.last] - this.visibleRows[halo.first] <= MAX_TILE_ROWS + 2048 &&
+        this.imageHeight(halo.first, halo.last) <= maxHeight;
       const spans = [];
       if (targets) {
         for (const row of targets) {
@@ -305,16 +310,16 @@
       for (const span of spans) {
         let start = span.start;
         while (start < span.end) {
-          let low = start + 1, high = Math.min(span.end, start + MAX_TILE_ROWS) + 1;
+          let low = start + 1, high = span.end + 1;
           while (low + 1 < high) {
             const middle = Math.floor((low + high) / 2);
             const halo = this.halo(start, middle);
-            if (this.imageHeight(halo.first, halo.last) <= maxHeight) low = middle;
+            if (fits(start, middle, halo)) low = middle;
             else high = middle;
           }
           const end = low;
           const halo = this.halo(start, end);
-          if (this.imageHeight(halo.first, halo.last) > maxHeight) throw budgetError(`Row ${start + 1} exceeds the image budget`);
+          if (!fits(start, end, halo)) throw budgetError(`Row ${start + 1} exceeds the image budget`);
           const raw = {r0: halo.first, r1: halo.last, c0: 0, c1: endColumn + 1};
           const core = {r0: start, r1: end, c0: 0, c1: endColumn + 1};
           const cropY = Math.round((this.y[start] - this.y[halo.first]) * this.scaleY);
