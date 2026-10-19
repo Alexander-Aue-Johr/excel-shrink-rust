@@ -1126,7 +1126,7 @@ fn run_suite_or_visual_profile_matrix(
     args: RegressionRunArgs,
     console_log_level: LogLevel,
 ) -> anyhow::Result<()> {
-    if args.all_visual_profile_checks {
+    if args.all_visual_profile_checks || (args.all_visual_profiles && args.excel_screenshot_check) {
         return visual_diagnosis::run(mode_name, default_baseline_relative_path, args, console_log_level);
     }
 
@@ -1261,7 +1261,7 @@ fn ensure_no_visual_profile_cli_args(cli_args: &[String]) -> anyhow::Result<()> 
         let arg = &cli_args[index];
         if visual_profile_cli_arg_name(arg).is_some() {
             anyhow::bail!(
-                "--all-visual-profiles supplies visual cleanup args itself; remove '{}' from --cli-arg",
+                "profile diagnosis supplies visual cleanup args itself; remove '{}' from --cli-arg",
                 arg
             );
         }

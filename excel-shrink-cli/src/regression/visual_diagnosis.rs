@@ -71,6 +71,7 @@ pub(super) fn run(
         .or_else(|| std::env::var_os("EXCEL_SHRINK_CORPUS_ROOT").map(PathBuf::from))
         .map(|path| resolve_path(&root, path));
     let mut cases = suite.cases;
+    let aggregate_expectation = suite.aggregate;
     if cases.is_empty() && mode == "corpus" {
         let discovery = corpus
             .clone()
@@ -101,19 +102,50 @@ pub(super) fn run(
     let mut workbooks = Vec::<Value>::new();
     let mut any_failure = false;
     let mut opened = false;
+    let mut maximum_reports = Vec::new();
 
     // One capture per source file, even when several sentinels use that file.
     let mut groups: Vec<(PathBuf, Vec<RegressionCase>)> = Vec::new();
+    let mut group_indices = HashMap::<PathBuf, usize>::new();
     for case in cases {
         let path = resolve_case_input(&root, corpus.as_deref(), &case, log_level)?;
-        if let Some((_, group)) = groups.iter_mut().find(|(p, _)| p == &path) {
-            group.push(case);
+        if let Some(&index) = group_indices.get(&path) {
+            groups[index].1.push(case);
         } else {
+            group_indices.insert(path.clone(), groups.len());
             groups.push((path, vec![case]));
         }
     }
+    let total_workbooks = groups.len();
+    publish(
+        &output,
+        &report_path,
+        &workbooks,
+        total_workbooks,
+        false,
+        None,
+    )?;
     for (source, group) in groups {
         let mut case = group[0].clone();
+        case.min_reduction_ratio = group
+            .iter()
+            .filter_map(|c| c.min_reduction_ratio)
+            .reduce(f64::max);
+        case.max_output_bytes = group.iter().filter_map(|c| c.max_output_bytes).min();
+        let checks = group
+            .iter()
+            .flat_map(|c| c.analysis_checks.iter().flatten().cloned())
+            .collect::<Vec<_>>();
+        if !checks.is_empty() {
+            case.analysis_checks = Some(checks);
+        }
+        if group.iter().any(|c| c.analysis_mode == Some(true)) {
+            case.analysis_mode = Some(true);
+        }
+        anyhow::ensure!(
+            group.iter().all(|c| c.cli_args == group[0].cli_args),
+            "sentinels sharing an input must use the same non-profile CLI arguments"
+        );
         // Profile configurations are exact; baseline cleanup flags are not added.
         for item in &group {
             ensure_no_visual_profile_cli_args(item.cli_args.as_deref().unwrap_or_default())?;
@@ -166,27 +198,16 @@ pub(super) fn run(
             );
             let mut visual = json!({"profile":name, "status":"not checked", "sheets":[]});
             match result {
-                Ok(mut report) => {
-                    // Every sentinel sharing this source retains its own expectations.
-                    for extra in group.iter().skip(1) {
-                        if let (Some(actual), Some(min)) =
-                            (report.reduction_ratio, extra.min_reduction_ratio)
-                        {
-                            if actual < min {
-                                report.failures.push(format!("{}: reduction ratio {actual} is below min_reduction_ratio {min}", extra.id));
-                            }
-                        }
-                        if let (Some(actual), Some(max)) =
-                            (report.cleaned_bytes, extra.max_output_bytes)
-                        {
-                            if actual > max {
-                                report.failures.push(format!(
-                                    "{}: output bytes {actual} exceed max_output_bytes {max}",
-                                    extra.id
-                                ));
-                            }
-                        }
-                    }
+                Ok(report) => {
+                    visual["status"] = json!(if report
+                        .value_comparison_details
+                        .as_ref()
+                        .is_some_and(|v| !v.differences.is_empty())
+                    {
+                        "cell value differences"
+                    } else {
+                        "technical error"
+                    });
                     if let Some(details) = &report.excel_screenshot_details {
                         visual = serde_json::from_slice(&fs::read(
                             details.output_dir.join("visual-result.json"),
@@ -205,6 +226,9 @@ pub(super) fn run(
                         &file_root.join(name).join("case-result.json"),
                         &serde_json::to_vec_pretty(&report)?,
                     )?;
+                    if name == "maximum-cleaning" {
+                        maximum_reports.push(report);
+                    }
                 }
                 Err(error) => {
                     any_failure = true;
@@ -212,11 +236,35 @@ pub(super) fn run(
                     visual["failures"] = json!([format!("{error:#}")]);
                 }
             }
+            // Keep the shared report compact: unchanged sheets outside a focused
+            // follow-up need a count, not hundreds of empty worksheet records.
+            if let Some(sheets) = visual["sheets"].as_array_mut() {
+                let checked = sheets.len();
+                let unchanged = sheets.iter().filter(|s| s["status"] == "same").count();
+                sheets.retain(|s| {
+                    s["status"] != "same"
+                        || options.sheets.as_ref().is_some_and(|selected| {
+                            s["index"]
+                                .as_u64()
+                                .is_some_and(|i| selected.contains(&(i as usize)))
+                        })
+                });
+                visual["checked_sheets"] = json!(checked);
+                visual["unchanged_sheets"] = json!(unchanged);
+            }
+            visual["requested_sheets"] = json!(options.sheets);
             workbooks[current]["results"]
                 .as_array_mut()
                 .unwrap()
                 .push(visual.clone());
-            publish(&output, &report_path, &workbooks)?;
+            publish(
+                &output,
+                &report_path,
+                &workbooks,
+                total_workbooks,
+                false,
+                None,
+            )?;
             if !opened {
                 if let Err(error) = visual_report::open_visual_report(&output.join("report.html")) {
                     eprintln!("Could not open diagnosis report: {error:#}");
@@ -239,7 +287,31 @@ pub(super) fn run(
             }
         }
         workbooks[current]["complete"] = json!(true);
-        publish(&output, &report_path, &workbooks)?;
+        publish(
+            &output,
+            &report_path,
+            &workbooks,
+            total_workbooks,
+            false,
+            None,
+        )?;
+    }
+    let aggregate = aggregate_expectation
+        .as_ref()
+        .map(|expectation| aggregate_report(&maximum_reports, expectation));
+    any_failure |= aggregate.as_ref().is_some_and(|a| !a.failures.is_empty());
+    publish(
+        &output,
+        &report_path,
+        &workbooks,
+        total_workbooks,
+        true,
+        aggregate.as_ref(),
+    )?;
+    if !opened {
+        if let Err(error) = visual_report::open_visual_report(&output.join("report.html")) {
+            eprintln!("Could not open diagnosis report: {error:#}");
+        }
     }
     eprintln!(
         "[{mode}] Visual diagnosis: {}",
@@ -253,8 +325,15 @@ pub(super) fn run(
     Ok(())
 }
 
-fn publish(output: &Path, report_path: &Path, workbooks: &[Value]) -> anyhow::Result<()> {
-    let report = json!({"workbooks":workbooks});
+fn publish(
+    output: &Path,
+    report_path: &Path,
+    workbooks: &[Value],
+    total: usize,
+    complete: bool,
+    aggregate: Option<&AggregateReport>,
+) -> anyhow::Result<()> {
+    let report = json!({"workbooks":workbooks,"total_workbooks":total,"complete":complete,"aggregate":aggregate});
     if let Some(parent) = report_path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -266,6 +345,18 @@ fn publish(output: &Path, report_path: &Path, workbooks: &[Value]) -> anyhow::Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn accepts_the_existing_visual_check_command_as_an_alias() {
+        for flag in ["--diagnose-visual-changes", "--all-visual-profile-checks"] {
+            let command = RegressionCli::try_parse_from(["regression", "smoke", flag]).unwrap();
+            let RegressionCommand::Smoke(args) = command.command else {
+                panic!("expected smoke command")
+            };
+            assert!(args.all_visual_profile_checks);
+            assert!(!args.keep_screenshots);
+        }
+    }
+
     #[test]
     fn routes_each_sheet_without_treating_incomplete_checks_as_equal() {
         let maximum = BTreeSet::from([1, 2, 3, 4]);
