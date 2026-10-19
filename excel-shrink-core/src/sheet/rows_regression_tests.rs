@@ -1280,3 +1280,111 @@ fn duplicate_column_font_metrics(params: &CleanSheetParameters) -> CleanSheetMet
     metrics.column_definitions.finalize();
     metrics
 }
+
+fn uniform_fill_promotion_params() -> CleanSheetParameters {
+    let styles = br#"<styleSheet>
+      <fills count="4"><fill><patternFill patternType="none"/></fill>
+        <fill><patternFill patternType="gray125"/></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/></patternFill></fill>
+      </fills>
+      <borders count="2"><border/><border><bottom style="thin"/></border></borders>
+      <cellXfs count="5">
+        <xf fontId="0" fillId="0" borderId="0"/>
+        <xf fontId="8" fillId="2" borderId="0" applyFont="1" applyFill="1"/>
+        <xf fontId="4" fillId="2" borderId="0" applyFont="1" applyFill="1"/>
+        <xf fontId="4" fillId="3" borderId="0" applyFont="1" applyFill="1"/>
+        <xf fontId="4" fillId="2" borderId="0" applyFont="1"/>
+      </cellXfs>
+    </styleSheet>"#;
+    let mut params = params_with_styles(&[]);
+    params.patterns =
+        WorkbookSpecificPatterns::new(crate::styles::parse_xfs(styles).unwrap(), None);
+    params
+}
+
+fn full_width_filled_row(content_style: u32) -> Vec<u8> {
+    let mut input = format!(
+        "<row r=\"1\" ht=\"20.25\" customHeight=\"1\"><c r=\"A1\" s=\"{content_style}\"><v>keep</v></c>"
+    );
+    for col in 2..=16384 {
+        let mut value = col;
+        let mut name = Vec::new();
+        while value > 0 {
+            value -= 1;
+            name.push(b'A' + (value % 26) as u8);
+            value /= 26;
+        }
+        name.reverse();
+        input.push_str(&format!(
+            "<c r=\"{}1\" s=\"1\"/>",
+            String::from_utf8(name).unwrap()
+        ));
+    }
+    input.push_str("</row>");
+    input.into_bytes()
+}
+
+fn filled_row_metrics() -> CleanSheetMetrics {
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.merge_cell_ranges.push(crate::models::CellRange {
+        start_col: 3,
+        end_col: 4,
+        start_row: 1,
+        end_row: 1,
+    });
+    metrics
+}
+
+#[test]
+fn full_width_row_promotes_uniform_fill_and_preserves_merged_cells() {
+    let params = uniform_fill_promotion_params();
+    let mut metrics = filled_row_metrics();
+    let result = replace_single_row_with_metrics(&full_width_filled_row(2), &params, &mut metrics);
+    assert_eq!(result, br#"<row r="1" ht="20.25" customHeight="1" s="1" customFormat="1"><c r="A1" s="2"><v>keep</v></c><c r="C1" s="1"/><c r="D1" s="1"/></row>"#);
+    assert_eq!(metrics.deleted_cell_count, 16381);
+    assert_eq!(metrics.visible_content_bounds.max_row, Some(1));
+    assert_eq!(metrics.tail_anchor_max_row, Some(1));
+    let second = replace_single_row_with_metrics(&result, &params, &mut filled_row_metrics());
+    assert_eq!(second, result);
+}
+
+#[test]
+fn full_width_fill_promotion_requires_the_same_explicit_fill_on_content_cells() {
+    let params = uniform_fill_promotion_params();
+    for content_style in [3, 4] {
+        let result = replace_single_row_with_metrics(
+            &full_width_filled_row(content_style),
+            &params,
+            &mut filled_row_metrics(),
+        );
+        assert!(!String::from_utf8(result).unwrap().contains("customFormat"));
+    }
+}
+
+#[test]
+fn full_width_fill_promotion_keeps_border_and_protection_guards() {
+    let original = uniform_fill_promotion_params();
+    for guard in ["visible border", "border override", "protection"] {
+        let mut params = original.clone();
+        let dominant = params.patterns.xfs_by_index.get_mut(&1).unwrap();
+        match guard {
+            "visible border" => {
+                dominant.border_id = Some(1);
+                dominant.has_visible_border = true;
+            }
+            "border override" => dominant.apply_border = true,
+            "protection" => dominant.has_apply_protection = true,
+            _ => unreachable!(),
+        }
+        let result = replace_single_row_with_metrics(
+            &full_width_filled_row(2),
+            &params,
+            &mut filled_row_metrics(),
+        );
+        assert!(
+            !String::from_utf8(result).unwrap().contains("customFormat"),
+            "{guard}"
+        );
+    }
+}

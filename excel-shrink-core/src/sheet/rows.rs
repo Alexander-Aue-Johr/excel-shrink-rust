@@ -404,6 +404,7 @@ fn choose_promoted_row_style(
     let mut gaps = Vec::new();
     let mut pos = 0;
     let mut previous_col = 0;
+    let mut uniform_applied_fill = None;
     while let Some(offset) = find_bytes(&content[pos..], b"<c") {
         let start = pos + offset;
         if !is_cell_tag_start(content, start) {
@@ -426,6 +427,12 @@ fn choose_promoted_row_style(
         }
         let id = cell.style_id?; // An unstyled value would acquire the new row style.
         let xf = params.patterns.xfs_by_index.get(&id)?;
+        let applied_fill = xf.fill_id.filter(|_| xf.apply_fill);
+        if previous_col == 0 {
+            uniform_applied_fill = applied_fill;
+        } else if applied_fill != uniform_applied_fill {
+            uniform_applied_fill = None;
+        }
         if cell.col_num > previous_col + 1 {
             gaps.push((previous_col + 1, cell.col_num - 1, start));
         }
@@ -450,7 +457,17 @@ fn choose_promoted_row_style(
     let xf = params.patterns.xfs_by_index.get(&dominant)?;
     // The entire row was explicit: moving an identical full XF changes no
     // previously implicit position. Restrict this path to real dense bloat.
-    if gaps.is_empty() && count >= 1024 && xf.apply_font && xf.has_no_empty_cell_visible_style {
+    // Filled rows must apply the same fill to every cell, including content.
+    let preserves_uniform_fill = xf.has_visible_fill
+        && uniform_applied_fill == xf.fill_id
+        && !xf.has_visible_border
+        && !xf.apply_border
+        && !xf.has_apply_protection;
+    if gaps.is_empty()
+        && count >= 1024
+        && xf.apply_font
+        && (xf.has_no_empty_cell_visible_style || preserves_uniform_fill)
+    {
         return Some(RowStylePromotion { style_id: dominant, missing_cells: Vec::new() });
     }
     if count >= 1024 && xf.apply_font && xf.has_no_empty_cell_visible_style
@@ -927,7 +944,16 @@ fn empty_styled_cell_is_inside_merge_range(
 
     cell.style_id
         .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id))
-        .map_or(true, |style| style.has_no_empty_cell_visible_style)
+        .map_or(true, |style| {
+            style.has_no_empty_cell_visible_style
+                || (style.has_visible_fill
+                    && cell
+                        .row_view
+                        .and_then(|row| row.style)
+                        .is_some_and(|row_style| {
+                            row_style.apply_fill && row_style.fill_id == style.fill_id
+                        }))
+        })
 }
 
 fn remove_tentative_style_representatives<'a>(
