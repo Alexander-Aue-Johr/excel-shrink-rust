@@ -185,7 +185,16 @@ fn run_pair(
             consumer_error = Some(error);
         }
     }
+    if consumer_error.is_some() {
+        // Reject the current pair and drain the relay so the launcher's cleanup
+        // can finish even if a frame was incomplete or its metadata was invalid.
+        let _ = input.write_all(&[0]);
+        let _ = input.flush();
+    }
     drop(input);
+    if consumer_error.is_some() {
+        let _ = std::io::copy(&mut stream, &mut std::io::sink());
+    }
     let status = child.wait()?;
     let stderr = String::from_utf8_lossy(&errors.join().unwrap_or_default()).into_owned();
     transfer.publish(output)?;
@@ -278,7 +287,7 @@ mod tests {
         let (_, original, shrunk) = read_frame(&mut frame.as_slice())?.unwrap();
         assert_eq!(original, b"ab");
         assert_eq!(shrunk, b"cde");
-        assert!(read_frame(&mut &frame[..frame.len()-1]).is_err());
+        assert!(read_frame(&mut &frame[..frame.len() - 1]).is_err());
         Ok(())
     }
 

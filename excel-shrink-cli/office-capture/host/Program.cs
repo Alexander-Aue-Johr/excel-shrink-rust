@@ -97,7 +97,9 @@ app.MapPost("/pair/image", async (HttpRequest request) =>
         if (base64.Length > MaxImageBytes * 4L / 3L + 4) return Results.BadRequest("Image is too large.");
         var image = Convert.FromBase64String(base64);
         if (image.Length > MaxImageBytes) return Results.BadRequest("Image is too large.");
-        CheckPng(image);
+        var (width, height) = CheckPng(image);
+        if (width > 30_000 || height > 30_000 || (long)width * height > 32_000_000)
+            return Results.BadRequest("Paired image exceeds the tile budget.");
         data.Remove("base64");
         await paired.Image(data, image);
         return Results.Json(new {ok = true});

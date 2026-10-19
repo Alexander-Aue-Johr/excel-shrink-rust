@@ -202,8 +202,9 @@ function Stop-OwnedProcess($process) {
     try {
         $process.Refresh()
         if ($process.HasExited) { return }
-        [void]$process.CloseMainWindow()
-        if (-not $process.WaitForExit(3000)) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+        if ($process.CloseMainWindow() -and $process.WaitForExit(3000)) { return }
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        [void]$process.WaitForExit(3000)
     } catch {}
 }
 
@@ -257,11 +258,14 @@ $comparisonProcess = $null
 $comparisonAddInId = $null
 $comparisonRegistration = $false
 $relay = $null
+$ownedProcesses = $null
 $addInId = $null
 $registrationDone = $false
 $previousRegistration = $null
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 try {
+    Add-Type -Path (Join-Path $PSScriptRoot 'CaptureProcesses.cs')
+    $ownedProcesses = New-Object CaptureProcesses
     $dotnet = Get-DotNet8
     $env:DOTNET_ROOT = Split-Path -Parent $dotnet
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
@@ -331,6 +335,7 @@ try {
     if ($StreamPipe) { $hostArguments += ' --stream-pipe ' + (Quote-Argument $StreamPipe) }
     $hostProcess = Start-Process -FilePath $dotnet -ArgumentList $hostArguments -WorkingDirectory $stage `
         -RedirectStandardOutput $hostStdout -RedirectStandardError $hostStderr -WindowStyle Hidden -PassThru
+    $ownedProcesses.Add($hostProcess)
     $hostReady = $false
     $startup = [Diagnostics.Stopwatch]::StartNew()
     while ($startup.Elapsed.TotalSeconds -lt 30) {
@@ -356,9 +361,11 @@ try {
     $registrationDone = $true
     $excelExecutable = Find-ExcelExecutable
     $excelProcess = Start-Process -FilePath $excelExecutable -ArgumentList ('/x ' + (Quote-Argument $workbookCopy)) -PassThru
+    $ownedProcesses.Add($excelProcess)
 
     if ($ComparisonWorkbookPath) {
         $comparisonProcess = Start-Process -FilePath $excelExecutable -ArgumentList ('/x ' + (Quote-Argument $comparisonCopy)) -PassThru
+        $ownedProcesses.Add($comparisonProcess)
     }
 
     $startup.Restart()
@@ -400,6 +407,7 @@ try {
     }
     throw
 } finally {
+    if ($null -ne $ownedProcesses) { $ownedProcesses.Dispose() }
     Stop-OwnedProcess $comparisonProcess
     Stop-OwnedProcess $excelProcess
     Stop-OwnedProcess $hostProcess
