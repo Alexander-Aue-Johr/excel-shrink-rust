@@ -3,6 +3,8 @@ param(
     [Parameter(Mandatory=$true)][string]$ConfigPath,
     [Parameter(Mandatory=$true)][string]$OutputDir,
     [string]$PublishedOutputDir,
+    [string]$ComparisonWorkbookPath,
+    [string]$StreamPipe,
     [ValidateRange(10, 600)][int]$StartupTimeoutSeconds = 180,
     [ValidateRange(10, 7200)][int]$CaptureTimeoutSeconds = 1800
 )
@@ -208,9 +210,11 @@ function Stop-OwnedProcess($process) {
 function Copy-CompletedOutput([string]$from, [string]$to) {
     $imageFrom = Join-Path $from 'images'
     $imageTo = Join-Path $to 'images'
-    New-Item -ItemType Directory -Path $imageTo -Force | Out-Null
-    foreach ($image in @(Get-ChildItem -LiteralPath $imageFrom -File -Filter '*.png')) {
-        Copy-VerifiedFile $image.FullName (Join-Path $imageTo $image.Name)
+    if (Test-Path -LiteralPath $imageFrom -PathType Container) {
+        New-Item -ItemType Directory -Path $imageTo -Force | Out-Null
+        foreach ($image in @(Get-ChildItem -LiteralPath $imageFrom -File -Filter '*.png')) {
+            Copy-VerifiedFile $image.FullName (Join-Path $imageTo $image.Name)
+        }
     }
     Copy-VerifiedFile (Join-Path $from 'result.json') (Join-Path $to 'result.json')
 }
@@ -242,8 +246,17 @@ if (Test-Path -LiteralPath (Join-Path $destination 'result.json')) { throw 'Outp
 
 $stage = Join-Path $env:TEMP ('es-office-capture-' + [Guid]::NewGuid().ToString('N'))
 $runId = [Guid]::NewGuid().ToString('N')
+$listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
+$listener.Start()
+try { $port = $listener.LocalEndpoint.Port } finally { $listener.Stop() }
+$baseUrl = 'http://localhost:' + $port
+$controlUrl = 'http://127.0.0.1:' + $port
 $hostProcess = $null
 $excelProcess = $null
+$comparisonProcess = $null
+$comparisonAddInId = $null
+$comparisonRegistration = $false
+$relay = $null
 $addInId = $null
 $registrationDone = $false
 $previousRegistration = $null
@@ -269,10 +282,10 @@ try {
     $taskpane = [IO.File]::ReadAllText($taskpanePath, $utf8).Replace('__CAPTURE_RUN_ID__', $runId)
     [IO.File]::WriteAllText($taskpanePath, $taskpane, $utf8)
     $manifestSource = Join-Path $webStage 'manifest.xml'
-    [xml]$manifest = [IO.File]::ReadAllText($manifestSource, $utf8)
+    [xml]$manifest = [IO.File]::ReadAllText($manifestSource, $utf8).Replace('http://localhost:3000', $baseUrl)
     foreach ($node in $manifest.SelectNodes('//*[@DefaultValue]')) {
         $url = $node.GetAttribute('DefaultValue')
-        if ($url.StartsWith('http://localhost:3000/')) {
+        if ($url.StartsWith($baseUrl + '/')) {
             $node.SetAttribute('DefaultValue', ($url + '?run=' + $runId))
         }
     }
@@ -287,13 +300,26 @@ try {
     $workbookCopy = Join-Path $documentDirectory ([IO.Path]::GetFileName($sourceWorkbook))
     Copy-Item -LiteralPath $sourceWorkbook -Destination $workbookCopy
     Add-AutoOpenTaskpane $workbookCopy $addInId $versionNode.InnerText.Trim()
+    if ($ComparisonWorkbookPath) {
+        if (-not $StreamPipe) { throw 'Paired capture requires a stream pipe.' }
+        # Each workbook owns a separate task pane and a distinct manifest URL.
+        $comparisonAddInId = [Guid]::NewGuid().ToString()
+        $comparisonManifest = $manifest.OuterXml.Replace($addInId, $comparisonAddInId).Replace('?run=' + $runId, '?run=' + $runId + '&amp;side=shrunk')
+        $comparisonManifestPath = Join-Path $stage 'comparison-manifest.xml'
+        [IO.File]::WriteAllText($comparisonManifestPath, $comparisonManifest, $utf8)
+        [IO.File]::WriteAllText($manifestPath, $manifest.OuterXml.Replace('?run=' + $runId, '?run=' + $runId + '&amp;side=original'), $utf8)
+        $comparisonCopy = Join-Path $documentDirectory 'comparison.xlsx'
+        Copy-Item -LiteralPath $ComparisonWorkbookPath -Destination $comparisonCopy
+        Add-AutoOpenTaskpane $comparisonCopy $comparisonAddInId $versionNode.InnerText.Trim()
+    }
     $configCopy = Join-Path $stage 'config.json'
     Copy-Item -LiteralPath $sourceConfig -Destination $configCopy
     $captureConfig = [IO.File]::ReadAllText($configCopy, $utf8) | ConvertFrom-Json
-    if ($captureConfig.mode -eq 'capture') {
+    if ($captureConfig.mode -in @('capture', 'paired')) {
         Add-Type -Path (Join-Path $PSScriptRoot 'CaptureWorkbook.cs') `
             -ReferencedAssemblies @('System.IO.Compression', 'System.IO.Compression.FileSystem', 'System.Xml')
         [CaptureWorkbook]::HideErrorIndicators($workbookCopy)
+        if ($ComparisonWorkbookPath) { [CaptureWorkbook]::HideErrorIndicators($comparisonCopy) }
     }
 
     $hostStdout = Join-Path $stage 'host.stdout.log'
@@ -301,6 +327,8 @@ try {
     $hostArguments = '{0} --config {1} --output {2} --published-output {3} --web {4} --run-id {5}' -f `
         (Quote-Argument $dll), (Quote-Argument $configCopy), (Quote-Argument $hostOutput), `
         (Quote-Argument $PublishedOutputDir), (Quote-Argument $webStage), (Quote-Argument $runId)
+    $hostArguments += ' --port ' + $port
+    if ($StreamPipe) { $hostArguments += ' --stream-pipe ' + (Quote-Argument $StreamPipe) }
     $hostProcess = Start-Process -FilePath $dotnet -ArgumentList $hostArguments -WorkingDirectory $stage `
         -RedirectStandardOutput $hostStdout -RedirectStandardError $hostStderr -WindowStyle Hidden -PassThru
     $hostReady = $false
@@ -310,18 +338,28 @@ try {
         $hostProcess.Refresh()
         if ($hostProcess.HasExited) { break }
         try {
-            $health = Invoke-RestMethod -Uri 'http://127.0.0.1:3001/health' -TimeoutSec 2
+            $health = Invoke-RestMethod -Uri ($controlUrl + '/health') -TimeoutSec 2
             if ($health.ok -and $health.run_id -eq $runId) { $hostReady = $true; break }
         } catch {}
     }
     if (-not $hostReady) { throw 'Worksheet capture host did not become ready within 30 seconds.' }
-    $taskpaneResponse = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:3000/taskpane.html' -TimeoutSec 10
+    $taskpaneResponse = Invoke-WebRequest -UseBasicParsing -Uri ($baseUrl + '/taskpane.html') -TimeoutSec 10
     if ($taskpaneResponse.StatusCode -ne 200) { throw 'Office add-in taskpane is unavailable over HTTP.' }
 
+    if ($ComparisonWorkbookPath) {
+        Add-Type -Path (Join-Path $PSScriptRoot 'PairRelay.cs')
+        $relay = [PairRelay]::Start($StreamPipe)
+        $comparisonPrevious = Register-AddIn $comparisonAddInId $comparisonManifestPath
+        $comparisonRegistration = $true
+    }
     $previousRegistration = Register-AddIn $addInId $manifestPath
     $registrationDone = $true
     $excelExecutable = Find-ExcelExecutable
     $excelProcess = Start-Process -FilePath $excelExecutable -ArgumentList ('/x ' + (Quote-Argument $workbookCopy)) -PassThru
+
+    if ($ComparisonWorkbookPath) {
+        $comparisonProcess = Start-Process -FilePath $excelExecutable -ArgumentList ('/x ' + (Quote-Argument $comparisonCopy)) -PassThru
+    }
 
     $startup.Restart()
     $captureStarted = $false
@@ -332,7 +370,7 @@ try {
         if ($hostProcess.HasExited) { throw 'Worksheet capture host exited before writing a result.' }
         if (-not $captureStarted) {
             try {
-                $health = Invoke-RestMethod -Uri 'http://127.0.0.1:3001/health' -TimeoutSec 2
+                $health = Invoke-RestMethod -Uri ($controlUrl + '/health') -TimeoutSec 2
                 if ($health.run_id -eq $runId -and $health.config_seen) {
                     $captureStarted = $true
                     $captureTimer.Restart()
@@ -345,12 +383,13 @@ try {
         Start-Sleep -Milliseconds 250
     }
 
+    if ($null -ne $relay) { $relay.GetAwaiter().GetResult() }
     Copy-CompletedOutput $hostOutput $destination
     $captureResult = [IO.File]::ReadAllText((Join-Path $destination 'result.json'), $utf8) | ConvertFrom-Json
     if ($null -ne $captureResult.PSObject.Properties['error'] -and $null -ne $captureResult.error) {
         throw "Worksheet capture failed: $($captureResult.error | ConvertTo-Json -Compress -Depth 5)"
     }
-    Write-Host ('RESULT: ' + (Join-Path $destination 'result.json'))
+    if (-not $StreamPipe) { Write-Host ('RESULT: ' + (Join-Path $destination 'result.json')) }
 } catch {
     foreach ($name in @('host.stdout.log', 'host.stderr.log')) {
         $log = Join-Path $stage $name
@@ -360,8 +399,10 @@ try {
     }
     throw
 } finally {
+    Stop-OwnedProcess $comparisonProcess
     Stop-OwnedProcess $excelProcess
     Stop-OwnedProcess $hostProcess
+    if ($comparisonRegistration) { Restore-AddIn $comparisonAddInId $comparisonPrevious }
     if ($registrationDone) { Restore-AddIn $addInId $previousRegistration }
     Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 }

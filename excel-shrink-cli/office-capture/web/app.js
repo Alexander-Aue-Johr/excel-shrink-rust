@@ -166,7 +166,12 @@
     if (probe && geometry.fixedWidth !== null) throw new Error(`Cannot check right-edge overflow on fixed-width sheet ${sheet.name}`);
     const end = sharedEnd !== undefined ? sharedEnd : probe ? probeEnd(geometry, right, 64) : right;
     await verifyDrawingBounds(sheet, geometry, end);
-    const tiles = geometry.tiles(end, targets, sheet.tile_rows);
+    let tiles = geometry.tiles(end, targets, sheet.tile_rows);
+    if (config.mode === 'paired') {
+      const shared = await request('/pair/geometry', {run_id: config.run_id, side: config.side,
+        sheet_index: sheet.index, tile_rows: tiles.map(tile => [tile.core.r0, tile.core.r1])});
+      tiles = geometry.tiles(end, targets, shared.tile_rows);
+    }
     const captures = [];
     for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
       const tile = tiles[tileIndex];
@@ -195,6 +200,12 @@
       const finalSize = CaptureGeometry.pngSize(finalPng);
       if (finalSize.width !== width || finalSize.height !== tile.cropHeight) throw new Error('Image crop changed dimensions');
       const range = CaptureGeometry.address({...tile.core, c1: lastColumn + 1});
+      if (config.mode === 'paired') {
+        await request('/pair/image', {run_id: config.run_id, side: config.side,
+          sheet_index: sheet.index, sheet_name: sheet.name, range,
+          tile_index: tileIndex, base64: finalPng});
+        continue;
+      }
       const receipt = await request('/image', {run_id: config.run_id,
         sheet_index: sheet.index, sheet_name: sheet.name, range,
         tile_index: tileIndex, base64: finalPng});
@@ -206,21 +217,22 @@
   }
 
   async function run() {
-    const config = await request('/config');
-    if (!config || !['heights', 'capture'].includes(config.mode) ||
+    const side = new URLSearchParams(location.search).get('side');
+    const config = await request('/config' + (side ? '?side=' + encodeURIComponent(side) : ''));
+    if (!config || !['heights', 'capture', 'paired'].includes(config.mode) ||
         typeof config.run_id !== 'string' || !config.run_id.length ||
         typeof config.workbook !== 'string' || !config.workbook.length ||
         !Array.isArray(config.sheets) || !config.sheets.length ||
         (config.tile_megapixels !== undefined && ![16, 32].includes(config.tile_megapixels))) {
       if (config && typeof config.run_id === 'string' && config.run_id.length) {
-        try { await request('/result', {run_id: config.run_id, heights: [], captures: [],
+        try { await request('/result', {run_id: config.run_id, side: config.side, heights: [], captures: [],
           error: {code: 'CAPTURE_FAILED', message: 'Capture configuration is incomplete'}}); } catch (_) { /* The host may be unavailable. */ }
       }
       throw new Error('Capture configuration is incomplete');
     }
     show('workbook', config.workbook);
     connection(true, 'Connected');
-    const result = {run_id: config.run_id, heights: [], captures: []};
+    const result = {run_id: config.run_id, side: config.side, heights: [], captures: []};
     const completed = [];
     progress(0, config.sheets.length);
     try {
@@ -230,6 +242,9 @@
         await checkedWorksheet(sheet);
         if (config.mode === 'heights') result.heights.push(await rowHeights(sheet));
         else result.captures.push(...await captureSheet(config, sheet));
+        if (config.mode === 'paired') {
+          await request('/pair/sheet', {run_id: config.run_id, side: config.side, sheet_index: sheet.index});
+        }
         completed.push(`${sheet.index} · ${sheet.name}`);
         show('completed-sheets', completed.join('\n'));
         progress(completed.length, config.sheets.length);
@@ -238,7 +253,7 @@
       phase('Complete');
       return;
     } catch (error) {
-      try { await request('/result', {run_id: config.run_id, heights: [], captures: [],
+      try { await request('/result', {run_id: config.run_id, side: config.side, heights: [], captures: [],
         error: {code: error && error.code ? error.code : 'CAPTURE_FAILED',
           message: error && error.message ? error.message : String(error)}}); } catch (_) { /* Host timeout is also a failure. */ }
       throw error;

@@ -17,12 +17,12 @@ var runId = Required(arguments, "run-id");
 if (!File.Exists(configPath) || !Directory.Exists(webDirectory))
     throw new InvalidOperationException("Capture config or web assets are missing.");
 Directory.CreateDirectory(outputDirectory);
-Directory.CreateDirectory(Path.Combine(outputDirectory, "images"));
 
 using var configDocument = JsonDocument.Parse(File.ReadAllBytes(configPath));
 var config = configDocument.RootElement;
 var mode = RequiredString(config, "mode");
-if (mode is not ("heights" or "capture"))
+if (mode == "capture") Directory.CreateDirectory(Path.Combine(outputDirectory, "images"));
+if (mode is not ("heights" or "capture" or "paired"))
     throw new InvalidOperationException("Invalid capture mode.");
 if (!config.TryGetProperty("sheets", out var sheets) || sheets.ValueKind != JsonValueKind.Array)
     throw new InvalidOperationException("Capture config has no sheets array.");
@@ -34,8 +34,14 @@ foreach (var sheet in sheets.EnumerateArray())
         throw new InvalidOperationException("Invalid or duplicate sheet index.");
 }
 
+using var paired = mode == "paired" ? new PairedCapture(Required(arguments, "stream-pipe"), runId, expectedSheets.Keys.ToArray()) : null;
+var pairedResults = new Dictionary<string, JsonNode>();
+var resultGate = new SemaphoreSlim(1);
+
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://localhost:3000", "http://127.0.0.1:3001");
+var port = arguments.TryGetValue("port", out var configuredPort) ? int.Parse(configuredPort) : 3000;
+if (port is < 1024 or > 65535) throw new InvalidOperationException("Invalid localhost port.");
+builder.WebHost.UseUrls($"http://localhost:{port}");
 builder.WebHost.ConfigureKestrel(server => server.Limits.MaxRequestBodySize = MaxImageBytes * 2L);
 var app = builder.Build();
 var configSeen = 0;
@@ -49,12 +55,54 @@ app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
 app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
 
 app.MapGet("/health", () => Results.Json(new { ok = true, run_id = runId, config_seen = Volatile.Read(ref configSeen) != 0 }));
-app.MapGet("/config", () =>
+app.MapGet("/config", (HttpRequest request) =>
 {
     Interlocked.Exchange(ref configSeen, 1);
     var response = JsonNode.Parse(config.GetRawText())!.AsObject();
+    if (paired is not null)
+    {
+        var side = request.Query["side"].ToString();
+        if (side is not ("original" or "shrunk")) return Results.BadRequest("Invalid capture side.");
+        response = response[side]!.AsObject();
+        response["mode"] = "paired";
+        response["side"] = side;
+    }
     response["run_id"] = runId;
     return Results.Json(response);
+});
+
+app.MapPost("/pair/geometry", async (HttpRequest request) =>
+{
+    if (paired is null) return Results.BadRequest("Not a paired capture.");
+    try { return Results.Json(await paired.Geometry((await JsonNode.ParseAsync(request.Body))!.AsObject())); }
+    catch (Exception error) { return Results.BadRequest(error.Message); }
+});
+app.MapPost("/pair/sheet", async (HttpRequest request) =>
+{
+    if (paired is null) return Results.BadRequest("Not a paired capture.");
+    try { await paired.SheetDone((await JsonNode.ParseAsync(request.Body))!.AsObject()); return Results.Json(new {ok = true}); }
+    catch (Exception error) { return Results.BadRequest(error.Message); }
+});
+app.MapPost("/pair/image", async (HttpRequest request) =>
+{
+    if (paired is null) return Results.BadRequest("Not a paired capture.");
+    try
+    {
+        var data = (await JsonNode.ParseAsync(request.Body))!.AsObject();
+        paired.Validate(data);
+        var index = (int)data["sheet_index"]!;
+        if (!expectedSheets.TryGetValue(index, out var name) || name != (string?)data["sheet_name"])
+            return Results.BadRequest("Unknown worksheet.");
+        var base64 = (string)data["base64"]!;
+        if (base64.Length > MaxImageBytes * 4L / 3L + 4) return Results.BadRequest("Image is too large.");
+        var image = Convert.FromBase64String(base64);
+        if (image.Length > MaxImageBytes) return Results.BadRequest("Image is too large.");
+        CheckPng(image);
+        data.Remove("base64");
+        await paired.Image(data, image);
+        return Results.Json(new {ok = true});
+    }
+    catch (Exception error) { return Results.BadRequest(error.Message); }
 });
 
 app.MapPost("/image", async (HttpRequest request) =>
@@ -109,6 +157,27 @@ app.MapPost("/result", async (HttpRequest request) =>
         {
             var data = payload.RootElement;
             if (RequiredString(data, "run_id") != runId) return Results.Conflict("Capture run changed.");
+            if (paired is not null)
+            {
+                var node = JsonNode.Parse(data.GetRawText())!.AsObject();
+                paired.Validate(node);
+                await resultGate.WaitAsync();
+                try
+                {
+                    if (File.Exists(resultPath)) return Results.Conflict("Result already received.");
+                    if (!pairedResults.TryAdd((string)node["side"]!, node)) return Results.Conflict("Duplicate paired result.");
+                    bool error = node["error"] is not null;
+                    if (error || pairedResults.Count == 2)
+                    {
+                        var result = new JsonObject { ["run_id"] = runId, ["heights"] = new JsonArray(), ["captures"] = new JsonArray() };
+                        if (error) result["error"] = node["error"]!.DeepClone();
+                        await WriteResultAtomically(resultPath, System.Text.Encoding.UTF8.GetBytes(result.ToJsonString()));
+                        await paired.Finish(error);
+                    }
+                    return Results.Json(new {ok = true});
+                }
+                finally { resultGate.Release(); }
+            }
             var field = mode == "heights" ? "heights" : "captures";
             if (!data.TryGetProperty(field, out var entries) || entries.ValueKind != JsonValueKind.Array)
                 return Results.BadRequest($"Result has no {field} array.");
