@@ -427,6 +427,29 @@ fn keeps_empty_cell_when_nonzero_font_differs_from_column_without_cell_apply_fon
 }
 
 #[test]
+fn nonzero_font_override_stays_explicit_when_it_duplicates_font_zero() {
+    let column_style = apply_font_only_style(4);
+    let mut cell_style = font_only_style_with_font(8);
+    cell_style.font_identity_id = Some(0);
+    let params = params_with_styles(&[(4, column_style.clone()), (8, cell_style)]);
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 1,
+        cell_xf: Some(column_style),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+    let cell_xml = br#"<c r="A3" s="8"/>"#;
+    let cell = parsed_a3_cell(cell_xml, br#" r="A3" s="8""#, Some(8));
+
+    let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
+
+    assert_eq!(cleaned.as_ref(), cell_xml);
+    assert_eq!(metrics.deleted_cell_count, 0);
+}
+
+#[test]
 fn keeps_empty_cell_when_apply_font_resets_column_font_to_default() {
     let column_style = apply_font_only_style(4);
     let cell_style = apply_font_only_style(0);

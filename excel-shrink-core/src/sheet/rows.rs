@@ -1,4 +1,4 @@
-use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause};
+use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, Xf};
 use crate::profiling;
 use crate::sheet::cells::{
     parsed_empty_cell_has_effective_fill_or_border, replace_parsed_cell_with_empty_style_policy,
@@ -743,13 +743,13 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
 // is safer than claiming a font was already supplied by malformed metadata.
 fn representative_font_id(cell: &ParsedCell<'_, '_>, params: &CleanSheetParameters) -> Option<u32> {
     if let Some(id) = cell.style_id {
-        return params.patterns.xfs_by_index.get(&id).map(|style| style.font_id.unwrap_or(0));
+        return params.patterns.xfs_by_index.get(&id).map(Xf::font_identity);
     }
     if let Some(style) = cell.row_view.and_then(|row| row.style) {
-        return Some(style.font_id.unwrap_or(0));
+        return Some(style.font_identity());
     }
     Some(cell.column.flatten().and_then(|column| column.cell_xf.as_ref())
-        .and_then(|style| style.font_id).unwrap_or(0))
+        .map(Xf::font_identity).unwrap_or(0))
 }
 
 fn select_empty_style_representative(
@@ -762,11 +762,11 @@ fn select_empty_style_representative(
 ) -> EmptyStyleRepresentativeDecision {
     let row_represents_font = cell.row_view.is_some_and(|r| {
         r.promoted_style_id.is_some()
-            && r.style.and_then(|s| s.font_id)
+            && r.style.map(Xf::font_identity)
                 == cell
                     .style_id
                     .and_then(|id| params.patterns.xfs_by_index.get(&id))
-                    .and_then(|s| s.font_id)
+                    .map(Xf::font_identity)
     });
     let hidden_column = cell.column.flatten().is_some_and(|column| column.hidden);
     let hidden_auto_height = hidden_column && cell.row_view.is_some_and(|row| {

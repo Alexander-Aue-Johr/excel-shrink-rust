@@ -33,6 +33,72 @@ fn test_parse_xfs() {
 }
 
 #[test]
+fn identical_font_records_share_identity_without_changing_font_ids() {
+    let xml = br#"<styleSheet><fonts count="4">
+      <font><sz val="11"/><name val="Calibri"/></font>
+      <font><sz val="10"/><color theme="1"/><name val="Arial"/><family val="2"/></font>
+      <font><sz val="10"/><color theme="1"/><name val="Arial"/><family val="2"/></font>
+      <font><sz val="10"/><color theme="1"/><name val="Arial"/><family val="2"/></font>
+    </fonts><cellXfs count="4">
+      <xf fontId="0"/><xf fontId="1"/><xf fontId="2"/><xf fontId="3"/>
+    </cellXfs></styleSheet>"#;
+    let xfs = parse_xfs(xml).unwrap();
+    for (index, xf) in xfs.iter().enumerate() {
+        assert_eq!(xf.font_id, Some(index as u32));
+        assert_eq!(xf.font_identity(), if index == 0 { 0 } else { 1 });
+    }
+}
+
+#[test]
+fn different_font_attributes_keep_distinct_identities() {
+    let xml = br#"<styleSheet><fonts count="6">
+      <font><sz val="10"/><color theme="1"/><name val="Arial"/></font>
+      <font><sz val="11"/><color theme="1"/><name val="Arial"/></font>
+      <font><sz val="10"/><color theme="2"/><name val="Arial"/></font>
+      <font><sz val="10"/><color theme="1"/><name val="Arial"/><b/></font>
+      <font><sz val="10"/><color theme="1"/><name val="Calibri"/></font>
+      <font><sz val="10"/><color theme="1"/><name val="Arial"/><vertAlign val="superscript"/></font>
+    </fonts><cellXfs count="6">
+      <xf fontId="0"/><xf fontId="1"/><xf fontId="2"/>
+      <xf fontId="3"/><xf fontId="4"/><xf fontId="5"/>
+    </cellXfs></styleSheet>"#;
+    let xfs = parse_xfs(xml).unwrap();
+    for (index, xf) in xfs.iter().enumerate() {
+        assert_eq!(xf.font_identity(), index as u32);
+    }
+}
+
+#[test]
+fn missing_font_records_keep_the_original_identity() {
+    for xml in [
+        br#"<cellXfs><xf/><xf fontId="7"/><xf fontId="7"/></cellXfs>"#.as_slice(),
+        br#"<styleSheet><fonts count="1"><font/></fonts><cellXfs><xf/><xf fontId="7"/><xf fontId="7"/></cellXfs></styleSheet>"#,
+    ] {
+        let xfs = parse_xfs(xml).unwrap();
+        assert_eq!(xfs[0].font_identity(), 0);
+        assert_eq!(xfs[1].font_id, Some(7));
+        assert_eq!(xfs[1].font_identity(), 7);
+        assert_eq!(xfs[2].font_identity(), 7);
+    }
+}
+
+#[test]
+fn row_font_styles_match_identical_font_records() {
+    let xml = br#"<styleSheet><fonts count="3">
+      <font><sz val="11"/><name val="Calibri"/></font>
+      <font><sz val="10"/><name val="Arial"/></font>
+      <font><sz val="10"/><name val="Arial"/></font>
+    </fonts><cellXfs count="3">
+      <xf fontId="0"/>
+      <xf fontId="1" applyFont="1"/>
+      <xf fontId="2" applyFont="1"><alignment vertical="center"/></xf>
+    </cellXfs></styleSheet>"#;
+    let xfs = parse_xfs(xml).unwrap();
+    assert_eq!(xfs[2].font_id, Some(2));
+    assert_eq!(xfs[2].row_font_style_id, Some(1));
+}
+
+#[test]
 fn test_parse_xfs_uses_fill_and_border_tables_when_styles_xml_is_available() {
     let xml = br#"
         <styleSheet>

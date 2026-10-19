@@ -9,6 +9,8 @@ pub struct Xf {
     /// Workbook-local identity of all XF attributes/children except the font.
     pub non_font_style_id: Option<u32>,
     pub font_id: Option<u32>,
+    /// First byte-identical font record; the original font_id stays unchanged.
+    pub font_identity_id: Option<u32>,
     pub fill_id: Option<u32>,
     pub border_id: Option<u32>,
     pub apply_font: bool,
@@ -27,6 +29,10 @@ pub struct Xf {
 impl Xf {
     pub fn builder() -> XfBuilder {
         XfBuilder::default()
+    }
+
+    pub(crate) fn font_identity(&self) -> u32 {
+        self.font_identity_id.or(self.font_id).unwrap_or(0)
     }
 
     pub fn applies_visible_fill_or_border(&self) -> bool {
@@ -296,7 +302,7 @@ impl ColumnRangeMap {
         self.range_matches(start, end, |col| {
             self.get(col)
                 .and_then(|c| c.cell_xf.as_ref())
-                .and_then(|s| s.font_id)
+                .map(Xf::font_identity)
                 .unwrap_or(0)
                 == font
         })
@@ -311,7 +317,7 @@ impl ColumnRangeMap {
                 .get(col)
                 .and_then(|c| c.cell_xf.as_ref())
                 .unwrap_or(default);
-            previous.font_id.unwrap_or(0) == row.font_id.unwrap_or(0)
+            previous.font_identity() == row.font_identity()
                 && previous.non_font_style_id == Some(key)
         })
     }

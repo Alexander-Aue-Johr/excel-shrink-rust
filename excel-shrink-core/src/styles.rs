@@ -3,6 +3,7 @@ use crate::models::Xf;
 use crate::xml::{find_byte_from, find_bytes};
 
 pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
+    let font_identities = parse_font_identities(styles_xml_or_cell_xfs);
     let visible_fills = parse_visible_fills(styles_xml_or_cell_xfs);
     let visible_borders = parse_visible_borders(styles_xml_or_cell_xfs);
     let visibility = StyleVisibility::new(&visible_fills, &visible_borders);
@@ -15,6 +16,7 @@ pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
 
     while let Some(tag) = find_next_element(cell_styles, b"xf", pos) {
         let mut xf = parse_xf(tag.raw, &visibility);
+        xf.font_identity_id = font_identities.get(xf.font_id.unwrap_or(0) as usize).copied();
         let header_end = tag.open_end - tag.start - if tag.self_closing { 2 } else { 1 };
         let attrs: Option<Vec<_>> =
             crate::xml::attributes::Attributes::new(&tag.raw[3..header_end])
@@ -49,7 +51,7 @@ pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
             })
         {
             row_fonts
-                .entry(xf.font_id.unwrap_or(0))
+                .entry(xf.font_identity())
                 .or_insert(xfs.len() as u32);
         }
         xfs.push(xf);
@@ -57,9 +59,24 @@ pub fn parse_xfs(styles_xml_or_cell_xfs: &[u8]) -> Result<Vec<Xf>> {
     }
 
     for xf in &mut xfs {
-        xf.row_font_style_id = row_fonts.get(&xf.font_id.unwrap_or(0)).copied();
+        xf.row_font_style_id = row_fonts.get(&xf.font_identity()).copied();
     }
     Ok(xfs)
+}
+
+fn parse_font_identities(styles_xml: &[u8]) -> Vec<u32> {
+    let Some(fonts) = find_xml_block(styles_xml, b"fonts") else {
+        return Vec::new();
+    };
+    let mut identities = Vec::new();
+    let mut first_occurrences = std::collections::HashMap::new();
+    let mut pos = 0;
+    while let Some(font) = find_next_element(fonts, b"font", pos) {
+        let id = identities.len() as u32;
+        identities.push(*first_occurrences.entry(font.raw).or_insert(id));
+        pos = font.end;
+    }
+    identities
 }
 
 struct StyleVisibility<'a> {

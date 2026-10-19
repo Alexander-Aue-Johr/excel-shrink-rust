@@ -1102,3 +1102,61 @@ fn preceding_visible_content_represents_hidden_font() {
     assert!(!text.contains("r=\"B3\""));
     assert!(!text.contains("r=\"C3\""));
 }
+
+#[test]
+fn removes_repeated_empty_cells_when_column_font_records_are_identical() {
+    let params = duplicate_column_font_params(false);
+    for height in ["", " ht=\"12.75\"", " ht=\"12.75\" customHeight=\"1\""] {
+        let mut metrics = duplicate_column_font_metrics(&params);
+        let row = format!("<row r=\"1\"{height}><c r=\"A1\" s=\"1\"><v>7</v></c><c r=\"B1\" s=\"1\"/><c r=\"C1\" s=\"1\"/></row>");
+        let cleaned = replace_single_row_with_metrics(row.as_bytes(), &params, &mut metrics);
+        let expected = format!("<row r=\"1\"{height}><c r=\"A1\" s=\"1\"><v>7</v></c><c r=\"B1\" s=\"1\"/></row>");
+        assert_eq!(cleaned, expected.as_bytes());
+        assert_eq!(metrics.deleted_cell_count, 1);
+    }
+}
+
+#[test]
+fn keeps_empty_column_font_overrides_when_font_records_differ() {
+    let params = duplicate_column_font_params(true);
+    for height in ["", " ht=\"12.75\"", " ht=\"12.75\" customHeight=\"1\""] {
+        let mut metrics = duplicate_column_font_metrics(&params);
+        let row = format!("<row r=\"1\"{height}><c r=\"A1\" s=\"1\"><v>7</v></c><c r=\"B1\" s=\"1\"/><c r=\"C1\" s=\"1\"/></row>");
+        let cleaned = replace_single_row_with_metrics(row.as_bytes(), &params, &mut metrics);
+        assert_eq!(cleaned, row.as_bytes());
+        assert_eq!(metrics.deleted_cell_count, 0);
+    }
+}
+
+fn duplicate_column_font_params(different_font: bool) -> CleanSheetParameters {
+    let font_size = if different_font { 12 } else { 10 };
+    let styles = format!(
+        r#"<styleSheet><fonts count="3">
+      <font><sz val="11"/><name val="Calibri"/></font>
+      <font><sz val="10"/><color theme="1"/><name val="Arial"/><family val="2"/></font>
+      <font><sz val="{font_size}"/><color theme="1"/><name val="Arial"/><family val="2"/></font>
+    </fonts><cellXfs count="3">
+      <xf fontId="0" fillId="0" borderId="0" numFmtId="0" xfId="0"/>
+      <xf fontId="1" fillId="0" borderId="0" numFmtId="0" xfId="11" applyFont="1"/>
+      <xf fontId="2" fillId="0" borderId="0" numFmtId="0" xfId="11"/>
+    </cellXfs></styleSheet>"#
+    );
+    let mut params = params_with_styles(&[]);
+    params.patterns = WorkbookSpecificPatterns::new(
+        crate::styles::parse_xfs(styles.as_bytes()).unwrap(),
+        None,
+    );
+    params
+}
+
+fn duplicate_column_font_metrics(params: &CleanSheetParameters) -> CleanSheetMetrics {
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 2,
+        max: 3,
+        cell_xf: Some(params.patterns.xfs_by_index[&2].clone()),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+    metrics
+}

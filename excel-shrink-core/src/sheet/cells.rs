@@ -819,7 +819,7 @@ fn empty_cell_has_column_font_style_override(
     // Fixed height does not freeze the text baseline. A promoted row font,
     // however, supplies the same override without one empty cell per column.
     if let Some(row) = row_attributes.filter(|r| r.promoted_style_id.is_some()) {
-        return cell_style.font_id.unwrap_or(0) != row.style.and_then(|s| s.font_id).unwrap_or(0);
+        return cell_style.font_identity() != row.style.map(Xf::font_identity).unwrap_or(0);
     }
     let cell_font_id = cell_style.font_id.unwrap_or(0);
     let row_uses_auto_height =
@@ -836,19 +836,22 @@ fn empty_cell_has_column_font_style_override(
         return false;
     };
 
-    let column_font_id = column_style.font_id.unwrap_or(0);
+    let column_font = column_style.font_identity();
 
     if row_uses_auto_height
         && row_attributes
             .and_then(|row| row.style)
             .is_some_and(|row_style| {
-                cell_style.font_id.unwrap_or(column_font_id) != row_style.font_id.unwrap_or(0)
+                cell_style
+                    .font_id
+                    .map_or(column_font, |_| cell_style.font_identity())
+                    != row_style.font_identity()
             })
     {
         return true;
     }
 
-    cell_font_id != column_font_id
+    cell_style.font_identity() != column_font
 }
 
 fn parsed_empty_cell_has_column_font_style_override(
