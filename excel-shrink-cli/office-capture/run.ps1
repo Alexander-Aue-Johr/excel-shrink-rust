@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory=$true)][string]$WorkbookPath,
     [Parameter(Mandatory=$true)][string]$ConfigPath,
     [Parameter(Mandatory=$true)][string]$OutputDir,
+    [string]$PublishedOutputDir,
     [ValidateRange(10, 600)][int]$StartupTimeoutSeconds = 180,
     [ValidateRange(10, 7200)][int]$CaptureTimeoutSeconds = 1800
 )
@@ -233,6 +234,7 @@ function Copy-VerifiedFile([string]$source, [string]$target) {
 $sourceWorkbook = [IO.Path]::GetFullPath($WorkbookPath)
 $sourceConfig = [IO.Path]::GetFullPath($ConfigPath)
 $destination = [IO.Path]::GetFullPath($OutputDir)
+if (-not $PublishedOutputDir) { $PublishedOutputDir = $destination }
 if (-not (Test-Path -LiteralPath $sourceWorkbook -PathType Leaf)) { throw "Workbook missing: $sourceWorkbook" }
 if (-not (Test-Path -LiteralPath $sourceConfig -PathType Leaf)) { throw "Capture config missing: $sourceConfig" }
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
@@ -283,7 +285,7 @@ try {
     $hostStderr = Join-Path $stage 'host.stderr.log'
     $hostArguments = '{0} --config {1} --output {2} --published-output {3} --web {4} --run-id {5}' -f `
         (Quote-Argument $dll), (Quote-Argument $configCopy), (Quote-Argument $hostOutput), `
-        (Quote-Argument $destination), (Quote-Argument $webStage), (Quote-Argument $runId)
+        (Quote-Argument $PublishedOutputDir), (Quote-Argument $webStage), (Quote-Argument $runId)
     $hostProcess = Start-Process -FilePath $dotnet -ArgumentList $hostArguments -WorkingDirectory $stage `
         -RedirectStandardOutput $hostStdout -RedirectStandardError $hostStderr -WindowStyle Hidden -PassThru
     $hostReady = $false

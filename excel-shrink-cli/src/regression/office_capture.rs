@@ -335,6 +335,53 @@ struct SideResult {
     captures: Vec<ImageTile>,
 }
 
+struct CaptureTransfer(PathBuf);
+
+impl CaptureTransfer {
+    fn new(workbook: &Path, config: &Path) -> Result<Self> {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let path = std::env::temp_dir().join(format!("es-capture-{}-{stamp}", std::process::id()));
+        fs::create_dir(&path)?;
+        let transfer = Self(path);
+        fs::copy(workbook, transfer.0.join("workbook.xlsx"))?;
+        fs::copy(config, transfer.0.join("config.json"))?;
+        fs::create_dir(transfer.0.join("output"))?;
+        Ok(transfer)
+    }
+
+    fn publish(&self, destination: &Path) -> Result<()> {
+        let source = self.0.join("output");
+        let images = source.join("images");
+        if images.is_dir() {
+            let target = destination.join("images");
+            fs::create_dir_all(&target)?;
+            for image in fs::read_dir(images)? {
+                let image = image?;
+                fs::copy(image.path(), target.join(image.file_name()))?;
+            }
+        }
+        for name in [
+            "host-build.stdout.log",
+            "host-build.stderr.log",
+            "host.stdout.log",
+            "host.stderr.log",
+            "result.json",
+        ] {
+            let path = source.join(name);
+            if path.is_file() {
+                fs::copy(path, destination.join(name))?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for CaptureTransfer {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 fn run_side(
     plan: &PairedPlan,
     workbook: &Path,
@@ -419,6 +466,9 @@ fn run_power_shell(workbook: &Path, config: &Path, output: &Path) -> Result<()> 
         "worksheet capture launcher missing: {}",
         script.display()
     );
+    // PowerShell 5 file operations reject long UNC paths. Only Rust accesses
+    // the report directory; Windows receives short transfer paths.
+    let transfer = CaptureTransfer::new(workbook, config)?;
     let result = Command::new("powershell.exe")
         .args([
             "-STA",
@@ -430,13 +480,18 @@ fn run_power_shell(workbook: &Path, config: &Path, output: &Path) -> Result<()> 
         ])
         .arg(windows_path(&script)?)
         .arg("-WorkbookPath")
-        .arg(windows_path(workbook)?)
+        .arg(windows_path(&transfer.0.join("workbook.xlsx"))?)
         .arg("-ConfigPath")
-        .arg(windows_path(config)?)
+        .arg(windows_path(&transfer.0.join("config.json"))?)
         .arg("-OutputDir")
+        .arg(windows_path(&transfer.0.join("output"))?)
+        .arg("-PublishedOutputDir")
         .arg(windows_path(output)?)
         .output()
         .context("start Windows PowerShell for worksheet capture")?;
+    transfer
+        .publish(output)
+        .context("copy worksheet capture output")?;
     if !result.status.success() {
         let stdout = String::from_utf8_lossy(&result.stdout);
         let stderr = String::from_utf8_lossy(&result.stderr);
@@ -453,7 +508,7 @@ fn run_power_shell(workbook: &Path, config: &Path, output: &Path) -> Result<()> 
 fn windows_path(path: &Path) -> Result<String> {
     #[cfg(windows)]
     {
-        Ok(path.canonicalize()?.to_string_lossy().into_owned())
+        super::excel_automation::power_shell_path(path)
     }
     #[cfg(not(windows))]
     {
@@ -680,6 +735,54 @@ fn parse_cell(cell: &str) -> Result<(u32, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capture_transfer_keeps_windows_io_out_of_long_report_paths() -> Result<()> {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let root = std::env::temp_dir().join(format!("capture-transfer-test-{stamp}"));
+        fs::create_dir(&root)?;
+        let _cleanup = CaptureTransfer(root.clone());
+        let directory = root.join("profile".repeat(20)).join("case".repeat(30));
+        fs::create_dir_all(&directory)?;
+        let workbook = directory.join("source.xlsx");
+        let config = directory.join("config.json");
+        fs::write(&workbook, b"workbook bytes")?;
+        fs::write(&config, b"{\"mode\":\"capture\"}")?;
+        let destination = directory.join("captures");
+        fs::create_dir(&destination)?;
+        assert!(destination.as_os_str().len() > 260);
+
+        let transfer = CaptureTransfer::new(&workbook, &config)?;
+        assert!(!transfer.0.starts_with(&directory));
+        assert_eq!(fs::read(transfer.0.join("workbook.xlsx"))?, b"workbook bytes");
+        assert_eq!(fs::read(transfer.0.join("config.json"))?, fs::read(&config)?);
+        let output = transfer.0.join("output");
+        fs::write(output.join("host.stderr.log"), b"host diagnostic")?;
+        transfer.publish(&destination)?;
+        assert_eq!(
+            fs::read(destination.join("host.stderr.log"))?,
+            b"host diagnostic"
+        );
+        assert!(!destination.join("result.json").exists());
+
+        fs::create_dir(output.join("images"))?;
+        fs::write(output.join("images/s0001-t00000.png"), b"image bytes")?;
+        fs::write(output.join("result.json"), b"{\"run_id\":\"completed\"}")?;
+        transfer.publish(&destination)?;
+        assert_eq!(
+            fs::read(destination.join("images/s0001-t00000.png"))?,
+            b"image bytes"
+        );
+        assert_eq!(
+            fs::read(destination.join("result.json"))?,
+            b"{\"run_id\":\"completed\"}"
+        );
+        let transfer_path = transfer.0.clone();
+        drop(transfer);
+        assert!(!transfer_path.exists());
+        assert_eq!(fs::read(&workbook)?, b"workbook bytes");
+        Ok(())
+    }
 
     #[test]
     fn capture_range_requires_a1_cells_within_the_grid() {
