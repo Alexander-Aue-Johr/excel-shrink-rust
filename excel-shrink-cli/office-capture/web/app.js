@@ -106,6 +106,8 @@
       if (worksheet.name !== sheet.name || worksheet.position + 1 !== sheet.index || worksheet.visibility !== 'Visible') {
         throw new Error(`Worksheet identity changed: ${JSON.stringify(sheet.name)}`);
       }
+      worksheet.activate();
+      await context.sync();
     });
   }
 
