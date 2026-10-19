@@ -89,7 +89,8 @@
         const worksheet = context.workbook.worksheets.getItem(sheet);
         const ranges = batch.map(span => {
           const range = worksheet.getRangeByIndexes(span.start, 0, span.end - span.start, 1);
-          range.load('height,rowHidden,rowCount');
+          // Reading top resolves pending row layout before measuring height.
+          range.load('top,height,rowHidden,rowCount');
           range.format.load('rowHeight');
           return range;
         });
@@ -158,7 +159,8 @@
             const range = axis === 'rows'
               ? worksheet.getRangeByIndexes(position, this.columnAnchor ?? 0, 1, 1)
               : worksheet.getRangeByIndexes(0, position, 1, 1);
-            range.load(axis === 'rows' ? 'height,rowHidden' : 'width,columnHidden');
+            // top refreshes pending row layout even though only height is used.
+            range.load(axis === 'rows' ? 'top,height,rowHidden' : 'width,columnHidden');
             return range;
           });
           await context.sync();

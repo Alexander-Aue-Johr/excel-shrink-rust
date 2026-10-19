@@ -98,3 +98,35 @@ test('a single visible column retains fixed full-width capture', async () => {
 test('calibration still rejects images that disagree with measured geometry', async () => {
   await assert.rejects(geometry(officeModel({imageWidthOffset: 3})), /Inconsistent width image calibration/);
 });
+
+function deferredLayoutModel() {
+  const sheet = {
+    getRangeByIndexes(row, column, rowCount, columnCount) {
+      let layoutResolved = false;
+      return {
+        load(properties) { layoutResolved = properties.split(',').includes('top'); },
+        get height() {
+          const containsPendingRow = row <= 64 && row + rowCount > 64;
+          return rowCount * 12 + (containsPendingRow && !layoutResolved ? 1535.25 - 12 : 0);
+        },
+        width: columnCount * 60,
+        rowCount, rowHidden: false, columnHidden: false,
+        format: {load() {}, rowHeight: 12}
+      };
+    }
+  };
+  return fn => fn({sync: async () => {}, workbook: {worksheets: {getItem: () => sheet}}});
+}
+
+test('capture geometry resolves pending layout before its first height measurement', async () => {
+  const result = new SheetGeometry(deferredLayoutModel(), 'Sheet', 99, 1);
+  await result.read(1);
+  assert.equal(result.rows[64], 12);
+  assert.equal(result.y[100], 1200);
+});
+
+test('the row-height gate resolves pending layout without taking images', async () => {
+  const {readHeightRuns} = require('../web/capture-geometry.js');
+  const runs = await readHeightRuns(deferredLayoutModel(), 'Sheet', 99);
+  assert.deepEqual(runs, [{start_row: 1, end_row: 100, height: 12}]);
+});
