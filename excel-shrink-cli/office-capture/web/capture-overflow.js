@@ -154,8 +154,9 @@
           return cell;
         });
         await context.sync();
+        // For a literal value, Office also returns that value in formulas.
         return cells.every(cell => expected === ' '
-          ? cell.values[0][0] === ' ' && cell.formulas[0][0] === ''
+          ? cell.values[0][0] === ' ' && cell.formulas[0][0] === ' '
           : cell.valueTypes[0][0] === 'Empty' && cell.formulas[0][0] === '');
       });
       if (!valid) throw new Error(`Overflow check did not ${expected === ' ' ? 'write' : 'restore'} cells`);
