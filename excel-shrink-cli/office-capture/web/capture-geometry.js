@@ -303,7 +303,7 @@
       return {first, last};
     }
 
-    tiles(endColumn, targets) {
+    tiles(endColumn, targets, sharedRows) {
       const width = this.imageWidth(endColumn);
       if (width > MAX_EDGE || width < 2) throw budgetError(`Full-width capture exceeds the image edge budget (${width} px)`);
       const maxHeight = Math.min(MAX_EDGE, Math.floor(this.maxPixels / width));
@@ -311,7 +311,7 @@
         this.visibleRows[end] - this.visibleRows[start] <= MAX_TILE_ROWS &&
         this.visibleRows[halo.last] - this.visibleRows[halo.first] <= MAX_TILE_ROWS + 2048 &&
         this.imageHeight(halo.first, halo.last) <= maxHeight;
-      const spans = [];
+      let spans = [];
       if (targets) {
         for (const row of targets) {
           const start = Math.max(0, row - 2), end = Math.min(this.rows.length, row + 1);
@@ -320,18 +320,40 @@
           else spans.push({start, end});
         }
       } else spans.push({start: 0, end: this.rows.length});
+      if (sharedRows !== undefined) {
+        if (!Array.isArray(sharedRows) || !sharedRows.length || sharedRows.length > 4096) {
+          throw new Error('Invalid shared tile rows');
+        }
+        const requested = [], coverage = [];
+        for (const pair of sharedRows) {
+          if (!Array.isArray(pair) || pair.length !== 2 || !pair.every(Number.isInteger) ||
+              pair[0] < 0 || pair[0] >= pair[1] || pair[1] > this.rows.length ||
+              (requested.length && pair[0] < requested[requested.length - 1].end)) {
+            throw new Error('Invalid shared tile rows');
+          }
+          requested.push({start: pair[0], end: pair[1]});
+          const previous = coverage[coverage.length - 1];
+          if (previous && previous.end === pair[0]) previous.end = pair[1];
+          else coverage.push({start: pair[0], end: pair[1]});
+        }
+        if (coverage.length !== spans.length || coverage.some((span, index) =>
+          span.start !== spans[index].start || span.end !== spans[index].end)) {
+          throw new Error('Shared tile rows do not cover the requested range');
+        }
+        spans = requested;
+      }
       const tiles = [];
       for (const span of spans) {
         let start = span.start;
         while (start < span.end) {
           let low = start + 1, high = span.end + 1;
-          while (low + 1 < high) {
+          while (sharedRows === undefined && low + 1 < high) {
             const middle = Math.floor((low + high) / 2);
             const halo = this.halo(start, middle);
             if (fits(start, middle, halo)) low = middle;
             else high = middle;
           }
-          const end = low;
+          const end = sharedRows === undefined ? low : span.end;
           const halo = this.halo(start, end);
           if (!fits(start, end, halo)) throw budgetError(`Row ${start + 1} exceeds the image budget`);
           const raw = {r0: halo.first, r1: halo.last, c0: 0, c1: endColumn + 1};

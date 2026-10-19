@@ -193,3 +193,32 @@ test('calibration includes visible cells before the smallest row and column', as
   assert.equal(result.imageWidth(2), 401);
   assert.equal(result.imageHeight(0, 3), 81);
 });
+
+test('shared row boundaries keep both image budgets when empty margin widths differ', async () => {
+  const left = await geometry(officeModel({defaultWidth: 60}), 9999);
+  const right = await geometry(officeModel({columns: [...new Array(15).fill(60), 54.75]}), 9999);
+  const initial = [left, right].map(side => side.tiles(15, null));
+  assert.notDeepEqual(initial[0].map(tile => tile.core), initial[1].map(tile => tile.core));
+  const cuts = [...new Set(initial.flat().flatMap(tile => [tile.core.r0, tile.core.r1]))].sort((a, b) => a - b);
+  const rows = cuts.slice(1).map((end, index) => [cuts[index], end]);
+  const paired = [left, right].map(side => side.tiles(15, null, rows));
+  assert.deepEqual(paired[0].map(tile => tile.core), paired[1].map(tile => tile.core));
+  for (const [index, tiles] of paired.entries()) {
+    assert.ok(tiles.every(tile => tile.width * tile.expectedHeight <= [left, right][index].maxPixels));
+  }
+});
+
+test('shared tiles preserve selected-row coverage without capturing the gaps', async () => {
+  const result = await geometry(officeModel(), 199);
+  const tiles = result.tiles(15, [3, 100], [[1, 2], [2, 4], [98, 101]]);
+  assert.deepEqual(tiles.map(tile => [tile.core.r0, tile.core.r1]), [[1, 2], [2, 4], [98, 101]]);
+  assert.throws(() => result.tiles(15, [3, 100], [[1, 4], [98, 100]]), /do not cover/);
+});
+
+test('shared tile rows reject gaps, overlap and excessive image sizes', async () => {
+  const result = await geometry(officeModel(), 9999);
+  assert.throws(() => result.tiles(15, null, [[0, 9999]]), /do not cover/);
+  assert.throws(() => result.tiles(15, null, [[0, 100], [99, 10000]]), /Invalid shared/);
+  assert.throws(() => result.tiles(15, null, [[0, 10001]]), /Invalid shared/);
+  assert.throws(() => result.tiles(15, null, [[0, 10000]]), /exceeds the image budget/);
+});

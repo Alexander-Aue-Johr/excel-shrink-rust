@@ -168,7 +168,7 @@
     if (probe && geometry.fixedWidth !== null) throw new Error(`Cannot check right-edge overflow on fixed-width sheet ${sheet.name}`);
     const end = sharedEnd !== undefined ? sharedEnd : probe ? probeEnd(geometry, right, 64) : right;
     await verifyDrawingBounds(sheet, geometry, end);
-    const tiles = geometry.tiles(end, targets);
+    const tiles = geometry.tiles(end, targets, sheet.tile_rows);
     const captures = [];
     for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
       const tile = tiles[tileIndex];
