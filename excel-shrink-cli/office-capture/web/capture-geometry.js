@@ -147,57 +147,76 @@
       this.columns = [];
     }
 
+    async readSizes(axis, start, count) {
+      const sizes = [];
+      for (let offset = 0; offset < count; offset += BATCH) {
+        const length = Math.min(BATCH, count - offset);
+        const values = await this.office(async context => {
+          const worksheet = context.workbook.worksheets.getItem(this.sheet);
+          const ranges = Array.from({length}, (_, index) => {
+            const position = start + offset + index;
+            const range = axis === 'rows'
+              ? worksheet.getRangeByIndexes(position, this.columnAnchor ?? 0, 1, 1)
+              : worksheet.getRangeByIndexes(0, position, 1, 1);
+            range.load(axis === 'rows' ? 'height,rowHidden' : 'width,columnHidden');
+            return range;
+          });
+          await context.sync();
+          return ranges.map(range => axis === 'rows'
+            ? {size: Number(range.height), hidden: range.rowHidden}
+            : {size: Number(range.width), hidden: range.columnHidden});
+        });
+        for (const value of values) {
+          if (!Number.isFinite(value.size) || value.size < 0 || typeof value.hidden !== 'boolean') {
+            throw new Error(`Invalid worksheet ${axis} geometry`);
+          }
+          sizes.push(value.hidden ? 0 : value.size);
+        }
+      }
+      return sizes;
+    }
+
     async read(endColumn) {
       if (!Number.isInteger(this.bottomRow) || this.bottomRow < 0 || this.bottomRow >= MAX_ROWS ||
           !Number.isInteger(endColumn) || endColumn < 0 || endColumn >= MAX_COLUMNS) {
         throw new Error('Worksheet capture bounds are outside the supported grid');
       }
-      {
-        const count = endColumn + 1;
-        const sizes = [];
-        for (let start = 0; start < count; start += BATCH) {
-          const length = Math.min(BATCH, count - start);
-          const values = await this.office(async context => {
-            const worksheet = context.workbook.worksheets.getItem(this.sheet);
-            const ranges = Array.from({length}, (_, offset) => {
-              const index = start + offset;
-              const range = worksheet.getRangeByIndexes(0, index, 1, 1);
-              range.load('width,columnHidden');
-              return range;
-            });
-            await context.sync();
-            return ranges.map(range => ({size: Number(range.width), hidden: range.columnHidden}));
-          });
-          for (const value of values) {
-            if (!Number.isFinite(value.size) || value.size < 0 || typeof value.hidden !== 'boolean') {
-              throw new Error('Invalid worksheet column geometry');
-            }
-            sizes.push(value.hidden ? 0 : value.size);
-          }
-        }
-        this.columns = sizes;
-      }
-      const runs = await readHeightRuns(this.office, this.sheet, this.bottomRow);
-      this.rows = new Array(this.bottomRow + 1);
-      for (const run of runs) this.rows.fill(run.height, run.start_row - 1, run.end_row);
+      this.columns = await this.readSizes('columns', 0, endColumn + 1);
+      this.columnAnchor = Math.max(0, this.columns.findIndex(size => size > 0));
+      // Individual visible heights define image geometry; aggregate heights can
+      // accumulate fractional row sizes differently from the rendered cells.
+      this.rows = await this.readSizes('rows', 0, this.bottomRow + 1);
       this.x = prefix(this.columns);
       this.y = prefix(this.rows);
     }
 
     async calibrate() {
-      const firstRow = this.rows.findIndex(size => size > 0);
-      const firstColumn = this.columns.findIndex(size => size > 0);
+      const smallestVisible = sizes => {
+        const first = sizes.findIndex(size => size > 0);
+        let best = first;
+        for (let index = first + 1; index < Math.min(sizes.length, first + 64); index++) {
+          if (sizes[index] > 0 && sizes[index] < sizes[best]) best = index;
+        }
+        return best;
+      };
+      const firstRow = smallestVisible(this.rows);
+      const firstColumn = smallestVisible(this.columns);
       if (firstRow < 0 || firstColumn < 0) throw new Error('Worksheet has no visible capture geometry');
-      const candidates = [[1,1], [2,2], [4,4], [8,8], [16,16], [32,16], [2,4], [4,8], [8,2], [16,1], [1,8]];
+      const rows = this.rows.slice(firstRow, firstRow + 32);
+      const columns = this.columns.slice(firstColumn, firstColumn + 32);
+      rows.push(...await this.readSizes('rows', firstRow + rows.length,
+        Math.min(32 - rows.length, MAX_ROWS - firstRow - rows.length)));
+      columns.push(...await this.readSizes('columns', firstColumn + columns.length,
+        Math.min(32 - columns.length, MAX_COLUMNS - firstColumn - columns.length)));
+      const x = prefix(columns), y = prefix(rows);
+      // Vary each axis separately so tall rows and wide columns still admit
+      // small controls inside the image budget.
+      const candidates = [[1,1], [2,1], [4,1], [8,1], [16,1], [32,1],
+        [1,2], [1,4], [1,8], [1,16], [1,32]];
       const samples = [];
       for (const [rowCount, columnCount] of candidates) {
-        if (firstRow + rowCount > 1048576 || firstColumn + columnCount > MAX_COLUMNS) continue;
-        const sample = await this.office(async context => {
-          const range = context.workbook.worksheets.getItem(this.sheet).getRangeByIndexes(firstRow, firstColumn, rowCount, columnCount);
-          range.load('width,height');
-          await context.sync();
-          return {width: Number(range.width), height: Number(range.height)};
-        });
+        if (rowCount > rows.length || columnCount > columns.length) continue;
+        const sample = {width: x[columnCount], height: y[rowCount]};
         if (sample.width <= 0 || sample.height <= 0 ||
             (sample.width * 8 + 1) > 8192 || (sample.height * 8 + 1) > 8192 ||
             (sample.width * 8 + 1) * (sample.height * 8 + 1) > 4000000) continue;

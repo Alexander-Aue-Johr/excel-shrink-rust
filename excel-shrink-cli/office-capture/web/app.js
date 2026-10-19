@@ -182,7 +182,8 @@
         throw error;
       }
       if (png.width !== tile.width || png.height !== tile.expectedHeight) {
-        throw new Error(`Image dimensions changed at ${sheet.name}!${CaptureGeometry.address(tile.raw)}`);
+        throw new Error(`Image dimensions changed at ${sheet.name}!${CaptureGeometry.address(tile.raw)}: ` +
+          `expected ${tile.width} × ${tile.expectedHeight}, received ${png.width} × ${png.height}`);
       }
       const result = probe
         ? await CaptureOverflow.check(office, sheet.name, geometry, tile, right, base64)
