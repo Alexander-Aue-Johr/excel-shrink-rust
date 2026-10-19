@@ -182,6 +182,7 @@ pub(super) fn run(
                 profile: name.into(),
                 sheets,
                 keep_screenshots: args.keep_screenshots,
+                combined_report: Some(output.join("report.html")),
             };
             let result = run_case(
                 mode,

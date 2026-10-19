@@ -26,25 +26,7 @@ pub(super) struct VisualCheckOptions {
     pub profile: String,
     pub sheets: Option<std::collections::BTreeSet<usize>>,
     pub keep_screenshots: bool,
-}
-
-// Captures are temporary unless explicitly retained. Difference evidence lives
-// outside this directory and remains available to the report.
-struct TemporaryCaptures(Option<PathBuf>);
-
-impl Drop for TemporaryCaptures {
-    fn drop(&mut self) {
-        if let Some(path) = &self.0 {
-            if path.exists() {
-                if let Err(error) = fs::remove_dir_all(path) {
-                    eprintln!(
-                        "Could not remove temporary captures {}: {error}",
-                        path.display()
-                    );
-                }
-            }
-        }
-    }
+    pub combined_report: Option<PathBuf>,
 }
 
 pub(super) fn compare_sheet_visuals(
@@ -69,7 +51,6 @@ pub(super) fn compare_sheet_visuals(
         "no worksheets selected for visual comparison"
     );
     let captures = output_dir.join("captures");
-    let _temporary = TemporaryCaptures((!options.keep_screenshots).then(|| captures.clone()));
     let changed_heights = check_row_heights(
         &paired_plan,
         original,
@@ -143,7 +124,10 @@ pub(super) fn compare_sheet_visuals(
         output_dir.join("visual-result.json"),
         serde_json::to_vec_pretty(&report)?,
     )?;
-    let html_report_path = write_visual_report(output_dir, &report)?;
+    let html_report_path = match &options.combined_report {
+        Some(path) => path.clone(),
+        None => write_visual_report(output_dir, &report)?,
+    };
 
     let changed_rows: usize = changed_heights
         .iter()
