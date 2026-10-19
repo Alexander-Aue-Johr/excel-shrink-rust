@@ -203,9 +203,11 @@
         }
         return best;
       };
-      const firstRow = smallestVisible(this.rows);
-      const firstColumn = smallestVisible(this.columns);
+      const firstRow = this.rows.findIndex(size => size > 0);
+      const firstColumn = this.columns.findIndex(size => size > 0);
       if (firstRow < 0 || firstColumn < 0) throw new Error('Worksheet has no visible capture geometry');
+      const shortestRow = smallestVisible(this.rows);
+      const narrowestColumn = smallestVisible(this.columns);
       const rows = this.rows.slice(firstRow, firstRow + 32);
       const columns = this.columns.slice(firstColumn, firstColumn + 32);
       rows.push(...await this.readSizes('rows', firstRow + rows.length,
@@ -215,18 +217,23 @@
       const x = prefix(columns), y = prefix(rows);
       // Vary each axis separately so tall rows and wide columns still admit
       // small controls inside the image budget.
-      const candidates = [[1,1], [2,1], [4,1], [8,1], [16,1], [32,1],
-        [1,2], [1,4], [1,8], [1,16], [1,32]];
+      const candidates = [1, 2, 4, 8, 16, 32].flatMap(count => [
+        [firstRow, narrowestColumn, count, 1],
+        [shortestRow, firstColumn, 1, count]
+      ]);
       const samples = [];
-      for (const [rowCount, columnCount] of candidates) {
+      for (const [row, column, rowCount, columnCount] of candidates) {
         if (rowCount > rows.length || columnCount > columns.length) continue;
-        const sample = {width: x[columnCount], height: y[rowCount]};
+        const sample = {
+          width: column === firstColumn ? x[columnCount] : this.columns[column],
+          height: row === firstRow ? y[rowCount] : this.rows[row]
+        };
         if (sample.width <= 0 || sample.height <= 0 ||
             (sample.width * 8 + 1) > 8192 || (sample.height * 8 + 1) > 8192 ||
             (sample.width * 8 + 1) * (sample.height * 8 + 1) > 4000000) continue;
         const base64 = await this.office(async context => {
           const image = context.workbook.worksheets.getItem(this.sheet)
-            .getRangeByIndexes(firstRow, firstColumn, rowCount, columnCount).getImage();
+            .getRangeByIndexes(row, column, rowCount, columnCount).getImage();
           await context.sync();
           return image.value;
         });

@@ -166,3 +166,12 @@ test('the tile row limit still bounds visible rows when pixels fit', async () =>
   assert.equal(tiles[1].core.r0, 8192);
   assert.equal(tiles[1].core.r1, 10000);
 });
+
+test('calibration includes visible cells before the smallest row and column', async () => {
+  const result = await geometry(officeModel({rows: [24, 24, 12], defaultHeight: 0,
+    columns: [120, 120, 60], defaultWidth: 0}), 2, 2);
+  assert.equal(result.scaleX, 4 / 3);
+  assert.equal(result.scaleY, 4 / 3);
+  assert.equal(result.imageWidth(2), 401);
+  assert.equal(result.imageHeight(0, 3), 81);
+});
