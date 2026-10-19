@@ -1,5 +1,7 @@
 use super::excel_automation::ExcelScreenshotDifferenceSummary;
-use super::office_capture::{capture_images, check_row_heights, plan_pair, PairedImageTile};
+use super::office_capture::{
+    capture_images, check_row_heights, compare_paired_images, plan_pair, PairedImageTile,
+};
 use super::row_heights::RowHeightDifference;
 use super::visual_compare::{compare_images, ImageDifference};
 use super::visual_report::write_visual_report;
@@ -78,20 +80,43 @@ pub(super) fn compare_sheet_visuals(
     for change in &changed_heights {
         rows.entry(change.sheet_index).or_default().push(change.row);
     }
-    let mut tiles = capture_images(
-        &paired_plan,
-        original,
-        shrunk,
-        &output_dir.join("captures"),
-        (!rows.is_empty()).then_some(&rows),
-    )?;
-    let image_differences = if changed_heights.is_empty() {
-        compare_images(&tiles, &output_dir.join("differences"))?
-    } else {
-        Vec::new()
-    };
-    if !options.keep_screenshots && !changed_heights.is_empty() {
-        retain_height_evidence(&mut tiles, &output_dir.join("height-evidence"))?;
+    let mut tiles = Vec::new();
+    let mut image_differences = Vec::new();
+    // A changed height stops full-image checks on that sheet. Other sheets
+    // still receive their image check and can reveal independent differences.
+    for height_evidence in [false, true] {
+        let mut selected = paired_plan.clone();
+        selected
+            .sheets
+            .retain(|sheet| rows.contains_key(&sheet.sheet_index) == height_evidence);
+        if selected.sheets.is_empty() {
+            continue;
+        }
+        let selected_rows = height_evidence.then_some(&rows);
+        let phase_output = output_dir.join(if height_evidence {
+            "height-images"
+        } else {
+            "images"
+        });
+        let (captured, differences) = if options.keep_screenshots {
+            let captured = capture_images(
+                &selected,
+                original,
+                shrunk,
+                &captures.join(if height_evidence { "heights" } else { "full" }),
+                selected_rows,
+            )?;
+            let differences = if height_evidence {
+                Vec::new()
+            } else {
+                compare_images(&captured, &phase_output.join("differences"))?
+            };
+            (captured, differences)
+        } else {
+            compare_paired_images(&selected, original, shrunk, &phase_output, selected_rows)?
+        };
+        tiles.extend(captured);
+        image_differences.extend(differences);
     }
     let sheets = visual_sheets(
         &paired_plan.sheets,
@@ -102,7 +127,7 @@ pub(super) fn compare_sheet_visuals(
     let report = json!({
         "profile": options.profile,
         "workbook": original.file_name().and_then(|name| name.to_str()).unwrap_or("Workbook"),
-        "image_comparison": if changed_heights.is_empty() { "complete" } else { "skipped after row-height differences" },
+        "image_comparison": if changed_heights.is_empty() { "complete" } else { "complete on sheets with equal row heights; changed rows captured as evidence" },
         "sheets": sheets,
     });
     let report_path = output_dir.join("screenshot-differences.json");
@@ -144,24 +169,6 @@ pub(super) fn compare_sheet_visuals(
     })
 }
 
-fn retain_height_evidence(tiles: &mut [PairedImageTile], output: &Path) -> Result<()> {
-    fs::create_dir_all(output)?;
-    for tile in tiles {
-        for (side, path) in [
-            ("original", &mut tile.original_image),
-            ("shrunk", &mut tile.shrunk_image),
-        ] {
-            let target = output.join(format!(
-                "sheet-{}-tile-{}-{side}.png",
-                tile.sheet_index, tile.tile_index
-            ));
-            fs::copy(&*path, &target)?;
-            *path = target;
-        }
-    }
-    Ok(())
-}
-
 fn visual_sheets(
     sheets: &[super::office_capture::PairedSheetPlan],
     changed_heights: &[RowHeightDifference],
@@ -198,10 +205,8 @@ fn visual_sheets(
             .collect();
         let status = if !height_items.is_empty() || !image_items.is_empty() {
             "changed"
-        } else if changed_heights.is_empty() {
-            "same"
         } else {
-            "row heights equal"
+            "same"
         };
         output.push(json!({
             "index": sheet.sheet_index, "name": sheet.sheet_name,

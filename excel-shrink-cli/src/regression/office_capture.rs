@@ -10,6 +10,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod paired_capture;
+pub(super) use paired_capture::compare_paired_images;
+
 const MAX_CAPTURE_COLUMN: u32 = 16_383;
 const MAX_CAPTURE_ROW: u32 = 1_048_575;
 const PROBE_VISIBLE_COLUMNS: u32 = 64;
@@ -69,7 +72,7 @@ impl fmt::Display for ImageBudgetError {
 
 impl std::error::Error for ImageBudgetError {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct ImageTile {
     sheet_index: usize,
     sheet_name: String,
@@ -745,6 +748,15 @@ fn validate_tiles(
             "duplicate image tile"
         );
     }
+    validate_tile_coverage(&tiles, selected, rows)?;
+    Ok(tiles)
+}
+
+fn validate_tile_coverage(
+    tiles: &ImageTiles,
+    selected: &[&PairedSheetPlan],
+    rows: Option<&BTreeMap<usize, Vec<u32>>>,
+) -> Result<()> {
     for sheet in selected {
         let mut next_index = 0;
         let mut previous_row = 0;
@@ -788,7 +800,7 @@ fn validate_tiles(
             );
         }
     }
-    Ok(tiles)
+    Ok(())
 }
 
 fn parse_range(text: &str) -> Result<(u32, u32, u32, u32)> {

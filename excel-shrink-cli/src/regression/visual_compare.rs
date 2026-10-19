@@ -39,57 +39,68 @@ pub(super) fn compare_images(
     for tile in tiles {
         let original = read_image(&tile.original_image)?;
         let shrunk = read_image(&tile.shrunk_image)?;
-        if original.dimensions() == shrunk.dimensions() && original.as_raw() == shrunk.as_raw() {
-            continue;
-        }
-        let width = original.width().max(shrunk.width());
-        let height = original.height().max(shrunk.height());
-        ensure!(
-            u64::from(width) * u64::from(height) <= MAX_IMAGE_PIXELS,
-            "paired image exceeds pixel limit at {}!{}",
-            tile.sheet_name,
-            tile.range
-        );
+        differences.extend(compare_tile_images(tile, &original, &shrunk, output_dir)?);
+    }
+    Ok(differences)
+}
 
-        let bands = difference_bands(&original, &shrunk, width, height);
-        for (region, band) in bands.into_iter().enumerate() {
-            let x = band.left.saturating_sub(CROP_MARGIN);
-            let y = band.top.saturating_sub(CROP_MARGIN);
-            let right = band.right.saturating_add(CROP_MARGIN).min(width - 1);
-            let bottom = band.bottom.saturating_add(CROP_MARGIN).min(height - 1);
-            let crop_width = right - x + 1;
-            let crop_height = bottom - y + 1;
-            let stem = format!(
-                "sheet-{}-tile-{}-region-{}",
-                tile.sheet_index, tile.tile_index, region
-            );
-            let original_path = output_dir.join(format!("{stem}-original.png"));
-            let shrunk_path = output_dir.join(format!("{stem}-shrunk.png"));
-            let diff_path = output_dir.join(format!("{stem}-diff.png"));
-            cropped_canvas(&original, x, y, crop_width, crop_height).save(&original_path)?;
-            cropped_canvas(&shrunk, x, y, crop_width, crop_height).save(&shrunk_path)?;
-            let mut mask =
-                RgbaImage::from_pixel(crop_width, crop_height, Rgba([255, 255, 255, 255]));
-            for yy in y..=bottom {
-                for xx in x..=right {
-                    if pixel(&original, xx, yy) != pixel(&shrunk, xx, yy) {
-                        mask.put_pixel(xx - x, yy - y, Rgba([188, 48, 74, 255]));
-                    }
+pub(super) fn compare_tile_images(
+    tile: &PairedImageTile,
+    original: &RgbaImage,
+    shrunk: &RgbaImage,
+    output_dir: &Path,
+) -> Result<Vec<ImageDifference>> {
+    fs::create_dir_all(output_dir)?;
+    let mut differences = Vec::new();
+    if original.dimensions() == shrunk.dimensions() && original.as_raw() == shrunk.as_raw() {
+        return Ok(Vec::new());
+    }
+    let width = original.width().max(shrunk.width());
+    let height = original.height().max(shrunk.height());
+    ensure!(
+        u64::from(width) * u64::from(height) <= MAX_IMAGE_PIXELS,
+        "paired image exceeds pixel limit at {}!{}",
+        tile.sheet_name,
+        tile.range
+    );
+
+    let bands = difference_bands(&original, &shrunk, width, height);
+    for (region, band) in bands.into_iter().enumerate() {
+        let x = band.left.saturating_sub(CROP_MARGIN);
+        let y = band.top.saturating_sub(CROP_MARGIN);
+        let right = band.right.saturating_add(CROP_MARGIN).min(width - 1);
+        let bottom = band.bottom.saturating_add(CROP_MARGIN).min(height - 1);
+        let crop_width = right - x + 1;
+        let crop_height = bottom - y + 1;
+        let stem = format!(
+            "sheet-{}-tile-{}-region-{}",
+            tile.sheet_index, tile.tile_index, region
+        );
+        let original_path = output_dir.join(format!("{stem}-original.png"));
+        let shrunk_path = output_dir.join(format!("{stem}-shrunk.png"));
+        let diff_path = output_dir.join(format!("{stem}-diff.png"));
+        cropped_canvas(&original, x, y, crop_width, crop_height).save(&original_path)?;
+        cropped_canvas(&shrunk, x, y, crop_width, crop_height).save(&shrunk_path)?;
+        let mut mask = RgbaImage::from_pixel(crop_width, crop_height, Rgba([255, 255, 255, 255]));
+        for yy in y..=bottom {
+            for xx in x..=right {
+                if pixel(&original, xx, yy) != pixel(&shrunk, xx, yy) {
+                    mask.put_pixel(xx - x, yy - y, Rgba([188, 48, 74, 255]));
                 }
             }
-            mask.save(&diff_path)?;
-            differences.push(ImageDifference {
-                sheet_index: tile.sheet_index,
-                sheet_name: tile.sheet_name.clone(),
-                range: tile.range.clone(),
-                tile_index: tile.tile_index,
-                original_image: original_path,
-                shrunk_image: shrunk_path,
-                diff_image: diff_path,
-                diff_pixels: band.pixels,
-                region: [x, y, crop_width, crop_height],
-            });
         }
+        mask.save(&diff_path)?;
+        differences.push(ImageDifference {
+            sheet_index: tile.sheet_index,
+            sheet_name: tile.sheet_name.clone(),
+            range: tile.range.clone(),
+            tile_index: tile.tile_index,
+            original_image: original_path,
+            shrunk_image: shrunk_path,
+            diff_image: diff_path,
+            diff_pixels: band.pixels,
+            region: [x, y, crop_width, crop_height],
+        });
     }
     Ok(differences)
 }
