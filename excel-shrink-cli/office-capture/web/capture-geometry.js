@@ -277,6 +277,15 @@
 
     imageHeight(start, end) { return Math.round((this.y[end] - this.y[start]) * this.scaleY) + 1; }
 
+    containsExtent(right, bottom, endColumn) {
+      // The PNG includes a border pixel beyond the measured cell dimensions.
+      const maxRight = this.scaleX === null
+        ? this.x[endColumn + 1]
+        : this.imageWidth(endColumn) / this.scaleX;
+      const maxBottom = this.imageHeight(0, this.rows.length) / this.scaleY;
+      return !exceedsExtent(right, maxRight) && !exceedsExtent(bottom, maxBottom);
+    }
+
     halo(start, end) {
       const needed = 2 / this.scaleY;
       let first = start, last = end;

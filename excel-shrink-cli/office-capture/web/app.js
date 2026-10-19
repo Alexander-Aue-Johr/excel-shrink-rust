@@ -80,8 +80,6 @@
       }));
     });
     if (!shapes.length) throw new Error(`Drawing boundary is unresolved for worksheet ${JSON.stringify(sheet.name)}`);
-    const maxRight = geometry.x[end + 1];
-    const maxBottom = geometry.y[sheet.bottom_row + 1];
     for (const shape of shapes) {
       if (typeof shape.visible !== 'boolean') throw new Error(`Invalid shape visibility on ${sheet.name}`);
       if (!shape.visible) continue;
@@ -92,7 +90,7 @@
       const rotatedHeight = Math.abs(shape.width * Math.sin(angle)) + Math.abs(shape.height * Math.cos(angle));
       const right = shape.left + (shape.width + rotatedWidth) / 2;
       const bottom = shape.top + (shape.height + rotatedHeight) / 2;
-      if (CaptureGeometry.exceedsExtent(right, maxRight) || CaptureGeometry.exceedsExtent(bottom, maxBottom)) {
+      if (!geometry.containsExtent(right, bottom, end)) {
         throw new Error(`Drawing extends beyond the capture range on ${sheet.name}`);
       }
     }

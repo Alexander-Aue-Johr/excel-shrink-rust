@@ -117,6 +117,25 @@ test('wide leading columns calibrate without a full-width image', async () => {
   assert.ok(model.images.every(control => control.nc <= 32));
 });
 
+test('drawing bounds include the rendered border pixel without allowing clipping', async () => {
+  const result = await geometry(officeModel({
+    columns: [60, 60, 63.75, 65.25, 60, 62.25, 60, 60], defaultHeight: 9.75
+  }), 90, 7);
+  assert.equal(result.x[8], 491.25);
+  assert.equal(result.imageWidth(7), 656);
+  assert.equal(result.containsExtent(306.9 + 184.651338582677, 77.25, 7), true);
+  assert.equal(result.containsExtent(492.01, 77.25, 7), false);
+  const bottom = result.imageHeight(0, result.rows.length) / result.scaleY;
+  assert.equal(result.containsExtent(491.25, bottom, 7), true);
+  assert.equal(result.containsExtent(491.25, bottom + 0.01, 7), false);
+});
+
+test('a fixed-width image retains the measured drawing boundary', async () => {
+  const result = await geometry(officeModel({columns: [120], defaultWidth: 0}), 99, 0);
+  assert.equal(result.containsExtent(120, 100, 0), true);
+  assert.equal(result.containsExtent(120.01, 100, 0), false);
+});
+
 function deferredLayoutModel() {
   const sheet = {
     getRangeByIndexes(row, column, rowCount, columnCount) {
