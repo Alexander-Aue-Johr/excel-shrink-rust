@@ -35,7 +35,10 @@ impl Drop for TemporaryCaptures {
         if let Some(path) = &self.0 {
             if path.exists() {
                 if let Err(error) = fs::remove_dir_all(path) {
-                    eprintln!("Could not remove temporary captures {}: {error}", path.display());
+                    eprintln!(
+                        "Could not remove temporary captures {}: {error}",
+                        path.display()
+                    );
                 }
             }
         }
@@ -51,10 +54,18 @@ pub(super) fn compare_sheet_visuals(
     fs::create_dir_all(output_dir)?;
     let mut paired_plan = plan_pair(original, shrunk)?;
     if let Some(sheets) = &options.sheets {
-        paired_plan.sheets.retain(|sheet| sheets.contains(&sheet.sheet_index));
-        anyhow::ensure!(paired_plan.sheets.len() == sheets.len(), "requested visual worksheets are missing");
+        paired_plan
+            .sheets
+            .retain(|sheet| sheets.contains(&sheet.sheet_index));
+        anyhow::ensure!(
+            paired_plan.sheets.len() == sheets.len(),
+            "requested visual worksheets are missing"
+        );
     }
-    anyhow::ensure!(!paired_plan.sheets.is_empty(), "no worksheets selected for visual comparison");
+    anyhow::ensure!(
+        !paired_plan.sheets.is_empty(),
+        "no worksheets selected for visual comparison"
+    );
     let captures = output_dir.join("captures");
     let _temporary = TemporaryCaptures((!options.keep_screenshots).then(|| captures.clone()));
     let changed_heights = check_row_heights(
@@ -136,8 +147,14 @@ pub(super) fn compare_sheet_visuals(
 fn retain_height_evidence(tiles: &mut [PairedImageTile], output: &Path) -> Result<()> {
     fs::create_dir_all(output)?;
     for tile in tiles {
-        for (side, path) in [("original", &mut tile.original_image), ("shrunk", &mut tile.shrunk_image)] {
-            let target = output.join(format!("sheet-{}-tile-{}-{side}.png", tile.sheet_index, tile.tile_index));
+        for (side, path) in [
+            ("original", &mut tile.original_image),
+            ("shrunk", &mut tile.shrunk_image),
+        ] {
+            let target = output.join(format!(
+                "sheet-{}-tile-{}-{side}.png",
+                tile.sheet_index, tile.tile_index
+            ));
             fs::copy(&*path, &target)?;
             *path = target;
         }
@@ -172,6 +189,7 @@ fn visual_sheets(
             .map(|difference| {
                 json!({
                     "range": difference.range,
+                    "region": difference.region,
                     "original_image": difference.original_image,
                     "shrunk_image": difference.shrunk_image,
                     "diff_image": difference.diff_image,

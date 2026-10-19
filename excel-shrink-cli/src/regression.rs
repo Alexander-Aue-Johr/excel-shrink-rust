@@ -29,6 +29,8 @@ mod office_capture;
 mod visual_compare;
 mod visual_report;
 mod visual_validation;
+mod visual_diagnosis;
+mod diagnosis_report;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -95,9 +97,8 @@ pub struct RegressionRunArgs {
     #[arg(long)]
     all_visual_profiles: bool,
 
-    /// Run every predefined visual profile with Excel recalculation/value and screenshot checks.
-    /// This implies --all-visual-profiles, --excel-recalc-check, and --excel-screenshot-check.
-    #[arg(long)]
+    /// Diagnose visual changes, starting with maximum-cleaning and testing relevant profiles.
+    #[arg(long = "diagnose-visual-changes", alias = "all-visual-profile-checks")]
     all_visual_profile_checks: bool,
 
     /// Open the shrunk workbook with Excel, force formula recalculation, save it, and compare cached cell values.
@@ -1122,13 +1123,11 @@ fn run_suite(
 fn run_suite_or_visual_profile_matrix(
     mode_name: &str,
     default_baseline_relative_path: &str,
-    mut args: RegressionRunArgs,
+    args: RegressionRunArgs,
     console_log_level: LogLevel,
 ) -> anyhow::Result<()> {
     if args.all_visual_profile_checks {
-        args.all_visual_profiles = true;
-        args.excel_recalc_check = true;
-        args.excel_screenshot_check = true;
+        return visual_diagnosis::run(mode_name, default_baseline_relative_path, args, console_log_level);
     }
 
     if args.all_visual_profiles {

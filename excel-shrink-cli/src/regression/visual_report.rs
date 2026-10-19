@@ -8,7 +8,13 @@ use std::process::Command;
 pub(super) fn open_visual_report(path: &Path) -> anyhow::Result<()> {
     let launcher = super::repo_root().join("excel-shrink-cli/src/regression/open_report.ps1");
     let result = Command::new("powershell.exe")
-        .args(["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
         .arg(super::excel_automation::power_shell_path(&launcher)?)
         .arg("-ReportPath")
         .arg(super::excel_automation::power_shell_path(path)?)
@@ -99,7 +105,11 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
         escape_html(workbook)
     );
     if let Some(profile) = report["profile"].as_str() {
-        let _ = write!(html, "<p class=\"muted\">Profile: {}</p>", escape_html(profile));
+        let _ = write!(
+            html,
+            "<p class=\"muted\">Profile: {}</p>",
+            escape_html(profile)
+        );
     }
     let _ = write!(html, "<p class=\"muted\">{} worksheets</p><div class=\"metrics\"><div class=\"metric\"><strong>{}</strong><span>Unchanged</span></div><div class=\"metric\"><strong>{}</strong><span>With differences</span></div><div class=\"metric\"><strong>{}</strong><span>Not fully checked</span></div></div>", sheets.len(), unchanged, changed_sheets.len(), unchecked);
     if row_changes > 0 || image_changes > 0 {
@@ -123,27 +133,22 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
         let _ = writeln!(html, "<section id=\"sheet-{}\" class=\"worksheet\" data-search=\"{} {}\"><div class=\"sheet-title\"><h2>Sheet {:02} · {}</h2><span class=\"badge changed\">{}</span></div>",
             ordinal + 1, index, escape_html(name), index, escape_html(name), escape_html(status));
 
-        for change in changed_rows(sheet) {
-            let _ = writeln!(html, "<article class=\"difference\"><h3>{} · height changed</h3><p class=\"geometry\">{} pt → {} pt</p>",
-                row_label(change),
-                display_number(&change["before"]), display_number(&change["after"]));
-            html.push_str("<div class=\"gallery\">");
-            image_card(&mut html, &root, "Original", &change["original_image"]);
-            image_card(&mut html, &root, "Shrunk", &change["shrunk_image"]);
-            html.push_str("</div></article>\n");
-        }
-        for change in items(sheet, "image_differences") {
-            let range = change["range"].as_str().unwrap_or("Range unavailable");
-            let _ = writeln!(html, "<article class=\"difference\"><h3>Image difference</h3><p class=\"geometry\">{}</p><div class=\"gallery\">", escape_html(range));
-            image_card(&mut html, &root, "Original", &change["original_image"]);
-            image_card(&mut html, &root, "Shrunk", &change["shrunk_image"]);
-            image_card(&mut html, &root, "Different pixels", &change["diff_image"]);
-            html.push_str("</div></article>\n");
-        }
+        render_differences(
+            &mut html,
+            &root,
+            sheet,
+            &format!("{}:{}:{}", workbook, report["profile"], name),
+        );
         html.push_str("</section>\n");
     }
-    html.push_str(
-        r##"  </main>
+    html.push_str(REPORT_END);
+
+    let path = output_dir.join("report.html");
+    super::artifact_cache::atomic_write(&path, html.as_bytes())?;
+    Ok(path)
+}
+
+pub(super) const REPORT_END: &str = r##"  </main>
 </div>
 <dialog id="image-viewer" class="image-viewer" aria-label="Image viewer">
   <div class="viewer-bar">
@@ -161,8 +166,26 @@ search?.addEventListener('input', () => {
   for (const section of document.querySelectorAll('.worksheet')) {
     const found = section.dataset.search.toLocaleLowerCase().includes(query);
     section.hidden = !found;
-    document.querySelector('a[href="#' + section.id + '"]').hidden = !found;
+    const link = document.querySelector('a[href="#' + section.id + '"]');
+    if (link) link.hidden = !found;
   }
+});
+function revealTarget() {
+  const target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+  if (!target) return;
+  const section = target.closest('.worksheet');
+  if (section) section.hidden = false;
+  for (let node = target.parentElement; node; node = node.parentElement) {
+    if (node.tagName === 'DETAILS') node.open = true;
+  }
+  target.scrollIntoView();
+}
+window.addEventListener('hashchange', revealTarget);
+revealTarget();
+document.addEventListener('click', async event => {
+  const link = event.target.closest('[data-permalink]');
+  if (!link) return;
+  try { await navigator.clipboard.writeText(link.href); } catch (_) { /* The anchor still navigates without clipboard permission. */ }
 });
 const viewer = document.querySelector('#image-viewer');
 document.addEventListener('click', event => {
@@ -181,12 +204,47 @@ viewer.addEventListener('close', () => document.querySelector('#viewer-image').r
 </script>
 </body>
 </html>
-"##,
-    );
+"##;
 
-    let path = output_dir.join("report.html");
-    fs::write(&path, html)?;
-    Ok(path)
+pub(super) fn anchor(kind: &str, identity: &str) -> String {
+    format!(
+        "{kind}-{}",
+        &super::artifact_cache::sha256(identity.as_bytes())[..24]
+    )
+}
+
+pub(super) fn permalink(id: &str) -> String {
+    format!("<a class=\"permalink\" href=\"#{id}\" data-permalink>Link</a>")
+}
+
+pub(super) fn render_differences(html: &mut String, root: &Path, sheet: &Value, identity: &str) {
+    for change in changed_rows(sheet) {
+        let id = anchor(
+            "difference",
+            &format!("{identity}:row:{}:{}", change["row"], change["end_row"]),
+        );
+        let _ = write!(html, "<div id=\"{id}\">{}", permalink(&id));
+        let _ = writeln!(html, "<article class=\"difference\"><h3>{} · height changed</h3><p class=\"geometry\">{} pt → {} pt</p>",
+                row_label(change),
+                display_number(&change["before"]), display_number(&change["after"]));
+        html.push_str("<div class=\"gallery\">");
+        image_card(html, root, "Original", &change["original_image"]);
+        image_card(html, root, "Shrunk", &change["shrunk_image"]);
+        html.push_str("</div></article></div>\n");
+    }
+    for change in items(sheet, "image_differences") {
+        let id = anchor(
+            "difference",
+            &format!("{identity}:image:{}:{}", change["range"], change["region"]),
+        );
+        let _ = write!(html, "<div id=\"{id}\">{}", permalink(&id));
+        let range = change["range"].as_str().unwrap_or("Range unavailable");
+        let _ = writeln!(html, "<article class=\"difference\"><h3>Image difference</h3><p class=\"geometry\">{}</p><div class=\"gallery\">", escape_html(range));
+        image_card(html, root, "Original", &change["original_image"]);
+        image_card(html, root, "Shrunk", &change["shrunk_image"]);
+        image_card(html, root, "Different pixels", &change["diff_image"]);
+        html.push_str("</div></article></div>\n");
+    }
 }
 
 fn items<'a>(parent: &'a Value, key: &str) -> &'a [Value] {
@@ -271,7 +329,7 @@ fn encode_url_segment(segment: &str) -> String {
     out
 }
 
-fn escape_html(value: &str) -> String {
+pub(super) fn escape_html(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for ch in value.chars() {
         match ch {
@@ -292,8 +350,10 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn lists_only_differences_and_keeps_incomplete_checks_out_of_the_unchanged_count() -> anyhow::Result<()> {
-        let root = std::env::temp_dir().join(format!("visual-report-summary-{}", std::process::id()));
+    fn lists_only_differences_and_keeps_incomplete_checks_out_of_the_unchanged_count(
+    ) -> anyhow::Result<()> {
+        let root =
+            std::env::temp_dir().join(format!("visual-report-summary-{}", std::process::id()));
         let report = json!({"workbook":"Book", "sheets":[
             {"index":1,"name":"Equal sheet","status":"same"},
             {"index":2,"name":"Unchecked sheet","status":"row heights equal"},

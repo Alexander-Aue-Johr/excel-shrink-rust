@@ -18,6 +18,7 @@ pub(super) struct ImageDifference {
     pub shrunk_image: PathBuf,
     pub diff_image: PathBuf,
     pub diff_pixels: u64,
+    pub region: [u32; 4],
 }
 
 #[derive(Clone, Copy)]
@@ -86,6 +87,7 @@ pub(super) fn compare_images(
                 shrunk_image: shrunk_path,
                 diff_image: diff_path,
                 diff_pixels: band.pixels,
+                region: [x, y, crop_width, crop_height],
             });
         }
     }
