@@ -107,6 +107,10 @@ pub struct RegressionRunArgs {
     /// Compare worksheet row heights and images in Excel.
     #[arg(long)]
     excel_screenshot_check: bool,
+
+    /// Retain full worksheet screenshots as well as difference evidence.
+    #[arg(long)]
+    keep_screenshots: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -465,6 +469,7 @@ fn corpus_regression_run_args_for_test(case_id: Option<String>) -> RegressionRun
             "EXCEL_SHRINK_CORPUS_REGRESSION_IGNORE_DEFAULT_CLI_ARGS",
         ),
         cli_args: corpus_regression_cli_args_from_env_for_test(),
+        keep_screenshots: false,
         all_visual_profiles: false,
         all_visual_profile_checks: false,
         excel_recalc_check: env_flag_enabled_for_test(
@@ -996,6 +1001,11 @@ fn run_suite(
             &args.cli_args,
             args.excel_recalc_check,
             args.excel_screenshot_check,
+            &visual_validation::VisualCheckOptions {
+                profile: suite_profile.profile_name().to_owned(),
+                keep_screenshots: args.keep_screenshots,
+                ..Default::default()
+            },
             console_log_level,
             &case,
         );
@@ -1330,6 +1340,7 @@ fn run_case(
     extra_cli_args: &[String],
     excel_recalc_check: bool,
     excel_screenshot_check: bool,
+    visual_options: &visual_validation::VisualCheckOptions,
     console_log_level: LogLevel,
     case: &RegressionCase,
 ) -> anyhow::Result<CaseReport> {
@@ -1508,7 +1519,7 @@ fn run_case(
 
         if value_comparison_details.as_ref().is_some_and(|report| report.differences.is_empty()) {
             let screenshot_dir = case_output_dir.join("excel-screenshots");
-            match visual_validation::compare_sheet_visuals(&input, &output_path, &screenshot_dir) {
+            match visual_validation::compare_sheet_visuals(&input, &output_path, &screenshot_dir, visual_options) {
                 Ok(report) => {
                     if report.differences_found {
                         failures.push(format!(

@@ -19,13 +19,44 @@ pub(super) struct ExcelScreenshotReport {
     pub difference_summary: ExcelScreenshotDifferenceSummary,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(super) struct VisualCheckOptions {
+    pub profile: String,
+    pub sheets: Option<std::collections::BTreeSet<usize>>,
+    pub keep_screenshots: bool,
+}
+
+// Captures are temporary unless explicitly retained. Difference evidence lives
+// outside this directory and remains available to the report.
+struct TemporaryCaptures(Option<PathBuf>);
+
+impl Drop for TemporaryCaptures {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            if path.exists() {
+                if let Err(error) = fs::remove_dir_all(path) {
+                    eprintln!("Could not remove temporary captures {}: {error}", path.display());
+                }
+            }
+        }
+    }
+}
+
 pub(super) fn compare_sheet_visuals(
     original: &Path,
     shrunk: &Path,
     output_dir: &Path,
+    options: &VisualCheckOptions,
 ) -> Result<ExcelScreenshotReport> {
     fs::create_dir_all(output_dir)?;
-    let paired_plan = plan_pair(original, shrunk)?;
+    let mut paired_plan = plan_pair(original, shrunk)?;
+    if let Some(sheets) = &options.sheets {
+        paired_plan.sheets.retain(|sheet| sheets.contains(&sheet.sheet_index));
+        anyhow::ensure!(paired_plan.sheets.len() == sheets.len(), "requested visual worksheets are missing");
+    }
+    anyhow::ensure!(!paired_plan.sheets.is_empty(), "no worksheets selected for visual comparison");
+    let captures = output_dir.join("captures");
+    let _temporary = TemporaryCaptures((!options.keep_screenshots).then(|| captures.clone()));
     let changed_heights = check_row_heights(
         &paired_plan,
         original,
@@ -36,7 +67,7 @@ pub(super) fn compare_sheet_visuals(
     for change in &changed_heights {
         rows.entry(change.sheet_index).or_default().push(change.row);
     }
-    let tiles = capture_images(
+    let mut tiles = capture_images(
         &paired_plan,
         original,
         shrunk,
@@ -48,6 +79,9 @@ pub(super) fn compare_sheet_visuals(
     } else {
         Vec::new()
     };
+    if !options.keep_screenshots && !changed_heights.is_empty() {
+        retain_height_evidence(&mut tiles, &output_dir.join("height-evidence"))?;
+    }
     let sheets = visual_sheets(
         &paired_plan.sheets,
         &changed_heights,
@@ -55,6 +89,7 @@ pub(super) fn compare_sheet_visuals(
         &image_differences,
     )?;
     let report = json!({
+        "profile": options.profile,
         "workbook": original.file_name().and_then(|name| name.to_str()).unwrap_or("Workbook"),
         "image_comparison": if changed_heights.is_empty() { "complete" } else { "skipped after row-height differences" },
         "sheets": sheets,
@@ -96,6 +131,18 @@ pub(super) fn compare_sheet_visuals(
         differences_found: total_differences > 0,
         difference_summary: summary,
     })
+}
+
+fn retain_height_evidence(tiles: &mut [PairedImageTile], output: &Path) -> Result<()> {
+    fs::create_dir_all(output)?;
+    for tile in tiles {
+        for (side, path) in [("original", &mut tile.original_image), ("shrunk", &mut tile.shrunk_image)] {
+            let target = output.join(format!("sheet-{}-tile-{}-{side}.png", tile.sheet_index, tile.tile_index));
+            fs::copy(&*path, &target)?;
+            *path = target;
+        }
+    }
+    Ok(())
 }
 
 fn visual_sheets(

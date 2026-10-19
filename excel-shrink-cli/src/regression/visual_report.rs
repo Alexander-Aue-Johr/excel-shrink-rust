@@ -98,6 +98,9 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
         "<p class=\"workbook-name\">{}</p>",
         escape_html(workbook)
     );
+    if let Some(profile) = report["profile"].as_str() {
+        let _ = write!(html, "<p class=\"muted\">Profile: {}</p>", escape_html(profile));
+    }
     let _ = write!(html, "<p class=\"muted\">{} worksheets</p><div class=\"metrics\"><div class=\"metric\"><strong>{}</strong><span>Unchanged</span></div><div class=\"metric\"><strong>{}</strong><span>With differences</span></div><div class=\"metric\"><strong>{}</strong><span>Not fully checked</span></div></div>", sheets.len(), unchanged, changed_sheets.len(), unchecked);
     if row_changes > 0 || image_changes > 0 {
         let _ = write!(html, "<p class=\"muted\">{row_changes} row height changes · {image_changes} image differences</p>");
