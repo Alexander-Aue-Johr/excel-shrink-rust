@@ -693,7 +693,7 @@
             }
         },
         {
-            "name": "Debug smoke visual profile matrix (pick case)",
+            "name": "Debug smoke visual diagnosis (pick case)",
             "type": "lldb",
             "request": "launch",
             "cargo": {
@@ -718,7 +718,7 @@
                 "smoke",
                 "--case-id",
                 "${input:corpusRegressionCaseId}",
-                "--all-visual-profile-checks",
+                "--diagnose-visual-changes",
                 "--console-log-level",
                 "${input:corpusRegressionConsoleLogLevel}"
             ],
@@ -751,7 +751,7 @@
             }
         },
         {
-            "name": "Release smoke visual profile matrix (pick case)",
+            "name": "Release smoke visual diagnosis (pick case)",
             "type": "lldb",
             "request": "launch",
             "cargo": {
@@ -777,7 +777,7 @@
                 "smoke",
                 "--case-id",
                 "${input:corpusRegressionCaseId}",
-                "--all-visual-profile-checks",
+                "--diagnose-visual-changes",
                 "--console-log-level",
                 "${input:corpusRegressionConsoleLogLevel}"
             ],

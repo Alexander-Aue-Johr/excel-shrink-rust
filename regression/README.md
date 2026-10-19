@@ -199,19 +199,23 @@ Run Excel screenshot validation:
 cargo run --release -p excel-shrink-cli -- regression smoke --excel-screenshot-check
 ```
 
-The runner first compares stored cell values. It then reads row heights from both workbooks through the Office add-in. If a row height differs, it captures the affected row for the report and skips full image comparison for that case. If values and row heights match, it captures paired worksheet images and compares their pixels. The case output contains a single scrollable `report.html` covering every sheet, with focused original, shrunk, and difference images where applicable. This check requires Windows Excel and the Windows .NET 8 SDK.
+The runner first compares stored cell values. It then reads row heights from both workbooks through the Office add-in. If a row height differs, it captures the affected row for the report and skips full image comparison on that sheet. Sheets with equal row heights receive a paired pixel comparison. Full image pairs are transferred in memory and released after comparison; only difference evidence is saved. Use `--keep-screenshots` to retain full captures. The case output contains a single scrollable `report.html` covering every sheet, with focused original, shrunk, and difference images where applicable. This check requires Windows Excel and the Windows .NET 8 SDK.
 
 Generated and preserved XLSX artifacts are deduplicated under `.tmp/workbooks/shared/<workbook-hash>/`. The visible workbook paths in regression case directories, Excel automation work directories, and recalc output directories are recreated as file links to those shared workbooks after each write. Mutable repair inputs are the exception: they are temporary real copies while being repaired, then removed after the repaired result has been written back through the shared workbook store.
 
 The visual profile is derived from cleanup and visualization-relevant CLI options. Known profiles such as `default`, `remove-basic-textless-representatives`, `maximum-cleaning`, and `keep-all-inactive-protection-cells` get their own folders. Other combinations use `custom/<stable-config-hash>`.
 
-Run every predefined visual profile with Excel value/recalculation and screenshot validation:
+Diagnose visual changes with targeted profiles:
 
 ```bash
-cargo run --release -p excel-shrink-cli -- regression smoke --all-visual-profile-checks
+cargo run --release -p excel-shrink-cli -- regression smoke --diagnose-visual-changes
 ```
 
-This ignores baseline-level default cleanup args for the matrix and supplies each predefined profile explicitly. Use `--all-visual-profiles` instead when you want the same profile matrix without forcing both Excel-backed checks.
+The runner starts with `maximum-cleaning` for each workbook. An unchanged workbook needs no further profiles. When a sheet changes, `default` checks that sheet. Sheets that also change with `default` receive the conservative profiles; sheets unchanged with `default` receive the aggressive intermediate profiles. Values and Excel recalculation remain part of each run. Baseline cleanup flags are ignored so every profile uses its exact configuration.
+
+All workbooks and profile results appear in one scrollable `report.html` under `.tmp/regression/smoke-visual-diagnosis-<timestamp>/`. It updates during the run and opens automatically. Each workbook and each visual difference has a stable link. Preserve the report directory and its evidence images when sharing those links. The adjacent `diagnosis.json` records completed profiles, selected sheets, and failures.
+
+`--all-visual-profile-checks` remains an alias for this diagnosis. `--all-visual-profiles` runs the complete profile matrix for cleanup measurements without forcing Excel checks; combining it with `--excel-screenshot-check` selects the targeted diagnosis.
 
 ## VS Code debugging
 

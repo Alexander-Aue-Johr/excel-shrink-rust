@@ -112,7 +112,7 @@
       }
     },
     {
-      "label": "Release smoke visual profile matrix (pick case, no debugger)",
+      "label": "Release smoke visual diagnosis (pick case, no debugger)",
       "type": "process",
       "command": "cargo",
       "args": [
@@ -127,7 +127,7 @@
         "smoke",
         "--case-id",
         "${input:corpusRegressionCaseId}",
-        "--all-visual-profile-checks",
+        "--diagnose-visual-changes",
         "--console-log-level",
         "info"
       ],
