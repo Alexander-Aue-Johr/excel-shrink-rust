@@ -217,7 +217,8 @@
       const x = prefix(columns), y = prefix(rows);
       // Vary each axis separately so tall rows and wide columns still admit
       // small controls inside the image budget.
-      const candidates = [1, 2, 4, 8, 16, 32].flatMap(count => [
+      // Three cells can provide a third safe width when four wide columns exceed the budget.
+      const candidates = [1, 2, 3, 4, 8, 16, 32].flatMap(count => [
         [firstRow, narrowestColumn, count, 1],
         [shortestRow, firstColumn, 1, count]
       ]);

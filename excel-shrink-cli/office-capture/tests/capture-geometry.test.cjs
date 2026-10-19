@@ -99,6 +99,15 @@ test('calibration still rejects images that disagree with measured geometry', as
   await assert.rejects(geometry(officeModel({imageWidthOffset: 3})), /Inconsistent width image calibration/);
 });
 
+test('wide leading columns calibrate without a full-width image', async () => {
+  const model = officeModel({columns: [0, 39.75, 504.75, 312, 222.75], defaultWidth: 60});
+  const result = await geometry(model, 864, 70);
+  assert.equal(result.scaleX, 4 / 3);
+  assert.equal(result.imageWidth(70), 6720);
+  assert.ok(model.images.some(control => control.nc === 3));
+  assert.ok(model.images.every(control => control.nc <= 32));
+});
+
 function deferredLayoutModel() {
   const sheet = {
     getRangeByIndexes(row, column, rowCount, columnCount) {
