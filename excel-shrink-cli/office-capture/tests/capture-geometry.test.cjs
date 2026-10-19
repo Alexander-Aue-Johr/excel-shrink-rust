@@ -4,6 +4,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {SheetGeometry} = require('../web/capture-geometry.js');
 
+test('drawing bounds allow arithmetic roundoff but reject a real overhang', () => {
+  const {exceedsExtent} = require('../web/capture-geometry.js');
+  assert.equal(exceedsExtent(789.750078740158 + 9.74992125984252, 799.5), false);
+  assert.equal(exceedsExtent(799.500001, 799.5), true);
+  assert.equal(exceedsExtent(800, 799.5), true);
+  assert.throws(() => exceedsExtent(Infinity, 799.5), /Invalid drawing boundary/);
+  assert.throws(() => exceedsExtent(799.5, NaN), /Invalid drawing boundary/);
+});
+
 function png(width, height) {
   const bytes = Buffer.alloc(57);
   Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(bytes);

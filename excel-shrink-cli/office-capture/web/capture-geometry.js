@@ -71,6 +71,12 @@
     return values;
   }
 
+  function exceedsExtent(value, extent) {
+    if (!Number.isFinite(value) || !Number.isFinite(extent)) throw new Error('Invalid drawing boundary');
+    const roundoff = 8 * Number.EPSILON * Math.max(1, Math.abs(value), Math.abs(extent));
+    return value - extent > roundoff;
+  }
+
   async function readHeightRuns(office, sheet, bottomRow) {
     if (!Number.isInteger(bottomRow) || bottomRow < 0 || bottomRow >= MAX_ROWS) {
       throw new Error(`Invalid row boundary for ${sheet}`);
@@ -341,7 +347,7 @@
     }
   }
 
-  const api = {SheetGeometry, readHeightRuns, address, pngSize, MAX_PIXELS, MAX_EDGE};
+  const api = {SheetGeometry, readHeightRuns, address, pngSize, exceedsExtent, MAX_PIXELS, MAX_EDGE};
   root.CaptureGeometry = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 }(typeof window !== 'undefined' ? window : globalThis));

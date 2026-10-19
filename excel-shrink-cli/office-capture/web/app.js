@@ -92,7 +92,7 @@
       const rotatedHeight = Math.abs(shape.width * Math.sin(angle)) + Math.abs(shape.height * Math.cos(angle));
       const right = shape.left + (shape.width + rotatedWidth) / 2;
       const bottom = shape.top + (shape.height + rotatedHeight) / 2;
-      if (right > maxRight || bottom > maxBottom) {
+      if (CaptureGeometry.exceedsExtent(right, maxRight) || CaptureGeometry.exceedsExtent(bottom, maxBottom)) {
         throw new Error(`Drawing extends beyond the capture range on ${sheet.name}`);
       }
     }
