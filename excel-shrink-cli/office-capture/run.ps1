@@ -178,6 +178,26 @@ function Add-AutoOpenTaskpane([string]$workbook, [string]$addInId, [string]$vers
     } finally { $archive.Dispose() }
 }
 
+function Set-InitialWorksheet([string]$workbook, [int]$index) {
+    if ($index -lt 1) { throw 'Invalid initial worksheet index.' }
+    $archive = [IO.Compression.ZipFile]::Open($workbook, [IO.Compression.ZipArchiveMode]::Update)
+    try {
+        [xml]$document = Read-ZipText $archive 'xl/workbook.xml'
+        $namespace = $document.DocumentElement.NamespaceURI
+        $views = $document.SelectSingleNode("/*[local-name()='workbook']/*[local-name()='bookViews']")
+        if ($null -eq $views) {
+            $views = $document.CreateElement('bookViews', $namespace)
+            $sheets = $document.SelectSingleNode("/*[local-name()='workbook']/*[local-name()='sheets']")
+            [void]$document.DocumentElement.InsertBefore($views, $sheets)
+        }
+        if ($views.SelectNodes("*[local-name()='workbookView']").Count -eq 0) { [void]$views.AppendChild($document.CreateElement('workbookView', $namespace)) }
+        foreach ($view in $views.SelectNodes("*[local-name()='workbookView']")) {
+            if ($view.LocalName -eq 'workbookView') { [void]$view.SetAttribute('activeTab', [string]($index - 1)) }
+        }
+        Set-ZipText $archive 'xl/workbook.xml' ($document.OuterXml + "`n")
+    } finally { $archive.Dispose() }
+}
+
 function Register-AddIn([string]$id, [string]$manifestPath) {
     $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\Office\16.0\Wef\Developer', $true)
     if ($null -eq $key) { throw 'Cannot open Office developer add-in registry key.' }
@@ -319,6 +339,9 @@ try {
     $configCopy = Join-Path $stage 'config.json'
     Copy-Item -LiteralPath $sourceConfig -Destination $configCopy
     $captureConfig = [IO.File]::ReadAllText($configCopy, $utf8) | ConvertFrom-Json
+    Set-InitialWorksheet $workbookCopy ([int]$captureConfig.sheets[0].index)
+    if ($ComparisonWorkbookPath) { Set-InitialWorksheet $comparisonCopy ([int]$captureConfig.sheets[0].index) }
+
     if ($captureConfig.mode -in @('capture', 'paired')) {
         Add-Type -Path (Join-Path $PSScriptRoot 'CaptureWorkbook.cs') `
             -ReferencedAssemblies @('System.IO.Compression', 'System.IO.Compression.FileSystem', 'System.Xml')

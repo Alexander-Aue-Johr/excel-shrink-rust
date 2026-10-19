@@ -99,13 +99,17 @@
   async function checkedWorksheet(sheet) {
     await office(async context => {
       const worksheet = context.workbook.worksheets.getItem(sheet.name);
+      const active = context.workbook.worksheets.getActiveWorksheet();
       worksheet.load('name,position,visibility');
+      active.load('name');
       await context.sync();
       if (worksheet.name !== sheet.name || worksheet.position + 1 !== sheet.index || worksheet.visibility !== 'Visible') {
         throw new Error(`Worksheet identity changed: ${JSON.stringify(sheet.name)}`);
       }
-      worksheet.activate();
-      await context.sync();
+      if (active.name !== worksheet.name) {
+        worksheet.activate();
+        await context.sync();
+      }
     });
   }
 
