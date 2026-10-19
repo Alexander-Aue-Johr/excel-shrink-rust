@@ -201,6 +201,9 @@ fn run_pair(
     if let Ok(bytes) = fs::read(output.join("result.json")) {
         let result: OfficeResult = serde_json::from_slice(&bytes)?;
         if let Some(error) = result.error {
+            if let Some(comparison_error) = consumer_error.take() {
+                return Err(comparison_error);
+            }
             if error.code == "IMAGE_BUDGET" {
                 return Err(ImageBudgetError(error.message).into());
             }
