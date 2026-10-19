@@ -289,6 +289,12 @@ try {
     Add-AutoOpenTaskpane $workbookCopy $addInId $versionNode.InnerText.Trim()
     $configCopy = Join-Path $stage 'config.json'
     Copy-Item -LiteralPath $sourceConfig -Destination $configCopy
+    $captureConfig = [IO.File]::ReadAllText($configCopy, $utf8) | ConvertFrom-Json
+    if ($captureConfig.mode -eq 'capture') {
+        Add-Type -Path (Join-Path $PSScriptRoot 'CaptureWorkbook.cs') `
+            -ReferencedAssemblies @('System.IO.Compression', 'System.IO.Compression.FileSystem', 'System.Xml')
+        [CaptureWorkbook]::HideErrorIndicators($workbookCopy)
+    }
 
     $hostStdout = Join-Path $stage 'host.stdout.log'
     $hostStderr = Join-Path $stage 'host.stderr.log'
