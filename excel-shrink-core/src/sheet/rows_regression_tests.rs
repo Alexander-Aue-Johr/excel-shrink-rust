@@ -917,6 +917,19 @@ fn promotion_columns(
 const PROMOTION_ROW: &[u8] = br#"<row r="1" ht="9" customHeight="1"><c r="A1" s="2"><v>unchanged text</v></c><c r="B1" s="2"/><c r="C1" s="2"/><c r="D1" s="2"/></row>"#;
 
 #[test]
+fn explicit_row_font_keeps_cell_overrides_even_without_content_or_automatic_height() {
+    let params = promotion_params();
+    for height in ["", " ht=\"9\" customHeight=\"1\""] {
+        for content in ["", "<c r=\"C1\" s=\"3\"><v>keep</v></c>"] {
+            let input = format!("<row r=\"1\" s=\"2\" customFormat=\"1\"{height}><c r=\"A1\" s=\"3\"/><c r=\"B1\" s=\"3\"/>{content}</row>");
+            let cleaned = replace_single_row_with_metrics(
+                input.as_bytes(), &params, &mut promotion_columns(&params, false));
+            assert_eq!(cleaned, input.as_bytes());
+        }
+    }
+}
+
+#[test]
 fn row_font_promotion_reuses_existing_font_xf_and_preserves_text() {
     let params = promotion_params();
     assert_eq!(params.patterns.xfs_by_index[&2].row_font_style_id, Some(1));

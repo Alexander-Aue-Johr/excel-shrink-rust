@@ -1,8 +1,8 @@
 use crate::models::{CleanSheetMetrics, CleanSheetParameters, CleanupCause, Xf};
 use crate::profiling;
 use crate::sheet::cells::{
-    parsed_empty_cell_has_effective_fill_or_border, replace_parsed_cell_with_empty_style_policy,
-    ParsedCell,
+    empty_cell_overrides_row_font, parsed_empty_cell_has_effective_fill_or_border,
+    replace_parsed_cell_with_empty_style_policy, ParsedCell,
 };
 use crate::sheet::row_view::RowView;
 use crate::utils::{digits_byte_string_to_integer, letters_byte_string_to_integer};
@@ -116,14 +116,14 @@ struct EmptyStyleRepresentativeDecision {
     keep_font_only: bool,
     keep_merged: bool,
     keep_default: bool,
-    has_effective_fill_or_border: bool,
+    has_required_style: bool,
 }
 
 impl EmptyStyleRepresentativeDecision {
     #[inline]
     fn is_tentative(self, policy: EmptyStyleRepresentativePolicy) -> bool {
         policy.require_content_in_row
-            && !self.has_effective_fill_or_border
+            && !self.has_required_style
             && (self.keep_font_only || self.keep_default)
     }
 }
@@ -790,14 +790,15 @@ fn select_empty_style_representative(
     let keep_default = policy.keep_default_styleless
         && !state.kept_default_style_cell
         && empty_cell_has_default_style(cell, has_cell_content);
-    let has_effective_fill_or_border =
-        parsed_empty_cell_has_effective_fill_or_border(cell, params, metrics, has_cell_content);
+    let has_required_style =
+        parsed_empty_cell_has_effective_fill_or_border(cell, params, metrics, has_cell_content)
+        || empty_cell_overrides_row_font(cell, params, has_cell_content);
 
     EmptyStyleRepresentativeDecision {
         keep_font_only,
         keep_merged,
         keep_default,
-        has_effective_fill_or_border,
+        has_required_style,
     }
 }
 

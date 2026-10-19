@@ -821,6 +821,9 @@ fn empty_cell_has_column_font_style_override(
     if let Some(row) = row_attributes.filter(|r| r.promoted_style_id.is_some()) {
         return cell_style.font_identity() != row.style.map(Xf::font_identity).unwrap_or(0);
     }
+    if empty_cell_overrides_row_font(cell, params, has_cell_content) {
+        return true;
+    }
     let cell_font_id = cell_style.font_id.unwrap_or(0);
     let row_uses_auto_height =
         row_attributes.is_some_and(|row| row.has_height && !row.has_custom_height);
@@ -852,6 +855,21 @@ fn empty_cell_has_column_font_style_override(
     }
 
     cell_style.font_identity() != column_font
+}
+
+pub(super) fn empty_cell_overrides_row_font(
+    cell: &ParsedCell<'_, '_>,
+    params: &CleanSheetParameters,
+    has_cell_content: bool,
+) -> bool {
+    !has_cell_content
+        && params.cleanup.keep_textless_column_style_representatives
+        && cell.row_view().and_then(|row| row.style)
+            .filter(|row_style| row_style.apply_font)
+            .zip(cell.style(params))
+            .is_some_and(|(row_style, cell_style)| {
+                row_style.font_identity() != cell_style.font_identity()
+            })
 }
 
 fn parsed_empty_cell_has_column_font_style_override(
