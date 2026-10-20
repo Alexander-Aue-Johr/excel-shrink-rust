@@ -217,6 +217,38 @@ All workbooks and profile results appear in one scrollable `report.html` under `
 
 `--all-visual-profile-checks` remains an alias for this diagnosis. `--all-visual-profiles` runs the complete profile matrix for cleanup measurements without forcing Excel checks; combining it with `--excel-screenshot-check` selects the targeted diagnosis.
 
+### ZIP archives from URLs
+
+```bash
+cargo run --release -p excel-shrink-cli -- regression archive \
+  --request-file .tmp/archive-regression/request.json \
+  --output-root .tmp/regression/archive-run
+```
+
+The local request file contains `{"urls":["https://example.org/workbooks.zip"]}`.
+An optional `access_url` visits a private sharing link first to obtain download cookies.
+Alternatively, repeat `--url` on the command line. Keep private URLs and request files
+outside version control.
+
+ZIP downloads remain under `.tmp/archive-regression/downloads` for reuse. One XLSX is
+extracted at a time and checked with the targeted profiles above. Its original, cleaned
+copies, recalculation artifacts and workbook caches are deleted after the check. Only
+report metadata, logs and referenced difference images remain in the output directory.
+The common `report.html` opens automatically and updates as workbooks finish. Files
+that cannot be checked are listed separately with their failure reasons.
+
+`--max-success-per-archive 1` performs a short trial. Visual or value differences count
+as completed checks; technical failures do not count towards that limit. By default a
+workbook has 1,800 seconds for all profiles, with 120 seconds for opening Excel or
+starting the add-in. Adjust these with `--workbook-timeout-seconds` and
+`--startup-timeout-seconds`. Individual XLSX entries larger than 2 GiB are skipped;
+`--max-workbook-bytes` changes that limit.
+
+Reuse the same output directory to resume after interruption or a limited trial.
+Completed entries are not repeated. Add `--retry-skipped` to retry problem files.
+The final exit status is nonzero if any files were skipped or any checks found
+differences; either condition is recorded without stopping the remaining workbooks.
+
 ## VS Code debugging
 
 The corpus-backed smoke regressions are also available as Rust tests inside `excel-shrink-cli`.

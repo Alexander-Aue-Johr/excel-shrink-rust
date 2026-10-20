@@ -31,6 +31,7 @@ mod visual_report;
 mod visual_validation;
 mod visual_diagnosis;
 mod diagnosis_report;
+mod archive;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -56,6 +57,10 @@ enum RegressionCommand {
     Smoke(RegressionRunArgs),
     /// Run the heavy corpus regression suite.
     Corpus(RegressionRunArgs),
+    /// Download ZIP archives and diagnose one workbook at a time.
+    Archive(archive::ArchiveArgs),
+    #[command(hide = true)]
+    ArchiveWorker(archive::WorkerArgs),
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -412,6 +417,8 @@ static DOWNLOAD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
     let console_log_level = cli.console_log_level;
     match cli.command {
+        RegressionCommand::Archive(args) => archive::run(args, console_log_level),
+        RegressionCommand::ArchiveWorker(args) => archive::run_worker(args, console_log_level),
         RegressionCommand::Smoke(args) => run_suite_or_visual_profile_matrix(
             "smoke",
             "regression/baselines/smoke.json",
@@ -3031,7 +3038,7 @@ mod visual_profile_matrix_tests {
                 assert!(args.all_visual_profile_checks);
                 assert!(!args.all_visual_profiles);
             }
-            RegressionCommand::Corpus(_) => panic!("expected smoke command"),
+            _ => panic!("expected smoke command"),
         }
     }
 
