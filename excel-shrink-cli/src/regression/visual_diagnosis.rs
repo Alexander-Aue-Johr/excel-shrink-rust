@@ -162,130 +162,44 @@ pub(super) fn run(
         workbooks.push(json!({"identity":identity, "name":source.file_name().unwrap_or_default().to_string_lossy(),
             "cases":group.iter().map(|c| &c.id).collect::<Vec<_>>(), "results":[], "complete":false}));
         let current = workbooks.len() - 1;
-        let mut execute = |name: &str, sheets: Option<BTreeSet<usize>>| -> anyhow::Result<Value> {
-            let predefined = predefined_visual_profiles()
-                .iter()
-                .find(|p| p.name == name)
-                .unwrap();
-            let profile = ResolvedVisualProfile::from_config(predefined.config);
-            let mut cli_args = args.cli_args.clone();
-            cli_args.extend(predefined.config.cli_args());
-            eprintln!(
-                "[{mode}] {} · {name} · {}",
-                source.display(),
-                sheets
-                    .as_ref()
-                    .map(|s| format!("{} selected sheets", s.len()))
-                    .unwrap_or_else(|| "all visible sheets".into())
-            );
-            let options = visual_validation::VisualCheckOptions {
-                profile: name.into(),
-                sheets,
-                keep_screenshots: args.keep_screenshots,
-                combined_report: Some(output.join("report.html")),
-            };
-            let result = run_case(
-                mode,
-                &root,
-                &file_root.join(name),
-                corpus.as_deref(),
-                None,
-                &cli_args,
-                true,
-                true,
-                &options,
-                log_level,
-                &case,
-            );
-            let mut visual = json!({"profile":name, "status":"not checked", "sheets":[]});
-            match result {
-                Ok(report) => {
-                    visual["status"] = json!(if report
-                        .value_comparison_details
-                        .as_ref()
-                        .is_some_and(|v| !v.differences.is_empty())
+        let (failed, maximum) = diagnose_case(
+            mode,
+            &root,
+            &source,
+            &output,
+            &file_root,
+            corpus.as_deref(),
+            &args.cli_args,
+            args.keep_screenshots,
+            log_level,
+            &case,
+            |visual| {
+                workbooks[current]["results"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(visual);
+                publish(
+                    &output,
+                    &report_path,
+                    &workbooks,
+                    total_workbooks,
+                    false,
+                    None,
+                )?;
+                if !opened {
+                    if let Err(error) =
+                        visual_report::open_visual_report(&output.join("report.html"))
                     {
-                        "cell value differences"
-                    } else {
-                        "technical error"
-                    });
-                    if let Some(details) = &report.excel_screenshot_details {
-                        visual = serde_json::from_slice(&fs::read(
-                            details.output_dir.join("visual-result.json"),
-                        )?)?;
-                        visual["status"] = json!(if details.differences_found {
-                            "visual differences"
-                        } else {
-                            "visually unchanged"
-                        });
+                        eprintln!("Could not open diagnosis report: {error:#}");
                     }
-                    visual["profile"] = json!(profile.profile_name());
-                    visual["failures"] = json!(report.failures);
-                    visual["reduction_ratio"] = json!(report.reduction_ratio);
-                    any_failure |= !report.failures.is_empty();
-                    artifact_cache::atomic_write(
-                        &file_root.join(name).join("case-result.json"),
-                        &serde_json::to_vec_pretty(&report)?,
-                    )?;
-                    if name == "maximum-cleaning" {
-                        maximum_reports.push(report);
-                    }
+                    opened = true;
                 }
-                Err(error) => {
-                    any_failure = true;
-                    visual["status"] = json!("technical error");
-                    visual["failures"] = json!([format!("{error:#}")]);
-                }
-            }
-            // Keep the shared report compact: unchanged sheets outside a focused
-            // follow-up need a count, not hundreds of empty worksheet records.
-            if let Some(sheets) = visual["sheets"].as_array_mut() {
-                let checked = sheets.len();
-                let unchanged = sheets.iter().filter(|s| s["status"] == "same").count();
-                sheets.retain(|s| {
-                    s["status"] != "same"
-                        || options.sheets.as_ref().is_some_and(|selected| {
-                            s["index"]
-                                .as_u64()
-                                .is_some_and(|i| selected.contains(&(i as usize)))
-                        })
-                });
-                visual["checked_sheets"] = json!(checked);
-                visual["unchanged_sheets"] = json!(unchanged);
-            }
-            visual["requested_sheets"] = json!(options.sheets);
-            workbooks[current]["results"]
-                .as_array_mut()
-                .unwrap()
-                .push(visual.clone());
-            publish(
-                &output,
-                &report_path,
-                &workbooks,
-                total_workbooks,
-                false,
-                None,
-            )?;
-            if !opened {
-                if let Err(error) = visual_report::open_visual_report(&output.join("report.html")) {
-                    eprintln!("Could not open diagnosis report: {error:#}");
-                }
-                opened = true;
-            }
-            Ok(visual)
-        };
-        let maximum = execute("maximum-cleaning", None)?;
-        let changed = changed_sheets(&maximum);
-        if !changed.is_empty() {
-            let default = execute("default", Some(changed.clone()))?;
-            let (conservative, aggressive) = follow_up_sheets(&changed, &default);
-            for (names, sheets) in [(CONSERVATIVE, conservative), (AGGRESSIVE, aggressive)] {
-                if !sheets.is_empty() {
-                    for name in names {
-                        execute(name, Some(sheets.clone()))?;
-                    }
-                }
-            }
+                Ok(())
+            },
+        )?;
+        any_failure |= failed;
+        if let Some(report) = maximum {
+            maximum_reports.push(report);
         }
         workbooks[current]["complete"] = json!(true);
         publish(
@@ -324,6 +238,142 @@ pub(super) fn run(
         output.join("report.html").display()
     );
     Ok(())
+}
+
+/// Run one workbook with exact profiles; callers own progress publication and retention.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn diagnose_case(
+    mode: &str,
+    root: &Path,
+    source: &Path,
+    output: &Path,
+    file_root: &Path,
+    corpus: Option<&Path>,
+    extra_cli_args: &[String],
+    keep_screenshots: bool,
+    log_level: LogLevel,
+    case: &RegressionCase,
+    mut on_profile: impl FnMut(Value) -> anyhow::Result<()>,
+) -> anyhow::Result<(bool, Option<CaseReport>)> {
+    let mut any_failure = false;
+    let mut maximum_report = None;
+    let mut execute = |name: &str, sheets: Option<BTreeSet<usize>>| -> anyhow::Result<Value> {
+        let predefined = predefined_visual_profiles()
+            .iter()
+            .find(|p| p.name == name)
+            .unwrap();
+        let profile = ResolvedVisualProfile::from_config(predefined.config);
+        let mut cli_args = extra_cli_args.to_vec();
+        cli_args.extend(predefined.config.cli_args());
+        eprintln!(
+            "[{mode}] {} · {name} · {}",
+            source.display(),
+            sheets
+                .as_ref()
+                .map(|s| format!("{} selected sheets", s.len()))
+                .unwrap_or_else(|| "all visible sheets".into())
+        );
+        let options = visual_validation::VisualCheckOptions {
+            profile: name.into(),
+            sheets,
+            keep_screenshots: keep_screenshots,
+            combined_report: Some(output.join("report.html")),
+        };
+        let result = run_case(
+            mode,
+            root,
+            &file_root.join(name),
+            corpus,
+            None,
+            &cli_args,
+            true,
+            true,
+            &options,
+            log_level,
+            case,
+        );
+        let mut visual = json!({"profile":name, "status":"not checked", "sheets":[]});
+        match result {
+            Ok(report) => {
+                visual["status"] = json!(if report
+                    .value_comparison_details
+                    .as_ref()
+                    .is_some_and(|v| !v.differences.is_empty())
+                {
+                    "cell value differences"
+                } else {
+                    "technical error"
+                });
+                if let Some(details) = &report.excel_screenshot_details {
+                    visual = serde_json::from_slice(&fs::read(
+                        details.output_dir.join("visual-result.json"),
+                    )?)?;
+                    visual["status"] = json!(if details.differences_found {
+                        "visual differences"
+                    } else {
+                        "visually unchanged"
+                    });
+                }
+                visual["checks_complete"] = json!(
+                    report.excel_recalc_details.is_some()
+                        && (report.excel_screenshot_details.is_some()
+                            || report
+                                .value_comparison_details
+                                .as_ref()
+                                .is_some_and(|v| !v.differences.is_empty()))
+                );
+                visual["profile"] = json!(profile.profile_name());
+                visual["failures"] = json!(report.failures);
+                visual["reduction_ratio"] = json!(report.reduction_ratio);
+                any_failure |= !report.failures.is_empty();
+                artifact_cache::atomic_write(
+                    &file_root.join(name).join("case-result.json"),
+                    &serde_json::to_vec_pretty(&report)?,
+                )?;
+                if name == "maximum-cleaning" {
+                    maximum_report = Some(report);
+                }
+            }
+            Err(error) => {
+                any_failure = true;
+                visual["status"] = json!("technical error");
+                visual["failures"] = json!([format!("{error:#}")]);
+            }
+        }
+        // Keep the shared report compact: unchanged sheets outside a focused
+        // follow-up need a count, not hundreds of empty worksheet records.
+        if let Some(sheets) = visual["sheets"].as_array_mut() {
+            let checked = sheets.len();
+            let unchanged = sheets.iter().filter(|s| s["status"] == "same").count();
+            sheets.retain(|s| {
+                s["status"] != "same"
+                    || options.sheets.as_ref().is_some_and(|selected| {
+                        s["index"]
+                            .as_u64()
+                            .is_some_and(|i| selected.contains(&(i as usize)))
+                    })
+            });
+            visual["checked_sheets"] = json!(checked);
+            visual["unchanged_sheets"] = json!(unchanged);
+        }
+        visual["requested_sheets"] = json!(options.sheets);
+        on_profile(visual.clone())?;
+        Ok(visual)
+    };
+    let maximum = execute("maximum-cleaning", None)?;
+    let changed = changed_sheets(&maximum);
+    if !changed.is_empty() {
+        let default = execute("default", Some(changed.clone()))?;
+        let (conservative, aggressive) = follow_up_sheets(&changed, &default);
+        for (names, sheets) in [(CONSERVATIVE, conservative), (AGGRESSIVE, aggressive)] {
+            if !sheets.is_empty() {
+                for name in names {
+                    execute(name, Some(sheets.clone()))?;
+                }
+            }
+        }
+    }
+    Ok((any_failure, maximum_report))
 }
 
 fn publish(
