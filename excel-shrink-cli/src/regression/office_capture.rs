@@ -593,6 +593,7 @@ fn run_power_shell(workbook: &Path, config: &Path, output: &Path) -> Result<()> 
         .arg(windows_path(&transfer.0.join("output"))?)
         .arg("-PublishedOutputDir")
         .arg(windows_path(output)?)
+        .args(capture_timeout_args())
         .output()
         .context("start Windows PowerShell for worksheet capture")?;
     transfer
@@ -998,4 +999,17 @@ mod tests {
         assert!(validate_tiles(vec![capture("A2:A3")], &selected, Some(&rows), &output).is_ok());
         fs::remove_dir_all(output).unwrap();
     }
+}
+
+fn capture_timeout_args() -> Vec<String> {
+    let mut args = Vec::new();
+    for (variable, flag, low, high) in [
+        ("EXCEL_SHRINK_CAPTURE_STARTUP_SECONDS", "-StartupTimeoutSeconds", 10, 600),
+        ("EXCEL_SHRINK_CAPTURE_TIMEOUT_SECONDS", "-CaptureTimeoutSeconds", 10, 7200),
+    ] {
+        if let Some(seconds) = std::env::var(variable).ok().and_then(|v| v.parse::<u64>().ok()) {
+            args.extend([flag.to_owned(), seconds.clamp(low, high).to_string()]);
+        }
+    }
+    args
 }

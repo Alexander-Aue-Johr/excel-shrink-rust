@@ -266,6 +266,7 @@ New-Item -ItemType Directory -Path $destination -Force | Out-Null
 if (Test-Path -LiteralPath (Join-Path $destination 'result.json')) { throw 'Output directory already has a result.json.' }
 
 $stage = Join-Path $env:TEMP ('es-office-capture-' + [Guid]::NewGuid().ToString('N'))
+& (Join-Path $PSScriptRoot '../src/regression/archive_processes.ps1') -StagePath $stage
 $runId = [Guid]::NewGuid().ToString('N')
 $listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
 $listener.Start()

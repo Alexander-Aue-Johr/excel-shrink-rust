@@ -33,6 +33,9 @@ $stage = Join-Path `
     ("es-" + [guid]::NewGuid().ToString('N').Substring(0, 12))
 
 New-Item -ItemType Directory -Path $stage | Out-Null
+& (Join-Path $PSScriptRoot 'archive_processes.ps1') -StagePath $stage
+Add-Type -Path (Join-Path $PSScriptRoot 'CaptureProcesses.cs')
+$ownedProcesses = New-Object CaptureProcesses
 
 try {
     $localInput = Join-Path $stage 'input.xlsx'
@@ -49,6 +52,7 @@ try {
         [IntPtr]$excel.Hwnd,
         [ref]$excelProcessId
     )
+    $ownedProcesses.Add((Get-Process -Id $excelProcessId))
     Write-RecalcProgress "excel pid=$excelProcessId"
 
     # Keep Excel visible during regression recalculation.
@@ -123,6 +127,7 @@ finally {
         }
     }
 
+    $ownedProcesses.Dispose()
     Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 }
 

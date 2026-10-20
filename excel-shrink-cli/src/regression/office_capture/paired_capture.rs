@@ -85,6 +85,7 @@ fn run_pair(
         .arg(windows_path(output)?)
         .arg("-StreamPipe")
         .arg(&pipe)
+        .args(capture_timeout_args())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

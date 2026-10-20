@@ -85,6 +85,10 @@ pub fn save_recalculated_copy(
     let local_script = transfer.0.join("recalculate.ps1");
     let local_progress = transfer.0.join("recalc-progress.log");
     fs::write(&local_script, RECALCULATE_AND_SAVE_SCRIPT)?;
+    for directory in [&transfer.0, work_dir] {
+        fs::write(directory.join("archive_processes.ps1"), include_str!("archive_processes.ps1"))?;
+        fs::write(directory.join("CaptureProcesses.cs"), include_str!("../../office-capture/CaptureProcesses.cs"))?;
+    }
     let result = run_power_shell_script(
         &local_script,
         &[
@@ -298,6 +302,9 @@ fn workbook_extension(path: &Path) -> String {
 }
 
 fn shared_workbook_root(anchor_dir: &Path) -> PathBuf {
+    if let Some(root) = std::env::var_os("EXCEL_SHRINK_SHARED_WORKBOOK_DIR") {
+        return PathBuf::from(root);
+    }
     for ancestor in anchor_dir.ancestors() {
         if ancestor.file_name() == Some(std::ffi::OsStr::new("regression")) {
             if let Some(repo_root) = ancestor.parent() {
