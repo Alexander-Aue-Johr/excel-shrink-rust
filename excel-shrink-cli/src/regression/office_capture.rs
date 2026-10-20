@@ -13,6 +13,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod paired_capture;
 pub(super) use paired_capture::compare_paired_images;
 
+#[cfg(test)]
+#[test]
+fn preserves_numeric_browser_error_codes_and_messages() {
+    let result: OfficeResult = serde_json::from_value(json!({"run_id":"test", "heights":[], "captures":[],
+        "error":{"code":20,"message":"The operation was aborted"}})).unwrap();
+    let error = result.error.unwrap();
+    assert_eq!(error.code, 20);
+    assert_eq!(error.message, "The operation was aborted");
+}
+
 const MAX_CAPTURE_COLUMN: u32 = 16_383;
 const MAX_CAPTURE_ROW: u32 = 1_048_575;
 const PROBE_VISIBLE_COLUMNS: u32 = 64;
@@ -57,7 +67,7 @@ struct OfficeResult {
 #[derive(Debug, Deserialize)]
 struct OfficeError {
     #[serde(default)]
-    code: String,
+    code: Value,
     message: String,
 }
 
