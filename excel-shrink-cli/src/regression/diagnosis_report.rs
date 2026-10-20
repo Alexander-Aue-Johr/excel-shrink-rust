@@ -34,7 +34,57 @@ pub(super) fn write(output: &Path, report: &Value) -> Result<PathBuf> {
         );
     }
     let complete = files.iter().filter(|f| f["complete"] == true).count();
-    let _ = write!(html, "</nav><main class=\"main\"><header id=\"overview\" class=\"hero\"><div class=\"eyebrow\">EXCEL SHRINK</div><h1>Visual diagnosis</h1><p>{complete} / {} workbooks completed</p></header>", report["total_workbooks"].as_u64().unwrap_or(files.len() as u64));
+    let progress = if report["archive_run"] == true {
+        format!("{complete} workbooks processed")
+    } else {
+        format!(
+            "{complete} / {} workbooks completed",
+            report["total_workbooks"]
+                .as_u64()
+                .unwrap_or(files.len() as u64)
+        )
+    };
+    let _ = write!(html, "</nav><main class=\"main\"><header id=\"overview\" class=\"hero\"><div class=\"eyebrow\">EXCEL SHRINK</div><h1>Visual diagnosis</h1><p>{progress}</p></header>");
+    if report["archive_run"] == true {
+        html.push_str(if report["complete"] == true {
+            "<p>Run completed</p>"
+        } else {
+            "<p>Run not finished</p>"
+        });
+        let skipped = files
+            .iter()
+            .filter(|f| matches!(f["status"].as_str(), Some("skipped" | "archive error")))
+            .count();
+        let changed = files
+            .iter()
+            .filter(|f| f["status"] == "differences")
+            .count();
+        let unchanged = files.iter().filter(|f| f["status"] == "unchanged").count();
+        let _ = write!(
+            html,
+            "<p>{unchanged} unchanged · {changed} with differences · {skipped} skipped/errors</p>"
+        );
+        if skipped > 0 {
+            html.push_str("<details class=\"difference\" open><summary>Skipped files and archive errors</summary><ul>");
+            for file in files
+                .iter()
+                .filter(|f| matches!(f["status"].as_str(), Some("skipped" | "archive error")))
+            {
+                let _ = write!(
+                    html,
+                    "<li><a href=\"#{}\">{}</a></li>",
+                    file_id(file),
+                    escape(text(file, "name"))
+                );
+            }
+            html.push_str("</ul></details>");
+        }
+        if report["limited"] == true {
+            html.push_str(
+                "<p>Limited test run. Remaining archive entries have not been checked.</p>",
+            );
+        }
+    }
     for failure in items(&report["aggregate"], "failures") {
         let _ = write!(
             html,
@@ -69,6 +119,12 @@ pub(super) fn write(output: &Path, report: &Value) -> Result<PathBuf> {
         let _ = write!(html, "<section id=\"{id}\" class=\"workbook\"><header class=\"hero\"><h2>{}</h2>{}<p class=\"muted\">{}</p><p>{equal} unchanged worksheets · {changed} with differences</p><p>{}</p></header>",
             escape(text(file, "name")), permalink(&id), escape(text(file, "identity")),
             if file["complete"] == true { "Complete" } else { "In progress" });
+        if let Some(status) = file["status"].as_str() {
+            let _ = write!(html, "<p><strong>{}</strong></p>", escape(status));
+        }
+        if let Some(error) = file["error"].as_str() {
+            let _ = write!(html, "<article class=\"difference\"><h3>File could not be fully checked</h3><p>{}</p></article>", escape(error));
+        }
         for result in results {
             let _ = write!(
                 html,
@@ -149,6 +205,22 @@ fn items<'a>(value: &'a Value, key: &str) -> &'a [Value] {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn archive_report_distinguishes_skips_from_completed_checks() -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("archive-report-{}", std::process::id()));
+        let report = json!({"archive_run":true,"limited":true,"complete":true,"workbooks":[
+            {"identity":"a","name":"valid.xlsx","complete":true,"status":"unchanged","results":[]},
+            {"identity":"b","name":"broken.xlsx","complete":true,"status":"skipped","error":"Repair <required>","results":[]}
+        ]});
+        let html = fs::read_to_string(write(&dir, &report)?)?;
+        assert!(html.contains("2 workbooks processed"));
+        assert!(html.contains("1 unchanged · 0 with differences · 1 skipped/errors"));
+        assert!(html.contains("Repair &lt;required&gt;"));
+        assert!(html.contains("Remaining archive entries have not been checked"));
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
     #[test]
     fn anchors_survive_append_and_order_changes() -> Result<()> {
         let dir = std::env::temp_dir().join(format!("diagnosis-report-{}", std::process::id()));
