@@ -41,7 +41,9 @@ impl RecalculationTransfer {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("es-recalc-{}-{unique}", std::process::id()));
+        let root = std::env::var_os("EXCEL_SHRINK_TRANSFER_ROOT")
+            .map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let path = root.join(format!("es-recalc-{}-{unique}", std::process::id()));
         fs::create_dir(&path)?;
         Ok(Self(path))
     }

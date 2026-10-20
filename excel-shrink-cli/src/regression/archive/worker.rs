@@ -159,6 +159,7 @@ pub(super) fn launch(
     let transfers = job.work.join("transfers");
     fs::create_dir_all(&transfers)?;
     command.env("TMPDIR", &transfers);
+    command.env("EXCEL_SHRINK_TRANSFER_ROOT", &transfers);
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;

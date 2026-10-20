@@ -456,7 +456,9 @@ struct CaptureTransfer(PathBuf);
 impl CaptureTransfer {
     fn new(workbook: &Path, config: &Path) -> Result<Self> {
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let path = std::env::temp_dir().join(format!("es-capture-{}-{stamp}", std::process::id()));
+        let root = std::env::var_os("EXCEL_SHRINK_TRANSFER_ROOT")
+            .map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let path = root.join(format!("es-capture-{}-{stamp}", std::process::id()));
         fs::create_dir(&path)?;
         let transfer = Self(path);
         fs::copy(workbook, transfer.0.join("workbook.xlsx"))?;
