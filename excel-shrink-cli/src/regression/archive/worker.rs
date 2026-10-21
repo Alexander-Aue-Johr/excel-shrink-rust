@@ -8,6 +8,7 @@ pub(in crate::regression) struct WorkerArgs {
 
 pub(in crate::regression) fn run_worker(args: WorkerArgs, log_level: LogLevel) -> Result<()> {
     let job: MemberJob = serde_json::from_slice(&fs::read(args.job)?)?;
+    start_watchdog(&job);
     let mut record: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
     let checked = (|| -> Result<()> {
         let input = extract(&job)?;
@@ -150,6 +151,8 @@ pub(super) fn launch(
                 std::env::var("WSLENV").unwrap_or_default()
             ),
         )
+        .env("EXCEL_SHRINK_PARENT_HEARTBEAT", job.work.join("parent-heartbeat"))
+        .env("EXCEL_SHRINK_WORKER_DEADLINE", args.workbook_timeout_seconds.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log));
@@ -165,6 +168,8 @@ pub(super) fn launch(
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
+    let heartbeat = job.work.join("parent-heartbeat");
+    fs::write(&heartbeat, b"running")?;
     let mut running = RunningWorker {
         child: command.spawn().context("start isolated workbook worker")?,
         work: job.work.clone(),
@@ -173,7 +178,7 @@ pub(super) fn launch(
     let outcome = wait_for_worker(
         &mut running.child,
         Duration::from_secs(args.workbook_timeout_seconds),
-        &mut on_progress,
+        || { fs::write(&heartbeat, b"running")?; on_progress() },
     );
     running.stop()?;
     outcome
@@ -418,5 +423,61 @@ mod tests {
         let mut next = Command::new("true").spawn()?;
         wait_for_worker(&mut next, Duration::from_secs(2), || Ok(()))?;
         Ok(())
+    }
+}
+
+// The worker also enforces its deadline: the terminal or parent runner can disappear.
+fn start_watchdog(job: &MemberJob) {
+    let Some(heartbeat) = std::env::var_os("EXCEL_SHRINK_PARENT_HEARTBEAT").map(PathBuf::from)
+    else {
+        return;
+    };
+    let timeout = std::env::var("EXCEL_SHRINK_WORKER_DEADLINE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1800);
+    let work = job.work.clone();
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        loop {
+            std::thread::sleep(Duration::from_secs(2));
+            let parent_alive = fs::metadata(&heartbeat)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|time| time.elapsed().ok())
+                .is_some_and(|age| age < Duration::from_secs(60));
+            let reason = if !parent_alive {
+                Some("parent runner stopped responding")
+            } else if started.elapsed() > Duration::from_secs(timeout) {
+                Some("workbook deadline reached")
+            } else if worker_memory_bytes().is_some_and(|bytes| bytes > 4 * 1024 * 1024 * 1024) {
+                Some("workbook worker exceeded 4 GiB memory limit")
+            } else {
+                None
+            };
+            if let Some(reason) = reason {
+                eprintln!("[archive] {reason}; closing owned Excel processes");
+                let _ = cleanup_windows(&work);
+                std::process::exit(124);
+            }
+        }
+    });
+}
+
+fn worker_memory_bytes() -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        fs::read_to_string("/proc/self/status")
+            .ok()?
+            .lines()
+            .find_map(|line| {
+                line.strip_prefix("VmRSS:")
+                    .and_then(|v| v.split_whitespace().next()?.parse::<u64>().ok())
+            })
+            .map(|kb| kb * 1024)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
     }
 }
