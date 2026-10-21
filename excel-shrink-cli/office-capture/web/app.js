@@ -6,6 +6,7 @@
   const requestTimeoutMs = 120000;
   const started = performance.now();
   let nativeStopped = false;
+  let runStarted = false;
 
   const element = id => document.getElementById(id);
   const show = (id, value) => { element(id).textContent = value; };
@@ -270,11 +271,13 @@
   }
 
   Office.onReady(info => {
+    if (runStarted) return;
     if (!info || info.host !== Office.HostType.Excel) {
       connection(false, 'Excel unavailable');
       phase('Open this add-in in Excel');
       return;
     }
+    runStarted = true;
     run().catch(error => {
       connection(false, 'Capture failed');
       phase(error && error.message ? error.message : String(error));

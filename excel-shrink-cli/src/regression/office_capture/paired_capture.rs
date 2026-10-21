@@ -5,6 +5,21 @@ use std::process::Stdio;
 
 const MAX_PNG_BYTES: usize = 160 * 1024 * 1024;
 
+#[derive(Debug)]
+struct TaskpaneRestarted(String);
+
+impl fmt::Display for TaskpaneRestarted {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "capture task pane restarted: {}", self.0)
+    }
+}
+
+impl std::error::Error for TaskpaneRestarted {}
+
+fn retry_with_smaller_tiles(error: &anyhow::Error) -> bool {
+    error.is::<ImageBudgetError>() || error.is::<TaskpaneRestarted>()
+}
+
 pub(in crate::regression) struct PairedVisualResult {
     pub tiles: Vec<PairedImageTile>,
     pub differences: Vec<ImageDifference>,
@@ -18,7 +33,7 @@ pub(in crate::regression) fn compare_paired_visuals(
     output: &Path,
 ) -> Result<PairedVisualResult> {
     match run_pair(plan, original, shrunk, output, 32) {
-        Err(error) if error.downcast_ref::<ImageBudgetError>().is_some() => {
+        Err(error) if retry_with_smaller_tiles(&error) => {
             run_pair(plan, original, shrunk, output, 16)
         }
         result => result,
@@ -33,6 +48,10 @@ fn run_pair(
     megapixels: u32,
 ) -> Result<PairedVisualResult> {
     fs::create_dir_all(output)?;
+    let previous_result = output.join("result.json");
+    if previous_result.exists() {
+        fs::remove_file(previous_result)?;
+    }
     let selected = selected_sheets(plan, None)?;
     let side = |original_side: bool| -> Value {
         let sheets: Vec<_> = selected
@@ -237,6 +256,9 @@ fn run_pair(
     if let Ok(bytes) = fs::read(output.join("result.json")) {
         let result: OfficeResult = serde_json::from_slice(&bytes)?;
         if let Some(error) = result.error {
+            if error.code == "TASKPANE_RESTARTED" {
+                return Err(TaskpaneRestarted(error.message).into());
+            }
             if let Some(comparison_error) = consumer_error.take() {
                 return Err(comparison_error);
             }
@@ -396,6 +418,19 @@ fn read_frame(reader: &mut impl Read) -> Result<Option<(Value, Vec<u8>, Vec<u8>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn smaller_tiles_retry_only_explicit_budget_or_runtime_failures() {
+        assert!(retry_with_smaller_tiles(
+            &TaskpaneRestarted("original".into()).into()
+        ));
+        assert!(retry_with_smaller_tiles(
+            &ImageBudgetError("too large".into()).into()
+        ));
+        assert!(!retry_with_smaller_tiles(&anyhow::anyhow!(
+            "Unexpected paired row heights"
+        )));
+    }
 
     #[test]
     fn streamed_columns_keep_content_overflow_and_a_stable_boundary() -> Result<()> {

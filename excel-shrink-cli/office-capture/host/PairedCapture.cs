@@ -22,6 +22,7 @@ sealed class PairedCapture : IDisposable
     string? imageSide;
     TaskCompletionSource<bool> imageReady = NewImage();
     readonly HashSet<string> completed = new();
+    readonly HashSet<string> clients = new();
     bool failed;
     TaskCompletionSource<bool> sheetReady = NewImage();
     JsonObject? firstHeights;
@@ -42,6 +43,12 @@ sealed class PairedCapture : IDisposable
     {
         if ((string?)data["run_id"] != runId) throw new InvalidOperationException("Capture run changed.");
         if ((string?)data["side"] is not ("original" or "shrunk")) throw new InvalidOperationException("Invalid capture side.");
+    }
+
+    public bool StartClient(string side)
+    {
+        if (side is not ("original" or "shrunk")) throw new InvalidOperationException("Invalid capture side.");
+        lock (gate) { return clients.Add(side); }
     }
 
     public async Task<JsonNode> Heights(JsonObject data)

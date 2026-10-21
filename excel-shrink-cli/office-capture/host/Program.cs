@@ -60,7 +60,7 @@ app.MapGet("/health", () => Results.Json(new { ok = true, run_id = runId,
     config_seen = Volatile.Read(ref configSeen) != 0,
     original_seen = Volatile.Read(ref originalSeen) != 0,
     shrunk_seen = Volatile.Read(ref shrunkSeen) != 0 }));
-app.MapGet("/config", (HttpRequest request) =>
+app.MapGet("/config", async (HttpRequest request) =>
 {
     Interlocked.Exchange(ref configSeen, 1);
     var response = JsonNode.Parse(config.GetRawText())!.AsObject();
@@ -70,6 +70,23 @@ app.MapGet("/config", (HttpRequest request) =>
         if (side is not ("original" or "shrunk")) return Results.BadRequest("Invalid capture side.");
         if (side == "original") Interlocked.Exchange(ref originalSeen, 1);
         else Interlocked.Exchange(ref shrunkSeen, 1);
+        if (!paired.StartClient(side))
+        {
+            await resultGate.WaitAsync();
+            try
+            {
+                if (!File.Exists(resultPath))
+                {
+                    var result = new JsonObject { ["run_id"] = runId, ["heights"] = new JsonArray(), ["captures"] = new JsonArray(),
+                        ["error"] = new JsonObject { ["code"] = "TASKPANE_RESTARTED",
+                            ["message"] = $"The {side} capture task pane restarted; discard this workbook session." } };
+                    await WriteResultAtomically(resultPath, System.Text.Encoding.UTF8.GetBytes(result.ToJsonString()));
+                    await paired.Finish(true);
+                }
+            }
+            finally { resultGate.Release(); }
+            return Results.Conflict("Capture task pane restarted.");
+        }
         response = response[side]!.AsObject();
         response["mode"] = "paired";
         response["side"] = side;

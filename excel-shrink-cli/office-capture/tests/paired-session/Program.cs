@@ -6,6 +6,8 @@ var name = "es-pair-test-" + Guid.NewGuid().ToString("N");
 var sheets = new[] { 1, 3, 5 };
 int EndColumn(int sheet) => sheet switch { 1 => 30, 3 => 40, _ => 1 };
 using var pair = new PairedCapture(name, "test", sheets);
+if (!pair.StartClient("original") || !pair.StartClient("shrunk") || pair.StartClient("original"))
+    throw new Exception("Task pane restart was not detected.");
 using var consumer = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
 await consumer.ConnectAsync();
 var consume = Task.Run(async () =>
