@@ -151,4 +151,24 @@ mod tests {
         assert!(parse("\"incomplete").is_err());
         Ok(())
     }
+    #[test]
+    fn measured_byte_counts_survive_csv_export_and_import() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "verified-ledger-test")?;
+        fs::create_dir_all(&root)?;
+        let record = json!({"identity":"archive:0:a.xlsx","name":"a.xlsx","status":"unchanged","complete":true,
+            "results":[{"profile":"too-aggressive-cleaning","status":"visually unchanged","checks_complete":true,
+                "original_bytes":1234567,"shrunk_bytes":12345,"shrink_seconds":0.123}]});
+        write(&root, &[record])?;
+        let restored = read(&root.join("verified-unchanged.csv"))?;
+        assert_eq!(
+            restored[0]["results"][0]["original_bytes"].as_u64(),
+            Some(1234567)
+        );
+        assert_eq!(
+            restored[0]["results"][0]["shrunk_bytes"].as_u64(),
+            Some(12345)
+        );
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 }

@@ -18,6 +18,7 @@ pub(super) fn unchanged(html: &mut String, files: &[&Value]) {
         if file["previously_verified"] == true {
             html.push_str("<tr><td colspan=\"5\" class=\"muted\">Previously verified; missing measurements are shown as —.</td></tr>");
         }
+        if file["conversion"].is_object() { html.push_str("<tr><td colspan=\"5\" class=\"muted\">Converted from XLS; comparisons and reduction measurements use the converted XLSX baseline.</td></tr>"); }
         profile_rows(html, file);
     }
     html.push_str("</tbody></table></div></details>");
@@ -42,6 +43,7 @@ pub(super) fn skipped(html: &mut String, files: &[&Value]) {
 }
 
 pub(super) fn profiles(html: &mut String, file: &Value) {
+    if file["conversion"].is_object() { html.push_str("<p class=\"muted\">Converted from XLS; comparisons and reduction measurements use the converted XLSX baseline.</p>"); }
     html.push_str("<div class=\"table-scroll\"><table class=\"results-table\"><thead><tr><th>Profile / result</th><th>Reduction</th><th>Shrink</th><th>Open: original → shrunk</th><th>Excel RAM: original → shrunk</th></tr></thead><tbody>");
     profile_rows(html, file);
     html.push_str("</tbody></table></div><p class=\"muted\">Open time: Workbooks.Open in a fresh Excel process with manual calculation. RAM: working set immediately after opening.</p>");

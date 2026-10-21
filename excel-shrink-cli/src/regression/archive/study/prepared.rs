@@ -8,6 +8,8 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     record["prepared"] = json!(false);
     record["results"] = json!([]);
     let extracted = worker::extract(job)?;
+    record["source_bytes"] = json!(fs::metadata(&extracted)?.len());
+    record["source_format"] = json!(extracted.extension().and_then(|e| e.to_str()));
     let source = if extracted
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("xls"))
