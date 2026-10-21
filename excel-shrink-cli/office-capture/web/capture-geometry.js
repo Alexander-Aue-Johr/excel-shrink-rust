@@ -378,7 +378,20 @@
     }
   }
 
-  const api = {SheetGeometry, readHeightRuns, address, pngSize, exceedsExtent, MAX_PIXELS, MAX_EDGE};
+  function probeEnd(geometry, base) {
+    const origin = geometry.x[base + 1];
+    let visible = 0, end = base;
+    for (let column = base + 1; column < geometry.columns.length; column++) {
+      if (geometry.columns[column] <= 0) continue;
+      end = column;
+      visible++;
+      if (visible >= 64 || (geometry.x[column + 1] - origin) * geometry.scaleX >= 1920) break;
+    }
+    if (end === base) throw new Error('No visible column is available for the overflow check');
+    return end;
+  }
+
+  const api = {SheetGeometry, readHeightRuns, address, pngSize, exceedsExtent, probeEnd, MAX_PIXELS, MAX_EDGE};
   root.CaptureGeometry = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 }(typeof window !== 'undefined' ? window : globalThis));

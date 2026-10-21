@@ -15,6 +15,7 @@ sealed class PairedCapture : IDisposable
     int tileIndex;
     JsonObject? firstGeometry;
     string? geometrySide;
+    int? captureEndColumn;
     TaskCompletionSource<JsonNode> geometryReady = NewGeometry();
     JsonObject? firstImage;
     byte[]? firstBytes;
@@ -107,6 +108,7 @@ sealed class PairedCapture : IDisposable
         {
             if (failed || sheetOrdinal >= sheets.Length || (int?)data["sheet_index"] != sheets[sheetOrdinal])
                 throw new InvalidOperationException("Unexpected paired worksheet.");
+            var requestedEnd = ReadEndColumn(data);
             var side = (string)data["side"]!;
             if (firstGeometry is null)
             {
@@ -115,6 +117,9 @@ sealed class PairedCapture : IDisposable
                 return geometryReady.Task.WaitAsync(TimeSpan.FromSeconds(120));
             }
             if (side == geometrySide) throw new InvalidOperationException("Duplicate worksheet geometry.");
+            if ((int?)firstGeometry["max_end_column"] != (int?)data["max_end_column"])
+                throw new InvalidOperationException("Paired capture column limits differ.");
+            var endColumn = Math.Max(ReadEndColumn(firstGeometry), requestedEnd);
             var left = ReadRows(firstGeometry);
             var right = ReadRows(data);
             var cuts = left.Concat(right).SelectMany(p => p).Distinct().Order().ToArray();
@@ -126,13 +131,23 @@ sealed class PairedCapture : IDisposable
                 if (Covers(left)) shared.Add(new JsonArray(cuts[i], cuts[i + 1]));
             }
             if (shared.Count is 0 or > 4096) throw new InvalidOperationException("Invalid paired tile count.");
-            var response = new JsonObject { ["tile_rows"] = shared };
+            var response = new JsonObject { ["tile_rows"] = shared, ["capture_right_column"] = endColumn };
+            captureEndColumn = endColumn;
             var ready = geometryReady;
             firstGeometry = null;
             tileIndex = 0;
             ready.SetResult(response);
             return ready.Task;
         }
+    }
+
+    static int ReadEndColumn(JsonObject data)
+    {
+        var end = (int?)data["end_column"];
+        var maximum = (int?)data["max_end_column"];
+        if (end is null || maximum is null || end < 0 || end > maximum || maximum >= 16384)
+            throw new InvalidOperationException("Invalid paired capture column boundary.");
+        return end.Value;
     }
 
     static int[][] ReadRows(JsonObject data)
@@ -156,6 +171,8 @@ sealed class PairedCapture : IDisposable
         {
             if (failed || sheetOrdinal >= sheets.Length || (int?)data["sheet_index"] != sheets[sheetOrdinal] || (int?)data["tile_index"] != tileIndex)
                 throw new InvalidOperationException("Unexpected paired image.");
+            if (captureEndColumn is null) throw new InvalidOperationException("Paired image arrived before geometry.");
+            data["capture_right_column"] = captureEndColumn.Value;
             ready = imageReady;
             if (firstImage is null)
             {
@@ -211,6 +228,7 @@ sealed class PairedCapture : IDisposable
                 sheetOrdinal++;
                 completed.Clear();
                 geometryReady = NewGeometry();
+                captureEndColumn = null;
                 sheetReady = NewImage();
                 firstHeights = null;
                 heightsReady = NewGeometry();

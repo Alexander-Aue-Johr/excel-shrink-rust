@@ -115,6 +115,7 @@ fn run_pair(
     let mut heights = Vec::new();
     let mut height_sheets = BTreeSet::new();
     let mut changed_rows = BTreeMap::new();
+    let mut capture_columns = BTreeMap::new();
     let mut consumer_error = None;
     loop {
         let frame = read_frame(&mut stream);
@@ -154,6 +155,7 @@ fn run_pair(
             continue;
         }
         let compared = (|| -> Result<()> {
+            let capture_end = info["capture_right_column"].as_u64();
             let info: ImageTile = serde_json::from_value(info)?;
             ensure!(
                 height_sheets.contains(&info.sheet_index),
@@ -169,12 +171,10 @@ fn run_pair(
             );
             let (first, last, start_column, end_column) = parse_range(&info.range)?;
             ensure!(
-                first >= 1
-                    && last <= sheet.bottom_row + 1
-                    && start_column == 1
-                    && end_column == sheet.capture_right_column + 1,
+                first >= 1 && last <= sheet.bottom_row + 1 && start_column == 1,
                 "streamed range exceeds the worksheet plan"
             );
+            validate_streamed_columns(sheet, capture_end, end_column, &mut capture_columns)?;
             ensure!(
                 metadata
                     .insert((info.sheet_index, info.tile_index), info.clone())
@@ -282,6 +282,38 @@ fn run_pair(
     })
 }
 
+fn validate_streamed_columns(
+    sheet: &PairedSheetPlan,
+    capture_end: Option<u64>,
+    range_end: u32,
+    received: &mut BTreeMap<usize, u32>,
+) -> Result<()> {
+    let end = capture_end.context("missing negotiated capture boundary")?;
+    ensure!(
+        end <= u64::from(sheet.capture_right_column) && end + 1 == u64::from(range_end),
+        "streamed columns exceed the negotiated capture boundary"
+    );
+    for config in [&sheet.original_config, &sheet.shrunk_config] {
+        let base = config["base_right_column"]
+            .as_u64()
+            .context("missing content boundary")?;
+        ensure!(end >= base, "streamed columns omit worksheet content");
+        if config["horizontal_overflow_required"] == true && base < 16383 {
+            ensure!(end > base, "streamed columns omit the overflow probe");
+        }
+    }
+    let end = end as u32;
+    if let Some(previous) = received.get(&sheet.sheet_index) {
+        ensure!(
+            *previous == end,
+            "streamed column boundary changed between tiles"
+        );
+    } else {
+        received.insert(sheet.sheet_index, end);
+    }
+    Ok(())
+}
+
 fn compare_streamed_heights(
     metadata: &Value,
     original: &[u8],
@@ -364,6 +396,44 @@ fn read_frame(reader: &mut impl Read) -> Result<Option<(Value, Vec<u8>, Vec<u8>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn streamed_columns_keep_content_overflow_and_a_stable_boundary() -> Result<()> {
+        let sheet = PairedSheetPlan {
+            sheet_index: 1,
+            sheet_name: "Sheet1".into(),
+            bottom_row: 9,
+            row_height_bottom_row: 9,
+            capture_right_column: 65,
+            original_config: json!({"base_right_column":1,"horizontal_overflow_required":true}),
+            shrunk_config: json!({"base_right_column":4,"horizontal_overflow_required":true}),
+        };
+        let mut received = BTreeMap::new();
+        validate_streamed_columns(&sheet, Some(26), 27, &mut received)?;
+        validate_streamed_columns(&sheet, Some(26), 27, &mut received)?;
+        validate_streamed_columns(&sheet, Some(65), 66, &mut BTreeMap::new())?;
+        let tile = ImageTile {
+            sheet_index: 1,
+            sheet_name: "Sheet1".into(),
+            range: "A1:AA10".into(),
+            tile_index: 0,
+            image_path: PathBuf::new(),
+        };
+        validate_tile_coverage(&BTreeMap::from([((1, 0), tile)]), &[&sheet], None)?;
+        assert!(validate_streamed_columns(&sheet, Some(27), 28, &mut received).is_err());
+        for (end, range_end) in [
+            (None, 27),
+            (Some(66), 67),
+            (Some(26), 28),
+            (Some(3), 4),
+            (Some(4), 5),
+        ] {
+            assert!(
+                validate_streamed_columns(&sheet, end, range_end, &mut BTreeMap::new()).is_err()
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn height_frames_reject_missing_rows_and_duplicate_sheets() -> Result<()> {

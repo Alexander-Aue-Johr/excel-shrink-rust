@@ -2,7 +2,19 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {SheetGeometry} = require('../web/capture-geometry.js');
+const {SheetGeometry, probeEnd} = require('../web/capture-geometry.js');
+
+test('overflow width uses measured pixels and skips hidden columns', () => {
+  const measured = columns => {
+    const x = [0];
+    for (const width of columns) x.push(x.at(-1) + width);
+    return {columns, x, scaleX: 4 / 3};
+  };
+  assert.equal(probeEnd(measured(new Array(65).fill(60)), 0), 24);
+  assert.equal(probeEnd(measured([60, 0, 0, ...new Array(64).fill(120)]), 0), 14);
+  assert.equal(probeEnd(measured(new Array(80).fill(1)), 0), 64);
+  assert.throws(() => probeEnd(measured([60, 0, 0]), 0), /No visible column/);
+});
 
 test('drawing bounds allow arithmetic roundoff but reject a real overhang', () => {
   const {exceedsExtent} = require('../web/capture-geometry.js');
@@ -87,6 +99,18 @@ test('capture and calibration sum individual visible row heights', async () => {
     assert.equal(tile.cropHeight, (tile.core.r1 - tile.core.r0) * 18 + 1);
     assert.ok(tile.cropY + tile.cropHeight <= tile.expectedHeight);
     assert.ok(tile.width * tile.expectedHeight <= result.maxPixels);
+  }
+});
+
+test('narrower paired columns retain the conservative row cuts and image budget', async () => {
+  const result = await geometry(officeModel(), 9999, 65);
+  const wide = result.tiles(65, null);
+  const rows = wide.map(tile => [tile.core.r0, tile.core.r1]);
+  const narrow = result.tiles(probeEnd(result, 1), null, rows);
+  assert.deepEqual(narrow.map(tile => [tile.core.r0, tile.core.r1]), rows);
+  for (let index = 0; index < narrow.length; index++) {
+    assert.ok(narrow[index].width < wide[index].width);
+    assert.ok(narrow[index].width * narrow[index].expectedHeight <= result.maxPixels);
   }
 });
 

@@ -139,19 +139,6 @@
     return [...new Set(sheet.rows)].sort((a, b) => a - b);
   }
 
-  function probeEnd(geometry, base, requested) {
-    const origin = geometry.x[base + 1];
-    let visible = 0, end = base;
-    for (let column = base + 1; column < geometry.columns.length; column++) {
-      if (geometry.columns[column] <= 0) continue;
-      end = column;
-      visible++;
-      if (visible >= requested || (geometry.x[column + 1] - origin) * geometry.scaleX >= 1920) break;
-    }
-    if (end === base) throw new Error('No visible column is available for the overflow check');
-    return end;
-  }
-
   async function captureSheet(config, sheet) {
     const {bottom, right} = bounds(sheet, true);
     const targets = targetRows(sheet, bottom);
@@ -168,14 +155,23 @@
     await geometry.read(maxColumn);
     await geometry.calibrate();
     if (probe && geometry.fixedWidth !== null) throw new Error(`Cannot check right-edge overflow on fixed-width sheet ${sheet.name}`);
-    const end = sharedEnd !== undefined ? sharedEnd : probe ? probeEnd(geometry, right, 64) : right;
-    await verifyDrawingBounds(sheet, geometry, end);
+    const proposedEnd = probe ? CaptureGeometry.probeEnd(geometry, right) : right;
+    let end = sharedEnd !== undefined ? sharedEnd : proposedEnd;
+    // Plan rows at the widest allowed extent. A narrower negotiated image keeps
+    // these row cuts, so both workbooks remain within the same pixel budget.
     let tiles = geometry.tiles(end, targets, sheet.tile_rows);
     if (config.mode === 'paired') {
       const shared = await request('/pair/geometry', {run_id: config.run_id, side: config.side,
-        sheet_index: sheet.index, tile_rows: tiles.map(tile => [tile.core.r0, tile.core.r1])});
+        sheet_index: sheet.index, end_column: proposedEnd, max_end_column: end,
+        tile_rows: tiles.map(tile => [tile.core.r0, tile.core.r1])});
+      if (!Number.isInteger(shared.capture_right_column) ||
+          shared.capture_right_column < proposedEnd || shared.capture_right_column > end) {
+        throw new Error(`Invalid negotiated capture boundary for ${sheet.name}`);
+      }
+      end = shared.capture_right_column;
       tiles = geometry.tiles(end, targets, shared.tile_rows);
     }
+    await verifyDrawingBounds(sheet, geometry, end);
     const captures = [];
     for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
       const tile = tiles[tileIndex];
