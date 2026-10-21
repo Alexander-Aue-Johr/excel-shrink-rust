@@ -6,7 +6,7 @@ pub(super) fn unchanged(html: &mut String, files: &[&Value]) {
     if files.is_empty() {
         return;
     }
-    let _ = write!(html, "<details class=\"hero workbook-list\" id=\"unchanged\"><summary>{} visually unchanged workbooks</summary><p class=\"muted\">Reduction bars show the percentage of file size removed. — means the measurement was not recorded.</p><div class=\"table-scroll\"><table class=\"results-table\"><thead><tr><th>Workbook / profile</th><th>Reduction</th><th>Shrink</th><th>Open: original → shrunk</th><th>Excel RAM: original → shrunk</th></tr></thead><tbody>", files.len());
+    let _ = write!(html, "<details class=\"hero workbook-list\" id=\"unchanged\"><summary>{} visually unchanged workbooks</summary><p class=\"muted\">Reduction bars show the percentage of file size removed. — means the measurement was not recorded. Excel opening uses a fresh process with manual calculation; RAM is its working set immediately after opening.</p><div class=\"table-scroll\"><table class=\"results-table\"><thead><tr><th>Workbook / profile</th><th>Reduction</th><th>Shrink</th><th>Open: original → shrunk</th><th>Excel RAM: original → shrunk</th></tr></thead><tbody>", files.len());
     for file in files {
         let id = file_id(file);
         let _ = write!(
@@ -44,7 +44,7 @@ pub(super) fn skipped(html: &mut String, files: &[&Value]) {
 pub(super) fn profiles(html: &mut String, file: &Value) {
     html.push_str("<div class=\"table-scroll\"><table class=\"results-table\"><thead><tr><th>Profile / result</th><th>Reduction</th><th>Shrink</th><th>Open: original → shrunk</th><th>Excel RAM: original → shrunk</th></tr></thead><tbody>");
     profile_rows(html, file);
-    html.push_str("</tbody></table></div>");
+    html.push_str("</tbody></table></div><p class=\"muted\">Open time: Workbooks.Open in a fresh Excel process with manual calculation. RAM: working set immediately after opening.</p>");
 }
 
 pub(super) fn totals(html: &mut String, files: &[&Value]) {

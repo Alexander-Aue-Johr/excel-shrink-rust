@@ -33,7 +33,16 @@ pub(super) fn write(output: &Path, records: &[Value]) -> Result<()> {
                 .unwrap_or_default()
         };
         let row = [
-            record["corpus_name"].as_str().or_else(|| record["name"].as_str()?.split_once(" / ").map(|(corpus,_)|corpus)).unwrap_or("").to_owned(),
+            record["corpus_name"]
+                .as_str()
+                .or_else(|| {
+                    record["name"]
+                        .as_str()?
+                        .split_once(" / ")
+                        .map(|(corpus, _)| corpus)
+                })
+                .unwrap_or("")
+                .to_owned(),
             record["member_name"]
                 .as_str()
                 .or(record["name"].as_str())
@@ -45,8 +54,14 @@ pub(super) fn write(output: &Path, records: &[Value]) -> Result<()> {
                 .map(|n| format!("{:.3}", n * 100.0))
                 .unwrap_or_default(),
             number("shrink_seconds"),
-            number("original_bytes"),
-            number("shrunk_bytes"),
+            profile["original_bytes"]
+                .as_u64()
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            profile["shrunk_bytes"]
+                .as_u64()
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
             record["identity"].as_str().unwrap_or("").to_owned(),
         ];
         text.push_str(&row.iter().map(|s| quote(s)).collect::<Vec<_>>().join(","));
@@ -78,12 +93,13 @@ pub(super) fn read(path: &Path) -> Result<Vec<Value>> {
                 "invalid verified-workbook CSV row"
             );
             let num = |i: usize| row[i].parse::<f64>().ok();
+            let bytes = |i: usize| row[i].parse::<u64>().ok();
             Ok(
                 json!({"corpus_name":row[0], "member_name":row[1], "name":row[1],
             "identity":row[7], "complete":true,"status":"unchanged", "previously_verified":true,
             "results":[{"profile":row[2],"status":"visually unchanged","checks_complete":true,
                 "reduction_ratio":num(3).map(|v|v/100.0),"shrink_seconds":num(4),
-                "original_bytes":num(5),"shrunk_bytes":num(6),"sheets":[],"failures":[]}]}),
+                "original_bytes":bytes(5),"shrunk_bytes":bytes(6),"sheets":[],"failures":[]}]}),
             )
         })
         .collect()

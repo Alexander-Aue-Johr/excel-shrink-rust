@@ -249,6 +249,73 @@ Completed entries are not repeated. Add `--retry-skipped` to retry problem files
 The final exit status is nonzero if any files were skipped or any checks found
 differences; either condition is recorded without stopping the remaining workbooks.
 
+
+### Named corpus study
+
+```sh
+cargo run --release -p excel-shrink-cli -- regression study --request-file .tmp/study-request.json --output-root .tmp/regression/study
+```
+
+The request file gives each archive a display name:
+
+```json
+{
+  "corpora": [
+    { "name": "Corpus A", "url": "https://example.org/a.zip" },
+    { "name": "Corpus B", "url": "C:/datasets/b.zip" }
+  ]
+}
+```
+
+Alternatively, repeat `--corpus "Corpus A" "https://example.org/a.zip"`.
+The optional `access_url` works as described above. Actual dataset URLs belong in
+local request files, outside version control. Both Windows and WSL can run the study;
+Windows Excel and the capture host prerequisites are required.
+
+For each corpus, preparation finishes before visual comparisons start:
+
+1. Extract one XLSX or XLS. Excel converts legacy XLS to XLSX; conversion metadata
+   records whether macros were removed. Comparisons use the converted XLSX baseline.
+2. Shrink with `default`, `maximum-cleaning`, and `too-aggressive-cleaning`, sequentially.
+   Shrink timings cover the cleanup and output write, excluding Excel and report work.
+   Store the baseline and outputs in one disposable ZIP bundle per workbook.
+3. Compare `too-aggressive-cleaning` against the baseline. Only its visually changed
+   sheets are compared with `maximum-cleaning`. Only sheets still changed then are
+   compared with `default`. Other profiles are not run. Uncompared profiles are labeled
+   accordingly; their size and shrink measurements remain available.
+4. Delete each bundle after a completed comparison. Keep difference images and records.
+   Failed comparisons retain their bundle for a retry; loose workbooks are removed.
+
+The default and maximum profiles also receive fresh Excel opening measurements.
+These measure `Workbooks.Open` with manual calculation, not Excel startup or a full
+recalculation. RAM is the process working set immediately after opening. Conversion,
+shrinking, and visual checks remain separate measurements. Close unrelated CPU-heavy
+applications when gathering timings for publication.
+
+The dashboard is `report.html`, with corpus pages and stable workbook/difference links.
+Unchanged workbooks appear in a collapsed measurement table. `verified-unchanged.csv`
+is a readable, portable list of completed unchanged checks. `records/` remains the
+resume journal; the runner never parses HTML to decide what to skip.
+
+To keep earlier results, add `--import-report path/to/diagnosis.json`, or
+`--verified path/to/verified-unchanged.csv`. Completed unchanged maximum/stronger checks
+are retained without repeating them; missing historical timings remain missing.
+Previous differences are scheduled first. Reuse the same output directory to resume.
+Prepared bundles are reused only with the same executable and source archive catalog.
+`--retry-skipped` revisits technical failures. A changed build regenerates pending bundles.
+
+Use `--limit 3` for at most three new workbooks per corpus, `--prepare-only` to stop
+before comparisons, `--compare-only` to use existing preparations, and `--report-only`
+to import/rebuild reports without running Excel or downloading archives. As with archive
+runs, differences or skipped files produce a nonzero final status while allowing the
+remaining files to finish. Workbooks have a 1,800-second phase deadline and a 120-second
+Excel startup deadline by default. The worker also stops if its parent disappears.
+
+Capture windows use a separate inactive Windows desktop. Each owned Excel job has a
+4 GiB private-memory limit; `EXCEL_SHRINK_EXCEL_MEMORY_MIB` can change it. Captures remain
+serial. Row-height and image checks share the same two Excel sessions, with 32-megapixel
+image tiles and the existing 16-megapixel fallback.
+
 ## VS Code debugging
 
 The corpus-backed smoke regressions are also available as Rust tests inside `excel-shrink-cli`.
