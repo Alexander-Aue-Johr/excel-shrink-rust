@@ -147,6 +147,11 @@ pub struct Cli {
     #[arg(long)]
     keep_unreferenced_hidden_content_cells: bool,
 
+    /// Ignore chart, drawing and pivot data references when removing hidden content.
+    /// This diagnostic opt-in can remove values that are still displayed in charts.
+    #[arg(long)]
+    cell_formula_references_only: bool,
+
     /// Policy for cells that are only relevant because of applyProtection/protection style
     /// while the worksheet has no active sheetProtection.
     ///

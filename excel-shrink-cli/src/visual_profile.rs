@@ -9,6 +9,7 @@ const REMOVE_TEXTLESS_STYLE_REPRESENTATIVES: &str = "remove-textless-style-repre
 const REMOVE_TEXTLESS_COLUMN_STYLE_REPRESENTATIVES: &str =
     "remove-textless-column-style-representatives";
 const REMOVE_UNREFERENCED_WHITESPACE_CELLS: &str = "remove-unreferenced-whitespace-cells";
+const CELL_FORMULA_REFERENCES_ONLY: &str = "cell-formula-references-only";
 const KEEP_UNREFERENCED_HIDDEN_CONTENT_CELLS: &str = "keep-unreferenced-hidden-content-cells";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +20,7 @@ pub struct VisualProfileConfig {
     pub inactive_protection_cell_policy: InactiveProtectionCellPolicyArg,
     pub remove_unreferenced_whitespace_cells: bool,
     pub keep_unreferenced_hidden_content_cells: bool,
+    pub cell_formula_references_only: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -27,7 +29,7 @@ pub struct PredefinedVisualProfile {
     pub config: VisualProfileConfig,
 }
 
-pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 8] = [
+pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 9] = [
     PredefinedVisualProfile {
         name: "default",
         config: VisualProfileConfig {
@@ -37,6 +39,7 @@ pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 8] = [
             inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::Remove,
             remove_unreferenced_whitespace_cells: false,
             keep_unreferenced_hidden_content_cells: false,
+            cell_formula_references_only: false,
         },
     },
     PredefinedVisualProfile {
@@ -48,6 +51,7 @@ pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 8] = [
             inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::Remove,
             remove_unreferenced_whitespace_cells: false,
             keep_unreferenced_hidden_content_cells: false,
+            cell_formula_references_only: false,
         },
     },
     PredefinedVisualProfile {
@@ -59,6 +63,7 @@ pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 8] = [
             inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::Remove,
             remove_unreferenced_whitespace_cells: false,
             keep_unreferenced_hidden_content_cells: false,
+            cell_formula_references_only: false,
         },
     },
     PredefinedVisualProfile {
@@ -70,6 +75,7 @@ pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 8] = [
             inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::Remove,
             remove_unreferenced_whitespace_cells: true,
             keep_unreferenced_hidden_content_cells: false,
+            cell_formula_references_only: false,
         },
     },
     PredefinedVisualProfile {
@@ -81,6 +87,7 @@ pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 8] = [
             inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::Remove,
             remove_unreferenced_whitespace_cells: false,
             keep_unreferenced_hidden_content_cells: true,
+            cell_formula_references_only: false,
         },
     },
     PredefinedVisualProfile {
@@ -92,6 +99,7 @@ pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 8] = [
             inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::KeepInDataRange,
             remove_unreferenced_whitespace_cells: false,
             keep_unreferenced_hidden_content_cells: false,
+            cell_formula_references_only: false,
         },
     },
     PredefinedVisualProfile {
@@ -103,6 +111,7 @@ pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 8] = [
             inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::KeepAll,
             remove_unreferenced_whitespace_cells: false,
             keep_unreferenced_hidden_content_cells: false,
+            cell_formula_references_only: false,
         },
     },
     PredefinedVisualProfile {
@@ -114,6 +123,19 @@ pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 8] = [
             inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::Remove,
             remove_unreferenced_whitespace_cells: true,
             keep_unreferenced_hidden_content_cells: false,
+            cell_formula_references_only: false,
+        },
+    },
+    PredefinedVisualProfile {
+        name: "too-aggressive-cleaning",
+        config: VisualProfileConfig {
+            remove_textless_default_font_representatives: true,
+            remove_textless_style_representatives: true,
+            remove_textless_column_style_representatives: true,
+            inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::Remove,
+            remove_unreferenced_whitespace_cells: true,
+            keep_unreferenced_hidden_content_cells: false,
+            cell_formula_references_only: true,
         },
     },
 ];
@@ -127,6 +149,7 @@ impl Default for VisualProfileConfig {
             inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::Remove,
             remove_unreferenced_whitespace_cells: false,
             keep_unreferenced_hidden_content_cells: false,
+            cell_formula_references_only: false,
         }
     }
 }
@@ -146,6 +169,7 @@ impl VisualProfileConfig {
             inactive_protection_cell_policy: cli.inactive_protection_cell_policy,
             remove_unreferenced_whitespace_cells: cli.remove_unreferenced_whitespace_cells,
             keep_unreferenced_hidden_content_cells: cli.keep_unreferenced_hidden_content_cells,
+            cell_formula_references_only: cli.cell_formula_references_only,
         }
     }
 
@@ -176,6 +200,11 @@ impl VisualProfileConfig {
             self.keep_unreferenced_hidden_content_cells,
             KEEP_UNREFERENCED_HIDDEN_CONTENT_CELLS,
         );
+        push_enabled_flag(
+            &mut flags,
+            self.cell_formula_references_only,
+            CELL_FORMULA_REFERENCES_ONLY,
+        );
         flags
     }
 
@@ -194,13 +223,15 @@ impl VisualProfileConfig {
              {REMOVE_TEXTLESS_COLUMN_STYLE_REPRESENTATIVES}={}\n\
              inactive-protection-cell-policy={}\n\
              {REMOVE_UNREFERENCED_WHITESPACE_CELLS}={}\n\
-             {KEEP_UNREFERENCED_HIDDEN_CONTENT_CELLS}={}\n",
+             {KEEP_UNREFERENCED_HIDDEN_CONTENT_CELLS}={}\n\
+             {CELL_FORMULA_REFERENCES_ONLY}={}\n",
             self.remove_textless_default_font_representatives,
             self.remove_textless_style_representatives,
             self.remove_textless_column_style_representatives,
             self.inactive_protection_cell_policy_name(),
             self.remove_unreferenced_whitespace_cells,
-            self.keep_unreferenced_hidden_content_cells
+            self.keep_unreferenced_hidden_content_cells,
+            self.cell_formula_references_only
         )
     }
 
@@ -238,6 +269,11 @@ impl VisualProfileConfig {
             self.keep_unreferenced_hidden_content_cells,
             KEEP_UNREFERENCED_HIDDEN_CONTENT_CELLS,
         );
+        push_enabled_cli_flag(
+            &mut args,
+            self.cell_formula_references_only,
+            CELL_FORMULA_REFERENCES_ONLY,
+        );
         args
     }
 }
@@ -264,6 +300,7 @@ pub enum VisualProfile {
     KeepInactiveProtectionCellsInDataRange,
     KeepAllInactiveProtectionCells,
     MaximumCleaning,
+    TooAggressiveCleaning,
     Custom { config_hash: String },
 }
 
@@ -280,6 +317,7 @@ impl VisualProfile {
             }
             Self::KeepAllInactiveProtectionCells => "keep-all-inactive-protection-cells",
             Self::MaximumCleaning => "maximum-cleaning",
+            Self::TooAggressiveCleaning => "too-aggressive-cleaning",
             Self::Custom { .. } => "custom",
         }
     }
@@ -433,7 +471,24 @@ fn visual_profile_from_config_with_hash(
         inactive_protection_cell_policy,
         remove_unreferenced_whitespace_cells: remove_whitespace,
         keep_unreferenced_hidden_content_cells: keep_hidden,
+        cell_formula_references_only,
     } = *config;
+
+    if cell_formula_references_only {
+        return if remove_default_font
+            && remove_style
+            && remove_column_style
+            && inactive_protection_cell_policy == Remove
+            && remove_whitespace
+            && !keep_hidden
+        {
+            VisualProfile::TooAggressiveCleaning
+        } else {
+            VisualProfile::Custom {
+                config_hash: config_hash.to_string(),
+            }
+        };
+    }
 
     match (
         remove_default_font,
@@ -503,6 +558,7 @@ mod tests {
             inactive_protection_cell_policy,
             remove_unreferenced_whitespace_cells: remove_whitespace,
             keep_unreferenced_hidden_content_cells: keep_hidden,
+            cell_formula_references_only: false,
         }
     }
 

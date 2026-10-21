@@ -1692,7 +1692,10 @@ fn plan_archive<R: Read + Seek>(
                 &mut plan,
             ),
             ArchiveEntryKind::CopyOriginal => {
-                if context.advanced_cleanup_enabled && is_object_reference_part(&filename) {
+                if context.advanced_cleanup_enabled
+                    && !context.cli.cell_formula_references_only
+                    && is_object_reference_part(&filename)
+                {
                     match read_archive_entry(&mut file) {
                         Ok(xml) => plan.object_references.push(xml),
                         Err(error) => {

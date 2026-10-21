@@ -44,6 +44,7 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         store_output: false,
         remove_unreferenced_whitespace_cells: false,
         keep_unreferenced_hidden_content_cells: false,
+        cell_formula_references_only: false,
         inactive_protection_cell_policy: crate::InactiveProtectionCellPolicyArg::Remove,
         console_log_level: LogLevel::Info,
         file_log_level: None,
@@ -734,7 +735,7 @@ fn pipeline_retains_hidden_chart_and_drawing_inputs() {
     cli.output = root.join("out");
     cli.disable_multiprocessing = true;
     cli.writer_workers = Some(1);
-    process_files(vec![input], &cli).unwrap();
+    process_files(vec![input.clone()], &cli).unwrap();
     let mut archive =
         ZipArchive::new(File::open(cli.output.join("objects.xlsx")).unwrap()).unwrap();
     let mut sheet = String::new();
@@ -753,5 +754,16 @@ fn pipeline_retains_hidden_chart_and_drawing_inputs() {
         !sheet.contains(r#"r="E2""#),
         "an unused hidden value should still be removed"
     );
+
+    cli.cell_formula_references_only = true;
+    cli.output = root.join("cell-only");
+    process_files(vec![input], &cli).unwrap();
+    let mut archive =
+        ZipArchive::new(File::open(cli.output.join("objects.xlsx")).unwrap()).unwrap();
+    let mut sheet = String::new();
+    archive.by_name("xl/worksheets/sheet1.xml").unwrap().read_to_string(&mut sheet).unwrap();
+    for address in ["A2", "B2", "C2", "D2", "E2"] {
+        assert!(!sheet.contains(&format!(r#"r="{address}""#)));
+    }
     std::fs::remove_dir_all(root).unwrap();
 }
