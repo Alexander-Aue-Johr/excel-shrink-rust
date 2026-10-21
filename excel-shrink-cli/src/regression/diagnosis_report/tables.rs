@@ -18,7 +18,9 @@ pub(super) fn unchanged(html: &mut String, files: &[&Value]) {
         if file["previously_verified"] == true {
             html.push_str("<tr><td colspan=\"5\" class=\"muted\">Previously verified; missing measurements are shown as —.</td></tr>");
         }
-        if file["conversion"].is_object() { html.push_str("<tr><td colspan=\"5\" class=\"muted\">Converted from XLS; comparisons and reduction measurements use the converted XLSX baseline.</td></tr>"); }
+        if file["conversion"].is_object() {
+            html.push_str("<tr><td colspan=\"5\" class=\"muted\">Converted from XLS; comparisons and reduction measurements use the converted XLSX baseline.</td></tr>");
+        }
         profile_rows(html, file);
     }
     html.push_str("</tbody></table></div></details>");
@@ -33,17 +35,39 @@ pub(super) fn skipped(html: &mut String, files: &[&Value]) {
         let id = file_id(file);
         let _ = write!(
             html,
-            "<tr id=\"{id}\"><th scope=\"row\">{} {}</th><td>{}</td></tr>",
+            "<tr id=\"{id}\"><th scope=\"row\">{} {}</th><td><p>{}</p>",
             escape(text(file, "name")),
             permalink(&id),
             escape(text(file, "error"))
         );
+        for result in items(file, "results") {
+            let failures = items(result, "failures");
+            if failures.is_empty() {
+                continue;
+            }
+            let _ = write!(
+                html,
+                "<details><summary>{}: check details</summary><ul>",
+                escape(text(result, "profile"))
+            );
+            for failure in failures {
+                let _ = write!(
+                    html,
+                    "<li>{}</li>",
+                    escape(failure.as_str().unwrap_or("Unknown failure"))
+                );
+            }
+            html.push_str("</ul></details>");
+        }
+        html.push_str("</td></tr>");
     }
     html.push_str("</tbody></table></div></details>");
 }
 
 pub(super) fn profiles(html: &mut String, file: &Value) {
-    if file["conversion"].is_object() { html.push_str("<p class=\"muted\">Converted from XLS; comparisons and reduction measurements use the converted XLSX baseline.</p>"); }
+    if file["conversion"].is_object() {
+        html.push_str("<p class=\"muted\">Converted from XLS; comparisons and reduction measurements use the converted XLSX baseline.</p>");
+    }
     html.push_str("<div class=\"table-scroll\"><table class=\"results-table\"><thead><tr><th>Profile / result</th><th>Reduction</th><th>Shrink</th><th>Open: original → shrunk</th><th>Excel RAM: original → shrunk</th></tr></thead><tbody>");
     profile_rows(html, file);
     html.push_str("</tbody></table></div><p class=\"muted\">Open time: Workbooks.Open in a fresh Excel process with manual calculation. RAM: working set immediately after opening.</p>");
@@ -140,6 +164,21 @@ fn memory(value: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn skipped_workbooks_disclose_the_profile_failure() {
+        let skipped_file = json!({"identity":"pivot","name":"pivot.xlsx",
+        "error":"One or more comparisons could not be completed.","results":[
+            {"profile":"default","failures":[]},
+            {"profile":"too-aggressive-cleaning","failures":["/pair/heights: HTTP 400 <unexpected heights>"]}
+        ]});
+        let mut html = String::new();
+        skipped(&mut html, &[&skipped_file]);
+        assert!(html.contains("One or more comparisons could not be completed."));
+        assert!(html.contains("<summary>too-aggressive-cleaning: check details</summary>"));
+        assert!(html.contains("/pair/heights: HTTP 400 &lt;unexpected heights&gt;"));
+        assert!(!html.contains("<summary>default"));
+    }
 
     #[test]
     fn corpus_savings_are_weighted_by_bytes_and_missing_timings_are_not_zero() {
