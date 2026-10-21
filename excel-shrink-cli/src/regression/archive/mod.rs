@@ -7,9 +7,9 @@ use std::time::Duration;
 use zip::ZipArchive;
 
 mod download;
+mod study;
 mod worker;
 mod verified;
-mod study;
 pub(super) use study::{run as run_study, StudyArgs};
 pub(super) use worker::{run_worker, WorkerArgs};
 
@@ -44,6 +44,14 @@ pub(super) struct ArchiveArgs {
     max_workbook_bytes: u64,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+enum JobMode {
+    #[default]
+    Legacy,
+    Prepare,
+    Compare,
+}
+
 #[derive(Serialize, Deserialize)]
 struct MemberJob {
     archive: PathBuf,
@@ -54,6 +62,10 @@ struct MemberJob {
     record: PathBuf,
     report_root: PathBuf,
     max_workbook_bytes: u64,
+    #[serde(default)]
+    mode: JobMode,
+    #[serde(default)]
+    bundle: Option<PathBuf>,
 }
 
 pub(super) fn run(args: ArchiveArgs, log_level: LogLevel) -> Result<()> {
@@ -204,6 +216,8 @@ pub(super) fn run(args: ArchiveArgs, log_level: LogLevel) -> Result<()> {
                 record: record.clone(),
                 report_root: output.clone(),
                 max_workbook_bytes: args.max_workbook_bytes,
+                mode: JobMode::Legacy,
+                bundle: None,
             };
             let current = existing.unwrap_or(records.len());
             let pending = json!({"identity":identity,"name":job.name,"complete":false,"status":"in progress","results":[]});
@@ -331,7 +345,11 @@ fn workbook_members<R: Read + std::io::Seek>(
                 continue;
             }
         };
-        if !entry.is_dir() && entry.name().to_ascii_lowercase().ends_with(".xlsx") {
+        if !entry.is_dir()
+            && [".xlsx", ".xls"]
+                .iter()
+                .any(|ext| entry.name().to_ascii_lowercase().ends_with(ext))
+        {
             members.push((index, entry.name().to_owned()));
         }
     }

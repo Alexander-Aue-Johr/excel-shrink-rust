@@ -1,6 +1,10 @@
-//! Import completed checks into named corpus dashboards.
+//! Separate isolated shrink measurements from targeted Excel comparisons.
 use super::*;
+
+mod execution;
 use super::verified as ledger;
+use execution::process;
+mod prepared;
 
 #[derive(Parser, Debug)]
 pub(in crate::regression) struct StudyArgs {
@@ -58,7 +62,15 @@ struct Request {
     urls: Vec<String>,
     access_url: Option<String>,
 }
-pub(in crate::regression) fn run(args: StudyArgs, _log_level: LogLevel) -> Result<()> {
+struct Source {
+    id: String,
+    name: String,
+    path: PathBuf,
+    members: Vec<(usize, String)>,
+    fingerprint: String,
+}
+
+pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result<()> {
     let root = repo_root();
     let mut request = match &args.request_file {
         Some(path) => {
@@ -148,14 +160,177 @@ pub(in crate::regression) fn run(args: StudyArgs, _log_level: LogLevel) -> Resul
         false,
         "loading archives",
     )?;
+    if args.report_only {
+        return Ok(());
+    }
+    let downloads = resolve_path(&root, args.download_root.clone());
+    fs::create_dir_all(&downloads)?;
+    if let Some(url) = &request.access_url {
+        download::authorize(&downloads, url)?;
+    }
+    let mut sources = Vec::new();
+    for (i, corpus) in request.corpora.iter().enumerate() {
+        let id = corpus_info[i]["id"].as_str().unwrap().to_owned();
+        let loaded = (|| -> Result<Source> {
+            let path = if corpus.url.starts_with("https://") || corpus.url.starts_with("http://") {
+                download::archive(&downloads, &corpus.url)?
+            } else {
+                resolve_path(&root, PathBuf::from(&corpus.url))
+            };
+            let mut zip = ZipArchive::new(fs::File::open(&path)?)?;
+            let members = workbook_members(&mut zip)?;
+            let mut catalog = Vec::new();
+            for (index, name) in &members {
+                let checksum = zip
+                    .by_index_raw(*index)
+                    .ok()
+                    .map(|entry| (entry.crc32(), entry.size()));
+                catalog.push((name, checksum));
+            }
+            let fingerprint = artifact_cache::sha256(&serde_json::to_vec(&catalog)?);
+            ensure!(!members.is_empty(), "ZIP contains no XLSX or XLS members");
+            Ok(Source {
+                id: id.clone(),
+                name: corpus.name.clone(),
+                path,
+                members,
+                fingerprint,
+            })
+        })();
+        match loaded {
+            Ok(source) => {
+                corpus_info[i]["total_workbooks"] = json!(source.members.len());
+                sources.push(source);
+            }
+            Err(error) => {
+                archive_error(&mut records, &id, &corpus.name, &format!("{error:#}"));
+                let r = records.last_mut().unwrap();
+                r["corpus_id"] = json!(id);
+                r["corpus_name"] = json!(corpus.name);
+            }
+        }
+    }
+    let limits = ArchiveArgs {
+        urls: Vec::new(),
+        request_file: None,
+        download_root: downloads,
+        output_root: Some(output.clone()),
+        workbook_timeout_seconds: args.workbook_timeout_seconds,
+        startup_timeout_seconds: args.startup_timeout_seconds,
+        max_success_per_archive: None,
+        retry_skipped: args.retry_skipped,
+        max_workbook_bytes: args.max_workbook_bytes,
+    };
+    let mut limited = false;
+    let missing_prepared = false;
+    let producer = artifact_cache::hash_file(&std::env::current_exe()?)?;
+    for source in &sources {
+        let mut members = source.members.clone();
+        // Previously problematic files go first; untouched entries follow archive order.
+        members.sort_by_key(|(index, name)| {
+            let id = identity(source, *index, name);
+            member_priority(&records, &id)
+        });
+        let selected: Vec<_> = members
+            .into_iter()
+            .filter(|(index, name)| {
+                let id = identity(source, *index, name);
+                records
+                    .iter()
+                    .find(|r| r["identity"] == id)
+                    .is_none_or(|r| {
+                        if r["complete"] == true {
+                            return args.retry_skipped && r["status"] == "skipped";
+                        }
+                        true
+                    })
+            })
+            .collect();
+        let count = args
+            .limit
+            .map(|n| n as usize)
+            .unwrap_or(selected.len())
+            .min(selected.len());
+        limited |= count < selected.len();
+        let selected = &selected[..count];
+        if !args.compare_only {
+            for (index, name) in selected {
+                let id = identity(source, *index, name);
+                let pos = ensure_record(&mut records, source, *index, name);
+                let bundle = bundle_path(&output, &id);
+                if reusable_preparation(&records[pos], &bundle, &producer, &source.fingerprint) {
+                    continue;
+                }
+                records[pos]["prepared_by"] = json!(producer);
+                records[pos]["source_fingerprint"] = json!(source.fingerprint);
+                process(
+                    source,
+                    *index,
+                    &id,
+                    pos,
+                    JobMode::Prepare,
+                    &output,
+                    &mut records,
+                    &corpus_info,
+                    &limits,
+                    log_level,
+                )?;
+            }
+        }
+
+    }
+    let finished = !args.prepare_only && records.iter().all(|r| r["complete"] == true);
+    publish(
+        &output,
+        &records,
+        &corpus_info,
+        finished,
+        limited,
+        if args.prepare_only {
+            "prepared"
+        } else {
+            "finished"
+        },
+    )?;
+    eprintln!("[study] Report: {}", output.join("report.html").display());
+    if let Err(error) = visual_report::open_visual_report(&output.join("report.html")) {
+        eprintln!("Could not open report: {error:#}");
+    }
+    ensure!(!missing_prepared, "Some selected workbooks have no preparation from this build; run without --compare-only first");
+    ensure!(
+        !records.iter().any(|r| matches!(
+            r["status"].as_str(),
+            Some("differences" | "skipped" | "archive error")
+        )),
+        "Study contains differences or skipped workbooks; see report"
+    );
     Ok(())
 }
 
+fn identity(source: &Source, index: usize, name: &str) -> String {
+    format!("{}:{index}:{name}", source.id)
+}
+fn bundle_path(output: &Path, id: &str) -> PathBuf {
+    output.join("prepared").join(format!(
+        "{}.zip",
+        &artifact_cache::sha256(id.as_bytes())[..20]
+    ))
+}
 fn record_path(output: &Path, id: &str) -> PathBuf {
     output.join("records").join(format!(
         "{}.json",
         &artifact_cache::sha256(id.as_bytes())[..20]
     ))
+}
+
+fn ensure_record(records: &mut Vec<Value>, source: &Source, index: usize, name: &str) -> usize {
+    let id = identity(source, index, name);
+    if let Some(i) = records.iter().position(|r| r["identity"] == id) {
+        return i;
+    }
+    records.push(json!({"identity":id,"name":name,"member_name":name,"corpus_id":source.id,"corpus_name":source.name,
+        "complete":false,"status":"pending","results":[]}));
+    records.len() - 1
 }
 
 fn import(
@@ -235,10 +410,28 @@ fn publish(
 pub(super) fn run_job(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
     match job.mode {
         JobMode::Prepare => prepared::prepare(job, record, log_level),
-        JobMode::Compare => prepared::compare(job, record),
+        JobMode::Compare => anyhow::bail!("prepared comparisons are not enabled"),
         JobMode::Legacy => unreachable!(),
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+fn member_priority(records: &[Value], identity: &str) -> u8 {
+    if records
+        .iter()
+        .any(|r| r["identity"] == identity && r["previous_difference"] == true)
+    {
+        0
+    } else {
+        1
+    }
+}
+
+fn reusable_preparation(record: &Value, bundle: &Path, producer: &str, source: &str) -> bool {
+    record["prepared"] == true
+        && bundle.is_file()
+        && record["prepared_by"] == producer
+        && record["source_fingerprint"] == source
+}

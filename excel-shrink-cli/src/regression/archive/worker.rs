@@ -10,6 +10,13 @@ pub(in crate::regression) fn run_worker(args: WorkerArgs, log_level: LogLevel) -
     let job: MemberJob = serde_json::from_slice(&fs::read(args.job)?)?;
     start_watchdog(&job);
     let mut record: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
+    if job.mode != JobMode::Legacy {
+        if let Err(error) = study::run_job(&job, &mut record, log_level) {
+            record["status"] = json!("skipped");
+            record["error"] = json!(format!("{error:#}"));
+        }
+        return write_record(&job.record, &record);
+    }
     let checked = (|| -> Result<()> {
         let input = extract(&job)?;
         // Reject invalid grid coordinates before Excel can display a repair dialog.
@@ -71,7 +78,7 @@ pub(in crate::regression) fn run_worker(args: WorkerArgs, log_level: LogLevel) -
     write_record(&job.record, &record)
 }
 
-fn extract(job: &MemberJob) -> Result<PathBuf> {
+pub(super) fn extract(job: &MemberJob) -> Result<PathBuf> {
     let mut zip = ZipArchive::new(fs::File::open(&job.archive)?)?;
     let mut entry = zip.by_index(job.index)?;
     ensure!(
@@ -89,7 +96,12 @@ fn extract(job: &MemberJob) -> Result<PathBuf> {
         "XLSX entry exceeds --max-workbook-bytes ({})",
         job.max_workbook_bytes
     );
-    let input = job.work.join("source.xlsx");
+    let extension = if entry.name().to_ascii_lowercase().ends_with(".xls") {
+        "xls"
+    } else {
+        "xlsx"
+    };
+    let input = job.work.join(format!("source.{extension}"));
     let mut file = fs::File::create(&input)?;
     let bytes = std::io::copy(
         &mut (&mut entry).take(job.max_workbook_bytes + 1),
@@ -151,8 +163,14 @@ pub(super) fn launch(
                 std::env::var("WSLENV").unwrap_or_default()
             ),
         )
-        .env("EXCEL_SHRINK_PARENT_HEARTBEAT", job.work.join("parent-heartbeat"))
-        .env("EXCEL_SHRINK_WORKER_DEADLINE", args.workbook_timeout_seconds.to_string())
+        .env(
+            "EXCEL_SHRINK_PARENT_HEARTBEAT",
+            job.work.join("parent-heartbeat"),
+        )
+        .env(
+            "EXCEL_SHRINK_WORKER_DEADLINE",
+            args.workbook_timeout_seconds.to_string(),
+        )
         .stdin(Stdio::null())
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log));
@@ -178,7 +196,10 @@ pub(super) fn launch(
     let outcome = wait_for_worker(
         &mut running.child,
         Duration::from_secs(args.workbook_timeout_seconds),
-        || { fs::write(&heartbeat, b"running")?; on_progress() },
+        || {
+            fs::write(&heartbeat, b"running")?;
+            on_progress()
+        },
     );
     running.stop()?;
     outcome
@@ -301,7 +322,8 @@ pub(super) fn retain_evidence(value: &mut Value, work: &Path, evidence: &Path) -
                                 path.extension().is_some_and(|e| e == "png"),
                                 "non-PNG report evidence"
                             );
-                            let digest = artifact_cache::sha256(relative.to_string_lossy().as_bytes());
+                            let digest =
+                                artifact_cache::sha256(relative.to_string_lossy().as_bytes());
                             let target = evidence.join(format!("{}.png", &digest[..20]));
                             if !copied.contains_key(&path) {
                                 fs::create_dir_all(target.parent().unwrap())?;
@@ -355,6 +377,8 @@ mod tests {
             record: root.join("record.json"),
             report_root: root.clone(),
             max_workbook_bytes: 4,
+            mode: JobMode::Legacy,
+            bundle: None,
         };
         assert_eq!(fs::read(extract(&job)?)?, b"1234");
         job.index = 1;

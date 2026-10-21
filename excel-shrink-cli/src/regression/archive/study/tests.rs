@@ -68,3 +68,34 @@ fn imports_verified_files_without_restarting_them_and_queues_prior_differences()
     fs::remove_dir_all(output)?;
     Ok(())
 }
+
+#[test]
+fn retry_discards_old_evidence_even_when_preparation_or_unpacking_fails() -> Result<()> {
+    let output = test_directory("retry")?;
+    let work = output.join("work");
+    fs::create_dir_all(&work)?;
+    let invalid = output.join("invalid.zip");
+    fs::write(&invalid, b"not a ZIP")?;
+    let mut job = MemberJob {
+        archive: invalid.clone(),
+        index: 0,
+        identity: "test:0:bad.xlsx".into(),
+        name: "bad.xlsx".into(),
+        work: work.clone(),
+        record: output.join("record.json"),
+        report_root: output.clone(),
+        max_workbook_bytes: 1024,
+        mode: JobMode::Prepare,
+        bundle: Some(invalid),
+    };
+    for mode in [JobMode::Prepare] {
+        job.mode = mode;
+        let mut record = json!({"results":[{"profile":"maximum-cleaning","sheets":[
+            {"original_image":"evidence/old.png","shrunk_image":"evidence/old-shrunk.png"}]}]});
+        assert!(run_job(&job, &mut record, LogLevel::Warn).is_err());
+        assert_eq!(record["results"], json!([]));
+        worker::retain_evidence(&mut record, &work, &output.join("evidence"))?;
+    }
+    fs::remove_dir_all(output)?;
+    Ok(())
+}
