@@ -10,6 +10,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     let extracted = worker::extract(job)?;
     record["source_bytes"] = json!(fs::metadata(&extracted)?.len());
     record["source_format"] = json!(extracted.extension().and_then(|e| e.to_str()));
+    record["source_sha256"] = json!(artifact_cache::hash_file(&extracted)?);
     let source = if extracted
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("xls"))
@@ -26,7 +27,6 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
         extracted
     };
     let baseline = artifact_cache::prepare_baseline(&source)?;
-    record["source_sha256"] = json!(baseline.source_sha256);
     record["baseline_sha256"] = json!(baseline.snapshot.manifest.archive_sha256);
     let source = baseline.snapshot.path;
     record["baseline_repaired"] = json!(baseline.workbook_xml_changed);
