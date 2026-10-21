@@ -23,6 +23,8 @@ sealed class PairedCapture : IDisposable
     readonly HashSet<string> completed = new();
     bool failed;
     TaskCompletionSource<bool> sheetReady = NewImage();
+    JsonObject? firstHeights;
+    TaskCompletionSource<JsonNode> heightsReady = NewGeometry();
 
     static TaskCompletionSource<JsonNode> NewGeometry() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     static TaskCompletionSource<bool> NewImage() => new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -39,6 +41,63 @@ sealed class PairedCapture : IDisposable
     {
         if ((string?)data["run_id"] != runId) throw new InvalidOperationException("Capture run changed.");
         if ((string?)data["side"] is not ("original" or "shrunk")) throw new InvalidOperationException("Invalid capture side.");
+    }
+
+    public async Task<JsonNode> Heights(JsonObject data)
+    {
+        Validate(data);
+        JsonObject? other;
+        TaskCompletionSource<JsonNode> ready;
+        lock (gate)
+        {
+            if (failed || sheetOrdinal >= sheets.Length || (int?)data["sheet_index"] != sheets[sheetOrdinal])
+                throw new InvalidOperationException("Unexpected paired row heights.");
+            ready = heightsReady;
+            if (ready.Task.IsCompleted) throw new InvalidOperationException("Row heights already compared.");
+            other = firstHeights;
+            if (other is null) firstHeights = data;
+            else if ((string?)other["side"] == (string?)data["side"])
+                throw new InvalidOperationException("Duplicate row heights.");
+        }
+        if (other is not null)
+        {
+            try
+            {
+                var original = (string?)data["side"] == "original" ? data : other;
+                var shrunk = (string?)data["side"] == "shrunk" ? data : other;
+                var metadata = new JsonObject { ["kind"] = "heights", ["sheet_index"] = (int)data["sheet_index"]! };
+                byte[] Encode(JsonNode node) => System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(node);
+                await WriteFrame(Encode(metadata), Encode(original["heights"]!), Encode(shrunk["heights"]!));
+                var ack = new byte[1];
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+                await pipe.ReadExactlyAsync(ack, timeout.Token);
+                if (ack[0] != 3) throw new InvalidOperationException("Row-height comparison failed.");
+                var header = new byte[4];
+                await pipe.ReadExactlyAsync(header, timeout.Token);
+                var length = BinaryPrimitives.ReadInt32LittleEndian(header);
+                if (length < 0 || length > 16 * 1024 * 1024) throw new InvalidOperationException("Invalid height response.");
+                var body = new byte[length];
+                await pipe.ReadExactlyAsync(body, timeout.Token);
+                ready.SetResult(JsonNode.Parse(body) ?? throw new InvalidOperationException("Missing height response."));
+            }
+            catch (Exception error) { ready.TrySetException(error); throw; }
+        }
+        return await ready.Task.WaitAsync(TimeSpan.FromSeconds(120));
+    }
+
+    async Task WriteFrame(byte[] metadata, byte[] original, byte[] shrunk)
+    {
+        await connected.WaitAsync(TimeSpan.FromSeconds(30));
+        var header = new byte[16];
+        BinaryPrimitives.WriteInt32LittleEndian(header, 12 + metadata.Length + original.Length + shrunk.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(4), metadata.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), original.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(12), shrunk.Length);
+        await pipe.WriteAsync(header);
+        await pipe.WriteAsync(metadata);
+        await pipe.WriteAsync(original);
+        await pipe.WriteAsync(shrunk);
+        await pipe.FlushAsync();
     }
 
     public Task<JsonNode> Geometry(JsonObject data)
@@ -124,17 +183,7 @@ sealed class PairedCapture : IDisposable
                 var original = (string?)data["side"] == "original" ? png : bytes!;
                 var shrunk = (string?)data["side"] == "shrunk" ? png : bytes!;
                 var metadata = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(data);
-                await connected.WaitAsync(TimeSpan.FromSeconds(30));
-                var header = new byte[16];
-                BinaryPrimitives.WriteInt32LittleEndian(header, 12 + metadata.Length + original.Length + shrunk.Length);
-                BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(4), metadata.Length);
-                BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), original.Length);
-                BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(12), shrunk.Length);
-                await pipe.WriteAsync(header);
-                await pipe.WriteAsync(metadata);
-                await pipe.WriteAsync(original);
-                await pipe.WriteAsync(shrunk);
-                await pipe.FlushAsync();
+                await WriteFrame(metadata, original, shrunk);
                 var ack = new byte[1];
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
                 await pipe.ReadExactlyAsync(ack, timeout.Token);
@@ -163,6 +212,8 @@ sealed class PairedCapture : IDisposable
                 completed.Clear();
                 geometryReady = NewGeometry();
                 sheetReady = NewImage();
+                firstHeights = null;
+                heightsReady = NewGeometry();
                 ready.SetResult(true);
             }
             return ready.Task.WaitAsync(TimeSpan.FromSeconds(120));
@@ -179,6 +230,7 @@ sealed class PairedCapture : IDisposable
             geometryReady.TrySetException(new InvalidOperationException("Paired capture stopped."));
             sheetReady.TrySetException(new InvalidOperationException("Paired capture stopped."));
             imageReady.TrySetException(new InvalidOperationException("Paired capture stopped."));
+            heightsReady.TrySetException(new InvalidOperationException("Paired capture stopped."));
         }
         await connected.WaitAsync(TimeSpan.FromSeconds(30));
         await pipe.WriteAsync(new byte[4]);

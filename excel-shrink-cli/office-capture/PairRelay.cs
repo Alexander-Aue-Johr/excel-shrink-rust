@@ -35,6 +35,23 @@ public static class PairRelay
                     int ack = input.ReadByte();
                     if (ack < 0) throw new EndOfStreamException("Pixel consumer closed.");
                     pipe.WriteByte((byte)ack);
+                    if (ack == 3)
+                    {
+                        // Row-height comparisons return the rows needing evidence.
+                        var responseHeader = new byte[4];
+                        ReadExactly(input, responseHeader, 4);
+                        int responseLength = BitConverter.ToInt32(responseHeader, 0);
+                        if (responseLength < 0 || responseLength > 16 * 1024 * 1024)
+                            throw new IOException("Invalid height response.");
+                        pipe.Write(responseHeader, 0, 4);
+                        while (responseLength > 0)
+                        {
+                            int count = input.Read(buffer, 0, Math.Min(responseLength, buffer.Length));
+                            if (count == 0) throw new EndOfStreamException();
+                            pipe.Write(buffer, 0, count);
+                            responseLength -= count;
+                        }
+                    }
                     pipe.Flush();
                 }
             }

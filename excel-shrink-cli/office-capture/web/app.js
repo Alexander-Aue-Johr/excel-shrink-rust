@@ -240,10 +240,19 @@
     const completed = [];
     progress(0, config.sheets.length);
     try {
-      for (const sheet of config.sheets) {
+      for (let sheet of config.sheets) {
         progress(completed.length, config.sheets.length, `${sheet.index} · ${sheet.name}`);
         phase(config.mode === 'heights' ? 'Checking row heights' : 'Capturing worksheet');
         await checkedWorksheet(sheet);
+        if (config.mode === 'paired' && config.check_heights) {
+          phase('Checking row heights');
+          const heights = await rowHeights(sheet);
+          const decision = await request('/pair/heights', {run_id: config.run_id,
+            side: config.side, sheet_index: sheet.index, heights});
+          if (!Array.isArray(decision.rows)) throw new Error('Missing row-height comparison');
+          sheet = {...sheet, rows: decision.rows.length ? decision.rows : undefined};
+          phase(decision.rows.length ? 'Capturing changed rows' : 'Capturing worksheet');
+        }
         if (config.mode === 'heights') result.heights.push(await rowHeights(sheet));
         else result.captures.push(...await captureSheet(config, sheet));
         if (config.mode === 'paired') {

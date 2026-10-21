@@ -77,6 +77,12 @@ app.MapPost("/pair/geometry", async (HttpRequest request) =>
     try { return Results.Json(await paired.Geometry((await JsonNode.ParseAsync(request.Body))!.AsObject())); }
     catch (Exception error) { return Results.BadRequest(error.Message); }
 });
+app.MapPost("/pair/heights", async (HttpRequest request) =>
+{
+    if (paired is null) return Results.BadRequest("Not a paired capture.");
+    try { return Results.Json(await paired.Heights((await JsonNode.ParseAsync(request.Body))!.AsObject())); }
+    catch (Exception error) { return Results.BadRequest(error.Message); }
+});
 app.MapPost("/pair/sheet", async (HttpRequest request) =>
 {
     if (paired is null) return Results.BadRequest("Not a paired capture.");
