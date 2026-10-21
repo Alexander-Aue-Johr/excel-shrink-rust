@@ -171,7 +171,19 @@ fn write_page(
             escape(failure.as_str().unwrap_or("Aggregate check failed"))
         );
     }
-    for file in files.iter().filter(|f| f["complete"] != true) {
+    let waiting = files
+        .iter()
+        .filter(|f| matches!(f["status"].as_str(), Some("pending" | "prepared")))
+        .count();
+    if waiting > 0 {
+        let _ = write!(
+            html,
+            "<p class=\"muted\">{waiting} workbooks awaiting checks</p>"
+        );
+    }
+    for file in files.iter().filter(|f| {
+        f["complete"] != true && !matches!(f["status"].as_str(), Some("pending" | "prepared"))
+    }) {
         let _ = write!(
             html,
             "<p class=\"active-workbook\">In progress: {}</p>",
@@ -276,6 +288,23 @@ mod tests {
         let corpus_b = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "b"))))?;
         assert!(corpus_b.contains(&format!("id=\"{}\"", anchor("file", "new"))));
         assert!(!corpus_b.contains("equal.xlsx"));
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn queued_workbooks_are_summarized_without_being_called_active() -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("queued-report-{}", std::process::id()));
+        let report = json!({"complete":false,"workbooks":[
+            {"identity":"a","name":"pending.xlsx","status":"pending","complete":false},
+            {"identity":"b","name":"prepared.xlsx","status":"prepared","complete":false},
+            {"identity":"c","name":"active.xlsx","status":"comparing","complete":false}
+        ]});
+        let html = fs::read_to_string(write(&dir, &report)?)?;
+        assert!(html.contains("2 workbooks awaiting checks"));
+        assert_eq!(html.matches("class=\"active-workbook\"").count(), 1);
+        assert!(html.contains("In progress: active.xlsx"));
+        assert!(!html.contains("pending.xlsx"));
         fs::remove_dir_all(dir)?;
         Ok(())
     }
