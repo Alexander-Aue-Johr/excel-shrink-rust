@@ -51,7 +51,7 @@ sealed class PairedCapture : IDisposable
         lock (gate)
         {
             if (failed || sheetOrdinal >= sheets.Length || (int?)data["sheet_index"] != sheets[sheetOrdinal])
-                throw new InvalidOperationException("Unexpected paired row heights.");
+                throw new InvalidOperationException($"Unexpected paired row heights from {(string?)data["side"]}: sheet {(int?)data["sheet_index"]}; expected {(sheetOrdinal < sheets.Length ? sheets[sheetOrdinal] : -1)}; stopped={failed}.");
             ready = heightsReady;
             if (ready.Task.IsCompleted) throw new InvalidOperationException("Row heights already compared.");
             other = firstHeights;

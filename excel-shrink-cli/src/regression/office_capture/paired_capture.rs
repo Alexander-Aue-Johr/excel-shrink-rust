@@ -436,6 +436,28 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    #[ignore = "requires Windows Excel and explicit EXCEL_SHRINK_CAPTURE_{ORIGINAL,SHRUNK,OUTPUT} paths"]
+    fn compares_external_workbooks() -> Result<()> {
+        let path = |name: &str| -> Result<PathBuf> {
+            Ok(std::env::var_os(name)
+                .with_context(|| format!("set {name}"))?
+                .into())
+        };
+        let original = path("EXCEL_SHRINK_CAPTURE_ORIGINAL")?;
+        let shrunk = path("EXCEL_SHRINK_CAPTURE_SHRUNK")?;
+        let output = path("EXCEL_SHRINK_CAPTURE_OUTPUT")?;
+        let plan = plan_pair(&original, &shrunk)?;
+        let result = compare_paired_visuals(&plan, &original, &shrunk, &output)?;
+        println!(
+            "Compared {} sheets: {} row-height differences, {} image differences",
+            plan.sheets.len(),
+            result.heights.len(),
+            result.differences.len()
+        );
+        Ok(())
+    }
+
     fn write_workbook(path: &Path, changed_height: bool, value: u32) -> Result<()> {
         let mut zip = zip::ZipWriter::new(fs::File::create(path)?);
         let sheet = format!(
