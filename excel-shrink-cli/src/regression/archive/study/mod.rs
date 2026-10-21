@@ -116,6 +116,16 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         .context("report directory is already in use")?;
     fs::create_dir_all(output.join("records"))?;
     let mut records = load_records(&output)?;
+    for record in &mut records {
+        if record["complete"] != true {
+            // A process from the previous invocation is no longer running.
+            record["status"] = json!(if record["prepared"] == true {
+                "prepared"
+            } else {
+                "pending"
+            });
+        }
+    }
     let mut corpus_info = Vec::new();
     for corpus in &request.corpora {
         let id = artifact_cache::sha256(corpus.url.as_bytes());
@@ -405,6 +415,21 @@ fn import(
         } else if row["complete"] == true && row["status"] == "skipped" {
             // Keep earlier technical failures separate until an explicit retry.
             row["previously_skipped"] = json!(true);
+            let mut reasons = vec![row["error"]
+                .as_str()
+                .unwrap_or("Check did not finish")
+                .to_owned()];
+            for profile in row["results"].as_array().into_iter().flatten() {
+                for failure in profile["failures"].as_array().into_iter().flatten() {
+                    if let Some(message) = failure.as_str() {
+                        reasons.push(format!(
+                            "{}: {message}",
+                            profile["profile"].as_str().unwrap_or("profile")
+                        ));
+                    }
+                }
+            }
+            row["error"] = json!(reasons.join("\n"));
             row["results"] = json!([]);
         } else {
             row["previous_difference"] = json!(row["status"] == "differences");

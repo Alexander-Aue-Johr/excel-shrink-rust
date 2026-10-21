@@ -29,7 +29,10 @@ fn imports_verified_files_without_restarting_them_and_queues_prior_differences()
         "complete":true,"status":"differences","results":[{"sheets":[{"original_image":"old.png"}]}]}));
     files.push(
         json!({"identity":"archive:327:broken.xlsx","name":"broken.xlsx",
-        "complete":true,"status":"skipped","error":"old failure","results":[]}),
+        "complete":true,"status":"skipped","error":"old failure","results":[{
+            "profile":"maximum-cleaning","failures":["Workbook startup timed out"],
+            "sheets":[{"original_image":"old.png"}]
+        }]}),
     );
     files.push(json!({"identity":"another:0:unrelated.xlsx","complete":true,"status":"unchanged"}));
     fs::write(&input, serde_json::to_vec(&json!({"workbooks":files}))?)?;
@@ -52,8 +55,12 @@ fn imports_verified_files_without_restarting_them_and_queues_prior_differences()
     assert_eq!(records[326]["previous_difference"], true);
     assert_eq!(records[326]["results"], json!([]));
     assert_eq!(records[327]["status"], "skipped");
-    assert_eq!(records[327]["error"], "old failure");
+    assert_eq!(
+        records[327]["error"],
+        "old failure\nmaximum-cleaning: Workbook startup timed out"
+    );
     assert_eq!(records[327]["previously_skipped"], true);
+    assert_eq!(records[327]["results"], json!([]));
 
     // Repeating an import must not replace newer results with the old report.
     records[326]["status"] = json!("unchanged");
