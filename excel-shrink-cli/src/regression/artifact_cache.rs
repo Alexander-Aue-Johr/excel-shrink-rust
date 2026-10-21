@@ -81,7 +81,7 @@ pub(crate) fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
         atomic_replace(&pending, path)
     })();
     if result.is_err() { let _ = fs::remove_file(&pending); }
-    result
+    result.with_context(|| format!("atomically write {}", path.display()))
 }
 fn atomic_replace(source: &Path, target: &Path) -> Result<()> {
     #[cfg(not(windows))]
@@ -95,7 +95,22 @@ fn atomic_replace(source: &Path, target: &Path) -> Result<()> {
         let to = fs::canonicalize(target.parent().context("no parent")?)?.join(target.file_name().context("no filename")?);
         let a: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
         let b: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
-        if unsafe { MoveFileExW(a.as_ptr(), b.as_ptr(), 0x1 | 0x8) } == 0 { return Err(std::io::Error::last_os_error().into()); }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if unsafe { MoveFileExW(a.as_ptr(), b.as_ptr(), 0x1 | 0x8) } != 0 {
+                break;
+            }
+            let error = std::io::Error::last_os_error();
+            // Readers without FILE_SHARE_DELETE (including PowerShell) can block
+            // replacement briefly. Keep the old complete file until they close;
+            // never delete it to work around a sharing or permission error.
+            let transient = matches!(error.raw_os_error(), Some(5 | 32 | 33));
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if !transient || remaining.is_zero() {
+                return Err(error).with_context(|| format!("replace {} with {}", target.display(), source.display()));
+            }
+            std::thread::sleep(remaining.min(std::time::Duration::from_millis(50)));
+        }
     }
     Ok(())
 }

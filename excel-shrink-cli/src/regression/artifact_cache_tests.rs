@@ -1,5 +1,48 @@
 use super::*;
 struct Directory(PathBuf);
+
+#[cfg(windows)]
+#[test]
+fn atomic_write_waits_for_a_windows_reader_to_release_the_target() -> Result<()> {
+    use std::{os::windows::fs::OpenOptionsExt, time::Duration};
+
+    let directory = Directory::new();
+    let target = directory.0.join("diagnosis.json");
+    fs::write(&target, b"old complete report")?;
+    // PowerShell readers can omit FILE_SHARE_DELETE, temporarily blocking rename.
+    let reader = fs::OpenOptions::new().read(true).share_mode(1).open(&target)?;
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        drop(reader);
+    });
+    let result = atomic_write(&target, b"new complete report");
+    release.join().unwrap();
+    result?;
+    assert_eq!(fs::read(&target)?, b"new complete report");
+    assert_eq!(fs::read_dir(&directory.0)?.count(), 1);
+    Ok(())
+}
+
+#[cfg(windows)]
+#[test]
+fn atomic_write_preserves_the_old_report_when_a_windows_lock_persists() -> Result<()> {
+    use std::{os::windows::fs::OpenOptionsExt, time::{Duration, Instant}};
+
+    let directory = Directory::new();
+    let target = directory.0.join("locked-report.json");
+    fs::write(&target, b"old complete report")?;
+    let reader = fs::OpenOptions::new().read(true).share_mode(1).open(&target)?;
+    let started = Instant::now();
+    let error = atomic_write(&target, b"new complete report").unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(10), "lock retry must be bounded");
+    assert!(format!("{error:#}").contains("locked-report.json"));
+    assert_eq!(fs::read(&target)?, b"old complete report");
+    assert_eq!(fs::read_dir(&directory.0)?.count(), 1, "pending output must be cleaned up");
+    drop(reader);
+    atomic_write(&target, b"new complete report")?;
+    assert_eq!(fs::read(&target)?, b"new complete report");
+    Ok(())
+}
 impl Directory {
     fn new()->Self {
         let p=std::env::temp_dir().join(format!("es-cache-v9-{}-{}-{}",std::process::id(),SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos(),NEXT.fetch_add(1,Ordering::Relaxed)));
