@@ -59,6 +59,8 @@ enum RegressionCommand {
     Corpus(RegressionRunArgs),
     /// Download ZIP archives and diagnose one workbook at a time.
     Archive(archive::ArchiveArgs),
+    /// Prepare named corpora, then compare three cleanup levels with targeted worksheets.
+    Study(archive::StudyArgs),
     #[command(hide = true)]
     ArchiveWorker(archive::WorkerArgs),
 }
@@ -418,6 +420,7 @@ pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
     let console_log_level = cli.console_log_level;
     match cli.command {
         RegressionCommand::Archive(args) => archive::run(args, console_log_level),
+        RegressionCommand::Study(args) => archive::run_study(args, console_log_level),
         RegressionCommand::ArchiveWorker(args) => archive::run_worker(args, console_log_level),
         RegressionCommand::Smoke(args) => run_suite_or_visual_profile_matrix(
             "smoke",

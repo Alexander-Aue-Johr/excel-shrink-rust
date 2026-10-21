@@ -9,6 +9,8 @@ use zip::ZipArchive;
 mod download;
 mod worker;
 mod verified;
+mod study;
+pub(super) use study::{run as run_study, StudyArgs};
 pub(super) use worker::{run_worker, WorkerArgs};
 
 #[derive(Parser, Debug)]
