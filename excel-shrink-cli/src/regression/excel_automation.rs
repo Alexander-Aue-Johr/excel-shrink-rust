@@ -18,6 +18,70 @@ pub struct ExcelSavedWorkbook {
     pub path: PathBuf,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExcelOpenMetrics {
+    pub open_seconds: f64,
+    pub working_set_bytes: u64,
+    pub private_bytes: u64,
+    pub calculation: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub macros_removed: Option<bool>,
+}
+
+pub fn measure_workbook_open(input: &Path, work_dir: &Path) -> anyhow::Result<ExcelOpenMetrics> {
+    open_workbook(input, None, work_dir)
+}
+
+pub fn convert_legacy_workbook(
+    input: &Path,
+    output: &Path,
+    work_dir: &Path,
+) -> anyhow::Result<ExcelOpenMetrics> {
+    anyhow::ensure!(input != output, "conversion input and output must differ");
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    open_workbook(input, Some(output), work_dir)
+}
+
+fn open_workbook(
+    input: &Path,
+    output: Option<&Path>,
+    work_dir: &Path,
+) -> anyhow::Result<ExcelOpenMetrics> {
+    fs::create_dir_all(work_dir)?;
+    let transfer = RecalculationTransfer::new()?;
+    let local_input = transfer.0.join(format!("input.{}", workbook_extension(input)));
+    fs::copy(input, &local_input)?;
+    let script = transfer.0.join("open.ps1");
+    fs::write(&script, include_str!("excel_open.ps1"))?;
+    fs::write(transfer.0.join("archive_processes.ps1"), include_str!("archive_processes.ps1"))?;
+    fs::write(transfer.0.join("CaptureProcesses.cs"), include_str!("../../office-capture/CaptureProcesses.cs"))?;
+    let progress = transfer.0.join("progress.log");
+    let metrics = transfer.0.join("metrics.json");
+    let converted = transfer.0.join("converted.xlsx");
+    let mut args = vec![
+        ("InputPath", power_shell_path(&local_input)?),
+        ("MetricsPath", power_shell_path(&metrics)?),
+        ("ProgressPath", power_shell_path(&progress)?),
+    ];
+    if output.is_some() {
+        args.push(("OutputPath", power_shell_path(&converted)?));
+    }
+    let result = run_power_shell_script(&script, &args);
+    if progress.is_file() {
+        fs::copy(&progress, work_dir.join("excel-open-progress.log"))?;
+    }
+    result?;
+    let measured: ExcelOpenMetrics = serde_json::from_slice(&fs::read(&metrics)?)?;
+    fs::copy(&metrics, work_dir.join("excel-open-metrics.json"))?;
+    if let Some(output) = output {
+        anyhow::ensure!(converted.is_file(), "Excel did not create a converted workbook");
+        fs::copy(&converted, output)?;
+    }
+    Ok(measured)
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct ExcelScreenshotDifferenceSummary {
     pub total_differences: usize,
