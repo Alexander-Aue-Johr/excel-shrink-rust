@@ -280,13 +280,15 @@ $comparisonAddInId = $null
 $comparisonRegistration = $false
 $relay = $null
 $ownedProcesses = $null
+$captureDesktop = $null
 $addInId = $null
 $registrationDone = $false
 $previousRegistration = $null
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 try {
-    Add-Type -Path (Join-Path $PSScriptRoot 'CaptureProcesses.cs')
+    Add-Type -Path @((Join-Path $PSScriptRoot 'CaptureProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureDesktop.cs'))
     $ownedProcesses = New-Object CaptureProcesses
+    $captureDesktop = New-Object CaptureDesktop
     $dotnet = Get-DotNet8
     $env:DOTNET_ROOT = Split-Path -Parent $dotnet
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
@@ -384,12 +386,10 @@ try {
     $previousRegistration = Register-AddIn $addInId $manifestPath
     $registrationDone = $true
     $excelExecutable = Find-ExcelExecutable
-    $excelProcess = Start-Process -FilePath $excelExecutable -ArgumentList ('/x ' + (Quote-Argument $workbookCopy)) -PassThru
-    $ownedProcesses.Add($excelProcess)
+    $excelProcess = $captureDesktop.Start($excelExecutable, ('/x ' + (Quote-Argument $workbookCopy)), $ownedProcesses)
 
     if ($ComparisonWorkbookPath) {
-        $comparisonProcess = Start-Process -FilePath $excelExecutable -ArgumentList ('/x ' + (Quote-Argument $comparisonCopy)) -PassThru
-        $ownedProcesses.Add($comparisonProcess)
+        $comparisonProcess = $captureDesktop.Start($excelExecutable, ('/x ' + (Quote-Argument $comparisonCopy)), $ownedProcesses)
     }
 
     $startup.Restart()
@@ -435,6 +435,7 @@ try {
     Stop-OwnedProcess $comparisonProcess
     Stop-OwnedProcess $excelProcess
     Stop-OwnedProcess $hostProcess
+    if ($null -ne $captureDesktop) { $captureDesktop.Dispose() }
     if ($comparisonRegistration) { Restore-AddIn $comparisonAddInId $comparisonPrevious }
     if ($registrationDone) { Restore-AddIn $addInId $previousRegistration }
     Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue

@@ -55,10 +55,8 @@ try {
     $ownedProcesses.Add((Get-Process -Id $excelProcessId))
     Write-RecalcProgress "excel pid=$excelProcessId"
 
-    # Keep Excel visible during regression recalculation.
-    # Recalculation can legitimately take a long time, and a visible
-    # application makes genuine Excel hangs distinguishable from slow work.
-    $excel.Visible = $true
+    $excel.Visible = $false
+    $excel.Interactive = $false
 
     $excel.DisplayAlerts = $false
     $excel.AskToUpdateLinks = $false
