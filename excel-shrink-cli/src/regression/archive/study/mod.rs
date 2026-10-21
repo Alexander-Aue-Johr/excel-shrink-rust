@@ -207,6 +207,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                 let r = records.last_mut().unwrap();
                 r["corpus_id"] = json!(id);
                 r["corpus_name"] = json!(corpus.name);
+                write_record(&record_path(&output, r["identity"].as_str().unwrap()), r)?;
             }
         }
     }
@@ -222,7 +223,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         max_workbook_bytes: args.max_workbook_bytes,
     };
     let mut limited = false;
-    let missing_prepared = false;
+    let mut missing_prepared = false;
     let producer = artifact_cache::hash_file(&std::env::current_exe()?)?;
     for source in &sources {
         let mut members = source.members.clone();
@@ -277,7 +278,36 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                 )?;
             }
         }
-
+        if !args.prepare_only {
+            for (index, name) in selected {
+                let id = identity(source, *index, name);
+                let pos = ensure_record(&mut records, source, *index, name);
+                if !reusable_preparation(
+                    &records[pos],
+                    &bundle_path(&output, &id),
+                    &producer,
+                    &source.fingerprint,
+                ) {
+                    if args.compare_only && records[pos]["status"] != "skipped" {
+                        eprintln!("[study] Not prepared with this build: {name}");
+                        missing_prepared = true;
+                    }
+                    continue;
+                }
+                process(
+                    source,
+                    *index,
+                    &id,
+                    pos,
+                    JobMode::Compare,
+                    &output,
+                    &mut records,
+                    &corpus_info,
+                    &limits,
+                    log_level,
+                )?;
+            }
+        }
     }
     let finished = !args.prepare_only && records.iter().all(|r| r["complete"] == true);
     publish(
@@ -370,7 +400,7 @@ fn import(
         let member = id.splitn(3, ':').nth(2).unwrap_or("").to_owned();
         row["name"] = json!(member);
         row["member_name"] = json!(member);
-        if row["complete"] == true && row["status"] == "unchanged" {
+        if verified_unchanged(&row) {
             row["previously_verified"] = json!(true);
         } else {
             row["previous_difference"] = json!(row["status"] == "differences");
@@ -410,7 +440,7 @@ fn publish(
 pub(super) fn run_job(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
     match job.mode {
         JobMode::Prepare => prepared::prepare(job, record, log_level),
-        JobMode::Compare => anyhow::bail!("prepared comparisons are not enabled"),
+        JobMode::Compare => prepared::compare(job, record),
         JobMode::Legacy => unreachable!(),
     }
 }
@@ -434,4 +464,21 @@ fn reusable_preparation(record: &Value, bundle: &Path, producer: &str, source: &
         && bundle.is_file()
         && record["prepared_by"] == producer
         && record["source_fingerprint"] == source
+}
+
+fn verified_unchanged(record: &Value) -> bool {
+    record["complete"] == true
+        && record["status"] == "unchanged"
+        && record["results"].as_array().is_some_and(|profiles| {
+            profiles.iter().any(|p| {
+                matches!(
+                    p["profile"].as_str(),
+                    Some("maximum-cleaning" | "too-aggressive-cleaning")
+                ) && p["checks_complete"] == true
+                    && p["status"] == "visually unchanged"
+                    && p["failures"]
+                        .as_array()
+                        .is_none_or(|failures| failures.is_empty())
+            })
+        })
 }

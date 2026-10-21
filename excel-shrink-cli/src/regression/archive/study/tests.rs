@@ -88,7 +88,7 @@ fn retry_discards_old_evidence_even_when_preparation_or_unpacking_fails() -> Res
         mode: JobMode::Prepare,
         bundle: Some(invalid),
     };
-    for mode in [JobMode::Prepare] {
+    for mode in [JobMode::Prepare, JobMode::Compare] {
         job.mode = mode;
         let mut record = json!({"results":[{"profile":"maximum-cleaning","sheets":[
             {"original_image":"evidence/old.png","shrunk_image":"evidence/old-shrunk.png"}]}]});
@@ -98,4 +98,14 @@ fn retry_discards_old_evidence_even_when_preparation_or_unpacking_fails() -> Res
     }
     fs::remove_dir_all(output)?;
     Ok(())
+}
+
+#[test]
+fn default_only_success_does_not_skip_the_stronger_comparison() {
+    let mut record = json!({"complete":true,"status":"unchanged","results":[{"profile":"default","checks_complete":true,"status":"visually unchanged"}]});
+    assert!(!verified_unchanged(&record));
+    record["results"][0]["profile"] = json!("maximum-cleaning");
+    assert!(verified_unchanged(&record));
+    record["results"][0]["checks_complete"] = json!(false);
+    assert!(!verified_unchanged(&record));
 }
