@@ -159,6 +159,10 @@ fn write_page(
     }
     if corpus.is_none() && !corpora.is_empty() {
         corpus_cards(&mut html, corpora);
+    } else if corpus.is_some() {
+        html.push_str("<section class=\"hero\"><h2>Shrink measurements</h2>");
+        tables::totals(&mut html, files);
+        html.push_str("</section>");
     }
     for failure in items(&report["aggregate"], "failures") {
         let _ = write!(
@@ -199,7 +203,13 @@ fn corpus_cards(html: &mut String, corpora: &BTreeMap<String, Corpus<'_>>) {
             .filter(|f| f["complete"] == true)
             .count();
         let total = corpus.total.map(|n| format!(" / {n}")).unwrap_or_default();
-        let _ = write!(html, "<article class=\"hero corpus-card\"><h2><a href=\"{}\">{}</a></h2><p>{processed}{total} workbooks processed</p><p>{unchanged} unchanged · {changed} with differences · {skipped} skipped/errors</p><a class=\"button\" href=\"{}\">Open corpus report</a></article>", corpus.page(), escape(&corpus.name), corpus.page());
+        let _ = write!(html, "<article class=\"hero corpus-card\"><h2><a href=\"{}\">{}</a></h2><p>{processed}{total} workbooks processed</p><p>{unchanged} unchanged · {changed} with differences · {skipped} skipped/errors</p>", corpus.page(), escape(&corpus.name));
+        tables::totals(html, &corpus.files);
+        let _ = write!(
+            html,
+            "<a class=\"button\" href=\"{}\">Open corpus report</a></article>",
+            corpus.page()
+        );
     }
     html.push_str("</div>");
 }

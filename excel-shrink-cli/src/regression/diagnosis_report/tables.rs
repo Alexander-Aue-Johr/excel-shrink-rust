@@ -47,6 +47,51 @@ pub(super) fn profiles(html: &mut String, file: &Value) {
     html.push_str("</tbody></table></div>");
 }
 
+pub(super) fn totals(html: &mut String, files: &[&Value]) {
+    html.push_str("<table class=\"results-table\"><thead><tr><th>Profile</th><th>Size removed</th><th>Shrink time</th></tr></thead><tbody>");
+    for profile in ["default", "maximum-cleaning", "too-aggressive-cleaning"] {
+        let results: Vec<_> = files
+            .iter()
+            .flat_map(|f| items(f, "results"))
+            .filter(|r| r["profile"] == profile)
+            .collect();
+        let sizes: Vec<_> = results
+            .iter()
+            .filter_map(|r| Some((r["original_bytes"].as_u64()?, r["shrunk_bytes"].as_u64()?)))
+            .collect();
+        let before: f64 = sizes.iter().map(|(n, _)| *n as f64).sum();
+        let after: f64 = sizes.iter().map(|(_, n)| *n as f64).sum();
+        let durations: Vec<_> = results
+            .iter()
+            .filter_map(|r| r["shrink_seconds"].as_f64())
+            .filter(|n| n.is_finite() && *n >= 0.0)
+            .collect();
+        let saving = if before > 0.0 {
+            format!(
+                "{:.2}%<span class=\"profile-result muted\">{} measured files</span>",
+                (1.0 - after / before) * 100.0,
+                sizes.len()
+            )
+        } else {
+            "—".into()
+        };
+        let elapsed = if durations.is_empty() {
+            "—".into()
+        } else {
+            format!(
+                "{:.2} s<span class=\"profile-result muted\">{} measured files</span>",
+                durations.iter().sum::<f64>(),
+                durations.len()
+            )
+        };
+        let _ = write!(
+            html,
+            "<tr><th scope=\"row\">{profile}</th><td>{saving}</td><td>{elapsed}</td></tr>"
+        );
+    }
+    html.push_str("</tbody></table>");
+}
+
 fn profile_rows(html: &mut String, file: &Value) {
     let results = items(file, "results");
     if results.is_empty() {
@@ -87,4 +132,23 @@ fn memory(value: &Value) -> String {
         .as_u64()
         .map(|bytes| format!("{:.1} MiB", bytes as f64 / 1_048_576.0))
         .unwrap_or_else(|| "—".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn corpus_savings_are_weighted_by_bytes_and_missing_timings_are_not_zero() {
+        let measured = json!({"results":[
+            {"profile":"default","original_bytes":1000,"shrunk_bytes":100,"shrink_seconds":2.5}]});
+        let older = json!({"results":[
+            {"profile":"default","original_bytes":9000,"shrunk_bytes":9000}]});
+        let mut html = String::new();
+        totals(&mut html, &[&measured, &older]);
+        assert!(html.contains("9.00%<span class=\"profile-result muted\">2 measured files"));
+        assert!(html.contains("2.50 s<span class=\"profile-result muted\">1 measured files"));
+        assert!(!html.contains("45.00%"));
+    }
 }
