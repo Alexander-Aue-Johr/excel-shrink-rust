@@ -303,6 +303,12 @@ shrinking, and visual checks remain separate measurements. Close unrelated CPU-h
 applications when gathering timings for publication.
 
 The dashboard is `report.html`, with corpus pages and stable workbook/difference links.
+On Windows, atomic report updates retry short-lived file locks for up to five seconds.
+If an intermediate dashboard update still fails, the runner logs the affected path
+and retries at the next changed record or workbook checkpoint. Processing continues
+from the saved workbook records; the dashboard can be temporarily stale. Failures
+to save those records remain fatal, as do failures to generate the final report or
+an explicitly requested `--report-only` report.
 Unchanged workbooks appear in a collapsed measurement table. `verified-unchanged.csv`
 is a readable, portable list of completed unchanged checks. `records/` remains the
 resume journal; the runner never parses HTML to decide what to skip.

@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn a_blocked_dashboard_preserves_records_and_recovers_at_the_next_checkpoint() -> Result<()> {
+    let output = test_directory("blocked-dashboard")?;
+    fs::create_dir_all(output.join("records"))?;
+    let record = json!({
+        "identity":"archive:0:example.xlsx", "name":"example.xlsx",
+        "corpus_id":"archive", "corpus_name":"Example",
+        "complete":false, "status":"shrinking", "error":null, "results":[]
+    });
+    let path = record_path(&output, record["identity"].as_str().unwrap());
+    write_record(&path, &record)?;
+    let saved = fs::read(&path)?;
+    let records = vec![record.clone()];
+    let corpora = vec![json!({"id":"archive", "name":"Example", "total_workbooks":1})];
+    let dashboard = output.join("report.html");
+    // A directory cannot be replaced by a report file, on any supported OS.
+    fs::create_dir(&dashboard)?;
+
+    publish_progress(&output, &records, &corpora, "shrinking");
+    assert!(dashboard.is_dir());
+    assert_eq!(fs::read(&path)?, saved);
+    assert_eq!(records[0], record);
+    // Explicit report generation and final publication must still report failure.
+    assert!(publish(&output, &records, &corpora, false, false, "shrinking").is_err());
+
+    fs::remove_dir(&dashboard)?;
+    // The same checkpoint can be retried without rerunning or changing a workbook.
+    publish_progress(&output, &records, &corpora, "shrinking");
+    assert!(fs::read_to_string(&dashboard)?.contains("example.xlsx"));
+    let report: Value = serde_json::from_slice(&fs::read(output.join("diagnosis.json"))?)?;
+    assert_eq!(report["workbooks"], json!(records));
+    assert_eq!(report["phase"], "shrinking");
+    assert_eq!(fs::read(&path)?, saved);
+    fs::remove_dir_all(output)?;
+    Ok(())
+}
+
+#[test]
 fn reviewed_build_reuse_still_requires_matching_source_and_profiles() -> Result<()> {
     let output = test_directory("reuse")?;
     let bundle = output.join("prepared.zip");

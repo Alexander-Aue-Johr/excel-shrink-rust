@@ -52,13 +52,13 @@ pub(super) fn process(
         "comparing"
     };
     eprintln!("[study] {} · {phase} · {}", source.name, job.name);
-    publish(output, records, corpora, false, false, phase)?;
+    publish_progress(output, records, corpora, phase);
     let started = Instant::now();
     let outcome = worker::launch(&job, &path, limits, log_level, || {
         let current: Value = serde_json::from_slice(&fs::read(&record)?)?;
         if current != records[position] {
             records[position] = current;
-            publish(output, records, corpora, false, false, phase)?;
+            publish_progress(output, records, corpora, phase);
         }
         Ok(())
     });
@@ -92,7 +92,8 @@ pub(super) fn process(
     }
     write_record(&record, &result)?;
     records[position] = result;
-    publish(output, records, corpora, false, false, phase)
+    publish_progress(output, records, corpora, phase);
+    Ok(())
 }
 
 fn retain_capture_logs(work: &Path, output: &Path, key: &str) -> Result<()> {

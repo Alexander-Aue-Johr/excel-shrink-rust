@@ -166,17 +166,17 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         }
     }
     import(&args, &output, &corpus_info, &mut records)?;
-    publish(
-        &output,
-        &records,
-        &corpus_info,
-        false,
-        false,
-        "loading archives",
-    )?;
     if args.report_only {
-        return Ok(());
+        return publish(
+            &output,
+            &records,
+            &corpus_info,
+            false,
+            false,
+            "loading archives",
+        );
     }
+    publish_progress(&output, &records, &corpus_info, "loading archives");
     let downloads = resolve_path(&root, args.download_root.clone());
     fs::create_dir_all(&downloads)?;
     if let Some(url) = &request.access_url {
@@ -376,7 +376,8 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         } else {
             "finished"
         },
-    )?;
+    )
+    .context("publish final study report; per-workbook records have been saved")?;
     eprintln!("[study] Report: {}", output.join("report.html").display());
     if let Err(error) = visual_report::open_visual_report(&output.join("report.html")) {
         eprintln!("Could not open report: {error:#}");
@@ -487,6 +488,18 @@ fn import(
         records.push(row);
     }
     Ok(())
+}
+
+// These files are derived from the durable workbook records. A viewer or virus
+// scanner can briefly lock one on Windows; that must not stop a healthy worker.
+// Retry at the next changed record or workbook checkpoint, not every polling tick.
+fn publish_progress(output: &Path, records: &[Value], corpora: &[Value], phase: &str) {
+    if let Err(error) = publish(output, records, corpora, false, false, phase) {
+        eprintln!(
+            "[study] Could not refresh report in {}; will retry at the next checkpoint: {error:#}",
+            output.display()
+        );
+    }
 }
 
 fn publish(
