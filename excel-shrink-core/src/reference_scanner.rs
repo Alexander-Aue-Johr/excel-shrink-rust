@@ -142,7 +142,7 @@ fn scan_flat_formulas(
 ) -> Option<String> {
     for captures in patterns.formula.captures_iter(buffer) {
         let formula = captures.get(1).unwrap().as_bytes();
-        if let Some(function) = unsafe_function_name(formula, patterns.unsafe_function) {
+        if let Some(function) = reference_scan_blocker(formula, patterns.unsafe_function) {
             return Some(function);
         }
         extract_coordinates(formula, protected_cells, patterns.coordinate);
@@ -157,7 +157,7 @@ fn scan_flat_defined_names(
 ) -> Option<String> {
     for captures in patterns.defined_name.captures_iter(buffer) {
         let content = captures.get(1).unwrap().as_bytes();
-        if let Some(function) = unsafe_function_name(content, patterns.unsafe_function) {
+        if let Some(function) = reference_scan_blocker(content, patterns.unsafe_function) {
             return Some(function);
         }
         extract_coordinates(content, protected_cells, patterns.coordinate);
@@ -285,7 +285,7 @@ fn scan_sheet_formulas(
 ) -> Option<String> {
     for captures in patterns.formula.captures_iter(buffer.xml) {
         let formula = captures.get(1).unwrap().as_bytes();
-        if let Some(function) = unsafe_function_name(formula, patterns.unsafe_function) {
+        if let Some(function) = reference_scan_blocker(formula, patterns.unsafe_function) {
             return Some(function);
         }
         extract_tokens_for_sheet(
@@ -316,7 +316,7 @@ fn scan_sheet_defined_names(
         }
 
         let content = captures.get(2).unwrap().as_bytes();
-        if let Some(function) = unsafe_function_name(content, patterns.unsafe_function) {
+        if let Some(function) = reference_scan_blocker(content, patterns.unsafe_function) {
             return Some(function);
         }
 
@@ -379,10 +379,57 @@ fn scan_sheet_reference_attributes(
     }
 }
 
-fn unsafe_function_name(text: &[u8], pattern: &Regex) -> Option<String> {
-    pattern
-        .find(text)
-        .map(|matched| String::from_utf8_lossy(matched.as_bytes()).to_string())
+fn reference_scan_blocker(text: &[u8], pattern: &Regex) -> Option<String> {
+    let text = object_references::decode_entities(text);
+    if let Some(matched) = pattern.find(&text) {
+        return Some(String::from_utf8_lossy(matched.as_bytes()).to_string());
+    }
+    // Structured references need table-column and selector resolution. Until
+    // that is available, retain reference-sensitive cells when an actual formula
+    // uses one. Merely having a table or a table's layout range does not trigger this.
+    has_structured_reference(&text).then(|| "unresolved structured reference".to_owned())
+}
+
+fn has_structured_reference(formula: &[u8]) -> bool {
+    let mut index = 0;
+    while index < formula.len() {
+        match formula[index] {
+            quote @ (b'"' | b'\'') => {
+                // Double quotes delimit string literals; single quotes delimit
+                // sheet/workbook names. Both escape their quote by doubling it.
+                index += 1;
+                while index < formula.len() {
+                    if formula[index] == quote {
+                        index += 1;
+                        if formula.get(index) != Some(&quote) {
+                            break;
+                        }
+                    }
+                    index += 1;
+                }
+            }
+            b'[' => {
+                if !is_external_workbook_prefix(&formula[index..]) {
+                    return true;
+                }
+                // The bracket is a workbook qualifier, such as [1]Sheet!A1.
+                index += formula[index..].iter().position(|byte| *byte == b']').unwrap() + 1;
+            }
+            _ => index += 1,
+        }
+    }
+    false
+}
+
+fn is_external_workbook_prefix(reference: &[u8]) -> bool {
+    let Some(end) = reference.iter().position(|byte| *byte == b']') else {
+        return false;
+    };
+    let sheet = &reference[end + 1..];
+    let name_length = sheet.iter().take_while(|byte| {
+        byte.is_ascii_alphanumeric() || matches!(**byte, b'_' | b'.') || **byte >= 128
+    }).count();
+    sheet.get(name_length) == Some(&b'!')
 }
 
 fn extract_coordinates(text: &[u8], protected: &mut ProtectedCellRefs, coord_re: &Regex) {

@@ -92,7 +92,7 @@ impl PreparedReferenceScanner<'_> {
         protected: &mut ProtectedWorkbookRefs,
     ) -> ScanResult {
         let formula = decode_entities(formula);
-        if let Some(function) = unsafe_function_name(&formula, self.patterns.unsafe_function) {
+        if let Some(function) = reference_scan_blocker(&formula, self.patterns.unsafe_function) {
             return ScanResult::Unsafe(function);
         }
         // Object formulas normally carry a sheet name. For an unresolved owner,
@@ -108,7 +108,7 @@ impl PreparedReferenceScanner<'_> {
     }
 }
 
-fn decode_entities(value: &[u8]) -> Cow<'_, [u8]> {
+pub(super) fn decode_entities(value: &[u8]) -> Cow<'_, [u8]> {
     if !value.contains(&b'&') {
         return Cow::Borrowed(value);
     }

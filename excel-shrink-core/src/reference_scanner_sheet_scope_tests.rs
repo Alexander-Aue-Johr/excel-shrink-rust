@@ -356,6 +356,77 @@ fn print_metadata_does_not_protect_every_cell_in_the_print_area() {
 }
 
 #[test]
+fn named_chart_source_with_unresolved_table_columns_disables_candidate_removal() {
+    let scanner = PreparedReferenceScanner::new(&[], None, None);
+    let mut refs = ProtectedWorkbookRefs::default();
+    let workbook = SheetScanBuffer {
+        sheet_file: "xl/workbook.xml",
+        sheet_name: "Workbook",
+        xml: br#"<workbook><definedNames>
+            <definedName name="SeriesData">Table1[Values]</definedName>
+        </definedNames></workbook>"#,
+    };
+    // The chart itself names the series; the unsafe expression is in the name.
+    assert!(matches!(
+        scanner.scan_object_references(br#"<c:f>Book.xlsx!SeriesData</c:f>"#, &mut refs,),
+        ScanResult::Safe
+    ));
+    assert!(
+        matches!(scanner.scan(&[workbook], &mut refs), ScanResult::Unsafe(reason)
+        if reason == "unresolved structured reference")
+    );
+}
+
+#[test]
+fn table_metadata_and_reference_lookalikes_do_not_block_cleanup() {
+    let scanner = PreparedReferenceScanner::new(&[], None, None);
+    let mut refs = ProtectedWorkbookRefs::default();
+    assert!(matches!(
+        scanner.scan_object_references(
+            br#"<table name="Table1" ref="A1:XFD1048576"><tableColumns>
+            <tableColumn name="Values"/></tableColumns></table>"#,
+            &mut refs,
+        ),
+        ScanResult::Safe
+    ));
+    assert!(!refs.contains("sheet1", 1, 1));
+    for formula in [
+        "\"Table1[Values]\"",
+        "&quot;Table1[Values]&quot;",
+        "'[Book.xlsx]Sheet'!A1",
+        "[1]Sheet!A1",
+    ] {
+        assert_eq!(
+            reference_scan_blocker(formula.as_bytes(), unsafe_function_pattern()),
+            None
+        );
+    }
+}
+
+#[test]
+fn cell_and_object_formulas_detect_unresolved_structured_references() {
+    for formula in [
+        "SUM(Table1[Values])",
+        "SUM([Values])",
+        "[@Values]",
+        "Table1[[#All],[Values]]",
+    ] {
+        assert_eq!(
+            reference_scan_blocker(formula.as_bytes(), unsafe_function_pattern()),
+            Some("unresolved structured reference".to_owned())
+        );
+    }
+    let scanner = PreparedReferenceScanner::new(&[], None, None);
+    assert!(matches!(
+        scanner.scan_object_references(
+            br#"<c:f>Table1[Values]</c:f>"#,
+            &mut ProtectedWorkbookRefs::default(),
+        ),
+        ScanResult::Unsafe(_)
+    ));
+}
+
+#[test]
 fn cross_sheet_reference_with_custom_sheet_name_seed_map_keeps_target_candidate() {
     let sheet2_xml = br#"
         <worksheet>
