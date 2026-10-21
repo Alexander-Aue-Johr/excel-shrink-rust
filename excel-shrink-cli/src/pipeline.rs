@@ -5,7 +5,7 @@ use std::io::{BufWriter, Cursor, Read, Seek, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc, Condvar, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use threadpool::ThreadPool;
@@ -254,7 +254,8 @@ struct SheetTask {
 
 struct ArchivePlan {
     sheet_tasks: Vec<SheetTask>,
-    object_references: Vec<Vec<u8>>,
+    object_references: Vec<(String, Vec<u8>)>,
+    pivot_owners: HashMap<String, String>,
     object_references_complete: bool,
     workbook_xml_for_scan: Option<Vec<u8>>,
     workbook_rels_for_scan: Option<Vec<u8>>,
@@ -268,6 +269,7 @@ impl ArchivePlan {
         Self {
             sheet_tasks: Vec::new(),
             object_references: Vec::new(),
+            pivot_owners: HashMap::new(),
             object_references_complete: true,
             workbook_xml_for_scan: None,
             workbook_rels_for_scan: None,
@@ -1697,7 +1699,13 @@ fn plan_archive<R: Read + Seek>(
                     && is_object_reference_part(&filename)
                 {
                     match read_archive_entry(&mut file) {
-                        Ok(xml) => plan.object_references.push(xml),
+                        Ok(xml) => {
+                            if filename.starts_with("xl/worksheets/_rels/") {
+                                collect_pivot_owners(&filename, &xml, &mut plan.pivot_owners);
+                            } else {
+                                plan.object_references.push((filename.clone(), xml));
+                            }
+                        }
                         Err(error) => {
                             warn!(entry = %filename, %error, "Could not read object references; retaining cleanup candidates");
                             plan.object_references_complete = false;
@@ -1721,8 +1729,45 @@ fn is_object_reference_part(filename: &str) -> bool {
         || (filename.starts_with("xl/drawings/")
             && (filename.ends_with(".xml") || filename.ends_with(".vml")))
         || (filename.starts_with("xl/ctrlProps/") && filename.ends_with(".xml"))
+        || (filename.starts_with("xl/pivotTables/") && filename.ends_with(".xml"))
+        || (filename.starts_with("xl/worksheets/_rels/") && filename.ends_with(".rels"))
         || (filename.starts_with("xl/pivotCache/pivotCacheDefinition")
             && filename.ends_with(".xml"))
+}
+
+fn collect_pivot_owners(part: &str, xml: &[u8], owners: &mut HashMap<String, String>) {
+    static RELATIONSHIPS: OnceLock<regex::bytes::Regex> = OnceLock::new();
+    let relationships = RELATIONSHIPS
+        .get_or_init(|| regex::bytes::Regex::new(r"<(?:[\w.-]+:)?Relationship\b[^>]*>").unwrap());
+    let sheet = part
+        .replace("/_rels/", "/")
+        .trim_end_matches(".rels")
+        .to_owned();
+    for relation in relationships.find_iter(xml) {
+        let relation = relation.as_bytes();
+        if !extract_attr_string(relation, b"Type").is_some_and(|kind| kind.ends_with("/pivotTable"))
+        {
+            continue;
+        }
+        let Some(target) = extract_attr_string(relation, b"Target") else {
+            continue;
+        };
+        let mut path = if target.starts_with('/') {
+            vec![]
+        } else {
+            vec!["xl", "worksheets"]
+        };
+        for component in target.split('/') {
+            match component {
+                ".." => {
+                    path.pop();
+                }
+                "." | "" => {}
+                component => path.push(component),
+            }
+        }
+        owners.insert(path.join("/"), sheet.clone());
+    }
 }
 
 fn classify_archive_entry(
@@ -2625,6 +2670,7 @@ fn process_file(
     let ArchivePlan {
         sheet_tasks,
         object_references,
+        pivot_owners,
         object_references_complete,
         workbook_xml_for_scan,
         workbook_rels_for_scan,
@@ -2729,7 +2775,14 @@ fn process_file(
     {
         let _span = profiling::phase("validate_references", &input_display, "");
         if let Some(selection) = deferred_reference_scan_selection(&processed_sheets) {
-            for xml in &object_references {
+            for (part, xml) in &object_references {
+                if part.starts_with("xl/pivotTables/") {
+                    scanner.scan_pivot_result_references(
+                        xml,
+                        pivot_owners.get(part).map(String::as_str),
+                        &mut protected_refs,
+                    );
+                }
                 if let ScanResult::Unsafe(reason) =
                     scanner.scan_object_references(xml, &mut protected_refs)
                 {

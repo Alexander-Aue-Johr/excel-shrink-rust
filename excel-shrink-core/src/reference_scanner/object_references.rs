@@ -5,8 +5,33 @@ static FORMULAS: OnceLock<Regex> = OnceLock::new();
 static LINKS: OnceLock<Regex> = OnceLock::new();
 static PIVOT_SOURCES: OnceLock<Regex> = OnceLock::new();
 static REFERENCES: OnceLock<Regex> = OnceLock::new();
+static PIVOT_LOCATIONS: OnceLock<Regex> = OnceLock::new();
 
 impl PreparedReferenceScanner<'_> {
+    /// GETPIVOTDATA refers to the pivot anchor, but consumes values throughout
+    /// its result area. Those cells can reside on a hidden worksheet.
+    pub fn scan_pivot_result_references(
+        &self,
+        xml: &[u8],
+        sheet_file: Option<&str>,
+        protected: &mut ProtectedWorkbookRefs,
+    ) {
+        let locations = PIVOT_LOCATIONS
+            .get_or_init(|| Regex::new(r"(?s)<(?:[\w.-]+:)?location\b([^>]*)>").unwrap());
+        for captures in locations.captures_iter(xml) {
+            if let Some(reference) =
+                extract_quoted_attr_value(captures.get(1).unwrap().as_bytes(), b"ref")
+            {
+                extract_reference_token_for_sheet_bytes(
+                    reference,
+                    sheet_file,
+                    &self.sheet_name_to_file,
+                    protected,
+                );
+            }
+        }
+    }
+
     /// Only data consumers belong here. Drawing anchors, worksheet dimensions and
     /// filter ranges describe layout; they do not make a cell's value necessary.
     pub fn scan_object_references(
@@ -190,6 +215,20 @@ mod tests {
     }
 
     #[test]
+    fn pivot_results_are_scoped_to_the_owning_sheet() {
+        let scanner = PreparedReferenceScanner::new(&[], None, None);
+        let mut refs = ProtectedWorkbookRefs::default();
+        scanner.scan_pivot_result_references(
+            br#"<pivotTableDefinition><location ref="A7:B94"/></pivotTableDefinition>"#,
+            Some("sheet1"),
+            &mut refs,
+        );
+        assert!(refs.contains("sheet1", 2, 94));
+        assert!(!refs.contains("sheet1", 3, 94));
+        assert!(!refs.contains("sheet2", 2, 94));
+    }
+
+    #[test]
     fn whole_column_series_are_kept_without_expanding_every_cell() {
         let refs = scan(br#"<c:f>'Basic Interface'!$B:$D</c:f>"#);
         assert!(refs.contains("sheet1", 3, 1048576));
@@ -211,8 +250,12 @@ mod tests {
     #[test]
     fn unresolved_named_pivot_sources_keep_candidates() {
         let scanner = PreparedReferenceScanner::new(&[], None, None);
-        assert!(matches!(scanner.scan_object_references(
-            br#"<worksheetSource name="Table1"/>"#, &mut ProtectedWorkbookRefs::default()
-        ), ScanResult::Unsafe(_)));
+        assert!(matches!(
+            scanner.scan_object_references(
+                br#"<worksheetSource name="Table1"/>"#,
+                &mut ProtectedWorkbookRefs::default()
+            ),
+            ScanResult::Unsafe(_)
+        ));
     }
 }

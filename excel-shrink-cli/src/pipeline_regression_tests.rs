@@ -77,16 +77,10 @@ fn unchanged_xml_keeps_the_smaller_compressed_stream() {
         .collect();
     let xml = format!("<worksheet><sheetData>{rows}</sheetData></worksheet>");
     for (original_level, cleaned_level) in [(9, 0), (0, 9)] {
-        let original = compressed_test_entry(
-            xml.as_bytes(),
-            CompressionMethod::Deflated,
-            original_level,
-        );
-        let cleaned = compressed_test_entry(
-            xml.as_bytes(),
-            CompressionMethod::Deflated,
-            cleaned_level,
-        );
+        let original =
+            compressed_test_entry(xml.as_bytes(), CompressionMethod::Deflated, original_level);
+        let cleaned =
+            compressed_test_entry(xml.as_bytes(), CompressionMethod::Deflated, cleaned_level);
         let original_size = entry_compressed_size(&original);
         let cleaned_size = entry_compressed_size(&cleaned);
         assert_ne!(original_size, cleaned_size);
@@ -112,7 +106,11 @@ fn equal_size_and_crc_do_not_hide_changed_xml() {
 
     let mut output = copy_test_entry(original, cleaned);
     let mut actual = Vec::new();
-    output.by_index(0).unwrap().read_to_end(&mut actual).unwrap();
+    output
+        .by_index(0)
+        .unwrap()
+        .read_to_end(&mut actual)
+        .unwrap();
     assert_eq!(actual, cleaned_xml);
 }
 
@@ -717,13 +715,15 @@ fn pipeline_retains_hidden_chart_and_drawing_inputs() {
     std::fs::create_dir_all(&root).unwrap();
     let input = root.join("objects.xlsx");
     let mut writer = ZipWriter::new(File::create(&input).unwrap());
-    let entries: [(&str, &[u8]); 6] = [
+    let entries: [(&str, &[u8]); 8] = [
         ("xl/workbook.xml", br#"<workbook><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>"#),
         ("xl/_rels/workbook.xml.rels", br#"<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>"#),
-        ("xl/worksheets/sheet1.xml", br#"<worksheet><dimension ref="A1:XFD1048576"/><sheetData><row r="1"><c r="A1"><v>1</v></c></row><row r="2" hidden="1"><c r="A2"><v>11</v></c><c r="B2"><v>12</v></c><c r="C2"><v>13</v></c><c r="D2"><v>14</v></c><c r="E2"><v>15</v></c></row><row r="3"><c r="A3"><v>2</v></c></row></sheetData></worksheet>"#),
+        ("xl/worksheets/sheet1.xml", br#"<worksheet><dimension ref="A1:XFD1048576"/><sheetData><row r="1"><c r="A1"><v>1</v></c></row><row r="2" hidden="1"><c r="A2"><v>11</v></c><c r="B2"><v>12</v></c><c r="C2"><v>13</v></c><c r="D2"><v>14</v></c><c r="E2"><v>15</v></c><c r="F2"><v>16</v></c></row><row r="3"><c r="A3"><v>2</v></c></row></sheetData><pivotTableParts><pivotTablePart r:id="rId2"/></pivotTableParts></worksheet>"#),
         ("xl/charts/chart1.xml", br#"<c:chart><c:numRef><c:f>Data!$A$2:$B$2</c:f></c:numRef></c:chart>"#),
         ("xl/drawings/drawing1.xml", br#"<xdr:wsDr><xdr:sp textlink="Data!$C$2"/></xdr:wsDr>"#),
         ("xl/pivotCache/pivotCacheDefinition1.xml", br#"<pivotCacheDefinition><cacheSource><worksheetSource ref="D2:D2" sheet="Data"/></cacheSource></pivotCacheDefinition>"#),
+        ("xl/pivotTables/pivotTable1.xml", br#"<pivotTableDefinition><location ref="F2:F2"/></pivotTableDefinition>"#),
+        ("xl/worksheets/_rels/sheet1.xml.rels", br#"<Relationships><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable" Target="../pivotTables/pivotTable1.xml"/></Relationships>"#),
     ];
     for (name, bytes) in entries {
         writer.start_file(name, FileOptions::default()).unwrap();
@@ -744,7 +744,7 @@ fn pipeline_retains_hidden_chart_and_drawing_inputs() {
         .unwrap()
         .read_to_string(&mut sheet)
         .unwrap();
-    for address in ["A2", "B2", "C2", "D2"] {
+    for address in ["A2", "B2", "C2", "D2", "F2"] {
         assert!(
             sheet.contains(&format!(r#"r="{address}""#)),
             "missing {address}: {sheet}"
@@ -761,8 +761,12 @@ fn pipeline_retains_hidden_chart_and_drawing_inputs() {
     let mut archive =
         ZipArchive::new(File::open(cli.output.join("objects.xlsx")).unwrap()).unwrap();
     let mut sheet = String::new();
-    archive.by_name("xl/worksheets/sheet1.xml").unwrap().read_to_string(&mut sheet).unwrap();
-    for address in ["A2", "B2", "C2", "D2", "E2"] {
+    archive
+        .by_name("xl/worksheets/sheet1.xml")
+        .unwrap()
+        .read_to_string(&mut sheet)
+        .unwrap();
+    for address in ["A2", "B2", "C2", "D2", "E2", "F2"] {
         assert!(!sheet.contains(&format!(r#"r="{address}""#)));
     }
     std::fs::remove_dir_all(root).unwrap();
