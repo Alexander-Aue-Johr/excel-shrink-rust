@@ -254,6 +254,8 @@ struct SheetTask {
 
 struct ArchivePlan {
     sheet_tasks: Vec<SheetTask>,
+    object_references: Vec<Vec<u8>>,
+    object_references_complete: bool,
     workbook_xml_for_scan: Option<Vec<u8>>,
     workbook_rels_for_scan: Option<Vec<u8>>,
     workbook_xml_for_calc_chain: Option<Vec<u8>>,
@@ -265,6 +267,8 @@ impl ArchivePlan {
     fn new() -> Self {
         Self {
             sheet_tasks: Vec::new(),
+            object_references: Vec::new(),
+            object_references_complete: true,
             workbook_xml_for_scan: None,
             workbook_rels_for_scan: None,
             workbook_xml_for_calc_chain: None,
@@ -1688,6 +1692,15 @@ fn plan_archive<R: Read + Seek>(
                 &mut plan,
             ),
             ArchiveEntryKind::CopyOriginal => {
+                if context.advanced_cleanup_enabled && is_object_reference_part(&filename) {
+                    match read_archive_entry(&mut file) {
+                        Ok(xml) => plan.object_references.push(xml),
+                        Err(error) => {
+                            warn!(entry = %filename, %error, "Could not read object references; retaining cleanup candidates");
+                            plan.object_references_complete = false;
+                        }
+                    }
+                }
                 queue_original_entry(context.tx, index, filename, context.input_display)
             }
         };
@@ -1698,6 +1711,15 @@ fn plan_archive<R: Read + Seek>(
     }
 
     Some(plan)
+}
+
+fn is_object_reference_part(filename: &str) -> bool {
+    (filename.starts_with("xl/charts/") && filename.ends_with(".xml"))
+        || (filename.starts_with("xl/drawings/")
+            && (filename.ends_with(".xml") || filename.ends_with(".vml")))
+        || (filename.starts_with("xl/ctrlProps/") && filename.ends_with(".xml"))
+        || (filename.starts_with("xl/pivotCache/pivotCacheDefinition")
+            && filename.ends_with(".xml"))
 }
 
 fn classify_archive_entry(
@@ -2599,6 +2621,8 @@ fn process_file(
 
     let ArchivePlan {
         sheet_tasks,
+        object_references,
+        object_references_complete,
         workbook_xml_for_scan,
         workbook_rels_for_scan,
         workbook_xml_for_calc_chain,
@@ -2698,9 +2722,18 @@ fn process_file(
         complete,
     );
     let (mut protected_refs, mut safe_to_clean) = accumulated.into_inner().unwrap();
+    safe_to_clean &= object_references_complete;
     {
         let _span = profiling::phase("validate_references", &input_display, "");
         if let Some(selection) = deferred_reference_scan_selection(&processed_sheets) {
+            for xml in &object_references {
+                if let ScanResult::Unsafe(reason) =
+                    scanner.scan_object_references(xml, &mut protected_refs)
+                {
+                    warn!("Unsafe object reference: {}", reason);
+                    safe_to_clean = false;
+                }
+            }
             let buffers = build_reference_scan_buffers(
                 &processed_sheets,
                 &selection,

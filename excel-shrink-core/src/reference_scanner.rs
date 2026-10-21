@@ -4,6 +4,8 @@ use regex::bytes::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+mod object_references;
+
 static UNSAFE_FUNCTIONS: OnceLock<Regex> = OnceLock::new();
 static FORMULA_PATTERN: OnceLock<Regex> = OnceLock::new();
 static DEFINED_NAME_PATTERN: OnceLock<Regex> = OnceLock::new();

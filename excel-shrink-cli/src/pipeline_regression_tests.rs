@@ -705,3 +705,53 @@ fn pipeline_cleans_calc_chain_entries_for_cells_removed_from_sheet() {
 
     let _ = std::fs::remove_dir_all(temp_root);
 }
+
+#[test]
+fn pipeline_retains_hidden_chart_and_drawing_inputs() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("excel_shrink_object_refs_{unique}"));
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("objects.xlsx");
+    let mut writer = ZipWriter::new(File::create(&input).unwrap());
+    let entries: [(&str, &[u8]); 6] = [
+        ("xl/workbook.xml", br#"<workbook><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>"#),
+        ("xl/_rels/workbook.xml.rels", br#"<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>"#),
+        ("xl/worksheets/sheet1.xml", br#"<worksheet><dimension ref="A1:XFD1048576"/><sheetData><row r="1"><c r="A1"><v>1</v></c></row><row r="2" hidden="1"><c r="A2"><v>11</v></c><c r="B2"><v>12</v></c><c r="C2"><v>13</v></c><c r="D2"><v>14</v></c><c r="E2"><v>15</v></c></row><row r="3"><c r="A3"><v>2</v></c></row></sheetData></worksheet>"#),
+        ("xl/charts/chart1.xml", br#"<c:chart><c:numRef><c:f>Data!$A$2:$B$2</c:f></c:numRef></c:chart>"#),
+        ("xl/drawings/drawing1.xml", br#"<xdr:wsDr><xdr:sp textlink="Data!$C$2"/></xdr:wsDr>"#),
+        ("xl/pivotCache/pivotCacheDefinition1.xml", br#"<pivotCacheDefinition><cacheSource><worksheetSource ref="D2:D2" sheet="Data"/></cacheSource></pivotCacheDefinition>"#),
+    ];
+    for (name, bytes) in entries {
+        writer.start_file(name, FileOptions::default()).unwrap();
+        writer.write_all(bytes).unwrap();
+    }
+    writer.finish().unwrap();
+
+    let mut cli = cli_with_analysis_flags(false, None);
+    cli.output = root.join("out");
+    cli.disable_multiprocessing = true;
+    cli.writer_workers = Some(1);
+    process_files(vec![input], &cli).unwrap();
+    let mut archive =
+        ZipArchive::new(File::open(cli.output.join("objects.xlsx")).unwrap()).unwrap();
+    let mut sheet = String::new();
+    archive
+        .by_name("xl/worksheets/sheet1.xml")
+        .unwrap()
+        .read_to_string(&mut sheet)
+        .unwrap();
+    for address in ["A2", "B2", "C2", "D2"] {
+        assert!(
+            sheet.contains(&format!(r#"r="{address}""#)),
+            "missing {address}: {sheet}"
+        );
+    }
+    assert!(
+        !sheet.contains(r#"r="E2""#),
+        "an unused hidden value should still be removed"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
