@@ -366,7 +366,12 @@ fn clean_visible_unstyled_cell<'a, 'r>(
         return keep_cell_unchanged(cell, params, metrics, None, true, false);
     }
 
-    if style_policy.keep_default || style_policy.keep_other {
+    let inherited = inherited_cell_styles(cell, metrics);
+    let clears_inherited_style = [inherited.row, inherited.column]
+        .into_iter()
+        .flatten()
+        .any(|style| style.has_visible_fill || style.has_visible_border);
+    if style_policy.keep_default || style_policy.keep_other || clears_inherited_style {
         return keep_empty_cell_as_self_closing(cell, params, metrics, None, false);
     }
 
@@ -771,8 +776,8 @@ fn cell_has_effective_fill(
     let cell_fill_id = cell_style.fill_id.unwrap_or(0);
 
     match (
-        row_style.filter(|style| style.apply_fill || style.has_visible_fill),
-        column_style.filter(|style| style.apply_fill),
+        row_style,
+        column_style.filter(|style| style.apply_fill || style.has_visible_fill),
     ) {
         (Some(row), Some(column)) => {
             cell_fill_id != row.fill_id.unwrap_or(0) || cell_fill_id != column.fill_id.unwrap_or(0)
@@ -791,8 +796,8 @@ fn cell_has_effective_border(
     let cell_border_id = cell_style.border_id.unwrap_or(0);
 
     match (
-        row_style.filter(|style| style.apply_border),
-        column_style.filter(|style| style.apply_border),
+        row_style,
+        column_style.filter(|style| style.apply_border || style.has_visible_border),
     ) {
         (Some(row), Some(column)) => {
             cell_border_id != row.border_id.unwrap_or(0)

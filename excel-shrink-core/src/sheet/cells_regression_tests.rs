@@ -1057,7 +1057,7 @@ fn default_marks_candidate_when_cell_style_has_apply_protection_without_sheet_pr
 }
 
 #[test]
-fn protection_only_cell_still_anchors_tail_when_column_style_is_visible() {
+fn protected_cell_also_anchors_tail_when_it_masks_a_visible_column_fill() {
     let column_style = fill_style(4, false);
     let protected_style = apply_protection_style();
     let mut params = params_with_styles(&[(4, column_style.clone()), (7, protected_style)]);
@@ -1079,7 +1079,7 @@ fn protection_only_cell_still_anchors_tail_when_column_style_is_visible() {
 
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert!(metrics.kept_cell_states[0].kept_only_for_protection);
+    assert!(!metrics.kept_cell_states[0].kept_only_for_protection);
     assert_eq!(metrics.tail_anchor_max_row, Some(3));
 }
 
@@ -1152,7 +1152,7 @@ fn keeps_empty_font_only_cell_when_row_has_non_default_fill() {
 }
 
 #[test]
-fn removes_empty_cell_with_fill_zero_when_column_has_non_default_fill_without_apply_fill() {
+fn keeps_empty_cell_with_fill_zero_when_column_has_non_default_fill_without_apply_fill() {
     let column_red_style = fill_style(4, false);
 
     let cell_default_fill_style = empty_style_without_visible_parts();
@@ -1175,9 +1175,50 @@ fn removes_empty_cell_with_fill_zero_when_column_has_non_default_fill_without_ap
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert!(cleaned.is_empty());
-    assert_eq!(metrics.kept_cell_states.len(), 0);
-    assert_eq!(metrics.deleted_cell_count, 1);
+    assert_eq!(cleaned.as_ref(), cell_xml);
+    assert_eq!(metrics.deleted_cell_count, 0);
+}
+
+#[test]
+fn keeps_unstyled_empty_cells_that_mask_a_colored_column() {
+    let params = default_params();
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 1,
+        cell_xf: Some(fill_style(4, false)),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+    let xml = br#"<c r="A3"/>"#;
+    let cell = parsed_a3_cell(xml, br#" r="A3""#, None);
+    assert_eq!(
+        replace_parsed_cell(&cell, &params, &mut metrics).as_ref(),
+        xml
+    );
+}
+
+#[test]
+fn keeps_colored_cells_when_the_row_overrides_the_same_colored_column() {
+    let row_style = empty_style_without_visible_parts();
+    let colored = fill_style(4, true);
+    let params = params_with_styles(&[(1, row_style.clone()), (4, colored.clone())]);
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 1,
+        cell_xf: Some(colored),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+    let row = RowView::parse(br#" r="3" s="1" customFormat="1""#, &params).unwrap();
+    let xml = br#"<c r="A3" s="4"/>"#;
+    let mut cell = parsed_a3_cell(xml, br#" r="A3" s="4""#, Some(4));
+    cell.row_view = Some(&row);
+    assert_eq!(
+        replace_parsed_cell(&cell, &params, &mut metrics).as_ref(),
+        xml
+    );
 }
 
 #[test]
