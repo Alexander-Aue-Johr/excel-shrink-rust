@@ -1,6 +1,6 @@
 use super::*;
 
-fn test_directory(name: &str) -> Result<PathBuf> {
+pub(super) fn test_directory(name: &str) -> Result<PathBuf> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos();

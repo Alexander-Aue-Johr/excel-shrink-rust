@@ -78,6 +78,11 @@ pub(super) fn process(
         clear_images(&mut result);
     }
     relative_images(&mut result, output);
+    if result["status"] == "skipped" {
+        if let Err(error) = retain_capture_logs(&work, output, &key[..20]) {
+            eprintln!("Could not preserve capture diagnostics: {error:#}");
+        }
+    }
     result[format!("{phase}_elapsed_seconds")] = json!(started.elapsed().as_secs_f64());
     result["complete"] = json!(mode == JobMode::Compare || result["status"] == "skipped");
     fs::remove_dir_all(&work)?;
@@ -88,6 +93,29 @@ pub(super) fn process(
     write_record(&record, &result)?;
     records[position] = result;
     publish(output, records, corpora, false, false, phase)
+}
+
+fn retain_capture_logs(work: &Path, output: &Path, key: &str) -> Result<()> {
+    use std::io::{Read, Seek, SeekFrom};
+    const MAX_LOG_BYTES: u64 = 1024 * 1024;
+    let logs = output.join("logs");
+    fs::create_dir_all(&logs)?;
+    for profile in prepared::PROFILES {
+        let capture = work.join("comparisons").join(profile).join("visual/images");
+        for name in ["host.stdout.log", "host.stderr.log"] {
+            let path = capture.join(name);
+            if !path.is_file() {
+                continue;
+            }
+            let mut source = fs::File::open(path)?;
+            let length = source.metadata()?.len();
+            source.seek(SeekFrom::Start(length.saturating_sub(MAX_LOG_BYTES)))?;
+            let mut tail = Vec::new();
+            source.take(MAX_LOG_BYTES).read_to_end(&mut tail)?;
+            fs::write(logs.join(format!("{key}-{profile}-{name}")), tail)?;
+        }
+    }
+    Ok(())
 }
 
 fn relative_images(value: &mut Value, root: &Path) {
@@ -128,5 +156,31 @@ fn clear_images(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_bounded_failure_logs_without_workbooks_or_images() -> Result<()> {
+        let root = super::super::tests::test_directory("failure-logs")?;
+        let work = root.join("work");
+        let capture = work.join("comparisons/default/visual/images");
+        fs::create_dir_all(&capture)?;
+        let mut log = vec![b'a'; 2 * 1024 * 1024];
+        log.extend_from_slice(b"last failure");
+        fs::write(capture.join("host.stdout.log"), log)?;
+        fs::write(capture.join("original.xlsx"), b"workbook")?;
+        fs::write(capture.join("equal.png"), b"image")?;
+        retain_capture_logs(&work, &root, "example")?;
+        fs::remove_dir_all(&work)?;
+        let kept = fs::read(root.join("logs/example-default-host.stdout.log"))?;
+        assert_eq!(kept.len(), 1024 * 1024);
+        assert!(kept.ends_with(b"last failure"));
+        assert_eq!(fs::read_dir(root.join("logs"))?.count(), 1);
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 }
