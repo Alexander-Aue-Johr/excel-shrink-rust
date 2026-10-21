@@ -22,7 +22,7 @@ sealed class PairedCapture : IDisposable
     string? imageSide;
     TaskCompletionSource<bool> imageReady = NewImage();
     readonly HashSet<string> completed = new();
-    readonly HashSet<string> clients = new();
+    readonly HashSet<string> startedClients = new();
     bool failed;
     TaskCompletionSource<bool> sheetReady = NewImage();
     JsonObject? firstHeights;
@@ -48,7 +48,9 @@ sealed class PairedCapture : IDisposable
     public bool StartClient(string side)
     {
         if (side is not ("original" or "shrunk")) throw new InvalidOperationException("Invalid capture side.");
-        lock (gate) { return clients.Add(side); }
+        // Office can reload a task pane during startup. No comparison state is
+        // lost until this side has submitted its first capture data.
+        lock (gate) { return !startedClients.Contains(side); }
     }
 
     public async Task<JsonNode> Heights(JsonObject data)
@@ -60,6 +62,7 @@ sealed class PairedCapture : IDisposable
         {
             if (failed || sheetOrdinal >= sheets.Length || (int?)data["sheet_index"] != sheets[sheetOrdinal])
                 throw new InvalidOperationException($"Unexpected paired row heights from {(string?)data["side"]}: sheet {(int?)data["sheet_index"]}; expected {(sheetOrdinal < sheets.Length ? sheets[sheetOrdinal] : -1)}; stopped={failed}.");
+            startedClients.Add((string)data["side"]!);
             ready = heightsReady;
             if (ready.Task.IsCompleted) throw new InvalidOperationException("Row heights already compared.");
             other = firstHeights;
@@ -117,6 +120,7 @@ sealed class PairedCapture : IDisposable
                 throw new InvalidOperationException("Unexpected paired worksheet.");
             var requestedEnd = ReadEndColumn(data);
             var side = (string)data["side"]!;
+            startedClients.Add(side);
             if (firstGeometry is null)
             {
                 firstGeometry = data;
@@ -179,6 +183,7 @@ sealed class PairedCapture : IDisposable
             if (failed || sheetOrdinal >= sheets.Length || (int?)data["sheet_index"] != sheets[sheetOrdinal] || (int?)data["tile_index"] != tileIndex)
                 throw new InvalidOperationException("Unexpected paired image.");
             if (captureEndColumn is null) throw new InvalidOperationException("Paired image arrived before geometry.");
+            startedClients.Add((string)data["side"]!);
             data["capture_right_column"] = captureEndColumn.Value;
             ready = imageReady;
             if (firstImage is null)

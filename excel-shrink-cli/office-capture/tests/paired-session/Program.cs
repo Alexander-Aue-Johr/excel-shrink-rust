@@ -6,8 +6,8 @@ var name = "es-pair-test-" + Guid.NewGuid().ToString("N");
 var sheets = new[] { 1, 3, 5 };
 int EndColumn(int sheet) => sheet switch { 1 => 30, 3 => 40, _ => 1 };
 using var pair = new PairedCapture(name, "test", sheets);
-if (!pair.StartClient("original") || !pair.StartClient("shrunk") || pair.StartClient("original"))
-    throw new Exception("Task pane restart was not detected.");
+if (!pair.StartClient("original") || !pair.StartClient("shrunk") || !pair.StartClient("original"))
+    throw new Exception("Task pane startup reload was rejected before capture data arrived.");
 using var consumer = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
 await consumer.ConnectAsync();
 var consume = Task.Run(async () =>
@@ -37,11 +37,17 @@ foreach (var index in sheets)
 {
     JsonObject Data(string side) => new() { ["run_id"] = "test", ["side"] = side, ["sheet_index"] = index };
     var sides = index == 3 ? new[] { "shrunk", "original" } : new[] { "original", "shrunk" };
-    await Task.WhenAll(sides.Select(side => {
+    var heightTasks = new List<Task<JsonNode>>();
+    foreach (var side in sides)
+    {
+        if (index == 1 && !pair.StartClient(side))
+            throw new Exception("The other workbook's data prevented startup reload.");
         var data = Data(side);
         data["heights"] = new JsonObject { ["sheet_index"] = index, ["runs"] = new JsonArray() };
-        return pair.Heights(data);
-    }));
+        heightTasks.Add(pair.Heights(data));
+        if (pair.StartClient(side)) throw new Exception("Task pane restart after capture data was accepted.");
+    }
+    await Task.WhenAll(heightTasks);
     var geometry = await Task.WhenAll(sides.Select(side => {
         var data = Data(side);
         data["tile_rows"] = new JsonArray(new JsonArray(0, 1));
