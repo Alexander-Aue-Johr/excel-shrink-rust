@@ -1,7 +1,19 @@
 (function (root) {
   'use strict';
 
-  async function decode(base64) {
+  function yieldToHost() {
+    return new Promise(resolve => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = () => {
+        channel.port1.close();
+        channel.port2.close();
+        resolve();
+      };
+      channel.port2.postMessage(null);
+    });
+  }
+
+  async function decode(base64, pixels = true) {
     const image = new Image();
     image.src = `data:image/png;base64,${base64}`;
     await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('Cannot decode Excel PNG')); });
@@ -11,18 +23,25 @@
     const context = canvas.getContext('2d', {willReadFrequently: true});
     if (!context) throw new Error('Canvas pixels are unavailable');
     context.drawImage(image, 0, 0);
-    return {canvas, width: canvas.width, height: canvas.height,
-      pixels: context.getImageData(0, 0, canvas.width, canvas.height).data};
+    image.src = '';
+    const width = canvas.width, height = canvas.height;
+    const data = pixels ? context.getImageData(0, 0, width, height).data : null;
+    if (pixels) { canvas.width = 0; canvas.height = 0; }
+    return {canvas, width, height, pixels: data};
   }
 
   function release(image) {
     if (image) { image.pixels = null; image.canvas.width = 0; image.canvas.height = 0; }
   }
 
-  function sameImage(left, right) {
+  async function sameImage(left, right) {
     if (left.width !== right.width || left.height !== right.height) return false;
-    for (let index = 0; index < left.pixels.length; index++) {
-      if (left.pixels[index] !== right.pixels[index]) return false;
+    for (let start = 0; start < left.pixels.length; start += 1048576) {
+      if (start) await yieldToHost();
+      const end = Math.min(start + 1048576, left.pixels.length);
+      for (let index = start; index < end; index++) {
+        if (left.pixels[index] !== right.pixels[index]) return false;
+      }
     }
     return true;
   }
@@ -38,13 +57,15 @@
     return low;
   }
 
-  function candidateRows(image, geometry, tile, baseEdge) {
+  async function candidateRows(image, geometry, tile, baseEdge) {
     const rows = new Set();
     const width = image.width;
     if (baseEdge >= width - 2) return [];
     const firstY = tile.cropY + 1;
     const lastY = Math.min(image.height - 1, tile.cropY + tile.cropHeight - 1);
+    const rowsPerTurn = Math.max(1, Math.floor(262144 / width));
     for (let y = firstY; y < lastY; y++) {
+      if (y > firstY && (y - firstY) % rowsPerTurn === 0) await yieldToHost();
       const background = (y * width + width - 2) * 4;
       let signal = false;
       for (let x = baseEdge; x < width - 2; x++) {
@@ -163,7 +184,7 @@
     }
   }
 
-  function changedPixels(before, blocked, baseEdge, rows, geometry, tile) {
+  async function changedPixels(before, blocked, baseEdge, rows, geometry, tile) {
     if (before.width !== blocked.width || before.height !== blocked.height) {
       throw new Error('Worksheet geometry changed during overflow check');
     }
@@ -171,15 +192,19 @@
       first: Math.max(0, Math.floor((geometry.y[row] - geometry.y[tile.raw.r0]) * geometry.scaleY) - 1),
       last: Math.min(before.height, Math.ceil((geometry.y[row + 1] - geometry.y[tile.raw.r0]) * geometry.scaleY) + 2)
     }));
-    let changed = 0, rightmost = -1;
+    let changed = 0, rightmost = -1, band = 0;
+    const rowsPerTurn = Math.max(1, Math.floor(262144 / before.width));
     for (let y = 0; y < before.height; y++) {
+      if (y && y % rowsPerTurn === 0) await yieldToHost();
+      while (band < allowedBands.length && allowedBands[band].last <= y) band++;
+      const allowed = band < allowedBands.length && allowedBands[band].first <= y;
       for (let x = 0; x < before.width; x++) {
         const at = (y * before.width + x) * 4;
         if (before.pixels[at] === blocked.pixels[at] &&
             before.pixels[at + 1] === blocked.pixels[at + 1] &&
             before.pixels[at + 2] === blocked.pixels[at + 2] &&
             before.pixels[at + 3] === blocked.pixels[at + 3]) continue;
-        if (x < baseEdge - 1 || !allowedBands.some(band => y >= band.first && y < band.last)) {
+        if (x < baseEdge - 1 || !allowed) {
           throw new Error('Overflow check changed pixels outside the checked area');
         }
         changed++;
@@ -196,7 +221,7 @@
     let before, blocked, restored, written = [];
     try {
       before = await decode(initialBase64);
-      const candidates = candidateRows(before, geometry, tile, baseEdge);
+      const candidates = await candidateRows(before, geometry, tile, baseEdge);
       if (!candidates.length) return {retainProbe: false, rightEdge: false};
       if (blockerColumn >= tile.raw.c1) throw new Error('No visible blocker column within the image probe');
       written = await safeTargets(office, sheet, candidates, blockerColumn);
@@ -223,8 +248,9 @@
       });
       blocked = await decode(blockedBase64);
       restored = await decode(restoredBase64);
-      if (!sameImage(before, restored)) throw new Error('Image changed after overflow cells were restored');
-      const diff = changedPixels(before, blocked, baseEdge, written, geometry, tile);
+      if (!await sameImage(before, restored)) throw new Error('Image changed after overflow cells were restored');
+      release(restored); restored = null;
+      const diff = await changedPixels(before, blocked, baseEdge, written, geometry, tile);
       let lastColumn = tile.raw.c1 - 1;
       while (lastColumn > baseColumn && geometry.columns[lastColumn] === 0) lastColumn--;
       // A few blank edge pixels can be a gap between letters. Require the final
@@ -237,16 +263,27 @@
   }
 
   async function crop(base64, x, y, width, height) {
-    const source = await decode(base64);
+    const source = await decode(base64, false);
+    let canvas;
     try {
       if (![x, y, width, height].every(Number.isInteger) || x < 0 || y < 0 || width < 1 || height < 1 ||
           x + width > source.width || y + height > source.height) throw new Error('Invalid image crop');
-      const canvas = document.createElement('canvas');
+      canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
       canvas.getContext('2d').drawImage(source.canvas, x, y, width, height, 0, 0, width, height);
-      return canvas.toDataURL('image/png').split(',')[1];
-    } finally { release(source); }
+      const blob = await new Promise((resolve, reject) => canvas.toBlob(value =>
+        value ? resolve(value) : reject(new Error('Cannot encode image crop')), 'image/png'));
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = () => reject(new Error('Cannot read image crop'));
+        reader.readAsDataURL(blob);
+      });
+    } finally {
+      release(source);
+      if (canvas) { canvas.width = 0; canvas.height = 0; }
+    }
   }
 
   const api = {check, crop, decode, release, sameImage};
