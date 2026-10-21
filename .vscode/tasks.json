@@ -156,6 +156,49 @@
       }
     },
     {
+      "label": "Release corpus regression (resume)",
+      "type": "process",
+      "command": "cargo",
+      "args": [
+        "run",
+        "--release",
+        "-p",
+        "excel-shrink-cli",
+        "--",
+        "regression",
+        "study",
+        "--request-file",
+        ".tmp/archive-regression/study-request.json",
+        "--output-root",
+        ".tmp/regression/study",
+        "--import-report",
+        ".tmp/archive-regression/previous-report.json"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "test",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+        }
+      },
+      "windows": {
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "PATH": "${env:PATH};${userHome}/.cargo/bin"
+          }
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false
+      }
+    },
+    {
       "label": "Profile smoke test (pick case, Perfetto, no debugger)",
       "type": "process",
       "command": "cargo",
