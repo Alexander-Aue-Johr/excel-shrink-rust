@@ -4,7 +4,6 @@ use std::borrow::Cow;
 static FORMULAS: OnceLock<Regex> = OnceLock::new();
 static LINKS: OnceLock<Regex> = OnceLock::new();
 static PIVOT_SOURCES: OnceLock<Regex> = OnceLock::new();
-static REFERENCES: OnceLock<Regex> = OnceLock::new();
 static PIVOT_LOCATIONS: OnceLock<Regex> = OnceLock::new();
 
 impl PreparedReferenceScanner<'_> {
@@ -96,14 +95,6 @@ impl PreparedReferenceScanner<'_> {
         if let Some(function) = unsafe_function_name(&formula, self.patterns.unsafe_function) {
             return ScanResult::Unsafe(function);
         }
-        let references = REFERENCES.get_or_init(|| {
-            Regex::new(concat!(
-                r"(?i)(?:'(?:[^']|'')+'!|[A-Z_][A-Z0-9_.\-]*!)?",
-                r"(?:\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6}(?::\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6})?",
-                r"|\$?[A-Z]{1,3}:\$?[A-Z]{1,3}|\$?[1-9][0-9]{0,6}:\$?[1-9][0-9]{0,6})"
-            ))
-            .unwrap()
-        });
         // Object formulas normally carry a sheet name. For an unresolved owner,
         // conservatively protect these coordinates on every sheet.
         extract_tokens_for_sheet(
@@ -111,7 +102,7 @@ impl PreparedReferenceScanner<'_> {
             None,
             &self.sheet_name_to_file,
             protected,
-            references,
+            formula_reference_pattern(),
         );
         ScanResult::Safe
     }

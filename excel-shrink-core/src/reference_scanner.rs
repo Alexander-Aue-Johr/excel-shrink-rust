@@ -75,13 +75,19 @@ fn sheet_scan_patterns() -> SheetScanPatterns {
             )
             .unwrap()
         }),
-        reference_token: REFERENCE_TOKEN_PATTERN.get_or_init(|| {
-            Regex::new(
-                r"(?i)(?:'[^']+'!|[A-Z_][A-Z0-9_.\-]*!)?\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6}(?::\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6})?",
-            )
-            .unwrap()
-        }),
+        reference_token: formula_reference_pattern(),
     }
+}
+
+fn formula_reference_pattern() -> &'static Regex {
+    REFERENCE_TOKEN_PATTERN.get_or_init(|| {
+        Regex::new(concat!(
+            r"(?i)(?:'(?:[^']|'')+'!|[A-Z_][A-Z0-9_.\-]*!)?",
+            r"(?:\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6}(?::\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6})?",
+            r"|\$?[A-Z]{1,3}:\$?[A-Z]{1,3}|\$?[1-9][0-9]{0,6}:\$?[1-9][0-9]{0,6})"
+        ))
+        .unwrap()
+    })
 }
 
 fn unsafe_function_pattern() -> &'static Regex {
@@ -410,6 +416,8 @@ fn defined_name_should_be_ignored(attrs: &[u8]) -> bool {
 
     name.eq_ignore_ascii_case(b"_xlnm._FilterDatabase")
         || name.eq_ignore_ascii_case(b"_FilterDatabase")
+        || name.eq_ignore_ascii_case(b"_xlnm.Print_Area")
+        || name.eq_ignore_ascii_case(b"_xlnm.Print_Titles")
         || bytes_ends_with_ignore_ascii_case(name, b".wvu.FilterData")
 }
 

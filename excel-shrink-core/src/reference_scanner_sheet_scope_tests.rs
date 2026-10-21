@@ -277,6 +277,85 @@ fn filter_defined_names_do_not_keep_whitespace_candidate_cells() {
 }
 
 #[test]
+fn named_chart_sources_protect_whole_columns_and_local_rows() {
+    let names = HashMap::from([
+        ("Data".to_owned(), "xl/worksheets/sheet1.xml".to_owned()),
+        ("Results".to_owned(), "xl/worksheets/sheet2.xml".to_owned()),
+    ]);
+    let order = vec![
+        "xl/worksheets/sheet1.xml".to_owned(),
+        "xl/worksheets/sheet2.xml".to_owned(),
+    ];
+    let scanner = PreparedReferenceScanner::new(&[], Some(&names), Some(&order));
+    let mut refs = ProtectedWorkbookRefs::default();
+    let workbook = SheetScanBuffer {
+        sheet_file: "xl/workbook.xml",
+        sheet_name: "Workbook",
+        xml: br#"<workbook><definedNames>
+            <definedName name="SeriesValues">Data!$B:$D</definedName>
+            <definedName name="SeriesLabels" localSheetId="1">$7:$9</definedName>
+        </definedNames></workbook>"#,
+    };
+    assert!(matches!(
+        scanner.scan(&[workbook], &mut refs),
+        ScanResult::Safe
+    ));
+    assert!(matches!(
+        scanner.scan_object_references(
+            br#"<c:f>Book.xlsx!SeriesValues</c:f><c:f>Results!SeriesLabels</c:f>"#,
+            &mut refs,
+        ),
+        ScanResult::Safe
+    ));
+    assert!(refs.contains("xl/worksheets/sheet1.xml", 3, 1_048_576));
+    assert!(!refs.contains("xl/worksheets/sheet1.xml", 5, 20));
+    assert!(refs.contains("xl/worksheets/sheet2.xml", 16_384, 8));
+    assert!(!refs.contains("xl/worksheets/sheet2.xml", 3, 20));
+}
+
+#[test]
+fn formulas_protect_whole_ranges_with_quoted_sheet_names() {
+    let names = HashMap::from([("O'Brien".to_owned(), "xl/worksheets/sheet1.xml".to_owned())]);
+    let buffer = SheetScanBuffer {
+        sheet_file: "xl/worksheets/sheet2.xml",
+        sheet_name: "Totals",
+        xml: br#"<worksheet><sheetData><row r="1"><c r="A1">
+            <f>SUM('O''Brien'!$A:$A)+SUM($12:$14)</f>
+        </c></row></sheetData></worksheet>"#,
+    };
+    let mut refs = ProtectedWorkbookRefs::default();
+    assert!(matches!(
+        scan_for_references_by_sheet(&[buffer], &mut refs, Some(&names), None,),
+        ScanResult::Safe
+    ));
+    assert!(refs.contains("xl/worksheets/sheet1.xml", 1, 500));
+    assert!(!refs.contains("xl/worksheets/sheet1.xml", 2, 500));
+    assert!(refs.contains("xl/worksheets/sheet2.xml", 500, 13));
+    assert!(!refs.contains("xl/worksheets/sheet2.xml", 1, 500));
+}
+
+#[test]
+fn print_metadata_does_not_protect_every_cell_in_the_print_area() {
+    let names = HashMap::from([("Data".to_owned(), "xl/worksheets/sheet1.xml".to_owned())]);
+    let buffer = SheetScanBuffer {
+        sheet_file: "xl/workbook.xml",
+        sheet_name: "Workbook",
+        xml: br#"<workbook><definedNames>
+            <definedName name="_xlnm.Print_Area">Data!$A$1:$XFD$1048576</definedName>
+            <definedName name="_xlnm.Print_Titles">Data!$A:$Z,Data!$1:$100</definedName>
+        </definedNames></workbook>"#,
+    };
+    let mut refs = ProtectedWorkbookRefs::default();
+    assert!(matches!(
+        scan_for_references_by_sheet(&[buffer], &mut refs, Some(&names), None,),
+        ScanResult::Safe
+    ));
+    assert!(!refs.contains("xl/worksheets/sheet1.xml", 1, 1));
+    assert!(!refs.contains("xl/worksheets/sheet1.xml", 26, 100));
+    assert!(!refs.contains("xl/worksheets/sheet1.xml", 16_384, 1_048_576));
+}
+
+#[test]
 fn cross_sheet_reference_with_custom_sheet_name_seed_map_keeps_target_candidate() {
     let sheet2_xml = br#"
         <worksheet>
@@ -321,7 +400,7 @@ fn workbook_defined_name_with_local_sheet_id_is_sheet_scoped() {
     let workbook_xml = br#"
         <workbook>
             <definedNames>
-                <definedName name="_xlnm.Print_Area" localSheetId="1">$S$41</definedName>
+                <definedName name="LocalData" localSheetId="1">$S$41</definedName>
             </definedNames>
         </workbook>
     "#;
@@ -354,7 +433,7 @@ fn defined_names_parent_tag_is_not_scanned_as_defined_name() {
     let workbook_xml = br#"
         <workbook>
             <definedNames>
-                <definedName name="_xlnm.Print_Area" localSheetId="1">$S$41</definedName>
+                <definedName name="LocalData" localSheetId="1">$S$41</definedName>
             </definedNames>
         </workbook>
     "#;
