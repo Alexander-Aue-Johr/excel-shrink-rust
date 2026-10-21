@@ -188,7 +188,8 @@
         "options": {
           "cwd": "${workspaceFolder}",
           "env": {
-            "PATH": "${env:PATH};${userHome}/.cargo/bin"
+            "PATH": "${env:PATH};${userHome}/.cargo/bin",
+            "EXCEL_SHRINK_WORKER_MEMORY_MIB": "8192"
           }
         }
       },
