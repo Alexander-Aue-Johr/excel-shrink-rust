@@ -272,6 +272,16 @@ The optional `access_url` works as described above. Actual dataset URLs belong i
 local request files, outside version control. Both Windows and WSL can run the study;
 Windows Excel and the capture host prerequisites are required.
 
+In native Windows VS Code, run the task `Release corpus regression (resume)`.
+It starts Windows Cargo and PowerShell directly. The local files
+`.tmp/archive-regression/study-request.json` and
+`.tmp/archive-regression/previous-report.json` must exist in this checkout;
+they are not included in Git. Copy these from the earlier environment when
+continuing a study. Local archive paths in the request must be accessible from
+Windows (for example `V:/datasets/corpus.zip`); HTTP(S) URLs can stay unchanged.
+The output directory's `records/` journal is needed to resume newer results
+that are not included in the imported report.
+
 For each corpus, preparation finishes before visual comparisons start:
 
 1. Extract one XLSX or XLS. Excel converts legacy XLS to XLSX; conversion metadata

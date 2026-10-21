@@ -527,7 +527,7 @@ fn power_shell_script_command(
         command.arg("-STA");
         command.arg("-ExecutionPolicy").arg("Bypass");
     }
-    let script_arg = if cfg!(not(windows)) && program.ends_with(".exe") {
+    let script_arg = if cfg!(windows) || program.ends_with(".exe") {
         power_shell_path(script_path)?
     } else {
         script_path.to_string_lossy().to_string()
@@ -626,7 +626,18 @@ pub(super) fn power_shell_path(path: &Path) -> anyhow::Result<String> {
 
     #[cfg(windows)]
     {
-        return Ok(absolute.to_string_lossy().to_string());
+        // canonicalize() produces verbatim paths on Windows. PowerShell 5's
+        // filesystem provider cannot resolve those (including $PSScriptRoot).
+        let text = absolute.to_string_lossy();
+        if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+            return Ok(format!(r"\\{unc}"));
+        }
+        if let Some(disk) = text.strip_prefix(r"\\?\") {
+            if disk.as_bytes().get(1) == Some(&b':') {
+                return Ok(disk.to_owned());
+            }
+        }
+        return Ok(text.into_owned());
     }
 
     #[cfg(not(windows))]
@@ -669,6 +680,24 @@ const RECALCULATE_AND_SAVE_SCRIPT: &str = include_str!("excel_recalculate.ps1");
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn powershell_paths_remove_verbatim_disk_and_unc_prefixes() -> anyhow::Result<()> {
+        for (input, expected) in [
+            (r"\\?\C:\study folder\open.ps1", r"C:\study folder\open.ps1"),
+            (r"\\?\UNC\server\share\open.ps1", r"\\server\share\open.ps1"),
+            (r"C:\study folder\open.ps1", r"C:\study folder\open.ps1"),
+            (r"\\server\share\open.ps1", r"\\server\share\open.ps1"),
+        ] {
+            assert_eq!(power_shell_path(Path::new(input))?, expected);
+            let command = power_shell_script_command(Path::new(input), &[])?;
+            let args: Vec<_> = command.get_args().collect();
+            let file = args.iter().position(|arg| *arg == "-File").unwrap();
+            assert_eq!(args[file + 1], OsStr::new(expected));
+        }
+        Ok(())
+    }
 
     #[test]
     fn recalculation_script_blocks_for_a_full_rebuild() {
