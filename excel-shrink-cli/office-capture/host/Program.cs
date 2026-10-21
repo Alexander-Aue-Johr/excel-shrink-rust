@@ -45,6 +45,8 @@ builder.WebHost.UseUrls($"http://localhost:{port}");
 builder.WebHost.ConfigureKestrel(server => server.Limits.MaxRequestBodySize = MaxImageBytes * 2L);
 var app = builder.Build();
 var configSeen = 0;
+var originalSeen = 0;
+var shrunkSeen = 0;
 var files = new PhysicalFileProvider(webDirectory);
 app.Use(async (context, next) =>
 {
@@ -54,7 +56,10 @@ app.Use(async (context, next) =>
 app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
 app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
 
-app.MapGet("/health", () => Results.Json(new { ok = true, run_id = runId, config_seen = Volatile.Read(ref configSeen) != 0 }));
+app.MapGet("/health", () => Results.Json(new { ok = true, run_id = runId,
+    config_seen = Volatile.Read(ref configSeen) != 0,
+    original_seen = Volatile.Read(ref originalSeen) != 0,
+    shrunk_seen = Volatile.Read(ref shrunkSeen) != 0 }));
 app.MapGet("/config", (HttpRequest request) =>
 {
     Interlocked.Exchange(ref configSeen, 1);
@@ -63,6 +68,8 @@ app.MapGet("/config", (HttpRequest request) =>
     {
         var side = request.Query["side"].ToString();
         if (side is not ("original" or "shrunk")) return Results.BadRequest("Invalid capture side.");
+        if (side == "original") Interlocked.Exchange(ref originalSeen, 1);
+        else Interlocked.Exchange(ref shrunkSeen, 1);
         response = response[side]!.AsObject();
         response["mode"] = "paired";
         response["side"] = side;

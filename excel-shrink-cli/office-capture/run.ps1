@@ -389,6 +389,16 @@ try {
     $excelProcess = $captureDesktop.Start($excelExecutable, ('/x ' + (Quote-Argument $workbookCopy)), $ownedProcesses)
 
     if ($ComparisonWorkbookPath) {
+        # Starting both Office runtimes together can leave one waiting for startup.
+        $startup.Restart()
+        while ($true) {
+            $excelProcess.Refresh()
+            if ($excelProcess.HasExited) { throw 'Original Excel process exited before its add-in started.' }
+            $health = Invoke-RestMethod -Uri ($controlUrl + '/health') -TimeoutSec 2
+            if ($health.run_id -eq $runId -and $health.original_seen) { break }
+            if ($startup.Elapsed.TotalSeconds -gt $StartupTimeoutSeconds) { throw 'Original Office add-in did not start before the startup timeout.' }
+            Start-Sleep -Milliseconds 250
+        }
         $comparisonProcess = $captureDesktop.Start($excelExecutable, ('/x ' + (Quote-Argument $comparisonCopy)), $ownedProcesses)
     }
 
@@ -403,7 +413,8 @@ try {
         if (-not $captureStarted) {
             try {
                 $health = Invoke-RestMethod -Uri ($controlUrl + '/health') -TimeoutSec 2
-                if ($health.run_id -eq $runId -and $health.config_seen) {
+                $ready = if ($ComparisonWorkbookPath) { $health.original_seen -and $health.shrunk_seen } else { $health.config_seen }
+                if ($health.run_id -eq $runId -and $ready) {
                     $captureStarted = $true
                     $captureTimer.Restart()
                 }
