@@ -296,7 +296,8 @@ pub(super) fn retain_evidence(value: &mut Value, work: &Path, evidence: &Path) -
                                 path.extension().is_some_and(|e| e == "png"),
                                 "non-PNG report evidence"
                             );
-                            let target = evidence.join(relative);
+                            let digest = artifact_cache::sha256(relative.to_string_lossy().as_bytes());
+                            let target = evidence.join(format!("{}.png", &digest[..20]));
                             if !copied.contains_key(&path) {
                                 fs::create_dir_all(target.parent().unwrap())?;
                                 fs::copy(&path, &target)
