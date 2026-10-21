@@ -8,6 +8,7 @@ use zip::ZipArchive;
 
 mod download;
 mod worker;
+mod verified;
 pub(super) use worker::{run_worker, WorkerArgs};
 
 #[derive(Parser, Debug)]
@@ -362,6 +363,7 @@ fn publish(output: &Path, records: &[Value], complete: bool, limited: bool) -> R
         &output.join("diagnosis.json"),
         &serde_json::to_vec_pretty(&report)?,
     )?;
+    verified::write(output, records)?;
     diagnosis_report::write(output, &report)?;
     Ok(())
 }
