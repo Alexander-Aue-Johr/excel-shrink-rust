@@ -1,6 +1,6 @@
 use super::excel_automation::ExcelScreenshotDifferenceSummary;
 use super::office_capture::{
-    capture_images, check_row_heights, compare_paired_images, plan_pair, PairedImageTile,
+    capture_images, check_row_heights, compare_paired_visuals, plan_pair, PairedImageTile,
 };
 use super::row_heights::RowHeightDifference;
 use super::visual_compare::{compare_images, ImageDifference};
@@ -50,55 +50,13 @@ pub(super) fn compare_sheet_visuals(
         !paired_plan.sheets.is_empty(),
         "no worksheets selected for visual comparison"
     );
-    let captures = output_dir.join("captures");
-    let changed_heights = check_row_heights(
-        &paired_plan,
-        original,
-        shrunk,
-        &output_dir.join("row-heights"),
-    )?;
-    let mut rows = BTreeMap::<usize, Vec<u32>>::new();
-    for change in &changed_heights {
-        rows.entry(change.sheet_index).or_default().push(change.row);
-    }
-    let mut tiles = Vec::new();
-    let mut image_differences = Vec::new();
-    // A changed height stops full-image checks on that sheet. Other sheets
-    // still receive their image check and can reveal independent differences.
-    for height_evidence in [false, true] {
-        let mut selected = paired_plan.clone();
-        selected
-            .sheets
-            .retain(|sheet| rows.contains_key(&sheet.sheet_index) == height_evidence);
-        if selected.sheets.is_empty() {
-            continue;
-        }
-        let selected_rows = height_evidence.then_some(&rows);
-        let phase_output = output_dir.join(if height_evidence {
-            "height-images"
-        } else {
-            "images"
-        });
-        let (captured, differences) = if options.keep_screenshots {
-            let captured = capture_images(
-                &selected,
-                original,
-                shrunk,
-                &captures.join(if height_evidence { "heights" } else { "full" }),
-                selected_rows,
-            )?;
-            let differences = if height_evidence {
-                Vec::new()
-            } else {
-                compare_images(&captured, &phase_output.join("differences"))?
-            };
-            (captured, differences)
-        } else {
-            compare_paired_images(&selected, original, shrunk, &phase_output, selected_rows)?
-        };
-        tiles.extend(captured);
-        image_differences.extend(differences);
-    }
+    let (changed_heights, tiles, image_differences) = if options.keep_screenshots {
+        capture_stored_images(&paired_plan, original, shrunk, output_dir)?
+    } else {
+        let result =
+            compare_paired_visuals(&paired_plan, original, shrunk, &output_dir.join("images"))?;
+        (result.heights, result.tiles, result.differences)
+    };
     let sheets = visual_sheets(
         &paired_plan.sheets,
         &changed_heights,
@@ -151,6 +109,67 @@ pub(super) fn compare_sheet_visuals(
         differences_found: total_differences > 0,
         difference_summary: summary,
     })
+}
+
+// Full screenshot retention keeps the disk-backed diagnostic path.
+fn capture_stored_images(
+    paired_plan: &super::office_capture::PairedPlan,
+    original: &Path,
+    shrunk: &Path,
+    output_dir: &Path,
+) -> Result<(
+    Vec<RowHeightDifference>,
+    Vec<PairedImageTile>,
+    Vec<ImageDifference>,
+)> {
+    let captures = output_dir.join("captures");
+    let changed_heights = check_row_heights(
+        paired_plan,
+        original,
+        shrunk,
+        &output_dir.join("row-heights"),
+    )?;
+    let mut rows = BTreeMap::<usize, Vec<u32>>::new();
+    for change in &changed_heights {
+        rows.entry(change.sheet_index).or_default().push(change.row);
+    }
+    let mut tiles = Vec::new();
+    let mut image_differences = Vec::new();
+    // A changed height stops full-image checks on that sheet. Other sheets
+    // still receive their image check and can reveal independent differences.
+    for height_evidence in [false, true] {
+        let mut selected = paired_plan.clone();
+        selected
+            .sheets
+            .retain(|sheet| rows.contains_key(&sheet.sheet_index) == height_evidence);
+        if selected.sheets.is_empty() {
+            continue;
+        }
+        let selected_rows = height_evidence.then_some(&rows);
+        let phase_output = output_dir.join(if height_evidence {
+            "height-images"
+        } else {
+            "images"
+        });
+        let (captured, differences) = {
+            let captured = capture_images(
+                &selected,
+                original,
+                shrunk,
+                &captures.join(if height_evidence { "heights" } else { "full" }),
+                selected_rows,
+            )?;
+            let differences = if height_evidence {
+                Vec::new()
+            } else {
+                compare_images(&captured, &phase_output.join("differences"))?
+            };
+            (captured, differences)
+        };
+        tiles.extend(captured);
+        image_differences.extend(differences);
+    }
+    Ok((changed_heights, tiles, image_differences))
 }
 
 fn visual_sheets(

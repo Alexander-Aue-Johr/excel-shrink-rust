@@ -11,7 +11,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod paired_capture;
-pub(super) use paired_capture::compare_paired_images;
+pub(super) use paired_capture::compare_paired_visuals;
 
 #[cfg(test)]
 #[test]

@@ -5,16 +5,21 @@ use std::process::Stdio;
 
 const MAX_PNG_BYTES: usize = 160 * 1024 * 1024;
 
-pub(in crate::regression) fn compare_paired_images(
+pub(in crate::regression) struct PairedVisualResult {
+    pub tiles: Vec<PairedImageTile>,
+    pub differences: Vec<ImageDifference>,
+    pub heights: Vec<RowHeightDifference>,
+}
+
+pub(in crate::regression) fn compare_paired_visuals(
     plan: &PairedPlan,
     original: &Path,
     shrunk: &Path,
     output: &Path,
-    rows: Option<&BTreeMap<usize, Vec<u32>>>,
-) -> Result<(Vec<PairedImageTile>, Vec<ImageDifference>)> {
-    match run_pair(plan, original, shrunk, output, rows, 32) {
+) -> Result<PairedVisualResult> {
+    match run_pair(plan, original, shrunk, output, 32) {
         Err(error) if error.downcast_ref::<ImageBudgetError>().is_some() => {
-            run_pair(plan, original, shrunk, output, rows, 16)
+            run_pair(plan, original, shrunk, output, 16)
         }
         result => result,
     }
@@ -25,27 +30,23 @@ fn run_pair(
     original: &Path,
     shrunk: &Path,
     output: &Path,
-    rows: Option<&BTreeMap<usize, Vec<u32>>>,
     megapixels: u32,
-) -> Result<(Vec<PairedImageTile>, Vec<ImageDifference>)> {
+) -> Result<PairedVisualResult> {
     fs::create_dir_all(output)?;
-    let selected = selected_sheets(plan, rows)?;
+    let selected = selected_sheets(plan, None)?;
     let side = |original_side: bool| -> Value {
         let sheets: Vec<_> = selected
             .iter()
             .map(|sheet| {
-                let mut config = if original_side {
+                let config = if original_side {
                     sheet.original_config.clone()
                 } else {
                     sheet.shrunk_config.clone()
                 };
-                if let Some(rows) = rows {
-                    config["rows"] = json!(rows[&sheet.sheet_index]);
-                }
                 config
             })
             .collect();
-        json!({"mode":"paired", "tile_megapixels":megapixels,
+        json!({"mode":"paired", "check_heights":true, "tile_megapixels":megapixels,
             "workbook":if original_side { &plan.original_workbook } else { &plan.shrunk_workbook }, "sheets":sheets})
     };
     let config = output.join("config.json");
@@ -111,6 +112,9 @@ fn run_pair(
     let mut tiles = Vec::new();
     let mut differences = Vec::new();
     let mut metadata = ImageTiles::new();
+    let mut heights = Vec::new();
+    let mut height_sheets = BTreeSet::new();
+    let mut changed_rows = BTreeMap::new();
     let mut consumer_error = None;
     loop {
         let frame = read_frame(&mut stream);
@@ -123,7 +127,38 @@ fn run_pair(
         }) else {
             break;
         };
+        if info["kind"] == "heights" {
+            let compared =
+                compare_streamed_heights(&info, &left, &right, &selected, &mut height_sheets);
+            match compared {
+                Ok(changes) => {
+                    let index = info["sheet_index"].as_u64().unwrap() as usize;
+                    let rows: Vec<_> = changes.iter().map(|change| change.row).collect();
+                    let response = serde_json::to_vec(&json!({"rows": rows}))?;
+                    input.write_all(&[3])?;
+                    input.write_all(&(response.len() as u32).to_le_bytes())?;
+                    input.write_all(&response)?;
+                    input.flush()?;
+                    if !rows.is_empty() {
+                        changed_rows.insert(index, rows);
+                    }
+                    heights.extend(changes);
+                }
+                Err(error) => {
+                    consumer_error = Some(error);
+                    input.write_all(&[0])?;
+                    input.flush()?;
+                    break;
+                }
+            }
+            continue;
+        }
         let compared = (|| -> Result<()> {
+            let info: ImageTile = serde_json::from_value(info)?;
+            ensure!(
+                height_sheets.contains(&info.sheet_index),
+                "image arrived before row-height comparison"
+            );
             let sheet = selected
                 .iter()
                 .find(|s| s.sheet_index == info.sheet_index)
@@ -154,7 +189,7 @@ fn run_pair(
                 original_image: PathBuf::new(),
                 shrunk_image: PathBuf::new(),
             };
-            if rows.is_some() {
+            if changed_rows.contains_key(&info.sheet_index) {
                 let evidence = output.join("height-evidence");
                 fs::create_dir_all(&evidence)?;
                 tile.original_image = evidence.join(format!(
@@ -220,8 +255,60 @@ fn run_pair(
         status.success(),
         "paired capture failed ({status}): {stderr}"
     );
-    validate_tile_coverage(&metadata, &selected, rows)?;
-    Ok((tiles, differences))
+    ensure!(
+        height_sheets.len() == selected.len(),
+        "paired capture omitted row heights"
+    );
+    for height_evidence in [false, true] {
+        let sheets: Vec<_> = selected
+            .iter()
+            .copied()
+            .filter(|sheet| changed_rows.contains_key(&sheet.sheet_index) == height_evidence)
+            .collect();
+        if sheets.is_empty() {
+            continue;
+        }
+        let images = metadata
+            .iter()
+            .filter(|((index, _), _)| changed_rows.contains_key(index) == height_evidence)
+            .map(|(key, value)| (*key, value.clone()))
+            .collect();
+        validate_tile_coverage(&images, &sheets, height_evidence.then_some(&changed_rows))?;
+    }
+    Ok(PairedVisualResult {
+        tiles,
+        differences,
+        heights,
+    })
+}
+
+fn compare_streamed_heights(
+    metadata: &Value,
+    original: &[u8],
+    shrunk: &[u8],
+    sheets: &[&PairedSheetPlan],
+    received: &mut BTreeSet<usize>,
+) -> Result<Vec<RowHeightDifference>> {
+    let index = metadata["sheet_index"]
+        .as_u64()
+        .context("missing height sheet index")? as usize;
+    let sheet = sheets
+        .iter()
+        .find(|sheet| sheet.sheet_index == index)
+        .context("unexpected row-height worksheet")?;
+    ensure!(received.insert(index), "duplicate row-height worksheet");
+    let left: SheetHeights = serde_json::from_slice(original)?;
+    let right: SheetHeights = serde_json::from_slice(shrunk)?;
+    row_heights::compare_row_heights(
+        &[left],
+        &[right],
+        &[SheetExtent {
+            index,
+            name: sheet.sheet_name.clone(),
+            last_row: sheet.bottom_row + 1,
+            last_checked_row: sheet.row_height_bottom_row + 1,
+        }],
+    )
 }
 
 fn decode(bytes: &[u8]) -> Result<image::RgbaImage> {
@@ -239,7 +326,7 @@ fn decode(bytes: &[u8]) -> Result<image::RgbaImage> {
     Ok(image::load_from_memory_with_format(bytes, image::ImageFormat::Png)?.to_rgba8())
 }
 
-fn read_frame(reader: &mut impl Read) -> Result<Option<(ImageTile, Vec<u8>, Vec<u8>)>> {
+fn read_frame(reader: &mut impl Read) -> Result<Option<(Value, Vec<u8>, Vec<u8>)>> {
     let mut length = [0; 4];
     reader
         .read_exact(&mut length)
@@ -267,7 +354,6 @@ fn read_frame(reader: &mut impl Read) -> Result<Option<(ImageTile, Vec<u8>, Vec<
     reader.read_exact(&mut metadata)?;
     let mut info: Value = serde_json::from_slice(&metadata)?;
     info["image_path"] = json!("");
-    let info = serde_json::from_value(info)?;
     let mut a = vec![0; left];
     let mut b = vec![0; right];
     reader.read_exact(&mut a)?;
@@ -278,6 +364,113 @@ fn read_frame(reader: &mut impl Read) -> Result<Option<(ImageTile, Vec<u8>, Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn height_frames_reject_missing_rows_and_duplicate_sheets() -> Result<()> {
+        let sheet = PairedSheetPlan {
+            sheet_index: 1,
+            sheet_name: "Sheet1".into(),
+            bottom_row: 9,
+            row_height_bottom_row: 8,
+            capture_right_column: 1,
+            original_config: Value::Null,
+            shrunk_config: Value::Null,
+        };
+        let metadata = json!({"kind":"heights","sheet_index":1});
+        let original = serde_json::to_vec(&json!({"sheet_index":1,"sheet_name":"Sheet1",
+            "runs":[{"start_row":1,"end_row":10,"height":15.0}]}))?;
+        let shrunk = serde_json::to_vec(&json!({"sheet_index":1,"sheet_name":"Sheet1",
+            "runs":[{"start_row":1,"end_row":9,"height":15.0},{"start_row":10,"end_row":10,"height":12.0}]}))?;
+        let mut received = BTreeSet::new();
+        assert!(
+            compare_streamed_heights(&metadata, &original, &shrunk, &[&sheet], &mut received)?
+                .is_empty()
+        );
+        assert!(
+            compare_streamed_heights(&metadata, &original, &shrunk, &[&sheet], &mut received)
+                .is_err()
+        );
+        let missing = serde_json::to_vec(&json!({"sheet_index":1,"sheet_name":"Sheet1",
+            "runs":[{"start_row":1,"end_row":9,"height":15.0}]}))?;
+        assert!(compare_streamed_heights(
+            &metadata,
+            &original,
+            &missing,
+            &[&sheet],
+            &mut BTreeSet::new()
+        )
+        .is_err());
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires Windows Excel and the Office add-in runtime"]
+    fn compares_heights_and_images_in_one_excel_session() -> Result<()> {
+        let root = std::env::temp_dir().join(format!(
+            "es-paired-test-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        ));
+        fs::create_dir_all(&root)?;
+        let original = root.join("original.xlsx");
+        write_workbook(&original, false, 42)?;
+        for (name, changed_height, value) in [
+            ("same", false, 42),
+            ("height", true, 42),
+            ("value", false, 7),
+        ] {
+            let shrunk = root.join(format!("{name}.xlsx"));
+            write_workbook(&shrunk, changed_height, value)?;
+            let plan = plan_pair(&original, &shrunk)?;
+            let result = compare_paired_visuals(&plan, &original, &shrunk, &root.join(name))?;
+            assert_eq!(!result.heights.is_empty(), changed_height);
+            assert_eq!(!result.differences.is_empty(), value != 42);
+            if changed_height {
+                assert!(result
+                    .tiles
+                    .iter()
+                    .all(|tile| tile.original_image.is_file() && tile.shrunk_image.is_file()));
+            }
+        }
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    fn write_workbook(path: &Path, changed_height: bool, value: u32) -> Result<()> {
+        let mut zip = zip::ZipWriter::new(fs::File::create(path)?);
+        let sheet = format!(
+            r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:B2"/><sheetData><row r="1" {}><c r="A1"><v>{value}</v></c><c r="B1"><v>8</v></c></row><row r="2"><c r="A2"><v>9</v></c></row></sheetData></worksheet>"#,
+            if changed_height {
+                "ht=\"25\" customHeight=\"1\""
+            } else {
+                ""
+            }
+        );
+        for (name, xml) in [
+            (
+                "[Content_Types].xml",
+                r#"<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>"#,
+            ),
+            (
+                "_rels/.rels",
+                r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#,
+            ),
+            (
+                "xl/workbook.xml",
+                r#"<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>"#,
+            ),
+            (
+                "xl/_rels/workbook.xml.rels",
+                r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#,
+            ),
+            ("xl/worksheets/sheet1.xml", sheet.as_str()),
+        ] {
+            zip.start_file(name, zip::write::FileOptions::default())?;
+            zip.write_all(xml.as_bytes())?;
+        }
+        zip.finish()?;
+        Ok(())
+    }
     #[test]
     fn receives_exact_png_bytes_and_rejects_truncated_pairs() -> Result<()> {
         let info = json!({"sheet_index":1,"sheet_name":"S","tile_index":0,"range":"A1:B2"});
