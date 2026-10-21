@@ -7,6 +7,7 @@ use std::{collections::{BTreeSet, HashMap, HashSet}, fs::File, io::Read, path::{
 use zip::ZipArchive;
 use super::{CellValueDifference, CellDifferenceKind, MissingCellPolicy, WorkbookComparisonReport, WorksheetCaptureRange};
 use super::super::{artifact_cache as cache, xml_views::{self as xml, Reader, Kind, TextBytes}};
+use super::super::office_plan::parse_column_width as column_width;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub(super) struct Coordinate { pub row: u32, pub column: u32 }
@@ -199,12 +200,6 @@ impl<'a> Bounds<'a> {
             max_cell: Coordinate { row: self.row, column: self.column }.name(), max_row: self.row, max_column: self.column,
             max_row_source: self.row_source.map(Source::name), max_column_source: self.column_source.map(Source::name) }
     }
-}
-
-fn column_width(bytes: &[u8]) -> Result<f64> {
-    let width: f64 = std::str::from_utf8(bytes)?.parse()?;
-    ensure!(width.is_finite() && (0.0..=255.0).contains(&width), "invalid column width");
-    Ok(width)
 }
 
 pub(super) struct Cells<'a> {

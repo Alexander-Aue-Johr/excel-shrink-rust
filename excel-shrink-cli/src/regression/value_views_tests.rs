@@ -100,6 +100,35 @@ fn v9_hidden_row_and_column_removal_policies() -> Result<()> {
     Ok(())
 }
 #[test]
+fn v9_excel_padded_column_widths_allow_complete_value_comparison() -> Result<()> {
+    let strings=sst("");
+    for width in ["255.5703125", "255.7109375", "256.5", "260"] {
+        for definition in [
+            format!(r#"<cols><col min="1" max="1" width="{width}"/></cols>"#),
+            format!(r#"<sheetFormatPr defaultColWidth="{width}"/>"#),
+        ] {
+            let left=format!(r#"<worksheet>{definition}<sheetData><row r="1"><c r="A1"><v>42</v></c></row></sheetData></worksheet>"#);
+            assert!(compare_xml(left.as_bytes(),&sheet(r#"<c r="A1"><v>42</v></c>"#),&strings,&strings,MissingCellPolicy::strict(),true,false)?.is_empty());
+            assert_eq!(compare_xml(left.as_bytes(),&sheet(r#"<c r="A1"><v>43</v></c>"#),&strings,&strings,MissingCellPolicy::strict(),true,false)?.len(),1);
+        }
+    }
+    Ok(())
+}
+#[test]
+fn v9_invalid_column_widths_still_fail_value_comparison() {
+    let strings=sst("");
+    for width in ["-0.1", "260.00390625", "65536", "1e308", "NaN", "inf", "-inf"] {
+        for definition in [
+            format!(r#"<cols><col min="1" max="1" width="{width}"/></cols>"#),
+            format!(r#"<sheetFormatPr defaultColWidth="{width}"/>"#),
+        ] {
+            let invalid=format!("<worksheet>{definition}<sheetData/></worksheet>");
+            assert!(compare_xml(invalid.as_bytes(),&sheet(""),&strings,&strings,MissingCellPolicy::strict(),true,false).is_err(),"{invalid}");
+            assert!(compare_xml(&sheet(""),invalid.as_bytes(),&strings,&strings,MissingCellPolicy::strict(),true,false).is_err(),"{invalid}");
+        }
+    }
+}
+#[test]
 fn v9_formula_preservation_is_separate_from_cached_values() -> Result<()> {
     let strings=sst("");
     let a=sheet("<c r='A1'><f>1+1</f><v>2</v></c>");

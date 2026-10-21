@@ -258,11 +258,16 @@ fn workbook_sheets<R: Read + std::io::Seek>(
     Ok(sheets)
 }
 
-fn parse_column_width(value: &[u8]) -> Result<f64> {
+pub(in crate::regression) fn parse_column_width(value: &[u8]) -> Result<f64> {
     let width: f64 = std::str::from_utf8(value)?.parse()?;
+    // OOXML stores padding as part of the width, unlike Excel's 255-character
+    // UI limit. Excel writes 255.7109375 for Calibri 11 and 256.5 for Arial 1.
+    // Allow the five padding pixels even for a one-pixel digit width, without
+    // clamping the source geometry or accepting unbounded capture dimensions.
+    const MAX_STORED_COLUMN_WIDTH: f64 = 255.0 + 5.0;
     ensure!(
-        width.is_finite() && (0.0..=255.0).contains(&width),
-        "invalid column width"
+        width.is_finite() && (0.0..=MAX_STORED_COLUMN_WIDTH).contains(&width),
+        "invalid column width {width}"
     );
     Ok(width)
 }
@@ -712,6 +717,55 @@ pub(crate) fn build_workbook_visual_plan(path: &Path) -> Result<WorkbookVisualPl
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn excel_maximum_widths_include_padding_and_retain_the_source_geometry() {
+        let xml = br#"<worksheet><sheetFormatPr defaultColWidth="255.7109375"/>
+            <cols>
+                <col min="1" max="1" width="255.5703125"/>
+                <col min="2" max="2" width="255.7109375"/>
+                <col min="3" max="3" width="256.5"/>
+            </cols>
+            <sheetData><row r="1"><c r="C1"><v>1</v></c></row></sheetData>
+        </worksheet>"#;
+        let summary = scan_sheet(xml).unwrap();
+        assert_eq!(summary.columns.default_width, 255.7109375);
+        assert_eq!(
+            summary
+                .columns
+                .spans
+                .iter()
+                .map(|span| span.width.unwrap())
+                .collect::<Vec<_>>(),
+            [255.5703125, 255.7109375, 256.5]
+        );
+        assert_eq!((summary.max_row, summary.max_column), (1, 3));
+    }
+
+    #[test]
+    fn column_widths_remain_finite_nonnegative_and_bounded() {
+        for value in ["0", "8.43", "255", "260"] {
+            assert!(parse_column_width(value.as_bytes()).is_ok(), "{value}");
+        }
+        for value in [
+            "-0.1",
+            "260.00390625",
+            "65536",
+            "1e308",
+            "NaN",
+            "inf",
+            "-inf",
+        ] {
+            for xml in [
+                format!(
+                    r#"<worksheet><cols><col min="1" max="1" width="{value}"/></cols></worksheet>"#
+                ),
+                format!(r#"<worksheet><sheetFormatPr defaultColWidth="{value}"/></worksheet>"#),
+            ] {
+                assert!(scan_sheet(xml.as_bytes()).is_err(), "{xml}");
+            }
+        }
+    }
 
     #[test]
     fn trailing_hidden_columns_require_a_hidden_xfd_suffix() {
