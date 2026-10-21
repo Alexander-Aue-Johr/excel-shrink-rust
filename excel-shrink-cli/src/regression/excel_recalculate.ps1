@@ -7,12 +7,15 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Write-RecalcProgress([string]$message) {
-    Add-Content -LiteralPath $ProgressPath -Encoding UTF8 `
-        -Value "$(Get-Date -Format o) recalc $message"
+    # Rust polls this file while Excel is running; neither handle may exclude readers.
+    $bytes = [Text.Encoding]::UTF8.GetBytes("$(Get-Date -Format o) recalc $message" + [Environment]::NewLine)
+    $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+    $stream = [IO.File]::Open($ProgressPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, $share)
+    try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
 }
 
-Set-Content -LiteralPath $ProgressPath -Encoding UTF8 `
-    -Value "$(Get-Date -Format o) recalc start"
+# The runner clears the previous log before launching this script.
+Write-RecalcProgress 'start'
 
 Add-Type @"
 using System;
