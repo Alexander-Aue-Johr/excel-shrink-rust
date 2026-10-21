@@ -8,12 +8,18 @@ use std::path::Path;
 pub(super) fn render(html: &mut String, root: &Path, file: &Value) {
     let id = file_id(file);
     let results = items(file, "results");
-    let baseline = results.first().unwrap_or(&Value::Null);
-    let equal = baseline["unchanged_sheets"].as_u64().unwrap_or_else(|| {
-        items(baseline, "sheets")
-            .iter()
-            .filter(|s| s["status"] == "same")
-            .count() as u64
+    let baseline = results.iter().find(|result| {
+        result["requested_sheets"].is_null()
+            && result["checks_complete"] != false
+            && (result["checked_sheets"].is_number() || !items(result, "sheets").is_empty())
+    });
+    let equal = baseline.map(|result| {
+        result["unchanged_sheets"].as_u64().unwrap_or_else(|| {
+            items(result, "sheets")
+                .iter()
+                .filter(|s| s["status"] == "same")
+                .count() as u64
+        })
     });
     let mut sheets = BTreeMap::new();
     for result in results {
@@ -29,7 +35,10 @@ pub(super) fn render(html: &mut String, root: &Path, file: &Value) {
         })
     };
     let changed = sheets.keys().filter(|&&index| has_change(index)).count();
-    let _ = write!(html, "<section id=\"{id}\" class=\"workbook\"><header class=\"hero\"><h2>{}</h2>{}<p>{equal} unchanged worksheets · {changed} with differences</p><p>{}</p>",
+    let summary = equal
+        .map(|count| format!("{count} unchanged worksheets · {changed} with differences"))
+        .unwrap_or_else(|| format!("{changed} worksheets with differences"));
+    let _ = write!(html, "<section id=\"{id}\" class=\"workbook\"><header class=\"hero\"><h2>{}</h2>{}<p>{summary}</p><p>{}</p>",
         escape(text(file, "name")), permalink(&id), if file["complete"] == true { "Complete" } else { "In progress" });
     tables::profiles(html, file);
     html.push_str("</header>");
@@ -54,13 +63,20 @@ pub(super) fn render(html: &mut String, root: &Path, file: &Value) {
         }
         html.push_str("</details>");
     }
+    let mut comparison_order: Vec<_> = results.iter().collect();
+    comparison_order.sort_by_key(|result| match text(result, "profile") {
+        "too-aggressive-cleaning" => 0,
+        "maximum-cleaning" => 1,
+        "default" => 2,
+        _ => 3,
+    });
     for (index, name) in sheets {
         if !has_change(index) {
             continue;
         }
         let sheet_id = anchor("sheet", &format!("{id}:{index}:{name}"));
         let _ = write!(html, "<section id=\"{sheet_id}\" class=\"worksheet\" data-search=\"{} {}\"><div class=\"sheet-title\"><h2>Sheet {index:02} · {}</h2>{}</div>", escape(text(file,"name")), escape(name), escape(name), permalink(&sheet_id));
-        for result in results {
+        for result in &comparison_order {
             let sheet = sheet_result(result, index);
             if sheet.is_none()
                 && !items(result, "requested_sheets")

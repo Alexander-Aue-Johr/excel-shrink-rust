@@ -308,6 +308,36 @@ mod tests {
         fs::remove_dir_all(dir)?;
         Ok(())
     }
+
+    #[test]
+    fn adaptive_report_counts_the_full_comparison_and_orders_visual_evidence() -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("adaptive-report-{}", std::process::id()));
+        let report = json!({"complete":true,"workbooks":[{
+        "identity":"chart","name":"chart.xlsx","complete":true,"status":"differences","results":[
+            {"profile":"default","status":"not compared","checks_complete":false,"sheets":[]},
+            {"profile":"maximum-cleaning","status":"visually unchanged","checks_complete":true,
+             "requested_sheets":[1],"checked_sheets":1,"unchanged_sheets":1,
+             "sheets":[{"index":1,"name":"Chart","status":"same"}]},
+            {"profile":"too-aggressive-cleaning","status":"visual differences","checks_complete":true,
+             "requested_sheets":null,"checked_sheets":5,"unchanged_sheets":4,
+             "sheets":[{"index":1,"name":"Chart","status":"changed","row_heights":[{"row":1,"before":12,"after":14}]}]}
+        ]}]});
+        let html = fs::read_to_string(write(&dir, &report)?)?;
+        assert!(html.contains("4 unchanged worksheets · 1 with differences"));
+        let worksheet = html.split("class=\"worksheet\"").nth(1).unwrap();
+        assert!(
+            worksheet.find("<h3>too-aggressive-cleaning</h3>").unwrap()
+                < worksheet.find("<h3>maximum-cleaning</h3>").unwrap()
+        );
+        assert!(!worksheet.contains("<h3>default</h3>"));
+        let metrics = html.split("<th>Profile / result</th>").nth(1).unwrap();
+        assert!(
+            metrics.find("<th scope=\"row\">default").unwrap()
+                < metrics.find("<th scope=\"row\">maximum-cleaning").unwrap()
+        );
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
     #[test]
     fn archive_report_distinguishes_skips_from_completed_checks() -> Result<()> {
         let dir = std::env::temp_dir().join(format!("archive-report-{}", std::process::id()));
