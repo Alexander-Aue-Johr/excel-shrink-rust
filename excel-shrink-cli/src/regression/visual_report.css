@@ -55,6 +55,7 @@ h3 { font-size: 16px; }
   text-decoration: none;
 }
 .nav-link:hover, .nav-link:focus { background: #24465a; }
+.nav-link[aria-current="page"] { background: #24465a; font-weight: 650; }
 .search {
   width: 100%;
   margin: 18px 0;
@@ -92,6 +93,27 @@ h3 { font-size: 16px; }
 .metric strong { display: block; font-size: 26px; line-height: 1.25; }
 .metric span, .muted { color: var(--muted); }
 .metric span { font-size: 12px; }
+.corpus-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+.corpus-card h2 { font-size: 20px; overflow-wrap: anywhere; }
+.workbook-list > summary { cursor: pointer; font-size: 18px; font-weight: 650; }
+.workbook-list[open] > summary { margin-bottom: 18px; }
+.table-scroll { overflow-x: auto; }
+.results-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.results-table th, .results-table td { border-bottom: 1px solid var(--line); padding: 12px 10px; vertical-align: top; }
+.results-table thead th { color: var(--muted); font-size: 12px; font-weight: 600; }
+.results-table th[scope="rowgroup"] { background: #f3f6f8; overflow-wrap: anywhere; }
+.results-table th[scope="row"] { font-weight: 500; overflow-wrap: anywhere; }
+.results-table td { font-variant-numeric: tabular-nums; }
+.results-table .permalink { margin-left: 8px; font-size: 12px; font-weight: 400; }
+.profile-result { display: block; font-size: 12px; font-weight: 400; }
+.reduction { display: inline-block; min-width: 90px; font-variant-numeric: tabular-nums; }
+.reduction-track { display: block; height: 6px; margin-top: 5px; background: #e7edf1; border-radius: 3px; overflow: hidden; }
+.reduction-track > span { display: block; height: 100%; background: var(--accent); }
+.reduction.increased { color: #913c40; }
+.reduction.increased .reduction-track > span { background: #bb5155; }
+.section-heading { margin: 30px 0 20px; }
+.active-workbook { padding: 15px 20px; border-left: 3px solid var(--accent); background: #fff; overflow-wrap: anywhere; }
+.image-unavailable { color: #913c40; font-size: 12px; margin-top: 12px; }
 .sheet-title {
   display: flex;
   align-items: flex-start;

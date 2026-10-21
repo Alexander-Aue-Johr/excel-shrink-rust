@@ -201,6 +201,14 @@ document.addEventListener('click', event => {
 });
 document.querySelector('#viewer-close').addEventListener('click', () => viewer.close());
 viewer.addEventListener('close', () => document.querySelector('#viewer-image').removeAttribute('src'));
+document.addEventListener('error', event => {
+  const image = event.target;
+  if (!image.matches?.('.capture-image')) return;
+  const message = document.createElement('p');
+  message.className = 'image-unavailable';
+  message.textContent = 'Image could not be loaded. Open PNG to check the file.';
+  image.closest('figure').append(message);
+}, true);
 </script>
 </body>
 </html>

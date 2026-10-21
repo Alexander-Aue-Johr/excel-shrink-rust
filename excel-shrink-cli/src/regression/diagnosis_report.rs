@@ -1,6 +1,7 @@
-use super::visual_report::{
-    anchor, escape_html as escape, permalink, render_differences, REPORT_END,
-};
+mod tables;
+mod workbook;
+
+use super::visual_report::{anchor, escape_html as escape, permalink, REPORT_END};
 use anyhow::Result;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -11,79 +12,153 @@ use std::path::{Path, PathBuf};
 pub(super) fn write(output: &Path, report: &Value) -> Result<PathBuf> {
     fs::create_dir_all(output)?;
     let root = fs::canonicalize(output)?;
-    let files = items(report, "workbooks");
+    let corpora = collect_corpora(report);
+    let files: Vec<_> = items(report, "workbooks").iter().collect();
+    write_page(&root, "report.html", report, &files, &corpora, None)?;
+    for corpus in corpora.values() {
+        write_page(
+            &root,
+            &corpus.page(),
+            report,
+            &corpus.files,
+            &corpora,
+            Some(corpus),
+        )?;
+    }
+    Ok(output.join("report.html"))
+}
+
+struct Corpus<'a> {
+    id: String,
+    name: String,
+    total: Option<u64>,
+    files: Vec<&'a Value>,
+}
+
+impl Corpus<'_> {
+    fn page(&self) -> String {
+        format!("{}.html", anchor("corpus", &self.id))
+    }
+}
+
+fn collect_corpora(report: &Value) -> BTreeMap<String, Corpus<'_>> {
+    let mut corpora = BTreeMap::new();
+    for corpus in items(report, "corpora") {
+        let id = text(corpus, "id").to_owned();
+        corpora.insert(
+            id.clone(),
+            Corpus {
+                id,
+                name: text(corpus, "name").into(),
+                total: corpus["total_workbooks"].as_u64(),
+                files: Vec::new(),
+            },
+        );
+    }
+    for file in items(report, "workbooks") {
+        let legacy_name = text(file, "name").split_once(" / ").map(|(name, _)| name);
+        let id = file["corpus_id"]
+            .as_str()
+            .or(legacy_name)
+            .unwrap_or("workbooks");
+        let name = file["corpus_name"]
+            .as_str()
+            .or(legacy_name)
+            .unwrap_or("Workbooks");
+        corpora
+            .entry(id.to_owned())
+            .or_insert_with(|| Corpus {
+                id: id.into(),
+                name: name.into(),
+                total: None,
+                files: Vec::new(),
+            })
+            .files
+            .push(file);
+    }
+    corpora
+}
+
+fn write_page(
+    root: &Path,
+    filename: &str,
+    report: &Value,
+    files: &[&Value],
+    corpora: &BTreeMap<String, Corpus<'_>>,
+    corpus: Option<&Corpus<'_>>,
+) -> Result<()> {
     let refresh = if report["complete"] == false {
         "<meta http-equiv=\"refresh\" content=\"20\">"
     } else {
         ""
     };
+    let title = corpus
+        .map(|c| c.name.as_str())
+        .unwrap_or("Visual diagnosis");
+    let changed: Vec<_> = files
+        .iter()
+        .copied()
+        .filter(|f| has_differences(f))
+        .collect();
+    let unchanged: Vec<_> = files.iter().copied().filter(|f| is_unchanged(f)).collect();
+    let skipped: Vec<_> = files.iter().copied().filter(|f| is_skipped(f)).collect();
+    let completed = files.iter().filter(|f| f["complete"] == true).count();
     let mut html = format!(
         r##"<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">{refresh}<title>Excel Shrink | Visual diagnosis</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">{refresh}<title>Excel Shrink | {}</title>
 <style>{}</style></head><body><div class="layout"><nav class="sidebar"><div class="brand">EXCEL SHRINK</div>
-<h2>Visual diagnosis</h2><a class="nav-link" href="#overview">Overview</a>
-<input id="sheet-search" class="search" type="search" placeholder="Filter differences">"##,
+<h2>Visual diagnosis</h2><a class="nav-link" href="report.html">All corpora</a><a class="nav-link" href="#overview">Overview</a>"##,
+        escape(title),
         include_str!("visual_report.css")
     );
-    for file in files {
-        let id = file_id(file);
+    for item in corpora.values() {
+        let active = if corpus.is_some_and(|c| c.id == item.id) {
+            " aria-current=\"page\""
+        } else {
+            ""
+        };
         let _ = write!(
             html,
-            "<a class=\"nav-link\" href=\"#{id}\">{}</a>",
-            escape(text(file, "name"))
+            "<a class=\"nav-link\" href=\"{}\"{active}>{}</a>",
+            item.page(),
+            escape(&item.name)
         );
     }
-    let complete = files.iter().filter(|f| f["complete"] == true).count();
-    let progress = if report["archive_run"] == true {
-        format!("{complete} workbooks processed")
-    } else {
-        format!(
-            "{complete} / {} workbooks completed",
-            report["total_workbooks"]
-                .as_u64()
-                .unwrap_or(files.len() as u64)
-        )
-    };
-    let _ = write!(html, "</nav><main class=\"main\"><header id=\"overview\" class=\"hero\"><div class=\"eyebrow\">EXCEL SHRINK</div><h1>Visual diagnosis</h1><p>{progress}</p></header>");
-    if report["archive_run"] == true {
-        html.push_str(if report["complete"] == true {
-            "<p>Run completed</p>"
-        } else {
-            "<p>Run not finished</p>"
-        });
-        let skipped = files
-            .iter()
-            .filter(|f| matches!(f["status"].as_str(), Some("skipped" | "archive error")))
-            .count();
-        let changed = files
-            .iter()
-            .filter(|f| f["status"] == "differences")
-            .count();
-        let unchanged = files.iter().filter(|f| f["status"] == "unchanged").count();
-        let _ = write!(
-            html,
-            "<p>{unchanged} unchanged · {changed} with differences · {skipped} skipped/errors</p>"
-        );
-        if skipped > 0 {
-            html.push_str("<details class=\"difference\" open><summary>Skipped files and archive errors</summary><ul>");
-            for file in files
-                .iter()
-                .filter(|f| matches!(f["status"].as_str(), Some("skipped" | "archive error")))
-            {
-                let _ = write!(
-                    html,
-                    "<li><a href=\"#{}\">{}</a></li>",
-                    file_id(file),
-                    escape(text(file, "name"))
-                );
-            }
-            html.push_str("</ul></details>");
-        }
-        if report["limited"] == true {
-            html.push_str(
-                "<p>Limited test run. Remaining archive entries have not been checked.</p>",
+    if !unchanged.is_empty() {
+        html.push_str("<a class=\"nav-link\" href=\"#unchanged\">Unchanged workbooks</a>");
+    }
+    if !skipped.is_empty() {
+        html.push_str("<a class=\"nav-link\" href=\"#skipped\">Skipped / errors</a>");
+    }
+    if !changed.is_empty() {
+        html.push_str("<input id=\"sheet-search\" class=\"search\" type=\"search\" placeholder=\"Filter differences\" aria-label=\"Filter differences\">");
+        for file in &changed {
+            let _ = write!(
+                html,
+                "<a class=\"nav-link\" href=\"#{}\">{}</a>",
+                file_id(file),
+                escape(text(file, "name"))
             );
         }
+    }
+    let _ = write!(html, "</nav><main class=\"main\"><header id=\"overview\" class=\"hero\"><div class=\"eyebrow\">EXCEL SHRINK</div><h1>{}</h1><p>{completed} workbooks processed", escape(title));
+    let total = corpus.and_then(|c| c.total).or_else(|| {
+        if corpus.is_none() {
+            report["total_workbooks"].as_u64()
+        } else {
+            None
+        }
+    });
+    if let Some(total) = total {
+        let _ = write!(html, " / {total} total");
+    }
+    let _ = write!(html, "</p><p>{}</p><div class=\"metrics\"><div class=\"metric\"><strong>{}</strong><span>Unchanged</span></div><div class=\"metric\"><strong>{}</strong><span>With differences</span></div><div class=\"metric\"><strong>{}</strong><span>Skipped / errors</span></div></div><p class=\"muted\">{} unchanged · {} with differences · {} skipped/errors</p></header>",
+        if report["complete"] == true { "Run completed" } else { "Run not finished" }, unchanged.len(), changed.len(), skipped.len(), unchanged.len(), changed.len(), skipped.len());
+    if report["limited"] == true {
+        html.push_str("<p>Limited test run. Remaining archive entries have not been checked.</p>");
+    }
+    if corpus.is_none() && !corpora.is_empty() {
+        corpus_cards(&mut html, corpora);
     }
     for failure in items(&report["aggregate"], "failures") {
         let _ = write!(
@@ -92,105 +167,65 @@ pub(super) fn write(output: &Path, report: &Value) -> Result<PathBuf> {
             escape(failure.as_str().unwrap_or("Aggregate check failed"))
         );
     }
-    for file in files {
-        let id = file_id(file);
-        let results = items(file, "results");
-        let baseline = results.first().unwrap_or(&Value::Null);
-        let equal = baseline["unchanged_sheets"].as_u64().unwrap_or_else(|| {
-            items(baseline, "sheets")
-                .iter()
-                .filter(|s| s["status"] == "same")
-                .count() as u64
-        });
-        let mut sheets = BTreeMap::new();
-        for result in results {
-            for sheet in items(result, "sheets") {
-                sheets
-                    .entry(sheet["index"].as_u64().unwrap_or(0))
-                    .or_insert(text(sheet, "name"));
-            }
-        }
-        let has_change = |index| {
-            results.iter().any(|result| {
-                sheet_result(result, index).is_some_and(|sheet| sheet["status"] == "changed")
-            })
-        };
-        let changed = sheets.keys().filter(|&&index| has_change(index)).count();
-        let _ = write!(html, "<section id=\"{id}\" class=\"workbook\"><header class=\"hero\"><h2>{}</h2>{}<p class=\"muted\">{}</p><p>{equal} unchanged worksheets · {changed} with differences</p><p>{}</p></header>",
-            escape(text(file, "name")), permalink(&id), escape(text(file, "identity")),
-            if file["complete"] == true { "Complete" } else { "In progress" });
-        if let Some(status) = file["status"].as_str() {
-            let _ = write!(html, "<p><strong>{}</strong></p>", escape(status));
-        }
-        if let Some(error) = file["error"].as_str() {
-            let _ = write!(html, "<article class=\"difference\"><h3>File could not be fully checked</h3><p>{}</p></article>", escape(error));
-        }
-        for result in results {
-            let _ = write!(
-                html,
-                "<article class=\"difference\"><h3>{}</h3><p>{}</p>",
-                escape(text(result, "profile")),
-                escape(text(result, "status"))
-            );
-            if let Some(ratio) = result["reduction_ratio"].as_f64() {
-                let _ = write!(html, "<p>Reduction: {:.2}%</p>", ratio * 100.0);
-            }
-            for failure in items(result, "failures") {
-                let _ = write!(
-                    html,
-                    "<p>{}</p>",
-                    escape(failure.as_str().unwrap_or("Unknown failure"))
-                );
-            }
-            html.push_str("</article>");
-        }
-        for (index, name) in sheets {
-            if !has_change(index) {
-                continue;
-            }
-            let sheet_id = anchor("sheet", &format!("{id}:{index}:{name}"));
-            let _ = write!(html, "<section id=\"{sheet_id}\" class=\"worksheet\" data-search=\"{} {}\"><div class=\"sheet-title\"><h2>Sheet {index:02} · {}</h2>{}</div>", escape(text(file,"name")), escape(name), escape(name), permalink(&sheet_id));
-            for result in results {
-                let sheet = sheet_result(result, index);
-                if sheet.is_none()
-                    && !items(result, "requested_sheets")
-                        .iter()
-                        .any(|i| i.as_u64() == Some(index))
-                {
-                    continue;
-                }
-                let missing = serde_json::json!({"status":text(result,"status")});
-                let sheet = sheet.unwrap_or(&missing);
-                let profile = text(result, "profile");
-                let _ = write!(
-                    html,
-                    "<article class=\"difference\"><h3>{}</h3><p>{}</p>",
-                    escape(profile),
-                    escape(text(sheet, "status"))
-                );
-                render_differences(
-                    &mut html,
-                    &root,
-                    sheet,
-                    &format!("{}:{index}:{name}:{profile}", text(file, "identity")),
-                );
-                html.push_str("</article>");
-            }
-            html.push_str("</section>");
-        }
-        html.push_str("</section>");
+    for file in files.iter().filter(|f| f["complete"] != true) {
+        let _ = write!(
+            html,
+            "<p class=\"active-workbook\">In progress: {}</p>",
+            escape(text(file, "name"))
+        );
+    }
+    tables::unchanged(&mut html, &unchanged);
+    tables::skipped(&mut html, &skipped);
+    if !changed.is_empty() {
+        html.push_str("<h2 class=\"section-heading\">Visual differences</h2>");
+    }
+    for file in changed {
+        workbook::render(&mut html, root, file);
     }
     html.push_str(REPORT_END);
-    let path = output.join("report.html");
-    super::artifact_cache::atomic_write(&path, html.as_bytes())?;
-    Ok(path)
-}
-fn sheet_result(profile: &Value, index: u64) -> Option<&Value> {
-    items(profile, "sheets")
-        .iter()
-        .find(|sheet| sheet["index"].as_u64() == Some(index))
+    super::artifact_cache::atomic_write(&root.join(filename), html.as_bytes())?;
+    Ok(())
 }
 
+fn corpus_cards(html: &mut String, corpora: &BTreeMap<String, Corpus<'_>>) {
+    html.push_str("<div class=\"corpus-grid\">");
+    for corpus in corpora.values() {
+        let unchanged = corpus.files.iter().filter(|f| is_unchanged(f)).count();
+        let changed = corpus.files.iter().filter(|f| has_differences(f)).count();
+        let skipped = corpus.files.iter().filter(|f| is_skipped(f)).count();
+        let processed = corpus
+            .files
+            .iter()
+            .filter(|f| f["complete"] == true)
+            .count();
+        let total = corpus.total.map(|n| format!(" / {n}")).unwrap_or_default();
+        let _ = write!(html, "<article class=\"hero corpus-card\"><h2><a href=\"{}\">{}</a></h2><p>{processed}{total} workbooks processed</p><p>{unchanged} unchanged · {changed} with differences · {skipped} skipped/errors</p><a class=\"button\" href=\"{}\">Open corpus report</a></article>", corpus.page(), escape(&corpus.name), corpus.page());
+    }
+    html.push_str("</div>");
+}
+
+fn is_skipped(file: &Value) -> bool {
+    matches!(file["status"].as_str(), Some("skipped" | "archive error"))
+}
+fn has_differences(file: &Value) -> bool {
+    !is_skipped(file)
+        && (file["status"] == "differences"
+            || items(file, "results").iter().any(|r| {
+                matches!(
+                    r["status"].as_str(),
+                    Some("visual differences" | "cell value differences")
+                ) || items(r, "sheets").iter().any(|s| s["status"] == "changed")
+            }))
+}
+fn is_unchanged(file: &Value) -> bool {
+    file["complete"] == true
+        && !is_skipped(file)
+        && !has_differences(file)
+        && (file["status"] == "unchanged"
+            || items(file, "results")
+                .iter()
+                .any(|r| r["status"] == "visually unchanged"))
+}
 fn file_id(file: &Value) -> String {
     anchor("file", text(file, "identity"))
 }
@@ -205,6 +240,35 @@ fn items<'a>(value: &'a Value, key: &str) -> &'a [Value] {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn unchanged_workbooks_are_collapsed_and_corpus_pages_keep_stable_links() -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("corpus-report-{}", std::process::id()));
+        let report = json!({"complete":true,"corpora":[
+            {"id":"a","name":"Corpus A","total_workbooks":100},
+            {"id":"b","name":"Corpus B","total_workbooks":20}],"workbooks":[
+            {"identity":"old","name":"equal.xlsx","corpus_id":"a","complete":true,"previously_verified":true,"status":"unchanged","results":[
+                {"profile":"maximum-cleaning","status":"visually unchanged","reduction_ratio":0.9}]},
+            {"identity":"new","name":"changed.xlsx","corpus_id":"b","complete":true,"status":"differences","results":[
+                {"profile":"default","status":"visual differences","shrink_seconds":1.25,"original_open_seconds":4,"shrunk_open_seconds":2,"original_memory_bytes":104857600,"shrunk_memory_bytes":52428800,"sheets":[
+                    {"index":1,"name":"Sheet1","status":"changed","row_heights":[{"row":1,"before":12,"after":14}]}]}]}]});
+        let html = fs::read_to_string(write(&dir, &report)?)?;
+        assert!(html.contains("<details class=\"hero workbook-list\" id=\"unchanged\">"));
+        assert!(html.contains("Previously verified"));
+        assert!(html.contains("90.00%"));
+        assert!(html.contains("1.25 s"));
+        assert!(html.contains("100.0 MiB → 50.0 MiB"));
+        assert_eq!(html.matches("class=\"workbook\"").count(), 1);
+        let corpus_a = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "a"))))?;
+        assert!(corpus_a.contains("equal.xlsx"));
+        assert!(!corpus_a.contains("changed.xlsx"));
+        assert!(corpus_a.contains("1 workbooks processed / 100 total"));
+        assert!(corpus_a.contains(&format!("id=\"{}\"", anchor("file", "old"))));
+        let corpus_b = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "b"))))?;
+        assert!(corpus_b.contains(&format!("id=\"{}\"", anchor("file", "new"))));
+        assert!(!corpus_b.contains("equal.xlsx"));
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
     #[test]
     fn archive_report_distinguishes_skips_from_completed_checks() -> Result<()> {
         let dir = std::env::temp_dir().join(format!("archive-report-{}", std::process::id()));
