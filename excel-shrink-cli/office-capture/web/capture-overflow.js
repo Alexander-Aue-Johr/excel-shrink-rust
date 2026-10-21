@@ -127,20 +127,28 @@
   async function safeSource(office, sheet, rows, baseColumn) {
     for (let offset = 0; offset < rows.length; offset += 16) {
       const batch = rows.slice(offset, offset + 16);
-      const safe = await office(async context => {
+      const unsafe = await office(async context => {
         const worksheet = context.workbook.worksheets.getItem(sheet);
         const sources = batch.map(row => {
           const range = worksheet.getRangeByIndexes(row, 0, 1, baseColumn + 1);
           range.format.load('textOrientation');
           const merged = range.getMergedAreasOrNullObject();
           merged.load('areas/items/rowCount');
-          return {range, merged};
+          return {row, range, merged};
         });
         await context.sync();
-        return sources.every(({range, merged}) => range.format.textOrientation === 0 &&
-          (merged.isNullObject || merged.areas.items.every(area => area.rowCount === 1)));
+        for (const {row, range, merged} of sources) {
+          const orientation = range.format.textOrientation;
+          if (orientation !== 0) return {row, reason: orientation == null
+            ? 'mixed or unavailable text orientation' : `text orientation ${orientation} degrees`};
+          if (!merged.isNullObject) {
+            const area = merged.areas.items.find(area => area.rowCount !== 1);
+            if (area) return {row, reason: `merged cells spanning ${area.rowCount} rows`};
+          }
+        }
+        return null;
       });
-      if (!safe) throw new Error(`Cannot verify overflow source context at ${sheet}!${batch[0] + 1}`);
+      if (unsafe) throw new Error(`Cannot verify overflow source context at ${sheet}!${unsafe.row + 1}: ${unsafe.reason}`);
     }
   }
 

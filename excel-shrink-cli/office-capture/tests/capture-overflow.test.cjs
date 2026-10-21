@@ -7,12 +7,17 @@ function overflowFixture(options = {}) {
   const writes = [];
   const canvases = [];
   let pixelReads = 0;
-  const blank = new Uint8ClampedArray(12 * 4 * 4).fill(255);
+  const candidateRows = options.candidateRows ?? [0];
+  const rowCount = Math.max(...candidateRows) + 1;
+  const height = rowCount * 4;
+  const blank = new Uint8ClampedArray(12 * height * 4).fill(255);
   const text = blank.slice();
-  text.set([0, 0, 0, 255], (1 * 12 + (options.textX ?? 4)) * 4);
+  for (const row of candidateRows) {
+    text.set([0, 0, 0, 255], ((row * 4 + 1) * 12 + (options.textX ?? 4)) * 4);
+  }
   globalThis.Image = class {
     naturalWidth = 12;
-    naturalHeight = 4;
+    naturalHeight = height;
     set src(source) {
       this.pixels = source.endsWith(',blocked') ? blank : text;
       Promise.resolve().then(() => this.onload());
@@ -51,13 +56,23 @@ function overflowFixture(options = {}) {
   };
   const worksheet = {
     protection: {load() {}, protected: false},
-    getRangeByIndexes() {return range;},
+    getRangeByIndexes(row, column, rows, columns) {
+      const source = options.sourceContexts?.[row];
+      if (column === 0 && columns === 1 && source) return {
+        format: {load() {}, textOrientation: source.orientation === undefined ? 0 : source.orientation},
+        getMergedAreasOrNullObject() {return {load() {}, isNullObject: !source.mergeRows,
+          areas: {items: [{rowCount: source.mergeRows}]}};}
+      };
+      return range;
+    },
     getRange() {return {getImage() {return {value: value === ' ' ? 'blocked' : 'original'};}};}
   };
   const office = fn => fn({sync: async () => {}, workbook: {worksheets: {getItem: () => worksheet}}});
-  const geometry = {x: [0, 2, 6, 12], y: [0, 4], columns: [2, 4, 6], scaleX: 1, scaleY: 1};
+  const geometry = {x: [0, 2, 6, 12], y: Array.from({length: rowCount + 1}, (_, i) => i * 4),
+    columns: [2, 4, 6], scaleX: 1, scaleY: 1};
   if (options.hiddenLastColumn) { geometry.columns.push(0); geometry.x.push(12); }
-  const tile = {raw: {r0: 0, r1: 1, c0: 0, c1: geometry.columns.length}, core: {r0: 0, r1: 1}, cropY: 0, cropHeight: 4};
+  const tile = {raw: {r0: 0, r1: rowCount, c0: 0, c1: geometry.columns.length},
+    core: {r0: 0, r1: rowCount}, cropY: 0, cropHeight: height};
   return {run: () => check(office, 'Sheet1', geometry, tile, 0, 'original'), writes,
     canvases, pixelReads: () => pixelReads};
 }
@@ -66,6 +81,20 @@ test('overflow blockers accept literal values returned through formulas and rest
   const fixture = overflowFixture();
   assert.deepEqual(await fixture.run(), {retainProbe: true, rightEdge: false});
   assert.deepEqual(fixture.writes, [' ', '']);
+});
+
+test('overflow source diagnostics identify the rejected row within a batch and its multirow merge', async () => {
+  const fixture = overflowFixture({candidateRows: [0, 1], sourceContexts: {1: {mergeRows: 3}}});
+  await assert.rejects(fixture.run(), /Sheet1!2: merged cells spanning 3 rows/);
+  assert.deepEqual(fixture.writes, []);
+});
+
+test('overflow source diagnostics distinguish rotated and mixed text without changing cells', async () => {
+  for (const [orientation, reason] of [[45, 'text orientation 45 degrees'], [null, 'mixed or unavailable text orientation']]) {
+    const fixture = overflowFixture({sourceContexts: {0: {orientation}}});
+    await assert.rejects(fixture.run(), new RegExp(`Sheet1!1: ${reason}`));
+    assert.deepEqual(fixture.writes, []);
+  }
 });
 
 test('overflow check rejects a missing blocker write', async () => {
