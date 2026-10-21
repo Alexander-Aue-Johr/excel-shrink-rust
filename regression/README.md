@@ -300,7 +300,9 @@ resume journal; the runner never parses HTML to decide what to skip.
 To keep earlier results, add `--import-report path/to/diagnosis.json`, or
 `--verified path/to/verified-unchanged.csv`. Completed unchanged maximum/stronger checks
 are retained without repeating them; missing historical timings remain missing.
-Previous differences are scheduled first. Reuse the same output directory to resume.
+Previous differences are scheduled first; untouched entries follow. Earlier technical
+failures stay in the skipped table until `--retry-skipped` is requested. Reuse the same
+output directory to resume.
 Prepared bundles are reused only with the same executable and source archive catalog.
 `--retry-skipped` revisits technical failures. A changed build regenerates pending bundles.
 

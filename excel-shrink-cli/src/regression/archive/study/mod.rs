@@ -402,6 +402,10 @@ fn import(
         row["member_name"] = json!(member);
         if verified_unchanged(&row) {
             row["previously_verified"] = json!(true);
+        } else if row["complete"] == true && row["status"] == "skipped" {
+            // Keep earlier technical failures separate until an explicit retry.
+            row["previously_skipped"] = json!(true);
+            row["results"] = json!([]);
         } else {
             row["previous_difference"] = json!(row["status"] == "differences");
             row["status"] = json!("pending");

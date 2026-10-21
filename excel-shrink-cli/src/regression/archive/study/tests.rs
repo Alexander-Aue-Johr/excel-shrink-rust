@@ -40,7 +40,7 @@ fn imports_verified_files_without_restarting_them_and_queues_prior_differences()
     assert_eq!(records.len(), 328);
     assert_eq!(
         records.iter().filter(|r| r["complete"] == true).count(),
-        326
+        327
     );
     assert!(records[..326]
         .iter()
@@ -51,7 +51,9 @@ fn imports_verified_files_without_restarting_them_and_queues_prior_differences()
     assert_eq!(records[326]["status"], "pending");
     assert_eq!(records[326]["previous_difference"], true);
     assert_eq!(records[326]["results"], json!([]));
-    assert!(records[327]["error"].is_null());
+    assert_eq!(records[327]["status"], "skipped");
+    assert_eq!(records[327]["error"], "old failure");
+    assert_eq!(records[327]["previously_skipped"], true);
 
     // Repeating an import must not replace newer results with the old report.
     records[326]["status"] = json!("unchanged");
