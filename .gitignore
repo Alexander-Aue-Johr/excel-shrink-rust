@@ -35,3 +35,7 @@ __pycache__/
 /tools/excel-lab/ExcelLabHost.*
 /excel-shrink-cli/.tmp/
 /excel-shrink-cli/logs/
+
+# .NET capture host test builds
+/excel-shrink-cli/office-capture/**/bin/
+/excel-shrink-cli/office-capture/**/obj/
