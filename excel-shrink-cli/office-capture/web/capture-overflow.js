@@ -225,7 +225,12 @@
       restored = await decode(restoredBase64);
       if (!sameImage(before, restored)) throw new Error('Image changed after overflow cells were restored');
       const diff = changedPixels(before, blocked, baseEdge, written, geometry, tile);
-      return {retainProbe: diff.changed > 0, rightEdge: diff.rightmost >= before.width - 3};
+      let lastColumn = tile.raw.c1 - 1;
+      while (lastColumn > baseColumn && geometry.columns[lastColumn] === 0) lastColumn--;
+      // A few blank edge pixels can be a gap between letters. Require the final
+      // visible probe column to stay clear before accepting the capture boundary.
+      const edge = Math.floor(geometry.x[lastColumn] * geometry.scaleX);
+      return {retainProbe: diff.changed > 0, rightEdge: diff.rightmost >= edge};
     } finally {
       release(before); release(blocked); release(restored);
     }
