@@ -1,5 +1,130 @@
 use super::*;
 
+#[test]
+fn reviewed_build_reuse_still_requires_matching_source_and_profiles() -> Result<()> {
+    let output = test_directory("reuse")?;
+    let bundle = output.join("prepared.zip");
+    fs::write(
+        &bundle,
+        b"bundle presence; contents are checked when unpacked",
+    )?;
+    let old_build = "a".repeat(64);
+    let current_build = "b".repeat(64);
+    let profiles: Vec<_> = prepared::PROFILES
+        .iter()
+        .map(|name| {
+            let profile = predefined_visual_profiles()
+                .iter()
+                .find(|p| p.name == *name)
+                .unwrap();
+            json!({"profile":name,"config_hash":profile.config.config_hash()})
+        })
+        .collect();
+    let record = json!({"prepared":true,"prepared_by":old_build,"source_fingerprint":"catalog","results":profiles});
+    let accepted = vec![old_build.clone()];
+    assert!(reusable_preparation(
+        &record,
+        &bundle,
+        &old_build,
+        "catalog",
+        &[]
+    ));
+    assert!(!reusable_preparation(
+        &record,
+        &bundle,
+        &current_build,
+        "catalog",
+        &[]
+    ));
+    assert!(reusable_preparation(
+        &record,
+        &bundle,
+        &current_build,
+        "catalog",
+        &accepted
+    ));
+    assert!(!reusable_preparation(
+        &record,
+        &bundle,
+        &current_build,
+        "changed catalog",
+        &accepted
+    ));
+    assert_eq!(record["prepared_by"], old_build);
+    let mut approved = record.clone();
+    approved["preparation_accepted_by"] = json!(current_build);
+    assert!(reusable_preparation(
+        &approved,
+        &bundle,
+        &current_build,
+        "catalog",
+        &[]
+    ));
+    assert!(!reusable_preparation(
+        &approved,
+        &bundle,
+        &"c".repeat(64),
+        "catalog",
+        &[]
+    ));
+    assert!(!reusable_preparation(
+        &approved,
+        &bundle,
+        &current_build,
+        "changed catalog",
+        &[]
+    ));
+    for field in ["prepared", "prepared_by", "source_fingerprint"] {
+        let mut changed = record.clone();
+        changed[field] = Value::Null;
+        assert!(!reusable_preparation(
+            &changed,
+            &bundle,
+            &current_build,
+            "catalog",
+            &accepted
+        ));
+    }
+    let mut changed = record.clone();
+    changed["results"][0]["config_hash"] = json!("changed settings");
+    assert!(!reusable_preparation(
+        &changed,
+        &bundle,
+        &current_build,
+        "catalog",
+        &accepted
+    ));
+    changed = record.clone();
+    changed["results"].as_array_mut().unwrap().pop();
+    assert!(!reusable_preparation(
+        &changed,
+        &bundle,
+        &current_build,
+        "catalog",
+        &accepted
+    ));
+    fs::remove_file(&bundle)?;
+    assert!(!reusable_preparation(
+        &record,
+        &bundle,
+        &current_build,
+        "catalog",
+        &accepted
+    ));
+    fs::remove_dir_all(output)?;
+    Ok(())
+}
+
+#[test]
+fn reuse_requires_full_build_hashes() {
+    assert!(StudyArgs::try_parse_from(["study", "--reuse-prepared-from", "abc"]).is_err());
+    assert!(preparation_build_hash(&"z".repeat(64)).is_err());
+    assert_eq!(
+        preparation_build_hash(&"A".repeat(64)).unwrap(),
+        "a".repeat(64)
+    );
+}
+
 pub(super) fn test_directory(name: &str) -> Result<PathBuf> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?

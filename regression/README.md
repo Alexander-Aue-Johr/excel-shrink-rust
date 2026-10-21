@@ -313,8 +313,17 @@ are retained without repeating them; missing historical timings remain missing.
 Previous differences are scheduled first; untouched entries follow. Earlier technical
 failures stay in the skipped table until `--retry-skipped` is requested. Reuse the same
 output directory to resume.
-Prepared bundles are reused only with the same executable and source archive catalog.
-`--retry-skipped` revisits technical failures. A changed build regenerates pending bundles.
+Prepared bundles are reused only with the same executable, source archive catalog,
+and profile settings. A changed build normally regenerates pending bundles. After
+reviewing a change that leaves preparation results compatible (for example a worker
+monitoring fix), `--reuse-prepared-from SHA256` explicitly accepts bundles produced
+by that executable hash. Repeat the option for additional reviewed builds. Compare
+representative prepared workbook contents before granting this exception; matching
+profile settings alone do not establish algorithm compatibility. The original
+`prepared_by` stays in each record, and acceptance is saved for the exact new build
+so subsequent ordinary resumes can reuse it. `compared_by` records the executable
+that performs the comparison. A later rebuild needs a new review.
+`--retry-skipped` revisits technical failures.
 
 Use `--limit 3` for at most three new workbooks per corpus, `--prepare-only` to stop
 before comparisons, `--compare-only` to use existing preparations, and `--report-only`
@@ -322,6 +331,16 @@ to import/rebuild reports without running Excel or downloading archives. As with
 runs, differences or skipped files produce a nonzero final status while allowing the
 remaining files to finish. Workbooks have a 1,800-second phase deadline and a 120-second
 Excel startup deadline by default. The worker also stops if its parent disappears.
+
+The Rust workbook worker has a 4 GiB memory limit by default, configurable with
+`EXCEL_SHRINK_WORKER_MEMORY_MIB`. Windows enforces private committed memory with a
+process job object, including brief allocation spikes; Linux checks resident memory
+every two seconds. Each workbook log records the installed limit and OS-observed
+peak where available. Allocation failures remain technical failures, and the runner
+continues with the next file. Excel has its own independent limit below.
+The native Windows VS Code corpus task allows 8 GiB per Rust worker: a tested
+202 MB workbook needed about 6 GiB briefly during preparation. Set a limit suitable
+for the available RAM when invoking the CLI directly.
 
 Capture windows use a separate inactive Windows desktop. Each owned Excel job has a
 4 GiB private-memory limit; `EXCEL_SHRINK_EXCEL_MEMORY_MIB` can change it. Captures remain

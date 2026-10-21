@@ -33,6 +33,10 @@ pub(in crate::regression) struct StudyArgs {
     /// Compare already prepared ZIP bundles without shrinking again.
     #[arg(long)]
     compare_only: bool,
+    /// Reuse preparations from this executable SHA-256 after reviewing shrink compatibility.
+    /// Repeat for each reviewed build; source catalogs and profile settings must still match.
+    #[arg(long, value_name = "SHA256", value_parser = preparation_build_hash)]
+    reuse_prepared_from: Vec<String>,
     /// Limit new files per corpus, useful for a representative test subset.
     #[arg(long,value_parser=clap::value_parser!(u64).range(1..))]
     limit: Option<u64>,
@@ -264,14 +268,47 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             .min(selected.len());
         limited |= count < selected.len();
         let selected = &selected[..count];
+        // Save reviewed compatibility before starting any new workbook. A later
+        // interruption can then resume normally without repeating the CLI flag.
+        if !args.reuse_prepared_from.is_empty() {
+            for (index, name) in selected {
+                let id = identity(source, *index, name);
+                let pos = ensure_record(&mut records, source, *index, name);
+                if records[pos]["prepared_by"] != producer
+                    && records[pos]["preparation_accepted_by"] != producer
+                    && reusable_preparation(
+                        &records[pos],
+                        &bundle_path(&output, &id),
+                        &producer,
+                        &source.fingerprint,
+                        &args.reuse_prepared_from,
+                    )
+                {
+                    records[pos]["preparation_accepted_by"] = json!(producer);
+                    write_record(&record_path(&output, &id), &records[pos])?;
+                }
+            }
+        }
         if !args.compare_only {
+            let mut reused = 0;
             for (index, name) in selected {
                 let id = identity(source, *index, name);
                 let pos = ensure_record(&mut records, source, *index, name);
                 let bundle = bundle_path(&output, &id);
-                if reusable_preparation(&records[pos], &bundle, &producer, &source.fingerprint) {
+                if reusable_preparation(
+                    &records[pos],
+                    &bundle,
+                    &producer,
+                    &source.fingerprint,
+                    &args.reuse_prepared_from,
+                ) {
+                    reused += 1;
                     continue;
                 }
+                records[pos]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("preparation_accepted_by");
                 records[pos]["prepared_by"] = json!(producer);
                 records[pos]["source_fingerprint"] = json!(source.fingerprint);
                 process(
@@ -287,6 +324,12 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     log_level,
                 )?;
             }
+            if reused > 0 {
+                eprintln!(
+                    "[study] {}: reused {reused} prepared workbooks",
+                    source.name
+                );
+            }
         }
         if !args.prepare_only {
             for (index, name) in selected {
@@ -297,6 +340,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     &bundle_path(&output, &id),
                     &producer,
                     &source.fingerprint,
+                    &args.reuse_prepared_from,
                 ) {
                     if args.compare_only && records[pos]["status"] != "skipped" {
                         eprintln!("[study] Not prepared with this build: {name}");
@@ -304,6 +348,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     }
                     continue;
                 }
+                records[pos]["compared_by"] = json!(producer);
                 process(
                     source,
                     *index,
@@ -488,11 +533,41 @@ fn member_priority(records: &[Value], identity: &str) -> u8 {
     }
 }
 
-fn reusable_preparation(record: &Value, bundle: &Path, producer: &str, source: &str) -> bool {
+fn preparation_build_hash(value: &str) -> std::result::Result<String, String> {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("expected the full 64-character executable SHA-256".into());
+    }
+    Ok(value.to_ascii_lowercase())
+}
+
+fn reusable_preparation(
+    record: &Value,
+    bundle: &Path,
+    producer: &str,
+    source: &str,
+    compatible_builds: &[String],
+) -> bool {
     record["prepared"] == true
         && bundle.is_file()
-        && record["prepared_by"] == producer
+        && (record["prepared_by"] == producer
+            || record["preparation_accepted_by"] == producer
+            || compatible_builds
+                .iter()
+                .any(|hash| record["prepared_by"] == *hash))
         && record["source_fingerprint"] == source
+        && prepared::PROFILES.iter().all(|name| {
+            let config = &predefined_visual_profiles()
+                .iter()
+                .find(|p| p.name == *name)
+                .unwrap()
+                .config;
+            record["results"].as_array().is_some_and(|profiles| {
+                profiles.iter().filter(|p| p["profile"] == *name).count() == 1
+                    && profiles
+                        .iter()
+                        .any(|p| p["profile"] == *name && p["config_hash"] == config.config_hash())
+            })
+        })
 }
 
 fn verified_unchanged(record: &Value) -> bool {
