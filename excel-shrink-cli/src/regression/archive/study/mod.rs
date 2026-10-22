@@ -5,6 +5,7 @@ mod execution;
 use super::verified as ledger;
 use execution::process;
 mod prepared;
+mod whitespace;
 
 #[derive(Parser, Debug)]
 pub(in crate::regression) struct StudyArgs {
@@ -33,6 +34,9 @@ pub(in crate::regression) struct StudyArgs {
     /// Compare already prepared ZIP bundles without shrinking again.
     #[arg(long)]
     compare_only: bool,
+    /// Diagnose completed differences without repeating the three primary comparisons.
+    #[arg(long, conflicts_with_all = ["prepare_only", "compare_only"])]
+    diagnose_whitespace_only: bool,
     /// Reuse preparations from this executable SHA-256 after reviewing shrink compatibility.
     /// Repeat for each reviewed build; source catalogs and profile settings must still match.
     #[arg(long, value_name = "SHA256", value_parser = preparation_build_hash)]
@@ -241,6 +245,46 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     let producer = artifact_cache::hash_file(&std::env::current_exe()?)?;
     for source in &sources {
         let mut members = source.members.clone();
+        // Completed differences get their missing causal diagnosis before new work.
+        // The primary measurements and comparisons are never reset for this pass.
+        if !args.prepare_only && !args.compare_only {
+            let backfill: Vec<_> = members
+                .iter()
+                .filter(|(index, name)| {
+                    let id = identity(source, *index, name);
+                    records
+                        .iter()
+                        .find(|r| r["identity"] == id)
+                        .is_some_and(whitespace::needed)
+                })
+                .cloned()
+                .collect();
+            limited |= args
+                .limit
+                .is_some_and(|limit| limit < backfill.len() as u64);
+            for (index, name) in backfill
+                .iter()
+                .take(args.limit.unwrap_or(u64::MAX) as usize)
+            {
+                let id = identity(source, *index, name);
+                let pos = records.iter().position(|r| r["identity"] == id).unwrap();
+                process(
+                    source,
+                    *index,
+                    &id,
+                    pos,
+                    JobMode::Diagnose,
+                    &output,
+                    &mut records,
+                    &corpus_info,
+                    &limits,
+                    log_level,
+                )?;
+            }
+        }
+        if args.diagnose_whitespace_only {
+            continue;
+        }
         // Previously problematic files go first; untouched entries follow archive order.
         members.sort_by_key(|(index, name)| {
             let id = identity(source, *index, name);
@@ -515,10 +559,14 @@ fn publish(
         .map(|c| c["total_workbooks"].as_u64())
         .collect::<Option<Vec<_>>>()
         .map(|counts| counts.into_iter().sum::<u64>());
-    let records: Vec<_> = records.iter().cloned().map(|mut record| {
-        diagnosis_report::ensure_whitespace_diagnosis(&mut record);
-        record
-    }).collect();
+    let records: Vec<_> = records
+        .iter()
+        .cloned()
+        .map(|mut record| {
+            diagnosis_report::ensure_whitespace_diagnosis(&mut record);
+            record
+        })
+        .collect();
     let report = json!({"archive_run":true,"study":true,"workbooks":records,"corpora":corpora,"total_workbooks":total,"complete":complete,"limited":limited,"phase":phase});
     artifact_cache::atomic_write(
         &output.join("diagnosis.json"),
@@ -532,6 +580,10 @@ pub(super) fn run_job(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     match job.mode {
         JobMode::Prepare => prepared::prepare(job, record, log_level),
         JobMode::Compare => prepared::compare(job, record),
+        JobMode::Diagnose => {
+            whitespace::run(job, record, log_level);
+            Ok(())
+        }
         JobMode::Legacy => unreachable!(),
     }
 }

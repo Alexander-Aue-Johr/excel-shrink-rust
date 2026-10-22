@@ -21,16 +21,23 @@ pub(super) fn process(
     }
     fs::create_dir_all(&work)?;
     let record = record_path(output, id);
-    records[position]["complete"] = json!(false);
+    let diagnosis_only = mode == JobMode::Diagnose;
+    if !diagnosis_only {
+        records[position]["complete"] = json!(false);
+    }
     if mode == JobMode::Prepare {
         records[position]["prepared"] = json!(false);
     }
-    records[position]["error"] = Value::Null;
-    records[position]["status"] = json!(if mode == JobMode::Prepare {
-        "shrinking"
-    } else {
-        "comparing"
-    });
+    if !diagnosis_only {
+        records[position]["error"] = Value::Null;
+    }
+    if !diagnosis_only {
+        records[position]["status"] = json!(if mode == JobMode::Prepare {
+            "shrinking"
+        } else {
+            "comparing"
+        });
+    }
     write_record(&record, &records[position])?;
     let job = MemberJob {
         archive: source.path.clone(),
@@ -46,7 +53,9 @@ pub(super) fn process(
     };
     let path = work.join("job.json");
     fs::write(&path, serde_json::to_vec_pretty(&job)?)?;
-    let phase = if mode == JobMode::Prepare {
+    let phase = if diagnosis_only {
+        "diagnosing whitespace"
+    } else if mode == JobMode::Prepare {
         "shrinking"
     } else {
         "comparing"
@@ -64,27 +73,26 @@ pub(super) fn process(
     });
     let mut result: Value = serde_json::from_slice(&fs::read(&record)?)?;
     if let Err(error) = outcome {
-        result["status"] = json!("skipped");
-        result["error"] = json!(format!("{error:#}"));
+        if diagnosis_only {
+            result["whitespace_diagnosis"]["version"] = json!(whitespace::VERSION);
+            result["whitespace_diagnosis"]["status"] = json!("failed");
+            result["whitespace_diagnosis"]["error"] = json!(format!("{error:#}"));
+        } else {
+            result["status"] = json!("skipped");
+            result["error"] = json!(format!("{error:#}"));
+        }
     }
     worker::cleanup_windows(&work)?;
-    if let Err(error) = worker::retain_evidence(
-        &mut result,
-        &work,
-        &output.join("evidence").join(&key[..20]),
-    ) {
-        result["status"] = json!("skipped");
-        result["error"] = json!(format!("preserve image evidence: {error:#}"));
-        clear_images(&mut result);
-    }
+    retain_visual_evidence(&mut result, &work, output, &key[..20], diagnosis_only);
     relative_images(&mut result, output);
-    if result["status"] == "skipped" {
+    if result["status"] == "skipped" || result["whitespace_diagnosis"]["status"] == "failed" {
         if let Err(error) = retain_capture_logs(&work, output, &key[..20]) {
             eprintln!("Could not preserve capture diagnostics: {error:#}");
         }
     }
     result[format!("{phase}_elapsed_seconds")] = json!(started.elapsed().as_secs_f64());
-    result["complete"] = json!(mode == JobMode::Compare || result["status"] == "skipped");
+    result["complete"] =
+        json!(diagnosis_only || mode == JobMode::Compare || result["status"] == "skipped");
     fs::remove_dir_all(&work)?;
     if mode == JobMode::Compare && result["status"] != "skipped" {
         fs::remove_file(bundle_path(output, id))?;
@@ -96,24 +104,73 @@ pub(super) fn process(
     Ok(())
 }
 
+fn retain_visual_evidence(
+    result: &mut Value,
+    work: &Path,
+    output: &Path,
+    key: &str,
+    diagnosis_only: bool,
+) {
+    let mut diagnosis = result["whitespace_diagnosis"].take();
+    if !diagnosis_only {
+        if let Err(error) = worker::retain_evidence(
+            result,
+            work,
+            &output.join("evidence").join(key).join("comparison"),
+        ) {
+            result["status"] = json!("skipped");
+            result["error"] = json!(format!("preserve image evidence: {error:#}"));
+            clear_images(result);
+        }
+    }
+    // Supplemental evidence failure must not erase a completed primary check.
+    if let Err(error) = worker::retain_evidence(
+        &mut diagnosis,
+        work,
+        &output.join("evidence").join(key).join("whitespace-v1"),
+    ) {
+        diagnosis["status"] = json!("failed");
+        diagnosis["error"] = json!(format!("preserve whitespace evidence: {error:#}"));
+        clear_images(&mut diagnosis);
+    }
+    result["whitespace_diagnosis"] = diagnosis;
+}
+
 fn retain_capture_logs(work: &Path, output: &Path, key: &str) -> Result<()> {
     use std::io::{Read, Seek, SeekFrom};
     const MAX_LOG_BYTES: u64 = 1024 * 1024;
     let logs = output.join("logs");
     fs::create_dir_all(&logs)?;
     for profile in prepared::PROFILES {
-        let capture = work.join("comparisons").join(profile).join("visual/images");
-        for name in ["host.stdout.log", "host.stderr.log"] {
-            let path = capture.join(name);
-            if !path.is_file() {
-                continue;
+        let mut captures = vec![(
+            profile.to_owned(),
+            work.join("comparisons").join(profile).join("visual/images"),
+        )];
+        for phase in [
+            "without-whitespace-deletion",
+            "reproduce-original-comparison",
+        ] {
+            captures.push((
+                format!("{profile}-{phase}"),
+                work.join("whitespace")
+                    .join(profile)
+                    .join(phase)
+                    .join("images"),
+            ));
+        }
+        for (label, capture) in captures {
+            for name in ["host.stdout.log", "host.stderr.log"] {
+                let path = capture.join(name);
+                if !path.is_file() {
+                    continue;
+                }
+                let mut source = fs::File::open(path)?;
+                let length = source.metadata()?.len();
+                source.seek(SeekFrom::Start(length.saturating_sub(MAX_LOG_BYTES)))?;
+                let mut tail = Vec::new();
+                source.take(MAX_LOG_BYTES).read_to_end(&mut tail)?;
+                fs::write(logs.join(format!("{key}-{label}-{name}")), tail)?;
             }
-            let mut source = fs::File::open(path)?;
-            let length = source.metadata()?.len();
-            source.seek(SeekFrom::Start(length.saturating_sub(MAX_LOG_BYTES)))?;
-            let mut tail = Vec::new();
-            source.take(MAX_LOG_BYTES).read_to_end(&mut tail)?;
-            fs::write(logs.join(format!("{key}-{profile}-{name}")), tail)?;
         }
     }
     Ok(())
@@ -163,6 +220,24 @@ fn clear_images(value: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_supplemental_evidence_preserves_completed_primary_results() -> Result<()> {
+        let root = super::super::tests::test_directory("whitespace-evidence-failure")?;
+        let primary = json!([{"sheets":[{"original_image":"evidence/old-original.png", "shrunk_image":"evidence/old-shrunk.png"}]}]);
+        let mut record = json!({"complete":true,"status":"differences","results":primary,
+            "whitespace_diagnosis":{"status":"complete","control":{"original_image":root.join("missing.png")}}});
+        retain_visual_evidence(&mut record, &root, &root, "example", true);
+        assert_eq!(record["results"], primary);
+        assert_eq!(record["status"], "differences");
+        assert_eq!(record["complete"], true);
+        assert_eq!(record["whitespace_diagnosis"]["status"], "failed");
+        assert!(record["whitespace_diagnosis"]["control"]
+            .get("original_image")
+            .is_none());
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn keeps_bounded_failure_logs_without_workbooks_or_images() -> Result<()> {

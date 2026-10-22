@@ -5,6 +5,7 @@ use std::io::Write;
 pub(super) const PROFILES: [&str; 3] = ["default", "maximum-cleaning", "too-aggressive-cleaning"];
 
 pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
+    record["whitespace_diagnosis"] = json!({"status":"not_investigated"});
     record["prepared"] = json!(false);
     record["results"] = json!([]);
     let extracted = worker::extract(job)?;
@@ -116,6 +117,7 @@ fn unpack(bundle: &Path, work: &Path) -> Result<Value> {
 }
 
 pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
+    record["whitespace_diagnosis"] = json!({"status":"not_investigated"});
     record["results"] = json!([]);
     record["results"] = unpack(
         job.bundle.as_ref().context("missing prepared bundle")?,
@@ -164,6 +166,8 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     });
     if technical {
         record["error"] = json!("One or more comparisons could not be completed.");
+    } else if changed {
+        super::whitespace::run(job, record, LogLevel::Warn);
     }
     Ok(())
 }

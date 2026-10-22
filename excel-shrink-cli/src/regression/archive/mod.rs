@@ -50,6 +50,7 @@ enum JobMode {
     Legacy,
     Prepare,
     Compare,
+    Diagnose,
 }
 
 #[derive(Serialize, Deserialize)]
