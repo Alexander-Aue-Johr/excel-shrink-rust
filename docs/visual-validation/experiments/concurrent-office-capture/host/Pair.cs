@@ -135,7 +135,7 @@ sealed class Pair
             if (offers.Count != 2 || !offerReady.Task.IsCompletedSuccessfully || !offerReady.Task.Result)
                 throw new InvalidOperationException("Unrequested image.");
             metadata = offers[side];
-            if (bytes.Length < 24 || bytes.Length > 64 * 1024 * 1024 ||
+            if (bytes.Length < 24 || bytes.Length > 160 * 1024 * 1024 ||
                 !bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) ||
                 System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(16, 4)) != (int)metadata["width"]! ||
                 System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(20, 4)) != (int)metadata["height"]!)

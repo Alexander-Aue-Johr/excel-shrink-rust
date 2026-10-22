@@ -28,20 +28,25 @@ for (int i = 0; i < count; i++)
     }
 var seen = new ConcurrentDictionary<string, bool>();
 var active = new ConcurrentDictionary<string, bool>();
+var dataStarted = new ConcurrentDictionary<string, bool>();
+long lastConfig = Stopwatch.GetTimestamp();
+int configRequests = 0;
 var results = new ConcurrentDictionary<string, JsonObject>();
 var errors = new ConcurrentQueue<string>();
 var start = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 var clock = new Stopwatch();
-double? captureSeconds = null;
+double captureSeconds = -1;
 var appBuilder = WebApplication.CreateBuilder(Array.Empty<string>());
 appBuilder.Logging.ClearProviders();
 appBuilder.WebHost.UseUrls($"http://localhost:{(int)settings["port"]!}");
-appBuilder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 64 * 1024 * 1024);
+appBuilder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 160 * 1024 * 1024);
 var app = appBuilder.Build();
 app.Use(async (context, next) =>
 {
     context.Response.Headers.CacheControl = "no-store";
     try { await next(); }
+    catch (OperationCanceledException) when (context.Request.Path == "/experiment/start" &&
+        context.RequestAborted.IsCancellationRequested) { /* A bootstrap task pane was replaced. */ }
     catch (Exception error)
     {
         errors.Enqueue(error.Message);
@@ -63,21 +68,25 @@ async Task<JsonObject> Body(HttpRequest request) =>
 {
     var client = Client(id);
     if (!active.ContainsKey(id)) throw new InvalidOperationException("Capture before start barrier.");
+    dataStarted[id] = true;
     return client;
 }
 
 app.MapGet("/config", (HttpRequest request) =>
 {
     var client = Client(request.Query["client"].ToString());
-    if (active.ContainsKey(client.Id)) throw new InvalidOperationException("Task pane restarted after capture began.");
+    if (dataStarted.ContainsKey(client.Id)) throw new InvalidOperationException("Task pane restarted after capture began.");
+    Interlocked.Exchange(ref lastConfig, Stopwatch.GetTimestamp());
+    Interlocked.Increment(ref configRequests);
     seen[client.Id] = true;
     return Results.Json(configs[client.Id]);
 });
 app.MapPost("/experiment/start", async (HttpRequest request) =>
 {
     var client = Client((string)(await Body(request))["run_id"]!);
-    await start.Task.WaitAsync(TimeSpan.FromMinutes(15));
-    if (!active.TryAdd(client.Id, true)) throw new InvalidOperationException("Duplicate active task pane.");
+    await start.Task.WaitAsync(TimeSpan.FromMinutes(15), request.HttpContext.RequestAborted);
+    if (!active.TryAdd(client.Id, true) && dataStarted.ContainsKey(client.Id))
+        throw new InvalidOperationException("Duplicate active task pane.");
     return Results.Json(new { ok = true });
 });
 app.MapPost("/control/start", () =>
@@ -114,13 +123,15 @@ app.MapPost("/result", async (HttpRequest request) =>
     var data = await Body(request); var client = Client((string)data["run_id"]!);
     if (data["error"] is not null) errors.Enqueue(client.Id + ": " + data["error"]!.ToJsonString());
     if (!results.TryAdd(client.Id, data)) throw new InvalidOperationException("Duplicate result.");
-    if (results.Count == count * 2) captureSeconds = clock.Elapsed.TotalSeconds;
+    if (results.Count == count * 2) Interlocked.CompareExchange(ref captureSeconds, clock.Elapsed.TotalSeconds, -1);
     return Results.Json(new { ok = true });
 });
 app.MapGet("/health", () => Results.Json(new {
     seen = seen.Keys.Order(), finished = results.Count, errors = errors.ToArray(),
-    complete = results.Count == count * 2 && pairs.All(p => p.Complete) && errors.IsEmpty,
-    capture_seconds = captureSeconds,
+    complete = Volatile.Read(ref captureSeconds) >= 0 && results.Count == count * 2 && pairs.All(p => p.Complete) && errors.IsEmpty,
+    capture_seconds = Volatile.Read(ref captureSeconds),
+    config_requests = Volatile.Read(ref configRequests),
+    config_quiet_ms = Stopwatch.GetElapsedTime(Volatile.Read(ref lastConfig)).TotalMilliseconds,
     pairs = pairs.Select((p, i) => p.Snapshot(i)),
     clients = results
 }));
