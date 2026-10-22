@@ -30,7 +30,10 @@ fn a_blocked_dashboard_preserves_records_and_recovers_at_the_next_checkpoint() -
     publish_progress(&output, &records, &corpora, "shrinking");
     assert!(fs::read_to_string(&dashboard)?.contains("example.xlsx"));
     let report: Value = serde_json::from_slice(&fs::read(output.join("diagnosis.json"))?)?;
-    assert_eq!(report["workbooks"], json!(records));
+    let mut annotated = record.clone();
+    diagnosis_report::ensure_whitespace_diagnosis(&mut annotated);
+    assert_eq!(report["workbooks"], json!([annotated]));
+    assert_eq!(report["workbooks"][0]["whitespace_diagnosis"]["status"], "not_investigated");
     assert_eq!(report["phase"], "shrinking");
     assert_eq!(fs::read(&path)?, saved);
     fs::remove_dir_all(output)?;

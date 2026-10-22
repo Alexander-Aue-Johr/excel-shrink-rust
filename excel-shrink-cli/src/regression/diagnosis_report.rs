@@ -9,6 +9,13 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+// Missing legacy metadata is an unknown cause, never evidence of a whitespace effect.
+pub(super) fn ensure_whitespace_diagnosis(record: &mut Value) {
+    if record.get("whitespace_diagnosis").is_none_or(Value::is_null) {
+        record["whitespace_diagnosis"] = serde_json::json!({"status": "not_investigated"});
+    }
+}
+
 pub(super) fn write(output: &Path, report: &Value) -> Result<PathBuf> {
     fs::create_dir_all(output)?;
     let root = fs::canonicalize(output)?;
@@ -262,6 +269,27 @@ fn items<'a>(value: &'a Value, key: &str) -> &'a [Value] {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn legacy_results_get_unknown_whitespace_cause_without_changing_evidence() {
+        for status in ["unchanged", "differences", "skipped", "pending"] {
+            let mut record = json!({"status":status,"results":[
+                {"profile":"maximum-cleaning","status":"visual differences"}
+            ]});
+            let original = record.clone();
+            ensure_whitespace_diagnosis(&mut record);
+            assert_eq!(record["whitespace_diagnosis"]["status"], "not_investigated");
+            let once = record.clone();
+            ensure_whitespace_diagnosis(&mut record);
+            assert_eq!(record, once);
+            record.as_object_mut().unwrap().remove("whitespace_diagnosis");
+            assert_eq!(record, original);
+        }
+        let mut explicit = json!({"whitespace_diagnosis":{"status":"not_investigated","note":"retained"}});
+        let original = explicit.clone();
+        ensure_whitespace_diagnosis(&mut explicit);
+        assert_eq!(explicit, original);
+    }
     #[test]
     fn unchanged_workbooks_are_collapsed_and_corpus_pages_keep_stable_links() -> Result<()> {
         let dir = std::env::temp_dir().join(format!("corpus-report-{}", std::process::id()));
@@ -278,6 +306,8 @@ mod tests {
         assert!(html.contains("Previously verified"));
         assert!(html.contains("90.00%"));
         assert!(html.contains("1.25 s"));
+        assert!(html.contains("Whitespace-Ursache noch nicht untersucht"));
+        assert_eq!(html.matches("data-whitespace-diagnosis=\"not-investigated\"").count(), 1);
         assert!(html.contains("100.0 MiB → 50.0 MiB"));
         assert_eq!(html.matches("class=\"workbook\"").count(), 1);
         let corpus_a = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "a"))))?;

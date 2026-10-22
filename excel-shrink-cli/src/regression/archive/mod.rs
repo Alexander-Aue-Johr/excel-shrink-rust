@@ -368,22 +368,32 @@ fn load_records(output: &Path) -> Result<Vec<Value>> {
     paths
         .into_iter()
         .filter(|p| p.extension().is_some_and(|e| e == "json"))
-        .map(|p| Ok(serde_json::from_slice(&fs::read(p)?)?))
+        .map(|p| {
+            let mut record = serde_json::from_slice(&fs::read(p)?)?;
+            diagnosis_report::ensure_whitespace_diagnosis(&mut record);
+            Ok(record)
+        })
         .collect()
 }
 
 fn write_record(path: &Path, record: &Value) -> Result<()> {
-    artifact_cache::atomic_write(path, &serde_json::to_vec_pretty(record)?)
+    let mut record = record.clone();
+    diagnosis_report::ensure_whitespace_diagnosis(&mut record);
+    artifact_cache::atomic_write(path, &serde_json::to_vec_pretty(&record)?)
 }
 
 fn publish(output: &Path, records: &[Value], complete: bool, limited: bool) -> Result<()> {
+    let records: Vec<_> = records.iter().cloned().map(|mut record| {
+        diagnosis_report::ensure_whitespace_diagnosis(&mut record);
+        record
+    }).collect();
     let report = json!({"workbooks":records,"total_workbooks":records.len(),"complete":complete,
         "limited":limited,"archive_run":true});
     artifact_cache::atomic_write(
         &output.join("diagnosis.json"),
         &serde_json::to_vec_pretty(&report)?,
     )?;
-    verified::write(output, records)?;
+    verified::write(output, &records)?;
     diagnosis_report::write(output, &report)?;
     Ok(())
 }

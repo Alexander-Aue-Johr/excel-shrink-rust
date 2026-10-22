@@ -515,12 +515,16 @@ fn publish(
         .map(|c| c["total_workbooks"].as_u64())
         .collect::<Option<Vec<_>>>()
         .map(|counts| counts.into_iter().sum::<u64>());
+    let records: Vec<_> = records.iter().cloned().map(|mut record| {
+        diagnosis_report::ensure_whitespace_diagnosis(&mut record);
+        record
+    }).collect();
     let report = json!({"archive_run":true,"study":true,"workbooks":records,"corpora":corpora,"total_workbooks":total,"complete":complete,"limited":limited,"phase":phase});
     artifact_cache::atomic_write(
         &output.join("diagnosis.json"),
         &serde_json::to_vec_pretty(&report)?,
     )?;
-    ledger::write(output, records)?;
+    ledger::write(output, &records)?;
     diagnosis_report::write(output, &report).map(|_| ())
 }
 

@@ -41,6 +41,13 @@ pub(super) fn render(html: &mut String, root: &Path, file: &Value) {
     let _ = write!(html, "<section id=\"{id}\" class=\"workbook\"><header class=\"hero\"><h2>{}</h2>{}<p>{summary}</p><p>{}</p>",
         escape(text(file, "name")), permalink(&id), if file["complete"] == true { "Complete" } else { "In progress" });
     tables::profiles(html, file);
+    if file["whitespace_diagnosis"]["status"]
+        .as_str()
+        .unwrap_or("not_investigated")
+        == "not_investigated"
+    {
+        html.push_str("<p class=\"muted\" data-whitespace-diagnosis=\"not-investigated\" lang=\"de\">Whitespace-Ursache noch nicht untersucht. Die vorhandenen Unterschiede sind keiner Whitespace-Ursache zugeordnet.</p>");
+    }
     html.push_str("</header>");
     if let Some(error) = file["error"].as_str() {
         let _ = write!(html, "<article class=\"difference\"><h3>File could not be fully checked</h3><p>{}</p></article>", escape(error));
