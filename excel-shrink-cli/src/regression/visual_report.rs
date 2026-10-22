@@ -173,6 +173,7 @@ search?.addEventListener('input', () => {
 function revealTarget() {
   const target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
   if (!target) return;
+  if (target.tagName === 'DETAILS') target.open = true;
   const section = target.closest('.worksheet');
   if (section) section.hidden = false;
   for (let node = target.parentElement; node; node = node.parentElement) {
@@ -181,6 +182,27 @@ function revealTarget() {
   target.scrollIntoView();
 }
 window.addEventListener('hashchange', revealTarget);
+const categoryControls = [...document.querySelectorAll('[data-collapse-category]')];
+function applyCategories() {
+  for (const control of categoryControls) {
+    for (const section of document.querySelectorAll('details[data-change-category="' + control.dataset.collapseCategory + '"]')) {
+      section.open = !control.checked;
+    }
+    try { localStorage.setItem('excel-shrink-collapse-' + control.dataset.collapseCategory, String(control.checked)); } catch (_) {}
+  }
+}
+for (const control of categoryControls) {
+  try {
+    const saved = localStorage.getItem('excel-shrink-collapse-' + control.dataset.collapseCategory);
+    if (saved !== null) control.checked = saved === 'true';
+  } catch (_) {}
+  control.addEventListener('change', applyCategories);
+}
+document.querySelector('[data-expand-categories]')?.addEventListener('click', () => {
+  for (const control of categoryControls) control.checked = false;
+  applyCategories();
+});
+applyCategories();
 revealTarget();
 document.addEventListener('click', async event => {
   const link = event.target.closest('[data-permalink]');

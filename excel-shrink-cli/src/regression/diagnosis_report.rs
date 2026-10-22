@@ -1,3 +1,4 @@
+mod categories;
 mod tables;
 mod workbook;
 
@@ -11,7 +12,10 @@ use std::path::{Path, PathBuf};
 
 // Missing legacy metadata is an unknown cause, never evidence of a whitespace effect.
 pub(super) fn ensure_whitespace_diagnosis(record: &mut Value) {
-    if record.get("whitespace_diagnosis").is_none_or(Value::is_null) {
+    if record
+        .get("whitespace_diagnosis")
+        .is_none_or(Value::is_null)
+    {
         record["whitespace_diagnosis"] = serde_json::json!({"status": "not_investigated"});
     }
 }
@@ -102,11 +106,19 @@ fn write_page(
     let title = corpus
         .map(|c| c.name.as_str())
         .unwrap_or("Visual diagnosis");
-    let changed: Vec<_> = files
+    let mut changed: Vec<_> = files
         .iter()
         .copied()
         .filter(|f| has_differences(f))
         .collect();
+    changed.sort_by_key(|file| {
+        (
+            categories::rank(categories::file(file)),
+            !items(file, "results")
+                .iter()
+                .any(|r| r["profile"] == "default" && r["status"] == "visual differences"),
+        )
+    });
     let unchanged: Vec<_> = files.iter().copied().filter(|f| is_unchanged(f)).collect();
     let skipped: Vec<_> = files.iter().copied().filter(|f| is_skipped(f)).collect();
     let completed = files.iter().filter(|f| f["complete"] == true).count();
@@ -201,8 +213,19 @@ fn write_page(
     tables::skipped(&mut html, &skipped);
     if !changed.is_empty() {
         html.push_str("<h2 class=\"section-heading\">Visual differences</h2>");
+        html.push_str(r#"<section class="hero" lang="de" aria-label="Unterschiede einklappen"><p>Ganze Dateien bleiben zusammen. Ungeklärte Unterschiede stehen zuerst. Kategorien einklappen:</p><label><input type="checkbox" data-collapse-category="whitespace" checked> Whitespace-Effekte</label> <label><input type="checkbox" data-collapse-category="height" checked> Zeilenhöhen-Befunde</label> <label><input type="checkbox" data-collapse-category="other"> Andere / ungeklärte Unterschiede</label> <button type="button" class="button" data-expand-categories>Alles aufklappen</button><p class="muted">Einklappen ändert keine Ergebnisse oder Zähler. Bei geänderten Zeilenhöhen ist der vollständige Bildvergleich weiterhin offen.</p></section>"#);
     }
+    let mut previous_category = "";
     for file in changed {
+        let category = categories::file(file);
+        if category != previous_category {
+            let _ = write!(
+                html,
+                "<h2 class=\"section-heading\" lang=\"de\">{}</h2>",
+                categories::label(category)
+            );
+            previous_category = category;
+        }
         workbook::render(&mut html, root, file);
     }
     html.push_str(REPORT_END);
@@ -271,6 +294,49 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn groups_whitespace_last_and_prioritizes_residual_evidence_without_splitting_files(
+    ) -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("whitespace-report-{}", std::process::id()));
+        let white = json!({"identity":"white","name":"white.xlsx","complete":true,"status":"differences",
+            "results":[{"profile":"maximum-cleaning","status":"visual differences","sheets":[
+                {"index":1,"name":"White","status":"changed","image_differences":[{"range":"A1:B2"}]}]}],
+            "whitespace_diagnosis":{"version":1,"status":"complete","profiles":[{"profile":"maximum-cleaning",
+                "sheets":[{"index":1,"category":"whitespace_explained","checks_complete":true,"original_evidence_reproduced":true}]}]}});
+        let mut mixed = white.clone();
+        mixed["identity"] = json!("mixed");
+        mixed["name"] = json!("mixed.xlsx");
+        mixed["results"][0]["sheets"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+            "index":2,"name":"Other","status":"changed","image_differences":[{"range":"A1:B2"}]}));
+        mixed["whitespace_diagnosis"]["profiles"][0]["control"] = json!({"sheets":[
+            {"index":2,"status":"changed","image_differences":[{"range":"A1:B2"}]}]});
+        let height = json!({"identity":"height","name":"height.xlsx","complete":true,"status":"differences",
+            "results":[{"profile":"maximum-cleaning","sheets":[{"index":1,"name":"Height","status":"changed",
+                "row_heights":[{"row":1,"before":12,"after":14}]}]}]});
+        let html = fs::read_to_string(write(&dir, &json!({"workbooks":[white,height,mixed]}))?)?;
+        let main = html.split("<main").nth(1).unwrap();
+        let position = |id| {
+            main.find(&format!("id=\"{}\"", anchor("file", id)))
+                .unwrap()
+        };
+        assert!(position("mixed") < position("height") && position("height") < position("white"));
+        let mixed_section = &main[position("mixed")..position("height")];
+        assert!(mixed_section.find("Sheet 02").unwrap() < mixed_section.find("Sheet 01").unwrap());
+        assert!(
+            mixed_section.find("verbleibende Unterschiede").unwrap()
+                < mixed_section.find("<h3>maximum-cleaning").unwrap()
+        );
+        assert!(mixed_section.contains("data-change-category=\"other\" open"));
+        assert!(main.contains("data-change-category=\"whitespace\" data-search="));
+        assert!(html.contains("data-collapse-category=\"height\" checked"));
+        assert!(html.contains("weitere Bildunterschiede nicht vollständig geprüft"));
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[test]
     fn legacy_results_get_unknown_whitespace_cause_without_changing_evidence() {
         for status in ["unchanged", "differences", "skipped", "pending"] {
             let mut record = json!({"status":status,"results":[
@@ -282,10 +348,14 @@ mod tests {
             let once = record.clone();
             ensure_whitespace_diagnosis(&mut record);
             assert_eq!(record, once);
-            record.as_object_mut().unwrap().remove("whitespace_diagnosis");
+            record
+                .as_object_mut()
+                .unwrap()
+                .remove("whitespace_diagnosis");
             assert_eq!(record, original);
         }
-        let mut explicit = json!({"whitespace_diagnosis":{"status":"not_investigated","note":"retained"}});
+        let mut explicit =
+            json!({"whitespace_diagnosis":{"status":"not_investigated","note":"retained"}});
         let original = explicit.clone();
         ensure_whitespace_diagnosis(&mut explicit);
         assert_eq!(explicit, original);
@@ -307,7 +377,11 @@ mod tests {
         assert!(html.contains("90.00%"));
         assert!(html.contains("1.25 s"));
         assert!(html.contains("Whitespace-Ursache noch nicht untersucht"));
-        assert_eq!(html.matches("data-whitespace-diagnosis=\"not-investigated\"").count(), 1);
+        assert_eq!(
+            html.matches("data-whitespace-diagnosis=\"not-investigated\"")
+                .count(),
+            1
+        );
         assert!(html.contains("100.0 MiB → 50.0 MiB"));
         assert_eq!(html.matches("class=\"workbook\"").count(), 1);
         let corpus_a = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "a"))))?;
@@ -355,10 +429,8 @@ mod tests {
         let html = fs::read_to_string(write(&dir, &report)?)?;
         assert!(html.contains("4 unchanged worksheets · 1 with differences"));
         let worksheet = html.split("class=\"worksheet\"").nth(1).unwrap();
-        assert!(
-            worksheet.find("<h3>too-aggressive-cleaning</h3>").unwrap()
-                < worksheet.find("<h3>maximum-cleaning</h3>").unwrap()
-        );
+        assert!(worksheet.contains("<h3>too-aggressive-cleaning</h3>"));
+        assert!(!worksheet.contains("<h3>maximum-cleaning</h3>"));
         assert!(!worksheet.contains("<h3>default</h3>"));
         let metrics = html.split("<th>Profile / result</th>").nth(1).unwrap();
         assert!(
