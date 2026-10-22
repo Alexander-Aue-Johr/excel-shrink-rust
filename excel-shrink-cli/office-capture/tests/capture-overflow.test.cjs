@@ -85,7 +85,8 @@ function overflowFixture(options = {}) {
     getRange() {return {getImage() {return {value: value === ' ' ? 'blocked' : 'original'};}};}
   };
   const office = fn => fn({sync: async () => {}, workbook: {worksheets: {getItem: () => worksheet}}});
-  const geometry = {x: [0, 2, 6, 12], y: Array.from({length: rowCount + 1}, (_, i) => i * 4),
+  const geometry = {x: [0, 2, 6, 12], y: Array.from({length: rowCount + 1}, (_, i) => i * (options.pointRowHeight ?? 4)),
+    pixelY: Array.from({length: rowCount + 1}, (_, i) => i * 4),
     columns: [2, 4, 6], scaleX: 1, scaleY: 1};
   if (options.hiddenLastColumn) { geometry.columns.push(0); geometry.x.push(12); }
   const tile = {raw: {r0: 0, r1: rowCount, c0: 0, c1: geometry.columns.length},
@@ -98,6 +99,16 @@ test('overflow blockers accept literal values returned through formulas and rest
   const fixture = overflowFixture();
   assert.deepEqual(await fixture.run(), {retainProbe: true, rightEdge: false});
   assert.deepEqual(fixture.writes, [' ', '']);
+});
+
+test('overflow candidates and change bands use rendered rows despite fractional point heights', async () => {
+  const fixture = overflowFixture({candidateRows: [10], pointRowHeight: 4.9});
+  await fixture.run();
+  assert.deepEqual(fixture.writes, [' ', '']);
+  const unsafe = overflowFixture({candidateRows: [10], pointRowHeight: 4.9,
+    sourceContexts: {10: {mergeRows: 2}}});
+  await assert.rejects(unsafe.run(), /Sheet1!11: merged cells spanning 2 rows/);
+  assert.deepEqual(unsafe.writes, []);
 });
 
 test('overflow source diagnostics identify the rejected row within a batch and its multirow merge', async () => {

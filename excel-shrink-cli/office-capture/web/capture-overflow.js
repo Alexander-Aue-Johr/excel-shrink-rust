@@ -58,11 +58,11 @@
   }
 
   function sheetRow(geometry, tile, pixelY) {
-    const point = geometry.y[tile.raw.r0] + pixelY / geometry.scaleY;
+    const position = geometry.pixelY[tile.raw.r0] + pixelY;
     let low = tile.raw.r0, high = tile.raw.r1;
     while (low + 1 < high) {
       const middle = Math.floor((low + high) / 2);
-      if (geometry.y[middle] <= point) low = middle;
+      if (geometry.pixelY[middle] <= position) low = middle;
       else high = middle;
     }
     return low;
@@ -208,8 +208,8 @@
       throw new Error('Worksheet geometry changed during overflow check');
     }
     const allowedBands = rows.map(row => ({
-      first: Math.max(0, Math.floor((geometry.y[row] - geometry.y[tile.raw.r0]) * geometry.scaleY) - 1),
-      last: Math.min(before.height, Math.ceil((geometry.y[row + 1] - geometry.y[tile.raw.r0]) * geometry.scaleY) + 2)
+      first: Math.max(0, geometry.pixelY[row] - geometry.pixelY[tile.raw.r0] - 1),
+      last: Math.min(before.height, geometry.pixelY[row + 1] - geometry.pixelY[tile.raw.r0] + 2)
     }));
     let changed = 0, rightmost = -1, band = 0;
     const rowsPerTurn = Math.max(1, Math.floor(262144 / before.width));

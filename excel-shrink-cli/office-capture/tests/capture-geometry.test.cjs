@@ -35,14 +35,14 @@ function png(width, height) {
   return bytes.toString('base64');
 }
 
-// Office can expose stored fractional heights on a multirow range while single
-// cells and PNGs use rounded visible heights. These are model tests, not Excel.
+// Office exposes point heights finer than a PNG pixel. Images round each row
+// down independently; aggregate point heights are not image dimensions.
 function officeModel({rows = [], columns = [], defaultHeight = 14, defaultWidth = 60,
-    scale = 4 / 3, imageWidthOffset = 0} = {}) {
+    scale = 4 / 3, imageWidthOffset = 0, imageHeightOffset = 0, imageHeight} = {}) {
   const images = [];
   const row = index => rows[index] ?? defaultHeight;
   const column = index => columns[index] ?? defaultWidth;
-  const visibleHeight = index => Math.floor(row(index) * 4 / 3) * 3 / 4;
+  const pointHeight = index => Math.round(row(index) * 16 / 3) * 3 / 16;
   const sum = (value, start, count) => {
     let result = 0;
     for (let index = start; index < start + count; index++) result += value(index);
@@ -53,13 +53,13 @@ function officeModel({rows = [], columns = [], defaultHeight = 14, defaultWidth 
       return {
         load() {},
         width: sum(column, c, nc),
-        height: nr === 1 ? visibleHeight(r) : sum(row, r, nr),
+        height: nr === 1 ? pointHeight(r) : sum(row, r, nr),
         rowHidden: row(r) === 0,
         columnHidden: column(c) === 0,
         getImage() {
           images.push({r, c, nr, nc});
           return {value: png(Math.round(sum(column, c, nc) * scale) + 1 + imageWidthOffset,
-            Math.round(sum(visibleHeight, r, nr) * scale) + 1)};
+            (imageHeight ? imageHeight(r, nr) : sum(index => Math.floor(pointHeight(index) * scale), r, nr) + 1) + imageHeightOffset)};
         }
       };
     }
@@ -85,9 +85,9 @@ test('tall title rows allow independent narrow calibration controls', async () =
   assert.ok(model.images.some(control => control.nc > 1 && control.nr === 1));
 });
 
-test('capture and calibration sum individual visible row heights', async () => {
+test('capture and calibration quantize individual row heights before summing', async () => {
   const result = await geometry(officeModel(), 9999);
-  assert.equal(result.rows[0], 13.5);
+  assert.equal(result.rows[0], 14.0625);
   assert.equal(result.scaleY, 4 / 3);
   assert.equal(result.imageHeight(0, 10000), 180001);
   const tiles = result.tiles(15, null);
@@ -116,7 +116,7 @@ test('narrower paired columns retain the conservative row cuts and image budget'
 
 test('hidden rows and columns contribute no rendered extent', async () => {
   const result = await geometry(officeModel({rows: [0, 14, 0, 18], columns: [0, 60, 0, 75]}));
-  assert.deepEqual(result.rows.slice(0, 4), [0, 13.5, 0, 18]);
+  assert.deepEqual(result.rows.slice(0, 4), [0, 14.0625, 0, 18]);
   assert.equal(result.imageHeight(0, 4), 43);
   assert.equal(result.imageWidth(3), 181);
 });
@@ -128,8 +128,89 @@ test('a single visible column retains fixed full-width capture', async () => {
   assert.throws(() => result.imageWidth(1), /Fixed-width capture cannot crop columns/);
 });
 
+test('calibration crosses hidden columns to find distinct safe widths', async () => {
+  const model = officeModel({columns: [60, 60, ...new Array(96).fill(0)], defaultWidth: 60});
+  const result = await geometry(model, 99, 200);
+  assert.equal(result.scaleX, 4 / 3);
+  assert.equal(result.fixedWidth, null);
+  assert.ok(model.images.some(control => control.nc === 99));
+  assert.equal(result.imageWidth(98), 241);
+  const tiles = result.tiles(200, null);
+  assert.ok(tiles.every(tile => tile.width * tile.expectedHeight <= result.maxPixels));
+});
+
 test('calibration still rejects images that disagree with measured geometry', async () => {
   await assert.rejects(geometry(officeModel({imageWidthOffset: 3})), /Inconsistent width image calibration/);
+});
+
+test('inconsistent calibration reports the measured points and image pixels', async () => {
+  await assert.rejects(geometry(officeModel({imageHeightOffset: 3})), error => {
+    assert.match(error.message, /Inconsistent height image calibration \(points, pixels\):/);
+    const samples = JSON.parse(error.message.split(': ')[1]);
+    assert.ok(samples.some(([points, pixels]) => points === 14.0625 && pixels === 22));
+    assert.ok(samples.some(([points, pixels]) => points === 28.125 && pixels === 40));
+    return true;
+  });
+});
+
+test('fractional row calibration matches native Data.gov PNG measurements exactly', async () => {
+  // Native paired captures from 2026-10-22. Stored row heights, rounded to the
+  // Office API's 3/16-point grid, reproduce all seven measured point sums.
+  // PNG control heights below are fixed observations, not model calculations.
+  const fixtures = [{
+    rows: [27.5625, 20.25, 20.25, ...new Array(5).fill(20.0625), 44.0625,
+      ...new Array(4).fill(20.0625), ...new Array(19).fill(19.875)],
+    bottom: 12, single: 27,
+    points: [27.5625, 47.8125, 68.0625, 88.125, 168.375, 352.3125, 670.3125],
+    pixels: [37, 64, 91, 117, 221, 461, 877]
+  }, {
+    rows: [13.6875, 38.25, 12.75, 12.75, 12.75, 25.5, 38.25,
+      13.6875, 13.6875, 13.6875, 24.5625, ...new Array(10).fill(13.6875), ...new Array(11).fill(12)],
+    bottom: 20, single: 18,
+    points: [13.6875, 51.9375, 64.6875, 77.4375, 167.625, 288, 488.4375],
+    pixels: [19, 70, 87, 104, 224, 382, 648]
+  }];
+  const counts = [1, 2, 3, 4, 8, 16, 32];
+  for (const fixture of fixtures) {
+    assert.deepEqual(counts.map(count => fixture.rows.slice(0, count).reduce((sum, height) => sum + height, 0)), fixture.points);
+    const result = await geometry(officeModel({rows: fixture.rows, imageHeight(row, count) {
+      if (row === 0) return fixture.pixels[counts.indexOf(count)];
+      assert.equal(count, 1);
+      return fixture.single;
+    }}), fixture.bottom);
+    assert.equal(result.scaleY, 4 / 3);
+    for (let index = 0; index < counts.length; index++) {
+      if (counts[index] <= fixture.bottom + 1) assert.equal(result.imageHeight(0, counts[index]), fixture.pixels[index]);
+    }
+  }
+});
+
+test('row calibration derives rational image scales without assuming 96 DPI', async () => {
+  for (const scale of [1, 5 / 4, 4 / 3, 2]) {
+    const rows = Array.from({length: 64}, (_, row) => [15, 23.625, 12.9375, 18.375][row % 4]);
+    const result = await geometry(officeModel({rows, scale}), rows.length - 1);
+    assert.equal(result.scaleY, scale);
+    assert.equal(result.imageHeight(0, rows.length), rows.reduce((sum, height) => sum + Math.floor(height * scale), 1));
+  }
+});
+
+test('fractional rows and hidden runs keep exact pixel crops, halos and shared cuts', async () => {
+  const rows = Array.from({length: 12000}, (_, row) => [13.6875, 0, 20.0625, 38.25][row % 4]);
+  const result = await geometry(officeModel({rows}), rows.length - 1, 65);
+  const tiles = result.tiles(65, null);
+  assert.ok(tiles.length > 1);
+  for (const tile of tiles) {
+    const sum = (start, end) => rows.slice(start, end).reduce((total, height) => total + Math.floor(height * 4 / 3), 0);
+    assert.equal(tile.cropY, sum(tile.raw.r0, tile.core.r0));
+    assert.equal(tile.cropHeight, sum(tile.core.r0, tile.core.r1) + 1);
+    assert.equal(tile.expectedHeight, sum(tile.raw.r0, tile.raw.r1) + 1);
+    assert.ok(tile.cropY + tile.cropHeight <= tile.expectedHeight);
+    if (tile.core.r0 > 0) assert.ok(tile.cropY >= 2);
+    if (tile.core.r1 < rows.length) assert.ok(tile.expectedHeight - tile.cropY - tile.cropHeight >= 2);
+  }
+  const shared = tiles.map(tile => [tile.core.r0, tile.core.r1]);
+  assert.deepEqual(result.tiles(65, null, shared), tiles);
+  assert.notEqual(result.pixelY.at(-1), Math.round(result.y.at(-1) * result.scaleY));
 });
 
 test('wide leading columns calibrate without a full-width image', async () => {

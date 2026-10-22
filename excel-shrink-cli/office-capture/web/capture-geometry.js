@@ -51,7 +51,9 @@
     }
     const lower = Math.max(...points.map(([length, pixels]) => (pixels - 1.5) / length));
     const upper = Math.min(...points.map(([length, pixels]) => (pixels - 0.5) / length));
-    if (!(upper > lower)) throw new Error(`Inconsistent ${axis} image calibration`);
+    if (!(upper > lower)) {
+      throw new Error(`Inconsistent ${axis} image calibration (points, pixels): ${JSON.stringify(points)}`);
+    }
     let scale = null;
     for (let denominator = 1; denominator <= 512 && scale === null; denominator++) {
       const candidate = Math.ceil(lower * denominator - 1e-10) / denominator;
@@ -61,6 +63,46 @@
     if (scale === null) scale = (lower + upper) / 2;
     if (scale < .25 || scale > 8 || !points.every(([length, pixels]) => Math.round(length * scale) + 1 === pixels)) {
       throw new Error(`Image calibration failed for ${axis}`);
+    }
+    return scale;
+  }
+
+  function rowScaleFor(samples) {
+    const points = samples.map(sample => [sample.height, sample.pngHeight]);
+    const lengths = points.map(point => point[0]);
+    if (new Set(lengths).size < 3 || Math.max(...lengths) - Math.min(...lengths) < 8) {
+      throw new Error('Insufficient height variation for image calibration');
+    }
+    // Excel rounds each visible row down to whole image pixels, then adds the
+    // range border. Summing fractional point heights before rounding accumulates
+    // errors; the controls must agree with this per-row model exactly.
+    const pixels = (sample, scale) => 1 + sample.rowHeights.reduce((sum, height) => sum + Math.floor(height * scale), 0);
+    const threshold = (sample, minimum) => {
+      if (pixels(sample, .25) >= minimum) return .25;
+      if (pixels(sample, 8) < minimum) return Infinity;
+      let low = .25, high = 8;
+      for (let iteration = 0; iteration < 64; iteration++) {
+        const middle = (low + high) / 2;
+        if (middle === low || middle === high) break;
+        if (pixels(sample, middle) >= minimum) high = middle;
+        else low = middle;
+      }
+      return high;
+    };
+    const lower = Math.max(.25, ...samples.map(sample => threshold(sample, sample.pngHeight)));
+    const upper = Math.min(...samples.map(sample => threshold(sample, sample.pngHeight + 1)));
+    const matches = scale => scale >= .25 && scale <= 8 &&
+      samples.every(sample => pixels(sample, scale) === sample.pngHeight);
+    let scale = null;
+    if (upper > lower) {
+      for (let denominator = 1; denominator <= 512 && scale === null; denominator++) {
+        const candidate = Math.ceil(lower * denominator - 1e-10) / denominator;
+        if (candidate < upper && matches(candidate)) scale = candidate;
+      }
+      if (scale === null) scale = (lower + Math.min(upper, 8)) / 2;
+    }
+    if (scale === null || !matches(scale)) {
+      throw new Error(`Inconsistent height image calibration (points, pixels): ${JSON.stringify(points)}`);
     }
     return scale;
   }
@@ -191,8 +233,8 @@
       }
       this.columns = await this.readSizes('columns', 0, endColumn + 1);
       this.columnAnchor = Math.max(0, this.columns.findIndex(size => size > 0));
-      // Individual visible heights define image geometry; aggregate heights can
-      // accumulate fractional row sizes differently from the rendered cells.
+      // Keep measured points separate from the per-row image pixel positions,
+      // which become available after image calibration.
       this.rows = await this.readSizes('rows', 0, this.bottomRow + 1);
       this.x = prefix(this.columns);
       this.y = prefix(this.rows);
@@ -215,25 +257,34 @@
       const shortestRow = smallestVisible(this.rows);
       const narrowestColumn = smallestVisible(this.columns);
       const rows = this.rows.slice(firstRow, firstRow + 32);
-      const columns = this.columns.slice(firstColumn, firstColumn + 32);
+      // Hidden columns consume no image width. Look beyond the first 32 grid
+      // columns so a hidden run cannot hide otherwise safe calibration controls.
+      const columns = this.columns.slice(firstColumn);
       rows.push(...await this.readSizes('rows', firstRow + rows.length,
         Math.min(32 - rows.length, MAX_ROWS - firstRow - rows.length)));
       columns.push(...await this.readSizes('columns', firstColumn + columns.length,
-        Math.min(32 - columns.length, MAX_COLUMNS - firstColumn - columns.length)));
+        Math.max(0, Math.min(32 - columns.length, MAX_COLUMNS - firstColumn - columns.length))));
       const x = prefix(columns), y = prefix(rows);
       // Vary each axis separately so tall rows and wide columns still admit
       // small controls inside the image budget.
       // Three cells can provide a third safe width when four wide columns exceed the budget.
-      const candidates = [1, 2, 3, 4, 8, 16, 32].flatMap(count => [
-        [firstRow, narrowestColumn, count, 1],
-        [shortestRow, firstColumn, 1, count]
-      ]);
+      const counts = [1, 2, 3, 4, 8, 16, 32];
+      const columnCounts = [];
+      let visibleColumns = 0;
+      for (let index = 0; index < columns.length && visibleColumns < 32; index++) {
+        if (columns[index] > 0 && counts.includes(++visibleColumns)) columnCounts.push(index + 1);
+      }
+      const candidates = [
+        ...counts.map(count => [firstRow, narrowestColumn, count, 1]),
+        ...columnCounts.map(count => [shortestRow, firstColumn, 1, count])
+      ];
       const samples = [];
       for (const [row, column, rowCount, columnCount] of candidates) {
         if (rowCount > rows.length || columnCount > columns.length) continue;
         const sample = {
           width: column === firstColumn ? x[columnCount] : this.columns[column],
-          height: row === firstRow ? y[rowCount] : this.rows[row]
+          height: row === firstRow ? y[rowCount] : this.rows[row],
+          rowHeights: row === firstRow ? rows.slice(0, rowCount) : [this.rows[row]]
         };
         if (sample.width <= 0 || sample.height <= 0 ||
             (sample.width * 8 + 1) > 8192 || (sample.height * 8 + 1) > 8192 ||
@@ -249,7 +300,10 @@
       }
       if (samples.length < 3) throw new Error('No safe image calibration controls were available');
       const widthVariation = new Set(samples.map(sample => sample.width)).size;
-      this.scaleY = scaleFor(samples, 'height');
+      this.scaleY = rowScaleFor(samples);
+      const rowPixels = this.rows.map(height => Math.floor(height * this.scaleY));
+      this.pixelY = prefix(rowPixels);
+      this.visibleRows = prefix(rowPixels.map(height => height > 0 ? 1 : 0));
       if (widthVariation >= 3) {
         this.scaleX = scaleFor(samples, 'width');
         this.fixedWidth = null;
@@ -275,7 +329,7 @@
       return Math.round(this.x[endColumn + 1] * this.scaleX) + 1;
     }
 
-    imageHeight(start, end) { return Math.round((this.y[end] - this.y[start]) * this.scaleY) + 1; }
+    imageHeight(start, end) { return this.pixelY[end] - this.pixelY[start] + 1; }
 
     containsExtent(right, bottom, endColumn) {
       // The PNG includes a border pixel beyond the measured cell dimensions.
@@ -287,24 +341,24 @@
     }
 
     halo(start, end) {
-      const needed = 2 / this.scaleY;
+      const needed = 2;
       let first = start, last = end;
-      if (this.y[start] - this.y[0] > 0) {
-        const target = this.y[start] - needed;
+      if (this.pixelY[start] - this.pixelY[0] > 0) {
+        const target = this.pixelY[start] - needed;
         let low = 0, high = start;
         while (low < high) {
           const middle = Math.ceil((low + high) / 2);
-          if (this.y[middle] <= target) low = middle;
+          if (this.pixelY[middle] <= target) low = middle;
           else high = middle - 1;
         }
         first = low;
       }
-      if (this.y[this.rows.length] - this.y[end] > 0) {
-        const target = this.y[end] + needed;
+      if (this.pixelY[this.rows.length] - this.pixelY[end] > 0) {
+        const target = this.pixelY[end] + needed;
         let low = end, high = this.rows.length;
         while (low < high) {
           const middle = Math.floor((low + high) / 2);
-          if (this.y[middle] >= target) high = middle;
+          if (this.pixelY[middle] >= target) high = middle;
           else low = middle + 1;
         }
         last = low;
@@ -367,7 +421,7 @@
           if (!fits(start, end, halo)) throw budgetError(`Row ${start + 1} exceeds the image budget`);
           const raw = {r0: halo.first, r1: halo.last, c0: 0, c1: endColumn + 1};
           const core = {r0: start, r1: end, c0: 0, c1: endColumn + 1};
-          const cropY = Math.round((this.y[start] - this.y[halo.first]) * this.scaleY);
+          const cropY = this.pixelY[start] - this.pixelY[halo.first];
           const cropHeight = this.imageHeight(start, end);
           tiles.push({raw, core, cropY, cropHeight, width, expectedHeight: this.imageHeight(halo.first, halo.last)});
           if (tiles.length > 4096) throw budgetError('Worksheet exceeds the tile count budget');
