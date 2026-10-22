@@ -47,6 +47,8 @@ valid throughput measurement. Corpus comparisons therefore remain serial.
 
 ## Paired image comparison experiment
 
+Bounded laptop results and limitations: [observations.md](observations.md).
+
 The new entry point is run.py. Each worker owns two separate Excel processes:
 an original workbook and its maximum-cleaning output. All task panes connect to
 one .NET host at one origin during a trial. Excel windows share an inactive
