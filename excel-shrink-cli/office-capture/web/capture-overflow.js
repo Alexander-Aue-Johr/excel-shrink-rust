@@ -13,10 +13,21 @@
     });
   }
 
-  async function decode(base64, pixels = true) {
+  async function loadImage(base64) {
     const image = new Image();
-    image.src = `data:image/png;base64,${base64}`;
-    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('Cannot decode Excel PNG')); });
+    await new Promise((resolve, reject) => {
+      image.onload = () => { image.onload = null; image.onerror = null; resolve(); };
+      image.onerror = () => {
+        image.onload = null; image.onerror = null; image.src = '';
+        reject(new Error('Cannot decode Excel PNG'));
+      };
+      image.src = `data:image/png;base64,${base64}`;
+    });
+    return image;
+  }
+
+  async function decode(base64, pixels = true) {
+    const image = await loadImage(base64);
     const canvas = document.createElement('canvas');
     canvas.width = image.naturalWidth;
     canvas.height = image.naturalHeight;
@@ -271,17 +282,33 @@
   }
 
   async function crop(base64, x, y, width, height) {
-    const source = await decode(base64, false);
+    const source = await loadImage(base64);
+    const sourceWidth = source.naturalWidth, sourceHeight = source.naturalHeight;
     let canvas;
     try {
       if (![x, y, width, height].every(Number.isInteger) || x < 0 || y < 0 || width < 1 || height < 1 ||
-          x + width > source.width || y + height > source.height) throw new Error('Invalid image crop');
+          x + width > sourceWidth || y + height > sourceHeight) throw new Error('Invalid image crop');
+      // A complete tile already is the exact PNG we need; avoid another bitmap
+      // and an encoding pass when there is no halo to remove.
+      if (x === 0 && y === 0 && width === sourceWidth && height === sourceHeight) return base64;
+      const budgetError = () => {
+        const error = new Error(`Cannot encode image crop (${width} x ${height}; source ${sourceWidth} x ${sourceHeight})`);
+        error.code = 'IMAGE_BUDGET';
+        return error;
+      };
       canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
-      canvas.getContext('2d').drawImage(source.canvas, x, y, width, height, 0, 0, width, height);
+      // Crop directly into a software canvas. A second full-size source canvas
+      // needlessly doubles bitmap memory, and GPU textures impose extra limits.
+      const context = canvas.getContext('2d', {willReadFrequently: true});
+      if (!context) throw budgetError();
+      context.drawImage(source, x, y, width, height, 0, 0, width, height);
+      source.src = '';
+      if (context.isContextLost?.()) throw budgetError();
       const blob = await new Promise((resolve, reject) => canvas.toBlob(value =>
-        value ? resolve(value) : reject(new Error('Cannot encode image crop')), 'image/png'));
+        value ? resolve(value) : reject(budgetError()), 'image/png'));
+      if (context.isContextLost?.()) throw budgetError();
       return await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result.split(',')[1]);
@@ -289,7 +316,7 @@
         reader.readAsDataURL(blob);
       });
     } finally {
-      release(source);
+      source.src = '';
       if (canvas) { canvas.width = 0; canvas.height = 0; }
     }
   }

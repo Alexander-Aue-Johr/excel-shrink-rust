@@ -6,6 +6,7 @@ function overflowFixture(options = {}) {
   let value = '';
   const writes = [];
   const canvases = [];
+  const images = [], contexts = [], draws = [];
   let pixelReads = 0;
   const candidateRows = options.candidateRows ?? [0];
   const rowCount = Math.max(...candidateRows) + 1;
@@ -16,19 +17,35 @@ function overflowFixture(options = {}) {
     text.set([0, 0, 0, 255], ((row * 4 + 1) * 12 + (options.textX ?? 4)) * 4);
   }
   globalThis.Image = class {
+    constructor() { images.push(this); }
     naturalWidth = 12;
     naturalHeight = height;
+    get src() { return this.source; }
     set src(source) {
+      this.source = source;
+      if (!source) return;
       this.pixels = source.endsWith(',blocked') ? blank : text;
-      Promise.resolve().then(() => this.onload());
+      Promise.resolve().then(() => options.decodeFails ? this.onerror() : this.onload());
     }
   };
   globalThis.document = {createElement() {
     let pixels;
-    const canvas = {getContext() {return {
-      drawImage(image) {pixels = image.pixels;},
-      getImageData() {pixelReads++; return {data: pixels};}
-    };}, toBlob(callback) {queueMicrotask(() => callback({type: 'image/png'}));}};
+    let contextLost = options.contextLost ?? false;
+    const canvas = {getContext(type, settings) {
+      contexts.push({type, settings});
+      if (options.noContext) return null;
+      return {
+        drawImage(image, ...rect) {pixels = image.pixels; draws.push({image, rect});},
+        getImageData() {pixelReads++; return {data: pixels};},
+        isContextLost() {return contextLost;}
+      };
+    }, toBlob(callback) {
+      assert.ok(images.every(image => image.src === ''), 'release decoded images before encoding');
+      queueMicrotask(() => {
+        if (options.loseContextDuringEncoding) contextLost = true;
+        callback(options.nullBlob ? null : {type: 'image/png'});
+      });
+    }};
     canvases.push(canvas);
     return canvas;
   }};
@@ -74,7 +91,7 @@ function overflowFixture(options = {}) {
   const tile = {raw: {r0: 0, r1: rowCount, c0: 0, c1: geometry.columns.length},
     core: {r0: 0, r1: rowCount}, cropY: 0, cropHeight: height};
   return {run: () => check(office, 'Sheet1', geometry, tile, 0, 'original'), writes,
-    canvases, pixelReads: () => pixelReads};
+    canvases, images, contexts, draws, pixelReads: () => pixelReads};
 }
 
 test('overflow blockers accept literal values returned through formulas and restore the cells', async () => {
@@ -130,12 +147,52 @@ test('image comparison yields to the host and still detects a late changed pixel
   assert.equal(await sameImage(left, right), false);
 });
 
-test('cropping releases both canvases without copying pixels into JavaScript', async () => {
+test('cropping uses one software canvas and releases the source before encoding', async () => {
   const fixture = overflowFixture();
-  assert.equal(await crop('original', 0, 0, 6, 4), 'encoded');
+  assert.equal(await crop('original', 2, 1, 6, 2), 'encoded');
   assert.equal(fixture.pixelReads(), 0);
-  assert.equal(fixture.canvases.length, 2);
+  assert.equal(fixture.canvases.length, 1);
+  assert.deepEqual(fixture.contexts, [{type: '2d', settings: {willReadFrequently: true}}]);
+  assert.deepEqual(fixture.draws[0].rect, [2, 1, 6, 2, 0, 0, 6, 2]);
+  assert.equal(fixture.draws[0].image, fixture.images[0]);
   assert.ok(fixture.canvases.every(canvas => canvas.width === 0 && canvas.height === 0));
+});
+
+test('a crop covering the complete image preserves the original PNG without allocating a canvas', async () => {
+  const fixture = overflowFixture();
+  assert.equal(await crop('original', 0, 0, 12, 4), 'original');
+  assert.equal(fixture.canvases.length, 0);
+  assert.equal(fixture.images[0].src, '');
+});
+
+test('encoding and context failures request smaller tiles instead of accepting missing pixels', async () => {
+  for (const options of [{nullBlob: true}, {noContext: true}, {contextLost: true}, {loseContextDuringEncoding: true}]) {
+    const fixture = overflowFixture(options);
+    await assert.rejects(crop('original', 0, 1, 12, 2), error =>
+      error.code === 'IMAGE_BUDGET' && /12 x 2; source 12 x 4/.test(error.message));
+    assert.ok(fixture.canvases.every(canvas => canvas.width === 0 && canvas.height === 0));
+    assert.equal(fixture.images[0].src, '');
+  }
+});
+
+test('invalid crops remain hard failures and release their decoded image', async () => {
+  for (const rect of [[-1, 0, 12, 4], [0, 0, 13, 4], [0, 0, 12, 5], [0, .5, 12, 3], [0, 0, 0, 4]]) {
+    const fixture = overflowFixture();
+    await assert.rejects(crop('original', ...rect), error =>
+      error.code !== 'IMAGE_BUDGET' && error.message === 'Invalid image crop');
+    assert.equal(fixture.canvases.length, 0);
+    assert.equal(fixture.images[0].src, '');
+  }
+});
+
+test('undecodable source images remain hard failures and detach their loading handlers', async () => {
+  const fixture = overflowFixture({decodeFails: true});
+  await assert.rejects(crop('broken', 0, 0, 12, 4), error =>
+    error.code !== 'IMAGE_BUDGET' && error.message === 'Cannot decode Excel PNG');
+  assert.equal(fixture.canvases.length, 0);
+  assert.equal(fixture.images[0].src, '');
+  assert.equal(fixture.images[0].onload, null);
+  assert.equal(fixture.images[0].onerror, null);
 });
 
 test('pixel decoding releases the redundant canvas while retaining the pixel buffer', async () => {
