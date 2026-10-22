@@ -34,6 +34,14 @@ excel-shrink-rust/
 
 The CLI accepts either a single `.xlsx` file or a directory containing `.xlsx` files. It opens each XLSX file as a ZIP archive, processes the relevant XML files, and writes a cleaned XLSX file to the output directory.
 
+The cleanup parser currently requires unprefixed SpreadsheetML elements. If any XML part
+declares a prefix for that namespace, the CLI copies the **entire original XLSX byte for byte**
+and logs `workbook_preserved_unsupported_namespace` and `file_preserved`. No cleanup is
+performed and the file-size reduction is zero, including with stronger cleanup flags.
+Strict SpreadsheetML, UTF-16 XML, and namespace declarations the preflight cannot safely
+check receive the same fallback. A passing visual comparison of these unchanged files
+demonstrates preservation; it does not demonstrate successful shrinking.
+
 The main command-line options are:
 
 ```text

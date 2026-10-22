@@ -1,4 +1,5 @@
 pub(crate) mod attributes;
+pub mod namespaces;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WhereToSlice {

@@ -1,6 +1,16 @@
 use super::*;
 
 #[test]
+fn prefixed_shared_strings_are_never_classified_as_whitespace() {
+    for xml in [
+        br#"<sst xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><p:t>valuable text</p:t></si></sst>"#.as_slice(),
+        br#"<sst xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:si><p:t>first</p:t></p:si><si><t> </t></si></sst>"#,
+    ] {
+        assert!(find_whitespace_sst_indices(xml).is_empty());
+    }
+}
+
+#[test]
 fn detects_only_whitespace_shared_strings() {
     let xml = br#"
         <sst>

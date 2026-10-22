@@ -20,6 +20,9 @@ pub enum ShrinkError {
     #[error("CDATA sections are not supported")]
     UnsupportedCData,
 
+    #[error("XML namespace representation is not supported by the cleanup parser")]
+    UnsupportedNamespace,
+
     #[error("Missing attribute: {0}")]
     MissingAttribute(String),
 }

@@ -7,6 +7,7 @@ use crate::sheet::cols::process_cols_node;
 use crate::sheet::merge_cells::{find_max_merge_cells, find_merge_cell_ranges};
 use crate::sheet::sheet_data::{pre_process_sheet_data_chunk, SheetDataPreprocessState};
 use crate::sheet::worksheet::{process_worksheet_node, WorksheetTag};
+use crate::xml::namespaces::NamespaceGuard;
 use crate::xml::{find_byte_from, find_bytes, rfind_bytes};
 use regex::bytes::Regex;
 use std::io::Read;
@@ -107,6 +108,7 @@ struct SheetXmlPreprocessor<'a, R, P> {
     state: SheetStreamingState,
     last_reported_state: Option<SheetStreamingState>,
     reached_eof: bool,
+    namespace_guard: NamespaceGuard,
     processed_tags: Vec<WorksheetTag>,
     result: PreprocessedSheetXml,
     column_definitions: Option<ColumnRangeMap>,
@@ -136,6 +138,7 @@ where
             state: SheetStreamingState::SeekWorksheetNode,
             last_reported_state: None,
             reached_eof: false,
+            namespace_guard: NamespaceGuard::default(),
             processed_tags: Vec::new(),
             result,
             column_definitions: None,
@@ -184,7 +187,13 @@ where
         };
         if bytes_read == 0 {
             self.reached_eof = true;
+            if self.namespace_guard.has_incomplete_declaration() {
+                return Err(ShrinkError::UnsupportedNamespace);
+            }
         } else {
+            if self.namespace_guard.check(&self.read_buffer[..bytes_read]) {
+                return Err(ShrinkError::UnsupportedNamespace);
+            }
             let _span = profiling::phase("preprocess_append_input", "", "");
             self.buffer
                 .extend_from_slice(&self.read_buffer[..bytes_read]);

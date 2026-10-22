@@ -264,6 +264,75 @@ fn default_sheet_params() -> CleanSheetParameters {
 }
 
 #[test]
+fn prefixed_spreadsheetml_preserves_the_entire_workbook_byte_for_byte() {
+    // Each spelling is valid SpreadsheetML, but the cleanup parsers currently
+    // rely on literal unprefixed names. Include other cleanable parts so this
+    // checks that the decision precedes all workbook/global-reference edits.
+    let cases: &[(&str, &[u8])] = &[
+        ("xl/worksheets/sheet2.xml", br#"<p:worksheet xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:sheetData><p:row r="1"><p:c r="A1"><p:v>42</p:v></p:c></p:row></p:sheetData></p:worksheet>"#),
+        ("xl/worksheets/sheet2.xml", br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><p:row xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main" r="1"><p:c r="A1"><p:v>42</p:v></p:c></p:row></sheetData></worksheet>"#),
+        ("xl/worksheets/sheet2.xml", br#"<worksheet xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><p:c r="A1"><v>42</v></p:c></row></sheetData></worksheet>"#),
+        ("xl/sharedStrings.xml", br#"<sst><si><p:t xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main">Nonempty text must survive</p:t></si></sst>"#),
+        ("xl/styles.xml", br#"<p:styleSheet xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:cellXfs count="1"><p:xf fontId="0"/></p:cellXfs></p:styleSheet>"#),
+        ("xl/pivotTables/pivotTable1.xml", br#"<p:pivotTableDefinition xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:location ref="A1:B4"/></p:pivotTableDefinition>"#),
+    ];
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "excel_shrink_namespace_{}_{unique}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    for (index, &(name, bytes)) in cases.iter().enumerate() {
+        let input = root.join(format!("case-{index}.xlsx"));
+        let mut writer = ZipWriter::new(File::create(&input).unwrap());
+        let mut entries = vec![
+            ("xl/workbook.xml", br#"<workbook><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/><sheet name="Sheet2" sheetId="2" r:id="rId2"/></sheets></workbook>"#.as_slice()),
+            ("xl/_rels/workbook.xml.rels", br#"<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>"#),
+            ("xl/worksheets/sheet1.xml", br#"<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"/><c r="C1"/></row></sheetData></worksheet>"#),
+            ("xl/calcChain.xml", br#"<calcChain><c r="A1" i="1"/><c r="B1"/><c r="C1"/></calcChain>"#),
+        ];
+        entries.push((name, bytes));
+        for (entry, xml) in entries {
+            writer.start_file(entry, FileOptions::default()).unwrap();
+            writer.write_all(xml).unwrap();
+        }
+        writer.finish().unwrap();
+        let original = std::fs::read(&input).unwrap();
+        for aggressive in [false, true] {
+            let mut cli = cli_with_analysis_flags(false, None);
+            cli.output = root.join(format!("out-{aggressive}"));
+            cli.disable_multiprocessing = true;
+            cli.writer_workers = Some(1);
+            cli.chunk_size = 7;
+            cli.remove_unreferenced_whitespace_cells = aggressive;
+            cli.preprocess_empty_cells = aggressive;
+            process_files(vec![input.clone()], &cli).unwrap();
+            let output = std::fs::read(cli.output.join(input.file_name().unwrap())).unwrap();
+            assert_eq!(output, original, "case {index}, aggressive={aggressive}");
+        }
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn streaming_sheet_parser_rejects_unsupported_namespaces() {
+    use excel_shrink_core::error::ShrinkError;
+    use excel_shrink_core::sheet::streaming::preprocess_sheet_xml_streamwise;
+    let params = default_sheet_params();
+    for xml in [
+        br#"<p:worksheet xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:sheetData/></p:worksheet>"#.as_slice(),
+        br#"<worksheet><sheetData><row xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main" r="1"><p:c r="A1"><v>42</v></p:c></row></sheetData></worksheet>"#,
+    ] {
+        for chunk_size in [1, 7, 64, 4096] {
+            assert!(matches!(preprocess_sheet_xml_streamwise(xml, &params, chunk_size), Err(ShrinkError::UnsupportedNamespace)));
+        }
+    }
+}
+
+#[test]
 fn phase3_removes_unprotected_hidden_candidate_cell() {
     let xml = br#"<sheetData><row r="41"><c r="S41"><v>secret</v></c><c r="A1"><v>x</v></c></row></sheetData>"#
         .to_vec();

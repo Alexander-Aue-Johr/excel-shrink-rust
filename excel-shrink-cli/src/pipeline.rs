@@ -26,6 +26,7 @@ use excel_shrink_core::sheet::sheet_data::{
 };
 use excel_shrink_core::styles::parse_xfs;
 use excel_shrink_core::workbook::clean_workbook_with_stats;
+use excel_shrink_core::xml::namespaces::requires_namespace_passthrough;
 use excel_shrink_core::xml::{find_byte_from, find_bytes};
 
 use crate::Cli;
@@ -2587,6 +2588,34 @@ fn process_initial_sheets(
     }
 }
 
+fn namespace_passthrough_part<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+) -> zip::result::ZipResult<Option<String>> {
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        if (entry.name().ends_with(".xml") || entry.name().ends_with(".rels"))
+            && requires_namespace_passthrough(&mut entry)?
+        {
+            return Ok(Some(entry.name().to_owned()));
+        }
+    }
+    Ok(None)
+}
+
+fn write_unchanged_workbook(bytes: &[u8], out_path: &Path, input_display: &str) -> bool {
+    let Some((partial_out_path, mut output)) = prepare_partial_output(out_path, input_display)
+    else {
+        return false;
+    };
+    if let Err(error) = output.write_all(bytes).and_then(|()| output.flush()) {
+        error!(event = "unchanged_workbook_write_failed", xlsx = %input_display, error = %error,
+            "Failed to write unchanged XLSX");
+        return false;
+    }
+    drop(output);
+    replace_output_file(&partial_out_path, out_path, input_display)
+}
+
 fn process_file(
     input: &PathBuf,
     cli: &Cli,
@@ -2627,6 +2656,32 @@ fn process_file(
             return;
         }
     };
+    // Decide before cleaning any part: prefixed shared strings/styles and sheet
+    // references can affect other, otherwise supported worksheets as well.
+    match namespace_passthrough_part(&mut archive) {
+        Ok(Some(part)) => {
+            warn!(event = "workbook_preserved_unsupported_namespace", xlsx = %input_display,
+                entry = %part, reduction_bytes = 0,
+                "Preserving the entire XLSX without shrinking: XML namespace representation is unsupported by the cleanup parser");
+            if write_unchanged_workbook(&file_bytes, &out_path, &input_display) {
+                file_progress.finish(
+                    "file_preserved",
+                    true,
+                    file_start.elapsed().as_millis(),
+                    Some(0),
+                    Some(&out_path),
+                    "Preserved XLSX unchanged; no cleanup was performed",
+                );
+            }
+            return;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            error!(event = "namespace_preflight_failed", xlsx = %input_display, error = %error,
+                "Could not check XML namespaces; no output was written");
+            return;
+        }
+    }
     let advanced_cleanup = advanced_cleanup_selection(cli);
     let do_advanced = advanced_cleanup.enabled();
 

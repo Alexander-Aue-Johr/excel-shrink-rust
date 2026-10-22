@@ -1,6 +1,10 @@
 use crate::xml::{find_byte_from, find_bytes};
 
 pub fn find_whitespace_sst_indices(shared_strings_xml: &[u8]) -> Vec<usize> {
+    // A prefixed <t> or <si> would otherwise look empty or shift SST indices.
+    if crate::xml::namespaces::requires_namespace_passthrough(shared_strings_xml).unwrap_or(true) {
+        return Vec::new();
+    }
     let mut whitespace_indices = Vec::new();
     let mut si_index = 0;
     let mut pos = 0;
