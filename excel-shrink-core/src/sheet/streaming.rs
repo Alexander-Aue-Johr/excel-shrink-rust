@@ -156,6 +156,9 @@ where
             }
         }
 
+        if self.state != SheetStreamingState::FoundWorksheetEnd {
+            return Err(ShrinkError::UnexpectedEof);
+        }
         Ok(self.result)
     }
 

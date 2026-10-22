@@ -318,7 +318,7 @@ fn prefixed_spreadsheetml_preserves_the_entire_workbook_byte_for_byte() {
 }
 
 #[test]
-fn streaming_sheet_parser_rejects_unsupported_namespaces() {
+fn streaming_sheet_parser_rejects_unsupported_namespaces_and_missing_end() {
     use excel_shrink_core::error::ShrinkError;
     use excel_shrink_core::sheet::streaming::preprocess_sheet_xml_streamwise;
     let params = default_sheet_params();
@@ -330,6 +330,61 @@ fn streaming_sheet_parser_rejects_unsupported_namespaces() {
             assert!(matches!(preprocess_sheet_xml_streamwise(xml, &params, chunk_size), Err(ShrinkError::UnsupportedNamespace)));
         }
     }
+    for xml in [
+        b"<worksheet><sheetData/>".as_slice(),
+        b"<worksheet><sheetData></sheetData><ignored/>",
+    ] {
+        assert!(matches!(
+            preprocess_sheet_xml_streamwise(xml, &params, 7),
+            Err(ShrinkError::UnexpectedEof)
+        ));
+    }
+}
+
+#[test]
+fn incomplete_sheet_aborts_the_workbook_without_replacing_existing_output() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root =
+        std::env::temp_dir().join(format!("excel_shrink_eof_{}_{unique}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("incomplete.xlsx");
+    let mut writer = ZipWriter::new(File::create(&input).unwrap());
+    for (name, bytes) in [
+        ("xl/workbook.xml", br#"<workbook><sheets><sheet name="Complete" sheetId="1" r:id="rId1"/><sheet name="Incomplete" sheetId="2" r:id="rId2"/></sheets></workbook>"#.as_slice()),
+        ("xl/worksheets/sheet1.xml", br#"<worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1"/><c r="C1"/></row></sheetData></worksheet>"#),
+        ("xl/worksheets/sheet2.xml", br#"<worksheet><sheetData><row r="1"><c r="A1"><v>42</v></c></row></sheetData>"#),
+    ] {
+        writer.start_file(name, FileOptions::default()).unwrap();
+        writer.write_all(bytes).unwrap();
+    }
+    writer.finish().unwrap();
+    let mut cli = cli_with_analysis_flags(false, None);
+    cli.output = root.join("out");
+    cli.force_overwrite = true;
+    cli.disable_multiprocessing = true;
+    cli.writer_workers = Some(1);
+    cli.chunk_size = 7;
+    let target = cli.output.join(input.file_name().unwrap());
+    process_files(vec![input.clone()], &cli).unwrap();
+    assert!(
+        !target.exists(),
+        "an incomplete workbook must not be published"
+    );
+    assert!(
+        !partial_output_path(&target).exists(),
+        "aborted partial output must be removed"
+    );
+    std::fs::write(&target, b"previous output must survive").unwrap();
+    process_files(vec![input], &cli).unwrap();
+    assert_eq!(
+        std::fs::read(&target).unwrap(),
+        b"previous output must survive"
+    );
+    assert!(!partial_output_path(&target).exists());
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

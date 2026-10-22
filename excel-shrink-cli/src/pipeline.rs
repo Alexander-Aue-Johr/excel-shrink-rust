@@ -41,6 +41,9 @@ struct QueuedWriteJob {
 }
 
 enum WriteJob {
+    Abort {
+        filename: String,
+    },
     CopyOriginal {
         index: usize,
         filename: String,
@@ -241,6 +244,7 @@ struct ProcessedSheet {
 struct FailedSheet {
     params: CleanSheetParameters,
     zip_index: usize,
+    abort_output: bool,
 }
 
 type ProcessedSheetResult = Result<ProcessedSheet, FailedSheet>;
@@ -947,6 +951,16 @@ fn write_xlsx(
     let mut zip_writer = ZipWriter::new(buffered_output);
     let timings = copy_write_jobs(rx, &mut source_archive, &mut zip_writer, &input_display);
     info!(event = "writer_timing", xlsx = %input_display, receive_wait_ms = timings.wait.as_millis(), copy_entries_ms = timings.copy.as_millis(), "Writer receive wait and entry-copy wall times");
+    if timings.aborted {
+        drop(zip_writer);
+        if let Err(error) = std::fs::remove_file(&partial_out_path) {
+            error!(event = "aborted_output_remove_failed", xlsx = %input_display, error = %error,
+                "Could not remove aborted partial XLSX");
+        }
+        error!(event = "file_write_aborted", xlsx = %input_display,
+            "No output published because a worksheet could not be parsed completely");
+        return;
+    }
     if !finish_output_archive(zip_writer, &partial_out_path, &out_path, &input_display) {
         return;
     }
@@ -1031,6 +1045,7 @@ struct WriterTimings {
     jobs: usize,
     wait: Duration,
     copy: Duration,
+    aborted: bool,
 }
 
 fn copy_write_jobs(
@@ -1055,6 +1070,10 @@ fn copy_write_jobs(
         tracing::info!(target: "excel_shrink::profile", event = "writer_queue_delay",
             xlsx = input_display, queue_wait_us = queued.queued_at.elapsed().as_micros() as u64);
         timings.jobs += 1;
+        timings.aborted |= matches!(&queued.job, WriteJob::Abort { .. });
+        if timings.aborted {
+            continue;
+        }
         let started = Instant::now();
         copy_write_job(queued.job, source_archive, zip_writer, input_display);
         timings.copy += started.elapsed();
@@ -1069,12 +1088,13 @@ fn copy_write_job(
     input_display: &str,
 ) {
     let filename = match &job {
-        WriteJob::CopyOriginal { filename, .. } | WriteJob::CopyPrecompressed { filename, .. } => {
-            filename
-        }
+        WriteJob::Abort { filename }
+        | WriteJob::CopyOriginal { filename, .. }
+        | WriteJob::CopyPrecompressed { filename, .. } => filename,
     };
     let _profile = profiling::phase("writer_copy_entry", input_display, filename);
     match job {
+        WriteJob::Abort { .. } => unreachable!("abort jobs are handled before copying entries"),
         WriteJob::CopyOriginal { index, filename } => {
             copy_original_entry(index, &filename, source_archive, zip_writer, input_display)
         }
@@ -1158,6 +1178,7 @@ fn partial_output_path(out_path: &Path) -> PathBuf {
 
 fn send_write_job(tx: &mpsc::Sender<QueuedWriteJob>, job: WriteJob, xlsx: &str) -> bool {
     let (filename, bytes) = match &job {
+        WriteJob::Abort { filename } => (filename.as_str(), 0),
         WriteJob::CopyOriginal { filename, .. } => (filename.as_str(), 0),
         WriteJob::CopyPrecompressed {
             filename,
@@ -1544,8 +1565,19 @@ impl InitialSheetProcessor {
                 complete_initial_sheet(params, zip_index, cleaned, started, original_size)
             }
             Err(error) => {
-                error!(event = "sheet_clean_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %error, "Failed to clean sheet XML; copying original");
-                failed_sheet(params, zip_index)
+                let abort_output = matches!(
+                    error,
+                    excel_shrink_core::error::ShrinkError::UnexpectedEof
+                        | excel_shrink_core::error::ShrinkError::InvalidRootNode
+                        | excel_shrink_core::error::ShrinkError::UnsupportedNamespace
+                );
+                error!(event = "sheet_clean_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %error, abort_output,
+                    "Failed to clean sheet XML");
+                Err(FailedSheet {
+                    params,
+                    zip_index,
+                    abort_output,
+                })
             }
         }
     }
@@ -1648,7 +1680,11 @@ fn complete_initial_sheet(
 }
 
 fn failed_sheet(params: CleanSheetParameters, zip_index: usize) -> ProcessedSheetResult {
-    Err(FailedSheet { params, zip_index })
+    Err(FailedSheet {
+        params,
+        zip_index,
+        abort_output: false,
+    })
 }
 
 fn plan_archive<R: Read + Seek>(
@@ -2123,15 +2159,22 @@ impl SheetFinalizer<'_> {
     ) -> Option<ProcessedSheet> {
         match result {
             Ok(sheet) => Some(sheet),
-            Err(FailedSheet { params, zip_index }) => {
-                send_write_job(
-                    self.tx,
+            Err(FailedSheet {
+                params,
+                zip_index,
+                abort_output,
+            }) => {
+                let job = if abort_output {
+                    WriteJob::Abort {
+                        filename: params.zip_info_filename,
+                    }
+                } else {
                     WriteJob::CopyOriginal {
                         index: zip_index,
                         filename: params.zip_info_filename,
-                    },
-                    &params.xlsx_file_path,
-                );
+                    }
+                };
+                send_write_job(self.tx, job, &params.xlsx_file_path);
                 None
             }
         }
