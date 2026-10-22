@@ -42,6 +42,20 @@ Strict SpreadsheetML, UTF-16 XML, and namespace declarations the preflight canno
 check receive the same fallback. A passing visual comparison of these unchanged files
 demonstrates preservation; it does not demonstrate successful shrinking.
 
+Study reports can diagnose visual differences by rerunning the affected profile with
+only whitespace-cell deletion disabled. New comparisons run this control when needed;
+resuming also fills in missing diagnoses for completed files with differences. Use
+`regression study --diagnose-whitespace-only` with the usual corpus and output arguments
+to perform only that backfill. Primary results and their evidence are retained.
+
+A whitespace attribution requires a complete unchanged control on the affected sheet.
+For older results, the source, baseline and profile fingerprints must match, and the
+stored before/after image pixels must be reproduced. Missing or failed diagnostics stay
+unresolved. Height changes remain explicitly marked as not fully pixel-checked.
+Reports put unresolved files first, retain whole workbook entries, and provide category
+switches that collapse evidence without changing results or counts. On mixed sheets,
+the control's remaining differences appear before the original comparisons.
+
 The main command-line options are:
 
 ```text

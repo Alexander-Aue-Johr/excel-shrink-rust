@@ -184,6 +184,13 @@ pub(super) fn diagnose(job: &MemberJob, record: &mut Value, log_level: LogLevel)
     let mut reproductions = BTreeMap::<(String, Vec<usize>), Value>::new();
     for profile in candidates {
         let name = profile["profile"].as_str().unwrap();
+        let expected_config = predefined_visual_profiles()
+            .iter()
+            .find(|p| p.name == name)
+            .unwrap()
+            .config;
+        ensure!(profile["config_hash"] == expected_config.config_hash(),
+            "primary profile settings changed; cannot attribute old evidence to whitespace deletion");
         let selected = image_sheets(profile);
         eprintln!("[whitespace] {name}: checking {} sheet(s)", selected.len());
         // A newly compared profile already has its full output. A backfill must
@@ -300,6 +307,8 @@ mod tests {
         assert!(needed(&record));
         record["whitespace_diagnosis"] = json!({"version":VERSION,"status":"failed"});
         assert!(!needed(&record));
+        record["whitespace_diagnosis"]["status"] = json!("running");
+        assert!(needed(&record));
         record["complete"] = json!(false);
         record["whitespace_diagnosis"] = Value::Null;
         assert!(!needed(&record));
