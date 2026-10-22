@@ -172,8 +172,14 @@ try {
         $path=Join-Path $stage $name
         if (Test-Path -LiteralPath $path) { Copy-Item -LiteralPath $path -Destination $destination -Force }
     }
+    # Job termination is asynchronous; Excel can briefly retain workbook handles.
+    for ($attempt=0; $attempt -lt 20; $attempt++) {
+        Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path -LiteralPath $stage)) { break }
+        Start-Sleep -Milliseconds 250
+    }
+    if (Test-Path -LiteralPath $stage) { $result.cleanup_warning = "Temporary files remain: $stage" }
     $result.total_seconds = $clock.Elapsed.TotalSeconds
     [IO.File]::WriteAllText((Join-Path $destination 'result.json'), ($result | ConvertTo-Json -Depth 40), $utf8)
-    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 }
 if ($result.status -ne 'complete') { exit 1 }
