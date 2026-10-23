@@ -103,6 +103,7 @@ fn recoverable_failure(record: &Value) -> Option<&'static str> {
             match token {
                 "IMAGE_BUDGET" => return Some("IMAGE_BUDGET"),
                 "TASKPANE_RESTARTED" => return Some("TASKPANE_RESTARTED"),
+                "InvalidOperationInCellEditMode" => return Some("InvalidOperationInCellEditMode"),
                 _ => {}
             }
         }
@@ -176,10 +177,18 @@ mod tests {
         assert_eq!(recoverable_failure(&record), Some("TASKPANE_RESTARTED"));
         record["error"] = json!("capture failed: IMAGE_BUDGET");
         assert_eq!(recoverable_failure(&record), Some("IMAGE_BUDGET"));
+        record["error"] = json!(
+            "Resident client error: {\"client_id\":\"original\",\"code\":\"InvalidOperationInCellEditMode\"}"
+        );
+        assert_eq!(
+            recoverable_failure(&record),
+            Some("InvalidOperationInCellEditMode")
+        );
         for error in [
             "drawing anchor exceeds capture boundary",
             "workbook timed out",
             "IMAGE_BUDGET_OTHER",
+            "InvalidOperationInCellEditModeOther",
         ] {
             record["error"] = json!(error);
             assert_eq!(recoverable_failure(&record), None);

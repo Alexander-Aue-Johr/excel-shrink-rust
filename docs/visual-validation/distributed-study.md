@@ -185,7 +185,8 @@ The record retains actual batch size, reserved limits, capture method, session m
 provenance. These are throughput runs for visual regression; opening times under
 concurrent load should not be pooled with an isolated performance experiment.
 
-If a primary resident check hits an image-budget error or a taskpane restart, it
+If a primary resident check hits an image-budget error, a taskpane restart, or
+Excel's `InvalidOperationInCellEditMode` error, it
 gets one sequential retry through the existing paired path after the batch has
 finished. The original failure and retry mode remain in the record. Other errors
 are not automatically retried.
