@@ -88,6 +88,7 @@ pub(super) fn run_record(
         // The current attempt must not display metrics from an earlier session.
         state.as_object_mut().unwrap().remove("resident_capture");
         state.as_object_mut().unwrap().remove("worker_memory");
+        state.as_object_mut().unwrap().remove("package_identity");
     }
     write_record(&record, &state)?;
     let job = MemberJob {

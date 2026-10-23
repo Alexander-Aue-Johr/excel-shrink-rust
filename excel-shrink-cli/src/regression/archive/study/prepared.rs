@@ -1,8 +1,9 @@
 //! Shrink serially, then retain the three outputs in disposable ZIP bundles.
 use super::*;
 use std::io::Write;
-mod visual_reuse;
+mod package_audit;
 mod resident;
+mod visual_reuse;
 
 pub(super) const PROFILES: [&str; 3] = ["default", "maximum-cleaning", "too-aggressive-cleaning"];
 
@@ -11,6 +12,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     provenance::retire(record, provenance::Stage::Comparison);
     provenance::retire(record, provenance::Stage::WhitespaceDiagnosis);
     record["whitespace_diagnosis"] = json!({"status":"not_investigated"});
+    record.as_object_mut().unwrap().remove("package_identity");
     record["prepared"] = json!(false);
     record["results"] = json!([]);
     if let Some(run) = &job.run_manifest {
@@ -131,6 +133,7 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     provenance::retire(record, provenance::Stage::Comparison);
     provenance::retire(record, provenance::Stage::WhitespaceDiagnosis);
     record["whitespace_diagnosis"] = json!({"status":"not_investigated"});
+    record.as_object_mut().unwrap().remove("package_identity");
     record["results"] = json!([]);
     write_record(&job.record, record)?;
     record["results"] = unpack(
@@ -142,6 +145,9 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     }
     write_record(&job.record, record)?;
     let original = job.work.join("original.xlsx");
+    if finish_unchanged_package(job, record, &original)? {
+        return Ok(());
+    }
     let original_metrics =
         excel_automation::measure_workbook_open(&original, &job.work.join("open-original"))?;
     for name in ["default", "maximum-cleaning"] {
@@ -192,6 +198,71 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         super::whitespace::run(job, record, LogLevel::Warn);
     }
     Ok(())
+}
+
+// An unchanged package needs no Excel run. Check every profile and every ZIP
+// member before taking this path; equal worksheet XML alone is not sufficient.
+fn finish_unchanged_package(job: &MemberJob, record: &mut Value, original: &Path) -> Result<bool> {
+    let variants: Vec<_> = PROFILES
+        .iter()
+        .map(|name| (*name, job.work.join(format!("{name}.xlsx"))))
+        .collect();
+    let Some(mut certificate) = package_audit::compare(original, &variants)? else {
+        return Ok(false);
+    };
+    ensure!(
+        record["baseline_sha256"].is_string()
+            && record["baseline_sha256"] == certificate["original"]["archive_sha256"],
+        "prepared original differs from its recorded baseline fingerprint"
+    );
+    certificate["baseline_repaired"] = record["baseline_repaired"].clone();
+    certificate["source_sha256"] = record["source_sha256"].clone();
+    for name in PROFILES {
+        let profile = profile_mut(record, name)?;
+        let fields = profile.as_object_mut().unwrap();
+        // Never carry old visual claims or opening measurements into a package
+        // audit. Preserve only the actual preparation measurements and identity.
+        fields.retain(|key, _| {
+            matches!(
+                key.as_str(),
+                "profile"
+                    | "original_bytes"
+                    | "shrunk_bytes"
+                    | "reduction_ratio"
+                    | "shrink_seconds"
+                    | "config_hash"
+            )
+        });
+        profile["status"] = json!("package unchanged");
+        profile["checks_complete"] = json!(false);
+        profile["package_checks_complete"] = json!(true);
+        profile["capture_method"] = json!("package member SHA-256");
+        profile["image_comparison"] = json!("not run; package contents equivalent");
+        profile["failures"] = json!([]);
+        profile["sheets"] = json!([]);
+    }
+    record["package_identity"] = certificate;
+    record["status"] = json!("unchanged");
+    record["error"] = Value::Null;
+    record["capture_mode"] = json!("package-audit");
+    if record["last_execution"].is_object() {
+        record["last_execution"]["capture_mode"] = json!("package-audit");
+    }
+    record.as_object_mut().unwrap().remove("resident_capture");
+    record["whitespace_diagnosis"] = json!({
+        "status":"not_applicable", "reason":"all cleaning profiles have equivalent package contents"
+    });
+    if record["comparison_fallback"].is_object() {
+        // A previous interrupted capture may already have scheduled a fallback.
+        // Keep its evidence, but do not present that attempt as still running.
+        record["comparison_fallback"]["status"] = json!("superseded_by_package_audit");
+    }
+    eprintln!(
+        "[study] {}: all three package contents equivalent; Excel comparison omitted",
+        job.name
+    );
+    write_record(&job.record, record)?;
+    Ok(true)
 }
 
 fn profile_mut<'a>(record: &'a mut Value, name: &str) -> Result<&'a mut Value> {
@@ -372,6 +443,137 @@ pub(super) fn reusable_visual_manifest(manifest: &artifact_cache::PackageManifes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn package_fixture(path: &Path, styles: &[u8], stored: bool) -> Result<()> {
+        let mut zip = zip::ZipWriter::new(fs::File::create(path)?);
+        let compression = if stored {
+            zip::CompressionMethod::Stored
+        } else {
+            zip::CompressionMethod::Deflated
+        };
+        let options = zip::write::FileOptions::default().compression_method(compression);
+        for (name, bytes) in [
+            ("[Content_Types].xml", b"<Types/>".as_slice()),
+            ("xl/workbook.xml", b"<workbook><sheets><sheet name=\"Sheet1\" sheetId=\"1\"/></sheets></workbook>".as_slice()),
+            ("xl/worksheets/sheet1.xml", b"<worksheet><sheetData><row r=\"1\"><c r=\"A1\"><v>1</v></c></row></sheetData></worksheet>".as_slice()),
+            ("xl/styles.xml", styles),
+        ] {
+            zip.start_file(name, options)?;
+            zip.write_all(bytes)?;
+        }
+        zip.finish()?;
+        Ok(())
+    }
+
+    fn package_job(root: &Path) -> Result<(MemberJob, Value)> {
+        let mut job = provenance_job(root);
+        job.mode = JobMode::Compare;
+        fs::create_dir_all(&job.work)?;
+        package_fixture(&job.work.join("original.xlsx"), b"<styleSheet/>", true)?;
+        let baseline = artifact_cache::hash_file(&job.work.join("original.xlsx"))?;
+        let mut profiles = Vec::new();
+        for name in PROFILES {
+            package_fixture(
+                &job.work.join(format!("{name}.xlsx")),
+                b"<styleSheet/>",
+                false,
+            )?;
+            profiles.push(
+                json!({"profile":name,"original_bytes":500,"shrunk_bytes":400,
+                "shrink_seconds":1.0,"config_hash":"example","status":"visually unchanged",
+                "checks_complete":true,"checked_sheets":1,"unchanged_sheets":1,
+                "original_open_seconds":20.0,"shrunk_memory_bytes":12345,
+                "open_measurement_provenance":{"old":"measurement"},"value_differences":0}),
+            );
+        }
+        let record = json!({"name":"example.xlsx","baseline_sha256":baseline,
+            "baseline_repaired":false,"source_sha256":baseline,"capture_mode":"resident",
+            "last_execution":{"capture_mode":"resident"},"status":"comparing","results":profiles,
+            "resident_capture":{"peak_job_bytes":12345},
+            "comparison_fallback":{"status":"running","reason_code":"IMAGE_BUDGET","original_attempt":{"record_snapshot":"kept.json"}}});
+        Ok((job, record))
+    }
+
+    #[test]
+    fn package_identity_omits_excel_and_preserves_only_real_preparation_measurements() -> Result<()>
+    {
+        let root = super::super::tests::test_directory("package-no-excel")?;
+        let (job, mut record) = package_job(&root)?;
+        assert!(finish_unchanged_package(
+            &job,
+            &mut record,
+            &job.work.join("original.xlsx")
+        )?);
+        assert_eq!(record["status"], "unchanged");
+        assert_eq!(record["capture_mode"], "package-audit");
+        assert_eq!(record["last_execution"]["capture_mode"], "package-audit");
+        assert_eq!(record["package_identity"]["status"], "equivalent");
+        assert_eq!(record["whitespace_diagnosis"]["status"], "not_applicable");
+        assert!(record["resident_capture"].is_null());
+        assert_eq!(
+            record["comparison_fallback"]["status"],
+            "superseded_by_package_audit"
+        );
+        assert_eq!(
+            record["comparison_fallback"]["original_attempt"]["record_snapshot"],
+            "kept.json"
+        );
+        for profile in record["results"].as_array().unwrap() {
+            assert_eq!(profile["status"], "package unchanged");
+            assert_eq!(profile["checks_complete"], false);
+            assert_eq!(profile["package_checks_complete"], true);
+            assert_eq!(profile["shrink_seconds"], 1.0);
+            for field in [
+                "checked_sheets",
+                "unchanged_sheets",
+                "original_open_seconds",
+                "shrunk_memory_bytes",
+                "open_measurement_provenance",
+                "value_differences",
+            ] {
+                assert!(profile[field].is_null(), "stale {field}");
+            }
+        }
+        record["complete"] = json!(true);
+        assert!(!super::super::verified_unchanged(&record));
+        assert!(!job.work.join("open-original").exists());
+        assert!(!job.work.join("resident").exists());
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn changed_style_in_one_profile_retains_the_normal_comparison_path() -> Result<()> {
+        let root = super::super::tests::test_directory("package-changed-style")?;
+        let (job, mut record) = package_job(&root)?;
+        package_fixture(
+            &job.work.join("maximum-cleaning.xlsx"),
+            b"<styleSheet changed=\"1\"/>",
+            false,
+        )?;
+        let previous = record.clone();
+        assert!(!finish_unchanged_package(
+            &job,
+            &mut record,
+            &job.work.join("original.xlsx")
+        )?);
+        assert_eq!(record, previous);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn package_identity_rejects_a_replaced_prepared_baseline() -> Result<()> {
+        let root = super::super::tests::test_directory("package-baseline-fingerprint")?;
+        let (job, mut record) = package_job(&root)?;
+        record["baseline_sha256"] = json!("wrong");
+        let error = finish_unchanged_package(&job, &mut record, &job.work.join("original.xlsx"))
+            .unwrap_err();
+        assert!(error.to_string().contains("baseline fingerprint"));
+        assert!(record["package_identity"].is_null());
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     fn provenance_job(root: &Path) -> MemberJob {
         MemberJob {

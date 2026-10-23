@@ -356,6 +356,10 @@ mod tests {
         let mut incomplete_control = valid.clone();
         incomplete_control["whitespace_diagnosis"] = json!({"status":"failed"});
         invalid.push(incomplete_control);
+        let mut package_only = valid.clone();
+        package_only["capture_mode"] = json!("package-audit");
+        package_only["package_identity"] = json!({"status":"equivalent"});
+        invalid.push(package_only);
         for record in invalid {
             let mut controller = controller();
             controller.observe(&[record]);

@@ -672,6 +672,33 @@ mod tests {
     }
 
     #[test]
+    fn package_audit_roundtrip_keeps_its_proof_without_inventing_visual_checks() -> Result<()> {
+        let (source, mut record, expected) = fixture("transfer-package-audit")?;
+        let target = super::super::tests::test_directory("transfer-package-audit-target")?;
+        record["status"] = json!("unchanged");
+        record["capture_mode"] = json!("package-audit");
+        record["package_identity"] = json!({"version":1,"status":"equivalent",
+            "method":"streamed SHA-256 and length of every uncompressed ZIP member",
+            "original":{"archive_sha256":"c".repeat(64),"parts":{"xl/worksheets/sheet1.xml":{"bytes":123,"sha256":"d".repeat(64)}}}});
+        record["results"] = json!(prepared::PROFILES.map(|profile| json!({
+            "profile":profile,"status":"package unchanged","checks_complete":false,
+            "package_checks_complete":true,"sheets":[],"failures":[]
+        })));
+        let identity = record["identity"].as_str().unwrap();
+        write_record(&record_path(&source, identity), &record)?;
+        let package = source.join("package-audit.zip");
+        export_package(&source, &package)?;
+        let receipt = import_package(&target, &package, &expected)?;
+        assert_eq!(receipt["added"], 1);
+        let imported: Value = serde_json::from_slice(&fs::read(record_path(&target, identity))?)?;
+        assert_eq!(imported, record);
+        assert!(!super::super::verified_unchanged(&imported));
+        fs::remove_dir_all(source)?;
+        fs::remove_dir_all(target)?;
+        Ok(())
+    }
+
+    #[test]
     fn completed_results_roundtrip_idempotently_and_conflicts_keep_original() -> Result<()> {
         let (source, record, expected) = fixture("transfer-source")?;
         let target = super::super::tests::test_directory("transfer-target")?;
