@@ -5,6 +5,7 @@ mod execution;
 use super::verified as ledger;
 use execution::process;
 mod prepared;
+mod selection;
 mod whitespace;
 
 #[derive(Parser, Debug)]
@@ -12,6 +13,18 @@ pub(in crate::regression) struct StudyArgs {
     /// Corpus name followed by an HTTP(S) ZIP URL or a local ZIP path. Repeat per corpus.
     #[arg(long,num_args=2,value_names=["NAME","ARCHIVE"])]
     corpus: Vec<String>,
+    /// Execute only this corpus name; repeat to select several. All corpora stay in the report.
+    #[arg(long, value_name = "NAME")]
+    run_corpus: Vec<String>,
+    /// Size-ranked part K/N of each selected corpus; 1/N contains the smallest files.
+    #[arg(long, value_name = "K/N")]
+    size_part: Option<selection::SizePart>,
+    /// Write an additional copy of the deterministic full selection manifest.
+    #[arg(long, value_name = "PATH")]
+    selection_manifest: Option<PathBuf>,
+    /// Write catalogs and selection manifests without shrinking or starting Excel.
+    #[arg(long, conflicts_with_all = ["report_only", "prepare_only", "compare_only", "diagnose_whitespace_only"])]
+    selection_only: bool,
     /// JSON with corpora [{name,url}], or the earlier urls list, and optional access_url.
     #[arg(long)]
     request_file: Option<PathBuf>,
@@ -82,6 +95,7 @@ struct Source {
     path: PathBuf,
     members: Vec<(usize, String)>,
     fingerprint: String,
+    selection: selection::Plan,
 }
 
 pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result<()> {
@@ -122,6 +136,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             == request.corpora.len(),
         "duplicate corpus names"
     );
+    let active = selection::active_corpora(&request.corpora, &args.run_corpus)?;
     let ids = request
         .corpora
         .iter()
@@ -155,7 +170,21 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     }
     let mut corpus_info = Vec::new();
     for (i, corpus) in request.corpora.iter().enumerate() {
-        corpus_info.push(json!({"id":ids[i],"name":corpus.name,"total_workbooks":corpus.total_workbooks}));
+        corpus_info.push(
+            json!({"id":ids[i],"name":corpus.name,"total_workbooks":corpus.total_workbooks,
+            "selected":active[i], "size_part":if active[i] { args.size_part } else { None }}),
+        );
+        if let Ok(data) = fs::read(
+            output
+                .join("source-catalogs")
+                .join(format!("{}.json", ids[i])),
+        ) {
+            if let Ok(catalog) = serde_json::from_slice::<Value>(&data) {
+                if catalog["corpus_id"] == ids[i] {
+                    corpus_info[i]["total_workbooks"] = catalog["total_workbooks"].clone();
+                }
+            }
+        }
     }
     for (i, corpus) in request.corpora.iter().enumerate() {
         let local = if corpus.url.starts_with("http") {
@@ -201,11 +230,26 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     publish_progress(&output, &records, &corpus_info, "loading archives");
     let downloads = resolve_path(&root, args.download_root.clone());
     fs::create_dir_all(&downloads)?;
-    if let Some(url) = &request.access_url {
-        download::authorize(&downloads, url)?;
+    let needs_download = request.corpora.iter().enumerate().any(|(i, c)| {
+        active[i]
+            && (c.url.starts_with("https://") || c.url.starts_with("http://"))
+            && !downloads
+                .join(format!(
+                    "{}.zip",
+                    &artifact_cache::sha256(c.url.as_bytes())[..20]
+                ))
+                .is_file()
+    });
+    if needs_download {
+        if let Some(url) = &request.access_url {
+            download::authorize(&downloads, url)?;
+        }
     }
     let mut sources = Vec::new();
     for (i, corpus) in request.corpora.iter().enumerate() {
+        if !active[i] {
+            continue;
+        }
         let id = corpus_info[i]["id"].as_str().unwrap().to_owned();
         let loaded = (|| -> Result<Source> {
             let path = if corpus.url.starts_with("https://") || corpus.url.starts_with("http://") {
@@ -216,11 +260,18 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             let mut zip = ZipArchive::new(fs::File::open(&path)?)?;
             let members = workbook_members(&mut zip)?;
             let mut catalog = Vec::new();
+            let mut sized = Vec::new();
             for (index, name) in &members {
                 let checksum = zip
                     .by_index_raw(*index)
                     .ok()
                     .map(|entry| (entry.crc32(), entry.size()));
+                sized.push(selection::CatalogMember {
+                    archive_index: *index,
+                    member_name: name.clone(),
+                    bytes: checksum.map(|(_, size)| size),
+                    crc32: checksum.map(|(crc, _)| crc),
+                });
                 catalog.push((name, checksum));
             }
             let fingerprint = artifact_cache::sha256(&serde_json::to_vec(&catalog)?);
@@ -231,11 +282,22 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                 path,
                 members,
                 fingerprint,
+                selection: selection::Plan::new(sized, args.size_part)?,
             })
         })();
         match loaded {
             Ok(source) => {
                 corpus_info[i]["total_workbooks"] = json!(source.members.len());
+                corpus_info[i]["selected_workbooks"] = json!(source.selection.selected_workbooks);
+                fs::create_dir_all(output.join("source-catalogs"))?;
+                artifact_cache::atomic_write(
+                    &output
+                        .join("source-catalogs")
+                        .join(format!("{}.json", source.id)),
+                    &serde_json::to_vec_pretty(&json!({"version":1,"corpus_id":source.id,
+                        "corpus_name":source.name,"source_fingerprint":source.fingerprint,
+                        "total_workbooks":source.members.len(),"catalog_sha256":source.selection.catalog_sha256}))?,
+                )?;
                 sources.push(source);
             }
             Err(error) => {
@@ -246,6 +308,38 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                 write_record(&record_path(&output, r["identity"].as_str().unwrap()), r)?;
             }
         }
+    }
+    let manifest = json!({"version":1,"algorithm":"uncompressed-bytes-name-index-v1",
+        "corpora":corpus_info, "sources":sources.iter().map(|s| json!({
+            "corpus_id":s.id,"corpus_name":s.name,"source_fingerprint":s.fingerprint,
+            "selection":s.selection
+        })).collect::<Vec<_>>()});
+    let manifest_bytes = serde_json::to_vec_pretty(&manifest)?;
+    let manifest_hash = artifact_cache::sha256(&manifest_bytes);
+    fs::create_dir_all(output.join("selections"))?;
+    artifact_cache::atomic_write(
+        &output
+            .join("selections")
+            .join(format!("{manifest_hash}.json")),
+        &manifest_bytes,
+    )?;
+    artifact_cache::atomic_write(&output.join("selection-manifest.json"), &manifest_bytes)?;
+    if let Some(path) = &args.selection_manifest {
+        let path = resolve_path(&root, path.clone());
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        artifact_cache::atomic_write(&path, &manifest_bytes)?;
+    }
+    if args.selection_only {
+        return publish(
+            &output,
+            &records,
+            &corpus_info,
+            false,
+            false,
+            "selection ready",
+        );
     }
     let limits = ArchiveArgs {
         urls: Vec::new(),
@@ -262,7 +356,13 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     let mut missing_prepared = false;
     let producer = artifact_cache::hash_file(&std::env::current_exe()?)?;
     for source in &sources {
-        let mut members = source.members.clone();
+        // Freeze membership over the entire corpus before removing completed files.
+        let mut members: Vec<_> = source
+            .members
+            .iter()
+            .filter(|(index, _)| source.selection.contains(*index))
+            .cloned()
+            .collect();
         // Completed differences get their missing causal diagnosis before new work.
         // The primary measurements and comparisons are never reset for this pass.
         if !args.prepare_only && !args.compare_only {
@@ -286,6 +386,12 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             {
                 let id = identity(source, *index, name);
                 let pos = records.iter().position(|r| r["identity"] == id).unwrap();
+                records[pos]["run_selection"] = source.selection.provenance(
+                    *index,
+                    &source.id,
+                    &source.fingerprint,
+                    &manifest_hash,
+                );
                 process(
                     source,
                     *index,
@@ -373,6 +479,12 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     .remove("preparation_accepted_by");
                 records[pos]["prepared_by"] = json!(producer);
                 records[pos]["source_fingerprint"] = json!(source.fingerprint);
+                records[pos]["run_selection"] = source.selection.provenance(
+                    *index,
+                    &source.id,
+                    &source.fingerprint,
+                    &manifest_hash,
+                );
                 process(
                     source,
                     *index,
@@ -411,6 +523,12 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     continue;
                 }
                 records[pos]["compared_by"] = json!(producer);
+                records[pos]["run_selection"] = source.selection.provenance(
+                    *index,
+                    &source.id,
+                    &source.fingerprint,
+                    &manifest_hash,
+                );
                 process(
                     source,
                     *index,
@@ -426,7 +544,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             }
         }
     }
-    let finished = !args.prepare_only && records.iter().all(|r| r["complete"] == true);
+    let finished = !args.prepare_only && !limited && selection::complete(&corpus_info, &records);
     publish(
         &output,
         &records,
@@ -594,7 +712,8 @@ fn publish(
             record
         })
         .collect();
-    let report = json!({"archive_run":true,"study":true,"workbooks":records,"corpora":corpora,"total_workbooks":total,"complete":complete,"limited":limited,"phase":phase});
+    let limited = limited || selection::restricted(corpora);
+    let report = json!({"archive_run":true,"study":true,"workbooks":records,"corpora":corpora,"total_workbooks":total,"complete":complete && !limited,"limited":limited,"phase":phase});
     artifact_cache::atomic_write(
         &output.join("diagnosis.json"),
         &serde_json::to_vec_pretty(&report)?,
