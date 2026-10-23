@@ -1,5 +1,6 @@
-//! Fixed comparison batches; only the coordinator writes the shared report.
+//! Fixed or growing comparison waves; only the coordinator writes shared reports.
 mod adaptive;
+mod live;
 
 use super::*;
 use std::collections::VecDeque;
@@ -27,42 +28,17 @@ pub(super) fn compare(
     run: &Value,
     log_level: LogLevel,
 ) -> Result<()> {
+    if run["options"]["adaptive_concurrency"] == true {
+        return live::compare(
+            source, jobs, requested, output, records, corpora, limits, run, log_level,
+        );
+    }
     let memory_budget = MemoryBudget::configured(run["options"]["resident_capture"] == true)?;
-    let mut adaptive = if run["options"]["adaptive_concurrency"] == true {
-        let (system_reserve, helper_reserve) = configured_reserves()?;
-        Some(adaptive::Controller::new(
-            requested,
-            adaptive::Config {
-                worker: memory_budget.worker,
-                resident: configured_excel_limit("EXCEL_SHRINK_RESIDENT_MEMORY_MIB", 16384, 1024)?,
-                automation: configured_excel_limit("EXCEL_SHRINK_EXCEL_MEMORY_MIB", 4096, 256)?,
-                system_reserve,
-                helper_reserve,
-            },
-        ))
-    } else {
-        None
-    };
-    let configured_resident_mib = if adaptive.is_some() {
-        configured_excel_limit("EXCEL_SHRINK_RESIDENT_MEMORY_MIB", 16384, 1024)? / 1_048_576
-    } else {
-        0
-    };
     let mut pending: VecDeque<_> = jobs.into();
     let mut batch_number = 0;
     while !pending.is_empty() {
         batch_number += 1;
-        let adaptive_plan = adaptive
-            .as_ref()
-            .map(|controller| {
-                wait_for_adaptive_admission(controller, pending.len(), || {
-                    publish_progress(output, records, corpora, "waiting for memory");
-                })
-            })
-            .transpose()?;
-        let available = if let Some((memory, _)) = &adaptive_plan {
-            Some(memory.physical)
-        } else if requested > 1 {
+        let available = if requested > 1 {
             match available_memory() {
                 Ok(bytes) => Some(bytes),
                 Err(error) => {
@@ -75,12 +51,7 @@ pub(super) fn compare(
         } else {
             None
         };
-        let count = adaptive_plan
-            .as_ref()
-            .map(|(_, plan)| plan.workers)
-            .unwrap_or_else(|| {
-                admitted_workers(requested, available, memory_budget).min(pending.len())
-            });
+        let count = admitted_workers(requested, available, memory_budget).min(pending.len());
         if requested > 1 {
             eprintln!(
                 "[study] {}: comparison batch {batch_number}, {count}/{requested} workers, available RAM {} GiB",
@@ -88,15 +59,6 @@ pub(super) fn compare(
                 available
                     .map(|bytes| format!("{:.1}", bytes as f64 / GIB as f64))
                     .unwrap_or_else(|| "unknown".into())
-            );
-        }
-        if let Some((_, plan)) = &adaptive_plan {
-            eprintln!(
-                "[study] Adaptive wave: Excel limit {:.1} GiB, total reserve {:.1} GiB/group, system reserve {:.1} GiB; {} completed memory samples",
-                plan.resident_limit as f64 / GIB as f64,
-                plan.group_reserve as f64 / GIB as f64,
-                plan.system_reserve as f64 / GIB as f64,
-                plan.calibration_samples
             );
         }
         let cleanup = (count > 1 && run["options"]["resident_capture"] == true)
@@ -114,22 +76,6 @@ pub(super) fn compare(
                     "rust_worker_reserve_bytes":memory_budget.worker,
                     "excel_session_reserve_bytes":memory_budget.excel,
                 });
-                if let Some((memory, plan)) = &adaptive_plan {
-                    let batch = &mut record["comparison_batch"];
-                    batch["adaptive"] = json!(true);
-                    batch["scheduling"] = json!("measured memory; fixed waves growing by at most one");
-                    batch["resident_memory_limit_mib"] = json!(plan.resident_limit / 1_048_576);
-                    batch["configured_resident_memory_mib"] = json!(configured_resident_mib);
-                    batch["available_commit_bytes"] = json!(memory.commit);
-                    batch["total_physical_bytes"] = json!(memory.total_physical);
-                    batch["workbook_reserve_bytes"] = json!(plan.group_reserve);
-                    batch["system_reserve_bytes"] = json!(plan.system_reserve);
-                    batch["helper_reserve_bytes"] = json!(plan.helper_reserve);
-                    batch["reference_peak_bytes"] = json!(plan.reference_peak_bytes);
-                    batch["calibration_samples"] = json!(plan.calibration_samples);
-                    batch["estimate_rule"] = json!("max of last 8 complete resident peaks, normalized to at least 6 clients; 1.5x plus 1 GiB, rounded up; capped by configured Excel limit");
-                    batch["excel_session_reserve_bytes"] = json!(plan.group_reserve - memory_budget.worker - plan.helper_reserve);
-                }
                 (
                     job.position,
                     (
@@ -166,14 +112,6 @@ pub(super) fn compare(
             },
             cleanup.as_ref(),
         )?;
-        if let Some(controller) = &mut adaptive {
-            controller.observe(
-                &attempted
-                    .iter()
-                    .map(|job| records[job.position].clone())
-                    .collect::<Vec<_>>(),
-            );
-        }
         // Every worker and its owned Excel processes have finished before any
         // replacement starts. Opening a new workbook cannot stall a previous batch.
         fallback::after_batch(

@@ -74,7 +74,7 @@ pub(in crate::regression) struct StudyArgs {
         value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..)
     )]
     comparison_workers: usize,
-    /// Calibrate one complete workbook, then grow fixed batches from measured memory peaks.
+    /// Add groups as primary clients become ready and live memory budgets permit.
     #[arg(long, requires = "resident_capture")]
     adaptive_concurrency: bool,
     /// Diagnose completed differences without repeating the three primary comparisons.

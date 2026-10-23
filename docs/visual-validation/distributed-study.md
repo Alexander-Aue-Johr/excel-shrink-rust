@@ -141,15 +141,17 @@ Machine 6 handles Destatis (retain its reviewed memory settings, or the defaults
 The worker counts are upper limits. Resident mode defaults to eight groups;
 an explicit `--comparison-workers` value replaces that default without a fixed
 application ceiling. For example, `--comparison-workers 24` permits up to 24
-groups, subject to the same memory admission checks. Each adaptive invocation first compares one
-whole workbook, including any whitespace controls, alone. It then admits fixed
-batches using the measured memory peaks and available memory, increasing the
-batch size by at most one worker at a time. Preparation remains serial. On the
-towers the calibration starts with the largest remaining file; the laptops start
+groups, subject to memory admission checks. Each adaptive wave starts one group.
+Once its primary Excel clients are connected and fresh memory measurements are
+available, another group may start while the earlier group is still comparing.
+The same decision repeats after the newest group's primary clients are ready;
+it does not wait for the whole workbook or its whitespace controls to finish.
+Preparation remains serial. On the towers the first group uses the largest
+remaining file; the laptops start
 with the smallest files in their assigned quarter. A smaller source file is not
 a guarantee of a smaller Excel memory footprint.
 
-The estimate uses the largest normalized Excel-job peak among the last eight
+The estimate considers the live peaks of admitted groups and the last eight
 fully measured groups. A group that shared byte-identical variants is scaled to
 allow six physical clients (four primary workbooks and two controls). The
 estimate adds 50% and 1 GiB, rounds up to whole GiB, and never exceeds the
@@ -160,7 +162,15 @@ reserve is 10% of total RAM rounded up to GiB, with a minimum of 4 and maximum o
 8 GiB. `EXCEL_SHRINK_HELPER_RESERVE_MIB` and
 `EXCEL_SHRINK_SYSTEM_RESERVE_MIB` override these reserves for an explicitly
 configured machine, as in the constrained 8 GiB profile above. Both free RAM and
-commit headroom must accommodate all admitted groups and this reserve.
+commit headroom must accommodate the next group, remaining budgets of active
+groups, and this reserve. Existing groups keep their assigned limits. Physical
+RAM admission credits only fresh private working-set measurements of the
+resident job; shared pages and private committed memory are not substitutes.
+When that measurement is unavailable, the full budget remains reserved.
+Fresh current committed job memory, including Excel's child processes, is used
+separately for remaining commit budgets. Rust and helper physical budgets stay
+fully reserved. An observed live peak is not a promise
+that a group will never allocate more memory later.
 
 If another application consumes the available memory, the runner waits between
 waves without holding Excel processes. Limits that cannot fit even one group on
@@ -273,11 +283,19 @@ primary comparison, or reuses those exact captures from an identical open
 variant. The report explicitly marks this limited control scope. An incomplete
 control remains unresolved.
 
-Parallel work runs in fixed batches. No replacement workbook starts, and no
-resident Excel session is cleaned up, until all peers finish or fail. This also
-protects Office/WebView resources that can be shared between Excel processes.
-Completed results are checkpointed before this wait; waiting does not consume
-the workbook's processing deadline. Parent loss and bounded cleanup still apply.
+Adaptive waves grow during comparison until the requested ceiling, available
+memory, the first finished group, or the end of the queue stops admission. They then drain together;
+finished groups are not replaced within that draining wave. Resident Excel
+sessions are retained until every admitted peer finishes or fails, protecting
+Office/WebView resources shared between Excel processes. Nonadaptive runs use
+fixed batches. Completed results are checkpointed before cleanup waits.
+
+While a newly admitted group prepares and opens its primary clients, the
+coordinator records bounded pause time for existing peers. Their processing
+deadlines exclude these opening pauses, because Excel startup can stall Office.js
+in another group. The newly opening group's own deadline, parent liveness,
+memory guards, and cleanup deadlines remain active. A stale pause counter cannot
+keep a stuck comparison alive indefinitely.
 
 Without adaptive concurrency, admission adds each group's configured Rust limit
 and Excel limit, then keeps
@@ -289,7 +307,7 @@ admission. Unknown available memory falls back to
 one worker. These checks do not lower either allocation limit.
 
 Adaptive concurrency uses the observed peaks to choose an enforced Excel session
-limit for the next batch, bounded by the configured resident limit. It retains the
+limit for each newly admitted group, bounded by the configured resident limit. It retains the
 full configured Rust and COM limits, reserves another 1 GiB per group for helpers,
 and keeps 4–8 GiB for the system by default. The constrained laptop profile uses
 the explicit reserve overrides listed above. Admission checks the sum of these effective
@@ -301,8 +319,8 @@ The laptop commands therefore provide separate memory settings suited to their
 reported RAM; they do not promise that every selected workbook fits those caps.
 
 The requested order and concurrency settings remain in the run metadata. Each
-record retains actual batch size, effective and reserved limits, capture method,
-session memory and machine provenance. These are throughput runs for visual regression; opening times under
+record retains wave size, admission reason, effective and reserved limits,
+capture method, session memory and machine provenance. These are throughput runs for visual regression; opening times under
 concurrent load should not be pooled with an isolated performance experiment.
 
 If a primary resident check hits an image-budget error, a taskpane restart,

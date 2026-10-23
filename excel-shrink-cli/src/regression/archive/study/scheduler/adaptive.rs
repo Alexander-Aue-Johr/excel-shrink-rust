@@ -1,4 +1,4 @@
-//! Admit fixed waves within enforceable budgets and learn from completed groups.
+//! Estimate enforceable group budgets from live and completed memory samples.
 use anyhow::{ensure, Context, Result};
 use serde_json::Value;
 use std::collections::VecDeque;
@@ -53,6 +53,35 @@ impl Controller {
     }
 
     pub fn plan(&self, memory: Memory, remaining: usize) -> Result<Plan> {
+        self.plan_with_peak(memory, remaining, None)
+    }
+
+    // Existing jobs retain their original enforceable limits. Only commit can
+    // credit their measured current usage: private commit is not physical RAM.
+    pub fn plan_next(
+        &self,
+        memory: Memory,
+        reserved_physical: u64,
+        reserved_commit: u64,
+        live_peak: Option<u64>,
+    ) -> Result<Plan> {
+        self.plan_with_peak(
+            Memory {
+                physical: memory.physical.saturating_sub(reserved_physical),
+                commit: memory.commit.saturating_sub(reserved_commit),
+                ..memory
+            },
+            1,
+            live_peak,
+        )
+    }
+
+    fn plan_with_peak(
+        &self,
+        memory: Memory,
+        remaining: usize,
+        live_peak: Option<u64>,
+    ) -> Result<Plan> {
         ensure!(
             self.requested > 0,
             "comparison worker count must be positive"
@@ -71,7 +100,7 @@ impl Controller {
                 && self.config.system_reserve.is_none_or(|bytes| bytes >= GIB),
             "comparison reserves require at least 256 MiB for helpers and 1 GiB for the system"
         );
-        let reference_peak_bytes = self.normalized_peaks.iter().copied().max();
+        let reference_peak_bytes = self.normalized_peaks.iter().copied().chain(live_peak).max();
         let resident_limit = reference_peak_bytes
             .map(|peak| estimated_limit(peak, self.config.resident))
             .unwrap_or(self.config.resident);
@@ -177,6 +206,13 @@ fn completed_peak(record: &Value) -> Option<u64> {
     }
     // Identical profiles can share a single Excel process. Leave room for four
     // primary clients and two controls even when the calibration used aliases.
+    normalized_peak(peak, clients)
+}
+
+pub(super) fn normalized_peak(peak: u64, clients: usize) -> Option<u64> {
+    if peak == 0 || clients == 0 {
+        return None;
+    }
     let numerator = u128::from(peak) * clients.max(6) as u128;
     Some(ceil_div(numerator, clients as u128).min(u128::from(u64::MAX)) as u64)
 }
