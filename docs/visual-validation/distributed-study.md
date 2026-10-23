@@ -81,9 +81,11 @@ $env:EXCEL_SHRINK_HELPER_RESERVE_MIB = '512'
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 1/4 --machine-label ENRON-LAPTOP-1 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 1
 ```
 
-This is a proposed constrained profile; native validation on GOTHAM is pending,
-and behavior on the actual 8 GiB laptop is unverified. These limits may reject a
-memory-demanding workbook even in the smallest quarter. A recoverable resident
+Two selected files completed resident comparison on GOTHAM with these limits,
+without a fallback: measured Excel-job peaks were 1.306 and 1.313 GiB, and Rust
+worker peaks were 173 and 91 MiB. Behavior on the actual 8 GiB laptop remains
+unverified. These limits may reject a memory-demanding workbook even in the
+smallest quarter. A recoverable resident
 failure gets at most one sequential paired retry; if that also exceeds its
 limits, the result remains a reported skip. File size alone cannot guarantee that
 every workbook will fit. The reserve overrides apply only to this profile.
@@ -118,6 +120,7 @@ GOTHAM continues Data.gov with the largest remaining files first:
 
 ```powershell
 $env:EXCEL_SHRINK_WORKER_MEMORY_MIB = '8192'
+$env:EXCEL_SHRINK_EXCEL_MEMORY_MIB = '4096'
 $env:EXCEL_SHRINK_RESIDENT_MEMORY_MIB = '32768'
 Remove-Item Env:EXCEL_SHRINK_SYSTEM_RESERVE_MIB -ErrorAction SilentlyContinue
 Remove-Item Env:EXCEL_SHRINK_HELPER_RESERVE_MIB -ErrorAction SilentlyContinue
@@ -222,6 +225,7 @@ comparison. Enable it explicitly on a machine with enough available RAM:
 
 ```powershell
 $env:EXCEL_SHRINK_WORKER_MEMORY_MIB = '8192'
+$env:EXCEL_SHRINK_EXCEL_MEMORY_MIB = '4096'
 $env:EXCEL_SHRINK_RESIDENT_MEMORY_MIB = '32768'
 Remove-Item Env:EXCEL_SHRINK_SYSTEM_RESERVE_MIB -ErrorAction SilentlyContinue
 Remove-Item Env:EXCEL_SHRINK_HELPER_RESERVE_MIB -ErrorAction SilentlyContinue
