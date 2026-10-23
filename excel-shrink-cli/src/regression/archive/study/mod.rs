@@ -67,8 +67,11 @@ pub(in crate::regression) struct StudyArgs {
     #[arg(long)]
     resident_capture: bool,
     /// Maximum concurrent comparisons; preparation remains serial.
-    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=3))]
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
     comparison_workers: u8,
+    /// Calibrate one complete workbook, then grow fixed batches from measured memory peaks.
+    #[arg(long, requires = "resident_capture")]
+    adaptive_concurrency: bool,
     /// Diagnose completed differences without repeating the three primary comparisons.
     #[arg(long, conflicts_with_all = ["prepare_only", "compare_only"])]
     diagnose_whitespace_only: bool,
@@ -233,30 +236,19 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             {
                 if let Ok(members) = workbook_members(&mut zip) {
                     corpus_info[i]["total_workbooks"] = json!(members.len());
-                    let catalog: Vec<_> = members
-                        .iter()
-                        .map(|(index, name)| {
-                            let checksum = zip
-                                .by_index_raw(*index)
-                                .ok()
-                                .map(|entry| (entry.crc32(), entry.size()));
-                            (name, checksum)
-                        })
-                        .collect();
-                    expected_sources.insert(
-                        ids[i].clone(),
-                        artifact_cache::sha256(&serde_json::to_vec(&catalog)?),
-                    );
+                    let catalog: Vec<_> = members.iter().map(|(index, name)| {
+                        let checksum = zip.by_index_raw(*index).ok()
+                            .map(|entry| (entry.crc32(), entry.size()));
+                        (name, checksum)
+                    }).collect();
+                    expected_sources.insert(ids[i].clone(), artifact_cache::sha256(&serde_json::to_vec(&catalog)?));
                 }
             }
         }
     }
     for package in &args.import_results {
         let receipt = transfer::import_package_locked(
-            &output,
-            &resolve_path(&root, package.clone()),
-            &expected_sources,
-            &lock,
+            &output, &resolve_path(&root, package.clone()), &expected_sources, &lock,
         )?;
         eprintln!("[study] Result import: {receipt}");
     }
@@ -264,11 +256,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         records = load_records(&output)?;
         for record in &mut records {
             if record["complete"] != true {
-                record["status"] = json!(if record["prepared"] == true {
-                    "prepared"
-                } else {
-                    "pending"
-                });
+                record["status"] = json!(if record["prepared"] == true { "prepared" } else { "pending" });
             }
         }
     }
@@ -415,7 +403,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         json!({
             "prepare_only":args.prepare_only,"compare_only":args.compare_only,
             "resident_capture":args.resident_capture,"comparison_workers":args.comparison_workers,
-            "order":args.order,
+            "adaptive_concurrency":args.adaptive_concurrency,"order":args.order,
             "comparison_scheduling":"fixed-batches",
             "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.retry_skipped,
             "workbook_timeout_seconds":args.workbook_timeout_seconds,
@@ -634,10 +622,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     if let Err(error) = visual_report::open_visual_report(&output.join("report.html")) {
         eprintln!("Could not open report: {error:#}");
     }
-    ensure!(
-        !missing_prepared,
-        "Some selected workbooks have no preparation from this build; run without --compare-only first"
-    );
+    ensure!(!missing_prepared, "Some selected workbooks have no preparation from this build; run without --compare-only first");
     ensure!(
         !records.iter().any(|r| matches!(
             r["status"].as_str(),
@@ -650,8 +635,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
 
 fn export_results(args: &StudyArgs, root: &Path, output: &Path, lock: &fs::File) -> Result<()> {
     if let Some(package) = &args.export_results {
-        let receipt =
-            transfer::export_package_locked(output, &resolve_path(root, package.clone()), lock)?;
+        let receipt = transfer::export_package_locked(output, &resolve_path(root, package.clone()), lock)?;
         eprintln!("[study] Result export: {receipt}");
     }
     Ok(())
@@ -734,12 +718,10 @@ fn import(
         } else if row["complete"] == true && row["status"] == "skipped" {
             // Keep earlier technical failures separate until an explicit retry.
             row["previously_skipped"] = json!(true);
-            let mut reasons = vec![
-                row["error"]
-                    .as_str()
-                    .unwrap_or("Check did not finish")
-                    .to_owned(),
-            ];
+            let mut reasons = vec![row["error"]
+                .as_str()
+                .unwrap_or("Check did not finish")
+                .to_owned()];
             for profile in row["results"].as_array().into_iter().flatten() {
                 for failure in profile["failures"].as_array().into_iter().flatten() {
                     if let Some(message) = failure.as_str() {

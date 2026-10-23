@@ -1,4 +1,6 @@
 //! Fixed comparison batches; only the coordinator writes the shared report.
+mod adaptive;
+
 use super::*;
 use std::collections::VecDeque;
 use std::sync::mpsc;
@@ -26,11 +28,38 @@ pub(super) fn compare(
     log_level: LogLevel,
 ) -> Result<()> {
     let memory_budget = MemoryBudget::configured(run["options"]["resident_capture"] == true)?;
+    let mut adaptive = if run["options"]["adaptive_concurrency"] == true {
+        Some(adaptive::Controller::new(
+            requested,
+            adaptive::Config {
+                worker: memory_budget.worker,
+                resident: configured_excel_limit("EXCEL_SHRINK_RESIDENT_MEMORY_MIB", 16384, 1024)?,
+                automation: configured_excel_limit("EXCEL_SHRINK_EXCEL_MEMORY_MIB", 4096, 256)?,
+            },
+        ))
+    } else {
+        None
+    };
+    let configured_resident_mib = if adaptive.is_some() {
+        configured_excel_limit("EXCEL_SHRINK_RESIDENT_MEMORY_MIB", 16384, 1024)? / 1_048_576
+    } else {
+        0
+    };
     let mut pending: VecDeque<_> = jobs.into();
     let mut batch_number = 0;
     while !pending.is_empty() {
         batch_number += 1;
-        let available = if requested > 1 {
+        let adaptive_plan = adaptive
+            .as_ref()
+            .map(|controller| {
+                wait_for_adaptive_admission(controller, pending.len(), || {
+                    publish_progress(output, records, corpora, "waiting for memory");
+                })
+            })
+            .transpose()?;
+        let available = if let Some((memory, _)) = &adaptive_plan {
+            Some(memory.physical)
+        } else if requested > 1 {
             match available_memory() {
                 Ok(bytes) => Some(bytes),
                 Err(error) => {
@@ -43,12 +72,28 @@ pub(super) fn compare(
         } else {
             None
         };
-        let count = admitted_workers(requested, available, memory_budget).min(pending.len());
+        let count = adaptive_plan
+            .as_ref()
+            .map(|(_, plan)| plan.workers)
+            .unwrap_or_else(|| {
+                admitted_workers(requested, available, memory_budget).min(pending.len())
+            });
         if requested > 1 {
             eprintln!(
                 "[study] {}: comparison batch {batch_number}, {count}/{requested} workers, available RAM {} GiB",
                 source.name,
-                available.map(|bytes| format!("{:.1}", bytes as f64 / GIB as f64)).unwrap_or_else(|| "unknown".into())
+                available
+                    .map(|bytes| format!("{:.1}", bytes as f64 / GIB as f64))
+                    .unwrap_or_else(|| "unknown".into())
+            );
+        }
+        if let Some((_, plan)) = &adaptive_plan {
+            eprintln!(
+                "[study] Adaptive wave: Excel limit {:.0} GiB, total reserve {:.0} GiB/group, system reserve {:.0} GiB; {} completed memory samples",
+                plan.resident_limit as f64 / GIB as f64,
+                plan.group_reserve as f64 / GIB as f64,
+                plan.system_reserve as f64 / GIB as f64,
+                plan.calibration_samples
             );
         }
         let cleanup = (count > 1 && run["options"]["resident_capture"] == true)
@@ -66,6 +111,22 @@ pub(super) fn compare(
                     "rust_worker_reserve_bytes":memory_budget.worker,
                     "excel_session_reserve_bytes":memory_budget.excel,
                 });
+                if let Some((memory, plan)) = &adaptive_plan {
+                    let batch = &mut record["comparison_batch"];
+                    batch["adaptive"] = json!(true);
+                    batch["scheduling"] = json!("measured memory; fixed waves growing by at most one");
+                    batch["resident_memory_limit_mib"] = json!(plan.resident_limit / 1_048_576);
+                    batch["configured_resident_memory_mib"] = json!(configured_resident_mib);
+                    batch["available_commit_bytes"] = json!(memory.commit);
+                    batch["total_physical_bytes"] = json!(memory.total_physical);
+                    batch["workbook_reserve_bytes"] = json!(plan.group_reserve);
+                    batch["system_reserve_bytes"] = json!(plan.system_reserve);
+                    batch["helper_reserve_bytes"] = json!(GIB);
+                    batch["reference_peak_bytes"] = json!(plan.reference_peak_bytes);
+                    batch["calibration_samples"] = json!(plan.calibration_samples);
+                    batch["estimate_rule"] = json!("max of last 8 complete resident peaks, normalized to at least 6 clients; 1.5x plus 1 GiB, rounded up; capped by configured Excel limit");
+                    batch["excel_session_reserve_bytes"] = json!(plan.group_reserve - memory_budget.worker - GIB);
+                }
                 (
                     job.position,
                     (
@@ -102,6 +163,14 @@ pub(super) fn compare(
             },
             cleanup.as_ref(),
         )?;
+        if let Some(controller) = &mut adaptive {
+            controller.observe(
+                &attempted
+                    .iter()
+                    .map(|job| records[job.position].clone())
+                    .collect::<Vec<_>>(),
+            );
+        }
         // Every worker and its owned Excel processes have finished before any
         // replacement starts. Opening a new workbook cannot stall a previous batch.
         fallback::after_batch(
@@ -242,8 +311,65 @@ fn admitted_workers(requested: u8, available: Option<u64>, budget: MemoryBudget)
     affordable.max(1).min(u64::from(requested)) as usize
 }
 
-#[cfg(windows)]
+fn wait_for_adaptive_admission(
+    controller: &adaptive::Controller,
+    remaining: usize,
+    mut on_wait: impl FnMut(),
+) -> Result<(adaptive::Memory, adaptive::Plan)> {
+    loop {
+        let memory =
+            memory_status().context("read physical RAM and commit before adaptive admission")?;
+        match controller.plan(memory, remaining) {
+            Ok(plan) => return Ok((memory, plan)),
+            Err(error) => {
+                let minimum = controller.plan(
+                    adaptive::Memory {
+                        physical: u64::MAX,
+                        commit: u64::MAX,
+                        total_physical: memory.total_physical,
+                    },
+                    1,
+                )?;
+                ensure!(
+                    memory.total_physical >= minimum.group_reserve + minimum.system_reserve,
+                    "configured memory limits need at least {:.1} GiB for one group, but this machine has {:.1} GiB; lower EXCEL_SHRINK_WORKER_MEMORY_MIB, EXCEL_SHRINK_RESIDENT_MEMORY_MIB and/or EXCEL_SHRINK_EXCEL_MEMORY_MIB",
+                    (minimum.group_reserve + minimum.system_reserve) as f64 / GIB as f64,
+                    memory.total_physical as f64 / GIB as f64
+                );
+                eprintln!("[study] Waiting for memory before the next group: {error:#}");
+                on_wait();
+                // No workbook or Excel process is held while this loop waits.
+                std::thread::sleep(Duration::from_secs(30));
+            }
+        }
+    }
+}
+
+// A fallback restores the configured paired-capture limits. Its admission must
+// therefore be checked independently from the smaller adaptive resident cap.
+pub(super) fn wait_for_classic_retry_memory(run: &Value) -> Result<()> {
+    if run["options"]["adaptive_concurrency"] != true {
+        return Ok(());
+    }
+    let budget = MemoryBudget::configured(false)?;
+    let controller = adaptive::Controller::new(
+        1,
+        adaptive::Config {
+            worker: budget.worker,
+            resident: budget.excel.max(GIB),
+            automation: budget.excel,
+        },
+    );
+    wait_for_adaptive_admission(&controller, 1, || {})?;
+    Ok(())
+}
+
 fn available_memory() -> std::io::Result<u64> {
+    Ok(memory_status()?.physical)
+}
+
+#[cfg(windows)]
+fn memory_status() -> std::io::Result<adaptive::Memory> {
     #[repr(C)]
     #[derive(Default)]
     struct MemoryStatus {
@@ -270,11 +396,15 @@ fn available_memory() -> std::io::Result<u64> {
     if unsafe { GlobalMemoryStatusEx(&mut status) } == 0 {
         return Err(std::io::Error::last_os_error());
     }
-    Ok(status.available_physical)
+    Ok(adaptive::Memory {
+        physical: status.available_physical,
+        commit: status.available_page_file,
+        total_physical: status.total_physical,
+    })
 }
 
 #[cfg(not(windows))]
-fn available_memory() -> std::io::Result<u64> {
+fn memory_status() -> std::io::Result<adaptive::Memory> {
     // WSL's memory counters cannot establish how much memory Windows Excel can use.
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,

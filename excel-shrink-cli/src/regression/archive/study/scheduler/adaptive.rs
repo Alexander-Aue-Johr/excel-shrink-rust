@@ -1,0 +1,425 @@
+//! Admit fixed waves within enforceable budgets and learn from completed groups.
+use anyhow::{Context, Result, ensure};
+use serde_json::Value;
+use std::collections::VecDeque;
+
+use super::super::prepared::PROFILES;
+
+pub(super) const GIB: u64 = 1024 * 1024 * 1024;
+const HISTORY_LENGTH: usize = 8;
+const HELPER_RESERVE: u64 = GIB;
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Config {
+    pub worker: u64,
+    pub resident: u64,
+    pub automation: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Memory {
+    pub physical: u64,
+    pub commit: u64,
+    pub total_physical: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Plan {
+    pub workers: usize,
+    pub resident_limit: u64,
+    pub group_reserve: u64,
+    pub system_reserve: u64,
+    pub reference_peak_bytes: Option<u64>,
+    pub calibration_samples: usize,
+}
+
+pub(super) struct Controller {
+    requested: usize,
+    config: Config,
+    width_ceiling: usize,
+    normalized_peaks: VecDeque<u64>,
+}
+
+impl Controller {
+    pub fn new(requested: u8, config: Config) -> Self {
+        Self {
+            requested: usize::from(requested),
+            config,
+            width_ceiling: 1,
+            normalized_peaks: VecDeque::new(),
+        }
+    }
+
+    pub fn plan(&self, memory: Memory, remaining: usize) -> Result<Plan> {
+        ensure!(
+            self.requested > 0,
+            "comparison worker count must be positive"
+        );
+        ensure!(remaining > 0, "cannot schedule an empty comparison wave");
+        ensure!(
+            memory.total_physical > 0,
+            "total physical RAM is unavailable"
+        );
+        ensure!(
+            self.config.worker > 0 && self.config.resident >= GIB && self.config.automation > 0,
+            "invalid comparison memory limits"
+        );
+        let reference_peak_bytes = self.normalized_peaks.iter().copied().max();
+        let resident_limit = reference_peak_bytes
+            .map(|peak| estimated_limit(peak, self.config.resident))
+            .unwrap_or(self.config.resident);
+        // Rust retains its full allocation limit. COM and resident Excel run in
+        // separate phases, so reserve the larger of their enforceable limits.
+        let group_reserve = self
+            .config
+            .worker
+            .checked_add(resident_limit.max(self.config.automation))
+            .and_then(|bytes| bytes.checked_add(HELPER_RESERVE))
+            .context("comparison memory reserve overflow")?;
+        let system_reserve = system_reserve(memory.total_physical);
+        let available = memory.physical.min(memory.commit);
+        let affordable = available.saturating_sub(system_reserve) / group_reserve;
+        let workers = self
+            .requested
+            .min(self.width_ceiling)
+            .min(remaining)
+            .min(usize::try_from(affordable).unwrap_or(usize::MAX));
+        ensure!(
+            workers > 0,
+            "Insufficient RAM for one resident comparison: physical {:.1} GiB, commit {:.1} GiB; group reserve {:.1} GiB plus system reserve {:.1} GiB required",
+            memory.physical as f64 / GIB as f64,
+            memory.commit as f64 / GIB as f64,
+            group_reserve as f64 / GIB as f64,
+            system_reserve as f64 / GIB as f64,
+        );
+        Ok(Plan {
+            workers,
+            resident_limit,
+            group_reserve,
+            system_reserve,
+            reference_peak_bytes,
+            calibration_samples: self.normalized_peaks.len(),
+        })
+    }
+
+    // Observe the original resident records before classic fallback replaces
+    // them. A smaller file is not evidence that its memory demand is smaller.
+    pub fn observe(&mut self, records: &[Value]) {
+        if records.is_empty() {
+            return;
+        }
+        if records.iter().any(reduced_budget_failure) {
+            self.normalized_peaks.clear();
+            self.width_ceiling = 1;
+            return;
+        }
+        let mut learned = 0;
+        for record in records {
+            if let Some(peak) = completed_peak(record) {
+                self.normalized_peaks.push_back(peak);
+                if self.normalized_peaks.len() > HISTORY_LENGTH {
+                    self.normalized_peaks.pop_front();
+                }
+                learned += 1;
+            }
+        }
+        self.width_ceiling = if learned == records.len() {
+            records.len().saturating_add(1).min(self.requested)
+        } else {
+            // A failed or unmeasured group cannot justify adding another slot.
+            self.width_ceiling.min(records.len()).max(1)
+        };
+    }
+}
+
+fn primary_complete(record: &Value) -> bool {
+    record["results"].as_array().is_some_and(|profiles| {
+        PROFILES.iter().all(|name| {
+            profiles
+                .iter()
+                .any(|profile| profile["profile"] == *name && profile["checks_complete"] == true)
+        })
+    })
+}
+
+fn completed_peak(record: &Value) -> Option<u64> {
+    if record["capture_mode"] != "resident"
+        || record["complete"] != true
+        || !matches!(record["status"].as_str(), Some("unchanged" | "differences"))
+        || !primary_complete(record)
+        || record["resident_capture"]["status"] != "complete"
+        || record["whitespace_diagnosis"]["status"]
+            .as_str()
+            .is_some_and(|status| status != "complete")
+    {
+        return None;
+    }
+    let metrics = &record["resident_capture"];
+    let peak = metrics["peak_job_bytes"]
+        .as_u64()
+        .filter(|&peak| peak > 0)?;
+    let clients = metrics["clients"].as_object()?.len();
+    if clients == 0 {
+        return None;
+    }
+    // Identical profiles can share a single Excel process. Leave room for four
+    // primary clients and two controls even when the calibration used aliases.
+    let numerator = u128::from(peak) * clients.max(6) as u128;
+    Some(ceil_div(numerator, clients as u128).min(u128::from(u64::MAX)) as u64)
+}
+
+fn reduced_budget_failure(record: &Value) -> bool {
+    if record["capture_mode"] != "resident"
+        || record["status"] != "skipped"
+        || primary_complete(record)
+        || record["comparison_batch"]["adaptive"] != true
+    {
+        return false;
+    }
+    let batch = &record["comparison_batch"];
+    let reduced = match (
+        batch["resident_memory_limit_mib"].as_u64(),
+        batch["configured_resident_memory_mib"].as_u64(),
+    ) {
+        (Some(effective), Some(configured)) => effective > 0 && effective < configured,
+        _ => false,
+    };
+    let deterministic = std::iter::once(record["error"].as_str())
+        .chain(
+            record["results"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|profile| profile["checks_complete"] != true)
+                .flat_map(|profile| profile["failures"].as_array().into_iter().flatten())
+                .map(Value::as_str),
+        )
+        .flatten()
+        .any(|message| {
+            let lower = message.to_ascii_lowercase();
+            lower.contains("drawing boundary is unresolved")
+                || lower.contains("drawing anchor exceeds capture boundary")
+        });
+    reduced && !deterministic
+}
+
+fn ceil_div(value: u128, divisor: u128) -> u128 {
+    value / divisor + u128::from(value % divisor != 0)
+}
+
+fn estimated_limit(peak: u64, configured: u64) -> u64 {
+    // Keep the fractional 1.5 multiplier until rounding to avoid truncation or
+    // overflow near a GiB boundary, including corrupted very large counters.
+    let numerator = u128::from(peak) * 3 + u128::from(GIB) * 2;
+    let rounded = ceil_div(numerator, u128::from(GIB) * 2) * u128::from(GIB);
+    rounded.min(u128::from(configured)) as u64
+}
+
+fn system_reserve(total_physical: u64) -> u64 {
+    let units = ceil_div(u128::from(total_physical), u128::from(GIB) * 10);
+    units.clamp(4, 8) as u64 * GIB
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn controller() -> Controller {
+        Controller::new(
+            8,
+            Config {
+                worker: 8 * GIB,
+                resident: 16 * GIB,
+                automation: 4 * GIB,
+            },
+        )
+    }
+
+    fn memory() -> Memory {
+        Memory {
+            physical: 256 * GIB,
+            commit: 256 * GIB,
+            total_physical: 256 * GIB,
+        }
+    }
+
+    fn completed(peak: u64, clients: usize) -> Value {
+        let clients: serde_json::Map<String, Value> = (0..clients)
+            .map(|index| (format!("client-{index}"), json!({"startup_seconds":1.0})))
+            .collect();
+        json!({
+            "capture_mode":"resident","complete":true,"status":"unchanged",
+            "source_bytes":100,
+            "results":PROFILES.iter().map(|name| json!({"profile":name,"checks_complete":true})).collect::<Vec<_>>(),
+            "resident_capture":{"status":"complete","peak_job_bytes":peak,"clients":clients},
+            "comparison_batch":{"adaptive":true,"resident_memory_limit_mib":4096,"configured_resident_memory_mib":16384}
+        })
+    }
+
+    fn failed(message: &str) -> Value {
+        let mut record = completed(GIB, 6);
+        record["status"] = json!("skipped");
+        record["error"] = json!(message);
+        record["results"][0]["checks_complete"] = json!(false);
+        record
+    }
+
+    #[test]
+    fn grows_one_slot_per_successful_wave_and_can_exceed_three_groups() -> Result<()> {
+        let mut controller = controller();
+        let initial = controller.plan(memory(), 100)?;
+        assert_eq!(initial.resident_limit, 16 * GIB);
+        assert_eq!(initial.reference_peak_bytes, None);
+        assert_eq!(initial.calibration_samples, 0);
+        for width in 1..=8 {
+            assert_eq!(controller.plan(memory(), 100)?.workers, width);
+            controller.observe(&vec![completed(GIB, 6); width]);
+        }
+        assert_eq!(controller.plan(memory(), 100)?.workers, 8);
+        assert_eq!(controller.plan(memory(), 100)?.calibration_samples, 8);
+        assert_eq!(
+            controller.plan(memory(), 100)?.reference_peak_bytes,
+            Some(GIB)
+        );
+        assert_eq!(controller.plan(memory(), 2)?.workers, 2);
+        controller.observe(&vec![completed(GIB, 6); 2]);
+        assert_eq!(controller.plan(memory(), 100)?.workers, 3);
+        Ok(())
+    }
+
+    #[test]
+    fn rounds_up_normalizes_clients_and_bounds_effective_limits() -> Result<()> {
+        assert_eq!(estimated_limit(2 * GIB, 16 * GIB), 4 * GIB);
+        assert_eq!(estimated_limit(2 * GIB + 1, 16 * GIB), 5 * GIB);
+        assert_eq!(estimated_limit(u64::MAX, 16 * GIB), 16 * GIB);
+        assert_eq!(completed_peak(&completed(u64::MAX, 1)), Some(u64::MAX));
+        for (clients, expected) in [(1, 16), (3, 7), (6, 4), (8, 4)] {
+            let mut controller = controller();
+            controller.observe(&[completed(2 * GIB, clients)]);
+            assert_eq!(
+                controller.plan(memory(), 100)?.resident_limit,
+                expected * GIB
+            );
+        }
+        let mut controller = controller();
+        controller.observe(&[completed(1, 6)]);
+        let plan = controller.plan(memory(), 100)?;
+        assert_eq!(plan.resident_limit, 2 * GIB);
+        assert_eq!(plan.group_reserve, 13 * GIB); // COM still reserves its full 4 GiB.
+        controller.config.worker = u64::MAX;
+        assert!(
+            controller
+                .plan(memory(), 100)
+                .unwrap_err()
+                .to_string()
+                .contains("overflow")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn missing_or_partial_metrics_cannot_calibrate_or_increase_width() -> Result<()> {
+        let valid = completed(GIB, 6);
+        let mut invalid = Vec::new();
+        for (field, value) in [
+            ("peak_job_bytes", Value::Null),
+            ("peak_job_bytes", json!(0)),
+            ("clients", json!({})),
+            ("clients", Value::Null),
+            ("status", json!("failed")),
+            ("status", json!("control failed")),
+        ] {
+            let mut record = valid.clone();
+            record["resident_capture"][field] = value;
+            invalid.push(record);
+        }
+        let mut incomplete = valid.clone();
+        incomplete["complete"] = json!(false);
+        invalid.push(incomplete);
+        let mut partial = valid.clone();
+        partial["results"][0]["checks_complete"] = json!(false);
+        invalid.push(partial);
+        let mut incomplete_control = valid.clone();
+        incomplete_control["whitespace_diagnosis"] = json!({"status":"failed"});
+        invalid.push(incomplete_control);
+        for record in invalid {
+            let mut controller = controller();
+            controller.observe(&[record]);
+            let plan = controller.plan(memory(), 100)?;
+            assert_eq!(plan.workers, 1);
+            assert_eq!(plan.resident_limit, 16 * GIB);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn uses_last_eight_successful_peaks_without_inferring_from_file_size() -> Result<()> {
+        let mut controller = controller();
+        let mut large = completed(6 * GIB, 6);
+        large["source_bytes"] = json!(1);
+        controller.observe(&[large]);
+        for _ in 0..7 {
+            let mut small = completed(GIB, 6);
+            small["source_bytes"] = json!(u64::MAX);
+            controller.observe(&[small]);
+        }
+        assert_eq!(controller.plan(memory(), 100)?.resident_limit, 10 * GIB);
+        controller.observe(&[completed(GIB, 6)]);
+        assert_eq!(controller.plan(memory(), 100)?.resident_limit, 3 * GIB);
+        Ok(())
+    }
+
+    #[test]
+    fn reduced_cap_failure_resets_learning_but_boundary_failure_only_holds_width() -> Result<()> {
+        for message in [
+            "Drawing boundary is unresolved",
+            "drawing anchor exceeds capture boundary",
+        ] {
+            let mut controller = controller();
+            controller.observe(&[completed(GIB, 6)]);
+            controller.observe(&[completed(GIB, 6), failed(message)]);
+            let plan = controller.plan(memory(), 100)?;
+            assert_eq!(plan.workers, 2);
+            assert_eq!(plan.resident_limit, 3 * GIB);
+        }
+        let mut controller = controller();
+        controller.observe(&[completed(GIB, 6)]);
+        controller.observe(&[completed(GIB, 6), failed("resident Excel process exited")]);
+        let plan = controller.plan(memory(), 100)?;
+        assert_eq!(plan.workers, 1);
+        assert_eq!(plan.resident_limit, 16 * GIB);
+        Ok(())
+    }
+
+    #[test]
+    fn commit_headroom_and_enforced_limits_bound_every_wave() -> Result<()> {
+        let mut controller = controller();
+        controller.observe(&[completed(GIB, 6)]);
+        controller.observe(&vec![completed(GIB, 6); 2]);
+        let mut available = memory();
+        available.commit = 34 * GIB;
+        let plan = controller.plan(available, 100)?;
+        assert_eq!(plan.workers, 2);
+        assert_eq!(plan.system_reserve, 8 * GIB);
+        assert!(plan.workers as u64 * plan.group_reserve + plan.system_reserve <= available.commit);
+        available.commit -= 1;
+        assert_eq!(controller.plan(available, 100)?.workers, 1);
+        available.commit = 21 * GIB - 1;
+        assert!(
+            controller
+                .plan(available, 100)
+                .unwrap_err()
+                .to_string()
+                .contains("Insufficient RAM")
+        );
+        available = memory();
+        available.physical = 0;
+        assert!(controller.plan(available, 100).is_err());
+        assert_eq!(system_reserve(40 * GIB), 4 * GIB);
+        assert_eq!(system_reserve(40 * GIB + 1), 5 * GIB);
+        assert_eq!(system_reserve(64 * GIB), 7 * GIB);
+        assert_eq!(system_reserve(u64::MAX), 8 * GIB);
+        Ok(())
+    }
+}

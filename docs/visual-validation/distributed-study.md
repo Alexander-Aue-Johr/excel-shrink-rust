@@ -26,6 +26,16 @@ archive index make the split repeatable. This divides file counts, not total byt
 or estimated execution time. Small ZIP members can still require substantial
 memory when Excel opens them.
 
+`--order size-asc` processes the selected files from smallest to largest;
+`--order size-desc` starts with the largest remaining files. Both use the original
+uncompressed XLSX/XLS size, with name and archive index ascending to break ties;
+unreadable sizes come last. This changes the preparation and comparison queues,
+including resumed prepared files, without changing quarter membership or repeating
+completed primary comparisons. `--limit` applies after ordering pending work.
+The default `--order priority` retains the existing order: previously problematic
+files first, followed by archive order. Missing whitespace diagnoses are still
+completed before new primary work.
+
 ## Prepare each machine once
 
 Use native Windows with desktop Excel, PowerShell, the .NET 8 SDK, Rust and its
@@ -63,38 +73,63 @@ open while it runs; a standalone PowerShell window allows VS Code to be closed.
 Laptop 1:
 
 ```powershell
-& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 1/4 --machine-label ENRON-LAPTOP-1
+& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 1/4 --machine-label ENRON-LAPTOP-1 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 4
 ```
 
 Laptop 2:
 
 ```powershell
-& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 2/4 --machine-label ENRON-LAPTOP-2
+& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 2/4 --machine-label ENRON-LAPTOP-2 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 4
 ```
 
 Enron tower 1:
 
 ```powershell
-& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 3/4 --machine-label ENRON-TOWER-1
+& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 3/4 --machine-label ENRON-TOWER-1 --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
 ```
 
 Enron tower 2:
 
 ```powershell
-& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 4/4 --machine-label ENRON-TOWER-2
+& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 4/4 --machine-label ENRON-TOWER-2 --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
 ```
 
-GOTHAM continues Data.gov:
+GOTHAM continues Data.gov with the largest remaining files first:
 
 ```powershell
-& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM
+& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
 ```
 
 Machine 6 handles Destatis:
 
 ```powershell
-& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Destatis --machine-label DESTATIS-1
+& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Destatis --machine-label DESTATIS-1 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 4
 ```
+
+The worker counts are upper limits. Each adaptive invocation first compares one
+whole workbook, including any whitespace controls, alone. It then admits fixed
+batches using the measured memory peaks and available memory, increasing the
+batch size by at most one worker at a time. Preparation remains serial. On the
+towers the calibration starts with the largest remaining file; the laptops start
+with the smallest files in their assigned quarter. A smaller source file is not
+a guarantee of a smaller Excel memory footprint.
+
+The estimate uses the largest normalized Excel-job peak among the last eight
+fully measured groups. A group that shared byte-identical variants is scaled to
+allow six physical clients (four primary workbooks and two controls). The
+estimate adds 50% and 1 GiB, rounds up to whole GiB, and never exceeds the
+configured resident limit. The chosen limit is enforced on that group's Excel
+job. Rust retains its full configured limit, COM retains its own limit, and each
+group additionally reserves 1 GiB for helpers. The system reserve is 10% of total
+RAM rounded up to GiB, with a minimum of 4 and maximum of 8 GiB. Both free RAM and
+commit headroom must accommodate all admitted groups and this reserve.
+
+If another application consumes the available memory, the runner waits between
+waves without holding Excel processes. Limits that cannot fit even one group on
+the machine are rejected with a configuration error. A failure under a reduced
+Excel limit resets calibration and receives one sequential paired retry, except
+for known unresolved drawing boundaries. The original attempt remains visible;
+incomplete measurements never justify increasing concurrency.
 
 For an existing checkout with prepared bundles, retain any separately reviewed
 `--reuse-prepared-from FULL_SHA256` arguments from its current launcher. A new
@@ -105,7 +140,9 @@ Before the first real run, append `--selection-only` to the assigned command to
 inspect the selected files without shrinking or starting Excel. It writes
 `.tmp/regression/study/selection-manifest.json` and a content-addressed copy under
 `selections/`. The manifest records the full ordered catalog, sizes, selected rank
-bounds, source fingerprint and catalog hash. `--selection-manifest PATH` writes
+bounds, source fingerprint, catalog hash and requested processing order. The
+catalog itself remains ascending so the partition ranks stay comparable across
+orders. `--selection-manifest PATH` writes
 an additional copy. A partition's completed work is never presented as completion
 of the entire three-corpus study.
 
@@ -151,13 +188,15 @@ The resident mode keeps the original and its cleaning variants open for visual
 comparison. Enable it explicitly on a machine with enough available RAM:
 
 ```powershell
-& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM --resident-capture --comparison-workers 2
+& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
 ```
 
 Retain the existing `--reuse-prepared-from` arguments when resuming. The default
-remains the sequential paired capture. `--comparison-workers` accepts 1 through 3;
+remains the sequential paired capture. `--comparison-workers` accepts 1 through 16;
 it controls source workbooks, each of which can have several Excel instances.
-More than one worker requires `--resident-capture`.
+More than one worker and `--adaptive-concurrency` require `--resident-capture`.
+Without the adaptive flag, the requested fixed batch size is still limited by
+available memory; no calibration changes the configured allocation limits.
 
 Workers first send tile dimensions and PNG SHA-256 digests. Only differing tiles
 are transferred for exact pixel comparison. Certified byte-identical workbooks
@@ -176,20 +215,34 @@ protects Office/WebView resources that can be shared between Excel processes.
 Completed results are checkpointed before this wait; waiting does not consume
 the workbook's processing deadline. Parent loss and bounded cleanup still apply.
 
-Admission adds each group's configured Rust limit and Excel limit, then keeps
+Without adaptive concurrency, admission adds each group's configured Rust limit
+and Excel limit, then keeps
 4 GiB for the system. Excel's resident-session limit defaults to 16 GiB; a larger
 configured COM limit also counts. With GOTHAM's 8 GiB Rust limit, two groups need
 52 GiB available and three need 76 GiB. Unknown available memory falls back to
 one worker. These checks do not lower either allocation limit.
-The record retains actual batch size, reserved limits, capture method, session memory and machine
-provenance. These are throughput runs for visual regression; opening times under
+
+Adaptive concurrency uses the observed peaks to choose an enforced Excel session
+limit for the next batch, bounded by the configured resident limit. It retains the
+full configured Rust and COM limits, reserves another 1 GiB per group for helpers,
+and keeps 4–8 GiB for the system. Admission checks the sum of these effective
+limits against both available physical RAM and commit capacity. It holds pending
+work when even one group cannot safely fit. The first calibration may also need
+a lower Excel limit on a small machine; a laptop with 16 GiB cannot reserve a
+4 GiB Rust worker plus a 16 GiB Excel session and system memory simultaneously.
+No manual lowering of environment limits is assumed by the commands above.
+
+The requested order and concurrency settings remain in the run metadata. Each
+record retains actual batch size, effective and reserved limits, capture method,
+session memory and machine provenance. These are throughput runs for visual regression; opening times under
 concurrent load should not be pooled with an isolated performance experiment.
 
-If a primary resident check hits an image-budget error, a taskpane restart, or
-Excel's `InvalidOperationInCellEditMode` error, it
+If a primary resident check hits an image-budget error, a taskpane restart,
+Excel's `InvalidOperationInCellEditMode` error, or its reduced adaptive Excel limit, it
 gets one sequential retry through the existing paired path after the batch has
-finished. The original failure and retry mode remain in the record. Other errors
-are not automatically retried.
+finished. The retry uses the full configured budgets and must also fit available
+memory; otherwise it remains pending. The original failure and retry mode remain
+in the record. Other errors are not automatically retried.
 
 ## Export completed work and merge on GOTHAM
 

@@ -3,22 +3,12 @@ use super::*;
 #[test]
 fn portable_result_commands_keep_machine_alias_and_repeatable_imports() -> Result<()> {
     let args = StudyArgs::try_parse_from([
-        "study",
-        "--report-only",
-        "--machine-label",
-        "Enron laptop 1",
-        "--import-results",
-        "one.zip",
-        "--import-results",
-        "two.zip",
-        "--export-results",
-        "combined.zip",
+        "study", "--report-only", "--machine-label", "Enron laptop 1",
+        "--import-results", "one.zip", "--import-results", "two.zip",
+        "--export-results", "combined.zip",
     ])?;
     assert_eq!(args.machine_label.as_deref(), Some("Enron laptop 1"));
-    assert_eq!(
-        args.import_results,
-        vec![PathBuf::from("one.zip"), PathBuf::from("two.zip")]
-    );
+    assert_eq!(args.import_results, vec![PathBuf::from("one.zip"), PathBuf::from("two.zip")]);
     assert_eq!(args.export_results, Some(PathBuf::from("combined.zip")));
     assert!(args.report_only);
     Ok(())
@@ -57,10 +47,7 @@ fn a_blocked_dashboard_preserves_records_and_recovers_at_the_next_checkpoint() -
     let mut annotated = record.clone();
     diagnosis_report::ensure_whitespace_diagnosis(&mut annotated);
     assert_eq!(report["workbooks"], json!([annotated]));
-    assert_eq!(
-        report["workbooks"][0]["whitespace_diagnosis"]["status"],
-        "not_investigated"
-    );
+    assert_eq!(report["workbooks"][0]["whitespace_diagnosis"]["status"], "not_investigated");
     assert_eq!(report["phase"], "shrinking");
     assert_eq!(fs::read(&path)?, saved);
     fs::remove_dir_all(output)?;
@@ -237,11 +224,9 @@ fn imports_verified_files_without_restarting_them_and_queues_prior_differences()
         records.iter().filter(|r| r["complete"] == true).count(),
         327
     );
-    assert!(
-        records[..326]
-            .iter()
-            .all(|r| r["previously_verified"] == true)
-    );
+    assert!(records[..326]
+        .iter()
+        .all(|r| r["previously_verified"] == true));
     assert_eq!(records[0]["name"], "file-0.xlsx");
     assert_eq!(records[0]["results"][0]["reduction_ratio"], 0.9);
     assert!(records[0]["results"][0]["shrink_seconds"].is_null());
@@ -292,7 +277,7 @@ fn retry_discards_old_evidence_even_when_preparation_or_unpacking_fails() -> Res
         bundle: Some(invalid),
         run_manifest: None,
         resident_capture: false,
-        cleanup_barrier: None,
+            cleanup_barrier: None,
     };
     for mode in [JobMode::Prepare, JobMode::Compare] {
         job.mode = mode;
@@ -343,11 +328,12 @@ fn comparison_batches_are_opt_in_and_bounded() -> Result<()> {
     let defaults = StudyArgs::try_parse_from(["study"])?;
     assert_eq!(defaults.comparison_workers, 1);
     assert!(!defaults.resident_capture);
+    assert!(!defaults.adaptive_concurrency);
     let parallel =
         StudyArgs::try_parse_from(["study", "--resident-capture", "--comparison-workers", "3"])?;
     assert_eq!(parallel.comparison_workers, 3);
     assert!(parallel.resident_capture);
-    for invalid in ["0", "4", "-1"] {
+    for invalid in ["0", "17", "-1"] {
         assert!(StudyArgs::try_parse_from(["study", "--comparison-workers", invalid]).is_err());
     }
     let unsupported = StudyArgs::try_parse_from(["study", "--comparison-workers", "2"])?;
@@ -359,13 +345,24 @@ fn comparison_batches_are_opt_in_and_bounded() -> Result<()> {
 }
 
 #[test]
-fn processing_order_is_an_explicit_cli_option() -> Result<()> {
+fn processing_order_and_adaptive_ceiling_are_explicit_cli_options() -> Result<()> {
     let defaults = StudyArgs::try_parse_from(["study"])?;
     assert_eq!(defaults.order, selection::ProcessingOrder::Priority);
-    let descending = StudyArgs::try_parse_from(["study", "--order", "size-desc"])?;
-    assert_eq!(descending.order, selection::ProcessingOrder::SizeDesc);
+    let args = StudyArgs::try_parse_from([
+        "study",
+        "--order",
+        "size-desc",
+        "--resident-capture",
+        "--adaptive-concurrency",
+        "--comparison-workers",
+        "16",
+    ])?;
+    assert_eq!(args.order, selection::ProcessingOrder::SizeDesc);
+    assert!(args.adaptive_concurrency);
+    assert_eq!(args.comparison_workers, 16);
     let ascending = StudyArgs::try_parse_from(["study", "--order", "size-asc"])?;
     assert_eq!(ascending.order, selection::ProcessingOrder::SizeAsc);
     assert!(StudyArgs::try_parse_from(["study", "--order", "random"]).is_err());
+    assert!(StudyArgs::try_parse_from(["study", "--adaptive-concurrency"]).is_err());
     Ok(())
 }
