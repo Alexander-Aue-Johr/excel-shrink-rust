@@ -19,7 +19,7 @@ const SYSTEM_RESERVE: u64 = 4 * GIB;
 pub(super) fn compare(
     source: &Source,
     jobs: Vec<Comparison>,
-    requested: u8,
+    requested: usize,
     output: &Path,
     records: &mut Vec<Value>,
     corpora: &[Value],
@@ -307,11 +307,13 @@ fn configured_excel_limit(name: &str, default_mib: u64, minimum_mib: u64) -> Res
     Ok(mib * 1_048_576)
 }
 
-fn admitted_workers(requested: u8, available: Option<u64>, budget: MemoryBudget) -> usize {
+fn admitted_workers(requested: usize, available: Option<u64>, budget: MemoryBudget) -> usize {
     let affordable = available
         .map(|bytes| bytes.saturating_sub(SYSTEM_RESERVE) / budget.total())
         .unwrap_or(1);
-    affordable.max(1).min(u64::from(requested)) as usize
+    usize::try_from(affordable.max(1))
+        .unwrap_or(usize::MAX)
+        .min(requested)
 }
 
 fn configured_reserves() -> Result<(Option<u64>, u64)> {
@@ -445,6 +447,9 @@ mod tests {
         assert_eq!(admitted_workers(2, Some(100 * GIB), budget), 2);
         assert_eq!(admitted_workers(3, None, budget), 1);
         assert_eq!(admitted_workers(3, Some(0), budget), 1);
+        assert_eq!(admitted_workers(24, Some(1024 * GIB), budget), 24);
+        assert_eq!(admitted_workers(256, Some(76 * GIB), budget), 3);
+        assert_eq!(admitted_workers(usize::MAX, Some(76 * GIB), budget), 3);
         let defaults = MemoryBudget {
             worker: 4 * GIB,
             excel: 16 * GIB,

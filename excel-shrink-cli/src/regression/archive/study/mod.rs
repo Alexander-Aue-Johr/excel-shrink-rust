@@ -66,9 +66,14 @@ pub(in crate::regression) struct StudyArgs {
     /// Keep original and shrink variants open for hash-first visual comparisons.
     #[arg(long)]
     resident_capture: bool,
-    /// Maximum concurrent comparisons; preparation remains serial.
-    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
-    comparison_workers: u8,
+    /// Maximum concurrent comparisons: 8 in resident mode, 1 otherwise. Preparation stays serial.
+    #[arg(
+        long,
+        default_value_t = 1,
+        default_value_if("resident_capture", "true", "8"),
+        value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..)
+    )]
+    comparison_workers: usize,
     /// Calibrate one complete workbook, then grow fixed batches from measured memory peaks.
     #[arg(long, requires = "resident_capture")]
     adaptive_concurrency: bool,

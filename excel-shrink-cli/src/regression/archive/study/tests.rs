@@ -324,16 +324,28 @@ fn stable_ids_are_explicit_and_legacy_ids_are_unchanged() -> Result<()> {
 }
 
 #[test]
-fn comparison_batches_are_opt_in_and_bounded() -> Result<()> {
+fn comparison_workers_default_by_capture_mode_and_allow_explicit_overrides() -> Result<()> {
     let defaults = StudyArgs::try_parse_from(["study"])?;
     assert_eq!(defaults.comparison_workers, 1);
     assert!(!defaults.resident_capture);
     assert!(!defaults.adaptive_concurrency);
-    let parallel =
-        StudyArgs::try_parse_from(["study", "--resident-capture", "--comparison-workers", "3"])?;
-    assert_eq!(parallel.comparison_workers, 3);
-    assert!(parallel.resident_capture);
-    for invalid in ["0", "17", "-1"] {
+    let resident = StudyArgs::try_parse_from(["study", "--resident-capture"])?;
+    assert_eq!(resident.comparison_workers, 8);
+    let adaptive =
+        StudyArgs::try_parse_from(["study", "--resident-capture", "--adaptive-concurrency"])?;
+    assert_eq!(adaptive.comparison_workers, 8);
+    for count in [1, 3, 24, 256, usize::MAX] {
+        let value = count.to_string();
+        for args in [
+            ["study", "--resident-capture", "--comparison-workers", &value],
+            ["study", "--comparison-workers", &value, "--resident-capture"],
+        ] {
+            let parallel = StudyArgs::try_parse_from(args)?;
+            assert_eq!(parallel.comparison_workers, count);
+            assert!(parallel.resident_capture);
+        }
+    }
+    for invalid in ["0", "-1", "1.5", "18446744073709551616"] {
         assert!(StudyArgs::try_parse_from(["study", "--comparison-workers", invalid]).is_err());
     }
     let unsupported = StudyArgs::try_parse_from(["study", "--comparison-workers", "2"])?;
@@ -355,11 +367,11 @@ fn processing_order_and_adaptive_ceiling_are_explicit_cli_options() -> Result<()
         "--resident-capture",
         "--adaptive-concurrency",
         "--comparison-workers",
-        "16",
+        "24",
     ])?;
     assert_eq!(args.order, selection::ProcessingOrder::SizeDesc);
     assert!(args.adaptive_concurrency);
-    assert_eq!(args.comparison_workers, 16);
+    assert_eq!(args.comparison_workers, 24);
     let ascending = StudyArgs::try_parse_from(["study", "--order", "size-asc"])?;
     assert_eq!(ascending.order, selection::ProcessingOrder::SizeAsc);
     assert!(StudyArgs::try_parse_from(["study", "--order", "random"]).is_err());

@@ -138,7 +138,10 @@ Machine 6 handles Destatis (retain its reviewed memory settings, or the defaults
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Destatis --machine-label DESTATIS-1 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 4
 ```
 
-The worker counts are upper limits. Each adaptive invocation first compares one
+The worker counts are upper limits. Resident mode defaults to eight groups;
+an explicit `--comparison-workers` value replaces that default without a fixed
+application ceiling. For example, `--comparison-workers 24` permits up to 24
+groups, subject to the same memory admission checks. Each adaptive invocation first compares one
 whole workbook, including any whitespace controls, alone. It then admits fixed
 batches using the measured memory peaks and available memory, increasing the
 batch size by at most one worker at a time. Preparation remains serial. On the
@@ -249,9 +252,12 @@ Remove-Item Env:EXCEL_SHRINK_HELPER_RESERVE_MIB -ErrorAction SilentlyContinue
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
 ```
 
-Retain the existing `--reuse-prepared-from` arguments when resuming. The default
-remains the sequential paired capture. `--comparison-workers` accepts 1 through 16;
-it controls source workbooks, each of which can have several Excel instances.
+Retain the existing `--reuse-prepared-from` arguments when resuming. Without
+`--resident-capture`, the default remains sequential paired capture with one
+worker. Resident mode defaults to eight groups. `--comparison-workers` accepts
+any positive integer representable by the platform's native count type; an
+explicit value replaces the default, including values above 16 or 255. It
+controls source workbooks, each of which can have several Excel instances.
 More than one worker and `--adaptive-concurrency` require `--resident-capture`.
 Without the adaptive flag, the requested fixed batch size is still limited by
 available memory; no calibration changes the configured allocation limits.

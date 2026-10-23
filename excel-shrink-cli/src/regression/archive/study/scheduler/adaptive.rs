@@ -43,9 +43,9 @@ pub(super) struct Controller {
 }
 
 impl Controller {
-    pub fn new(requested: u8, config: Config) -> Self {
+    pub fn new(requested: usize, config: Config) -> Self {
         Self {
-            requested: usize::from(requested),
+            requested,
             config,
             width_ceiling: 1,
             normalized_peaks: VecDeque::new(),
@@ -300,6 +300,35 @@ mod tests {
         assert_eq!(controller.plan(memory(), 2)?.workers, 2);
         controller.observe(&vec![completed(GIB, 6); 2]);
         assert_eq!(controller.plan(memory(), 100)?.workers, 3);
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_ceilings_above_sixteen_keep_memory_and_growth_limits() -> Result<()> {
+        let plentiful = Memory {
+            physical: 1024 * GIB,
+            commit: 1024 * GIB,
+            total_physical: 1024 * GIB,
+        };
+        for requested in [24, 256, usize::MAX] {
+            let mut controller = Controller::new(requested, controller().config);
+            for width in 1..=24 {
+                assert_eq!(controller.plan(plentiful, 100)?.workers, width);
+                controller.observe(&vec![completed(GIB, 6); width]);
+            }
+            assert_eq!(controller.plan(plentiful, 100)?.workers, requested.min(25));
+            assert_eq!(controller.plan(plentiful, 2)?.workers, 2);
+            let low_commit = Memory {
+                commit: 42 * GIB,
+                ..plentiful
+            };
+            assert_eq!(controller.plan(low_commit, 100)?.workers, 2);
+            let low_ram = Memory {
+                physical: 42 * GIB,
+                ..plentiful
+            };
+            assert_eq!(controller.plan(low_ram, 100)?.workers, 2);
+        }
         Ok(())
     }
 
