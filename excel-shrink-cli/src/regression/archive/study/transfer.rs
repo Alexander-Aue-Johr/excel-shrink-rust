@@ -24,6 +24,8 @@ struct Manifest {
     package_id: String,
     created_unix_ms: u64,
     records: Vec<String>,
+    #[serde(default)]
+    excluded_missing_source_fingerprint: Vec<String>,
     sources: BTreeMap<String, String>,
     entries: Vec<Entry>,
 }
@@ -47,6 +49,7 @@ pub(super) fn export_package_locked(
     );
     let mut paths = BTreeSet::new();
     let mut records = Vec::new();
+    let mut excluded_missing_source_fingerprint = Vec::new();
     let mut sources = BTreeMap::new();
     for entry in fs::read_dir(output.join("records"))? {
         let path = entry?.path();
@@ -58,6 +61,12 @@ pub(super) fn export_package_locked(
             continue;
         }
         let (identity, key, corpus) = validate_record(&record)?;
+        if record["source_fingerprint"].as_str().is_none() {
+            // An unchanged corpus URL does not prove which historical ZIP was
+            // measured. Preserve this omission explicitly instead of guessing.
+            excluded_missing_source_fingerprint.push(identity.to_owned());
+            continue;
+        }
         ensure!(
             path.file_name().and_then(|v| v.to_str()) == Some(&format!("{key}.json")),
             "record filename does not match identity"
@@ -78,7 +87,7 @@ pub(super) fn export_package_locked(
         evidence_paths(&record, &mut paths)?;
         add_metadata(output, &record, &mut paths)?;
     }
-    ensure!(!records.is_empty(), "no completed records to export");
+    ensure!(!records.is_empty(), "no completed records with a source catalog fingerprint to export; {} historical records excluded", excluded_missing_source_fingerprint.len());
     let mut entries = Vec::new();
     let mut total = 0u64;
     for name in paths {
@@ -101,6 +110,7 @@ pub(super) fn export_package_locked(
         package_id: provenance::new_uuid()?,
         created_unix_ms: provenance::now_ms(),
         records,
+        excluded_missing_source_fingerprint,
         sources,
         entries,
     };
@@ -135,7 +145,8 @@ pub(super) fn export_package_locked(
     saved?;
     Ok(
         json!({"package":package,"sha256":artifact_cache::hash_file(package)?,
-        "records":manifest.records.len(),"entries":manifest.entries.len(),"payload_bytes":total}),
+        "records":manifest.records.len(),"entries":manifest.entries.len(),"payload_bytes":total,
+        "excluded_missing_source_fingerprint":manifest.excluded_missing_source_fingerprint}),
     )
 }
 
@@ -281,7 +292,8 @@ pub(super) fn import_package_locked(
     let receipt = json!({"schema_version":VERSION,"package_id":manifest.package_id,
         "package_sha256":package_hash,"imported_unix_ms":provenance::now_ms(),
         "added":added,"identical":identical,"conflicts":conflicts,
-        "verified_snapshot":format!("imports/{package_hash}")});
+        "verified_snapshot":format!("imports/{package_hash}"),
+        "excluded_missing_source_fingerprint":manifest.excluded_missing_source_fingerprint});
     artifact_cache::atomic_write(&receipt_path, &serde_json::to_vec_pretty(&receipt)?)?;
     Ok(receipt)
 }
@@ -783,6 +795,39 @@ mod tests {
         )
         .contains("SHA-256 mismatch"));
         assert_eq!(fs::read_dir(target.join("records"))?.count(), 0);
+        fs::remove_dir_all(source)?;
+        fs::remove_dir_all(target)?;
+        Ok(())
+    }
+
+    #[test]
+    fn historical_records_without_catalog_fingerprints_are_explicitly_excluded() -> Result<()> {
+        let (source, _, mut expected) = fixture("transfer-legacy-catalog")?;
+        let target = super::super::tests::test_directory("transfer-legacy-catalog-target")?;
+        let legacy_corpus = "e".repeat(64);
+        let legacy_id = format!("{legacy_corpus}:1:historical.xlsx");
+        let legacy = json!({"identity":legacy_id,"corpus_id":legacy_corpus,
+            "member_name":"historical.xlsx","complete":true,"status":"skipped","results":[]});
+        expected.insert(legacy_corpus.clone(), "f".repeat(64));
+        write_record(&record_path(&source, &legacy_id), &legacy)?;
+        let package = source.join("results.zip");
+        let exported = export_package(&source, &package)?;
+        assert_eq!(exported["records"], 1);
+        assert_eq!(
+            exported["excluded_missing_source_fingerprint"],
+            json!([legacy_id])
+        );
+        let imported = import_package(&target, &package, &expected)?;
+        assert_eq!(imported["added"], 1);
+        assert_eq!(
+            imported["excluded_missing_source_fingerprint"],
+            json!([legacy_id])
+        );
+        assert!(!record_path(&target, &legacy_id).exists());
+        assert!(record_path(&source, &legacy_id).is_file());
+        assert!(
+            validate_sources(&BTreeMap::from([(legacy_corpus, String::new())]), &expected).is_err()
+        );
         fs::remove_dir_all(source)?;
         fs::remove_dir_all(target)?;
         Ok(())
