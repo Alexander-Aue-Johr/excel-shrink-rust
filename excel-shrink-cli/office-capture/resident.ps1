@@ -154,9 +154,24 @@ function Wait-BatchRelease {
     $ready = [string]$batchLifetime.ready_path
     [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($ready))
     $pending = $ready + '.' + [Guid]::NewGuid().ToString('N') + '.pending'
-    [IO.File]::WriteAllText($pending, (@{ launcher_pid=$PID; status=$metrics.status; ready_at=[DateTime]::UtcNow.ToString('o') } | ConvertTo-Json), $utf8)
+    [IO.File]::WriteAllText($pending, (@{ launcher_pid=$PID; status=$metrics.status; ready_at=[DateTime]::UtcNow.ToString('o'); opening_pause_millis=(Read-OtherGroupPauseMillis) } | ConvertTo-Json), $utf8)
     [ResidentProcesses]::PublishOnce($pending, $ready)
     Add-SessionEvent 'batch_wait_started' '' $null
+    # Rust or another observer may already have published readiness. Preserve
+    # its first timestamp and pause baseline; repeated waits cannot restart it.
+    $readyAge = [Math]::Max(0.0, ([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($ready)).TotalSeconds)
+    $waitCounter = $null
+    try {
+        $marker = Get-Item -LiteralPath $ready -ErrorAction Stop
+        if ($marker.Length -le 4096) {
+            $baseline = ([IO.File]::ReadAllText($ready, $utf8) | ConvertFrom-Json).opening_pause_millis
+            $parsed = [UInt64]0
+            if (($baseline -is [int] -or $baseline -is [long] -or $baseline -is [uint64]) -and
+                [UInt64]::TryParse([string]$baseline, [ref]$parsed)) { $waitCounter = $parsed }
+        }
+    } catch { } # Old or malformed markers grant no historical pause credit.
+    $waitPauseSeconds = 0.0
+    $waitActiveSeconds = $readyAge
     $wait = [Diagnostics.Stopwatch]::StartNew()
     $reason = 'released'
     while (-not (Test-Path -LiteralPath ([string]$batchLifetime.release_path))) {
@@ -169,15 +184,29 @@ function Wait-BatchRelease {
         $metrics.minimum_available_bytes = [Math]::Min([UInt64]$metrics.minimum_available_bytes, $available)
         $metrics.minimum_commit_bytes = [Math]::Min([UInt64]$metrics.minimum_commit_bytes, $commit)
         if ($available -lt $systemReserveBytes -or $commit -lt $systemReserveBytes) { $reason='memory_guard'; break }
-        if ($wait.Elapsed.TotalSeconds -ge [double]$batchLifetime.timeout_seconds) { $reason='timeout'; break }
+        Update-OtherGroupPause
+        $wall = $readyAge + $wait.Elapsed.TotalSeconds
+        $counter = Read-OtherGroupPauseMillis
+        if ($null -ne $counter) {
+            if ($null -eq $waitCounter) { $waitCounter = $counter }
+            elseif ($counter -gt $waitCounter) {
+                $waitPauseSeconds = [Math]::Min($wall, $waitPauseSeconds + ($counter - $waitCounter) / 1000.0)
+                $waitCounter = $counter
+            }
+        }
+        $waitActiveSeconds = [Math]::Max(0.0, $wall - $waitPauseSeconds)
+        if ($waitActiveSeconds -ge [double]$batchLifetime.timeout_seconds) { $reason='timeout'; break }
         if ($metricsClock.ElapsedMilliseconds -ge 1000) {
-            Update-OtherGroupPause
             $metrics.batch_wait_seconds = $wait.Elapsed.TotalSeconds
+            $metrics.batch_wait_active_seconds = $waitActiveSeconds
+            $metrics.batch_wait_opening_pause_seconds = $waitPauseSeconds
             Write-ResourceMetrics
         }
         Start-Sleep -Milliseconds 200
     }
     $metrics.batch_wait_seconds = $wait.Elapsed.TotalSeconds
+    $metrics.batch_wait_active_seconds = $waitActiveSeconds
+    $metrics.batch_wait_opening_pause_seconds = $waitPauseSeconds
     $metrics.batch_release_reason = $reason
     $script:batchReleased = $true
     $script:batchReleaseReason = $reason

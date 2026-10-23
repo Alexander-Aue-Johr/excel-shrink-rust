@@ -1,7 +1,7 @@
 //! Keep the original and profile workbooks open while exchanging tile digests.
 //! Only unequal tiles (or row-height evidence) cross the local image endpoint.
 use super::*;
-use crate::regression::archive::batch_cleanup;
+use crate::regression::archive::{batch_cleanup, opening_pause::OpeningPause};
 use crate::regression::{artifact_cache, visual_compare, visual_validation};
 use serde::Serialize;
 use std::process::{Child, Stdio};
@@ -447,7 +447,11 @@ impl ResidentCapture {
             .join("responses")
             .join(&client)
             .join(format!("{command}.json"));
-        let started = Instant::now();
+        let mut clock = OpeningPause::new(
+            self.cleanup_barrier
+                .as_ref()
+                .and_then(|barrier| barrier.pause_path.as_deref()),
+        );
         loop {
             let failure = self.directory.join("launcher-error.json");
             if failure.is_file() {
@@ -471,8 +475,10 @@ impl ResidentCapture {
                 bail!("resident Excel launcher exited ({status}): {detail}");
             }
             ensure!(
-                started.elapsed() < self.timeout,
-                "resident command deadline exceeded: {client}/{command}"
+                clock.active_elapsed() < self.timeout,
+                "resident command deadline exceeded: {client}/{command}; {:.1}s wall time, {:.1}s opening pause",
+                clock.wall_elapsed().as_secs_f64(),
+                clock.credited().as_secs_f64()
             );
             std::thread::sleep(Duration::from_millis(100));
         }

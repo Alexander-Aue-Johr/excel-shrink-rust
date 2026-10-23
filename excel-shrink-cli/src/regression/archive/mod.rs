@@ -7,6 +7,7 @@ use std::time::Duration;
 use zip::ZipArchive;
 
 pub(in crate::regression) mod batch_cleanup;
+pub(in crate::regression) mod opening_pause;
 mod download;
 mod study;
 mod worker;

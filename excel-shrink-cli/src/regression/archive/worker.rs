@@ -256,7 +256,9 @@ fn wait_for_worker(
     cleanup_barrier: Option<&batch_cleanup::Participant>,
     mut on_progress: impl FnMut() -> Result<()>,
 ) -> Result<()> {
-    let started = Instant::now();
+    let mut clock = opening_pause::OpeningPause::new(
+        cleanup_barrier.and_then(|barrier| barrier.pause_path.as_deref()),
+    );
     let mut last_notice = Instant::now();
     loop {
         on_progress()?;
@@ -272,18 +274,21 @@ fn wait_for_worker(
         if cleanup_barrier.is_some_and(|barrier| barrier.waiting_expired()) {
             anyhow::bail!("resident batch cleanup barrier timed out");
         }
-        if started.elapsed() >= timeout
+        if clock.active_elapsed() >= timeout
             && !cleanup_barrier.is_some_and(|barrier| barrier.deadline_paused())
         {
             return Err(anyhow::anyhow!(
-                "workbook timed out after {} seconds",
-                timeout.as_secs_f64()
+                "workbook timed out after {} active seconds ({:.1}s wall time, {:.1}s opening pause)",
+                timeout.as_secs_f64(),
+                clock.wall_elapsed().as_secs_f64(),
+                clock.credited().as_secs_f64()
             ));
         }
         if last_notice.elapsed() >= Duration::from_secs(30) {
             eprintln!(
-                "[archive] Workbook running · {:.0}s elapsed",
-                started.elapsed().as_secs_f64()
+                "[archive] Workbook running · {:.0}s elapsed; {:.0}s opening pause",
+                clock.wall_elapsed().as_secs_f64(),
+                clock.credited().as_secs_f64()
             );
             last_notice = Instant::now();
         }
@@ -687,6 +692,75 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn peer_opening_time_is_excluded_from_both_worker_deadlines() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "opening-watchdog")?;
+        fs::create_dir(&root)?;
+        fs::write(root.join("parent-heartbeat"), b"running")?;
+        let batch = batch_cleanup::Batch::new(&root, 2, 5)?;
+        let mut participant = batch.participant(0);
+        let pause = root.join("opening-pause.json");
+        participant.pause_path = Some(pause.clone());
+        fs::write(&pause, br#"{"elapsed_millis":0}"#)?;
+        fs::write(root.join("barrier.json"), serde_json::to_vec(&participant)?)?;
+        let mut child = Command::new(std::env::current_exe()?)
+            .args([
+                "--exact",
+                "regression::archive::worker::tests::opening_pause_test_child",
+                "--nocapture",
+            ])
+            .env("EXCEL_SHRINK_OPENING_PAUSE_TEST_ROOT", &root)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let started = Instant::now();
+        let outcome = wait_for_worker(
+            &mut child,
+            Duration::from_secs(1),
+            Some(&participant),
+            || {
+                artifact_cache::atomic_write(
+                    &pause,
+                    &serde_json::to_vec(&json!({"elapsed_millis":started.elapsed().as_millis()}))?,
+                )
+            },
+        );
+        if outcome.is_err() {
+            let _ = child.kill();
+        }
+        let output = child.wait_with_output()?;
+        assert!(
+            outcome.is_ok(),
+            "{outcome:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.status.success());
+        // This was an active comparison, not a completed cleanup-barrier wait.
+        assert!(!participant.ready());
+        drop(batch);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn opening_pause_test_child() -> Result<()> {
+        let Some(root) = std::env::var_os("EXCEL_SHRINK_OPENING_PAUSE_TEST_ROOT") else {
+            return Ok(());
+        };
+        let root = PathBuf::from(root);
+        let participant = serde_json::from_slice(&fs::read(root.join("barrier.json"))?)?;
+        let watchdog = WorkerWatchdog::start(
+            root.clone(),
+            root.join("parent-heartbeat"),
+            Duration::from_secs(1),
+            u64::MAX,
+            Some(participant),
+        );
+        std::thread::sleep(Duration::from_millis(2300));
+        drop(watchdog);
+        Ok(())
+    }
+
     #[cfg(unix)]
     #[test]
     fn deadline_kills_a_stuck_worker_and_allows_the_next_one_to_finish() -> Result<()> {
@@ -743,7 +817,11 @@ impl WorkerWatchdog {
     ) -> Self {
         let (stop, stopped) = std::sync::mpsc::channel();
         let thread = std::thread::spawn(move || {
-            let started = Instant::now();
+            let mut clock = opening_pause::OpeningPause::new(
+                cleanup_barrier
+                    .as_ref()
+                    .and_then(|barrier| barrier.pause_path.as_deref()),
+            );
             let mut memory_warning_logged = false;
             let mut telemetry_warning_logged = false;
             while stopped.recv_timeout(Duration::from_secs(2))
@@ -774,7 +852,7 @@ impl WorkerWatchdog {
                     .is_some_and(|barrier| barrier.waiting_expired())
                 {
                     Some("resident batch cleanup barrier timed out")
-                } else if started.elapsed() > timeout
+                } else if clock.active_elapsed() > timeout
                     && !cleanup_barrier
                         .as_ref()
                         .is_some_and(|barrier| barrier.deadline_paused())
@@ -787,7 +865,11 @@ impl WorkerWatchdog {
                 };
                 if let Some(reason) = reason {
                     log_memory_usage(memory, memory_limit);
-                    eprintln!("[archive] {reason}; closing owned Excel processes");
+                    eprintln!(
+                        "[archive] {reason}; {:.1}s wall time, {:.1}s opening pause; closing owned Excel processes",
+                        clock.wall_elapsed().as_secs_f64(),
+                        clock.credited().as_secs_f64()
+                    );
                     if parent_alive {
                         if let Some(barrier) = &cleanup_barrier {
                             // Keep peer sessions alive while this failed worker
