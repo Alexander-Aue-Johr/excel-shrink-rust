@@ -188,6 +188,15 @@ pub(super) fn launch(
         .stdin(Stdio::null())
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log));
+    if job.resident_capture {
+        let record: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
+        if let Some(mib) = resident_memory_limit_mib(&record)? {
+            // Each adaptive wave chooses its own Excel budget. Keep this local
+            // to the child so concurrent workers and classic retries retain
+            // their independently configured limits.
+            command.env("EXCEL_SHRINK_RESIDENT_MEMORY_MIB", mib.to_string());
+        }
+    }
     if let Some(barrier) = &job.cleanup_barrier {
         let config = job.work.join("batch-cleanup.json");
         fs::write(&config, serde_json::to_vec(barrier)?)?;
@@ -226,6 +235,19 @@ pub(super) fn launch(
     );
     running.stop()?;
     outcome
+}
+
+fn resident_memory_limit_mib(record: &Value) -> Result<Option<u64>> {
+    let value = &record["comparison_batch"]["resident_memory_limit_mib"];
+    if value.is_null() {
+        return Ok(None);
+    }
+    let mib = value.as_u64().filter(|mib| (1024..=65536).contains(mib));
+    ensure!(
+        mib.is_some(),
+        "comparison_batch.resident_memory_limit_mib must be an integer between 1024 and 65536"
+    );
+    Ok(mib)
 }
 
 fn wait_for_worker(
@@ -393,6 +415,33 @@ mod tests {
     use std::io::Write;
 
     #[test]
+    fn per_wave_resident_memory_limit_is_optional_and_bounded() -> Result<()> {
+        assert_eq!(resident_memory_limit_mib(&json!({}))?, None);
+        for mib in [1024, 4096, 16384, 65536] {
+            assert_eq!(
+                resident_memory_limit_mib(
+                    &json!({"comparison_batch":{"resident_memory_limit_mib":mib}})
+                )?,
+                Some(mib)
+            );
+        }
+        for value in [
+            json!(0),
+            json!(1023),
+            json!(65537),
+            json!(-1),
+            json!(1.5),
+            json!("4096"),
+        ] {
+            assert!(resident_memory_limit_mib(
+                &json!({"comparison_batch":{"resident_memory_limit_mib":value}})
+            )
+            .is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn extracts_one_member_and_rejects_parent_paths_and_size_overruns() -> Result<()> {
         let root = std::env::temp_dir().join(format!("archive-worker-test-{}", std::process::id()));
         fs::create_dir_all(&root)?;
@@ -528,6 +577,17 @@ mod tests {
             }
             assert_eq!(log.matches("Worker memory (").count(), 1, "{log}");
             assert!(log.contains(memory::METRIC), "{log}");
+            let measured: Value =
+                serde_json::from_slice(&fs::read(root.join("worker-memory.json"))?)?;
+            assert_eq!(measured["pid"], running.child.id());
+            assert_eq!(measured["metric"], memory::METRIC);
+            assert_eq!(measured["final_sample"], true);
+            assert!(measured["current_bytes"].as_u64().unwrap() > 0);
+            assert!(
+                measured["peak_bytes"].as_u64().unwrap()
+                    >= measured["current_bytes"].as_u64().unwrap()
+            );
+            assert!(measured["sampled_unix_ms"].as_u64().unwrap() > 0);
         }
         fs::remove_dir_all(root)?;
         Ok(())
@@ -685,6 +745,7 @@ impl WorkerWatchdog {
         let thread = std::thread::spawn(move || {
             let started = Instant::now();
             let mut memory_warning_logged = false;
+            let mut telemetry_warning_logged = false;
             while stopped.recv_timeout(Duration::from_secs(2))
                 == Err(std::sync::mpsc::RecvTimeoutError::Timeout)
             {
@@ -698,6 +759,13 @@ impl WorkerWatchdog {
                         None
                     }
                 };
+                record_memory_usage(
+                    &work,
+                    memory,
+                    memory_limit,
+                    false,
+                    &mut telemetry_warning_logged,
+                );
                 let parent_alive = batch_cleanup::parent_alive(&heartbeat);
                 let reason = if !parent_alive {
                     Some("parent runner stopped responding")
@@ -728,14 +796,58 @@ impl WorkerWatchdog {
                         }
                     }
                     let _ = cleanup_windows(&work);
+                    record_memory_usage(
+                        &work,
+                        memory::usage().ok().or(memory),
+                        memory_limit,
+                        true,
+                        &mut telemetry_warning_logged,
+                    );
                     std::process::exit(124);
                 }
             }
-            log_memory_usage(memory::usage().ok(), memory_limit);
+            let memory = memory::usage().ok();
+            record_memory_usage(
+                &work,
+                memory,
+                memory_limit,
+                true,
+                &mut telemetry_warning_logged,
+            );
+            log_memory_usage(memory, memory_limit);
         });
         Self {
             stop,
             thread: Some(thread),
+        }
+    }
+}
+
+fn record_memory_usage(
+    work: &Path,
+    usage: Option<memory::Usage>,
+    limit: u64,
+    final_sample: bool,
+    warning_logged: &mut bool,
+) {
+    let Some(usage) = usage else { return };
+    let sampled_unix_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let measured = json!({
+        "version":1,"pid":std::process::id(),"metric":memory::METRIC,
+        "current_bytes":usage.current_bytes,"peak_bytes":usage.peak_bytes,
+        "limit_bytes":limit,"sampled_unix_ms":sampled_unix_ms,
+        "final_sample":final_sample,
+    });
+    let saved = serde_json::to_vec(&measured)
+        .context("serialize worker memory measurement")
+        .and_then(|bytes| artifact_cache::atomic_write(&work.join("worker-memory.json"), &bytes));
+    if let Err(error) = saved {
+        if !*warning_logged {
+            eprintln!("[archive] Cannot save worker memory measurement: {error:#}");
+            *warning_logged = true;
         }
     }
 }

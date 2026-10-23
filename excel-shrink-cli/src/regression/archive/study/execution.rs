@@ -87,6 +87,7 @@ pub(super) fn run_record(
         state["last_execution"]["capture_mode"] = state["capture_mode"].clone();
         // The current attempt must not display metrics from an earlier session.
         state.as_object_mut().unwrap().remove("resident_capture");
+        state.as_object_mut().unwrap().remove("worker_memory");
     }
     write_record(&record, &state)?;
     let job = MemberJob {
@@ -139,6 +140,9 @@ pub(super) fn run_record(
         }
     }
     worker::cleanup_windows(&work)?;
+    if let Err(error) = retain_worker_memory(&mut result, &work) {
+        eprintln!("Could not preserve worker memory measurement: {error:#}");
+    }
     retain_visual_evidence(&mut result, &work, output, &key[..20], diagnosis_only);
     relative_images(&mut result, output);
     let failed =
@@ -162,6 +166,14 @@ pub(super) fn run_record(
     write_record(&record, &result)?;
     on_progress(&result, phase);
     Ok(result)
+}
+
+fn retain_worker_memory(record: &mut Value, work: &Path) -> Result<()> {
+    let path = work.join("worker-memory.json");
+    if path.is_file() {
+        record["worker_memory"] = serde_json::from_slice(&fs::read(path)?)?;
+    }
+    Ok(())
 }
 
 fn retain_visual_evidence(
@@ -341,6 +353,22 @@ fn clear_images(value: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn worker_memory_measurement_survives_work_directory_cleanup() -> Result<()> {
+        let work = super::super::tests::test_directory("worker-memory-record")?;
+        let measured = json!({"version":1,"metric":"private committed","current_bytes":1024,
+            "peak_bytes":2048,"limit_bytes":4096,"final_sample":true});
+        fs::write(
+            work.join("worker-memory.json"),
+            serde_json::to_vec(&measured)?,
+        )?;
+        let mut record = json!({});
+        retain_worker_memory(&mut record, &work)?;
+        fs::remove_dir_all(&work)?;
+        assert_eq!(record["worker_memory"], measured);
+        Ok(())
+    }
 
     #[test]
     fn classic_fallback_keeps_images_from_the_failed_resident_attempt() -> Result<()> {
