@@ -2,10 +2,10 @@ $ErrorActionPreference = 'Stop'
 $captureRoot = Split-Path -Parent $PSScriptRoot
 $registryScript = Join-Path $captureRoot '../src/regression/archive_processes.ps1'
 $root = Join-Path $env:TEMP ('es-archive-recovery-test-' + [Guid]::NewGuid().ToString('N'))
-$stage = Join-Path $root 'stage'
+$stage = Join-Path $env:TEMP ('es-office-capture-' + [Guid]::NewGuid().ToString('N'))
 $registry = Join-Path $root 'owners.jsonl'
 $childRecord = Join-Path $root 'child.txt'
-New-Item -ItemType Directory -Path $stage -Force | Out-Null
+New-Item -ItemType Directory -Path @($root, $stage) -Force | Out-Null
 $launcher = Join-Path $root 'launcher.ps1'
 @'
 param($RegistryScript, $RegistryPath, $StagePath, $CaptureRoot, $ChildRecord)
@@ -42,6 +42,20 @@ try {
     Write-Host 'PASS: stopped owned launcher and child, removed staging, ignored stale PID.'
 }
 finally {
-    if ($null -ne $owner) { Stop-Process -Id $owner.Id -Force -ErrorAction SilentlyContinue }
-    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+    # Use the same verified identity during test teardown; even a failed test
+    # must never stop a process merely because its old PID was recycled.
+    if (Test-Path -LiteralPath $registry) {
+        try { & $registryScript -RegistryPath $registry -Stop }
+        catch { Write-Warning $_.Exception.Message }
+    }
+    if ($null -ne $owner) { $owner.Dispose() }
+    $resolvedRoot = [IO.Path]::GetFullPath($root)
+    $tempRoot = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+    if (-not $resolvedRoot.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        ([IO.Path]::GetFileName($resolvedRoot) -notmatch '^es-archive-recovery-test-[0-9a-f]{32}$')) {
+        throw 'Refusing recovery-test cleanup outside its temporary directory.'
+    }
+    . $registryScript -RegistryPath ''
+    Remove-ArchiveStage $stage
+    Remove-Item -LiteralPath $resolvedRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
