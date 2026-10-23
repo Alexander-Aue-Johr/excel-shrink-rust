@@ -70,6 +70,10 @@ struct MemberJob {
     bundle: Option<PathBuf>,
     #[serde(default)]
     run_manifest: Option<Value>,
+    #[serde(default)]
+    resident_capture: bool,
+    #[serde(default)]
+    cleanup_barrier: Option<batch_cleanup::Participant>,
 }
 
 pub(super) fn run(args: ArchiveArgs, log_level: LogLevel) -> Result<()> {
@@ -223,6 +227,8 @@ pub(super) fn run(args: ArchiveArgs, log_level: LogLevel) -> Result<()> {
                 mode: JobMode::Legacy,
                 bundle: None,
                 run_manifest: None,
+                resident_capture: false,
+                cleanup_barrier: None,
             };
             let current = existing.unwrap_or(records.len());
             let pending = json!({"identity":identity,"name":job.name,"complete":false,"status":"in progress","results":[]});

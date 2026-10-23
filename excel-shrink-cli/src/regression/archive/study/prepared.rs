@@ -2,6 +2,7 @@
 use super::*;
 use std::io::Write;
 mod visual_reuse;
+mod resident;
 
 pub(super) const PROFILES: [&str; 3] = ["default", "maximum-cleaning", "too-aggressive-cleaning"];
 
@@ -155,6 +156,9 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             &serde_json::to_value(&original_metrics)?,
             &serde_json::to_value(metrics)?,
         )?;
+    }
+    if job.resident_capture {
+        return resident::compare(job, record);
     }
     let mut selected = None;
     let mut visual_comparisons = visual_reuse::VisualComparisons::default();
@@ -355,7 +359,7 @@ fn compare_profile(
     Ok(result)
 }
 
-fn reusable_visual_manifest(manifest: &artifact_cache::PackageManifest) -> bool {
+pub(super) fn reusable_visual_manifest(manifest: &artifact_cache::PackageManifest) -> bool {
     // Byte equality is insufficient for volatile functions or refresh-on-open.
     // Unknown calculation inputs also retain their independent render.
     !manifest.parts.is_empty()
@@ -381,6 +385,8 @@ mod tests {
             max_workbook_bytes: 1024,
             mode: JobMode::Prepare,
             bundle: Some(root.join("missing-prepared.zip")),
+            resident_capture: false,
+            cleanup_barrier: None,
             run_manifest: Some(
                 json!({"run_id":"00000000-0000-4000-8000-000000000002","machine_id":"new-pc-b","machine_manifest":"metadata/machines/b.json"}),
             ),

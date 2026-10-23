@@ -145,6 +145,51 @@ The run manifest identifies the actual executable by SHA-256. Its
 they do not claim which commit produced an arbitrary copied executable. Build
 from the clean final checkout and keep its runtime assets unchanged during a run.
 
+## Resident visual checks
+
+The resident mode keeps the original and its cleaning variants open for visual
+comparison. Enable it explicitly on a machine with enough available RAM:
+
+```powershell
+& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM --resident-capture --comparison-workers 2
+```
+
+Retain the existing `--reuse-prepared-from` arguments when resuming. The default
+remains the sequential paired capture. `--comparison-workers` accepts 1 through 3;
+it controls source workbooks, each of which can have several Excel instances.
+More than one worker requires `--resident-capture`.
+
+Workers first send tile dimensions and PNG SHA-256 digests. Only differing tiles
+are transferred for exact pixel comparison. Certified byte-identical workbooks
+can share a capture; volatile calculations and other runtime-dependent inputs
+prevent this reuse. Value checks still run for every cleaning profile.
+
+A whitespace control compares the original against the same cleaning profile
+with whitespace deletion disabled. It captures only tiles that differed in the
+primary comparison, or reuses those exact captures from an identical open
+variant. The report explicitly marks this limited control scope. An incomplete
+control remains unresolved.
+
+Parallel work runs in fixed batches. No replacement workbook starts, and no
+resident Excel session is cleaned up, until all peers finish or fail. This also
+protects Office/WebView resources that can be shared between Excel processes.
+Completed results are checkpointed before this wait; waiting does not consume
+the workbook's processing deadline. Parent loss and bounded cleanup still apply.
+
+Admission adds each group's configured Rust limit and Excel limit, then keeps
+4 GiB for the system. Excel's resident-session limit defaults to 16 GiB; a larger
+configured COM limit also counts. With GOTHAM's 8 GiB Rust limit, two groups need
+52 GiB available and three need 76 GiB. Unknown available memory falls back to
+one worker. These checks do not lower either allocation limit.
+The record retains actual batch size, reserved limits, capture method, session memory and machine
+provenance. These are throughput runs for visual regression; opening times under
+concurrent load should not be pooled with an isolated performance experiment.
+
+If a primary resident check hits an image-budget error or a taskpane restart, it
+gets one sequential retry through the existing paired path after the batch has
+finished. The original failure and retry mode remain in the record. Other errors
+are not automatically retried.
+
 ## Export completed work and merge on GOTHAM
 
 The transfer commands use the study directory's exclusive lock. Run them between

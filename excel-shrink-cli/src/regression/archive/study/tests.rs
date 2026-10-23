@@ -276,6 +276,8 @@ fn retry_discards_old_evidence_even_when_preparation_or_unpacking_fails() -> Res
         mode: JobMode::Prepare,
         bundle: Some(invalid),
         run_manifest: None,
+        resident_capture: false,
+            cleanup_barrier: None,
     };
     for mode in [JobMode::Prepare, JobMode::Compare] {
         job.mode = mode;
@@ -318,5 +320,27 @@ fn stable_ids_are_explicit_and_legacy_ids_are_unchanged() -> Result<()> {
     assert_eq!(first, "a".repeat(64));
     corpus.id = Some("invalid".into());
     assert!(corpus_id(&corpus).is_err());
+    Ok(())
+}
+
+#[test]
+fn comparison_batches_are_opt_in_and_bounded() -> Result<()> {
+    let defaults = StudyArgs::try_parse_from(["study"])?;
+    assert_eq!(defaults.comparison_workers, 1);
+    assert!(!defaults.resident_capture);
+    let parallel = StudyArgs::try_parse_from([
+        "study",
+        "--resident-capture",
+        "--comparison-workers",
+        "3",
+    ])?;
+    assert_eq!(parallel.comparison_workers, 3);
+    assert!(parallel.resident_capture);
+    for invalid in ["0", "4", "-1"] {
+        assert!(StudyArgs::try_parse_from(["study", "--comparison-workers", invalid]).is_err());
+    }
+    let unsupported = StudyArgs::try_parse_from(["study", "--comparison-workers", "2"])?;
+    assert!(format!("{:#}", run(unsupported, LogLevel::Warn).unwrap_err())
+        .contains("parallel workbook comparisons require --resident-capture"));
     Ok(())
 }

@@ -129,6 +129,15 @@ fn evidence_matches(previous: &Value, fresh: &Value, report_root: &Path) -> Resu
 }
 
 pub(super) fn diagnose(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
+    diagnose_with_session(job, record, log_level, None)
+}
+
+fn diagnose_with_session(
+    job: &MemberJob,
+    record: &mut Value,
+    log_level: LogLevel,
+    mut session: Option<&mut office_capture::ResidentCapture>,
+) -> Result<()> {
     let producer = artifact_cache::hash_file(&std::env::current_exe()?)?;
     provenance::retire(record, provenance::Stage::WhitespaceDiagnosis);
     record["whitespace_diagnosis"] = json!({"version":VERSION,"status":"running", "producer":producer,
@@ -184,7 +193,7 @@ pub(super) fn diagnose(job: &MemberJob, record: &mut Value, log_level: LogLevel)
         "baseline fingerprint changed"
     );
     record["whitespace_diagnosis"]["baseline_sha256"] = json!(baseline_hash);
-    let mut controls = BTreeMap::<(String, Vec<usize>), Value>::new();
+    let mut controls = BTreeMap::<(String, Vec<usize>, String), Value>::new();
     let mut reproductions = BTreeMap::<(String, Vec<usize>), Value>::new();
     for profile in candidates {
         let name = profile["profile"].as_str().unwrap();
@@ -225,11 +234,31 @@ pub(super) fn diagnose(job: &MemberJob, record: &mut Value, log_level: LogLevel)
         };
         let control = shrink(job, &original, name, false, log_level)?;
         let control_sha = artifact_cache::hash_file(&control)?;
-        let key = (control_sha.clone(), selected.iter().copied().collect());
-        let reused_control = controls.contains_key(&key);
+        let scope = match session.as_deref_mut() {
+            Some(session) => session.control_fingerprint(name, profile)?,
+            None => String::new(),
+        };
+        let key = (
+            control_sha.clone(),
+            selected.iter().copied().collect(),
+            scope,
+        );
+        let reusable = session.is_none()
+            || artifact_cache::manifest(&control)
+                .is_ok_and(|manifest| prepared::reusable_visual_manifest(&manifest));
+        let reused_control = reusable && controls.contains_key(&key);
         if !reused_control {
-            controls.insert(
-                key.clone(),
+            let result = if let Some(session) = session.as_deref_mut() {
+                session.compare_control(
+                    name,
+                    &control,
+                    profile,
+                    &job.work
+                        .join("whitespace")
+                        .join(name)
+                        .join("without-whitespace-deletion"),
+                )?
+            } else {
                 compare(
                     job,
                     &original,
@@ -237,8 +266,9 @@ pub(super) fn diagnose(job: &MemberJob, record: &mut Value, log_level: LogLevel)
                     name,
                     &selected,
                     "without-whitespace-deletion",
-                )?,
-            );
+                )?
+            };
+            controls.insert(key.clone(), result);
         }
         let mut residual = controls[&key].clone();
         let mut classifications = Vec::new();
@@ -286,6 +316,7 @@ pub(super) fn diagnose(job: &MemberJob, record: &mut Value, log_level: LogLevel)
             "control_config_hash":control_config.config_hash(), "control_flags":control_config.cli_args(),
             "control_sha256":control_sha, "reused_identical_control":reused_control,
             "sheets":classifications, "control":residual,
+            "capture_scope":if session.is_some() { "primary mismatch tiles" } else { "selected whole sheets" },
         }));
         write_record(&job.record, record)?;
     }
@@ -301,27 +332,52 @@ pub(super) fn run(job: &MemberJob, record: &mut Value, log_level: LogLevel) {
     }
 }
 
+pub(super) fn run_resident(
+    job: &MemberJob,
+    record: &mut Value,
+    log_level: LogLevel,
+    session: &mut office_capture::ResidentCapture,
+) {
+    if let Err(error) = diagnose_with_session(job, record, log_level, Some(session)) {
+        record["whitespace_diagnosis"]["version"] = json!(VERSION);
+        record["whitespace_diagnosis"]["status"] = json!("failed");
+        record["whitespace_diagnosis"]["error"] = json!(format!("{error:#}"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn running_diagnosis_checkpoint_has_its_own_machine_without_relabeling_comparison() -> Result<()> {
+    fn running_diagnosis_checkpoint_has_its_own_machine_without_relabeling_comparison() -> Result<()>
+    {
         let root = super::super::tests::test_directory("diagnosis-provenance-checkpoint")?;
-        let current = json!({"run_id":"00000000-0000-4000-8000-000000000002","machine_id":"diagnosis-pc"});
+        let current =
+            json!({"run_id":"00000000-0000-4000-8000-000000000002","machine_id":"diagnosis-pc"});
         let job: MemberJob = serde_json::from_value(json!({"archive":"unused.zip","index":0,
             "identity":"archive:0:file.xlsx","name":"file.xlsx","work":root,"record":root.join("record.json"),
             "report_root":root,"max_workbook_bytes":1024,"mode":"Diagnose","run_manifest":current}))?;
-        let old = json!({"run_id":"00000000-0000-4000-8000-000000000001","machine_id":"comparison-pc"});
+        let old =
+            json!({"run_id":"00000000-0000-4000-8000-000000000001","machine_id":"comparison-pc"});
         let mut record = json!({"results":[],"whitespace_diagnosis":{"status":"complete"}});
         provenance::stamp(&mut record, &old, provenance::Stage::Comparison);
         provenance::stamp(&mut record, &old, provenance::Stage::WhitespaceDiagnosis);
         diagnose(&job, &mut record, LogLevel::Warn)?;
         let checkpoint: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
         assert_eq!(checkpoint["whitespace_diagnosis"]["status"], "running");
-        assert_eq!(checkpoint["whitespace_diagnosis"]["provenance"]["machine_id"], "diagnosis-pc");
-        assert_eq!(checkpoint["provenance"]["comparison"]["machine_id"], "comparison-pc");
-        assert_eq!(checkpoint["provenance"]["history"][0]["reference"]["machine_id"], "comparison-pc");
+        assert_eq!(
+            checkpoint["whitespace_diagnosis"]["provenance"]["machine_id"],
+            "diagnosis-pc"
+        );
+        assert_eq!(
+            checkpoint["provenance"]["comparison"]["machine_id"],
+            "comparison-pc"
+        );
+        assert_eq!(
+            checkpoint["provenance"]["history"][0]["reference"]["machine_id"],
+            "comparison-pc"
+        );
         fs::remove_dir_all(root)?;
         Ok(())
     }

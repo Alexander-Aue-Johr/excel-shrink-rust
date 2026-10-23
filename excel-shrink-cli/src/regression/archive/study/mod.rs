@@ -2,10 +2,12 @@
 use super::*;
 
 mod execution;
+mod fallback;
 use super::verified as ledger;
 use execution::process;
 mod prepared;
 mod provenance;
+mod scheduler;
 mod selection;
 mod transfer;
 mod whitespace;
@@ -58,6 +60,12 @@ pub(in crate::regression) struct StudyArgs {
     /// Compare already prepared ZIP bundles without shrinking again.
     #[arg(long)]
     compare_only: bool,
+    /// Keep original and shrink variants open for hash-first visual comparisons.
+    #[arg(long)]
+    resident_capture: bool,
+    /// Compare this many workbooks in fixed batches; preparation remains serial.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=3))]
+    comparison_workers: u8,
     /// Diagnose completed differences without repeating the three primary comparisons.
     #[arg(long, conflicts_with_all = ["prepare_only", "compare_only"])]
     diagnose_whitespace_only: bool,
@@ -110,6 +118,10 @@ struct Source {
 }
 
 pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result<()> {
+    ensure!(
+        args.resident_capture || args.comparison_workers == 1,
+        "parallel workbook comparisons require --resident-capture"
+    );
     let root = repo_root();
     let mut request = match &args.request_file {
         Some(path) => {
@@ -380,12 +392,15 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     }
     let run = provenance::start_run(&output, args.machine_label.as_deref(), manifest, json!({
         "prepare_only":args.prepare_only,"compare_only":args.compare_only,
+        "resident_capture":args.resident_capture,"comparison_workers":args.comparison_workers,
+        "comparison_scheduling":"fixed-batches",
         "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.retry_skipped,
         "workbook_timeout_seconds":args.workbook_timeout_seconds,
         "startup_timeout_seconds":args.startup_timeout_seconds,"max_workbook_bytes":args.max_workbook_bytes,
         "limit":args.limit,"reuse_prepared_from":args.reuse_prepared_from,
         "worker_memory_limit_mib":std::env::var("EXCEL_SHRINK_WORKER_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
-        "excel_memory_limit_mib":std::env::var("EXCEL_SHRINK_EXCEL_MEMORY_MIB").unwrap_or_else(|_|"4096".into())
+        "excel_memory_limit_mib":std::env::var("EXCEL_SHRINK_EXCEL_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
+        "resident_memory_limit_mib":std::env::var("EXCEL_SHRINK_RESIDENT_MEMORY_MIB").unwrap_or_else(|_|"16384".into())
     }))?;
     let limits = ArchiveArgs {
         urls: Vec::new(),
@@ -554,6 +569,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             }
         }
         if !args.prepare_only {
+            let mut comparisons = Vec::new();
             for (index, name) in selected {
                 let id = identity(source, *index, name);
                 let pos = ensure_record(&mut records, source, *index, name);
@@ -577,20 +593,23 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     &source.fingerprint,
                     &manifest_hash,
                 );
-                process(
-                    source,
-                    *index,
-                    &id,
-                    pos,
-                    JobMode::Compare,
-                    &output,
-                    &mut records,
-                    &corpus_info,
-                    &limits,
-                    &run,
-                    log_level,
-                )?;
+                comparisons.push(scheduler::Comparison {
+                    index: *index,
+                    id,
+                    position: pos,
+                });
             }
+            scheduler::compare(
+                source,
+                comparisons,
+                args.comparison_workers,
+                &output,
+                &mut records,
+                &corpus_info,
+                &limits,
+                &run,
+                log_level,
+            )?;
         }
     }
     let finished = !args.prepare_only && !limited && selection::complete(&corpus_info, &records);

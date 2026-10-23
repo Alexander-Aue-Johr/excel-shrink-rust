@@ -49,6 +49,15 @@ pub(super) fn render(html: &mut String, root: &Path, file: &Value) {
         escape(&status.replace('_', "-")),
         categories::diagnosis_label(file)
     );
+    let scoped_profiles: Vec<_> = items(diagnosis, "profiles")
+        .iter()
+        .filter(|profile| profile["capture_scope"] == "primary mismatch tiles")
+        .map(|profile| text(profile, "profile"))
+        .collect();
+    if !scoped_profiles.is_empty() {
+        let _ = write!(html, "<p class=\"muted\" lang=\"de\">Whitespace-Gegenprobe für {}: nur zuvor abweichende Bildkacheln erneut geprüft. Die Zuordnung bezieht sich auf die Unterschiede des Hauptvergleichs.</p>",
+            escape(&scoped_profiles.join(", ")));
+    }
     if let Some(error) = diagnosis["error"].as_str() {
         let _ = write!(html, "<p class=\"difference\">{}</p>", escape(error));
     }

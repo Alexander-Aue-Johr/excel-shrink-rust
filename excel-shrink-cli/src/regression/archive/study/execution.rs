@@ -14,6 +14,43 @@ pub(super) fn process(
     run: &Value,
     log_level: LogLevel,
 ) -> Result<()> {
+    let initial = records[position].clone();
+    let result = run_record(
+        source,
+        index,
+        id,
+        mode,
+        output,
+        initial,
+        limits,
+        run,
+        log_level,
+        None,
+        |checkpoint, phase| {
+            records[position] = checkpoint.clone();
+            publish_progress(output, records, corpora, phase);
+        },
+    )?;
+    records[position] = result;
+    Ok(())
+}
+
+// This worker owns only its workbook record and evidence directory. The caller
+// publishes shared reports, either directly or through the batch event channel.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_record(
+    source: &Source,
+    index: usize,
+    id: &str,
+    mode: JobMode,
+    output: &Path,
+    mut state: Value,
+    limits: &ArchiveArgs,
+    run: &Value,
+    log_level: LogLevel,
+    cleanup_barrier: Option<batch_cleanup::Participant>,
+    mut on_progress: impl FnMut(&Value, &str),
+) -> Result<Value> {
     let key = artifact_cache::sha256(id.as_bytes());
     let work = output.join(".work").join(&key[..20]);
     worker::cleanup_windows(&work)?;
@@ -24,37 +61,51 @@ pub(super) fn process(
     let record = record_path(output, id);
     let diagnosis_only = mode == JobMode::Diagnose;
     if !diagnosis_only {
-        records[position]["complete"] = json!(false);
+        state["complete"] = json!(false);
     }
     if mode == JobMode::Prepare {
-        records[position]["prepared"] = json!(false);
+        state["prepared"] = json!(false);
     }
     if !diagnosis_only {
-        records[position]["error"] = Value::Null;
+        state["error"] = Value::Null;
     }
     if !diagnosis_only {
-        records[position]["status"] = json!(if mode == JobMode::Prepare {
+        state["status"] = json!(if mode == JobMode::Prepare {
             "shrinking"
         } else {
             "comparing"
         });
     }
-    records[position]["last_execution"] = json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
+    state["last_execution"] = json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
         "machine_manifest":run["machine_manifest"],"mode":mode,"started_unix_ms":provenance::now_ms()});
-    write_record(&record, &records[position])?;
+    if mode == JobMode::Compare {
+        state["capture_mode"] = json!(if run["options"]["resident_capture"] == true {
+            "resident"
+        } else {
+            "classic"
+        });
+        state["last_execution"]["capture_mode"] = state["capture_mode"].clone();
+        // The current attempt must not display metrics from an earlier session.
+        state.as_object_mut().unwrap().remove("resident_capture");
+    }
+    write_record(&record, &state)?;
     let job = MemberJob {
         archive: source.path.clone(),
         index,
         identity: id.into(),
-        name: records[position]["name"].as_str().unwrap().into(),
+        name: state["name"].as_str().unwrap().into(),
         work: work.clone(),
         record: record.clone(),
         report_root: output.into(),
         max_workbook_bytes: limits.max_workbook_bytes,
         mode,
         bundle: Some(bundle_path(output, id)),
-        run_manifest: Some(json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
-            "machine_manifest":run["machine_manifest"]})),
+        resident_capture: run["options"]["resident_capture"] == true,
+        cleanup_barrier,
+        run_manifest: Some(
+            json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
+            "machine_manifest":run["machine_manifest"]}),
+        ),
     };
     let path = work.join("job.json");
     fs::write(&path, serde_json::to_vec_pretty(&job)?)?;
@@ -66,13 +117,13 @@ pub(super) fn process(
         "comparing"
     };
     eprintln!("[study] {} · {phase} · {}", source.name, job.name);
-    publish_progress(output, records, corpora, phase);
+    on_progress(&state, phase);
     let started = Instant::now();
     let outcome = worker::launch(&job, &path, limits, log_level, || {
         let current: Value = serde_json::from_slice(&fs::read(&record)?)?;
-        if current != records[position] {
-            records[position] = current;
-            publish_progress(output, records, corpora, phase);
+        if current != state {
+            state = current;
+            on_progress(&state, phase);
         }
         Ok(())
     });
@@ -90,10 +141,15 @@ pub(super) fn process(
     worker::cleanup_windows(&work)?;
     retain_visual_evidence(&mut result, &work, output, &key[..20], diagnosis_only);
     relative_images(&mut result, output);
-    if result["status"] == "skipped" || result["whitespace_diagnosis"]["status"] == "failed" {
+    let failed =
+        result["status"] == "skipped" || result["whitespace_diagnosis"]["status"] == "failed";
+    if failed {
         if let Err(error) = retain_capture_logs(&work, output, &key[..20]) {
             eprintln!("Could not preserve capture diagnostics: {error:#}");
         }
+    }
+    if let Err(error) = retain_resident_diagnostics(&work, output, &key[..20], failed) {
+        eprintln!("Could not preserve resident capture diagnostics: {error:#}");
     }
     result[format!("{phase}_elapsed_seconds")] = json!(started.elapsed().as_secs_f64());
     result["complete"] =
@@ -104,9 +160,8 @@ pub(super) fn process(
         result["prepared"] = json!(false);
     }
     write_record(&record, &result)?;
-    records[position] = result;
-    publish_progress(output, records, corpora, phase);
-    Ok(())
+    on_progress(&result, phase);
+    Ok(result)
 }
 
 fn retain_visual_evidence(
@@ -116,24 +171,25 @@ fn retain_visual_evidence(
     key: &str,
     diagnosis_only: bool,
 ) {
+    let mut evidence = output.join("evidence").join(key);
+    if result["capture_mode"] == "classic" && result["comparison_fallback"]["status"] == "running" {
+        if let Some(run_id) = result["comparison_fallback"]["run_id"].as_str() {
+            let attempt = artifact_cache::sha256(run_id.as_bytes());
+            evidence = evidence.join("classic-fallback").join(&attempt[..16]);
+        }
+    }
     let mut diagnosis = result["whitespace_diagnosis"].take();
     if !diagnosis_only {
-        if let Err(error) = worker::retain_evidence(
-            result,
-            work,
-            &output.join("evidence").join(key).join("comparison"),
-        ) {
+        if let Err(error) = worker::retain_evidence(result, work, &evidence.join("comparison")) {
             result["status"] = json!("skipped");
             result["error"] = json!(format!("preserve image evidence: {error:#}"));
             clear_images(result);
         }
     }
     // Supplemental evidence failure must not erase a completed primary check.
-    if let Err(error) = worker::retain_evidence(
-        &mut diagnosis,
-        work,
-        &output.join("evidence").join(key).join("whitespace-v1"),
-    ) {
+    if let Err(error) =
+        worker::retain_evidence(&mut diagnosis, work, &evidence.join("whitespace-v1"))
+    {
         diagnosis["status"] = json!("failed");
         diagnosis["error"] = json!(format!("preserve whitespace evidence: {error:#}"));
         clear_images(&mut diagnosis);
@@ -177,6 +233,66 @@ fn retain_capture_logs(work: &Path, output: &Path, key: &str) -> Result<()> {
                 fs::write(logs.join(format!("{key}-{label}-{name}")), tail)?;
             }
         }
+    }
+    Ok(())
+}
+
+// Keep enough timing and heartbeat evidence to inspect whether opening another
+// workbook blocked a resident client. Explicit filenames exclude staged data,
+// client descriptors, command payloads and captured PNGs.
+fn retain_resident_diagnostics(work: &Path, output: &Path, key: &str, failed: bool) -> Result<()> {
+    use std::io::{Read, Seek, SeekFrom};
+    let session = work.join("resident");
+    if !session.is_dir() {
+        return Ok(());
+    }
+    let logs = output.join("logs");
+    fs::create_dir_all(&logs)?;
+    let mut names = vec![
+        "metrics.json",
+        "launcher-events.jsonl",
+        "host-events.jsonl",
+        "host.stdout.log",
+    ];
+    if failed {
+        names.extend([
+            "launcher.stdout.log",
+            "launcher.stderr.log",
+            "launcher-result.json",
+            "host.stderr.log",
+            "host-build.stdout.log",
+            "host-build.stderr.log",
+        ]);
+    }
+    for name in names {
+        let path = session.join(name);
+        if !path.is_file() {
+            continue;
+        }
+        let limit = if !failed && name == "host.stdout.log" {
+            256 * 1024
+        } else {
+            2 * 1024 * 1024
+        };
+        let mut source = fs::File::open(path)?;
+        let offset = source.metadata()?.len().saturating_sub(limit);
+        source.seek(SeekFrom::Start(offset))?;
+        let mut tail = Vec::new();
+        source.take(limit).read_to_end(&mut tail)?;
+        if offset > 0 && name.ends_with(".jsonl") {
+            // A retained event file remains parseable line by line.
+            if let Some(newline) = tail.iter().position(|&byte| byte == b'\n') {
+                tail.drain(..=newline);
+            } else {
+                tail.clear();
+            }
+        }
+        let suffix = if offset > 0 && name.ends_with(".json") {
+            ".tail.log"
+        } else {
+            ""
+        };
+        fs::write(logs.join(format!("{key}-resident-{name}{suffix}")), tail)?;
     }
     Ok(())
 }
@@ -227,6 +343,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn classic_fallback_keeps_images_from_the_failed_resident_attempt() -> Result<()> {
+        let root = super::super::tests::test_directory("fallback-evidence")?;
+        let work = root.join("work");
+        fs::create_dir(&work)?;
+        let image = work.join("original.png");
+        fs::write(&image, b"resident evidence")?;
+        let mut original = json!({"capture_mode":"resident","results":[{"original_image":image}]});
+        retain_visual_evidence(&mut original, &work, &root, "example", false);
+        let first = PathBuf::from(original["results"][0]["original_image"].as_str().unwrap());
+        fs::write(&image, b"classic evidence")?;
+        let mut retry = json!({"capture_mode":"classic","results":[{"original_image":image}],
+            "comparison_fallback":{"status":"running","run_id":"test-run"}});
+        retain_visual_evidence(&mut retry, &work, &root, "example", false);
+        let second = PathBuf::from(retry["results"][0]["original_image"].as_str().unwrap());
+        assert_ne!(first, second);
+        assert_eq!(fs::read(first)?, b"resident evidence");
+        assert_eq!(fs::read(second)?, b"classic evidence");
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
     fn failed_supplemental_evidence_preserves_completed_primary_results() -> Result<()> {
         let root = super::super::tests::test_directory("whitespace-evidence-failure")?;
         let primary = json!([{"sheets":[{"original_image":"evidence/old-original.png", "shrunk_image":"evidence/old-shrunk.png"}]}]);
@@ -261,6 +399,63 @@ mod tests {
         assert_eq!(kept.len(), 1024 * 1024);
         assert!(kept.ends_with(b"last failure"));
         assert_eq!(fs::read_dir(root.join("logs"))?.count(), 1);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn resident_diagnostics_keep_bounded_timing_evidence_without_staged_data() -> Result<()> {
+        let root = super::super::tests::test_directory("resident-diagnostics")?;
+        let work = root.join("work");
+        let session = work.join("resident");
+        fs::create_dir_all(session.join("images"))?;
+        fs::create_dir_all(session.join("clients"))?;
+        let metrics = b"{\"status\":\"complete\",\"opening_seconds\":3.5}";
+        fs::write(session.join("metrics.json"), metrics)?;
+        let event = b"{\"event\":\"heartbeat\"}\n";
+        fs::write(session.join("launcher-events.jsonl"), event.repeat(120_000))?;
+        fs::write(session.join("host.stdout.log"), vec![b'h'; 3 * 1024 * 1024])?;
+        fs::write(session.join("host.stderr.log"), b"capture failed")?;
+        fs::write(session.join("launcher.stderr.log"), b"launcher failed")?;
+        fs::write(session.join("original.xlsx"), b"staged workbook")?;
+        fs::write(session.join("images/tile.png"), b"image")?;
+        fs::write(session.join("clients/original.json"), b"private descriptor")?;
+
+        let success = root.join("success");
+        retain_resident_diagnostics(&work, &success, "example", false)?;
+        let logs = success.join("logs");
+        assert_eq!(
+            fs::read(logs.join("example-resident-metrics.json"))?,
+            metrics
+        );
+        assert_eq!(
+            fs::metadata(logs.join("example-resident-host.stdout.log"))?.len(),
+            256 * 1024
+        );
+        let events = fs::read_to_string(logs.join("example-resident-launcher-events.jsonl"))?;
+        assert!(events.len() <= 2 * 1024 * 1024);
+        assert!(!events.is_empty());
+        for line in events.lines() {
+            assert_eq!(serde_json::from_str::<Value>(line)?["event"], "heartbeat");
+        }
+        assert_eq!(fs::read_dir(&logs)?.count(), 3);
+
+        let failure = root.join("failure");
+        retain_resident_diagnostics(&work, &failure, "example", true)?;
+        let logs = failure.join("logs");
+        assert_eq!(
+            fs::metadata(logs.join("example-resident-host.stdout.log"))?.len(),
+            2 * 1024 * 1024
+        );
+        assert_eq!(
+            fs::read(logs.join("example-resident-host.stderr.log"))?,
+            b"capture failed"
+        );
+        assert_eq!(
+            fs::read(logs.join("example-resident-launcher.stderr.log"))?,
+            b"launcher failed"
+        );
+        assert_eq!(fs::read_dir(logs)?.count(), 5);
         fs::remove_dir_all(root)?;
         Ok(())
     }

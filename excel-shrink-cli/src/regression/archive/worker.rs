@@ -2,6 +2,10 @@ use super::*;
 
 mod memory;
 
+pub(super) fn memory_limit_bytes() -> std::io::Result<u64> {
+    memory::limit_bytes()
+}
+
 #[derive(Parser, Debug)]
 pub(in crate::regression) struct WorkerArgs {
     #[arg(long)]
@@ -141,6 +145,10 @@ pub(super) fn launch(
         .arg(path)
         .args(["--console-log-level", worker_log_level.as_filter()])
         .env("EXCEL_SHRINK_REGRESSION_CACHE_DIR", job.work.join("cache"))
+        .env(
+            "EXCEL_SHRINK_RESIDENT_CAPTURE",
+            if job.resident_capture { "1" } else { "0" },
+        )
         .env("EXCEL_SHRINK_SHARED_WORKBOOK_DIR", job.work.join("shared"))
         .env(
             "EXCEL_SHRINK_AUTOMATION_STALL_SECONDS",
@@ -180,6 +188,13 @@ pub(super) fn launch(
         .stdin(Stdio::null())
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log));
+    if let Some(barrier) = &job.cleanup_barrier {
+        let config = job.work.join("batch-cleanup.json");
+        fs::write(&config, serde_json::to_vec(barrier)?)?;
+        command.env(batch_cleanup::ENV, &config);
+    } else {
+        command.env_remove(batch_cleanup::ENV);
+    }
     if std::env::var_os("RUST_LOG").is_none() {
         command.env("RUST_LOG", worker_log_level.as_filter());
     }
@@ -198,10 +213,12 @@ pub(super) fn launch(
         child: command.spawn().context("start isolated workbook worker")?,
         work: job.work.clone(),
         stopped: false,
+        cleanup_barrier: job.cleanup_barrier.clone(),
     };
     let outcome = wait_for_worker(
         &mut running.child,
         Duration::from_secs(args.workbook_timeout_seconds),
+        job.cleanup_barrier.as_ref(),
         || {
             fs::write(&heartbeat, b"running")?;
             on_progress()
@@ -214,6 +231,7 @@ pub(super) fn launch(
 fn wait_for_worker(
     child: &mut Child,
     timeout: Duration,
+    cleanup_barrier: Option<&batch_cleanup::Participant>,
     mut on_progress: impl FnMut() -> Result<()>,
 ) -> Result<()> {
     let started = Instant::now();
@@ -229,7 +247,12 @@ fn wait_for_worker(
                 ))
             };
         }
-        if started.elapsed() >= timeout {
+        if cleanup_barrier.is_some_and(|barrier| barrier.waiting_expired()) {
+            anyhow::bail!("resident batch cleanup barrier timed out");
+        }
+        if started.elapsed() >= timeout
+            && !cleanup_barrier.is_some_and(|barrier| barrier.deadline_paused())
+        {
             return Err(anyhow::anyhow!(
                 "workbook timed out after {} seconds",
                 timeout.as_secs_f64()
@@ -250,11 +273,19 @@ struct RunningWorker {
     child: Child,
     work: PathBuf,
     stopped: bool,
+    cleanup_barrier: Option<batch_cleanup::Participant>,
 }
 impl RunningWorker {
     fn stop(&mut self) -> Result<()> {
         if self.stopped {
             return Ok(());
+        }
+        if let Some(barrier) = &self.cleanup_barrier {
+            // A dead or timed-out Rust worker may still own a live launcher.
+            // Mark its slot terminal before cleanup can affect another session.
+            if let Err(error) = barrier.wait(Some(&self.work.join("parent-heartbeat")), true) {
+                eprintln!("[archive] Bounded batch cleanup wait ended: {error:#}");
+            }
         }
         // Close Windows launchers first: their jobs own only this worker's Excel instances.
         cleanup_windows(&self.work)?;
@@ -386,6 +417,8 @@ mod tests {
             mode: JobMode::Legacy,
             bundle: None,
             run_manifest: None,
+            resident_capture: false,
+            cleanup_barrier: None,
         };
         assert_eq!(fs::read(extract(&job)?)?, b"1234");
         job.index = 1;
@@ -462,8 +495,10 @@ mod tests {
                 child: command.spawn()?,
                 work: root.clone(),
                 stopped: false,
+                cleanup_barrier: None,
             };
-            let result = wait_for_worker(&mut running.child, Duration::from_secs(10), || Ok(()));
+            let result =
+                wait_for_worker(&mut running.child, Duration::from_secs(10), None, || Ok(()));
             running.stop()?;
             let status = running
                 .child
@@ -525,11 +560,69 @@ mod tests {
                 Duration::from_secs(30)
             },
             if scenario == "memory" { 1 } else { u64::MAX },
+            None,
         );
         if scenario != "complete" {
             std::thread::sleep(Duration::from_secs(20));
             panic!("watchdog did not stop the test worker");
         }
+        drop(watchdog);
+        Ok(())
+    }
+
+    #[test]
+    fn ready_batch_wait_is_excluded_from_both_worker_deadlines() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "batch-watchdog")?;
+        fs::create_dir(&root)?;
+        fs::write(root.join("parent-heartbeat"), b"running")?;
+        let batch = batch_cleanup::Batch::new(&root, 2, 5)?;
+        let participant = batch.participant(0);
+        participant.mark_ready()?;
+        let config = root.join("barrier.json");
+        fs::write(&config, serde_json::to_vec(&participant)?)?;
+        let mut child = Command::new(std::env::current_exe()?)
+            .args([
+                "--exact",
+                "regression::archive::worker::tests::batch_wait_test_child",
+                "--nocapture",
+            ])
+            .env("EXCEL_SHRINK_BATCH_WAIT_TEST_ROOT", &root)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        // The child lives beyond both deadlines. Only its completed readiness
+        // suspends them; the peer timeout and parent checks remain enabled.
+        let outcome = wait_for_worker(&mut child, Duration::ZERO, Some(&participant), || Ok(()));
+        if outcome.is_err() {
+            let _ = child.kill();
+        }
+        let output = child.wait_with_output()?;
+        assert!(
+            outcome.is_ok(),
+            "{outcome:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.status.success());
+        drop(batch);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn batch_wait_test_child() -> Result<()> {
+        let Some(root) = std::env::var_os("EXCEL_SHRINK_BATCH_WAIT_TEST_ROOT") else {
+            return Ok(());
+        };
+        let root = PathBuf::from(root);
+        let participant = serde_json::from_slice(&fs::read(root.join("barrier.json"))?)?;
+        let watchdog = WorkerWatchdog::start(
+            root.clone(),
+            root.join("parent-heartbeat"),
+            Duration::ZERO,
+            u64::MAX,
+            Some(participant),
+        );
+        std::thread::sleep(Duration::from_millis(2300));
         drop(watchdog);
         Ok(())
     }
@@ -546,14 +639,15 @@ mod tests {
             child: command.spawn()?,
             work: root.clone(),
             stopped: false,
+            cleanup_barrier: None,
         };
-        let failure =
-            wait_for_worker(&mut stuck.child, Duration::from_millis(20), || Ok(())).unwrap_err();
+        let failure = wait_for_worker(&mut stuck.child, Duration::from_millis(20), None, || Ok(()))
+            .unwrap_err();
         assert!(failure.to_string().contains("timed out"));
         stuck.stop()?;
         assert!(stuck.child.try_wait()?.is_some());
         let mut next = Command::new("true").spawn()?;
-        wait_for_worker(&mut next, Duration::from_secs(2), || Ok(()))?;
+        wait_for_worker(&mut next, Duration::from_secs(2), None, || Ok(()))?;
         Ok(())
     }
 }
@@ -570,6 +664,7 @@ fn start_watchdog(job: &MemberJob, memory_limit: u64) -> Option<WorkerWatchdog> 
         heartbeat,
         Duration::from_secs(timeout),
         memory_limit,
+        job.cleanup_barrier.clone(),
     ))
 }
 
@@ -579,7 +674,13 @@ struct WorkerWatchdog {
 }
 
 impl WorkerWatchdog {
-    fn start(work: PathBuf, heartbeat: PathBuf, timeout: Duration, memory_limit: u64) -> Self {
+    fn start(
+        work: PathBuf,
+        heartbeat: PathBuf,
+        timeout: Duration,
+        memory_limit: u64,
+        cleanup_barrier: Option<batch_cleanup::Participant>,
+    ) -> Self {
         let (stop, stopped) = std::sync::mpsc::channel();
         let thread = std::thread::spawn(move || {
             let started = Instant::now();
@@ -597,14 +698,19 @@ impl WorkerWatchdog {
                         None
                     }
                 };
-                let parent_alive = fs::metadata(&heartbeat)
-                    .and_then(|m| m.modified())
-                    .ok()
-                    .and_then(|time| time.elapsed().ok())
-                    .is_some_and(|age| age < Duration::from_secs(60));
+                let parent_alive = batch_cleanup::parent_alive(&heartbeat);
                 let reason = if !parent_alive {
                     Some("parent runner stopped responding")
-                } else if started.elapsed() > timeout {
+                } else if cleanup_barrier
+                    .as_ref()
+                    .is_some_and(|barrier| barrier.waiting_expired())
+                {
+                    Some("resident batch cleanup barrier timed out")
+                } else if started.elapsed() > timeout
+                    && !cleanup_barrier
+                        .as_ref()
+                        .is_some_and(|barrier| barrier.deadline_paused())
+                {
                     Some("workbook deadline reached")
                 } else if memory.is_some_and(|usage| usage.current_bytes > memory_limit) {
                     Some("workbook worker exceeded memory limit")
@@ -614,6 +720,13 @@ impl WorkerWatchdog {
                 if let Some(reason) = reason {
                     log_memory_usage(memory, memory_limit);
                     eprintln!("[archive] {reason}; closing owned Excel processes");
+                    if parent_alive {
+                        if let Some(barrier) = &cleanup_barrier {
+                            // Keep peer sessions alive while this failed worker
+                            // waits for their checkpoints or bounded deadlines.
+                            let _ = barrier.wait(Some(&heartbeat), false);
+                        }
+                    }
                     let _ = cleanup_windows(&work);
                     std::process::exit(124);
                 }
