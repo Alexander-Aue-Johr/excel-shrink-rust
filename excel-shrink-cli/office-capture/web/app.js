@@ -2,7 +2,10 @@
 (function () {
   'use strict';
 
-  const nativeTimeoutMs = 90000;
+  const residentClient = new URLSearchParams(location.search).get('client');
+  // Another Excel instance can serialize a workbook open across the desktop.
+  // Resident sessions tolerate that pause; the launcher still bounds the job.
+  const nativeTimeoutMs = residentClient ? 900000 : 90000;
   const requestTimeoutMs = 120000;
   const started = performance.now();
   let nativeStopped = false;
@@ -218,6 +221,19 @@
   }
 
   async function run() {
+    if (residentClient) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/resident.js';
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Cannot load resident capture worker'));
+        document.head.appendChild(script);
+      });
+      return window.ResidentCapture.run(residentClient, {
+        office, bounds, checkedWorksheet, rowHeights, hideGridlines, verifyDrawingBounds,
+        phase, progress, show, connection
+      });
+    }
     const side = new URLSearchParams(location.search).get('side');
     const config = await request('/config' + (side ? '?side=' + encodeURIComponent(side) : ''));
     if (!config || !['heights', 'capture', 'paired'].includes(config.mode) ||
