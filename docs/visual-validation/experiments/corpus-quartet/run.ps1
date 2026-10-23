@@ -344,6 +344,11 @@ public static class CaptureWindowMinimizer
         if (Test-Path -LiteralPath $path) { Copy-Item -LiteralPath $path -Destination $destination -Force }
     }
     # Job termination is asynchronous; Excel can briefly retain workbook handles.
+    $resolvedStage = [IO.Path]::GetFullPath($stage)
+    if ([IO.Path]::GetDirectoryName($resolvedStage) -ne [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') -or
+        [IO.Path]::GetFileName($resolvedStage) -notmatch '^es-parallel-[0-9a-f]{32}$') {
+        throw 'Cleanup target is outside the allocated experiment directory.'
+    }
     for ($attempt=0; $attempt -lt 20; $attempt++) {
         Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
         if (-not (Test-Path -LiteralPath $stage)) { break }

@@ -16,7 +16,7 @@ test('refinement splits in two axes where possible and never creates empty cells
 });
 
 test('first round sends hashes together, then refines and uploads one leaf', async () => {
-  global.crypto = require('node:crypto').webcrypto;
+  Object.defineProperty(global, 'crypto', {value: require('node:crypto').webcrypto, configurable: true});
   global.atob = value => Buffer.from(value, 'base64').toString('binary');
   const image = Buffer.from('a fake PNG for the transport boundary').toString('base64');
   global.CaptureGeometry = {

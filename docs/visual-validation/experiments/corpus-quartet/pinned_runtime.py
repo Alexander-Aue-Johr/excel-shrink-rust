@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from zipfile import ZipFile
 
 
-RUNTIME_REF = "6a0ef2615f922665c4a4f7b4c24e58204f53d6ea"
+RUNTIME_REF = "af2f8d49c38f13f2f130bcb2b0d2e62a81a3dbb2"
 
 
 def windows_path(path):

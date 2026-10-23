@@ -7,4 +7,12 @@ try {
     Copy-Item -LiteralPath $PSScriptRoot -Destination (Join-Path $stage 'tests') -Recurse
     & $DotNet run --project (Join-Path $stage 'tests\QuartetTests.csproj')
     if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
-} finally { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
+} finally {
+    $resolved = [IO.Path]::GetFullPath($stage)
+    $temporary = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\')
+    if ([IO.Path]::GetDirectoryName($resolved) -ne $temporary -or
+        [IO.Path]::GetFileName($resolved) -notmatch '^quartet-tests-[0-9a-f]{32}$') {
+        throw 'Test cleanup target is outside the allocated temporary directory.'
+    }
+    Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction SilentlyContinue
+}
