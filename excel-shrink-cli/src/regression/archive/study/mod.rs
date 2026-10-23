@@ -60,6 +60,12 @@ pub(in crate::regression) struct StudyArgs {
 struct Corpus {
     name: String,
     url: String,
+    /// Stable identity when the same archive has different local paths on other machines.
+    #[serde(default)]
+    id: Option<String>,
+    /// Optional known total for offline corpora; an available archive takes precedence.
+    #[serde(default)]
+    total_workbooks: Option<u64>,
 }
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -91,12 +97,16 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         .extend(request.urls.iter().enumerate().map(|(i, url)| Corpus {
             name: archive_label(url, i),
             url: url.clone(),
+            id: None,
+            total_workbooks: None,
         }));
     request
         .corpora
         .extend(args.corpus.chunks_exact(2).map(|p| Corpus {
             name: p[0].clone(),
             url: p[1].clone(),
+            id: None,
+            total_workbooks: None,
         }));
     ensure!(
         !request.corpora.is_empty(),
@@ -111,6 +121,15 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             .len()
             == request.corpora.len(),
         "duplicate corpus names"
+    );
+    let ids = request
+        .corpora
+        .iter()
+        .map(corpus_id)
+        .collect::<Result<Vec<_>>>()?;
+    ensure!(
+        ids.iter().collect::<HashSet<_>>().len() == ids.len(),
+        "duplicate corpus IDs"
     );
     let output = resolve_path(&root, args.output_root.clone());
     fs::create_dir_all(&output)?;
@@ -135,9 +154,8 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         }
     }
     let mut corpus_info = Vec::new();
-    for corpus in &request.corpora {
-        let id = artifact_cache::sha256(corpus.url.as_bytes());
-        corpus_info.push(json!({"id":id,"name":corpus.name,"total_workbooks":null}));
+    for (i, corpus) in request.corpora.iter().enumerate() {
+        corpus_info.push(json!({"id":ids[i],"name":corpus.name,"total_workbooks":corpus.total_workbooks}));
     }
     for (i, corpus) in request.corpora.iter().enumerate() {
         let local = if corpus.url.starts_with("http") {
@@ -435,6 +453,15 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         "Study contains differences or skipped workbooks; see report"
     );
     Ok(())
+}
+
+fn corpus_id(corpus: &Corpus) -> Result<String> {
+    match &corpus.id {
+        Some(id) => preparation_build_hash(id)
+            .map_err(anyhow::Error::msg)
+            .context("corpus id must be a full SHA-256"),
+        None => Ok(artifact_cache::sha256(corpus.url.as_bytes())),
+    }
 }
 
 fn identity(source: &Source, index: usize, name: &str) -> String {

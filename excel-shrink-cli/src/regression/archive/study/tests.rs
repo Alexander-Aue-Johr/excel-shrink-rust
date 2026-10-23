@@ -283,3 +283,25 @@ fn default_only_success_does_not_skip_the_stronger_comparison() {
     record["results"][0]["checks_complete"] = json!(false);
     assert!(!verified_unchanged(&record));
 }
+
+#[test]
+fn stable_ids_are_explicit_and_legacy_ids_are_unchanged() -> Result<()> {
+    let mut corpus = Corpus {
+        name: "Example".into(),
+        url: "C:/one/archive.zip".into(),
+        id: None,
+        total_workbooks: None,
+    };
+    assert_eq!(
+        corpus_id(&corpus)?,
+        artifact_cache::sha256(corpus.url.as_bytes())
+    );
+    corpus.id = Some("A".repeat(64));
+    let first = corpus_id(&corpus)?;
+    corpus.url = "D:/other/archive.zip".into();
+    assert_eq!(corpus_id(&corpus)?, first);
+    assert_eq!(first, "a".repeat(64));
+    corpus.id = Some("invalid".into());
+    assert!(corpus_id(&corpus).is_err());
+    Ok(())
+}
