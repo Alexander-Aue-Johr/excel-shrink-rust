@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "measurement": "full study wall time; fresh study and application caches; OS/Office caches retained",
+  "cli": {
+    "baseline": {
+      "path": "V:\\excel-shrink-paper\\external\\excel-shrink-rust\\.tmp\\skip-investigation\\target\\release\\excel-shrink-cli.exe",
+      "sha256": "ff089ee30e477ce6eed619c34a84662fe1668ccb31bfa6ccc58d4c2663cdd4fb"
+    },
+    "candidate": {
+      "path": "V:\\excel-shrink-paper\\external\\excel-shrink-rust\\.tmp\\main-distributed\\target\\release\\excel-shrink-cli.exe",
+      "sha256": "d9f007904f3a5da3abb6b77382addc1f987961abc103700789d416d2f3974572"
+    }
+  },
+  "baseline_source_commit": "af2f8d49c38f13f2f130bcb2b0d2e62a81a3dbb2",
+  "candidate_source_commit": "2fccb62",
+  "candidate_runtime_during_measurement": "ca143bf (same source tree as 2fccb62)",
+  "memory_limits": {
+    "EXCEL_SHRINK_WORKER_MEMORY_MIB": "8192",
+    "EXCEL_SHRINK_EXCEL_MEMORY_MIB": null
+  },
+  "sources": [
+    {
+      "name": "2020-03 Taxonomy final_0f1beb8dad80.xlsx",
+      "source_sha256": "0f1beb8dad805ebd2d817842452068dde7a772541e87b80b3a43b4f77809b4f1"
+    },
+    {
+      "name": "Data submission for A-4tmz_a8d396e49ecb.xlsx",
+      "source_sha256": "a8d396e49ecb68fe17ba7f2158c9592c64ad87d5ac7dc1b90709ed9b1a534864"
+    }
+  ],
+  "pairs": [
+    {
+      "repeat": 1,
+      "status": "complete",
+      "baseline_seconds": 64.14207940001506,
+      "candidate_seconds": 51.847699799982365,
+      "speedup": 1.2371248801289518,
+      "semantic_sha256": "d3149b14937ab5058c2f96e5c69c405811305be888d096aab5a718fd91cee8d5"
+    },
+    {
+      "repeat": 2,
+      "status": "complete",
+      "baseline_seconds": 63.54745360001107,
+      "candidate_seconds": 50.799325700005284,
+      "speedup": 1.250950730631538,
+      "semantic_sha256": "d3149b14937ab5058c2f96e5c69c405811305be888d096aab5a718fd91cee8d5"
+    }
+  ],
+  "summary": {
+    "complete_pairs": 2,
+    "invalid_pairs": 0,
+    "median_speedup": 1.2440378053802448,
+    "median_baseline_seconds": 63.844766500013066,
+    "median_candidate_seconds": 51.323512749993824
+  },
+  "visual_reuse": [
+    {
+      "run": "repeat-01-candidate",
+      "reused_visual_profiles": [
+        {
+          "name": "2020-03 Taxonomy final_0f1beb8dad80.xlsx",
+          "profile": "default",
+          "from": "too-aggressive-cleaning"
+        },
+        {
+          "name": "2020-03 Taxonomy final_0f1beb8dad80.xlsx",
+          "profile": "maximum-cleaning",
+          "from": "too-aggressive-cleaning"
+        },
+        {
+          "name": "Data submission for A-4tmz_a8d396e49ecb.xlsx",
+          "profile": "maximum-cleaning",
+          "from": "too-aggressive-cleaning"
+        }
+      ]
+    },
+    {
+      "run": "repeat-02-candidate",
+      "reused_visual_profiles": [
+        {
+          "name": "2020-03 Taxonomy final_0f1beb8dad80.xlsx",
+          "profile": "default",
+          "from": "too-aggressive-cleaning"
+        },
+        {
+          "name": "2020-03 Taxonomy final_0f1beb8dad80.xlsx",
+          "profile": "maximum-cleaning",
+          "from": "too-aggressive-cleaning"
+        },
+        {
+          "name": "Data submission for A-4tmz_a8d396e49ecb.xlsx",
+          "profile": "maximum-cleaning",
+          "from": "too-aggressive-cleaning"
+        }
+      ]
+    }
+  ],
+  "transfer_verified": {
+    "success": true,
+    "records": 2,
+    "package_sha256": "90e835a5a456004ba5df7f70b4552e857cb6a319954bfec670860f9141425300",
+    "merged_report": ".tmp\\distributed-setup\\merged-native-results\\report.html"
+  },
+  "known_unresolved_samples": [
+    {
+      "name": "2013-03-01_HFH_-_Lancaster_utilities_1__8228799ed562.xlsx",
+      "failures": [
+        "capture task pane restarted: The shrunk capture task pane restarted; discard this workbook session."
+      ]
+    },
+    {
+      "name": "CAPs Acrolein Source Apportionment_a1fbfc634b45.xlsx",
+      "failures": [
+        "capture task pane restarted: The shrunk capture task pane restarted; discard this workbook session."
+      ]
+    },
+    {
+      "name": "data-from-a-ilacto-iicoccus-lactis-i-starter-culture-reduces-bloater-defect-in-cucumber-fe__b1c8eb4f-6d13-4aa3-8d3d-3ea10e19166a_3ce06147aba7.xlsx",
+      "failures": [
+        "capture task pane restarted: The shrunk capture task pane restarted; discard this workbook session."
+      ]
+    }
+  ]
+}
