@@ -11,6 +11,7 @@ pub(super) fn process(
     records: &mut Vec<Value>,
     corpora: &[Value],
     limits: &ArchiveArgs,
+    run: &Value,
     log_level: LogLevel,
 ) -> Result<()> {
     let key = artifact_cache::sha256(id.as_bytes());
@@ -50,6 +51,8 @@ pub(super) fn process(
         max_workbook_bytes: limits.max_workbook_bytes,
         mode,
         bundle: Some(bundle_path(output, id)),
+        run_manifest: Some(json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
+            "machine_manifest":run["machine_manifest"]})),
     };
     let path = work.join("job.json");
     fs::write(&path, serde_json::to_vec_pretty(&job)?)?;

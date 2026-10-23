@@ -67,6 +67,8 @@ struct MemberJob {
     mode: JobMode,
     #[serde(default)]
     bundle: Option<PathBuf>,
+    #[serde(default)]
+    run_manifest: Option<Value>,
 }
 
 pub(super) fn run(args: ArchiveArgs, log_level: LogLevel) -> Result<()> {
@@ -219,6 +221,7 @@ pub(super) fn run(args: ArchiveArgs, log_level: LogLevel) -> Result<()> {
                 max_workbook_bytes: args.max_workbook_bytes,
                 mode: JobMode::Legacy,
                 bundle: None,
+                run_manifest: None,
             };
             let current = existing.unwrap_or(records.len());
             let pending = json!({"identity":identity,"name":job.name,"complete":false,"status":"in progress","results":[]});

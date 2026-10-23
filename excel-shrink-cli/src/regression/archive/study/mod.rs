@@ -5,7 +5,9 @@ mod execution;
 use super::verified as ledger;
 use execution::process;
 mod prepared;
+mod provenance;
 mod selection;
+mod transfer;
 mod whitespace;
 
 #[derive(Parser, Debug)]
@@ -32,6 +34,15 @@ pub(in crate::regression) struct StudyArgs {
     download_root: PathBuf,
     #[arg(long, default_value = ".tmp/regression/study")]
     output_root: PathBuf,
+    /// Human-readable machine alias; hardware identity is collected independently.
+    #[arg(long, value_name = "NAME")]
+    machine_label: Option<String>,
+    /// Merge a verified result ZIP, retaining conflicting records for review. Repeat as needed.
+    #[arg(long, value_name = "ZIP")]
+    import_results: Vec<PathBuf>,
+    /// Export completed records, evidence and machine manifests after this invocation.
+    #[arg(long, value_name = "ZIP")]
+    export_results: Option<PathBuf>,
     /// Import completed unchanged files; previous differences are scheduled first.
     #[arg(long)]
     import_report: Option<PathBuf>,
@@ -169,6 +180,8 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         }
     }
     let mut corpus_info = Vec::new();
+    let mut expected_sources: std::collections::BTreeMap<String, String> =
+        ids.iter().map(|id| (id.clone(), String::new())).collect();
     for (i, corpus) in request.corpora.iter().enumerate() {
         corpus_info.push(
             json!({"id":ids[i],"name":corpus.name,"total_workbooks":corpus.total_workbooks,
@@ -182,6 +195,9 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             if let Ok(catalog) = serde_json::from_slice::<Value>(&data) {
                 if catalog["corpus_id"] == ids[i] {
                     corpus_info[i]["total_workbooks"] = catalog["total_workbooks"].clone();
+                    if let Some(fingerprint) = catalog["source_fingerprint"].as_str() {
+                        expected_sources.insert(ids[i].clone(), fingerprint.to_owned());
+                    }
                 }
             }
         }
@@ -202,7 +218,27 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             {
                 if let Ok(members) = workbook_members(&mut zip) {
                     corpus_info[i]["total_workbooks"] = json!(members.len());
+                    let catalog: Vec<_> = members.iter().map(|(index, name)| {
+                        let checksum = zip.by_index_raw(*index).ok()
+                            .map(|entry| (entry.crc32(), entry.size()));
+                        (name, checksum)
+                    }).collect();
+                    expected_sources.insert(ids[i].clone(), artifact_cache::sha256(&serde_json::to_vec(&catalog)?));
                 }
+            }
+        }
+    }
+    for package in &args.import_results {
+        let receipt = transfer::import_package_locked(
+            &output, &resolve_path(&root, package.clone()), &expected_sources, &lock,
+        )?;
+        eprintln!("[study] Result import: {receipt}");
+    }
+    if !args.import_results.is_empty() {
+        records = load_records(&output)?;
+        for record in &mut records {
+            if record["complete"] != true {
+                record["status"] = json!(if record["prepared"] == true { "prepared" } else { "pending" });
             }
         }
     }
@@ -218,14 +254,15 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     }
     import(&args, &output, &corpus_info, &mut records)?;
     if args.report_only {
-        return publish(
+        publish(
             &output,
             &records,
             &corpus_info,
-            false,
+            selection::complete(&corpus_info, &records),
             false,
             "loading archives",
-        );
+        )?;
+        return export_results(&args, &root, &output, &lock);
     }
     publish_progress(&output, &records, &corpus_info, "loading archives");
     let downloads = resolve_path(&root, args.download_root.clone());
@@ -341,6 +378,14 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             "selection ready",
         );
     }
+    let run = provenance::start_run(&output, args.machine_label.as_deref(), manifest, json!({
+        "prepare_only":args.prepare_only,"compare_only":args.compare_only,
+        "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.retry_skipped,
+        "workbook_timeout_seconds":args.workbook_timeout_seconds,
+        "startup_timeout_seconds":args.startup_timeout_seconds,"max_workbook_bytes":args.max_workbook_bytes,
+        "limit":args.limit,"reuse_prepared_from":args.reuse_prepared_from,
+        "worker_memory_limit_mib":std::env::var("EXCEL_SHRINK_WORKER_MEMORY_MIB").ok()
+    }))?;
     let limits = ArchiveArgs {
         urls: Vec::new(),
         request_file: None,
@@ -402,6 +447,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     &mut records,
                     &corpus_info,
                     &limits,
+                    &run,
                     log_level,
                 )?;
             }
@@ -495,6 +541,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     &mut records,
                     &corpus_info,
                     &limits,
+                    &run,
                     log_level,
                 )?;
             }
@@ -539,6 +586,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     &mut records,
                     &corpus_info,
                     &limits,
+                    &run,
                     log_level,
                 )?;
             }
@@ -559,6 +607,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     )
     .context("publish final study report; per-workbook records have been saved")?;
     eprintln!("[study] Report: {}", output.join("report.html").display());
+    export_results(&args, &root, &output, &lock)?;
     if let Err(error) = visual_report::open_visual_report(&output.join("report.html")) {
         eprintln!("Could not open report: {error:#}");
     }
@@ -570,6 +619,14 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         )),
         "Study contains differences or skipped workbooks; see report"
     );
+    Ok(())
+}
+
+fn export_results(args: &StudyArgs, root: &Path, output: &Path, lock: &fs::File) -> Result<()> {
+    if let Some(package) = &args.export_results {
+        let receipt = transfer::export_package_locked(output, &resolve_path(root, package.clone()), lock)?;
+        eprintln!("[study] Result export: {receipt}");
+    }
     Ok(())
 }
 
@@ -713,7 +770,8 @@ fn publish(
         })
         .collect();
     let limited = limited || selection::restricted(corpora);
-    let report = json!({"archive_run":true,"study":true,"workbooks":records,"corpora":corpora,"total_workbooks":total,"complete":complete && !limited,"limited":limited,"phase":phase});
+    let mut report = json!({"archive_run":true,"study":true,"workbooks":records,"corpora":corpora,"total_workbooks":total,"complete":complete && !limited,"limited":limited,"phase":phase});
+    report["measurement_provenance"] = provenance::report_metadata(output, &records)?;
     artifact_cache::atomic_write(
         &output.join("diagnosis.json"),
         &serde_json::to_vec_pretty(&report)?,
@@ -723,7 +781,7 @@ fn publish(
 }
 
 pub(super) fn run_job(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
-    match job.mode {
+    let outcome = match job.mode {
         JobMode::Prepare => prepared::prepare(job, record, log_level),
         JobMode::Compare => prepared::compare(job, record),
         JobMode::Diagnose => {
@@ -731,7 +789,20 @@ pub(super) fn run_job(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
             Ok(())
         }
         JobMode::Legacy => unreachable!(),
+    };
+    if let Some(run) = &job.run_manifest {
+        let stage = match job.mode {
+            JobMode::Prepare => provenance::Stage::Preparation,
+            JobMode::Compare => provenance::Stage::Comparison,
+            JobMode::Diagnose => provenance::Stage::WhitespaceDiagnosis,
+            JobMode::Legacy => unreachable!(),
+        };
+        provenance::stamp(record, run, stage);
+        if job.mode == JobMode::Compare && record["whitespace_diagnosis"]["version"].is_number() {
+            provenance::stamp(record, run, provenance::Stage::WhitespaceDiagnosis);
+        }
     }
+    outcome
 }
 
 #[cfg(test)]

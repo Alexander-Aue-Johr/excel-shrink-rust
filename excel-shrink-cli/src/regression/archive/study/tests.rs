@@ -1,6 +1,20 @@
 use super::*;
 
 #[test]
+fn portable_result_commands_keep_machine_alias_and_repeatable_imports() -> Result<()> {
+    let args = StudyArgs::try_parse_from([
+        "study", "--report-only", "--machine-label", "Enron laptop 1",
+        "--import-results", "one.zip", "--import-results", "two.zip",
+        "--export-results", "combined.zip",
+    ])?;
+    assert_eq!(args.machine_label.as_deref(), Some("Enron laptop 1"));
+    assert_eq!(args.import_results, vec![PathBuf::from("one.zip"), PathBuf::from("two.zip")]);
+    assert_eq!(args.export_results, Some(PathBuf::from("combined.zip")));
+    assert!(args.report_only);
+    Ok(())
+}
+
+#[test]
 fn a_blocked_dashboard_preserves_records_and_recovers_at_the_next_checkpoint() -> Result<()> {
     let output = test_directory("blocked-dashboard")?;
     fs::create_dir_all(output.join("records"))?;
@@ -261,6 +275,7 @@ fn retry_discards_old_evidence_even_when_preparation_or_unpacking_fails() -> Res
         max_workbook_bytes: 1024,
         mode: JobMode::Prepare,
         bundle: Some(invalid),
+        run_manifest: None,
     };
     for mode in [JobMode::Prepare, JobMode::Compare] {
         job.mode = mode;

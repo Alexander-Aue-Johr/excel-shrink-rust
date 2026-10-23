@@ -385,6 +385,7 @@ mod tests {
             max_workbook_bytes: 4,
             mode: JobMode::Legacy,
             bundle: None,
+            run_manifest: None,
         };
         assert_eq!(fs::read(extract(&job)?)?, b"1234");
         job.index = 1;

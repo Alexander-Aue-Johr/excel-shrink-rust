@@ -290,6 +290,9 @@ pub(super) fn diagnose(job: &MemberJob, record: &mut Value, log_level: LogLevel)
 }
 
 pub(super) fn run(job: &MemberJob, record: &mut Value, log_level: LogLevel) {
+    if let Some(run) = &job.run_manifest {
+        provenance::stamp(record, run, provenance::Stage::WhitespaceDiagnosis);
+    }
     if let Err(error) = diagnose(job, record, log_level) {
         record["whitespace_diagnosis"]["version"] = json!(VERSION);
         record["whitespace_diagnosis"]["status"] = json!("failed");
