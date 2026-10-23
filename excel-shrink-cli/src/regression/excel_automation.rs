@@ -56,6 +56,7 @@ fn open_workbook(
     let script = transfer.0.join("open.ps1");
     fs::write(&script, include_str!("excel_open.ps1"))?;
     fs::write(transfer.0.join("archive_processes.ps1"), include_str!("archive_processes.ps1"))?;
+    fs::write(transfer.0.join("ArchiveProcesses.cs"), include_str!("ArchiveProcesses.cs"))?;
     fs::write(transfer.0.join("CaptureProcesses.cs"), include_str!("../../office-capture/CaptureProcesses.cs"))?;
     let progress = transfer.0.join("progress.log");
     let metrics = transfer.0.join("metrics.json");
@@ -153,6 +154,7 @@ pub fn save_recalculated_copy(
     fs::write(&local_script, RECALCULATE_AND_SAVE_SCRIPT)?;
     for directory in [&transfer.0, work_dir] {
         fs::write(directory.join("archive_processes.ps1"), include_str!("archive_processes.ps1"))?;
+        fs::write(directory.join("ArchiveProcesses.cs"), include_str!("ArchiveProcesses.cs"))?;
         fs::write(directory.join("CaptureProcesses.cs"), include_str!("../../office-capture/CaptureProcesses.cs"))?;
     }
     let result = run_power_shell_script(
