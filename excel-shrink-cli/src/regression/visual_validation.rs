@@ -57,6 +57,32 @@ pub(super) fn compare_sheet_visuals(
             compare_paired_visuals(&paired_plan, original, shrunk, &output_dir.join("images"))?;
         (result.heights, result.tiles, result.differences)
     };
+    write_captured_visuals(
+        &paired_plan,
+        original,
+        output_dir,
+        options,
+        super::office_capture::PairedVisualResult {
+            heights: changed_heights,
+            tiles,
+            differences: image_differences,
+        },
+    )
+}
+
+pub(super) fn write_captured_visuals(
+    paired_plan: &super::office_capture::PairedPlan,
+    original: &Path,
+    output_dir: &Path,
+    options: &VisualCheckOptions,
+    captured: super::office_capture::PairedVisualResult,
+) -> Result<ExcelScreenshotReport> {
+    fs::create_dir_all(output_dir)?;
+    let super::office_capture::PairedVisualResult {
+        heights: changed_heights,
+        tiles,
+        differences: image_differences,
+    } = captured;
     let sheets = visual_sheets(
         &paired_plan.sheets,
         &changed_heights,

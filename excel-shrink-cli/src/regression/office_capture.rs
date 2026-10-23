@@ -11,7 +11,9 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod paired_capture;
-pub(super) use paired_capture::compare_paired_visuals;
+pub(super) use paired_capture::{compare_paired_visuals, PairedVisualResult};
+mod resident_capture;
+pub(super) use resident_capture::ResidentCapture;
 
 #[cfg(test)]
 #[test]

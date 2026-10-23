@@ -6,6 +6,7 @@ use std::process::{Child, Stdio};
 use std::time::Duration;
 use zip::ZipArchive;
 
+pub(in crate::regression) mod batch_cleanup;
 mod download;
 mod study;
 mod worker;
