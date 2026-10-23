@@ -336,16 +336,23 @@ def live_view(output):
         time.sleep(2)
 
 
+def publish_signal(path, content):
+    """Readers must never see a token until its writer has closed the file."""
+    temporary = path.with_name(path.name + '.pending')
+    temporary.write_text(content, encoding='utf-8')
+    temporary.replace(path)
+
+
 def barrier(trial, entries, futures, ready, signal, timeout):
     """Release all launchers with 'abort' if any peer fails to reach a phase."""
     deadline = time.monotonic() + timeout
     while not all((trial / Path(entry['name']).stem / ready).exists() for entry in entries):
         if any(future.done() and not (trial / Path(entry['name']).stem / ready).exists()
                for future, entry in futures.items()) or time.monotonic() >= deadline:
-            (trial / signal).write_text('abort\n')
+            publish_signal(trial / signal, 'abort\n')
             return False
         time.sleep(0.2)
-    (trial / signal).write_text('go\n')
+    publish_signal(trial / signal, 'go\n')
     return True
 
 
@@ -363,14 +370,14 @@ def launch_phase(trial, entries, futures, phase, timeout):
     signal = trial / f'phase-{phase}.signal'
     for entry in entries:
         group = trial / Path(entry['name']).stem
-        (group / f'phase-{phase}.launch').write_text('go\n')
+        publish_signal(group / f'phase-{phase}.launch', 'go\n')
         deadline = time.monotonic() + timeout
         while not (group / f'phase-{phase}.ready').exists():
             if any(future.done() for future in futures) or time.monotonic() >= deadline:
-                signal.write_text('abort\n')
+                publish_signal(signal, 'abort\n')
                 return False
             time.sleep(0.2)
-    signal.write_text('go\n')
+    publish_signal(signal, 'go\n')
     return True
 
 
@@ -411,14 +418,14 @@ def run_trial(entries, plans, runtime, launcher, output, repeat, active_groups, 
             # No ZIP preparation, Excel startup or sheet planning is inside this timer.
             start = time.monotonic()
             started = True
-            (trial / 'measurement.signal').write_text('go\n')
+            publish_signal(trial / 'measurement.signal', 'go\n')
             running = set()
             pending = [Path(entry['name']).stem for entry in entries]
             completed = set()
             while len(completed) < 4:
                 while pending and len(running) < active_groups:
                     group = pending.pop(0)
-                    (trial / group / 'start.signal').write_text('go\n')
+                    publish_signal(trial / group / 'start.signal', 'go\n')
                     running.add(group)
                 finished = []
                 for group in running:
@@ -449,23 +456,23 @@ def run_trial(entries, plans, runtime, launcher, output, repeat, active_groups, 
                 for signal in ('start.signal', 'release.signal'):
                     path = group / signal
                     if not path.exists():
-                        path.write_text('abort\n' if signal == 'start.signal' else 'release\n')
-            for phase in range(3):
+                        publish_signal(path, 'abort\n' if signal == 'start.signal' else 'release\n')
+            for phase in range(4):
                 signal = trial / f'phase-{phase}.signal'
                 if not signal.exists():
-                    signal.write_text('abort\n')
+                    publish_signal(signal, 'abort\n')
             for entry in entries:
                 group = trial / Path(entry['name']).stem
                 for phase in range(4):
                     token = group / f'phase-{phase}.launch'
                     if not token.exists():
-                        token.write_text('abort\n')
+                        publish_signal(token, 'abort\n')
             signal = trial / 'launch.signal'
             if not signal.exists():
-                signal.write_text('abort\n')
+                publish_signal(signal, 'abort\n')
             signal = trial / 'measurement.signal'
             if not signal.exists():
-                signal.write_text('abort\n')
+                publish_signal(signal, 'abort\n')
             for future, entry in futures.items():
                 try:
                     row['workbooks'].append(future.result())
