@@ -29,12 +29,15 @@ pub(super) fn compare(
 ) -> Result<()> {
     let memory_budget = MemoryBudget::configured(run["options"]["resident_capture"] == true)?;
     let mut adaptive = if run["options"]["adaptive_concurrency"] == true {
+        let (system_reserve, helper_reserve) = configured_reserves()?;
         Some(adaptive::Controller::new(
             requested,
             adaptive::Config {
                 worker: memory_budget.worker,
                 resident: configured_excel_limit("EXCEL_SHRINK_RESIDENT_MEMORY_MIB", 16384, 1024)?,
                 automation: configured_excel_limit("EXCEL_SHRINK_EXCEL_MEMORY_MIB", 4096, 256)?,
+                system_reserve,
+                helper_reserve,
             },
         ))
     } else {
@@ -89,7 +92,7 @@ pub(super) fn compare(
         }
         if let Some((_, plan)) = &adaptive_plan {
             eprintln!(
-                "[study] Adaptive wave: Excel limit {:.0} GiB, total reserve {:.0} GiB/group, system reserve {:.0} GiB; {} completed memory samples",
+                "[study] Adaptive wave: Excel limit {:.1} GiB, total reserve {:.1} GiB/group, system reserve {:.1} GiB; {} completed memory samples",
                 plan.resident_limit as f64 / GIB as f64,
                 plan.group_reserve as f64 / GIB as f64,
                 plan.system_reserve as f64 / GIB as f64,
@@ -121,11 +124,11 @@ pub(super) fn compare(
                     batch["total_physical_bytes"] = json!(memory.total_physical);
                     batch["workbook_reserve_bytes"] = json!(plan.group_reserve);
                     batch["system_reserve_bytes"] = json!(plan.system_reserve);
-                    batch["helper_reserve_bytes"] = json!(GIB);
+                    batch["helper_reserve_bytes"] = json!(plan.helper_reserve);
                     batch["reference_peak_bytes"] = json!(plan.reference_peak_bytes);
                     batch["calibration_samples"] = json!(plan.calibration_samples);
                     batch["estimate_rule"] = json!("max of last 8 complete resident peaks, normalized to at least 6 clients; 1.5x plus 1 GiB, rounded up; capped by configured Excel limit");
-                    batch["excel_session_reserve_bytes"] = json!(plan.group_reserve - memory_budget.worker - GIB);
+                    batch["excel_session_reserve_bytes"] = json!(plan.group_reserve - memory_budget.worker - plan.helper_reserve);
                 }
                 (
                     job.position,
@@ -311,6 +314,14 @@ fn admitted_workers(requested: u8, available: Option<u64>, budget: MemoryBudget)
     affordable.max(1).min(u64::from(requested)) as usize
 }
 
+fn configured_reserves() -> Result<(Option<u64>, u64)> {
+    let system = std::env::var_os("EXCEL_SHRINK_SYSTEM_RESERVE_MIB")
+        .map(|_| configured_excel_limit("EXCEL_SHRINK_SYSTEM_RESERVE_MIB", 4096, 1024))
+        .transpose()?;
+    let helpers = configured_excel_limit("EXCEL_SHRINK_HELPER_RESERVE_MIB", 1024, 256)?;
+    Ok((system, helpers))
+}
+
 fn wait_for_adaptive_admission(
     controller: &adaptive::Controller,
     remaining: usize,
@@ -352,12 +363,15 @@ pub(super) fn wait_for_classic_retry_memory(run: &Value) -> Result<()> {
         return Ok(());
     }
     let budget = MemoryBudget::configured(false)?;
+    let (system_reserve, helper_reserve) = configured_reserves()?;
     let controller = adaptive::Controller::new(
         1,
         adaptive::Config {
             worker: budget.worker,
             resident: budget.excel.max(GIB),
             automation: budget.excel,
+            system_reserve,
+            helper_reserve,
         },
     );
     wait_for_adaptive_admission(&controller, 1, || {})?;

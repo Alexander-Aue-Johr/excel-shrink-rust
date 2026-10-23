@@ -1,5 +1,5 @@
 //! Admit fixed waves within enforceable budgets and learn from completed groups.
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use serde_json::Value;
 use std::collections::VecDeque;
 
@@ -7,13 +7,14 @@ use super::super::prepared::PROFILES;
 
 pub(super) const GIB: u64 = 1024 * 1024 * 1024;
 const HISTORY_LENGTH: usize = 8;
-const HELPER_RESERVE: u64 = GIB;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Config {
     pub worker: u64,
     pub resident: u64,
     pub automation: u64,
+    pub system_reserve: Option<u64>,
+    pub helper_reserve: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -29,6 +30,7 @@ pub(super) struct Plan {
     pub resident_limit: u64,
     pub group_reserve: u64,
     pub system_reserve: u64,
+    pub helper_reserve: u64,
     pub reference_peak_bytes: Option<u64>,
     pub calibration_samples: usize,
 }
@@ -64,6 +66,11 @@ impl Controller {
             self.config.worker > 0 && self.config.resident >= GIB && self.config.automation > 0,
             "invalid comparison memory limits"
         );
+        ensure!(
+            self.config.helper_reserve >= GIB / 4
+                && self.config.system_reserve.is_none_or(|bytes| bytes >= GIB),
+            "comparison reserves require at least 256 MiB for helpers and 1 GiB for the system"
+        );
         let reference_peak_bytes = self.normalized_peaks.iter().copied().max();
         let resident_limit = reference_peak_bytes
             .map(|peak| estimated_limit(peak, self.config.resident))
@@ -74,9 +81,12 @@ impl Controller {
             .config
             .worker
             .checked_add(resident_limit.max(self.config.automation))
-            .and_then(|bytes| bytes.checked_add(HELPER_RESERVE))
+            .and_then(|bytes| bytes.checked_add(self.config.helper_reserve))
             .context("comparison memory reserve overflow")?;
-        let system_reserve = system_reserve(memory.total_physical);
+        let system_reserve = self
+            .config
+            .system_reserve
+            .unwrap_or_else(|| system_reserve(memory.total_physical));
         let available = memory.physical.min(memory.commit);
         let affordable = available.saturating_sub(system_reserve) / group_reserve;
         let workers = self
@@ -97,6 +107,7 @@ impl Controller {
             resident_limit,
             group_reserve,
             system_reserve,
+            helper_reserve: self.config.helper_reserve,
             reference_peak_bytes,
             calibration_samples: self.normalized_peaks.len(),
         })
@@ -143,14 +154,16 @@ fn primary_complete(record: &Value) -> bool {
 }
 
 fn completed_peak(record: &Value) -> Option<u64> {
+    let control_status = record["whitespace_diagnosis"]["status"].as_str();
+    let controls_complete = control_status == Some("complete");
+    let controls_not_needed = record["status"] == "unchanged"
+        && matches!(control_status, None | Some("not_investigated"));
     if record["capture_mode"] != "resident"
         || record["complete"] != true
         || !matches!(record["status"].as_str(), Some("unchanged" | "differences"))
         || !primary_complete(record)
         || record["resident_capture"]["status"] != "complete"
-        || record["whitespace_diagnosis"]["status"]
-            .as_str()
-            .is_some_and(|status| status != "complete")
+        || !(controls_complete || controls_not_needed)
     {
         return None;
     }
@@ -232,6 +245,8 @@ mod tests {
                 worker: 8 * GIB,
                 resident: 16 * GIB,
                 automation: 4 * GIB,
+                system_reserve: None,
+                helper_reserve: GIB,
             },
         )
     }
@@ -308,13 +323,11 @@ mod tests {
         assert_eq!(plan.resident_limit, 2 * GIB);
         assert_eq!(plan.group_reserve, 13 * GIB); // COM still reserves its full 4 GiB.
         controller.config.worker = u64::MAX;
-        assert!(
-            controller
-                .plan(memory(), 100)
-                .unwrap_err()
-                .to_string()
-                .contains("overflow")
-        );
+        assert!(controller
+            .plan(memory(), 100)
+            .unwrap_err()
+            .to_string()
+            .contains("overflow"));
         Ok(())
     }
 
@@ -350,6 +363,30 @@ mod tests {
             assert_eq!(plan.workers, 1);
             assert_eq!(plan.resident_limit, 16 * GIB);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn whitespace_completion_is_required_only_when_controls_are_needed() -> Result<()> {
+        for (status, diagnosis, learns) in [
+            ("unchanged", "not_investigated", true),
+            ("differences", "failed", false),
+            ("differences", "not_investigated", false),
+            ("differences", "complete", true),
+        ] {
+            let mut record = completed(GIB, 6);
+            record["status"] = json!(status);
+            record["whitespace_diagnosis"] = json!({"status":diagnosis});
+            let mut controller = controller();
+            controller.observe(&[record]);
+            let plan = controller.plan(memory(), 100)?;
+            assert_eq!(plan.calibration_samples, usize::from(learns));
+            assert_eq!(plan.workers, if learns { 2 } else { 1 });
+            assert_eq!(plan.resident_limit, if learns { 3 * GIB } else { 16 * GIB });
+        }
+        let mut missing = completed(GIB, 6);
+        missing["status"] = json!("differences");
+        assert_eq!(completed_peak(&missing), None);
         Ok(())
     }
 
@@ -406,13 +443,11 @@ mod tests {
         available.commit -= 1;
         assert_eq!(controller.plan(available, 100)?.workers, 1);
         available.commit = 21 * GIB - 1;
-        assert!(
-            controller
-                .plan(available, 100)
-                .unwrap_err()
-                .to_string()
-                .contains("Insufficient RAM")
-        );
+        assert!(controller
+            .plan(available, 100)
+            .unwrap_err()
+            .to_string()
+            .contains("Insufficient RAM"));
         available = memory();
         available.physical = 0;
         assert!(controller.plan(available, 100).is_err());
@@ -420,6 +455,38 @@ mod tests {
         assert_eq!(system_reserve(40 * GIB + 1), 5 * GIB);
         assert_eq!(system_reserve(64 * GIB), 7 * GIB);
         assert_eq!(system_reserve(u64::MAX), 8 * GIB);
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_small_machine_reserves_fit_exactly_without_lowering_defaults() -> Result<()> {
+        let configured = Controller::new(
+            1,
+            Config {
+                worker: GIB / 2,
+                resident: 3 * GIB / 2,
+                automation: GIB / 2,
+                system_reserve: Some(3 * GIB / 2),
+                helper_reserve: GIB / 2,
+            },
+        );
+        let mut available = Memory {
+            physical: 4 * GIB,
+            commit: 4 * GIB,
+            total_physical: 8 * GIB,
+        };
+        let plan = configured.plan(available, 10)?;
+        assert_eq!(plan.workers, 1);
+        assert_eq!(plan.resident_limit, 3 * GIB / 2);
+        assert_eq!(plan.helper_reserve, GIB / 2);
+        assert_eq!(plan.system_reserve, 3 * GIB / 2);
+        assert_eq!(plan.group_reserve + plan.system_reserve, 4 * GIB);
+        assert!(controller().plan(available, 10).is_err());
+        available.physical -= 1;
+        assert!(configured.plan(available, 10).is_err());
+        available.physical += 1;
+        available.commit -= 1;
+        assert!(configured.plan(available, 10).is_err());
         Ok(())
     }
 }

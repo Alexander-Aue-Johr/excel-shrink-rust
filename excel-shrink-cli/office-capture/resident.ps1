@@ -52,6 +52,16 @@ function Add-SessionEvent([string]$kind, [string]$client, $extra) {
     [IO.File]::AppendAllText((Join-Path $session 'launcher-events.jsonl'), (($event | ConvertTo-Json -Depth 20 -Compress) + "`n"), $utf8)
 }
 
+function Get-SystemReserveBytes($configured) {
+    $mib = 4096
+    if ($null -ne $configured) {
+        if (-not [int]::TryParse($configured, [ref]$mib) -or $mib -lt 1024 -or $mib -gt 65536) {
+            throw 'EXCEL_SHRINK_SYSTEM_RESERVE_MIB must be between 1024 and 65536.'
+        }
+    }
+    return [UInt64]$mib * 1MB
+}
+
 function Wait-BatchRelease {
     if ($null -eq $batchLifetime) { return 'released' }
     if ($batchReleased) { return $batchReleaseReason }
@@ -72,7 +82,7 @@ function Wait-BatchRelease {
         $commit = [ResidentProcesses]::AvailableCommitBytes
         $metrics.minimum_available_bytes = [Math]::Min([UInt64]$metrics.minimum_available_bytes, $available)
         $metrics.minimum_commit_bytes = [Math]::Min([UInt64]$metrics.minimum_commit_bytes, $commit)
-        if ($available -lt 4GB -or $commit -lt 4GB) { $reason='memory_guard'; break }
+        if ($available -lt $systemReserveBytes -or $commit -lt $systemReserveBytes) { $reason='memory_guard'; break }
         if ($wait.Elapsed.TotalSeconds -ge [double]$batchLifetime.timeout_seconds) { $reason='timeout'; break }
         if ($metricsClock.ElapsedMilliseconds -ge 1000) {
             $metrics.elapsed_seconds = $clock.Elapsed.TotalSeconds
@@ -139,7 +149,9 @@ function Update-Resources {
     $commit = [ResidentProcesses]::AvailableCommitBytes
     $metrics.minimum_available_bytes = [Math]::Min([UInt64]$metrics.minimum_available_bytes, $available)
     $metrics.minimum_commit_bytes = [Math]::Min([UInt64]$metrics.minimum_commit_bytes, $commit)
-    if ($available -lt 4GB -or $commit -lt 4GB) { throw 'Resident RAM guard: less than 4 GiB physical RAM or commit headroom remains.' }
+    if ($available -lt $systemReserveBytes -or $commit -lt $systemReserveBytes) {
+        throw "Resident RAM guard: less than $($metrics.system_reserve_mib) MiB physical RAM or commit headroom remains."
+    }
     if ($null -ne $hostProcess) {
         $hostProcess.Refresh()
         if ($hostProcess.HasExited) { throw 'Resident capture host exited unexpectedly.' }
@@ -254,10 +266,14 @@ $batchOwner = $null
 $batchReleased = $false
 $batchReleaseReason = $null
 $finishWait = $null
-$metrics = [ordered]@{ status='starting'; visible=[bool]$Visible; memory_limit_mib=16384; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{} }
+$systemReserveBytes = [UInt64]4GB
+$metrics = [ordered]@{ status='starting'; visible=[bool]$Visible; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{} }
 try {
     Add-Type -Path (Join-Path $PSScriptRoot 'ResidentProcesses.cs')
     Add-Type -Path (Join-Path $PSScriptRoot 'CaptureWorkbook.cs') -ReferencedAssemblies @('System.IO.Compression', 'System.IO.Compression.FileSystem', 'System.Xml')
+    $systemReserveBytes = Get-SystemReserveBytes ([Environment]::GetEnvironmentVariable('EXCEL_SHRINK_SYSTEM_RESERVE_MIB'))
+    $metrics.system_reserve_mib = $systemReserveBytes / 1MB
+    $metrics.system_reserve_bytes = $systemReserveBytes
     $batchPath = Join-Path $session 'batch-lifetime.json'
     if (Test-Path -LiteralPath $batchPath -PathType Leaf) {
         $configured = [IO.File]::ReadAllText($batchPath, $utf8) | ConvertFrom-Json

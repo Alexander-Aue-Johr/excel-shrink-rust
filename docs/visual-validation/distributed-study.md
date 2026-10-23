@@ -70,25 +70,45 @@ study. Completed results remain in place; adding `--retry-skipped` would explici
 request retries and is not part of these commands. Keep the PowerShell session
 open while it runs; a standalone PowerShell window allows VS Code to be closed.
 
-Laptop 1:
+Laptop 1, 8 GiB RAM (constrained profile, one source workbook at a time):
 
 ```powershell
-& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 1/4 --machine-label ENRON-LAPTOP-1 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 4
+$env:EXCEL_SHRINK_WORKER_MEMORY_MIB = '512'
+$env:EXCEL_SHRINK_EXCEL_MEMORY_MIB = '512'
+$env:EXCEL_SHRINK_RESIDENT_MEMORY_MIB = '1536'
+$env:EXCEL_SHRINK_SYSTEM_RESERVE_MIB = '1536'
+$env:EXCEL_SHRINK_HELPER_RESERVE_MIB = '512'
+& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 1/4 --machine-label ENRON-LAPTOP-1 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 1
 ```
 
-Laptop 2:
+This is a proposed constrained profile; native validation on GOTHAM is pending,
+and behavior on the actual 8 GiB laptop is unverified. These limits may reject a
+memory-demanding workbook even in the smallest quarter. A recoverable resident
+failure gets at most one sequential paired retry; if that also exceeds its
+limits, the result remains a reported skip. File size alone cannot guarantee that
+every workbook will fit. The reserve overrides apply only to this profile.
+
+Laptop 2, 32 GiB RAM:
 
 ```powershell
+$env:EXCEL_SHRINK_WORKER_MEMORY_MIB = '4096'
+$env:EXCEL_SHRINK_EXCEL_MEMORY_MIB = '2048'
+$env:EXCEL_SHRINK_RESIDENT_MEMORY_MIB = '8192'
+Remove-Item Env:EXCEL_SHRINK_SYSTEM_RESERVE_MIB -ErrorAction SilentlyContinue
+Remove-Item Env:EXCEL_SHRINK_HELPER_RESERVE_MIB -ErrorAction SilentlyContinue
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 2/4 --machine-label ENRON-LAPTOP-2 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 4
 ```
 
-Enron tower 1:
+The 32 GiB profile uses the default 4 GiB system reserve and 1 GiB helper reserve
+per group. Four workers is an upper limit, not a starting batch size.
+
+Enron tower 1 (retain its reviewed memory settings, or the defaults):
 
 ```powershell
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 3/4 --machine-label ENRON-TOWER-1 --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
 ```
 
-Enron tower 2:
+Enron tower 2 (retain its reviewed memory settings, or the defaults):
 
 ```powershell
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 4/4 --machine-label ENRON-TOWER-2 --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
@@ -97,10 +117,19 @@ Enron tower 2:
 GOTHAM continues Data.gov with the largest remaining files first:
 
 ```powershell
+$env:EXCEL_SHRINK_WORKER_MEMORY_MIB = '8192'
+$env:EXCEL_SHRINK_RESIDENT_MEMORY_MIB = '32768'
+Remove-Item Env:EXCEL_SHRINK_SYSTEM_RESERVE_MIB -ErrorAction SilentlyContinue
+Remove-Item Env:EXCEL_SHRINK_HELPER_RESERVE_MIB -ErrorAction SilentlyContinue
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
 ```
 
-Machine 6 handles Destatis:
+On GOTHAM, adaptive admission keeps the default 8 GiB system reserve; the runtime
+guard retains its separate 4 GiB floor. The two Enron towers and the Destatis
+machine retain their existing reviewed settings or defaults until their RAM is
+known. Do not copy the 8 GiB laptop's reserve overrides to those machines.
+
+Machine 6 handles Destatis (retain its reviewed memory settings, or the defaults):
 
 ```powershell
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Destatis --machine-label DESTATIS-1 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 4
@@ -120,8 +149,11 @@ allow six physical clients (four primary workbooks and two controls). The
 estimate adds 50% and 1 GiB, rounds up to whole GiB, and never exceeds the
 configured resident limit. The chosen limit is enforced on that group's Excel
 job. Rust retains its full configured limit, COM retains its own limit, and each
-group additionally reserves 1 GiB for helpers. The system reserve is 10% of total
-RAM rounded up to GiB, with a minimum of 4 and maximum of 8 GiB. Both free RAM and
+group additionally reserves 1 GiB for helpers by default. The default system
+reserve is 10% of total RAM rounded up to GiB, with a minimum of 4 and maximum of
+8 GiB. `EXCEL_SHRINK_HELPER_RESERVE_MIB` and
+`EXCEL_SHRINK_SYSTEM_RESERVE_MIB` override these reserves for an explicitly
+configured machine, as in the constrained 8 GiB profile above. Both free RAM and
 commit headroom must accommodate all admitted groups and this reserve.
 
 If another application consumes the available memory, the runner waits between
@@ -155,8 +187,9 @@ The Rust worker defaults to a 4,096 MiB process limit. An existing reviewed
 $env:EXCEL_SHRINK_WORKER_MEMORY_MIB = '8192'
 ```
 
-This is a limit for the Rust worker, not a reservation and not a limit for all
-processes combined. Excel has a separate limit and the operating system, Excel,
+This caps the Rust worker rather than preallocating memory; admission budgets
+reserve that full limit. It does not cap all processes combined. Excel has a
+separate limit and the operating system, Excel,
 WebView and other applications also need RAM. Do not apply the tower setting to
 small laptops without checking their available memory. Record any changed limits.
 
@@ -188,6 +221,10 @@ The resident mode keeps the original and its cleaning variants open for visual
 comparison. Enable it explicitly on a machine with enough available RAM:
 
 ```powershell
+$env:EXCEL_SHRINK_WORKER_MEMORY_MIB = '8192'
+$env:EXCEL_SHRINK_RESIDENT_MEMORY_MIB = '32768'
+Remove-Item Env:EXCEL_SHRINK_SYSTEM_RESERVE_MIB -ErrorAction SilentlyContinue
+Remove-Item Env:EXCEL_SHRINK_HELPER_RESERVE_MIB -ErrorAction SilentlyContinue
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
 ```
 
@@ -218,19 +255,23 @@ the workbook's processing deadline. Parent loss and bounded cleanup still apply.
 Without adaptive concurrency, admission adds each group's configured Rust limit
 and Excel limit, then keeps
 4 GiB for the system. Excel's resident-session limit defaults to 16 GiB; a larger
-configured COM limit also counts. With GOTHAM's 8 GiB Rust limit, two groups need
-52 GiB available and three need 76 GiB. Unknown available memory falls back to
+configured COM limit also counts. With an 8 GiB Rust limit and the default
+16 GiB resident limit, two groups need 52 GiB available and three need 76 GiB.
+GOTHAM's command above instead permits a 32 GiB resident limit and uses adaptive
+admission. Unknown available memory falls back to
 one worker. These checks do not lower either allocation limit.
 
 Adaptive concurrency uses the observed peaks to choose an enforced Excel session
 limit for the next batch, bounded by the configured resident limit. It retains the
 full configured Rust and COM limits, reserves another 1 GiB per group for helpers,
-and keeps 4–8 GiB for the system. Admission checks the sum of these effective
+and keeps 4–8 GiB for the system by default. The constrained laptop profile uses
+the explicit reserve overrides listed above. Admission checks the sum of these effective
 limits against both available physical RAM and commit capacity. It holds pending
 work when even one group cannot safely fit. The first calibration may also need
 a lower Excel limit on a small machine; a laptop with 16 GiB cannot reserve a
 4 GiB Rust worker plus a 16 GiB Excel session and system memory simultaneously.
-No manual lowering of environment limits is assumed by the commands above.
+The laptop commands therefore provide separate memory settings suited to their
+reported RAM; they do not promise that every selected workbook fits those caps.
 
 The requested order and concurrency settings remain in the run metadata. Each
 record retains actual batch size, effective and reserved limits, capture method,
