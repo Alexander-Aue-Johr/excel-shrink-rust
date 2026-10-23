@@ -1,0 +1,624 @@
+{
+  "schema": 1,
+  "date": "2026-10-23",
+  "machine": "GOTHAM",
+  "processor": "AMD Ryzen 7 7800X3D 8-Core Processor",
+  "logical_processors": 16,
+  "physical_memory_bytes": 102066212864,
+  "operating_system": "Windows-11-10.0.26200-SP0",
+  "measurement_boundary": "capture after all 16 Excel instances are ready; excludes staging, opening, planning, and report evidence copying",
+  "runs": {
+    "small-initial": {
+      "raw_directory": ".tmp/corpus-quartet-tower-small-20261023",
+      "runtime_commit": "af2f8d49c38f13f2f130bcb2b0d2e62a81a3dbb2",
+      "cli_sha256": "5bcc4884ab7f098df00a80f1fd86abba9db9ce7c6b9071397ac929f105d36dc6",
+      "memory_guard_ignored": true,
+      "requested_repeats": 3,
+      "requested_trials": 9,
+      "completed_records": 9,
+      "validated_controls": 84,
+      "planned_controls": 108,
+      "observations": [
+        {
+          "repeat": 0,
+          "active_groups": 1,
+          "status": "failed",
+          "measured_seconds": null,
+          "error": "Excel launch phase 3 failed",
+          "validated_controls": null,
+          "workbook_errors": {
+            "seeschifffahrt-monat-2080500221095.xlsx": "Common measurement aborted.",
+            "foerderprogramme-5411206209005.xlsx": "Exception calling \"ReadAllText\" with \"2\" argument(s): \"The process cannot access the file 'V:\\excel-shrink-paper\\external\\excel-shrink-rust\\.tmp\\corpus-quartet-tower-small-20261023\\r0-c1\\foerderprogramme-5411206209005\\phase-3.launch' because it is being used by another process.\"",
+            "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx": "Excel phase 3 launch aborted.",
+            "jahresbericht-5422701207005.xlsx": "Excel phase 3 launch aborted."
+          }
+        },
+        {
+          "repeat": 0,
+          "active_groups": 2,
+          "status": "complete",
+          "measured_seconds": 2.755997300002491,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 0,
+          "active_groups": 4,
+          "status": "complete",
+          "measured_seconds": 2.141056299995398,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 1,
+          "active_groups": 4,
+          "status": "complete",
+          "measured_seconds": 2.142044900014298,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 1,
+          "active_groups": 2,
+          "status": "complete",
+          "measured_seconds": 2.776622999983374,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 1,
+          "active_groups": 1,
+          "status": "failed",
+          "measured_seconds": null,
+          "error": "An Excel group exited before capture completion",
+          "validated_controls": null,
+          "workbook_errors": {
+            "foerderprogramme-5411206209005.xlsx": "Exception calling \"ReadAllText\" with \"2\" argument(s): \"The process cannot access the file 'V:\\excel-shrink-paper\\external\\excel-shrink-rust\\.tmp\\corpus-quartet-tower-small-20261023\\r1-c1\\measurement.signal' because it is being used by another process.\"",
+            "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx": "Capture start aborted.",
+            "jahresbericht-5422701207005.xlsx": "Capture start aborted."
+          }
+        },
+        {
+          "repeat": 2,
+          "active_groups": 2,
+          "status": "complete",
+          "measured_seconds": 2.695217500004219,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 2,
+          "active_groups": 4,
+          "status": "complete",
+          "measured_seconds": 2.1078386000008322,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 2,
+          "active_groups": 1,
+          "status": "complete",
+          "measured_seconds": 4.942559499992058,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        }
+      ],
+      "inputs": {
+        "seeschifffahrt-monat-2080500221095.xlsx": {
+          "scope": "2.2!A1:J12",
+          "sheet": "2.2",
+          "cell": "G6",
+          "original_value": "2022",
+          "original_sha256": "a4723d0c895e68ee888cbdb00ea41a963a57b3af73a0dfab79a927b0e9e62ee9",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "6aff1dcab69f0d5487929b0ed7c39a1d83edf507e0801a6e78bece83749296db",
+              "sha256": "f1475aef15f3eae2bfdf25c1ca31d51e09a3d88904c02732d108c4cd9f542779"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "41a37dfd7c0ca694dac928a57e5a0e68e4a40ffb790dc0ca43f62d7a3549f11b",
+              "sha256": "20d387a2b5b348218c1d7926875a2b1250c20045ffb49f28c512452459a27c29"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "f3d7cf7f020f9743430ff5f2a3b13d56fd68e1dc3823e01cc36dc48ecfaf7cd6",
+              "sha256": "b981203e3baaaf03d96781149e24be0808d6f74ebced0219a90cf2e82ac58765"
+            }
+          }
+        },
+        "foerderprogramme-5411206209005.xlsx": {
+          "scope": "0901_T_HH!A1:T29",
+          "sheet": "0901_T_HH",
+          "cell": "D28",
+          "original_value": "272",
+          "original_sha256": "90083c13bff03b55050277bfbe305d3800f876af51d5c90a0ea152586f3ae352",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "50aa8849ce6b8b820a737c0d170c683b9df61fb2542c7c6f92202bcfecf230ef",
+              "sha256": "f17edd0da6d7e12e59d22023cd65f093b86fab7ecde0e24e01383c46abecfb82"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "50498561d44ba375aa853b6504915be9e8f564e1dab7f7457bc5e5e53b06a009",
+              "sha256": "b4a53996b4e7bd4a00a742a1a2b5f9d6b088b666b0de31645e128b4ebd649181"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "97adc948959b2cc55e2a75cc14fadafeadf7c2264280db6a477651325ee4afd7",
+              "sha256": "90866082a07db50eb2b47003654d62c80a427c5a0e003c7e5bc639fbf802cefb"
+            }
+          }
+        },
+        "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx": {
+          "scope": "csv-79932-02-11!A1:I12",
+          "sheet": "csv-79932-02-11",
+          "cell": "F6",
+          "original_value": "5.13",
+          "original_sha256": "aa0bfbdaf21313926547a909ff491ecabce021c4ab2134d6a4d3c7201e4dc054",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "65526d943657caa049bfe19dc6d8715bc928cd08d593f82d577b8fce04870274",
+              "sha256": "94c8e6cfa7c31dcd118692669ace3d8b78980062933c45ea38c774dfdf9134be"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "e6cfeb3477cb9be351c87622b1c6fc69e8acc847a7d08f1388193acfbae23995",
+              "sha256": "acef381a038157029d8f18f406040a8240764be4d9bbd348c90f46792ea47f8f"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "2ac39f4145ff8b2ce80b1692a62cd30d9ebead8f1a0d11df8eddc4aa1151e564",
+              "sha256": "6035c60b5c7b8a2b89a420b3d3ad441ef4f485295b64f54446b34de1c045b431"
+            }
+          }
+        },
+        "jahresbericht-5422701207005.xlsx": {
+          "scope": "AL-Umsätze!A1:H14",
+          "sheet": "AL-Umsätze",
+          "cell": "D14",
+          "original_value": "-7.2581696331811631",
+          "original_sha256": "d714d9b55149d3bda27fac09790cb8afb629604ce42c70d5ac270524b796a45a",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "f8fe032aacf528926e80aea19dffb2a46e207db679d00b3d21d94784b003618b",
+              "sha256": "0c57012608bd520edb9f7dbe32956652ee174507d48a7ec63ff725abd2b71bba"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "73a3a6cf7380938d9c013a35d8ac6fc8e32c5d95ef5eba0cde95f105930555ba",
+              "sha256": "2d4a0ed905491f26ae5b4dc2476b9829c59ba5585cdc7af8d33249cb5b221f45"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "4e59e728c140690e5dc92f3593a21e04fcfecc0be699814ea706bed8ce5532a3",
+              "sha256": "072359a79e5a7713d7108c0ffae44433701f8ede8cd38567bcb1fcf8c6f300ef"
+            }
+          }
+        }
+      },
+      "artifact_sha256": {
+        "results.json": "f17a8bcf7be4e81955c5fbed2bfac35b360ec261730d4fa4e7402e22d9c2d239",
+        "measurements.csv": "261a14e7fb37329869ea7215c052df8b144b01d6ab94f1b5a178229a71d0c7f0",
+        "provenance.json": "111141c626726f812fdbc319a2e9d811b6456f44f6ef552d8ab10f6082c4045a",
+        "controls.json": "754072c0a5002d4423b710e236878b25149e42b78dc870adbbfe66862410755d",
+        "plans.json": "f42835675707b8d55c06d7e9a77ed5c4d9773db1ecec1c06558bf283193cf46b"
+      }
+    },
+    "small-fixed": {
+      "raw_directory": ".tmp/corpus-quartet-tower-small-fixed-20261023",
+      "runtime_commit": "af2f8d49c38f13f2f130bcb2b0d2e62a81a3dbb2",
+      "cli_sha256": "5bcc4884ab7f098df00a80f1fd86abba9db9ce7c6b9071397ac929f105d36dc6",
+      "memory_guard_ignored": true,
+      "requested_repeats": 3,
+      "requested_trials": 9,
+      "completed_records": 9,
+      "validated_controls": 108,
+      "planned_controls": 108,
+      "observations": [
+        {
+          "repeat": 0,
+          "active_groups": 1,
+          "status": "complete",
+          "measured_seconds": 4.9845634999801405,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 0,
+          "active_groups": 2,
+          "status": "complete",
+          "measured_seconds": 2.7712041000195313,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 0,
+          "active_groups": 4,
+          "status": "complete",
+          "measured_seconds": 2.099529299972346,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 1,
+          "active_groups": 4,
+          "status": "complete",
+          "measured_seconds": 2.114181099983398,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 1,
+          "active_groups": 2,
+          "status": "complete",
+          "measured_seconds": 2.7449376999866217,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 1,
+          "active_groups": 1,
+          "status": "complete",
+          "measured_seconds": 5.10312809998868,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 2,
+          "active_groups": 2,
+          "status": "complete",
+          "measured_seconds": 3.224786300008418,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 2,
+          "active_groups": 4,
+          "status": "complete",
+          "measured_seconds": 2.1923755000170786,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        },
+        {
+          "repeat": 2,
+          "active_groups": 1,
+          "status": "complete",
+          "measured_seconds": 4.963364199997159,
+          "error": null,
+          "validated_controls": 12,
+          "workbook_errors": {}
+        }
+      ],
+      "inputs": {
+        "seeschifffahrt-monat-2080500221095.xlsx": {
+          "scope": "2.2!A1:J12",
+          "sheet": "2.2",
+          "cell": "G6",
+          "original_value": "2022",
+          "original_sha256": "a4723d0c895e68ee888cbdb00ea41a963a57b3af73a0dfab79a927b0e9e62ee9",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "6aff1dcab69f0d5487929b0ed7c39a1d83edf507e0801a6e78bece83749296db",
+              "sha256": "f1475aef15f3eae2bfdf25c1ca31d51e09a3d88904c02732d108c4cd9f542779"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "41a37dfd7c0ca694dac928a57e5a0e68e4a40ffb790dc0ca43f62d7a3549f11b",
+              "sha256": "20d387a2b5b348218c1d7926875a2b1250c20045ffb49f28c512452459a27c29"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "f3d7cf7f020f9743430ff5f2a3b13d56fd68e1dc3823e01cc36dc48ecfaf7cd6",
+              "sha256": "b981203e3baaaf03d96781149e24be0808d6f74ebced0219a90cf2e82ac58765"
+            }
+          }
+        },
+        "foerderprogramme-5411206209005.xlsx": {
+          "scope": "0901_T_HH!A1:T29",
+          "sheet": "0901_T_HH",
+          "cell": "D28",
+          "original_value": "272",
+          "original_sha256": "90083c13bff03b55050277bfbe305d3800f876af51d5c90a0ea152586f3ae352",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "50aa8849ce6b8b820a737c0d170c683b9df61fb2542c7c6f92202bcfecf230ef",
+              "sha256": "f17edd0da6d7e12e59d22023cd65f093b86fab7ecde0e24e01383c46abecfb82"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "50498561d44ba375aa853b6504915be9e8f564e1dab7f7457bc5e5e53b06a009",
+              "sha256": "b4a53996b4e7bd4a00a742a1a2b5f9d6b088b666b0de31645e128b4ebd649181"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "97adc948959b2cc55e2a75cc14fadafeadf7c2264280db6a477651325ee4afd7",
+              "sha256": "90866082a07db50eb2b47003654d62c80a427c5a0e003c7e5bc639fbf802cefb"
+            }
+          }
+        },
+        "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx": {
+          "scope": "csv-79932-02-11!A1:I12",
+          "sheet": "csv-79932-02-11",
+          "cell": "F6",
+          "original_value": "5.13",
+          "original_sha256": "aa0bfbdaf21313926547a909ff491ecabce021c4ab2134d6a4d3c7201e4dc054",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "65526d943657caa049bfe19dc6d8715bc928cd08d593f82d577b8fce04870274",
+              "sha256": "94c8e6cfa7c31dcd118692669ace3d8b78980062933c45ea38c774dfdf9134be"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "e6cfeb3477cb9be351c87622b1c6fc69e8acc847a7d08f1388193acfbae23995",
+              "sha256": "acef381a038157029d8f18f406040a8240764be4d9bbd348c90f46792ea47f8f"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "2ac39f4145ff8b2ce80b1692a62cd30d9ebead8f1a0d11df8eddc4aa1151e564",
+              "sha256": "6035c60b5c7b8a2b89a420b3d3ad441ef4f485295b64f54446b34de1c045b431"
+            }
+          }
+        },
+        "jahresbericht-5422701207005.xlsx": {
+          "scope": "AL-Umsätze!A1:H14",
+          "sheet": "AL-Umsätze",
+          "cell": "D14",
+          "original_value": "-7.2581696331811631",
+          "original_sha256": "d714d9b55149d3bda27fac09790cb8afb629604ce42c70d5ac270524b796a45a",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "f8fe032aacf528926e80aea19dffb2a46e207db679d00b3d21d94784b003618b",
+              "sha256": "0c57012608bd520edb9f7dbe32956652ee174507d48a7ec63ff725abd2b71bba"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "73a3a6cf7380938d9c013a35d8ac6fc8e32c5d95ef5eba0cde95f105930555ba",
+              "sha256": "2d4a0ed905491f26ae5b4dc2476b9829c59ba5585cdc7af8d33249cb5b221f45"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "4e59e728c140690e5dc92f3593a21e04fcfecc0be699814ea706bed8ce5532a3",
+              "sha256": "072359a79e5a7713d7108c0ffae44433701f8ede8cd38567bcb1fcf8c6f300ef"
+            }
+          }
+        }
+      },
+      "artifact_sha256": {
+        "results.json": "8579a1945c669cb1a4b1f2be81c81b1871c463c8078ed71780a794c67cafbddf",
+        "measurements.csv": "f327b04dd65be83f5c5da01957adba843a437c448a6fb0971aa44ed5d0be858b",
+        "provenance.json": "111141c626726f812fdbc319a2e9d811b6456f44f6ef552d8ab10f6082c4045a",
+        "controls.json": "ac917860db0fb6a697479e7edb7971165025609783c2f0dbad40b27e4a9cb5ae",
+        "plans.json": "f42835675707b8d55c06d7e9a77ed5c4d9773db1ecec1c06558bf283193cf46b"
+      },
+      "wall_seconds": 326.1036292
+    },
+    "priority-initial": {
+      "raw_directory": ".tmp/corpus-quartet-tower-priority-20261023",
+      "runtime_commit": "af2f8d49c38f13f2f130bcb2b0d2e62a81a3dbb2",
+      "cli_sha256": "5bcc4884ab7f098df00a80f1fd86abba9db9ce7c6b9071397ac929f105d36dc6",
+      "memory_guard_ignored": true,
+      "requested_repeats": 3,
+      "requested_trials": 9,
+      "completed_records": 1,
+      "validated_controls": 0,
+      "planned_controls": 108,
+      "observations": [
+        {
+          "repeat": 0,
+          "active_groups": 1,
+          "status": "failed",
+          "measured_seconds": null,
+          "error": "Excel launch phase 0 failed",
+          "validated_controls": null,
+          "workbook_errors": {
+            "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx": "Add-in startup timeout: original",
+            "wanderungen-2010120217005.xlsx": "Excel phase 0 launch aborted.",
+            "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx": "Excel phase 0 launch aborted.",
+            "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx": "Excel phase 0 launch aborted."
+          }
+        }
+      ],
+      "inputs": {
+        "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx": {
+          "scope": "csv-71717-25!A1:G400",
+          "sheet": "csv-71717-25",
+          "cell": "E200",
+          "original_value": "33",
+          "original_sha256": "b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "725be87c6f1efc4b3c6c1c37f1139403851c65e04b511e0af87e94eb18ead8d2",
+              "sha256": "730b9aacfb62a51f3aaabae04cee3faa67d94c2e0db53523a6e76b0df0a245d9"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "6ce88c8264732c5a79943970218f51c0bb217a82efe89c8879ccdcffb3e8d9d8",
+              "sha256": "58db65f1791feebe5d755a87b4516b7402d2365b6941ce5ab11196dec8c4efcc"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "50a9cf1c7532ac0db1afded7ae285a91fc1826ba5de84b735701b91fd5b7816e",
+              "sha256": "6c0414762d998b478a01c7a65ad9a3977efc12feef339935af9ba889a9e03255"
+            }
+          }
+        },
+        "wanderungen-2010120217005.xlsx": {
+          "scope": "Tabelle 1.4 !A1:FP400",
+          "sheet": "Tabelle 1.4 ",
+          "cell": "O111",
+          "original_value": "84",
+          "original_sha256": "bedf8677328fb15ffd967d03ebdf860ae4b1d0942d38091b4b4bef90e574f712",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "617c78cd33cf9e5f523916f320a5ff01764ef62bc184b521b588b1bae44b77dd",
+              "sha256": "843cb53c5e9570612ab9719752554987516ce1346c10dd5159e29a0cb8ce0a97"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "6a32ff09a8687dbe76cd721e1e1db05ee019df1e8ddb2e9ce149b1de99ad6959",
+              "sha256": "49f926415e0792306324586ccf5984b9e8c91ec9b9be9ee8593168174150ddae"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "ecabdace108e6bd08e0e6d3bad790c66987d3ffb1c8190029b75ed6d1b70725a",
+              "sha256": "edf5d5cf0bf9f1d038f9e7df6fc873b5923c0988427fd951be80ba5cdc959eaa"
+            }
+          }
+        },
+        "statistischer-bericht-stromsteuerstatistik-2140970237005.xlsx": {
+          "scope": "csv-79932-02-11!A1:FP37",
+          "sheet": "csv-79932-02-11",
+          "cell": "I19",
+          "original_value": "-1293563401",
+          "original_sha256": "aa0bfbdaf21313926547a909ff491ecabce021c4ab2134d6a4d3c7201e4dc054",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "9b7954a7fb74197db9d7e91d46b82a35ff88da4435ab123739cad667f9f5a0d9",
+              "sha256": "f97b045dafbc09d12cf121c498948aaf191cf46f100efd78ecd9d4ac2865f737"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "bae833bf548f11942174fc0bbba52978d56aadd09b8110d1810d86aa2251a9ab",
+              "sha256": "b9fc32ddb87156e76c619fc544ad63735383e8f0ce7eee1db1ccf6265841e1d3"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "5d1821efef28a95777bb73eb97164edfe95d4f875ac86aee1c7d7a49c7eb057a",
+              "sha256": "3017226ebe8e7010302169cdcd27e45981542134f4b5c88b2a97038c28f644df"
+            }
+          }
+        },
+        "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx": {
+          "scope": "4.6_(3)!A1:K400",
+          "sheet": "4.6_(3)",
+          "cell": "F61",
+          "original_value": "15873",
+          "original_sha256": "b320dc4f614eec1a1251efc5ca5041948761283ef33e29a5939652eab1fee806",
+          "variants": {
+            "default": {
+              "value": "101",
+              "source_sha256": "3920744805445d758c49049a2b320c8c0c56aafca1d51e26d57f85f59c61445f",
+              "sha256": "db9f845241ef2ddf6b60087cd8ce8f3929016b5fa5a57b048e9eb170cce4ed28"
+            },
+            "maximum": {
+              "value": "202",
+              "source_sha256": "7e8a1059c246410298fad8e1f61f3040c5be0522aee635a3a796d106a50360fe",
+              "sha256": "16a5346984d659830a465efc15836d04058ba4f763f1b359b67e3d1f250b88ee"
+            },
+            "too-aggressive": {
+              "value": "303",
+              "source_sha256": "b37e484c15e26c1eacc2c6d33f65de12d9085eb9a94a5fe17e144bf05d9bd395",
+              "sha256": "bb2b53bdac6a8d239bd06a9a86e0cbca3f0d331fc5eca4551048915b0643c877"
+            }
+          }
+        }
+      },
+      "artifact_sha256": {
+        "results.json": "c1ad06c18eed7309dc2d11c6a02b44088ddaac58bfcd1a92c28226fe7fd637b2",
+        "measurements.csv": "c6df3a8b581553ecc812b0bac97127ff3aae7ba11ea774b8e6fa5211fe1e562f",
+        "provenance.json": "29a3636131a077eb7fff61b8aa4c13db548b37915c86154d3a6dcf04c29f07f7",
+        "controls.json": "a38d4d8630425cb25e02725caaae215bc34408942dd3e352e5116d9ff837e3a6",
+        "plans.json": "40561469e1972e2662d24645a9e30108a61dfe129b61898f6343cfba8a479324"
+      },
+      "wall_seconds": 491.9669567,
+      "interruption": {
+        "measured_trials": 0,
+        "next_trial_interrupted": "r0-c2",
+        "remaining_trials_not_run": 7,
+        "audit_file": ".tmp/corpus-quartet-tower-priority-20261023/stopped-after-first-failure.json",
+        "reason": "First original did not announce Office.js within 300 seconds; stopped instead of repeating equivalent timeouts."
+      }
+    }
+  },
+  "probes": {
+    "tiny-selection-ab": {
+      "raw_file": ".tmp/grouped-selection-probe-20261023/observations.json",
+      "artifact_sha256": "aea477a3d1532fc2a3028602219c5daee2250072d913536a89a218487311988d",
+      "observations": [
+        {
+          "consistent_selection": false,
+          "office_js_started": true,
+          "launcher_exit": 1,
+          "launcher_error": "Excel phase 1 launch aborted.",
+          "total_seconds": 2.8023081999999997,
+          "fixture_sha256": "2f4837e73e7f24733c63d4bd1f9b055c618b434e3a1031d58b8bd23920a2cc20"
+        },
+        {
+          "consistent_selection": true,
+          "office_js_started": true,
+          "launcher_exit": 1,
+          "launcher_error": "Excel phase 1 launch aborted.",
+          "total_seconds": 3.1739531,
+          "fixture_sha256": "f7410a01d57eade18f7c82593500c846671ed30c9084bd363eb2c26f3705aeac"
+        }
+      ],
+      "runtime_commit": "af2f8d49c38f13f2f130bcb2b0d2e62a81a3dbb2"
+    },
+    "large-fixture-error": {
+      "raw_file": ".tmp/grouped-selection-kernhaushalte-normalized-20261023/observations.json",
+      "artifact_sha256": "73289d021deab458c0d38356d2e6fda5e08a7153d369af5cf5890ef0335bcb56",
+      "observations": [
+        {
+          "consistent_selection": null,
+          "office_js_started": false,
+          "launcher_exit": 1,
+          "launcher_error": "Exception calling \"PrepareCapture\" with \"3\" argument(s): \"Initial worksheet index is outside the workbook.\"",
+          "total_seconds": 29.977043199999997,
+          "fixture_sha256": "b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603"
+        }
+      ]
+    },
+    "large-normalized-startup": {
+      "raw_file": ".tmp/grouped-selection-kernhaushalte-normalized-fixed-20261023/observations.json",
+      "artifact_sha256": "0aff5a0ff25ac827268c932512f14ce1db94dedfbce061207e262aaf5e71c492",
+      "observations": [
+        {
+          "consistent_selection": null,
+          "office_js_started": true,
+          "launcher_exit": 1,
+          "launcher_error": "Excel phase 1 launch aborted.",
+          "total_seconds": 46.397877099999995,
+          "fixture_sha256": "b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603",
+          "runtime_helpers_sha256": {
+            "run.ps1": "24516c5096e8a181c842ab98bf369a2db52e86c8dcef170f5baff12528aea669",
+            "CaptureWorkbook.cs": "848ffc3141044528425cba101446b854542a4459048635710e5174f9b1b06524"
+          },
+          "launcher_sha256": "56dc7f002c3e06f248afa7ca3de231309f89ff7bad7ffcd72714e3e17fdf8682"
+        }
+      ],
+      "helper_source_commit": "ca143bf53b3f2b018e32ba59fb2a443add533600",
+      "timing_comparable_to_quartet_trials": false,
+      "scope": "csv-71717-25!A1:G400",
+      "interpretation": "One Office.js startup succeeded, then intentionally aborted before Excel instance 2. Tiny stale/consistent fixtures both started successfully, so worksheet selection alone is not proven to cause every startup timeout.",
+      "helper_equivalent_reachable_commit": "2fccb62c11dbbc97bcf9736dff07cb4a188dd237",
+      "identical_source_tree_sha1": "58902518a85ce6ed6ba15a2d741cf3a9ca941461"
+    }
+  }
+}

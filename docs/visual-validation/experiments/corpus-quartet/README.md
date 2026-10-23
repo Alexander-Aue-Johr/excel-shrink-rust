@@ -143,3 +143,128 @@ Ein zusätzlicher Lauf mit der endgültigen eingebauten Fensterminimierung,
 ohne externen Helfer, beendete alle drei Modi ebenfalls erfolgreich
 (8,16 / 6,91 / 5,56 s). Nach jedem Lauf waren alle Excel- und Host-Prozesse
 beendet.
+
+## Tower-Messung vom 23.10.2026
+
+Maschine: **GOTHAM**, AMD Ryzen 7 7800X3D (8 Kerne, 16 logische Prozessoren),
+95,06 GiB vom Betriebssystem gemeldeter physischer RAM. Die Messungen verwendeten
+minimierte Fenster und `--ignore-memory-guard`. Während der nativen Messungen
+liefen keine anderen von uns gestarteten Excel-Tests oder Builds.
+
+Die folgenden Durchsatzwerte gehören zur Capture-Runtime
+`af2f8d49c38f13f2f130bcb2b0d2e62a81a3dbb2`, CLI-SHA-256
+`5bcc4884ab7f098df00a80f1fd86abba9db9ce7c6b9071397ac929f105d36dc6`
+und dem atomischen Scheduler aus `b0bf7fc`. Die Reihenfolge der aktiven Gruppen
+war pro Wiederholung verschieden: 1/2/4, 4/2/1, 2/4/1.
+
+### Kleine Auswahl nach dem Signal-Fix
+
+| Aktive Gruppen | Wiederholung 1 | Wiederholung 2 | Wiederholung 3 | Mittel | Verhältnis der Mittelwerte |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 4,985 s | 5,103 s | 4,963 s | 5,017 s | 1,00× |
+| 2 | 2,771 s | 2,745 s | 3,225 s | 2,914 s | 1,72× |
+| 4 | 2,100 s | 2,114 s | 2,192 s | 2,135 s | 2,35× |
+
+**9/9 Versuche vollständig; 108/108 absichtlich geänderte Profilzellen erkannt.**
+Jeder erfolgreiche Versuch musste alle zwölf Kontrolländerungen mit einer
+passenden Pixelregion und beiden PNG-Belegen nachweisen. Die visuellen Befunde
+mussten zwischen den Wiederholungen übereinstimmen. Der kleinste gemeldete freie
+RAM betrug 63,4 GiB.
+
+Die Tabelle misst Capture, Hash, Verfeinerung und PNG-Übertragung bei bereits
+geöffneten 16 Excel-Prozessen. Der gesamte Neuner-Durchlauf einschließlich
+Staging, Excel-Start und Aufräumen dauerte **326,10 s**. Der Faktor 2,35 beschreibt
+deshalb ausschließlich die gemeinsame Capture-Messstrecke. Ein Speedup für die
+gesamte Datenpipeline wurde damit nicht gemessen.
+
+Rohwerte: [small-fixed.csv](results/tower-20261023/small-fixed.csv).
+Der lokale Lauf samt HTML und Bildbelegen liegt unter
+`.tmp/corpus-quartet-tower-small-fixed-20261023`.
+
+### Erster Durchlauf mit zwei Signalfehlern
+
+Die vorherigen Beobachtungen bleiben erhalten:
+
+| Aktive Gruppen | Wiederholung 1 | Wiederholung 2 | Wiederholung 3 | Vollständig | Validierte Kontrollen |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | Startfehler | Messabbruch | 4,943 s | 1/3 | 12/36 |
+| 2 | 2,756 s | 2,777 s | 2,695 s | 3/3 | 36/36 |
+| 4 | 2,141 s | 2,142 s | 2,108 s | 3/3 | 36/36 |
+
+Bei r0/c1 konnte PowerShell `phase-3.launch` nicht lesen, bei r1/c1
+`measurement.signal`: Python hatte den endgültigen Dateinamen bereits angelegt,
+aber den Writer noch nicht geschlossen. Der Scheduler schreibt jetzt zuerst
+eine `.pending`-Datei, schließt sie und veröffentlicht den Token per Rename.
+Ein deterministischer Test hält den Writer absichtlich offen und kontrolliert,
+dass der endgültige Name währenddessen unsichtbar bleibt. Fehlgeschlagene
+Versuche erhalten keinen Speedup-Wert.
+
+Rohwerte: [small-initial.csv](results/tower-20261023/small-initial.csv).
+Vollständige lokale Artefakte: `.tmp/corpus-quartet-tower-small-20261023`.
+
+### Große Auswahl: Startgrenze und isolierte Folgeprobe
+
+Der erste Prioritätsversuch erreichte die gemeinsame Startlinie nicht:
+Das Kernhaushalte-Original meldete sich innerhalb von 300 s nicht bei Office.js
+an. Der Fehler trat bereits beim ersten Original auf; die weiteren Excel-
+Instanzen warteten noch auf ihre Startfreigabe. Die erste Fehlbeobachtung ist
+gespeichert. Den bereits angelaufenen zweiten Versuch haben wir gezielt beendet,
+anstatt weitere identische Timeouts abzuwarten. Es gibt **keinen Capture-
+Durchsatzwert für die große Vierer-Auswahl**.
+
+Eine Auffälligkeit war die vorbereitete Blattauswahl: Captureziel war Blatt 84,
+`activeTab` zeigte darauf, `tabSelected=1` stand aber weiterhin bei Blatt 1.
+Excel zeigte im Fenstertitel „Group“. Die neue Vorbereitung setzt eine
+konsistente Auswahl ausschließlich in den Wegwerfkopien. Zellinhalte,
+Formatierung und Zeilenhöhen werden dabei erhalten; `firstSheet` bleibt erhalten.
+
+Eine kleine Zwei-Blatt-Gegenprobe ist wichtig: **Sowohl die widersprüchliche
+als auch die konsistente Variante meldeten Office.js erfolgreich an**
+(2,80 / 3,17 s einschließlich Staging und absichtlichem Abbruch). Das Auswahl-
+Muster allein bewies den Timeout damit nicht.
+
+| Weitere Großprobe | Ergebnis | Gemessener Bezug |
+| --- | --- | --- |
+| Erster Probe-Harness mit zu kleinen Platzhaltern | Vor Excel-Start abgelehnt: Blattindex 84 fehlt in ungeöffneten Platzhaltern | Fixture-Fehler, kein nativer Startbefund |
+| Korrigierter Harness, konsistente Auswahl | Original meldet Office.js an; danach absichtlich vor Excel Nr. 2 beendet | 46,40 s für Staging, einen Start und Aufräumen; Startlimit 90 s |
+
+Die erfolgreiche Großprobe verwendete dasselbe Original-SHA-256
+`b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603`
+und die später in `ca143bf53b3f2b018e32ba59fb2a443add533600` gespeicherten
+Helfer. Nach Neuordnung der Main-Commits ist derselbe Quellbaum unver?ndert
+als `2fccb62c11dbbc97bcf9736dff07cb4a188dd237` erreichbar. Ihre C#-Datei hat SHA-256
+`848ffc3141044528425cba101446b854542a4459048635710e5174f9b1b06524`.
+Die PS-Helferdatei hat SHA-256
+`24516c5096e8a181c842ab98bf369a2db52e86c8dcef170f5baff12528aea669`.
+
+Diese Ein-Excel-Probe hat andere Staging-Eingaben und keine gemeinsame
+16-Prozess-Startlinie. Ihre 46,40 s sind weder mit der Capture-Tabelle noch
+als gepaarter Startup-Speedup gegenüber dem 300-s-Timeout vergleichbar.
+Die erfolgreiche Anmeldung stützt die Normalisierung als sinnvolle Korrektur;
+sie belegt keine Heilung aller Add-in-Startfehler. Einen neuen großen Neuner-
+Durchlauf haben wir zugunsten der produktiven Regression ausgesetzt.
+
+Rohwert des ursprünglichen Fehlversuchs:
+[priority-initial.csv](results/tower-20261023/priority-initial.csv).
+Die [Beobachtungen mit Pins, Eingabe- und Artefaktprüfsummen](results/tower-20261023/observations.json)
+enthalten auch beide kleinen Gegenproben, den Fixture-Fehler, die erfolgreiche
+Großprobe und die Pfade zu den unveränderten lokalen Rohdaten.
+
+Für weitere reproduzierbare Versuche ist die Runtime nun auf `2fccb62` gepinnt.
+Das Quartett bereitet Auswahl und Fehlerindikatoren damit gemeinsam in einem
+Streamingpass vor. `sheet_selection_probe.py` kann mit `--runtime` entweder
+die ursprüngliche oder die korrigierte exportierte Runtime prüfen; für eine
+reale Mappe werden zusätzlich `--workbook` und `--scope` angegeben. Es öffnet
+höchstens eine Excelinstanz und beendet sie nach der Office.js-Anmeldung,
+bevor die zweite Instanz startet.
+
+Die kleine Gegenprobe lässt sich ohne vorherigen Vierer-Benchmark exportieren
+und starten:
+
+```powershell
+python docs/visual-validation/experiments/corpus-quartet/sheet_selection_probe.py --output .tmp/selection-probe --runtime-ref af2f8d49c38f13f2f130bcb2b0d2e62a81a3dbb2
+```
+
+Ohne `--runtime-ref` gilt der aktuelle geprüfte Pin. Die reale Großprobe wird
+mit neuem Ausgabeordner und zusätzlich diesen Argumenten gewählt:
+`--startup-timeout 90 --workbook corpus-local/original_destatis_xlsx_files/statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx --scope "csv-71717-25!A1:G400"`.

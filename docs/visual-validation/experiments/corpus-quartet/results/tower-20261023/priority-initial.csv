@@ -1,0 +1,2 @@
+repeat,active_groups,excel_processes,status,measured_seconds,speedup,capture_ms,hash_ms,transfer_receive_ms,upload_wait_ms,refine_ms,cpu_seconds,avg_cpu_cores,cpu_percent,peak_job_mib_sum,minimum_free_mib,error
+0,1,16,failed,,,0,0,0,0,0,0,,,1155,68701,Excel launch phase 0 failed
