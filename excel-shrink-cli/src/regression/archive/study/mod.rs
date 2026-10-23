@@ -23,6 +23,9 @@ pub(in crate::regression) struct StudyArgs {
     /// Size-ranked part K/N of each selected corpus; 1/N contains the smallest files.
     #[arg(long, value_name = "K/N")]
     size_part: Option<selection::SizePart>,
+    /// Processing order within the selected partition; completed files remain skipped.
+    #[arg(long, value_enum, default_value = "priority")]
+    order: selection::ProcessingOrder,
     /// Write an additional copy of the deterministic full selection manifest.
     #[arg(long, value_name = "PATH")]
     selection_manifest: Option<PathBuf>,
@@ -63,7 +66,7 @@ pub(in crate::regression) struct StudyArgs {
     /// Keep original and shrink variants open for hash-first visual comparisons.
     #[arg(long)]
     resident_capture: bool,
-    /// Compare this many workbooks in fixed batches; preparation remains serial.
+    /// Maximum concurrent comparisons; preparation remains serial.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=3))]
     comparison_workers: u8,
     /// Diagnose completed differences without repeating the three primary comparisons.
@@ -230,19 +233,30 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             {
                 if let Ok(members) = workbook_members(&mut zip) {
                     corpus_info[i]["total_workbooks"] = json!(members.len());
-                    let catalog: Vec<_> = members.iter().map(|(index, name)| {
-                        let checksum = zip.by_index_raw(*index).ok()
-                            .map(|entry| (entry.crc32(), entry.size()));
-                        (name, checksum)
-                    }).collect();
-                    expected_sources.insert(ids[i].clone(), artifact_cache::sha256(&serde_json::to_vec(&catalog)?));
+                    let catalog: Vec<_> = members
+                        .iter()
+                        .map(|(index, name)| {
+                            let checksum = zip
+                                .by_index_raw(*index)
+                                .ok()
+                                .map(|entry| (entry.crc32(), entry.size()));
+                            (name, checksum)
+                        })
+                        .collect();
+                    expected_sources.insert(
+                        ids[i].clone(),
+                        artifact_cache::sha256(&serde_json::to_vec(&catalog)?),
+                    );
                 }
             }
         }
     }
     for package in &args.import_results {
         let receipt = transfer::import_package_locked(
-            &output, &resolve_path(&root, package.clone()), &expected_sources, &lock,
+            &output,
+            &resolve_path(&root, package.clone()),
+            &expected_sources,
+            &lock,
         )?;
         eprintln!("[study] Result import: {receipt}");
     }
@@ -250,7 +264,11 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         records = load_records(&output)?;
         for record in &mut records {
             if record["complete"] != true {
-                record["status"] = json!(if record["prepared"] == true { "prepared" } else { "pending" });
+                record["status"] = json!(if record["prepared"] == true {
+                    "prepared"
+                } else {
+                    "pending"
+                });
             }
         }
     }
@@ -358,7 +376,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             }
         }
     }
-    let manifest = json!({"version":1,"algorithm":"uncompressed-bytes-name-index-v1",
+    let manifest = json!({"version":1,"algorithm":"uncompressed-bytes-name-index-v1", "processing_order":args.order,
         "corpora":corpus_info, "sources":sources.iter().map(|s| json!({
             "corpus_id":s.id,"corpus_name":s.name,"source_fingerprint":s.fingerprint,
             "selection":s.selection
@@ -390,18 +408,24 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             "selection ready",
         );
     }
-    let run = provenance::start_run(&output, args.machine_label.as_deref(), manifest, json!({
-        "prepare_only":args.prepare_only,"compare_only":args.compare_only,
-        "resident_capture":args.resident_capture,"comparison_workers":args.comparison_workers,
-        "comparison_scheduling":"fixed-batches",
-        "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.retry_skipped,
-        "workbook_timeout_seconds":args.workbook_timeout_seconds,
-        "startup_timeout_seconds":args.startup_timeout_seconds,"max_workbook_bytes":args.max_workbook_bytes,
-        "limit":args.limit,"reuse_prepared_from":args.reuse_prepared_from,
-        "worker_memory_limit_mib":std::env::var("EXCEL_SHRINK_WORKER_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
-        "excel_memory_limit_mib":std::env::var("EXCEL_SHRINK_EXCEL_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
-        "resident_memory_limit_mib":std::env::var("EXCEL_SHRINK_RESIDENT_MEMORY_MIB").unwrap_or_else(|_|"16384".into())
-    }))?;
+    let run = provenance::start_run(
+        &output,
+        args.machine_label.as_deref(),
+        manifest,
+        json!({
+            "prepare_only":args.prepare_only,"compare_only":args.compare_only,
+            "resident_capture":args.resident_capture,"comparison_workers":args.comparison_workers,
+            "order":args.order,
+            "comparison_scheduling":"fixed-batches",
+            "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.retry_skipped,
+            "workbook_timeout_seconds":args.workbook_timeout_seconds,
+            "startup_timeout_seconds":args.startup_timeout_seconds,"max_workbook_bytes":args.max_workbook_bytes,
+            "limit":args.limit,"reuse_prepared_from":args.reuse_prepared_from,
+            "worker_memory_limit_mib":std::env::var("EXCEL_SHRINK_WORKER_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
+            "excel_memory_limit_mib":std::env::var("EXCEL_SHRINK_EXCEL_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
+            "resident_memory_limit_mib":std::env::var("EXCEL_SHRINK_RESIDENT_MEMORY_MIB").unwrap_or_else(|_|"16384".into())
+        }),
+    )?;
     let limits = ArchiveArgs {
         urls: Vec::new(),
         request_file: None,
@@ -418,12 +442,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     let producer = artifact_cache::hash_file(&std::env::current_exe()?)?;
     for source in &sources {
         // Freeze membership over the entire corpus before removing completed files.
-        let mut members: Vec<_> = source
-            .members
-            .iter()
-            .filter(|(index, _)| source.selection.contains(*index))
-            .cloned()
-            .collect();
+        let members = selection::ordered_members(source, args.order);
         // Completed differences get their missing causal diagnosis before new work.
         // The primary measurements and comparisons are never reset for this pass.
         if !args.prepare_only && !args.compare_only {
@@ -452,6 +471,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     &source.id,
                     &source.fingerprint,
                     &manifest_hash,
+                    args.order,
                 );
                 process(
                     source,
@@ -471,26 +491,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         if args.diagnose_whitespace_only {
             continue;
         }
-        // Previously problematic files go first; untouched entries follow archive order.
-        members.sort_by_key(|(index, name)| {
-            let id = identity(source, *index, name);
-            member_priority(&records, &id)
-        });
-        let selected: Vec<_> = members
-            .into_iter()
-            .filter(|(index, name)| {
-                let id = identity(source, *index, name);
-                records
-                    .iter()
-                    .find(|r| r["identity"] == id)
-                    .is_none_or(|r| {
-                        if r["complete"] == true {
-                            return args.retry_skipped && r["status"] == "skipped";
-                        }
-                        true
-                    })
-            })
-            .collect();
+        let selected = selection::pending_members(source, &records, args.order, args.retry_skipped);
         let count = args
             .limit
             .map(|n| n as usize)
@@ -546,6 +547,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     &source.id,
                     &source.fingerprint,
                     &manifest_hash,
+                    args.order,
                 );
                 process(
                     source,
@@ -592,6 +594,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     &source.id,
                     &source.fingerprint,
                     &manifest_hash,
+                    args.order,
                 );
                 comparisons.push(scheduler::Comparison {
                     index: *index,
@@ -631,7 +634,10 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     if let Err(error) = visual_report::open_visual_report(&output.join("report.html")) {
         eprintln!("Could not open report: {error:#}");
     }
-    ensure!(!missing_prepared, "Some selected workbooks have no preparation from this build; run without --compare-only first");
+    ensure!(
+        !missing_prepared,
+        "Some selected workbooks have no preparation from this build; run without --compare-only first"
+    );
     ensure!(
         !records.iter().any(|r| matches!(
             r["status"].as_str(),
@@ -644,7 +650,8 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
 
 fn export_results(args: &StudyArgs, root: &Path, output: &Path, lock: &fs::File) -> Result<()> {
     if let Some(package) = &args.export_results {
-        let receipt = transfer::export_package_locked(output, &resolve_path(root, package.clone()), lock)?;
+        let receipt =
+            transfer::export_package_locked(output, &resolve_path(root, package.clone()), lock)?;
         eprintln!("[study] Result export: {receipt}");
     }
     Ok(())
@@ -727,10 +734,12 @@ fn import(
         } else if row["complete"] == true && row["status"] == "skipped" {
             // Keep earlier technical failures separate until an explicit retry.
             row["previously_skipped"] = json!(true);
-            let mut reasons = vec![row["error"]
-                .as_str()
-                .unwrap_or("Check did not finish")
-                .to_owned()];
+            let mut reasons = vec![
+                row["error"]
+                    .as_str()
+                    .unwrap_or("Check did not finish")
+                    .to_owned(),
+            ];
             for profile in row["results"].as_array().into_iter().flatten() {
                 for failure in profile["failures"].as_array().into_iter().flatten() {
                     if let Some(message) = failure.as_str() {

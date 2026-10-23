@@ -3,6 +3,15 @@ use super::*;
 use serde::Serialize;
 use std::str::FromStr;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum ProcessingOrder {
+    #[default]
+    Priority,
+    SizeAsc,
+    SizeDesc,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub(super) struct SizePart {
     pub part: u32,
@@ -111,12 +120,32 @@ impl Plan {
             .is_some_and(|&i| self.members[i].selected)
     }
 
+    fn order_members(&self, members: &mut [(usize, String)], order: ProcessingOrder) {
+        if order == ProcessingOrder::Priority {
+            return;
+        }
+        members.sort_by(|(left, _), (right, _)| {
+            let left = &self.members[self.by_index[left]].member;
+            let right = &self.members[self.by_index[right]].member;
+            left.bytes
+                .is_none()
+                .cmp(&right.bytes.is_none())
+                .then_with(|| match order {
+                    ProcessingOrder::SizeDesc => right.bytes.cmp(&left.bytes),
+                    _ => left.bytes.cmp(&right.bytes),
+                })
+                .then_with(|| left.member_name.cmp(&right.member_name))
+                .then_with(|| left.archive_index.cmp(&right.archive_index))
+        });
+    }
+
     pub fn provenance(
         &self,
         archive_index: usize,
         corpus_id: &str,
         source_fingerprint: &str,
         manifest: &str,
+        order: ProcessingOrder,
     ) -> Value {
         let member = &self.members[self.by_index[&archive_index]];
         json!({
@@ -124,9 +153,45 @@ impl Plan {
             "source_fingerprint":source_fingerprint, "catalog_sha256":self.catalog_sha256,
             "size_part":self.size_part, "total_workbooks":self.total_workbooks,
             "first_selected_rank":self.first_selected_rank, "last_selected_rank":self.last_selected_rank,
-            "archive_index":archive_index, "rank":member.rank, "bytes":member.member.bytes
+            "archive_index":archive_index, "rank":member.rank, "bytes":member.member.bytes,
+            "processing_order":order
         })
     }
+}
+
+pub(super) fn ordered_members(source: &Source, order: ProcessingOrder) -> Vec<(usize, String)> {
+    // Partition membership always comes from the original ascending catalog.
+    let mut members: Vec<_> = source
+        .members
+        .iter()
+        .filter(|(index, _)| source.selection.contains(*index))
+        .cloned()
+        .collect();
+    source.selection.order_members(&mut members, order);
+    members
+}
+
+pub(super) fn pending_members(
+    source: &Source,
+    records: &[Value],
+    order: ProcessingOrder,
+    retry_skipped: bool,
+) -> Vec<(usize, String)> {
+    let mut members = ordered_members(source, order);
+    if order == ProcessingOrder::Priority {
+        members
+            .sort_by_key(|(index, name)| member_priority(records, &identity(source, *index, name)));
+    }
+    members.retain(|(index, name)| {
+        let id = identity(source, *index, name);
+        records
+            .iter()
+            .find(|record| record["identity"] == id)
+            .is_none_or(|record| {
+                record["complete"] != true || (retry_skipped && record["status"] == "skipped")
+            })
+    });
+    members
 }
 
 pub(super) fn active_corpora(corpora: &[Corpus], names: &[String]) -> Result<Vec<bool>> {
@@ -182,6 +247,98 @@ mod tests {
                 crc32: Some(i as u32),
             })
             .collect()
+    }
+
+    #[test]
+    fn size_order_uses_stable_name_index_ties_and_keeps_unknown_sizes_last() -> Result<()> {
+        let make = |index, name: &str, bytes| CatalogMember {
+            archive_index: index,
+            member_name: name.into(),
+            bytes,
+            crc32: Some(0),
+        };
+        let catalog = vec![
+            make(4, "unknown.xlsx", None),
+            make(3, "a.xlsx", Some(20)),
+            make(2, "b.xls", Some(10)),
+            make(1, "a.xlsx", Some(10)),
+            make(0, "a.xlsx", Some(10)),
+        ];
+        let plan = Plan::new(catalog.clone(), None)?;
+        for (order, expected) in [
+            (ProcessingOrder::SizeAsc, vec![0, 1, 2, 3, 4]),
+            (ProcessingOrder::SizeDesc, vec![3, 0, 1, 2, 4]),
+        ] {
+            for reverse in [false, true] {
+                let mut queue: Vec<_> = catalog
+                    .iter()
+                    .map(|m| (m.archive_index, m.member_name.clone()))
+                    .collect();
+                if reverse {
+                    queue.reverse();
+                }
+                plan.order_members(&mut queue, order);
+                assert_eq!(
+                    queue.iter().map(|(index, _)| *index).collect::<Vec<_>>(),
+                    expected
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn pending_size_order_keeps_quartiles_and_resume_rules() -> Result<()> {
+        let catalog: Vec<_> = [80, 10, 70, 20, 60, 30, 50, 40]
+            .into_iter()
+            .enumerate()
+            .map(|(index, bytes)| CatalogMember {
+                archive_index: index,
+                member_name: format!("file-{index}.xlsx"),
+                bytes: Some(bytes),
+                crc32: Some(index as u32),
+            })
+            .collect();
+        let source = Source {
+            id: "example".into(),
+            name: "Example".into(),
+            path: PathBuf::from("unused.zip"),
+            members: catalog
+                .iter()
+                .map(|member| (member.archive_index, member.member_name.clone()))
+                .collect(),
+            fingerprint: "catalog".into(),
+            selection: Plan::new(catalog, Some("2/2".parse().unwrap()))?,
+        };
+        let before = serde_json::to_value(&source.selection)?;
+        let records = vec![
+            json!({"identity":"example:0:file-0.xlsx","complete":true,"status":"unchanged"}),
+            json!({"identity":"example:2:file-2.xlsx","complete":true,"status":"skipped"}),
+            json!({"identity":"example:6:file-6.xlsx","complete":false,"previous_difference":true}),
+        ];
+        let indices = |order, retry| {
+            pending_members(&source, &records, order, retry)
+                .into_iter()
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(indices(ProcessingOrder::Priority, false), [6, 4]);
+        assert_eq!(indices(ProcessingOrder::SizeAsc, false), [6, 4]);
+        assert_eq!(indices(ProcessingOrder::SizeDesc, false), [4, 6]);
+        assert_eq!(indices(ProcessingOrder::SizeDesc, true), [2, 4, 6]);
+        assert_eq!(serde_json::to_value(&source.selection)?, before);
+        assert_eq!(source.selection.first_selected_rank, Some(5));
+        assert_eq!(source.selection.last_selected_rank, Some(8));
+        let provenance = source.selection.provenance(
+            4,
+            "example",
+            "catalog",
+            "manifest",
+            ProcessingOrder::SizeDesc,
+        );
+        assert_eq!(provenance["processing_order"], "size-desc");
+        assert_eq!(provenance["rank"], 6);
+        Ok(())
     }
 
     #[test]
@@ -276,8 +433,8 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn selection_only_uses_stable_ids_leaves_results_untouched_and_does_not_load_inactive_urls(
-    ) -> Result<()> {
+    fn selection_only_uses_stable_ids_leaves_results_untouched_and_does_not_load_inactive_urls()
+    -> Result<()> {
         use std::io::Write;
         let output = super::super::tests::test_directory("selection-only")?;
         let archive = output.join("enron.zip");
@@ -314,6 +471,8 @@ mod tests {
             "Enron",
             "--size-part",
             "2/4",
+            "--order",
+            "size-desc",
             "--selection-only",
         ])?;
         run(args, LogLevel::Warn)?;
@@ -325,6 +484,7 @@ mod tests {
         assert_eq!(report["limited"], true);
         let manifest: Value =
             serde_json::from_slice(&fs::read(output.join("selection-manifest.json"))?)?;
+        assert_eq!(manifest["processing_order"], "size-desc");
         assert_eq!(manifest["sources"].as_array().unwrap().len(), 1);
         assert_eq!(manifest["sources"][0]["corpus_id"], ids[2]);
         assert_eq!(manifest["sources"][0]["selection"]["selected_workbooks"], 2);
@@ -372,7 +532,13 @@ mod tests {
         assert_eq!(plan.smallest_selected_bytes, Some(10));
         assert!(plan.contains(4));
         assert_eq!(
-            plan.provenance(3, "source", "fingerprint", "manifest")["rank"],
+            plan.provenance(
+                3,
+                "source",
+                "fingerprint",
+                "manifest",
+                ProcessingOrder::Priority
+            )["rank"],
             4
         );
         Ok(())
