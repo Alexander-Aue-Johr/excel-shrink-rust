@@ -62,6 +62,92 @@ function Get-SystemReserveBytes($configured) {
     return [UInt64]$mib * 1MB
 }
 
+function Get-PrimaryClientIds([string]$directory) {
+    $ids = @{}
+    foreach ($file in @(Get-ChildItem -LiteralPath $directory -File -Filter '*.json')) {
+        $spec = [IO.File]::ReadAllText($file.FullName, $utf8) | ConvertFrom-Json
+        $id = [string]$spec.client_id
+        if ($id -notmatch '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$' -or $ids.ContainsKey($id)) {
+            throw 'Invalid or duplicate primary resident client.'
+        }
+        $ids[$id] = $true
+    }
+    if (-not $ids.Count) { throw 'Resident session requires primary clients.' }
+    return @($ids.Keys)
+}
+
+function Test-PrimaryClientsReady($ids, $entries) {
+    if (-not @($ids).Count) { return $false }
+    foreach ($id in $ids) {
+        if (-not $entries.ContainsKey($id) -or -not $entries[$id].seen -or $entries[$id].closed) { return $false }
+        $entries[$id].process.Refresh()
+        if ($entries[$id].process.HasExited) { return $false }
+    }
+    return $true
+}
+
+function Read-OtherGroupPauseMillis {
+    if ($null -eq $batchLifetime -or -not $batchLifetime.pause_path) { return $null }
+    try {
+        $file = Get-Item -LiteralPath ([string]$batchLifetime.pause_path) -ErrorAction Stop
+        if ($file.Length -gt 4096) { return $null }
+        $value = ([IO.File]::ReadAllText($file.FullName, $utf8) | ConvertFrom-Json).elapsed_millis
+        if ($value -isnot [int] -and $value -isnot [long] -and $value -isnot [uint64]) { return $null }
+        $counter = [UInt64]0
+        if (-not [UInt64]::TryParse([string]$value, [ref]$counter)) { return $null }
+        return $counter
+    } catch { return $null }
+}
+
+function Update-OtherGroupPause {
+    $counter = Read-OtherGroupPauseMillis
+    if ($null -eq $counter) { return }
+    $now = $clock.Elapsed.TotalSeconds
+    if ($null -eq $script:pauseCounter) {
+        $script:pauseCounter = $counter
+        $script:pauseBaselineSeconds = $now
+        return
+    }
+    if ($counter -le $script:pauseCounter) { return }
+    # Cap cumulative credit, not individual polling intervals: the coordinator
+    # and launcher sample at different cadences. Discard excess counter jumps,
+    # and keep the high-water mark so reset/replay cannot credit an interval twice.
+    $remaining = [Math]::Max(0.0, $now - $script:pauseBaselineSeconds - $script:otherOpeningSeconds)
+    $delta = [Math]::Min(($counter - $script:pauseCounter) / 1000.0, $remaining)
+    $script:otherOpeningSeconds += $delta
+    $script:pauseCounter = $counter
+}
+
+function Get-OwnOpeningSeconds([double]$elapsed, [double]$otherBefore, [double]$otherAfter) {
+    # Whitespace controls can open while another group warms up. Count that
+    # overlap only once when discounting global Excel startup stalls.
+    return [Math]::Max(0.0, $elapsed - [Math]::Max(0.0, $otherAfter - $otherBefore))
+}
+
+function Write-ResourceMetrics {
+    $metrics.elapsed_seconds = $clock.Elapsed.TotalSeconds
+    $metrics.sampled_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $metrics.primary_clients_ready = Test-PrimaryClientsReady $primaryClientIds $clients
+    $metrics.peak_job_bytes = $owned.PeakBytes
+    try {
+        $sample = $owned.SampleMemory()
+        $metrics.current_job_bytes = $sample.PrivateBytes
+        $metrics.current_job_private_working_set_bytes = $sample.PrivateWorkingSetBytes
+        [void]$metrics.Remove('memory_sample_error')
+    }
+    catch {
+        # An unavailable sample denies additional admission, without discarding
+        # this group's already running capture or claiming a zero-memory group.
+        $metrics.current_job_bytes = $null
+        $metrics.current_job_private_working_set_bytes = $null
+        $metrics.primary_clients_ready = $false
+        $metrics.memory_sample_error = $_.Exception.Message
+    }
+    $metrics.other_group_opening_seconds = $otherOpeningSeconds
+    Write-SessionJson 'metrics.json' $metrics
+    $metricsClock.Restart()
+}
+
 function Wait-BatchRelease {
     if ($null -eq $batchLifetime) { return 'released' }
     if ($batchReleased) { return $batchReleaseReason }
@@ -85,10 +171,9 @@ function Wait-BatchRelease {
         if ($available -lt $systemReserveBytes -or $commit -lt $systemReserveBytes) { $reason='memory_guard'; break }
         if ($wait.Elapsed.TotalSeconds -ge [double]$batchLifetime.timeout_seconds) { $reason='timeout'; break }
         if ($metricsClock.ElapsedMilliseconds -ge 1000) {
-            $metrics.elapsed_seconds = $clock.Elapsed.TotalSeconds
+            Update-OtherGroupPause
             $metrics.batch_wait_seconds = $wait.Elapsed.TotalSeconds
-            Write-SessionJson 'metrics.json' $metrics
-            $metricsClock.Restart()
+            Write-ResourceMetrics
         }
         Start-Sleep -Milliseconds 200
     }
@@ -142,6 +227,7 @@ function Build-ResidentHost([string]$dotnet, [string]$stage) {
 }
 
 function Update-Resources {
+    Update-OtherGroupPause
     if ($null -ne $batchLifetime -and ($null -eq $batchOwner -or $batchOwner.HasExited)) {
         throw 'Resident batch coordinator exited.'
     }
@@ -168,11 +254,8 @@ function Update-Resources {
         $item.peak_private_bytes = [Math]::Max([Int64]$item.peak_private_bytes, $entry.process.PrivateMemorySize64)
         if (-not $Visible -and $entry.seen) { [ResidentProcesses]::Minimize($entry.process) }
     }
-    $metrics.peak_job_bytes = $owned.PeakBytes
     if ($metricsClock.ElapsedMilliseconds -ge 1000) {
-        $metrics.elapsed_seconds = $clock.Elapsed.TotalSeconds
-        Write-SessionJson 'metrics.json' $metrics
-        $metricsClock.Restart()
+        Write-ResourceMetrics
     }
 }
 
@@ -217,6 +300,7 @@ function Open-ResidentClient($spec) {
     $registrations[$guid] = Register-AddIn $guid $manifestPath
     $locked = $false
     $wait = [Diagnostics.Stopwatch]::StartNew()
+    $otherBefore = $otherOpeningSeconds
     try {
         Add-SessionEvent 'opening_wait' $id $null
         while (-not $locked) {
@@ -242,9 +326,10 @@ function Open-ResidentClient($spec) {
         $metrics.clients[$id].startup_seconds = $openClock.Elapsed.TotalSeconds
         $metrics.clients[$id].seen_at = [DateTime]::UtcNow.ToString('o')
         Add-SessionEvent 'config_seen' $id @{ startup_seconds=$openClock.Elapsed.TotalSeconds; pid=$process.Id }
-        Write-SessionJson 'metrics.json' $metrics
+        Write-ResourceMetrics
     } finally {
-        $script:openingSeconds += $wait.Elapsed.TotalSeconds
+        Update-OtherGroupPause
+        $script:openingSeconds += Get-OwnOpeningSeconds $wait.Elapsed.TotalSeconds $otherBefore $otherOpeningSeconds
         if ($locked) { $openMutex.ReleaseMutex() }
     }
 }
@@ -256,6 +341,9 @@ $clock = [Diagnostics.Stopwatch]::StartNew()
 $metricsClock = [Diagnostics.Stopwatch]::StartNew()
 $healthSampleClock = [Diagnostics.Stopwatch]::StartNew()
 $openingSeconds = 0.0
+$otherOpeningSeconds = 0.0
+$pauseCounter = $null
+$pauseBaselineSeconds = 0.0
 $owned = $null
 $hostProcess = $null
 $openMutex = $null
@@ -267,9 +355,12 @@ $batchReleased = $false
 $batchReleaseReason = $null
 $finishWait = $null
 $systemReserveBytes = [UInt64]4GB
-$metrics = [ordered]@{ status='starting'; visible=[bool]$Visible; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{} }
+$primaryClientIds = @()
+$metrics = [ordered]@{ status='starting'; visible=[bool]$Visible; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
 try {
     Add-Type -Path (Join-Path $PSScriptRoot 'ResidentProcesses.cs')
+    $primaryClientIds = @(Get-PrimaryClientIds (Join-Path $session 'clients'))
+    $metrics.expected_primary_clients = $primaryClientIds.Count
     Add-Type -Path (Join-Path $PSScriptRoot 'CaptureWorkbook.cs') -ReferencedAssemblies @('System.IO.Compression', 'System.IO.Compression.FileSystem', 'System.Xml')
     $systemReserveBytes = Get-SystemReserveBytes ([Environment]::GetEnvironmentVariable('EXCEL_SHRINK_SYSTEM_RESERVE_MIB'))
     $metrics.system_reserve_mib = $systemReserveBytes / 1MB
@@ -285,7 +376,11 @@ try {
             [IO.Path]::GetFullPath([string]$configured.ready_path) -eq [IO.Path]::GetFullPath([string]$configured.release_path)) {
             throw 'Invalid resident batch lifetime configuration.'
         }
+        if ($configured.pause_path -and -not [IO.Path]::IsPathRooted([string]$configured.pause_path)) {
+            throw 'Resident batch pause path must be absolute.'
+        }
         $batchLifetime = $configured
+        Update-OtherGroupPause
         $batchOwner = [Diagnostics.Process]::GetProcessById([int]$configured.owner_pid)
         # Acquire and retain the handle before any Excel starts. Subsequent
         # HasExited checks refer to this process even if Windows reuses its PID.
@@ -358,7 +453,7 @@ try {
             if ($reason -ne 'released') { throw "Resident batch cleanup released early: $reason" }
             if ($null -eq $finishWait) { $finishWait = [Diagnostics.Stopwatch]::StartNew() }
             if ($finishWait.Elapsed.TotalSeconds -gt 60) { throw 'Resident worker did not finish after its batch was released.' }
-        } elseif ($clock.Elapsed.TotalSeconds - $openingSeconds -gt $CaptureTimeoutSeconds) {
+        } elseif ($clock.Elapsed.TotalSeconds - $openingSeconds - $otherOpeningSeconds -gt $CaptureTimeoutSeconds) {
             throw 'Resident capture session exceeded its total capture timeout.'
         }
         Start-Sleep -Milliseconds 200
@@ -407,6 +502,7 @@ try {
     }
     $metrics.elapsed_seconds = $clock.Elapsed.TotalSeconds
     $metrics.opening_seconds = $openingSeconds
+    $metrics.other_group_opening_seconds = $otherOpeningSeconds
     Write-SessionJson 'metrics.json' $metrics
     Write-SessionJson 'launcher-result.json' @{ status=$metrics.status; error=$metrics.error; elapsed_seconds=$metrics.elapsed_seconds; peak_job_bytes=$metrics.peak_job_bytes }
 }

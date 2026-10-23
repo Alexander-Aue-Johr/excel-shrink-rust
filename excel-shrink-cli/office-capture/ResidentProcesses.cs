@@ -118,6 +118,70 @@ public sealed class ResidentProcesses : IDisposable
         }
     }
 
+    public sealed class MemorySample
+    {
+        public ulong PrivateBytes;
+        public ulong? PrivateWorkingSetBytes;
+    }
+
+    // Enumerate the job rather than the launcher's Excel list: WebView children
+    // and the HTTP host consume the same budget. The OS peak is not current use.
+    public MemorySample SampleMemory()
+    {
+        for (int capacity = 64; capacity <= 65536; capacity *= 2)
+        {
+            int length = checked(8 + capacity * IntPtr.Size);
+            IntPtr buffer = Marshal.AllocHGlobal(length);
+            try
+            {
+                if (!QueryInformationJobObject(job, 3, buffer, (uint)length, IntPtr.Zero))
+                {
+                    int error = Marshal.GetLastWin32Error();
+                    if (error == 234) continue; // ERROR_MORE_DATA: a child joined the job.
+                    throw new Win32Exception(error);
+                }
+                int count = Marshal.ReadInt32(buffer, 4);
+                if (count < 0 || count > capacity) throw new InvalidOperationException("Invalid job process list.");
+                ulong bytes = 0;
+                ulong? privateWorkingSet = 0;
+                for (int index = 0; index < count; index++)
+                {
+                    int pid = checked((int)Marshal.ReadIntPtr(buffer, 8 + index * IntPtr.Size).ToInt64());
+                    try
+                    {
+                        using (var process = Process.GetProcessById(pid))
+                        {
+                            bool member;
+                            if (!IsProcessInJob(process.Handle, job, out member)) throw new Win32Exception();
+                            if (!member || process.HasExited) continue;
+                            process.Refresh();
+                            bytes = checked(bytes + (ulong)process.PrivateMemorySize64);
+                            // EX2 is supported on updated Windows 10/11 (September
+                            // 2023 onward). Older systems keep conservative RAM
+                            // reserves: never substitute the shared working set.
+                            if (privateWorkingSet.HasValue)
+                            {
+                                var counters = new ProcessMemoryCountersEx2();
+                                counters.Size = (uint)Marshal.SizeOf(typeof(ProcessMemoryCountersEx2));
+                                counters.PrivateWorkingSet = new UIntPtr(UInt32.MaxValue);
+                                if (GetProcessMemoryInfo(process.Handle, ref counters, counters.Size)
+                                    && counters.PrivateWorkingSet.ToUInt64() != UInt32.MaxValue
+                                    && counters.PrivateWorkingSet.ToUInt64() <= counters.WorkingSet.ToUInt64())
+                                    privateWorkingSet = checked(privateWorkingSet.Value + counters.PrivateWorkingSet.ToUInt64());
+                                else privateWorkingSet = null;
+                            }
+                        }
+                    }
+                    catch (ArgumentException) { } // Exited between enumeration and opening the handle.
+                    catch (InvalidOperationException) { } // Exited while reading its counters.
+                }
+                return new MemorySample { PrivateBytes = bytes, PrivateWorkingSetBytes = privateWorkingSet };
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
+        }
+        throw new InvalidOperationException("Resident job process list exceeds its measurement budget.");
+    }
+
     public static ulong AvailablePhysicalBytes { get { return GetMemory().AvailablePhysical; } }
     public static ulong AvailableCommitBytes { get { return GetMemory().AvailablePage; } }
     static MemoryStatus GetMemory()
@@ -174,6 +238,15 @@ public sealed class ResidentProcesses : IDisposable
         public IntPtr Process, Thread;
         public uint ProcessId, ThreadId;
     }
+    [StructLayout(LayoutKind.Sequential)]
+    struct ProcessMemoryCountersEx2
+    {
+        public uint Size, PageFaultCount;
+        public UIntPtr PeakWorkingSet, WorkingSet, QuotaPeakPagedPool, QuotaPagedPool;
+        public UIntPtr QuotaPeakNonPagedPool, QuotaNonPagedPool, PagefileUsage, PeakPagefileUsage;
+        public UIntPtr PrivateUsage, PrivateWorkingSet;
+        public ulong SharedCommitUsage;
+    }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern IntPtr CreateJobObject(IntPtr attributes, string name);
@@ -181,6 +254,12 @@ public sealed class ResidentProcesses : IDisposable
     static extern bool SetInformationJobObject(SafeFileHandle job, int informationClass, ref ExtendedLimits information, uint length);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool QueryInformationJobObject(SafeFileHandle job, int informationClass, ref ExtendedLimits information, uint length, IntPtr returned);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool QueryInformationJobObject(SafeFileHandle job, int informationClass, IntPtr information, uint length, IntPtr returned);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool IsProcessInJob(IntPtr process, SafeFileHandle job, out bool member);
+    [DllImport("psapi.dll", SetLastError = true)]
+    static extern bool GetProcessMemoryInfo(IntPtr process, ref ProcessMemoryCountersEx2 counters, uint length);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool AssignProcessToJobObject(SafeFileHandle job, IntPtr process);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
