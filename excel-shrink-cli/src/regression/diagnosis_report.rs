@@ -177,6 +177,7 @@ fn write_page(
     }
     let _ = write!(html, "</p><p>{}</p><div class=\"metrics\"><div class=\"metric\"><strong>{}</strong><span>Unchanged</span></div><div class=\"metric\"><strong>{}</strong><span>With differences</span></div><div class=\"metric\"><strong>{}</strong><span>Skipped / errors</span></div></div><p class=\"muted\">{} unchanged · {} with differences · {} skipped/errors</p></header>",
         if report["complete"] == true { "Run completed" } else { "Run not finished" }, unchanged.len(), changed.len(), skipped.len(), unchanged.len(), changed.len(), skipped.len());
+    package_summary(&mut html, &unchanged);
     if report["limited"] == true {
         html.push_str("<p>Limited test run. Remaining archive entries have not been checked.</p>");
     }
@@ -251,6 +252,7 @@ fn corpus_cards(html: &mut String, corpora: &BTreeMap<String, Corpus<'_>>) {
             .count();
         let total = corpus.total.map(|n| format!(" / {n}")).unwrap_or_default();
         let _ = write!(html, "<article class=\"hero corpus-card\"><h2><a href=\"{}\">{}</a></h2><p>{processed}{total} workbooks processed</p><p>{unchanged} unchanged · {changed} with differences · {skipped} skipped/errors</p>", corpus.page(), escape(&corpus.name));
+        package_summary(html, &corpus.files);
         tables::totals(html, &corpus.files);
         let _ = write!(
             html,
@@ -282,6 +284,22 @@ fn is_unchanged(file: &Value) -> bool {
             || items(file, "results")
                 .iter()
                 .any(|r| r["status"] == "visually unchanged"))
+}
+
+fn is_package_unchanged(file: &Value) -> bool {
+    is_unchanged(file)
+        && file["capture_mode"] == "package-audit"
+        && file["package_identity"]["status"] == "equivalent"
+}
+
+fn package_summary(html: &mut String, files: &[&Value]) {
+    let count = files
+        .iter()
+        .filter(|file| is_package_unchanged(file))
+        .count();
+    if count > 0 {
+        let _ = write!(html, "<p class=\"muted\" lang=\"de\">Davon {count} mit unveränderten Paketinhalten: Excel-Vergleich ausgelassen. Diese Dateien zählen als unverändert, nicht als visuell geprüft.</p>");
+    }
 }
 fn file_id(file: &Value) -> String {
     anchor("file", text(file, "identity"))
@@ -399,6 +417,74 @@ mod tests {
         assert!(!corpus_b.contains("equal.xlsx"));
         fs::remove_dir_all(dir)?;
         Ok(())
+    }
+
+    #[test]
+    fn package_equivalence_is_distinguished_from_visual_verification() -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("package-report-{}", std::process::id()));
+        let profiles: Vec<_> = ["default", "maximum-cleaning", "too-aggressive-cleaning"]
+            .into_iter()
+            .map(|profile| {
+                json!({"profile":profile,"status":"package unchanged",
+                "checks_complete":false,"sheets":[],"shrink_seconds":1.25,
+                "original_bytes":100,"shrunk_bytes":90,
+                "image_comparison":"not run; package contents equivalent"})
+            })
+            .collect();
+        let report = json!({"complete":true,
+            "corpora":[{"id":"a","name":"Corpus A"},{"id":"b","name":"Corpus B"}],
+            "workbooks":[
+                {"identity":"package","name":"package.xlsx","corpus_id":"a",
+                    "complete":true,"status":"unchanged","capture_mode":"package-audit",
+                    "baseline_repaired":true,
+                    "package_identity":{"version":1,"status":"equivalent"},"results":profiles},
+                {"identity":"visual","name":"visual.xlsx","corpus_id":"b",
+                    "complete":true,"status":"unchanged","results":[
+                        {"profile":"default","status":"visually unchanged","checks_complete":true,
+                            "original_open_seconds":2.0,"shrunk_open_seconds":1.0}]}]});
+        let all = fs::read_to_string(write(&dir, &report)?)?;
+        assert!(all.contains("2 unchanged · 0 with differences · 0 skipped/errors"));
+        assert!(all.contains("Davon 1 mit unveränderten Paketinhalten"));
+        assert!(!all.contains("visually unchanged workbooks"));
+        let a = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "a"))))?;
+        assert!(a.contains("Unveränderte Paketinhalte – Excel-Vergleich ausgelassen"));
+        assert!(a.contains("nicht als visuell geprüft"));
+        assert!(a.contains("gegen die vorbereitete Vergleichsbasis geprüft"));
+        assert!(a.contains(
+            "Die Vergleichsbasis wurde bereits vor dem Shrinken in workbook.xml bereinigt"
+        ));
+        assert!(a.contains("1.25 s"));
+        assert!(a.contains("10.00%"));
+        assert_eq!(a.matches("package unchanged").count(), 3);
+        assert!(a.contains("<td>— → —</td><td>— → —</td>"));
+        assert!(!a.contains("visually unchanged"));
+        assert!(!a.contains("0.00 s"));
+        assert!(!a.contains("0.0 MiB"));
+        let b = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "b"))))?;
+        assert!(b.contains("visually unchanged"));
+        assert!(b.contains("2.00 s → 1.00 s"));
+        assert!(!b.contains("Davon 1 mit unveränderten Paketinhalten"));
+        assert!(!b.contains("Excel-Vergleich ausgelassen"));
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn incomplete_or_changed_package_checks_are_not_counted_as_equivalent() {
+        let package = json!({"complete":true,"status":"unchanged",
+            "capture_mode":"package-audit","package_identity":{"status":"equivalent"}});
+        assert!(is_package_unchanged(&package));
+        for (key, value) in [
+            ("complete", json!(false)),
+            ("status", json!("skipped")),
+            ("status", json!("differences")),
+            ("capture_mode", json!("resident")),
+            ("package_identity", json!({"status":"different"})),
+        ] {
+            let mut other = package.clone();
+            other[key] = value;
+            assert!(!is_package_unchanged(&other));
+        }
     }
 
     #[test]

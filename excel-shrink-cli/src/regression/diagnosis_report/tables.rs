@@ -1,4 +1,4 @@
-use super::{escape, file_id, items, permalink, text};
+use super::{escape, file_id, is_package_unchanged, items, permalink, text};
 use serde_json::Value;
 use std::fmt::Write as _;
 
@@ -6,7 +6,7 @@ pub(super) fn unchanged(html: &mut String, files: &[&Value]) {
     if files.is_empty() {
         return;
     }
-    let _ = write!(html, "<details class=\"hero workbook-list\" id=\"unchanged\"><summary>{} visually unchanged workbooks</summary><p class=\"muted\">Reduction bars show the percentage of file size removed. — means the measurement was not recorded. Excel opening uses a fresh process with manual calculation; RAM is its working set immediately after opening.</p><div class=\"table-scroll\"><table class=\"results-table\"><thead><tr><th>Workbook / profile</th><th>Reduction</th><th>Shrink</th><th>Open: original → shrunk</th><th>Excel RAM: original → shrunk</th></tr></thead><tbody>", files.len());
+    let _ = write!(html, "<details class=\"hero workbook-list\" id=\"unchanged\"><summary>{} unchanged workbooks</summary><p class=\"muted\">Reduction bars show the percentage of file size removed. — means the measurement was not recorded. Excel opening uses a fresh process with manual calculation; RAM is its working set immediately after opening.</p><div class=\"table-scroll\"><table class=\"results-table\"><thead><tr><th>Workbook / profile</th><th>Reduction</th><th>Shrink</th><th>Open: original → shrunk</th><th>Excel RAM: original → shrunk</th></tr></thead><tbody>", files.len());
     for file in files {
         let id = file_id(file);
         let _ = write!(
@@ -20,6 +20,13 @@ pub(super) fn unchanged(html: &mut String, files: &[&Value]) {
         }
         if file["conversion"].is_object() {
             html.push_str("<tr><td colspan=\"5\" class=\"muted\">Converted from XLS; comparisons and reduction measurements use the converted XLSX baseline.</td></tr>");
+        }
+        if is_package_unchanged(file) {
+            html.push_str("<tr><td colspan=\"5\" lang=\"de\"><strong>Unveränderte Paketinhalte – Excel-Vergleich ausgelassen</strong><p>Die Inhalte aller drei Shrink-Profile wurden gegen die vorbereitete Vergleichsbasis geprüft. Alle ZIP-Einträge müssen übereinstimmen; nur nachgewiesen redundante definierte Namen in workbook.xml dürfen entfernt sein. ZIP-Kompression und Verpackungsmetadaten bleiben dabei unberücksichtigt. Bildvergleich, Excel-Werteprüfung und Öffnungsmessungen wurden nicht ausgeführt.</p>");
+            if file["baseline_repaired"] == true {
+                html.push_str("<p>Die Vergleichsbasis wurde bereits vor dem Shrinken in workbook.xml bereinigt. Dieser Paketnachweis bezieht sich auf diese Basis, nicht auf die unveränderte Quelldatei.</p>");
+            }
+            html.push_str("</td></tr>");
         }
         profile_rows(html, file);
     }

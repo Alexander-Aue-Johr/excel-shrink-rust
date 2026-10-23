@@ -171,6 +171,23 @@ For an existing checkout with prepared bundles, retain any separately reviewed
 executable does not automatically accept preparations from another build. The
 canonical IDs allow GOTHAM to retain results from its earlier private request.
 
+Before opening Excel, the runner checks whether all three prepared profiles have
+equivalent package contents to the prepared comparison baseline. This requires matching contents for
+every ZIP member, not just the worksheet XML. The only permitted content change
+is removal of proven redundant defined names in `xl/workbook.xml`; matching file
+sizes alone are not evidence. ZIP compression and packaging metadata can differ.
+If any profile fails this check, the normal Excel comparison still runs.
+The baseline can already contain the existing workbook repair or XLS conversion;
+it is not necessarily byte-identical to the source file. Source and baseline
+fingerprints remain separate, and the report discloses repaired baselines.
+
+A successful package check completes the workbook as unchanged without Excel
+captures, value checks, opening timings or whitespace controls. The report labels
+these records **Unveränderte Paketinhalte – Excel-Vergleich ausgelassen** and
+shows their share of the unchanged total separately. They retain package evidence
+and machine provenance in result exports but do not enter the visual-verification
+CSV ledger. Existing completed visual results are retained when resuming.
+
 Before the first real run, append `--selection-only` to the assigned command to
 inspect the selected files without shrinking or starting Excel. It writes
 `.tmp/regression/study/selection-manifest.json` and a content-addressed copy under
