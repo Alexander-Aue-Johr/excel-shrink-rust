@@ -2,10 +2,12 @@ param(
     [Parameter(Mandatory=$true)][string]$SessionPath,
     [ValidateRange(10,600)][int]$StartupTimeoutSeconds = 300,
     [ValidateRange(10,7200)][int]$CaptureTimeoutSeconds = 1800,
-    [switch]$Visible
+    [switch]$Visible,
+    [switch]$HideExcel
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Visible -and $HideExcel) { throw 'Visible and HideExcel cannot be combined.' }
 $ProgressPreference = 'SilentlyContinue'
 $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $session = [IO.Path]::GetFullPath($SessionPath)
@@ -281,7 +283,8 @@ function Update-Resources {
         $item.private_bytes = $entry.process.PrivateMemorySize64
         $item.peak_working_set_bytes = $entry.process.PeakWorkingSet64
         $item.peak_private_bytes = [Math]::Max([Int64]$item.peak_private_bytes, $entry.process.PrivateMemorySize64)
-        if (-not $Visible -and $entry.seen) { [ResidentProcesses]::Minimize($entry.process) }
+        if ($HideExcel) { [ResidentProcesses]::Hide($entry.process) }
+        elseif (-not $Visible -and $entry.seen) { [ResidentProcesses]::Minimize($entry.process) }
     }
     if ($metricsClock.ElapsedMilliseconds -ge 1000) {
         Write-ResourceMetrics
@@ -340,7 +343,8 @@ function Open-ResidentClient($spec) {
         }
         Add-SessionEvent 'opening_started' $id $null
         $openClock = [Diagnostics.Stopwatch]::StartNew()
-        $process = $owned.Start($excelExecutable, ('/x ' + (Quote-Argument $book)))
+        $arguments = '/x ' + (Quote-Argument $book)
+        $process = $owned.Start($excelExecutable, $arguments, [bool]$HideExcel)
         $clients[$id] = @{ process=$process; seen=$false; closed=$false; registration=$guid }
         $metrics.clients[$id] = [ordered]@{ pid=$process.Id; startup_seconds=$null; opened_at=[DateTime]::UtcNow.ToString('o'); peak_private_bytes=0; closed=$false }
         while ($true) {
@@ -385,7 +389,7 @@ $batchReleaseReason = $null
 $finishWait = $null
 $systemReserveBytes = [UInt64]4GB
 $primaryClientIds = @()
-$metrics = [ordered]@{ status='starting'; visible=[bool]$Visible; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
+$metrics = [ordered]@{ status='starting'; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
 try {
     Add-Type -Path (Join-Path $PSScriptRoot 'ResidentProcesses.cs')
     $primaryClientIds = @(Get-PrimaryClientIds (Join-Path $session 'clients'))

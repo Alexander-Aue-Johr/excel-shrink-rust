@@ -379,7 +379,9 @@ impl ResidentCapture {
             .stderr(Stdio::from(fs::File::create(
                 directory.join("launcher.stderr.log"),
             )?));
-        if std::env::var("EXCEL_SHRINK_RESIDENT_VISIBLE").as_deref() == Ok("1") {
+        if std::env::var("EXCEL_SHRINK_HIDE_EXCEL").as_deref() == Ok("1") {
+            command.arg("-HideExcel");
+        } else if std::env::var("EXCEL_SHRINK_RESIDENT_VISIBLE").as_deref() == Ok("1") {
             command.arg("-Visible");
         }
         let cleanup_barrier = batch_cleanup::Participant::from_environment()?;

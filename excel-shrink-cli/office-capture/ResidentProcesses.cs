@@ -36,14 +36,18 @@ public sealed class ResidentProcesses : IDisposable
 
     public Process Start(string executable, string arguments)
     {
+        return Start(executable, arguments, false);
+    }
+
+    public Process Start(string executable, string arguments, bool hidden)
+    {
         if (executable.Contains("\"")) throw new ArgumentException("Invalid executable path");
         var startup = new StartupInfo();
         startup.Size = Marshal.SizeOf(typeof(StartupInfo));
-        // Use the interactive desktop: background desktops can stall Office.js.
-        // Initially show the window so Excel can initialize its task pane; the
-        // launcher minimizes it after the first configuration request.
+        // Office.js initializes on the interactive desktop. Hidden mode keeps
+        // the window hidden from startup while retaining that desktop.
         startup.Flags = 1; // STARTF_USESHOWWINDOW
-        startup.ShowWindow = 1; // SW_SHOWNORMAL
+        startup.ShowWindow = (short)(hidden ? 0 : 1); // SW_HIDE / SW_SHOWNORMAL
         ProcessInfo info;
         if (!CreateProcess(executable, new StringBuilder("\"" + executable + "\" " + arguments),
             IntPtr.Zero, IntPtr.Zero, false, 0x00000004, IntPtr.Zero, null, ref startup, out info))
@@ -78,6 +82,16 @@ public sealed class ResidentProcesses : IDisposable
         {
             var window = process.MainWindowHandle;
             if (window != IntPtr.Zero && !IsIconic(window)) ShowWindowAsync(window, 6);
+        }
+    }
+
+    public static void Hide(Process process)
+    {
+        process.Refresh();
+        if (!process.HasExited)
+        {
+            var window = process.MainWindowHandle;
+            if (window != IntPtr.Zero) ShowWindowAsync(window, 0); // SW_HIDE
         }
     }
 

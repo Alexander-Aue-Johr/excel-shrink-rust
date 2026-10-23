@@ -70,6 +70,18 @@ study. Completed results remain in place; adding `--retry-skipped` would explici
 request retries and is not part of these commands. Keep the PowerShell session
 open while it runs; a standalone PowerShell window allows VS Code to be closed.
 
+Add `--hide-excel` to any assignment command when the machine is also being used
+for other work. Resident Excel starts with its windows hidden and keeps them
+hidden during comparison. This applies to originals,
+shrink variants, and on-demand whitespace controls. Excel remains on the
+interactive desktop because its Office.js runtime can stall on a private desktop.
+The CLI records this choice in the run metadata and resident metrics (`hide_excel`).
+Without the flag, the existing interactive
+startup followed by minimization remains in use. Classic comparisons (including
+fallback retries) already use a private desktop. COM opening measurements and
+recalculation already run invisibly. Worker counts and memory limits still apply;
+hidden-mode concurrency on each target machine should be assessed separately.
+
 Laptop 1, 8 GiB RAM (constrained profile, one source workbook at a time):
 
 ```powershell

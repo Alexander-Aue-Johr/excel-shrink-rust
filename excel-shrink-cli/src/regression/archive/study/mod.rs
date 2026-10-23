@@ -66,6 +66,9 @@ pub(in crate::regression) struct StudyArgs {
     /// Keep original and shrink variants open for hash-first visual comparisons.
     #[arg(long)]
     resident_capture: bool,
+    /// Hide Excel comparison windows from startup while keeping the Office add-in active.
+    #[arg(long)]
+    hide_excel: bool,
     /// Maximum concurrent comparisons: 8 in resident mode, 1 otherwise. Preparation stays serial.
     #[arg(
         long,
@@ -408,6 +411,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         json!({
             "prepare_only":args.prepare_only,"compare_only":args.compare_only,
             "resident_capture":args.resident_capture,"comparison_workers":args.comparison_workers,
+            "hide_excel":args.hide_excel,
             "adaptive_concurrency":args.adaptive_concurrency,"order":args.order,
             "comparison_scheduling":"fixed-batches",
             "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.retry_skipped,

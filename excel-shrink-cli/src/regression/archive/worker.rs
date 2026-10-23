@@ -188,6 +188,7 @@ pub(super) fn launch(
         .stdin(Stdio::null())
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log));
+    command.env("EXCEL_SHRINK_HIDE_EXCEL", if job.hide_excel { "1" } else { "0" });
     if job.resident_capture {
         let record: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
         if let Some(mib) = resident_memory_limit_mib(&record)? {
@@ -472,6 +473,7 @@ mod tests {
             bundle: None,
             run_manifest: None,
             resident_capture: false,
+            hide_excel: false,
             cleanup_barrier: None,
         };
         assert_eq!(fs::read(extract(&job)?)?, b"1234");

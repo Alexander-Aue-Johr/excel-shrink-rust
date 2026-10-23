@@ -103,6 +103,7 @@ pub(super) fn run_record(
         mode,
         bundle: Some(bundle_path(output, id)),
         resident_capture: run["options"]["resident_capture"] == true,
+        hide_excel: run["options"]["hide_excel"] == true,
         cleanup_barrier,
         run_manifest: Some(
             json!({"run_id":run["run_id"],"machine_id":run["machine_id"],

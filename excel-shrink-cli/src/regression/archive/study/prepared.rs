@@ -588,6 +588,7 @@ mod tests {
             mode: JobMode::Prepare,
             bundle: Some(root.join("missing-prepared.zip")),
             resident_capture: false,
+            hide_excel: false,
             cleanup_barrier: None,
             run_manifest: Some(
                 json!({"run_id":"00000000-0000-4000-8000-000000000002","machine_id":"new-pc-b","machine_manifest":"metadata/machines/b.json"}),

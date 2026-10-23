@@ -277,6 +277,7 @@ fn retry_discards_old_evidence_even_when_preparation_or_unpacking_fails() -> Res
         bundle: Some(invalid),
         run_manifest: None,
         resident_capture: false,
+        hide_excel: false,
             cleanup_barrier: None,
     };
     for mode in [JobMode::Prepare, JobMode::Compare] {
@@ -329,11 +330,15 @@ fn comparison_workers_default_by_capture_mode_and_allow_explicit_overrides() -> 
     assert_eq!(defaults.comparison_workers, 1);
     assert!(!defaults.resident_capture);
     assert!(!defaults.adaptive_concurrency);
+    assert!(!defaults.hide_excel);
     let resident = StudyArgs::try_parse_from(["study", "--resident-capture"])?;
     assert_eq!(resident.comparison_workers, 8);
     let adaptive =
         StudyArgs::try_parse_from(["study", "--resident-capture", "--adaptive-concurrency"])?;
     assert_eq!(adaptive.comparison_workers, 8);
+    let hidden = StudyArgs::try_parse_from(["study", "--resident-capture", "--hide-excel"])?;
+    assert!(hidden.hide_excel);
+    assert_eq!(hidden.comparison_workers, 8);
     for count in [1, 3, 24, 256, usize::MAX] {
         let value = count.to_string();
         for args in [
