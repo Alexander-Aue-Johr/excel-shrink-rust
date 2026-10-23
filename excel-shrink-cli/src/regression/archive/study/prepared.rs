@@ -1,6 +1,7 @@
 //! Shrink serially, then retain the three outputs in disposable ZIP bundles.
 use super::*;
 use std::io::Write;
+mod visual_reuse;
 
 pub(super) const PROFILES: [&str; 3] = ["default", "maximum-cleaning", "too-aggressive-cleaning"];
 
@@ -140,8 +141,9 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         write_record(&job.record, record)?;
     }
     let mut selected = None;
+    let mut visual_comparisons = visual_reuse::VisualComparisons::default();
     for name in ["too-aggressive-cleaning", "maximum-cleaning", "default"] {
-        let result = compare_profile(job, name, selected.clone())?;
+        let result = compare_profile(job, name, selected.clone(), &mut visual_comparisons)?;
         let target = profile_mut(record, name)?;
         for (key, value) in result.as_object().unwrap() {
             target[key] = value.clone();
@@ -207,6 +209,7 @@ fn compare_profile(
     job: &MemberJob,
     name: &str,
     sheets: Option<std::collections::BTreeSet<usize>>,
+    visual_comparisons: &mut visual_reuse::VisualComparisons,
 ) -> Result<Value> {
     let original = job.work.join("original.xlsx");
     let shrunk = job.work.join(format!("{name}.xlsx"));
@@ -238,14 +241,31 @@ fn compare_profile(
         let (values, mut failures) =
             validate_excel_recalculation(&original, &shrunk, &directory, &cli)?;
         // Value differences are recorded but still need images on their affected sheets.
-        let visuals = visual_validation::compare_sheet_visuals(
-            &original,
-            &shrunk,
-            &directory.join("visual"),
-            &options,
-        )?;
-        result = serde_json::from_slice(&fs::read(visuals.output_dir.join("visual-result.json"))?)?;
-        if visuals.differences_found {
+        // Recalculation and open measurements remain independent per profile.
+        let original_sha = artifact_cache::hash_file(&original)?;
+        let shrunk_sha = artifact_cache::hash_file(&shrunk)?;
+        let cached = visual_comparisons.find(&original_sha, &shrunk_sha, &sheets, name)
+            .filter(|_| [&original, &shrunk].iter().all(|path|
+                artifact_cache::manifest(path).is_ok_and(|manifest| reusable_visual_manifest(&manifest))));
+        let reused = cached.is_some();
+        let mut visual = if let Some(report) = cached {
+            eprintln!("[study] {name}: reusing byte-identical visual comparison from {}",
+                report["comparison_reused_from"].as_str().unwrap());
+            report
+        } else {
+            let captured = visual_validation::compare_sheet_visuals(
+                &original,
+                &shrunk,
+                &directory.join("visual"),
+                &options,
+            )?;
+            serde_json::from_slice(&fs::read(captured.output_dir.join("visual-result.json"))?)?
+        };
+        visual["comparison_input_sha256"] = json!({"original":original_sha,"shrunk":shrunk_sha});
+        let differences_found = visual["sheets"].as_array().is_some_and(|items|
+            items.iter().any(|sheet| sheet["status"] == "changed"));
+        result = visual.clone();
+        if differences_found {
             failures.push("Visual differences found".into());
         }
         result["value_differences"] = json!(
@@ -254,13 +274,17 @@ fn compare_profile(
         result["stored_value_differences"] = json!(values.original_vs_shrunk.difference_count);
         result["recalculated_value_differences"] = json!(values.real_recalc_differences.len());
         result["checks_complete"] = json!(true);
-        result["status"] = json!(if visuals.differences_found {
+        result["status"] = json!(if differences_found {
             "visual differences"
         } else if !failures.is_empty() {
             "cell value differences"
         } else {
             "visually unchanged"
         });
+        if !reused {
+            // Keep unchanged sheets in the in-memory entry, before report compaction.
+            visual_comparisons.remember(&result, visual, original_sha, shrunk_sha, sheets.is_none());
+        }
         Ok(failures)
     })();
     result["profile"] = json!(name);
@@ -285,6 +309,13 @@ fn compare_profile(
     Ok(result)
 }
 
+fn reusable_visual_manifest(manifest: &artifact_cache::PackageManifest) -> bool {
+    // Byte equality is insufficient for volatile functions or refresh-on-open.
+    // Unknown calculation inputs also retain their independent render.
+    !manifest.parts.is_empty() && manifest.parts.values().all(|part|
+        !part.visual_runtime && part.recalc_cacheable)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,5 +332,21 @@ mod tests {
             &json!({"checks_complete":true,"value_differences":2,"sheets":[]})
         )
         .is_none());
+    }
+
+    #[test]
+    fn visual_reuse_requires_reproducible_runtime_inputs() {
+        let mut manifest: artifact_cache::PackageManifest = serde_json::from_value(json!({
+            "archive_sha256":"original", "package_sha256":"package", "parts":{
+                "xl/worksheets/sheet1.xml":{"bytes":42,"sha256":"part",
+                    "visual_context":false,"visual_runtime":false,"recalc_cacheable":true,"has_formula":false}}})).unwrap();
+        assert!(reusable_visual_manifest(&manifest));
+        manifest.parts.get_mut("xl/worksheets/sheet1.xml").unwrap().visual_runtime = true;
+        assert!(!reusable_visual_manifest(&manifest));
+        manifest.parts.get_mut("xl/worksheets/sheet1.xml").unwrap().visual_runtime = false;
+        manifest.parts.get_mut("xl/worksheets/sheet1.xml").unwrap().recalc_cacheable = false;
+        assert!(!reusable_visual_manifest(&manifest));
+        manifest.parts.clear();
+        assert!(!reusable_visual_manifest(&manifest));
     }
 }
