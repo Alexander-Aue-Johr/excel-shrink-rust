@@ -144,12 +144,12 @@ public static class CaptureWindowMinimizer
             $book = Join-Path $stage ($id + '.xlsx')
             Copy-Item -LiteralPath ([string]$request.$side) -Destination $book
             Add-AutoOpenTaskpane $book $guid '1.0.0.0'
-            Set-InitialWorksheet $book ([int]$request.capture.sheets[0].index)
             # Large staged XLSX files can briefly retain a Windows file handle
-            # after the preceding ZIP rewrite. Retry only this reversible step.
+            # after the preceding ZIP rewrite. Prepare selection and error UI
+            # together in one streaming pass over this disposable copy.
             for ($patchAttempt = 0; $patchAttempt -lt 12; $patchAttempt++) {
                 try {
-                    [CaptureWorkbook]::HideErrorIndicators($book)
+                    Set-InitialWorksheet $book ([int]$request.capture.sheets[0].index) $true
                     break
                 } catch {
                     if ($patchAttempt -eq 11) { throw }
