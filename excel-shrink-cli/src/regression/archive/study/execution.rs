@@ -39,6 +39,8 @@ pub(super) fn process(
             "comparing"
         });
     }
+    records[position]["last_execution"] = json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
+        "machine_manifest":run["machine_manifest"],"mode":mode,"started_unix_ms":provenance::now_ms()});
     write_record(&record, &records[position])?;
     let job = MemberJob {
         archive: source.path.clone(),

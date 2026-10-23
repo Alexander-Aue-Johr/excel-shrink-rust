@@ -140,6 +140,11 @@ primary comparison and supplemental whitespace diagnosis are attributed
 separately; resuming on another machine does not relabel historical measurements.
 Legacy results without provenance remain unknown.
 
+The run manifest identifies the actual executable by SHA-256. Its
+`checkout_git_commit` and `checkout_dirty` describe the runtime checkout at start;
+they do not claim which commit produced an arbitrary copied executable. Build
+from the clean final checkout and keep its runtime assets unchanged during a run.
+
 ## Export completed work and merge on GOTHAM
 
 The transfer commands use the study directory's exclusive lock. Run them between
@@ -159,6 +164,11 @@ referenced PNG evidence, and the required machine/run metadata. Incomplete work,
 prepared XLSX bundles and private request files are excluded. Each payload entry
 has a size and SHA-256 recorded in the package manifest. Preserve the package as
 part of the research evidence.
+
+Historical records without a source catalog fingerprint remain in the local
+report but are excluded from portable packages. Their identities are listed in
+`excluded_missing_source_fingerprint` in the package manifest and receipts.
+The exporter does not invent an archive match for these historical measurements.
 
 Import several packages and rebuild the report in one command:
 

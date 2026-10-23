@@ -45,9 +45,14 @@ pub(super) fn start_run(
         .ok()
         .filter(|r| r.status.success())
         .map(|r| String::from_utf8_lossy(&r.stdout).trim().to_owned());
+    let checkout_dirty = std::process::Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=no"])
+        .current_dir(repo_root()).output().ok().filter(|r| r.status.success())
+        .map(|r| !r.stdout.is_empty());
     let run = json!({
         "schema_version":VERSION,"run_id":new_uuid()?,"started_unix_ms":now_ms(),
-        "git_commit":commit,"executable_sha256":artifact_cache::hash_file(&executable)?,
+        "checkout_git_commit":commit,"checkout_dirty":checkout_dirty,
+        "executable_sha256":artifact_cache::hash_file(&executable)?,
         "executable_filename":executable.file_name().map(|n| n.to_string_lossy()),
         "machine_id":machine["machine_id"],"machine_manifest":machine_path,
         "selection":selection,"options":safe_options

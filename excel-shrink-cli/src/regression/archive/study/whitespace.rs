@@ -130,8 +130,12 @@ fn evidence_matches(previous: &Value, fresh: &Value, report_root: &Path) -> Resu
 
 pub(super) fn diagnose(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
     let producer = artifact_cache::hash_file(&std::env::current_exe()?)?;
+    provenance::retire(record, provenance::Stage::WhitespaceDiagnosis);
     record["whitespace_diagnosis"] = json!({"version":VERSION,"status":"running", "producer":producer,
         "method":"matched profile with whitespace deletion disabled", "profiles":[]});
+    if let Some(run) = &job.run_manifest {
+        provenance::stamp(record, run, provenance::Stage::WhitespaceDiagnosis);
+    }
     write_record(&job.record, record)?;
     let profiles = items(record, "results").to_vec();
     let candidates: Vec<_> = profiles
@@ -290,9 +294,6 @@ pub(super) fn diagnose(job: &MemberJob, record: &mut Value, log_level: LogLevel)
 }
 
 pub(super) fn run(job: &MemberJob, record: &mut Value, log_level: LogLevel) {
-    if let Some(run) = &job.run_manifest {
-        provenance::stamp(record, run, provenance::Stage::WhitespaceDiagnosis);
-    }
     if let Err(error) = diagnose(job, record, log_level) {
         record["whitespace_diagnosis"]["version"] = json!(VERSION);
         record["whitespace_diagnosis"]["status"] = json!("failed");
@@ -303,6 +304,27 @@ pub(super) fn run(job: &MemberJob, record: &mut Value, log_level: LogLevel) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn running_diagnosis_checkpoint_has_its_own_machine_without_relabeling_comparison() -> Result<()> {
+        let root = super::super::tests::test_directory("diagnosis-provenance-checkpoint")?;
+        let current = json!({"run_id":"00000000-0000-4000-8000-000000000002","machine_id":"diagnosis-pc"});
+        let job: MemberJob = serde_json::from_value(json!({"archive":"unused.zip","index":0,
+            "identity":"archive:0:file.xlsx","name":"file.xlsx","work":root,"record":root.join("record.json"),
+            "report_root":root,"max_workbook_bytes":1024,"mode":"Diagnose","run_manifest":current}))?;
+        let old = json!({"run_id":"00000000-0000-4000-8000-000000000001","machine_id":"comparison-pc"});
+        let mut record = json!({"results":[],"whitespace_diagnosis":{"status":"complete"}});
+        provenance::stamp(&mut record, &old, provenance::Stage::Comparison);
+        provenance::stamp(&mut record, &old, provenance::Stage::WhitespaceDiagnosis);
+        diagnose(&job, &mut record, LogLevel::Warn)?;
+        let checkpoint: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
+        assert_eq!(checkpoint["whitespace_diagnosis"]["status"], "running");
+        assert_eq!(checkpoint["whitespace_diagnosis"]["provenance"]["machine_id"], "diagnosis-pc");
+        assert_eq!(checkpoint["provenance"]["comparison"]["machine_id"], "comparison-pc");
+        assert_eq!(checkpoint["provenance"]["history"][0]["reference"]["machine_id"], "comparison-pc");
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn followups_do_not_invent_completed_comparisons_or_retry_failures_forever() {
