@@ -72,13 +72,7 @@ pub(super) fn stamp(record: &mut Value, run: &Value, stage: Stage) {
         "machine_manifest":run["machine_manifest"],"measured_unix_ms":now_ms()});
     let old = record["provenance"][stage.name()].clone();
     if old.is_object() && old["run_id"] != reference["run_id"] {
-        if !record["provenance"]["history"].is_array() {
-            record["provenance"]["history"] = json!([]);
-        }
-        record["provenance"]["history"]
-            .as_array_mut()
-            .unwrap()
-            .push(json!({"stage":stage.name(),"reference":old}));
+        retire(record, stage);
     }
     record["provenance"][stage.name()] = reference.clone();
     if matches!(stage, Stage::Comparison) {
@@ -96,6 +90,23 @@ pub(super) fn stamp(record: &mut Value, run: &Value, stage: Stage) {
     if matches!(stage, Stage::WhitespaceDiagnosis) && record["whitespace_diagnosis"].is_object() {
         record["whitespace_diagnosis"]["provenance"] = reference;
     }
+}
+
+/// When the associated results are discarded, retain their historical origin
+/// without attributing the replacement attempt to that previous machine.
+pub(super) fn retire(record: &mut Value, stage: Stage) {
+    let Some(provenance) = record.get_mut("provenance").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let Some(reference) = provenance.remove(stage.name()).filter(Value::is_object) else {
+        return;
+    };
+    if !provenance.get("history").is_some_and(Value::is_array) {
+        provenance.insert("history".into(), json!([]));
+    }
+    provenance["history"].as_array_mut().unwrap().push(json!({
+        "stage":stage.name(),"reference":reference,"retired_unix_ms":now_ms()
+    }));
 }
 
 /// A ratio is eligible only with the same explicit paired-experiment reference.

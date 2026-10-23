@@ -6,9 +6,18 @@ mod visual_reuse;
 pub(super) const PROFILES: [&str; 3] = ["default", "maximum-cleaning", "too-aggressive-cleaning"];
 
 pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
+    provenance::retire(record, provenance::Stage::Preparation);
+    provenance::retire(record, provenance::Stage::Comparison);
+    provenance::retire(record, provenance::Stage::WhitespaceDiagnosis);
     record["whitespace_diagnosis"] = json!({"status":"not_investigated"});
     record["prepared"] = json!(false);
     record["results"] = json!([]);
+    if let Some(run) = &job.run_manifest {
+        provenance::stamp(record, run, provenance::Stage::Preparation);
+    }
+    // Persist the reset before extraction/conversion can fail or the worker can
+    // be killed, otherwise its old comparison machine survives in the journal.
+    write_record(&job.record, record)?;
     let extracted = worker::extract(job)?;
     record["source_bytes"] = json!(fs::metadata(&extracted)?.len());
     record["source_format"] = json!(extracted.extension().and_then(|e| e.to_str()));
@@ -118,12 +127,19 @@ fn unpack(bundle: &Path, work: &Path) -> Result<Value> {
 }
 
 pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
+    provenance::retire(record, provenance::Stage::Comparison);
+    provenance::retire(record, provenance::Stage::WhitespaceDiagnosis);
     record["whitespace_diagnosis"] = json!({"status":"not_investigated"});
     record["results"] = json!([]);
+    write_record(&job.record, record)?;
     record["results"] = unpack(
         job.bundle.as_ref().context("missing prepared bundle")?,
         &job.work,
     )?;
+    if let Some(run) = &job.run_manifest {
+        provenance::stamp(record, run, provenance::Stage::Comparison);
+    }
+    write_record(&job.record, record)?;
     let original = job.work.join("original.xlsx");
     let original_metrics =
         excel_automation::measure_workbook_open(&original, &job.work.join("open-original"))?;
@@ -132,13 +148,13 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             &job.work.join(format!("{name}.xlsx")),
             &job.work.join(format!("open-{name}")),
         )?;
-        let result = profile_mut(record, name)?;
-        add_open_metrics(
-            result,
+        record_open_metrics(
+            job,
+            record,
+            name,
             &serde_json::to_value(&original_metrics)?,
             &serde_json::to_value(metrics)?,
-        );
-        write_record(&job.record, record)?;
+        )?;
     }
     let mut selected = None;
     let mut visual_comparisons = visual_reuse::VisualComparisons::default();
@@ -189,6 +205,22 @@ fn add_open_metrics(result: &mut Value, original: &Value, shrunk: &Value) {
         result[format!("{prefix}_memory_bytes")] = metrics["working_set_bytes"].clone();
         result[format!("{prefix}_private_bytes")] = metrics["private_bytes"].clone();
     }
+}
+
+fn record_open_metrics(
+    job: &MemberJob,
+    record: &mut Value,
+    name: &str,
+    original: &Value,
+    shrunk: &Value,
+) -> Result<()> {
+    add_open_metrics(profile_mut(record, name)?, original, shrunk);
+    if let Some(run) = &job.run_manifest {
+        provenance::stamp(record, run, provenance::Stage::Comparison);
+    }
+    // Pair attribution and raw metrics share one durable checkpoint. A later
+    // timeout must not leave these measurements assigned to a previous machine.
+    write_record(&job.record, record)
 }
 
 fn follow_up_sheets(result: &Value) -> Option<std::collections::BTreeSet<usize>> {
@@ -244,13 +276,20 @@ fn compare_profile(
         // Recalculation and open measurements remain independent per profile.
         let original_sha = artifact_cache::hash_file(&original)?;
         let shrunk_sha = artifact_cache::hash_file(&shrunk)?;
-        let cached = visual_comparisons.find(&original_sha, &shrunk_sha, &sheets, name)
-            .filter(|_| [&original, &shrunk].iter().all(|path|
-                artifact_cache::manifest(path).is_ok_and(|manifest| reusable_visual_manifest(&manifest))));
+        let cached = visual_comparisons
+            .find(&original_sha, &shrunk_sha, &sheets, name)
+            .filter(|_| {
+                [&original, &shrunk].iter().all(|path| {
+                    artifact_cache::manifest(path)
+                        .is_ok_and(|manifest| reusable_visual_manifest(&manifest))
+                })
+            });
         let reused = cached.is_some();
         let mut visual = if let Some(report) = cached {
-            eprintln!("[study] {name}: reusing byte-identical visual comparison from {}",
-                report["comparison_reused_from"].as_str().unwrap());
+            eprintln!(
+                "[study] {name}: reusing byte-identical visual comparison from {}",
+                report["comparison_reused_from"].as_str().unwrap()
+            );
             report
         } else {
             let captured = visual_validation::compare_sheet_visuals(
@@ -262,8 +301,9 @@ fn compare_profile(
             serde_json::from_slice(&fs::read(captured.output_dir.join("visual-result.json"))?)?
         };
         visual["comparison_input_sha256"] = json!({"original":original_sha,"shrunk":shrunk_sha});
-        let differences_found = visual["sheets"].as_array().is_some_and(|items|
-            items.iter().any(|sheet| sheet["status"] == "changed"));
+        let differences_found = visual["sheets"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|sheet| sheet["status"] == "changed"));
         result = visual.clone();
         if differences_found {
             failures.push("Visual differences found".into());
@@ -283,7 +323,13 @@ fn compare_profile(
         });
         if !reused {
             // Keep unchanged sheets in the in-memory entry, before report compaction.
-            visual_comparisons.remember(&result, visual, original_sha, shrunk_sha, sheets.is_none());
+            visual_comparisons.remember(
+                &result,
+                visual,
+                original_sha,
+                shrunk_sha,
+                sheets.is_none(),
+            );
         }
         Ok(failures)
     })();
@@ -312,13 +358,91 @@ fn compare_profile(
 fn reusable_visual_manifest(manifest: &artifact_cache::PackageManifest) -> bool {
     // Byte equality is insufficient for volatile functions or refresh-on-open.
     // Unknown calculation inputs also retain their independent render.
-    !manifest.parts.is_empty() && manifest.parts.values().all(|part|
-        !part.visual_runtime && part.recalc_cacheable)
+    !manifest.parts.is_empty()
+        && manifest
+            .parts
+            .values()
+            .all(|part| !part.visual_runtime && part.recalc_cacheable)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn provenance_job(root: &Path) -> MemberJob {
+        MemberJob {
+            archive: root.join("missing-source.zip"),
+            index: 0,
+            identity: "example:0:example.xlsx".into(),
+            name: "example.xlsx".into(),
+            work: root.join("work"),
+            record: root.join("records/example.json"),
+            report_root: root.into(),
+            max_workbook_bytes: 1024,
+            mode: JobMode::Prepare,
+            bundle: Some(root.join("missing-prepared.zip")),
+            run_manifest: Some(
+                json!({"run_id":"00000000-0000-4000-8000-000000000002","machine_id":"new-pc-b","machine_manifest":"metadata/machines/b.json"}),
+            ),
+        }
+    }
+
+    #[test]
+    fn failed_repreparation_retires_the_old_comparison_machine_before_extraction() -> Result<()> {
+        let root = super::super::tests::test_directory("retire-old-machine")?;
+        let job = provenance_job(&root);
+        let old = json!({"run_id":"00000000-0000-4000-8000-000000000001","machine_id":"old-pc-a","machine_manifest":"metadata/machines/a.json"});
+        let mut record = json!({"results":[{"profile":"default","original_open_seconds":4.0,"shrunk_open_seconds":2.0}],"whitespace_diagnosis":{"version":1,"status":"complete"}});
+        for stage in [
+            provenance::Stage::Preparation,
+            provenance::Stage::Comparison,
+            provenance::Stage::WhitespaceDiagnosis,
+        ] {
+            provenance::stamp(&mut record, &old, stage);
+        }
+        assert!(prepare(&job, &mut record, LogLevel::Warn).is_err());
+        let saved: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
+        assert_eq!(saved["provenance"]["preparation"]["machine_id"], "new-pc-b");
+        assert!(saved["provenance"]["comparison"].is_null());
+        assert!(saved["provenance"]["whitespace_diagnosis"].is_null());
+        assert_eq!(saved["provenance"]["history"].as_array().unwrap().len(), 3);
+        assert_eq!(saved["results"], json!([]));
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn partial_open_metrics_checkpoint_records_the_new_pair_machine() -> Result<()> {
+        let root = super::super::tests::test_directory("partial-open-provenance")?;
+        let job = provenance_job(&root);
+        let old = json!({"run_id":"00000000-0000-4000-8000-000000000001","machine_id":"old-pc-a"});
+        let mut record = json!({"results":[{"profile":"default"},{"profile":"maximum-cleaning"}]});
+        provenance::stamp(&mut record, &old, provenance::Stage::Preparation);
+        provenance::stamp(&mut record, &old, provenance::Stage::Comparison);
+        record_open_metrics(
+            &job,
+            &mut record,
+            "default",
+            &json!({"open_seconds":4.0,"working_set_bytes":20}),
+            &json!({"open_seconds":2.0,"working_set_bytes":10}),
+        )?;
+        let saved: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
+        assert_eq!(saved["provenance"]["preparation"]["machine_id"], "old-pc-a");
+        assert_eq!(saved["provenance"]["comparison"]["machine_id"], "new-pc-b");
+        assert_eq!(
+            saved["results"][0]["open_measurement_provenance"]["original"]["machine_id"],
+            "new-pc-b"
+        );
+        assert_eq!(provenance::paired_speedup(&saved["results"][0]), Some(2.0));
+        assert!(saved["results"][1]["open_measurement_provenance"].is_null());
+        assert_eq!(
+            saved["provenance"]["history"][0]["reference"]["machine_id"],
+            "old-pc-a"
+        );
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
     #[test]
     fn followups_only_include_visually_changed_sheets_of_completed_checks() {
         let mut result = json!({"checks_complete":true,"sheets":[{"index":2,"status":"changed"},{"index":3,"status":"same"}]});
@@ -341,10 +465,22 @@ mod tests {
                 "xl/worksheets/sheet1.xml":{"bytes":42,"sha256":"part",
                     "visual_context":false,"visual_runtime":false,"recalc_cacheable":true,"has_formula":false}}})).unwrap();
         assert!(reusable_visual_manifest(&manifest));
-        manifest.parts.get_mut("xl/worksheets/sheet1.xml").unwrap().visual_runtime = true;
+        manifest
+            .parts
+            .get_mut("xl/worksheets/sheet1.xml")
+            .unwrap()
+            .visual_runtime = true;
         assert!(!reusable_visual_manifest(&manifest));
-        manifest.parts.get_mut("xl/worksheets/sheet1.xml").unwrap().visual_runtime = false;
-        manifest.parts.get_mut("xl/worksheets/sheet1.xml").unwrap().recalc_cacheable = false;
+        manifest
+            .parts
+            .get_mut("xl/worksheets/sheet1.xml")
+            .unwrap()
+            .visual_runtime = false;
+        manifest
+            .parts
+            .get_mut("xl/worksheets/sheet1.xml")
+            .unwrap()
+            .recalc_cacheable = false;
         assert!(!reusable_visual_manifest(&manifest));
         manifest.parts.clear();
         assert!(!reusable_visual_manifest(&manifest));
