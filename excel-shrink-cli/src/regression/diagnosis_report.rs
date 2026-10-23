@@ -1,4 +1,5 @@
 mod categories;
+mod machines;
 mod tables;
 mod workbook;
 
@@ -149,6 +150,9 @@ fn write_page(
     if !skipped.is_empty() {
         html.push_str("<a class=\"nav-link\" href=\"#skipped\">Skipped / errors</a>");
     }
+    if completed > 0 {
+        html.push_str("<a class=\"nav-link\" href=\"#machines\">Measurement machines</a>");
+    }
     if !changed.is_empty() {
         html.push_str("<input id=\"sheet-search\" class=\"search\" type=\"search\" placeholder=\"Filter differences\" aria-label=\"Filter differences\">");
         for file in &changed {
@@ -183,6 +187,7 @@ fn write_page(
         tables::totals(&mut html, files);
         html.push_str("</section>");
     }
+    machines::render_summary(&mut html, report, files);
     for failure in items(&report["aggregate"], "failures") {
         let _ = write!(
             html,
@@ -392,6 +397,40 @@ mod tests {
         let corpus_b = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "b"))))?;
         assert!(corpus_b.contains(&format!("id=\"{}\"", anchor("file", "new"))));
         assert!(!corpus_b.contains("equal.xlsx"));
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn machine_groups_and_manifest_links_are_scoped_to_each_corpus_page() -> Result<()> {
+        let dir =
+            std::env::temp_dir().join(format!("machine-corpus-report-{}", std::process::id()));
+        let run_a = "00000000-0000-4000-8000-000000000001";
+        let run_b = "00000000-0000-4000-8000-000000000002";
+        let report = json!({"complete":true,"corpora":[{"id":"a","name":"Corpus A"},{"id":"b","name":"Corpus B"}],
+            "measurement_provenance":{"runs":[
+                {"run_id":run_a,"machine_id":"tower","machine_manifest":"metadata/machines/tower-a.json"},
+                {"run_id":run_b,"machine_id":"laptop","machine_manifest":"metadata/machines/laptop-b.json"}],
+                "machines":[{"path":"metadata/machines/tower-a.json","metadata":{"machine_id":"tower","label":"Tower A"}},
+                    {"path":"metadata/machines/laptop-b.json","metadata":{"machine_id":"laptop","label":"Laptop B"}}]},
+            "workbooks":[
+                {"identity":"a:0:a.xlsx","name":"alpha.xlsx","corpus_id":"a","complete":true,"status":"unchanged",
+                    "provenance":{"comparison":{"machine_id":"tower","run_id":run_a}},"results":[]},
+                {"identity":"b:0:b.xlsx","name":"beta.xlsx","corpus_id":"b","complete":true,"status":"skipped",
+                    "provenance":{"comparison":{"machine_id":"laptop","run_id":run_b}},"results":[]}]});
+        let all = fs::read_to_string(write(&dir, &report)?)?;
+        assert!(all.contains("Tower A"));
+        assert!(all.contains("Laptop B"));
+        let a = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "a"))))?;
+        assert!(a.contains("Tower A"));
+        assert!(!a.contains("Laptop B"));
+        assert!(!a.contains("beta.xlsx"));
+        assert!(a.contains(&format!("href=\"metadata/runs/{run_a}.json\"")));
+        assert!(a.contains("href=\"metadata/machines/tower-a.json\""));
+        assert!(!a.contains(run_b));
+        let anchor = file_id(&report["workbooks"][0]);
+        assert!(a.contains(&format!("href=\"#{anchor}\"")));
+        assert!(a.contains(&format!("id=\"{anchor}\"")));
         fs::remove_dir_all(dir)?;
         Ok(())
     }

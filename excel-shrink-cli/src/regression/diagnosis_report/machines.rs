@@ -1,13 +1,13 @@
 //! Reviewer-facing machine attribution, separate from visual-cause categories.
 use super::{escape, file_id, items, text};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-pub(super) fn render_summary(html: &mut String, report: &Value) {
+pub(super) fn render_summary(html: &mut String, report: &Value, files: &[&Value]) {
     let metadata = &report["measurement_provenance"];
     let mut groups: BTreeMap<String, Vec<&Value>> = BTreeMap::new();
-    for file in items(report, "workbooks") {
+    for &file in files {
         if file["complete"] != true {
             continue;
         }
@@ -21,9 +21,32 @@ pub(super) fn render_summary(html: &mut String, report: &Value) {
     }
     html.push_str("<section id=\"machines\"><h2>Measurement machines</h2><p>Preparation, primary comparison and whitespace diagnosis retain separate machine references. Legacy measurements remain unknown. Open-time speedups use paired before/after measurements from the same run and machine; raw timings and memory values remain in each workbook record. Hardware, Excel version, storage and background load can affect both speed and memory.</p>");
     for (id, files) in groups {
+        let mut referenced_runs = BTreeSet::new();
+        for file in &files {
+            collect_run_ids(&file["provenance"], &mut referenced_runs);
+        }
+        let runs: Vec<_> = items(metadata, "runs")
+            .iter()
+            .filter(|run| {
+                run["machine_id"] == id
+                    && run["run_id"]
+                        .as_str()
+                        .is_some_and(|run| referenced_runs.contains(run))
+            })
+            .collect();
+        let snapshots_used: BTreeSet<_> = runs
+            .iter()
+            .filter_map(|run| run["machine_manifest"].as_str())
+            .collect();
         let snapshots: Vec<_> = items(metadata, "machines")
             .iter()
-            .filter(|m| m["metadata"]["machine_id"] == id)
+            .filter(|m| {
+                m["metadata"]["machine_id"] == id
+                    && (snapshots_used.is_empty()
+                        || m["path"]
+                            .as_str()
+                            .is_some_and(|path| snapshots_used.contains(path)))
+            })
             .collect();
         let machine = snapshots.first().map(|m| &m["metadata"]);
         let label = machine
@@ -106,10 +129,7 @@ pub(super) fn render_summary(html: &mut String, report: &Value) {
                 let _ = write!(html, "<a href=\"{}\">hardware snapshot</a> ", escape(path));
             }
         }
-        for run in items(metadata, "runs")
-            .iter()
-            .filter(|r| r["machine_id"] == id)
-        {
+        for run in runs {
             if let Some(run_id) = run["run_id"]
                 .as_str()
                 .filter(|s| s.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'))
@@ -139,13 +159,40 @@ pub(super) fn render_summary(html: &mut String, report: &Value) {
                 "<li><a href=\"#{}\">{}</a> · preparation: {} · whitespace diagnosis: {}</li>",
                 escape(&file_id(file)),
                 escape(name),
-                escape(prepare),
-                escape(diagnose)
+                escape(machine_label(metadata, prepare)),
+                escape(machine_label(metadata, diagnose))
             );
         }
         html.push_str("</ul></details></details>");
     }
     html.push_str("</section>");
+}
+
+fn collect_run_ids<'a>(value: &'a Value, ids: &mut BTreeSet<&'a str>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(id) = map.get("run_id").and_then(Value::as_str) {
+                ids.insert(id);
+            }
+            for value in map.values() {
+                collect_run_ids(value, ids);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                collect_run_ids(value, ids);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn machine_label<'a>(metadata: &'a Value, id: &'a str) -> &'a str {
+    items(metadata, "machines")
+        .iter()
+        .find(|m| m["metadata"]["machine_id"] == id)
+        .and_then(|m| m["metadata"]["label"].as_str())
+        .unwrap_or(id)
 }
 
 fn paired_ratio(profile: &Value, machine: &str) -> Option<f64> {
@@ -190,7 +237,11 @@ mod tests {
                     "open_measurement_provenance":{"original":reference,"shrunk":{"machine_id":"tower","run_id":"other"}}}]},
             {"identity":"legacy","complete":true,"results":[{"profile":"default","original_open_seconds":99.0,"shrunk_open_seconds":1.0}]}]});
         let mut html = String::new();
-        render_summary(&mut html, &report);
+        render_summary(
+            &mut html,
+            &report,
+            &items(&report, "workbooks").iter().collect::<Vec<_>>(),
+        );
         assert!(html.contains("2.000×"));
         assert!(!html.contains("100.000×"));
         assert!(!html.contains("99.000×"));
