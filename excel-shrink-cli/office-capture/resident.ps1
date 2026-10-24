@@ -384,6 +384,7 @@ function Build-ResidentHost([string]$dotnet, [string]$stage) {
 
 function Update-Resources {
     Update-OtherGroupPause
+    if ($null -ne $hostProcess -and -not $script:processingClientReset) { Invoke-ClientResets }
     if ($null -ne $liveOwner -and $liveOwner.HasExited) { throw 'Control room coordinator exited.' }
     if ($null -ne $batchLifetime -and ($null -eq $batchOwner -or $batchOwner.HasExited)) {
         throw 'Resident batch coordinator exited.'
@@ -430,7 +431,79 @@ function Read-HostHealth {
     return $health
 }
 
-function Open-ResidentClient($spec) {
+function Invoke-ClientResets {
+    if (-not $liveGroupDirectory -or $clientResetClock.ElapsedMilliseconds -lt 500) { return }
+    $clientResetClock.Restart()
+    $directory = Join-Path $liveGroupDirectory 'client-resets'
+    if (-not (Test-Path -LiteralPath $directory)) { return }
+    foreach ($file in @(Get-ChildItem -LiteralPath $directory -Filter '*.json' -File | Sort-Object Name)) {
+        $request = [IO.File]::ReadAllText($file.FullName, $utf8) | ConvertFrom-Json
+        if ($request.status -ne 'pending') { continue }
+        $id = [string]$request.client_id
+        if ($request.attempt_id -ne $env:EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID -or
+            $id -notmatch '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$' -or -not $clients.ContainsKey($id) -or
+            $clients[$id].process.Id -ne $request.expected_pid -or
+            ([DateTimeOffset]$clients[$id].process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds() -ne $request.expected_started_unix_ms) {
+            $request.status = 'rejected'
+            $request | Add-Member -NotePropertyName message -NotePropertyValue 'Excel process or attempt has already changed.' -Force
+            Write-ResidentJsonFile $file.FullName $request
+            continue
+        }
+        $script:processingClientReset = $true
+        try {
+            $request.status = 'running'
+            Write-ResidentJsonFile $file.FullName $request
+            $headers = @{ 'X-Launcher-Token'=$launcherToken }
+            $groupRestart = $false
+            try {
+                Invoke-RestMethod -Method Post -Uri ($controlUrl + '/launcher/reset/' + $id) -Headers $headers -ContentType 'application/json' -Body '{"stage":"prepare"}' -TimeoutSec 10 | Out-Null
+            } catch {
+                if ($null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 409) { $groupRestart = $true }
+                else { throw }
+            }
+            if ($groupRestart) {
+                # Publish the retry before killing a process whose evidence may
+                # already be in use. The scheduler archives and invalidates it.
+                $retry = [ordered]@{ id=[Guid]::NewGuid().ToString('N'); type='restart_group'; group_id=$request.group_id;
+                    run_id=$request.run_id; attempt_id=$request.attempt_id; client_id=$id; reason=$request.reason;
+                    status='pending'; requested_unix_ms=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();
+                    message='Hard reset requested after comparison started; requeueing the group.' }
+                Write-ResidentJsonFile (Join-Path (Join-Path $liveRoot 'commands') ($retry.id + '.json')) $retry
+            }
+            [ResidentProcesses]::Stop($clients[$id].process)
+            $clients[$id].closed = $true
+            $metrics.clients[$id].closed = $true
+            $metrics.clients[$id].status = 'closed'
+            $metrics.clients[$id].stage = 'hard_reset'
+            $metrics.clients[$id].process_alive = $false
+            Add-SessionEvent 'client_hard_reset' $id @{ hide_excel=[bool]$request.hide_excel; group_restart=$groupRestart }
+            Write-ResourceMetrics
+            if ($groupRestart) {
+                $request.status = 'group_restart'
+                $request | Add-Member -NotePropertyName message -NotePropertyValue 'Excel stopped; group comparison will restart with current controls.' -Force
+            } else {
+                $guid = $clients[$id].registration
+                Restore-AddIn $guid $registrations[$guid]
+                $registrations.Remove($guid)
+                $clients.Remove($id)
+                Invoke-RestMethod -Method Post -Uri ($controlUrl + '/launcher/reset/' + $id) -Headers $headers -ContentType 'application/json' -Body '{"stage":"ready"}' -TimeoutSec 10 | Out-Null
+                $spec = [IO.File]::ReadAllText((Join-Path (Join-Path $session 'clients') ($id + '.json')), $utf8) | ConvertFrom-Json
+                Open-ResidentClient $spec ([bool]$request.hide_excel)
+                $metrics.clients[$id].reset_from_pid = $request.expected_pid
+                $request.status = 'complete'
+                $request | Add-Member -NotePropertyName message -NotePropertyValue 'Excel restarted from the source file with the requested visibility.' -Force
+            }
+            Write-ResidentJsonFile $file.FullName $request
+        } catch {
+            $request.status = 'failed'
+            $request | Add-Member -NotePropertyName message -NotePropertyValue $_.Exception.Message -Force
+            Write-ResidentJsonFile $file.FullName $request
+            throw
+        } finally { $script:processingClientReset = $false }
+    }
+}
+
+function Open-ResidentClient($spec, $visibilityOverride = $null) {
     $id = [string]$spec.client_id
     if ($id -notmatch '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$') { throw 'Invalid resident client id.' }
     if ($clients.ContainsKey($id)) { return }
@@ -440,6 +513,7 @@ function Open-ResidentClient($spec) {
     if (-not @($spec.sheets).Count) { throw "Resident client has no planned sheets: $id" }
     Update-Resources
     $hideClient = Get-ResidentHideExcel
+    if ($null -ne $visibilityOverride) { $hideClient = [bool]$visibilityOverride }
     $metrics.clients[$id] = [ordered]@{ status='requested'; stage='staging'; requested_at=[DateTime]::UtcNow.ToString('o'); pid=$null; process_started_unix_ms=$null; process_alive=$null; heartbeat_count=0; last_heartbeat_at=$null; last_activity_at=$null; hide_excel=[bool]$hideClient; startup_seconds=$null; opened_at=$null; peak_private_bytes=0; closed=$false }
     Write-ResourceMetrics
     $guid = [Guid]::NewGuid().ToString()
@@ -472,6 +546,7 @@ function Open-ResidentClient($spec) {
         # Freeze visibility for this process. Study groups use their immutable
         # admission setting; standalone sessions use the next-launch preference.
         $hideClient = Get-ResidentHideExcel
+        if ($null -ne $visibilityOverride) { $hideClient = [bool]$visibilityOverride }
         $process = $owned.Start($excelExecutable, $arguments, [bool]$hideClient)
         $clients[$id] = @{ process=$process; seen=$false; closed=$false; registration=$guid; hide_excel=[bool]$hideClient }
         $metrics.clients[$id].pid = $process.Id
@@ -527,9 +602,12 @@ $liveGroupDirectory = $null
 $liveOwner = $null
 $liveOpenTimeoutSeconds = $StartupTimeoutSeconds
 $liveHideExcel = [bool]$HideExcel
+$launcherToken = [Guid]::NewGuid().ToString('N')
+$processingClientReset = $false
+$clientResetClock = [Diagnostics.Stopwatch]::StartNew()
 $systemReserveBytes = [UInt64]4GB
 $primaryClientIds = @()
-$metrics = [ordered]@{ status='starting'; attempt_id=$env:EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
+$metrics = [ordered]@{ status='starting'; client_reset_supported=$true; attempt_id=$env:EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
 try {
     Add-Type -Path (Join-Path $PSScriptRoot 'ResidentProcesses.cs')
     if ($env:EXCEL_SHRINK_CONTROL_ROOM_DIR) {
@@ -597,7 +675,7 @@ try {
     $hostOutput = Join-Path $session 'host-output'
     [void][IO.Directory]::CreateDirectory($hostOutput)
     $configPath = Join-Path $stage 'host.json'
-    [IO.File]::WriteAllText($configPath, (@{port=$port; web=$webStage; output=$hostOutput; session=$session} | ConvertTo-Json), $utf8)
+    [IO.File]::WriteAllText($configPath, (@{port=$port; web=$webStage; output=$hostOutput; session=$session; launcher_token=$launcherToken} | ConvertTo-Json), $utf8)
     $arguments = (Quote-Argument $dll) + ' ' + (Quote-Argument $configPath)
     $hostProcess = Start-Process -FilePath $dotnet -ArgumentList $arguments -WorkingDirectory $stage -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $session 'host.stdout.log') -RedirectStandardError (Join-Path $session 'host.stderr.log')

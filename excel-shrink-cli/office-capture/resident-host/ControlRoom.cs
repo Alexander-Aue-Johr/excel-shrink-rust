@@ -146,6 +146,25 @@ internal static class ControlRoom
                 merged["launcher"] = launcher;
             }
             merged["restart_commands"] = await RecentCommands(commandsDirectory, id, diagnostics);
+            merged["client_reset_commands"] = await RecentCommands(Path.Combine(directory, "client-resets"), id, diagnostics);
+            var record = await ReadSnapshot(Path.Combine(Directory.GetParent(root)!.FullName, "records", id + ".json"), diagnostics);
+            var measurements = new JsonObject();
+            foreach (var profile in (record?["results"] as JsonArray)?.OfType<JsonObject>() ?? []) {
+                var name = (string?)profile["profile"];
+                if (name is null) continue;
+                measurements[name] = new JsonObject {
+                    ["bytes"] = profile["shrunk_bytes"]?.DeepClone(), ["open_seconds"] = profile["shrunk_open_seconds"]?.DeepClone(),
+                    ["memory_bytes"] = profile["shrunk_memory_bytes"]?.DeepClone(), ["shrink_seconds"] = profile["shrink_seconds"]?.DeepClone()
+                };
+                measurements["original"] ??= new JsonObject {
+                    ["bytes"] = profile["original_bytes"]?.DeepClone(), ["open_seconds"] = profile["original_open_seconds"]?.DeepClone(),
+                    ["memory_bytes"] = profile["original_memory_bytes"]?.DeepClone()
+                };
+                // Measurements are populated profile by profile while the run opens files.
+                foreach (var field in new[] { "open_seconds", "memory_bytes" })
+                    if (measurements["original"]![field] is null) measurements["original"]![field] = profile["original_" + field]?.DeepClone();
+            }
+            merged["measurements"] = measurements;
             merged["id"] = id;
             merged["available"] = detail is not null;
             merged["diagnostics"] = diagnostics;
@@ -170,8 +189,9 @@ internal static class ControlRoom
             if (!request.HasJsonContentType()) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
             var body = (await JsonNode.ParseAsync(request.Body))?.AsObject()
                 ?? throw new ArgumentException("Expected a JSON object.");
-            if (body.Any(entry => entry.Key is not "client_id" and not "reason"))
+            if (body.Any(entry => entry.Key is not "client_id" and not "reason" and not "hard_reset" and not "expected_attempt_id"))
                 throw new ArgumentException("Unknown restart option.");
+            var hardReset = body["hard_reset"] is null ? false : (bool)body["hard_reset"]!;
             var clientId = (string?)body["client_id"];
             if (clientId is not null) clientId = SafeId(clientId);
             var reason = (string?)body["reason"] ?? "Restart requested in the control room.";
@@ -187,6 +207,8 @@ internal static class ControlRoom
                 var group = (queue["groups"] as JsonArray)?.OfType<JsonObject>()
                     .FirstOrDefault(group => (string?)group["id"] == id);
                 if (group is null) return Results.NotFound(new { error = "Unknown comparison group." });
+                if (body["expected_attempt_id"] is not null && (string?)body["expected_attempt_id"] != (string?)group["attempt_id"])
+                    return Results.Conflict(new { error = "Die angezeigte Excel-Gruppe wurde bereits ersetzt. Bitte die Ansicht aktualisieren." });
                 var runId = RequiredString(queue, "run_id");
                 if ((string?)group["run_id"] != runId || (bool?)group["restart_eligible"] == false)
                     return Results.Conflict(new { error = "This group belongs to an earlier run; select it in a new corpus run to compare it again." });
@@ -194,7 +216,31 @@ internal static class ControlRoom
                     var launcher = await ReadSnapshot(ConfinedPath(root, $"groups/{id}/launcher.json"), diagnostics);
                     if (launcher?["clients"] is not JsonObject clients || !clients.ContainsKey(clientId))
                         return Results.NotFound(new { error = "Unknown Excel client in this group." });
+                    if (hardReset && (bool?)launcher["client_reset_supported"] == true && (bool?)group["active"] == true && (string?)launcher["attempt_id"] == (string?)group["attempt_id"] &&
+                        (string?)launcher["status"] == "running" && clients[clientId]?["pid"] is not null && (bool?)clients[clientId]?["closed"] != true) {
+                        var resets = ConfinedPath(root, $"groups/{id}/client-resets");
+                        Directory.CreateDirectory(resets);
+                        foreach (var path in Directory.EnumerateFiles(resets, "*.json")) {
+                            var pendingReset = await ReadSnapshot(path, diagnostics);
+                            if ((string?)pendingReset?["attempt_id"] == (string?)group["attempt_id"] &&
+                                (string?)pendingReset?["client_id"] == clientId && (string?)pendingReset?["status"] is "pending" or "running")
+                                return Results.Accepted(value: new { ok = true, restart_scope = "client", command = pendingReset });
+                        }
+                        var resetId = Guid.NewGuid().ToString("N");
+                        var controls = await ReadControls(controlPath, initial, diagnostics);
+                        var reset = new JsonObject {
+                            ["id"] = resetId, ["type"] = "reset_client", ["client_id"] = clientId, ["group_id"] = id,
+                            ["attempt_id"] = group["attempt_id"]?.DeepClone(), ["run_id"] = runId,
+                            ["expected_pid"] = clients[clientId]!["pid"]?.DeepClone(),
+                            ["expected_started_unix_ms"] = clients[clientId]!["process_started_unix_ms"]?.DeepClone(),
+                            ["hide_excel"] = controls["hide_excel"]?.DeepClone(), ["reason"] = reason,
+                            ["status"] = "pending", ["requested_unix_ms"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                        };
+                        await WriteAtomic(Path.Combine(resets, resetId + ".json"), reset);
+                        return Results.Accepted(value: new { ok = true, restart_scope = "client", command = reset });
+                    }
                 }
+                if (hardReset && clientId is null) throw new ArgumentException("Hard reset requires an Excel client.");
                 // A double-click retries the existing request instead of queuing
                 // the same scientific comparison twice. The scheduler owns ack.
                 foreach (var pending in (await RecentCommands(commandsDirectory, id, diagnostics)).OfType<JsonObject>()) {
@@ -335,6 +381,7 @@ internal static class ControlRoom
 
     private static async Task<JsonArray> RecentCommands(string directory, string groupId, JsonArray diagnostics)
     {
+        if (!Directory.Exists(directory)) return new JsonArray();
         var commands = new List<JsonObject>();
         foreach (var file in new DirectoryInfo(directory).EnumerateFiles("*.json").OrderByDescending(file => file.LastWriteTimeUtc)) {
             if ((file.Attributes & FileAttributes.ReparsePoint) != 0) continue;

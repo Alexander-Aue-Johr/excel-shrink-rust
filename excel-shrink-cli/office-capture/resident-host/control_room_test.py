@@ -327,6 +327,42 @@ class ControlRoomProtocol(unittest.TestCase):
         self.assertEqual(unknown["phase"], "owner_unverified")
 
     @unittest.skipUnless(os.name == "nt", "Native Windows process creation identity")
+    def test_group_measurements_include_baseline_and_available_profile_values(self):
+        self.write('queue.json', {'groups':[{'id':'one'}]})
+        path = self.data.parent / 'records' / 'one.json'
+        path.parent.mkdir()
+        path.write_text(json.dumps({'results':[
+            {'profile':'default','original_bytes':1000,'shrunk_bytes':600,'original_open_seconds':10,
+             'shrunk_open_seconds':4,'original_memory_bytes':500,'shrunk_memory_bytes':250,'shrink_seconds':2},
+            {'profile':'maximum-cleaning','original_bytes':1000,'shrunk_bytes':400}]}))
+        measurements = self.request('/api/groups/one')['measurements']
+        self.assertEqual(measurements['original']['open_seconds'], 10)
+        self.assertEqual(measurements['default']['bytes'], 600)
+        self.assertEqual(measurements['default']['memory_bytes'], 250)
+        self.assertIsNone(measurements['maximum-cleaning']['open_seconds'])
+
+    def test_hard_reset_snapshots_visibility_and_target_process_or_requeues_closed_group(self):
+        self.write('queue.json', {'run_id':'current','runner_pid':os.getpid(),
+            'runner_started_unix_ms':current_process_started_ms(),'running':True,
+            'groups':[{'id':'one','run_id':'current','attempt_id':'attempt','active':True,'status':'active'}]})
+        self.write('groups/one/launcher.json', {'attempt_id':'attempt','status':'running','client_reset_supported':True,
+            'clients':{'original':{'pid':123,'process_started_unix_ms':456,'closed':False}}})
+        self.request('/api/control', {'hide_excel':False})
+        self.assert_status(409,'/api/groups/one/restart', {'client_id':'original','hard_reset':True,'expected_attempt_id':'old'})
+        result = self.request('/api/groups/one/restart', {'client_id':'original','hard_reset':True})
+        self.assertEqual(result['restart_scope'], 'client')
+        command = result['command']
+        self.assertFalse(command['hide_excel'])
+        self.assertEqual(command['expected_pid'], 123)
+        self.assertEqual(command['expected_started_unix_ms'], 456)
+        again = self.request('/api/groups/one/restart', {'client_id':'original','hard_reset':True})
+        self.assertEqual(again['command']['id'], command['id'])
+        self.assertEqual(len(list((self.data/'commands').glob('*.json'))),0)
+        self.write('groups/one/launcher.json', {'attempt_id':'attempt','status':'complete',
+            'clients':{'original':{'pid':123,'closed':True}}})
+        self.assertEqual(self.request('/api/groups/one/restart', {'client_id':'original','hard_reset':True})['restart_scope'],'group')
+        self.assert_status(400,'/api/groups/one/restart', {'hard_reset':True})
+
     def test_restart_is_durable_idempotent_and_scoped_to_the_running_group(self):
         self.write("queue.json", {
             "run_id": "run-current", "runner_pid": os.getpid(), "runner_started_unix_ms": current_process_started_ms(),

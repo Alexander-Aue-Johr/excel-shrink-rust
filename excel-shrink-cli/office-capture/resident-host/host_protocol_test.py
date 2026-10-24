@@ -21,7 +21,7 @@ class HostProtocol(unittest.TestCase):
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
-        settings = {"session": str(self.session), "web": str(self.root.parent / "web"), "port": port}
+        settings = {"session": str(self.session), "web": str(self.root.parent / "web"), "port": port, "launcher_token":"test-launcher"}
         config = self.session / "host.json"
         config.write_text(json.dumps(settings), encoding="utf-8")
         self.process = subprocess.Popen(["dotnet", str(self.root / "bin/Release/net8.0/ResidentCaptureHost.dll"), str(config)],
@@ -72,6 +72,37 @@ class HostProtocol(unittest.TestCase):
                 return result
             time.sleep(.05)
         self.fail("Resident client did not leave its startup quiet period")
+
+    def test_hard_reset_retires_only_target_before_jobs_and_protects_new_session(self):
+        self.connect()
+        old = self.token
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request('/launcher/reset/one', {'stage':'prepare'})
+        self.assertEqual(error.exception.code, 403)
+        self.write('clients/peer.json', {'client_id':'peer','workbook':'peer.xlsx','sheets':[]})
+        peer = self.request('/config?client=peer')['client_token']
+        header = {'X-Launcher-Token':'test-launcher'}
+        self.assertTrue(self.request('/launcher/reset/one', {'stage':'prepare'}, header)['ok'])
+        health = self.request('/health')
+        self.assertNotIn('one', health['seen'])
+        self.assertIn('peer', health['seen'])
+        self.assertTrue(self.request('/job?client=peer', extra={'X-Client-Token':peer})['resetting_client'])
+        with self.assertRaises(urllib.error.HTTPError): self.request('/config?client=one')
+        self.request('/launcher/reset/one', {'stage':'ready'}, header)
+        self.connect()
+        self.assertNotEqual(self.token, old)
+        with self.assertRaises(urllib.error.HTTPError): self.request('/heartbeat?client=one', extra={'X-Client-Token':old})
+        self.assertTrue(self.request('/heartbeat?client=peer', extra={'X-Client-Token':peer})['ok'])
+
+    def test_hard_reset_after_any_peer_job_requires_fresh_group_evidence(self):
+        self.connect()
+        self.command({'id':'0001','kind':'plan','sheets':[]})
+        self.write('clients/peer.json', {'client_id':'peer','workbook':'peer.xlsx','sheets':[]})
+        self.request('/config?client=peer')
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.request('/launcher/reset/peer', {'stage':'prepare'}, {'X-Launcher-Token':'test-launcher'})
+        self.assertEqual(error.exception.code, 409)
+        self.assertEqual(self.request('/health')['clients']['one']['active_command'], '0001')
 
     def test_pre_capture_reload_retires_old_token_and_job_results_are_atomic(self):
         self.connect()

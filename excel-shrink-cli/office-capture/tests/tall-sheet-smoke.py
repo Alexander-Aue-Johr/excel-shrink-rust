@@ -116,6 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true", help="Explicitly enable native Excel")
     parser.add_argument("--reference", action="store_true", help="Use a threshold above every fixture sheet")
+    parser.add_argument("--hard-reset-original", action="store_true", help="Restart only the hidden original visibly before capture")
     parser.add_argument("--compare-to", type=Path, help="Previously completed sampled run directory")
     parser.add_argument("--binary", type=Path, default=ROOT / "target/debug/excel-shrink-cli.exe")
     parser.add_argument("--port", type=int, default=8799)
@@ -198,9 +199,36 @@ def main():
             time.sleep(.25)
         request("/api/control", {
             "target_groups": 1, "capture_tile_megapixels": 1, "capture_batch_tiles": 4,
-            "tall_sheet_threshold": threshold, "tall_sheet_edge_tiles": 1, "hide_excel": False,
+            "tall_sheet_threshold": threshold, "tall_sheet_edge_tiles": 1,
+            "hide_excel": args.hard_reset_original, "paused": args.hard_reset_original,
         })
-        event("started_isolated_visible_group")
+        event("started_isolated_group", hide_excel=args.hard_reset_original)
+        if args.hard_reset_original:
+            while True:
+                deadline()
+                groups = request('/api/workers')['groups']
+                group = next((g for g in groups if len(g.get('clients', [])) >= 2
+                    and any(c['client_id'] == 'original' and c.get('pid') for c in g['clients'])
+                    and any(c['client_id'] != 'original' and c.get('heartbeat_count', 0) > 0 for c in g['clients'])), None)
+                if group: break
+                if process.poll() is not None: raise RuntimeError('Runner ended before reset')
+                time.sleep(.5)
+            before = {c['client_id']: c['pid'] for c in group['clients']}
+            request('/api/control', {'hide_excel':False})
+            reset = request(f"/api/groups/{group['id']}/restart", {'client_id':'original','hard_reset':True,'reason':'Isolated native reset check'})
+            assert reset['restart_scope'] == 'client', reset
+            while True:
+                deadline()
+                after = next((g for g in request('/api/workers')['groups'] if g['id'] == group['id']), None)
+                original = next((c for c in (after or {}).get('clients', []) if c['client_id'] == 'original'), {})
+                if original.get('pid') != before['original'] and original.get('heartbeat_count', 0) > 0: break
+                if process.poll() is not None: raise RuntimeError('Runner ended during reset')
+                time.sleep(.5)
+            assert after['attempt_id'] == group['attempt_id']
+            assert original['hide_excel'] is False
+            assert all(c['pid'] == before[c['client_id']] for c in after['clients'] if c['client_id'] != 'original')
+            event('hard_reset_visible_original_only', before=before, after={c['client_id']:c['pid'] for c in after['clients']})
+            request('/api/control', {'paused':False})
         while process.poll() is None:
             deadline()
             time.sleep(1)

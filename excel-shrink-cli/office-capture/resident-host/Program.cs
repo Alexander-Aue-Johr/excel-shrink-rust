@@ -15,6 +15,8 @@ var port = (int)settings["port"]!;
 if (port is < 1024 or > 65535 || !Directory.Exists(web)) throw new ArgumentException("Invalid host settings.");
 Directory.CreateDirectory(session);
 var clients = new ConcurrentDictionary<string, ClientState>(StringComparer.Ordinal);
+var dispatchGate = new SemaphoreSlim(1, 1);
+var resettingClients = new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
 var controlRoot = Environment.GetEnvironmentVariable("EXCEL_SHRINK_CONTROL_ROOM_DIR");
 var lastControls = new JsonObject { ["paused"] = true };
 var primaryClients = Directory.Exists(Path.Combine(session, "clients"))
@@ -54,6 +56,7 @@ app.MapGet("/health", () => {
 
 app.MapGet("/config", async (HttpRequest request) => {
     var id = SafeId(request.Query["client"].ToString());
+    if (resettingClients.ContainsKey(id)) return Results.Conflict("Excel client is being reset.");
     var configPath = Path.Combine(session, "clients", id + ".json");
     if (!File.Exists(configPath)) return Results.NotFound("Unknown resident client.");
     var config = (await ReadObject(configPath));
@@ -87,8 +90,11 @@ app.MapGet("/heartbeat", async (HttpRequest request) => {
 
 app.MapGet("/job", async (HttpRequest request) => {
     var (id, client) = Authenticate(request.Query["client"].ToString(), request);
+    await dispatchGate.WaitAsync();
     await client.Gate.WaitAsync();
     try {
+        if (!resettingClients.IsEmpty || !clients.TryGetValue(id, out var current) || !ReferenceEquals(current, client))
+            return Results.Json(new { idle = true, resetting_client = true });
         if (client.Error is not null) return Results.Conflict(client.Error.ToJsonString());
         client.LastActivityAt = DateTimeOffset.UtcNow;
         // An incidental poll must not overwrite the observed state of work
@@ -141,7 +147,32 @@ app.MapGet("/job", async (HttpRequest request) => {
         }
         client.Telemetry.Transition("waiting_for_job", "coordinator", "Waiting for the next coordinator command.");
         return Results.Json(new { idle = true });
-    } finally { client.Gate.Release(); }
+    } finally { client.Gate.Release(); dispatchGate.Release(); }
+});
+
+// Only the owning launcher can retire a client session. Once any command was
+// dispatched, its geometry/evidence may already have reached the orchestrator;
+// that case requires a fresh group attempt instead of reusing stale results.
+app.MapPost("/launcher/reset/{id}", async (string id, HttpRequest request) => {
+    id = SafeId(id);
+    var token = (string?)settings["launcher_token"];
+    if (string.IsNullOrEmpty(token) || request.Headers["X-Launcher-Token"].ToString() != token)
+        return Results.StatusCode(403);
+    var body = await JsonNode.ParseAsync(request.Body);
+    await dispatchGate.WaitAsync();
+    try {
+        if (!File.Exists(Path.Combine(session, "clients", id + ".json"))) return Results.NotFound();
+        if ((string?)body?["stage"] == "ready") {
+            resettingClients.TryRemove(id, out _);
+            return Results.Json(new { ok = true });
+        }
+        if ((string?)body?["stage"] != "prepare") throw new ArgumentException("Unknown reset stage.");
+        if (clients.Values.Any(client => client.DataStarted))
+            return Results.Conflict("Comparison has started; restart the group to discard its prior evidence.");
+        resettingClients[id] = true;
+        clients.TryRemove(id, out _);
+        return Results.Json(new { ok = true });
+    } finally { dispatchGate.Release(); }
 });
 
 app.MapPost("/image/{id}/{commandId}/{sheet:int}/{tile:int}", async (string id, string commandId, int sheet, int tile, HttpRequest request) => {
