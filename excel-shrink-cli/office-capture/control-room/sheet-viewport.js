@@ -24,6 +24,17 @@ export function fitSheetViewport(sheet, aspect, mode) {
   return resolveSheetViewport(sheet, aspect, { mode, x: 0, y: 0 });
 }
 
+// Following is navigation within the chosen view, not a request to inspect a
+// tile at a different scale. Keep fit/manual zoom and reveal incoming row bands.
+export function followSheetViewport(sheet, aspect, previous, tile) {
+  const view = resolveSheetViewport(sheet, aspect, previous);
+  if (!tile) return view;
+  const top = Math.max(0, Number(tile.y) || 0), bottom = top + Math.max(0, Number(tile.height) || 0);
+  if (top < view.y || bottom - top >= view.height) view.y = top;
+  else if (bottom > view.y + view.height) view.y = bottom - view.height;
+  return resolveSheetViewport(sheet, aspect, view);
+}
+
 export function zoomSheetViewport(sheet, aspect, previous, factor, anchor = { x: .5, y: .5 }) {
   const current = resolveSheetViewport(sheet, aspect, previous);
   const u = clamp(Number(anchor.x) || 0, 0, 1), v = clamp(Number(anchor.y) || 0, 0, 1);

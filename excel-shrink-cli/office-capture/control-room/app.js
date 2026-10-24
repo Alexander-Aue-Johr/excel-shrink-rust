@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription, processMeasurements } from './model.js';
-import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey } from './sheet-viewport.js';
+import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey, followSheetViewport } from './sheet-viewport.js';
 import { initWorkerMonitor } from './worker-monitor.js';
 
 const $ = id => document.getElementById(id);
@@ -233,6 +233,15 @@ function focusSheet(id, manual = false, preview = false) {
   clearDetails(); state.sheetId = id; state.focus = 'sheet'; sheetView(selectedSheet());
   updateSheets(); renderScene(); focusCardCamera(id); renderMinimap();
   if (!preview) announce(`Sheet ${selectedSheet().name}`);
+}
+function followTile(tile) {
+  if (!tile || tile.status === 'omitted') return;
+  const changeCard = state.sheetId !== tile.sheetId || state.focus === 'overview';
+  clearDetails(); state.sheetId = tile.sheetId; state.focus = 'sheet';
+  const sheet = selectedSheet();
+  rememberView(sheet, followSheetViewport(sheet, AREA_W / AREA_H, sheetView(sheet), tile));
+  updateSheets(); renderScene(); renderMinimap();
+  if (changeCard) focusCardCamera(tile.sheetId);
 }
 function focusTile(tile, region = null, manual = false) {
   if (!tile) return;
@@ -782,7 +791,7 @@ function acceptGroup(raw) {
   const active = entries.find(tile => tile.id === String(data.active_tile) && (!data.active_sheet || tile.sheetId === String(data.active_sheet)));
   latest = active || latest;
   if (latest && latest.id !== latestCapture) {
-    latestCapture = latest.id; if (state.follow && !state.pinned && !state.selected) focusTile(latest);
+    latestCapture = latest.id; if (state.follow && !state.pinned && !state.selected) followTile(latest);
   }
   clampView(); updateSheets(); renderScene(); updateDiagnosticUi();
   if (state.pendingDifference) { state.pendingDifference = false; nextDifference(); }
@@ -993,7 +1002,7 @@ function wireControls() {
   });
   $('hideExcel').addEventListener('change', event => sendControl({ hide_excel: event.target.checked }));
   $('restartGroup').addEventListener('click', () => restartGroup());
-  $('followCapture').addEventListener('change', event => { state.follow = event.target.checked; if (state.follow) { clearDetails(); focusTile(tileAt(latestCapture)); } });
+  $('followCapture').addEventListener('change', event => { state.follow = event.target.checked; if (state.follow) { clearDetails(); followTile(tileAt(latestCapture)); } });
   $('sheetSelect').addEventListener('change', event => focusSheet(event.target.value, true));
   for (const [id, axis] of [['panX', 'x'], ['panY', 'y']]) $(id).addEventListener('input', event => {
     const sheet = selectedSheet(); if (!sheet) return;

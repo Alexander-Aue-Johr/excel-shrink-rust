@@ -1,4 +1,4 @@
-import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey } from '../sheet-viewport.js';
+import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey, followSheetViewport } from '../sheet-viewport.js';
 
 export function runViewportTests() {
   let passed = 0;
@@ -6,6 +6,20 @@ export function runViewportTests() {
   const tall = { width: 800, height: 12000 }, wide = { width: 12000, height: 800 }, aspect = .5;
   const width = fitSheetViewport(tall, aspect, 'width');
   check(width.width === 800 && width.height === 1600, 'Fit width uses the common worksheet width.');
+  const followed = followSheetViewport(tall, aspect, width, {y:6000,height:200});
+  check(followed.mode === 'width' && followed.width === width.width && followed.height === width.height && followed.x === 0,
+    'Following incoming captures preserves fit width and its scale.');
+  check(followed.y === 4600, 'Follow scrolls just far enough to show the incoming capture.');
+  check(followSheetViewport(tall, aspect, followed, {y:5000,height:200}).y === followed.y,
+    'Already visible captures do not move the viewport.');
+  const large = followSheetViewport(tall, aspect, width, {y:6000,height:4000});
+  check(large.y === 6000 && large.width === 800, 'Oversized captures keep the scale and show their top.');
+  const manualFollow = followSheetViewport(tall, aspect, {mode:'manual',width:200,x:40,y:0}, {y:6000,height:200});
+  check(manualFollow.mode === 'manual' && manualFollow.width === 200 && manualFollow.x === 40,
+    'Following also preserves manual zoom and horizontal inspection position.');
+  const fullFollow = followSheetViewport(tall, aspect, fitSheetViewport(tall,aspect,'sheet'), {y:6000,height:200});
+  check(fullFollow.mode === 'sheet' && fullFollow.y === 0 && fullFollow.height === tall.height,
+    'A whole-sheet view stays a whole-sheet view when following.');
   const height = fitSheetViewport(wide, aspect, 'height');
   check(height.height === 800 && height.width === 400, 'Fit height retains horizontal overflow.');
   const page = fitSheetViewport(tall, aspect, 'sheet');
