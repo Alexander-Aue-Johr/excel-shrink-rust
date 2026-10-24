@@ -9,6 +9,8 @@ use std::time::{Duration, Instant};
 
 #[path = "resident_capture_live.rs"]
 mod live;
+#[path = "tall_sheet_analysis.rs"]
+mod tall_sheet_analysis;
 
 #[derive(Clone, Deserialize, Serialize)]
 struct Tile {
