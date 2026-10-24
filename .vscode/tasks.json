@@ -158,7 +158,7 @@
     {
       "label": "Excel Shrink: Korpuslauf konfigurieren",
       "type": "process",
-      "command": "powershell.exe",
+      "command": "${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
         "-NoLogo",
         "-NoProfile",
@@ -236,7 +236,7 @@
     {
       "label": "Excel Shrink: Performance Demo",
       "type": "process",
-      "command": "powershell.exe",
+      "command": "${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
         "-NoLogo",
         "-NoProfile",
