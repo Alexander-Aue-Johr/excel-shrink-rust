@@ -71,7 +71,7 @@ pub(super) fn after_batch(
     Ok(())
 }
 
-fn recoverable_failure(record: &Value) -> Option<&'static str> {
+pub(super) fn recoverable_failure(record: &Value) -> Option<&'static str> {
     if record["capture_mode"] != "resident"
         || record["status"] != "skipped"
         || record["complete"] != true

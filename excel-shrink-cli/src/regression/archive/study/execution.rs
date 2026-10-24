@@ -104,6 +104,9 @@ pub(super) fn run_record(
         bundle: Some(bundle_path(output, id)),
         resident_capture: run["options"]["resident_capture"] == true,
         hide_excel: run["options"]["hide_excel"] == true,
+        control_room: (run["options"]["control_room"] == true
+            && run["options"]["resident_capture"] == true)
+            .then(|| output.join("control-room")),
         cleanup_barrier,
         run_manifest: Some(
             json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
@@ -131,6 +134,21 @@ pub(super) fn run_record(
         Ok(())
     });
     let mut result: Value = serde_json::from_slice(&fs::read(&record)?)?;
+    if job
+        .cleanup_barrier
+        .as_ref()
+        .is_some_and(|barrier| barrier.cancelled())
+    {
+        mark_cancelled(&mut result, job.bundle.as_deref());
+        if let Err(error) = &outcome {
+            result["error"] = json!(format!("Coordinator cancelled this attempt: {error:#}"));
+        }
+        // Keep the prepared ZIP and work directory. A subsequent resume can
+        // validate/reuse the ZIP and retry this unfinished comparison normally.
+        write_record(&record, &result)?;
+        on_progress(&result, "interrupted");
+        return Ok(result);
+    }
     if let Err(error) = outcome {
         if diagnosis_only {
             result["whitespace_diagnosis"]["version"] = json!(whitespace::VERSION);
@@ -168,6 +186,14 @@ pub(super) fn run_record(
     write_record(&record, &result)?;
     on_progress(&result, phase);
     Ok(result)
+}
+
+fn mark_cancelled(result: &mut Value, bundle: Option<&Path>) {
+    result["complete"] = json!(false);
+    result["status"] = json!("interrupted");
+    result["error"] = json!("Coordinator cancelled this attempt; retained for resume.");
+    result["prepared"] = json!(bundle.is_some_and(Path::is_file));
+    result["last_execution"]["cancelled"] = json!(true);
 }
 
 fn retain_worker_memory(record: &mut Value, work: &Path) -> Result<()> {
@@ -355,6 +381,23 @@ fn clear_images(value: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancelled_attempt_remains_incomplete_and_keeps_its_prepared_bundle() -> Result<()> {
+        let root = super::super::tests::test_directory("cancel-record")?;
+        let bundle = root.join("prepared.zip");
+        fs::write(&bundle, b"retained ZIP fixture")?;
+        let mut record = json!({"complete":true,"status":"skipped","prepared":true,"last_execution":{},"results":[{"checks_complete":true}]});
+        mark_cancelled(&mut record, Some(&bundle));
+        assert_eq!(record["complete"], false);
+        assert_eq!(record["status"], "interrupted");
+        assert_eq!(record["prepared"], true);
+        assert_eq!(record["last_execution"]["cancelled"], true);
+        assert_eq!(record["results"][0]["checks_complete"], true);
+        assert_eq!(fs::read(&bundle)?, b"retained ZIP fixture");
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn worker_memory_measurement_survives_work_directory_cleanup() -> Result<()> {

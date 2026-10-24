@@ -1,6 +1,7 @@
 //! Keep resident Excel sessions alive until every workbook in a batch is done.
 use super::*;
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub(in crate::regression) const ENV: &str = "EXCEL_SHRINK_BATCH_CLEANUP";
@@ -13,11 +14,25 @@ pub(in crate::regression) struct Participant {
     pub timeout_seconds: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pause_path: Option<PathBuf>,
+    #[serde(default)]
+    pub manual_control: bool,
     #[serde(skip)]
     wait_clock: Arc<Mutex<Option<opening_pause::OpeningPause>>>,
+    // Parent thread clones share cancellation. Serialized worker descriptions
+    // get a fresh flag; their parent terminates the owned child on cancellation.
+    #[serde(skip)]
+    cancelled: Arc<AtomicBool>,
 }
 
 impl Participant {
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    pub fn cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+
     pub fn from_environment() -> Result<Option<Self>> {
         std::env::var_os(ENV)
             .map(|path| Ok(serde_json::from_slice(&fs::read(path)?)?))
@@ -35,7 +50,10 @@ impl Participant {
     // Several owners can observe the same failure. Preserve the first timestamp
     // so repeated notifications never extend the bounded cleanup wait.
     pub fn mark_ready(&self) -> Result<()> {
-        let counter = self.pause_path.as_deref().and_then(opening_pause::read_counter);
+        let counter = self
+            .pause_path
+            .as_deref()
+            .and_then(opening_pause::read_counter);
         create_marker_with_contents(
             &self.ready_path,
             &serde_json::to_vec(&json!({"opening_pause_millis":counter}))?,
@@ -43,21 +61,38 @@ impl Participant {
     }
 
     pub fn waiting_expired(&self) -> bool {
-        let Ok(mut state) = self.wait_clock.lock() else { return true };
+        // Manual sessions may be paused by the user. Parent liveness and per-job
+        // deadlines remain enforced; a completed peer must survive that pause.
+        if self.manual_control {
+            return false;
+        }
+        let Ok(mut state) = self.wait_clock.lock() else {
+            return true;
+        };
         if state.is_none() {
-            let Some(age) = self.ready_path.metadata().ok()
+            let Some(age) = self
+                .ready_path
+                .metadata()
+                .ok()
                 .and_then(|metadata| metadata.modified().ok())
-                .and_then(|time| time.elapsed().ok()) else { return false };
+                .and_then(|time| time.elapsed().ok())
+            else {
+                return false;
+            };
             // Legacy or malformed markers establish no historical credit.
             // New Rust and launcher markers share this counter baseline.
             let baseline = fs::File::open(&self.ready_path).ok().and_then(|file| {
                 let mut bytes = Vec::new();
                 file.take(4097).read_to_end(&mut bytes).ok()?;
-                if bytes.len() > 4096 { return None; }
+                if bytes.len() > 4096 {
+                    return None;
+                }
                 serde_json::from_slice::<Value>(&bytes).ok()?["opening_pause_millis"].as_u64()
             });
             *state = Some(opening_pause::OpeningPause::from_elapsed(
-                self.pause_path.as_deref(), age, baseline,
+                self.pause_path.as_deref(),
+                age,
+                baseline,
             ));
         }
         state.as_mut().unwrap().active_elapsed() > Duration::from_secs(self.timeout_seconds)
@@ -68,8 +103,16 @@ impl Participant {
     }
 
     pub fn wait(&self, heartbeat: Option<&Path>, refresh_heartbeat: bool) -> Result<()> {
+        ensure!(
+            !self.cancelled(),
+            "resident comparison cancelled by coordinator"
+        );
         self.mark_ready()?;
         while !self.released() {
+            ensure!(
+                !self.cancelled(),
+                "resident comparison cancelled by coordinator"
+            );
             ensure!(
                 !self.waiting_expired(),
                 "resident batch cleanup barrier timed out"
@@ -108,10 +151,16 @@ fn create_marker(path: &Path) -> Result<()> {
 }
 
 fn create_marker_with_contents(path: &Path, contents: &[u8]) -> Result<()> {
-    if path.is_file() { return Ok(()); }
-    let pending = artifact_cache::unique_path(path.parent().context("marker has no parent")?, "ready")?;
+    if path.is_file() {
+        return Ok(());
+    }
+    let pending =
+        artifact_cache::unique_path(path.parent().context("marker has no parent")?, "ready")?;
     let result = (|| -> Result<()> {
-        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&pending)?;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&pending)?;
         file.write_all(contents)?;
         file.sync_all()?;
         drop(file);
@@ -167,13 +216,22 @@ impl Batch {
             owner_pid: std::process::id(),
             timeout_seconds: self.timeout_seconds,
             pause_path: Some(self.directory.join(format!("{index}.pause.json"))),
+            manual_control: false,
             wait_clock: Arc::default(),
+            cancelled: Arc::default(),
         };
         artifact_cache::atomic_write(
             participant.pause_path.as_ref().unwrap(),
             br#"{"elapsed_millis":0}"#,
         )?;
         self.participants.push(participant.clone());
+        Ok(participant)
+    }
+
+    pub fn add_manual_participant(&mut self) -> Result<Participant> {
+        let mut participant = self.add_participant()?;
+        participant.manual_control = true;
+        *self.participants.last_mut().unwrap() = participant.clone();
         Ok(participant)
     }
 
@@ -210,28 +268,66 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parent_cancellation_wakes_manual_waiters_without_releasing_the_batch() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "cancel-cleanup")?;
+        fs::create_dir(&root)?;
+        let mut batch = Batch::growing(&root, 3600)?;
+        let participant = batch.add_manual_participant()?;
+        let observer = participant.clone();
+        let worker_copy: Participant = serde_json::from_slice(&serde_json::to_vec(&participant)?)?;
+        let started = Instant::now();
+        let outcome = std::thread::scope(|scope| {
+            scope.spawn(|| {
+                std::thread::sleep(Duration::from_millis(50));
+                observer.cancel();
+            });
+            participant.wait(None, false)
+        });
+        assert!(format!("{:#}", outcome.unwrap_err()).contains("cancelled"));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(!participant.released());
+        assert!(participant.cancelled() && observer.cancelled());
+        assert!(
+            !worker_copy.cancelled(),
+            "parent-only cancellation is not persisted into worker JSON"
+        );
+        drop(batch);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
     fn concurrent_readiness_preserves_the_first_complete_marker() -> Result<()> {
         let root = artifact_cache::unique_path(&std::env::temp_dir(), "cleanup-marker-race")?;
         fs::create_dir(&root)?;
         let marker = root.join("ready.json");
         let gate = std::sync::Barrier::new(16);
         let observations = std::thread::scope(|scope| -> Result<Vec<_>> {
-            let handles: Vec<_> = (0..16).map(|index| {
-                let marker = &marker;
-                let gate = &gate;
-                scope.spawn(move || -> Result<_> {
-                    gate.wait();
-                    create_marker_with_contents(marker,
-                        &serde_json::to_vec(&json!({"opening_pause_millis":index}))?)?;
-                    Ok((fs::read(marker)?, marker.metadata()?.modified()?))
+            let handles: Vec<_> = (0..16)
+                .map(|index| {
+                    let marker = &marker;
+                    let gate = &gate;
+                    scope.spawn(move || -> Result<_> {
+                        gate.wait();
+                        create_marker_with_contents(
+                            marker,
+                            &serde_json::to_vec(&json!({"opening_pause_millis":index}))?,
+                        )?;
+                        Ok((fs::read(marker)?, marker.metadata()?.modified()?))
+                    })
                 })
-            }).collect();
-            handles.into_iter().map(|handle| handle.join().unwrap()).collect()
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect()
         })?;
         let expected = (fs::read(&marker)?, marker.metadata()?.modified()?);
         let parsed: Value = serde_json::from_slice(&expected.0)?;
         assert!(parsed["opening_pause_millis"].as_u64().unwrap() < 16);
-        for observed in observations { assert_eq!(observed, expected); }
+        for observed in observations {
+            assert_eq!(observed, expected);
+        }
         assert_eq!(fs::read_dir(&root)?.count(), 1, "temporary markers leaked");
         fs::remove_dir_all(root)?;
         Ok(())
@@ -248,9 +344,13 @@ mod tests {
         artifact_cache::atomic_write(pause, br#"{"elapsed_millis":1000}"#)?;
         first.mark_ready()?;
         let original = fs::read(&first.ready_path)?;
-        fs::File::options().write(true).open(&first.ready_path)?.set_times(
-            fs::FileTimes::new().set_modified(std::time::SystemTime::now() - Duration::from_secs(3)),
-        )?;
+        fs::File::options()
+            .write(true)
+            .open(&first.ready_path)?
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(std::time::SystemTime::now() - Duration::from_secs(3)),
+            )?;
         let modified = first.ready_path.metadata()?.modified()?;
         artifact_cache::atomic_write(pause, br#"{"elapsed_millis":3500}"#)?;
         first.mark_ready()?;
@@ -282,8 +382,12 @@ mod tests {
             scope.spawn(|| -> Result<()> {
                 let started = Instant::now();
                 while started.elapsed() < Duration::from_millis(1300) {
-                    artifact_cache::atomic_write(first.pause_path.as_ref().unwrap(),
-                        &serde_json::to_vec(&json!({"elapsed_millis":started.elapsed().as_millis()}))?)?;
+                    artifact_cache::atomic_write(
+                        first.pause_path.as_ref().unwrap(),
+                        &serde_json::to_vec(
+                            &json!({"elapsed_millis":started.elapsed().as_millis()}),
+                        )?,
+                    )?;
                     std::thread::sleep(Duration::from_millis(50));
                 }
                 create_marker(&first.release_path)
@@ -305,10 +409,17 @@ mod tests {
         let mut first = batch.participant(0);
         first.timeout_seconds = 1;
         create_marker(&first.ready_path)?;
-        fs::File::options().write(true).open(&first.ready_path)?.set_times(
-            fs::FileTimes::new().set_modified(std::time::SystemTime::now() - Duration::from_secs(3)),
+        fs::File::options()
+            .write(true)
+            .open(&first.ready_path)?
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(std::time::SystemTime::now() - Duration::from_secs(3)),
+            )?;
+        artifact_cache::atomic_write(
+            first.pause_path.as_ref().unwrap(),
+            br#"{"elapsed_millis":999999999}"#,
         )?;
-        artifact_cache::atomic_write(first.pause_path.as_ref().unwrap(), br#"{"elapsed_millis":999999999}"#)?;
         assert!(first.waiting_expired());
         drop(batch);
         fs::remove_dir_all(root)?;

@@ -223,6 +223,60 @@ orders. `--selection-manifest PATH` writes
 an additional copy. A partition's completed work is never presented as completion
 of the entire three-corpus study.
 
+## Live control room
+
+For interactive admission, replace `--adaptive-concurrency` with `--control-room`.
+The two modes are mutually exclusive. Keep the machine's corpus selection, memory
+limits and reviewed `--reuse-prepared-from` arguments. For example:
+
+```powershell
+& .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM --order size-desc --resident-capture --control-room --control-room-port 8771 --comparison-workers 2 --startup-timeout-seconds 300 --workbook-timeout-seconds 1800
+```
+
+Open `http://127.0.0.1:8771/`. `--comparison-workers` sets the initial group target;
+the dashboard can raise or lower it during the run, without a fixed eight-group
+ceiling. Increasing it admits additional groups without waiting for the current
+group's startup or estimating another group's RAM. Lowering it prevents further
+admission until the target permits it; existing comparisons finish normally.
+Per-process memory limits and the emergency system-memory guard still apply.
+Completed groups retain their Excel processes until their current peers finish,
+because closing a shared Office runtime can restart another task pane. The group
+list shows this as waiting for cleanup. Preparation remains serial.
+
+Capture pause stops dispatching new Office.js jobs. A job already running may
+finish and publish its tile; new Excel instances may continue opening. Each group
+waits for its primary clients, then captures one corresponding tile across its
+profiles before advancing. Clients upload images; full-resolution host comparison
+determines equality and retained previews. The dashboard displays the actual job
+rectangles, including partial charts, and follows or pans over large sheets.
+Recoverable failures can still use the existing sequential classic fallback. The
+group is explicitly marked as a classic retry; resident tile progress does not
+describe that separate attempt.
+
+`--startup-timeout-seconds` supplies the initial active-opening timeout and
+`--workbook-timeout-seconds` the initial live job timeout. Both can be changed in
+the dashboard. Time waiting for another Excel launch does not spend the active
+opening timeout. A user pause does not consume a fixed whole-session deadline.
+Closing the browser does not pause or stop the runner. Closing the runner ends
+its owned Excel work; the local control server retains the completed history.
+
+The same controls are available to scripts and agents on loopback:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8771/api/state
+Invoke-RestMethod http://127.0.0.1:8771/api/control -Method Post -ContentType application/json -Body '{"target_groups":4,"paused":false}'
+Invoke-RestMethod http://127.0.0.1:8771/api/control -Method Post -ContentType application/json -Body '{"open_timeout_seconds":900,"job_timeout_seconds":1800,"equal_preview_width":256}'
+```
+
+`GET /api/groups/{id}` returns the selected group's sheet, tile, image and launcher
+states; `GET /api/state` lists its ID. Equal preview widths are `128`, `256`, `512`,
+`1024`, or `0` for original resolution. Different tiles retain full resolution.
+Preview changes apply as new tiles complete. Control snapshots and group history
+live under `<output-root>/control-room`; scientific result records retain their
+existing locations and export format. The server checks its host source version
+on resume. After a host-code update, stop the older control server or choose a
+different `--control-room-port`; the CLI will not terminate an unknown server.
+
 ## Memory and timing interpretation
 
 The Rust worker defaults to a 4,096 MiB process limit. An existing reviewed

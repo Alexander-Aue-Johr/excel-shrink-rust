@@ -76,6 +76,8 @@ struct MemberJob {
     #[serde(default)]
     hide_excel: bool,
     #[serde(default)]
+    control_room: Option<PathBuf>,
+    #[serde(default)]
     cleanup_barrier: Option<batch_cleanup::Participant>,
 }
 
@@ -232,6 +234,7 @@ pub(super) fn run(args: ArchiveArgs, log_level: LogLevel) -> Result<()> {
                 run_manifest: None,
                 resident_capture: false,
                 hide_excel: false,
+                control_room: None,
                 cleanup_barrier: None,
             };
             let current = existing.unwrap_or(records.len());

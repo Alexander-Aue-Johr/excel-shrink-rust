@@ -1,6 +1,20 @@
 use super::*;
 
 #[test]
+fn manual_control_requires_resident_and_excludes_automatic_admission() -> Result<()> {
+    let args = StudyArgs::try_parse_from([
+        "study", "--resident-capture", "--control-room", "--comparison-workers", "128",
+        "--control-room-port", "8781",
+    ])?;
+    assert!(args.control_room);
+    assert_eq!(args.comparison_workers, 128);
+    assert_eq!(args.control_room_port, 8781);
+    assert!(StudyArgs::try_parse_from(["study", "--control-room"]).is_err());
+    assert!(StudyArgs::try_parse_from(["study", "--resident-capture", "--control-room", "--adaptive-concurrency"]).is_err());
+    Ok(())
+}
+
+#[test]
 fn portable_result_commands_keep_machine_alias_and_repeatable_imports() -> Result<()> {
     let args = StudyArgs::try_parse_from([
         "study", "--report-only", "--machine-label", "Enron laptop 1",
@@ -278,6 +292,7 @@ fn retry_discards_old_evidence_even_when_preparation_or_unpacking_fails() -> Res
         run_manifest: None,
         resident_capture: false,
         hide_excel: false,
+        control_room: None,
             cleanup_barrier: None,
     };
     for mode in [JobMode::Prepare, JobMode::Compare] {

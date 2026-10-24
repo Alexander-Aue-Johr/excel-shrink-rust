@@ -2,6 +2,7 @@
 use super::*;
 
 mod execution;
+mod control_room;
 mod fallback;
 use super::verified as ledger;
 use execution::process;
@@ -63,7 +64,7 @@ pub(in crate::regression) struct StudyArgs {
     /// Compare already prepared ZIP bundles without shrinking again.
     #[arg(long)]
     compare_only: bool,
-    /// Keep original and shrink variants open for hash-first visual comparisons.
+    /// Keep original and shrink variants open for visual comparisons.
     #[arg(long)]
     resident_capture: bool,
     /// Hide Excel comparison windows from startup while keeping the Office add-in active.
@@ -80,6 +81,12 @@ pub(in crate::regression) struct StudyArgs {
     /// Add groups as primary clients become ready and live memory budgets permit.
     #[arg(long, requires = "resident_capture")]
     adaptive_concurrency: bool,
+    /// Serve the live control room; manually set concurrent groups and capture tile images in step.
+    #[arg(long, requires = "resident_capture", conflicts_with = "adaptive_concurrency")]
+    control_room: bool,
+    /// Loopback port for the live control room.
+    #[arg(long, default_value_t = 8771, value_parser = clap::value_parser!(u16).range(1024..))]
+    control_room_port: u16,
     /// Diagnose completed differences without repeating the three primary comparisons.
     #[arg(long, conflicts_with_all = ["prepare_only", "compare_only"])]
     diagnose_whitespace_only: bool,
@@ -412,8 +419,9 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             "prepare_only":args.prepare_only,"compare_only":args.compare_only,
             "resident_capture":args.resident_capture,"comparison_workers":args.comparison_workers,
             "hide_excel":args.hide_excel,
+            "control_room":args.control_room,"control_room_port":args.control_room_port,
             "adaptive_concurrency":args.adaptive_concurrency,"order":args.order,
-            "comparison_scheduling":"fixed-batches",
+            "comparison_scheduling":if args.control_room { "manual-groups" } else if args.adaptive_concurrency { "adaptive-groups" } else { "fixed-batches" },
             "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.retry_skipped,
             "workbook_timeout_seconds":args.workbook_timeout_seconds,
             "startup_timeout_seconds":args.startup_timeout_seconds,"max_workbook_bytes":args.max_workbook_bytes,
@@ -423,6 +431,9 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             "resident_memory_limit_mib":std::env::var("EXCEL_SHRINK_RESIDENT_MEMORY_MIB").unwrap_or_else(|_|"16384".into())
         }),
     )?;
+    let mut room = if args.control_room {
+        Some(control_room::Room::start(&output, &args, &run)?)
+    } else { None };
     let limits = ArchiveArgs {
         urls: Vec::new(),
         request_file: None,
@@ -628,6 +639,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     .context("publish final study report; per-workbook records have been saved")?;
     eprintln!("[study] Report: {}", output.join("report.html").display());
     export_results(&args, &root, &output, &lock)?;
+    if let Some(room) = room.as_mut() { room.finish()?; }
     if let Err(error) = visual_report::open_visual_report(&output.join("report.html")) {
         eprintln!("Could not open report: {error:#}");
     }

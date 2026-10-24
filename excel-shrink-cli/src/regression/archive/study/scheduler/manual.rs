@@ -1,0 +1,418 @@
+//! Admit groups directly from the user's live target, without predicting their RAM.
+use super::super::control_room::{self, Controls};
+use super::*;
+
+struct Active {
+    job: Comparison,
+    participant: batch_cleanup::Participant,
+    finished: bool,
+    error: Option<String>,
+    pause_millis: u64,
+}
+
+fn cancel_active(active: &[Active]) {
+    for group in active {
+        group.participant.cancel();
+    }
+}
+
+fn excel_is_opening(launcher: &Value, now: u64) -> bool {
+    launcher["sampled_unix_ms"]
+        .as_u64()
+        .is_some_and(|sample| now.saturating_sub(sample) < 5_000)
+        && launcher["clients"]
+            .as_object()
+            .is_some_and(|clients| clients.values().any(|client| client["status"] == "opening"))
+}
+
+fn another_group_is_opening(opening: &[usize], index: usize) -> bool {
+    opening.iter().any(|&peer| peer != index)
+}
+
+fn refresh_groups(queue: &mut Value, active: &[Active], records: &[Value], pending: usize) {
+    for job in active {
+        let id = control_room::group_id(&job.job.id);
+        if let Some(group) = queue["groups"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|g| g["id"] == id)
+        {
+            group["active"] = json!(!job.finished);
+            group["status"] = if let Some(error) = &job.error {
+                group["error"] = json!(error);
+                json!("failed")
+            } else if job.finished {
+                records[job.job.position]["status"].clone()
+            } else if job.participant.ready() {
+                json!("waiting_cleanup")
+            } else {
+                json!("active")
+            };
+        }
+    }
+    queue["open_groups"] = json!(active.iter().filter(|a| !a.finished).count());
+    queue["waiting_groups"] = json!(pending);
+    queue["updated_unix_ms"] = json!(provenance::now_ms());
+}
+
+fn slots_to_start(target: usize, open: usize, pending: usize, draining: bool) -> usize {
+    if draining {
+        0
+    } else {
+        target.saturating_sub(open).min(pending)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn compare(
+    source: &Source,
+    jobs: Vec<Comparison>,
+    output: &Path,
+    records: &mut Vec<Value>,
+    corpora: &[Value],
+    limits: &ArchiveArgs,
+    run: &Value,
+    log_level: LogLevel,
+) -> Result<()> {
+    let room = output.join("control-room");
+    let mut controls = Controls::read(&room)?;
+    let mut queue =
+        control_room::read_json(&room.join("queue.json")).unwrap_or_else(|| json!({"groups":[]}));
+    queue["phase"] = json!("comparing");
+    queue["running"] = json!(true);
+    let groups = queue["groups"]
+        .as_array_mut()
+        .context("missing control room groups")?;
+    for job in &jobs {
+        let id = control_room::group_id(&job.id);
+        let group = json!({"id":id,"workbook":records[job.position]["name"],"corpus":source.name,
+            "status":"queued","active":false,"run_id":run["run_id"],"sequence":groups.len()+1});
+        if let Some(previous) = groups.iter_mut().find(|g| g["id"] == id) {
+            let sequence = previous["sequence"].clone();
+            *previous = group;
+            previous["sequence"] = sequence;
+        } else {
+            groups.push(group);
+        }
+    }
+    control_room::write(&room.join("queue.json"), &queue)?;
+    let mut pending: VecDeque<_> = jobs.into();
+    let mut wave = 0;
+    while !pending.is_empty() {
+        wave += 1;
+        let mut cleanup = batch_cleanup::Batch::growing(output, limits.workbook_timeout_seconds)?;
+        let mut active: Vec<Active> = Vec::new();
+        let mut errors = Vec::new();
+        std::thread::scope(|scope| {
+            let (sender, receiver) = mpsc::channel();
+            let mut handles = Vec::new();
+            let mut last_snapshot = Instant::now() - Duration::from_secs(2);
+            let mut last_pause_sample = Instant::now();
+            loop {
+                // A transient sharing violation must not reset a user-selected target.
+                if let Ok(updated) = Controls::read(&room) {
+                    controls = updated;
+                }
+                // Close Excel together: shutting down one shared WebView runtime
+                // can restart a task pane in another group. Admission stays open
+                // while any peer still works, so raising the target acts immediately.
+                if !active.is_empty() && active.iter().all(|a| a.finished || a.participant.ready())
+                {
+                    cleanup.close_admission();
+                }
+                let count = slots_to_start(
+                    controls.target_groups,
+                    active.len(),
+                    pending.len(),
+                    !cleanup.admission_open(),
+                );
+                for _ in 0..count {
+                    let job = pending.pop_front().unwrap();
+                    let participant = match cleanup.add_manual_participant() {
+                        Ok(value) => value,
+                        Err(error) => {
+                            errors.push(format!("register manual comparison group: {error:#}"));
+                            pending.push_front(job);
+                            cleanup.close_admission();
+                            cancel_active(&active);
+                            break;
+                        }
+                    };
+                    let mut record = records[job.position].clone();
+                    record["comparison_batch"] = json!({"run_id":run["run_id"],"number":wave,
+                        "scheduling":"manual","requested_workers":controls.target_groups});
+                    let id = control_room::group_id(&job.id);
+                    if let Some(group) = queue["groups"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|g| g["id"] == id)
+                    {
+                        group["status"] = json!("opening");
+                        group["active"] = json!(true);
+                        group["started_unix_ms"] = json!(provenance::now_ms());
+                    }
+                    // A retry must not present the previous attempt's tiles as live.
+                    let state = room.join("groups").join(&id).join("state.json");
+                    if state.is_file() {
+                        let previous =
+                            state.with_file_name(format!("previous-{}.json", provenance::now_ms()));
+                        if let Err(error) = fs::rename(&state, previous) {
+                            errors.push(format!("archive previous group snapshot: {error}"));
+                            let _ = participant.mark_ready();
+                            cleanup.close_admission();
+                            cancel_active(&active);
+                            pending.push_front(job);
+                            break;
+                        }
+                    }
+                    let thread_job = job.clone();
+                    let thread_participant = participant.clone();
+                    let sender = sender.clone();
+                    let spawned = std::thread::Builder::new()
+                        .name(format!("compare-{id}"))
+                        .spawn_scoped(scope, move || {
+                            let _ready_on_exit = ReadyOnExit(Some(thread_participant.clone()));
+                            let position = thread_job.position;
+                            let result =
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    execution::run_record(
+                                        source,
+                                        thread_job.index,
+                                        &thread_job.id,
+                                        JobMode::Compare,
+                                        output,
+                                        record,
+                                        limits,
+                                        run,
+                                        log_level,
+                                        Some(thread_participant),
+                                        |value, _| {
+                                            let _ = sender
+                                                .send(Event::Checkpoint(position, value.clone()));
+                                        },
+                                    )
+                                }))
+                                .unwrap_or_else(|_| {
+                                    Err(anyhow::anyhow!("manual comparison coordinator panicked"))
+                                });
+                            let _ = sender.send(Event::Finished(position, result));
+                        });
+                    match spawned {
+                        Ok(handle) => {
+                            handles.push(handle);
+                            active.push(Active {
+                                job,
+                                participant,
+                                finished: false,
+                                error: None,
+                                pause_millis: 0,
+                            });
+                        }
+                        Err(error) => {
+                            errors.push(format!("start manual comparison coordinator: {error}"));
+                            let _ = participant.mark_ready();
+                            participant.cancel();
+                            pending.push_front(job);
+                            cleanup.close_admission();
+                            cancel_active(&active);
+                            break;
+                        }
+                    }
+                }
+                if errors.is_empty() {
+                    if let Err(error) = cleanup.release_if_ready() {
+                        errors.push(format!("release manual group cleanup: {error:#}"));
+                        cleanup.close_admission();
+                        cancel_active(&active);
+                    }
+                }
+                if last_snapshot.elapsed() >= Duration::from_secs(1) {
+                    // Excel opening can stall Office.js in other instances. Credit
+                    // only fresh evidence of an actual open, not a queued request.
+                    let elapsed = last_pause_sample
+                        .elapsed()
+                        .as_millis()
+                        .min(u64::MAX as u128) as u64;
+                    last_pause_sample = Instant::now();
+                    let now = provenance::now_ms();
+                    let opening: Vec<_> = active
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, a)| {
+                            (!a.finished
+                                && control_room::read_json(
+                                    &room
+                                        .join("groups")
+                                        .join(control_room::group_id(&a.job.id))
+                                        .join("launcher.json"),
+                                )
+                                .is_some_and(|sample| excel_is_opening(&sample, now)))
+                            .then_some(index)
+                        })
+                        .collect();
+                    if !opening.is_empty() {
+                        for (_, job) in active.iter_mut().enumerate().filter(|(index, a)| {
+                            !a.finished && another_group_is_opening(&opening, *index)
+                        }) {
+                            job.pause_millis = job.pause_millis.saturating_add(elapsed);
+                            if let Some(path) = &job.participant.pause_path {
+                                if let Err(error) = artifact_cache::atomic_write(
+                                    path,
+                                    &serde_json::to_vec(
+                                        &json!({"elapsed_millis":job.pause_millis}),
+                                    )
+                                    .unwrap(),
+                                ) {
+                                    errors.push(format!("publish opening pause: {error:#}"));
+                                    cleanup.close_admission();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if !errors.is_empty() {
+                        cancel_active(&active);
+                    }
+                    refresh_groups(&mut queue, &active, records, pending.len());
+                    if let Err(error) = control_room::write(&room.join("queue.json"), &queue) {
+                        eprintln!("[study] Could not refresh live control state: {error:#}");
+                    }
+                    last_snapshot = Instant::now();
+                }
+                if !cleanup.admission_open() && active.iter().all(|a| a.finished) {
+                    refresh_groups(&mut queue, &active, records, pending.len());
+                    if let Err(error) = control_room::write(&room.join("queue.json"), &queue) {
+                        errors.push(format!("publish completed wave: {error:#}"));
+                    }
+                    break;
+                }
+                if active.is_empty() && !errors.is_empty() {
+                    break;
+                }
+                match receiver.recv_timeout(Duration::from_millis(100)) {
+                    Ok(Event::Checkpoint(position, record)) => {
+                        records[position] = record;
+                        publish_progress(output, records, corpora, "comparing");
+                    }
+                    Ok(Event::Finished(position, result)) => {
+                        if let Some(job) = active.iter_mut().find(|a| a.job.position == position) {
+                            job.finished = true;
+                        }
+                        match result {
+                            Ok(record) => {
+                                records[position] = record;
+                                publish_progress(output, records, corpora, "comparing");
+                            }
+                            Err(error) => {
+                                let message = format!("comparison record {position}: {error:#}");
+                                if let Some(job) =
+                                    active.iter_mut().find(|a| a.job.position == position)
+                                {
+                                    job.error = Some(message.clone());
+                                }
+                                errors.push(message);
+                                cleanup.close_admission();
+                                cancel_active(&active);
+                            }
+                        }
+                        last_snapshot = Instant::now() - Duration::from_secs(2);
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        errors.push("manual comparison workers disconnected".into());
+                        cancel_active(&active);
+                        break;
+                    }
+                }
+            }
+            for handle in handles {
+                if handle.join().is_err() {
+                    errors.push("manual comparison coordinator panicked".into());
+                }
+            }
+        });
+        ensure!(
+            errors.is_empty(),
+            "manual comparison failed: {}",
+            errors.join("; ")
+        );
+        for job in &active {
+            if fallback::recoverable_failure(&records[job.job.position]).is_none()
+                || !bundle_path(output, &job.job.id).is_file()
+            {
+                continue;
+            }
+            let id = control_room::group_id(&job.job.id);
+            let group = queue["groups"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|g| g["id"] == id)
+                .unwrap();
+            group["status"] = json!("retrying_classic");
+            group["capture_mode"] = json!("classic");
+            group["active"] = json!(true);
+            queue["open_groups"] = json!(1);
+            control_room::write(&room.join("queue.json"), &queue)?;
+            let result = fallback::after_batch(
+                source,
+                std::slice::from_ref(&job.job),
+                output,
+                records,
+                corpora,
+                limits,
+                run,
+                log_level,
+            );
+            refresh_groups(&mut queue, &active, records, pending.len());
+            if let Err(error) = &result {
+                let group = queue["groups"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|g| g["id"] == id)
+                    .unwrap();
+                group["status"] = json!("failed");
+                group["error"] = json!(format!("{error:#}"));
+            }
+            control_room::write(&room.join("queue.json"), &queue)?;
+            result?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn target_changes_act_without_waiting_for_ready_or_estimating_memory() {
+        assert_eq!(slots_to_start(24, 1, 100, false), 23);
+        assert_eq!(slots_to_start(2, 8, 100, false), 0);
+        assert_eq!(slots_to_start(128, 8, 1000, false), 120);
+        assert_eq!(slots_to_start(8, 2, 3, false), 3);
+        assert_eq!(slots_to_start(24, 2, 100, true), 0);
+    }
+
+    #[test]
+    fn only_actual_recent_excel_opens_pause_other_job_deadlines() {
+        let mut sample =
+            json!({"sampled_unix_ms":10_000,"clients":{"original":{"status":"waiting_open"}}});
+        assert!(!excel_is_opening(&sample, 11_000));
+        sample["clients"]["original"]["status"] = json!("opening");
+        assert!(excel_is_opening(&sample, 11_000));
+        assert!(!excel_is_opening(&sample, 16_000));
+        sample["clients"]["original"]["status"] = json!("ready");
+        assert!(!excel_is_opening(&sample, 11_000));
+    }
+
+    #[test]
+    fn a_group_cannot_extend_its_own_opening_deadline() {
+        assert!(!another_group_is_opening(&[0], 0));
+        assert!(another_group_is_opening(&[0], 1));
+        assert!(!another_group_is_opening(&[], 0));
+        assert!(another_group_is_opening(&[1, 2], 0));
+    }
+}

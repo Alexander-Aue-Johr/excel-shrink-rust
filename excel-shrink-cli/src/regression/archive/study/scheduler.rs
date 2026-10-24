@@ -1,6 +1,7 @@
 //! Fixed or growing comparison waves; only the coordinator writes shared reports.
 mod adaptive;
 mod live;
+mod manual;
 
 use super::*;
 use std::collections::VecDeque;
@@ -28,6 +29,9 @@ pub(super) fn compare(
     run: &Value,
     log_level: LogLevel,
 ) -> Result<()> {
+    if run["options"]["control_room"] == true {
+        return manual::compare(source, jobs, output, records, corpora, limits, run, log_level);
+    }
     if run["options"]["adaptive_concurrency"] == true {
         return live::compare(
             source, jobs, requested, output, records, corpora, limits, run, log_level,

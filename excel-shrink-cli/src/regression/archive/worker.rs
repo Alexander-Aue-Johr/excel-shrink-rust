@@ -188,7 +188,24 @@ pub(super) fn launch(
         .stdin(Stdio::null())
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log));
-    command.env("EXCEL_SHRINK_HIDE_EXCEL", if job.hide_excel { "1" } else { "0" });
+    command.env(
+        "EXCEL_SHRINK_HIDE_EXCEL",
+        if job.hide_excel { "1" } else { "0" },
+    );
+    if let Some(root) = job.control_room.as_ref().filter(|_| job.resident_capture) {
+        command
+            .env("EXCEL_SHRINK_CONTROL_ROOM_DIR", root)
+            .env("EXCEL_SHRINK_CONTROL_ROOM_GROUP_ID", &key[..20])
+            .env(
+                "EXCEL_SHRINK_CONTROL_ROOM_OWNER_PID",
+                std::process::id().to_string(),
+            );
+    } else {
+        command
+            .env_remove("EXCEL_SHRINK_CONTROL_ROOM_DIR")
+            .env_remove("EXCEL_SHRINK_CONTROL_ROOM_GROUP_ID")
+            .env_remove("EXCEL_SHRINK_CONTROL_ROOM_OWNER_PID");
+    }
     if job.resident_capture {
         let record: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
         if let Some(mib) = resident_memory_limit_mib(&record)? {
@@ -262,6 +279,10 @@ fn wait_for_worker(
     );
     let mut last_notice = Instant::now();
     loop {
+        ensure!(
+            !cleanup_barrier.is_some_and(|barrier| barrier.cancelled()),
+            "resident comparison cancelled by coordinator"
+        );
         on_progress()?;
         if let Some(status) = child.try_wait()? {
             return if status.success() {
@@ -275,7 +296,8 @@ fn wait_for_worker(
         if cleanup_barrier.is_some_and(|barrier| barrier.waiting_expired()) {
             anyhow::bail!("resident batch cleanup barrier timed out");
         }
-        if clock.active_elapsed() >= timeout
+        if !cleanup_barrier.is_some_and(|barrier| barrier.manual_control)
+            && clock.active_elapsed() >= timeout
             && !cleanup_barrier.is_some_and(|barrier| barrier.deadline_paused())
         {
             return Err(anyhow::anyhow!(
@@ -308,7 +330,11 @@ impl RunningWorker {
         if self.stopped {
             return Ok(());
         }
-        if let Some(barrier) = &self.cleanup_barrier {
+        if let Some(barrier) = self
+            .cleanup_barrier
+            .as_ref()
+            .filter(|barrier| !barrier.cancelled())
+        {
             // A dead or timed-out Rust worker may still own a live launcher.
             // Mark its slot terminal before cleanup can affect another session.
             if let Err(error) = barrier.wait(Some(&self.work.join("parent-heartbeat")), true) {
@@ -316,7 +342,7 @@ impl RunningWorker {
             }
         }
         // Close Windows launchers first: their jobs own only this worker's Excel instances.
-        cleanup_windows(&self.work)?;
+        let cleanup = cleanup_windows(&self.work);
         #[cfg(unix)]
         {
             let _ = Command::new("kill")
@@ -332,7 +358,7 @@ impl RunningWorker {
         let _ = self.child.kill();
         let _ = self.child.wait();
         self.stopped = true;
-        Ok(())
+        cleanup
     }
 }
 impl Drop for RunningWorker {
@@ -421,6 +447,63 @@ mod tests {
     use std::io::Write;
 
     #[test]
+    fn parent_cancellation_stops_owned_worker_without_waiting_for_manual_peers() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "cancel-worker")?;
+        fs::create_dir(&root)?;
+        fs::write(root.join("parent-heartbeat"), b"running")?;
+        let mut batch = batch_cleanup::Batch::growing(&root, 3600)?;
+        let participant = batch.add_manual_participant()?;
+        let mut command = Command::new(std::env::current_exe()?);
+        command
+            .args([
+                "--exact",
+                "regression::archive::worker::tests::cancellation_test_child",
+            ])
+            .env("EXCEL_SHRINK_CANCELLATION_TEST_CHILD", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let mut running = RunningWorker {
+            child: command.spawn()?,
+            work: root.clone(),
+            stopped: false,
+            cleanup_barrier: Some(participant.clone()),
+        };
+        let started = Instant::now();
+        let outcome = std::thread::scope(|scope| {
+            scope.spawn(|| {
+                std::thread::sleep(Duration::from_millis(50));
+                participant.cancel();
+            });
+            wait_for_worker(
+                &mut running.child,
+                Duration::from_secs(3600),
+                Some(&participant),
+                || Ok(()),
+            )
+        });
+        assert!(format!("{:#}", outcome.unwrap_err()).contains("cancelled"));
+        running.stop()?;
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(running.child.try_wait()?.is_some());
+        assert!(!participant.released());
+        drop(batch);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn cancellation_test_child() {
+        if std::env::var("EXCEL_SHRINK_CANCELLATION_TEST_CHILD").as_deref() == Ok("1") {
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    }
+
+    #[test]
     fn per_wave_resident_memory_limit_is_optional_and_bounded() -> Result<()> {
         assert_eq!(resident_memory_limit_mib(&json!({}))?, None);
         for mib in [1024, 4096, 16384, 65536] {
@@ -474,6 +557,7 @@ mod tests {
             run_manifest: None,
             resident_capture: false,
             hide_excel: false,
+            control_room: None,
             cleanup_barrier: None,
         };
         assert_eq!(fs::read(extract(&job)?)?, b"1234");
@@ -854,7 +938,10 @@ impl WorkerWatchdog {
                     .is_some_and(|barrier| barrier.waiting_expired())
                 {
                     Some("resident batch cleanup barrier timed out")
-                } else if clock.active_elapsed() > timeout
+                } else if !cleanup_barrier
+                    .as_ref()
+                    .is_some_and(|barrier| barrier.manual_control)
+                    && clock.active_elapsed() > timeout
                     && !cleanup_barrier
                         .as_ref()
                         .is_some_and(|barrier| barrier.deadline_paused())
