@@ -74,15 +74,9 @@
       return geometry;
     }
 
-    async function render(state, tile, hash = true) {
+    async function finishImage(state, tile, base64, hash = true) {
       const {sheet, probe, right, end} = state;
       const geometry = await geometryFor(state);
-      const base64 = await office(async context => {
-        const image = context.workbook.worksheets.getItem(sheet.name)
-          .getRange(CaptureGeometry.address(tile.raw)).getImage();
-        await context.sync();
-        return image.value;
-      });
       const dimensions = CaptureGeometry.pngSize(base64);
       if (dimensions.width * dimensions.height > geometry.maxPixels) {
         const error = new Error('Image exceeds the tile pixel budget');
@@ -104,9 +98,21 @@
       return {...await encoded(final, hash), ...size};
     }
 
+    async function render(state, tile, hash = true) {
+      await geometryFor(state);
+      const base64 = await office(async context => {
+        const image = context.workbook.worksheets.getItem(state.sheet.name)
+          .getRange(CaptureGeometry.address(tile.raw)).getImage();
+        await context.sync();
+        return image.value;
+      });
+      return finishImage(state, tile, base64, hash);
+    }
+
     async function capture(command) {
       if (!Array.isArray(command.sheets) || !command.sheets.length ||
-          (command.tile_megapixels !== undefined && ![16, 32].includes(command.tile_megapixels))) {
+          (command.tile_megapixels !== undefined && (!Number.isInteger(command.tile_megapixels) ||
+            command.tile_megapixels < 1 || command.tile_megapixels > 32))) {
         throw new Error('Incomplete resident capture command');
       }
       if (!workbookVerified) {
@@ -161,6 +167,8 @@
             : await render(state, tile);
           const metadata = {sheet_index: sheet.index, sheet_name: sheet.name, tile_index: index,
             range: CaptureGeometry.address(tile.core), core_rows: [tile.core.r0, tile.core.r1],
+            x: 0, y: geometry.pixelY[tile.core.r0],
+            capture_pixels: tile.width * tile.expectedHeight,
             capture_right_column: end, width: image.width, height: image.height, sha256: image.sha256};
           result.tiles.push(metadata);
           retained.set(key(metadata), {...state, tile, metadata});
@@ -204,21 +212,49 @@
     // The host requests a bounded set after every peer has offered its geometry.
     // No digest is calculated in this path, including on evidence recaptures.
     async function captureImages(command) {
-      if (!Array.isArray(command.tiles) || command.tiles.length !== 1) throw new Error('Image-first jobs require exactly one tile');
+      if (!Array.isArray(command.tiles) || !command.tiles.length || command.tiles.length > 16) {
+        throw new Error('Image-first jobs require 1 to 16 tiles');
+      }
       const retained = captures.get(command.capture_id);
       if (!retained) throw new Error('Unknown capture plan');
-      const requested = command.tiles[0], state = retained.get(key(requested));
-      if (!state || requested.range !== state.metadata.range || requested.width !== state.metadata.width ||
-          requested.height !== state.metadata.height) throw new Error('Image request differs from the capture plan');
-      helpers.phase('Capturing synchronized tile');
-      await checkedWorksheet(state.sheet);
-      const image = await render(state, state.tile, false);
-      const receipt = await transport.image(command.id, {...state.metadata, sha256: undefined}, image.bytes);
-      if (typeof receipt.image_path !== 'string' || !receipt.image_path ||
-          typeof receipt.sha256 !== 'string' || receipt.width !== image.width || receipt.height !== image.height) {
-        throw new Error('Missing or invalid image-first receipt');
+      const seen = new Set();
+      const states = command.tiles.map(requested => {
+        const id = key(requested), state = retained.get(id);
+        if (!state || seen.has(id) || requested.range !== state.metadata.range ||
+            requested.width !== state.metadata.width || requested.height !== state.metadata.height) {
+          throw new Error('Image request differs from the capture plan');
+        }
+        seen.add(id);
+        return state;
+      });
+      if (states.some(state => state.geometry_key !== states[0].geometry_key) ||
+          states.reduce((sum, state) => sum + state.tile.width * state.tile.expectedHeight, 0) > 64000000) {
+        throw new Error('Image-first batch exceeds the same-sheet 64 megapixel budget');
       }
-      return {images: [{...state.metadata, ...receipt}]};
+      helpers.phase(`Capturing synchronized batch (${states.length} tiles)`);
+      await checkedWorksheet(states[0].sheet);
+      await geometryFor(states[0]);
+      // One Office request captures the bounded batch. Upload each finished PNG
+      // immediately; the host does not wait for the final batch result to paint it.
+      const base64s = await office(async context => {
+        const worksheet = context.workbook.worksheets.getItem(states[0].sheet.name);
+        const images = states.map(state => worksheet.getRange(CaptureGeometry.address(state.tile.raw)).getImage());
+        await context.sync();
+        return images.map(image => image.value);
+      });
+      const result = {images: []};
+      for (let index = 0; index < states.length; index++) {
+        const state = states[index];
+        const image = await finishImage(state, state.tile, base64s[index], false);
+        base64s[index] = null;
+        const receipt = await transport.image(command.id, {...state.metadata, sha256: undefined}, image.bytes);
+        if (typeof receipt.image_path !== 'string' || !receipt.image_path ||
+            typeof receipt.sha256 !== 'string' || receipt.width !== image.width || receipt.height !== image.height) {
+          throw new Error('Missing or invalid image-first receipt');
+        }
+        result.images.push({...state.metadata, ...receipt});
+      }
+      return result;
     }
 
     return {async execute(command) {

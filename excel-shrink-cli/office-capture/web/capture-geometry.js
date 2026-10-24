@@ -186,7 +186,9 @@
 
   class SheetGeometry {
     constructor(office, sheet, bottomRow, baseColumn, tileMegapixels = 32) {
-      if (tileMegapixels !== 16 && tileMegapixels !== 32) throw new Error('Invalid tile megapixel budget');
+      if (!Number.isInteger(tileMegapixels) || tileMegapixels < 1 || tileMegapixels > 32) {
+        throw new Error('Invalid tile megapixel budget (expected 1 to 32)');
+      }
       this.office = office;
       this.sheet = sheet;
       this.bottomRow = bottomRow;

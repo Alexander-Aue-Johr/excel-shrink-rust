@@ -20,6 +20,12 @@ struct Tile {
     capture_right_column: u32,
     width: u32,
     height: u32,
+    #[serde(default)]
+    x: u32,
+    #[serde(default)]
+    y: u32,
+    #[serde(default)]
+    capture_pixels: u64,
     sha256: String,
 }
 
@@ -262,6 +268,13 @@ impl ResidentCapture {
         directory: &Path,
     ) -> Result<Self> {
         ensure!(!variants.is_empty(), "resident comparison has no profiles");
+        let cleanup_barrier = batch_cleanup::Participant::from_environment()?;
+        ensure!(
+            !cleanup_barrier
+                .as_ref()
+                .is_some_and(|barrier| barrier.restart_requested()),
+            "resident comparison restart requested before startup"
+        );
         fs::create_dir_all(directory)?;
         let directory = fs::canonicalize(directory)?;
         ensure!(
@@ -348,7 +361,8 @@ impl ResidentCapture {
                     .join(name)
                     .join(format!("{command}.json")),
                 &json!({
-                    "id":command,"kind":if live.is_some() {"plan"} else {"capture"},"sheets":configs[name],"tile_megapixels":32
+                    "id":command,"kind":if live.is_some() {"plan"} else {"capture"},"sheets":configs[name],
+                    "tile_megapixels":live.as_ref().map_or(32, |live| live.tile_megapixels())
                 }),
             )?;
             pending.insert(name.to_owned(), command.to_owned());
@@ -389,8 +403,11 @@ impl ResidentCapture {
         } else if std::env::var("EXCEL_SHRINK_RESIDENT_VISIBLE").as_deref() == Ok("1") {
             command.arg("-Visible");
         }
-        let cleanup_barrier = batch_cleanup::Participant::from_environment()?;
         if let Some(barrier) = &cleanup_barrier {
+            ensure!(
+                !barrier.restart_requested(),
+                "resident comparison restart requested before Excel launch"
+            );
             publish(
                 &directory.join("batch-lifetime.json"),
                 &serde_json::to_value(barrier)?,
@@ -429,6 +446,7 @@ impl ResidentCapture {
     }
 
     fn issue(&mut self, client: &str, mut body: Value) -> Result<String> {
+        self.check_restart()?;
         let client = self.client(client)?.to_owned();
         ensure!(
             !self.physical_closed.contains(&client),
@@ -446,6 +464,17 @@ impl ResidentCapture {
             &body,
         )?;
         Ok(id)
+    }
+
+    fn check_restart(&self) -> Result<()> {
+        ensure!(
+            !self
+                .cleanup_barrier
+                .as_ref()
+                .is_some_and(|barrier| barrier.restart_requested()),
+            "resident comparison restart requested"
+        );
+        Ok(())
     }
 
     fn wait(&mut self, client: &str, command: &str) -> Result<Value> {
@@ -469,6 +498,7 @@ impl ResidentCapture {
             .join(format!("{command}.json"));
         let mut command_started = self.live.is_none();
         loop {
+            self.check_restart()?;
             // The launcher owns opening deadlines. Queued jobs do not consume
             // their response budget while Excel is still opening another peer.
             if !command_started
@@ -542,7 +572,8 @@ impl ResidentCapture {
         let client = self.client(logical)?.to_owned();
         let id = self.issue(
             &client,
-            json!({"kind":if self.live.is_some() {"plan"} else {"capture"},"sheets":configs,"tile_megapixels":32}),
+            json!({"kind":if self.live.is_some() {"plan"} else {"capture"},"sheets":configs,
+                "tile_megapixels":self.live.as_ref().map_or(32, |live| live.tile_megapixels())}),
         )?;
         self.configs.insert(client.clone(), configs);
         self.pending.insert(client, id);
@@ -1273,6 +1304,9 @@ mod tests {
                     width: 40,
                     height: 60,
                     sha256: "a".repeat(64),
+                    x: 0,
+                    y: 0,
+                    capture_pixels: 0,
                 })
                 .collect(),
         }

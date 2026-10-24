@@ -139,9 +139,43 @@ class HostProtocol(unittest.TestCase):
         receipt = self.request("/image/one/tile/1/0",png,{"Content-Type":"image/png"})
         self.assertEqual(receipt["sha256"],hashlib.sha256(png).hexdigest())
         self.assertEqual(Path(receipt["image_path"]).read_bytes(),png)
+        saved_receipt = json.loads((self.session / "receipts/one/tile/s0001-t00000.json").read_text())
+        self.assertEqual(saved_receipt, receipt)
+        self.assertEqual(receipt["png_bytes"], len(png))
+        self.assertGreater(receipt["received_unix_ms"], 0)
+        self.assertFalse((self.session / "responses/one/tile.json").exists(), "Tile publication must precede batch completion")
         with self.assertRaises(urllib.error.HTTPError):
             self.request("/result/one/tile",{"ok":True,"images":[{**tile,**receipt,"sha256":"f"*64}]})
         self.request("/result/one/tile",{"ok":True,"images":[{**tile,**receipt}]})
+
+    def test_only_an_actual_heartbeat_updates_the_heartbeat_timestamp(self):
+        self.connect()
+        self.assertIsNone(self.request("/health")["clients"]["one"]["last_heartbeat_at"])
+        self.request("/job?client=one")
+        self.assertIsNone(self.request("/health")["clients"]["one"]["last_heartbeat_at"])
+        self.request("/heartbeat?client=one")
+        before = self.request("/health")["clients"]["one"]
+        self.request("/job?client=one")
+        after = self.request("/health")["clients"]["one"]
+        self.assertIsNotNone(before["last_heartbeat_at"])
+        self.assertEqual(after["last_heartbeat_at"], before["last_heartbeat_at"])
+        self.assertEqual(after["heartbeat_count"], 1)
+
+    def test_image_batches_publish_each_receipt_and_reject_partial_completion(self):
+        self.connect()
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==")
+        tiles = [{"sheet_index":1,"tile_index":i,"width":1,"height":1,"x":0,"y":i,"capture_pixels":1} for i in range(2)]
+        self.command({"id":"batch","kind":"capture_images","capture_id":"plan","tiles":tiles})
+        first = self.request("/image/one/batch/1/0",png,{"Content-Type":"image/png"})
+        self.assertEqual(first["y"],0)
+        self.assertFalse((self.session / "receipts/one/batch/s0001-t00001.json").exists())
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request("/result/one/batch",{"ok":True,"images":[first]})
+        second = self.request("/image/one/batch/1/1",png,{"Content-Type":"image/png"})
+        self.assertEqual(second["y"],1)
+        self.assertFalse((self.session / "responses/one/batch.json").exists())
+        self.request("/result/one/batch",{"ok":True,"images":[first,second]})
+        self.assertEqual(len(json.loads((self.session / "responses/one/batch.json").read_text())["images"]),2)
 
     def test_live_jobs_wait_for_all_primary_clients_and_pause_only_at_job_boundaries(self):
         self.process.terminate()

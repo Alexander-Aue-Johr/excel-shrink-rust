@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {createWorker, selectedTiles, encoded} = require('../web/resident.js');
 
 function fixture(workbookName = 'fixture.xlsx') {
-  const captures = [], uploads = [], heightSheets = [], geometryReads = [];
+  const captures = [], uploads = [], heightSheets = [], geometryReads = [], captureBatches = [];
   let geometriesCreated = 0;
   let content = 'stable';
   const encode = (width, height) => Buffer.from(JSON.stringify({width, height, content})).toString('base64');
@@ -12,7 +12,7 @@ function fixture(workbookName = 'fixture.xlsx') {
     pngSize: value => JSON.parse(Buffer.from(value, 'base64').toString()),
     probeEnd: () => 3,
     SheetGeometry: class {
-      constructor() {geometriesCreated++; this.rows = Array(10).fill(1); this.maxPixels = 32000000; this.fixedWidth = null;}
+      constructor() {geometriesCreated++; this.rows = Array(10).fill(1); this.pixelY = Array.from({length: 11}, (_, i) => i); this.maxPixels = 32000000; this.fixedWidth = null;}
       async read(maximum) {geometryReads.push(maximum);}
       async calibrate() {}
       imageWidth() {return 3;}
@@ -30,13 +30,13 @@ function fixture(workbookName = 'fixture.xlsx') {
   };
   globalThis.CaptureOverflow = {async crop(base64) {return base64;}, async check() {return {rightEdge: false};}};
   const helpers = {
-    async office(action) {return action({workbook: {name: workbookName, load() {}, worksheets: {getItem() {return {
+    async office(action) {const before = captures.length; const result = await action({workbook: {name: workbookName, load() {}, worksheets: {getItem() {return {
       getRange(range) {return {getImage() {
         captures.push(range);
         const [first, last] = range.split(':').map(Number);
         return {value: encode(3, last - first)};
       }};}
-    };}}}, async sync() {}});},
+    };}}}, async sync() {}}); if (captures.length > before) captureBatches.push(captures.length-before); return result;},
     bounds: sheet => ({bottom: sheet.bottom_row, right: 1}),
     async checkedWorksheet() {}, async hideGridlines() {}, async verifyDrawingBounds() {},
     async rowHeights(sheet) {heightSheets.push(sheet); return {sheet_index: sheet.index, runs: [[0, 10, 1]]};},
@@ -49,7 +49,7 @@ function fixture(workbookName = 'fixture.xlsx') {
   }}, 'fixture.xlsx');
   const sheet = {index: 1, name: 'Sheet1', bottom_row: 9, row_height_bottom_row: 2,
     horizontal_overflow_required: false, drawing_fallback_required: false};
-  return {worker, sheet, captures, uploads, heightSheets, geometryReads, change() {content = 'changed';},
+  return {worker, sheet, captures, uploads, heightSheets, geometryReads, captureBatches, change() {content = 'changed';},
     get geometriesCreated() {return geometriesCreated;}};
 }
 
@@ -174,10 +174,36 @@ test('image-first whitespace controls render only negotiated mismatch rows', asy
   assert.deepEqual(f.captures,['3:6','9:10']);
 });
 
-test('image-first rejects multiple tiles or geometry that differs from its plan', async () => {
+test('image-first rejects duplicate tiles or geometry that differs from its plan', async () => {
   const f = fixture();
   const plan = await f.worker.execute({id:'plan',kind:'plan',sheets:[f.sheet]});
-  await assert.rejects(f.worker.execute({id:'many',kind:'capture_images',capture_id:'plan',tiles:plan.tiles}),/exactly one/);
+  await assert.rejects(f.worker.execute({id:'many',kind:'capture_images',capture_id:'plan',tiles:[plan.tiles[0],plan.tiles[0]]}),/differs from/);
   await assert.rejects(f.worker.execute({id:'wrong',kind:'capture_images',capture_id:'plan',tiles:[{...plan.tiles[0],width:99}]}),/differs from/);
+  assert.deepEqual(f.captures,[]);
+});
+
+test('image-first batches render in one Office call and upload individual un-hashed tiles', async () => {
+  const f = fixture();
+  const digest = globalThis.crypto.subtle.digest;
+  globalThis.crypto.subtle.digest = () => {throw new Error('Client hashing is forbidden');};
+  try {
+    const plan = await f.worker.execute({id:'plan',kind:'plan',sheets:[f.sheet],tile_megapixels:4});
+    assert.deepEqual(plan.tiles.map(tile => tile.y), [0,3,6,9]);
+    assert.deepEqual(plan.tiles.map(tile => tile.capture_pixels), [9,9,9,3]);
+    const result = await f.worker.execute({id:'batch',kind:'capture_images',capture_id:'plan',tiles:plan.tiles});
+    assert.deepEqual(f.captureBatches, [4]);
+    assert.deepEqual(f.uploads.map(upload => upload.metadata.range), ['0:3','3:6','6:9','9:10']);
+    assert.equal(result.uploaded_images,4);
+    assert.equal(result.checksum_tiles,0);
+    assert.ok(f.uploads.every(upload => upload.metadata.sha256 === undefined));
+  } finally {globalThis.crypto.subtle.digest = digest;}
+});
+
+test('image-first batches reject mixed sheets and unreasonable counts before Excel rendering', async () => {
+  const f = fixture();
+  const plan = await f.worker.execute({id:'plan',kind:'plan',sheets:[f.sheet,{...f.sheet,index:2,name:'Sheet2'}]});
+  await assert.rejects(f.worker.execute({id:'mixed',kind:'capture_images',capture_id:'plan',tiles:[plan.tiles[0],plan.tiles[4]]}), /same-sheet/);
+  await assert.rejects(f.worker.execute({id:'empty',kind:'capture_images',capture_id:'plan',tiles:[]}), /1 to 16/);
+  await assert.rejects(f.worker.execute({id:'many',kind:'capture_images',capture_id:'plan',tiles:Array(17).fill(plan.tiles[0])}), /1 to 16/);
   assert.deepEqual(f.captures,[]);
 });

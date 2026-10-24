@@ -74,6 +74,21 @@ async function geometry(model, bottom = 99, right = 15) {
   return result;
 }
 
+test('configurable 1 to 32 megapixel budgets refine real full-width guarded captures', async () => {
+  const model = officeModel();
+  const small = new SheetGeometry(model.office, 'Sheet', 999, 15, 1);
+  await small.read(15); await small.calibrate();
+  const large = await geometry(officeModel(), 999, 15);
+  const tiles = small.tiles(15, null);
+  assert.ok(tiles.length > large.tiles(15, null).length);
+  assert.equal(tiles[0].core.r0,0);
+  assert.equal(tiles.at(-1).core.r1,1000);
+  assert.ok(tiles.every(tile => tile.raw.c0 === 0 && tile.raw.c1 === 16 && tile.width*tile.expectedHeight <= 1000000));
+  for (const value of [0,-1,33,1.5,NaN]) {
+    assert.throws(() => new SheetGeometry(model.office,'Sheet',99,15,value), /megapixel budget/);
+  }
+});
+
 test('tall title rows allow independent narrow calibration controls', async () => {
   const model = officeModel({rows: [129.75, 24, 68.25, 30, 63.75, 90.75, 116.25, 20.25],
     columns: [138], defaultWidth: 63.75});

@@ -45,6 +45,7 @@ app.MapGet("/health", () => {
             .Select(pair => new { client_id = pair.Key, code = pair.Value.Error!["code"], message = pair.Value.Error["message"] }),
         clients = snapshots.ToDictionary(pair => pair.Key, pair => new {
             seen_at = pair.Value.SeenAt, last_activity_at = pair.Value.LastActivityAt,
+            last_heartbeat_at = pair.Value.LastHeartbeatAt,
             data_started = pair.Value.DataStarted, active_command = pair.Value.ActiveCommand,
             command_count = pair.Value.CommandCount, heartbeat_count = pair.Value.HeartbeatCount,
             error = pair.Value.Error
@@ -77,7 +78,7 @@ app.MapGet("/config", async (HttpRequest request) => {
 app.MapGet("/heartbeat", async (HttpRequest request) => {
     var (_, client) = Authenticate(request.Query["client"].ToString(), request);
     await client.Gate.WaitAsync();
-    try { client.LastActivityAt = DateTimeOffset.UtcNow; client.HeartbeatCount++; }
+    try { client.LastHeartbeatAt = client.LastActivityAt = DateTimeOffset.UtcNow; client.HeartbeatCount++; }
     finally { client.Gate.Release(); }
     return Results.Json(new { ok = true });
 });
@@ -153,7 +154,19 @@ app.MapPost("/image/{id}/{commandId}/{sheet:int}/{tile:int}", async (string id, 
         if (File.Exists(path)) throw new ArgumentException("Duplicate evidence image.");
         await WriteAtomic(path, bytes);
         client.LastActivityAt = DateTimeOffset.UtcNow;
-        return Results.Json(new { ok = true, image_path = path, width, height, sha256 = sha });
+        var receipt = expected.DeepClone().AsObject();
+        receipt["ok"] = true;
+        receipt["image_path"] = path;
+        receipt["sha256"] = sha;
+        receipt["png_bytes"] = bytes.Length;
+        receipt["received_unix_ms"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (imageFirst) {
+            // The orchestrator consumes this atomically published receipt while
+            // the client is still capturing or uploading the rest of its batch.
+            await WriteAtomic(Path.Combine(session, "receipts", id, commandId, $"s{sheet:D4}-t{tile:D5}.json"),
+                JsonSerializer.SerializeToUtf8Bytes(receipt));
+        }
+        return Results.Json(receipt);
     } finally { client.Gate.Release(); }
 });
 
@@ -250,6 +263,7 @@ sealed class ClientState {
     public string Token = "";
     public readonly DateTimeOffset SeenAt = DateTimeOffset.UtcNow;
     public DateTimeOffset LastActivityAt = DateTimeOffset.UtcNow;
+    public DateTimeOffset? LastHeartbeatAt;
     public DateTimeOffset ConfiguredAt = DateTimeOffset.UtcNow;
     public bool DataStarted;
     public string? ActiveCommand;
@@ -259,9 +273,9 @@ sealed class ClientState {
     public long HeartbeatCount;
     public SnapshotData Snapshot() {
         Gate.Wait();
-        try { return new(SeenAt, LastActivityAt, DataStarted, ActiveCommand, CommandCount, HeartbeatCount, Error?.DeepClone().AsObject()); }
+        try { return new(SeenAt, LastActivityAt, LastHeartbeatAt, DataStarted, ActiveCommand, CommandCount, HeartbeatCount, Error?.DeepClone().AsObject()); }
         finally { Gate.Release(); }
     }
 }
-sealed record SnapshotData(DateTimeOffset SeenAt, DateTimeOffset LastActivityAt, bool DataStarted,
+sealed record SnapshotData(DateTimeOffset SeenAt, DateTimeOffset LastActivityAt, DateTimeOffset? LastHeartbeatAt, bool DataStarted,
     string? ActiveCommand, long CommandCount, long HeartbeatCount, JsonObject? Error);
