@@ -1177,8 +1177,10 @@ impl ResidentCapture {
     pub(in crate::regression) fn close(&mut self, logical: &str) -> Result<()> {
         let client = self.client(logical)?.to_owned();
         self.closed.insert(logical.into());
-        // Disposing even one session can terminate an Office/WebView child used
-        // by a peer. Parallel batches retain every client until their shared gate.
+        // Retain clients until the configured batch gate. The launcher closes a
+        // KILL_ON_JOB_CLOSE job, including Office/WebView descendants. Whether
+        // peers share those descendants is not established; see
+        // docs/visual-validation/cleanup-isolation.md before changing this policy.
         if self.cleanup_barrier.is_some() {
             return Ok(());
         }
