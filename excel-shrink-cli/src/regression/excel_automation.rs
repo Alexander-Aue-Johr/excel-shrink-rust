@@ -707,6 +707,23 @@ mod tests {
         assert!(!RECALCULATE_AND_SAVE_SCRIPT.contains("$excel.CalculationState"));
     }
 
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires installed Excel; run alone to exercise a cold environment cache"]
+    fn cold_environment_probe_creates_its_diagnostic_directory() -> anyhow::Result<()> {
+        let temporary = std::env::temp_dir();
+        let root = temporary.join(format!("excel-shrink-cold-probe-{}-{}", std::process::id(),
+            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_nanos()));
+        let work = root.join("selection-recalc").join("automation");
+        assert!(!work.exists());
+        let key = recalculation_environment_key(&work)?;
+        assert_eq!(key.len(), 64);
+        assert!(work.join("excel-render-environment.ps1").is_file());
+        anyhow::ensure!(fs::canonicalize(&root)?.starts_with(fs::canonicalize(&temporary)?), "test directory escaped temp root");
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
     #[test]
     fn shared_workbook_links_keep_the_visible_path() -> anyhow::Result<()> {
         let root = std::env::temp_dir().join(format!(

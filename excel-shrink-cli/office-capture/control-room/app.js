@@ -312,8 +312,9 @@ function makeSheetCard(sheet, placement) {
   const arrived = sheet.tiles.filter(tile => Object.keys(tile.images).length).length;
   const planned = sheet.tiles.filter(tile => tile.status !== 'omitted').length;
   const omitted = Number(sheet.capture_coverage?.omitted_tiles || 0);
+  const fullFallback = sheet.capture_coverage?.fallback_reason;
   const title = makeTextPlane([{ text: sheet.name, y: 68, size: 55 },
-    { text: `${arrived} / ${planned} Capture-Aufträge · ${differences} mit Abweichung${omitted ? ` · ${omitted} ausgelassen` : ''}`, y: 130, size: 29, color: differences ? '#ffabbc' : '#8eadc2' }], CARD_W - 4.1, .68);
+    { text: `${arrived} / ${planned} Capture-Aufträge · ${differences} mit Abweichung${omitted ? ` · ${omitted} ausgelassen` : fullFallback ? ' · vollständiger Fallback' : ''}`, y: 130, size: 29, color: fullFallback ? '#ffc987' : differences ? '#ffabbc' : '#8eadc2' }], CARD_W - 4.1, .68);
   // Leave the right side of each header for the projected accessible fit tools.
   title.geometry.dispose(); title.geometry = curvedGeometry(CARD_W - 4.1, .68);
   setCurvedPosition(title, -1.775, CARD_H / 2 - .43, .045); card.add(title);
@@ -663,6 +664,10 @@ function updatePanControls() {
     $('sheetSummary').textContent = `${data.sheets.length} Sheets · ${sheet.capture_coverage.captured_tiles} / ${sheet.capture_coverage.total_tiles} Capture-Zeilen ausgewählt · ${sheet.capture_coverage.omitted_tiles} nicht visuell geprüft`;
     $('viewRange').textContent = `${sheet.name} · verkürzte Darstellung; Originalzeilen stehen an den Kacheln`;
   }
+  if (sheet?.capture_coverage?.fallback_reason) {
+    $('sheetSummary').textContent = `${sheet.capture_coverage.total_tiles} Capture-Zeilen · vollständige Erfassung: ${sheet.capture_coverage.fallback_reason}`;
+    $('sheetSummary').title = sheet.capture_coverage.fallback_reason;
+  } else { $('sheetSummary').title = ''; }
 }
 function updateSheets() {
   const signature = JSON.stringify(data?.sheets.map(sheet => [sheet.id, sheet.name]));

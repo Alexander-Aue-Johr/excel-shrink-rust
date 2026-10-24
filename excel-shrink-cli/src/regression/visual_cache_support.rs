@@ -29,6 +29,9 @@ fn recalculation_environment_key(work_dir: &Path) -> anyhow::Result<String> {
     let output = transfer.0.join("environment.json");
     let script = transfer.0.join("environment.ps1");
     const SOURCE: &str = include_str!("excel_render_environment.ps1");
+    // This probe can be the first operation in a new selection-recalc tree.
+    // A warm process cache used to hide the missing-directory failure.
+    fs::create_dir_all(work_dir)?;
     fs::write(work_dir.join("excel-render-environment.ps1"), SOURCE)?;
     fs::write(&script, SOURCE)?;
     run_power_shell_script(&script, &[("OutputPath", power_shell_path(&output)?)])?;
