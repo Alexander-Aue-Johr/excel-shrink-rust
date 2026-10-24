@@ -11,7 +11,7 @@ internal static class ControlRoom
 {
     private const long SnapshotLimit = 32 * 1024 * 1024;
     private static readonly HashSet<int> PreviewWidths = [0, 128, 256, 512, 1024];
-    private static readonly string[] ControlKeys = ["target_groups", "paused", "open_timeout_seconds", "job_timeout_seconds", "equal_preview_width"];
+    private static readonly string[] ControlKeys = ["target_groups", "paused", "open_timeout_seconds", "job_timeout_seconds", "equal_preview_width", "capture_tile_megapixels", "capture_batch_tiles", "hide_excel"];
 
     public static async Task RunAsync(string settingsPath)
     {
@@ -25,6 +25,8 @@ internal static class ControlRoom
             throw new ArgumentException("Invalid control room port or web root.");
         Directory.CreateDirectory(root);
         Directory.CreateDirectory(Path.Combine(root, "groups"));
+        var commandsDirectory = ConfinedPath(root, "commands");
+        Directory.CreateDirectory(commandsDirectory);
         var controlPath = Path.Combine(root, "control.json");
         var initial = Defaults();
         if (settings["initial_controls"] is JsonObject supplied) initial = MergeControls(initial, supplied);
@@ -83,6 +85,7 @@ internal static class ControlRoom
             var summary = (queue?["groups"] as JsonArray)?.OfType<JsonObject>()
                 .FirstOrDefault(group => (string?)group["id"] == id)?.DeepClone().AsObject();
             var scheduledStatus = (string?)summary?["status"];
+            var scheduledAttempt = (string?)summary?["attempt_id"];
             var directory = ConfinedPath(root, $"groups/{id}");
             var detail = await ReadSnapshot(Path.Combine(directory, "state.json"), diagnostics);
             detail ??= await ReadSnapshot(Path.Combine(directory, "session.json"), diagnostics);
@@ -93,12 +96,21 @@ internal static class ControlRoom
                     throw new ArgumentException("Group snapshot identity differs from its directory.");
                 foreach (var entry in detail) merged[entry.Key] = entry.Value?.DeepClone();
             }
-            if (scheduledStatus is "queued" or "complete" or "completed" or "failed" or "skipped" or "unchanged" or "differences" or "waiting_cleanup" or "interrupted" or "retrying_classic") {
+            if (scheduledAttempt is not null) merged["attempt_id"] = scheduledAttempt;
+            if (scheduledStatus is "queued" or "preparing" or "restart_pending" or "complete" or "completed" or "failed" or "skipped" or "unchanged" or "differences" or "waiting_cleanup" or "restart_waiting_cleanup" or "interrupted" or "retrying_classic") {
                 merged["capture_status"] = detail?["status"]?.DeepClone();
                 merged["status"] = scheduledStatus;
             }
             var launcher = await ReadSnapshot(Path.Combine(directory, "launcher.json"), diagnostics);
-            if (launcher is not null) merged["launcher"] = launcher;
+            var launcherAttempt = (string?)launcher?["attempt_id"];
+            var displayedAttempt = scheduledAttempt ?? (string?)merged["attempt_id"];
+            if (displayedAttempt is not null && launcherAttempt != displayedAttempt) {
+                merged["launcher_pending"] = true;
+            } else if (launcher is not null) {
+                CheckClientProcesses(launcher);
+                merged["launcher"] = launcher;
+            }
+            merged["restart_commands"] = await RecentCommands(commandsDirectory, id, diagnostics);
             merged["id"] = id;
             merged["available"] = detail is not null;
             merged["diagnostics"] = diagnostics;
@@ -118,6 +130,63 @@ internal static class ControlRoom
             } finally { controlGate.Release(); }
         });
 
+        app.MapPost("/api/groups/{id}/restart", async (string id, HttpRequest request) => {
+            id = SafeId(id);
+            if (!request.HasJsonContentType()) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+            var body = (await JsonNode.ParseAsync(request.Body))?.AsObject()
+                ?? throw new ArgumentException("Expected a JSON object.");
+            if (body.Any(entry => entry.Key is not "client_id" and not "reason"))
+                throw new ArgumentException("Unknown restart option.");
+            var clientId = (string?)body["client_id"];
+            if (clientId is not null) clientId = SafeId(clientId);
+            var reason = (string?)body["reason"] ?? "Restart requested in the control room.";
+            if (reason.Length > 1000) throw new ArgumentException("Restart reason exceeds 1000 characters.");
+            await controlGate.WaitAsync();
+            try {
+                var diagnostics = new JsonArray();
+                var queue = await ReadSnapshot(Path.Combine(root, "queue.json"), diagnostics);
+                if (queue is null) return Results.Conflict(new { error = "The scheduler queue is not available." });
+                CheckRunnerOwnership(queue, diagnostics);
+                if ((bool?)queue["running"] != true || (bool?)queue["runner_alive"] != true)
+                    return Results.Conflict(new { error = "Start the corpus runner before requesting a restart." });
+                var group = (queue["groups"] as JsonArray)?.OfType<JsonObject>()
+                    .FirstOrDefault(group => (string?)group["id"] == id);
+                if (group is null) return Results.NotFound(new { error = "Unknown comparison group." });
+                var runId = RequiredString(queue, "run_id");
+                if ((string?)group["run_id"] != runId || (bool?)group["restart_eligible"] == false)
+                    return Results.Conflict(new { error = "This group belongs to an earlier run; select it in a new corpus run to compare it again." });
+                if (clientId is not null) {
+                    var launcher = await ReadSnapshot(ConfinedPath(root, $"groups/{id}/launcher.json"), diagnostics);
+                    if (launcher?["clients"] is not JsonObject clients || !clients.ContainsKey(clientId))
+                        return Results.NotFound(new { error = "Unknown Excel client in this group." });
+                }
+                // A double-click retries the existing request instead of queuing
+                // the same scientific comparison twice. The scheduler owns ack.
+                foreach (var pending in (await RecentCommands(commandsDirectory, id, diagnostics)).OfType<JsonObject>()) {
+                    if ((string?)pending["run_id"] == runId && (string?)pending["attempt_id"] == (string?)group["attempt_id"] &&
+                        (string?)pending["status"] is "pending" or "restarting" or "queued")
+                        return Results.Accepted($"/api/commands/{(string?)pending["id"]}", new { ok = true, restart_scope = "group", command = pending });
+                }
+                var commandId = Guid.NewGuid().ToString("N");
+                var command = new JsonObject {
+                    ["id"] = commandId, ["type"] = "restart_group", ["group_id"] = id,
+                    ["run_id"] = runId, ["client_id"] = clientId, ["reason"] = reason,
+                    ["attempt_id"] = group["attempt_id"]?.DeepClone(),
+                    ["requested_unix_ms"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    ["status"] = "pending", ["restart_scope"] = "group",
+                    ["message"] = "The whole comparison will be requeued next after safe cleanup of its current peer groups."
+                };
+                await WriteAtomic(ConfinedPath(root, $"commands/{commandId}.json"), command);
+                return Results.Accepted($"/api/commands/{commandId}", new { ok = true, restart_scope = "group", command });
+            } finally { controlGate.Release(); }
+        });
+
+        app.MapGet("/api/commands/{id}", async (string id) => {
+            id = SafeId(id);
+            var command = await ReadSnapshot(ConfinedPath(root, $"commands/{id}.json"), new JsonArray());
+            return command is null ? Results.NotFound(new { error = "Unknown command." }) : Results.Json(command);
+        });
+
         app.MapGet("/data/{**path}", (string path) => {
             var full = ConfinedPath(root, path);
             var contentType = Path.GetExtension(full).ToLowerInvariant() switch {
@@ -132,7 +201,8 @@ internal static class ControlRoom
 
     private static JsonObject Defaults() => new() {
         ["target_groups"] = 1, ["paused"] = false, ["open_timeout_seconds"] = 600,
-        ["job_timeout_seconds"] = 300, ["equal_preview_width"] = 512
+        ["job_timeout_seconds"] = 300, ["equal_preview_width"] = 512,
+        ["capture_tile_megapixels"] = 32, ["capture_batch_tiles"] = 1, ["hide_excel"] = false
     };
 
     private static JsonObject MergeControls(JsonObject current, JsonObject patch)
@@ -141,14 +211,16 @@ internal static class ControlRoom
         foreach (var entry in patch) {
             if (!ControlKeys.Contains(entry.Key, StringComparer.Ordinal))
                 throw new ArgumentException($"Unknown control '{entry.Key}'.");
-            if (entry.Key == "paused") {
+            if (entry.Key is "paused" or "hide_excel") {
                 if (entry.Value is not JsonValue flag || !flag.TryGetValue<bool>(out var paused))
-                    throw new ArgumentException("paused must be a boolean.");
+                    throw new ArgumentException($"{entry.Key} must be a boolean.");
                 next[entry.Key] = paused;
             } else {
                 if (entry.Value is not JsonValue scalar || !scalar.TryGetValue<int>(out var value))
                     throw new ArgumentException($"{entry.Key} must be an integer.");
                 if (entry.Key == "equal_preview_width" ? !PreviewWidths.Contains(value) : value <= 0)
+                    throw new ArgumentException($"Invalid value for {entry.Key}.");
+                if (entry.Key == "capture_tile_megapixels" && value > 32 || entry.Key == "capture_batch_tiles" && value > 16)
                     throw new ArgumentException($"Invalid value for {entry.Key}.");
                 next[entry.Key] = value;
             }
@@ -162,6 +234,42 @@ internal static class ControlRoom
         catch (Exception error) when (error is IOException or JsonException or InvalidOperationException or ArgumentException) {
             diagnostics.Add(new JsonObject { ["file"] = "control.json", ["error"] = error.Message });
             return fallback.DeepClone().AsObject();
+        }
+    }
+
+    private static async Task<JsonArray> RecentCommands(string directory, string groupId, JsonArray diagnostics)
+    {
+        var commands = new List<JsonObject>();
+        foreach (var file in new DirectoryInfo(directory).EnumerateFiles("*.json").OrderByDescending(file => file.LastWriteTimeUtc)) {
+            if ((file.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+            var command = await ReadSnapshot(file.FullName, diagnostics);
+            if ((string?)command?["group_id"] != groupId) continue;
+            commands.Add(command!);
+            if (commands.Count == 10) break;
+        }
+        return new JsonArray(commands.OrderByDescending(command => (long?)command["requested_unix_ms"] ?? 0)
+            .Select(command => (JsonNode)command).ToArray());
+    }
+
+    private static void CheckClientProcesses(JsonObject launcher)
+    {
+        if (launcher["clients"] is not JsonObject clients) return;
+        foreach (var entry in clients) {
+            if (entry.Value is not JsonObject client) continue;
+            bool? alive = null;
+            if (client["pid"] is JsonValue pidValue && pidValue.TryGetValue<int>(out var pid) && pid > 0 &&
+                client["process_started_unix_ms"] is JsonValue stamp && stamp.TryGetValue<long>(out var expectedStart)) {
+                try {
+                    using var process = System.Diagnostics.Process.GetProcessById(pid);
+                    var actualStart = new DateTimeOffset(process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds();
+                    alive = !process.HasExited && Math.Abs(actualStart - expectedStart) <= 1;
+                } catch (Exception error) when (error is ArgumentException or InvalidOperationException) { alive = false; }
+                catch (System.ComponentModel.Win32Exception) { }
+            }
+            // A quiet Office.js heartbeat does not imply a dead Excel process.
+            // Only OS process identity can establish liveness after a stale sample.
+            client["process_alive"] = alive is null ? null : JsonValue.Create(alive.Value);
+            client["process_checked_at"] = DateTimeOffset.UtcNow.ToString("O");
         }
     }
 

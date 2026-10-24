@@ -10,6 +10,19 @@ pub(super) struct Controls {
     pub open_timeout_seconds: u64,
     pub job_timeout_seconds: u64,
     pub equal_preview_width: u32,
+    #[serde(default = "default_capture_megapixels")]
+    pub capture_tile_megapixels: u32,
+    #[serde(default = "default_capture_batch")]
+    pub capture_batch_tiles: u32,
+    #[serde(default)]
+    pub hide_excel: bool,
+}
+
+fn default_capture_megapixels() -> u32 {
+    32
+}
+fn default_capture_batch() -> u32 {
+    1
 }
 
 impl Controls {
@@ -24,6 +37,14 @@ impl Controls {
         ensure!(
             [0, 128, 256, 512, 1024].contains(&value.equal_preview_width),
             "invalid equal tile preview width"
+        );
+        ensure!(
+            (1..=32).contains(&value.capture_tile_megapixels),
+            "capture size must be 1..32 MP"
+        );
+        ensure!(
+            (1..=16).contains(&value.capture_batch_tiles),
+            "capture batch must be 1..16 tiles"
         );
         Ok(value)
     }
@@ -41,14 +62,26 @@ impl Room {
     pub fn start(output: &Path, args: &StudyArgs, run: &Value) -> Result<Self> {
         let root = output.join("control-room");
         fs::create_dir_all(root.join("groups"))?;
+        let previous_controls = Controls::read(&root).ok();
         let controls = Controls {
             target_groups: args.comparison_workers,
             paused: false,
             open_timeout_seconds: args.startup_timeout_seconds,
             job_timeout_seconds: args.workbook_timeout_seconds,
-            equal_preview_width: Controls::read(&root)
+            equal_preview_width: previous_controls
+                .as_ref()
                 .map(|old| old.equal_preview_width)
                 .unwrap_or(512),
+            capture_tile_megapixels: previous_controls
+                .as_ref()
+                .map(|old| old.capture_tile_megapixels)
+                .unwrap_or(32),
+            capture_batch_tiles: previous_controls
+                .as_ref()
+                .map(|old| old.capture_batch_tiles)
+                .unwrap_or(1),
+            hide_excel: args.hide_excel
+                || previous_controls.as_ref().is_some_and(|old| old.hide_excel),
         };
         let source = repo_root().join("excel-shrink-cli/office-capture/resident-host");
         let version = host_version(&source)?;
@@ -59,8 +92,11 @@ impl Room {
                 "port {} belongs to another service or study",
                 args.control_room_port
             );
-            ensure!(health["host_version"] == version,
-                "control room on port {} uses a different host build; stop that control room or choose another --control-room-port (the existing server was left running)", args.control_room_port);
+            ensure!(
+                health["host_version"] == version,
+                "control room on port {} uses a different host build; stop that control room or choose another --control-room-port (the existing server was left running)",
+                args.control_room_port
+            );
             None
         } else {
             ensure!(
@@ -146,10 +182,11 @@ impl Room {
             read_json(&room.root.join("queue.json")).unwrap_or_else(|| json!({"groups":[]}));
         queue["run_id"] = run["run_id"].clone();
         queue["machine_id"] = run["machine_id"].clone();
-        queue["machine"] = json!(args
-            .machine_label
-            .clone()
-            .unwrap_or_else(|| "This machine".into()));
+        queue["machine"] = json!(
+            args.machine_label
+                .clone()
+                .unwrap_or_else(|| "This machine".into())
+        );
         queue["runner_pid"] = json!(std::process::id());
         queue["runner_started_unix_ms"] = json!(process_started_unix_ms());
         queue["running"] = json!(true);
@@ -191,8 +228,42 @@ impl Room {
             }
         }
         queue["updated_unix_ms"] = json!(provenance::now_ms());
-        write(&self.root.join("queue.json"), &queue)
+        write(&self.root.join("queue.json"), &queue)?;
+        reject_unfinished_commands(&self.root, &queue["run_id"])
     }
+}
+
+fn reject_unfinished_commands(root: &Path, run_id: &Value) -> Result<()> {
+    let directory = root.join("commands");
+    if !directory.is_dir() {
+        return Ok(());
+    }
+    // A click can race the last comparison's completion. It must not remain
+    // forever "queued" after its coordinator has stopped accepting work.
+    for entry in fs::read_dir(directory)? {
+        let path = entry?.path();
+        if path.extension().is_none_or(|extension| extension != "json") {
+            continue;
+        }
+        let Some(mut command) = read_json(&path) else {
+            continue;
+        };
+        if &command["run_id"] != run_id
+            || !matches!(
+                command["status"].as_str(),
+                Some("pending" | "queued" | "restarting")
+            )
+        {
+            continue;
+        }
+        command["status"] = json!("rejected");
+        command["message"] = json!(
+            "The owning study run ended before this request completed. Resume the study before requesting another restart."
+        );
+        command["updated_unix_ms"] = json!(provenance::now_ms());
+        write(&path, &command)?;
+    }
+    Ok(())
 }
 
 impl Drop for Room {
@@ -312,6 +383,30 @@ pub(super) fn group_id(identity: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shutdown_resolves_late_requests_without_rewriting_completed_commands() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "late-control-command")?;
+        fs::create_dir_all(root.join("commands"))?;
+        for status in ["pending", "queued", "restarting", "completed"] {
+            write(
+                &root.join("commands").join(format!("{status}.json")),
+                &json!({"run_id":"this","status":status}),
+            )?;
+        }
+        reject_unfinished_commands(&root, &json!("this"))?;
+        for status in ["pending", "queued", "restarting"] {
+            assert_eq!(
+                read_json(&root.join("commands").join(format!("{status}.json"))).unwrap()["status"],
+                "rejected"
+            );
+        }
+        assert_eq!(
+            read_json(&root.join("commands/completed.json")).unwrap()["status"],
+            "completed"
+        );
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
     #[cfg(windows)]
     #[test]
     fn runner_identity_uses_actual_process_creation_time() {
@@ -343,7 +438,25 @@ mod tests {
         fs::create_dir_all(&root)?;
         let mut value = json!({"target_groups":128,"paused":true,"open_timeout_seconds":7200,"job_timeout_seconds":600,"equal_preview_width":256});
         write(&root.join("control.json"), &value)?;
-        assert_eq!(Controls::read(&root)?.target_groups, 128);
+        let legacy = Controls::read(&root)?;
+        assert_eq!(legacy.target_groups, 128);
+        assert_eq!(legacy.capture_tile_megapixels, 32);
+        assert_eq!(legacy.capture_batch_tiles, 1);
+        assert!(!legacy.hide_excel);
+        for (key, bad) in [
+            ("capture_tile_megapixels", 0),
+            ("capture_tile_megapixels", 33),
+            ("capture_batch_tiles", 0),
+            ("capture_batch_tiles", 17),
+        ] {
+            let mut invalid = value.clone();
+            invalid[key] = json!(bad);
+            write(&root.join("control.json"), &invalid)?;
+            assert!(
+                Controls::read(&root).is_err(),
+                "accepted invalid {key}={bad}"
+            );
+        }
         value["target_groups"] = json!(0);
         write(&root.join("control.json"), &value)?;
         assert!(Controls::read(&root).is_err());

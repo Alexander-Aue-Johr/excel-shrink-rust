@@ -66,6 +66,63 @@ function Get-ResidentOpenTimeoutSeconds {
     return $liveOpenTimeoutSeconds
 }
 
+function Get-ResidentHideExcel {
+    # Study admission records one immutable configuration for the entire group.
+    # Standalone launchers without an attempt may still follow live controls.
+    if ($env:EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID) {
+        if ($env:EXCEL_SHRINK_HIDE_EXCEL -in @('0', '1')) { return $env:EXCEL_SHRINK_HIDE_EXCEL -eq '1' }
+        return [bool]$HideExcel
+    }
+    if (-not $liveControlPath) { return [bool]$HideExcel }
+    try {
+        $file = Get-Item -LiteralPath $liveControlPath -ErrorAction Stop
+        if ($file.Length -le 16384) {
+            $value = ([IO.File]::ReadAllText($file.FullName, $utf8) | ConvertFrom-Json).hide_excel
+            if ($value -is [bool]) { $script:liveHideExcel = $value }
+        }
+    } catch { } # Retain the last valid choice during an atomic replacement.
+    return $liveHideExcel
+}
+
+function Update-ClientActivity($health) {
+    if ($null -eq $health.clients) { return }
+    foreach ($property in $health.clients.PSObject.Properties) {
+        $id = $property.Name
+        if (-not $metrics.clients.ContainsKey($id)) { continue }
+        $sample = $property.Value
+        $item = $metrics.clients[$id]
+        foreach ($name in @('heartbeat_count', 'last_heartbeat_at', 'last_activity_at', 'active_command', 'command_count', 'data_started', 'error')) {
+            $field = $sample.PSObject.Properties[$name]
+            if ($null -ne $field) { $item[$name] = $field.Value }
+        }
+        if ($sample.error) {
+            $item.stage = 'client_error'
+            if ($sample.error.code -eq 'InvalidOperationInCellEditMode') { $item.stage = 'blocked_edit_mode' }
+        } elseif ($sample.active_command) { $item.stage = 'executing_job' }
+        elseif ($item.status -eq 'ready') { $item.stage = 'waiting_for_job' }
+    }
+}
+
+function Update-ClientProcessMetrics {
+    foreach ($id in @($clients.Keys)) {
+        $entry = $clients[$id]
+        $item = $metrics.clients[$id]
+        try {
+            $entry.process.Refresh()
+            $item.process_alive = -not $entry.process.HasExited
+            if ($item.process_alive) {
+                $item.working_set_bytes = $entry.process.WorkingSet64
+                $item.private_bytes = $entry.process.PrivateMemorySize64
+                $item.peak_working_set_bytes = $entry.process.PeakWorkingSet64
+                $item.peak_private_bytes = [Math]::Max([Int64]$item.peak_private_bytes, $entry.process.PrivateMemorySize64)
+            } else { $item.stage = 'process_exited' }
+        } catch {
+            $item.process_alive = $null
+            $item.process_sample_error = $_.Exception.Message
+        }
+    }
+}
+
 function Get-ResidentControlRoot([string]$path) {
     if (-not [IO.Path]::IsPathRooted($path)) { throw 'Control room directory must be absolute.' }
     $resolved = [IO.Path]::GetFullPath($path)
@@ -164,6 +221,7 @@ function Get-OwnOpeningSeconds([double]$elapsed, [double]$otherBefore, [double]$
 }
 
 function Write-ResourceMetrics {
+    Update-ClientProcessMetrics
     $metrics.elapsed_seconds = $clock.Elapsed.TotalSeconds
     $metrics.sampled_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $metrics.primary_clients_ready = Test-PrimaryClientsReady $primaryClientIds $clients
@@ -242,6 +300,9 @@ function Wait-BatchRelease {
         $waitActiveSeconds = [Math]::Max(0.0, $wall - $waitPauseSeconds)
         if (-not $liveControlPath -and $waitActiveSeconds -ge [double]$batchLifetime.timeout_seconds) { $reason='timeout'; break }
         if ($metricsClock.ElapsedMilliseconds -ge 1000) {
+            # Failed/finished clients remain owned until all peer groups finish.
+            # Their heartbeats still describe the real add-ins during this wait.
+            try { $null = Read-HostHealth } catch { }
             $metrics.batch_wait_seconds = $wait.Elapsed.TotalSeconds
             $metrics.batch_wait_active_seconds = $waitActiveSeconds
             $metrics.batch_wait_opening_pause_seconds = $waitPauseSeconds
@@ -327,7 +388,7 @@ function Update-Resources {
         $item.private_bytes = $entry.process.PrivateMemorySize64
         $item.peak_working_set_bytes = $entry.process.PeakWorkingSet64
         $item.peak_private_bytes = [Math]::Max([Int64]$item.peak_private_bytes, $entry.process.PrivateMemorySize64)
-        if ($HideExcel) { [ResidentProcesses]::Hide($entry.process) }
+        if ($entry.hide_excel) { [ResidentProcesses]::Hide($entry.process) }
         elseif (-not $Visible -and $entry.seen) { [ResidentProcesses]::Minimize($entry.process) }
     }
     if ($metricsClock.ElapsedMilliseconds -ge 1000) {
@@ -337,6 +398,7 @@ function Update-Resources {
 
 function Read-HostHealth {
     $health = Invoke-RestMethod -Uri ($controlUrl + '/health') -TimeoutSec 5
+    Update-ClientActivity $health
     if ($health.errors.Count) { throw ('Resident client error: ' + ($health.errors | ConvertTo-Json -Depth 12 -Compress)) }
     if ($healthSampleClock.ElapsedMilliseconds -ge 1000) {
         # Diagnostic only: a concurrent Workbooks.Open can pause Office.js.
@@ -356,7 +418,8 @@ function Open-ResidentClient($spec) {
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Resident workbook missing: $id" }
     if (-not @($spec.sheets).Count) { throw "Resident client has no planned sheets: $id" }
     Update-Resources
-    $metrics.clients[$id] = [ordered]@{ status='requested'; requested_at=[DateTime]::UtcNow.ToString('o'); pid=$null; startup_seconds=$null; opened_at=$null; peak_private_bytes=0; closed=$false }
+    $hideClient = Get-ResidentHideExcel
+    $metrics.clients[$id] = [ordered]@{ status='requested'; stage='staging'; requested_at=[DateTime]::UtcNow.ToString('o'); pid=$null; process_started_unix_ms=$null; process_alive=$null; heartbeat_count=0; last_heartbeat_at=$null; last_activity_at=$null; hide_excel=[bool]$hideClient; startup_seconds=$null; opened_at=$null; peak_private_bytes=0; closed=$false }
     Write-ResourceMetrics
     $guid = [Guid]::NewGuid().ToString()
     [xml]$manifest = [IO.File]::ReadAllText((Join-Path $webStage 'manifest.xml'), $utf8).Replace('http://localhost:3000', $baseUrl)
@@ -382,6 +445,7 @@ function Open-ResidentClient($spec) {
     try {
         Add-SessionEvent 'opening_wait' $id $null
         $metrics.clients[$id].status = 'waiting_open'
+        $metrics.clients[$id].stage = 'waiting_for_open_slot'
         $metrics.clients[$id].waiting_since = [DateTime]::UtcNow.ToString('o')
         Write-ResourceMetrics
         while (-not $locked) {
@@ -393,10 +457,17 @@ function Open-ResidentClient($spec) {
         Add-SessionEvent 'opening_started' $id $null
         $openClock = [Diagnostics.Stopwatch]::StartNew()
         $arguments = '/x ' + (Quote-Argument $book)
-        $process = $owned.Start($excelExecutable, $arguments, [bool]$HideExcel)
-        $clients[$id] = @{ process=$process; seen=$false; closed=$false; registration=$guid }
+        # Freeze visibility for this process. Study groups use their immutable
+        # admission setting; standalone sessions use the next-launch preference.
+        $hideClient = Get-ResidentHideExcel
+        $process = $owned.Start($excelExecutable, $arguments, [bool]$hideClient)
+        $clients[$id] = @{ process=$process; seen=$false; closed=$false; registration=$guid; hide_excel=[bool]$hideClient }
         $metrics.clients[$id].pid = $process.Id
+        $metrics.clients[$id].process_started_unix_ms = ([DateTimeOffset]$process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
+        $metrics.clients[$id].process_alive = $true
+        $metrics.clients[$id].hide_excel = [bool]$hideClient
         $metrics.clients[$id].status = 'opening'
+        $metrics.clients[$id].stage = 'waiting_for_addin'
         $metrics.clients[$id].opened_at = [DateTime]::UtcNow.ToString('o')
         Write-ResourceMetrics
         while ($true) {
@@ -411,6 +482,7 @@ function Open-ResidentClient($spec) {
         $metrics.clients[$id].startup_seconds = $openClock.Elapsed.TotalSeconds
         $metrics.clients[$id].seen_at = [DateTime]::UtcNow.ToString('o')
         $metrics.clients[$id].status = 'ready'
+        $metrics.clients[$id].stage = 'waiting_for_job'
         Add-SessionEvent 'config_seen' $id @{ startup_seconds=$openClock.Elapsed.TotalSeconds; pid=$process.Id }
         Write-ResourceMetrics
     } finally {
@@ -444,9 +516,10 @@ $liveControlPath = $null
 $liveGroupDirectory = $null
 $liveOwner = $null
 $liveOpenTimeoutSeconds = $StartupTimeoutSeconds
+$liveHideExcel = [bool]$HideExcel
 $systemReserveBytes = [UInt64]4GB
 $primaryClientIds = @()
-$metrics = [ordered]@{ status='starting'; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
+$metrics = [ordered]@{ status='starting'; attempt_id=$env:EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
 try {
     Add-Type -Path (Join-Path $PSScriptRoot 'ResidentProcesses.cs')
     if ($env:EXCEL_SHRINK_CONTROL_ROOM_DIR) {
@@ -544,6 +617,8 @@ try {
                 $clients[$id].closed = $true
                 $metrics.clients[$id].closed = $true
                 $metrics.clients[$id].status = 'closed'
+                $metrics.clients[$id].process_alive = $false
+                $metrics.clients[$id].stage = 'closed'
                 $guid = $clients[$id].registration
                 Restore-AddIn $guid $registrations[$guid]
                 $registrations.Remove($guid)
@@ -604,6 +679,8 @@ try {
                 if ($clients[$id].process.HasExited) {
                     $metrics.clients[$id].closed = $true
                     $metrics.clients[$id].status = 'closed'
+                    $metrics.clients[$id].process_alive = $false
+                    $metrics.clients[$id].stage = 'closed'
                 }
             } catch { } # Ownership cleanup has already been requested.
         }
