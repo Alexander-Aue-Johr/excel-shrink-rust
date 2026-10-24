@@ -46,6 +46,7 @@ def response(path, process):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run', action='store_true')
+    parser.add_argument('--groups', type=int, choices=(2, 4), default=2)
     args = parser.parse_args()
     if not args.run:
         parser.error('Pass --run to open two isolated Excel test sessions')
@@ -64,7 +65,7 @@ def main():
     logs = []
     results = {}
     try:
-        for name in ('a', 'b'):
+        for name in ('a', 'b', 'c', 'd')[:args.groups]:
             session = root / name
             publish(session / 'clients/one.json', dict(
                 client_id='one', source_path=str(source),
@@ -84,20 +85,22 @@ def main():
             results[name] = response(session / 'responses/one/0001.json', process)
             print(name, 'captured', flush=True)
 
-        session, process = sessions[0]
-        publish(session / 'finish.json', {'complete': True})
-        results['a_exit'] = process.wait(timeout=40)
-        metrics = read(session / 'metrics.json')
-        assert results['a_exit'] == 0 and metrics['status'] == 'complete', metrics
-        print('a cleaned up', flush=True)
-
-        session, process = sessions[1]
-        publish(session / 'commands/one/0002.json', dict(
-            id='0002', kind='capture', sheets=[sheet], tile_megapixels=32))
-        results['after_cleanup'] = response(session / 'responses/one/0002.json', process)
-        assert results['after_cleanup']['tiles'] == results['b']['tiles'], results
+        survivor, peer = sessions[-1]
+        survivor_name = ('a', 'b', 'c', 'd')[args.groups - 1]
+        for index, (session, process) in enumerate(sessions[:-1], 2):
+            publish(session / 'finish.json', {'complete': True})
+            exit_code = process.wait(timeout=40)
+            metrics = read(session / 'metrics.json')
+            assert exit_code == 0 and metrics['status'] == 'complete', metrics
+            print(session.name, 'cleaned up', flush=True)
+            command_id = f'{index:04d}'
+            publish(survivor / f'commands/one/{command_id}.json', dict(
+                id=command_id, kind='capture', sheets=[sheet], tile_megapixels=32))
+            capture = response(survivor / f'responses/one/{command_id}.json', peer)
+            results[f'after_cleanup_{session.name}'] = capture
+            assert capture['tiles'] == results[survivor_name]['tiles'], results
+            print(survivor_name, 'captured identical pixels after cleanup', flush=True)
         results['passed'] = True
-        print('b captured identical pixels after a cleanup', flush=True)
     except Exception as error:
         results['error'] = repr(error)
         print(repr(error), flush=True)

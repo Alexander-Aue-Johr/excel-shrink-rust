@@ -55,3 +55,16 @@ reconnection and failed capture events. Fresh heartbeats alone are not progress.
 Temporal proximity is a suspicion, not causal proof. Reproduce the same peer
 capture with and without the other group's cleanup; retain both attempt IDs.
 Failed or missing capture responses remain failures, never equality evidence.
+
+## Clean-desktop failure and profile isolation
+
+With the corpus stopped, the original shared-profile launcher reproduced
+`TASKPANE_RESTARTED` in B immediately after A disposed its job. This is stronger
+evidence than the earlier passing checks alongside a running corpus.
+
+Each resident launcher now sets `WEBVIEW2_USER_DATA_FOLDER` to its own staging
+`webview2-profile` before creating Excel. The same two-group test then passed;
+a four-group test also passed all three sequential cleanup/capture checks.
+Run that bounded check with `--run --groups 4`. Receipts preserve failures as
+well as successes. This isolation is deliberately per group, not per workbook
+variant: variants remain alive together until their group is finished.

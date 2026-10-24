@@ -657,6 +657,10 @@ try {
         }
         $metrics.memory_limit_mib = $budget
     }
+    # Separate browser profiles prevent Office add-ins in independent jobs from
+    # attaching to a browser process owned (and terminated) by another group.
+    $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $stage 'webview2-profile'
+    $metrics.webview2_user_data_folder = $env:WEBVIEW2_USER_DATA_FOLDER
     $owned = New-Object ResidentProcesses([int]$metrics.memory_limit_mib)
     Update-Resources
     $dotnet = Get-DotNet8
