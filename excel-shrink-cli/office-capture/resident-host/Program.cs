@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.FileProviders;
 
+if (args.Length == 2 && args[0] == "--control-room") { await ControlRoom.RunAsync(args[1]); return; }
 if (args.Length != 1) throw new ArgumentException("Expected the resident host settings JSON path.");
 var settings = JsonNode.Parse(File.ReadAllBytes(args[0]))!.AsObject();
 var session = Path.GetFullPath((string)settings["session"]!);

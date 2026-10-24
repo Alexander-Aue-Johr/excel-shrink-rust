@@ -34,7 +34,10 @@ foreach ($function in $ast.FindAll({ param($node) $node -is [Management.Automati
 }
 
 function Write-SessionJson([string]$name, $value) {
-    $target = Join-Path $session $name
+    Write-ResidentJsonFile (Join-Path $session $name) $value
+}
+
+function Write-ResidentJsonFile([string]$target, $value) {
     $pending = $target + '.' + [Guid]::NewGuid().ToString('N') + '.pending'
     [IO.File]::WriteAllText($pending, ($value | ConvertTo-Json -Depth 40), $utf8)
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
@@ -45,6 +48,40 @@ function Write-SessionJson([string]$name, $value) {
             if ($attempt -eq 19) { throw }
             Start-Sleep -Milliseconds 50
         }
+    }
+}
+
+function Get-ResidentOpenTimeoutSeconds {
+    if (-not $liveControlPath) { return $StartupTimeoutSeconds }
+    try {
+        $file = Get-Item -LiteralPath $liveControlPath -ErrorAction Stop
+        if ($file.Length -le 16384) {
+            $value = ([IO.File]::ReadAllText($file.FullName, $utf8) | ConvertFrom-Json).open_timeout_seconds
+            $seconds = 0
+            if (($value -is [int] -or $value -is [long]) -and [int]::TryParse([string]$value, [ref]$seconds) -and $seconds -gt 0) {
+                $script:liveOpenTimeoutSeconds = $seconds
+            }
+        }
+    } catch { } # A transient snapshot problem must not silently shorten a deadline.
+    return $liveOpenTimeoutSeconds
+}
+
+function Get-ResidentControlRoot([string]$path) {
+    if (-not [IO.Path]::IsPathRooted($path)) { throw 'Control room directory must be absolute.' }
+    $resolved = [IO.Path]::GetFullPath($path)
+    # Rust's canonical paths use the extended Windows prefix. PowerShell 5.1
+    # Join-Path interprets that prefix as an invalid provider drive.
+    if ($resolved.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) { return '\\' + $resolved.Substring(8) }
+    if ($resolved.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) { return $resolved.Substring(4) }
+    return $resolved
+}
+
+function Test-ResidentDeadline([string]$kind, [double]$elapsed) {
+    switch ($kind) {
+        'opening' { return $elapsed -gt (Get-ResidentOpenTimeoutSeconds) }
+        'opening_queue' { return (-not $liveControlPath) -and $elapsed -gt (4 * $StartupTimeoutSeconds + 120) }
+        'session' { return (-not $liveControlPath) -and $elapsed -gt $CaptureTimeoutSeconds }
+        default { throw 'Unknown resident deadline kind.' }
     }
 }
 
@@ -147,6 +184,12 @@ function Write-ResourceMetrics {
     }
     $metrics.other_group_opening_seconds = $otherOpeningSeconds
     Write-SessionJson 'metrics.json' $metrics
+    if ($liveGroupDirectory) {
+        # This separate snapshot has one writer. The Rust comparison owns
+        # state.json; the HTTP service combines both without write races.
+        $metrics.open_timeout_seconds = Get-ResidentOpenTimeoutSeconds
+        Write-ResidentJsonFile (Join-Path $liveGroupDirectory 'launcher.json') $metrics
+    }
     $metricsClock.Restart()
 }
 
@@ -197,7 +240,7 @@ function Wait-BatchRelease {
             }
         }
         $waitActiveSeconds = [Math]::Max(0.0, $wall - $waitPauseSeconds)
-        if ($waitActiveSeconds -ge [double]$batchLifetime.timeout_seconds) { $reason='timeout'; break }
+        if (-not $liveControlPath -and $waitActiveSeconds -ge [double]$batchLifetime.timeout_seconds) { $reason='timeout'; break }
         if ($metricsClock.ElapsedMilliseconds -ge 1000) {
             $metrics.batch_wait_seconds = $wait.Elapsed.TotalSeconds
             $metrics.batch_wait_active_seconds = $waitActiveSeconds
@@ -259,6 +302,7 @@ function Build-ResidentHost([string]$dotnet, [string]$stage) {
 
 function Update-Resources {
     Update-OtherGroupPause
+    if ($null -ne $liveOwner -and $liveOwner.HasExited) { throw 'Control room coordinator exited.' }
     if ($null -ne $batchLifetime -and ($null -eq $batchOwner -or $batchOwner.HasExited)) {
         throw 'Resident batch coordinator exited.'
     }
@@ -312,6 +356,8 @@ function Open-ResidentClient($spec) {
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Resident workbook missing: $id" }
     if (-not @($spec.sheets).Count) { throw "Resident client has no planned sheets: $id" }
     Update-Resources
+    $metrics.clients[$id] = [ordered]@{ status='requested'; requested_at=[DateTime]::UtcNow.ToString('o'); pid=$null; startup_seconds=$null; opened_at=$null; peak_private_bytes=0; closed=$false }
+    Write-ResourceMetrics
     $guid = [Guid]::NewGuid().ToString()
     [xml]$manifest = [IO.File]::ReadAllText((Join-Path $webStage 'manifest.xml'), $utf8).Replace('http://localhost:3000', $baseUrl)
     $manifest.SelectSingleNode("/*[local-name()='OfficeApp']/*[local-name()='Id']").InnerText = $guid
@@ -335,29 +381,36 @@ function Open-ResidentClient($spec) {
     $otherBefore = $otherOpeningSeconds
     try {
         Add-SessionEvent 'opening_wait' $id $null
+        $metrics.clients[$id].status = 'waiting_open'
+        $metrics.clients[$id].waiting_since = [DateTime]::UtcNow.ToString('o')
+        Write-ResourceMetrics
         while (-not $locked) {
             try { $locked = $openMutex.WaitOne(200) } catch [Threading.AbandonedMutexException] { $locked = $true }
             Update-Resources
             if (Test-Path -LiteralPath (Join-Path $session 'finish.json')) { throw 'Resident session finished while waiting to open a workbook.' }
-            if ($wait.Elapsed.TotalSeconds -gt 4 * $StartupTimeoutSeconds + 120) { throw 'Timed out waiting for another resident Excel launch.' }
+            if (Test-ResidentDeadline 'opening_queue' $wait.Elapsed.TotalSeconds) { throw 'Timed out waiting for another resident Excel launch.' }
         }
         Add-SessionEvent 'opening_started' $id $null
         $openClock = [Diagnostics.Stopwatch]::StartNew()
         $arguments = '/x ' + (Quote-Argument $book)
         $process = $owned.Start($excelExecutable, $arguments, [bool]$HideExcel)
         $clients[$id] = @{ process=$process; seen=$false; closed=$false; registration=$guid }
-        $metrics.clients[$id] = [ordered]@{ pid=$process.Id; startup_seconds=$null; opened_at=[DateTime]::UtcNow.ToString('o'); peak_private_bytes=0; closed=$false }
+        $metrics.clients[$id].pid = $process.Id
+        $metrics.clients[$id].status = 'opening'
+        $metrics.clients[$id].opened_at = [DateTime]::UtcNow.ToString('o')
+        Write-ResourceMetrics
         while ($true) {
             Update-Resources
             $health = Read-HostHealth
             if (@($health.seen) -contains $id) { break }
             if (Test-Path -LiteralPath (Join-Path $session 'finish.json')) { throw 'Resident session finished during workbook startup.' }
-            if ($openClock.Elapsed.TotalSeconds -gt $StartupTimeoutSeconds) { throw "Resident Office add-in startup timeout: $id" }
+            if (Test-ResidentDeadline 'opening' $openClock.Elapsed.TotalSeconds) { throw "Resident Office add-in startup timeout: $id" }
             Start-Sleep -Milliseconds 200
         }
         $clients[$id].seen = $true
         $metrics.clients[$id].startup_seconds = $openClock.Elapsed.TotalSeconds
         $metrics.clients[$id].seen_at = [DateTime]::UtcNow.ToString('o')
+        $metrics.clients[$id].status = 'ready'
         Add-SessionEvent 'config_seen' $id @{ startup_seconds=$openClock.Elapsed.TotalSeconds; pid=$process.Id }
         Write-ResourceMetrics
     } finally {
@@ -387,11 +440,28 @@ $batchOwner = $null
 $batchReleased = $false
 $batchReleaseReason = $null
 $finishWait = $null
+$liveControlPath = $null
+$liveGroupDirectory = $null
+$liveOwner = $null
+$liveOpenTimeoutSeconds = $StartupTimeoutSeconds
 $systemReserveBytes = [UInt64]4GB
 $primaryClientIds = @()
 $metrics = [ordered]@{ status='starting'; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
 try {
     Add-Type -Path (Join-Path $PSScriptRoot 'ResidentProcesses.cs')
+    if ($env:EXCEL_SHRINK_CONTROL_ROOM_DIR) {
+        $liveRoot = Get-ResidentControlRoot $env:EXCEL_SHRINK_CONTROL_ROOM_DIR
+        $liveControlPath = Join-Path $liveRoot 'control.json'
+        if ($env:EXCEL_SHRINK_CONTROL_ROOM_GROUP_ID) {
+            if ($env:EXCEL_SHRINK_CONTROL_ROOM_GROUP_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { throw 'Invalid control room group id.' }
+            $liveGroupDirectory = Join-Path (Join-Path $liveRoot 'groups') $env:EXCEL_SHRINK_CONTROL_ROOM_GROUP_ID
+            [void][IO.Directory]::CreateDirectory($liveGroupDirectory)
+        }
+        if ($env:EXCEL_SHRINK_CONTROL_ROOM_OWNER_PID) {
+            $liveOwner = [Diagnostics.Process]::GetProcessById([int]$env:EXCEL_SHRINK_CONTROL_ROOM_OWNER_PID)
+            $null = $liveOwner.Handle
+        }
+    }
     $primaryClientIds = @(Get-PrimaryClientIds (Join-Path $session 'clients'))
     $metrics.expected_primary_clients = $primaryClientIds.Count
     Add-Type -Path (Join-Path $PSScriptRoot 'CaptureWorkbook.cs') -ReferencedAssemblies @('System.IO.Compression', 'System.IO.Compression.FileSystem', 'System.Xml')
@@ -473,20 +543,21 @@ try {
                 [ResidentProcesses]::Stop($clients[$id].process)
                 $clients[$id].closed = $true
                 $metrics.clients[$id].closed = $true
+                $metrics.clients[$id].status = 'closed'
                 $guid = $clients[$id].registration
                 Restore-AddIn $guid $registrations[$guid]
                 $registrations.Remove($guid)
                 Add-SessionEvent 'client_closed' $id $null
             }
         }
-        # Excel opening can pause other Office.js runtimes. Only an absolute
-        # session budget (excluding serialized opens), liveness and RAM apply.
+        # The live coordinator owns per-command timeouts and user pauses. A
+        # fixed session budget would incorrectly expire a deliberately paused run.
         if ($null -ne $batchLifetime -and (Test-Path -LiteralPath ([string]$batchLifetime.ready_path))) {
             $reason = Wait-BatchRelease
             if ($reason -ne 'released') { throw "Resident batch cleanup released early: $reason" }
             if ($null -eq $finishWait) { $finishWait = [Diagnostics.Stopwatch]::StartNew() }
             if ($finishWait.Elapsed.TotalSeconds -gt 60) { throw 'Resident worker did not finish after its batch was released.' }
-        } elseif ($clock.Elapsed.TotalSeconds - $openingSeconds - $otherOpeningSeconds -gt $CaptureTimeoutSeconds) {
+        } elseif (Test-ResidentDeadline 'session' ($clock.Elapsed.TotalSeconds - $openingSeconds - $otherOpeningSeconds)) {
             throw 'Resident capture session exceeded its total capture timeout.'
         }
         Start-Sleep -Milliseconds 200
@@ -523,12 +594,26 @@ try {
     if ($null -ne $owned) {
         try { $metrics.peak_job_bytes = $owned.PeakBytes } catch {}
         $owned.Dispose()
+        $metrics.primary_clients_ready = $false
+        $metrics.current_job_bytes = $null
+        $metrics.current_job_private_working_set_bytes = $null
+        foreach ($id in @($clients.Keys)) {
+            $metrics.clients[$id].status = 'closing'
+            try {
+                $clients[$id].process.Refresh()
+                if ($clients[$id].process.HasExited) {
+                    $metrics.clients[$id].closed = $true
+                    $metrics.clients[$id].status = 'closed'
+                }
+            } catch { } # Ownership cleanup has already been requested.
+        }
     }
     foreach ($guid in @($registrations.Keys)) {
         try { Restore-AddIn $guid $registrations[$guid] } catch { $metrics.registry_cleanup_warning = $_.Exception.Message }
     }
     if ($null -ne $openMutex) { $openMutex.Dispose() }
     if ($null -ne $batchOwner) { $batchOwner.Dispose() }
+    if ($null -ne $liveOwner) { $liveOwner.Dispose() }
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         try { Remove-ArchiveStage $stage; break }
         catch { if ($attempt -eq 19) { $metrics.cleanup_warning = $_.Exception.Message } else { Start-Sleep -Milliseconds 250 } }
@@ -537,6 +622,7 @@ try {
     $metrics.opening_seconds = $openingSeconds
     $metrics.other_group_opening_seconds = $otherOpeningSeconds
     Write-SessionJson 'metrics.json' $metrics
+    if ($liveGroupDirectory) { Write-ResidentJsonFile (Join-Path $liveGroupDirectory 'launcher.json') $metrics }
     Write-SessionJson 'launcher-result.json' @{ status=$metrics.status; error=$metrics.error; elapsed_seconds=$metrics.elapsed_seconds; peak_job_bytes=$metrics.peak_job_bytes }
 }
 if ($metrics.status -ne 'complete') { exit 1 }
