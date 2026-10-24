@@ -843,6 +843,7 @@ body.presenting .room {
 .process button { align-self:start; margin-top:5px; padding:4px 7px; font-size:9px; }
 .process.blocked { border-color:#a57165; background:#30282a; }
 .process .process-error { color:#ffc2ac; overflow-wrap:anywhere; }
+.process .process-measurement { color:#bdd4df; font-size:10px; line-height:1.45; }
 .heartbeat { position:absolute; right:12px; top:6px; font-size:23px; color:#6ff1b8; --beat-glow:0; filter:drop-shadow(0 0 calc(12px * var(--beat-glow)) #5fffac); transform-origin:center; }
 body.presenting .experiment-controls,body.presenting .process-section { display:none; }
 @media(max-width:1250px) { .experiment-grid { grid-template-columns:1fr 1fr; } .experiment-grid>label:nth-child(2) { border-right:0; } .experiment-grid>label:nth-child(-n+2) { border-bottom:1px solid var(--line); } .room-tools { max-width:58%; } .heading-actions { flex-direction:column; } }

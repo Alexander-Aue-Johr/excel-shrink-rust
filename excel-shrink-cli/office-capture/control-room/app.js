@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription } from './model.js';
+import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription, processMeasurements } from './model.js';
 import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey } from './sheet-viewport.js';
 import { initWorkerMonitor } from './worker-monitor.js';
 
@@ -859,10 +859,15 @@ function renderProcesses() {
       const element = document.createElement('div'); element.className = 'process';
       const heart = document.createElement('span'); heart.className = 'heartbeat'; heart.textContent = '♥'; heart.setAttribute('aria-hidden', 'true');
       const name = document.createElement('strong'), process = document.createElement('span'), status = document.createElement('span'), beat = document.createElement('small'), error = document.createElement('small'), button = document.createElement('button');
-      process.className = 'process-id'; status.className = 'process-stage'; error.className = 'process-error'; button.textContent = 'Mit Gruppe neu laden';
-      button.addEventListener('click', () => restartGroup(id));
-      element.append(heart, name, process, status, beat, error, button); $('processes').append(element);
-      card = { element, heart, name, process, status, beat, error, button, count: null }; processCards.set(id, card);
+      const size = document.createElement('small'), opening = document.createElement('small'), metrics = document.createElement('small');
+      size.className = opening.className = metrics.className = 'process-measurement';
+      process.className = 'process-id'; status.className = 'process-stage'; error.className = 'process-error'; button.textContent = 'Excel Hard Reset';
+      button.title = 'Beendet diese Excel-Instanz und öffnet eine frische Kopie mit der aktuellen Sichtbarkeit. Nach begonnenen Vergleichsaufträgen wird die Gruppe neu verglichen.';
+      button.addEventListener('click', () => restartGroup(id, true));
+      element.append(heart, name, process, status, beat, size, opening, metrics, error, button); $('processes').append(element);
+      card = { element, heart, name, process, status, beat, size, opening, metrics, error, button, count: null }; processCards.set(id, card);
+      opening.title = 'Separat gemessene Dateiöffnungszeit aus dem Regressionstest. Der Add-in-Start steht im Prozessstatus.';
+      metrics.title = 'RAM-Messwert beim Dateiöffnen und Laufzeit der Bereinigung aus dem Regressionstest.';
     }
     const count = Number(client.heartbeat_count || 0), age = heartbeatAge(client);
     const alive = client.process_alive;
@@ -879,7 +884,12 @@ function renderProcesses() {
     card.status.textContent = [stageLabels[client.stage] || normalizeStatus(client.status), client.active_command].filter(Boolean).join(' · ');
     card.beat.textContent = count ? `${count.toLocaleString('de-DE')} Heartbeats · letzter vor ${age == null ? '?' : Math.floor(age / 1000)} s` : 'Noch kein Add-in-Heartbeat';
     card.error.textContent = client.error || ''; card.error.hidden = !client.error;
-    card.button.disabled = data?.restart_eligible === false || state.queue?.running === false;
+    const measurements = processMeasurements(data, id);
+    card.size.textContent = measurements.size; card.opening.textContent = measurements.opening;
+    card.metrics.textContent = measurements.extra; card.metrics.hidden = !measurements.extra;
+    const resetting = data?.client_reset_commands?.some(command => command.client_id === id && ['pending','running'].includes(command.status));
+    card.button.disabled = resetting || data?.restart_eligible === false || state.queue?.running === false;
+    card.button.textContent = resetting ? 'Hard Reset läuft…' : 'Excel Hard Reset';
     card.element.title = 'Ein ausbleibender Heartbeat kann bedeuten, dass Excel gerade öffnet oder beschäftigt ist. Der Prozessstatus wird separat geprüft.';
   }
 }
@@ -889,14 +899,20 @@ function renderThroughput() {
   $('captureTotals').textContent = metric ? `${Number(metric.uploaded_images || 0).toLocaleString('de-DE')} Uploads · ${(Number(metric.captured_pixels || 0) / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MP · ${(Number(metric.png_bytes || 0) / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MiB` : 'Warte auf gemessene Captures';
   $('effectiveCapture').textContent = settings ? `Diese Gruppe: ${settings.tile_megapixels} MP · Batch ${settings.effective_batch_tiles ?? settings.batch_tiles}${settings.effective_batch_tiles != null && settings.effective_batch_tiles !== settings.batch_tiles ? ` / Ziel ${settings.batch_tiles}` : ''}` : 'Einstellungen werden beim Gruppenstart übernommen.';
 }
-async function restartGroup(clientId = null) {
+async function restartGroup(clientId = null, hardReset = false) {
   if (!state.groupId) return;
   const groupId = state.groupId;
+  const expectedAttempt = data?.attempt_id;
   try {
+    const controlDeadline = Date.now() + 10000;
+    while (hardReset && controlBusy && Date.now() < controlDeadline) await new Promise(resolve => setTimeout(resolve, 50));
+    if (hardReset && controlBusy) throw new Error('Die Sichtbarkeitseinstellung wurde noch nicht bestätigt.');
     const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/restart`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...(clientId ? { client_id: clientId } : {}), reason: clientId ? `Add-in ${clientId} über Observatory neu laden` : 'Gruppe über Observatory neu einreihen' }) });
+      body: JSON.stringify({ ...(clientId ? { client_id: clientId } : {}), ...(hardReset ? {hard_reset:true} : {}), ...(expectedAttempt ? {expected_attempt_id:expectedAttempt} : {}), reason: clientId ? `Excel ${clientId} über Observatory neu laden` : 'Gruppe über Observatory neu einreihen' }) });
     const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Neustart abgelehnt (${response.status})`);
-    setNotice('Neustart angefragt. Die gesamte Gruppe wird nach dem sicheren Schließen als Nächstes eingereiht.');
+    setNotice(result.restart_scope === 'client'
+      ? 'Hard Reset angefragt: Excel wird mit der aktuellen Sichtbarkeit neu geöffnet. Falls Vergleichsaufträge bereits liefen, wird die Gruppe neu verglichen.'
+      : 'Neustart angefragt. Die gesamte Gruppe wird mit den aktuellen Einstellungen als Nächstes eingereiht.');
     pushEvent(`Neustart angefragt${clientId ? ` für ${profileLabel(clientId)} und seine Vergleichsgruppe` : ' für die Gruppe'}.`);
   } catch (error) { setNotice(error.message, true); }
 }

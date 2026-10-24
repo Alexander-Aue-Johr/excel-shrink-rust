@@ -6,6 +6,24 @@ export const PRIMARY_PROFILES = [
   { id: 'too-aggressive-cleaning', label: 'Too aggressive' },
 ];
 
+export function processMeasurements(group, id) {
+  const measurements = group?.measurements || {};
+  const original = measurements.original || {};
+  const measured = measurements[id] || measurements[Object.keys(group?.aliases || {}).find(key => group.aliases[key] === id)] || {};
+  const known = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  const number = (value, digits = 2) => value.toLocaleString('de-DE', {maximumFractionDigits: digits});
+  const delta = (value, baseline, unit) => {
+    const change = value - baseline;
+    return `${change > 0 ? '+' : change < 0 ? '−' : '±'}${number(Math.abs(change))} ${unit}${baseline > 0 ? ` · ${change > 0 ? '+' : change < 0 ? '−' : '±'}${number(Math.abs(change / baseline * 100), 1)} %` : ''} zum Original`;
+  };
+  const size = known(measured.bytes) ? `Datei: ${number(measured.bytes / 1048576)} MiB${id !== 'original' && known(original.bytes) ? ` (${delta(measured.bytes / 1048576, original.bytes / 1048576, 'MiB')})` : ''}` : 'Dateigröße noch nicht bekannt';
+  const opening = known(measured.open_seconds) ? `Öffnen: ${number(measured.open_seconds)} s${id !== 'original' && known(original.open_seconds) ? ` (${delta(measured.open_seconds, original.open_seconds, 's')})` : ''}` : 'Öffnungszeit noch nicht gemessen';
+  const extra = [];
+  if (known(measured.shrink_seconds)) extra.push(`Shrink: ${number(measured.shrink_seconds)} s`);
+  if (known(measured.memory_bytes)) extra.push(`RAM beim Öffnen: ${number(measured.memory_bytes / 1048576, 1)} MiB${id !== 'original' && known(original.memory_bytes) ? ` (${delta(measured.memory_bytes / 1048576, original.memory_bytes / 1048576, 'MiB')})` : ''}`);
+  return {size, opening, extra:extra.join(' · ')};
+}
+
 function versioned(url, version) {
   if (!url || version == null) return url;
   return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`;

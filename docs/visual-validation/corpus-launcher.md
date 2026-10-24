@@ -144,6 +144,26 @@ subsequent groups during the run.
 
 ## Reports, transfer and diagnostics
 
+Each Excel process card includes **Excel Hard Reset** and the available file
+size, measured opening time, opening memory, and Shrink duration. Profile size,
+opening time, and memory show signed differences against the original. Missing
+measurements remain explicitly unknown; opening times come from the separate
+regression measurement, rather than the add-in startup wait.
+
+A hard reset stops only that owned Excel process and reloads a fresh source copy
+using the current hidden/visible setting. Before any comparison command has been
+dispatched, its peers remain open. Once commands have started, the process is
+stopped and the group is requeued to discard the previous attempt's evidence.
+Closed groups and older launchers also use the group retry. Completed files and
+prepared Shrink outputs remain reusable. Requests are bound to the displayed
+attempt and the launcher's exact process identity.
+
+The isolated native check supports this path:
+
+```powershell
+python excel-shrink-cli/office-capture/tests/tall-sheet-smoke.py --run --hard-reset-original --port 8803
+```
+
 The runner still writes its usual report and records under the selected output
 directory. With the export checkbox enabled, it writes a transfer ZIP under
 `<output>/exports/` after finishing the selected work. The filename includes
