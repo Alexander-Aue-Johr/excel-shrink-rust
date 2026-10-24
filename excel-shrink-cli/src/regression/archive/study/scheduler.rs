@@ -30,7 +30,9 @@ pub(super) fn compare(
     log_level: LogLevel,
 ) -> Result<()> {
     if run["options"]["control_room"] == true {
-        return manual::compare(source, jobs, output, records, corpora, limits, run, log_level);
+        return manual::compare(
+            source, jobs, output, records, corpora, limits, run, log_level, None,
+        );
     }
     if run["options"]["adaptive_concurrency"] == true {
         return live::compare(
@@ -123,6 +125,31 @@ pub(super) fn compare(
         )?;
     }
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn finish_preparing_workbook(
+    source: &Source,
+    job: Comparison,
+    output: &Path,
+    records: &mut Vec<Value>,
+    corpora: &[Value],
+    limits: &ArchiveArgs,
+    run: &Value,
+    log_level: LogLevel,
+) -> Result<()> {
+    let id = job.id.clone();
+    manual::compare(
+        source,
+        vec![job],
+        output,
+        records,
+        corpora,
+        limits,
+        run,
+        log_level,
+        Some(id),
+    )
 }
 
 enum Event {

@@ -29,9 +29,7 @@ impl Controls {
     pub fn read(root: &Path) -> Result<Self> {
         let value: Self = serde_json::from_slice(&fs::read(root.join("control.json"))?)?;
         ensure!(
-            value.target_groups > 0
-                && value.open_timeout_seconds > 0
-                && value.job_timeout_seconds > 0,
+            value.open_timeout_seconds > 0 && value.job_timeout_seconds > 0,
             "control room limits must be positive"
         );
         ensure!(
@@ -58,6 +56,76 @@ pub(super) struct Room {
     _server: Option<Child>,
 }
 
+// Serial preparation and supplemental diagnosis are work too. Publish their
+// actual coordinator, with a fresh attempt identity so stale Excel clients are
+// never mistaken for workers belonging to this invocation.
+pub(super) fn begin_serial(
+    output: &Path,
+    source: &Source,
+    id: &str,
+    record: &mut Value,
+    mode: JobMode,
+    run: &Value,
+) -> Result<()> {
+    let root = output.join("control-room");
+    let directory = root.join("groups").join(group_id(id));
+    fs::create_dir_all(directory.join("history"))?;
+    let previous = record["control_room_attempt"]["id"]
+        .as_str()
+        .unwrap_or("legacy");
+    let archive = directory.join("history").join(format!(
+        "record-{}.json",
+        &artifact_cache::sha256(previous.as_bytes())[..20]
+    ));
+    if !archive.exists() {
+        write(&archive, record)?;
+    }
+    let attempt = provenance::new_uuid()?;
+    record["control_room_attempt"] = json!({"id":attempt,"run_id":run["run_id"],
+        "started_unix_ms":provenance::now_ms(),"settings":Controls::read(&root)?});
+    write_record(&record_path(output, id), record)?;
+    let mut queue = read_json(&root.join("queue.json")).context("missing control room queue")?;
+    let groups = queue["groups"]
+        .as_array_mut()
+        .context("missing control room groups")?;
+    let mut group = json!({"id":group_id(id),"workbook":record["name"],"corpus":source.name,
+        "attempt_id":attempt,"run_id":run["run_id"],"active":true,"restart_eligible":false,
+        "status":if mode==JobMode::Prepare {"preparing"} else {"diagnosing"},"sequence":groups.len()+1});
+    if let Some(old) = groups.iter_mut().find(|g| g["id"] == group["id"]) {
+        group["sequence"] = old["sequence"].clone();
+        *old = group;
+    } else {
+        groups.push(group);
+    }
+    queue["phase"] = json!(if mode == JobMode::Prepare {
+        "preparing"
+    } else {
+        "comparing"
+    });
+    queue["open_groups"] = json!(1);
+    queue["working_groups"] = json!(1);
+    queue["cleanup_groups"] = json!(0);
+    queue["updated_unix_ms"] = json!(provenance::now_ms());
+    write(&root.join("queue.json"), &queue)
+}
+
+pub(super) fn finish_serial(output: &Path, id: &str, record: &Value) -> Result<()> {
+    let path = output.join("control-room/queue.json");
+    let mut queue = read_json(&path).context("missing control room queue")?;
+    if let Some(group) = queue["groups"]
+        .as_array_mut()
+        .and_then(|groups| groups.iter_mut().find(|g| g["id"] == group_id(id)))
+    {
+        group["active"] = json!(false);
+        group["status"] = record["status"].clone();
+    }
+    queue["open_groups"] = json!(0);
+    queue["working_groups"] = json!(0);
+    queue["cleanup_groups"] = json!(0);
+    queue["updated_unix_ms"] = json!(provenance::now_ms());
+    write(&path, &queue)
+}
+
 impl Room {
     pub fn start(output: &Path, args: &StudyArgs, run: &Value) -> Result<Self> {
         let root = output.join("control-room");
@@ -80,8 +148,9 @@ impl Room {
                 .as_ref()
                 .map(|old| old.capture_batch_tiles)
                 .unwrap_or(1),
-            hide_excel: args.hide_excel
-                || previous_controls.as_ref().is_some_and(|old| old.hide_excel),
+            // The launcher supplies the saved visibility choice explicitly.
+            // A previous hidden run must not override today's unchecked box.
+            hide_excel: args.hide_excel,
         };
         let source = repo_root().join("excel-shrink-cli/office-capture/resident-host");
         let version = host_version(&source)?;
@@ -191,6 +260,10 @@ impl Room {
         queue["runner_started_unix_ms"] = json!(process_started_unix_ms());
         queue["running"] = json!(true);
         queue["phase"] = json!("preparing");
+        queue["open_groups"] = json!(0);
+        queue["working_groups"] = json!(0);
+        queue["cleanup_groups"] = json!(0);
+        queue["waiting_groups"] = json!(0);
         queue["updated_unix_ms"] = json!(provenance::now_ms());
         // Historical entries remain browsable, but a new invocation owns no old processes.
         if let Some(groups) = queue["groups"].as_array_mut() {
@@ -221,6 +294,8 @@ impl Room {
         queue["running"] = json!(false);
         queue["phase"] = json!(phase);
         queue["open_groups"] = json!(0);
+        queue["working_groups"] = json!(0);
+        queue["cleanup_groups"] = json!(0);
         if let Some(groups) = queue["groups"].as_array_mut() {
             for group in groups.iter_mut().filter(|group| group["active"] == true) {
                 group["active"] = json!(false);
@@ -269,6 +344,7 @@ fn reject_unfinished_commands(root: &Path, run_id: &Value) -> Result<()> {
 impl Drop for Room {
     fn drop(&mut self) {
         if !self.finished {
+            if let Some(output)=self.root.parent() {progress::stop(output);}
             let _ = self.finish_with("stopped");
         }
     }
@@ -290,31 +366,7 @@ fn same_path(value: &Value, expected: &Path) -> bool {
 
 #[cfg(windows)]
 fn process_started_unix_ms() -> Option<u64> {
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn GetCurrentProcess() -> *mut std::ffi::c_void;
-        fn GetProcessTimes(
-            process: *mut std::ffi::c_void,
-            created: *mut u64,
-            exited: *mut u64,
-            kernel: *mut u64,
-            user: *mut u64,
-        ) -> i32;
-    }
-    let (mut created, mut exited, mut kernel, mut user) = (0, 0, 0, 0);
-    let ok = unsafe {
-        GetProcessTimes(
-            GetCurrentProcess(),
-            &mut created,
-            &mut exited,
-            &mut kernel,
-            &mut user,
-        )
-    };
-    (ok != 0)
-        .then_some(created)?
-        .checked_sub(116_444_736_000_000_000)
-        .map(|ticks| ticks / 10_000)
+    work_state::process_started_unix_ms()
 }
 
 #[cfg(not(windows))]
@@ -380,9 +432,76 @@ pub(super) fn group_id(identity: &str) -> String {
     artifact_cache::sha256(identity.as_bytes())[..20].to_owned()
 }
 
+// Called only before admitting a new workbook, never inside its preparation,
+// comparison, whitespace controls or cleanup. Zero is a reversible idle state.
+pub(super) fn wait_for_admission(output: &Path, phase: &str) -> Result<()> {
+    let root = output.join("control-room");
+    let mut waiting = false;
+    loop {
+        if Controls::read(&root).is_ok_and(|controls| controls.target_groups > 0) {
+            if waiting {
+                if let Some(mut queue) = read_json(&root.join("queue.json")) {
+                    queue["phase"] = json!(phase);
+                    write(&root.join("queue.json"), &queue)?;
+                }
+            }
+            return Ok(());
+        }
+        if let Some(mut queue) = read_json(&root.join("queue.json")) {
+            queue["phase"] = json!("paused");
+            queue["updated_unix_ms"] = json!(provenance::now_ms());
+            write(&root.join("queue.json"), &queue)?;
+        }
+        progress::tick(output);
+        waiting = true;
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn zero_target_waits_without_starting_work_and_resumes_in_place() -> Result<()> {
+        let output = artifact_cache::unique_path(&std::env::temp_dir(), "zero-target")?;
+        let root = output.join("control-room");
+        fs::create_dir_all(&root)?;
+        let mut controls = json!({"target_groups":0,"paused":false,"open_timeout_seconds":60,"job_timeout_seconds":60,"equal_preview_width":512});
+        write(&root.join("control.json"), &controls)?;
+        write(
+            &root.join("queue.json"),
+            &json!({"groups":[],"phase":"preparing","run_id":"same-run"}),
+        )?;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| -> Result<()> {
+            let output = &output;
+            scope.spawn(move || {
+                sender
+                    .send(
+                        wait_for_admission(output, "preparing").map_err(|error| error.to_string()),
+                    )
+                    .unwrap();
+            });
+            // The gate must stay closed long enough for at least one UI refresh.
+            let waiting = receiver.recv_timeout(Duration::from_millis(650));
+            let snapshot = read_json(&root.join("queue.json")).unwrap();
+            controls["target_groups"] = json!(1);
+            write(&root.join("control.json"), &controls)?;
+            let resumed = receiver.recv_timeout(Duration::from_secs(3));
+            assert!(matches!(
+                waiting,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            ));
+            assert_eq!(snapshot["phase"], "paused");
+            assert!(resumed.unwrap().is_ok());
+            let snapshot = read_json(&root.join("queue.json")).unwrap();
+            assert_eq!(snapshot["phase"], "preparing");
+            assert_eq!(snapshot["run_id"], "same-run");
+            Ok(())
+        })?;
+        fs::remove_dir_all(output)?;
+        Ok(())
+    }
     #[test]
     fn shutdown_resolves_late_requests_without_rewriting_completed_commands() -> Result<()> {
         let root = artifact_cache::unique_path(&std::env::temp_dir(), "late-control-command")?;
@@ -458,6 +577,9 @@ mod tests {
             );
         }
         value["target_groups"] = json!(0);
+        write(&root.join("control.json"), &value)?;
+        assert_eq!(Controls::read(&root)?.target_groups, 0);
+        value["job_timeout_seconds"] = json!(0);
         write(&root.join("control.json"), &value)?;
         assert!(Controls::read(&root).is_err());
         fs::remove_dir_all(root)?;

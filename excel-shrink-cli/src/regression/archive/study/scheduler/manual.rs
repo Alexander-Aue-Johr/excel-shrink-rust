@@ -62,6 +62,14 @@ fn refresh_groups(queue: &mut Value, active: &[Active], records: &[Value], pendi
         }
     }
     queue["open_groups"] = json!(active.iter().filter(|a| !a.finished).count());
+    queue["working_groups"] = json!(active
+        .iter()
+        .filter(|a| !a.finished && !a.participant.ready())
+        .count());
+    queue["cleanup_groups"] = json!(active
+        .iter()
+        .filter(|a| !a.finished && a.participant.ready())
+        .count());
     queue["waiting_groups"] = json!(pending);
     queue["updated_unix_ms"] = json!(provenance::now_ms());
 }
@@ -74,6 +82,33 @@ fn slots_to_start(target: usize, open: usize, pending: usize, draining: bool) ->
     }
 }
 
+fn update_phase(queue: &mut Value, target: usize) {
+    queue["phase"] = json!(if target > 0 {
+        "comparing"
+    } else if queue["open_groups"].as_u64().unwrap_or(0) > 0 {
+        "draining"
+    } else {
+        "paused"
+    });
+}
+
+fn begin_classic_retry(queue: &mut Value, id: &str, target: usize) {
+    let group = queue["groups"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|group| group["id"] == id)
+        .unwrap();
+    group["status"] = json!("retrying_classic");
+    group["capture_mode"] = json!("classic");
+    group["active"] = json!(true);
+    queue["open_groups"] = json!(1);
+    queue["working_groups"] = json!(1);
+    queue["cleanup_groups"] = json!(0);
+    update_phase(queue, target);
+    queue["updated_unix_ms"] = json!(provenance::now_ms());
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn compare(
     source: &Source,
@@ -84,6 +119,7 @@ pub(super) fn compare(
     limits: &ArchiveArgs,
     run: &Value,
     log_level: LogLevel,
+    mut initial_admission: Option<String>,
 ) -> Result<()> {
     let room = output.join("control-room");
     let producer = run["executable_sha256"]
@@ -145,6 +181,9 @@ pub(super) fn compare(
         let Some(front) = pending.front().cloned() else {
             break;
         };
+        if initial_admission.as_deref() != Some(front.id.as_str()) {
+            control_room::wait_for_admission(output, "comparing")?;
+        }
         if !reusable_preparation(
             &records[front.position],
             &bundle_path(output, &front.id),
@@ -210,6 +249,9 @@ pub(super) fn compare(
                 control_room::write(&room.join("queue.json"), &queue)?;
                 continue;
             }
+            // Preparation was already admitted. A subsequent target of zero
+            // drains this same workbook through its comparison before pausing.
+            initial_admission = Some(front.id.clone());
         }
         wave += 1;
         let mut cleanup = batch_cleanup::Batch::growing(output, limits.workbook_timeout_seconds)?;
@@ -224,6 +266,9 @@ pub(super) fn compare(
                 // A transient sharing violation must not reset a user-selected target.
                 if let Ok(updated) = Controls::read(&room) {
                     controls = updated;
+                }
+                if controls.target_groups == 0 && !active.is_empty() {
+                    cleanup.close_admission();
                 }
                 if last_snapshot.elapsed() >= Duration::from_secs(1) {
                     if let Err(error) = restarts::poll(
@@ -249,13 +294,22 @@ pub(super) fn compare(
                     cleanup.close_admission();
                 }
                 let count = slots_to_start(
-                    controls.target_groups,
+                    if active.is_empty()
+                        && pending.front().is_some_and(|job| {
+                            initial_admission.as_deref() == Some(job.id.as_str())
+                        })
+                    {
+                        1
+                    } else {
+                        controls.target_groups
+                    },
                     active.len(),
                     pending.len(),
                     !cleanup.admission_open(),
                 );
                 for _ in 0..count {
                     let job = pending.pop_front().unwrap();
+                    initial_admission = None;
                     if !reusable_preparation(
                         &records[job.position],
                         &bundle_path(output, &job.id),
@@ -436,6 +490,8 @@ pub(super) fn compare(
                         cancel_active(&active);
                     }
                     refresh_groups(&mut queue, &active, records, pending.len());
+                    update_phase(&mut queue, controls.target_groups);
+                    progress::tick(output);
                     if let Err(error) = control_room::write(&room.join("queue.json"), &queue) {
                         eprintln!("[study] Could not refresh live control state: {error:#}");
                     }
@@ -508,16 +564,10 @@ pub(super) fn compare(
                 continue;
             }
             let id = control_room::group_id(&job.job.id);
-            let group = queue["groups"]
-                .as_array_mut()
-                .unwrap()
-                .iter_mut()
-                .find(|g| g["id"] == id)
-                .unwrap();
-            group["status"] = json!("retrying_classic");
-            group["capture_mode"] = json!("classic");
-            group["active"] = json!(true);
-            queue["open_groups"] = json!(1);
+            if let Ok(updated) = Controls::read(&room) {
+                controls = updated;
+            }
+            begin_classic_retry(&mut queue, &id, controls.target_groups);
             control_room::write(&room.join("queue.json"), &queue)?;
             let result = fallback::after_batch(
                 source,
@@ -530,6 +580,10 @@ pub(super) fn compare(
                 log_level,
             );
             refresh_groups(&mut queue, &active, records, pending.len());
+            if let Ok(updated) = Controls::read(&room) {
+                controls = updated;
+            }
+            update_phase(&mut queue, controls.target_groups);
             if let Err(error) = &result {
                 let group = queue["groups"]
                     .as_array_mut()
@@ -554,12 +608,34 @@ pub(super) fn compare(
 mod tests {
     use super::*;
     #[test]
+    fn classic_retry_is_work_even_after_the_resident_wave_drained() {
+        let mut queue = json!({"phase":"paused", "open_groups":0,
+            "working_groups":0,"cleanup_groups":20,"waiting_groups":7,
+            "groups":[{"id":"retry","active":false,"status":"skipped"}]});
+        begin_classic_retry(&mut queue, "retry", 0);
+        assert_eq!(queue["phase"], "draining");
+        assert_eq!(queue["open_groups"], 1);
+        assert_eq!(queue["working_groups"], 1);
+        assert_eq!(queue["cleanup_groups"], 0);
+        assert_eq!(queue["waiting_groups"], 7);
+        assert_eq!(queue["groups"][0]["status"], "retrying_classic");
+        assert_eq!(queue["groups"][0]["active"], true);
+        queue["open_groups"] = json!(0);
+        update_phase(&mut queue, 0);
+        assert_eq!(queue["phase"], "paused");
+        begin_classic_retry(&mut queue, "retry", 2);
+        assert_eq!(queue["phase"], "comparing");
+    }
+
+    #[test]
     fn target_changes_act_without_waiting_for_ready_or_estimating_memory() {
         assert_eq!(slots_to_start(24, 1, 100, false), 23);
         assert_eq!(slots_to_start(2, 8, 100, false), 0);
         assert_eq!(slots_to_start(128, 8, 1000, false), 120);
         assert_eq!(slots_to_start(8, 2, 3, false), 3);
         assert_eq!(slots_to_start(24, 2, 100, true), 0);
+        assert_eq!(slots_to_start(0, 0, 100, false), 0);
+        assert_eq!(slots_to_start(0, 20, 100, false), 0);
     }
 
     #[test]

@@ -357,15 +357,38 @@ fn comparison_workers_default_by_capture_mode_and_allow_explicit_overrides() -> 
     for count in [1, 3, 24, 256, usize::MAX] {
         let value = count.to_string();
         for args in [
-            ["study", "--resident-capture", "--comparison-workers", &value],
-            ["study", "--comparison-workers", &value, "--resident-capture"],
+            [
+                "study",
+                "--resident-capture",
+                "--comparison-workers",
+                &value,
+            ],
+            [
+                "study",
+                "--comparison-workers",
+                &value,
+                "--resident-capture",
+            ],
         ] {
             let parallel = StudyArgs::try_parse_from(args)?;
             assert_eq!(parallel.comparison_workers, count);
             assert!(parallel.resident_capture);
         }
     }
-    for invalid in ["0", "-1", "1.5", "18446744073709551616"] {
+    let paused = StudyArgs::try_parse_from([
+        "study",
+        "--resident-capture",
+        "--control-room",
+        "--comparison-workers",
+        "0",
+    ])?;
+    assert_eq!(paused.comparison_workers, 0);
+    let unsupported_pause = StudyArgs::try_parse_from(["study", "--comparison-workers", "0"])?;
+    assert!(
+        format!("{:#}", run(unsupported_pause, LogLevel::Warn).unwrap_err())
+            .contains("zero comparison groups require --control-room")
+    );
+    for invalid in ["-1", "1.5", "18446744073709551616"] {
         assert!(StudyArgs::try_parse_from(["study", "--comparison-workers", invalid]).is_err());
     }
     let unsupported = StudyArgs::try_parse_from(["study", "--comparison-workers", "2"])?;

@@ -1,9 +1,10 @@
 //! Separate isolated shrink measurements from targeted Excel comparisons.
 use super::*;
 
-mod execution;
 mod control_room;
+mod execution;
 mod fallback;
+mod progress;
 use super::verified as ledger;
 use execution::process;
 mod prepared;
@@ -75,7 +76,7 @@ pub(in crate::regression) struct StudyArgs {
         long,
         default_value_t = 1,
         default_value_if("resident_capture", "true", "8"),
-        value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..)
+        value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(0..)
     )]
     comparison_workers: usize,
     /// Add groups as primary clients become ready and live memory budgets permit.
@@ -139,6 +140,10 @@ struct Source {
 }
 
 pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result<()> {
+    ensure!(
+        args.comparison_workers > 0 || args.control_room,
+        "zero comparison groups require --control-room so the run can be resumed"
+    );
     ensure!(
         args.resident_capture || args.comparison_workers == 1,
         "parallel workbook comparisons require --resident-capture"
@@ -251,12 +256,20 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             {
                 if let Ok(members) = workbook_members(&mut zip) {
                     corpus_info[i]["total_workbooks"] = json!(members.len());
-                    let catalog: Vec<_> = members.iter().map(|(index, name)| {
-                        let checksum = zip.by_index_raw(*index).ok()
-                            .map(|entry| (entry.crc32(), entry.size()));
-                        (name, checksum)
-                    }).collect();
-                    expected_sources.insert(ids[i].clone(), artifact_cache::sha256(&serde_json::to_vec(&catalog)?));
+                    let catalog: Vec<_> = members
+                        .iter()
+                        .map(|(index, name)| {
+                            let checksum = zip
+                                .by_index_raw(*index)
+                                .ok()
+                                .map(|entry| (entry.crc32(), entry.size()));
+                            (name, checksum)
+                        })
+                        .collect();
+                    expected_sources.insert(
+                        ids[i].clone(),
+                        artifact_cache::sha256(&serde_json::to_vec(&catalog)?),
+                    );
                 }
             }
         }
@@ -433,7 +446,12 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     )?;
     let mut room = if args.control_room {
         Some(control_room::Room::start(&output, &args, &run)?)
-    } else { None };
+    } else {
+        None
+    };
+    if room.is_some() {
+        progress::initialize(&output, &sources, &records, &run)?;
+    }
     let limits = ArchiveArgs {
         urls: Vec::new(),
         request_file: None,
@@ -449,6 +467,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     let mut missing_prepared = false;
     let producer = artifact_cache::hash_file(&std::env::current_exe()?)?;
     for source in &sources {
+        let mut drained_ids = HashSet::new();
         // Freeze membership over the entire corpus before removing completed files.
         let members = selection::ordered_members(source, args.order);
         // Completed differences get their missing causal diagnosis before new work.
@@ -570,6 +589,31 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     &run,
                     log_level,
                 )?;
+                // A drain requested during shrinking finishes this already
+                // begun workbook, including its visual controls, before pausing.
+                if args.control_room
+                    && !args.prepare_only
+                    && records[pos]["prepared"] == true
+                    && control_room::Controls::read(&output.join("control-room"))?.target_groups
+                        == 0
+                {
+                    records[pos]["compared_by"] = json!(producer);
+                    scheduler::finish_preparing_workbook(
+                        source,
+                        scheduler::Comparison {
+                            index: *index,
+                            id: id.clone(),
+                            position: pos,
+                        },
+                        &output,
+                        &mut records,
+                        &corpus_info,
+                        &limits,
+                        &run,
+                        log_level,
+                    )?;
+                    drained_ids.insert(id);
+                }
             }
             if reused > 0 {
                 eprintln!(
@@ -582,6 +626,11 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             let mut comparisons = Vec::new();
             for (index, name) in selected {
                 let id = identity(source, *index, name);
+                // A drain already completed this invocation's attempt. Skipped
+                // comparisons retain their ZIP, but must not run twice here.
+                if drained_ids.contains(&id) {
+                    continue;
+                }
                 let pos = ensure_record(&mut records, source, *index, name);
                 if !reusable_preparation(
                     &records[pos],
@@ -639,7 +688,10 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
     .context("publish final study report; per-workbook records have been saved")?;
     eprintln!("[study] Report: {}", output.join("report.html").display());
     export_results(&args, &root, &output, &lock)?;
-    if let Some(room) = room.as_mut() { room.finish()?; }
+    if let Some(room) = room.as_mut() {
+        progress::finish(&output);
+        room.finish()?;
+    }
     if let Err(error) = visual_report::open_visual_report(&output.join("report.html")) {
         eprintln!("Could not open report: {error:#}");
     }

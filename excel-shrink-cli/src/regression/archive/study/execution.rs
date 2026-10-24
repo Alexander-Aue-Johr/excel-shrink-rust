@@ -14,6 +14,17 @@ pub(super) fn process(
     run: &Value,
     log_level: LogLevel,
 ) -> Result<()> {
+    if run["options"]["control_room"] == true {
+        control_room::wait_for_admission(
+            output,
+            if mode == JobMode::Prepare {
+                "preparing"
+            } else {
+                "comparing"
+            },
+        )?;
+        control_room::begin_serial(output, source, id, &mut records[position], mode, run)?;
+    }
     let initial = records[position].clone();
     let result = run_record(
         source,
@@ -32,6 +43,9 @@ pub(super) fn process(
         },
     )?;
     records[position] = result;
+    if run["options"]["control_room"] == true {
+        control_room::finish_serial(output, id, &records[position])?;
+    }
     Ok(())
 }
 
@@ -51,6 +65,7 @@ pub(super) fn run_record(
     cleanup_barrier: Option<batch_cleanup::Participant>,
     mut on_progress: impl FnMut(&Value, &str),
 ) -> Result<Value> {
+    let _active_progress = progress::start_job(output, id, mode);
     let key = artifact_cache::sha256(id.as_bytes());
     let work = output.join(".work").join(&key[..20]);
     worker::cleanup_windows(&work)?;
@@ -126,11 +141,14 @@ pub(super) fn run_record(
     };
     eprintln!("[study] {} · {phase} · {}", source.name, job.name);
     on_progress(&state, phase);
+    progress::observe(output, &state);
     let started = Instant::now();
     let outcome = worker::launch(&job, &path, limits, log_level, || {
+        progress::tick(output);
         let current: Value = serde_json::from_slice(&fs::read(&record)?)?;
         if current != state {
             state = current;
+            progress::observe(output, &state);
             on_progress(&state, phase);
         }
         Ok(())
@@ -175,6 +193,7 @@ pub(super) fn run_record(
         // Keep the prepared ZIP and work directory. A subsequent resume can
         // validate/reuse the ZIP and retry this unfinished comparison normally.
         write_record(&record, &result)?;
+        progress::observe(output, &result);
         on_progress(&result, "interrupted");
         return Ok(result);
     }
@@ -213,6 +232,7 @@ pub(super) fn run_record(
         result["prepared"] = json!(false);
     }
     write_record(&record, &result)?;
+    progress::observe(output, &result);
     on_progress(&result, phase);
     Ok(result)
 }

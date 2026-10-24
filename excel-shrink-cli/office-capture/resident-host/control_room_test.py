@@ -136,6 +136,22 @@ class ControlRoomProtocol(unittest.TestCase):
         self.write("groups/one/launcher.json", {"attempt_id": "replacement", "clients": {}})
         self.assertEqual(self.request("/api/groups/one")["launcher"]["attempt_id"], "replacement")
         self.assertEqual(self.request("/api/groups/one")["attempt_id"], "replacement")
+        self.assertFalse(self.request("/api/groups/one")["available"])
+        self.write("groups/one/state.json", {"sheets": [{"name": "Old captures"}]})
+        self.assertNotIn("sheets", self.request("/api/groups/one"), "Legacy captures were attributed to the replacement attempt")
+
+    def test_progress_only_belongs_to_the_current_run(self):
+        self.write("queue.json", {"run_id": "new", "groups": []})
+        self.write("progress.json", {"run_id": "old", "counts": {"total": 900}})
+        self.assertNotIn("progress", self.request("/api/state"))
+        progress = {"run_id": "new", "counts": {"total": 100, "completed": 10, "skipped": 2},
+                    "rates": {"completed_per_hour": 5}, "eta": {"status": "preparation_pending"}}
+        self.write("progress.json", progress)
+        self.assertEqual(self.request("/api/state")["progress"], progress)
+        self.write("progress.json", {"run_id": "new", "oversized": "x" * 65536})
+        state = self.request("/api/state")
+        self.assertNotIn("progress", state)
+        self.assertTrue(state["diagnostics"])
 
     def test_restart_preparation_overrides_previous_capture_completion(self):
         self.write("groups/one/state.json", {"status": "complete", "primary_complete": True})
@@ -170,7 +186,7 @@ class ControlRoomProtocol(unittest.TestCase):
     def test_invalid_controls_cannot_partially_change_state(self):
         before = (self.data / "control.json").read_bytes()
         for patch in [
-            {"target_groups": 0}, {"target_groups": 1.5}, {"paused": "true"},
+            {"target_groups": -1}, {"target_groups": 1.5}, {"paused": "true"},
             {"job_timeout_seconds": -1}, {"equal_preview_width": 513}, {"typo": 2},
             {"target_groups": 24, "equal_preview_width": None},
             {"hide_excel": "false"}, {"capture_tile_megapixels": 0}, {"capture_tile_megapixels": 33},
@@ -181,6 +197,67 @@ class ControlRoomProtocol(unittest.TestCase):
                 self.assertEqual((self.data / "control.json").read_bytes(), before)
         self.assert_status(415, "/api/control", b"target_groups=24", {"Content-Type": "application/x-www-form-urlencoded"})
         self.assert_status(400, "/api/control", b"{", {"Content-Type": "application/json"})
+
+    def test_zero_groups_drains_without_a_conflicting_capture_pause(self):
+        self.request("/api/control", {"paused": True})
+        drained = self.request("/api/control", {"target_groups": 0})["controls"]
+        self.assertEqual(drained["target_groups"], 0)
+        self.assertFalse(drained["paused"])
+        self.assertEqual(self.request("/api/state")["controls"], drained)
+        self.assert_status(400, "/api/control", {"paused": True})
+        self.assert_status(400, "/api/control", {"target_groups": 0, "paused": True})
+        self.assertFalse(self.request("/api/state")["controls"]["paused"])
+        resumed = self.request("/api/control", {"target_groups": 3, "paused": True})["controls"]
+        self.assertEqual(resumed["target_groups"], 3)
+        self.assertTrue(resumed["paused"])
+
+    def test_worker_overview_reads_compact_active_snapshots_and_separates_progress(self):
+        self.write("queue.json", {"run_id": "run", "groups": [
+            {"id": "active", "attempt_id": "new", "workbook": "active.xlsx", "active": True, "status": "waiting_cleanup"},
+            {"id": "old", "run_id": "run", "workbook": "old.xlsx", "active": False, "status": "differences"},
+        ]})
+        # The central monitor must not parse a workbook's potentially huge plan.
+        (self.data / "groups/active").mkdir(parents=True)
+        (self.data / "groups/active/state.json").write_text("not valid JSON", encoding="utf-8")
+        monitor = {"state": "capturing", "state_since": "2026-01-01T10:00:00Z",
+                   "last_progress_at": "2026-01-01T10:01:00Z", "wait_reason": None,
+                   "last_success": {"at": "2026-01-01T10:01:00Z", "kind": "image_received"},
+                   "events": [{"sequence": n} for n in range(30)],
+                   "active_job": {"id": "capture-1", "kind": "capture_images"}}
+        self.write("groups/active/launcher.json", {"attempt_id": "new", "clients": {
+            "original": {"pid": 42, "heartbeat_count": 999, "last_heartbeat_at": "2026-01-01T11:00:00Z",
+                         "stage": "capturing", "monitor": monitor}}})
+        self.write("groups/active/coordinator.json", {"attempt_id": "new", "phase": "compare", "pid": 12,
+            "state_since_unix_ms": 123000, "last_progress_unix_ms": 124000,
+            "last_event": {"at_unix_ms": 125000, "kind": "waiting"}})
+        response = self.request("/api/workers")
+        self.assertEqual(response["active_groups"], 1)
+        self.assertEqual(response["total_groups"], 1)
+        self.assertEqual(response["diagnostics"], [])
+        group = response["groups"][0]
+        self.assertEqual(group["coordinator"]["phase"], "compare")
+        self.assertEqual(group["coordinator"]["state_since_unix_ms"], 123000)
+        self.assertEqual(group["coordinator"]["last_progress_unix_ms"], 124000)
+        worker = group["clients"][0]
+        self.assertEqual(worker["monitor"]["last_progress_at"], monitor["last_progress_at"])
+        self.assertEqual(worker["heartbeat_count"], 999)
+        self.assertEqual(len(worker["monitor"]["events"]), 24)
+        self.assertIn("active/new/original/42", worker["worker_id"])
+        self.assertEqual(self.request("/api/workers?include_recent=true")["total_groups"], 2)
+        self.write("groups/active/launcher.json", {"attempt_id": "old", "clients": {"original": {"pid": 42}}})
+        self.assertEqual(self.request("/api/workers")["groups"][0]["clients"], [])
+
+    def test_worker_pages_do_not_read_unbounded_group_history(self):
+        self.write("queue.json", {"groups": [{"id": f"g{n}", "active": True} for n in range(70)] +
+                                           [{"id": f"history{n}", "active": False} for n in range(1000)]})
+        first = self.request("/api/workers")
+        self.assertEqual(len(first["groups"]), 64)
+        self.assertEqual(first["next_offset"], 64)
+        last = self.request("/api/workers?offset=64")
+        self.assertEqual(len(last["groups"]), 6)
+        self.assertIsNone(last["next_offset"])
+        self.assertEqual(last["total_groups"], 70)
+        self.assert_status(400, "/api/workers?offset=-1")
 
     def test_local_host_and_origin_protect_control_mutations(self):
         self.assert_status(403, "/api/control", {"paused": True}, {"Origin": "https://example.com"})
@@ -281,7 +358,7 @@ class ControlRoomProtocol(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "nt", "Native Windows process creation identity")
     def test_process_liveness_is_separate_from_quiet_heartbeats(self):
-        self.write("queue.json", {"groups": [{"id": "one"}]})
+        self.write("queue.json", {"groups": [{"id": "one", "active": True}]})
         clients = {
             "original": {"pid": os.getpid(), "process_started_unix_ms": current_process_started_ms(),
                          "heartbeat_count": 7, "last_heartbeat_at": "2000-01-01T00:00:00Z", "stage": "blocked_edit_mode"},
@@ -295,6 +372,12 @@ class ControlRoomProtocol(unittest.TestCase):
         self.assertEqual(result["original"]["stage"], "blocked_edit_mode")
         self.assertFalse(result["reused-pid"]["process_alive"])
         self.assertIsNone(result["unverified"]["process_alive"])
+        self.write("groups/one/coordinator.json", {"pid": os.getpid(), "phase": "shrink",
+            "process_started_unix_ms": current_process_started_ms()})
+        self.assertTrue(self.request("/api/workers")["groups"][0]["coordinator"]["process_alive"])
+        self.write("groups/one/coordinator.json", {"pid": os.getpid(), "phase": "shrink",
+            "process_started_unix_ms": current_process_started_ms() - 1000})
+        self.assertFalse(self.request("/api/workers")["groups"][0]["coordinator"]["process_alive"])
 
 
 if __name__ == "__main__":
