@@ -85,6 +85,15 @@ def main():
             results[name] = response(session / 'responses/one/0001.json', process)
             print(name, 'captured', flush=True)
 
+        commandlines = subprocess.check_output([
+            'powershell.exe', '-NoProfile', '-Command',
+            "Get-CimInstance Win32_Process -Filter \"name = 'msedgewebview2.exe'\" | "
+            "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"],
+            creationflags=0x08000000, text=True)
+        (root / 'webview-processes.json').write_text(commandlines)
+        for session, _ in sessions:
+            profile = read(session / 'metrics.json')['webview2_user_data_folder']
+            assert profile in commandlines.replace('\\\\', '\\'), profile
         survivor, peer = sessions[-1]
         survivor_name = ('a', 'b', 'c', 'd')[args.groups - 1]
         for index, (session, process) in enumerate(sessions[:-1], 2):
