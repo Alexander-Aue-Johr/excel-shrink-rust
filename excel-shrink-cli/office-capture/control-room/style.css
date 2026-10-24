@@ -807,3 +807,43 @@ body.presenting .room {
 .groups {
   margin-top:10px;
 }
+.experiment-controls { margin:9px 24px 0; border:1px solid var(--line); border-radius:8px; background:#0f1e2b; }
+.experiment-controls>summary { cursor:pointer; padding:9px 15px; font-size:11px; color:#b7ccd8; }
+.experiment-controls>summary>span { margin-left:14px; color:#7897aa; font-size:10px; }
+.experiment-grid { display:grid; grid-template-columns:1fr 1fr 1fr 1.1fr; border-top:1px solid var(--line); }
+.experiment-grid>label,.throughput { padding:10px 15px; border-right:1px solid var(--line); font-size:10px; color:#a6c0d0; }
+.experiment-grid>label>span { display:flex; gap:8px; align-items:center; margin:5px 0; }
+.experiment-grid input[type=number] { width:58px; padding:4px 6px; }
+.experiment-grid input[type=checkbox] { accent-color:var(--green); }
+.experiment-grid small { display:block; color:#7899ae; font-size:9px; line-height:1.5; }
+.experiment-grid button { padding:4px 8px; font-size:10px; }
+.throughput { border-right:0; }
+.throughput>span { color:#90ecd0; font-size:22px; line-height:1.3; font-weight:400; }
+.heading-actions { display:flex; gap:7px; }
+.room { min-height:580px; }
+.room-caption { max-width:42%; }
+.room-tools { max-width:54%; flex-wrap:wrap; justify-content:flex-end; }
+.room-tools button { font-size:9px; padding:5px 7px; }
+.minimap { position:absolute; bottom:58px; left:16px; width:190px; min-width:120px; max-width:360px; min-height:85px; max-height:250px; resize:both; overflow:auto; padding:9px; border:1px solid #3f6477; border-radius:9px; background:#0d2033df; backdrop-filter:blur(12px); box-shadow:0 5px 22px #0004; }
+.minimap-heading { display:flex; flex-direction:column; gap:3px; margin-bottom:7px; }
+.minimap-heading>span:first-child { color:#a2c4d5; font-size:8px; letter-spacing:1.4px; }
+#minimapLabel { font-size:9px; color:#80b6c9; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.minimap-grid { display:grid; gap:4px; max-height:150px; overflow:auto; }
+.minimap-sheet { aspect-ratio:16/9; min-width:0; padding:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:8px; border-radius:3px; background:#193549; color:#b4d1de; }
+.minimap-sheet.has-difference { background:#402a3d; border-color:#ae647b; }
+.minimap-sheet.selected { outline:1px solid #8cdfe1; outline-offset:0; }
+.selection-bar { bottom:55px; left:auto; right:14px; transform:none; max-width:calc(100% - 230px); }
+.process-section { margin:0 0 12px; padding:12px 15px; border:1px solid var(--line); border-radius:8px; background:#0e1e2c; }
+.processes { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:9px; margin-top:10px; color:#7f9eaf; font-size:11px; }
+.process { position:relative; display:flex; flex-direction:column; gap:4px; padding:11px; border:1px solid #2f4b5d; background:#112534; border-radius:7px; min-width:0; }
+.process>strong { padding-right:22px; font-size:11px; color:#c9e1e8; font-weight:500; }
+.process-id { font:9px/1.5 Consolas,monospace; color:#8faebc; }
+.process-stage { font-size:10px; color:#aac9d6; overflow-wrap:anywhere; }
+.process small { font-size:9px; color:#789caf; }
+.process button { align-self:start; margin-top:5px; padding:4px 7px; font-size:9px; }
+.process.blocked { border-color:#a57165; background:#30282a; }
+.process .process-error { color:#ffc2ac; overflow-wrap:anywhere; }
+.heartbeat { position:absolute; right:12px; top:6px; font-size:23px; color:#6ff1b8; --beat-glow:0; filter:drop-shadow(0 0 calc(12px * var(--beat-glow)) #5fffac); transform-origin:center; }
+body.presenting .experiment-controls,body.presenting .process-section { display:none; }
+@media(max-width:1250px) { .experiment-grid { grid-template-columns:1fr 1fr; } .experiment-grid>label:nth-child(2) { border-right:0; } .experiment-grid>label:nth-child(-n+2) { border-bottom:1px solid var(--line); } .room-tools { max-width:58%; } .heading-actions { flex-direction:column; } }
+@media(max-width:850px) { .experiment-controls { margin:9px 14px 0; } .experiment-controls>summary>span { display:block; margin-left:0; } .room-tools { top:55px; max-width:calc(100% - 32px); } .minimap { width:145px; max-height:175px; bottom:58px; } .minimap-grid { max-height:115px; } .selection-bar { max-width:calc(100% - 185px); } .selection-bar strong { max-width:120px; } .process-section>.section-head { align-items:start; flex-direction:column; } }

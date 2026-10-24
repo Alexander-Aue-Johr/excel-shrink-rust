@@ -15,16 +15,23 @@
     <div class="control timeouts"><label>ZEITLIMITS</label><div><label for="openTimeout">Öffnen</label><input id="openTimeout" type="number" min="1" step="1" value="1800"><span>s</span><label for="jobTimeout">Auftrag</label><input id="jobTimeout" type="number" min="1" step="1" value="600"><span>s</span><button id="applyTimeouts">Setzen</button></div><small>Die bestätigten Werte kommen vom Runner.</small></div>
     <div class="control"><label for="equalPreview">GLEICHE KACHELN BEHALTEN</label><select id="equalPreview"><option value="128">128 px</option><option value="256">256 px</option><option value="512" selected>512 px</option><option value="1024">1.024 px</option><option value="0">Originalgröße</option></select><small>Abweichungen und ihre Referenz bleiben hochaufgelöst.</small></div>
   </section>
+  <details class="experiment-controls" open><summary>Capture & Öffnen <span>Neue Einstellungen gelten für die nächste Gruppe.</span></summary><div class="experiment-grid">
+    <label>Capture-Zielgröße <span><input id="captureMegapixels" type="number" min="1" max="32" step="1" value="32"> MP</span><small>Originale Capture-Aufträge bleiben volle, geschützte Zeilenbänder.</small></label>
+    <label>Aufträge pro Batch <span><input id="captureBatch" type="number" min="1" max="16" step="1" value="1"><button id="applyCapture">Setzen</button></span><small>Gemeinsames Pixelbudget begrenzt die tatsächliche Batchgröße.</small></label>
+    <label class="hidden-control"><span><input id="hideExcel" type="checkbox"> Excel verborgen öffnen</span><small>Ab der nächsten Gruppe. Aktive Fenster bleiben unverändert.</small></label>
+    <div class="throughput"><span id="pixelRate">— MP/s</span><small id="captureTotals">Warte auf gemessene Captures</small><small id="effectiveCapture">—</small></div>
+  </div></details>
   <div id="notice" role="status" aria-live="polite">Status und Bildbelege werden direkt vom lokalen Host geladen.</div>
   <div class="workspace">
     <aside class="sidebar"><div class="section-head"><h2>Arbeitsmappen</h2><span id="groupCount">0</span></div><input id="groupSearch" class="group-search" type="search" placeholder="Dateiname oder Korpus" aria-label="Arbeitsmappen filtern"><div id="groups" class="groups"></div><button id="moreGroups" class="more-groups" hidden>Weitere 100 anzeigen</button><p class="sidebar-note">Öffnen angefragt, Add-in bereit und Capture sind getrennte Zustände. Ausbleibende Bilder allein bedeuten keinen Absturz.</p></aside>
     <main>
-      <div class="workbook-heading"><div><div class="eyebrow" id="groupEyebrow">LIVE ATELIER</div><h2 id="workbook">Warte auf die erste Gruppe.</h2><p id="groupStatus">Hier erscheinen die tatsächlichen Capture-Aufträge.</p></div><button id="resetCamera">Überblick</button></div>
+      <div class="workbook-heading"><div><div class="eyebrow" id="groupEyebrow">LIVE ATELIER</div><h2 id="workbook">Warte auf die erste Gruppe.</h2><p id="groupStatus">Hier erscheinen die tatsächlichen Capture-Aufträge.</p></div><div class="heading-actions"><button id="restartGroup">Gruppe neu einreihen</button><button id="resetCamera">Alle Sheets</button></div></div>
       <div class="sheetbar"><label for="sheetSelect">Sheet</label><select id="sheetSelect" aria-label="Angezeigtes Sheet"></select><span id="sheetSummary">Noch keine Kacheln</span><label class="toggle"><input id="followCapture" type="checkbox" checked> Captures folgen</label></div>
       <section class="room" aria-label="Gekrümmtes Atelier mit synchronen Sheet-Ausschnitten">
         <div id="viewport" tabindex="0" aria-label="Drehen durch Ziehen, Zoomen mit dem Mausrad. Hover über eine Kachel öffnet den Detailvergleich, Klick hält ihn fest."></div>
         <div class="room-caption"><span class="eyebrow">CURVED ATELIER</span><span id="viewRange">Warte auf Capture-Geometrie</span></div>
-        <div class="room-tools"><button id="nextDifference">Zum Unterschied</button><button id="stageMode" title="Atelier vergrößern">⛶ Bühne</button></div>
+        <div class="room-tools"><button id="nextDifference">Nächster Unterschied</button><button id="nextSheetDifference">Nächstes abweichendes Sheet</button><button id="nextGroupDifference">Nächste abweichende Gruppe</button><button id="stageMode" title="Atelier vergrößern">⛶ Bühne</button></div>
+        <div class="minimap" aria-label="Alle Sheets"><div class="minimap-heading"><span>SHEET-KARTE</span><span id="minimapLabel">—</span></div><div id="minimapGrid" class="minimap-grid"></div></div>
         <div id="emptyScene" class="empty-scene"><strong>Die nächste Aufnahme wird hier sichtbar.</strong><span>Es werden ausschließlich echte Aufträge und Bilder angezeigt.</span></div>
         <div id="selectionBar" class="selection-bar" hidden><strong id="selectionText"></strong><span id="selectionSummary"></span><button id="pinSelection" aria-pressed="false">Festhalten</button><button id="closeSelection" aria-label="Detail schließen">×</button></div>
         <div class="room-bottom"><div class="legend"><span><i class="waiting"></i>angefragt</span><span><i class="received"></i>Bild da</span><span><i class="equal"></i>identisch</span><span><i class="different"></i>abweichend</span></div><label class="toggle"><input type="checkbox" id="pulseDiff" checked> Unterschiede pulsieren</label></div>
@@ -32,6 +39,7 @@
       </section>
       <div class="pan-controls" aria-label="Gemeinsamen Sheet-Ausschnitt verschieben"><label>Horizontal <input id="panX" type="range" min="0" max="0" value="0" step="1"></label><label>Vertikal <input id="panY" type="range" min="0" max="0" value="0" step="1"></label><label>Ausschnitt <select id="viewScale"><option value="1000">1.000 px breit</option><option value="1800" selected>1.800 px breit</option><option value="3600">3.600 px breit</option><option value="7200">7.200 px breit</option><option value="0">Gesamte Breite</option></select></label></div>
       <div class="detail-tools"><div id="tileButtons" class="tile-buttons" aria-label="Sichtbare Kacheln per Tastatur auswählen"></div><div id="evidenceActions" class="evidence-actions" hidden></div></div>
+      <section class="process-section"><div class="section-head"><h2>Excel & Add-in-Heartbeats</h2><span>Ein Herzschlag = ein empfangener Heartbeat</span></div><div id="processes" class="processes"></div></section>
       <section class="events"><div class="section-head"><h2>Ereignisse & Antworten</h2><span id="lastUpdate">—</span></div><div id="events"></div><details><summary>API-Sicht · derselbe Zustand</summary><pre id="apiState"></pre></details></section>
     </main>
   </div>

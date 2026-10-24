@@ -1,4 +1,4 @@
-import { normalizeGroup, groupedPanels, imageStatus, visibleTiles, clippedTile, profileRectangle, activeGroupCount } from '../model.js';
+import { normalizeGroup, groupedPanels, imageStatus, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, fitSheetView, inspectionEntry, inspectionRegions, differenceTargets, heartbeatAge } from '../model.js';
 
 function assert(condition, message) { if (!condition) throw new Error(message); }
 function equal(actual, expected, message) { assert(JSON.stringify(actual) === JSON.stringify(expected), `${message}: ${JSON.stringify(actual)}`); }
@@ -51,7 +51,37 @@ export function runTests() {
   assert(activeGroupCount({ open_groups: 3, groups: [] }) === 3, 'The scheduler provides the authoritative open-group count.');
   assert(activeGroupCount({ open_groups: 3, runner_alive: false }) === 0, 'A stale snapshot from a dead runner must not claim active groups.');
   assert(activeGroupCount({ groups: [{ status: 'active', active: false }, { status: 'waiting_cleanup', active: true }] }) === 1, 'Explicit active flags take precedence over inferred status.');
-  return { passed: 23 };
+  const grid = normalizeGroup({ sheets: [{ id: 'grid', width: 1600, height: 900, tiles: [
+    { id: 'A1', x: 0, y: 0, width: 800, height: 450 }, { id: 'B1', x: 800, y: 0, width: 800, height: 450 },
+    { id: 'A2', x: 0, y: 450, width: 800, height: 450 }, { id: 'B2', x: 800, y: 450, width: 800, height: 450 },
+  ] }] }).sheets[0];
+  equal(grid.tiles.map(tile => [tile.id, tile.x, tile.y]), [['A1', 0, 0], ['B1', 800, 0], ['A2', 0, 450], ['B2', 800, 450]], 'Job rectangles form a true 2D mosaic, not a cumulative strip.');
+  equal(visibleTiles(grid, { x: 800, y: 450, width: 800, height: 450 }).map(tile => tile.id), ['B2'], 'A spatial viewport selects the correct job.');
+  const planned = normalizeGroup({ sheets: [{ tiles: [{ width: 100, height: 100, planned_images: { default: { x: 200, y: 300, width: 400, height: 500 } } }] }] }).sheets[0];
+  equal([planned.width, planned.height], [600, 800], 'Pending profile plans determine placeholder bounds before images arrive.');
+  equal(profileRectangle(planned.tiles[0], 'default'), { x: 200, y: 300, width: 400, height: 500 }, 'A pending placeholder uses its profile plan.');
+  const layout = sheetLayout(Array.from({ length: 9 }, (_, index) => ({ id: String(index) })));
+  assert(layout.columns === 3 && layout.rows === 3 && layout.cards.every(card => card.width / card.height === 16 / 9), 'All sheet cards share 16:9 proportions in a near-square grid.');
+  const fitted = fitSheetView({ width: 800, height: 45000 }, .5);
+  assert(fitted.width >= 800 && fitted.height >= 45000 && fitted.width / fitted.height === .5, 'A very tall sheet fits without losing any planned rows.');
+  const region = { id: 'changed', x: 1024, y: 576, width: 1024, height: 576, exact: true, changed_pixels: 3,
+    pixel_classes: { original: 'a', default: 'a', 'maximum-cleaning': 'a', 'too-aggressive-cleaning': 'b' },
+    changed_pixels_by_profile: { original: 0, default: 0, 'maximum-cleaning': 0, 'too-aggressive-cleaning': 3 } };
+  const cropped = inspectionEntry(different, region, profiles);
+  equal(groupedPanels(cropped, profiles).map(group => group.ids), [['original'], ['default', 'maximum-cleaning'], ['too-aggressive-cleaning']], 'Exact regional classes override whole-capture classes for grouping.');
+  assert(cropped.images['too-aggressive-cleaning'].changedPixels === 3 && cropped.images['maximum-cleaning'].changedPixels === 0, 'Detail captions use region-specific pixel counts.');
+  const unknownCrop = inspectionEntry(different, { ...region, exact: false }, profiles);
+  assert(!unknownCrop.comparisonComplete && groupedPanels(unknownCrop, profiles).length === 4, 'A display crop without host proof never inherits whole-image equality.');
+  const equalCrop = inspectionEntry(allEqual, { ...region, exact: false }, profiles);
+  assert(equalCrop.equalAcrossAll && groupedPanels(equalCrop, profiles).length === 2, 'Proven whole-image equality remains valid for any common display crop.');
+  const huge = { ...different, width: 12000, height: 1800 };
+  assert(inspectionRegions(huge).every(part => part.width <= 1024 && part.height <= 576), 'Legacy huge captures remain inspectable in bounded display crops.');
+  const classified = { ...huge, inspection_regions: [{ ...region, changed_pixels: 0, id: 'same' }, region] };
+  equal(differenceTargets([classified]).map(target => target.region.id), ['changed'], 'Navigation skips host-proven equal regions within a differing capture.');
+  assert(heartbeatAge({ last_heartbeat_at: '2026-10-24T00:00:00Z' }, Date.parse('2026-10-24T00:00:14Z')) === 14000, 'Heartbeat age is based on the received heartbeat timestamp.');
+  assert(heartbeatAge({}) === null, 'Missing heartbeats are unknown, not fabricated fresh activity.');
+  assert(heartbeatAge({ last_activity_at: '2026-10-24T00:00:00Z' }) === null, 'Ordinary activity must not masquerade as an actual heartbeat.');
+  return { passed: 38 };
 }
 
 export const result = runTests();

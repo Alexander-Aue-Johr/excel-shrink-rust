@@ -43,7 +43,7 @@ export function normalizeGroup(raw) {
       entry.equalAcrossAll = entry.comparisonComplete && classes.every(value => value === classes[0]);
       return entry;
     });
-    const rectangles = tiles.flatMap(tile => [tile, ...Object.keys(tile.images).map(profile => profileRectangle(tile, profile))]);
+    const rectangles = tiles.flatMap(tile => [tile, ...new Set([...Object.keys(tile.images), ...Object.keys(tile.planned_images || {})])].map(value => typeof value === 'string' ? profileRectangle(tile, value) : value));
     return { ...sheet, id, name: sheet.name || id, tiles,
       width: Math.max(Number(sheet.width || 0), ...rectangles.map(tile => tile.x + tile.width)),
       height: Math.max(Number(sheet.height || 0), ...rectangles.map(tile => tile.y + tile.height)) };
@@ -87,7 +87,7 @@ export function visibleTiles(sheet, view, limit = 24) {
 }
 
 export function profileRectangle(tile, profile) {
-  const image = tile.images?.[profile];
+  const image = tile.images?.[profile] || tile.planned_images?.[profile];
   return { x: Number(image?.x ?? tile.x), y: Number(image?.y ?? tile.y),
     width: Number(image?.width ?? tile.width), height: Number(image?.height ?? tile.height) };
 }
@@ -108,4 +108,58 @@ export function clippedTile(tile, view) {
   return { x, y, width, height,
     u0: (x - tile.x) / tile.width, u1: (x + width - tile.x) / tile.width,
     v0: 1 - (y + height - tile.y) / tile.height, v1: 1 - (y - tile.y) / tile.height };
+}
+
+// Cards share a 16:9 shape. A near-square card grid keeps the complete wall
+// close to 16:9 as well, without changing the worksheet's pixel coordinates.
+export function sheetLayout(sheets) {
+  const columns = Math.max(1, Math.ceil(Math.sqrt(sheets.length)));
+  const rows = Math.max(1, Math.ceil(sheets.length / columns));
+  const width = 16, height = 9, gap = .65;
+  return { columns, rows, width: columns * (width + gap) - gap, height: rows * (height + gap) - gap,
+    cards: sheets.map((sheet, index) => ({ id: sheet.id, width, height,
+      x: (index % columns - (columns - 1) / 2) * (width + gap),
+      y: ((rows - 1) / 2 - Math.floor(index / columns)) * (height + gap) })) };
+}
+
+export function fitSheetView(sheet, aspect) {
+  const width = Math.max(1, sheet?.width || 1, (sheet?.height || 1) * aspect);
+  return { x: 0, y: 0, width, height: width / aspect };
+}
+
+export function inspectionRegions(tile, onlyDifferences = false) {
+  if (!tile) return [];
+  if (tile.inspection_regions?.length) return tile.inspection_regions
+    .filter(region => !onlyDifferences || Number(region.changed_pixels) > 0)
+    .map(region => ({ ...region, id: String(region.id), exact: true }));
+  // Old results retain their original evidence. A display grid helps inspect
+  // huge images, but cannot claim to know which subregion contains a change.
+  const columns = Math.max(1, Math.ceil(tile.width / 1024)), rows = Math.max(1, Math.ceil(tile.height / 576));
+  const width = tile.width / columns, height = tile.height / rows;
+  return Array.from({ length: columns * rows }, (_, index) => ({ id: `display-${index}`, x: index % columns * width,
+    y: Math.floor(index / columns) * height, width, height, exact: false }));
+}
+
+export function inspectionEntry(tile, region, profiles) {
+  if (!region) return tile;
+  // Whole-capture equality also proves equality for any common crop. A
+  // difference elsewhere in a capture never proves a difference here.
+  const classes = tile.equalAcrossAll ? Object.fromEntries(profiles.map(profile => [profile.id, tile.images[profile.id]?.pixelClass])) : region.pixel_classes || {};
+  const complete = (region.exact || tile.equalAcrossAll) && profiles.every(profile => classes[profile.id] != null);
+  return { ...tile, inspection: region, comparisonComplete: complete,
+    equalAcrossAll: complete && profiles.every(profile => classes[profile.id] === classes.original),
+    images: Object.fromEntries(Object.entries(tile.images).map(([profile, image]) => [profile, { ...image,
+      pixelClass: complete ? classes[profile] : null,
+      changedPixels: region.changed_pixels_by_profile?.[profile] ?? image.changedPixels }])) };
+}
+
+export function differenceTargets(tiles) {
+  return tiles.filter(tile => tile.comparisonComplete && !tile.equalAcrossAll)
+    .flatMap(tile => inspectionRegions(tile, true).map(region => ({ tile, region })));
+}
+
+export function heartbeatAge(client, now = Date.now()) {
+  const raw = client.last_heartbeat_unix_ms ?? client.last_heartbeat_at ?? client.last_heartbeat;
+  const time = typeof raw === 'number' ? raw : Date.parse(raw);
+  return Number.isFinite(time) ? Math.max(0, now - time) : null;
 }

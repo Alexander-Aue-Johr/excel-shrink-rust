@@ -245,8 +245,9 @@ list shows this as waiting for cleanup. Preparation remains serial.
 
 Capture pause stops dispatching new Office.js jobs. A job already running may
 finish and publish its tile; new Excel instances may continue opening. Each group
-waits for its primary clients, then captures one corresponding tile across its
-profiles before advancing. Clients upload images; full-resolution host comparison
+waits for its primary clients, then captures a corresponding batch across its
+profiles before advancing. Clients upload each image as it becomes available;
+full-resolution host comparison
 determines equality and retained previews. The dashboard displays the actual job
 rectangles, including partial charts, and follows or pans over large sheets.
 Recoverable failures can still use the existing sequential classic fallback. The
@@ -276,6 +277,45 @@ live under `<output-root>/control-room`; scientific result records retain their
 existing locations and export format. The server checks its host source version
 on resume. After a host-code update, stop the older control server or choose a
 different `--control-room-port`; the CLI will not terminate an unknown server.
+
+The curved overview contains every sheet, with four profile mosaics per sheet.
+Transparent outlines indicate planned captures. Images occupy their measured
+pixel coordinates; tall sheets can be panned and zoomed. Click a sheet to focus
+it, or a capture region to inspect matching areas across profiles. The minimap
+previews sheets on hover. Camera following can be disabled while inspecting
+history; navigation buttons find the next differing region, sheet or group.
+
+Capture size (`capture_tile_megapixels`, integer 1–32, default 32), batch size
+(`capture_batch_tiles`, integer 1–16, default 1) and `hide_excel` apply to the
+next admitted group. Each attempt records those settings. The batch is also
+bounded to 64 MP per physical client. Actual capture jobs remain full-width,
+guarded row bands so overflow text and charts are rendered consistently. Large
+images are subdivided into explicitly labelled inspection regions, with exact
+per-region pixel comparisons; these regions are not extra Excel capture jobs.
+The throughput display counts real uploaded pixels and bytes, including repeated
+or overlapping pixels, rather than estimating from displayed thumbnails.
+
+The process list shows identity-checked Excel PIDs, actual launch visibility and
+current work. Hearts pulse on real worker heartbeats and fade with their age.
+A live process without a recent heartbeat remains distinguishable from a dead
+process, including while Excel opening stalls Office.js. Hidden launches can be
+observed entirely through this dashboard; whether an Office build executes its
+add-in reliably while hidden still needs a representative native test.
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8771/api/control -Method Post -ContentType application/json -Body '{"capture_tile_megapixels":4,"capture_batch_tiles":4,"hide_excel":true}'
+Invoke-RestMethod http://127.0.0.1:8771/api/groups/GROUP_ID/restart -Method Post -ContentType application/json -Body '{"reason":"Accidental cell edit"}'
+```
+
+A restart always repeats the whole workbook comparison, even when requested
+from one instance. The coordinator stops issuing jobs, waits for the current
+wave's peers to finish, closes the owned Excel instances together, and puts the
+replacement first in the queue. If captures are paused, resume them to let those
+peers finish. Completed workbooks in the current corpus/size selection can also
+be queued; their shrink variants are rebuilt if the disposable ZIP was removed.
+Every attempt uses separate image/evidence paths and archives the previous
+record. A new attempt cannot silently mix images from an interrupted one.
+`GET /api/commands/{id}` exposes the durable request's state and final result.
 
 ## Memory and timing interpretation
 
