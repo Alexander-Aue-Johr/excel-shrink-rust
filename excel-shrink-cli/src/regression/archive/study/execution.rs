@@ -103,7 +103,9 @@ pub(super) fn run_record(
         mode,
         bundle: Some(bundle_path(output, id)),
         resident_capture: run["options"]["resident_capture"] == true,
-        hide_excel: run["options"]["hide_excel"] == true,
+        hide_excel: state["control_room_attempt"]["settings"]["hide_excel"]
+            .as_bool()
+            .unwrap_or(run["options"]["hide_excel"] == true),
         control_room: (run["options"]["control_room"] == true
             && run["options"]["resident_capture"] == true)
             .then(|| output.join("control-room")),
@@ -137,11 +139,38 @@ pub(super) fn run_record(
     if job
         .cleanup_barrier
         .as_ref()
-        .is_some_and(|barrier| barrier.cancelled())
+        .is_some_and(|barrier| barrier.cancelled() || barrier.restart_requested())
     {
+        let restarting = job
+            .cleanup_barrier
+            .as_ref()
+            .is_some_and(|barrier| barrier.restart_requested());
+        if restarting {
+            // Replacement removes .work. Preserve whatever evidence and logs
+            // were already published, without treating the attempt as complete.
+            let _ = retain_worker_memory(&mut result, &work);
+            retain_visual_evidence(&mut result, &work, output, &key[..20], diagnosis_only);
+            relative_images(&mut result, output);
+            let attempt = result["control_room_attempt"]["id"]
+                .as_str()
+                .unwrap_or("legacy");
+            let log_key = format!(
+                "{}-{}",
+                &key[..20],
+                &artifact_cache::sha256(attempt.as_bytes())[..12]
+            );
+            let _ = retain_capture_logs(&work, output, &log_key);
+            let _ = retain_resident_diagnostics(&work, output, &log_key, true);
+        }
         mark_cancelled(&mut result, job.bundle.as_deref());
+        if restarting {
+            result["status"] = json!("restart_pending");
+            result["last_execution"]["restart_requested"] = json!(true);
+            result["error"] =
+                json!("User requested a fresh comparison; previous evidence retained.");
+        }
         if let Err(error) = &outcome {
-            result["error"] = json!(format!("Coordinator cancelled this attempt: {error:#}"));
+            result["last_execution"]["interruption_detail"] = json!(format!("{error:#}"));
         }
         // Keep the prepared ZIP and work directory. A subsequent resume can
         // validate/reuse the ZIP and retry this unfinished comparison normally.
@@ -212,6 +241,13 @@ fn retain_visual_evidence(
     diagnosis_only: bool,
 ) {
     let mut evidence = output.join("evidence").join(key);
+    if let Some(attempt) = result["control_room_attempt"]["id"].as_str() {
+        // Hash untrusted/imported record fields before using them as a path.
+        evidence = evidence.join(format!(
+            "attempt-{}",
+            &artifact_cache::sha256(attempt.as_bytes())[..20]
+        ));
+    }
     if result["capture_mode"] == "classic" && result["comparison_fallback"]["status"] == "running" {
         if let Some(run_id) = result["comparison_fallback"]["run_id"].as_str() {
             let attempt = artifact_cache::sha256(run_id.as_bytes());
@@ -448,9 +484,11 @@ mod tests {
         assert_eq!(record["status"], "differences");
         assert_eq!(record["complete"], true);
         assert_eq!(record["whitespace_diagnosis"]["status"], "failed");
-        assert!(record["whitespace_diagnosis"]["control"]
-            .get("original_image")
-            .is_none());
+        assert!(
+            record["whitespace_diagnosis"]["control"]
+                .get("original_image")
+                .is_none()
+        );
         fs::remove_dir_all(root)?;
         Ok(())
     }

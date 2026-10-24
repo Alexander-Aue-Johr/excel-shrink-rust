@@ -1,6 +1,9 @@
 //! Admit groups directly from the user's live target, without predicting their RAM.
 use super::super::control_room::{self, Controls};
 use super::*;
+#[path = "manual_restarts.rs"]
+mod restarts;
+use std::collections::BTreeMap;
 
 struct Active {
     job: Comparison,
@@ -8,6 +11,7 @@ struct Active {
     finished: bool,
     error: Option<String>,
     pause_millis: u64,
+    restart_requests: Vec<restarts::Request>,
 }
 
 fn cancel_active(active: &[Active]) {
@@ -42,6 +46,12 @@ fn refresh_groups(queue: &mut Value, active: &[Active], records: &[Value], pendi
             group["status"] = if let Some(error) = &job.error {
                 group["error"] = json!(error);
                 json!("failed")
+            } else if job.participant.restart_requested() {
+                json!(if job.finished {
+                    "queued"
+                } else {
+                    "restart_waiting_cleanup"
+                })
             } else if job.finished {
                 records[job.job.position]["status"].clone()
             } else if job.participant.ready() {
@@ -76,6 +86,17 @@ pub(super) fn compare(
     log_level: LogLevel,
 ) -> Result<()> {
     let room = output.join("control-room");
+    let producer = run["executable_sha256"]
+        .as_str()
+        .context("missing runner build identity")?;
+    let compatible: Vec<String> =
+        serde_json::from_value(run["options"]["reuse_prepared_from"].clone())?;
+    let manifest = artifact_cache::sha256(&serde_json::to_vec_pretty(&run["selection"])?);
+    let order = match run["options"]["order"].as_str() {
+        Some("size-asc") => selection::ProcessingOrder::SizeAsc,
+        Some("size-desc") => selection::ProcessingOrder::SizeDesc,
+        _ => selection::ProcessingOrder::Priority,
+    };
     let mut controls = Controls::read(&room)?;
     let mut queue =
         control_room::read_json(&room.join("queue.json")).unwrap_or_else(|| json!({"groups":[]}));
@@ -84,10 +105,20 @@ pub(super) fn compare(
     let groups = queue["groups"]
         .as_array_mut()
         .context("missing control room groups")?;
+    let eligible = restarts::eligible(source, records);
+    for group in groups.iter_mut() {
+        let allowed = group["id"]
+            .as_str()
+            .is_some_and(|id| eligible.contains_key(id));
+        group["restart_eligible"] = json!(allowed);
+        if allowed {
+            group["run_id"] = run["run_id"].clone();
+        }
+    }
     for job in &jobs {
         let id = control_room::group_id(&job.id);
         let group = json!({"id":id,"workbook":records[job.position]["name"],"corpus":source.name,
-            "status":"queued","active":false,"run_id":run["run_id"],"sequence":groups.len()+1});
+            "status":"queued","active":false,"run_id":run["run_id"],"restart_eligible":true,"sequence":groups.len()+1});
         if let Some(previous) = groups.iter_mut().find(|g| g["id"] == id) {
             let sequence = previous["sequence"].clone();
             *previous = group;
@@ -99,7 +130,87 @@ pub(super) fn compare(
     control_room::write(&room.join("queue.json"), &queue)?;
     let mut pending: VecDeque<_> = jobs.into();
     let mut wave = 0;
-    while !pending.is_empty() {
+    let mut queued_restarts = BTreeMap::new();
+    loop {
+        restarts::poll(
+            &room,
+            &mut queue,
+            &eligible,
+            &[],
+            &mut pending,
+            records,
+            None,
+            &mut queued_restarts,
+        )?;
+        let Some(front) = pending.front().cloned() else {
+            break;
+        };
+        if !reusable_preparation(
+            &records[front.position],
+            &bundle_path(output, &front.id),
+            producer,
+            &source.fingerprint,
+            &compatible,
+        ) {
+            // A completed historical comparison normally discarded its ZIP.
+            // Rebuild it between waves; conversion must not disturb live peers.
+            restarts::archive_record(&room, &front.id, &records[front.position])?;
+            records[front.position]
+                .as_object_mut()
+                .unwrap()
+                .remove("preparation_accepted_by");
+            records[front.position]["prepared_by"] = json!(producer);
+            records[front.position]["source_fingerprint"] = json!(source.fingerprint);
+            records[front.position]["run_selection"] = source.selection.provenance(
+                front.index,
+                &source.id,
+                &source.fingerprint,
+                &manifest,
+                order,
+            );
+            let id = control_room::group_id(&front.id);
+            if let Some(group) = queue["groups"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|g| g["id"] == id)
+            {
+                group["status"] = json!("preparing");
+            }
+            control_room::write(&room.join("queue.json"), &queue)?;
+            execution::process(
+                source,
+                front.index,
+                &front.id,
+                front.position,
+                JobMode::Prepare,
+                output,
+                records,
+                corpora,
+                limits,
+                run,
+                log_level,
+            )?;
+            if records[front.position]["prepared"] != true
+                || !bundle_path(output, &front.id).is_file()
+            {
+                pending.pop_front();
+                restarts::finish(
+                    &mut queued_restarts.remove(&front.id).unwrap_or_default(),
+                    &records[front.position],
+                )?;
+                if let Some(group) = queue["groups"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|g| g["id"] == id)
+                {
+                    group["status"] = records[front.position]["status"].clone();
+                }
+                control_room::write(&room.join("queue.json"), &queue)?;
+                continue;
+            }
+        }
         wave += 1;
         let mut cleanup = batch_cleanup::Batch::growing(output, limits.workbook_timeout_seconds)?;
         let mut active: Vec<Active> = Vec::new();
@@ -113,6 +224,22 @@ pub(super) fn compare(
                 // A transient sharing violation must not reset a user-selected target.
                 if let Ok(updated) = Controls::read(&room) {
                     controls = updated;
+                }
+                if last_snapshot.elapsed() >= Duration::from_secs(1) {
+                    if let Err(error) = restarts::poll(
+                        &room,
+                        &mut queue,
+                        &eligible,
+                        &active,
+                        &mut pending,
+                        records,
+                        Some(&mut cleanup),
+                        &mut queued_restarts,
+                    ) {
+                        errors.push(format!("consume restart request: {error:#}"));
+                        cleanup.close_admission();
+                        cancel_active(&active);
+                    }
                 }
                 // Close Excel together: shutting down one shared WebView runtime
                 // can restart a task pane in another group. Admission stays open
@@ -129,6 +256,17 @@ pub(super) fn compare(
                 );
                 for _ in 0..count {
                     let job = pending.pop_front().unwrap();
+                    if !reusable_preparation(
+                        &records[job.position],
+                        &bundle_path(output, &job.id),
+                        producer,
+                        &source.fingerprint,
+                        &compatible,
+                    ) {
+                        pending.push_front(job);
+                        cleanup.close_admission();
+                        break;
+                    }
                     let participant = match cleanup.add_manual_participant() {
                         Ok(value) => value,
                         Err(error) => {
@@ -140,6 +278,26 @@ pub(super) fn compare(
                         }
                     };
                     let mut record = records[job.position].clone();
+                    let attempt =
+                        match restarts::begin_attempt(&room, &job, &mut record, &controls, run) {
+                            Ok(attempt) => attempt,
+                            Err(error) => {
+                                errors.push(format!("start fresh comparison attempt: {error:#}"));
+                                let _ = participant.mark_ready();
+                                cleanup.close_admission();
+                                cancel_active(&active);
+                                pending.push_front(job);
+                                break;
+                            }
+                        };
+                    record["compared_by"] = json!(producer);
+                    record["run_selection"] = source.selection.provenance(
+                        job.index,
+                        &source.id,
+                        &source.fingerprint,
+                        &manifest,
+                        order,
+                    );
                     record["comparison_batch"] = json!({"run_id":run["run_id"],"number":wave,
                         "scheduling":"manual","requested_workers":controls.target_groups});
                     let id = control_room::group_id(&job.id);
@@ -152,19 +310,16 @@ pub(super) fn compare(
                         group["status"] = json!("opening");
                         group["active"] = json!(true);
                         group["started_unix_ms"] = json!(provenance::now_ms());
+                        group["attempt_id"] = json!(attempt);
                     }
-                    // A retry must not present the previous attempt's tiles as live.
-                    let state = room.join("groups").join(&id).join("state.json");
-                    if state.is_file() {
-                        let previous =
-                            state.with_file_name(format!("previous-{}.json", provenance::now_ms()));
-                        if let Err(error) = fs::rename(&state, previous) {
-                            errors.push(format!("archive previous group snapshot: {error}"));
-                            let _ = participant.mark_ready();
-                            cleanup.close_admission();
-                            cancel_active(&active);
-                            pending.push_front(job);
-                            break;
+                    let mut restart_requests = queued_restarts.remove(&job.id).unwrap_or_default();
+                    for request in &mut restart_requests {
+                        request.value["replacement_attempt_id"] = json!(attempt);
+                        if let Err(error) = request.update(
+                            "restarting",
+                            "Replacement comparison admitted with current capture settings.",
+                        ) {
+                            errors.push(format!("publish restart admission: {error:#}"));
                         }
                     }
                     let thread_job = job.clone();
@@ -208,6 +363,7 @@ pub(super) fn compare(
                                 finished: false,
                                 error: None,
                                 pause_millis: 0,
+                                restart_requests,
                             });
                         }
                         Err(error) => {
@@ -220,6 +376,10 @@ pub(super) fn compare(
                             break;
                         }
                     }
+                }
+                if !errors.is_empty() {
+                    cleanup.close_admission();
+                    cancel_active(&active);
                 }
                 if errors.is_empty() {
                     if let Err(error) = cleanup.release_if_ready() {
@@ -339,6 +499,9 @@ pub(super) fn compare(
             errors.join("; ")
         );
         for job in &active {
+            if job.participant.restart_requested() {
+                continue;
+            }
             if fallback::recoverable_failure(&records[job.job.position]).is_none()
                 || !bundle_path(output, &job.job.id).is_file()
             {
@@ -379,6 +542,9 @@ pub(super) fn compare(
             }
             control_room::write(&room.join("queue.json"), &queue)?;
             result?;
+        }
+        for job in &mut active {
+            restarts::finish(&mut job.restart_requests, &records[job.job.position])?;
         }
     }
     Ok(())

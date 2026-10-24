@@ -16,6 +16,8 @@ pub(in crate::regression) struct Participant {
     pub pause_path: Option<PathBuf>,
     #[serde(default)]
     pub manual_control: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restart_path: Option<PathBuf>,
     #[serde(skip)]
     wait_clock: Arc<Mutex<Option<opening_pause::OpeningPause>>>,
     // Parent thread clones share cancellation. Serialized worker descriptions
@@ -25,6 +27,20 @@ pub(in crate::regression) struct Participant {
 }
 
 impl Participant {
+    // A user restart stops work at the next boundary, but still waits for peer
+    // cleanup. Fatal coordinator cancellation deliberately bypasses that wait.
+    pub fn request_restart(&self) -> Result<()> {
+        create_marker(
+            self.restart_path
+                .as_deref()
+                .context("restart marker unavailable")?,
+        )
+    }
+
+    pub fn restart_requested(&self) -> bool {
+        self.restart_path.as_deref().is_some_and(Path::is_file)
+    }
+
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
     }
@@ -217,6 +233,7 @@ impl Batch {
             timeout_seconds: self.timeout_seconds,
             pause_path: Some(self.directory.join(format!("{index}.pause.json"))),
             manual_control: false,
+            restart_path: Some(self.directory.join(format!("{index}.restart"))),
             wait_clock: Arc::default(),
             cancelled: Arc::default(),
         };
@@ -266,6 +283,33 @@ impl Drop for Batch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_restart_is_visible_in_worker_but_waits_for_peer_cleanup() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "restart-cleanup")?;
+        fs::create_dir(&root)?;
+        let mut batch = Batch::growing(&root, 60)?;
+        let first = batch.add_manual_participant()?;
+        let second = batch.add_manual_participant()?;
+        let worker: Participant = serde_json::from_slice(&serde_json::to_vec(&first)?)?;
+        batch.close_admission();
+        first.request_restart()?;
+        assert!(worker.restart_requested());
+        assert!(!worker.cancelled());
+        first.mark_ready()?;
+        batch.release_if_ready()?;
+        assert!(
+            !first.released(),
+            "restart must not close Excel under an active peer"
+        );
+        second.mark_ready()?;
+        batch.release_if_ready()?;
+        worker.wait(None, false)?;
+        assert!(first.released());
+        drop(batch);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn parent_cancellation_wakes_manual_waiters_without_releasing_the_batch() -> Result<()> {

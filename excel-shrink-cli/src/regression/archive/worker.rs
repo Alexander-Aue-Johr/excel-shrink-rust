@@ -193,6 +193,8 @@ pub(super) fn launch(
         if job.hide_excel { "1" } else { "0" },
     );
     if let Some(root) = job.control_room.as_ref().filter(|_| job.resident_capture) {
+        let record: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
+        let attempt = &record["control_room_attempt"];
         command
             .env("EXCEL_SHRINK_CONTROL_ROOM_DIR", root)
             .env("EXCEL_SHRINK_CONTROL_ROOM_GROUP_ID", &key[..20])
@@ -200,11 +202,39 @@ pub(super) fn launch(
                 "EXCEL_SHRINK_CONTROL_ROOM_OWNER_PID",
                 std::process::id().to_string(),
             );
+        for (name, value) in [
+            (
+                "EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID",
+                attempt["id"].as_str().map(str::to_owned),
+            ),
+            (
+                "EXCEL_SHRINK_CAPTURE_TILE_MEGAPIXELS",
+                attempt["settings"]["capture_tile_megapixels"]
+                    .as_u64()
+                    .map(|n| n.to_string()),
+            ),
+            (
+                "EXCEL_SHRINK_CAPTURE_BATCH_TILES",
+                attempt["settings"]["capture_batch_tiles"]
+                    .as_u64()
+                    .map(|n| n.to_string()),
+            ),
+        ] {
+            if let Some(value) = value {
+                command.env(name, value);
+            } else {
+                command.env_remove(name);
+            }
+        }
     } else {
         command
             .env_remove("EXCEL_SHRINK_CONTROL_ROOM_DIR")
             .env_remove("EXCEL_SHRINK_CONTROL_ROOM_GROUP_ID")
             .env_remove("EXCEL_SHRINK_CONTROL_ROOM_OWNER_PID");
+        command
+            .env_remove("EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID")
+            .env_remove("EXCEL_SHRINK_CAPTURE_TILE_MEGAPIXELS")
+            .env_remove("EXCEL_SHRINK_CAPTURE_BATCH_TILES");
     }
     if job.resident_capture {
         let record: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
@@ -282,6 +312,10 @@ fn wait_for_worker(
         ensure!(
             !cleanup_barrier.is_some_and(|barrier| barrier.cancelled()),
             "resident comparison cancelled by coordinator"
+        );
+        ensure!(
+            !cleanup_barrier.is_some_and(|barrier| barrier.restart_requested()),
+            "user requested a fresh comparison attempt"
         );
         on_progress()?;
         if let Some(status) = child.try_wait()? {
@@ -522,10 +556,12 @@ mod tests {
             json!(1.5),
             json!("4096"),
         ] {
-            assert!(resident_memory_limit_mib(
-                &json!({"comparison_batch":{"resident_memory_limit_mib":value}})
-            )
-            .is_err());
+            assert!(
+                resident_memory_limit_mib(
+                    &json!({"comparison_batch":{"resident_memory_limit_mib":value}})
+                )
+                .is_err()
+            );
         }
         Ok(())
     }
