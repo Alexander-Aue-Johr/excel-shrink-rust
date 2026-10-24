@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "corpora": [
+    {
+      "name": "Enron",
+      "id": "219f5e4e42c4397a98d8e4e0cc2825e90ab3e622c4989ade93148363efb84bf5",
+      "url": null,
+      "cache_file": "219f5e4e42c4397a98d8.zip",
+      "total_workbooks": 20872
+    },
+    {
+      "name": "Destatis",
+      "id": "63a3828a77135487fb742df9cbbc9ecad433c2f4347da6cd8e69fd25def02ae4",
+      "url": null,
+      "cache_file": "63a3828a77135487fb74.zip",
+      "total_workbooks": 1182
+    },
+    {
+      "name": "Data.gov",
+      "id": "9053555363a44d08e6237262943dc046620359456b81199a8eb45a65be5be875",
+      "url": null,
+      "cache_file": "9053555363a44d08e623.zip",
+      "total_workbooks": 9117
+    }
+  ]
+}

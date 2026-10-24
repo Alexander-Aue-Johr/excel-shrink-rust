@@ -156,47 +156,35 @@
       }
     },
     {
-      "label": "Release corpus regression (resume)",
+      "label": "Excel Shrink: Korpuslauf konfigurieren",
       "type": "process",
-      "command": "cargo",
+      "command": "powershell.exe",
       "args": [
-        "run",
-        "--release",
-        "-p",
-        "excel-shrink-cli",
-        "--",
-        "regression",
-        "study",
-        "--request-file",
-        ".tmp/archive-regression/study-request.json",
-        "--output-root",
-        ".tmp/regression/study",
-        "--import-report",
-        ".tmp/archive-regression/previous-report.json"
+        "-NoLogo",
+        "-NoProfile",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\start-corpus.ps1"
       ],
-      "problemMatcher": [
-        "$rustc"
-      ],
-      "group": "test",
       "options": {
         "cwd": "${workspaceFolder}",
         "env": {
-          "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+          "PATH": "${env:PATH};${userHome}/.cargo/bin"
         }
       },
-      "windows": {
-        "options": {
-          "cwd": "${workspaceFolder}",
-          "env": {
-            "PATH": "${env:PATH};${userHome}/.cargo/bin",
-            "EXCEL_SHRINK_WORKER_MEMORY_MIB": "8192"
-          }
-        }
-      },
+      "problemMatcher": [],
+      "group": "test",
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
-        "clear": false
+        "clear": false,
+        "focus": false,
+        "showReuseMessage": false
+      },
+      "runOptions": {
+        "reevaluateOnRerun": true
       }
     },
     {

@@ -4,6 +4,60 @@ Use one local study directory per machine. Each worker knows all three corpora,
 but executes only its assigned corpus and size partition. GOTHAM collects the
 result packages into the combined report.
 
+For the normal Windows workflow, use the VS Code task **Excel Shrink: Korpuslauf
+konfigurieren**. Its shared corpus catalog, local ZIP migration and result
+handoff are documented in [the corpus launcher guide](corpus-launcher.md).
+The direct CLI examples below remain available for scripted assignments.
+
+## Live controls and progress
+
+With `--resident-capture --control-room`, the group target is controlled in the
+Observatory. A group is one original workbook and its cleaning variants, plus
+any required whitespace controls; it is not one Excel process.
+
+Setting the target to **0** stops admission of new workbooks, including new
+preparations. Work already admitted finishes through comparison and necessary
+controls, then the runner waits until the target is raised. A preparation already
+underway when zero is requested also finishes its comparison before pausing.
+`--prepare-only` still stops after preparation. Starting with
+`--comparison-workers 0` requires the control room; initial archive discovery
+and indexing happen before this pause. No completed records are discarded.
+
+Zero lifts a separate capture pause so that admitted work can drain. The capture
+pause control is unavailable while the target is zero. Reducing a positive target
+also stops further admission but never kills active work. Completed groups can
+retain their Excel processes until their peers finish: closing the shared WebView
+runtime early can disrupt peers. **Working**, **waiting for cleanup**, and **open**
+counts distinguish those states.
+
+The central **Worker-Übersicht** lists active groups without traversing historical
+results. It includes the Rust workbook coordinator and known Excel clients, their
+process identity, observed phase, heartbeat, last real progress and bounded recent
+events. A heartbeat is never counted as successful work. Unknown internal Excel
+activity stays unknown; long waits alone do not trigger a failure or restart.
+The compact JSON view is available at `/api/workers`; `/api/state` includes the
+assignment's `progress` snapshot.
+
+Progress counts unique source workbooks within this machine's selected corpus
+and size partition. Skips and pending preparation are separate from completed
+comparisons; cleaning profiles and whitespace controls do not multiply the count.
+Existing results contribute to totals, not this invocation's speed. The display
+shows completions per minute/hour over the last 15 active minutes and a run
+average. Fully drained zero-target pauses are excluded. Capture pauses with
+already-running groups retain wall time so late completions cannot inflate speed.
+
+The remaining-time estimate uses recent completion rates and includes outstanding
+preparation when its rate is available. It remains unavailable with too few
+samples, missing preparation throughput, limited stage-only runs or during a
+pause. File sizes and concurrency can change, so this is a current-rate estimate,
+not a promised deadline. Old runs without the new live snapshot show no invented
+throughput.
+
+Each sheet card has **fit width**, **fit height** and **fit sheet** buttons shared
+by its four profiles. Ctrl+wheel zooms at the pointer; Shift+wheel scrolls
+horizontally. Ordinary wheel motion follows actual overflow. Manual navigation
+disables camera following, and each workbook/sheet retains its viewport.
+
 ## Assignment
 
 | Machine label | Corpus | Selection | Workbooks before resume filtering |
