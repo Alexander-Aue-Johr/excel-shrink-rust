@@ -29,6 +29,14 @@
     <CheckBox x:Name="Export" Grid.Row="1" Grid.Column="1" Content="Nach Abschluss Ergebnis-ZIP zum Übertragen erstellen" Margin="0,15,0,0"/>
     <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="Der Lauf bleibt nach dem Schließen von VS Code aktiv. Die Steuerung erfolgt im Observatory." FontSize="12" Foreground="#52606D" Margin="0,12,0,0" TextWrapping="Wrap"/>
    </Grid></Border>
+   <Border Background="White" CornerRadius="8" Padding="16" Margin="0,12,0,0"><StackPanel>
+    <TextBlock Text="Sehr hohe Sheets gezielt prüfen" FontWeight="SemiBold"/>
+    <WrapPanel Margin="0,8,0,0">
+     <TextBlock Text="Ab mehr als" VerticalAlignment="Center"/><TextBox x:Name="TallThreshold" Width="65" Margin="8,0" Padding="5"/><TextBlock Text="Capture-Zeilen kürzen · oben und unten jeweils" VerticalAlignment="Center"/>
+     <TextBox x:Name="TallEdges" Width="65" Margin="8,0" Padding="5"/><TextBlock Text="Capture-Zeilen behalten" VerticalAlignment="Center"/>
+    </WrapPanel>
+    <TextBlock Text="Zusätzlich werden Bereiche mit Änderungsindikatoren erfasst. Auslassungen bleiben im Bericht sichtbar. Änderungen gelten für neue Gruppen." FontSize="12" Foreground="#52606D" Margin="0,8,0,0" TextWrapping="Wrap"/>
+   </StackPanel></Border>
    <Expander Header="Erweiterte Einstellungen" Margin="0,14,0,0"><Grid Margin="0,10,0,0">
     <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -49,10 +57,10 @@
 </Window>
 '@
     $window=[Windows.Markup.XamlReader]::Load([Xml.XmlNodeReader]::new($xaml))
-    $ui=@{}; foreach($name in @('Corpus','AddCorpus','BindArchive','ArchiveStatus','Parts','FewerParts','MoreParts','ApplyParts','PartitionButtons','SmallFirst','LargeFirst','Groups','Machine','Hidden','Export','Output','Downloads','Port','RustMemory','ExcelMemory','GroupMemory','Reserve','OpenTimeout','JobTimeout','Build','Compatibility','Import','Imports','Status','OpenObservatory','Save','Cancel','Start')){$ui[$name]=$window.FindName($name)}
+    $ui=@{}; foreach($name in @('Corpus','AddCorpus','BindArchive','ArchiveStatus','Parts','FewerParts','MoreParts','ApplyParts','PartitionButtons','SmallFirst','LargeFirst','Groups','Machine','Hidden','Export','TallThreshold','TallEdges','Output','Downloads','Port','RustMemory','ExcelMemory','GroupMemory','Reserve','OpenTimeout','JobTimeout','Build','Compatibility','Import','Imports','Status','OpenObservatory','Save','Cancel','Start')){$ui[$name]=$window.FindName($name)}
     $state=@{ partition=[int]$Configuration.settings.partition; partitions=[int]$Configuration.settings.partitions; imports=@($ImportResults); result=$null }
     if($state.imports.Count){$ui.Imports.Text="$($state.imports.Count) ausgewählt"}
-    $fields=@{ Groups='comparison_groups';Machine='machine_label';Output='output_root';Downloads='download_root';Port='control_room_port';RustMemory='worker_memory_mib';ExcelMemory='excel_memory_mib';GroupMemory='resident_memory_mib';Reserve='system_reserve_mib';OpenTimeout='open_timeout_seconds';JobTimeout='job_timeout_seconds';Parts='partitions' }
+    $fields=@{ Groups='comparison_groups';Machine='machine_label';TallThreshold='tall_sheet_threshold';TallEdges='tall_sheet_edge_tiles';Output='output_root';Downloads='download_root';Port='control_room_port';RustMemory='worker_memory_mib';ExcelMemory='excel_memory_mib';GroupMemory='resident_memory_mib';Reserve='system_reserve_mib';OpenTimeout='open_timeout_seconds';JobTimeout='job_timeout_seconds';Parts='partitions' }
     foreach($name in $fields.Keys){$ui[$name].Text=[string]$Configuration.settings.($fields[$name])}
     $ui.Hidden.IsChecked=[bool]$Configuration.settings.hide_excel; $ui.Export.IsChecked=[bool]$Configuration.settings.export_results; $ui.Build.IsChecked=[bool]$Configuration.settings.build_release
     $ui.LargeFirst.IsChecked=$Configuration.settings.order -eq 'size-desc';$ui.SmallFirst.IsChecked=-not $ui.LargeFirst.IsChecked

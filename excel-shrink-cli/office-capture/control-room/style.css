@@ -856,3 +856,8 @@ body.presenting .experiment-controls,body.presenting .process-section { display:
 .sheet-zoom-tools button[aria-pressed=true] { border-color:#79d9cb; color:#98f0dc; background:#234d50; }
 .sheet-zoom-tools svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.45; stroke-linecap:round; stroke-linejoin:round; }
 .sheet-zoom-mode { font-size:10px; color:#95bbcd; min-width:130px; text-align:right; }
+/* Explicitly absent evidence uses a broken axis and a neutral violet tone. */
+.omission-tooltip { position:fixed; z-index:100; pointer-events:none; max-width:360px; padding:10px 13px; border:1px solid #a5a3bb; border-radius:8px; background:#132333f5; color:#e0dfed; font-size:13px; line-height:1.5; box-shadow:0 8px 24px #0007; }
+.omission-tooltip[hidden] { display:none; }
+.tile-buttons button.omitted { border-style:dashed; border-color:#a5a3bb; color:#d0cddd; }
+.legend i.omitted { background:transparent; border:1px dashed #a5a3bb; }

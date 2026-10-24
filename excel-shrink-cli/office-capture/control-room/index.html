@@ -18,6 +18,8 @@
   <details class="experiment-controls" open><summary>Capture & Öffnen <span>Neue Einstellungen gelten für die nächste Gruppe.</span></summary><div class="experiment-grid">
     <label>Capture-Zielgröße <span><input id="captureMegapixels" type="number" min="1" max="32" step="1" value="32"> MP</span><small>Originale Capture-Aufträge bleiben volle, geschützte Zeilenbänder.</small></label>
     <label>Aufträge pro Batch <span><input id="captureBatch" type="number" min="1" max="16" step="1" value="1"><button id="applyCapture">Setzen</button></span><small>Gemeinsames Pixelbudget begrenzt die tatsächliche Batchgröße.</small></label>
+    <label>Hohe Sheets kürzen <span>Über <input id="tallSheetThreshold" type="number" min="1" max="2147483647" step="1" value="40"> Capture-Zeilen</span><small>Kleinere Sheets werden vollständig erfasst.</small></label>
+    <label>Oben und unten behalten <span>Je <input id="tallSheetEdges" type="number" min="1" max="2147483647" step="1" value="2"> Capture-Zeilen <button id="applyTallSheet">Setzen</button></span><small>Bereiche mit Änderungsindikatoren kommen zusätzlich hinzu.</small></label>
     <label class="hidden-control"><span><input id="hideExcel" type="checkbox"> Excel verborgen öffnen</span><small>Ab der nächsten Gruppe. Aktive Fenster bleiben unverändert.</small></label>
     <div class="throughput"><span id="pixelRate">— MP/s</span><small id="captureTotals">Warte auf gemessene Captures</small><small id="effectiveCapture">—</small></div>
   </div></details>
@@ -34,7 +36,7 @@
         <div class="minimap" aria-label="Alle Sheets"><div class="minimap-heading"><span>SHEET-KARTE</span><span id="minimapLabel">—</span></div><div id="minimapGrid" class="minimap-grid"></div></div>
         <div id="emptyScene" class="empty-scene"><strong>Die nächste Aufnahme wird hier sichtbar.</strong><span>Es werden ausschließlich echte Aufträge und Bilder angezeigt.</span></div>
         <div id="selectionBar" class="selection-bar" hidden><strong id="selectionText"></strong><span id="selectionSummary"></span><button id="pinSelection" aria-pressed="false">Festhalten</button><button id="closeSelection" aria-label="Detail schließen">×</button></div>
-        <div class="room-bottom"><div class="legend"><span><i class="waiting"></i>angefragt</span><span><i class="received"></i>Bild da</span><span><i class="equal"></i>identisch</span><span><i class="different"></i>abweichend</span></div><label class="toggle"><input type="checkbox" id="pulseDiff" checked> Unterschiede pulsieren</label></div>
+        <div class="room-bottom"><div class="legend"><span><i class="waiting"></i>angefragt</span><span><i class="received"></i>Bild da</span><span><i class="equal"></i>identisch</span><span><i class="different"></i>abweichend</span><span><i class="omitted"></i>ausgelassen · ungeprüft</span></div><label class="toggle"><input type="checkbox" id="pulseDiff" checked> Unterschiede pulsieren</label></div>
         <div id="error" class="error" hidden role="alert"></div>
       </section>
       <div class="pan-controls" aria-label="Gemeinsamen Sheet-Ausschnitt verschieben"><label>Horizontal <input id="panX" type="range" min="0" max="0" value="0" step="1"></label><label>Vertikal <input id="panY" type="range" min="0" max="0" value="0" step="1"></label><span class="sheet-zoom-mode" id="sheetZoomMode">Ganzes Sheet einpassen</span></div>

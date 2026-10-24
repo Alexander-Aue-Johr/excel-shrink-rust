@@ -11,7 +11,7 @@ internal static class ControlRoom
 {
     private const long SnapshotLimit = 32 * 1024 * 1024;
     private static readonly HashSet<int> PreviewWidths = [0, 128, 256, 512, 1024];
-    private static readonly string[] ControlKeys = ["target_groups", "paused", "open_timeout_seconds", "job_timeout_seconds", "equal_preview_width", "capture_tile_megapixels", "capture_batch_tiles", "hide_excel"];
+    private static readonly string[] ControlKeys = ["target_groups", "paused", "open_timeout_seconds", "job_timeout_seconds", "equal_preview_width", "capture_tile_megapixels", "capture_batch_tiles", "tall_sheet_threshold", "tall_sheet_edge_tiles", "hide_excel"];
 
     public static async Task RunAsync(string settingsPath)
     {
@@ -237,7 +237,8 @@ internal static class ControlRoom
     private static JsonObject Defaults() => new() {
         ["target_groups"] = 1, ["paused"] = false, ["open_timeout_seconds"] = 600,
         ["job_timeout_seconds"] = 300, ["equal_preview_width"] = 512,
-        ["capture_tile_megapixels"] = 32, ["capture_batch_tiles"] = 1, ["hide_excel"] = false
+        ["capture_tile_megapixels"] = 32, ["capture_batch_tiles"] = 1, ["hide_excel"] = false,
+        ["tall_sheet_threshold"] = 40, ["tall_sheet_edge_tiles"] = 2
     };
 
     private static JsonObject MergeControls(JsonObject current, JsonObject patch)

@@ -1,4 +1,6 @@
-use super::super::visual_report::{anchor, permalink, render_differences};
+use super::super::visual_report::{
+    anchor, has_omissions, permalink, render_capture_coverage, render_differences,
+};
 use super::{categories, escape, file_id, items, tables, text};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -17,7 +19,7 @@ pub(super) fn render(html: &mut String, root: &Path, file: &Value) {
         result["unchanged_sheets"].as_u64().unwrap_or_else(|| {
             items(result, "sheets")
                 .iter()
-                .filter(|s| s["status"] == "same")
+                .filter(|s| s["status"] == "same" && !has_omissions(s))
                 .count() as u64
         })
     });
@@ -41,6 +43,20 @@ pub(super) fn render(html: &mut String, root: &Path, file: &Value) {
     let _ = write!(html, "<section id=\"{id}\" class=\"workbook\"><header class=\"hero\"><h2>{}</h2>{}<p>{summary}</p><p>{}</p>",
         escape(text(file, "name")), permalink(&id), if file["complete"] == true { "Complete" } else { "In progress" });
     tables::profiles(html, file);
+    for result in results {
+        for sheet in items(result, "sheets")
+            .iter()
+            .filter(|sheet| has_omissions(sheet))
+        {
+            let _ = write!(
+                html,
+                "<p><strong>{} · {}</strong></p>",
+                escape(text(result, "profile")),
+                escape(text(sheet, "name"))
+            );
+            render_capture_coverage(html, sheet);
+        }
+    }
     let diagnosis = &file["whitespace_diagnosis"];
     let status = diagnosis["status"].as_str().unwrap_or("not_investigated");
     let _ = write!(

@@ -7,6 +7,8 @@ param(
     [int]$Partition = -1,
     [ValidateSet('size-asc','size-desc')][string]$Order,
     [int]$Groups = -1,
+    [int]$TallSheetThreshold = -1,
+    [int]$TallSheetEdgeTiles = -1,
     [string]$OutputRoot,
     [string]$MachineLabel,
     [int]$ControlRoomPort = -1,
@@ -32,6 +34,8 @@ if($PSBoundParameters.ContainsKey('Partitions')){$configuration.settings.partiti
 if($PSBoundParameters.ContainsKey('Partition')){$configuration.settings.partition=$Partition}
 if($Order){$configuration.settings.order=$Order}
 if($PSBoundParameters.ContainsKey('Groups')){$configuration.settings.comparison_groups=$Groups}
+if($PSBoundParameters.ContainsKey('TallSheetThreshold')){$configuration.settings.tall_sheet_threshold=$TallSheetThreshold}
+if($PSBoundParameters.ContainsKey('TallSheetEdgeTiles')){$configuration.settings.tall_sheet_edge_tiles=$TallSheetEdgeTiles}
 if($OutputRoot){$configuration.settings.output_root=$OutputRoot}
 if($MachineLabel){$configuration.settings.machine_label=$MachineLabel}
 if($PSBoundParameters.ContainsKey('ControlRoomPort')){$configuration.settings.control_room_port=$ControlRoomPort}

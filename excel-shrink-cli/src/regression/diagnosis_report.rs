@@ -122,6 +122,11 @@ fn write_page(
     });
     let unchanged: Vec<_> = files.iter().copied().filter(|f| is_unchanged(f)).collect();
     let skipped: Vec<_> = files.iter().copied().filter(|f| is_skipped(f)).collect();
+    let partial: Vec<_> = files
+        .iter()
+        .copied()
+        .filter(|file| !is_skipped(file) && !has_differences(file) && has_omitted_captures(file))
+        .collect();
     let completed = files.iter().filter(|f| f["complete"] == true).count();
     let mut html = format!(
         r##"<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -149,6 +154,9 @@ fn write_page(
     }
     if !skipped.is_empty() {
         html.push_str("<a class=\"nav-link\" href=\"#skipped\">Skipped / errors</a>");
+    }
+    if !partial.is_empty() {
+        html.push_str("<a class=\"nav-link\" href=\"#partial-captures\">Shortened tall sheets</a>");
     }
     if completed > 0 {
         html.push_str("<a class=\"nav-link\" href=\"#machines\">Measurement machines</a>");
@@ -178,6 +186,9 @@ fn write_page(
     let _ = write!(html, "</p><p>{}</p><div class=\"metrics\"><div class=\"metric\"><strong>{}</strong><span>Unchanged</span></div><div class=\"metric\"><strong>{}</strong><span>With differences</span></div><div class=\"metric\"><strong>{}</strong><span>Skipped / errors</span></div></div><p class=\"muted\">{} unchanged · {} with differences · {} skipped/errors</p></header>",
         if report["complete"] == true { "Run completed" } else { "Run not finished" }, unchanged.len(), changed.len(), skipped.len(), unchanged.len(), changed.len(), skipped.len());
     package_summary(&mut html, &unchanged);
+    if !partial.is_empty() {
+        let _ = write!(html, "<p>{} workbooks without differences in the selected captures; tall-sheet ranges were omitted and remain visually unchecked.</p>", partial.len());
+    }
     if report["limited"] == true {
         html.push_str("<p>Limited test run. Remaining archive entries have not been checked.</p>");
     }
@@ -234,6 +245,12 @@ fn write_page(
         }
         workbook::render(&mut html, root, file);
     }
+    if !partial.is_empty() {
+        html.push_str("<h2 id=\"partial-captures\" class=\"section-heading\">Shortened tall sheets — no differences in selected captures</h2>");
+        for file in partial {
+            workbook::render(&mut html, root, file);
+        }
+    }
     html.push_str(REPORT_END);
     super::artifact_cache::atomic_write(&root.join(filename), html.as_bytes())?;
     Ok(())
@@ -245,6 +262,11 @@ fn corpus_cards(html: &mut String, corpora: &BTreeMap<String, Corpus<'_>>) {
         let unchanged = corpus.files.iter().filter(|f| is_unchanged(f)).count();
         let changed = corpus.files.iter().filter(|f| has_differences(f)).count();
         let skipped = corpus.files.iter().filter(|f| is_skipped(f)).count();
+        let partial = corpus
+            .files
+            .iter()
+            .filter(|f| !is_skipped(f) && !has_differences(f) && has_omitted_captures(f))
+            .count();
         let processed = corpus
             .files
             .iter()
@@ -252,6 +274,9 @@ fn corpus_cards(html: &mut String, corpora: &BTreeMap<String, Corpus<'_>>) {
             .count();
         let total = corpus.total.map(|n| format!(" / {n}")).unwrap_or_default();
         let _ = write!(html, "<article class=\"hero corpus-card\"><h2><a href=\"{}\">{}</a></h2><p>{processed}{total} workbooks processed</p><p>{unchanged} unchanged · {changed} with differences · {skipped} skipped/errors</p>", corpus.page(), escape(&corpus.name));
+        if partial > 0 {
+            let _ = write!(html, "<p>{partial} without differences in selected captures; tall-sheet ranges omitted</p>");
+        }
         package_summary(html, &corpus.files);
         tables::totals(html, &corpus.files);
         let _ = write!(
@@ -280,10 +305,18 @@ fn is_unchanged(file: &Value) -> bool {
     file["complete"] == true
         && !is_skipped(file)
         && !has_differences(file)
+        && !has_omitted_captures(file)
         && (file["status"] == "unchanged"
             || items(file, "results")
                 .iter()
                 .any(|r| r["status"] == "visually unchanged"))
+}
+
+fn has_omitted_captures(file: &Value) -> bool {
+    items(file, "results")
+        .iter()
+        .flat_map(|result| items(result, "sheets"))
+        .any(super::visual_report::has_omissions)
 }
 
 fn is_package_unchanged(file: &Value) -> bool {
@@ -315,6 +348,29 @@ fn items<'a>(value: &'a Value, key: &str) -> &'a [Value] {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn shortened_workbooks_have_visible_coverage_outside_unchanged_list() -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("tall-sheet-report-{}", std::process::id()));
+        let file = json!({"identity":"tall","name":"Tall.xlsx","complete":true,"status":"unchanged",
+        "results":[{"profile":"default","status":"checked ranges visually unchanged; tall-sheet ranges omitted",
+                "checked_sheets":2,"unchanged_sheets":1,
+            "sheets":[{"index":1,"name":"CSV data","status":"sampled_same","capture_coverage":{
+                "total_tiles":200,"captured_tiles":4,"omitted_tiles":196,
+                "omitted_ranges":[{"core_rows":[100,999900],"count":196,"reasons":[]}]
+            }}]}]});
+        assert!(!is_unchanged(&file));
+        assert!(!has_differences(&file));
+        let html = fs::read_to_string(write(&dir, &json!({"workbooks":[file]}))?)?;
+        assert!(html.contains("Tall.xlsx"));
+        assert!(html.contains("id=\"partial-captures\""));
+        assert!(html.contains("196 nicht visuell geprüft"));
+        assert!(html.contains("1 unchanged worksheets · 0 with differences"));
+        assert!(html.contains("<strong>0</strong><span>Unchanged</span>"));
+        assert!(!html.contains("id=\"unchanged\""));
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
 
     #[test]
     fn groups_whitespace_last_and_prioritizes_residual_evidence_without_splitting_files(

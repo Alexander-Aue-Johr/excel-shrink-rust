@@ -17,7 +17,7 @@ export function normalizeGroup(raw) {
   const sheets = (raw.sheets || []).map((sheet, index) => {
     const id = String(sheet.id ?? sheet.index ?? index);
     let nextY = 0;
-    const tiles = (sheet.tiles || []).map((tile, tileIndex) => {
+    let tiles = (sheet.tiles || []).map((tile, tileIndex) => {
       const images = Object.fromEntries(Object.entries(tile.images || {}).map(([profile, image]) => [profile, {
         ...image,
         url: versioned(image.url || image.preview_url || image.previewUrl, image.updated_at ?? tile.updated_at),
@@ -43,20 +43,85 @@ export function normalizeGroup(raw) {
       entry.equalAcrossAll = entry.comparisonComplete && classes.every(value => value === classes[0]);
       return entry;
     });
+    const sourceHeight = Math.max(Number(sheet.height || 0), nextY);
+    tiles = compactOmissions(sheet, tiles, profiles);
     const rectangles = tiles.flatMap(tile => [tile, ...new Set([...Object.keys(tile.images), ...Object.keys(tile.planned_images || {})])].map(value => typeof value === 'string' ? profileRectangle(tile, value) : value));
     return { ...sheet, id, name: sheet.name || id, tiles,
+      source_height: sourceHeight,
       width: Math.max(Number(sheet.width || 0), ...rectangles.map(tile => tile.x + tile.width)),
-      height: Math.max(Number(sheet.height || 0), ...rectangles.map(tile => tile.y + tile.height)) };
+      height: Math.max(tiles.some(tile => tile.status === 'omitted') ? 0 : Number(sheet.height || 0), ...rectangles.map(tile => tile.y + tile.height), 0) };
   });
   return { ...raw, profiles, sheets };
 }
 
 export function imageStatus(entry, profileId) {
+  if (entry.status === 'omitted') return 'omitted';
   const image = entry.images[profileId], original = entry.images.original;
   if (!image?.url) return 'waiting';
   if (!entry.comparisonComplete || image.pixelClass == null || original?.pixelClass == null) return 'received';
   if (profileId === 'original') return entry.comparisonComplete ? (entry.equalAcrossAll ? 'equal' : 'different') : 'received';
   return image.pixelClass === original.pixelClass ? 'equal' : 'different';
+}
+
+// Collapse only explicit omissions. Pending captures retain their real geometry.
+// Image dimensions and tile-local inspection coordinates never change; only the
+// display's cumulative y offsets are shortened, separately for each profile.
+function compactOmissions(sheet, tiles, profiles) {
+  const runs = [];
+  for (const tile of tiles) {
+    if (tile.status !== 'omitted') continue;
+    const previous = runs.at(-1);
+    if (previous && previous.at(-1).index + 1 === tile.index
+      && previous.at(-1).core_rows?.[1] === tile.core_rows?.[0]) previous.push(tile);
+    else runs.push([tile]);
+  }
+  if (!runs.length) return tiles;
+  const ids = [...new Set(['original', ...profiles.map(profile => profile.id)])];
+  const cuts = Object.fromEntries(ids.map(profile => [profile, runs.map(run => {
+    const rects = run.map(tile => profileRectangle(tile, profile));
+    const start = Math.min(...rects.map(rect => rect.y));
+    const end = Math.max(...rects.map(rect => rect.y + rect.height));
+    const width = Math.max(...rects.map(rect => rect.width));
+    return { start, end, height: Math.min(end - start, Math.max(64, Math.min(2048, width * .12))) };
+  })]));
+  const displayY = (y, profile) => y - cuts[profile].reduce((sum, cut) => {
+    const progress = Math.max(0, Math.min(cut.end - cut.start, y - cut.start));
+    return sum + (cut.end > cut.start ? progress * (1 - cut.height / (cut.end - cut.start)) : 0);
+  }, 0);
+  const first = new Map(runs.map((run, index) => [run[0].id, { run, index }]));
+  const result = [];
+  for (const tile of tiles) {
+    if (tile.status === 'omitted') {
+      const info = first.get(tile.id); if (!info) continue;
+      const { run, index } = info, last = run.at(-1);
+      const related = (sheet.capture_coverage?.omitted_ranges || []).filter(range =>
+        range.core_rows?.[0] < last.core_rows?.[1] && range.core_rows?.[1] > tile.core_rows?.[0]);
+      const gap = { ...tile, id: `omitted:${tile.id}`, source_y: tile.y,
+        y: displayY(tile.y, 'original'), height: cuts.original[index].height,
+        source_height: cuts.original[index].end - cuts.original[index].start,
+        core_rows: [tile.core_rows?.[0], last.core_rows?.[1]], omitted_count: run.length,
+        omission_reasons: [...new Set(related.flatMap(range => range.reasons || []))],
+        comparisonComplete: false, equalAcrossAll: false, images: {},
+        planned_images: Object.fromEntries(ids.map(profile => [profile, {
+          ...profileRectangle(tile, profile), y: displayY(cuts[profile][index].start, profile), height: cuts[profile][index].height,
+        }])) };
+      gap.address = `Zeilen ${Number(gap.core_rows[0]) + 1}\u2013${gap.core_rows[1]}`;
+      result.push(gap);
+    } else {
+      const move = (values = {}) => Object.fromEntries(Object.entries(values).map(([profile, image]) => [profile, {
+        ...image, source_y: image.y ?? tile.y, y: displayY(Number(image.y ?? tile.y), cuts[profile] ? profile : 'original'),
+      }]));
+      result.push({ ...tile, source_y: tile.y, y: displayY(tile.y, 'original'),
+        images: move(tile.images), planned_images: move(tile.planned_images) });
+    }
+  }
+  return result;
+}
+
+export function omissionDescription(tile) {
+  return [`${tile.omitted_count || 1} Capture-Zeilen ausgelassen`, tile.address,
+    'Nicht visuell gepr\u00fcft; im Atelier verk\u00fcrzt dargestellt.',
+    ...(tile.omission_reasons || [])].filter(Boolean).join(' \u00b7 ');
 }
 
 export function groupedPanels(entry, profiles) {
@@ -128,7 +193,7 @@ export function fitSheetView(sheet, aspect) {
 }
 
 export function inspectionRegions(tile, onlyDifferences = false) {
-  if (!tile) return [];
+  if (!tile || tile.status === 'omitted') return [];
   if (tile.inspection_regions?.length) return tile.inspection_regions
     .filter(region => !onlyDifferences || Number(region.changed_pixels) > 0)
     .map(region => ({ ...region, id: String(region.id), exact: true }));

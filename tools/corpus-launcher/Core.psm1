@@ -95,6 +95,8 @@ function Get-DefaultStudySettings {
         system_reserve_mib = $(if ($small) { 2048 } else { 4096 })
         open_timeout_seconds = 600
         job_timeout_seconds = 1800
+        tall_sheet_threshold = 40
+        tall_sheet_edge_tiles = 2
         export_results = $true
         build_release = $true
         reuse_prepared_from = @()
@@ -107,6 +109,13 @@ function Import-StudyConfiguration {
     $saved = Read-StudyJson $ConfigurationPath
     if ($saved) {
         if ((Get-Value $saved 'version') -ne 1) { throw 'Unsupported corpus launcher configuration version.' }
+        # New capture settings do not change corpus IDs, archive locations or
+        # prior results. Old machine configurations acquire only these defaults.
+        foreach ($setting in @{ tall_sheet_threshold=40; tall_sheet_edge_tiles=2 }.GetEnumerator()) {
+            if ($null -eq (Get-Value $saved.settings $setting.Key)) {
+                $saved.settings | Add-Member -NotePropertyName $setting.Key -NotePropertyValue $setting.Value -Force
+            }
+        }
         # A copied local config must not impose a tower's memory caps on a laptop.
         if ((Get-Value $saved.settings 'machine_name') -ne [Environment]::MachineName) {
             $defaults = Get-DefaultStudySettings
@@ -240,7 +249,7 @@ function ConvertTo-StudyRequest {
 }
 
 function Assert-StudySettings($Settings) {
-    foreach ($rule in @(@('comparison_groups',0,2147483647),@('control_room_port',1024,65535),@('partitions',1,1000),@('partition',0,1000),@('worker_memory_mib',512,65536),@('excel_memory_mib',512,65536),@('resident_memory_mib',1024,65536),@('system_reserve_mib',1024,65536),@('open_timeout_seconds',10,600),@('job_timeout_seconds',1,2147483647))) {
+    foreach ($rule in @(@('comparison_groups',0,2147483647),@('control_room_port',1024,65535),@('partitions',1,1000),@('partition',0,1000),@('worker_memory_mib',512,65536),@('excel_memory_mib',512,65536),@('resident_memory_mib',1024,65536),@('system_reserve_mib',1024,65536),@('open_timeout_seconds',10,600),@('job_timeout_seconds',1,2147483647),@('tall_sheet_threshold',1,2147483647),@('tall_sheet_edge_tiles',1,2147483647))) {
         $number=0L; $value=[string](Get-Value $Settings $rule[0])
         if (-not [Int64]::TryParse($value,[ref]$number) -or $number -lt $rule[1] -or $number -gt $rule[2]) { throw "Ungültiger Wert für $($rule[0]): $value" }
     }
@@ -285,6 +294,8 @@ function New-StudyLaunchPlan {
         EXCEL_SHRINK_RESIDENT_MEMORY_MIB=[string]$settings.resident_memory_mib
         EXCEL_SHRINK_SYSTEM_RESERVE_MIB=[string]$settings.system_reserve_mib
         EXCEL_SHRINK_RESIDENT_VISIBLE='0'
+        EXCEL_SHRINK_TALL_SHEET_THRESHOLD=[string]$settings.tall_sheet_threshold
+        EXCEL_SHRINK_TALL_SHEET_EDGE_TILES=[string]$settings.tall_sheet_edge_tiles
     }
     return [pscustomobject]@{ Executable=(Resolve-StudyPath $Repo $Executable); Arguments=$argsList; CommandLine=(($argsList | ForEach-Object { ConvertTo-WindowsArgument $_ }) -join ' ');
         Request=$request; RequestFile=$requestPath; OutputRoot=$output; RunDirectory=$RunDirectory; Environment=$environment; ExportResults=$export;
@@ -305,7 +316,7 @@ function Test-StudyOutputBusy([string]$OutputRoot) {
 
 function Get-StudyLaunchSummary($Plan, $Configuration) {
     return [pscustomobject][ordered]@{ corpus=$Configuration.settings.corpus; corpus_count=$Plan.Request.corpora.Count; partition=$(if($Configuration.settings.partition -eq 0){'all'}else{"$($Configuration.settings.partition)/$($Configuration.settings.partitions)"}); order=$Configuration.settings.order;
-        comparison_groups=$Configuration.settings.comparison_groups; output_root=$Plan.OutputRoot; observatory=$Plan.Observatory; export_results=$Plan.ExportResults;
+        comparison_groups=$Configuration.settings.comparison_groups; tall_sheet_threshold=$Configuration.settings.tall_sheet_threshold; tall_sheet_edge_tiles=$Configuration.settings.tall_sheet_edge_tiles; output_root=$Plan.OutputRoot; observatory=$Plan.Observatory; export_results=$Plan.ExportResults;
         archives=@($Plan.Request.corpora | ForEach-Object { [pscustomobject]@{ name=$_.name; id=$_.id; local_archive=$(if($_.url -notmatch '^https?://'){$_.url}else{$null}); available_locally=($_.url -notmatch '^https?://' -and [IO.File]::Exists($_.url)) } });
         archives_moved=0; downloads_started=0; resume_preserved=$true; approved_preparation_builds=@($Configuration.settings.reuse_prepared_from).Count }
 }

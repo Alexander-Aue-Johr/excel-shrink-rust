@@ -218,3 +218,6 @@ a:focus-visible, input:focus-visible, button:focus-visible {
   .sheet-title { display: block; }
   .gallery { grid-template-columns: minmax(0, 1fr); }
 }
+.capture-coverage { margin:1rem 0; padding:1rem; border:1px solid #7b7892; border-radius:8px; }
+.capture-coverage summary { cursor:pointer; font-weight:600; }
+.capture-break { margin:1rem 0; padding:1rem; border-top:5px solid transparent; border-image:repeating-linear-gradient(135deg,#7b7892 0 5px,transparent 5px 10px) 5; background:#7b78920c; }

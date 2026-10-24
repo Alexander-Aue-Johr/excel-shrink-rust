@@ -16,6 +16,19 @@ the count in the Observatory resumes work. Reducing an active run to zero stops
 admission of new work while current work reaches its normal completion boundary.
 The launcher does not terminate Excel to apply a change.
 
+Very tall sheets now use a targeted capture selection by default. The dialog
+exposes two positive integers: **more than 40 capture rows** triggers selection;
+**2 capture rows at each end** keeps the beginning and end. Areas selected by
+XML, recalculation, geometry and visual-content indicators are added. This is
+not a cap on required captures. Smaller sheets retain complete capture, and
+omitted regions are explicitly marked as not visually checked.
+
+The same settings are available under **Capture & Öffnen** in the Observatory
+and apply to the next workbook group. Existing launcher configurations acquire
+the defaults without changing archive bindings or completed results. The
+threshold counts actual vertical capture bands, so the capture pixel budget
+also affects when it is reached.
+
 With the Observatory enabled, this count is the manually controlled target for
 concurrent workbook groups. Memory limits remain safety limits; they do not
 silently replace the target with the adaptive admission mode used by older CLI
@@ -122,6 +135,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/start-corpus.ps1 -
 uses the existing release executable. Overrides persist with a successful
 configuration save/start; preview is read-only. `-ConfigurationPath` supports
 separate machine configurations and `-ImportResults` accepts result ZIP paths.
+
+`-TallSheetThreshold 75 -TallSheetEdgeTiles 3` changes the tall-sheet threshold
+and keeps three capture rows at **each** end. The launcher passes these through
+`EXCEL_SHRINK_TALL_SHEET_THRESHOLD` and `EXCEL_SHRINK_TALL_SHEET_EDGE_TILES`;
+the launch receipt retains their values. The Observatory can update them for
+subsequent groups during the run.
 
 ## Reports, transfer and diagnostics
 

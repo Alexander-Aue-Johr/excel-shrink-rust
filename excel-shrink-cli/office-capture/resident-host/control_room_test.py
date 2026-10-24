@@ -112,6 +112,8 @@ class ControlRoomProtocol(unittest.TestCase):
         self.assertTrue(state["server"]["live"])
         self.assertEqual(state["controls"]["target_groups"], 2)
         self.assertEqual(state["controls"]["open_timeout_seconds"], 900)
+        self.assertEqual(state["controls"]["tall_sheet_threshold"], 40)
+        self.assertEqual(state["controls"]["tall_sheet_edge_tiles"], 2)
         detail = self.request("/api/groups/current")
         self.assertEqual(detail["workbook"], "current.xlsx")
         self.assertEqual(detail["status"], "capturing")
@@ -164,12 +166,15 @@ class ControlRoomProtocol(unittest.TestCase):
 
     def test_controls_have_no_eight_group_cap_and_persist_atomically(self):
         result = self.request("/api/control", {"target_groups": 128, "paused": True, "equal_preview_width": 0,
-                                              "capture_tile_megapixels": 2, "capture_batch_tiles": 4, "hide_excel": True})
+                                              "capture_tile_megapixels": 2, "capture_batch_tiles": 4, "hide_excel": True,
+                                              "tall_sheet_threshold": 75, "tall_sheet_edge_tiles": 3})
         self.assertEqual(result["controls"]["target_groups"], 128)
         self.assertTrue(result["controls"]["paused"])
         self.assertTrue(result["controls"]["hide_excel"])
         self.assertEqual(result["controls"]["capture_tile_megapixels"], 2)
         self.assertEqual(result["controls"]["capture_batch_tiles"], 4)
+        self.assertEqual(result["controls"]["tall_sheet_threshold"], 75)
+        self.assertEqual(result["controls"]["tall_sheet_edge_tiles"], 3)
         stored = json.loads((self.data / "control.json").read_text())
         self.assertEqual(stored, result["controls"])
         self.assertFalse(list(self.data.glob("*.pending")))
@@ -191,6 +196,8 @@ class ControlRoomProtocol(unittest.TestCase):
             {"target_groups": 24, "equal_preview_width": None},
             {"hide_excel": "false"}, {"capture_tile_megapixels": 0}, {"capture_tile_megapixels": 33},
             {"capture_batch_tiles": 0}, {"capture_batch_tiles": 17}, {"capture_batch_tiles": 1.5},
+            {"tall_sheet_threshold": 0}, {"tall_sheet_threshold": 1.5}, {"tall_sheet_threshold": 2147483648},
+            {"tall_sheet_edge_tiles": 0}, {"tall_sheet_edge_tiles": -1}, {"tall_sheet_edge_tiles": "2"},
         ]:
             with self.subTest(patch=patch):
                 self.assert_status(400, "/api/control", patch)

@@ -51,7 +51,11 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
         .collect();
     let unchanged = sheets
         .iter()
-        .filter(|sheet| !has_differences(sheet) && sheet["status"].as_str() == Some("same"))
+        .filter(|sheet| {
+            !has_differences(sheet)
+                && !has_omissions(sheet)
+                && sheet["status"].as_str() == Some("same")
+        })
         .count();
     let unchecked = sheets.len() - unchanged - changed_sheets.len();
 
@@ -125,6 +129,16 @@ pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::
         );
     }
     html.push_str("</header>\n");
+
+    for sheet in sheets.iter().filter(|sheet| has_omissions(sheet)) {
+        let _ = write!(
+            html,
+            "<section class=\"hero\"><h2>{}</h2>",
+            escape_html(sheet["name"].as_str().unwrap_or("Worksheet"))
+        );
+        render_capture_coverage(&mut html, sheet);
+        html.push_str("</section>");
+    }
 
     for &(ordinal, sheet) in &changed_sheets {
         let index = sheet["index"].as_u64().unwrap_or((ordinal + 1) as u64);
@@ -277,6 +291,37 @@ pub(super) fn render_differences(html: &mut String, root: &Path, sheet: &Value, 
     }
 }
 
+pub(super) fn has_omissions(sheet: &Value) -> bool {
+    sheet["capture_coverage"]["omitted_tiles"]
+        .as_u64()
+        .unwrap_or(0)
+        > 0
+}
+
+pub(super) fn render_capture_coverage(html: &mut String, sheet: &Value) {
+    if !has_omissions(sheet) {
+        return;
+    }
+    let coverage = &sheet["capture_coverage"];
+    let total = coverage["total_tiles"].as_u64().unwrap_or(0);
+    let selected = coverage["captured_tiles"].as_u64().unwrap_or(0);
+    let omitted = coverage["omitted_tiles"].as_u64().unwrap_or(0);
+    let _ = write!(html, "<details class=\"capture-coverage\" lang=\"de\"><summary>{selected} / {total} Capture-Zeilen ausgewählt · {omitted} nicht visuell geprüft</summary><p>Hohes Sheet gekürzt. Ausgelassene Bereiche sind kein visueller Gleichheitsnachweis. XML-, Recalc- und Layoutindikatoren dienen der Auswahl; die Bilder stammen weiterhin aus dem Original-/Shrink-Vergleich.</p>");
+    for range in items(coverage, "omitted_ranges") {
+        let start = range["core_rows"][0].as_u64().unwrap_or(0) + 1;
+        let end = range["core_rows"][1].as_u64().unwrap_or(start);
+        let count = range["count"].as_u64().unwrap_or(0);
+        let _ = write!(html, "<div class=\"capture-break\"><strong>Zeilen {start}–{end}: {count} Capture-Zeilen ausgelassen</strong><p>Nicht visuell geprüft.</p>");
+        for reason in items(range, "reasons") {
+            if let Some(reason) = reason.as_str() {
+                let _ = write!(html, "<p>{}</p>", escape_html(reason));
+            }
+        }
+        html.push_str("</div>");
+    }
+    html.push_str("</details>");
+}
+
 fn items<'a>(parent: &'a Value, key: &str) -> &'a [Value] {
     parent[key]
         .as_array()
@@ -378,6 +423,25 @@ pub(super) fn escape_html(value: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn omitted_ranges_are_not_reported_as_visually_unchanged() -> anyhow::Result<()> {
+        let root =
+            std::env::temp_dir().join(format!("visual-report-omissions-{}", std::process::id()));
+        let report = json!({"sheets":[{"name":"Tall <sheet>","status":"same","capture_coverage":{
+            "total_tiles":200,"captured_tiles":4,"omitted_tiles":196,
+            "omitted_ranges":[{"core_rows":[100,999900],"count":196,"reasons":["No <indicator>"]}]
+        }}]});
+        let html = fs::read_to_string(write_visual_report(&root, &report)?)?;
+        assert!(html.contains("<strong>0</strong><span>Unchanged</span>"));
+        assert!(html.contains("4 / 200 Capture-Zeilen ausgewählt"));
+        assert!(html.contains("196 nicht visuell geprüft"));
+        assert!(html.contains("Zeilen 101–999900"));
+        assert!(html.contains("No &lt;indicator&gt;"));
+        assert!(!html.contains("No visual differences found."));
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn lists_only_differences_and_keeps_incomplete_checks_out_of_the_unchanged_count(

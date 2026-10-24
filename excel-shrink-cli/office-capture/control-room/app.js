@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge } from './model.js';
+import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription } from './model.js';
 import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey } from './sheet-viewport.js';
 import { initWorkerMonitor } from './worker-monitor.js';
 
 const $ = id => document.getElementById(id);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const C = { waiting: 0x3c566b, received: 0x79dce8, equal: 0x75edc0, different: 0xff7a91 };
+const C = { waiting: 0x3c566b, received: 0x79dce8, equal: 0x75edc0, different: 0xff7a91, omitted: 0xa5a3bb };
 const CARD_W = 16, CARD_H = 9, BOARD_W = 3.67, BOARD_H = 7.75, BOARD_STEP = 3.87;
 const AREA_W = 3.43, AREA_H = 7.08, AREA_Y = -.16;
 let RADIUS = 24, layout = sheetLayout([]);
@@ -28,7 +28,7 @@ let hoverTimer, leaveTimer, pendingHover, pointerDown, userMovedCamera = false, 
 let latestCapture = null, pollTimer, controlBusy = false, localEvents = [];
 let groupLimit = 100;
 let miniSignature = '', lastFocusKey = '', navigationBusy = false;
-let workerMonitor;
+let workerMonitor, omissionTooltip;
 
 function announce(text) { $('announcement').textContent = text; }
 function profileLabel(id) { return data?.profiles.find(profile => profile.id === id)?.label || id; }
@@ -184,6 +184,8 @@ function initScene() {
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
   $('viewport').append(renderer.domElement);
+  omissionTooltip = document.createElement('div'); omissionTooltip.className = 'omission-tooltip';
+  omissionTooltip.setAttribute('role', 'tooltip'); omissionTooltip.hidden = true; document.body.append(omissionTooltip);
   // This is the sole wheel owner over sheet content. Capture phase runs before
   // OrbitControls' canvas listener; outside a sheet, OrbitControls still owns it.
   renderer.domElement.addEventListener('wheel', handleSheetWheel, { capture: true, passive: false });
@@ -193,7 +195,7 @@ function initScene() {
   detailRoot = new THREE.Group(); scene.add(detailRoot);
   new ResizeObserver(resize).observe($('viewport')); resize();
   renderer.domElement.addEventListener('pointermove', handlePointerMove);
-  renderer.domElement.addEventListener('pointerleave', scheduleClear);
+  renderer.domElement.addEventListener('pointerleave', () => { omissionTooltip.hidden = true; scheduleClear(); });
   renderer.domElement.addEventListener('pointerdown', event => { pointerDown = { x: event.clientX, y: event.clientY }; });
   renderer.domElement.addEventListener('pointerup', event => {
     if (!pointerDown || Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 7) return;
@@ -234,6 +236,7 @@ function focusSheet(id, manual = false, preview = false) {
 }
 function focusTile(tile, region = null, manual = false) {
   if (!tile) return;
+  if (tile.status === 'omitted') { if (manual) focusSheet(tile.sheetId, true); setNotice(omissionDescription(tile)); announce(omissionDescription(tile)); return; }
   if (manual) stopFollowing();
   clearDetails(); state.sheetId = tile.sheetId; state.focus = 'tile';
   const inspect = region || inspectionRegions(tile, !tile.equalAcrossAll)[0];
@@ -307,8 +310,10 @@ function makeSheetCard(sheet, placement) {
   const edge = frame(CARD_W, CARD_H, sheet.id === state.sheetId ? 0x76c7cf : 0x34566c, true); edge.position.z = .012; card.add(edge);
   const differences = sheet.tiles.filter(tile => tile.comparisonComplete && !tile.equalAcrossAll).length;
   const arrived = sheet.tiles.filter(tile => Object.keys(tile.images).length).length;
+  const planned = sheet.tiles.filter(tile => tile.status !== 'omitted').length;
+  const omitted = Number(sheet.capture_coverage?.omitted_tiles || 0);
   const title = makeTextPlane([{ text: sheet.name, y: 68, size: 55 },
-    { text: `${arrived} / ${sheet.tiles.length} Capture-Aufträge · ${differences} mit Abweichung`, y: 130, size: 29, color: differences ? '#ffabbc' : '#8eadc2' }], CARD_W - 4.1, .68);
+    { text: `${arrived} / ${planned} Capture-Aufträge · ${differences} mit Abweichung${omitted ? ` · ${omitted} ausgelassen` : ''}`, y: 130, size: 29, color: differences ? '#ffabbc' : '#8eadc2' }], CARD_W - 4.1, .68);
   // Leave the right side of each header for the projected accessible fit tools.
   title.geometry.dispose(); title.geometry = curvedGeometry(CARD_W - 4.1, .68);
   setCurvedPosition(title, -1.775, CARD_H / 2 - .43, .045); card.add(title);
@@ -336,6 +341,23 @@ function makeBoard(card, sheet, profile, profileIndex, shown, view) {
     const left = (clip.x - view.x) * px - AREA_W / 2, right = left + clip.width * px;
     const top = AREA_Y + AREA_H / 2 - (clip.y - view.y) * px, bottom = top - clip.height * px;
     const color = new THREE.Color(C[imageStatus(entry, profile.id)]);
+    if (entry.status === 'omitted') {
+      // A broken axis denotes absent evidence, never equality or pending work.
+      const center = (top + bottom) / 2, amplitude = Math.min(.025, (top - bottom) / 10);
+      for (const offset of [-.35, .35]) for (let index = 0; index < 18; index++) {
+        const x1 = left + (right - left) * index / 18, x2 = left + (right - left) * (index + 1) / 18;
+        lines.push(...point(x1, center + offset * (top - bottom) + (index % 2 ? amplitude : -amplitude)),
+          ...point(x2, center + offset * (top - bottom) + (index % 2 ? -amplitude : amplitude)));
+        colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+      }
+      if (top - bottom > .1) {
+        const labelHeight = Math.min(.16, (top - bottom) * .5);
+        const label = makeTextPlane([{ text: `${entry.omitted_count} ausgelassen · ungeprüft`, y: 66, size: 44, align: 'center', color: '#cfcbdf' }], right - left, labelHeight, 100);
+        label.geometry.dispose(); label.geometry = curvedGeometry(right - left, labelHeight);
+        setCurvedPosition(label, (left + right) / 2, center, .025); board.add(label);
+      }
+      continue;
+    }
     for (const [x1, y1, x2, y2] of [[left, top, right, top], [right, top, right, bottom], [right, bottom, left, bottom], [left, bottom, left, top]]) {
       lines.push(...point(x1, y1), ...point(x2, y2)); colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
     }
@@ -536,6 +558,14 @@ function hitAt(event) {
 function handlePointerMove(event) {
   if (!state.ready || event.buttons) return;
   const hit = hitAt(event); renderer.domElement.style.cursor = hit ? 'pointer' : 'grab';
+  const omitted = hit?.userData.sourceTile?.entry;
+  omissionTooltip.hidden = omitted?.status !== 'omitted';
+  if (!omissionTooltip.hidden) {
+    omissionTooltip.textContent = omissionDescription(omitted);
+    omissionTooltip.style.left = `${Math.max(8, Math.min(event.clientX + 16, innerWidth - 380))}px`;
+    omissionTooltip.style.top = `${Math.max(8, Math.min(event.clientY + 16, innerHeight - omissionTooltip.offsetHeight - 8))}px`;
+    cancelHover(); return;
+  }
   if (hit?.userData.detailPanel) { clearTimeout(leaveTimer); cancelHover(); return; }
   const tile = hit?.userData.sourceTile; if (!tile) { scheduleClear(); return; } clearTimeout(leaveTimer);
   const region = hit.userData.region, key = `${tile.entry.id}:${region?.id || ''}`;
@@ -545,6 +575,12 @@ function handlePointerMove(event) {
 function renderTileButtons(shown) {
   $('tileButtons').replaceChildren(...shown.map(entry => {
     const button = document.createElement('button'); button.textContent = entry.address || entry.id; button.dataset.tile = entry.id;
+    if (entry.status === 'omitted') {
+      button.textContent = `〰 ${entry.omitted_count} ausgelassen`; button.classList.add('omitted');
+      button.title = omissionDescription(entry); button.setAttribute('aria-label', button.title);
+      button.addEventListener('focus', () => { setNotice(button.title); announce(button.title); });
+      button.addEventListener('click', () => focusTile(entry, null, true)); return button;
+    }
     button.classList.toggle('different', Object.keys(entry.images).some(profile => imageStatus(entry, profile) === 'different'));
     button.addEventListener('focus', () => showDetails(entry.id)); button.addEventListener('click', () => focusTile(entry, null, true)); return button;
   }));
@@ -623,6 +659,10 @@ function updatePanControls() {
   $('viewRange').textContent = sheet ? `${sheet.name} · x ${Math.round(current.x).toLocaleString('de-DE')}–${Math.round(current.x + current.width).toLocaleString('de-DE')} · y ${Math.round(current.y).toLocaleString('de-DE')}–${Math.round(current.y + current.height).toLocaleString('de-DE')} px` : 'Warte auf Capture-Geometrie';
   const shown = visibleTiles(sheet, sheetView(sheet), 100000);
   $('sheetSummary').textContent = sheet ? `${data.sheets.length} Sheets · ${shown.length} / ${sheet.tiles.length} Capture-Aufträge im Sheet-Ausschnitt` : 'Noch keine Kacheln';
+  if (sheet?.capture_coverage?.omitted_tiles) {
+    $('sheetSummary').textContent = `${data.sheets.length} Sheets · ${sheet.capture_coverage.captured_tiles} / ${sheet.capture_coverage.total_tiles} Capture-Zeilen ausgewählt · ${sheet.capture_coverage.omitted_tiles} nicht visuell geprüft`;
+    $('viewRange').textContent = `${sheet.name} · verkürzte Darstellung; Originalzeilen stehen an den Kacheln`;
+  }
 }
 function updateSheets() {
   const signature = JSON.stringify(data?.sheets.map(sheet => [sheet.id, sheet.name]));
@@ -680,7 +720,7 @@ function renderGroups() {
 }
 function updateControlInputs() {
   const values = state.controls;
-  for (const [id, key] of [['targetGroups', 'target_groups'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles']]) {
+  for (const [id, key] of [['targetGroups', 'target_groups'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
   }
   if (document.activeElement !== $('hideExcel')) $('hideExcel').checked = Boolean(values.hide_excel);
@@ -699,18 +739,18 @@ function updateControlInputs() {
 async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;
   const wasCapturePaused = Boolean(state.controls.paused);
-  for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'hideExcel']) $(id).disabled = true;
+  for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = true;
   try {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
     const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Steuerung abgelehnt (${response.status}).`);
     state.controls = result.controls;
-    for (const [id, key] of [['targetGroups', 'target_groups'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
+    for (const [id, key] of [['targetGroups', 'target_groups'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     updateControlInputs();
     const text = change.target_groups === 0 ? `Ziel 0 bestätigt: begonnene Arbeitsmappen laufen fertig.${wasCapturePaused ? ' Die Capture-Pause wurde dafür aufgehoben.' : ''}`
       : change.target_groups != null ? `Gruppenziel ${state.controls.target_groups} bestätigt.` : 'Steuerung vom Host bestätigt.';
     pushEvent(text); setNotice(text);
   } catch (error) { setNotice(error.message, true); updateControlInputs(); if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel); }
-  finally { controlBusy = false; for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'hideExcel']) $(id).disabled = false; updateControlInputs(); }
+  finally { controlBusy = false; for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = false; updateControlInputs(); }
 }
 function selectGroup(id) {
   if (id === state.groupId) return;
@@ -907,7 +947,7 @@ function wireControls() {
   $('moreGroups').addEventListener('click', () => { groupLimit += 100; renderGroups(); });
   function adjustTarget(delta) { const value = Math.max(0, Number($('targetGroups').value || 0) + delta); dirtyControls.add('targetGroups'); $('targetGroups').value = String(value); $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); }
   $('minus').addEventListener('click', () => adjustTarget(-1)); $('plus').addEventListener('click', () => adjustTarget(1));
-  for (const id of ['targetGroups', 'openTimeout', 'jobTimeout', 'equalPreview', 'captureMegapixels', 'captureBatch']) $(id).addEventListener('input', () => dirtyControls.add(id));
+  for (const id of ['targetGroups', 'openTimeout', 'jobTimeout', 'equalPreview', 'captureMegapixels', 'captureBatch', 'tallSheetThreshold', 'tallSheetEdges']) $(id).addEventListener('input', () => dirtyControls.add(id));
   $('targetGroups').addEventListener('input', () => { const value = Number($('targetGroups').value); if (Number.isSafeInteger(value) && value >= 0) { $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); } });
   $('groupRange').addEventListener('input', event => { dirtyControls.add('targetGroups'); $('targetGroups').value = event.target.value; });
   $('groupRange').addEventListener('change', event => sendControl({ target_groups: Number(event.target.value) }));
@@ -924,6 +964,11 @@ function wireControls() {
     const size = Number($('captureMegapixels').value), batch = Number($('captureBatch').value);
     if (!Number.isInteger(size) || size < 1 || size > 32 || !Number.isInteger(batch) || batch < 1 || batch > 16) return setNotice('Capture-Zielgröße: 1–32 MP. Batch: 1–16 Aufträge.', true);
     sendControl({ capture_tile_megapixels: size, capture_batch_tiles: batch });
+  });
+  $('applyTallSheet').addEventListener('click', () => {
+    const threshold = Number($('tallSheetThreshold').value), edges = Number($('tallSheetEdges').value);
+    if (![threshold, edges].every(value => Number.isInteger(value) && value >= 1 && value <= 2147483647)) return setNotice('Capture-Zeilen müssen positive ganze Zahlen sein (maximal 2.147.483.647).', true);
+    sendControl({ tall_sheet_threshold: threshold, tall_sheet_edge_tiles: edges });
   });
   $('hideExcel').addEventListener('change', event => sendControl({ hide_excel: event.target.checked }));
   $('restartGroup').addEventListener('click', () => restartGroup());
