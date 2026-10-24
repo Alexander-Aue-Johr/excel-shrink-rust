@@ -14,6 +14,10 @@ pub(super) struct Controls {
     pub capture_tile_megapixels: u32,
     #[serde(default = "default_capture_batch")]
     pub capture_batch_tiles: u32,
+    #[serde(default = "default_tall_sheet_threshold")]
+    pub tall_sheet_threshold: u32,
+    #[serde(default = "default_tall_sheet_edges")]
+    pub tall_sheet_edge_tiles: u32,
     #[serde(default)]
     pub hide_excel: bool,
 }
@@ -23,6 +27,27 @@ fn default_capture_megapixels() -> u32 {
 }
 fn default_capture_batch() -> u32 {
     1
+}
+fn default_tall_sheet_threshold() -> u32 {
+    40
+}
+fn default_tall_sheet_edges() -> u32 {
+    2
+}
+
+fn tall_sheet_setting(name: &str, fallback: u32) -> Result<u32> {
+    let value = match std::env::var(name) {
+        Ok(text) => text
+            .parse::<u32>()
+            .with_context(|| format!("invalid {name}"))?,
+        Err(std::env::VarError::NotPresent) => fallback,
+        Err(error) => return Err(error).with_context(|| format!("invalid {name}")),
+    };
+    ensure!(
+        (1..=i32::MAX as u32).contains(&value),
+        "{name} must be a positive 32-bit integer"
+    );
+    Ok(value)
 }
 
 impl Controls {
@@ -43,6 +68,11 @@ impl Controls {
         ensure!(
             (1..=16).contains(&value.capture_batch_tiles),
             "capture batch must be 1..16 tiles"
+        );
+        ensure!(
+            (1..=i32::MAX as u32).contains(&value.tall_sheet_threshold)
+                && (1..=i32::MAX as u32).contains(&value.tall_sheet_edge_tiles),
+            "tall sheet settings must be positive 32-bit integers"
         );
         Ok(value)
     }
@@ -148,6 +178,22 @@ impl Room {
                 .as_ref()
                 .map(|old| old.capture_batch_tiles)
                 .unwrap_or(1),
+            // Explicit launcher settings override the previous run once;
+            // subsequent group snapshots use the Observatory's control file.
+            tall_sheet_threshold: tall_sheet_setting(
+                "EXCEL_SHRINK_TALL_SHEET_THRESHOLD",
+                previous_controls
+                    .as_ref()
+                    .map(|old| old.tall_sheet_threshold)
+                    .unwrap_or_else(default_tall_sheet_threshold),
+            )?,
+            tall_sheet_edge_tiles: tall_sheet_setting(
+                "EXCEL_SHRINK_TALL_SHEET_EDGE_TILES",
+                previous_controls
+                    .as_ref()
+                    .map(|old| old.tall_sheet_edge_tiles)
+                    .unwrap_or_else(default_tall_sheet_edges),
+            )?,
             // The launcher supplies the saved visibility choice explicitly.
             // A previous hidden run must not override today's unchecked box.
             hide_excel: args.hide_excel,
@@ -251,11 +297,10 @@ impl Room {
             read_json(&room.root.join("queue.json")).unwrap_or_else(|| json!({"groups":[]}));
         queue["run_id"] = run["run_id"].clone();
         queue["machine_id"] = run["machine_id"].clone();
-        queue["machine"] = json!(
-            args.machine_label
-                .clone()
-                .unwrap_or_else(|| "This machine".into())
-        );
+        queue["machine"] = json!(args
+            .machine_label
+            .clone()
+            .unwrap_or_else(|| "This machine".into()));
         queue["runner_pid"] = json!(std::process::id());
         queue["runner_started_unix_ms"] = json!(process_started_unix_ms());
         queue["running"] = json!(true);
@@ -344,7 +389,9 @@ fn reject_unfinished_commands(root: &Path, run_id: &Value) -> Result<()> {
 impl Drop for Room {
     fn drop(&mut self) {
         if !self.finished {
-            if let Some(output)=self.root.parent() {progress::stop(output);}
+            if let Some(output) = self.root.parent() {
+                progress::stop(output);
+            }
             let _ = self.finish_with("stopped");
         }
     }
@@ -561,12 +608,18 @@ mod tests {
         assert_eq!(legacy.target_groups, 128);
         assert_eq!(legacy.capture_tile_megapixels, 32);
         assert_eq!(legacy.capture_batch_tiles, 1);
+        assert_eq!(legacy.tall_sheet_threshold, 40);
+        assert_eq!(legacy.tall_sheet_edge_tiles, 2);
         assert!(!legacy.hide_excel);
         for (key, bad) in [
             ("capture_tile_megapixels", 0),
             ("capture_tile_megapixels", 33),
             ("capture_batch_tiles", 0),
             ("capture_batch_tiles", 17),
+            ("tall_sheet_threshold", 0),
+            ("tall_sheet_threshold", i32::MAX as u32 + 1),
+            ("tall_sheet_edge_tiles", 0),
+            ("tall_sheet_edge_tiles", i32::MAX as u32 + 1),
         ] {
             let mut invalid = value.clone();
             invalid[key] = json!(bad);
@@ -577,8 +630,13 @@ mod tests {
             );
         }
         value["target_groups"] = json!(0);
+        value["tall_sheet_threshold"] = json!(75);
+        value["tall_sheet_edge_tiles"] = json!(3);
         write(&root.join("control.json"), &value)?;
-        assert_eq!(Controls::read(&root)?.target_groups, 0);
+        let updated = Controls::read(&root)?;
+        assert_eq!(updated.target_groups, 0);
+        assert_eq!(updated.tall_sheet_threshold, 75);
+        assert_eq!(updated.tall_sheet_edge_tiles, 3);
         value["job_timeout_seconds"] = json!(0);
         write(&root.join("control.json"), &value)?;
         assert!(Controls::read(&root).is_err());

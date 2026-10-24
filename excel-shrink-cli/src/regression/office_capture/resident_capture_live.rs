@@ -82,7 +82,11 @@ impl LiveCapture {
         live.state["capture_settings"] = json!({
             "tile_megapixels":megapixels,"batch_tiles":batch_tiles,
             "batch_max_megapixels":64,"layout":"full-width guarded row bands",
-            "tile_size_applies":"next group","batch_size_applies":"next group"
+            "tile_size_applies":"next group","batch_size_applies":"next group",
+            "tall_sheet_threshold":controls["tall_sheet_threshold"].as_u64()
+                .or_else(|| std::env::var("EXCEL_SHRINK_TALL_SHEET_THRESHOLD").ok()?.parse().ok()).unwrap_or(40),
+            "tall_sheet_edge_tiles":controls["tall_sheet_edge_tiles"].as_u64()
+                .or_else(|| std::env::var("EXCEL_SHRINK_TALL_SHEET_EDGE_TILES").ok()?.parse().ok()).unwrap_or(2)
         });
         live.save()?;
         Ok(Some(live))
@@ -113,6 +117,41 @@ impl LiveCapture {
         self.state["capture_settings"]["tile_megapixels"]
             .as_u64()
             .unwrap_or(32)
+    }
+    pub(super) fn tall_sheet_setting(&self, key: &str) -> Option<u64> {
+        self.state["capture_settings"][key].as_u64()
+    }
+    pub(super) fn selected_plan(
+        &mut self,
+        snapshot: &Snapshot,
+        snapshots: &BTreeMap<String, Snapshot>,
+        aliases: &BTreeMap<String, String>,
+        coverage: &BTreeMap<usize, Value>,
+        keep: &BTreeSet<(usize, usize)>,
+    ) -> Result<()> {
+        self.plan(snapshot)?;
+        self.plan_peers(snapshots, aliases)?;
+        for sheet in self.state["sheets"].as_array_mut().unwrap() {
+            let index = sheet["index"].as_u64().unwrap() as usize;
+            sheet["capture_coverage"] = coverage[&index].clone();
+            for tile in sheet["tiles"].as_array_mut().unwrap() {
+                let tile_index = tile["tile_index"].as_u64().unwrap() as usize;
+                if !keep.contains(&(index, tile_index)) {
+                    tile["status"] = json!("omitted");
+                }
+            }
+        }
+        self.state["capture_settings"]["tall_sheet_threshold"] = coverage
+            .values()
+            .next()
+            .map(|c| c["threshold"].clone())
+            .unwrap_or(Value::Null);
+        self.state["capture_settings"]["tall_sheet_edge_tiles"] = coverage
+            .values()
+            .next()
+            .map(|c| c["edge_tiles"].clone())
+            .unwrap_or(Value::Null);
+        self.save()
     }
     fn batch_tiles(&self) -> usize {
         self.state["capture_settings"]["batch_tiles"]
@@ -585,11 +624,8 @@ impl ResidentCapture {
         };
         let reference = self.snapshot(reference_client)?;
         if !control_only {
+            // selected_plan already published complete geometry, including gaps.
             self.live.as_mut().unwrap().plan(&reference)?;
-            self.live
-                .as_mut()
-                .unwrap()
-                .plan_peers(&self.snapshots, &self.aliases)?;
         }
         // Row-height evidence may need an image even when pixels are identical.
         let height_sheets: BTreeSet<_> = if control_only {

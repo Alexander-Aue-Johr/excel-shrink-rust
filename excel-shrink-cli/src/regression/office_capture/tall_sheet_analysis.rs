@@ -477,6 +477,11 @@ fn scan_pair(
     right_styles: &[bool],
     out: &mut SheetIndicators,
 ) -> Result<(BTreeSet<String>, BTreeSet<String>)> {
+    // Implicit style zero also paints cells/rows absent from sheetData. A
+    // decorated workbook default cannot be bounded by explicit cell records.
+    if left_styles.first() == Some(&true) || right_styles.first() == Some(&true) {
+        out.add([0, MAX_ROWS], "decorated_default_style");
+    }
     let mut a = RowCursor::new(left, left_styles)?;
     let mut b = RowCursor::new(right, right_styles)?;
     let mut ar = a.next(out)?;
@@ -705,6 +710,15 @@ mod tests {
             decorated_styles(Some(decorated_default)).unwrap(),
             vec![true]
         );
+    }
+
+    #[test]
+    fn decorated_default_covers_implicit_cells_and_empty_rows() {
+        let xml = br#"<worksheet><sheetData><row r="10"><c r="A10"><v>1</v></c></row></sheetData></worksheet>"#;
+        let mut out = SheetIndicators::default();
+        scan_pair(xml, xml, &[true], &[true], &mut out).unwrap();
+        out.merge();
+        assert_eq!(out.rows, vec![[0, MAX_ROWS]]);
     }
 
     #[test]

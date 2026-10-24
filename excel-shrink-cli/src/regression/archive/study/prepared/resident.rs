@@ -9,6 +9,7 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     // Finish the existing recalculation checks before opening the resident set.
     // Their independent Excel instances would otherwise compete with capture.
     let mut validations = BTreeMap::new();
+    let mut recalc_inputs = json!({"variants":{}});
     for name in PROFILES {
         work_state::event(
             "validating_values",
@@ -38,6 +39,10 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         let shrunk = job.work.join(format!("{name}.xlsx"));
         let (values, failures) =
             validate_excel_recalculation(&original, &shrunk, &directory, &cli)?;
+        recalc_inputs["variants"][name] = json!(values.shrunk_recalculated.path);
+        if let Some(reference) = &values.original_recalculated {
+            recalc_inputs["original"] = json!(reference.path);
+        }
         let target = profile_mut(record, name)?;
         target["value_differences"] = json!(
             values.original_vs_shrunk.difference_count + values.real_recalc_differences.len()
@@ -69,7 +74,13 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         Some("resident Excel clients"),
         json!({}),
     );
-    let mut session = ResidentCapture::start(&original, &variants, &job.work.join("resident"))?;
+    let resident_dir = job.work.join("resident");
+    fs::create_dir_all(&resident_dir)?;
+    fs::write(
+        resident_dir.join("recalc-inputs.json"),
+        serde_json::to_vec(&recalc_inputs)?,
+    )?;
+    let mut session = ResidentCapture::start(&original, &variants, &resident_dir)?;
     for name in ["too-aggressive-cleaning", "maximum-cleaning", "default"] {
         work_state::event(
             "comparing",
@@ -86,6 +97,9 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             .as_array()
             .context("missing resident sheets")?;
         let changed = sheets.iter().any(|s| s["status"] == "changed");
+        let sampled = sheets
+            .iter()
+            .any(|s| s["capture_coverage"]["omitted_tiles"].as_u64().unwrap_or(0) > 0);
         visual["checked_sheets"] = json!(sheets.len());
         visual["unchanged_sheets"] = json!(visual["sheets"]
             .as_array()
@@ -100,6 +114,8 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             "visual differences"
         } else if !failures.is_empty() {
             "cell value differences"
+        } else if sampled {
+            "checked ranges visually unchanged; tall-sheet ranges omitted"
         } else {
             "visually unchanged"
         });
@@ -128,6 +144,18 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         .iter()
         .any(|p| p["failures"].as_array().is_some_and(|a| !a.is_empty()));
     record["status"] = json!(if changed { "differences" } else { "unchanged" });
+    record["capture_policy"] = json!("tall-sheet-v1");
+    record["visual_coverage"] = json!(if record["results"].as_array().unwrap().iter().any(|p| p
+        ["sheets"]
+        .as_array()
+        .is_some_and(|sheets| sheets
+            .iter()
+            .any(|s| s["capture_coverage"]["omitted_tiles"].as_u64().unwrap_or(0) > 0)))
+    {
+        "sampled"
+    } else {
+        "full"
+    });
     if changed {
         work_state::event(
             "whitespace_diagnosis",

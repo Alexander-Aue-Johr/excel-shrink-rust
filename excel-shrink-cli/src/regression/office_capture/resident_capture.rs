@@ -11,6 +11,8 @@ use std::time::{Duration, Instant};
 mod live;
 #[path = "tall_sheet_analysis.rs"]
 mod tall_sheet_analysis;
+#[path = "tall_sheet_selection.rs"]
+mod tall_sheet_selection;
 
 #[derive(Clone, Deserialize, Serialize)]
 struct Tile {
@@ -60,6 +62,8 @@ pub(in crate::regression) struct ResidentCapture {
     finished: bool,
     cleanup_barrier: Option<batch_cleanup::Participant>,
     live: Option<live::LiveCapture>,
+    variants: BTreeMap<String, PathBuf>,
+    capture_coverage: BTreeMap<usize, Value>,
 }
 
 fn publish(path: &Path, value: &Value) -> Result<()> {
@@ -345,6 +349,13 @@ impl ResidentCapture {
             reusable: reusable_clients,
         } = capture_clients(&inputs)?;
         let live = live::LiveCapture::from_environment(&directory, original, &aliases)?;
+        tall_sheet_selection::prepare_recalc_inputs(
+            original,
+            variants,
+            &directory,
+            &union,
+            live.as_ref(),
+        )?;
         let mut pending = BTreeMap::new();
         for (name, path) in &inputs {
             if aliases[name] != *name {
@@ -363,7 +374,7 @@ impl ResidentCapture {
                     .join(name)
                     .join(format!("{command}.json")),
                 &json!({
-                    "id":command,"kind":if live.is_some() {"plan"} else {"capture"},"sheets":configs[name],
+                    "id":command,"kind":"plan","sheets":configs[name],
                     "tile_megapixels":live.as_ref().map_or(32, |live| live.tile_megapixels())
                 }),
             )?;
@@ -437,6 +448,11 @@ impl ResidentCapture {
             finished: false,
             cleanup_barrier,
             live,
+            variants: variants
+                .iter()
+                .map(|(name, path)| ((*name).to_owned(), path.clone()))
+                .collect(),
+            capture_coverage: BTreeMap::new(),
         })
     }
 
@@ -590,7 +606,7 @@ impl ResidentCapture {
         let client = self.client(logical)?.to_owned();
         let id = self.issue(
             &client,
-            json!({"kind":if self.live.is_some() {"plan"} else {"capture"},"sheets":configs,
+            json!({"kind":"plan","sheets":configs,
                 "tile_megapixels":self.live.as_ref().map_or(32, |live| live.tile_megapixels())}),
         )?;
         self.configs.insert(client.clone(), configs);
@@ -667,8 +683,36 @@ impl ResidentCapture {
                 "resident tile partitions still differ"
             );
         }
+        self.select_tall_sheet_captures(&clients)?;
         if self.live.is_some() {
             self.capture_synchronized(&clients)?;
+        } else {
+            // The headless digest transport also plans before taking any images.
+            // Ask for only the selected row bands, preserving the same policy.
+            for client in &clients {
+                let selected = self.snapshots[client].clone();
+                let mut configs = self.configs[client].clone();
+                for config in &mut configs {
+                    let index = config["index"].as_u64().unwrap() as usize;
+                    let tiles: Vec<_> = selected
+                        .tiles
+                        .iter()
+                        .filter(|t| t.sheet_index == index)
+                        .collect();
+                    config["tile_rows"] =
+                        json!(tiles.iter().map(|t| t.core_rows).collect::<Vec<_>>());
+                    config["capture_end_column"] = json!(tiles[0].capture_right_column);
+                }
+                let id = self.issue(
+                    client,
+                    json!({"kind":"capture","sheets":configs,"tile_megapixels":32}),
+                )?;
+                self.configs.insert(client.clone(), configs);
+                self.pending.insert(client.clone(), id);
+            }
+            for client in &clients {
+                self.snapshot(client)?;
+            }
         }
         self.initial_aligned = true;
         Ok(())
@@ -809,17 +853,15 @@ impl ResidentCapture {
             })
             .collect();
         let heights = row_heights::compare_row_heights(&left.heights, &right.heights, &extents)?;
-        let height_sheets: BTreeSet<_> = heights.iter().map(|h| h.sheet_index).collect();
+        let height_tile = |a: &Tile| {
+            heights.iter().any(|h| {
+                h.sheet_index == a.sheet_index
+                    && h.row <= a.core_rows[1]
+                    && h.end_row > a.core_rows[0]
+            })
+        };
         let need = |a: &Tile, b: &Tile| {
-            if height_sheets.contains(&a.sheet_index) {
-                heights.iter().any(|h| {
-                    h.sheet_index == a.sheet_index
-                        && h.row > a.core_rows[0]
-                        && h.row <= a.core_rows[1]
-                })
-            } else {
-                a.sha256 != b.sha256 || a.width != b.width || a.height != b.height
-            }
+            height_tile(a) || a.sha256 != b.sha256 || a.width != b.width || a.height != b.height
         };
         let a: Vec<_> = left
             .tiles
@@ -863,7 +905,7 @@ impl ResidentCapture {
                     b.sheet_index,
                     b.tile_index,
                 )];
-                if height_sheets.contains(&a.sheet_index) {
+                if height_tile(a) {
                     tile.original_image = ap.clone();
                     tile.shrunk_image = bp.clone();
                 } else {
@@ -944,11 +986,36 @@ impl ResidentCapture {
         });
         result["shared_capture_client"] = json!(physical);
         result["capture_reused"] = json!(self.client(profile)? != profile);
+        for sheet in result["sheets"]
+            .as_array_mut()
+            .context("missing visual sheets")?
+        {
+            if let Some(coverage) = sheet["index"]
+                .as_u64()
+                .and_then(|i| self.capture_coverage.get(&(i as usize)))
+            {
+                sheet["capture_coverage"] = coverage.clone();
+                if coverage["omitted_tiles"].as_u64().unwrap_or(0) > 0 && sheet["status"] == "same"
+                {
+                    sheet["status"] = json!("sampled_same");
+                }
+            }
+        }
+        result["capture_policy"] = json!("tall-sheet-v1");
+        if self
+            .capture_coverage
+            .values()
+            .any(|c| c["omitted_tiles"].as_u64().unwrap_or(0) > 0)
+        {
+            result["image_comparison"] =
+                json!("selected ranges only on tall sheets; omitted ranges not visually checked");
+        }
         fs::create_dir_all(output)?;
         fs::write(
             output.join("visual-result.json"),
             serde_json::to_vec_pretty(&result)?,
         )?;
+        crate::regression::visual_report::write_visual_report(output, &result)?;
         self.comparisons
             .entry(key)
             .or_insert_with(|| result.clone());
