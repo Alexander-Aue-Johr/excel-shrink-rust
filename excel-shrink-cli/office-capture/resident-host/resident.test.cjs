@@ -44,7 +44,8 @@ function fixture(workbookName = 'fixture.xlsx') {
   };
   const worker = createWorker(helpers, {async image(command, metadata, bytes) {
     uploads.push({command, metadata, bytes});
-    return {image_path: `images/${command}/${metadata.tile_index}.png`};
+    return {image_path: `images/${command}/${metadata.tile_index}.png`, width: metadata.width,
+      height: metadata.height, sha256: 'a'.repeat(64)};
   }}, 'fixture.xlsx');
   const sheet = {index: 1, name: 'Sheet1', bottom_row: 9, row_height_bottom_row: 2,
     horizontal_overflow_required: false, drawing_fallback_required: false};
@@ -144,4 +145,39 @@ test('invalid or overlapping requested spans are rejected', () => {
   for (const spans of [[], [[3, 6], [5, 8]], [[-1, 2]], [[0, 11]], [[1, 1]]]) {
     assert.throws(() => selectedTiles(geometry, 1, spans), /Invalid requested/);
   }
+});
+
+test('image-first planning captures no images and uploads one requested tile without calling crypto', async () => {
+  const f = fixture();
+  const digest = globalThis.crypto.subtle.digest;
+  globalThis.crypto.subtle.digest = () => {throw new Error('Client hashing is forbidden');};
+  try {
+    const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+    assert.equal(plan.tiles.length, 4);
+    assert.equal(plan.checksum_tiles, 0);
+    assert.deepEqual(f.captures, []);
+    const image = await f.worker.execute({id: 'tile',kind: 'capture_images',capture_id: 'plan',tiles:[plan.tiles[2]]});
+    assert.deepEqual(f.captures,['6:9']);
+    assert.equal(f.uploads.length,1);
+    assert.equal(f.uploads[0].metadata.sha256,undefined);
+    assert.equal(image.images[0].sha256,'a'.repeat(64));
+    assert.equal(image.uploaded_images,1);
+  } finally {globalThis.crypto.subtle.digest = digest;}
+});
+
+test('image-first whitespace controls render only negotiated mismatch rows', async () => {
+  const f = fixture();
+  const plan = await f.worker.execute({id:'control',kind:'plan',sheets:[{...f.sheet,tile_rows:[[3,6],[9,10]]}]});
+  assert.deepEqual(f.captures,[]);
+  await f.worker.execute({id:'control-first',kind:'capture_images',capture_id:'control',tiles:[plan.tiles[0]]});
+  await f.worker.execute({id:'control-second',kind:'capture_images',capture_id:'control',tiles:[plan.tiles[1]]});
+  assert.deepEqual(f.captures,['3:6','9:10']);
+});
+
+test('image-first rejects multiple tiles or geometry that differs from its plan', async () => {
+  const f = fixture();
+  const plan = await f.worker.execute({id:'plan',kind:'plan',sheets:[f.sheet]});
+  await assert.rejects(f.worker.execute({id:'many',kind:'capture_images',capture_id:'plan',tiles:plan.tiles}),/exactly one/);
+  await assert.rejects(f.worker.execute({id:'wrong',kind:'capture_images',capture_id:'plan',tiles:[{...plan.tiles[0],width:99}]}),/differs from/);
+  assert.deepEqual(f.captures,[]);
 });

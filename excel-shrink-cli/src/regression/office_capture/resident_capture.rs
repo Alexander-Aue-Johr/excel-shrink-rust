@@ -1,11 +1,14 @@
-//! Keep the original and profile workbooks open while exchanging tile digests.
-//! Only unequal tiles (or row-height evidence) cross the local image endpoint.
+//! Keep the original and profile workbooks open throughout their comparisons.
+//! Normal runs exchange digests; the control room uses synchronized PNG uploads.
 use super::*;
 use crate::regression::archive::{batch_cleanup, opening_pause::OpeningPause};
 use crate::regression::{artifact_cache, visual_compare, visual_validation};
 use serde::Serialize;
 use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
+
+#[path = "resident_capture_live.rs"]
+mod live;
 
 #[derive(Clone, Deserialize, Serialize)]
 struct Tile {
@@ -48,6 +51,7 @@ pub(in crate::regression) struct ResidentCapture {
     timeout: Duration,
     finished: bool,
     cleanup_barrier: Option<batch_cleanup::Participant>,
+    live: Option<live::LiveCapture>,
 }
 
 fn publish(path: &Path, value: &Value) -> Result<()> {
@@ -325,6 +329,7 @@ impl ResidentCapture {
             aliases,
             reusable: reusable_clients,
         } = capture_clients(&inputs)?;
+        let live = live::LiveCapture::from_environment(&directory, original, &aliases)?;
         let mut pending = BTreeMap::new();
         for (name, path) in &inputs {
             if aliases[name] != *name {
@@ -343,7 +348,7 @@ impl ResidentCapture {
                     .join(name)
                     .join(format!("{command}.json")),
                 &json!({
-                    "id":command,"kind":"capture","sheets":configs[name],"tile_megapixels":32
+                    "id":command,"kind":if live.is_some() {"plan"} else {"capture"},"sheets":configs[name],"tile_megapixels":32
                 }),
             )?;
             pending.insert(name.to_owned(), command.to_owned());
@@ -412,6 +417,7 @@ impl ResidentCapture {
             timeout: Duration::from_secs(timeout + 1200),
             finished: false,
             cleanup_barrier,
+            live,
         })
     }
 
@@ -454,7 +460,34 @@ impl ResidentCapture {
                 .as_ref()
                 .and_then(|barrier| barrier.pause_path.as_deref()),
         );
+        let mut sampled = Instant::now();
+        let mut user_pause = Duration::ZERO;
+        let dispatched = self
+            .directory
+            .join("dispatched")
+            .join(&client)
+            .join(format!("{command}.json"));
+        let mut command_started = self.live.is_none();
         loop {
+            // The launcher owns opening deadlines. Queued jobs do not consume
+            // their response budget while Excel is still opening another peer.
+            if !command_started
+                && (dispatched.is_file() || live::client_ready_for_jobs(&self.directory, &client))
+            {
+                clock = OpeningPause::new(
+                    self.cleanup_barrier
+                        .as_ref()
+                        .and_then(|barrier| barrier.pause_path.as_deref()),
+                );
+                sampled = Instant::now();
+                user_pause = Duration::ZERO;
+                command_started = true;
+            }
+            let now = Instant::now();
+            if self.live.as_ref().is_some_and(|live| live.paused()) {
+                user_pause += now.duration_since(sampled);
+            }
+            sampled = now;
             let failure = self.directory.join("launcher-error.json");
             if failure.is_file() {
                 bail!(
@@ -476,8 +509,12 @@ impl ResidentCapture {
                     .unwrap_or_default();
                 bail!("resident Excel launcher exited ({status}): {detail}");
             }
+            let limit = self
+                .live
+                .as_ref()
+                .map_or(self.timeout, |live| live.job_timeout(self.timeout));
             ensure!(
-                clock.active_elapsed() < self.timeout,
+                !command_started || clock.active_elapsed().saturating_sub(user_pause) < limit,
                 "resident command deadline exceeded: {client}/{command}; {:.1}s wall time, {:.1}s opening pause",
                 clock.wall_elapsed().as_secs_f64(),
                 clock.credited().as_secs_f64()
@@ -505,7 +542,7 @@ impl ResidentCapture {
         let client = self.client(logical)?.to_owned();
         let id = self.issue(
             &client,
-            json!({"kind":"capture","sheets":configs,"tile_megapixels":32}),
+            json!({"kind":if self.live.is_some() {"plan"} else {"capture"},"sheets":configs,"tile_megapixels":32}),
         )?;
         self.configs.insert(client.clone(), configs);
         self.pending.insert(client, id);
@@ -515,6 +552,9 @@ impl ResidentCapture {
     fn align_initial_clients(&mut self) -> Result<()> {
         if self.initial_aligned {
             return Ok(());
+        }
+        if let Some(live) = &mut self.live {
+            live.planning()?;
         }
         let clients: BTreeSet<_> = self.aliases.values().cloned().collect();
         // Initial captures still run as soon as each client is online. Once all
@@ -578,6 +618,9 @@ impl ResidentCapture {
                 "resident tile partitions still differ"
             );
         }
+        if self.live.is_some() {
+            self.capture_synchronized(&clients)?;
+        }
         self.initial_aligned = true;
         Ok(())
     }
@@ -609,6 +652,10 @@ impl ResidentCapture {
         if missing.is_empty() {
             return Ok(None);
         }
+        ensure!(
+            self.live.is_none(),
+            "image-first comparison lost a retained evidence tile"
+        );
         self.issue(
             &client,
             json!({"kind":"images","capture_id":snapshot.command,"tiles":missing}),
@@ -787,7 +834,9 @@ impl ResidentCapture {
         fs::write(
             output.join("transport.json"),
             serde_json::to_vec_pretty(&json!({
-                "method":"resident PNG SHA-256 then exact pixels", "tiles":left.tiles.len(),
+                "method":if self.live.is_some() {"synchronized PNG uploads; host exact pixels"} else {"resident PNG SHA-256 then exact pixels"}, "tiles":left.tiles.len(),
+                "client_checksum_tiles":if self.live.is_some() {0} else {left.tiles.len()+right.tiles.len()},
+                "image_first":self.live.is_some(),
                 "requested_image_pairs":a.len(),"hash_equal_tiles":left.tiles.iter().zip(&right.tiles)
                     .filter(|(a,b)|a.sha256 == b.sha256 && a.width == b.width && a.height == b.height).count()
             }))?,
@@ -839,7 +888,11 @@ impl ResidentCapture {
                 serde_json::from_slice(&fs::read(output.join("transport.json"))?)?;
             result
         };
-        result["capture_method"] = json!("resident PNG SHA-256 then exact pixels");
+        result["capture_method"] = json!(if self.live.is_some() {
+            "synchronized PNG uploads; host exact pixels"
+        } else {
+            "resident PNG SHA-256 then exact pixels"
+        });
         result["shared_capture_client"] = json!(physical);
         result["capture_reused"] = json!(self.client(profile)? != profile);
         fs::create_dir_all(output)?;
@@ -948,6 +1001,10 @@ impl ResidentCapture {
                 }),
             )?;
             self.recapture(&client, configs)?;
+            self.snapshot(&client)?;
+            if self.live.is_some() {
+                self.capture_synchronized(&BTreeSet::from([client.clone()]))?;
+            }
             self.snapshot(&client)?
         };
         let captured = self.compare_snapshots(&client, &plan, &left, &right, output)?;
@@ -1030,6 +1087,9 @@ impl ResidentCapture {
     }
 
     pub(in crate::regression) fn finish(&mut self) -> Result<Value> {
+        if let Some(live) = &mut self.live {
+            live.complete()?;
+        }
         let cleanup_wait = Instant::now();
         if let Some(barrier) = &self.cleanup_barrier {
             barrier.wait_in_worker()?;

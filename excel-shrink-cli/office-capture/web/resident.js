@@ -5,12 +5,13 @@
   const key = tile => `${tile.sheet_index}:${tile.tile_index}`;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-  async function encoded(base64) {
+  async function encoded(base64, hash = true) {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
-    const hash = new Uint8Array(await root.crypto.subtle.digest('SHA-256', bytes));
-    const sha256 = Array.from(hash, value => value.toString(16).padStart(2, '0')).join('');
+    if (!hash) return {bytes};
+    const digest = new Uint8Array(await root.crypto.subtle.digest('SHA-256', bytes));
+    const sha256 = Array.from(digest, value => value.toString(16).padStart(2, '0')).join('');
     return {bytes, sha256};
   }
 
@@ -73,7 +74,7 @@
       return geometry;
     }
 
-    async function render(state, tile) {
+    async function render(state, tile, hash = true) {
       const {sheet, probe, right, end} = state;
       const geometry = await geometryFor(state);
       const base64 = await office(async context => {
@@ -100,7 +101,7 @@
       if (size.width !== geometry.imageWidth(end) || size.height !== tile.cropHeight) {
         throw new Error('Image crop changed dimensions');
       }
-      return {...await encoded(final), ...size};
+      return {...await encoded(final, hash), ...size};
     }
 
     async function capture(command) {
@@ -124,7 +125,7 @@
       if (captures.has(command.id)) throw new Error('Capture command was already executed');
       const retained = new Map();
       for (const sheet of command.sheets) {
-        helpers.phase('Capturing tile checksums');
+        helpers.phase(command.kind === 'plan' ? 'Planning capture tiles' : 'Capturing tile checksums');
         helpers.progress(result.sheets.length, command.sheets.length, sheet.name);
         const {bottom, right} = bounds(sheet, true);
         await checkedWorksheet(sheet);
@@ -155,7 +156,9 @@
           capture_right_column: end, tile_rows: tiles.map(tile => [tile.core.r0, tile.core.r1])});
         for (let index = 0; index < tiles.length; index++) {
           const tile = tiles[index];
-          const image = await render(state, tile);
+          const image = command.kind === 'plan'
+            ? {width: geometry.imageWidth(end), height: tile.cropHeight, sha256: '0'.repeat(64)}
+            : await render(state, tile);
           const metadata = {sheet_index: sheet.index, sheet_name: sheet.name, tile_index: index,
             range: CaptureGeometry.address(tile.core), core_rows: [tile.core.r0, tile.core.r1],
             capture_right_column: end, width: image.width, height: image.height, sha256: image.sha256};
@@ -198,11 +201,32 @@
       return result;
     }
 
+    // The host requests a bounded set after every peer has offered its geometry.
+    // No digest is calculated in this path, including on evidence recaptures.
+    async function captureImages(command) {
+      if (!Array.isArray(command.tiles) || command.tiles.length !== 1) throw new Error('Image-first jobs require exactly one tile');
+      const retained = captures.get(command.capture_id);
+      if (!retained) throw new Error('Unknown capture plan');
+      const requested = command.tiles[0], state = retained.get(key(requested));
+      if (!state || requested.range !== state.metadata.range || requested.width !== state.metadata.width ||
+          requested.height !== state.metadata.height) throw new Error('Image request differs from the capture plan');
+      helpers.phase('Capturing synchronized tile');
+      await checkedWorksheet(state.sheet);
+      const image = await render(state, state.tile, false);
+      const receipt = await transport.image(command.id, {...state.metadata, sha256: undefined}, image.bytes);
+      if (typeof receipt.image_path !== 'string' || !receipt.image_path ||
+          typeof receipt.sha256 !== 'string' || receipt.width !== image.width || receipt.height !== image.height) {
+        throw new Error('Missing or invalid image-first receipt');
+      }
+      return {images: [{...state.metadata, ...receipt}]};
+    }
+
     return {async execute(command) {
       const started = performance.now();
       let result;
-      if (command.kind === 'capture') result = await capture(command);
+      if (command.kind === 'capture' || command.kind === 'plan') result = await capture(command);
       else if (command.kind === 'images') result = await images(command);
+      else if (command.kind === 'capture_images') result = await captureImages(command);
       else if (command.kind === 'release') {
         if (command.capture_id) {
           captures.delete(command.capture_id);
@@ -211,7 +235,7 @@
         result = {};
       } else throw new Error(`Unknown resident command: ${command.kind}`);
       result.elapsed_ms = performance.now() - started;
-      result.checksum_tiles = result.tiles?.length ?? 0;
+      result.checksum_tiles = command.kind === 'capture' ? result.tiles?.length ?? 0 : 0;
       result.uploaded_images = result.images?.length ?? 0;
       return result;
     }};
@@ -234,7 +258,7 @@
     helpers.connection(true, 'Resident worker connected');
     const worker = createWorker(helpers, {image(id, metadata, bytes) {
       return request(`/image/${clientPath}/${encodeURIComponent(id)}/${metadata.sheet_index}/${metadata.tile_index}`,
-        bytes, {'Content-Type': 'image/png', 'X-Sha256': metadata.sha256});
+        bytes, {'Content-Type': 'image/png', ...(metadata.sha256 ? {'X-Sha256': metadata.sha256} : {})});
     }}, config.workbook);
     let heartbeatBusy = false;
     const heartbeat = setInterval(async () => {

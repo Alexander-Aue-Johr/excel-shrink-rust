@@ -14,6 +14,11 @@ var port = (int)settings["port"]!;
 if (port is < 1024 or > 65535 || !Directory.Exists(web)) throw new ArgumentException("Invalid host settings.");
 Directory.CreateDirectory(session);
 var clients = new ConcurrentDictionary<string, ClientState>(StringComparer.Ordinal);
+var controlRoot = Environment.GetEnvironmentVariable("EXCEL_SHRINK_CONTROL_ROOM_DIR");
+var lastControls = new JsonObject { ["paused"] = true };
+var primaryClients = Directory.Exists(Path.Combine(session, "clients"))
+    ? Directory.GetFiles(Path.Combine(session, "clients"), "*.json").Select(Path.GetFileNameWithoutExtension).ToArray()
+    : Array.Empty<string>();
 var builder = WebApplication.CreateBuilder();
 // Idle resident clients poll frequently; request-by-request logging would grow
 // without bound during a corpus run. Errors remain visible in logs and health.
@@ -82,6 +87,19 @@ app.MapGet("/job", async (HttpRequest request) => {
     try {
         if (client.Error is not null) return Results.Conflict(client.Error.ToJsonString());
         client.LastActivityAt = DateTimeOffset.UtcNow;
+        if (!string.IsNullOrEmpty(controlRoot)) {
+            if (primaryClients.Any(peer => peer is null || !clients.ContainsKey(peer)))
+                return Results.Json(new { idle = true, waiting_for_peers = true });
+            var controlsPath = Path.Combine(controlRoot, "control.json");
+            try {
+                var latest = await ReadObject(controlsPath);
+                if (latest["paused"] is JsonValue flag && flag.TryGetValue<bool>(out _)) lastControls = latest;
+            } catch (Exception error) when (error is IOException or JsonException or InvalidOperationException) {
+                // A transient read cannot silently resume a deliberately paused run.
+            }
+            if ((bool?)lastControls["paused"] == true)
+                return Results.Json(new { idle = true, paused = true });
+        }
         // Excel can reload a newly inserted task pane during workbook startup.
         // Let each client settle independently before its first irreversible job.
         if (!client.DataStarted && DateTimeOffset.UtcNow - client.ConfiguredAt < TimeSpan.FromSeconds(2))
@@ -94,11 +112,15 @@ app.MapGet("/job", async (HttpRequest request) => {
             if (File.Exists(ResponsePath(id, commandId))) continue;
             var command = await ReadObject(path);
             if ((string?)command["id"] != commandId) throw new ArgumentException("Command filename and id differ.");
-            if ((string?)command["kind"] is not ("capture" or "images" or "release")) throw new ArgumentException("Unknown resident command.");
+            if ((string?)command["kind"] is not ("capture" or "plan" or "capture_images" or "images" or "release")) throw new ArgumentException("Unknown resident command.");
             client.ActiveCommand = commandId;
             client.ActivePayload = command;
             client.DataStarted = true;
             client.CommandCount++;
+            if (!string.IsNullOrEmpty(controlRoot)) {
+                await WriteAtomic(Path.Combine(session,"dispatched",id,commandId+".json"),
+                    JsonSerializer.SerializeToUtf8Bytes(new { dispatched_unix_ms=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }));
+            }
             return Results.Json(command);
         }
         return Results.Json(new { idle = true });
@@ -110,20 +132,22 @@ app.MapPost("/image/{id}/{commandId}/{sheet:int}/{tile:int}", async (string id, 
     commandId = SafeId(commandId);
     await client.Gate.WaitAsync();
     try {
-        if (client.ActiveCommand != commandId || (string?)client.ActivePayload?["kind"] != "images")
+        var imageFirst = (string?)client.ActivePayload?["kind"] == "capture_images";
+        if (client.ActiveCommand != commandId || (!imageFirst && (string?)client.ActivePayload?["kind"] != "images"))
             return Results.Conflict("Image does not belong to the active evidence command.");
         if (client.Error is not null) return Results.Conflict("Resident client has failed.");
         var expected = (client.ActivePayload!["tiles"] as JsonArray ?? throw new ArgumentException("No requested evidence tiles."))
             .SingleOrDefault(item => (int?)item?["sheet_index"] == sheet && (int?)item?["tile_index"] == tile)
             ?? throw new ArgumentException("Unrequested evidence tile.");
         var sha = (string?)expected["sha256"];
-        if (sha is null || !Regex.IsMatch(sha, "\\A[0-9a-f]{64}\\z") || request.Headers["X-Sha256"].ToString() != sha)
+        if (!imageFirst && (sha is null || !Regex.IsMatch(sha, "\\A[0-9a-f]{64}\\z") || request.Headers["X-Sha256"].ToString() != sha))
             throw new ArgumentException("Image checksum header differs from request.");
         var bytes = await ReadImage(request);
         var (width, height) = PngSize(bytes);
-        if (width != (int?)expected["width"] || height != (int?)expected["height"] ||
-            Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant() != sha)
+        var receivedSha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        if (width != (int?)expected["width"] || height != (int?)expected["height"] || (!imageFirst && receivedSha != sha))
             throw new ArgumentException("Evidence image differs from the offered checksum or dimensions.");
+        sha = receivedSha;
         var path = Path.Combine(session, "images", id, commandId, $"s{sheet:D4}-t{tile:D5}.png");
         if (File.Exists(path)) throw new ArgumentException("Duplicate evidence image.");
         await WriteAtomic(path, bytes);
@@ -141,7 +165,8 @@ app.MapPost("/result/{id}/{commandId}", async (string id, string commandId, Http
         if (client.Error is not null || client.ActiveCommand != commandId) return Results.Conflict("Command is no longer active.");
         var ok = (bool?)result["ok"] ?? throw new ArgumentException("Missing result status.");
         if (!ok) client.Error = result["error"]?.DeepClone().AsObject() ?? Error("CAPTURE_FAILED", "Capture failed.");
-        if (ok && (string?)client.ActivePayload?["kind"] == "images") {
+        if (ok && (string?)client.ActivePayload?["kind"] is "images" or "capture_images") {
+            var imageFirst = (string?)client.ActivePayload?["kind"] == "capture_images";
             var requested = client.ActivePayload!["tiles"]!.AsArray();
             var images = result["images"]?.AsArray() ?? throw new ArgumentException("Missing evidence receipts.");
             if (images.Count != requested.Count) throw new ArgumentException("Incomplete evidence result.");
@@ -153,7 +178,7 @@ app.MapPost("/result/{id}/{commandId}", async (string id, string commandId, Http
                     ?? throw new ArgumentException("Unrequested evidence receipt.");
                 var path = Path.Combine(session, "images", id, commandId, $"s{index:D4}-t{tile:D5}.png");
                 if (!used.Add(path) || !File.Exists(path) || (string?)image["image_path"] != path ||
-                    (string?)image["sha256"] != (string?)expected["sha256"] ||
+                    (string?)image["sha256"] != (imageFirst ? Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(path))).ToLowerInvariant() : (string?)expected["sha256"]) ||
                     (int?)image["width"] != (int?)expected["width"] || (int?)image["height"] != (int?)expected["height"])
                     throw new ArgumentException("Invalid evidence receipt.");
             }

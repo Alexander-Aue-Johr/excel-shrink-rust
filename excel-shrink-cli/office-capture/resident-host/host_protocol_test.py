@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -129,6 +130,48 @@ class HostProtocol(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):
             self.request("/image/one/images/1/0", png, {"X-Sha256": sha})
         self.request("/result/one/images", {"ok": True, "images": [{**tile, "image_path": receipt["image_path"]}]})
+
+    def test_image_first_upload_needs_no_client_hash_but_receipt_is_bound_to_saved_bytes(self):
+        self.connect()
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==")
+        tile = {"sheet_index": 1,"tile_index": 0,"width": 1,"height": 1,"sha256": "0"*64}
+        self.command({"id":"tile","kind":"capture_images","capture_id":"plan","tiles":[tile]})
+        receipt = self.request("/image/one/tile/1/0",png,{"Content-Type":"image/png"})
+        self.assertEqual(receipt["sha256"],hashlib.sha256(png).hexdigest())
+        self.assertEqual(Path(receipt["image_path"]).read_bytes(),png)
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request("/result/one/tile",{"ok":True,"images":[{**tile,**receipt,"sha256":"f"*64}]})
+        self.request("/result/one/tile",{"ok":True,"images":[{**tile,**receipt}]})
+
+    def test_live_jobs_wait_for_all_primary_clients_and_pause_only_at_job_boundaries(self):
+        self.process.terminate()
+        self.process.wait(timeout=10)
+        self.write("clients/two.json",{"client_id":"two","workbook":"two.xlsx","sheets":[]})
+        self.write("control/control.json",{"paused":False})
+        environment = {**os.environ,"EXCEL_SHRINK_CONTROL_ROOM_DIR":str(self.session / "control")}
+        self.process = subprocess.Popen(["dotnet",str(self.root / "bin/Release/net8.0/ResidentCaptureHost.dll"),str(self.session / "host.json")],
+                                        env=environment,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                                        creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+        for _ in range(100):
+            try:
+                self.request("/health")
+                break
+            except urllib.error.URLError:
+                time.sleep(.05)
+        self.connect()
+        self.write("commands/one/plan.json",{"id":"plan","kind":"plan","sheets":[]})
+        self.assertTrue(self.request("/job?client=one")["waiting_for_peers"])
+        self.request("/config?client=two")
+        self.write("control/control.json",{"paused":True})
+        self.assertTrue(self.request("/job?client=one")["paused"])
+        (self.session / "control/control.json").write_text("{broken",encoding="utf-8")
+        self.assertTrue(self.request("/job?client=one")["paused"])
+        self.write("control/control.json",{"paused":False})
+        self.assertEqual(self.next_job("one")["kind"],"plan")
+        self.write("control/control.json",{"paused":True})
+        # An already dispatched job is allowed to report completion while paused.
+        self.request("/result/one/plan",{"ok":True,"tiles":[],"heights":[]})
+        self.assertTrue(self.request("/job?client=one")["paused"])
 
 
 if __name__ == "__main__":
