@@ -847,3 +847,12 @@ body.presenting .room {
 body.presenting .experiment-controls,body.presenting .process-section { display:none; }
 @media(max-width:1250px) { .experiment-grid { grid-template-columns:1fr 1fr; } .experiment-grid>label:nth-child(2) { border-right:0; } .experiment-grid>label:nth-child(-n+2) { border-bottom:1px solid var(--line); } .room-tools { max-width:58%; } .heading-actions { flex-direction:column; } }
 @media(max-width:850px) { .experiment-controls { margin:9px 14px 0; } .experiment-controls>summary>span { display:block; margin-left:0; } .room-tools { top:55px; max-width:calc(100% - 32px); } .minimap { width:145px; max-height:175px; bottom:58px; } .minimap-grid { max-height:115px; } .selection-bar { max-width:calc(100% - 185px); } .selection-bar strong { max-width:120px; } .process-section>.section-head { align-items:start; flex-direction:column; } }
+
+#sheetZoomLayer { position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:2; }
+.sheet-zoom-tools { position:absolute; display:flex; gap:3px; padding:3px; border:1px solid #395768; border-radius:6px; background:#0a1b29eb; pointer-events:auto; transform-origin:top right; }
+.sheet-zoom-tools[hidden] { display:none; }
+.sheet-zoom-tools button { display:grid; place-items:center; width:27px; height:27px; padding:3px; border:1px solid transparent; border-radius:3px; color:#adc9d8; background:transparent; }
+.sheet-zoom-tools button:hover { background:#254354; color:#e6f6fb; }
+.sheet-zoom-tools button[aria-pressed=true] { border-color:#79d9cb; color:#98f0dc; background:#234d50; }
+.sheet-zoom-tools svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.45; stroke-linecap:round; stroke-linejoin:round; }
+.sheet-zoom-mode { font-size:10px; color:#95bbcd; min-width:130px; text-align:right; }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, fitSheetView, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge } from './model.js';
+import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge } from './model.js';
+import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey } from './sheet-viewport.js';
 
 const $ = id => document.getElementById(id);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -10,10 +11,11 @@ const AREA_W = 3.43, AREA_H = 7.08, AREA_Y = -.16;
 let RADIUS = 24, layout = sheetLayout([]);
 const state = { ready: false, connected: false, groupId: null, sheetId: null, selected: null,
   pinned: false, pulse: !reducedMotion, follow: true, error: null, controls: {}, queue: null,
-  view: { x: 0, y: 0, width: 1800, height: 1800 * AREA_H / AREA_W }, widthChoice: 1800,
+  view: { mode: 'sheet', x: 0, y: 0, width: 1800, height: 1800 * AREA_H / AREA_W },
   focus: 'overview', regionId: null, pendingDifference: false };
 const boards = [], sourceTiles = [], hitTargets = [], detailPanels = [], connections = [];
 const sheetCards = new Map(), processCards = new Map();
+const sheetViewports = new Map(), sheetToolbars = new Map();
 const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2();
 const textureCache = new Map(), flashes = new Map(), previousImages = new Map();
 const dirtyControls = new Set();
@@ -30,7 +32,26 @@ function announce(text) { $('announcement').textContent = text; }
 function profileLabel(id) { return data?.profiles.find(profile => profile.id === id)?.label || id; }
 function tileAt(id) { return entries.find(tile => tile.id === id); }
 function selectedSheet() { return data?.sheets.find(sheet => sheet.id === state.sheetId); }
-function sheetView(sheet) { if (!sheet) return state.view; return state.focus === 'tile' && sheet.id === state.sheetId ? state.view : fitSheetView(sheet, AREA_W / AREA_H); }
+function sheetView(sheet) {
+  if (!sheet) return state.view;
+  const key = sheetViewportKey(state.groupId, sheet.id);
+  const view = resolveSheetViewport(sheet, AREA_W / AREA_H, sheetViewports.get(key));
+  sheetViewports.set(key, view);
+  if (sheet.id === state.sheetId) state.view = view;
+  return view;
+}
+function rememberView(sheet, view) {
+  const resolved = resolveSheetViewport(sheet, AREA_W / AREA_H, view);
+  sheetViewports.set(sheetViewportKey(state.groupId, sheet.id), resolved);
+  if (sheet.id === state.sheetId) state.view = resolved;
+  return resolved;
+}
+function setSheetFit(sheetId, mode) {
+  const sheet = data?.sheets.find(sheet => sheet.id === sheetId); if (!sheet) return;
+  stopFollowing(); clearDetails(); state.sheetId = sheetId;
+  rememberView(sheet, fitSheetViewport(sheet, AREA_W / AREA_H, mode));
+  updateSheets(); renderScene(); renderMinimap();
+}
 function stopFollowing() { state.follow = false; $('followCapture').checked = false; }
 function fitSize(aspect, width, height) { return aspect > width / height ? [width, width / aspect] : [height * aspect, height]; }
 function labelGroup(group) { return group.ids.map(profileLabel).join(' · '); }
@@ -161,6 +182,9 @@ function initScene() {
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
   $('viewport').append(renderer.domElement);
+  // This is the sole wheel owner over sheet content. Capture phase runs before
+  // OrbitControls' canvas listener; outside a sheet, OrbitControls still owns it.
+  renderer.domElement.addEventListener('wheel', handleSheetWheel, { capture: true, passive: false });
   controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = !reducedMotion; controls.dampingFactor = .075;
   controls.minDistance = 2; controls.maxDistance = 800; controls.maxPolarAngle = Math.PI * .85; controls.rotateSpeed = .5; controls.panSpeed = .7;
   controls.addEventListener('start', () => { userMovedCamera = true; cameraTween = null; cancelHover(); stopFollowing(); });
@@ -202,7 +226,7 @@ function focusCardCamera(sheetId, animate = true) {
 function focusSheet(id, manual = false, preview = false) {
   if (!data?.sheets.some(sheet => sheet.id === id)) return;
   if (manual) stopFollowing();
-  clearDetails(); state.sheetId = id; state.focus = 'sheet'; state.view.x = state.view.y = 0;
+  clearDetails(); state.sheetId = id; state.focus = 'sheet'; sheetView(selectedSheet());
   updateSheets(); renderScene(); focusCardCamera(id); renderMinimap();
   if (!preview) announce(`Sheet ${selectedSheet().name}`);
 }
@@ -212,9 +236,10 @@ function focusTile(tile, region = null, manual = false) {
   clearDetails(); state.sheetId = tile.sheetId; state.focus = 'tile';
   const inspect = region || inspectionRegions(tile, !tile.equalAcrossAll)[0];
   const area = inspect || { x: 0, y: 0, width: tile.width, height: tile.height };
-  state.widthChoice = Math.max(64, Math.min(1800, Math.max(area.width, area.height * AREA_W / AREA_H)) * 1.12);
-  state.view.x = Math.max(0, tile.x + area.x - (state.widthChoice - area.width) / 2);
-  state.view.y = Math.max(0, tile.y + area.y - (state.widthChoice * AREA_H / AREA_W - area.height) / 2);
+  const width = Math.max(64, Math.min(1800, Math.max(area.width, area.height * AREA_W / AREA_H)) * 1.12);
+  rememberView(selectedSheet(), { mode: 'manual', width,
+    x: Math.max(0, tile.x + area.x - (width - area.width) / 2),
+    y: Math.max(0, tile.y + area.y - (width * AREA_H / AREA_W - area.height) / 2) });
   clampView(); updateSheets(); renderScene(); focusCardCamera(tile.sheetId);
   if (manual) { showDetails(tile.id, true, inspect); setPinned(true); }
 }
@@ -222,10 +247,55 @@ function resize() {
   const { width, height } = $('viewport').getBoundingClientRect(); if (!width || !height) return;
   renderer.setSize(width, height, false); camera.aspect = width / height; camera.updateProjectionMatrix();
   if (!userMovedCamera) { if (state.focus === 'overview') fitCamera(); else focusCardCamera(state.sheetId, false); }
+  updateSheetToolbarPositions();
 }
 function setCurvedPosition(group, x, y, z = 0) {
   const angle = x / RADIUS;
   group.position.set(RADIUS * Math.sin(angle), y, RADIUS * (1 - Math.cos(angle)) + z); group.rotation.y = -angle;
+}
+const fitIcons = {
+  width: '<path d="M8 3h7l4 4v14H5V3zM15 3v5h4M3 13h18M3 13l3-3M3 13l3 3M21 13l-3-3M21 13l-3 3"/>',
+  height: '<path d="M8 3h7l4 4v14H5V3zM15 3v5h4M12 5v14M12 5l-3 3M12 5l3 3M12 19l-3-3M12 19l3-3"/>',
+  sheet: '<path d="M8 3h7l4 4v14H5V3zM15 3v5h4M8 10v3h3M8 10l4 4M16 18v-3h-3M16 18l-4-4"/>',
+};
+const fitLabels = { width: 'Breite einpassen', height: 'Höhe einpassen', sheet: 'Ganzes Sheet einpassen' };
+function createSheetToolbar(sheet) {
+  let toolbar = sheetToolbars.get(sheet.id);
+  if (!toolbar) {
+    toolbar = document.createElement('div'); toolbar.className = 'sheet-zoom-tools'; toolbar.dataset.sheetId = sheet.id;
+    toolbar.setAttribute('role', 'group');
+    for (const mode of ['width', 'height', 'sheet']) {
+      const button = document.createElement('button'); button.type = 'button'; button.dataset.fit = mode;
+      button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${fitIcons[mode]}</svg>`;
+      button.addEventListener('click', () => setSheetFit(sheet.id, mode)); toolbar.append(button);
+    }
+    toolbar.addEventListener('pointerenter', cancelHover);
+    $('sheetZoomLayer').append(toolbar); sheetToolbars.set(sheet.id, toolbar);
+  }
+  toolbar.setAttribute('aria-label', `${sheet.name}: gemeinsamer Zoom aller vier Profile`);
+  const mode = sheetView(sheet).mode;
+  for (const button of toolbar.children) {
+    button.title = `${fitLabels[button.dataset.fit]} · ${sheet.name}`;
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-pressed', String(button.dataset.fit === mode));
+  }
+}
+function updateSheetToolbarPositions() {
+  if (!camera || !renderer) return;
+  scene.updateMatrixWorld(true);
+  const width = renderer.domElement.clientWidth, height = renderer.domElement.clientHeight;
+  for (const [id, toolbar] of sheetToolbars) {
+    const card = sheetCards.get(id); if (!card) { toolbar.hidden = true; continue; }
+    const x = CARD_W / 2 - .22;
+    const point = new THREE.Vector3(RADIUS * Math.sin(x / RADIUS), CARD_H / 2 - .14, RADIUS * (1 - Math.cos(x / RADIUS)) + .13);
+    const anchor = card.localToWorld(point).project(camera);
+    const left = card.localToWorld(new THREE.Vector3(-CARD_W / 2, CARD_H / 2, 0)).project(camera);
+    const projectedWidth = Math.abs(anchor.x - left.x) * width / 2;
+    toolbar.hidden = anchor.z < -1 || anchor.z > 1 || Math.abs(anchor.x) > 1.1 || Math.abs(anchor.y) > 1.1 || projectedWidth < 95;
+    toolbar.style.left = `${(anchor.x + 1) * width / 2}px`;
+    toolbar.style.top = `${(1 - anchor.y) * height / 2}px`;
+    toolbar.style.transform = `translateX(-100%) scale(${Math.max(.65, Math.min(1, projectedWidth / 520))})`;
+  }
 }
 function makeSheetCard(sheet, placement) {
   const card = new THREE.Group(); setCurvedPosition(card, placement.x, placement.y); scene.add(card);
@@ -236,10 +306,12 @@ function makeSheetCard(sheet, placement) {
   const differences = sheet.tiles.filter(tile => tile.comparisonComplete && !tile.equalAcrossAll).length;
   const arrived = sheet.tiles.filter(tile => Object.keys(tile.images).length).length;
   const title = makeTextPlane([{ text: sheet.name, y: 68, size: 55 },
-    { text: `${arrived} / ${sheet.tiles.length} Capture-Aufträge · ${differences} mit Abweichung`, y: 130, size: 29, color: differences ? '#ffabbc' : '#8eadc2' }], CARD_W - .55, .68);
-  title.geometry.dispose(); title.geometry = curvedGeometry(CARD_W - .55, .68);
-  title.position.set(0, CARD_H / 2 - .43, .045); card.add(title);
+    { text: `${arrived} / ${sheet.tiles.length} Capture-Aufträge · ${differences} mit Abweichung`, y: 130, size: 29, color: differences ? '#ffabbc' : '#8eadc2' }], CARD_W - 4.1, .68);
+  // Leave the right side of each header for the projected accessible fit tools.
+  title.geometry.dispose(); title.geometry = curvedGeometry(CARD_W - 4.1, .68);
+  setCurvedPosition(title, -1.775, CARD_H / 2 - .43, .045); card.add(title);
   sheetCards.set(sheet.id, card); boards.push(card);
+  createSheetToolbar(sheet);
   const view = sheetView(sheet);
   // Small cards retain every planned boundary in one inexpensive line mesh.
   // Detailed image objects are bounded; focusing a card reveals its viewport.
@@ -308,11 +380,13 @@ function makeBoard(card, sheet, profile, profileIndex, shown, view) {
 }
 function renderScene(force = false) {
   if (!data) return;
-  const signature = JSON.stringify([state.groupId, state.sheetId, state.focus, state.view, data.profiles, data.sheets]);
+  const views = data.sheets.map(sheet => [sheet.id, sheetView(sheet)]);
+  const signature = JSON.stringify([state.groupId, state.sheetId, state.focus, views, data.profiles, data.sheets]);
   if (!force && signature === lastSignature) return;
   lastSignature = signature; const generation = ++sceneGeneration;
   const selection = state.selected, regionId = state.regionId, pinned = state.pinned;
   clearDetails(); boards.splice(0).forEach(disposeObject); sourceTiles.length = 0; hitTargets.length = 0; sheetCards.clear();
+  for (const [id, toolbar] of sheetToolbars) if (!data.sheets.some(sheet => sheet.id === id)) { toolbar.remove(); sheetToolbars.delete(id); }
   layout = sheetLayout(data.sheets); RADIUS = Math.max(24, layout.width / 1.6);
   camera.far = Math.max(180, layout.width * 10, layout.height * 10); camera.updateProjectionMatrix();
   data.sheets.forEach((sheet, index) => makeSheetCard(sheet, layout.cards[index]));
@@ -332,6 +406,7 @@ function renderScene(force = false) {
   Promise.all(loads).then(() => { if (generation === sceneGeneration) sweepTextures(); });
   if (selectedEntry && sourceTiles.some(tile => tile.entry.id === selection)) { showDetails(selection, false, inspectionRegions(selectedEntry).find(region => region.id === regionId)); setPinned(pinned); }
   updatePanControls(); renderMinimap();
+  updateSheetToolbarPositions();
   if (!lastFocusKey) { fitCamera(); lastFocusKey = state.groupId; }
 }
 
@@ -412,9 +487,40 @@ function clearDetails() {
 function setPinned(value) { state.pinned = Boolean(value && state.selected); clearTimeout(leaveTimer); $('pinSelection').setAttribute('aria-pressed', String(state.pinned)); $('pinSelection').textContent = state.pinned ? 'Festgehalten' : 'Festhalten'; }
 function cancelHover() { clearTimeout(hoverTimer); pendingHover = null; }
 function scheduleClear() { cancelHover(); if (state.pinned) return; clearTimeout(leaveTimer); leaveTimer = setTimeout(() => { if (!state.pinned) clearDetails(); }, 480); }
-function hitAt(event) {
+function intersectionAt(event) {
   const rect = renderer.domElement.getBoundingClientRect(); pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1); raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObjects(hitTargets, false)[0]; if (!hit) return;
+  return raycaster.intersectObjects(hitTargets, false)[0];
+}
+function sheetPointAt(event) {
+  const hit = intersectionAt(event); if (!hit || hit.object.userData.detailPanel) return null;
+  let object = hit.object;
+  while (object && !object.userData.pixelBoard) object = object.parent;
+  const info = object?.userData.pixelBoard; if (!info) return null;
+  const board = info.board || object, local = board.worldToLocal(hit.point.clone());
+  const u = (RADIUS * Math.asin(THREE.MathUtils.clamp(local.x / RADIUS, -1, 1)) + AREA_W / 2) / AREA_W;
+  const v = (AREA_Y + AREA_H / 2 - local.y) / AREA_H;
+  if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+  const top = board.localToWorld(new THREE.Vector3(0, AREA_Y + AREA_H / 2, 0)).project(camera);
+  const bottom = board.localToWorld(new THREE.Vector3(0, AREA_Y - AREA_H / 2, 0)).project(camera);
+  const height = Math.max(1, Math.hypot((top.x - bottom.x) * renderer.domElement.clientWidth / 2, (top.y - bottom.y) * renderer.domElement.clientHeight / 2));
+  return { sheet: info.sheet, anchor: { x: u, y: v }, screenHeight: height };
+}
+function handleSheetWheel(event) {
+  if (!state.ready) return;
+  const point = sheetPointAt(event); if (!point) return;
+  event.preventDefault(); event.stopImmediatePropagation();
+  stopFollowing(); clearDetails(); cameraTween = null; userMovedCamera = true;
+  state.sheetId = point.sheet.id;
+  const view = sheetView(point.sheet);
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? point.screenHeight : 1;
+  const deltaX = event.deltaX * unit, deltaY = event.deltaY * unit;
+  const next = event.ctrlKey
+    ? zoomSheetViewport(point.sheet, AREA_W / AREA_H, view, Math.exp(THREE.MathUtils.clamp(deltaY, -1000, 1000) * .002), point.anchor)
+    : scrollSheetViewport(point.sheet, AREA_W / AREA_H, view, deltaX * view.height / point.screenHeight, deltaY * view.height / point.screenHeight, event.shiftKey);
+  rememberView(point.sheet, next); updateSheets(); renderScene(); renderMinimap();
+}
+function hitAt(event) {
+  const hit = intersectionAt(event); if (!hit) return;
   const info = hit.object.userData.pixelBoard;
   if (info) {
     const local = info.board.worldToLocal(hit.point.clone()), px = AREA_W / info.view.width;
@@ -499,23 +605,19 @@ function tick(now) {
     const t = Math.min(1, (now - cameraTween.start) / 650), ease = 1 - Math.pow(1 - t, 3);
     camera.position.lerpVectors(cameraTween.from, cameraTween.to, ease); controls.target.lerpVectors(cameraTween.fromTarget, cameraTween.target, ease); if (t === 1) cameraTween = null;
   }
-  controls.update(); updateSourceTiles(now); updateDetails(now); renderer.render(scene, camera);
+  controls.update(); updateSourceTiles(now); updateDetails(now); updateSheetToolbarPositions(); renderer.render(scene, camera);
   if (now - lastUi > 500) { updateDiagnosticUi(); lastUi = now; }
 }
 
 function clampView() {
-  const sheet = selectedSheet();
-  state.view.width = state.widthChoice || Math.max(1, sheet?.width || 1800);
-  state.view.height = state.view.width * AREA_H / AREA_W;
-  state.view.x = Math.max(0, Math.min(state.view.x, Math.max(0, (sheet?.width || 0) - state.view.width)));
-  state.view.y = Math.max(0, Math.min(state.view.y, Math.max(0, (sheet?.height || 0) - state.view.height)));
+  sheetView(selectedSheet());
 }
 function updatePanControls() {
-  const sheet = selectedSheet();
+  const sheet = selectedSheet(), current = sheetView(sheet);
   for (const [id, axis, size] of [['panX', 'x', 'width'], ['panY', 'y', 'height']]) {
-    $(id).max = String(Math.max(0, Math.ceil((sheet?.[size] || 0) - state.view[size]))); $(id).value = String(Math.round(state.view[axis])); $(id).disabled = Number($(id).max) === 0;
+    $(id).max = String(Math.max(0, Math.ceil((sheet?.[size] || 0) - current[size]))); $(id).value = String(Math.round(current[axis])); $(id).disabled = Number($(id).max) === 0;
   }
-  const current = sheetView(sheet);
+  $('sheetZoomMode').textContent = fitLabels[current.mode] || 'Manueller Zoom';
   $('viewRange').textContent = sheet ? `${sheet.name} · x ${Math.round(current.x).toLocaleString('de-DE')}–${Math.round(current.x + current.width).toLocaleString('de-DE')} · y ${Math.round(current.y).toLocaleString('de-DE')}–${Math.round(current.y + current.height).toLocaleString('de-DE')} px` : 'Warte auf Capture-Geometrie';
   const shown = visibleTiles(sheet, sheetView(sheet), 100000);
   $('sheetSummary').textContent = sheet ? `${data.sheets.length} Sheets · ${shown.length} / ${sheet.tiles.length} Capture-Aufträge im Sheet-Ausschnitt` : 'Noch keine Kacheln';
@@ -580,15 +682,21 @@ function updateControlInputs() {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
   }
   if (document.activeElement !== $('hideExcel')) $('hideExcel').checked = Boolean(values.hide_excel);
-  $('groupRange').max = String(Math.max(24, Number(values.target_groups || 1), Number($('targetGroups').value || 1)));
-  if (document.activeElement !== $('groupRange') && !dirtyControls.has('targetGroups')) $('groupRange').value = String(values.target_groups || 1);
-  $('captureState').textContent = state.queue?.running === false ? 'Beendet' : values.paused ? 'Pausiert' : 'Laufen'; $('pauseJobs').textContent = values.paused ? 'Fortsetzen' : 'Pausieren';
-  $('pauseNote').textContent = state.queue?.running === false ? 'Der Lauf ist beendet. Seine gespeicherten Bilder bleiben verfügbar.' : values.paused ? 'Bereits laufende Aufträge werden fertig. Neue Captures warten.' : 'Pause greift vor dem nächsten Auftrag. Excel darf weiter öffnen.';
+  $('groupRange').max = String(Math.max(24, Number(values.target_groups ?? 1), Number($('targetGroups').value || 0)));
+  if (document.activeElement !== $('groupRange') && !dirtyControls.has('targetGroups')) $('groupRange').value = String(values.target_groups ?? 1);
+  const draining = values.target_groups === 0;
   const active = activeGroupCount(state.queue);
-  $('activeGroups').textContent = `${active} aktiv · Ziel ${values.target_groups ?? '—'}`;
+  $('captureState').textContent = state.queue?.running === false ? 'Beendet' : draining ? state.queue?.phase === 'paused' ? 'Lauf pausiert' : `${active} Gruppen laufen fertig` : values.paused ? 'Captures pausiert' : 'Laufen';
+  $('pauseJobs').textContent = values.paused ? 'Captures fortsetzen' : 'Captures pausieren';
+  $('pauseJobs').disabled = controlBusy || draining || state.queue?.running === false;
+  $('pauseNote').textContent = state.queue?.running === false ? 'Der Lauf ist beendet. Seine gespeicherten Bilder bleiben verfügbar.'
+    : draining ? 'Ziel 0: Begonnene Arbeitsmappen werden vollständig fertig. Zum Fortsetzen das Gruppenziel erhöhen.'
+    : values.paused ? 'Bereits laufende Aufträge werden fertig. Neue Captures warten.' : 'Capture-Pause hält Excel geöffnet. Gruppenziel 0 lässt Arbeitsmappen vollständig auslaufen.';
+  $('activeGroups').textContent = `${active} zugelassen · Ziel ${values.target_groups ?? '—'}`;
 }
 async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;
+  const wasCapturePaused = Boolean(state.controls.paused);
   for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'hideExcel']) $(id).disabled = true;
   try {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
@@ -596,16 +704,18 @@ async function sendControl(change) {
     state.controls = result.controls;
     for (const [id, key] of [['targetGroups', 'target_groups'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     updateControlInputs();
-    const text = change.target_groups ? `Gruppenziel ${state.controls.target_groups} bestätigt.` : 'Steuerung vom Host bestätigt.';
+    const text = change.target_groups === 0 ? `Ziel 0 bestätigt: begonnene Arbeitsmappen laufen fertig.${wasCapturePaused ? ' Die Capture-Pause wurde dafür aufgehoben.' : ''}`
+      : change.target_groups != null ? `Gruppenziel ${state.controls.target_groups} bestätigt.` : 'Steuerung vom Host bestätigt.';
     pushEvent(text); setNotice(text);
   } catch (error) { setNotice(error.message, true); updateControlInputs(); if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel); }
-  finally { controlBusy = false; for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'hideExcel']) $(id).disabled = false; }
+  finally { controlBusy = false; for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'hideExcel']) $(id).disabled = false; updateControlInputs(); }
 }
 function selectGroup(id) {
   if (id === state.groupId) return;
-  state.groupId = id; state.sheetId = null; state.focus = 'overview'; lastFocusKey = ''; state.view.x = 0; state.view.y = 0; latestCapture = null; previousImages.clear(); flashes.clear();
+  state.groupId = id; state.sheetId = null; state.focus = 'overview'; lastFocusKey = ''; state.view = { mode: 'sheet', x: 0, y: 0, width: 1800, height: 1800 * AREA_H / AREA_W }; latestCapture = null; previousImages.clear(); flashes.clear();
   data = null; entries = []; lastSignature = ''; sheetSignature = ''; clearDetails(); ++sceneGeneration;
   boards.splice(0).forEach(disposeObject); sourceTiles.length = 0; hitTargets.length = 0; sheetCards.clear(); processCards.clear(); $('processes').replaceChildren();
+  for (const toolbar of sheetToolbars.values()) toolbar.remove(); sheetToolbars.clear();
   $('emptyScene').hidden = false; $('tileButtons').replaceChildren(); renderGroups();
   ++pollGeneration; clearTimeout(pollTimer); poll();
 }
@@ -792,13 +902,13 @@ async function nextGroupDifference() {
 function wireControls() {
   $('groupSearch').addEventListener('input', () => { groupLimit = 100; renderGroups(); });
   $('moreGroups').addEventListener('click', () => { groupLimit += 100; renderGroups(); });
-  function adjustTarget(delta) { const value = Math.max(1, Number($('targetGroups').value || 1) + delta); dirtyControls.add('targetGroups'); $('targetGroups').value = String(value); $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); }
+  function adjustTarget(delta) { const value = Math.max(0, Number($('targetGroups').value || 0) + delta); dirtyControls.add('targetGroups'); $('targetGroups').value = String(value); $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); }
   $('minus').addEventListener('click', () => adjustTarget(-1)); $('plus').addEventListener('click', () => adjustTarget(1));
   for (const id of ['targetGroups', 'openTimeout', 'jobTimeout', 'equalPreview', 'captureMegapixels', 'captureBatch']) $(id).addEventListener('input', () => dirtyControls.add(id));
-  $('targetGroups').addEventListener('input', () => { const value = Number($('targetGroups').value); if (Number.isSafeInteger(value) && value > 0) { $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); } });
+  $('targetGroups').addEventListener('input', () => { const value = Number($('targetGroups').value); if (Number.isSafeInteger(value) && value >= 0) { $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); } });
   $('groupRange').addEventListener('input', event => { dirtyControls.add('targetGroups'); $('targetGroups').value = event.target.value; });
   $('groupRange').addEventListener('change', event => sendControl({ target_groups: Number(event.target.value) }));
-  $('applyTarget').addEventListener('click', () => { const value = Number($('targetGroups').value); if (!Number.isSafeInteger(value) || value < 1) return setNotice('Bitte eine positive ganze Gruppenzahl eingeben.', true); sendControl({ target_groups: value }); });
+  $('applyTarget').addEventListener('click', () => { const value = Number($('targetGroups').value); if (!Number.isSafeInteger(value) || value < 0) return setNotice('Bitte eine ganze Gruppenzahl ab 0 eingeben.', true); sendControl({ target_groups: value }); });
   $('targetGroups').addEventListener('keydown', event => { if (event.key === 'Enter') $('applyTarget').click(); });
   $('pauseJobs').addEventListener('click', () => sendControl({ paused: !state.controls.paused }));
   $('applyTimeouts').addEventListener('click', () => {
@@ -816,8 +926,11 @@ function wireControls() {
   $('restartGroup').addEventListener('click', () => restartGroup());
   $('followCapture').addEventListener('change', event => { state.follow = event.target.checked; if (state.follow) { clearDetails(); focusTile(tileAt(latestCapture)); } });
   $('sheetSelect').addEventListener('change', event => focusSheet(event.target.value, true));
-  for (const [id, axis] of [['panX', 'x'], ['panY', 'y']]) $(id).addEventListener('input', event => { stopFollowing(); state.focus = 'tile'; state.view[axis] = Number(event.target.value); clampView(); clearDetails(); renderScene(); focusCardCamera(state.sheetId); });
-  $('viewScale').addEventListener('change', event => { stopFollowing(); state.focus = 'tile'; state.widthChoice = Number(event.target.value); clampView(); clearDetails(); renderScene(); focusCardCamera(state.sheetId); });
+  for (const [id, axis] of [['panX', 'x'], ['panY', 'y']]) $(id).addEventListener('input', event => {
+    const sheet = selectedSheet(); if (!sheet) return;
+    stopFollowing(); rememberView(sheet, { ...sheetView(sheet), [axis]: Number(event.target.value) });
+    clearDetails(); renderScene();
+  });
   $('pulseDiff').checked = state.pulse; $('pulseDiff').addEventListener('change', event => { state.pulse = event.target.checked; });
   $('nextDifference').addEventListener('click', nextDifference); $('nextSheetDifference').addEventListener('click', nextSheetDifference); $('nextGroupDifference').addEventListener('click', nextGroupDifference);
   $('resetCamera').addEventListener('click', () => { stopFollowing(); clearDetails(); state.focus = 'overview'; renderScene(); fitCamera(true); });
@@ -832,7 +945,7 @@ function snapshot() {
   return { ready: state.ready, live: true, connected: state.connected, error: state.error, controls: state.controls,
     running: state.queue?.running, runnerAlive: state.queue?.runner_alive, phase: state.queue?.phase,
     groupId: state.groupId, sheetId: state.sheetId, selected: state.selected, regionId: state.regionId, focus: state.focus, sheetCards: sheetCards.size, pinned: state.pinned, follow: state.follow,
-    view: { ...state.view }, profiles: data?.profiles, status: data?.status, launcher: data?.launcher,
+    view: { ...sheetView(selectedSheet()) }, sheetViews: data?.sheets.map(sheet => ({ id: sheet.id, view: sheetView(sheet) })), profiles: data?.profiles, status: data?.status, launcher: data?.launcher,
     groupCount: state.queue?.groups?.length || 0, totalTiles: entries.length, visibleTiles: [...new Set(sourceTiles.map(tile => tile.entry.id))],
     tiles: sourceTiles.map(tile => ({ id: tile.entry.id, address: tile.entry.address, profile: tile.profile.id, status: imageStatus(tile.entry, tile.profile.id), loaded: tile.loaded, rectangle: tile.rectangle, clip: tile.clip, offscreen: tile.offscreen })),
     details: detailPanels.map(panel => ({ profiles: panel.group.ids, pixelClass: panel.group.pixelClass, sameAsOriginal: panel.sameAsOriginal, fullReady: panel.fullReady, maskPresent: Boolean(panel.mask), maskOpacity: panel.mask?.material.opacity || 0, clip: panel.clip, aspect: panel.imageW / panel.imageH })),
@@ -843,9 +956,11 @@ function geometrySnapshot() {
   scene.updateMatrixWorld(true); const rect = renderer.domElement.getBoundingClientRect();
   const project = value => { const ndc = value.clone().project(camera); return { world: value.toArray(), screen: [rect.left + (ndc.x + 1) * rect.width / 2, rect.top + (1 - ndc.y) * rect.height / 2] }; };
   const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-  const planned = [];
+  const planned = [], profileWindows = [];
   sheetCards.get(state.sheetId)?.traverse(board => {
     const info = board.userData.pixelBoard; if (!info || !info.profile || info.board) return;
+    profileWindows.push({ sheet: info.sheet.id, profile: info.profile.id, view: { ...info.view },
+      center: project(board.localToWorld(new THREE.Vector3(0, AREA_Y, .02))) });
     for (const entry of visibleTiles(info.sheet, info.view, 1024)) {
       const r = profileRectangle(entry, info.profile.id), px = AREA_W / info.view.width;
       const x = (r.x - info.view.x + r.width / 2) * px - AREA_W / 2;
@@ -855,7 +970,7 @@ function geometrySnapshot() {
     }
   });
   return { sources: sourceTiles.map(tile => ({ id: tile.entry.id, profile: tile.profile.id, center: project(tile.group.getWorldPosition(new THREE.Vector3())) })),
-    planned,
+    planned, profileWindows, camera: { position: camera.position.toArray(), target: controls.target.toArray() },
     boards: boards.map(board => ({ sheet: board.userData.sheetId, position: board.position.toArray(), rotationY: board.rotation.y, center: project(board.getWorldPosition(new THREE.Vector3())) })),
     details: detailPanels.map(panel => ({ profiles: panel.group.ids, center: project(panel.root.getWorldPosition(new THREE.Vector3())) })),
     connections: connections.map(link => ({ sourceProfile: link.source.profile.id, profiles: link.panel.group.ids,
@@ -864,8 +979,9 @@ function geometrySnapshot() {
 }
 
 window.__observatory = { snapshot, geometry: geometrySnapshot, selectGroup, nextDifference, nextSheetDifference, nextGroupDifference, focusSheet,
+  setSheetFit,
   hoverTile(id, regionId) { const tile = tileAt(typeof id === 'number' ? entries[id]?.id : id); return showDetails(tile?.id, true, inspectionRegions(tile).find(region => region.id === regionId)); }, clearHover: clearDetails, pin: setPinned,
-  setView(x, y, width = state.widthChoice) { stopFollowing(); state.focus = 'tile'; state.view.x = x; state.view.y = y; state.widthChoice = width; clampView(); renderScene(); },
+  setView(x, y, width = state.view.width) { const sheet = selectedSheet(); if (!sheet) return; stopFollowing(); state.focus = 'tile'; rememberView(sheet, { mode: 'manual', x, y, width }); renderScene(); },
   openEvidence(index = 0) { if (detailPanels[index]) openEvidence(detailPanels[index]); } };
 try { initScene(); wireControls(); poll(); }
 catch (error) { state.error = error.message; $('error').textContent = error.message; $('error').hidden = false; console.error(error); }

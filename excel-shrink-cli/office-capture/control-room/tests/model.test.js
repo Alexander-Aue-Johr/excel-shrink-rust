@@ -1,4 +1,5 @@
 import { normalizeGroup, groupedPanels, imageStatus, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, fitSheetView, inspectionEntry, inspectionRegions, differenceTargets, heartbeatAge } from '../model.js';
+import { result as viewportTests } from './sheet-viewport.test.js';
 
 function assert(condition, message) { if (!condition) throw new Error(message); }
 function equal(actual, expected, message) { assert(JSON.stringify(actual) === JSON.stringify(expected), `${message}: ${JSON.stringify(actual)}`); }
@@ -81,7 +82,7 @@ export function runTests() {
   assert(heartbeatAge({ last_heartbeat_at: '2026-10-24T00:00:00Z' }, Date.parse('2026-10-24T00:00:14Z')) === 14000, 'Heartbeat age is based on the received heartbeat timestamp.');
   assert(heartbeatAge({}) === null, 'Missing heartbeats are unknown, not fabricated fresh activity.');
   assert(heartbeatAge({ last_activity_at: '2026-10-24T00:00:00Z' }) === null, 'Ordinary activity must not masquerade as an actual heartbeat.');
-  return { passed: 38 };
+  return { passed: 38 + viewportTests.passed };
 }
 
 export const result = runTests();
