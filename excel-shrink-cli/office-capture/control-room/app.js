@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge } from './model.js';
 import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey } from './sheet-viewport.js';
+import { initWorkerMonitor } from './worker-monitor.js';
 
 const $ = id => document.getElementById(id);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -27,6 +28,7 @@ let hoverTimer, leaveTimer, pendingHover, pointerDown, userMovedCamera = false, 
 let latestCapture = null, pollTimer, controlBusy = false, localEvents = [];
 let groupLimit = 100;
 let miniSignature = '', lastFocusKey = '', navigationBusy = false;
+let workerMonitor;
 
 function announce(text) { $('announcement').textContent = text; }
 function profileLabel(id) { return data?.profiles.find(profile => profile.id === id)?.label || id; }
@@ -747,6 +749,7 @@ async function poll() {
     const queue = await response.json(); if (generation !== pollGeneration) return;
     const recovered = Boolean(state.error);
     state.queue = queue; state.controls = queue.controls || {}; state.connected = true; state.error = null;
+    workerMonitor?.update(queue);
     $('connectionLight').className = 'connected';
     $('connectionText').textContent = queue.verification_fixture ? 'Gespeicherter Fall · UI-Prüfung'
       : queue.phase === 'owner_unverified' ? 'Verbunden · Runnerstatus unbestätigt'
@@ -983,5 +986,5 @@ window.__observatory = { snapshot, geometry: geometrySnapshot, selectGroup, next
   hoverTile(id, regionId) { const tile = tileAt(typeof id === 'number' ? entries[id]?.id : id); return showDetails(tile?.id, true, inspectionRegions(tile).find(region => region.id === regionId)); }, clearHover: clearDetails, pin: setPinned,
   setView(x, y, width = state.view.width) { const sheet = selectedSheet(); if (!sheet) return; stopFollowing(); state.focus = 'tile'; rememberView(sheet, { mode: 'manual', x, y, width }); renderScene(); },
   openEvidence(index = 0) { if (detailPanels[index]) openEvidence(detailPanels[index]); } };
-try { initScene(); wireControls(); poll(); }
+try { initScene(); wireControls(); workerMonitor = initWorkerMonitor({ selectGroup }); poll(); }
 catch (error) { state.error = error.message; $('error').textContent = error.message; $('error').hidden = false; console.error(error); }
