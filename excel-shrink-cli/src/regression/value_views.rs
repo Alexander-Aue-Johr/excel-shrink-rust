@@ -3,7 +3,7 @@
 use anyhow::{Result, ensure, Context};
 use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
-use std::{collections::{BTreeSet, HashMap, HashSet}, fs::File, io::Read, path::{Path, PathBuf}, ops::Range};
+use std::{collections::{BTreeMap, BTreeSet, HashMap, HashSet}, fs::File, io::Read, path::{Path, PathBuf}, ops::Range};
 use zip::ZipArchive;
 use super::{CellValueDifference, CellDifferenceKind, MissingCellPolicy, WorkbookComparisonReport, WorksheetCaptureRange};
 use super::super::{artifact_cache as cache, xml_views::{self as xml, Reader, Kind, TextBytes}};
@@ -480,6 +480,70 @@ pub fn compare_workbook_values(left: &Path, right: &Path, policy: MissingCellPol
 pub fn compare_workbook_preservation(left: &Path, right: &Path, policy: MissingCellPolicy, only: Option<&HashSet<String>>) -> Result<WorkbookComparisonReport> {
     compare(left, right, policy, only, true)
 }
+
+/// Strict value changes for capture selection. Keep row intervals instead of
+/// millions of formatted difference records when a recalculation changes a
+/// large column. Unsupported ordering or missing sheets require caller fallback.
+pub fn compare_workbook_changed_rows(left: &Path, right: &Path, only: &HashSet<String>) -> Result<BTreeMap<String, Vec<[u32; 2]>>> {
+    const MAX_PART_BYTES: u64 = 256 * 1024 * 1024;
+    let mut a = Workbook::open(left)?;
+    let mut b = Workbook::open(right)?;
+    for book in [&a, &b] {
+        for name in only.iter().map(String::as_str).chain(std::iter::once("xl/sharedStrings.xml")) {
+            if let Some(part) = book.manifest.parts.get(name) {
+                ensure!(part.bytes <= MAX_PART_BYTES, "capture-selection XML memory limit exceeded: {name}");
+            } else {
+                ensure!(name == "xl/sharedStrings.xml", "capture-selection worksheet missing: {name}");
+            }
+        }
+        ensure!(only.iter().all(|name| book.order.contains(name)), "capture-selection worksheet mapping unavailable");
+    }
+    ensure!(only.iter().all(|name| a.order.iter().position(|part| part == name) == b.order.iter().position(|part| part == name)),
+        "capture-selection worksheet order changed");
+    let root = cache::root()?;
+    let use_cache = !std::env::var("EXCEL_SHRINK_VALUE_CACHE").is_ok_and(|v| v == "0");
+    let mut result = BTreeMap::new();
+    let mut left_buffer = Vec::new();
+    let mut right_buffer = Vec::new();
+    for name in only.iter().collect::<BTreeSet<_>>() {
+        let sa = a.summary(name, &mut left_buffer, &root, use_cache)?;
+        let sb = b.summary(name, &mut right_buffer, &root, use_cache)?;
+        ensure!(sa.ordered && sb.ordered, "unordered cells require full capture: {name}");
+        if sa.values_sha256 == sb.values_sha256 && sa.value_count == sb.value_count { continue; }
+        a.ensure_sst()?; b.ensure_sst()?;
+        a.read_sheet(name, &mut left_buffer)?;
+        b.read_sheet(name, &mut right_buffer)?;
+        let rows = changed_row_ranges(&left_buffer, &right_buffer, a.sst.as_ref().unwrap(), b.sst.as_ref().unwrap())?;
+        if !rows.is_empty() { result.insert(name.clone(), rows); }
+    }
+    a.check_unchanged()?; b.check_unchanged()?;
+    Ok(result)
+}
+
+fn changed_row_ranges(left: &[u8], right: &[u8], left_sst: &SharedStrings, right_sst: &SharedStrings) -> Result<Vec<[u32; 2]>> {
+    let mut a = Cells::new(left, left_sst)?;
+    let mut b = Cells::new(right, right_sst)?;
+    let mut av = a.next()?;
+    let mut bv = b.next()?;
+    let mut rows: Vec<[u32; 2]> = Vec::new();
+    while av.is_some() || bv.is_some() {
+        let take_a = bv.is_none() || av.zip(bv).is_some_and(|(a,b)| a.coordinate <= b.coordinate);
+        let take_b = av.is_none() || av.zip(bv).is_some_and(|(a,b)| b.coordinate <= a.coordinate);
+        let left = if take_a { av } else { None };
+        let right = if take_b { bv } else { None };
+        if !left.map(|c| c.value).unwrap_or(Value::empty()).equal(right.map(|c| c.value).unwrap_or(Value::empty()))? {
+            let row = left.or(right).unwrap().coordinate.row;
+            if let Some(last) = rows.last_mut().filter(|last| row - 1 <= last[1]) {
+                last[1] = last[1].max(row);
+            } else { rows.push([row - 1, row]); }
+        }
+        if take_a { av = a.next()?; }
+        if take_b { bv = b.next()?; }
+    }
+    ensure!(a.ordered && b.ordered, "capture selection received unordered cells");
+    Ok(rows)
+}
+
 fn compare(left: &Path, right: &Path, policy: MissingCellPolicy, only: Option<&HashSet<String>>, formulas: bool) -> Result<WorkbookComparisonReport> {
     let _phase = super::super::visual_diagnostics::phase("values.views_compare", format!("{} <-> {}", left.display(), right.display()));
     let mut a = Workbook::open(left)?; let mut b = Workbook::open(right)?;

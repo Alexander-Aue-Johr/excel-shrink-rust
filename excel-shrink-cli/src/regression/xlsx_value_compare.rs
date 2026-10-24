@@ -58,7 +58,7 @@ pub struct WorksheetCaptureRange {
 
 #[path = "value_views.rs"]
 mod views;
-pub use views::{compare_workbook_preservation, compare_workbook_values};
+pub use views::{compare_workbook_changed_rows, compare_workbook_preservation, compare_workbook_values};
 
 #[cfg(test)]
 #[path = "xlsx_value_compare_legacy.rs"]

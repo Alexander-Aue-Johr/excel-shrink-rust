@@ -37,6 +37,47 @@ fn workbook(path:&Path, xml:&[u8], strings:Option<&str>) -> Result<()> {
 }
 
 #[test]
+fn changed_rows_compact_large_recalculation_without_difference_strings() -> Result<()> {
+    let fixture = Fixture::new();
+    let left = fixture.0.join("stored.xlsx");
+    let right = fixture.0.join("recalculated.xlsx");
+    for (path, value) in [(&left, "1"), (&right, "2")] {
+        let mut xml = String::from("<worksheet><sheetData>");
+        for row in 1..=50_000 {
+            xml.push_str(&format!("<row r='{row}'><c r='A{row}'><f>RAND()</f><v>{value}</v></c><c r='B{row}'><v>{value}</v></c></row>"));
+        }
+        xml.push_str("</sheetData></worksheet>");
+        workbook(path, xml.as_bytes(), None)?;
+    }
+    let wanted = HashSet::from(["xl/worksheets/sheet1.xml".to_owned()]);
+    let rows = compare_workbook_changed_rows(&left, &right, &wanted)?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows["xl/worksheets/sheet1.xml"], vec![[0, 50_000]]);
+    assert!(compare_workbook_changed_rows(&left, &left, &wanted)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn changed_rows_keep_gaps_and_do_not_exempt_hidden_or_whitespace_removals() -> Result<()> {
+    let fixture = Fixture::new();
+    let left = fixture.0.join("before.xlsx");
+    let right = fixture.0.join("after.xlsx");
+    workbook(&left, br#"<worksheet><sheetData>
+      <row r="1"><c r="A1" t="inlineStr"><is><t> </t></is></c></row>
+      <row r="2"><c r="A2"><v>4</v></c></row>
+      <row r="3" hidden="1"><c r="A3"><v>9</v></c><c r="B3"><v>8</v></c></row>
+    </sheetData></worksheet>"#, None)?;
+    workbook(&right, br#"<worksheet><sheetData><row r="2"><c r="A2"><v>4</v></c></row></sheetData></worksheet>"#, None)?;
+    let wanted = HashSet::from(["xl/worksheets/sheet1.xml".to_owned()]);
+    assert_eq!(compare_workbook_changed_rows(&left, &right, &wanted)?["xl/worksheets/sheet1.xml"], vec![[0, 1], [2, 3]]);
+    let missing = HashSet::from(["xl/worksheets/missing.xml".to_owned()]);
+    assert!(compare_workbook_changed_rows(&left, &right, &missing).is_err());
+    workbook(&right, &sheet("<c r='B1'><v>1</v></c><c r='A1'><v>2</v></c>"), None)?;
+    assert!(compare_workbook_changed_rows(&left, &right, &wanted).is_err());
+    Ok(())
+}
+
+#[test]
 fn v9_scalar_bytes_and_sparse_empty_cells() -> Result<()> {
     assert!(scalar_diff(r#"<c r="A1"/><c r="B1"><v>42</v></c><c r="C1" s="99"/>"#,r#"<c r="B1" t="n"><v>42</v></c>"#)?.is_empty());
     assert_eq!(scalar_diff(r#"<c r="A1"><v>1</v></c>"#,r#"<c r="B1"><v>1</v></c>"#)?.len(),2);
