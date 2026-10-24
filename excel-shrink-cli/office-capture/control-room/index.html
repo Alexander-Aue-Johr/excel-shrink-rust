@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08111c"><title>Excel Observatory · Live</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%2308111c'/%3E%3Cpath d='M7 14h9v24H7zM20 10h9v28h-9zM33 6h9v32h-9z' fill='%2375edc0'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
+</head>
+<body>
+  <header class="masthead"><div><div class="eyebrow">EXCEL SHRINK / VISUAL REGRESSION</div><h1>Der Vergleich wird sichtbar.</h1></div><div class="connection"><i id="connectionLight"></i><span id="connectionText">Verbindung wird hergestellt</span><span class="pill" id="memory">RAM —</span></div></header>
+  <section class="controls" aria-label="Steuerung des laufenden Tests">
+    <div class="control"><label for="targetGroups">PARALLELE GRUPPEN · MANUELL</label><div class="control-line"><div class="stepper"><button id="minus" aria-label="Eine Gruppe weniger">−</button><input id="targetGroups" type="number" min="1" step="1" value="1" aria-label="Gewünschte parallele Gruppen"><button id="plus" aria-label="Eine Gruppe mehr">+</button></div><button id="applyTarget">Übernehmen</button><span id="activeGroups">— aktiv</span></div><input id="groupRange" type="range" min="1" max="24" value="1" aria-label="Gruppenziel"><small>Frei eingebbare Zahl. Aktive Gruppen werden beim Senken fertig.</small></div>
+    <div class="control"><label>CAPTURE-AUFTRÄGE</label><div class="control-line"><strong id="captureState">—</strong><button id="pauseJobs">Pausieren</button></div><small id="pauseNote">Pause greift vor dem nächsten Auftrag. Excel darf weiter öffnen.</small></div>
+    <div class="control timeouts"><label>ZEITLIMITS</label><div><label for="openTimeout">Öffnen</label><input id="openTimeout" type="number" min="1" step="1" value="1800"><span>s</span><label for="jobTimeout">Auftrag</label><input id="jobTimeout" type="number" min="1" step="1" value="600"><span>s</span><button id="applyTimeouts">Setzen</button></div><small>Die bestätigten Werte kommen vom Runner.</small></div>
+    <div class="control"><label for="equalPreview">GLEICHE KACHELN BEHALTEN</label><select id="equalPreview"><option value="128">128 px</option><option value="256">256 px</option><option value="512" selected>512 px</option><option value="1024">1.024 px</option><option value="0">Originalgröße</option></select><small>Abweichungen und ihre Referenz bleiben hochaufgelöst.</small></div>
+  </section>
+  <div id="notice" role="status" aria-live="polite">Status und Bildbelege werden direkt vom lokalen Host geladen.</div>
+  <div class="workspace">
+    <aside class="sidebar"><div class="section-head"><h2>Arbeitsmappen</h2><span id="groupCount">0</span></div><input id="groupSearch" class="group-search" type="search" placeholder="Dateiname oder Korpus" aria-label="Arbeitsmappen filtern"><div id="groups" class="groups"></div><button id="moreGroups" class="more-groups" hidden>Weitere 100 anzeigen</button><p class="sidebar-note">Öffnen angefragt, Add-in bereit und Capture sind getrennte Zustände. Ausbleibende Bilder allein bedeuten keinen Absturz.</p></aside>
+    <main>
+      <div class="workbook-heading"><div><div class="eyebrow" id="groupEyebrow">LIVE ATELIER</div><h2 id="workbook">Warte auf die erste Gruppe.</h2><p id="groupStatus">Hier erscheinen die tatsächlichen Capture-Aufträge.</p></div><button id="resetCamera">Überblick</button></div>
+      <div class="sheetbar"><label for="sheetSelect">Sheet</label><select id="sheetSelect" aria-label="Angezeigtes Sheet"></select><span id="sheetSummary">Noch keine Kacheln</span><label class="toggle"><input id="followCapture" type="checkbox" checked> Captures folgen</label></div>
+      <section class="room" aria-label="Gekrümmtes Atelier mit synchronen Sheet-Ausschnitten">
+        <div id="viewport" tabindex="0" aria-label="Drehen durch Ziehen, Zoomen mit dem Mausrad. Hover über eine Kachel öffnet den Detailvergleich, Klick hält ihn fest."></div>
+        <div class="room-caption"><span class="eyebrow">CURVED ATELIER</span><span id="viewRange">Warte auf Capture-Geometrie</span></div>
+        <div class="room-tools"><button id="nextDifference">Zum Unterschied</button><button id="stageMode" title="Atelier vergrößern">⛶ Bühne</button></div>
+        <div id="emptyScene" class="empty-scene"><strong>Die nächste Aufnahme wird hier sichtbar.</strong><span>Es werden ausschließlich echte Aufträge und Bilder angezeigt.</span></div>
+        <div id="selectionBar" class="selection-bar" hidden><strong id="selectionText"></strong><span id="selectionSummary"></span><button id="pinSelection" aria-pressed="false">Festhalten</button><button id="closeSelection" aria-label="Detail schließen">×</button></div>
+        <div class="room-bottom"><div class="legend"><span><i class="waiting"></i>angefragt</span><span><i class="received"></i>Bild da</span><span><i class="equal"></i>identisch</span><span><i class="different"></i>abweichend</span></div><label class="toggle"><input type="checkbox" id="pulseDiff" checked> Unterschiede pulsieren</label></div>
+        <div id="error" class="error" hidden role="alert"></div>
+      </section>
+      <div class="pan-controls" aria-label="Gemeinsamen Sheet-Ausschnitt verschieben"><label>Horizontal <input id="panX" type="range" min="0" max="0" value="0" step="1"></label><label>Vertikal <input id="panY" type="range" min="0" max="0" value="0" step="1"></label><label>Ausschnitt <select id="viewScale"><option value="1000">1.000 px breit</option><option value="1800" selected>1.800 px breit</option><option value="3600">3.600 px breit</option><option value="7200">7.200 px breit</option><option value="0">Gesamte Breite</option></select></label></div>
+      <div class="detail-tools"><div id="tileButtons" class="tile-buttons" aria-label="Sichtbare Kacheln per Tastatur auswählen"></div><div id="evidenceActions" class="evidence-actions" hidden></div></div>
+      <section class="events"><div class="section-head"><h2>Ereignisse & Antworten</h2><span id="lastUpdate">—</span></div><div id="events"></div><details><summary>API-Sicht · derselbe Zustand</summary><pre id="apiState"></pre></details></section>
+    </main>
+  </div>
+  <dialog id="imageDialog"><div class="dialog-header"><div><strong id="imageTitle"></strong><span id="imageDescription"></span></div><div><button id="toggleImageSize">1:1 anzeigen</button><button id="closeImage" aria-label="Bildansicht schließen">×</button></div></div><div id="imageScroll" class="image-scroll"><img id="fullImage" alt="Bildbeleg des ausgewählten Capture-Auftrags"></div></dialog>
+  <div id="announcement" class="sr-only" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

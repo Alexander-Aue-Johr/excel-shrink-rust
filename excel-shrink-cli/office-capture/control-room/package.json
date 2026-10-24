@@ -1,0 +1,6 @@
+{
+  "name": "excel-shrink-control-room",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node tests/model.test.js" }
+}
