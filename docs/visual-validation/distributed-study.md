@@ -25,9 +25,8 @@ and indexing happen before this pause. No completed records are discarded.
 
 Zero lifts a separate capture pause so that admitted work can drain. The capture
 pause control is unavailable while the target is zero. Reducing a positive target
-also stops further admission but never kills active work. Completed groups can
-retain their Excel processes until their peers finish: closing the shared WebView
-runtime early can disrupt peers. **Working**, **waiting for cleanup**, and **open**
+also stops further admission but never kills active work. Interactive groups close independently after completion;
+`EXCEL_SHRINK_SHARED_CLEANUP=1` restores shared cleanup for diagnosis. **Working**, **waiting for cleanup**, and **open**
 counts distinguish those states.
 
 The central **Worker-Übersicht** lists active groups without traversing historical
@@ -293,9 +292,9 @@ ceiling. Increasing it admits additional groups without waiting for the current
 group's startup or estimating another group's RAM. Lowering it prevents further
 admission until the target permits it; existing comparisons finish normally.
 Per-process memory limits and the emergency system-memory guard still apply.
-Completed groups retain their Excel processes until their current peers finish,
-because closing a shared Office runtime can restart another task pane. The group
-list shows this as waiting for cleanup. Preparation remains serial.
+Completed interactive groups close independently and free their admission slot.
+Cleanup process identities and timestamps are retained for peer-failure diagnosis;
+see [cleanup isolation](cleanup-isolation.md). Preparation remains serial.
 
 Capture pause stops dispatching new Office.js jobs. A job already running may
 finish and publish its tile; new Excel instances may continue opening. Each group

@@ -1,8 +1,9 @@
 # Resident cleanup isolation investigation
 
-The current cleanup barrier is a conservative policy, not proof that closing
-one Excel instance necessarily disrupts another. It retains completed groups
-until all peers in the wave are ready, including their Excel memory.
+Interactive control-room groups now release their own cleanup gate as soon as
+they finish. Completed groups no longer retain Excel memory for slower peers.
+Set `EXCEL_SHRINK_SHARED_CLEANUP=1` before starting the runner to restore the
+shared gate for diagnosis. Fixed noninteractive batches retain their old policy.
 
 ## Actual process operations
 
@@ -37,5 +38,20 @@ The test never sends commands to the production corpus.
 **Limitation:** other corpus Excel processes were running during these checks.
 They might keep a shared Office runtime alive. This counterexample disproves
 an unconditional claim, but does not establish safe independent group cleanup
-on a clean desktop or in all startup/ownership orders. The barrier remains in
-place pending that test. No corpus result is invalidated or recomputed here.
+on a clean desktop or in all startup/ownership orders. Independent cleanup is
+therefore observed during a bounded four-group small-files-first corpus trial.
+No completed corpus result is invalidated or recomputed by this policy change.
+
+## Correlating a future peer failure
+
+Each group writes `cleanup-<attempt_id>.json` in its control-room directory.
+It records cleanup start/completion UTC epoch milliseconds and job members as
+`pid|process name|UTC process start`. The snapshot queries actual Windows Job
+membership; it does not infer ownership from names or parent PID. The existing
+launcher event stream also records `owned_cleanup_started/completed`.
+
+Compare these timestamps with peer `client_error`, process exit, config/add-in
+reconnection and failed capture events. Fresh heartbeats alone are not progress.
+Temporal proximity is a suspicion, not causal proof. Reproduce the same peer
+capture with and without the other group's cleanup; retain both attempt IDs.
+Failed or missing capture responses remain failures, never equality evidence.

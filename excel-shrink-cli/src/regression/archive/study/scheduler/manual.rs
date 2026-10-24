@@ -286,9 +286,8 @@ pub(super) fn compare(
                         cancel_active(&active);
                     }
                 }
-                // Close Excel together: shutting down one shared WebView runtime
-                // can restart a task pane in another group. Admission stays open
-                // while any peer still works, so raising the target acts immediately.
+                // End an idle wave; completed groups otherwise release their own
+                // cleanup gate and free admission slots independently.
                 if !active.is_empty() && active.iter().all(|a| a.finished || a.participant.ready())
                 {
                     cleanup.close_admission();
@@ -303,7 +302,7 @@ pub(super) fn compare(
                     } else {
                         controls.target_groups
                     },
-                    active.len(),
+                    active.iter().filter(|group| !group.finished).count(),
                     pending.len(),
                     !cleanup.admission_open(),
                 );

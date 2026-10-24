@@ -205,6 +205,29 @@ public sealed class ResidentProcesses : IDisposable
         return info;
     }
 
+    // Diagnostic snapshot only: never select termination targets by PID/name.
+    // The Job Object remains the authority for cleanup ownership.
+    public string[] ProcessIdentities()
+    {
+        var identities = new System.Collections.Generic.List<string>();
+        foreach (var process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                try
+                {
+                    bool member;
+                    if (IsProcessInJob(process.Handle, job, out member) && member && !process.HasExited)
+                        identities.Add(process.Id + "|" + process.ProcessName + "|" +
+                            process.StartTime.ToUniversalTime().ToString("o"));
+                }
+                catch (Win32Exception) { }
+                catch (InvalidOperationException) { }
+            }
+        }
+        return identities.ToArray();
+    }
+
     public void Dispose() { job.Dispose(); }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -755,7 +755,24 @@ try {
     }
     if ($null -ne $owned) {
         try { $metrics.peak_job_bytes = $owned.PeakBytes } catch {}
+        $metrics.cleanup_started_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        try { $metrics.cleanup_processes = @($owned.ProcessIdentities()) }
+        catch { $metrics.cleanup_snapshot_warning = $_.Exception.Message }
+        Add-SessionEvent 'owned_cleanup_started' '' @{ processes=$metrics.cleanup_processes }
         $owned.Dispose()
+        $metrics.cleanup_completed_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        Add-SessionEvent 'owned_cleanup_completed' '' $null
+        if ($liveGroupDirectory) {
+            try {
+                Write-ResidentJsonFile (Join-Path $liveGroupDirectory ('cleanup-' + $metrics.attempt_id + '.json')) @{
+                    attempt_id=$metrics.attempt_id; launcher_pid=$PID
+                    started_unix_ms=$metrics.cleanup_started_unix_ms
+                    completed_unix_ms=$metrics.cleanup_completed_unix_ms
+                    process_identities=$metrics.cleanup_processes
+                    identity_format='pid|process name|UTC process start'
+                }
+            } catch { $metrics.cleanup_diagnostic_warning = $_.Exception.Message }
+        }
         $metrics.primary_clients_ready = $false
         $metrics.current_job_bytes = $null
         $metrics.current_job_private_working_set_bytes = $null

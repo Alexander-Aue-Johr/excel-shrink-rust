@@ -1,4 +1,4 @@
-//! Keep resident Excel sessions alive until every workbook in a batch is done.
+//! Coordinate owned cleanup. Interactive groups release independently by default.
 use super::*;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -265,6 +265,10 @@ impl Batch {
     pub fn add_manual_participant(&mut self) -> Result<Participant> {
         let mut participant = self.add_participant()?;
         participant.manual_control = true;
+        // Keep shared cleanup available for reproducing Office lifetime issues.
+        if std::env::var("EXCEL_SHRINK_SHARED_CLEANUP").as_deref() != Ok("1") {
+            participant.release_path = self.directory.join(format!("{}.release", self.participants.len() - 1));
+        }
         *self.participants.last_mut().unwrap() = participant.clone();
         Ok(participant)
     }
@@ -282,6 +286,11 @@ impl Batch {
     }
 
     pub fn release_if_ready(&self) -> Result<()> {
+        for participant in &self.participants {
+            if participant.release_path != self.directory.join("release") && participant.ready() {
+                create_marker(&participant.release_path)?;
+            }
+        }
         if !self.admission_open && self.participants.iter().all(Participant::ready) {
             create_marker(&self.directory.join("release"))?;
         }
@@ -294,6 +303,9 @@ impl Drop for Batch {
         // Retain markers after a coordinator error: waiting children may still
         // need the release, and the next run uses a fresh directory.
         let _ = create_marker(&self.directory.join("release"));
+        for participant in &self.participants {
+            let _ = create_marker(&participant.release_path);
+        }
     }
 }
 
@@ -306,8 +318,8 @@ mod tests {
         let root = artifact_cache::unique_path(&std::env::temp_dir(), "restart-cleanup")?;
         fs::create_dir(&root)?;
         let mut batch = Batch::growing(&root, 60)?;
-        let first = batch.add_manual_participant()?;
-        let second = batch.add_manual_participant()?;
+        let first = batch.add_participant()?;
+        let second = batch.add_participant()?;
         let worker: Participant = serde_json::from_slice(&serde_json::to_vec(&first)?)?;
         batch.close_admission();
         first.request_restart()?;
@@ -483,6 +495,27 @@ mod tests {
         )?;
         assert!(first.waiting_expired());
         drop(batch);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn independent_cleanup_releases_ready_group_without_waiting_for_peer() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "independent-cleanup")?;
+        fs::create_dir(&root)?;
+        let mut batch = Batch::growing(&root, 60)?;
+        let mut first = batch.add_participant()?;
+        first.release_path = batch.directory.join("0.release");
+        batch.participants[0] = first.clone();
+        let second = batch.add_participant()?;
+        first.mark_ready()?;
+        batch.release_if_ready()?;
+        assert!(first.released());
+        assert!(!second.released());
+        assert!(batch.admission_open());
+        assert!(batch.add_participant().is_ok());
+        drop(batch);
+        assert!(second.released());
         fs::remove_dir_all(root)?;
         Ok(())
     }
