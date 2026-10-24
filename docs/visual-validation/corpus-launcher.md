@@ -144,6 +144,16 @@ subsequent groups during the run.
 
 ## Reports, transfer and diagnostics
 
+The Observatory starts before existing results and ZIP catalogs are read. During
+startup it displays **Vorverarbeitung**, the current corpus and phase, and a
+measured entry counter and progress bar where the phase has a known total.
+Counters refer to the current phase, not the whole launch: archive enumeration,
+catalog checks and partition selection are separate passes. Opening a ZIP,
+imports and run initialization show an indeterminate bar instead of an invented
+percentage or ETA. The normal workbook totals replace this view after startup.
+The server itself may need a short initial host build before its URL responds.
+Previously started runners retain their existing startup behavior.
+
 Each Excel process card includes **Excel Hard Reset** and the available file
 size, measured opening time, opening memory, and Shrink duration. Profile size,
 opening time, and memory show signed differences against the original. Missing

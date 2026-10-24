@@ -42,6 +42,19 @@ export function duration(seconds) {
   return `${Math.floor(seconds / 86400)} d ${Math.floor(seconds / 3600) % 24} h`;
 }
 export function phaseLabel(phase) { return phases[phase] || phase || 'Nicht beobachtet'; }
+export function startupSummary(startup, now = Date.now()) {
+  if (!startup?.stage) return null;
+  const labels = { loading_records: 'Vorhandene Ergebnisse laden', opening_archive: 'ZIP-Katalog öffnen',
+    scanning_archive: 'ZIP-Einträge einlesen', checking_catalog: 'Katalog prüfen',
+    importing_results: 'Ergebnisse übernehmen', selecting_partition: 'Dateigrößen und Partition ermitteln',
+    initializing_run: 'Lauf initialisieren' };
+  const total = startup.total, done = startup.completed;
+  const measured = Number.isInteger(total) && total > 0 && Number.isInteger(done) && done >= 0 && done <= total;
+  return { label: labels[startup.stage] || startup.stage, corpus: startup.corpus || '',
+    count: measured ? `${done.toLocaleString('de-DE')} / ${total.toLocaleString('de-DE')}` : 'Umfang wird ermittelt',
+    percent: measured ? Math.floor(done / total * 100) : null,
+    elapsed: duration(age(startup.started_unix_ms, now)) };
+}
 function latest(...events) {
   return events.filter(event => event && timestamp(event) != null).sort((a, b) => timestamp(b) - timestamp(a))[0] || null;
 }

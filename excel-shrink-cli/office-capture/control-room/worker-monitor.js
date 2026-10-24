@@ -1,4 +1,4 @@
-import { age, duration, phaseLabel, progressSummary, timestamp, workerRows } from './worker-monitor-model.js';
+import { age, duration, phaseLabel, progressSummary, startupSummary, timestamp, workerRows } from './worker-monitor-model.js';
 
 const element = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -166,6 +166,20 @@ export function initWorkerMonitor({ selectGroup } = {}) {
 
   return { update(nextQueue) {
     queue = nextQueue;
+    const startup = startupSummary(queue.startup);
+    if (startup) {
+      const heading = element('div', 'wm-progress-heading');
+      heading.append(element('strong', null, 'Vorverarbeitung'), element('span', null, startup.corpus));
+      const label = element('p', null, `${startup.label}: ${startup.count}${startup.percent == null ? '' : ` (${startup.percent} %)`}`);
+      const bar = element('progress', 'wm-startup-bar');
+      bar.max = 100;
+      if (startup.percent != null) bar.value = startup.percent;
+      bar.setAttribute('aria-label', startup.label);
+      const note = element('p', 'wm-progress-note', `Aktuelle Phase seit ${startup.elapsed}. Die Anzeige bezieht sich auf diese Phase; weitere Vorbereitungsschritte folgen. Vergleiche starten danach.`);
+      if (queue.runner_alive === false || queue.running === false) note.textContent = 'Runner inaktiv: letzter gespeicherter Stand der Vorverarbeitung.';
+      progress.replaceChildren(heading, label, bar, note);
+      return;
+    }
     const summary = progressSummary(queue.progress);
     if (!summary) {
       progress.replaceChildren(element('p', 'wm-muted', 'Corpusfortschritt wird vom Runner bereitgestellt; ältere Läufe enthalten noch keine Geschwindigkeitsmessung.'));

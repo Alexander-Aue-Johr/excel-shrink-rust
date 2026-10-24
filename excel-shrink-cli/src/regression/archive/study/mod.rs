@@ -5,6 +5,7 @@ mod control_room;
 mod execution;
 mod fallback;
 mod progress;
+mod startup;
 use super::verified as ledger;
 use execution::process;
 mod prepared;
@@ -205,8 +206,19 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         .open(output.join(".run.lock"))?;
     lock.try_lock()
         .context("report directory is already in use")?;
+    // Serve the dashboard before scanning large ZIP catalogs or loading history.
+    let mut room = if args.control_room && !args.report_only && !args.selection_only {
+        let startup = json!({"run_id":provenance::new_uuid()?});
+        let room = control_room::Room::start(&output, &args, &startup)?;
+        room.set_run(&startup, "loading archives")?;
+        Some(room)
+    } else {
+        None
+    };
+    let mut startup = startup::Startup::new(&output, room.is_some());
+    startup.update("loading_records", "", 0, None)?;
     fs::create_dir_all(output.join("records"))?;
-    let mut records = load_records(&output)?;
+    let mut records = load_records_with_progress(&output, |done, total| startup.update("loading_records", "", done, Some(total)))?;
     for record in &mut records {
         if record["complete"] != true {
             // A process from the previous invocation is no longer running.
@@ -250,22 +262,25 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             resolve_path(&root, PathBuf::from(&corpus.url))
         };
         if local.is_file() {
+            startup.update("opening_archive", &corpus.name, 0, None)?;
             if let Ok(mut zip) = fs::File::open(local)
                 .map_err(anyhow::Error::from)
-                .and_then(|f| Ok(ZipArchive::new(f)?))
+                .and_then(|f| Ok(ZipArchive::new(std::io::BufReader::new(f))?))
             {
-                if let Ok(members) = workbook_members(&mut zip) {
+                if let Ok(members) = workbook_members_with_progress(&mut zip, |done, total| startup.update("scanning_archive", &corpus.name, done, Some(total))) {
                     corpus_info[i]["total_workbooks"] = json!(members.len());
                     let catalog: Vec<_> = members
                         .iter()
-                        .map(|(index, name)| {
+                        .enumerate()
+                        .map(|(position, (index, name))| {
                             let checksum = zip
                                 .by_index_raw(*index)
                                 .ok()
                                 .map(|entry| (entry.crc32(), entry.size()));
-                            (name, checksum)
+                            startup.update("checking_catalog", &corpus.name, position + 1, Some(members.len()))?;
+                            Ok((name, checksum))
                         })
-                        .collect();
+                        .collect::<Result<Vec<_>>>()?;
                     expected_sources.insert(
                         ids[i].clone(),
                         artifact_cache::sha256(&serde_json::to_vec(&catalog)?),
@@ -275,6 +290,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
         }
     }
     for package in &args.import_results {
+        startup.update("importing_results", "", 0, None)?;
         let receipt = transfer::import_package_locked(
             &output, &resolve_path(&root, package.clone()), &expected_sources, &lock,
         )?;
@@ -298,6 +314,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             record["corpus_name"] = corpus["name"].clone();
         }
     }
+    startup.update("importing_results", "", 0, None)?;
     import(&args, &output, &corpus_info, &mut records)?;
     if args.report_only {
         publish(
@@ -334,17 +351,18 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             continue;
         }
         let id = corpus_info[i]["id"].as_str().unwrap().to_owned();
+        startup.update("opening_archive", &corpus.name, 0, None)?;
         let loaded = (|| -> Result<Source> {
             let path = if corpus.url.starts_with("https://") || corpus.url.starts_with("http://") {
                 download::archive(&downloads, &corpus.url)?
             } else {
                 resolve_path(&root, PathBuf::from(&corpus.url))
             };
-            let mut zip = ZipArchive::new(fs::File::open(&path)?)?;
-            let members = workbook_members(&mut zip)?;
+            let mut zip = ZipArchive::new(std::io::BufReader::new(fs::File::open(&path)?))?;
+            let members = workbook_members_with_progress(&mut zip, |done, total| startup.update("scanning_archive", &corpus.name, done, Some(total)))?;
             let mut catalog = Vec::new();
             let mut sized = Vec::new();
-            for (index, name) in &members {
+            for (position, (index, name)) in members.iter().enumerate() {
                 let checksum = zip
                     .by_index_raw(*index)
                     .ok()
@@ -356,6 +374,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                     crc32: checksum.map(|(crc, _)| crc),
                 });
                 catalog.push((name, checksum));
+                startup.update("selecting_partition", &corpus.name, position + 1, Some(members.len()))?;
             }
             let fingerprint = artifact_cache::sha256(&serde_json::to_vec(&catalog)?);
             ensure!(!members.is_empty(), "ZIP contains no XLSX or XLS members");
@@ -424,6 +443,7 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             "selection ready",
         );
     }
+    startup.update("initializing_run", "", 0, None)?;
     let run = provenance::start_run(
         &output,
         args.machine_label.as_deref(),
@@ -444,14 +464,13 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
             "resident_memory_limit_mib":std::env::var("EXCEL_SHRINK_RESIDENT_MEMORY_MIB").unwrap_or_else(|_|"16384".into())
         }),
     )?;
-    let mut room = if args.control_room {
-        Some(control_room::Room::start(&output, &args, &run)?)
-    } else {
-        None
-    };
+    if let Some(room) = &room {
+        room.set_run(&run, "preparing")?;
+    }
     if room.is_some() {
         progress::initialize(&output, &sources, &records, &run)?;
     }
+    startup.finish()?;
     let limits = ArchiveArgs {
         urls: Vec::new(),
         request_file: None,

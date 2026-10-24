@@ -132,7 +132,7 @@
             $runDirectory=Join-Path ([IO.Path]::GetDirectoryName($ConfigurationPath)) ('runs/'+$stamp)
             $plan=New-StudyLaunchPlan $Configuration $Repo $Executable $runDirectory $state.imports
             $state.result=Start-StudyLaunch $Configuration $ConfigurationPath $Repo $plan
-            $ui.Status.Foreground='#35755A';$ui.Status.Text="Lauf gestartet (PID $($state.result.Pid)). Das Fenster und VS Code können geschlossen werden. Logs: $runDirectory"
+            $ui.Status.Foreground='#35755A';$ui.Status.Text="Prozess gestartet (PID $($state.result.Pid)). Die Vorverarbeitung ist im Observatory sichtbar, sobald dessen Server bereit ist. Das Fenster und VS Code können geschlossen werden. Logs: $runDirectory"
             $ui.Start.Content='Weiterer Start gesperrt'
         }catch{$ui.Status.Foreground='#B32929';$ui.Status.Text=$_.Exception.Message;$ui.Start.IsEnabled=$true}
     }.GetNewClosure())

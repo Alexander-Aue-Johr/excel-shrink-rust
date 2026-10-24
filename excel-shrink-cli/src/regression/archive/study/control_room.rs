@@ -295,6 +295,7 @@ impl Room {
         )?;
         let mut queue =
             read_json(&room.root.join("queue.json")).unwrap_or_else(|| json!({"groups":[]}));
+        queue.as_object_mut().context("invalid control room queue")?.remove("startup");
         queue["run_id"] = run["run_id"].clone();
         queue["machine_id"] = run["machine_id"].clone();
         queue["machine"] = json!(args
@@ -325,6 +326,16 @@ impl Room {
             args.control_room_port
         );
         Ok(room)
+    }
+
+    pub fn set_run(&self, run: &Value, phase: &str) -> Result<()> {
+        let path = self.root.join("queue.json");
+        let mut queue = read_json(&path).context("missing control room queue")?;
+        queue["run_id"] = run["run_id"].clone();
+        queue["machine_id"] = run["machine_id"].clone();
+        queue["phase"] = json!(phase);
+        queue["updated_unix_ms"] = json!(provenance::now_ms());
+        write(&path, &queue)
     }
 
     pub fn finish(&mut self) -> Result<()> {

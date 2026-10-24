@@ -1,9 +1,14 @@
-import { age, duration, progressSummary, timestamp, workerRows } from '../worker-monitor-model.js';
+import { age, duration, progressSummary, startupSummary, timestamp, workerRows } from '../worker-monitor-model.js';
 
 export function runTests() {
   let passed = 0;
   const assert = (condition, message) => { if (!condition) throw new Error(message); passed++; };
   const start = Date.parse('2026-10-24T09:00:00Z');
+  assert(startupSummary(null) === null, 'Legacy queues must not invent startup progress');
+  const startup = startupSummary({ stage: 'scanning_archive', corpus: 'Enron', completed: 250, total: 1000, started_unix_ms: start }, start + 60000);
+  assert(startup.percent === 25 && startup.count === '250 / 1.000' && startup.elapsed === '1 min 0 s', 'Startup must report measured stage progress');
+  assert(startupSummary({ stage: 'opening_archive', completed: 0, total: null }).percent === null, 'Unknown totals must stay indeterminate');
+  assert(startupSummary({ stage: 'loading_records', completed: 0, total: 0 }).percent === null, 'Empty phases must not divide by zero');
   const group = { id: 'group', attempt_id: 'attempt-2', active: true, workbook: 'Book.xlsx', clients: [{
     worker_id: 'group/attempt-2/original/123/456', client_id: 'original', stage: 'capturing', pid: 123,
     process_alive: true, last_heartbeat_at: '2026-10-24T10:00:00Z', heartbeat_count: 50,

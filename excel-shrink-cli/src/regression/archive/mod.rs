@@ -351,8 +351,18 @@ fn archive_error(records: &mut Vec<Value>, key: &str, name: &str, error: &str) {
 fn workbook_members<R: Read + std::io::Seek>(
     zip: &mut ZipArchive<R>,
 ) -> Result<Vec<(usize, String)>> {
+    workbook_members_with_progress(zip, |_, _| Ok(()))
+}
+
+fn workbook_members_with_progress<R: Read + std::io::Seek>(
+    zip: &mut ZipArchive<R>,
+    mut progress: impl FnMut(usize, usize) -> Result<()>,
+) -> Result<Vec<(usize, String)>> {
     let mut members = Vec::new();
+    let total = zip.len();
+    progress(0, total)?;
     for index in 0..zip.len() {
+        progress(index, total)?;
         // Listing must not decode encrypted or unsupported members. Those are
         // reported by their worker, without preventing the next entry's check.
         let entry = match zip.by_index_raw(index) {
@@ -372,10 +382,18 @@ fn workbook_members<R: Read + std::io::Seek>(
             members.push((index, entry.name().to_owned()));
         }
     }
+    progress(total, total)?;
     Ok(members)
 }
 
 fn load_records(output: &Path) -> Result<Vec<Value>> {
+    load_records_with_progress(output, |_, _| Ok(()))
+}
+
+fn load_records_with_progress(
+    output: &Path,
+    mut progress: impl FnMut(usize, usize) -> Result<()>,
+) -> Result<Vec<Value>> {
     let records = output.join("records");
     if !records.exists() {
         return Ok(Vec::new());
@@ -384,12 +402,17 @@ fn load_records(output: &Path) -> Result<Vec<Value>> {
         .map(|e| e.map(|e| e.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
     paths.sort();
-    paths
+    let paths: Vec<_> = paths
         .into_iter()
         .filter(|p| p.extension().is_some_and(|e| e == "json"))
-        .map(|p| {
+        .collect();
+    let total = paths.len();
+    progress(0, total)?;
+    paths.into_iter().enumerate()
+        .map(|(index, p)| {
             let mut record = serde_json::from_slice(&fs::read(p)?)?;
             diagnosis_report::ensure_whitespace_diagnosis(&mut record);
+            progress(index + 1, total)?;
             Ok(record)
         })
         .collect()

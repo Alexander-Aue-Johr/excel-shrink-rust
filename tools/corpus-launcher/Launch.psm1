@@ -2,6 +2,15 @@
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Core.psm1')
 
+function Invoke-StudyReleaseBuild([string]$Repo, [string]$RunDirectory, [string]$CargoExecutable='cargo') {
+    $log=Join-Path $RunDirectory 'build.log'
+    $stderr=Join-Path $RunDirectory 'build.stderr.log'
+    # Windows PowerShell turns redirected native stderr into terminating errors
+    # under ErrorActionPreference=Stop, even for successful compiler warnings.
+    $build=Start-Process -FilePath $CargoExecutable -ArgumentList @('build','--release','-p','excel-shrink-cli','--bin','excel-shrink-cli') -WorkingDirectory $Repo -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError $stderr -Wait -PassThru
+    if ($build.ExitCode -ne 0) { throw "Release-Build fehlgeschlagen (Code $($build.ExitCode)). Details: $log und $stderr" }
+}
+
 function Get-ControlHostVersion([string]$Repo) {
     [string[]]$files = @(Get-ChildItem -LiteralPath (Join-Path $Repo 'excel-shrink-cli/office-capture/resident-host') -File | Where-Object { $_.Extension -in @('.cs','.csproj') } | ForEach-Object { $_.FullName })
     [Array]::Sort($files,[StringComparer]::Ordinal)
@@ -60,11 +69,7 @@ function Start-StudyLaunch {
         Save-StudyJson $ConfigurationPath $Configuration
         Save-StudyJson $Plan.RequestFile $Plan.Request
         if ($Configuration.settings.build_release) {
-            Push-Location $Repo
-            try {
-                & cargo build --release -p excel-shrink-cli --bin excel-shrink-cli *> (Join-Path $Plan.RunDirectory 'build.log')
-                if ($LASTEXITCODE -ne 0) { throw "Release-Build fehlgeschlagen. Details: $(Join-Path $Plan.RunDirectory 'build.log')" }
-            } finally { Pop-Location }
+            Invoke-StudyReleaseBuild $Repo $Plan.RunDirectory
         }
         if (-not [IO.File]::Exists($Plan.Executable)) { throw "Executable fehlt. Zuerst cargo build --release -p excel-shrink-cli ausführen: $($Plan.Executable)" }
         Update-OwnedControlHost $Repo $Plan ([int]$Configuration.settings.control_room_port)

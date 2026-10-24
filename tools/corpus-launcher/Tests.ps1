@@ -162,6 +162,11 @@ using System;
 using System.IO;
 public static class CorpusArgumentProbe {
  public static void Main(string[] args) {
+  if(args.Length > 0 && args[0] == "build") {
+   Console.Error.WriteLine("warning: unused import: `BTreeMap`");
+   Console.WriteLine("Synthetic build output");
+   Environment.Exit(Environment.GetEnvironmentVariable("EXCEL_SHRINK_TEST_BUILD_FAIL") == "1" ? 7 : 0);
+  }
   if(args.Length > 1 && args[0] == "regression") {
    string output = args[Array.IndexOf(args,"--output-root") + 1];
    Directory.CreateDirectory(output);
@@ -180,6 +185,19 @@ public static class CorpusArgumentProbe {
  }
 }
 '@ -OutputAssembly $helper -OutputType ConsoleApplication
+    $buildDirectory=Join-Path $root 'synthetic build'
+    [void][IO.Directory]::CreateDirectory($buildDirectory)
+    $launchModule=Get-Module Launch
+    & $launchModule {param($repo,$directory,$exe) Invoke-StudyReleaseBuild $repo $directory $exe} $root $buildDirectory $helper
+    Assert ([IO.File]::ReadAllText((Join-Path $buildDirectory 'build.stderr.log')).Contains('warning: unused import')) 'Successful build lost compiler warnings.'
+    Assert ([IO.File]::ReadAllText((Join-Path $buildDirectory 'build.log')).Contains('Synthetic build output')) 'Successful build lost stdout.'
+    $previousBuildFail=[Environment]::GetEnvironmentVariable('EXCEL_SHRINK_TEST_BUILD_FAIL','Process')
+    try {
+        $env:EXCEL_SHRINK_TEST_BUILD_FAIL='1'
+        $buildFailure=$null
+        try { & $launchModule {param($repo,$directory,$exe) Invoke-StudyReleaseBuild $repo $directory $exe} $root $buildDirectory $helper } catch { $buildFailure=$_.Exception.Message }
+        Assert ($buildFailure -match 'Code 7' -and $buildFailure.Contains('build.stderr.log')) 'Failed build did not report exit code and diagnostic log.'
+    } finally { [Environment]::SetEnvironmentVariable('EXCEL_SHRINK_TEST_BUILD_FAIL',$previousBuildFail,'Process') }
     $record=Join-Path $root 'arguments.bin'
     $values=@('', 'a b', 'a"b', 'C:\trailing directory\', 'backslash\"quote', '$() & `literal`', 'äö ü')
     $commandLine=(@($record)+$values | ForEach-Object {ConvertTo-WindowsArgument $_}) -join ' '
