@@ -648,6 +648,14 @@ impl ResidentCapture {
             let mut elapsed = Duration::ZERO;
             let mut discard_after_result = Vec::new();
             while !commands.is_empty() {
+                crate::regression::archive::work_state::event(
+                    "waiting_images",
+                    "batch_wait",
+                    "Waiting for remaining client images or batch responses",
+                    false,
+                    Some("Office.js image uploads / batch completion"),
+                    json!({"clients":commands.iter().map(|job|&job.client).collect::<Vec<_>>() }),
+                );
                 match self.next_live_event(&mut commands)? {
                     CaptureEvent::Receipt(index, offset, receipt) => {
                         let job = &mut commands[index];
@@ -685,6 +693,14 @@ impl ResidentCapture {
                             "image-first decoded dimensions differ"
                         );
                         tile.sha256 = artifact_cache::sha256(pixels.as_raw());
+                        crate::regression::archive::work_state::event(
+                            "comparing_images",
+                            "image_received",
+                            "Uploaded image validated and decoded",
+                            true,
+                            None,
+                            json!({"client":job.client,"sheet_index":tile.sheet_index,"sheet_name":tile.sheet_name,"tile_index":tile.tile_index}),
+                        );
                         let position = start + offset;
                         self.snapshots.get_mut(&job.client).unwrap().tiles[position] = tile.clone();
                         self.images.insert(
@@ -723,6 +739,14 @@ impl ResidentCapture {
                                     &peer_images,
                                     height_sheets.contains(&target.sheet_index),
                                 )?;
+                                crate::regression::archive::work_state::event(
+                                    "comparing_images",
+                                    "tile_compared",
+                                    "All profile images compared and retained",
+                                    true,
+                                    None,
+                                    json!({"sheet_index":target.sheet_index,"sheet_name":target.sheet_name,"tile_index":target.tile_index}),
+                                );
                                 if !keep {
                                     for (client, (tile, path, _)) in peer_images {
                                         self.images.remove(&(

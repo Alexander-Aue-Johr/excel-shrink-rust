@@ -21,7 +21,23 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     // Persist the reset before extraction/conversion can fail or the worker can
     // be killed, otherwise its old comparison machine survives in the journal.
     write_record(&job.record, record)?;
+    work_state::event(
+        "extracting",
+        "extraction_started",
+        "Extracting source workbook",
+        false,
+        None,
+        json!({}),
+    );
     let extracted = worker::extract(job)?;
+    work_state::event(
+        "extracting",
+        "extraction_complete",
+        "Source workbook extracted",
+        true,
+        None,
+        json!({}),
+    );
     record["source_bytes"] = json!(fs::metadata(&extracted)?.len());
     record["source_format"] = json!(extracted.extension().and_then(|e| e.to_str()));
     record["source_sha256"] = json!(artifact_cache::hash_file(&extracted)?);
@@ -30,16 +46,40 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
         .is_some_and(|e| e.eq_ignore_ascii_case("xls"))
     {
         let converted = job.work.join("converted.xlsx");
+        work_state::event(
+            "converting",
+            "conversion_started",
+            "Converting legacy workbook through Excel",
+            false,
+            Some("Excel legacy conversion"),
+            json!({}),
+        );
         let metrics = excel_automation::convert_legacy_workbook(
             &extracted,
             &converted,
             &job.work.join("conversion"),
         )?;
         record["conversion"] = serde_json::to_value(metrics)?;
+        work_state::event(
+            "converting",
+            "conversion_complete",
+            "Legacy workbook converted",
+            true,
+            None,
+            json!({}),
+        );
         converted
     } else {
         extracted
     };
+    work_state::event(
+        "validating",
+        "baseline_started",
+        "Validating source package and capture plan",
+        false,
+        None,
+        json!({}),
+    );
     let baseline = artifact_cache::prepare_baseline(&source)?;
     record["baseline_sha256"] = json!(baseline.snapshot.manifest.archive_sha256);
     let source = baseline.snapshot.path;
@@ -55,6 +95,14 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     let mut outputs = vec![("original".to_owned(), source.clone())];
     record["results"] = json!([]);
     for name in PROFILES {
+        work_state::event(
+            "shrinking",
+            "profile_started",
+            "Shrinking and auditing profile",
+            false,
+            None,
+            json!({"profile":name}),
+        );
         let predefined = predefined_visual_profiles()
             .iter()
             .find(|p| p.name == name)
@@ -90,12 +138,28 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
         }));
         outputs.push((name.into(), report.output_path));
         write_record(&job.record, record)?;
+        work_state::event(
+            "shrinking",
+            "profile_complete",
+            "Profile shrunk and audited",
+            true,
+            None,
+            json!({"profile":name}),
+        );
     }
     let bundle = job
         .bundle
         .as_ref()
         .context("missing prepared bundle path")?;
     fs::create_dir_all(bundle.parent().unwrap())?;
+    work_state::event(
+        "saving",
+        "bundle_started",
+        "Saving reusable preparation bundle",
+        false,
+        None,
+        json!({}),
+    );
     let pending = job.work.join("prepared.zip");
     let mut zip = zip::ZipWriter::new(fs::File::create(&pending)?);
     // XLSX files are already compressed. Recompressing them adds time, not useful space savings.
@@ -115,6 +179,14 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     fs::rename(pending, bundle)?;
     record["prepared"] = json!(true);
     record["status"] = json!("prepared");
+    work_state::event(
+        "saving",
+        "bundle_complete",
+        "Preparation bundle saved",
+        true,
+        None,
+        json!({}),
+    );
     Ok(())
 }
 
@@ -136,6 +208,14 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     record.as_object_mut().unwrap().remove("package_identity");
     record["results"] = json!([]);
     write_record(&job.record, record)?;
+    work_state::event(
+        "extracting",
+        "bundle_opening",
+        "Unpacking prepared workbook variants",
+        false,
+        None,
+        json!({}),
+    );
     record["results"] = unpack(
         job.bundle.as_ref().context("missing prepared bundle")?,
         &job.work,
@@ -145,12 +225,44 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     }
     write_record(&job.record, record)?;
     let original = job.work.join("original.xlsx");
+    work_state::event(
+        "validating",
+        "package_audit",
+        "Checking package equivalence",
+        false,
+        None,
+        json!({}),
+    );
     if finish_unchanged_package(job, record, &original)? {
         return Ok(());
     }
+    work_state::event(
+        "measuring_open",
+        "open_measurement_started",
+        "Measuring original workbook opening",
+        false,
+        Some("Excel opening measurement"),
+        json!({"profile":"original"}),
+    );
     let original_metrics =
         excel_automation::measure_workbook_open(&original, &job.work.join("open-original"))?;
+    work_state::event(
+        "measuring_open",
+        "open_measurement_complete",
+        "Original opening measured",
+        true,
+        None,
+        json!({"profile":"original"}),
+    );
     for name in ["default", "maximum-cleaning"] {
+        work_state::event(
+            "measuring_open",
+            "open_measurement_started",
+            "Measuring profile workbook opening",
+            false,
+            Some("Excel opening measurement"),
+            json!({"profile":name}),
+        );
         let metrics = excel_automation::measure_workbook_open(
             &job.work.join(format!("{name}.xlsx")),
             &job.work.join(format!("open-{name}")),
@@ -162,6 +274,14 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             &serde_json::to_value(&original_metrics)?,
             &serde_json::to_value(metrics)?,
         )?;
+        work_state::event(
+            "measuring_open",
+            "open_measurement_complete",
+            "Profile opening measured",
+            true,
+            None,
+            json!({"profile":name}),
+        );
     }
     if job.resident_capture {
         return resident::compare(job, record);

@@ -455,6 +455,14 @@ impl ResidentCapture {
         self.sequence += 1;
         let id = format!("{:06}", self.sequence);
         body["id"] = json!(id);
+        crate::regression::archive::work_state::event(
+            "waiting_client",
+            "command_queued",
+            "Capture command queued for Excel client",
+            false,
+            Some("Office.js command result"),
+            json!({"client":client,"command":id,"kind":body["kind"]}),
+        );
         publish(
             &self
                 .directory
@@ -531,6 +539,14 @@ impl ResidentCapture {
                     result["ok"] == true,
                     "resident {client}/{command}: {}",
                     result["error"]
+                );
+                crate::regression::archive::work_state::event(
+                    "processing_result",
+                    "command_complete",
+                    "Excel client command completed",
+                    true,
+                    None,
+                    json!({"client":client,"command":command}),
                 );
                 return Ok(result);
             }

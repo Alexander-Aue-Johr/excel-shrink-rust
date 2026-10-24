@@ -91,15 +91,36 @@ function Update-ClientActivity($health) {
         if (-not $metrics.clients.ContainsKey($id)) { continue }
         $sample = $property.Value
         $item = $metrics.clients[$id]
-        foreach ($name in @('heartbeat_count', 'last_heartbeat_at', 'last_activity_at', 'active_command', 'command_count', 'data_started', 'error')) {
+        foreach ($name in @('heartbeat_count', 'last_heartbeat_at', 'last_activity_at', 'active_command', 'command_count', 'data_started', 'error', 'monitor')) {
             $field = $sample.PSObject.Properties[$name]
             if ($null -ne $field) { $item[$name] = $field.Value }
         }
         if ($sample.error) {
             $item.stage = 'client_error'
             if ($sample.error.code -eq 'InvalidOperationInCellEditMode') { $item.stage = 'blocked_edit_mode' }
-        } elseif ($sample.active_command) { $item.stage = 'executing_job' }
+        } elseif ($sample.monitor -and $sample.monitor.state) { $item.stage = [string]$sample.monitor.state }
+        elseif ($sample.active_command) { $item.stage = 'executing_job' }
         elseif ($item.status -eq 'ready') { $item.stage = 'waiting_for_job' }
+    }
+}
+
+function Update-ClientStateTimes {
+    if (-not $script:clientStageTimes) { $script:clientStageTimes = @{} }
+    foreach ($id in @($metrics.clients.Keys)) {
+        $item = $metrics.clients[$id]
+        $identity = '{0}:{1}:{2}' -f $id,$item.pid,$item.stage
+        if ($script:clientStageTimes[$id] -ne $identity) {
+            $script:clientStageTimes[$id] = $identity
+            $item.stage_since = [DateTime]::UtcNow.ToString('o')
+            $item.last_launcher_event = [ordered]@{ at=$item.stage_since; kind='launcher_state_changed'; message=[string]$item.stage }
+            if ($item.stage -in @('waiting_for_open_slot','waiting_for_addin','closed')) {
+                $item.last_launcher_success = $item.last_launcher_event
+            }
+        }
+        # A state sampled repeatedly retains its actual transition timestamp.
+        if ($item.monitor -and $item.monitor.state -eq $item.stage -and $item.monitor.state_since) {
+            $item.stage_since = [string]$item.monitor.state_since
+        }
     }
 }
 
@@ -222,6 +243,7 @@ function Get-OwnOpeningSeconds([double]$elapsed, [double]$otherBefore, [double]$
 
 function Write-ResourceMetrics {
     Update-ClientProcessMetrics
+    Update-ClientStateTimes
     $metrics.elapsed_seconds = $clock.Elapsed.TotalSeconds
     $metrics.sampled_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $metrics.primary_clients_ready = Test-PrimaryClientsReady $primaryClientIds $clients
@@ -698,6 +720,7 @@ try {
     $metrics.elapsed_seconds = $clock.Elapsed.TotalSeconds
     $metrics.opening_seconds = $openingSeconds
     $metrics.other_group_opening_seconds = $otherOpeningSeconds
+    Update-ClientStateTimes
     Write-SessionJson 'metrics.json' $metrics
     if ($liveGroupDirectory) { Write-ResidentJsonFile (Join-Path $liveGroupDirectory 'launcher.json') $metrics }
     Write-SessionJson 'launcher-result.json' @{ status=$metrics.status; error=$metrics.error; elapsed_seconds=$metrics.elapsed_seconds; peak_job_bytes=$metrics.peak_job_bytes }

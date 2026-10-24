@@ -161,6 +161,43 @@ class HostProtocol(unittest.TestCase):
         self.assertEqual(after["last_heartbeat_at"], before["last_heartbeat_at"])
         self.assertEqual(after["heartbeat_count"], 1)
 
+    def test_heartbeats_and_job_polls_do_not_invent_progress_or_reset_state_age(self):
+        self.connect()
+        self.command({"id": "capture", "kind": "capture", "sheets": [{"sheet_name": "Observed", "sheet_index": 2}]})
+        before = self.request("/health")["clients"]["one"]
+        self.assertEqual(before["monitor"]["state"], "capturing")
+        self.assertEqual(before["monitor"]["active_job"]["locations"][0]["sheet_name"], "Observed")
+        self.request("/heartbeat?client=one")
+        after = self.request("/health")["clients"]["one"]
+        self.assertEqual(after["monitor"], before["monitor"])
+        self.assertGreater(after["heartbeat_count"], before["heartbeat_count"])
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request("/job?client=one")
+        self.assertEqual(self.request("/health")["clients"]["one"]["monitor"], before["monitor"])
+        self.request("/result/one/capture", {"ok": True, "tiles": [], "heights": []})
+        complete = self.request("/health")["clients"]["one"]["monitor"]
+        self.assertEqual(complete["last_success"]["kind"], "job_completed")
+        self.assertEqual(complete["completed_commands"], 1)
+        for _ in range(3):
+            self.request("/job?client=one")
+            self.request("/heartbeat?client=one")
+        self.assertEqual(self.request("/health")["clients"]["one"]["monitor"], complete)
+
+    def test_each_image_is_real_progress_and_history_is_bounded(self):
+        self.connect()
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==")
+        tiles = [{"sheet_index": 2, "sheet_name": "Observed", "tile_index": n, "range": f"A{n+1}", "width": 1, "height": 1} for n in range(30)]
+        self.command({"id": "batch", "kind": "capture_images", "tiles": tiles})
+        receipts = [self.request(f"/image/one/batch/2/{n}", png, {"Content-Type": "image/png"}) for n in range(30)]
+        monitor = self.request("/health")["clients"]["one"]["monitor"]
+        self.assertEqual(monitor["uploaded_images"], 30)
+        self.assertEqual(monitor["completed_commands"], 0)
+        self.assertEqual(monitor["last_success"]["kind"], "image_received")
+        self.assertEqual(monitor["last_success"]["details"]["range"], "A30")
+        self.assertEqual(len(monitor["events"]), 24)
+        self.assertEqual(len(monitor["active_job"]["locations"]), 8)
+        self.request("/result/one/batch", {"ok": True, "images": receipts})
+
     def test_image_batches_publish_each_receipt_and_reject_partial_completion(self):
         self.connect()
         png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==")

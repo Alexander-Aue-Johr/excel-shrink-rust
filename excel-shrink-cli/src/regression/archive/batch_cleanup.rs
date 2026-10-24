@@ -149,8 +149,25 @@ impl Participant {
     }
 
     pub fn wait_in_worker(&self) -> Result<()> {
+        super::work_state::event(
+            "waiting_cleanup",
+            "cleanup_wait",
+            "Waiting for peer groups before closing shared Excel runtime",
+            false,
+            Some("shared Excel cleanup barrier"),
+            json!({}),
+        );
         let heartbeat = std::env::var_os("EXCEL_SHRINK_PARENT_HEARTBEAT").map(PathBuf::from);
-        self.wait(heartbeat.as_deref(), false)
+        self.wait(heartbeat.as_deref(), false)?;
+        super::work_state::event(
+            "closing",
+            "cleanup_released",
+            "Peer groups finished; closing Excel",
+            false,
+            None,
+            json!({}),
+        );
+        Ok(())
     }
 }
 

@@ -10,6 +10,14 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     // Their independent Excel instances would otherwise compete with capture.
     let mut validations = BTreeMap::new();
     for name in PROFILES {
+        work_state::event(
+            "validating_values",
+            "recalculation_started",
+            "Validating stored and recalculated cell values",
+            false,
+            Some("Excel recalculation validation"),
+            json!({"profile":name}),
+        );
         let directory = job.work.join("comparisons").join(name);
         fs::create_dir_all(&directory)?;
         let predefined = predefined_visual_profiles()
@@ -40,13 +48,37 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             json!({"original":original_sha,"shrunk":artifact_cache::hash_file(&shrunk)?});
         validations.insert(name, failures);
         write_record(&job.record, record)?;
+        work_state::event(
+            "validating_values",
+            "recalculation_complete",
+            "Cell values validated",
+            true,
+            None,
+            json!({"profile":name}),
+        );
     }
     let variants: Vec<_> = PROFILES
         .iter()
         .map(|name| (*name, job.work.join(format!("{name}.xlsx"))))
         .collect();
+    work_state::event(
+        "opening",
+        "resident_started",
+        "Starting resident Excel capture clients",
+        false,
+        Some("resident Excel clients"),
+        json!({}),
+    );
     let mut session = ResidentCapture::start(&original, &variants, &job.work.join("resident"))?;
     for name in ["too-aggressive-cleaning", "maximum-cleaning", "default"] {
+        work_state::event(
+            "comparing",
+            "comparison_started",
+            "Comparing profile images",
+            false,
+            None,
+            json!({"profile":name}),
+        );
         let output = job.work.join("comparisons").join(name).join("visual");
         let mut visual = session.compare(name, &output)?;
         let mut failures = validations.remove(name).unwrap();
@@ -79,6 +111,14 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             target[key] = value.clone();
         }
         write_record(&job.record, record)?;
+        work_state::event(
+            "comparing",
+            "comparison_complete",
+            "Profile comparison saved",
+            true,
+            None,
+            json!({"profile":name}),
+        );
     }
     // Controls can be byte-identical to a primary profile. Keep those clients
     // available until the controls have either reused or completed their captures.
@@ -89,6 +129,14 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         .any(|p| p["failures"].as_array().is_some_and(|a| !a.is_empty()));
     record["status"] = json!(if changed { "differences" } else { "unchanged" });
     if changed {
+        work_state::event(
+            "whitespace_diagnosis",
+            "diagnosis_started",
+            "Checking whitespace counterfactuals",
+            false,
+            None,
+            json!({}),
+        );
         super::super::whitespace::run_resident(job, record, LogLevel::Warn, &mut session);
     }
     write_record(&job.record, record)?;

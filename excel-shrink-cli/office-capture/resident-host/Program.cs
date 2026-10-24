@@ -48,7 +48,7 @@ app.MapGet("/health", () => {
             last_heartbeat_at = pair.Value.LastHeartbeatAt,
             data_started = pair.Value.DataStarted, active_command = pair.Value.ActiveCommand,
             command_count = pair.Value.CommandCount, heartbeat_count = pair.Value.HeartbeatCount,
-            error = pair.Value.Error
+            error = pair.Value.Error, monitor = pair.Value.Monitor
         }) });
 });
 
@@ -63,6 +63,7 @@ app.MapGet("/config", async (HttpRequest request) => {
     try {
         if (client.DataStarted) {
             client.Error ??= Error("TASKPANE_RESTARTED", "The resident task pane restarted after receiving a job.");
+            client.Telemetry.Restarted();
             if (client.ActiveCommand is not null) {
                 await WriteResponse(id, client.ActiveCommand, new JsonObject { ["ok"] = false, ["error"] = client.Error.DeepClone() });
             }
@@ -70,6 +71,7 @@ app.MapGet("/config", async (HttpRequest request) => {
         }
         client.Token = Guid.NewGuid().ToString("N");
         client.ConfiguredAt = client.LastActivityAt = DateTimeOffset.UtcNow;
+        client.Telemetry.Configured();
         config["client_token"] = client.Token;
         return Results.Json(config);
     } finally { client.Gate.Release(); }
@@ -89,9 +91,14 @@ app.MapGet("/job", async (HttpRequest request) => {
     try {
         if (client.Error is not null) return Results.Conflict(client.Error.ToJsonString());
         client.LastActivityAt = DateTimeOffset.UtcNow;
+        // An incidental poll must not overwrite the observed state of work
+        // already in flight, including while dispatch of new work is paused.
+        if (client.ActiveCommand is not null) return Results.Conflict("A command is already in progress.");
         if (!string.IsNullOrEmpty(controlRoot)) {
-            if (primaryClients.Any(peer => peer is null || !clients.ContainsKey(peer)))
+            if (primaryClients.Any(peer => peer is null || !clients.ContainsKey(peer))) {
+                client.Telemetry.Transition("waiting_for_peers", "primary_addins", "Waiting for the other primary add-ins to connect.");
                 return Results.Json(new { idle = true, waiting_for_peers = true });
+            }
             var controlsPath = Path.Combine(controlRoot, "control.json");
             try {
                 var latest = await ReadObject(controlsPath);
@@ -99,16 +106,22 @@ app.MapGet("/job", async (HttpRequest request) => {
             } catch (Exception error) when (error is IOException or JsonException or InvalidOperationException) {
                 // A transient read cannot silently resume a deliberately paused run.
             }
-            if ((bool?)lastControls["paused"] == true)
+            if ((bool?)lastControls["paused"] == true) {
+                client.Telemetry.Transition("paused", "capture_pause", "Capture dispatch is paused by the user.");
                 return Results.Json(new { idle = true, paused = true });
+            }
         }
         // Excel can reload a newly inserted task pane during workbook startup.
         // Let each client settle independently before its first irreversible job.
-        if (!client.DataStarted && DateTimeOffset.UtcNow - client.ConfiguredAt < TimeSpan.FromSeconds(2))
+        if (!client.DataStarted && DateTimeOffset.UtcNow - client.ConfiguredAt < TimeSpan.FromSeconds(2)) {
+            client.Telemetry.Transition("settling", "startup_quiet_period", "Waiting for the startup quiet period.");
             return Results.Json(new { idle = true, settling = true });
-        if (client.ActiveCommand is not null) return Results.Conflict("A command is already in progress.");
+        }
         var directory = Path.Combine(session, "commands", id);
-        if (!Directory.Exists(directory)) return Results.Json(new { idle = true });
+        if (!Directory.Exists(directory)) {
+            client.Telemetry.Transition("waiting_for_job", "coordinator", "Waiting for the next coordinator command.");
+            return Results.Json(new { idle = true });
+        }
         foreach (var path in Directory.EnumerateFiles(directory, "*.json").Order(StringComparer.Ordinal)) {
             var commandId = SafeId(Path.GetFileNameWithoutExtension(path));
             if (File.Exists(ResponsePath(id, commandId))) continue;
@@ -119,12 +132,14 @@ app.MapGet("/job", async (HttpRequest request) => {
             client.ActivePayload = command;
             client.DataStarted = true;
             client.CommandCount++;
+            client.Telemetry.Started(command);
             if (!string.IsNullOrEmpty(controlRoot)) {
                 await WriteAtomic(Path.Combine(session,"dispatched",id,commandId+".json"),
                     JsonSerializer.SerializeToUtf8Bytes(new { dispatched_unix_ms=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }));
             }
             return Results.Json(command);
         }
+        client.Telemetry.Transition("waiting_for_job", "coordinator", "Waiting for the next coordinator command.");
         return Results.Json(new { idle = true });
     } finally { client.Gate.Release(); }
 });
@@ -154,6 +169,7 @@ app.MapPost("/image/{id}/{commandId}/{sheet:int}/{tile:int}", async (string id, 
         if (File.Exists(path)) throw new ArgumentException("Duplicate evidence image.");
         await WriteAtomic(path, bytes);
         client.LastActivityAt = DateTimeOffset.UtcNow;
+        client.Telemetry.ImageReceived(expected);
         var receipt = expected.DeepClone().AsObject();
         receipt["ok"] = true;
         receipt["image_path"] = path;
@@ -198,6 +214,7 @@ app.MapPost("/result/{id}/{commandId}", async (string id, string commandId, Http
             }
         }
         await WriteResponse(id, commandId, result);
+        client.Telemetry.Finished(ok, client.Error);
         client.ActiveCommand = null;
         client.ActivePayload = null;
         client.LastActivityAt = DateTimeOffset.UtcNow;
@@ -259,6 +276,7 @@ static (int Width, int Height) PngSize(byte[] bytes) {
 }
 
 sealed class ClientState {
+    public readonly WorkerTelemetry Telemetry = new();
     public readonly SemaphoreSlim Gate = new(1);
     public string Token = "";
     public readonly DateTimeOffset SeenAt = DateTimeOffset.UtcNow;
@@ -273,9 +291,9 @@ sealed class ClientState {
     public long HeartbeatCount;
     public SnapshotData Snapshot() {
         Gate.Wait();
-        try { return new(SeenAt, LastActivityAt, LastHeartbeatAt, DataStarted, ActiveCommand, CommandCount, HeartbeatCount, Error?.DeepClone().AsObject()); }
+        try { return new(SeenAt, LastActivityAt, LastHeartbeatAt, DataStarted, ActiveCommand, CommandCount, HeartbeatCount, Error?.DeepClone().AsObject(), Telemetry.Snapshot()); }
         finally { Gate.Release(); }
     }
 }
 sealed record SnapshotData(DateTimeOffset SeenAt, DateTimeOffset LastActivityAt, DateTimeOffset? LastHeartbeatAt, bool DataStarted,
-    string? ActiveCommand, long CommandCount, long HeartbeatCount, JsonObject? Error);
+    string? ActiveCommand, long CommandCount, long HeartbeatCount, JsonObject? Error, JsonObject Monitor);

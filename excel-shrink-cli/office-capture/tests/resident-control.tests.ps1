@@ -5,7 +5,7 @@ $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $captureRoot 'resident.ps1'), [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw 'Resident launcher has syntax errors.' }
 foreach ($function in $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
-    if ($function.Name -in @('Get-ResidentControlRoot', 'Get-ResidentOpenTimeoutSeconds', 'Get-ResidentHideExcel', 'Update-ClientActivity', 'Update-ClientProcessMetrics', 'Test-ResidentDeadline', 'Update-Resources')) {
+    if ($function.Name -in @('Get-ResidentControlRoot', 'Get-ResidentOpenTimeoutSeconds', 'Get-ResidentHideExcel', 'Update-ClientActivity', 'Update-ClientStateTimes', 'Update-ClientProcessMetrics', 'Test-ResidentDeadline', 'Update-Resources')) {
         Invoke-Expression $function.Extent.Text
     }
 }
@@ -85,6 +85,17 @@ try {
     $health.clients.original.last_activity_at = '2026-10-24T10:00:10Z'
     Update-ClientActivity $health
     Assert ($metrics.clients.original.last_heartbeat_at -eq '2026-10-24T10:00:00Z') 'Ordinary activity invented a heartbeat.'
+    Update-ClientStateTimes
+    $stateSince = $metrics.clients.original.stage_since
+    $lastEvent = $metrics.clients.original.last_launcher_event.at
+    Update-ClientStateTimes
+    Assert ($metrics.clients.original.stage_since -eq $stateSince) 'Sampling reset the current state duration.'
+    Assert ($metrics.clients.original.last_launcher_event.at -eq $lastEvent) 'Sampling invented a state change.'
+    $health.clients.original | Add-Member -NotePropertyName monitor -NotePropertyValue ([pscustomobject]@{state='capturing';state_since='2026-10-24T09:00:00Z';last_progress_at='2026-10-24T09:30:00Z'})
+    Update-ClientActivity $health
+    Update-ClientStateTimes
+    Assert ($metrics.clients.original.stage_since -eq '2026-10-24T09:00:00Z') 'The original protocol state timestamp was lost.'
+    Assert ($metrics.clients.original.monitor.last_progress_at -eq '2026-10-24T09:30:00Z') 'Activity was substituted for actual progress.'
     $health.clients.original.error = @{ code='InvalidOperationInCellEditMode'; message='Exit edit mode' }
     Update-ClientActivity $health
     Assert ($metrics.clients.original.stage -eq 'blocked_edit_mode') 'Excel edit mode is not visible as a distinct blockage.'

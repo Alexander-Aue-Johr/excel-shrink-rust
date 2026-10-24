@@ -20,12 +20,22 @@ pub(in crate::regression) fn run_worker(args: WorkerArgs, log_level: LogLevel) -
     let job: MemberJob = serde_json::from_slice(&fs::read(args.job)?)?;
     let _watchdog = start_watchdog(&job, memory_limit);
     let mut record: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
+    work_state::initialize(&job, &record);
     if job.mode != JobMode::Legacy {
         if let Err(error) = study::run_job(&job, &mut record, log_level) {
             record["status"] = json!("skipped");
             record["error"] = json!(format!("{error:#}"));
         }
-        return write_record(&job.record, &record);
+        let saved = write_record(&job.record, &record);
+        work_state::event(
+            "finished",
+            "record_saved",
+            "Workbook result saved",
+            saved.is_ok(),
+            None,
+            json!({"status":record["status"]}),
+        );
+        return saved;
     }
     let checked = (|| -> Result<()> {
         let input = extract(&job)?;

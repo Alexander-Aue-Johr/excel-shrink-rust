@@ -11,6 +11,7 @@ pub(in crate::regression) mod opening_pause;
 mod download;
 mod study;
 mod worker;
+pub(in crate::regression) mod work_state;
 mod verified;
 pub(super) use study::{run as run_study, StudyArgs};
 pub(super) use worker::{run_worker, WorkerArgs};
