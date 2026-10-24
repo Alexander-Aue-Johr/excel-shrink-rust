@@ -157,7 +157,6 @@ function Get-ResidentControlRoot([string]$path) {
 function Test-ResidentDeadline([string]$kind, [double]$elapsed) {
     switch ($kind) {
         'opening' { return $elapsed -gt (Get-ResidentOpenTimeoutSeconds) }
-        'opening_queue' { return (-not $liveControlPath) -and $elapsed -gt (4 * $StartupTimeoutSeconds + 120) }
         'session' { return (-not $liveControlPath) -and $elapsed -gt $CaptureTimeoutSeconds }
         default { throw 'Unknown resident deadline kind.' }
     }
@@ -461,21 +460,12 @@ function Open-ResidentClient($spec) {
         catch { if ($attempt -eq 11) { throw }; Start-Sleep -Milliseconds 250 }
     }
     $registrations[$guid] = Register-AddIn $guid $manifestPath
-    $locked = $false
     $wait = [Diagnostics.Stopwatch]::StartNew()
     $otherBefore = $otherOpeningSeconds
     try {
-        Add-SessionEvent 'opening_wait' $id $null
-        $metrics.clients[$id].status = 'waiting_open'
-        $metrics.clients[$id].stage = 'waiting_for_open_slot'
-        $metrics.clients[$id].waiting_since = [DateTime]::UtcNow.ToString('o')
-        Write-ResourceMetrics
-        while (-not $locked) {
-            try { $locked = $openMutex.WaitOne(200) } catch [Threading.AbandonedMutexException] { $locked = $true }
-            Update-Resources
-            if (Test-Path -LiteralPath (Join-Path $session 'finish.json')) { throw 'Resident session finished while waiting to open a workbook.' }
-            if (Test-ResidentDeadline 'opening_queue' $wait.Elapsed.TotalSeconds) { throw 'Timed out waiting for another resident Excel launch.' }
-        }
+        # Each group starts independently. An add-in that never registers must
+        # not prevent other groups from launching their own Excel processes.
+        if (Test-Path -LiteralPath (Join-Path $session 'finish.json')) { throw 'Resident session finished before workbook startup.' }
         Add-SessionEvent 'opening_started' $id $null
         $openClock = [Diagnostics.Stopwatch]::StartNew()
         $arguments = '/x ' + (Quote-Argument $book)
@@ -510,7 +500,6 @@ function Open-ResidentClient($spec) {
     } finally {
         Update-OtherGroupPause
         $script:openingSeconds += Get-OwnOpeningSeconds $wait.Elapsed.TotalSeconds $otherBefore $otherOpeningSeconds
-        if ($locked) { $openMutex.ReleaseMutex() }
     }
 }
 
@@ -526,7 +515,6 @@ $pauseCounter = $null
 $pauseBaselineSeconds = 0.0
 $owned = $null
 $hostProcess = $null
-$openMutex = $null
 $registrations = @{}
 $clients = @{}
 $batchLifetime = $null
@@ -593,7 +581,6 @@ try {
     }
     $owned = New-Object ResidentProcesses([int]$metrics.memory_limit_mib)
     Update-Resources
-    $openMutex = New-Object Threading.Mutex($false, 'Local\ExcelShrinkResidentOpen')
     $dotnet = Get-DotNet8
     $env:DOTNET_ROOT = Split-Path -Parent $dotnet
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
@@ -710,7 +697,6 @@ try {
     foreach ($guid in @($registrations.Keys)) {
         try { Restore-AddIn $guid $registrations[$guid] } catch { $metrics.registry_cleanup_warning = $_.Exception.Message }
     }
-    if ($null -ne $openMutex) { $openMutex.Dispose() }
     if ($null -ne $batchOwner) { $batchOwner.Dispose() }
     if ($null -ne $liveOwner) { $liveOwner.Dispose() }
     for ($attempt = 0; $attempt -lt 20; $attempt++) {

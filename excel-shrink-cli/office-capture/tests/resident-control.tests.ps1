@@ -35,7 +35,6 @@ try {
     Assert ((Get-ResidentOpenTimeoutSeconds) -eq 300) 'Legacy startup timeout changed.'
     Assert (Test-ResidentDeadline 'opening' 301) 'Legacy opening deadline stopped expiring.'
     Assert (-not (Test-ResidentDeadline 'opening' 299)) 'Legacy opening expired early.'
-    Assert (Test-ResidentDeadline 'opening_queue' 1321) 'Legacy opening queue lost its deadline.'
     Assert (Test-ResidentDeadline 'session' 1801) 'Legacy session deadline stopped expiring.'
 
     $liveControlPath = Join-Path $root 'control.json'
@@ -60,7 +59,6 @@ try {
     Assert ((Get-ResidentOpenTimeoutSeconds) -eq 900) 'Live startup timeout did not replace the CLI default.'
     Assert (-not (Test-ResidentDeadline 'opening' 850)) 'Live opening expired against the obsolete deadline.'
     Assert (Test-ResidentDeadline 'opening' 901) 'Pausing captures also disabled the active opening deadline.'
-    Assert (-not (Test-ResidentDeadline 'opening_queue' 1000000)) 'Time waiting in the Excel opening queue caused a live failure.'
     Assert (-not (Test-ResidentDeadline 'session' 1000000)) 'A fixed session deadline would kill a user-paused live capture.'
 
     # Changing the dashboard timeout affects the already-running opening clock.
