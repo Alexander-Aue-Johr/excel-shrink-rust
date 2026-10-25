@@ -460,7 +460,9 @@ function Update-Resources {
         $item.private_bytes = $entry.process.PrivateMemorySize64
         $item.peak_working_set_bytes = $entry.process.PeakWorkingSet64
         $item.peak_private_bytes = [Math]::Max([Int64]$item.peak_private_bytes, $entry.process.PrivateMemorySize64)
-        if ($entry.hide_excel) { [ResidentProcesses]::Hide($entry.process) }
+        if ($entry.hide_excel) {
+            if (-not $entry.private_desktop) { [ResidentProcesses]::Hide($entry.process) }
+        }
         elseif (-not $Visible -and $entry.seen) { [ResidentProcesses]::Minimize($entry.process) }
     }
     if ($metricsClock.ElapsedMilliseconds -ge 1000) {
@@ -597,9 +599,20 @@ function Open-ResidentClient($spec, $visibilityOverride = $null) {
         # admission setting; standalone sessions use the next-launch preference.
         $hideClient = Get-ResidentHideExcel
         if ($null -ne $visibilityOverride) { $hideClient = [bool]$visibilityOverride }
+        $desktopName = $null
+        if ($hideClient) {
+            if ($null -eq $script:captureDesktop) { $script:captureDesktop = New-Object CaptureDesktop }
+            $desktopName = $captureDesktop.Name
+        }
+        # Browser processes may be shared within a desktop, but a visible reset
+        # must not attach to a browser running on this group's private desktop.
+        $profileRoot = Join-Path $stage 'webview2-profile'
+        $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $profileRoot $(if ($desktopName) { 'private' } else { 'interactive' })
+        $metrics.clients[$id].webview2_user_data_folder = $env:WEBVIEW2_USER_DATA_FOLDER
         $openClock = [Diagnostics.Stopwatch]::StartNew()
-        $process = $owned.Start($excelExecutable, $arguments, [bool]$hideClient)
-        $clients[$id] = @{ process=$process; open_clock=$openClock; seen=$false; closed=$false; registration=$guid; hide_excel=[bool]$hideClient }
+        $process = $owned.Start($excelExecutable, $arguments, [bool]$hideClient, $desktopName)
+        $clients[$id] = @{ process=$process; open_clock=$openClock; seen=$false; closed=$false; registration=$guid; hide_excel=[bool]$hideClient; private_desktop=($null -ne $desktopName) }
+        $metrics.clients[$id].window_mode = if ($desktopName) { 'private_desktop' } elseif ($hideClient) { 'hidden_window' } else { 'interactive_desktop' }
         $metrics.clients[$id].pid = $process.Id
         $metrics.clients[$id].process_started_unix_ms = ([DateTimeOffset]$process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
         $metrics.clients[$id].process_alive = $true
@@ -637,6 +650,7 @@ $otherOpeningSeconds = 0.0
 $pauseCounter = $null
 $pauseBaselineSeconds = 0.0
 $owned = $null
+$captureDesktop = $null
 $hostProcess = $null
 $registrations = @{}
 $clients = @{}
@@ -657,7 +671,7 @@ $systemReserveBytes = [UInt64]4GB
 $primaryClientIds = @()
 $metrics = [ordered]@{ status='starting'; client_reset_supported=$true; attempt_id=$env:EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
 try {
-    Add-Type -Path (Join-Path $PSScriptRoot 'ResidentProcesses.cs')
+    Add-Type -Path @((Join-Path $PSScriptRoot 'ResidentProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureDesktop.cs'))
     if ($env:EXCEL_SHRINK_CONTROL_ROOM_DIR) {
         $liveRoot = Get-ResidentControlRoot $env:EXCEL_SHRINK_CONTROL_ROOM_DIR
         $liveControlPath = Join-Path $liveRoot 'control.json'
@@ -844,6 +858,7 @@ try {
     foreach ($guid in @($registrations.Keys)) {
         try { Restore-AddIn $guid $registrations[$guid] } catch { $metrics.registry_cleanup_warning = $_.Exception.Message }
     }
+    if ($null -ne $captureDesktop) { $captureDesktop.Dispose() }
     if ($null -ne $batchOwner) { $batchOwner.Dispose() }
     if ($null -ne $liveOwner) { $liveOwner.Dispose() }
     for ($attempt = 0; $attempt -lt 20; $attempt++) {

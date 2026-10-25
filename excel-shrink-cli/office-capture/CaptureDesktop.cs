@@ -10,6 +10,8 @@ public sealed class CaptureDesktop : IDisposable
     readonly string name = "es-capture-" + Guid.NewGuid().ToString("N");
     readonly IntPtr handle;
 
+    public string Name { get { return name; } }
+
     public CaptureDesktop()
     {
         handle = CreateDesktop(name, null, IntPtr.Zero, 0, 0x01ff, IntPtr.Zero);

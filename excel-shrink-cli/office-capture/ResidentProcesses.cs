@@ -41,13 +41,20 @@ public sealed class ResidentProcesses : IDisposable
 
     public Process Start(string executable, string arguments, bool hidden)
     {
+        return Start(executable, arguments, hidden, null);
+    }
+
+    public Process Start(string executable, string arguments, bool hidden, string desktop)
+    {
         if (executable.Contains("\"")) throw new ArgumentException("Invalid executable path");
         var startup = new StartupInfo();
         startup.Size = Marshal.SizeOf(typeof(StartupInfo));
-        // Office.js initializes on the interactive desktop. Hidden mode keeps
-        // the window hidden from startup while retaining that desktop.
+        startup.Desktop = desktop;
+        // A private desktop lets Excel render normally without receiving the
+        // user's input. Hiding its window before add-in startup can prevent
+        // Office.js initialization on real corpus workbooks.
         startup.Flags = 1; // STARTF_USESHOWWINDOW
-        startup.ShowWindow = (short)(hidden ? 0 : 1); // SW_HIDE / SW_SHOWNORMAL
+        startup.ShowWindow = (short)(hidden && desktop == null ? 0 : 1); // Render normally on the private desktop.
         ProcessInfo info;
         if (!CreateProcess(executable, new StringBuilder("\"" + executable + "\" " + arguments),
             IntPtr.Zero, IntPtr.Zero, false, 0x00000004, IntPtr.Zero, null, ref startup, out info))
