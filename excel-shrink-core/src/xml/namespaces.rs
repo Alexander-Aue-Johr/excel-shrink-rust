@@ -1,5 +1,8 @@
 use std::io::Read;
 
+mod header;
+pub use header::requires_namespace_root_passthrough;
+
 const SPREADSHEETML: &[u8] = b"http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 const STRICT_SPREADSHEETML: &[u8] = b"http://purl.oclc.org/ooxml/spreadsheetml/main";
 
