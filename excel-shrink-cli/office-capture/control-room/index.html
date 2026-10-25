@@ -23,6 +23,7 @@
     <label class="hidden-control" title="Excel renders on a private Windows desktop without receiving your keyboard input."><span><input id="hideExcel" type="checkbox"> Open Excel hidden</span><small>Uses a private desktop for the next group. Active windows keep their current mode.</small></label>
     <div class="throughput"><span id="pixelRate">— MP/s</span><small id="captureTotals">Waiting for measured captures</small><small id="effectiveCapture">—</small></div>
   </div></details>
+  <section class="controls" aria-label="Stop the run"><button id="stopRun" disabled>Stop run</button><span id="runLifecycle" role="status">Checking runner status...</span></section>
   <div id="notice" role="status" aria-live="polite">Status and image evidence are loaded directly from the local host.</div>
   <div class="workspace">
     <aside class="sidebar"><div class="section-head"><h2>Workbooks</h2><span id="groupCount">0</span></div><input id="groupSearch" class="group-search" type="search" placeholder="Filename or corpus" aria-label="Filter workbooks"><div id="groups" class="groups"></div><button id="moreGroups" class="more-groups" hidden>Show 100 more</button><p class="sidebar-note">Open requested, add-in ready, and capturing are separate states. Missing images alone do not indicate a crash.</p></aside>

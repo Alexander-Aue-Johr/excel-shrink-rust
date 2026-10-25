@@ -806,6 +806,14 @@ async function poll() {
     const recovered = Boolean(state.error);
     state.queue = queue; state.controls = queue.controls || {}; state.connected = true; state.error = null;
     workerMonitor?.update(queue);
+    $('stopRun').disabled = queue.running !== true || queue.runner_alive !== true || queue.stop_requested === true;
+    $('stopRun').textContent = queue.stop_requested && queue.running ? 'Stopping...' : 'Stop run';
+    $('runLifecycle').textContent = queue.update_ready === true
+      ? 'Runner ended. You can pull and rebuild; results are retained.'
+      : queue.stop_requested ? 'Finishing active workbooks and Excel cleanup. Wait before updating.'
+      : queue.running ? 'Stop finishes active workbooks, saves results and exits the runner.'
+      : 'Waiting for the runner process to exit.';
+
     $('connectionLight').className = 'connected';
     $('connectionText').textContent = queue.verification_fixture ? 'Saved case · UI verification'
       : queue.phase === 'owner_unverified' ? 'Connected · runner status unverified'
@@ -975,6 +983,15 @@ async function nextGroupDifference() {
 }
 
 function wireControls() {
+  $('stopRun').addEventListener('click', async () => {
+    $('stopRun').disabled = true;
+    try {
+      const response = await fetch('/api/run/stop', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `Stop failed (${response.status}).`);
+      setNotice(result.message);
+    } catch (error) { setNotice(error.message, true); $('stopRun').disabled = false; }
+  });
   $('groupSearch').addEventListener('input', () => { groupLimit = 100; renderGroups(); });
   $('moreGroups').addEventListener('click', () => { groupLimit += 100; renderGroups(); });
   function adjustTarget(delta) { const value = Math.max(0, Number($('targetGroups').value || 0) + delta); dirtyControls.add('targetGroups'); $('targetGroups').value = String(value); $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); }

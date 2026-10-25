@@ -97,6 +97,41 @@ class ControlRoomProtocol(unittest.TestCase):
             self.request(path, body, headers)
         self.assertEqual(raised.exception.code, code)
 
+    def test_stop_is_scoped_to_verified_runner_and_cannot_be_unpaused(self):
+        self.write("queue.json", {"running": True, "runner_pid": os.getpid(),
+            "runner_started_unix_ms": current_process_started_ms() - 1000, "stop_supported": True})
+        self.assert_status(409, "/api/run/stop", b"")
+        self.assertFalse((self.data / "stop-request.json").exists())
+        queue = {"running": True, "runner_pid": os.getpid(),
+            "runner_started_unix_ms": current_process_started_ms(), "stop_supported": True}
+        self.write("queue.json", queue)
+        self.request("/api/control", {"paused": True})
+        self.assertTrue(self.request("/api/run/stop", b"")["ok"])
+        self.assertTrue(self.request("/api/state")["stop_requested"])
+        controls = self.request("/api/control", {"target_groups": 4, "paused": True})["controls"]
+        self.assertEqual(controls["target_groups"], 0)
+        self.assertFalse(controls["paused"])
+        queue["runner_started_unix_ms"] += 1
+        self.write("queue.json", queue)
+        self.assertFalse(self.request("/api/state")["stop_requested"])
+
+    def test_update_ready_requires_a_released_output_lock(self):
+        import msvcrt
+        self.write("queue.json", {"running": False, "runner_pid": os.getpid(),
+            "runner_started_unix_ms": current_process_started_ms() - 1000})
+        lock_path = self.directory / ".run.lock"
+        with lock_path.open("w+b") as lock:
+            lock.write(b"0")
+            lock.flush()
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            try:
+                self.assertFalse(self.request("/api/state")["update_ready"])
+            finally:
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+        self.assertTrue(self.request("/api/state")["update_ready"])
+
     def test_live_summary_and_detail_preserve_completed_history(self):
         self.assertEqual(self.request("/health")["host_version"], "control-room-test-build")
         self.write("queue.json", {"run_id": "test-run", "machine": "test-machine", "groups": [

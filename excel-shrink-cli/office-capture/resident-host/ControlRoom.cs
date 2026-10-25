@@ -66,9 +66,15 @@ internal static class ControlRoom
             var diagnostics = new JsonArray();
             var queue = await ReadSnapshot(Path.Combine(root, "queue.json"), diagnostics) ?? new JsonObject();
             CheckRunnerOwnership(queue, diagnostics);
+            queue["update_ready"] = (bool?)queue["runner_alive"] == false && OutputIdle(root);
             await ReconcileCompletedGroups(root, queue, diagnostics);
             queue["groups"] ??= new JsonArray();
             queue["controls"] = await ReadControls(controlPath, initial, diagnostics);
+            var stopPath = Path.Combine(root, "stop-request.json");
+            var stop = File.Exists(stopPath) ? await ReadSnapshot(stopPath, diagnostics) : null;
+            queue["stop_requested"] = stop is not null &&
+                JsonNode.DeepEquals(stop["runner_pid"], queue["runner_pid"]) &&
+                JsonNode.DeepEquals(stop["runner_started_unix_ms"], queue["runner_started_unix_ms"]);
             queue.Remove("progress");
             var progress = await ReadSnapshot(Path.Combine(root, "progress.json"), diagnostics, 64 * 1024);
             if (queue["run_id"] is not null && (string?)progress?["run_id"] == (string?)queue["run_id"])
@@ -203,6 +209,26 @@ internal static class ControlRoom
             return Results.Json(merged);
         });
 
+        app.MapPost("/api/run/stop", async () => {
+            await controlGate.WaitAsync();
+            try {
+                var diagnostics = new JsonArray();
+                var queue = await ReadObject(Path.Combine(root, "queue.json"));
+                CheckRunnerOwnership(queue, diagnostics);
+                if ((bool?)queue["running"] != true || (bool?)queue["runner_alive"] != true)
+                    return Results.Conflict(new { error = "There is no verified active runner to stop." });
+                if ((bool?)queue["stop_supported"] != true)
+                    return Results.Conflict(new { error = "This runner predates orderly stopping. Stop it from the updated corpus configurator." });
+                await WriteAtomic(Path.Combine(root, "stop-request.json"), new JsonObject {
+                    ["runner_pid"] = queue["runner_pid"]?.DeepClone(),
+                    ["runner_started_unix_ms"] = queue["runner_started_unix_ms"]?.DeepClone()
+                });
+                var current = MergeControls(Defaults(), await ReadObject(controlPath));
+                await WriteAtomic(controlPath, MergeControls(current, new JsonObject { ["target_groups"] = 0, ["paused"] = false }));
+                return Results.Json(new { ok = true, message = "Stopping after active workbooks and Excel cleanup finish." });
+            } finally { controlGate.Release(); }
+        });
+
         app.MapPost("/api/control", async (HttpRequest request) => {
             if (!request.HasJsonContentType()) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
             var patch = (await JsonNode.ParseAsync(request.Body))?.AsObject()
@@ -211,6 +237,16 @@ internal static class ControlRoom
             try {
                 var current = MergeControls(Defaults(), await ReadObject(controlPath));
                 var next = MergeControls(current, patch);
+                var queuePath = Path.Combine(root, "queue.json");
+                var stopPath = Path.Combine(root, "stop-request.json");
+                var queue = File.Exists(stopPath) && File.Exists(queuePath) ? await ReadObject(queuePath) : new JsonObject();
+                var stop = File.Exists(stopPath) ? await ReadObject(stopPath) : new JsonObject();
+                if (stop["runner_pid"] is not null &&
+                    JsonNode.DeepEquals(stop["runner_pid"], queue["runner_pid"]) &&
+                    JsonNode.DeepEquals(stop["runner_started_unix_ms"], queue["runner_started_unix_ms"])) {
+                    next["target_groups"] = 0;
+                    next["paused"] = false;
+                }
                 await WriteAtomic(controlPath, next);
                 return Results.Json(new { ok = true, controls = next });
             } finally { controlGate.Release(); }
@@ -586,6 +622,19 @@ internal static class ControlRoom
             };
         }
         return new JsonObject { ["total_bytes"] = null, ["available_bytes"] = null, ["load_percent"] = null, ["source"] = "unavailable" };
+    }
+
+    private static bool OutputIdle(string root)
+    {
+        var path = Path.Combine(Directory.GetParent(root)!.FullName, ".run.lock");
+        try {
+            using var file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite);
+            file.Lock(0, 1);
+            file.Unlock(0, 1);
+            return true;
+        } catch (FileNotFoundException) { return true; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     private static void CheckRunnerOwnership(JsonObject queue, JsonArray diagnostics)
