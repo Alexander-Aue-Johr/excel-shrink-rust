@@ -95,7 +95,8 @@ retained plan counts stayed at two and explicit release cleared plans, tiles,
 and cached geometry. The four panes' nine owned WebView processes ranged from
 503 to 598 MiB private bytes; JavaScript heaps showed garbage-collection drops.
 This bounded check found no accumulating retained-image evidence; it is not a
-long-duration leak guarantee. Per-group profile isolation remains unchanged.
+long-duration leak guarantee. Those checks opened their groups sequentially;
+they did not establish reliability during concurrent startup of real files.
 
 New sessions record document/run/request IDs. Repeating configuration in the
 same document/run is idempotent; a different document after work started produces
@@ -114,3 +115,46 @@ Peer uploads and later captures still passed. The local receipt is
 no successful graceful closure for the actual hidden runner, production keeps
 the known-owned Job cleanup. This result does not establish whether visible
 Excel windows can close gracefully; that separate behavior remains unproven.
+
+## Concurrent hidden startup and private desktops
+
+The four-group corpus restart exposed a different failure before any capture:
+the `maximum-cleaning.xlsx` windows existed, but their add-ins never requested
+configuration. Other panes continued sending heartbeats. The native windows
+were responsive, memory was low, and no modal dialog was found. Private copies
+of the affected WV, DC and WY AP/IB workbooks reproduced this in bounded trials:
+
+| Startup policy | Observation |
+| --- | --- |
+| Two concurrent groups, hidden windows, group browser profile | One maximum-cleaning pane timed out. |
+| Same inputs, separate profile per Excel process | Startup still timed out; profile sharing was insufficient to explain it. |
+| Same inputs, visible windows | All eight panes and captures completed. |
+| Minimized startup, hide after readiness | Captures completed, but Excel took keyboard focus despite the non-activation flag. |
+| Normal rendering on a private Windows desktop | Hidden groups initialized and captured without appearing on the user's input desktop. |
+| Four private-desktop groups, then one explicitly visible reset | Completed after separating the private and interactive browser profiles. |
+
+Hidden resident sessions therefore reuse `CaptureDesktop`, already used by the
+classic capture runner. Excel renders normally on that private desktop; it is
+still assigned to its owning Job before its first instruction. The launcher
+does not hide or minimize these private windows. Every group remains free to
+start independently. Browser profiles are separate per group **and desktop**;
+a visible hard reset cannot reuse a browser on the private desktop.
+
+Client metrics retain `window_mode` and the actual configured profile directory.
+Readiness and memory sampling still precede dispatch. The existing hard-reset
+rules and per-group cleanup ownership remain unchanged.
+
+Run the concurrent startup check against copies of resident client specifications
+and their corresponding staged inputs:
+
+```powershell
+python excel-shrink-cli/office-capture/tests/concurrent-startup.py --run --cases .tmp/profile-concurrency-inputs --groups 4 --reset-visible
+```
+
+The optional reset deliberately shows one Excel instance. All other test Excel
+processes must stay out of sampled foreground focus. The test publishes a receipt
+with each group's final startup metrics, focus observations and any failure.
+Local experiment receipts are under `.tmp/profile-concurrency-results/`:
+`1792933860530778300` (shared-profile failure), `1792933949105173400`
+(per-process-profile failure), `1792934302066802600` (private desktop pass),
+and `1792934529662463700` (four groups plus visible reset pass).
