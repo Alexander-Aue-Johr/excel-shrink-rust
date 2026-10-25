@@ -151,8 +151,16 @@ fn test_cli(input: &Path, output: &Path) -> Cli {
 }
 
 #[test]
-fn late_global_namespaces_abort_output_without_replacing_prior_results() {
+fn late_namespaces_abort_output_without_replacing_prior_results() {
     let cases = [
+        (
+            "sheet",
+            "xl/worksheets/sheet1.xml",
+            late_namespace_xml(
+                "worksheet",
+                &format!("<sheetData><p:row xmlns:p=\"{MAIN}\" r=\"1\"/></sheetData>"),
+            ),
+        ),
         (
             "styles",
             "xl/styles.xml",
@@ -208,7 +216,8 @@ fn late_global_namespaces_abort_output_without_replacing_prior_results() {
         );
         drop(archive);
         let output = directory.join(format!("out-{name}"));
-        let cli = test_cli(&input, &output);
+        let mut cli = test_cli(&input, &output);
+        cli.batch_report = Some(directory.join(format!("report-{name}.json")));
         let target = output.join(input.file_name().unwrap());
         process_files(vec![input.clone()], &cli).unwrap();
         assert!(
@@ -227,6 +236,21 @@ fn late_global_namespaces_abort_output_without_replacing_prior_results() {
             "{name}"
         );
         assert!(!partial_output_path(&target).exists(), "{name}");
+        let report: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(cli.batch_report.as_ref().unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(report["summary"]["skipped"], 1, "{name}");
+        assert_eq!(report["summary"]["failed"], 0, "{name}");
+        assert_eq!(report["files"][0]["status"], "skipped", "{name}");
+        assert!(report["files"][0]["output_bytes"].is_null(), "{name}");
+        assert!(
+            report["files"][0]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("unsupported XML namespaces"),
+            "{name}"
+        );
     }
     std::fs::remove_dir_all(directory).unwrap();
 }

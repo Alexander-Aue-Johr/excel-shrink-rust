@@ -269,10 +269,10 @@ cargo run --release -- path/to/input_directory path/to/output_directory --recurs
 Directory inputs keep their relative paths, so `input/a/book.xlsx` and
 `input/b/book.xlsx` produce separate files under `output/a` and `output/b`.
 Add `--batch-report results/batch.json` to record each input and output path,
-file sizes, elapsed time, and outcome (`processed`, `preserved`, `skipped`, or
-`failed`). `preserved` means the workbook was copied unchanged because its XML
-namespace representation is unsupported. A failed file does not stop the other
-files; the command returns a nonzero exit code after the batch finishes.
+file sizes, elapsed time, and outcome (`processed`, `skipped`, or `failed`).
+Unsupported XML namespaces are reported as `skipped`; no output is written.
+A failed file does not stop the other files; the command returns a nonzero exit
+code after the batch finishes.
 
 ### Overwrite existing output files
 

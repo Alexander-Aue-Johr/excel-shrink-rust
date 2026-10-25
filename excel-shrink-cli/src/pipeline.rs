@@ -46,6 +46,7 @@ struct QueuedWriteJob {
 enum WriteJob {
     Abort {
         filename: String,
+        unsupported_namespace: bool,
     },
     CopyOriginal {
         index: usize,
@@ -193,7 +194,7 @@ impl XlsxProgress {
             let status = match event {
                 "file_written" => Status::Processed,
                 "file_preserved" => Status::Preserved,
-                "file_skipped" => Status::Skipped,
+                "file_skipped" | "file_skipped_unsupported_namespace" => Status::Skipped,
                 _ => Status::Failed,
             };
             if status == Status::Failed {
@@ -206,7 +207,7 @@ impl XlsxProgress {
                     status,
                     elapsed_ms: self.started.elapsed().as_millis(),
                     input_bytes: std::fs::metadata(&self.input).ok().map(|meta| meta.len()),
-                    output_bytes: (output_written || status == Status::Skipped)
+                    output_bytes: (output_written || event == "file_skipped")
                         .then(|| std::fs::metadata(&self.output).ok().map(|meta| meta.len()))
                         .flatten(),
                     reason: if status == Status::Processed {
@@ -287,6 +288,7 @@ struct FailedSheet {
     params: CleanSheetParameters,
     zip_index: usize,
     abort_output: bool,
+    unsupported_namespace: bool,
 }
 
 type ProcessedSheetResult = Result<ProcessedSheet, FailedSheet>;
@@ -1002,6 +1004,17 @@ fn write_xlsx(
             error!(event = "aborted_output_remove_failed", xlsx = %input_display, error = %error,
                 "Could not remove aborted partial XLSX");
         }
+        if !timings.failed {
+            if let Some(part) = &timings.unsupported_namespace {
+                report_namespace_exclusion(
+                    progress,
+                    &input_display,
+                    part,
+                    writer_start.elapsed().as_millis(),
+                );
+                return;
+            }
+        }
         error!(event = "file_write_aborted", xlsx = %input_display,
             "No output published because an archive entry could not be processed");
         progress.failure =
@@ -1094,6 +1107,8 @@ struct WriterTimings {
     wait: Duration,
     copy: Duration,
     aborted: bool,
+    failed: bool,
+    unsupported_namespace: Option<String>,
 }
 
 fn copy_write_jobs(
@@ -1118,12 +1133,25 @@ fn copy_write_jobs(
         tracing::info!(target: "excel_shrink::profile", event = "writer_queue_delay",
             xlsx = input_display, queue_wait_us = queued.queued_at.elapsed().as_micros() as u64);
         timings.jobs += 1;
-        timings.aborted |= matches!(&queued.job, WriteJob::Abort { .. });
+        if let WriteJob::Abort {
+            filename,
+            unsupported_namespace,
+        } = &queued.job
+        {
+            timings.aborted = true;
+            if *unsupported_namespace {
+                timings.unsupported_namespace = Some(filename.clone());
+            } else {
+                timings.failed = true;
+            }
+        }
         if timings.aborted {
             continue;
         }
         let started = Instant::now();
-        timings.aborted |= !copy_write_job(queued.job, source_archive, zip_writer, input_display);
+        let copied = copy_write_job(queued.job, source_archive, zip_writer, input_display);
+        timings.aborted |= !copied;
+        timings.failed |= !copied;
         timings.copy += started.elapsed();
     }
     // Each input entry must be copied or replaced once. A disconnected sender
@@ -1139,7 +1167,7 @@ fn copy_write_job(
     input_display: &str,
 ) -> bool {
     let filename = match &job {
-        WriteJob::Abort { filename }
+        WriteJob::Abort { filename, .. }
         | WriteJob::CopyOriginal { filename, .. }
         | WriteJob::CopyPrecompressed { filename, .. } => filename,
     };
@@ -1233,7 +1261,7 @@ fn partial_output_path(out_path: &Path) -> PathBuf {
 
 fn send_write_job(tx: &mpsc::Sender<QueuedWriteJob>, job: WriteJob, xlsx: &str) -> bool {
     let (filename, bytes) = match &job {
-        WriteJob::Abort { filename } => (filename.as_str(), 0),
+        WriteJob::Abort { filename, .. } => (filename.as_str(), 0),
         WriteJob::CopyOriginal { filename, .. } => (filename.as_str(), 0),
         WriteJob::CopyPrecompressed {
             filename,
@@ -1647,6 +1675,10 @@ impl InitialSheetProcessor {
                     params,
                     zip_index,
                     abort_output,
+                    unsupported_namespace: matches!(
+                        error,
+                        excel_shrink_core::error::ShrinkError::UnsupportedNamespace
+                    ),
                 })
             }
         }
@@ -1754,6 +1786,7 @@ fn failed_sheet(params: CleanSheetParameters, zip_index: usize) -> ProcessedShee
         params,
         zip_index,
         abort_output: false,
+        unsupported_namespace: false,
     })
 }
 
@@ -2085,6 +2118,7 @@ fn reject_loaded_namespace(
         context.tx,
         WriteJob::Abort {
             filename: filename.into(),
+            unsupported_namespace: true,
         },
         context.input_display,
     );
@@ -2273,10 +2307,12 @@ impl SheetFinalizer<'_> {
                 params,
                 zip_index,
                 abort_output,
+                unsupported_namespace,
             }) => {
                 let job = if abort_output {
                     WriteJob::Abort {
                         filename: params.zip_info_filename,
+                        unsupported_namespace,
                     }
                 } else {
                     WriteJob::CopyOriginal {
@@ -2858,6 +2894,7 @@ fn process_file(
         Ok(archive) => archive,
         Err(error) => {
             error!("Failed to parse ZIP archive {:?}: {}", input, error);
+            file_progress.failure = Some(format!("Invalid ZIP archive: {error}"));
             return;
         }
     };

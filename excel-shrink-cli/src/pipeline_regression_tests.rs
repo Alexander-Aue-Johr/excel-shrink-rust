@@ -442,7 +442,7 @@ fn directory_batch_preserves_paths_with_duplicate_file_names() {
 }
 
 #[test]
-fn batch_report_accounts_for_success_preservation_skips_and_failures() {
+fn batch_report_accounts_for_success_namespace_skips_and_failures() {
     let root = batch_test_directory("batch_report");
     let mut cli = cli_with_analysis_flags(false, None);
     cli.path = root.join("input");
@@ -452,7 +452,7 @@ fn batch_report_accounts_for_success_preservation_skips_and_failures() {
     let ordinary = br#"<worksheet><sheetData><row r="1"><c r="A1"><v>42</v></c></row></sheetData></worksheet>"#;
     write_batch_test_workbook(&cli.path.join("good.xlsx"), ordinary);
     write_batch_test_workbook(&cli.path.join("skipped.xlsx"), ordinary);
-    write_batch_test_workbook(&cli.path.join("preserved.xlsx"), br#"<p:worksheet xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:sheetData/></p:worksheet>"#);
+    write_batch_test_workbook(&cli.path.join("unsupported.xlsx"), br#"<p:worksheet xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:sheetData/></p:worksheet>"#);
     write_batch_test_workbook(&cli.path.join("incomplete.xlsx"), b"<worksheet><sheetData/>");
     std::fs::write(cli.path.join("invalid.xlsx"), b"not a ZIP file").unwrap();
     std::fs::create_dir_all(&cli.output).unwrap();
@@ -462,7 +462,7 @@ fn batch_report_accounts_for_success_preservation_skips_and_failures() {
     assert!(error.to_string().contains("2 of 5 XLSX files failed"));
     let report: serde_json::Value = serde_json::from_slice(&std::fs::read(cli.batch_report.as_ref().unwrap()).unwrap()).unwrap();
     assert_eq!(report["summary"], serde_json::json!({
-        "total": 5, "processed": 1, "preserved": 1, "skipped": 1, "failed": 2,
+        "total": 5, "processed": 1, "preserved": 0, "skipped": 2, "failed": 2,
     }));
     let files = report["files"].as_array().unwrap();
     assert_eq!(files.len(), 5);
@@ -470,8 +470,12 @@ fn batch_report_accounts_for_success_preservation_skips_and_failures() {
     assert_eq!(invalid["status"], "failed");
     assert!(invalid["reason"].as_str().unwrap().contains("Invalid ZIP archive"));
     assert!(invalid["output_bytes"].is_null());
+    let unsupported = files.iter().find(|file| file["input"].as_str().unwrap().ends_with("unsupported.xlsx")).unwrap();
+    assert_eq!(unsupported["status"], "skipped");
+    assert!(unsupported["reason"].as_str().unwrap().contains("unsupported XML namespaces"));
+    assert!(unsupported["output_bytes"].is_null());
     assert!(cli.output.join("good.xlsx").exists());
-    assert_eq!(std::fs::read(cli.output.join("preserved.xlsx")).unwrap(), std::fs::read(cli.path.join("preserved.xlsx")).unwrap());
+    assert!(!cli.output.join("unsupported.xlsx").exists());
     assert_eq!(std::fs::read(cli.output.join("skipped.xlsx")).unwrap(), b"existing file");
     assert!(!cli.output.join("incomplete.xlsx").exists());
     std::fs::remove_dir_all(root).unwrap();
