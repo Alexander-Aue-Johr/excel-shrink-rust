@@ -236,6 +236,11 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     if finish_unchanged_package(job, record, &original)? {
         return Ok(());
     }
+    // Resident clients measure native launch through add-in readiness themselves.
+    // Do not open these workbooks again through COM just for dashboard metrics.
+    if job.resident_capture {
+        return resident::compare(job, record);
+    }
     work_state::event(
         "measuring_open",
         "open_measurement_started",
@@ -282,9 +287,6 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             None,
             json!({"profile":name}),
         );
-    }
-    if job.resident_capture {
-        return resident::compare(job, record);
     }
     let mut selected = None;
     let mut visual_comparisons = visual_reuse::VisualComparisons::default();

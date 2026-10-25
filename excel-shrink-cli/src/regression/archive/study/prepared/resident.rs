@@ -2,6 +2,7 @@
 use super::*;
 use crate::regression::office_capture::ResidentCapture;
 use std::collections::BTreeMap;
+mod startup;
 
 pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     let original = job.work.join("original.xlsx");
@@ -91,7 +92,18 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             json!({"profile":name}),
         );
         let output = job.work.join("comparisons").join(name).join("visual");
-        let mut visual = session.compare(name, &output)?;
+        let compared = session.compare(name, &output);
+        // Persist completed startup samples even if capture or cleanup fails.
+        // A metrics read must not hide the original comparison failure.
+        match session.startup_metrics() {
+            Ok(Some(metrics)) => {
+                startup::record(record, &metrics);
+                write_record(&job.record, record)?;
+            }
+            Ok(None) => {}
+            Err(error) => eprintln!("Resident startup snapshot unavailable: {error:#}"),
+        }
+        let mut visual = compared?;
         let mut failures = validations.remove(name).unwrap();
         let sheets = visual["sheets"]
             .as_array()
@@ -172,7 +184,10 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         session.close(name)?;
     }
     match session.finish() {
-        Ok(metrics) => record["resident_capture"] = metrics,
+        Ok(metrics) => {
+            startup::record(record, &metrics);
+            record["resident_capture"] = metrics;
+        }
         Err(error) if record["whitespace_diagnosis"]["status"] == "failed" => {
             // Completed primary checks remain usable if an auxiliary control fails.
             record["resident_capture"] =

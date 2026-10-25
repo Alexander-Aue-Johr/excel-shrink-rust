@@ -463,6 +463,18 @@ impl ResidentCapture {
             .context("unknown resident client")
     }
 
+    /// A launcher snapshot is available before cleanup, including on a failed
+    /// comparison. It records only measurements actually completed by clients.
+    pub(in crate::regression) fn startup_metrics(&self) -> Result<Option<Value>> {
+        let path = self.directory.join("metrics.json");
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let mut metrics: Value = serde_json::from_slice(&fs::read(path)?)?;
+        metrics["capture_client_aliases"] = json!(self.aliases);
+        Ok(Some(metrics))
+    }
+
     fn issue(&mut self, client: &str, mut body: Value) -> Result<String> {
         self.check_restart()?;
         let client = self.client(client)?.to_owned();
