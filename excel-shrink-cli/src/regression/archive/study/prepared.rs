@@ -7,6 +7,19 @@ mod visual_reuse;
 
 pub(super) const PROFILES: [&str; 3] = ["default", "maximum-cleaning", "too-aggressive-cleaning"];
 
+// A new attempt can fail before its worker unpacks the preparation bundle.
+// Clear old startup claims at admission, not only once the worker begins.
+pub(super) fn clear_startup_measurements(record: &mut Value) {
+    for profile in record["results"].as_array_mut().into_iter().flatten() {
+        let Some(fields) = profile.as_object_mut() else { continue };
+        for field in ["native_startup", "open_measurement_provenance",
+            "original_open_seconds", "shrunk_open_seconds", "original_memory_bytes",
+            "shrunk_memory_bytes", "original_private_bytes", "shrunk_private_bytes"] {
+            fields.remove(field);
+        }
+    }
+}
+
 pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
     provenance::retire(record, provenance::Stage::Preparation);
     provenance::retire(record, provenance::Stage::Comparison);
@@ -522,6 +535,19 @@ pub(super) fn reusable_visual_manifest(manifest: &artifact_cache::PackageManifes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_attempt_removes_old_startup_claims_but_keeps_preparation_measurements() {
+        let mut record = json!({"results":[{"profile":"default","original_bytes":1000,
+            "shrunk_bytes":500,"shrink_seconds":1.0,"original_open_seconds":20.0,
+            "shrunk_open_seconds":10.0,"original_memory_bytes":200,"shrunk_memory_bytes":100,
+            "original_private_bytes":300,"shrunk_private_bytes":150,
+            "open_measurement_provenance":{"run_id":"old"},
+            "native_startup":{"method":"launch-to-addin-ready-v1","original":{"seconds":3.0}}}]});
+        clear_startup_measurements(&mut record);
+        assert_eq!(record["results"][0],json!({"profile":"default","original_bytes":1000,
+            "shrunk_bytes":500,"shrink_seconds":1.0}));
+    }
 
     fn package_fixture(path: &Path, styles: &[u8], stored: bool) -> Result<()> {
         let mut zip = zip::ZipWriter::new(fs::File::create(path)?);

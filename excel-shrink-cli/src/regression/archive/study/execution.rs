@@ -100,6 +100,7 @@ pub(super) fn run_record(
     state["last_execution"] = json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
         "machine_manifest":run["machine_manifest"],"mode":mode,"started_unix_ms":provenance::now_ms()});
     if mode == JobMode::Compare {
+        prepared::clear_startup_measurements(&mut state);
         state["capture_mode"] = json!(if run["options"]["resident_capture"] == true {
             "resident"
         } else {

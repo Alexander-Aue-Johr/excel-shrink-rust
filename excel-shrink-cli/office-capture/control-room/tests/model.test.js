@@ -25,6 +25,7 @@ export function runTests() {
   nativeMeasures.measurements.original.open_seconds = 200;
   assert(!processMeasurements(nativeMeasures,'default').opening.includes('vs original'), 'A native sample is never compared with a COM baseline.');
   assert(processMeasurements(measures,'maximum-cleaning').opening.includes('not measured yet'), 'Missing measurements never appear as zero seconds.');
+  assert(processMeasurements({capture_mode:'classic'},'default').opening.includes('Startup unavailable'), 'Classic capture does not promise a native sample.');
   const zero = processMeasurements({measurements:{original:{bytes:0,open_seconds:0},default:{bytes:5,open_seconds:2}}},'default');
   assert(!/NaN|Infinity/.test(zero.size+zero.opening) && zero.opening.includes('+2 s'), 'Zero baselines preserve absolute differences without invalid ratios.');
   const pending = normalize({ original: image(null), default: image(null), 'maximum-cleaning': image(null) });
@@ -124,7 +125,7 @@ export function runTests() {
   assert(rawTall.sheets[0].tiles[3].y === 99800 && rawTall.sheets[0].tiles.length === 4, 'Display compaction never mutates host evidence.');
   const noOmission = normalizeGroup({ sheets: [{ height: 100000, tiles: [{ id: 'pending', width: 800, height: 100000 }] }] }).sheets[0];
   assert(noOmission.height === 100000 && noOmission.tiles.length === 1, 'A large pending capture is never treated as an omission.');
-  return { passed: 60 + viewportTests.passed };
+  return { passed: 61 + viewportTests.passed };
 }
 
 export const result = runTests();

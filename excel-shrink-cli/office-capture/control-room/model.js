@@ -22,7 +22,8 @@ export function processMeasurements(group, id) {
   const comparableNative = native && baselineStartup?.method === startup.method && known(baselineStartup.seconds);
   const opening = native
     ? `Launch to add-in ready: ${number(startup.seconds)} s${id !== 'original' && comparableNative ? ` (${delta(startup.seconds, baselineStartup.seconds, 's')})` : ''}`
-    : known(measured.open_seconds) ? `COM Open (historical): ${number(measured.open_seconds)} s${id !== 'original' && known(original.open_seconds) ? ` (${delta(measured.open_seconds, original.open_seconds, 's')})` : ''}` : 'Startup not measured yet';
+    : known(measured.open_seconds) ? `COM Open (historical): ${number(measured.open_seconds)} s${id !== 'original' && known(original.open_seconds) ? ` (${delta(measured.open_seconds, original.open_seconds, 's')})` : ''}`
+      : group?.capture_mode === 'classic' || group?.status === 'retrying_classic' ? 'Startup unavailable (classic capture)' : 'Startup not measured yet';
   const extra = [];
   if (known(measured.shrink_seconds)) extra.push(`Shrink: ${number(measured.shrink_seconds)} s`);
   if (native) {
