@@ -14,7 +14,8 @@ while ($true) {
         if (-not $owner -or $owner.StartTime.ToUniversalTime().Ticks -ne $OwnerStartedTicks) { break }
     }
     try {
-        $result = Clear-ExcelDiagnosticLogs -Root $root
+        $ownershipPath = if ($StatusPath) { $StatusPath + '.owners.json' } else { $null }
+        $result = Clear-ExcelDiagnosticLogs -Root $root -OwnershipPath $ownershipPath
         if ($StatusPath) {
             $pending = $StatusPath + '.pending'
             $result | ConvertTo-Json | Set-Content -LiteralPath $pending -Encoding UTF8
