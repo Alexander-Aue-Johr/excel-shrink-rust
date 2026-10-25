@@ -74,3 +74,32 @@ The scheduler batches derived full JSON/HTML report refreshes (at most once per
 30 seconds, when its event queue is idle). Durable per-workbook records remain
 immediate. This prevents rebuilding the entire report for every progress event
 from delaying completion handling and replacement admission.
+
+## Four-pane reset and upload checks (2026-10-25)
+
+The expanded check uses two groups with four variants each, resets one ready
+pane in each group before assigning work, and verifies the actual WebView
+profile paths in process command lines. It then starts image uploads in the
+surviving group while closing the other group, compares those images and the
+subsequent captures, repeats image-first batches, and releases retained plans:
+
+```powershell
+python excel-shrink-cli/office-capture/tests/cleanup-peer-smoke.py --run --groups 2 --clients 4 --reset-first --image-batches 6
+```
+
+Both the small-sheet reset check and the populated 1,000-row, eight-column
+upload check passed. All surviving variants retained identical PNG hashes.
+The local upload receipt is `.tmp/cleanup-peer-check/1792932733119669600/receipt.json`.
+Its six repeated batches had zero pending PNG characters after each completion;
+retained plan counts stayed at two and explicit release cleared plans, tiles,
+and cached geometry. The four panes' nine owned WebView processes ranged from
+503 to 598 MiB private bytes; JavaScript heaps showed garbage-collection drops.
+This bounded check found no accumulating retained-image evidence; it is not a
+long-duration leak guarantee. Per-group profile isolation remains unchanged.
+
+New sessions record document/run/request IDs. Repeating configuration in the
+same document/run is idempotent; a different document after work started produces
+`TASKPANE_CONTEXT_CHANGED` and invalidates that attempt. This observation alone
+does not prove a renderer crash. A bounded latest pane-resource snapshot and
+per-process PID/birth/memory snapshots support correlation with cleanup events.
+The native startup measurement is described in [native-readiness.md](native-readiness.md).
