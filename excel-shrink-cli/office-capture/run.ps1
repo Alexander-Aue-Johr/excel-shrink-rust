@@ -26,13 +26,23 @@ function Get-DotNet8 {
         }
     }
     foreach ($candidate in ($candidates | Select-Object -Unique)) {
-        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
-        $sdks = @(& $candidate --list-sdks 2>$null)
-        if ($LASTEXITCODE -eq 0 -and @($sdks | Where-Object { $_ -match '^8\.' }).Count -gt 0) {
-            return $candidate
-        }
+        if ([IO.Path]::GetExtension($candidate) -ine '.exe' -or -not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+        try {
+            $file = [IO.File]::OpenRead($candidate)
+            try { if ($file.ReadByte() -ne 0x4D -or $file.ReadByte() -ne 0x5A) { continue } }
+            finally { $file.Dispose() }
+            $sdks = @(& $candidate --list-sdks 2>$null)
+            if ($LASTEXITCODE -ne 0 -or @($sdks | Where-Object { $_ -match '^([0-9]+)\.' -and [int]$Matches[1] -ge 8 }).Count -eq 0) { continue }
+            # A newer SDK can build net8.0, but both web hosts still need
+            # the .NET 8 runtimes. Runtime major versions do not roll forward.
+            $runtimes = @(& $candidate --list-runtimes 2>$null)
+            if ($LASTEXITCODE -ne 0) { continue }
+            $core = @($runtimes | Where-Object { $_ -match '^Microsoft\.NETCore\.App 8\.0\.[0-9]+ ' }).Count -gt 0
+            $web = @($runtimes | Where-Object { $_ -match '^Microsoft\.AspNetCore\.App 8\.0\.[0-9]+ ' }).Count -gt 0
+            if ($core -and $web) { return $candidate }
+        } catch { continue }
     }
-    throw 'A Windows .NET 8 SDK is required for worksheet capture.'
+    throw 'Worksheet capture requires a Windows .NET SDK 8 or later and the .NET 8 and ASP.NET Core 8 runtimes. Install the .NET 8 SDK, or set EXCEL_SHRINK_DOTNET to a compatible dotnet.exe.'
 }
 
 function Get-SourceKey([string]$sourceDirectory) {
