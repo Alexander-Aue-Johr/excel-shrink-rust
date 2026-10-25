@@ -52,7 +52,17 @@ try {
 
     Progress 'opening workbook'
     $timer = [Diagnostics.Stopwatch]::StartNew()
-    $workbook = $excel.Workbooks.Open($localInput, 0, $true)
+    # Empty password arguments make protected files fail instead of prompting.
+    $missing = [Type]::Missing
+    $workbook = $excel.Workbooks.Open(
+        $localInput,  # Filename
+        0,           # UpdateLinks
+        $true,       # ReadOnly
+        $missing,    # Format
+        '',          # Password
+        '',          # WriteResPassword
+        $true        # IgnoreReadOnlyRecommended
+    )
     $timer.Stop()
     $process.Refresh()
     $metrics = [ordered]@{
