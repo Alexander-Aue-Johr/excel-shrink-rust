@@ -166,7 +166,9 @@ pub(super) fn report_metadata(output: &Path, records: &[Value]) -> Result<Value>
                         "identity":record["identity"],"profile":profile["profile"],"speedup":ratio,
                         "method":native["method"],"original_seconds":native["original"]["seconds"],
                         "shrunk_seconds":native["shrunk"]["seconds"],"run_id":native["provenance"]["run_id"],
-                        "attempt_id":native["attempt_id"]
+                        "attempt_id":native["attempt_id"],
+                        "original_window_mode":native["original"]["window_mode"],
+                        "shrunk_window_mode":native["shrunk"]["window_mode"]
                     }));
                 }
             }

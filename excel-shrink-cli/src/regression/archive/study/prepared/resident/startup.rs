@@ -35,6 +35,7 @@ fn sample(metrics: &Value, logical: &str) -> Value {
         return Value::Null;
     }
     json!({"client_id":physical, "seconds":client["startup_seconds"],
+        "window_mode":client["window_mode"], "hide_excel":client["hide_excel"],
         "private_bytes":client["startup_memory_private_bytes"],
         "working_set_bytes":client["startup_memory_working_set_bytes"],
         "pid":client["pid"], "process_started_unix_ms":client["process_started_unix_ms"],
@@ -49,7 +50,7 @@ mod tests {
         json!({"startup_measurement_method":METHOD,"startup_seconds":seconds,
             "startup_memory_private_bytes":200,"startup_memory_working_set_bytes":100,
             "pid":pid,"process_started_unix_ms":1000,"ready_at":"2026-10-25T10:00:00Z",
-            "startup_sampled_unix_ms":2000})
+            "startup_sampled_unix_ms":2000,"window_mode":"private_desktop","hide_excel":true})
     }
 
     #[test]
@@ -67,6 +68,8 @@ mod tests {
         assert_eq!(profile["native_startup"]["shared_client"],true);
         assert_eq!(profile["native_startup"]["provenance"]["machine_id"],"tower");
         assert_eq!(profile["native_startup"]["attempt_id"],"attempt-two");
+        assert_eq!(profile["native_startup"]["original"]["window_mode"], "private_desktop");
+        assert_eq!(profile["native_startup"]["original"]["hide_excel"], true);
     }
 
     #[test]
