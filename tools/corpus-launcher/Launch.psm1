@@ -150,4 +150,48 @@ function Start-StudyLaunch {
     } finally { if($owned){$gate.ReleaseMutex()};$gate.Dispose() }
 }
 
-Export-ModuleMember -Function Start-StudyLaunch,Get-ControlHostVersion
+function Get-StudyRunStatus([string]$OutputRoot) {
+    $queue=Read-StudyJson (Join-Path $OutputRoot 'control-room/queue.json')
+    $busy=Test-StudyOutputBusy $OutputRoot
+    $process=$null
+    if($queue -and (Get-Value $queue 'runner_pid') -and (Get-Value $queue 'runner_started_unix_ms')) {
+        try {
+            $candidate=Get-Process -Id $queue.runner_pid -ErrorAction Stop
+            $started=[DateTimeOffset]::new($candidate.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
+            if($candidate.ProcessName -eq 'excel-shrink-cli' -and [math]::Abs($started-[long]$queue.runner_started_unix_ms) -le 1){$process=$candidate}
+        } catch [Microsoft.PowerShell.Commands.ProcessCommandException] { }
+    }
+    $stop=Read-StudyJson (Join-Path $OutputRoot 'control-room/stop-request.json')
+    $stopping=$null -ne $stop -and $null -ne $queue -and
+        (Get-Value $stop 'runner_pid') -eq (Get-Value $queue 'runner_pid') -and
+        (Get-Value $stop 'runner_started_unix_ms') -eq (Get-Value $queue 'runner_started_unix_ms')
+    [pscustomobject]@{Busy=$busy;Process=$process;Queue=$queue;Stopping=$stopping;Ended=(-not $busy -and $null -eq $process)}
+}
+
+function Request-StudyRunStop([string]$OutputRoot, [int]$Port) {
+    $status=Get-StudyRunStatus $OutputRoot
+    if(-not $status.Process -or -not $status.Busy){throw 'No verified active runner was found for this output directory.'}
+    $address="http://127.0.0.1:$Port/"
+    $health=Invoke-RestMethod ($address+'health') -TimeoutSec 2 -ErrorAction Stop
+    if($health.kind -ne 'excel-shrink-control-room' -or (Normalize-StudyPath $health.root) -ne (Normalize-StudyPath (Join-Path $OutputRoot 'control-room'))){throw 'The Observatory belongs to another run. No stop was requested.'}
+    if(Get-Value $status.Queue 'stop_supported' $false){
+        Save-StudyJson (Join-Path $OutputRoot 'control-room/stop-request.json') ([pscustomobject]@{runner_pid=$status.Queue.runner_pid;runner_started_unix_ms=$status.Queue.runner_started_unix_ms})
+    }
+    # Also supports old runners: drain them first, then stop only their verified
+    # coordinator once its own snapshot confirms that no admitted work remains.
+    Invoke-RestMethod ($address+'api/control') -Method Post -ContentType 'application/json' -Body '{"target_groups":0,"paused":false}' -TimeoutSec 3 -ErrorAction Stop | Out-Null
+    return $status
+}
+
+function Complete-StudyLegacyStop([string]$OutputRoot, $Requested) {
+    if(Get-Value $Requested.Queue 'stop_supported' $false){return}
+    $status=Get-StudyRunStatus $OutputRoot
+    if(-not $status.Process){return}
+    if($status.Queue.runner_pid -ne $Requested.Queue.runner_pid -or $status.Queue.runner_started_unix_ms -ne $Requested.Queue.runner_started_unix_ms){throw 'Runner identity changed; the replacement was left running.'}
+    if($status.Queue.phase -ne 'paused' -or @($status.Queue.groups | Where-Object {Get-Value $_ 'active' $false}).Count -gt 0){return}
+    # Get-StudyRunStatus checked the creation time and executable name. Use its
+    # process object rather than resolving the PID again for termination.
+    $status.Process | Stop-Process -Force -ErrorAction Stop
+}
+
+Export-ModuleMember -Function Start-StudyLaunch,Get-ControlHostVersion,Get-StudyRunStatus,Request-StudyRunStop,Complete-StudyLegacyStop

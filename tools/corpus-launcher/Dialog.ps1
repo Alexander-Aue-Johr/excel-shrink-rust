@@ -51,14 +51,14 @@
     <StackPanel Grid.Row="8" Grid.ColumnSpan="2" Orientation="Horizontal"><Button x:Name="Import" Content="Import results ZIPs from other machines" Padding="9,5"/><TextBlock x:Name="Imports" VerticalAlignment="Center" Margin="10,0,0,0" Text="None selected"/></StackPanel>
    </Grid></Expander>
   </StackPanel></ScrollViewer>
-  <TextBlock x:Name="Status" Grid.Row="2" Margin="0,12,0,0" Foreground="#B32929" TextWrapping="Wrap"/>
-  <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0"><Button x:Name="OpenObservatory" Content="Open Observatory" Padding="12,8" Margin="0,0,10,0"/><Button x:Name="Save" Content="Save only" Padding="12,8" Margin="0,0,10,0"/><Button x:Name="Cancel" Content="Close" Padding="12,8" Margin="0,0,10,0"/><Button x:Name="Start" Content="Start / resume run" Padding="16,8" Background="#14213D" Foreground="White" FontWeight="SemiBold"/></StackPanel>
+  <StackPanel Grid.Row="2" Margin="0,12,0,0"><TextBlock x:Name="RunStatus" Foreground="#52606D" TextWrapping="Wrap"/><TextBlock x:Name="Status" Foreground="#B32929" TextWrapping="Wrap"/></StackPanel>
+  <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0"><Button x:Name="StopRun" Content="Stop run" Padding="12,8" Margin="0,0,10,0" IsEnabled="False"/><Button x:Name="OpenObservatory" Content="Open Observatory" Padding="12,8" Margin="0,0,10,0"/><Button x:Name="Save" Content="Save only" Padding="12,8" Margin="0,0,10,0"/><Button x:Name="Cancel" Content="Close" Padding="12,8" Margin="0,0,10,0"/><Button x:Name="Start" Content="Start / resume run" Padding="16,8" Background="#14213D" Foreground="White" FontWeight="SemiBold"/></StackPanel>
  </Grid>
 </Window>
 '@
     $window=[Windows.Markup.XamlReader]::Load([Xml.XmlNodeReader]::new($xaml))
-    $ui=@{}; foreach($name in @('Corpus','AddCorpus','BindArchive','ArchiveStatus','Parts','FewerParts','MoreParts','ApplyParts','PartitionButtons','SmallFirst','LargeFirst','Groups','Machine','Hidden','Export','TallThreshold','TallEdges','Output','Downloads','Port','RustMemory','ExcelMemory','GroupMemory','Reserve','OpenTimeout','JobTimeout','Build','Compatibility','Import','Imports','Status','OpenObservatory','Save','Cancel','Start')){$ui[$name]=$window.FindName($name)}
-    $state=@{ partition=[int]$Configuration.settings.partition; partitions=[int]$Configuration.settings.partitions; imports=@($ImportResults); result=$null }
+    $ui=@{}; foreach($name in @('Corpus','AddCorpus','BindArchive','ArchiveStatus','Parts','FewerParts','MoreParts','ApplyParts','PartitionButtons','SmallFirst','LargeFirst','Groups','Machine','Hidden','Export','TallThreshold','TallEdges','Output','Downloads','Port','RustMemory','ExcelMemory','GroupMemory','Reserve','OpenTimeout','JobTimeout','Build','Compatibility','Import','Imports','Status','RunStatus','StopRun','OpenObservatory','Save','Cancel','Start')){$ui[$name]=$window.FindName($name)}
+    $state=@{ partition=[int]$Configuration.settings.partition; partitions=[int]$Configuration.settings.partitions; imports=@($ImportResults); result=$null; stopping=$null; stopOutput=$null }
     if($state.imports.Count){$ui.Imports.Text="$($state.imports.Count) selected"}
     $fields=@{ Groups='comparison_groups';Machine='machine_label';TallThreshold='tall_sheet_threshold';TallEdges='tall_sheet_edge_tiles';Output='output_root';Downloads='download_root';Port='control_room_port';RustMemory='worker_memory_mib';ExcelMemory='excel_memory_mib';GroupMemory='resident_memory_mib';Reserve='system_reserve_mib';OpenTimeout='open_timeout_seconds';JobTimeout='job_timeout_seconds';Parts='partitions' }
     foreach($name in $fields.Keys){$ui[$name].Text=[string]$Configuration.settings.($fields[$name])}
@@ -122,6 +122,42 @@
     }.GetNewClosure())
     $ui.Import.Add_Click({$dialog=[Microsoft.Win32.OpenFileDialog]::new();$dialog.Filter='Results ZIPs (*.zip)|*.zip';$dialog.Multiselect=$true;if($dialog.ShowDialog($window)){$state.imports=@($dialog.FileNames);$ui.Imports.Text="$($state.imports.Count) selected"}}.GetNewClosure())
     $ui.OpenObservatory.Add_Click({$port=0;if([int]::TryParse($ui.Port.Text,[ref]$port) -and $port -ge 1024 -and $port -le 65535){Start-Process "http://127.0.0.1:$port/"}}.GetNewClosure())
+    $ui.StopRun.Add_Click({
+        try {
+            $output=Resolve-StudyPath $Repo $ui.Output.Text
+            $state.stopping=Request-StudyRunStop $output ([int]$ui.Port.Text)
+            $state.stopOutput=$output
+            $ui.StopRun.IsEnabled=$false
+            $ui.Status.Foreground='#35755A'
+            $ui.Status.Text='Stopping: finishing active workbooks and Excel cleanup. Wait before pulling or rebuilding.'
+        } catch {$ui.Status.Foreground='#B32929';$ui.Status.Text=$_.Exception.Message}
+    }.GetNewClosure())
+    $runTimer=[Windows.Threading.DispatcherTimer]::new()
+    $runTimer.Interval=[TimeSpan]::FromSeconds(1)
+    $runTimer.Add_Tick({
+        try {
+            $output=if($state.stopOutput){$state.stopOutput}else{Resolve-StudyPath $Repo $ui.Output.Text}
+            if($state.stopping){Complete-StudyLegacyStop $output $state.stopping}
+            $current=Get-StudyRunStatus $output
+            $ui.StopRun.IsEnabled=$current.Busy -and $null -ne $current.Process -and $null -eq $state.stopping -and -not $current.Stopping
+            $ui.Start.IsEnabled=$current.Ended -and $null -eq $state.stopping
+            $ui.RunStatus.Text=if($current.Ended){'Runner stopped. Ready to pull, rebuild or resume.'}elseif($state.stopping -or $current.Stopping){'Stopping: finishing admitted workbooks and Excel cleanup. Wait before updating.'}elseif($current.Process){"Runner active (PID $($current.Process.Id)). Stop it here before updating."}else{'Output is busy; runner identity could not be verified.'}
+            if($state.stopping -and $current.Ended){
+                $state.stopping=$null;$state.stopOutput=$null
+                $ui.Status.Foreground='#35755A'
+                $ui.Status.Text='Runner stopped. Results retained. You can now pull and rebuild, then resume this run.'
+                $ui.Start.Content='Start / resume run';$ui.Start.IsEnabled=$true
+            }
+        } catch {$ui.Status.Foreground='#B32929';$ui.Status.Text=$_.Exception.Message}
+    }.GetNewClosure())
+    $window.Add_Closed({$runTimer.Stop()}.GetNewClosure())
+    $window.Add_Closing({param($sender,$eventArgs)
+        if($state.stopping -and -not (Get-Value $state.stopping.Queue 'stop_supported' $false)){
+            $eventArgs.Cancel=$true
+            $ui.Status.Text='Keep this window open while the older runner finishes its active workbooks. It will be stopped automatically once drained.'
+        }
+    }.GetNewClosure())
+    $runTimer.Start()
     $ui.Cancel.Add_Click({$window.Close()}.GetNewClosure())
     $ui.Save.Add_Click({try{& $readSettings;Save-StudyJson $ConfigurationPath $Configuration;$ui.Status.Foreground='#35755A';$ui.Status.Text='Configuration saved. No run started.'}catch{$ui.Status.Foreground='#B32929';$ui.Status.Text=$_.Exception.Message}}.GetNewClosure())
     $ui.Start.Add_Click({

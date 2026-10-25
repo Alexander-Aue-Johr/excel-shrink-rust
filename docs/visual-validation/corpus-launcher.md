@@ -73,6 +73,19 @@ Observatory address. The long run starts as a separate hidden process with its
 own stdout/stderr files; closing the dialog or the VS Code task does not issue a
 stop command. Excel visibility remains a separate checkbox.
 
+Use **Stop run** in the configurator or Observatory to finish admitted workbooks,
+save their results and exit the runner. Wait for the stopped/update-ready message
+before pulling or rebuilding. A target of zero only pauses the runner and retains
+the output lock. Restart with the same output to resume; enable the release build
+after pulling. An idle Observatory can remain open; the launcher refreshes its
+host when its build changes.
+
+The updated configurator also stops older runners: it first requests target zero,
+then ends only the coordinator whose PID and creation time match the output's
+ownership snapshot, after it reports paused with no active groups. Keep the
+configurator open until this legacy stop completes. Unknown processes are left
+running. No Task Manager operation is needed.
+
 ## Existing archives and results
 
 `tools/corpus-launcher/catalog.json` contains the existing Enron, Destatis and
