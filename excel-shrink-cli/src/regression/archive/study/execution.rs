@@ -257,7 +257,7 @@ fn wait_for_owned_cleanup(
     participant: Option<&batch_cleanup::Participant>,
     on_progress: &mut impl FnMut(&Value, &str),
 ) -> Result<()> {
-    retry_owned_cleanup(
+    let result = retry_owned_cleanup(
         || worker::cleanup_windows(work),
         |observation| {
             record["cleanup_pending"] = observation;
@@ -277,7 +277,15 @@ fn wait_for_owned_cleanup(
             }
             Ok(())
         },
-    )
+    );
+    if result.is_ok() && record["cleanup_pending"]["state"] == "waiting" {
+        // A resumed attempt may succeed on its first cleanup check. Its old
+        // waiting observation must not keep the new attempt visually blocked.
+        record["cleanup_pending"]["state"] = json!("resolved");
+        record["cleanup_pending"]["last_attempt_unix_ms"] = json!(provenance::now_ms());
+        on_progress(record, "cleanup");
+    }
+    result
 }
 
 fn retry_owned_cleanup(
@@ -555,6 +563,20 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(observations.len(), 1);
         assert_eq!(observations[0]["state"], "waiting");
+    }
+
+    #[test]
+    fn resume_clears_stale_wait_when_the_owner_is_already_gone() -> Result<()> {
+        let root = super::super::tests::test_directory("cleanup-resume")?;
+        let mut record = json!({"cleanup_pending":{"state":"waiting","error":"prior denial"}});
+        let mut observations = Vec::new();
+        wait_for_owned_cleanup(&root, &mut record, None, &mut |value, _| {
+            observations.push(value.clone())
+        })?;
+        assert_eq!(record["cleanup_pending"]["state"], "resolved");
+        assert_eq!(observations.len(), 1);
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 
     #[test]
