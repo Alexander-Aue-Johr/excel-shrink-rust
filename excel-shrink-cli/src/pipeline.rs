@@ -26,7 +26,9 @@ use excel_shrink_core::sheet::sheet_data::{
 };
 use excel_shrink_core::styles::parse_xfs;
 use excel_shrink_core::workbook::clean_workbook_with_stats;
-use excel_shrink_core::xml::namespaces::requires_namespace_passthrough;
+use excel_shrink_core::xml::namespaces::{
+    requires_namespace_passthrough, requires_namespace_root_passthrough,
+};
 use excel_shrink_core::xml::{find_byte_from, find_bytes};
 
 use crate::Cli;
@@ -1438,15 +1440,12 @@ fn inactive_protection_policy(cli: &Cli) -> InactiveProtectionCellPolicy {
     }
 }
 
-fn read_input_file(input: &Path) -> Option<Arc<Vec<u8>>> {
+fn read_input_file(input: &Path, mut file: File) -> Option<Arc<Vec<u8>>> {
     let _profile = tracing::info_span!(target: "excel_shrink::profile", "read_input_archive", xlsx = %input.display()).entered();
-    let mut file = match File::open(input) {
-        Ok(file) => file,
-        Err(error) => {
-            error!("Failed to open file {:?}: {}", input, error);
-            return None;
-        }
-    };
+    if let Err(error) = file.rewind() {
+        error!("Failed to rewind input {:?}: {}", input, error);
+        return None;
+    }
     let mut bytes = Vec::new();
     if let Err(error) = file.read_to_end(&mut bytes) {
         error!("Failed to read file {:?}: {}", input, error);
@@ -1459,30 +1458,48 @@ fn prepare_workbook<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     cli: &Cli,
     advanced: AdvancedCleanupSelection,
-) -> WorkbookPreparation {
-    WorkbookPreparation {
-        patterns: load_workbook_patterns(archive, advanced.remove_whitespace),
+) -> Result<WorkbookPreparation, String> {
+    Ok(WorkbookPreparation {
+        patterns: load_workbook_patterns(archive, advanced.remove_whitespace)?,
         cleanup: cleanup_switches(cli, advanced),
         collect_cleanup_stats: cleanup_stats_enabled(cli),
         selected_sheets: selected_sheet_targets(&cli.sheets),
-    }
+    })
 }
 
 fn load_workbook_patterns<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     include_whitespace_indices: bool,
-) -> WorkbookSpecificPatterns {
+) -> Result<WorkbookSpecificPatterns, String> {
     let _profile = profiling::phase("load_styles_and_shared_strings", "", "");
-    let all_xfs = read_zip_entry(archive, "xl/styles.xml")
+    let styles = read_zip_entry(archive, "xl/styles.xml");
+    if let Some(bytes) = &styles {
+        check_loaded_namespaces(bytes, "xl/styles.xml")?;
+    }
+    let all_xfs = styles
         .and_then(|styles| parse_xfs(&styles).ok())
         .unwrap_or_default();
-    let whitespace_indices = include_whitespace_indices
-        .then(|| {
-            read_zip_entry(archive, "xl/sharedStrings.xml")
-                .map(|strings| find_whitespace_sst_indices(&strings))
-        })
-        .flatten();
-    WorkbookSpecificPatterns::new(all_xfs, whitespace_indices)
+    let whitespace_indices = if include_whitespace_indices {
+        if let Some(strings) = read_zip_entry(archive, "xl/sharedStrings.xml") {
+            check_loaded_namespaces(&strings, "xl/sharedStrings.xml")?;
+            Some(find_whitespace_sst_indices(&strings))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    Ok(WorkbookSpecificPatterns::new(all_xfs, whitespace_indices))
+}
+
+// These buffers are already needed for cleanup/reference analysis. Checking them
+// does not open or decompress a ZIP member a second time.
+fn check_loaded_namespaces(bytes: &[u8], part: &str) -> Result<(), String> {
+    if requires_namespace_passthrough(bytes).unwrap_or(true) {
+        Err(part.to_owned())
+    } else {
+        Ok(())
+    }
 }
 
 fn read_zip_entry<R: Read + Seek>(archive: &mut ZipArchive<R>, name: &str) -> Option<Vec<u8>> {
@@ -1737,6 +1754,11 @@ fn plan_archive<R: Read + Seek>(
                 {
                     match read_archive_entry(&mut file) {
                         Ok(xml) => {
+                            if filename.ends_with(".xml") || filename.ends_with(".rels") {
+                                if reject_loaded_namespace(&xml, &filename, context) {
+                                    return None;
+                                }
+                            }
                             if filename.starts_with("xl/worksheets/_rels/") {
                                 collect_pivot_owners(&filename, &xml, &mut plan.pivot_owners);
                             } else {
@@ -1869,6 +1891,9 @@ fn plan_workbook_entry(
         }
     };
     let original_size = workbook_xml.len();
+    if reject_loaded_namespace(&workbook_xml, &filename, context) {
+        return ArchiveEntryPlan::Abort;
+    }
     let mut stats = cleanup_stats(context.collect_cleanup_stats);
     let cleaned = clean_workbook_or_original(workbook_xml, &filename, context, &mut stats);
     let cleaned_size = cleaned.len();
@@ -1897,7 +1922,13 @@ fn plan_workbook_entry(
                 cleaned_size,
                 context.attribution_safe_analysis,
             );
-            queue_precompressed_entry(context.tx, index, filename, zip_bytes, context.input_display)
+            queue_precompressed_entry(
+                context.tx,
+                index,
+                filename,
+                zip_bytes,
+                context.input_display,
+            )
         }
         Err(error) => {
             error!(event = "workbook_precompress_failed", xlsx = %context.input_display, entry = %filename, error = %error, "Failed to precompress cleaned workbook.xml; copying original");
@@ -1941,6 +1972,9 @@ fn plan_relationships_entry(
     }
     match read_archive_entry(file) {
         Ok(relationships) => {
+            if reject_loaded_namespace(&relationships, &filename, context) {
+                return ArchiveEntryPlan::Abort;
+            }
             if context.has_calc_chain {
                 plan.workbook_rels_for_calc_chain = Some(relationships.clone());
             }
@@ -1965,6 +1999,9 @@ fn plan_calculation_chain_entry(
 ) -> ArchiveEntryPlan {
     match read_archive_entry(file) {
         Ok(calc_chain) => {
+            if reject_loaded_namespace(&calc_chain, &filename, context) {
+                return ArchiveEntryPlan::Abort;
+            }
             plan.calc_chain_part = Some((index, compression, calc_chain));
             ArchiveEntryPlan::Continue
         }
@@ -1979,6 +2016,26 @@ fn read_archive_entry(file: &mut impl Read) -> std::io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
     Ok(bytes)
+}
+
+fn reject_loaded_namespace(
+    bytes: &[u8],
+    filename: &str,
+    context: &ArchivePlanningContext<'_>,
+) -> bool {
+    if check_loaded_namespaces(bytes, filename).is_ok() {
+        return false;
+    }
+    warn!(event = "workbook_skipped_unsupported_namespace", xlsx = %context.input_display,
+        entry = filename, "Unsupported XML namespace encountered during normal processing; discarding partial output");
+    send_write_job(
+        context.tx,
+        WriteJob::Abort {
+            filename: filename.into(),
+        },
+        context.input_display,
+    );
+    true
 }
 
 fn queue_original_entry(
@@ -2631,13 +2688,25 @@ fn process_initial_sheets(
     }
 }
 
-fn namespace_passthrough_part<R: Read + Seek>(
+pub(crate) fn namespace_passthrough_part<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
 ) -> zip::result::ZipResult<Option<String>> {
+    // Most generated workbooks declare their prefixes here. Reject them before
+    // reading even the compressed workbook into memory or visiting other parts.
+    match archive.by_name("xl/workbook.xml") {
+        Ok(mut entry) => {
+            if requires_namespace_root_passthrough(&mut entry)? {
+                return Ok(Some("xl/workbook.xml".into()));
+            }
+        }
+        Err(zip::result::ZipError::FileNotFound) => {}
+        Err(error) => return Err(error),
+    }
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
-        if (entry.name().ends_with(".xml") || entry.name().ends_with(".rels"))
-            && requires_namespace_passthrough(&mut entry)?
+        if entry.name() != "xl/workbook.xml"
+            && (entry.name().ends_with(".xml") || entry.name().ends_with(".rels"))
+            && requires_namespace_root_passthrough(&mut entry)?
         {
             return Ok(Some(entry.name().to_owned()));
         }
@@ -2645,18 +2714,21 @@ fn namespace_passthrough_part<R: Read + Seek>(
     Ok(None)
 }
 
-fn write_unchanged_workbook(bytes: &[u8], out_path: &Path, input_display: &str) -> bool {
-    let Some((partial_out_path, mut output)) = prepare_partial_output(out_path, input_display)
-    else {
-        return false;
-    };
-    if let Err(error) = output.write_all(bytes).and_then(|()| output.flush()) {
-        error!(event = "unchanged_workbook_write_failed", xlsx = %input_display, error = %error,
-            "Failed to write unchanged XLSX");
-        return false;
-    }
-    drop(output);
-    replace_output_file(&partial_out_path, out_path, input_display)
+fn report_namespace_exclusion(progress: &mut XlsxProgress, input: &str, part: &str, elapsed: u128) {
+    warn!(
+        event = "workbook_skipped_unsupported_namespace",
+        xlsx = input,
+        entry = part,
+        "Skipping XLSX: unsupported XML namespace representation; no shrink output written"
+    );
+    progress.finish(
+        "file_skipped_unsupported_namespace",
+        false,
+        elapsed,
+        Some(0),
+        None,
+        "Skipped XLSX with unsupported XML namespaces",
+    );
 }
 
 fn process_file(
@@ -2689,33 +2761,30 @@ fn process_file(
         return;
     }
 
-    let Some(file_bytes) = read_input_file(input) else {
-        return;
+    let source_file = match File::open(input) {
+        Ok(file) => file,
+        Err(error) => {
+            error!("Failed to open file {:?}: {}", input, error);
+            return;
+        }
     };
-    let mut archive = match ZipArchive::new(Cursor::new(file_bytes.as_slice())) {
+    let mut archive = match ZipArchive::new(source_file) {
         Ok(archive) => archive,
         Err(error) => {
             error!("Failed to parse ZIP archive {:?}: {}", input, error);
             return;
         }
     };
-    // Decide before cleaning any part: prefixed shared strings/styles and sheet
-    // references can affect other, otherwise supported worksheets as well.
+    // Only XML root headers are read here. Worksheet bodies are checked inline
+    // during their normal processing; loaded global parts are checked below.
     match namespace_passthrough_part(&mut archive) {
         Ok(Some(part)) => {
-            warn!(event = "workbook_preserved_unsupported_namespace", xlsx = %input_display,
-                entry = %part, reduction_bytes = 0,
-                "Preserving the entire XLSX without shrinking: XML namespace representation is unsupported by the cleanup parser");
-            if write_unchanged_workbook(&file_bytes, &out_path, &input_display) {
-                file_progress.finish(
-                    "file_preserved",
-                    true,
-                    file_start.elapsed().as_millis(),
-                    Some(0),
-                    Some(&out_path),
-                    "Preserved XLSX unchanged; no cleanup was performed",
-                );
-            }
+            report_namespace_exclusion(
+                &mut file_progress,
+                &input_display,
+                &part,
+                file_start.elapsed().as_millis(),
+            );
             return;
         }
         Ok(None) => {}
@@ -2725,8 +2794,31 @@ fn process_file(
             return;
         }
     }
+    let Some(file_bytes) = read_input_file(input, archive.into_inner()) else {
+        return;
+    };
+    let mut archive = match ZipArchive::new(Cursor::new(file_bytes.as_slice())) {
+        Ok(archive) => archive,
+        Err(error) => {
+            error!("Failed to parse ZIP archive {:?}: {}", input, error);
+            return;
+        }
+    };
     let advanced_cleanup = advanced_cleanup_selection(cli);
     let do_advanced = advanced_cleanup.enabled();
+
+    let preparation = match prepare_workbook(&mut archive, cli, advanced_cleanup) {
+        Ok(value) => value,
+        Err(part) => {
+            report_namespace_exclusion(
+                &mut file_progress,
+                &input_display,
+                &part,
+                file_start.elapsed().as_millis(),
+            );
+            return;
+        }
+    };
 
     let (tx, rx) = mpsc::channel::<QueuedWriteJob>();
     spawn_xlsx_writer(
@@ -2744,7 +2836,7 @@ fn process_file(
         cleanup,
         collect_cleanup_stats,
         selected_sheets,
-    } = prepare_workbook(&mut archive, cli, advanced_cleanup);
+    } = preparation;
     let attribution_safe_analysis = attribution_safe_analysis(cli);
     let planning_context = ArchivePlanningContext {
         input,
@@ -3056,3 +3148,7 @@ fn finish_batch(
 #[cfg(test)]
 #[path = "pipeline_regression_tests.rs"]
 mod regression_tests;
+
+#[cfg(test)]
+#[path = "pipeline_namespace_tests.rs"]
+mod namespace_tests;

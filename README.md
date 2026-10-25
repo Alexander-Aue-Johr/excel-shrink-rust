@@ -34,13 +34,27 @@ excel-shrink-rust/
 
 The CLI accepts either a single `.xlsx` file or a directory containing `.xlsx` files. It opens each XLSX file as a ZIP archive, processes the relevant XML files, and writes a cleaned XLSX file to the output directory.
 
-The cleanup parser currently requires unprefixed SpreadsheetML elements. If any XML part
-declares a prefix for that namespace, the CLI copies the **entire original XLSX byte for byte**
-and logs `workbook_preserved_unsupported_namespace` and `file_preserved`. No cleanup is
-performed and the file-size reduction is zero, including with stronger cleanup flags.
-Strict SpreadsheetML, UTF-16 XML, and namespace declarations the preflight cannot safely
-check receive the same fallback. A passing visual comparison of these unchanged files
-demonstrates preservation; it does not demonstrate successful shrinking.
+The cleanup parser requires unprefixed SpreadsheetML elements. A bounded root-header
+check excludes unsupported representations before shrinking: `xl/workbook.xml` is
+checked first, followed by the other XML/relationship root headers. Each probe reads
+512-byte chunks and stops at the root opening tag, with a 64 KiB maximum for unusual
+headers. Worksheet bodies are not decompressed in a separate namespace pass.
+
+Excluded files produce **no shrink output** and log `workbook_skipped_unsupported_namespace`
+and `file_skipped_unsupported_namespace`; inputs and existing outputs are preserved.
+Strict SpreadsheetML, UTF-16 XML and unclassifiable root headers are also excluded.
+The corpus study records these as explicitly skipped before shrinking or visual
+comparison, including when resuming older prepared passthrough bundles.
+
+Root checks are an eligibility filter, not full-document namespace validation or
+proof of which application created a file. Unsupported declarations encountered
+later during normal worksheet processing or in global/reference XML already being
+read abort the entire partial output. There is no additional full ZIP/XML pass.
+
+The isolated preflight benchmark is available with
+`cargo test -p excel-shrink-cli --bin excel-shrink-cli --release namespace_header_benchmark -- --ignored --nocapture`.
+It compares the former full XML scan with the bounded header check; its ratios do
+not represent end-to-end shrink speedups.
 
 Study reports can diagnose visual differences by rerunning the affected profile with
 only whitespace-cell deletion disabled. New comparisons run this control when needed;

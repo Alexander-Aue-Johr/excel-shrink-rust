@@ -264,7 +264,7 @@ fn default_sheet_params() -> CleanSheetParameters {
 }
 
 #[test]
-fn prefixed_spreadsheetml_preserves_the_entire_workbook_byte_for_byte() {
+fn prefixed_spreadsheetml_is_skipped_without_publishing_output() {
     // Each spelling is valid SpreadsheetML, but the cleanup parsers currently
     // rely on literal unprefixed names. Include other cleanable parts so this
     // checks that the decision precedes all workbook/global-reference edits.
@@ -272,7 +272,7 @@ fn prefixed_spreadsheetml_preserves_the_entire_workbook_byte_for_byte() {
         ("xl/worksheets/sheet2.xml", br#"<p:worksheet xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:sheetData><p:row r="1"><p:c r="A1"><p:v>42</p:v></p:c></p:row></p:sheetData></p:worksheet>"#),
         ("xl/worksheets/sheet2.xml", br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><p:row xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main" r="1"><p:c r="A1"><p:v>42</p:v></p:c></p:row></sheetData></worksheet>"#),
         ("xl/worksheets/sheet2.xml", br#"<worksheet xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><p:c r="A1"><v>42</v></p:c></row></sheetData></worksheet>"#),
-        ("xl/sharedStrings.xml", br#"<sst><si><p:t xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main">Nonempty text must survive</p:t></si></sst>"#),
+        ("xl/sharedStrings.xml", br#"<sst xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><p:t>Nonempty text must survive</p:t></si></sst>"#),
         ("xl/styles.xml", br#"<p:styleSheet xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:cellXfs count="1"><p:xf fontId="0"/></p:cellXfs></p:styleSheet>"#),
         ("xl/pivotTables/pivotTable1.xml", br#"<p:pivotTableDefinition xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:location ref="A1:B4"/></p:pivotTableDefinition>"#),
     ];
@@ -310,8 +310,16 @@ fn prefixed_spreadsheetml_preserves_the_entire_workbook_byte_for_byte() {
             cli.remove_unreferenced_whitespace_cells = aggressive;
             cli.preprocess_empty_cells = aggressive;
             process_files(vec![input.clone()], &cli).unwrap();
-            let output = std::fs::read(cli.output.join(input.file_name().unwrap())).unwrap();
-            assert_eq!(output, original, "case {index}, aggressive={aggressive}");
+            let output = cli.output.join(input.file_name().unwrap());
+            assert!(!output.exists(), "case {index}, aggressive={aggressive}");
+            assert!(!partial_output_path(&output).exists());
+            assert_eq!(std::fs::read(&input).unwrap(), original);
+            // A forced retry must not replace an existing output with a partial
+            // cleaned workbook or disguise exclusion as a byte-identical pass.
+            cli.force_overwrite = true;
+            std::fs::write(&output, b"previous output").unwrap();
+            process_files(vec![input.clone()], &cli).unwrap();
+            assert_eq!(std::fs::read(output).unwrap(), b"previous output");
         }
     }
     std::fs::remove_dir_all(root).unwrap();
