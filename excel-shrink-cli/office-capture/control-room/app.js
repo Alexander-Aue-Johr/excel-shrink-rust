@@ -704,7 +704,7 @@ function renderMinimap() {
   $('minimapLabel').textContent = selectedSheet()?.name || `${sheets.length} Sheets`;
 }
 function normalizeStatus(value) {
-  return ({ restart_requested: 'Restart requested', restart_waiting_cleanup: 'Restart waiting for safe cleanup', preparing: 'Preparation', requested: 'Open requested', waiting_open: 'Waiting to open', opening: 'Opening Excel', planning: 'Planning capture regions', ready: 'Add-in ready', capturing: 'Capturing', comparing: 'Pixel comparison', complete: 'Completed', completed: 'Completed', finished: 'Completed', unchanged: 'Identical', differences: 'Differences found', skipped: 'Skipped', interrupted: 'Interrupted', waiting_cleanup: 'Closing Excel', failed: 'Error', paused: 'Paused', closed: 'Closed', queued: 'Queued', running: 'Active', active: 'Active', retrying_classic: 'Classic individual comparison running' })[value] || value || 'Waiting for status';
+  return ({ restart_requested: 'Restart requested', restart_waiting_cleanup: 'Restart waiting for safe cleanup', preparing: 'Preparation', requested: 'Open requested', waiting_open: 'Waiting to open', opening: 'Opening Excel', planning: 'Planning capture regions', ready: 'Add-in ready', capturing: 'Capturing', comparing: 'Pixel comparison', complete: 'Completed', completed: 'Completed', finished: 'Completed', unchanged: 'Identical', differences: 'Differences found', skipped: 'Skipped', interrupted: 'Interrupted', waiting_cleanup: 'Closing Excel', cleanup_blocked: 'Cleanup blocked', failed: 'Error', paused: 'Paused', closed: 'Closed', queued: 'Queued', running: 'Active', active: 'Active', retrying_classic: 'Classic individual comparison running' })[value] || value || 'Waiting for status';
 }
 function groupName(group) { return String(group.workbook || group.name || group.source || group.id || 'Arbeitsmappe').split(/[\\/]/).pop(); }
 function renderGroups() {
@@ -880,8 +880,8 @@ function renderProcesses() {
       button.addEventListener('click', () => restartGroup(id, true));
       element.append(heart, name, process, status, beat, size, opening, metrics, error, button); $('processes').append(element);
       card = { element, heart, name, process, status, beat, size, opening, metrics, error, button, count: null }; processCards.set(id, card);
-      opening.title = 'File opening time measured separately by the regression test. Add-in startup is shown in process status.';
-      metrics.title = 'RAM measured when opening the file and cleaning duration from the regression test.';
+      opening.title = 'Native launch through workbook identity verification by the add-in. Includes Excel startup, workbook loading and add-in initialization. Historical COM Open measurements remain labelled separately.';
+      metrics.title = 'One Excel-process memory snapshot at add-in readiness, before capture jobs. Private bytes and working set exclude separate WebView processes. Shrink duration comes from preparation.';
     }
     const count = Number(client.heartbeat_count || 0), age = heartbeatAge(client);
     const alive = client.process_alive;

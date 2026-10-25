@@ -15,6 +15,15 @@ export function runTests() {
   assert(measured.opening.includes('−6 s') && measured.opening.includes('−60 %'), 'Opening compares independent measured seconds.');
   assert(measured.extra.includes('Shrink: 2 s') && measured.extra.includes('−50 MiB'), 'Shrink time and opening memory remain distinct.');
   assert(!processMeasurements(measures,'original').opening.includes('vs original'), 'The baseline does not compare against itself.');
+  assert(measured.opening.includes('COM Open (historical)'), 'COM measurements keep their original method label.');
+  const nativeMeasures = {measurements:{original:{startup:{method:'launch-to-addin-ready-v1',seconds:10,private_bytes:200,working_set_bytes:100,client_id:'original'}},
+    default:{open_seconds:99,startup:{method:'launch-to-addin-ready-v1',seconds:4,private_bytes:100,working_set_bytes:50,client_id:'default'}}}};
+  const nativeMeasured = processMeasurements(nativeMeasures,'default');
+  assert(nativeMeasured.opening.includes('Launch to add-in ready: 4 s') && !nativeMeasured.opening.includes('99'), 'Native readiness is separate from old COM time.');
+  assert(nativeMeasured.extra.includes('private bytes at ready') && nativeMeasured.extra.includes('working set at ready'), 'Both single ready snapshots are labelled.');
+  delete nativeMeasures.measurements.original.startup;
+  nativeMeasures.measurements.original.open_seconds = 200;
+  assert(!processMeasurements(nativeMeasures,'default').opening.includes('vs original'), 'A native sample is never compared with a COM baseline.');
   assert(processMeasurements(measures,'maximum-cleaning').opening.includes('not measured yet'), 'Missing measurements never appear as zero seconds.');
   const zero = processMeasurements({measurements:{original:{bytes:0,open_seconds:0},default:{bytes:5,open_seconds:2}}},'default');
   assert(!/NaN|Infinity/.test(zero.size+zero.opening) && zero.opening.includes('+2 s'), 'Zero baselines preserve absolute differences without invalid ratios.');
@@ -115,7 +124,7 @@ export function runTests() {
   assert(rawTall.sheets[0].tiles[3].y === 99800 && rawTall.sheets[0].tiles.length === 4, 'Display compaction never mutates host evidence.');
   const noOmission = normalizeGroup({ sheets: [{ height: 100000, tiles: [{ id: 'pending', width: 800, height: 100000 }] }] }).sheets[0];
   assert(noOmission.height === 100000 && noOmission.tiles.length === 1, 'A large pending capture is never treated as an omission.');
-  return { passed: 55 + viewportTests.passed };
+  return { passed: 60 + viewportTests.passed };
 }
 
 export const result = runTests();

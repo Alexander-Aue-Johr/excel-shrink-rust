@@ -137,7 +137,7 @@ internal static class ControlRoom
                 foreach (var entry in detail) merged[entry.Key] = entry.Value?.DeepClone();
             }
             if (scheduledAttempt is not null) merged["attempt_id"] = scheduledAttempt;
-            if (scheduledStatus is "queued" or "preparing" or "restart_pending" or "complete" or "completed" or "failed" or "skipped" or "unchanged" or "differences" or "waiting_cleanup" or "restart_waiting_cleanup" or "interrupted" or "retrying_classic") {
+            if (scheduledStatus is "queued" or "preparing" or "restart_pending" or "complete" or "completed" or "failed" or "skipped" or "unchanged" or "differences" or "waiting_cleanup" or "cleanup_blocked" or "restart_waiting_cleanup" or "interrupted" or "retrying_classic") {
                 merged["capture_status"] = detail?["status"]?.DeepClone();
                 merged["status"] = scheduledStatus;
             }
@@ -153,6 +153,7 @@ internal static class ControlRoom
             merged["restart_commands"] = await RecentCommands(commandsDirectory, id, diagnostics);
             merged["client_reset_commands"] = await RecentCommands(Path.Combine(directory, "client-resets"), id, diagnostics);
             var record = await ReadSnapshot(Path.Combine(Directory.GetParent(root)!.FullName, "records", id + ".json"), diagnostics);
+            if (record?["cleanup_pending"] is JsonObject cleanup) merged["cleanup_pending"] = cleanup.DeepClone();
             var measurements = new JsonObject();
             foreach (var profile in (record?["results"] as JsonArray)?.OfType<JsonObject>() ?? []) {
                 var name = (string?)profile["profile"];
@@ -168,6 +169,32 @@ internal static class ControlRoom
                 // Measurements are populated profile by profile while the run opens files.
                 foreach (var field in new[] { "open_seconds", "memory_bytes" })
                     if (measurements["original"]![field] is null) measurements["original"]![field] = profile["original_" + field]?.DeepClone();
+                var native = profile["native_startup"];
+                if ((string?)native?["method"] == "launch-to-addin-ready-v1"
+                    && (displayedAttempt is null || (string?)native?["attempt_id"] == displayedAttempt)) {
+                    measurements[name]!["startup"] = NativeStartup(native?["shrunk"], (string?)native?["method"]);
+                    measurements["original"]!["startup"] ??= NativeStartup(native?["original"], (string?)native?["method"]);
+                }
+            }
+            // Live samples are attached only to the displayed attempt. Historical
+            // COM measurements retain their own fields and are never relabelled.
+            if (merged["launcher"]?["clients"] is JsonObject liveClients) {
+                foreach (var entry in measurements.ToArray()) {
+                    var physical = (string?)merged["aliases"]?[entry.Key] ?? entry.Key;
+                    var client = liveClients[physical];
+                    if (client is null) continue;
+                    var sample = new JsonObject {
+                        ["seconds"] = client["startup_seconds"]?.DeepClone(),
+                        ["private_bytes"] = client["startup_memory_private_bytes"]?.DeepClone(),
+                        ["working_set_bytes"] = client["startup_memory_working_set_bytes"]?.DeepClone(),
+                        ["sampled_unix_ms"] = client["startup_sampled_unix_ms"]?.DeepClone(),
+                        ["ready_at"] = client["ready_at"]?.DeepClone(),
+                        ["pid"] = client["pid"]?.DeepClone(),
+                        ["process_started_unix_ms"] = client["process_started_unix_ms"]?.DeepClone(),
+                        ["client_id"] = physical
+                    };
+                    entry.Value!["startup"] = NativeStartup(sample, (string?)client["startup_measurement_method"]);
+                }
             }
             merged["measurements"] = measurements;
             merged["id"] = id;
@@ -286,6 +313,17 @@ internal static class ControlRoom
         await app.RunAsync();
     }
 
+    private static JsonObject? NativeStartup(JsonNode? sample, string? method)
+    {
+        if (method != "launch-to-addin-ready-v1" || sample is not JsonObject data
+            || data["seconds"] is null || data["sampled_unix_ms"] is null
+            || data["ready_at"] is null || data["pid"] is null || data["process_started_unix_ms"] is null)
+            return null;
+        var result = (JsonObject)data.DeepClone();
+        result["method"] = method;
+        return result;
+    }
+
     private static JsonObject Defaults() => new() {
         ["target_groups"] = 1, ["paused"] = false, ["open_timeout_seconds"] = 600,
         ["job_timeout_seconds"] = 300, ["equal_preview_width"] = 512,
@@ -331,6 +369,7 @@ internal static class ControlRoom
         var reconciled = 0;
         foreach (var group in groups.OfType<JsonObject>()) {
             if ((bool?)group["active"] != true || (string?)group["status"] != "waiting_cleanup") continue;
+            if ((string?)group["cleanup_pending"]?["state"] == "waiting") continue;
             if ((string?)group["attempt_id"] is not string attempt || attempt.Length == 0) continue;
             var worker = await WorkerGroup(root, group, diagnostics);
             var coordinator = worker["coordinator"];
@@ -359,7 +398,7 @@ internal static class ControlRoom
     private static async Task<JsonObject> WorkerGroup(string root, JsonObject summary, JsonArray diagnostics)
     {
         var id = SafeId(RequiredString(summary, "id"));
-        var result = CopyFields(summary, "id", "workbook", "corpus", "status", "active", "attempt_id", "started_unix_ms");
+        var result = CopyFields(summary, "id", "workbook", "corpus", "status", "active", "attempt_id", "started_unix_ms", "cleanup_pending", "error");
         var attempt = (string?)summary["attempt_id"];
         var directory = ConfinedPath(root, $"groups/{id}");
         // These compact files exclude sheet geometry and images. A large
@@ -378,7 +417,7 @@ internal static class ControlRoom
                 if (entry.Value is not JsonObject client) continue;
                 var item = CopyFields(client, "pid", "process_started_unix_ms", "process_alive", "status", "stage",
                     "stage_since", "requested_at", "opened_at", "hide_excel", "heartbeat_count", "last_heartbeat_at",
-                    "active_command", "error", "last_launcher_event", "last_launcher_success");
+                    "active_command", "error", "last_launcher_event", "last_launcher_success", "runtime");
                 item["client_id"] = entry.Key;
                 item["worker_id"] = $"{id}/{attempt ?? "legacy"}/{entry.Key}/{client["pid"]}/{client["process_started_unix_ms"]}";
                 if (client["monitor"] is JsonObject monitor) item["monitor"] = CompactMonitor(monitor);
@@ -396,7 +435,7 @@ internal static class ControlRoom
         var result = CopyFields(value, "attempt_id", "pid", "process_started_unix_ms", "phase", "state", "state_since",
             "state_since_unix_ms", "last_progress_unix_ms", "role", "workbook",
             "wait_reason", "last_progress_at", "last_progress", "last_event", "last_success", "active_job",
-            "uploaded_images", "completed_commands", "sheet_name", "sheet_index", "profile");
+            "uploaded_images", "completed_commands", "sheet_name", "sheet_index", "profile", "pane_resources");
         result["events"] = new JsonArray((value["events"] as JsonArray)?.TakeLast(24)
             .Select(item => item?.DeepClone()).ToArray() ?? []);
         return result;

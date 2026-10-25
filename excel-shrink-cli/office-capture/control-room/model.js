@@ -17,10 +17,20 @@ export function processMeasurements(group, id) {
     return `${change > 0 ? '+' : change < 0 ? '−' : '±'}${number(Math.abs(change))} ${unit}${baseline > 0 ? ` · ${change > 0 ? '+' : change < 0 ? '−' : '±'}${number(Math.abs(change / baseline * 100), 1)} %` : ''} vs original`;
   };
   const size = known(measured.bytes) ? `File: ${number(measured.bytes / 1048576)} MiB${id !== 'original' && known(original.bytes) ? ` (${delta(measured.bytes / 1048576, original.bytes / 1048576, 'MiB')})` : ''}` : 'File size not known yet';
-  const opening = known(measured.open_seconds) ? `Open: ${number(measured.open_seconds)} s${id !== 'original' && known(original.open_seconds) ? ` (${delta(measured.open_seconds, original.open_seconds, 's')})` : ''}` : 'Opening time not measured yet';
+  const startup = measured.startup, baselineStartup = original.startup;
+  const native = startup?.method === 'launch-to-addin-ready-v1' && known(startup.seconds);
+  const comparableNative = native && baselineStartup?.method === startup.method && known(baselineStartup.seconds);
+  const opening = native
+    ? `Launch to add-in ready: ${number(startup.seconds)} s${id !== 'original' && comparableNative ? ` (${delta(startup.seconds, baselineStartup.seconds, 's')})` : ''}`
+    : known(measured.open_seconds) ? `COM Open (historical): ${number(measured.open_seconds)} s${id !== 'original' && known(original.open_seconds) ? ` (${delta(measured.open_seconds, original.open_seconds, 's')})` : ''}` : 'Startup not measured yet';
   const extra = [];
   if (known(measured.shrink_seconds)) extra.push(`Shrink: ${number(measured.shrink_seconds)} s`);
-  if (known(measured.memory_bytes)) extra.push(`RAM at open: ${number(measured.memory_bytes / 1048576, 1)} MiB${id !== 'original' && known(original.memory_bytes) ? ` (${delta(measured.memory_bytes / 1048576, original.memory_bytes / 1048576, 'MiB')})` : ''}`);
+  if (native) {
+    for (const [field, label] of [['private_bytes', 'Excel private bytes at ready'], ['working_set_bytes', 'Excel working set at ready']]) {
+      if (known(startup[field])) extra.push(`${label}: ${number(startup[field] / 1048576, 1)} MiB${id !== 'original' && comparableNative && known(baselineStartup[field]) ? ` (${delta(startup[field] / 1048576, baselineStartup[field] / 1048576, 'MiB')})` : ''}`);
+    }
+    if (id !== 'original' && startup.client_id === baselineStartup?.client_id) extra.push('Shared original client; no independent startup');
+  } else if (known(measured.memory_bytes)) extra.push(`COM working set at open (historical): ${number(measured.memory_bytes / 1048576, 1)} MiB${id !== 'original' && known(original.memory_bytes) ? ` (${delta(measured.memory_bytes / 1048576, original.memory_bytes / 1048576, 'MiB')})` : ''}`);
   return {size, opening, extra:extra.join(' · ')};
 }
 
@@ -181,7 +191,7 @@ export function activeGroupCount(queue) {
   if (queue.active_groups != null) return Number(queue.active_groups);
   return (queue.groups || []).filter(group => typeof group.active === 'boolean'
     ? group.active
-    : ['active', 'opening', 'planning', 'capturing', 'comparing', 'running', 'waiting_cleanup', 'retrying_classic'].includes(group.status)).length;
+    : ['active', 'opening', 'planning', 'capturing', 'comparing', 'running', 'waiting_cleanup', 'cleanup_blocked', 'retrying_classic'].includes(group.status)).length;
 }
 
 export function clippedTile(tile, view) {

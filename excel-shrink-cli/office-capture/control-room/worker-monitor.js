@@ -61,6 +61,14 @@ export function initWorkerMonitor({ selectGroup } = {}) {
     field(fields, 'Process start', timeText(row.processStarted));
     field(fields, 'Worker ID', row.id);
     field(fields, 'Group / attempt', `${row.groupId} / ${row.attempt || 'legacy format'}`);
+    if (row.runtime) {
+      field(fields, 'Taskpane document', row.runtime.document_id);
+      field(fields, 'Taskpane initialization', row.runtime.run_id);
+    }
+    if (row.paneResources) {
+      const counts = Object.entries(row.paneResources).filter(([,value]) => typeof value === 'number');
+      for (const [name,value] of counts) field(fields, `Pane: ${name.replaceAll('_',' ')}`, value.toLocaleString('en-US'));
+    }
     if (row.job) {
       field(fields, 'Current job', `${row.job.kind} · ${row.job.id}`);
       field(fields, 'Job regions', (row.job.locations || []).map(item => [item.sheet_name || item.name, item.range].filter(Boolean).join('!')).join(', ') || 'Not specified in job');

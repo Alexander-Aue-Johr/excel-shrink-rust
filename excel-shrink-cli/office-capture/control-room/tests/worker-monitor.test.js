@@ -32,6 +32,10 @@ export function runTests() {
     last_event: { at_unix_ms: start + 5000, kind: 'shrunk' }, events: [] } })[0];
   assert(coordinator.kind === 'Rust / Host' && coordinator.heartbeat === null, 'Host phases must not invent an Office.js heartbeat.');
   assert(timestamp(coordinator.lastEvent) === start + 5000 && age(coordinator.stateSince, start + 5000) === 5, 'Numeric Rust timestamps retain their actual age.');
+  const blocked = workerRows({ ...group, clients: [], cleanup_pending: {state:'waiting',since_unix_ms:start,error:'Access denied'},
+    coordinator: {phase:'finished',process_alive:true,pid:42} })[0];
+  assert(blocked.state === 'cleanup_blocked' && blocked.category === 'waiting', 'A saved result must not hide unresolved process cleanup.');
+  assert(blocked.error === 'Access denied' && blocked.waitReason.includes('slot stays reserved'), 'Cleanup ownership failures expose their reason and retained admission slot.');
   assert(duration(null) === '—' && age(null) === null, 'Missing timestamps remain unknown.');
   const summary = progressSummary({ counts: { total: 100, completed: 70, skipped: 5, remaining: 25, in_progress: 2 },
     rates: { completed_per_minute: 1.2, completed_per_hour: 72, average_completed_per_hour: 50, window_seconds: 900 },

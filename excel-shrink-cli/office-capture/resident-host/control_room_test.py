@@ -365,6 +365,27 @@ class ControlRoomProtocol(unittest.TestCase):
         self.assertEqual(measurements['default']['memory_bytes'], 250)
         self.assertIsNone(measurements['maximum-cleaning']['open_seconds'])
 
+    def test_native_startup_samples_are_attempt_bound_and_preserve_com_measurements(self):
+        self.write('queue.json', {'groups':[{'id':'one','attempt_id':'new'}]})
+        path = self.data.parent / 'records' / 'one.json'
+        path.parent.mkdir()
+        path.write_text(json.dumps({'results':[{'profile':'default','original_bytes':1000,'shrunk_bytes':600,
+            'original_open_seconds':10,'shrunk_open_seconds':4,'native_startup':{'method':'launch-to-addin-ready-v1',
+                'attempt_id':'old','original':{'seconds':99},'shrunk':{'seconds':88}}}]}))
+        sample = {'startup_measurement_method':'launch-to-addin-ready-v1','startup_seconds':3,
+            'startup_memory_private_bytes':200,'startup_memory_working_set_bytes':100,
+            'startup_sampled_unix_ms':2000,'ready_at':'2026-10-25T10:00:00Z',
+            'pid':123,'process_started_unix_ms':1000}
+        self.write('groups/one/state.json', {'attempt_id':'new','aliases':{'default':'original'}})
+        self.write('groups/one/launcher.json', {'attempt_id':'new','clients':{'original':sample}})
+        measured = self.request('/api/groups/one')['measurements']
+        self.assertEqual(measured['default']['open_seconds'],4)
+        self.assertEqual(measured['default']['startup']['seconds'],3)
+        self.assertEqual(measured['default']['startup']['client_id'],'original')
+        self.assertEqual(measured['original']['startup']['private_bytes'],200)
+        self.write('groups/one/launcher.json', {'attempt_id':'old','clients':{'original':sample}})
+        self.assertNotIn('startup', self.request('/api/groups/one')['measurements']['default'])
+
     def test_hard_reset_snapshots_visibility_and_target_process_or_requeues_closed_group(self):
         self.write('queue.json', {'run_id':'current','runner_pid':os.getpid(),
             'runner_started_unix_ms':current_process_started_ms(),'running':True,
