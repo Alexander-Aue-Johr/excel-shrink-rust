@@ -6,7 +6,7 @@ pub(super) fn unchanged(html: &mut String, files: &[&Value]) {
     if files.is_empty() {
         return;
     }
-    let _ = write!(html, "<details class=\"hero workbook-list\" id=\"unchanged\"><summary>{} unchanged workbooks</summary><p class=\"muted\">Reduction bars show the percentage of file size removed. — means the measurement was not recorded. Excel opening uses a fresh process with manual calculation; RAM is its working set immediately after opening.</p><div class=\"table-scroll\"><table class=\"results-table\"><thead><tr><th>Workbook / profile</th><th>Reduction</th><th>Shrink</th><th>Open: original → shrunk</th><th>Excel RAM: original → shrunk</th></tr></thead><tbody>", files.len());
+    let _ = write!(html, "<details class=\"hero workbook-list\" id=\"unchanged\"><summary>{} unchanged workbooks</summary><p class=\"muted\">Reduction bars show the percentage of file size removed. — means the measurement was not recorded. Native startup includes Excel launch, workbook loading and add-in initialization. Historical COM timings remain labelled separately. Memory samples cover the Excel process only.</p><div class=\"table-scroll\"><table class=\"results-table\"><thead><tr><th>Workbook / profile</th><th>Reduction</th><th>Shrink</th><th>Open: original → shrunk</th><th>Excel RAM: original → shrunk</th></tr></thead><tbody>", files.len());
     for file in files {
         let id = file_id(file);
         let _ = write!(
@@ -77,7 +77,7 @@ pub(super) fn profiles(html: &mut String, file: &Value) {
     }
     html.push_str("<div class=\"table-scroll\"><table class=\"results-table\"><thead><tr><th>Profile / result</th><th>Reduction</th><th>Shrink</th><th>Open: original → shrunk</th><th>Excel RAM: original → shrunk</th></tr></thead><tbody>");
     profile_rows(html, file);
-    html.push_str("</tbody></table></div><p class=\"muted\">Open time: Workbooks.Open in a fresh Excel process with manual calculation. RAM: working set immediately after opening.</p>");
+    html.push_str("</tbody></table></div><p class=\"muted\">Native startup: launch to verified add-in readiness; private bytes and working set sampled once before capture jobs. Historical COM Open: Workbooks.Open with manual calculation, working set after opening. These methods are not pooled. Separate WebView processes are not included in the Excel memory sample.</p>");
 }
 
 pub(super) fn totals(html: &mut String, files: &[&Value]) {
@@ -131,11 +131,32 @@ fn profile_rows(html: &mut String, file: &Value) {
         html.push_str("<tr><td>—</td><td>—</td><td>—</td><td>— → —</td><td>— → —</td></tr>");
     }
     for result in results {
-        let _ = write!(html, "<tr><th scope=\"row\">{}<span class=\"profile-result muted\">{}</span></th><td>{}</td><td>{}</td><td>{} → {}</td><td>{} → {}</td></tr>",
+        let (startup, ram) = startup_cells(result);
+        let _ = write!(html, "<tr><th scope=\"row\">{}<span class=\"profile-result muted\">{}</span></th><td>{}</td><td>{}</td><td>{startup}</td><td>{ram}</td></tr>",
             escape(text(result, "profile")), escape(text(result, "status")), reduction(result),
-            seconds(&result["shrink_seconds"]), seconds(&result["original_open_seconds"]), seconds(&result["shrunk_open_seconds"]),
-            memory(&result["original_memory_bytes"]), memory(&result["shrunk_memory_bytes"]));
+            seconds(&result["shrink_seconds"]));
     }
+}
+
+fn startup_cells(result: &Value) -> (String, String) {
+    let native = &result["native_startup"];
+    if native["method"] == "launch-to-addin-ready-v1" {
+        let original = &native["original"];
+        let shrunk = &native["shrunk"];
+        let shared = if native["shared_client"] == true {
+            "<span class=\"profile-result muted\">Shared original client; no independent startup.</span>"
+        } else { "" };
+        return (
+            format!("{} → {}<span class=\"profile-result muted\">Launch to add-in ready</span>{shared}", seconds(&original["seconds"]), seconds(&shrunk["seconds"])),
+            format!("{} → {}<span class=\"profile-result muted\">Private bytes at ready</span>{} → {}<span class=\"profile-result muted\">Working set at ready</span>",
+                memory(&original["private_bytes"]), memory(&shrunk["private_bytes"]),
+                memory(&original["working_set_bytes"]), memory(&shrunk["working_set_bytes"])));
+    }
+    let label = if result["original_open_seconds"].is_number() || result["shrunk_open_seconds"].is_number() {
+        "<span class=\"profile-result muted\">COM Open (historical method)</span>"
+    } else { "" };
+    (format!("{} → {}{label}", seconds(&result["original_open_seconds"]), seconds(&result["shrunk_open_seconds"])),
+        format!("{} → {}{label}", memory(&result["original_memory_bytes"]), memory(&result["shrunk_memory_bytes"])))
 }
 
 fn reduction(result: &Value) -> String {
@@ -171,6 +192,22 @@ fn memory(value: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn native_startup_labels_keep_missing_samples_and_shared_clients_explicit() {
+        let record = json!({"native_startup":{"method":"launch-to-addin-ready-v1","shared_client":true,
+            "original":{"seconds":3.0,"private_bytes":1048576,"working_set_bytes":2097152},
+            "shrunk":{"seconds":3.0,"private_bytes":1048576,"working_set_bytes":2097152}},
+            "original_open_seconds":99.0});
+        let (time, memory) = startup_cells(&record);
+        assert!(time.contains("3.00 s") && time.contains("Launch to add-in ready"));
+        assert!(!time.contains("99.00"));
+        assert!(time.contains("no independent startup"));
+        assert!(memory.contains("Private bytes at ready") && memory.contains("Working set at ready"));
+        let (time, _) = startup_cells(&json!({"original_open_seconds":7.0}));
+        assert!(time.contains("COM Open (historical method)"));
+        assert!(!time.contains("0.00 s"));
+    }
 
     #[test]
     fn skipped_workbooks_disclose_the_profile_failure() {

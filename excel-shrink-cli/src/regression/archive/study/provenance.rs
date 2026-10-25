@@ -131,6 +131,18 @@ pub(super) fn paired_speedup(profile: &Value) -> Option<f64> {
         .then_some(before / after)
 }
 
+fn native_ready_speedup(profile: &Value) -> Option<f64> {
+    let native = &profile["native_startup"];
+    if native["method"] != "launch-to-addin-ready-v1" || native["shared_client"] != false
+        || native["provenance"]["run_id"].as_str().is_none()
+        || native["provenance"]["machine_id"].as_str().is_none()
+        || native["attempt_id"].as_str().is_none()
+    { return None; }
+    let before = native["original"]["seconds"].as_f64()?;
+    let after = native["shrunk"]["seconds"].as_f64()?;
+    (before.is_finite() && after.is_finite() && before > 0.0 && after > 0.0).then_some(before / after)
+}
+
 /// Include this object as `report["measurement_provenance"]` before HTML render.
 pub(super) fn report_metadata(output: &Path, records: &[Value]) -> Result<Value> {
     let mut runs = BTreeMap::new();
@@ -142,11 +154,22 @@ pub(super) fn report_metadata(output: &Path, records: &[Value]) -> Result<Value>
         let group = groups.entry(machine.to_owned()).or_insert_with(|| {
             json!({
                 "machine_id":machine,"workbooks":0,"preparations":0,"whitespace_diagnoses":0,
-                "paired_speedups":[],"run_ids":[]
+                "paired_speedups":[],"native_ready_speedups":[],"run_ids":[]
             })
         });
         group["workbooks"] = json!(group["workbooks"].as_u64().unwrap() + 1);
         for profile in record["results"].as_array().into_iter().flatten() {
+            let native = &profile["native_startup"];
+            if native["provenance"]["machine_id"] == machine {
+                if let Some(ratio) = native_ready_speedup(profile) {
+                    group["native_ready_speedups"].as_array_mut().unwrap().push(json!({
+                        "identity":record["identity"],"profile":profile["profile"],"speedup":ratio,
+                        "method":native["method"],"original_seconds":native["original"]["seconds"],
+                        "shrunk_seconds":native["shrunk"]["seconds"],"run_id":native["provenance"]["run_id"],
+                        "attempt_id":native["attempt_id"]
+                    }));
+                }
+            }
             if let Some(ratio) = paired_speedup(profile) {
                 if profile["open_measurement_provenance"]["original"]["machine_id"] == machine {
                     group["paired_speedups"].as_array_mut().unwrap().push(json!({
@@ -201,7 +224,7 @@ pub(super) fn report_metadata(output: &Path, records: &[Value]) -> Result<Value>
                 let group = groups.entry(id.to_owned()).or_insert_with(|| {
                     json!({
                         "machine_id":id,"workbooks":0,"preparations":0,"whitespace_diagnoses":0,
-                        "paired_speedups":[],"run_ids":[]
+                        "paired_speedups":[],"native_ready_speedups":[],"run_ids":[]
                     })
                 });
                 group[counter] = json!(group[counter].as_u64().unwrap() + 1);

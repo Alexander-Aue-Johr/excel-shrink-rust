@@ -94,20 +94,24 @@ pub(super) fn render_summary(html: &mut String, report: &Value, files: &[&Value]
         } else {
             html.push_str("<p>Machine metadata was not recorded. These results are excluded from machine-specific speedup summaries.</p>");
         }
-        let mut ratios: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+        let mut ratios: BTreeMap<(&str, String), Vec<f64>> = BTreeMap::new();
         for file in &files {
             for profile in items(file, "results") {
                 if let Some(ratio) = paired_ratio(profile, &id) {
                     ratios
-                        .entry(text(profile, "profile").to_owned())
+                        .entry(("COM Open (historical method)", text(profile, "profile").to_owned()))
                         .or_default()
                         .push(ratio);
+                }
+                if let Some(ratio) = paired_native_ratio(profile, &id) {
+                    ratios.entry(("Launch to add-in ready", text(profile, "profile").to_owned()))
+                        .or_default().push(ratio);
                 }
             }
         }
         if !ratios.is_empty() {
-            html.push_str("<table><thead><tr><th>Profile</th><th>Paired workbooks</th><th>Median open-time speedup</th></tr></thead><tbody>");
-            for (profile, mut values) in ratios {
+            html.push_str("<p>Methods are summarized separately. Shared physical clients are excluded from native speedup ratios.</p><table><thead><tr><th>Method / profile</th><th>Paired workbooks</th><th>Median startup speedup</th></tr></thead><tbody>");
+            for ((method, profile), mut values) in ratios {
                 values.sort_by(f64::total_cmp);
                 let n = values.len();
                 let median = if n % 2 == 0 {
@@ -118,7 +122,7 @@ pub(super) fn render_summary(html: &mut String, report: &Value, files: &[&Value]
                 let _ = write!(
                     html,
                     "<tr><td>{}</td><td>{n}</td><td>{median:.3}×</td></tr>",
-                    escape(&profile)
+                    escape(&format!("{method} / {profile}"))
                 );
             }
             html.push_str("</tbody></table>");
@@ -212,6 +216,18 @@ fn paired_ratio(profile: &Value, machine: &str) -> Option<f64> {
         .then_some(original / shrunk)
 }
 
+fn paired_native_ratio(profile: &Value, machine: &str) -> Option<f64> {
+    let native = &profile["native_startup"];
+    if machine == "unknown" || native["method"] != "launch-to-addin-ready-v1"
+        || native["shared_client"] != false || native["provenance"]["machine_id"] != machine
+        || native["provenance"]["run_id"].as_str().is_none() || native["attempt_id"].as_str().is_none()
+    { return None; }
+    let original = native["original"]["seconds"].as_f64()?;
+    let shrunk = native["shrunk"]["seconds"].as_f64()?;
+    (original.is_finite() && shrunk.is_finite() && original > 0.0 && shrunk > 0.0)
+        .then_some(original / shrunk)
+}
+
 fn safe_metadata_link(value: Option<&str>) -> Option<&str> {
     value.filter(|path| {
         path.starts_with("metadata/machines/")
@@ -225,6 +241,18 @@ fn safe_metadata_link(value: Option<&str>) -> Option<&str> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn native_ratios_require_independent_clients_and_current_machine_attribution() {
+        let mut profile = json!({"native_startup":{"method":"launch-to-addin-ready-v1","shared_client":false,
+            "provenance":{"run_id":"run","machine_id":"tower"},"attempt_id":"attempt",
+            "original":{"seconds":9.0},"shrunk":{"seconds":3.0}}});
+        assert_eq!(paired_native_ratio(&profile,"tower"),Some(3.0));
+        assert_eq!(paired_ratio(&profile,"tower"),None);
+        assert_eq!(paired_native_ratio(&profile,"other"),None);
+        profile["native_startup"]["shared_client"] = json!(true);
+        assert_eq!(paired_native_ratio(&profile,"tower"),None);
+    }
 
     #[test]
     fn machine_summary_excludes_legacy_and_cross_run_ratios() {
