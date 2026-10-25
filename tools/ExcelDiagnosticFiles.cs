@@ -20,6 +20,9 @@ public static class ExcelDiagnosticFiles
         public string LogUtc;
         public int Win32Error;
         public string FileIdentity;
+        public long? AllocatedBytes;
+        public long CompressionSavedBytes;
+        public bool CompressionAttempted;
     }
 
     public sealed class Owner
@@ -38,10 +41,15 @@ public static class ExcelDiagnosticFiles
 
     public static Result InspectAndRemove(string path, string root, int minimumAgeSeconds, string observedIdentity, Owner[] observedOwners)
     {
+        return InspectAndRemove(path, root, minimumAgeSeconds, observedIdentity, observedOwners, false);
+    }
+
+    public static Result InspectAndRemove(string path, string root, int minimumAgeSeconds, string observedIdentity, Owner[] observedOwners, bool compressUnknown)
+    {
         var result = new Result { Outcome = "unknown" };
         // No sharing: even a live logger that permits FILE_SHARE_DELETE must not
         // lose its file. OPEN_REPARSE_POINT prevents following a replaced link.
-        using (var file = CreateFile(path, 0x80000000 | 0x00010000, 0, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero))
+        using (var file = CreateFile(path, 0x80000000 | 0x00010000 | (compressUnknown ? 0x40000000u : 0), 0, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero))
         {
             if (file.IsInvalid)
             {
@@ -62,6 +70,9 @@ public static class ExcelDiagnosticFiles
             if (!GetFileInformationByHandle(file, out info) || (info.Attributes & 0x400) != 0) return result;
             result.FileIdentity = Identity(info);
             result.Length = ((long)info.SizeHigh << 32) | info.SizeLow;
+            CompressionInformation compression;
+            if (GetFileInformationByHandleEx(file, 8, out compression, (uint)Marshal.SizeOf(typeof(CompressionInformation))))
+                result.AllocatedBytes = compression.CompressedFileSize;
             DateTime created = DateTime.FromFileTimeUtc(ToLong(info.Created));
             DateTime written = DateTime.FromFileTimeUtc(ToLong(info.Written));
             DateTime now = DateTime.UtcNow;
@@ -74,21 +85,25 @@ public static class ExcelDiagnosticFiles
                 var matches = Header.Matches(Encoding.UTF8.GetString(bytes, 0, length));
                 // Restart Manager observes file users, not the original writer.
                 // Even a departed reader cannot authorize deleting a blank log.
-                if (matches.Count == 0) return result;
+                if (matches.Count == 0)
+                    return PreserveUnknown(file, result, compressUnknown, info.Attributes);
                 DateTime first;
                 int pid;
                 if (!DateTime.TryParseExact(matches[0].Groups["time"].Value, "M/d/yyyy H:mm:ss.fff", CultureInfo.InvariantCulture,
                     DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out first) ||
                     !Int32.TryParse(matches[0].Groups["pid"].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out pid) || pid <= 0)
-                    return result;
+                    return PreserveUnknown(file, result, compressUnknown, info.Attributes);
                 // On-disk Excel headers use UTC, as does file creation. A copied
                 // or clock-ambiguous log is retained instead of inferring reuse.
-                if (first > now || Math.Abs((first - created).TotalSeconds) > 60) return result;
+                if (first > now || Math.Abs((first - created).TotalSeconds) > 60)
+                    return PreserveUnknown(file, result, compressUnknown, info.Attributes);
                 foreach (Match match in matches)
-                    if (!String.Equals(match.Groups["pid"].Value, matches[0].Groups["pid"].Value, StringComparison.OrdinalIgnoreCase)) return result;
+                    if (!String.Equals(match.Groups["pid"].Value, matches[0].Groups["pid"].Value, StringComparison.OrdinalIgnoreCase))
+                        return PreserveUnknown(file, result, compressUnknown, info.Attributes);
                 result.Pid = pid;
                 result.LogUtc = first.ToString("o", CultureInfo.InvariantCulture);
                 string ownership = OwnerState(pid, first > created ? first : created, result);
+                if (ownership == "unknown") return PreserveUnknown(file, result, compressUnknown, info.Attributes);
                 if (ownership != "exited" && ownership != "reused") { result.Outcome = ownership; return result; }
 
                 if (observedIdentity == result.FileIdentity && observedOwners != null && observedOwners.Length > 0)
@@ -98,6 +113,7 @@ public static class ExcelDiagnosticFiles
                     foreach (Owner owner in observedOwners)
                     {
                         string state = ObservedOwnerState(owner);
+                        if (state == "unknown") return PreserveUnknown(file, result, compressUnknown, info.Attributes);
                         if (state != "exited") { result.Outcome = state; return result; }
                     }
                 }
@@ -112,6 +128,32 @@ public static class ExcelDiagnosticFiles
                 return result;
             }
         }
+    }
+
+    static Result PreserveUnknown(SafeFileHandle file, Result result, bool compress, uint attributes)
+    {
+        if (compress && result.Length >= 65536 && (attributes & 0x800) == 0)
+        {
+            // Keep unknown logs byte-for-byte. NTFS compression changes storage,
+            // not logical data or length. The same exclusive handle prevents
+            // concurrent use; future ordinary and memory-mapped writes still work.
+            ushort format = 1; // COMPRESSION_FORMAT_DEFAULT (LZNT1)
+            uint returned;
+            result.CompressionAttempted = true;
+            if (DeviceIoControl(file, 0x0009C040, ref format, 2, IntPtr.Zero, 0, out returned, IntPtr.Zero))
+            {
+                long? before = result.AllocatedBytes;
+                CompressionInformation compression;
+                if (GetFileInformationByHandleEx(file, 8, out compression, (uint)Marshal.SizeOf(typeof(CompressionInformation))))
+                {
+                    result.AllocatedBytes = compression.CompressedFileSize;
+                    if (before.HasValue) result.CompressionSavedBytes = Math.Max(0, before.Value - compression.CompressedFileSize);
+                }
+                result.Outcome = "unknown-compressed";
+            }
+            else { result.Win32Error = Marshal.GetLastWin32Error(); result.Outcome = "unknown-compression-failed"; }
+        }
+        return result;
     }
 
     static string Identity(FileInformation info)
@@ -198,6 +240,11 @@ public static class ExcelDiagnosticFiles
     { return ((long)(uint)value.dwHighDateTime << 32) | (uint)value.dwLowDateTime; }
 
     [StructLayout(LayoutKind.Sequential)] struct FileDisposition { [MarshalAs(UnmanagedType.Bool)] public bool DeleteFile; }
+    [StructLayout(LayoutKind.Sequential)] struct CompressionInformation {
+        public long CompressedFileSize;
+        public ushort CompressionFormat;
+        public byte CompressionUnitShift, ChunkShift, ClusterShift, Reserved1, Reserved2, Reserved3;
+    }
     [StructLayout(LayoutKind.Sequential)] struct FileInformation {
         public uint Attributes;
         public System.Runtime.InteropServices.ComTypes.FILETIME Created, Accessed, Written;
@@ -221,6 +268,8 @@ public static class ExcelDiagnosticFiles
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     static extern uint GetFinalPathNameByHandle(SafeFileHandle file, StringBuilder path, uint size, uint flags);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandle(SafeFileHandle file, out FileInformation information);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int type, out CompressionInformation information, uint size);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool DeviceIoControl(SafeFileHandle file, uint code, ref ushort input, uint inputSize, IntPtr output, uint outputSize, out uint returned, IntPtr overlapped);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFileInformationByHandle(SafeFileHandle file, int type, ref FileDisposition information, uint size);
     [DllImport("kernel32.dll", SetLastError=true)] static extern SafeFileHandle OpenProcess(uint access, bool inherit, int pid);
     [DllImport("kernel32.dll", SetLastError=true)] static extern uint WaitForSingleObject(SafeFileHandle process, uint milliseconds);

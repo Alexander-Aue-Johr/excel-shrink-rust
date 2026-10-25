@@ -29,11 +29,27 @@ diagnostic root, reparse points, unreadable files, ambiguous timestamps and logs
 without ownership evidence are retained. In particular, old blank logs cannot be
 assigned to a process using the GUID in their filename alone.
 
+Old unknown logs of at least 64 KiB may receive NTFS per-file compression while
+held exclusively. This retains their path, logical length and every byte; no
+ownership is inferred and nothing is deleted. It is especially effective for
+blank 16 MiB preallocations. Known live writers and files with active holders are
+left alone. Compression is limited to 32 files per pass and never sets a directory
+default. Unsupported filesystems or failed compression leave the file intact.
+The Windows APIs and transparent behavior are documented in
+[FSCTL_SET_COMPRESSION](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_set_compression)
+and [NTFS compression](https://learn.microsoft.com/en-us/windows/win32/fileio/file-compression-and-decompression).
+
 The status JSON reports retained live, unknown and locked bytes, cleanup outcomes,
 ownership-query counts and free disk space. At most 32 previously unknown logs
 are queried per pass, with newly created logs considered first. Historical unknown
 logs may remain; a low-space warning must not be interpreted as permission to
 delete them.
+
+`retained_bytes` is the logical size. `retained_allocated_bytes` reports actual
+storage from `FILE_COMPRESSION_INFO`, using the logical size as a conservative
+estimate when a file cannot be inspected (`allocation_unknown_files`). The status
+also reports `compressed_files`, `compression_attempts` and space recovered by
+compression separately from deleted bytes.
 
 On native Windows, the interactive scheduler samples free space on the Excel
 diagnostic volume at most once per second. Below 2 GiB, or when the query fails,
@@ -47,3 +63,7 @@ tools/corpus-launcher/diagnostics-cleanup.tests.ps1` for the native ownership te
 They cover live/dead/reused PIDs, delete-sharing handles, persistent file-user
 observations, a reader exiting while the writer remains alive, blank logs that
 remain unassigned, and replacement of the same path.
+
+`tools/corpus-launcher/diagnostics-compression.tests.ps1` verifies SHA256 and length
+before/after compression, future ordinary and memory-mapped writes, protection of
+active files, allocation reporting and the per-pass limit.
