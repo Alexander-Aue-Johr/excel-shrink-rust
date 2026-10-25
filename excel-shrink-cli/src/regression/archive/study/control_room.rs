@@ -3,6 +3,31 @@ use super::*;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 
+#[derive(Debug)]
+pub(super) struct StopRequested;
+impl std::fmt::Display for StopRequested {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("run stopped after finishing admitted workbooks")
+    }
+}
+impl std::error::Error for StopRequested {}
+
+// Scope requests to the exact process, including across the startup/run-ID change.
+pub(super) fn stop_requested(root: &Path) -> bool {
+    read_json(&root.join("stop-request.json")).is_some_and(|request| {
+        request["runner_pid"] == std::process::id()
+            && process_started_unix_ms().is_some_and(|started|
+                request["runner_started_unix_ms"].as_u64() == Some(started))
+    })
+}
+
+pub(super) fn check_stop(root: &Path) -> Result<()> {
+    if stop_requested(root) {
+        return Err(StopRequested.into());
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(super) struct Controls {
     pub target_groups: usize,
@@ -303,6 +328,7 @@ impl Room {
             .clone()
             .unwrap_or_else(|| "This machine".into()));
         queue["runner_pid"] = json!(std::process::id());
+        queue["stop_supported"] = json!(true);
         queue["runner_started_unix_ms"] = json!(process_started_unix_ms());
         queue["running"] = json!(true);
         queue["phase"] = json!("preparing");
@@ -496,6 +522,7 @@ pub(super) fn wait_for_admission(output: &Path, phase: &str) -> Result<()> {
     let root = output.join("control-room");
     let mut waiting = false;
     loop {
+        check_stop(&root)?;
         if Controls::read(&root).is_ok_and(|controls| controls.target_groups > 0) {
             if waiting {
                 if let Some(mut queue) = read_json(&root.join("queue.json")) {
@@ -519,6 +546,26 @@ pub(super) fn wait_for_admission(output: &Path, phase: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(windows)]
+    fn stop_ends_paused_admission_and_ignores_another_process_incarnation() -> Result<()> {
+        let output = artifact_cache::unique_path(&std::env::temp_dir(), "stop-admission")?;
+        let root = output.join("control-room");
+        fs::create_dir_all(&root)?;
+        let started = process_started_unix_ms().unwrap();
+        let mut request = json!({"runner_pid":std::process::id(),"runner_started_unix_ms":started - 1});
+        write(&root.join("stop-request.json"), &request)?;
+        assert!(!stop_requested(&root));
+        request["runner_started_unix_ms"] = json!(started);
+        write(&root.join("stop-request.json"), &request)?;
+        assert!(wait_for_admission(&output, "preparing").unwrap_err().is::<StopRequested>());
+        request["runner_pid"] = json!(0);
+        write(&root.join("stop-request.json"), &request)?;
+        assert!(!stop_requested(&root));
+        fs::remove_dir_all(output)?;
+        Ok(())
+    }
     #[test]
     fn zero_target_waits_without_starting_work_and_resumes_in_place() -> Result<()> {
         let output = artifact_cache::unique_path(&std::env::temp_dir(), "zero-target")?;

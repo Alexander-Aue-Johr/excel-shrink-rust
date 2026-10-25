@@ -68,6 +68,7 @@ impl Startup {
 
     pub fn update(&mut self, stage: &str, corpus: &str, completed: usize, total: Option<usize>) -> Result<()> {
         let Some(root) = &self.root else { return Ok(()) };
+        control_room::check_stop(root)?;
         let changed = self.stage != stage || self.corpus != corpus;
         if !changed && total != Some(completed)
             && self.last.is_some_and(|last| last.elapsed() < Duration::from_millis(250)) {

@@ -141,6 +141,16 @@ struct Source {
 }
 
 pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result<()> {
+    match run_inner(args, log_level) {
+        Err(error) if error.is::<control_room::StopRequested>() => {
+            eprintln!("[study] Run stopped. Results saved; the runner can now be updated.");
+            Ok(())
+        }
+        result => result,
+    }
+}
+
+fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
     ensure!(
         args.comparison_workers > 0 || args.control_room,
         "zero comparison groups require --control-room so the run can be resumed"
@@ -613,8 +623,8 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                 if args.control_room
                     && !args.prepare_only
                     && records[pos]["prepared"] == true
-                    && control_room::Controls::read(&output.join("control-room"))?.target_groups
-                        == 0
+                    && (control_room::Controls::read(&output.join("control-room"))?.target_groups
+                        == 0 || control_room::stop_requested(&output.join("control-room")))
                 {
                     records[pos]["compared_by"] = json!(producer);
                     scheduler::finish_preparing_workbook(
@@ -690,6 +700,9 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
                 log_level,
             )?;
         }
+    }
+    if args.control_room {
+        control_room::check_stop(&output.join("control-room"))?;
     }
     let finished = !args.prepare_only && !limited && selection::complete(&corpus_info, &records);
     publish(

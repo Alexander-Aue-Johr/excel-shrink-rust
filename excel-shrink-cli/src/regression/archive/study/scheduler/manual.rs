@@ -297,6 +297,15 @@ pub(super) fn compare(
                 if let Ok(updated) = Controls::read(&room) {
                     controls = updated;
                 }
+                // Finish admitted groups, including fallback and cleanup, then
+                // let the outer admission checkpoint end the runner.
+                if control_room::stop_requested(&room) {
+                    controls.target_groups = 0;
+                    controls.paused = false;
+                    if initial_admission.is_none() {
+                        cleanup.close_admission();
+                    }
+                }
                 if controls.target_groups == 0 && !active.is_empty() {
                     cleanup.close_admission();
                 }
