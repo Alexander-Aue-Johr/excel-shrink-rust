@@ -28,10 +28,6 @@ pub struct ExcelOpenMetrics {
     pub macros_removed: Option<bool>,
 }
 
-pub fn measure_workbook_open(input: &Path, work_dir: &Path) -> anyhow::Result<ExcelOpenMetrics> {
-    open_workbook(input, None, work_dir)
-}
-
 pub fn convert_legacy_workbook(
     input: &Path,
     output: &Path,

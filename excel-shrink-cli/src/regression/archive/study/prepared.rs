@@ -241,53 +241,8 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     if job.resident_capture {
         return resident::compare(job, record);
     }
-    work_state::event(
-        "measuring_open",
-        "open_measurement_started",
-        "Measuring original workbook opening",
-        false,
-        Some("Excel opening measurement"),
-        json!({"profile":"original"}),
-    );
-    let original_metrics =
-        excel_automation::measure_workbook_open(&original, &job.work.join("open-original"))?;
-    work_state::event(
-        "measuring_open",
-        "open_measurement_complete",
-        "Original opening measured",
-        true,
-        None,
-        json!({"profile":"original"}),
-    );
-    for name in ["default", "maximum-cleaning"] {
-        work_state::event(
-            "measuring_open",
-            "open_measurement_started",
-            "Measuring profile workbook opening",
-            false,
-            Some("Excel opening measurement"),
-            json!({"profile":name}),
-        );
-        let metrics = excel_automation::measure_workbook_open(
-            &job.work.join(format!("{name}.xlsx")),
-            &job.work.join(format!("open-{name}")),
-        )?;
-        record_open_metrics(
-            job,
-            record,
-            name,
-            &serde_json::to_value(&original_metrics)?,
-            &serde_json::to_value(metrics)?,
-        )?;
-        work_state::event(
-            "measuring_open",
-            "open_measurement_complete",
-            "Profile opening measured",
-            true,
-            None,
-            json!({"profile":name}),
-        );
-    }
+    // The classic fallback has no native readiness handshake. Leave its startup
+    // metrics unavailable rather than launching extra measurement-only Excels.
     let mut selected = None;
     let mut visual_comparisons = visual_reuse::VisualComparisons::default();
     for name in ["too-aggressive-cleaning", "maximum-cleaning", "default"] {
@@ -396,6 +351,7 @@ fn profile_mut<'a>(record: &'a mut Value, name: &str) -> Result<&'a mut Value> {
         .with_context(|| format!("missing {name} measurements"))
 }
 
+#[cfg(test)]
 fn add_open_metrics(result: &mut Value, original: &Value, shrunk: &Value) {
     for (prefix, metrics) in [("original", original), ("shrunk", shrunk)] {
         result[format!("{prefix}_open_seconds")] = metrics["open_seconds"].clone();
@@ -404,6 +360,7 @@ fn add_open_metrics(result: &mut Value, original: &Value, shrunk: &Value) {
     }
 }
 
+#[cfg(test)]
 fn record_open_metrics(
     job: &MemberJob,
     record: &mut Value,
