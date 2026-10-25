@@ -88,6 +88,23 @@ Equivalent VS Code tasks are installed as:
 
 ## Local verification
 
+Unattended conversion and recalculation pass empty open/write passwords and ignore
+read-only recommendations. Encrypted workbooks fail through the existing automation
+error path instead of waiting for a password dialog; readable workbooks with write
+reservations still open read-only.
+
+On Windows with desktop Excel installed, run the opt-in integration test:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File excel-shrink-cli/office-capture/tests/automation-passwords.tests.ps1 -Run
+```
+
+It creates synthetic XLS/XLSX fixtures for normal, read-only recommended,
+write-reserved, and encrypted workbooks, then runs the production conversion and
+recalculation scripts. Each operation has a 45-second deadline. It checks saved
+values/formulas and unchanged source files, and retains fixtures and logs under
+`.tmp/automation-passwords-<guid>/`.
+
 ```console
 cargo fmt --all -- --check
 cargo check -p excel-shrink-cli --bin excel-shrink-cli
