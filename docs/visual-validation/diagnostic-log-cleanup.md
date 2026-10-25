@@ -5,7 +5,7 @@ Age alone never permits deletion. A log must be exclusively open throughout
 inspection and deletion, and its known owner must have exited. This also protects
 live loggers that allow other programs to delete their open files.
 
-Two sources establish ownership:
+The header identifies the writer; observed file users provide additional protection:
 
 - A bounded read of the Excel log header supplies `EXCEL (0xPID)` and a UTC
   timestamp. A missing PID proves that writer has exited. If the PID now belongs
@@ -15,9 +15,12 @@ Two sources establish ownership:
 - Blank preallocated logs have no header. Windows Restart Manager can identify
   their live file users by PID and process creation time. The cleanup helper
   records those identities beside its status file in `*.owners.json`, together
-  with the volume, file ID and file creation time. All recorded users must have
-  exited before deletion. Replacing a path invalidates its recorded ownership.
-  Restart Manager is queried only; cleanup never requests shutdown or restart.
+  with the volume, file ID and file creation time. These users may be readers,
+  so their exit does not establish that the writer exited. Headerless logs remain
+  untouched even when all observed users have exited. For logs with a header,
+  both the identified writer and recorded users must have exited before deletion.
+  Replacing a path invalidates recorded observations. Restart Manager is queried
+  only; cleanup never requests shutdown or restart.
 
 Opening the same file without sharing prevents a new reader or writer from
 acquiring it between verification and deletion. File deletion is set on that
@@ -41,5 +44,6 @@ available space. WSL does not infer Windows free space from Linux counters.
 
 Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File
 tools/corpus-launcher/diagnostics-cleanup.tests.ps1` for the native ownership tests.
-They cover live/dead/reused PIDs, delete-sharing handles, blank logs observed while
-their owner is alive, persistent ownership and replacement of the same path.
+They cover live/dead/reused PIDs, delete-sharing handles, persistent file-user
+observations, a reader exiting while the writer remains alive, blank logs that
+remain unassigned, and replacement of the same path.

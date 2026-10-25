@@ -47,7 +47,7 @@ try {
 
 # Blank preallocated logs cannot identify their writer in a header. Observe the
 # live file user once, persist PID + birth and the file's own identity, then
-# verify that the exact observation permits cleanup only after that user exits.
+# verify that this evidence cannot stand in for the unknown original writer.
 $blank=Join-Path $root 'preallocated.log'
 $fixturePath=Join-Path (Split-Path (Split-Path $root)) 'hold-log.ps1'
 $ownershipPath=Join-Path (Split-Path (Split-Path $root)) 'owners.json'
@@ -68,7 +68,14 @@ try {
     $fixture.Kill()
     if(-not $fixture.WaitForExit(10000)){throw 'Log fixture did not exit'}
     $result=Clear-ExcelDiagnosticLogs -Root $root -MinimumAgeSeconds 0 -OwnershipPath $ownershipPath
-    if(Test-Path -LiteralPath $blank){throw 'Confirmed departed owner of blank log was not cleaned'}
+    if(-not(Test-Path -LiteralPath $blank)){throw 'A departed file user was incorrectly treated as the writer of a blank log'}
+    $reader=New-Object 'ExcelDiagnosticFiles+Owner'
+    $reader.Pid=$fixture.Id
+    $reader.StartedTicks=$fixture.StartTime.ToUniversalTime().Ticks
+    $resolvedRoot=[IO.Path]::GetFullPath($root)
+    $liveInspection=[ExcelDiagnosticFiles]::InspectAndRemove($live,$resolvedRoot,0,'',[ExcelDiagnosticFiles+Owner[]]@())
+    $withReader=[ExcelDiagnosticFiles]::InspectAndRemove($live,$resolvedRoot,0,$liveInspection.FileIdentity,[ExcelDiagnosticFiles+Owner[]]@($reader))
+    if(-not(Test-Path -LiteralPath $live) -or $withReader.Outcome -ne 'live'){throw 'A departed reader overrode the live header writer'}
     # Replacing the path invalidates historical file ownership, even if the
     # replacement is also blank and there are no live holders.
     [IO.File]::WriteAllText($blank,'replacement without owner')
@@ -77,5 +84,5 @@ try {
     ConvertTo-Json -InputObject @($stale) -Depth 4 | Set-Content -LiteralPath $ownershipPath -Encoding UTF8
     $result=Clear-ExcelDiagnosticLogs -Root $root -MinimumAgeSeconds 0 -OwnershipPath $ownershipPath
     if(-not(Test-Path -LiteralPath $blank)){throw 'Replaced file inherited an old owner'}
-    'PASS: live Restart Manager ownership persists; blank logs wait for owner exit; replaced files cannot inherit ownership.'
+    'PASS: file-user observations persist but never authorize deleting blank logs or override a live header writer; replacement invalidates observations.'
 } finally { if(-not $fixture.HasExited){$fixture.Kill()}; $fixture.Dispose() }

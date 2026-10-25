@@ -72,34 +72,34 @@ public static class ExcelDiagnosticFiles
                 byte[] bytes = new byte[65536];
                 int length = input.Read(bytes, 0, bytes.Length);
                 var matches = Header.Matches(Encoding.UTF8.GetString(bytes, 0, length));
-                string ownership;
+                // Restart Manager observes file users, not the original writer.
+                // Even a departed reader cannot authorize deleting a blank log.
+                if (matches.Count == 0) return result;
+                DateTime first;
+                int pid;
+                if (!DateTime.TryParseExact(matches[0].Groups["time"].Value, "M/d/yyyy H:mm:ss.fff", CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out first) ||
+                    !Int32.TryParse(matches[0].Groups["pid"].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out pid) || pid <= 0)
+                    return result;
+                // On-disk Excel headers use UTC, as does file creation. A copied
+                // or clock-ambiguous log is retained instead of inferring reuse.
+                if (first > now || Math.Abs((first - created).TotalSeconds) > 60) return result;
+                foreach (Match match in matches)
+                    if (!String.Equals(match.Groups["pid"].Value, matches[0].Groups["pid"].Value, StringComparison.OrdinalIgnoreCase)) return result;
+                result.Pid = pid;
+                result.LogUtc = first.ToString("o", CultureInfo.InvariantCulture);
+                string ownership = OwnerState(pid, first > created ? first : created, result);
+                if (ownership != "exited" && ownership != "reused") { result.Outcome = ownership; return result; }
+
                 if (observedIdentity == result.FileIdentity && observedOwners != null && observedOwners.Length > 0)
                 {
-                    ownership = "exited";
+                    // This is additional protection for observed readers. The
+                    // header writer check above must succeed independently.
                     foreach (Owner owner in observedOwners)
                     {
                         string state = ObservedOwnerState(owner);
                         if (state != "exited") { result.Outcome = state; return result; }
                     }
-                }
-                else
-                {
-                    if (matches.Count == 0) return result;
-                    DateTime first;
-                    int pid;
-                    if (!DateTime.TryParseExact(matches[0].Groups["time"].Value, "M/d/yyyy H:mm:ss.fff", CultureInfo.InvariantCulture,
-                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out first) ||
-                        !Int32.TryParse(matches[0].Groups["pid"].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out pid) || pid <= 0)
-                        return result;
-                    // On-disk Excel headers use UTC, as does file creation. A copied
-                    // or clock-ambiguous log is retained instead of inferring reuse.
-                    if (first > now || Math.Abs((first - created).TotalSeconds) > 60) return result;
-                    foreach (Match match in matches)
-                        if (!String.Equals(match.Groups["pid"].Value, matches[0].Groups["pid"].Value, StringComparison.OrdinalIgnoreCase)) return result;
-                    result.Pid = pid;
-                    result.LogUtc = first.ToString("o", CultureInfo.InvariantCulture);
-                    ownership = OwnerState(pid, first > created ? first : created, result);
-                    if (ownership != "exited" && ownership != "reused") { result.Outcome = ownership; return result; }
                 }
                 var disposition = new FileDisposition { DeleteFile = true };
                 if (!SetFileInformationByHandle(file, 4, ref disposition, (uint)Marshal.SizeOf(typeof(FileDisposition))))
