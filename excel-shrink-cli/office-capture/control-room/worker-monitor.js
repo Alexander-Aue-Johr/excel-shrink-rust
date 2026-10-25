@@ -59,6 +59,8 @@ export function initWorkerMonitor({ selectGroup } = {}) {
     field(fields, 'Last event', `${message(row.lastEvent)} · ${sinceText(row.lastEvent)}`, timeText(row.lastEvent));
     field(fields, 'Process', row.pid ? `PID ${row.pid} · ${row.alive === true ? 'running' : row.alive === false ? 'exited' : 'liveness not checked separately'}` : 'No process ID yet');
     field(fields, 'Process start', timeText(row.processStarted));
+    if (row.windowMode) field(fields, 'Excel desktop', row.windowMode === 'private_desktop'
+      ? 'Private desktop (hidden from your workspace)' : row.windowMode.replaceAll('_', ' '));
     field(fields, 'Worker ID', row.id);
     field(fields, 'Group / attempt', `${row.groupId} / ${row.attempt || 'legacy format'}`);
     if (row.runtime) {

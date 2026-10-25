@@ -76,7 +76,7 @@ export function workerRows(group) {
     const lastEvent = latest(monitor.last_event, client.last_launcher_event);
     const job = monitor.active_job;
     return { ...common, id: client.worker_id, clientId: client.client_id, kind: 'Excel / Office.js',
-      pid: client.pid, processStarted: client.process_started_unix_ms, alive: client.process_alive,
+      pid: client.pid, processStarted: client.process_started_unix_ms, alive: client.process_alive, windowMode: client.window_mode,
       state, stateSince: monitor.state === state ? monitor.state_since : client.stage_since,
       category: category(state, client.process_alive, common.active), lastProgress, lastSuccess, lastEvent,
       heartbeat: client.last_heartbeat_at, heartbeatCount: client.heartbeat_count ?? 0,

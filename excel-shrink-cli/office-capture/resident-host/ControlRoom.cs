@@ -416,7 +416,7 @@ internal static class ControlRoom
             if (launcher["clients"] is JsonObject processes) foreach (var entry in processes) {
                 if (entry.Value is not JsonObject client) continue;
                 var item = CopyFields(client, "pid", "process_started_unix_ms", "process_alive", "status", "stage",
-                    "stage_since", "requested_at", "opened_at", "hide_excel", "heartbeat_count", "last_heartbeat_at",
+                    "stage_since", "requested_at", "opened_at", "hide_excel", "window_mode", "heartbeat_count", "last_heartbeat_at",
                     "active_command", "error", "last_launcher_event", "last_launcher_success", "runtime");
                 item["client_id"] = entry.Key;
                 item["worker_id"] = $"{id}/{attempt ?? "legacy"}/{entry.Key}/{client["pid"]}/{client["process_started_unix_ms"]}";

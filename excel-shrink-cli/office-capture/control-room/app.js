@@ -896,7 +896,7 @@ function renderProcesses() {
     card.heart.style.opacity = String(.18 + glow * .82);
     card.element.classList.toggle('blocked', client.stage === 'blocked_edit_mode' || Boolean(client.error));
     card.name.textContent = profileLabel(id);
-    card.process.textContent = client.pid ? `PID ${client.pid} · ${alive === true ? 'Process running' : alive === false ? 'Process exited' : 'Process status unverified'} · ${client.hide_excel ? 'hidden' : 'visible'}` : 'No PID yet';
+    card.process.textContent = client.pid ? `PID ${client.pid} · ${alive === true ? 'Process running' : alive === false ? 'Process exited' : 'Process status unverified'} · ${client.window_mode === 'private_desktop' ? 'private desktop (hidden)' : client.hide_excel ? 'hidden' : 'visible'}` : 'No PID yet';
     card.status.textContent = [stageLabels[client.stage] || normalizeStatus(client.status), client.active_command].filter(Boolean).join(' · ');
     card.beat.textContent = count ? `${count.toLocaleString('en-US')} Heartbeats · last received ${age == null ? '?' : Math.floor(age / 1000)} s ago` : 'No add-in heartbeat yet';
     card.error.textContent = client.error || ''; card.error.hidden = !client.error;
