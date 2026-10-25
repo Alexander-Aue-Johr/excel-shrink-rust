@@ -66,6 +66,7 @@ internal static class ControlRoom
             var diagnostics = new JsonArray();
             var queue = await ReadSnapshot(Path.Combine(root, "queue.json"), diagnostics) ?? new JsonObject();
             CheckRunnerOwnership(queue, diagnostics);
+            await ReconcileCompletedGroups(root, queue, diagnostics);
             queue["groups"] ??= new JsonArray();
             queue["controls"] = await ReadControls(controlPath, initial, diagnostics);
             queue.Remove("progress");
@@ -85,6 +86,7 @@ internal static class ControlRoom
             var diagnostics = new JsonArray();
             var queue = await ReadSnapshot(Path.Combine(root, "queue.json"), diagnostics) ?? new JsonObject();
             CheckRunnerOwnership(queue, diagnostics);
+            await ReconcileCompletedGroups(root, queue, diagnostics);
             var offsetText = request.Query["offset"].ToString();
             var offset = 0;
             if (offsetText.Length > 0 && (!int.TryParse(offsetText, out offset) || offset < 0))
@@ -114,7 +116,10 @@ internal static class ControlRoom
             id = SafeId(id);
             var diagnostics = new JsonArray();
             var queue = await ReadSnapshot(Path.Combine(root, "queue.json"), diagnostics);
-            if (queue is not null) CheckRunnerOwnership(queue, diagnostics);
+            if (queue is not null) {
+                CheckRunnerOwnership(queue, diagnostics);
+                await ReconcileCompletedGroups(root, queue, diagnostics);
+            }
             var summary = (queue?["groups"] as JsonArray)?.OfType<JsonObject>()
                 .FirstOrDefault(group => (string?)group["id"] == id)?.DeepClone().AsObject();
             var scheduledStatus = (string?)summary?["status"];
@@ -202,6 +207,7 @@ internal static class ControlRoom
                 var queue = await ReadSnapshot(Path.Combine(root, "queue.json"), diagnostics);
                 if (queue is null) return Results.Conflict(new { error = "The scheduler queue is not available." });
                 CheckRunnerOwnership(queue, diagnostics);
+            await ReconcileCompletedGroups(root, queue, diagnostics);
                 if ((bool?)queue["running"] != true || (bool?)queue["runner_alive"] != true)
                     return Results.Conflict(new { error = "Start the corpus runner before requesting a restart." });
                 var group = (queue["groups"] as JsonArray)?.OfType<JsonObject>()
@@ -315,6 +321,39 @@ internal static class ControlRoom
             next["paused"] = false;
         }
         return next;
+    }
+
+    // Reconcile presentation only. Never rewrite scheduler files or infer success
+    // from a missing process: require a saved result for this exact attempt.
+    private static async Task ReconcileCompletedGroups(string root, JsonObject queue, JsonArray diagnostics)
+    {
+        if (queue["groups"] is not JsonArray groups) return;
+        var reconciled = 0;
+        foreach (var group in groups.OfType<JsonObject>()) {
+            if ((bool?)group["active"] != true || (string?)group["status"] != "waiting_cleanup") continue;
+            if ((string?)group["attempt_id"] is not string attempt || attempt.Length == 0) continue;
+            var worker = await WorkerGroup(root, group, diagnostics);
+            var coordinator = worker["coordinator"];
+            var status = (string?)coordinator?["last_event"]?["details"]?["status"];
+            if ((string?)coordinator?["phase"] != "finished" ||
+                (string?)coordinator?["last_event"]?["kind"] != "record_saved" ||
+                (bool?)coordinator?["process_alive"] != false ||
+                status is not ("unchanged" or "differences" or "skipped" or "failed")) continue;
+            if (worker["clients"] is JsonArray clients && clients.OfType<JsonObject>()
+                .Any(client => (bool?)client["process_alive"] != false)) continue;
+            group["scheduler_status"] = group["status"]?.DeepClone();
+            group["status"] = status;
+            group["active"] = false;
+            group["completion_reconciled"] = true;
+            reconciled++;
+        }
+        if (reconciled > 0) {
+            queue["scheduler_open_groups"] = queue["open_groups"]?.DeepClone();
+            queue["open_groups"] = groups.OfType<JsonObject>().Count(g => (bool?)g["active"] == true);
+            queue["cleanup_groups"] = groups.OfType<JsonObject>().Count(g =>
+                (bool?)g["active"] == true && (string?)g["status"] == "waiting_cleanup");
+            diagnostics.Add("Completed workers were still marked active by the scheduler; display reconciled from saved-result and process evidence. Scheduling has not been repaired.");
+        }
     }
 
     private static async Task<JsonObject> WorkerGroup(string root, JsonObject summary, JsonArray diagnostics)

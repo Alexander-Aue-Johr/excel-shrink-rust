@@ -254,6 +254,30 @@ class ControlRoomProtocol(unittest.TestCase):
         self.write("groups/active/launcher.json", {"attempt_id": "old", "clients": {"original": {"pid": 42}}})
         self.assertEqual(self.request("/api/workers")["groups"][0]["clients"], [])
 
+    def test_completed_worker_is_not_presented_as_waiting_for_cleanup(self):
+        self.write("queue.json", {"run_id": "run", "open_groups": 1, "groups": [
+            {"id": "done", "run_id": "run", "attempt_id": "new", "active": True,
+             "status": "waiting_cleanup"}]})
+        monitor = {"attempt_id": "new", "phase": "finished", "pid": 2147483647, "process_started_unix_ms": 1,
+                   "last_event": {"kind": "record_saved", "details": {"status": "unchanged"}}}
+        self.write("groups/done/coordinator.json", monitor)
+        self.assertEqual(self.request("/api/workers")["active_groups"], 0)
+        state = self.request("/api/state")
+        self.assertEqual(state["open_groups"], 0)
+        self.assertEqual(state["scheduler_open_groups"], 1)
+        self.assertEqual(state["groups"][0]["status"], "unchanged")
+        self.assertFalse(state["groups"][0]["active"])
+        self.assertTrue(state["diagnostics"])
+        self.assertEqual(self.request("/api/groups/done")["status"], "unchanged")
+        # A previous attempt and a bare process exit prove no completed result.
+        monitor["attempt_id"] = "old"
+        self.write("groups/done/coordinator.json", monitor)
+        self.assertEqual(self.request("/api/workers")["active_groups"], 1)
+        monitor["attempt_id"] = "new"
+        monitor["last_event"] = {"kind": "cleanup_wait"}
+        self.write("groups/done/coordinator.json", monitor)
+        self.assertEqual(self.request("/api/workers")["active_groups"], 1)
+
     def test_worker_pages_do_not_read_unbounded_group_history(self):
         self.write("queue.json", {"groups": [{"id": f"g{n}", "active": True} for n in range(70)] +
                                            [{"id": f"history{n}", "active": False} for n in range(1000)]})
