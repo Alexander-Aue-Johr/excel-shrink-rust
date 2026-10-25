@@ -68,3 +68,9 @@ a four-group test also passed all three sequential cleanup/capture checks.
 Run that bounded check with `--run --groups 4`. Receipts preserve failures as
 well as successes. This isolation is deliberately per group, not per workbook
 variant: variants remain alive together until their group is finished.
+Independent control-room groups publish their own cleanup release after finishing;
+closing their owned Excel job does not require a scheduler polling round trip.
+The scheduler batches derived full JSON/HTML report refreshes (at most once per
+30 seconds, when its event queue is idle). Durable per-workbook records remain
+immediate. This prevents rebuilding the entire report for every progress event
+from delaying completion handling and replacement admission.

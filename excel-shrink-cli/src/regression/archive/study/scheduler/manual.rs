@@ -166,6 +166,8 @@ pub(super) fn compare(
     control_room::write(&room.join("queue.json"), &queue)?;
     let mut pending: VecDeque<_> = jobs.into();
     let mut wave = 0;
+    let mut report_dirty = false;
+    let mut last_report = Instant::now();
     let mut queued_restarts = BTreeMap::new();
     loop {
         restarts::poll(
@@ -509,7 +511,7 @@ pub(super) fn compare(
                 match receiver.recv_timeout(Duration::from_millis(100)) {
                     Ok(Event::Checkpoint(position, record)) => {
                         records[position] = record;
-                        publish_progress(output, records, corpora, "comparing");
+                        report_dirty = true;
                     }
                     Ok(Event::Finished(position, result)) => {
                         if let Some(job) = active.iter_mut().find(|a| a.job.position == position) {
@@ -518,7 +520,7 @@ pub(super) fn compare(
                         match result {
                             Ok(record) => {
                                 records[position] = record;
-                                publish_progress(output, records, corpora, "comparing");
+                                report_dirty = true;
                             }
                             Err(error) => {
                                 let message = format!("comparison record {position}: {error:#}");
@@ -534,7 +536,16 @@ pub(super) fn compare(
                         }
                         last_snapshot = Instant::now() - Duration::from_secs(2);
                     }
-                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        // Durable workbook records are already saved. Expensive
+                        // full JSON/HTML publication is derived work: batch it,
+                        // and process completions/admit replacements first.
+                        if report_dirty && last_report.elapsed() >= Duration::from_secs(30) {
+                            publish_progress(output, records, corpora, "comparing");
+                            report_dirty = false;
+                            last_report = Instant::now();
+                        }
+                    }
                     Err(mpsc::RecvTimeoutError::Disconnected) => {
                         errors.push("manual comparison workers disconnected".into());
                         cancel_active(&active);

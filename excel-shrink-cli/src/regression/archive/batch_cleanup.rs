@@ -124,6 +124,11 @@ impl Participant {
             "resident comparison cancelled by coordinator"
         );
         self.mark_ready()?;
+        // Independent groups need no scheduler round trip to close their own
+        // Excel job. A busy report publisher must not retain their processes.
+        if self.manual_control && self.release_path.file_name().is_some_and(|name| name != "release") {
+            create_marker(&self.release_path)?;
+        }
         while !self.released() {
             ensure!(
                 !self.cancelled(),
@@ -152,9 +157,9 @@ impl Participant {
         super::work_state::event(
             "waiting_cleanup",
             "cleanup_wait",
-            "Waiting for peer groups before closing shared Excel runtime",
+            "Closing this group; waiting for its configured cleanup gate",
             false,
-            Some("shared Excel cleanup barrier"),
+            Some("group cleanup gate"),
             json!({}),
         );
         let heartbeat = std::env::var_os("EXCEL_SHRINK_PARENT_HEARTBEAT").map(PathBuf::from);
@@ -162,7 +167,7 @@ impl Participant {
         super::work_state::event(
             "closing",
             "cleanup_released",
-            "Peer groups finished; closing Excel",
+            "This group cleanup released; closing Excel",
             false,
             None,
             json!({}),
@@ -345,7 +350,8 @@ mod tests {
         let root = artifact_cache::unique_path(&std::env::temp_dir(), "cancel-cleanup")?;
         fs::create_dir(&root)?;
         let mut batch = Batch::growing(&root, 3600)?;
-        let participant = batch.add_manual_participant()?;
+        let mut participant = batch.add_manual_participant()?;
+        participant.release_path = batch.directory.join("release");
         let observer = participant.clone();
         let worker_copy: Participant = serde_json::from_slice(&serde_json::to_vec(&participant)?)?;
         let started = Instant::now();
@@ -508,9 +514,9 @@ mod tests {
         first.release_path = batch.directory.join("0.release");
         batch.participants[0] = first.clone();
         let second = batch.add_participant()?;
-        first.mark_ready()?;
-        batch.release_if_ready()?;
-        assert!(first.released());
+        first.manual_control = true;
+        first.wait(None, false)?;
+        assert!(first.released(), "independent cleanup must not wait for scheduler polling");
         assert!(!second.released());
         assert!(batch.admission_open());
         assert!(batch.add_participant().is_ok());
