@@ -282,15 +282,19 @@
   }
 
   async function crop(base64, x, y, width, height) {
+    const size = CaptureGeometry.pngSize(base64);
+    if (![x, y, width, height].every(Number.isInteger) || x < 0 || y < 0 || width < 1 || height < 1 ||
+        x + width > size.width || y + height > size.height) throw new Error('Invalid image crop');
+    // A complete tile is forwarded byte-for-byte. Reading its PNG header avoids
+    // decoding a potentially 32 MP bitmap just to discover no crop is needed.
+    if (x === 0 && y === 0 && width === size.width && height === size.height) return base64;
     const source = await loadImage(base64);
     const sourceWidth = source.naturalWidth, sourceHeight = source.naturalHeight;
     let canvas;
     try {
       if (![x, y, width, height].every(Number.isInteger) || x < 0 || y < 0 || width < 1 || height < 1 ||
           x + width > sourceWidth || y + height > sourceHeight) throw new Error('Invalid image crop');
-      // A complete tile already is the exact PNG we need; avoid another bitmap
-      // and an encoding pass when there is no halo to remove.
-      if (x === 0 && y === 0 && width === sourceWidth && height === sourceHeight) return base64;
+      if (sourceWidth !== size.width || sourceHeight !== size.height) throw new Error('PNG dimensions differ after decoding');
       const budgetError = () => {
         const error = new Error(`Cannot encode image crop (${width} x ${height}; source ${sourceWidth} x ${sourceHeight})`);
         error.code = 'IMAGE_BUDGET';

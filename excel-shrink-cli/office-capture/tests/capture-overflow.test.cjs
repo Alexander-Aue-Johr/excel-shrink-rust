@@ -52,7 +52,7 @@ function overflowFixture(options = {}) {
   globalThis.FileReader = class {
     readAsDataURL() {this.result = 'data:image/png;base64,encoded'; queueMicrotask(() => this.onload());}
   };
-  globalThis.CaptureGeometry = {address() {return 'A1:B1';}};
+  globalThis.CaptureGeometry = {address() {return 'A1:B1';}, pngSize() {return {width: 12, height};}};
 
   const range = {
     load() {},
@@ -169,11 +169,11 @@ test('cropping uses one software canvas and releases the source before encoding'
   assert.ok(fixture.canvases.every(canvas => canvas.width === 0 && canvas.height === 0));
 });
 
-test('a crop covering the complete image preserves the original PNG without allocating a canvas', async () => {
+test('a complete tile preserves the PNG without decoding an image or allocating a canvas', async () => {
   const fixture = overflowFixture();
   assert.equal(await crop('original', 0, 0, 12, 4), 'original');
   assert.equal(fixture.canvases.length, 0);
-  assert.equal(fixture.images[0].src, '');
+  assert.equal(fixture.images.length, 0);
 });
 
 test('encoding and context failures request smaller tiles instead of accepting missing pixels', async () => {
@@ -186,19 +186,19 @@ test('encoding and context failures request smaller tiles instead of accepting m
   }
 });
 
-test('invalid crops remain hard failures and release their decoded image', async () => {
+test('invalid crops fail before decoding an image', async () => {
   for (const rect of [[-1, 0, 12, 4], [0, 0, 13, 4], [0, 0, 12, 5], [0, .5, 12, 3], [0, 0, 0, 4]]) {
     const fixture = overflowFixture();
     await assert.rejects(crop('original', ...rect), error =>
       error.code !== 'IMAGE_BUDGET' && error.message === 'Invalid image crop');
     assert.equal(fixture.canvases.length, 0);
-    assert.equal(fixture.images[0].src, '');
+    assert.equal(fixture.images.length, 0);
   }
 });
 
 test('undecodable source images remain hard failures and detach their loading handlers', async () => {
   const fixture = overflowFixture({decodeFails: true});
-  await assert.rejects(crop('broken', 0, 0, 12, 4), error =>
+  await assert.rejects(crop('broken', 0, 0, 12, 3), error =>
     error.code !== 'IMAGE_BUDGET' && error.message === 'Cannot decode Excel PNG');
   assert.equal(fixture.canvases.length, 0);
   assert.equal(fixture.images[0].src, '');
