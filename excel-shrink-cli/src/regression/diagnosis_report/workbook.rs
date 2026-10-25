@@ -71,7 +71,7 @@ pub(super) fn render(html: &mut String, root: &Path, file: &Value) {
         .map(|profile| text(profile, "profile"))
         .collect();
     if !scoped_profiles.is_empty() {
-        let _ = write!(html, "<p class=\"muted\" lang=\"de\">Whitespace-Gegenprobe für {}: nur zuvor abweichende Bildkacheln erneut geprüft. Die Zuordnung bezieht sich auf die Unterschiede des Hauptvergleichs.</p>",
+        let _ = write!(html, "<p class=\"muted\">Whitespace counterfactual for {}: only previously differing capture tiles were checked again. Attribution applies to differences found in the primary comparison.</p>",
             escape(&scoped_profiles.join(", ")));
     }
     if let Some(error) = diagnosis["error"].as_str() {
@@ -129,7 +129,7 @@ pub(super) fn render(html: &mut String, root: &Path, file: &Value) {
                     "height"
                 };
                 let open = if category == "other" { " open" } else { "" };
-                let _ = write!(html, "<details class=\"difference\" data-change-category=\"{category}\"{open}><summary>{}: ohne Whitespace-Löschung – verbleibende Unterschiede</summary>", escape(text(profile,"profile")));
+                let _ = write!(html, "<details class=\"difference\" data-change-category=\"{category}\"{open}><summary>{}: without whitespace removal – remaining differences</summary>", escape(text(profile,"profile")));
                 render_differences(
                     html,
                     root,

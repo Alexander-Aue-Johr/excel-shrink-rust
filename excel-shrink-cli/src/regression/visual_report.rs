@@ -306,12 +306,12 @@ pub(super) fn render_capture_coverage(html: &mut String, sheet: &Value) {
     let total = coverage["total_tiles"].as_u64().unwrap_or(0);
     let selected = coverage["captured_tiles"].as_u64().unwrap_or(0);
     let omitted = coverage["omitted_tiles"].as_u64().unwrap_or(0);
-    let _ = write!(html, "<details class=\"capture-coverage\" lang=\"de\"><summary>{selected} / {total} Capture-Zeilen ausgewählt · {omitted} nicht visuell geprüft</summary><p>Hohes Sheet gekürzt. Ausgelassene Bereiche sind kein visueller Gleichheitsnachweis. XML-, Recalc- und Layoutindikatoren dienen der Auswahl; die Bilder stammen weiterhin aus dem Original-/Shrink-Vergleich.</p>");
+    let _ = write!(html, "<details class=\"capture-coverage\"><summary>{selected} / {total} capture rows selected · {omitted} not visually checked</summary><p>Tall sheet shortened. Omitted regions are not evidence of visual equality. XML, recalculation and layout indicators guide selection; images still compare the original and shrunk workbooks.</p>");
     for range in items(coverage, "omitted_ranges") {
         let start = range["core_rows"][0].as_u64().unwrap_or(0) + 1;
         let end = range["core_rows"][1].as_u64().unwrap_or(start);
         let count = range["count"].as_u64().unwrap_or(0);
-        let _ = write!(html, "<div class=\"capture-break\"><strong>Zeilen {start}–{end}: {count} Capture-Zeilen ausgelassen</strong><p>Nicht visuell geprüft.</p>");
+        let _ = write!(html, "<div class=\"capture-break\"><strong>Rows {start}–{end}: {count} capture rows omitted</strong><p>Not visually checked.</p>");
         for reason in items(range, "reasons") {
             if let Some(reason) = reason.as_str() {
                 let _ = write!(html, "<p>{}</p>", escape_html(reason));
@@ -434,9 +434,9 @@ mod tests {
         }}]});
         let html = fs::read_to_string(write_visual_report(&root, &report)?)?;
         assert!(html.contains("<strong>0</strong><span>Unchanged</span>"));
-        assert!(html.contains("4 / 200 Capture-Zeilen ausgewählt"));
-        assert!(html.contains("196 nicht visuell geprüft"));
-        assert!(html.contains("Zeilen 101–999900"));
+        assert!(html.contains("4 / 200 capture rows selected"));
+        assert!(html.contains("196 not visually checked"));
+        assert!(html.contains("Rows 101–999900"));
         assert!(html.contains("No &lt;indicator&gt;"));
         assert!(!html.contains("No visual differences found."));
         fs::remove_dir_all(root)?;

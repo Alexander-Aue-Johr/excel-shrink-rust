@@ -230,7 +230,7 @@ fn write_page(
     tables::skipped(&mut html, &skipped);
     if !changed.is_empty() {
         html.push_str("<h2 class=\"section-heading\">Visual differences</h2>");
-        html.push_str(r#"<section class="hero" lang="de" aria-label="Unterschiede einklappen"><p>Ganze Dateien bleiben zusammen. Ungeklärte Unterschiede stehen zuerst. Kategorien einklappen:</p><label><input type="checkbox" data-collapse-category="whitespace" checked> Whitespace-Effekte</label> <label><input type="checkbox" data-collapse-category="height" checked> Zeilenhöhen-Befunde</label> <label><input type="checkbox" data-collapse-category="other"> Andere / ungeklärte Unterschiede</label> <button type="button" class="button" data-expand-categories>Alles aufklappen</button><p class="muted">Einklappen ändert keine Ergebnisse oder Zähler. Bei geänderten Zeilenhöhen ist der vollständige Bildvergleich weiterhin offen.</p></section>"#);
+        html.push_str(r#"<section class="hero" aria-label="Collapse difference categories"><p>Each workbook stays together. Unexplained differences appear first. Collapse categories:</p><label><input type="checkbox" data-collapse-category="whitespace" checked> Whitespace effects</label> <label><input type="checkbox" data-collapse-category="height" checked> Row-height findings</label> <label><input type="checkbox" data-collapse-category="other"> Other / unexplained differences</label> <button type="button" class="button" data-expand-categories>Expand all</button><p class="muted">Collapsing sections does not change results or counts. Complete visual comparison remains unresolved where row heights changed.</p></section>"#);
     }
     let mut previous_category = "";
     for file in changed {
@@ -331,7 +331,7 @@ fn package_summary(html: &mut String, files: &[&Value]) {
         .filter(|file| is_package_unchanged(file))
         .count();
     if count > 0 {
-        let _ = write!(html, "<p class=\"muted\" lang=\"de\">Davon {count} mit unveränderten Paketinhalten: Excel-Vergleich ausgelassen. Diese Dateien zählen als unverändert, nicht als visuell geprüft.</p>");
+        let _ = write!(html, "<p class=\"muted\">Includes {count} with equivalent package contents: Excel comparison omitted. These files count as unchanged, not visually verified.</p>");
     }
 }
 fn file_id(file: &Value) -> String {
@@ -364,7 +364,7 @@ mod tests {
         let html = fs::read_to_string(write(&dir, &json!({"workbooks":[file]}))?)?;
         assert!(html.contains("Tall.xlsx"));
         assert!(html.contains("id=\"partial-captures\""));
-        assert!(html.contains("196 nicht visuell geprüft"));
+        assert!(html.contains("196 not visually checked"));
         assert!(html.contains("1 unchanged worksheets · 0 with differences"));
         assert!(html.contains("<strong>0</strong><span>Unchanged</span>"));
         assert!(!html.contains("id=\"unchanged\""));
@@ -404,13 +404,13 @@ mod tests {
         let mixed_section = &main[position("mixed")..position("height")];
         assert!(mixed_section.find("Sheet 02").unwrap() < mixed_section.find("Sheet 01").unwrap());
         assert!(
-            mixed_section.find("verbleibende Unterschiede").unwrap()
+            mixed_section.find("remaining differences").unwrap()
                 < mixed_section.find("<h3>maximum-cleaning").unwrap()
         );
         assert!(mixed_section.contains("data-change-category=\"other\" open"));
         assert!(main.contains("data-change-category=\"whitespace\" data-search="));
         assert!(html.contains("data-collapse-category=\"height\" checked"));
-        assert!(html.contains("weitere Bildunterschiede nicht vollständig geprüft"));
+        assert!(html.contains("remaining visual differences not fully checked"));
         fs::remove_dir_all(dir)?;
         Ok(())
     }
@@ -455,7 +455,7 @@ mod tests {
         assert!(html.contains("Previously verified"));
         assert!(html.contains("90.00%"));
         assert!(html.contains("1.25 s"));
-        assert!(html.contains("Whitespace-Ursache noch nicht untersucht"));
+        assert!(html.contains("Whitespace cause not yet investigated"));
         assert_eq!(
             html.matches("data-whitespace-diagnosis=\"not-investigated\"")
                 .count(),
@@ -500,14 +500,14 @@ mod tests {
                             "original_open_seconds":2.0,"shrunk_open_seconds":1.0}]}]});
         let all = fs::read_to_string(write(&dir, &report)?)?;
         assert!(all.contains("2 unchanged · 0 with differences · 0 skipped/errors"));
-        assert!(all.contains("Davon 1 mit unveränderten Paketinhalten"));
+        assert!(all.contains("Includes 1 with equivalent package contents"));
         assert!(!all.contains("visually unchanged workbooks"));
         let a = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "a"))))?;
-        assert!(a.contains("Unveränderte Paketinhalte – Excel-Vergleich ausgelassen"));
-        assert!(a.contains("nicht als visuell geprüft"));
-        assert!(a.contains("gegen die vorbereitete Vergleichsbasis geprüft"));
+        assert!(a.contains("Equivalent package contents – Excel comparison omitted"));
+        assert!(a.contains("not visually verified"));
+        assert!(a.contains("checked against the prepared baseline"));
         assert!(a.contains(
-            "Die Vergleichsbasis wurde bereits vor dem Shrinken in workbook.xml bereinigt"
+            "The workbook.xml baseline was repaired before shrinking"
         ));
         assert!(a.contains("1.25 s"));
         assert!(a.contains("10.00%"));
@@ -519,8 +519,8 @@ mod tests {
         let b = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "b"))))?;
         assert!(b.contains("visually unchanged"));
         assert!(b.contains("2.00 s → 1.00 s"));
-        assert!(!b.contains("Davon 1 mit unveränderten Paketinhalten"));
-        assert!(!b.contains("Excel-Vergleich ausgelassen"));
+        assert!(!b.contains("Includes 1 with equivalent package contents"));
+        assert!(!b.contains("Excel comparison omitted"));
         fs::remove_dir_all(dir)?;
         Ok(())
     }

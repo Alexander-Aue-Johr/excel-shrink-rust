@@ -83,18 +83,18 @@ pub(super) fn rank(category: &str) -> u8 {
 
 pub(super) fn label(category: &str) -> &'static str {
     match category {
-        "whitespace" => "Durch Whitespace-Löschung erklärte Bildunterschiede",
-        "height" => "Zeilenhöhe geändert – weitere Bildunterschiede nicht vollständig geprüft",
-        _ => "Andere oder noch ungeklärte Unterschiede",
+        "whitespace" => "Visual differences explained by whitespace removal",
+        "height" => "Row heights changed – remaining visual differences not fully checked",
+        _ => "Other or unexplained differences",
     }
 }
 
 pub(super) fn diagnosis_label(file: &Value) -> &str {
     match text(&file["whitespace_diagnosis"], "status") {
-        "complete" => "Whitespace-Zusatzdiagnose abgeschlossen; Zuordnung je Blatt und Profil.",
-        "failed" => "Whitespace-Zusatzdiagnose fehlgeschlagen; die Ursache bleibt ungeklärt.",
-        "running" => "Whitespace-Zusatzdiagnose läuft; die Ursache bleibt vorerst ungeklärt.",
-        _ => "Whitespace-Ursache noch nicht untersucht. Die vorhandenen Unterschiede sind keiner Whitespace-Ursache zugeordnet.",
+        "complete" => "Whitespace diagnosis completed; attribution is recorded per sheet and profile.",
+        "failed" => "Whitespace diagnosis failed; the cause remains unexplained.",
+        "running" => "Whitespace diagnosis is running; the cause is not yet established.",
+        _ => "Whitespace cause not yet investigated. Existing differences have not been attributed to whitespace removal.",
     }
 }
 

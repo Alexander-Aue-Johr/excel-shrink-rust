@@ -22,9 +22,9 @@ pub(super) fn unchanged(html: &mut String, files: &[&Value]) {
             html.push_str("<tr><td colspan=\"5\" class=\"muted\">Converted from XLS; comparisons and reduction measurements use the converted XLSX baseline.</td></tr>");
         }
         if is_package_unchanged(file) {
-            html.push_str("<tr><td colspan=\"5\" lang=\"de\"><strong>Unveränderte Paketinhalte – Excel-Vergleich ausgelassen</strong><p>Die Inhalte aller drei Shrink-Profile wurden gegen die vorbereitete Vergleichsbasis geprüft. Alle ZIP-Einträge müssen übereinstimmen; nur nachgewiesen redundante definierte Namen in workbook.xml dürfen entfernt sein. ZIP-Kompression und Verpackungsmetadaten bleiben dabei unberücksichtigt. Bildvergleich, Excel-Werteprüfung und Öffnungsmessungen wurden nicht ausgeführt.</p>");
+            html.push_str("<tr><td colspan=\"5\"><strong>Equivalent package contents – Excel comparison omitted</strong><p>All three cleaning profiles were checked against the prepared baseline. ZIP member contents must match, except for proven redundant defined names removed from workbook.xml. ZIP compression and packaging metadata are ignored. Image comparison, Excel value checks and startup measurements were not run.</p>");
             if file["baseline_repaired"] == true {
-                html.push_str("<p>Die Vergleichsbasis wurde bereits vor dem Shrinken in workbook.xml bereinigt. Dieser Paketnachweis bezieht sich auf diese Basis, nicht auf die unveränderte Quelldatei.</p>");
+                html.push_str("<p>The workbook.xml baseline was repaired before shrinking. This package-equivalence proof refers to that baseline, rather than the unchanged source file.</p>");
             }
             html.push_str("</td></tr>");
         }
