@@ -105,6 +105,7 @@ pub(super) fn recoverable_failure(record: &Value) -> Option<&'static str> {
             match token {
                 "IMAGE_BUDGET" => return Some("IMAGE_BUDGET"),
                 "TASKPANE_RESTARTED" => return Some("TASKPANE_RESTARTED"),
+                "TASKPANE_CONTEXT_CHANGED" => return Some("TASKPANE_CONTEXT_CHANGED"),
                 "InvalidOperationInCellEditMode" => return Some("InvalidOperationInCellEditMode"),
                 _ => {}
             }
@@ -238,6 +239,7 @@ mod tests {
         for code in [
             "IMAGE_BUDGET",
             "TASKPANE_RESTARTED",
+            "TASKPANE_CONTEXT_CHANGED",
             "InvalidOperationInCellEditMode",
         ] {
             let mut record = adaptive_failure();
@@ -297,6 +299,7 @@ mod tests {
             "drawing anchor exceeds capture boundary",
             "workbook timed out",
             "IMAGE_BUDGET_OTHER",
+            "TASKPANE_CONTEXT_CHANGED_OTHER",
             "InvalidOperationInCellEditModeOther",
         ] {
             record["error"] = json!(error);
@@ -358,6 +361,26 @@ mod tests {
         );
         assert_eq!(recoverable_failure(&next), None);
         assert_eq!(run["options"]["resident_capture"], true);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn changed_taskpane_context_retries_without_relabelling_the_original_failure() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "context-fallback")?;
+        let mut previous = failed_record();
+        previous["error"] = json!("resident original/000001: {\"code\":\"TASKPANE_CONTEXT_CHANGED\",\"message\":\"A different taskpane document connected after work started; this does not establish a crash.\"}");
+        previous["results"][0]["native_startup"] = json!({"method":"launch-to-addin-ready-v1","original":{"seconds":3.0}});
+        let reason = recoverable_failure(&previous).expect("new context errors must remain recoverable");
+        assert_eq!(reason,"TASKPANE_CONTEXT_CHANGED");
+        let next = prepare_retry(&root,"source:42:context.xlsx",&previous,
+            &json!({"run_id":"test-run","options":{"comparison_workers":4}}),reason)?;
+        assert_eq!(next["comparison_fallback"]["reason_code"],reason);
+        assert_eq!(next["comparison_fallback"]["original_attempt"]["error"],previous["error"]);
+        let path = next["comparison_fallback"]["original_attempt"]["record_snapshot"].as_str().unwrap();
+        let saved: Value = serde_json::from_slice(&fs::read(root.join(path))?)?;
+        assert_eq!(saved,previous);
+        assert!(recoverable_failure(&next).is_none(),"classic retries must not recurse");
         fs::remove_dir_all(root)?;
         Ok(())
     }
