@@ -80,10 +80,23 @@ function Start-StudyLaunch {
             # terminal. Its stdout/stderr stay on disk when VS Code closes.
             $process=Start-Process -FilePath $Plan.Executable -ArgumentList $Plan.CommandLine -WorkingDirectory $Repo -WindowStyle Hidden -RedirectStandardOutput $Plan.Stdout -RedirectStandardError $Plan.Stderr -PassThru
         } finally { foreach($key in $original.Keys){[Environment]::SetEnvironmentVariable($key,$original[$key],'Process')} }
+        # Keep Excel's own diagnostic logs from filling the system drive. The
+        # helper exits when this exact runner process ends (PID reuse checked).
+        $diagnosticCleanup = $null
+        try {
+            $cleanupScript = Join-Path $Repo 'tools/clear-excel-diagnostics.ps1'
+            $cleanupStatus = Join-Path $Plan.RunDirectory 'excel-diagnostics-cleanup.json'
+            $cleanupArguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',
+                $cleanupScript,'-OwnerPid',[string]$process.Id,'-OwnerStartedTicks',
+                [string]$process.StartTime.ToUniversalTime().Ticks,'-StatusPath',$cleanupStatus)
+            $cleanupCommandLine = ($cleanupArguments | ForEach-Object { ConvertTo-WindowsArgument ([string]$_) }) -join ' '
+            $helper = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') -ArgumentList $cleanupCommandLine -WorkingDirectory $Repo -WindowStyle Hidden -PassThru
+            $diagnosticCleanup = @{Pid=$helper.Id; StatusPath=$cleanupStatus; IntervalSeconds=30; MinimumAgeSeconds=60}
+        } catch { Write-Warning "Excel diagnostic cleanup could not start: $($_.Exception.Message)" }
         $binaryHash=(Get-FileHash -LiteralPath $Plan.Executable -Algorithm SHA256).Hash.ToLowerInvariant()
         $commit=$null
         try { $commit=(& git -C $Repo rev-parse HEAD 2>$null).Trim() } catch { }
-        $receipt=[pscustomobject][ordered]@{ version=1; Pid=$process.Id; StartedUtc=$process.StartTime.ToUniversalTime().ToString('o'); Executable=$Plan.Executable; BinarySha256=$binaryHash; Commit=$commit;
+        $receipt=[pscustomobject][ordered]@{ version=1; ExcelDiagnosticsCleanup=$diagnosticCleanup; Pid=$process.Id; StartedUtc=$process.StartTime.ToUniversalTime().ToString('o'); Executable=$Plan.Executable; BinarySha256=$binaryHash; Commit=$commit;
             RequestFile=$Plan.RequestFile; OutputRoot=$Plan.OutputRoot; RunCorpus=$Configuration.settings.corpus; MachineLabel=$Configuration.settings.machine_label;
             Arguments=$Plan.Arguments; Environment=$Plan.Environment; ConfigurationPath=$ConfigurationPath; Settings=$Configuration.settings;
             Stdout=$Plan.Stdout; Stderr=$Plan.Stderr; Report=(Join-Path $Plan.OutputRoot 'report.html'); ControlRoom=$Plan.Observatory; ExportResults=$Plan.ExportResults; RunMetadata=(Join-Path $Plan.RunDirectory 'launch.json') }

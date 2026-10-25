@@ -202,3 +202,14 @@ These checks use synthetic ZIPs and a short-lived fake runner under
 rebind rejection, partition/order controls, group count zero, output locking,
 Windows argument quoting, detached process metadata and environment restoration.
 No real corpus is downloaded or processed, and no Excel process is started.
+
+Excel diagnostic logs under `%LOCALAPPDATA%\Temp\Diagnostics\EXCEL` are pruned
+by a hidden helper every 30 seconds while the exact runner PID/start time lives.
+Only `.log` files older than 60 seconds are removed; locked files and reparse
+points are skipped. The launch receipt contains `ExcelDiagnosticsCleanup` and
+the run directory's `excel-diagnostics-cleanup.json` records the last pass.
+Reports and corpus artefacts are outside this cleanup root. Manual one-off:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/clear-excel-diagnostics.ps1 -Once
+```
