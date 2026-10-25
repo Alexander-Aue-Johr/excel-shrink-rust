@@ -742,11 +742,13 @@ function updateControlInputs() {
   if (document.activeElement !== $('groupRange') && !dirtyControls.has('targetGroups')) $('groupRange').value = String(values.target_groups ?? 1);
   const draining = values.target_groups === 0;
   const active = activeGroupCount(state.queue);
-  $('captureState').textContent = state.queue?.running === false ? 'Ended' : draining ? state.queue?.phase === 'paused' ? 'Run paused' : `${active} groups finishing` : values.paused ? 'Captures paused' : 'Running';
+  const diskGuard = state.queue?.admission_guard;
+  $('captureState').textContent = state.queue?.running === false ? 'Ended' : draining ? state.queue?.phase === 'paused' ? 'Run paused' : `${active} groups finishing` : diskGuard?.blocked ? 'Waiting for disk space' : values.paused ? 'Captures paused' : 'Running';
   $('pauseJobs').textContent = values.paused ? 'Resume captures' : 'Pause captures';
   $('pauseJobs').disabled = controlBusy || draining || state.queue?.running === false;
   $('pauseNote').textContent = state.queue?.running === false ? 'The run has ended. Its saved images remain available.'
     : draining ? 'Target 0: workbooks already in progress will finish. Increase the group target to resume.'
+    : diskGuard?.blocked ? `${diskGuard.message}${diskGuard.free_bytes != null ? ` Free: ${(diskGuard.free_bytes / 1073741824).toFixed(2)} GiB.` : ''}${diskGuard.error ? ` ${diskGuard.error}` : ''}`
     : values.paused ? 'Jobs already in progress will finish. New captures wait.' : 'Pausing captures keeps Excel open. A group target of 0 lets workbooks finish completely.';
   $('activeGroups').textContent = `${active} admitted · target ${values.target_groups ?? '—'}`;
 }

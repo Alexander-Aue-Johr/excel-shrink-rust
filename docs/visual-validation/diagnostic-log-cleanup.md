@@ -32,6 +32,13 @@ are queried per pass, with newly created logs considered first. Historical unkno
 logs may remain; a low-space warning must not be interpreted as permission to
 delete them.
 
+On native Windows, the interactive scheduler samples free space on the Excel
+diagnostic volume at most once per second. Below 2 GiB, or when the query fails,
+it stops admitting new groups while existing work finishes. It preserves the
+user's group target and resumes admission automatically when the query reports
+enough space. `queue.admission_guard` and the Observatory show the reason and
+available space. WSL does not infer Windows free space from Linux counters.
+
 Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File
 tools/corpus-launcher/diagnostics-cleanup.tests.ps1` for the native ownership tests.
 They cover live/dead/reused PIDs, delete-sharing handles, blank logs observed while

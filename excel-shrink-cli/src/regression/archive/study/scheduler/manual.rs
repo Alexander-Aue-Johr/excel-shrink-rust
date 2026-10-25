@@ -1,6 +1,8 @@
 //! Admit groups directly from the user's live target, without predicting their RAM.
 use super::super::control_room::{self, Controls};
 use super::*;
+#[path = "disk_space.rs"]
+mod disk_space;
 #[path = "manual_restarts.rs"]
 mod restarts;
 use std::collections::BTreeMap;
@@ -95,13 +97,17 @@ fn slots_to_start(target: usize, open: usize, pending: usize, draining: bool) ->
 }
 
 fn update_phase(queue: &mut Value, target: usize) {
-    queue["phase"] = json!(if target > 0 {
-        "comparing"
-    } else if queue["open_groups"].as_u64().unwrap_or(0) > 0 {
-        "draining"
-    } else {
-        "paused"
-    });
+    queue["phase"] = json!(
+        if target > 0 && queue["admission_guard"]["blocked"] == true {
+            "waiting_disk"
+        } else if target > 0 {
+            "comparing"
+        } else if queue["open_groups"].as_u64().unwrap_or(0) > 0 {
+            "draining"
+        } else {
+            "paused"
+        }
+    );
 }
 
 fn begin_classic_retry(queue: &mut Value, id: &str, target: usize) {
@@ -181,6 +187,7 @@ pub(super) fn compare(
     let mut report_dirty = false;
     let mut last_report = Instant::now();
     let mut queued_restarts = BTreeMap::new();
+    let mut disk_guard = disk_space::Guard::new();
     loop {
         restarts::poll(
             &room,
@@ -197,6 +204,15 @@ pub(super) fn compare(
         };
         if initial_admission.as_deref() != Some(front.id.as_str()) {
             control_room::wait_for_admission(output, "comparing")?;
+        }
+        if !disk_guard.allows_admission(&mut queue, provenance::now_ms()) {
+            if let Ok(updated) = Controls::read(&room) {
+                controls = updated;
+            }
+            update_phase(&mut queue, controls.target_groups);
+            control_room::write(&room.join("queue.json"), &queue)?;
+            std::thread::sleep(Duration::from_secs(1));
+            continue;
         }
         if !reusable_preparation(
             &records[front.position],
@@ -318,7 +334,8 @@ pub(super) fn compare(
                     },
                     active.iter().filter(|group| !group.finished).count(),
                     pending.len(),
-                    !cleanup.admission_open(),
+                    !cleanup.admission_open()
+                        || !disk_guard.allows_admission(&mut queue, provenance::now_ms()),
                 );
                 for _ in 0..count {
                     let job = pending.pop_front().unwrap();
@@ -586,6 +603,15 @@ pub(super) fn compare(
                 continue;
             }
             let id = control_room::group_id(&job.job.id);
+            while !disk_guard.allows_admission(&mut queue, provenance::now_ms()) {
+                if let Ok(updated) = Controls::read(&room) {
+                    controls = updated;
+                }
+                refresh_groups(&mut queue, &active, records, pending.len());
+                update_phase(&mut queue, controls.target_groups);
+                control_room::write(&room.join("queue.json"), &queue)?;
+                std::thread::sleep(Duration::from_secs(1));
+            }
             if let Ok(updated) = Controls::read(&room) {
                 controls = updated;
             }
@@ -658,6 +684,22 @@ mod tests {
         assert_eq!(slots_to_start(24, 2, 100, true), 0);
         assert_eq!(slots_to_start(0, 0, 100, false), 0);
         assert_eq!(slots_to_start(0, 20, 100, false), 0);
+    }
+
+    #[test]
+    fn disk_guard_does_not_overwrite_target_or_cancel_active_work() {
+        let mut queue = json!({"open_groups":4,"admission_guard":{"blocked":true}});
+        update_phase(&mut queue, 24);
+        assert_eq!(queue["phase"], "waiting_disk");
+        assert_eq!(queue["open_groups"], 4);
+        assert_eq!(slots_to_start(24, 4, 100, true), 0);
+        queue["admission_guard"]["blocked"] = json!(false);
+        update_phase(&mut queue, 24);
+        assert_eq!(queue["phase"], "comparing");
+        assert_eq!(slots_to_start(24, 4, 100, false), 20);
+        queue["admission_guard"]["blocked"] = json!(true);
+        update_phase(&mut queue, 0);
+        assert_eq!(queue["phase"], "draining");
     }
 
     #[test]
