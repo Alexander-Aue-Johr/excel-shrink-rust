@@ -31,6 +31,7 @@ use excel_shrink_core::xml::namespaces::{
 };
 use excel_shrink_core::xml::{find_byte_from, find_bytes};
 
+use crate::batch_report::{FileOutcome, Status};
 use crate::Cli;
 use excel_shrink_core::profiling::{self, Handoff, ResourceGuard};
 
@@ -124,18 +125,23 @@ struct BatchProgress {
     files_completed: Arc<AtomicUsize>,
     files_active: Arc<AtomicUsize>,
     files_total: usize,
+    files_failed: Arc<AtomicUsize>,
+    outcomes: Option<Arc<Mutex<Vec<FileOutcome>>>>,
 }
 
 impl BatchProgress {
-    fn new(files_total: usize) -> Self {
+    fn new(files_total: usize, report: bool) -> Self {
         Self {
             files_completed: Arc::new(AtomicUsize::new(0)),
             files_active: Arc::new(AtomicUsize::new(0)),
             files_total,
+            files_failed: Arc::new(AtomicUsize::new(0)),
+            outcomes: report.then(|| Arc::new(Mutex::new(Vec::with_capacity(files_total)))),
         }
     }
 
-    fn start_file(&self, xlsx: String) -> XlsxProgress {
+    fn start_file(&self, input: &Path, output: &Path) -> XlsxProgress {
+        let xlsx = input.display().to_string();
         let files_active = self.files_active.fetch_add(1, Ordering::Relaxed) + 1;
         let files_completed = self.files_completed.load(Ordering::Relaxed);
         let files_remaining = self.files_total.saturating_sub(files_completed);
@@ -154,6 +160,10 @@ impl BatchProgress {
             batch: self.clone(),
             xlsx,
             finished: false,
+            input: input.to_owned(),
+            output: output.to_owned(),
+            started: Instant::now(),
+            failure: None,
         }
     }
 }
@@ -162,6 +172,10 @@ struct XlsxProgress {
     batch: BatchProgress,
     xlsx: String,
     finished: bool,
+    input: PathBuf,
+    output: PathBuf,
+    started: Instant,
+    failure: Option<String>,
 }
 
 impl XlsxProgress {
@@ -176,6 +190,32 @@ impl XlsxProgress {
     ) {
         if !self.finished {
             self.finished = true;
+            let status = match event {
+                "file_written" => Status::Processed,
+                "file_preserved" => Status::Preserved,
+                "file_skipped" => Status::Skipped,
+                _ => Status::Failed,
+            };
+            if status == Status::Failed {
+                self.batch.files_failed.fetch_add(1, Ordering::Relaxed);
+            }
+            if let Some(outcomes) = &self.batch.outcomes {
+                outcomes.lock().unwrap().push(FileOutcome {
+                    input: self.input.clone(),
+                    output: self.output.clone(),
+                    status,
+                    elapsed_ms: self.started.elapsed().as_millis(),
+                    input_bytes: std::fs::metadata(&self.input).ok().map(|meta| meta.len()),
+                    output_bytes: (output_written || status == Status::Skipped)
+                        .then(|| std::fs::metadata(&self.output).ok().map(|meta| meta.len()))
+                        .flatten(),
+                    reason: if status == Status::Processed {
+                        None
+                    } else {
+                        Some(self.failure.clone().unwrap_or_else(|| message.to_owned()))
+                    },
+                });
+            }
             let files_completed = self.batch.files_completed.fetch_add(1, Ordering::Relaxed) + 1;
             let files_active = self
                 .batch
@@ -942,11 +982,14 @@ fn write_xlsx(
     let _workbook_permit = workbook_permit;
     let writer_start = Instant::now();
     let Some(mut source_archive) = open_source_archive(&input_path, &input_display) else {
+        progress.failure =
+            Some("Could not open source archive for writing; see log for details".into());
         return;
     };
     let Some((partial_out_path, buffered_output)) =
         prepare_partial_output(&out_path, &input_display)
     else {
+        progress.failure = Some("Could not create output file; see log for details".into());
         return;
     };
 
@@ -960,10 +1003,13 @@ fn write_xlsx(
                 "Could not remove aborted partial XLSX");
         }
         error!(event = "file_write_aborted", xlsx = %input_display,
-            "No output published because a worksheet could not be parsed completely");
+            "No output published because an archive entry could not be processed");
+        progress.failure =
+            Some("An archive entry could not be processed; see log for details".into());
         return;
     }
     if !finish_output_archive(zip_writer, &partial_out_path, &out_path, &input_display) {
+        progress.failure = Some("Could not finish output file; see log for details".into());
         return;
     }
 
@@ -1077,9 +1123,12 @@ fn copy_write_jobs(
             continue;
         }
         let started = Instant::now();
-        copy_write_job(queued.job, source_archive, zip_writer, input_display);
+        timings.aborted |= !copy_write_job(queued.job, source_archive, zip_writer, input_display);
         timings.copy += started.elapsed();
     }
+    // Each input entry must be copied or replaced once. A disconnected sender
+    // after a planning failure must not publish an incomplete workbook.
+    timings.aborted |= timings.jobs != source_archive.len();
     timings
 }
 
@@ -1088,7 +1137,7 @@ fn copy_write_job(
     source_archive: &mut ZipArchive<File>,
     zip_writer: &mut ZipWriter<BufWriter<File>>,
     input_display: &str,
-) {
+) -> bool {
     let filename = match &job {
         WriteJob::Abort { filename }
         | WriteJob::CopyOriginal { filename, .. }
@@ -1112,7 +1161,9 @@ fn copy_write_job(
                 zip_bytes,
             ) {
                 error!(event = "zip_entry_precompressed_copy_failed", xlsx = %input_display, entry = %filename, error = %error, "Copy precompressed failed");
+                return false;
             }
+            true
         }
     }
 }
@@ -1123,17 +1174,19 @@ fn copy_original_entry(
     source_archive: &mut ZipArchive<File>,
     zip_writer: &mut ZipWriter<BufWriter<File>>,
     input_display: &str,
-) {
+) -> bool {
     let file = match source_archive.by_index(index) {
         Ok(file) => file,
         Err(error) => {
             error!(event = "zip_entry_lookup_failed", xlsx = %input_display, entry = %filename, index, error = %error, "Failed to find original ZIP entry by index");
-            return;
+            return false;
         }
     };
     if let Err(error) = zip_writer.raw_copy_file(file) {
         error!(event = "zip_entry_raw_copy_failed", xlsx = %input_display, entry = %filename, error = %error, "Failed to raw-copy original ZIP entry");
+        return false;
     }
+    true
 }
 
 fn finish_output_archive(
@@ -2733,6 +2786,7 @@ fn report_namespace_exclusion(progress: &mut XlsxProgress, input: &str, part: &s
 
 fn process_file(
     input: &PathBuf,
+    out_path: &Path,
     cli: &Cli,
     writer_pool: &ThreadPool,
     workbook_limiter: &WorkbookLimiter,
@@ -2745,9 +2799,8 @@ fn process_file(
     let workbook_permit = workbook_limiter.acquire(&input_display);
     let file_start = Instant::now();
     let active_tasks = active_tasks.clone();
-    let mut file_progress = batch_progress.start_file(input_display.clone());
+    let mut file_progress = batch_progress.start_file(input, out_path);
 
-    let out_path = cli.output.join(input.file_name().unwrap());
     if out_path.exists() && !cli.force_overwrite {
         warn!("Output file {:?} already exists. Skipping.", out_path);
         file_progress.finish(
@@ -2755,7 +2808,7 @@ fn process_file(
             false,
             file_start.elapsed().as_millis(),
             None,
-            Some(&out_path),
+            Some(out_path),
             "Skipped XLSX because output file already exists",
         );
         return;
@@ -2765,6 +2818,7 @@ fn process_file(
         Ok(file) => file,
         Err(error) => {
             error!("Failed to open file {:?}: {}", input, error);
+            file_progress.failure = Some(format!("Could not open input file: {error}"));
             return;
         }
     };
@@ -2772,6 +2826,7 @@ fn process_file(
         Ok(archive) => archive,
         Err(error) => {
             error!("Failed to parse ZIP archive {:?}: {}", input, error);
+            file_progress.failure = Some(format!("Invalid ZIP archive: {error}"));
             return;
         }
     };
@@ -2791,10 +2846,12 @@ fn process_file(
         Err(error) => {
             error!(event = "namespace_preflight_failed", xlsx = %input_display, error = %error,
                 "Could not check XML namespaces; no output was written");
+            file_progress.failure = Some(format!("Namespace check failed: {error}"));
             return;
         }
     }
     let Some(file_bytes) = read_input_file(input, archive.into_inner()) else {
+        file_progress.failure = Some("Could not read input file; see log for details".into());
         return;
     };
     let mut archive = match ZipArchive::new(Cursor::new(file_bytes.as_slice())) {
@@ -2824,7 +2881,7 @@ fn process_file(
     spawn_xlsx_writer(
         writer_pool,
         input.clone(),
-        out_path,
+        out_path.to_owned(),
         rx,
         input_display.clone(),
         file_progress,
@@ -3023,9 +3080,11 @@ fn process_file(
 
 pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()> {
     let _profile = profiling::phase("batch", "", "");
+    let started = Instant::now();
+    let input_files = batch_paths(input_files, cli)?;
     ensure_output_directory(cli)?;
     let (analysis_tx, analysis_handle) = start_optional_analysis_writer(cli)?;
-    let batch_progress = BatchProgress::new(input_files.len());
+    let batch_progress = BatchProgress::new(input_files.len(), cli.batch_report.is_some());
     let active_tasks: ActiveTasks = Arc::new(Mutex::new(HashMap::new()));
     let (stop_watchdog_tx, watchdog_handle) = start_watchdog(active_tasks.clone());
     let writer_workers = configured_worker_count(cli.writer_workers);
@@ -3050,7 +3109,52 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
         stop_watchdog_tx,
         watchdog_handle,
     );
+    if let (Some(path), Some(outcomes)) = (&cli.batch_report, &batch_progress.outcomes) {
+        crate::batch_report::write(
+            path,
+            started.elapsed().as_millis(),
+            &mut outcomes.lock().unwrap(),
+        )?;
+    }
+    let failed = batch_progress.files_failed.load(Ordering::Relaxed);
+    anyhow::ensure!(
+        failed == 0,
+        "{failed} of {} XLSX files failed; see log or batch report for details",
+        input_files.len()
+    );
     Ok(())
+}
+
+fn batch_paths(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<Vec<(PathBuf, PathBuf)>> {
+    let is_directory = cli.path.is_dir();
+    let mut outputs = HashSet::new();
+    input_files
+        .into_iter()
+        .map(|input| {
+            let relative = if is_directory {
+                input.strip_prefix(&cli.path)?
+            } else {
+                Path::new(input.file_name().ok_or_else(|| {
+                    anyhow::anyhow!("Input has no file name: {}", input.display())
+                })?)
+            };
+            anyhow::ensure!(
+                relative.components().all(|part| matches!(
+                    part,
+                    std::path::Component::Normal(_) | std::path::Component::CurDir
+                )),
+                "Input path is outside the input directory: {}",
+                input.display()
+            );
+            let output = cli.output.join(relative);
+            anyhow::ensure!(
+                outputs.insert(output.clone()),
+                "Multiple inputs map to the same output: {}",
+                output.display()
+            );
+            Ok((input, output))
+        })
+        .collect()
 }
 
 fn ensure_output_directory(cli: &Cli) -> anyhow::Result<()> {
@@ -3095,7 +3199,7 @@ fn log_batch_plan(
 }
 
 fn run_input_files(
-    input_files: &[PathBuf],
+    input_files: &[(PathBuf, PathBuf)],
     cli: &Cli,
     writer_pool: &ThreadPool,
     workbook_limiter: &WorkbookLimiter,
@@ -3103,9 +3207,10 @@ fn run_input_files(
     active_tasks: &ActiveTasks,
     analysis_tx: Option<mpsc::Sender<AnalysisCsvRow>>,
 ) {
-    let process = |input: &PathBuf| {
+    let process = |(input, output): &(PathBuf, PathBuf)| {
         process_file(
             input,
+            output,
             cli,
             writer_pool,
             workbook_limiter,

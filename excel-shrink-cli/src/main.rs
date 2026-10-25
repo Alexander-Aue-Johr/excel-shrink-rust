@@ -6,6 +6,7 @@ use tracing::info;
 use tracing_appender::rolling;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
+mod batch_report;
 mod console_writer;
 mod pipeline;
 mod profiling;
@@ -24,12 +25,16 @@ pub struct Cli {
     /// Path to xlsx file or directory containing xlsx files
     path: PathBuf,
 
-    /// Path to output directory or file
+    /// Output directory. Directory inputs keep their relative paths.
     output: PathBuf,
 
     /// Recursively process directories
     #[arg(long)]
     recursive: bool,
+
+    /// Write a JSON summary with the outcome of every input file.
+    #[arg(long)]
+    batch_report: Option<PathBuf>,
 
     /// Run in single-threaded mode (no multiprocessing)
     #[arg(long)]
@@ -72,7 +77,7 @@ pub struct Cli {
     #[arg(long)]
     analysis_csv: Option<PathBuf>,
 
-    /// Resolve relative input, output, log, and analysis CSV paths from this directory.
+    /// Resolve relative input, output, log, and report paths from this directory.
     #[arg(long)]
     working_directory: Option<PathBuf>,
 
@@ -270,7 +275,6 @@ fn run_cleanup_pipeline(cli: &Cli) -> anyhow::Result<()> {
     let files = gather_files(&cli.path, cli.recursive)?;
     if files.is_empty() {
         info!("No XLSX files found.");
-        return Ok(());
     }
     info!(files_total = files.len(), "Found XLSX files");
 
@@ -402,25 +406,31 @@ fn gather_files(path: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>
     }
 
     if recursive {
-        Ok(gather_files_recursively(path))
+        gather_files_recursively(path)
     } else {
         gather_files_in_directory(path)
     }
 }
 
-fn gather_files_recursively(path: &std::path::Path) -> Vec<PathBuf> {
+fn gather_files_recursively(path: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
     walkdir::WalkDir::new(path)
         .into_iter()
-        .filter_map(Result::ok)
-        .filter(|entry| is_real_xlsx_file(entry.path()))
-        .map(|entry| entry.path().to_path_buf())
+        .filter_map(|entry| match entry {
+            Ok(entry) if entry.path().is_file() && is_real_xlsx_file(entry.path()) => {
+                Some(Ok(entry.path().to_path_buf()))
+            }
+            Ok(_) => None,
+            Err(error) => Some(Err(error.into())),
+        })
         .collect()
 }
 
 fn gather_files_in_directory(path: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
     std::fs::read_dir(path)?
         .filter_map(|entry| match entry {
-            Ok(entry) if is_real_xlsx_file(&entry.path()) => Some(Ok(entry.path())),
+            Ok(entry) if entry.path().is_file() && is_real_xlsx_file(&entry.path()) => {
+                Some(Ok(entry.path()))
+            }
             Ok(_) => None,
             Err(error) => Some(Err(error)),
         })

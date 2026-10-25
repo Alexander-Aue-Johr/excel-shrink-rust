@@ -20,6 +20,7 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         path: PathBuf::from("input.xlsx"),
         output: PathBuf::from("out"),
         recursive: false,
+        batch_report: None,
         disable_multiprocessing: false,
         chunk_size: 16_777_216,
         parallel_range_chunk_size: crate::DEFAULT_PARALLEL_RANGE_CHUNK_SIZE,
@@ -376,7 +377,7 @@ fn incomplete_sheet_aborts_the_workbook_without_replacing_existing_output() {
     cli.writer_workers = Some(1);
     cli.chunk_size = 7;
     let target = cli.output.join(input.file_name().unwrap());
-    process_files(vec![input.clone()], &cli).unwrap();
+    assert!(process_files(vec![input.clone()], &cli).is_err());
     assert!(
         !target.exists(),
         "an incomplete workbook must not be published"
@@ -386,12 +387,93 @@ fn incomplete_sheet_aborts_the_workbook_without_replacing_existing_output() {
         "aborted partial output must be removed"
     );
     std::fs::write(&target, b"previous output must survive").unwrap();
-    process_files(vec![input], &cli).unwrap();
+    assert!(process_files(vec![input], &cli).is_err());
     assert_eq!(
         std::fs::read(&target).unwrap(),
         b"previous output must survive"
     );
     assert!(!partial_output_path(&target).exists());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+fn batch_test_directory(label: &str) -> PathBuf {
+    let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!("excel_shrink_{label}_{}_{unique}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    root
+}
+
+fn write_batch_test_workbook(path: &Path, sheet: &[u8]) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut writer = ZipWriter::new(File::create(path).unwrap());
+    for (name, bytes) in [
+        ("xl/workbook.xml", br#"<workbook><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>"#.as_slice()),
+        ("xl/worksheets/sheet1.xml", sheet),
+    ] {
+        writer.start_file(name, FileOptions::default()).unwrap();
+        writer.write_all(bytes).unwrap();
+    }
+    writer.finish().unwrap();
+}
+
+#[test]
+fn directory_batch_preserves_paths_with_duplicate_file_names() {
+    let root = batch_test_directory("batch_paths");
+    let mut cli = cli_with_analysis_flags(false, None);
+    cli.path = root.join("input");
+    cli.output = root.join("output");
+    cli.recursive = true;
+    cli.writer_workers = Some(2);
+    for (directory, value) in [("sales", 10), ("finance", 20)] {
+        let sheet = format!("<worksheet><sheetData><row r=\"1\"><c r=\"A1\"><v>{value}</v></c></row></sheetData></worksheet>");
+        write_batch_test_workbook(&cli.path.join(directory).join("book.xlsx"), sheet.as_bytes());
+    }
+    let inputs = crate::gather_files(&cli.path, cli.recursive).unwrap();
+    assert_eq!(inputs.len(), 2);
+    process_files(inputs, &cli).unwrap();
+    for (directory, value) in [("sales", 10), ("finance", 20)] {
+        let mut archive = ZipArchive::new(File::open(cli.output.join(directory).join("book.xlsx")).unwrap()).unwrap();
+        let mut sheet = String::new();
+        archive.by_name("xl/worksheets/sheet1.xml").unwrap().read_to_string(&mut sheet).unwrap();
+        assert!(sheet.contains(&format!("<v>{value}</v>")));
+    }
+    assert!(!cli.output.join("book.xlsx").exists());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn batch_report_accounts_for_success_preservation_skips_and_failures() {
+    let root = batch_test_directory("batch_report");
+    let mut cli = cli_with_analysis_flags(false, None);
+    cli.path = root.join("input");
+    cli.output = root.join("output");
+    cli.batch_report = Some(root.join("reports/batch.json"));
+    cli.writer_workers = Some(2);
+    let ordinary = br#"<worksheet><sheetData><row r="1"><c r="A1"><v>42</v></c></row></sheetData></worksheet>"#;
+    write_batch_test_workbook(&cli.path.join("good.xlsx"), ordinary);
+    write_batch_test_workbook(&cli.path.join("skipped.xlsx"), ordinary);
+    write_batch_test_workbook(&cli.path.join("preserved.xlsx"), br#"<p:worksheet xmlns:p="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><p:sheetData/></p:worksheet>"#);
+    write_batch_test_workbook(&cli.path.join("incomplete.xlsx"), b"<worksheet><sheetData/>");
+    std::fs::write(cli.path.join("invalid.xlsx"), b"not a ZIP file").unwrap();
+    std::fs::create_dir_all(&cli.output).unwrap();
+    std::fs::write(cli.output.join("skipped.xlsx"), b"existing file").unwrap();
+    let inputs = crate::gather_files(&cli.path, false).unwrap();
+    let error = process_files(inputs, &cli).unwrap_err();
+    assert!(error.to_string().contains("2 of 5 XLSX files failed"));
+    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(cli.batch_report.as_ref().unwrap()).unwrap()).unwrap();
+    assert_eq!(report["summary"], serde_json::json!({
+        "total": 5, "processed": 1, "preserved": 1, "skipped": 1, "failed": 2,
+    }));
+    let files = report["files"].as_array().unwrap();
+    assert_eq!(files.len(), 5);
+    let invalid = files.iter().find(|file| file["input"].as_str().unwrap().ends_with("invalid.xlsx")).unwrap();
+    assert_eq!(invalid["status"], "failed");
+    assert!(invalid["reason"].as_str().unwrap().contains("Invalid ZIP archive"));
+    assert!(invalid["output_bytes"].is_null());
+    assert!(cli.output.join("good.xlsx").exists());
+    assert_eq!(std::fs::read(cli.output.join("preserved.xlsx")).unwrap(), std::fs::read(cli.path.join("preserved.xlsx")).unwrap());
+    assert_eq!(std::fs::read(cli.output.join("skipped.xlsx")).unwrap(), b"existing file");
+    assert!(!cli.output.join("incomplete.xlsx").exists());
     std::fs::remove_dir_all(root).unwrap();
 }
 
