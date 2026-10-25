@@ -275,3 +275,187 @@ fn namespace_header_benchmark() {
         );
     }
 }
+
+fn workbook_members(path: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+    let mut archive = ZipArchive::new(File::open(path).unwrap()).unwrap();
+    let mut members = std::collections::BTreeMap::new();
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).unwrap();
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes).unwrap();
+        assert!(
+            members.insert(entry.name().to_owned(), bytes).is_none(),
+            "duplicate ZIP member in {}",
+            path.display()
+        );
+    }
+    members
+}
+
+fn validation_arguments(input: &Path, output: &Path, flags: &[&str]) -> Vec<OsString> {
+    let mut arguments = vec![
+        input.as_os_str().to_owned(),
+        output.as_os_str().to_owned(),
+        OsString::from("--disable-multiprocessing"),
+        OsString::from("--force-overwrite"),
+        OsString::from("--writer-workers"),
+        OsString::from("1"),
+    ];
+    arguments.extend(flags.iter().map(OsString::from));
+    arguments
+}
+
+#[test]
+#[ignore = "Explicit local workbook validation; requires case JSON and the previous CLI executable"]
+fn namespace_real_workbook_validation() {
+    #[derive(serde::Deserialize)]
+    struct Case {
+        path: PathBuf,
+        excluded: bool,
+    }
+    let source_json = PathBuf::from(
+        std::env::var_os("EXCEL_SHRINK_NAMESPACE_VALIDATION_JSON")
+            .expect("Set EXCEL_SHRINK_NAMESPACE_VALIDATION_JSON to [{path,excluded}, ...]"),
+    );
+    let previous = PathBuf::from(
+        std::env::var_os("EXCEL_SHRINK_PREVIOUS_CLI")
+            .expect("Set EXCEL_SHRINK_PREVIOUS_CLI to the previous executable"),
+    );
+    assert!(
+        previous.is_file(),
+        "previous CLI is missing: {}",
+        previous.display()
+    );
+    let cases: Vec<Case> = serde_json::from_slice(&std::fs::read(&source_json).unwrap()).unwrap();
+    assert!(!cases.is_empty(), "no validation cases were supplied");
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let output = source_json
+        .parent()
+        .unwrap()
+        .join(format!("namespace-validation-{unique}"));
+    std::fs::create_dir_all(&output).unwrap();
+    let maximum = [
+        "--remove-textless-default-font-representatives",
+        "--remove-textless-style-representatives",
+        "--remove-textless-column-style-representatives",
+        "--remove-unreferenced-whitespace-cells",
+    ];
+    let mut aggressive = maximum.to_vec();
+    aggressive.push("--cell-formula-references-only");
+    let profiles: [(&str, &[&str]); 3] = [
+        ("default", &[]),
+        ("maximum-cleaning", &maximum),
+        ("too-aggressive-cleaning", &aggressive),
+    ];
+    let mut results = Vec::new();
+    let mut excluded_profiles = 0;
+    let mut supported_profiles = 0;
+    let mut supported_cases_with_reduction = 0;
+    for (index, case) in cases.iter().enumerate() {
+        let original = std::fs::read(&case.path).unwrap();
+        let input_members = (!case.excluded).then(|| workbook_members(&case.path));
+        let mut any_reduction = false;
+        for (profile, flags) in profiles {
+            let current_directory = output.join(format!("case-{index}/current/{profile}"));
+            let cli = Cli::try_parse_from(
+                std::iter::once(OsString::from("excel-shrink")).chain(validation_arguments(
+                    &case.path,
+                    &current_directory,
+                    flags,
+                )),
+            )
+            .unwrap();
+            process_files(vec![case.path.clone()], &cli).unwrap();
+            let target = current_directory.join(case.path.file_name().unwrap());
+            assert!(
+                std::fs::read(&case.path).unwrap() == original,
+                "source changed: {}",
+                case.path.display()
+            );
+            if case.excluded {
+                assert!(
+                    !target.exists(),
+                    "excluded source produced an output: {} ({profile})",
+                    case.path.display()
+                );
+                assert!(
+                    !partial_output_path(&target).exists(),
+                    "excluded source left a partial output"
+                );
+                excluded_profiles += 1;
+                results.push(serde_json::json!({"source":case.path,"profile":profile,
+                    "excluded":true,"source_unchanged":true,"output_written":false}));
+                continue;
+            }
+            assert!(
+                target.is_file(),
+                "supported source was excluded: {} ({profile})",
+                case.path.display()
+            );
+            let previous_directory = output.join(format!("case-{index}/previous/{profile}"));
+            let prior = std::process::Command::new(&previous)
+                .args(validation_arguments(&case.path, &previous_directory, flags))
+                .output()
+                .unwrap();
+            std::fs::create_dir_all(&previous_directory).unwrap();
+            std::fs::write(previous_directory.join("stdout.log"), &prior.stdout).unwrap();
+            std::fs::write(previous_directory.join("stderr.log"), &prior.stderr).unwrap();
+            assert!(
+                prior.status.success(),
+                "previous CLI failed; see {}",
+                previous_directory.display()
+            );
+            let current_members = workbook_members(&target);
+            let prior_target = previous_directory.join(case.path.file_name().unwrap());
+            assert!(
+                current_members == workbook_members(&prior_target),
+                "optimized output member bytes differ: {} ({profile})",
+                case.path.display()
+            );
+            let source_members = input_members.as_ref().unwrap();
+            let changed_xml = source_members
+                .iter()
+                .filter(|(name, bytes)| {
+                    name.ends_with(".xml") && current_members.get(*name) != Some(*bytes)
+                })
+                .count();
+            let bytes = std::fs::metadata(&target).unwrap().len();
+            any_reduction |= changed_xml > 0 || bytes < original.len() as u64;
+            supported_profiles += 1;
+            results.push(serde_json::json!({"source":case.path,"profile":profile,
+                "excluded":false,"source_unchanged":true,"member_bytes_equal_to_previous":true,
+                "original_bytes":original.len(),"output_bytes":bytes,"changed_xml_parts":changed_xml}));
+        }
+        assert!(
+            std::fs::read(&case.path).unwrap() == original,
+            "source changed after previous CLI validation"
+        );
+        if !case.excluded {
+            assert!(
+                any_reduction,
+                "supported fixture did not demonstrate shrinking: {}",
+                case.path.display()
+            );
+            supported_cases_with_reduction += 1;
+        }
+    }
+    let receipt = output.join("receipt.json");
+    std::fs::write(
+        &receipt,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "passed":true,"previous_cli":previous,"results":results,
+            "comparison":"uncompressed ZIP member names and bytes; entry order ignored"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    println!(
+        "{}",
+        serde_json::json!({"passed":true,"cases":cases.len(),
+        "excluded_profiles":excluded_profiles,"supported_profiles":supported_profiles,
+        "supported_cases_with_reduction":supported_cases_with_reduction,"receipt":receipt})
+    );
+}
