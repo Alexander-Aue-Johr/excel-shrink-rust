@@ -2983,6 +2983,17 @@ fn load_suite(path: &Path) -> RegressionSuite {
 }
 
 fn repo_root() -> PathBuf {
+    // A WSL cross-build is deployed into a Windows working copy. Its embedded
+    // Linux manifest path cannot locate the Windows Office capture scripts.
+    if let Ok(executable) = std::env::current_exe() {
+        for directory in executable.ancestors().skip(1).take(5) {
+            if directory.join("Cargo.toml").is_file()
+                && directory.join("excel-shrink-cli/office-capture").is_dir()
+            {
+                return directory.to_path_buf();
+            }
+        }
+    }
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root should exist")

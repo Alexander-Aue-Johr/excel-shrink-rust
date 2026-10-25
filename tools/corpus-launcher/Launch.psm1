@@ -2,13 +2,46 @@
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Core.psm1')
 
-function Invoke-StudyReleaseBuild([string]$Repo, [string]$RunDirectory, [string]$CargoExecutable='cargo') {
+function Initialize-StudyDotNet([string]$Repo) {
+    $capture=Join-Path $Repo 'excel-shrink-cli/office-capture/run.ps1'
+    if (-not [IO.File]::Exists($capture)) { return }
+    # Reuse capture's SDK discovery, including existing private toolchains.
+    $tokens=$null; $errors=$null
+    $ast=[Management.Automation.Language.Parser]::ParseFile($capture,[ref]$tokens,[ref]$errors)
+    if ($errors.Count) { throw 'Cannot parse the capture SDK discovery helper.' }
+    $helper=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-DotNet8'},$false)
+    if (-not $helper) { throw 'The capture SDK discovery helper is missing.' }
+    $dotnet=& ([scriptblock]::Create($helper.Extent.Text+'; Get-DotNet8'))
+    $env:EXCEL_SHRINK_DOTNET=$dotnet
+    $env:DOTNET_ROOT=[IO.Path]::GetDirectoryName($dotnet)
+    $env:DOTNET_CLI_UI_LANGUAGE='en-US'
+    $env:PATH=$env:DOTNET_ROOT+';'+$env:PATH
+}
+
+function Invoke-StudyReleaseBuild([string]$Repo, [string]$RunDirectory, [string]$CargoExecutable='cargo', $Wsl=$null) {
     $log=Join-Path $RunDirectory 'build.log'
     $stderr=Join-Path $RunDirectory 'build.stderr.log'
     # Windows PowerShell turns redirected native stderr into terminating errors
     # under ErrorActionPreference=Stop, even for successful compiler warnings.
-    $build=Start-Process -FilePath $CargoExecutable -ArgumentList @('build','--release','-p','excel-shrink-cli','--bin','excel-shrink-cli') -WorkingDirectory $Repo -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError $stderr -Wait -PassThru
+    if ($Wsl) {
+        $command='exec "$HOME/.cargo/bin/cargo" build --release --target x86_64-pc-windows-gnu -p excel-shrink-cli --bin excel-shrink-cli'
+        $arguments=@('-d',$Wsl.distribution,'--cd',$Wsl.linux_repo,'--exec','bash','-lc',$command)
+        $commandLine=($arguments | ForEach-Object {if ($_ -match '[\s"]') {ConvertTo-WindowsArgument ([string]$_)} else {[string]$_}}) -join ' '
+        $build=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32/wsl.exe') -ArgumentList $commandLine -WorkingDirectory $Repo -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError $stderr -Wait -PassThru
+    } else {
+        $build=Start-Process -FilePath $CargoExecutable -ArgumentList @('build','--release','-p','excel-shrink-cli','--bin','excel-shrink-cli') -WorkingDirectory $Repo -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError $stderr -Wait -PassThru
+    }
     if ($build.ExitCode -ne 0) { throw "Release build failed (code $($build.ExitCode)). Details: $log and $stderr" }
+    if ($Wsl) {
+        $destination=Join-Path $Repo 'target/release/excel-shrink-cli.exe'
+        [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination))
+        [IO.File]::Copy((Join-Path $Wsl.source_repo 'target/x86_64-pc-windows-gnu/release/excel-shrink-cli.exe'),$destination,$true)
+        # The control host uses --no-restore at run time. Restore its local
+        # Windows project once the source copy has been prepared.
+        $project=Join-Path $Repo 'excel-shrink-cli/office-capture/resident-host/ResidentCaptureHost.csproj'
+        $restore=Start-Process -FilePath 'dotnet' -ArgumentList ('restore '+(ConvertTo-WindowsArgument $project)+' --ignore-failed-sources --nologo') -WorkingDirectory $Repo -WindowStyle Hidden -RedirectStandardOutput (Join-Path $RunDirectory 'host-restore.log') -RedirectStandardError (Join-Path $RunDirectory 'host-restore.stderr.log') -Wait -PassThru
+        if ($restore.ExitCode -ne 0) { throw "Control host restore failed. See $(Join-Path $RunDirectory 'host-restore.log')." }
+    }
 }
 
 function Get-ControlHostVersion([string]$Repo) {
@@ -65,11 +98,12 @@ function Start-StudyLaunch {
     try {
         try { $owned=$gate.WaitOne(0) } catch [Threading.AbandonedMutexException] { $owned=$true }
         if (-not $owned -or (Test-StudyOutputBusy $Plan.OutputRoot)) { throw "This output directory is already in use. Open the active run in the Observatory: $($Plan.Observatory)" }
+        Initialize-StudyDotNet $Repo
         [void][IO.Directory]::CreateDirectory($Plan.RunDirectory)
         Save-StudyJson $ConfigurationPath $Configuration
         Save-StudyJson $Plan.RequestFile $Plan.Request
         if ($Configuration.settings.build_release) {
-            Invoke-StudyReleaseBuild $Repo $Plan.RunDirectory
+            Invoke-StudyReleaseBuild $Repo $Plan.RunDirectory 'cargo' (Get-Value $Configuration 'wsl_workspace')
         }
         if (-not [IO.File]::Exists($Plan.Executable)) { throw "Executable not found. First run cargo build --release -p excel-shrink-cli: $($Plan.Executable)" }
         Update-OwnedControlHost $Repo $Plan ([int]$Configuration.settings.control_room_port)

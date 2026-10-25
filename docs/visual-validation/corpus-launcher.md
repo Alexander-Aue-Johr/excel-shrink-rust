@@ -5,14 +5,32 @@ same kind of PowerShell/WPF dialog used by the existing workbook demo tasks.
 The dialog configures the existing `regression study` runner; it does not create
 a separate results format or a separate comparison engine.
 
-In a WSL workspace the task opens Windows PowerShell through
-`tools/start-corpus-wsl.sh`. The Windows runner requires an output directory
-that supports Windows file locks. WSL filesystem paths such as
-`\\wsl.localhost\Ubuntu\home\...` do not support these locks. Choose a directory
-on a Windows drive under **Advanced settings > Output directory**.
-To resume existing results, retain and transfer the existing results before
-selecting their Windows location; choosing an empty directory starts a separate
-result collection. A lock-check failure is not evidence of an active run.
+In a WSL workspace the task uses `tools/start-corpus-wsl.sh` and
+`tools/start-corpus-wsl.ps1` to prepare a Windows working copy under
+`%LOCALAPPDATA%\excel-shrink-rust\wsl-workspaces\<workspace-id>\repo`.
+Windows file locks are unsupported on WSL UNC paths, so builds are deployed
+and runs write their results in this local Windows copy. Tracked source edits
+are synchronized each time the task opens; an active Windows run prevents sync.
+
+On first use, existing results are copied and verified with SHA-256. Originals
+remain in place, differing destination files are never overwritten, and the
+source run must be idle. Existing ZIP bindings retain their original paths;
+large WSL archives are read directly rather than copied. New downloads and
+future results are stored in the Windows working copy. Its launcher settings
+persist independently of the WSL configuration.
+
+Release builds use the WSL Rust toolchain with the
+`x86_64-pc-windows-gnu` target and MinGW linker, then copy the executable to the
+Windows working copy. The runner locates capture scripts beside its deployed
+workspace rather than using the Linux path embedded by the compiler. Windows
+Git and the .NET 8 SDK must be available; a separate Windows Rust installation
+is not required. The launcher also discovers existing private .NET 8 SDKs in
+the capture toolchain cache and restores the control host before starting it.
+
+`bash tools/start-corpus-wsl.sh -PrepareOnly` prepares the working copy without
+building or starting a run. Other arguments, such as `-Preview` or `-Headless`,
+are forwarded to the Windows launcher. A lock-check failure is not evidence of
+an active run.
 
 Select a corpus, one size partition or the whole corpus, and the processing
 order. Partitions contain approximately equal **numbers of files** in the
@@ -204,6 +222,7 @@ is left running and causes a clear port-conflict error.
 
 ```powershell
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tools/corpus-launcher/Tests.ps1 -NativeArgumentTest -DialogTest
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/corpus-launcher/Wsl.Tests.ps1
 ```
 
 These checks use synthetic ZIPs and a short-lived fake runner under
@@ -211,6 +230,9 @@ These checks use synthetic ZIPs and a short-lived fake runner under
 rebind rejection, partition/order controls, group count zero, output locking,
 Windows argument quoting, detached process metadata and environment restoration.
 No real corpus is downloaded or processed, and no Excel process is started.
+The WSL migration checks use temporary Windows files to verify copying,
+original retention, repeatability, lock exclusion, conflict rejection and
+rejection of an active source output.
 
 Excel diagnostic logs under `%LOCALAPPDATA%\Temp\Diagnostics\EXCEL` are pruned
 by a hidden helper every 30 seconds while the exact runner PID/start time lives.
