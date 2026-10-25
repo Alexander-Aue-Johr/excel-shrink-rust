@@ -1,4 +1,4 @@
-//! Shrink serially, then retain the three outputs in disposable ZIP bundles.
+//! Shrink serially, then retain the source and three outputs in reusable ZIP bundles.
 use super::*;
 use std::io::Write;
 mod package_audit;
@@ -90,6 +90,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     if namespace_exclusion::skip(job, record, &source)? {
         return Ok(());
     }
+    record["converted_sha256"] = json!(artifact_cache::hash_file(&source)?);
     work_state::event(
         "validating",
         "baseline_started",
@@ -100,6 +101,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     );
     let baseline = artifact_cache::prepare_baseline(&source)?;
     record["baseline_sha256"] = json!(baseline.snapshot.manifest.archive_sha256);
+    let converted = source;
     let source = baseline.snapshot.path;
     record["baseline_repaired"] = json!(baseline.workbook_xml_changed);
     let plan = office_plan::build_workbook_visual_plan(&source)
@@ -179,22 +181,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
         json!({}),
     );
     let pending = job.work.join("prepared.zip");
-    let mut zip = zip::ZipWriter::new(fs::File::create(&pending)?);
-    // XLSX files are already compressed. Recompressing them adds time, not useful space savings.
-    let options = zip::write::FileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored)
-        .large_file(true);
-    for (name, path) in outputs {
-        zip.start_file(format!("{name}.xlsx"), options)?;
-        std::io::copy(&mut fs::File::open(path)?, &mut zip)?;
-    }
-    zip.start_file("measurements.json", options)?;
-    zip.write_all(&serde_json::to_vec_pretty(&record["results"])?)?;
-    zip.finish()?.sync_all()?;
-    if bundle.exists() {
-        fs::remove_file(bundle)?;
-    }
-    fs::rename(pending, bundle)?;
+    save_bundle(&pending, bundle, &outputs, &converted, record)?;
     record["prepared"] = json!(true);
     record["status"] = json!("prepared");
     work_state::event(
@@ -205,6 +192,69 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
         None,
         json!({}),
     );
+    Ok(())
+}
+
+fn save_bundle(
+    pending: &Path,
+    bundle: &Path,
+    outputs: &[(String, PathBuf)],
+    converted: &Path,
+    record: &Value,
+) -> Result<()> {
+    let mut zip = zip::ZipWriter::new(fs::File::create(pending)?);
+    // XLSX files are already compressed. Recompressing them adds time, not useful space savings.
+    let options = zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .large_file(true);
+    let mut variants = Vec::new();
+    for (name, path) in outputs {
+        let sha256 = artifact_cache::hash_file(path)?;
+        if name == "original" {
+            ensure!(sha256 == record["baseline_sha256"],
+                "baseline workbook changed before preparation was saved");
+        }
+        zip.start_file(format!("{name}.xlsx"), options)?;
+        std::io::copy(&mut fs::File::open(path)?, &mut zip)?;
+        if name != "original" {
+            let measurements = record["results"]
+                .as_array()
+                .context("missing measurements")?;
+            let profile = measurements
+                .iter()
+                .find(|item| item["profile"] == *name)
+                .with_context(|| format!("missing {name} measurements"))?;
+            variants.push(json!({"profile":name,"member":format!("{name}.xlsx"),
+                "sha256":sha256,"config_hash":profile["config_hash"]}));
+        }
+    }
+    ensure!(
+        artifact_cache::hash_file(converted)? == record["converted_sha256"],
+        "converted workbook changed before preparation was saved"
+    );
+    let converted_member = if record["converted_sha256"] == record["baseline_sha256"] {
+        "original.xlsx"
+    } else {
+        zip.start_file("converted.xlsx", options)?;
+        std::io::copy(&mut fs::File::open(converted)?, &mut zip)?;
+        "converted.xlsx"
+    };
+    let metadata = json!({"version":1,"identity":record["identity"],"name":record["name"],
+        "source_sha256":record["source_sha256"],"source_format":record["source_format"],
+        "source_fingerprint":record["source_fingerprint"],"prepared_by":record["prepared_by"],
+        "converted_sha256":record["converted_sha256"],"converted_member":converted_member,
+        "conversion":record["conversion"],"baseline_sha256":record["baseline_sha256"],
+        "baseline_repaired":record["baseline_repaired"],"variants":variants,
+        "provenance":record["provenance"]["preparation"]});
+    zip.start_file("preparation.json", options)?;
+    zip.write_all(&serde_json::to_vec_pretty(&metadata)?)?;
+    zip.start_file("measurements.json", options)?;
+    zip.write_all(&serde_json::to_vec_pretty(&record["results"])?)?;
+    zip.finish()?.sync_all()?;
+    if bundle.exists() {
+        fs::remove_file(bundle)?;
+    }
+    fs::rename(pending, bundle)?;
     Ok(())
 }
 
@@ -556,6 +606,67 @@ mod tests {
         clear_startup_measurements(&mut record);
         assert_eq!(record["results"][0],json!({"profile":"default","original_bytes":1000,
             "shrunk_bytes":500,"shrink_seconds":1.0}));
+    }
+
+    #[test]
+    fn saved_bundle_keeps_conversion_and_profile_identity_after_work_cleanup() -> Result<()> {
+        for repaired in [false, true] {
+            let root = super::super::tests::test_directory("reusable-bundle")?;
+            let (job, mut record) = package_job(&root)?;
+            let converted = job.work.join("converted.xlsx");
+            package_fixture(&converted, b"<styleSheet/>", !repaired)?;
+            record["identity"] = json!("archive:0:example.xls");
+            record["source_sha256"] = json!("source-bytes-hash");
+            record["converted_sha256"] = json!(artifact_cache::hash_file(&converted)?);
+            record["baseline_repaired"] = json!(repaired);
+            record["prepared_by"] = json!("producer-binary-hash");
+            record["provenance"]["preparation"] = json!({"machine_id":"conversion-pc"});
+            let outputs: Vec<_> = std::iter::once("original")
+                .chain(PROFILES)
+                .map(|name| (name.to_owned(), job.work.join(format!("{name}.xlsx"))))
+                .collect();
+            let bundle = root.join("prepared.zip");
+            save_bundle(
+                &job.work.join("pending.zip"),
+                &bundle,
+                &outputs,
+                &converted,
+                &record,
+            )?;
+            fs::remove_dir_all(&job.work)?;
+
+            let mut zip = ZipArchive::new(fs::File::open(&bundle)?)?;
+            let metadata: Value = serde_json::from_reader(zip.by_name("preparation.json")?)?;
+            assert_eq!(metadata["source_sha256"], "source-bytes-hash");
+            assert_eq!(metadata["converted_sha256"], record["converted_sha256"]);
+            assert_eq!(metadata["baseline_sha256"], record["baseline_sha256"]);
+            assert_eq!(metadata["prepared_by"], "producer-binary-hash");
+            assert_eq!(metadata["provenance"]["machine_id"], "conversion-pc");
+            let converted_member = if repaired {
+                "converted.xlsx"
+            } else {
+                "original.xlsx"
+            };
+            assert_eq!(metadata["converted_member"], converted_member);
+            assert_eq!(zip.len(), if repaired { 7 } else { 6 });
+            for profile in metadata["variants"].as_array().unwrap() {
+                let mut member = zip.by_name(profile["member"].as_str().unwrap())?;
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut member, &mut bytes)?;
+                assert_eq!(profile["sha256"], artifact_cache::sha256(&bytes));
+                assert_eq!(profile["config_hash"], "example");
+            }
+            drop(zip);
+            let reopened = root.join("reopened");
+            fs::create_dir(&reopened)?;
+            assert_eq!(unpack(&bundle, &reopened)?, record["results"]);
+            assert_eq!(
+                artifact_cache::hash_file(&reopened.join("original.xlsx"))?,
+                record["baseline_sha256"]
+            );
+            fs::remove_dir_all(root)?;
+        }
+        Ok(())
     }
 
     fn package_fixture(path: &Path, styles: &[u8], stored: bool) -> Result<()> {

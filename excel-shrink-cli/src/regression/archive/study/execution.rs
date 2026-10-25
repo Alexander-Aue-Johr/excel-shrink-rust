@@ -238,11 +238,7 @@ pub(super) fn run_record(
     result[format!("{phase}_elapsed_seconds")] = json!(started.elapsed().as_secs_f64());
     result["complete"] =
         json!(diagnosis_only || mode == JobMode::Compare || result["status"] == "skipped");
-    fs::remove_dir_all(&work)?;
-    if mode == JobMode::Compare && result["status"] != "skipped" {
-        fs::remove_file(bundle_path(output, id))?;
-        result["prepared"] = json!(false);
-    }
+    cleanup_work(&work, &bundle_path(output, id), &mut result)?;
     write_record(&record, &result)?;
     progress::observe(output, &result);
     on_progress(&result, phase);
@@ -313,6 +309,14 @@ fn retry_owned_cleanup(
             }
         }
     }
+}
+
+fn cleanup_work(work: &Path, bundle: &Path, result: &mut Value) -> Result<()> {
+    fs::remove_dir_all(work)?;
+    // Preparation is reusable research data. Comparisons discard only their
+    // working copies, including after a successful visual check.
+    result["prepared"] = json!(result["prepared"] == true && bundle.is_file());
+    Ok(())
 }
 
 fn mark_cancelled(result: &mut Value, bundle: Option<&Path>) {
@@ -575,6 +579,31 @@ mod tests {
         })?;
         assert_eq!(record["cleanup_pending"]["state"], "resolved");
         assert_eq!(observations.len(), 1);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn work_cleanup_retains_bundles_without_promoting_failed_preparation() -> Result<()> {
+        let root = super::super::tests::test_directory("keep-preparation")?;
+        let work = root.join("work");
+        fs::create_dir_all(&work)?;
+        fs::write(work.join("original.xlsx"), b"working copy")?;
+        let bundle = root.join("prepared.zip");
+        fs::write(&bundle, b"reusable preparation")?;
+        let mut record = json!({"complete":true,"status":"unchanged","prepared":true});
+        cleanup_work(&work, &bundle, &mut record)?;
+        assert!(!work.exists());
+        assert_eq!(fs::read(&bundle)?, b"reusable preparation");
+        assert_eq!(record["prepared"], true);
+        assert_eq!(record["complete"], true);
+        // A failed new preparation must not claim the previous bundle as its own.
+        fs::create_dir_all(&work)?;
+        record["prepared"] = json!(false);
+        record["status"] = json!("skipped");
+        cleanup_work(&work, &bundle, &mut record)?;
+        assert_eq!(record["prepared"], false);
+        assert_eq!(fs::read(&bundle)?, b"reusable preparation");
         fs::remove_dir_all(root)?;
         Ok(())
     }

@@ -9,6 +9,13 @@ konfigurieren**. Its shared corpus catalog, local ZIP migration and result
 handoff are documented in [the corpus launcher guide](corpus-launcher.md).
 The direct CLI examples below remain available for scripted assignments.
 
+Prepared bundles in `prepared/` remain available after comparison. Each contains
+the comparison baseline (`original.xlsx`), all three cleaning variants, and
+their measurements. New bundles also include `preparation.json` with source,
+conversion and output hashes. If baseline repair changed the converted workbook,
+`converted.xlsx` preserves the conversion before repair; otherwise the metadata
+points to `original.xlsx`. Keep these bundles when moving results between machines.
+
 ## Live controls and progress
 
 With `--resident-capture --control-room`, the group target is controlled in the
@@ -365,7 +372,8 @@ from one instance. The coordinator stops issuing jobs, waits for the current
 wave's peers to finish, closes the owned Excel instances together, and puts the
 replacement first in the queue. If captures are paused, resume them to let those
 peers finish. Completed workbooks in the current corpus/size selection can also
-be queued; their shrink variants are rebuilt if the disposable ZIP was removed.
+be queued; their shrink variants are rebuilt only if the prepared ZIP is missing
+or no longer matches the accepted source, build and profile settings.
 Every attempt uses separate image/evidence paths and archives the previous
 record. A new attempt cannot silently mix images from an interrupted one.
 `GET /api/commands/{id}` exposes the durable request's state and final result.
