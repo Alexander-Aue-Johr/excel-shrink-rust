@@ -1,4 +1,5 @@
 use super::*;
+use anyhow::bail;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn process(
@@ -68,7 +69,12 @@ pub(super) fn run_record(
     let _active_progress = progress::start_job(output, id, mode);
     let key = artifact_cache::sha256(id.as_bytes());
     let work = output.join(".work").join(&key[..20]);
-    worker::cleanup_windows(&work)?;
+    wait_for_owned_cleanup(
+        &work,
+        &mut state,
+        cleanup_barrier.as_ref(),
+        &mut on_progress,
+    )?;
     if work.exists() {
         fs::remove_dir_all(&work)?;
     }
@@ -207,7 +213,12 @@ pub(super) fn run_record(
             result["error"] = json!(format!("{error:#}"));
         }
     }
-    worker::cleanup_windows(&work)?;
+    wait_for_owned_cleanup(
+        &work,
+        &mut result,
+        job.cleanup_barrier.as_ref(),
+        &mut on_progress,
+    )?;
     if let Err(error) = retain_worker_memory(&mut result, &work) {
         eprintln!("Could not preserve worker memory measurement: {error:#}");
     }
@@ -235,6 +246,64 @@ pub(super) fn run_record(
     progress::observe(output, &result);
     on_progress(&result, phase);
     Ok(result)
+}
+
+// An uncertain owner keeps this group's slot occupied. Other groups can finish
+// and be replaced, but we never delete its files or accumulate orphan processes.
+fn wait_for_owned_cleanup(
+    work: &Path,
+    record: &mut Value,
+    participant: Option<&batch_cleanup::Participant>,
+    on_progress: &mut impl FnMut(&Value, &str),
+) -> Result<()> {
+    retry_owned_cleanup(
+        || worker::cleanup_windows(work),
+        |observation| {
+            record["cleanup_pending"] = observation;
+            on_progress(record, "cleanup");
+        },
+        || {
+            let Some(participant) = participant else {
+                bail!("Cannot confirm owned process cleanup; retaining work directory");
+            };
+            // Poll cancellation without retrying the OS access check in a loop.
+            for _ in 0..120 {
+                ensure!(
+                    !participant.cancelled(),
+                    "Cleanup cancelled; retaining work directory"
+                );
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            Ok(())
+        },
+    )
+}
+
+fn retry_owned_cleanup(
+    mut cleanup: impl FnMut() -> Result<()>,
+    mut observe: impl FnMut(Value),
+    mut wait: impl FnMut() -> Result<()>,
+) -> Result<()> {
+    let since = provenance::now_ms();
+    let mut attempts = 0u64;
+    loop {
+        match cleanup() {
+            Ok(()) => {
+                if attempts > 0 {
+                    observe(json!({"state":"resolved", "attempts":attempts + 1,
+                        "since_unix_ms":since,"last_attempt_unix_ms":provenance::now_ms()}));
+                }
+                return Ok(());
+            }
+            Err(error) => {
+                attempts += 1;
+                observe(json!({"state":"waiting", "error":format!("{error:#}"),
+                    "attempts":attempts,"since_unix_ms":since,
+                    "last_attempt_unix_ms":provenance::now_ms()}));
+                wait().with_context(|| format!("owned cleanup remains unconfirmed: {error:#}"))?;
+            }
+        }
+    }
 }
 
 fn mark_cancelled(result: &mut Value, bundle: Option<&Path>) {
@@ -437,6 +506,55 @@ fn clear_images(value: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uncertain_cleanup_keeps_its_slot_until_identity_can_be_verified() -> Result<()> {
+        let mut attempts = 0;
+        let mut waits = 0;
+        let mut observations = Vec::new();
+        retry_owned_cleanup(
+            || {
+                attempts += 1;
+                ensure!(attempts > 2, "Win32 5: cannot verify owner");
+                Ok(())
+            },
+            |value| observations.push(value),
+            || {
+                waits += 1;
+                Ok(())
+            },
+        )?;
+        assert_eq!(attempts, 3);
+        assert_eq!(waits, 2);
+        assert_eq!(
+            observations
+                .iter()
+                .map(|v| v["state"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["waiting", "waiting", "resolved"]
+        );
+        assert!(
+            observations[0]["error"]
+                .as_str()
+                .unwrap()
+                .contains("Win32 5")
+        );
+        assert_eq!(observations[2]["attempts"], 3);
+        Ok(())
+    }
+
+    #[test]
+    fn cancelled_cleanup_does_not_report_resolution() {
+        let mut observations = Vec::new();
+        let result = retry_owned_cleanup(
+            || bail!("unverified owner"),
+            |value| observations.push(value),
+            || bail!("cancelled"),
+        );
+        assert!(result.is_err());
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0]["state"], "waiting");
+    }
 
     #[test]
     fn cancelled_attempt_remains_incomplete_and_keeps_its_prepared_bundle() -> Result<()> {

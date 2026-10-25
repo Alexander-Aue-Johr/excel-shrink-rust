@@ -43,7 +43,15 @@ fn refresh_groups(queue: &mut Value, active: &[Active], records: &[Value], pendi
             .find(|g| g["id"] == id)
         {
             group["active"] = json!(!job.finished);
-            group["status"] = if let Some(error) = &job.error {
+            group["cleanup_pending"] = records[job.job.position]["cleanup_pending"].clone();
+            if group["status"] == "cleanup_blocked" {
+                group.as_object_mut().unwrap().remove("error");
+            }
+            group["status"] = if records[job.job.position]["cleanup_pending"]["state"] == "waiting"
+            {
+                group["error"] = records[job.job.position]["cleanup_pending"]["error"].clone();
+                json!("cleanup_blocked")
+            } else if let Some(error) = &job.error {
                 group["error"] = json!(error);
                 json!("failed")
             } else if job.participant.restart_requested() {
@@ -62,14 +70,18 @@ fn refresh_groups(queue: &mut Value, active: &[Active], records: &[Value], pendi
         }
     }
     queue["open_groups"] = json!(active.iter().filter(|a| !a.finished).count());
-    queue["working_groups"] = json!(active
-        .iter()
-        .filter(|a| !a.finished && !a.participant.ready())
-        .count());
-    queue["cleanup_groups"] = json!(active
-        .iter()
-        .filter(|a| !a.finished && a.participant.ready())
-        .count());
+    queue["working_groups"] = json!(
+        active
+            .iter()
+            .filter(|a| !a.finished && !a.participant.ready())
+            .count()
+    );
+    queue["cleanup_groups"] = json!(
+        active
+            .iter()
+            .filter(|a| !a.finished && a.participant.ready())
+            .count()
+    );
     queue["waiting_groups"] = json!(pending);
     queue["updated_unix_ms"] = json!(provenance::now_ms());
 }
