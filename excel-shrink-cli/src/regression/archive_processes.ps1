@@ -14,7 +14,15 @@ function Initialize-ArchiveProcesses {
 
 function Stop-ArchiveProcess($owner) {
     Initialize-ArchiveProcesses
-    return [ArchiveProcesses]::StopIfOwned([int]$owner.pid, [string]$owner.started)
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try { return [ArchiveProcesses]::StopIfOwned([int]$owner.pid, [string]$owner.started) }
+        catch {
+            # Process teardown and security inspection can race. Retry the exact
+            # identity, never weaken verification or silently drop the owner.
+            if ($attempt -eq 3) { throw }
+            Start-Sleep -Milliseconds 250
+        }
+    }
 }
 
 function Get-ArchiveStagePath([string]$stage) {

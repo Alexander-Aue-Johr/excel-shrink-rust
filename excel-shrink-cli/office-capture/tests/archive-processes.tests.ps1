@@ -16,6 +16,58 @@ Assert ([long]$started -eq [Diagnostics.Process]::GetCurrentProcess().StartTime.
 Assert (([ArchiveProcesses]::StopIfOwned($PID, '1')) -eq 'reused') 'A reused PID must survive.'
 Assert (([ArchiveProcesses]::StopIfOwned([int]::MaxValue, $started)) -eq 'gone') 'An absent process must be harmless.'
 
+# Reproduce the important permissions distinction with a real process: it can
+# be queried but its DACL denies opening a new termination handle.
+Add-Type @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class CleanupProcessFixture {
+    public static void DenyTerminate(IntPtr process) {
+        IntPtr descriptor;
+        uint size;
+        if (!ConvertStringSecurityDescriptorToSecurityDescriptor("D:(D;;0x0001;;;WD)(A;;GA;;;WD)", 1, out descriptor, out size))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        try {
+            if (!SetKernelObjectSecurity(process, 4, descriptor)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        } finally { LocalFree(descriptor); }
+    }
+    public static void Stop(IntPtr process) {
+        if (!TerminateProcess(process, 1)) throw new Win32Exception(Marshal.GetLastWin32Error());
+    }
+    [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern bool ConvertStringSecurityDescriptorToSecurityDescriptor(string s, uint revision, out IntPtr descriptor, out uint size);
+    [DllImport("advapi32.dll", SetLastError=true)] static extern bool SetKernelObjectSecurity(IntPtr handle, uint information, IntPtr descriptor);
+    [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr memory);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateProcess(IntPtr process, uint code);
+}
+'@
+$fixture = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList '-NoProfile -Command Start-Sleep -Seconds 120' -WindowStyle Hidden -PassThru
+try {
+    $fixtureHandle = $fixture.Handle
+    $fixtureStarted = $fixture.StartTime.ToUniversalTime().Ticks
+    [CleanupProcessFixture]::DenyTerminate($fixtureHandle)
+    Assert (([ArchiveProcesses]::StopIfOwned($fixture.Id, '1')) -eq 'reused') 'Query-only verification requested unnecessary termination rights.'
+    Assert (-not $fixture.HasExited) 'A recycled PID was terminated.'
+    $denied = $false
+    try { [ArchiveProcesses]::StopIfOwned($fixture.Id, [string]$fixtureStarted) | Out-Null }
+    catch { $denied = $_.Exception.Message.Contains('acquire termination handle') -and $_.Exception.Message.Contains('Win32 5:') }
+    Assert $denied 'A matching but inaccessible owner lost the native error and cleanup phase.'
+    Assert (-not $fixture.HasExited) 'An inaccessible owner was incorrectly reported as stopped.'
+} finally {
+    [CleanupProcessFixture]::Stop($fixtureHandle)
+    Assert ($fixture.WaitForExit(10000)) 'Fixture process did not terminate.'
+    $fixture.Dispose()
+}
+$fixture = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList '-NoProfile -Command Start-Sleep -Seconds 120' -WindowStyle Hidden -PassThru
+try {
+    $fixtureStarted = $fixture.StartTime.ToUniversalTime().Ticks
+    Assert (([ArchiveProcesses]::StopIfOwned($fixture.Id, [string]$fixtureStarted)) -eq 'stopped') 'A confirmed owned process was not terminated.'
+    Assert ($fixture.WaitForExit(10000)) 'Stopped fixture is still alive.'
+    Assert (([ArchiveProcesses]::StopIfOwned($fixture.Id, [string]$fixtureStarted)) -eq 'gone') 'An exited process must be harmless.'
+} finally { if (-not $fixture.HasExited) { $fixture.Kill() }; $fixture.Dispose() }
+Write-Host 'PASS: query-only identity survives denied termination; owned, gone and reused processes are distinguished.'
+
 $script:visited = @()
 $script:states = @{}
 function Stop-ArchiveProcess($owner) {
