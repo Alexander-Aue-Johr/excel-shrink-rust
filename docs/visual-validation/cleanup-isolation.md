@@ -103,3 +103,14 @@ same document/run is idempotent; a different document after work started produce
 does not prove a renderer crash. A bounded latest pane-resource snapshot and
 per-process PID/birth/memory snapshots support correlation with cleanup events.
 The native startup measurement is described in [native-readiness.md](native-readiness.md).
+
+A separate bounded `CloseMainWindow` trial requested normal closure for all four
+retained Excel processes per group, with at most one shared second before the
+existing Job cleanup. In both hidden groups, zero requests were accepted and
+zero processes exited through that path (17 and 12 ms spent making requests).
+Peer uploads and later captures still passed. The local receipt is
+`.tmp/cleanup-peer-check/1792933061343227800/receipt.json`; each group's
+`metrics.json` retains the trial's `graceful_close` counts. Since this provided
+no successful graceful closure for the actual hidden runner, production keeps
+the known-owned Job cleanup. This result does not establish whether visible
+Excel windows can close gracefully; that separate behavior remains unproven.
