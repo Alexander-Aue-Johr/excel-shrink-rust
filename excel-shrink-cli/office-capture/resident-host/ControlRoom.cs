@@ -241,7 +241,7 @@ internal static class ControlRoom
                     .FirstOrDefault(group => (string?)group["id"] == id);
                 if (group is null) return Results.NotFound(new { error = "Unknown comparison group." });
                 if (body["expected_attempt_id"] is not null && (string?)body["expected_attempt_id"] != (string?)group["attempt_id"])
-                    return Results.Conflict(new { error = "Die angezeigte Excel-Gruppe wurde bereits ersetzt. Bitte die Ansicht aktualisieren." });
+                    return Results.Conflict(new { error = "This Excel group has already been replaced. Refresh the view before retrying." });
                 var runId = RequiredString(queue, "run_id");
                 if ((string?)group["run_id"] != runId || (bool?)group["restart_eligible"] == false)
                     return Results.Conflict(new { error = "This group belongs to an earlier run; select it in a new corpus run to compare it again." });
