@@ -2,6 +2,7 @@
 use super::*;
 use std::io::Write;
 mod package_audit;
+mod namespace_exclusion;
 mod resident;
 mod visual_reuse;
 
@@ -26,6 +27,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     provenance::retire(record, provenance::Stage::WhitespaceDiagnosis);
     record["whitespace_diagnosis"] = json!({"status":"not_investigated"});
     record.as_object_mut().unwrap().remove("package_identity");
+    record.as_object_mut().unwrap().remove("namespace_exclusion");
     record["prepared"] = json!(false);
     record["results"] = json!([]);
     if let Some(run) = &job.run_manifest {
@@ -85,6 +87,9 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     } else {
         extracted
     };
+    if namespace_exclusion::skip(job, record, &source)? {
+        return Ok(());
+    }
     work_state::event(
         "validating",
         "baseline_started",
@@ -219,6 +224,7 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     provenance::retire(record, provenance::Stage::WhitespaceDiagnosis);
     record["whitespace_diagnosis"] = json!({"status":"not_investigated"});
     record.as_object_mut().unwrap().remove("package_identity");
+    record.as_object_mut().unwrap().remove("namespace_exclusion");
     record["results"] = json!([]);
     write_record(&job.record, record)?;
     work_state::event(
@@ -238,6 +244,9 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     }
     write_record(&job.record, record)?;
     let original = job.work.join("original.xlsx");
+    if namespace_exclusion::skip(job, record, &original)? {
+        return Ok(());
+    }
     work_state::event(
         "validating",
         "package_audit",
@@ -680,7 +689,7 @@ mod tests {
         Ok(())
     }
 
-    fn provenance_job(root: &Path) -> MemberJob {
+    pub(super) fn provenance_job(root: &Path) -> MemberJob {
         MemberJob {
             archive: root.join("missing-source.zip"),
             index: 0,
