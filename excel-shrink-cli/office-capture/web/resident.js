@@ -51,6 +51,26 @@
     const captures = new Map();
     const geometries = new Map();
     let workbookVerified = false;
+    let pendingPngCharacters = 0, activeBatchPixels = 0, activeBatchTiles = 0;
+
+    function resources() {
+      const sample = {
+        retained_capture_plans: captures.size,
+        retained_tiles: [...captures.values()].reduce((sum, plan) => sum + plan.size, 0),
+        geometry_cache_entries: geometries.size,
+        geometry_rows: [...geometries.values()].reduce((sum, geometry) => sum + geometry.rows.length, 0),
+        pending_png_characters: pendingPngCharacters,
+        active_batch_pixels: activeBatchPixels, active_batch_tiles: activeBatchTiles,
+        script_evaluations: root.__excelShrinkPaneRuntime?.evaluations ?? 0
+      };
+      // Chromium may expose approximate JS heap figures. They do not include
+      // decoded/native images; launcher process snapshots cover that separately.
+      if (performance.memory) {
+        sample.js_heap_used_bytes = performance.memory.usedJSHeapSize;
+        sample.js_heap_limit_bytes = performance.memory.jsHeapSizeLimit;
+      }
+      return sample;
+    }
 
     function rememberGeometry(id, geometry) {
       geometries.delete(id);
@@ -109,12 +129,7 @@
       return finishImage(state, tile, base64, hash);
     }
 
-    async function capture(command) {
-      if (!Array.isArray(command.sheets) || !command.sheets.length ||
-          (command.tile_megapixels !== undefined && (!Number.isInteger(command.tile_megapixels) ||
-            command.tile_megapixels < 1 || command.tile_megapixels > 32))) {
-        throw new Error('Incomplete resident capture command');
-      }
+    async function verifyWorkbook() {
       if (!workbookVerified) {
         await office(async context => {
           context.workbook.load('name');
@@ -127,6 +142,16 @@
         });
         workbookVerified = true;
       }
+      return expectedWorkbook;
+    }
+
+    async function capture(command) {
+      if (!Array.isArray(command.sheets) || !command.sheets.length ||
+          (command.tile_megapixels !== undefined && (!Number.isInteger(command.tile_megapixels) ||
+            command.tile_megapixels < 1 || command.tile_megapixels > 32))) {
+        throw new Error('Incomplete resident capture command');
+      }
+      await verifyWorkbook();
       const result = {heights: [], sheets: [], tiles: []};
       if (captures.has(command.id)) throw new Error('Capture command was already executed');
       const retained = new Map();
@@ -236,16 +261,20 @@
       await geometryFor(states[0]);
       // One Office request captures the bounded batch. Upload each finished PNG
       // immediately; the host does not wait for the final batch result to paint it.
+      activeBatchTiles = states.length;
+      activeBatchPixels = states.reduce((sum, state) => sum + state.tile.width * state.tile.expectedHeight, 0);
       const base64s = await office(async context => {
         const worksheet = context.workbook.worksheets.getItem(states[0].sheet.name);
         const images = states.map(state => worksheet.getRange(CaptureGeometry.address(state.tile.raw)).getImage());
         await context.sync();
         return images.map(image => image.value);
       });
+      pendingPngCharacters = base64s.reduce((sum, value) => sum + value.length, 0);
       const result = {images: []};
       for (let index = 0; index < states.length; index++) {
         const state = states[index];
         const image = await finishImage(state, state.tile, base64s[index], false);
+        pendingPngCharacters -= base64s[index].length;
         base64s[index] = null;
         const receipt = await transport.image(command.id, {...state.metadata, sha256: undefined}, image.bytes);
         if (typeof receipt.image_path !== 'string' || !receipt.image_path ||
@@ -257,37 +286,49 @@
       return result;
     }
 
-    return {async execute(command) {
+    return {verifyWorkbook, resources, async execute(command) {
       const started = performance.now();
       let result;
-      if (command.kind === 'capture' || command.kind === 'plan') result = await capture(command);
-      else if (command.kind === 'images') result = await images(command);
-      else if (command.kind === 'capture_images') result = await captureImages(command);
-      else if (command.kind === 'release') {
-        if (command.capture_id) {
-          captures.delete(command.capture_id);
-          for (const id of geometries.keys()) if (id.startsWith(command.capture_id + ':')) geometries.delete(id);
-        } else {captures.clear(); geometries.clear();}
-        result = {};
-      } else throw new Error(`Unknown resident command: ${command.kind}`);
-      result.elapsed_ms = performance.now() - started;
-      result.checksum_tiles = command.kind === 'capture' ? result.tiles?.length ?? 0 : 0;
-      result.uploaded_images = result.images?.length ?? 0;
-      return result;
+      try {
+        if (command.kind === 'capture' || command.kind === 'plan') result = await capture(command);
+        else if (command.kind === 'images') result = await images(command);
+        else if (command.kind === 'capture_images') result = await captureImages(command);
+        else if (command.kind === 'release') {
+          if (command.capture_id) {
+            captures.delete(command.capture_id);
+            for (const id of geometries.keys()) if (id.startsWith(command.capture_id + ':')) geometries.delete(id);
+          } else {captures.clear(); geometries.clear();}
+          result = {};
+        } else throw new Error(`Unknown resident command: ${command.kind}`);
+        result.elapsed_ms = performance.now() - started;
+        result.checksum_tiles = command.kind === 'capture' ? result.tiles?.length ?? 0 : 0;
+        result.uploaded_images = result.images?.length ?? 0;
+        return result;
+      } finally {
+        pendingPngCharacters = 0;
+        activeBatchPixels = 0;
+        activeBatchTiles = 0;
+      }
     }};
   }
 
   async function run(client, helpers) {
     let token;
     async function request(path, body, headers = {}) {
-      const response = await fetch(path, {cache: 'no-store',
-        method: body === undefined ? 'GET' : 'POST',
-        headers: {...(token ? {'X-Client-Token': token} : {}), ...headers}, body});
-      if (!response.ok) throw new Error(`${path}: HTTP ${response.status} ${(await response.text()).slice(0, 500)}`);
-      return response.json();
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), 120000);
+      try {
+        const response = await fetch(path, {cache: 'no-store', signal: abort.signal,
+          method: body === undefined ? 'GET' : 'POST',
+          headers: {...(token ? {'X-Client-Token': token} : {}), ...headers}, body});
+        if (!response.ok) throw new Error(`${path}: HTTP ${response.status} ${(await response.text()).slice(0, 500)}`);
+        return await response.json();
+      } finally {clearTimeout(timer);}
     }
     const clientPath = encodeURIComponent(client);
-    const config = await request(`/config?client=${clientPath}`);
+    const runtime = root.__excelShrinkPaneRuntime ||= {documentId: crypto.randomUUID(), evaluations: 0};
+    const runId = crypto.randomUUID(), requestId = crypto.randomUUID();
+    const config = await request(`/config?client=${clientPath}&document=${runtime.documentId}&run=${runId}&request=${requestId}`);
     token = config.client_token;
     if (typeof token !== 'string' || !token.length) throw new Error('Missing resident session token');
     helpers.show('workbook', config.workbook);
@@ -300,10 +341,21 @@
     const heartbeat = setInterval(async () => {
       if (heartbeatBusy) return;
       heartbeatBusy = true;
-      try {await request(`/heartbeat?client=${clientPath}`);} catch (_) { /* Main job surfaces lost host. */ }
+      try {await request(`/heartbeat?client=${clientPath}`, JSON.stringify(worker.resources()),
+        {'Content-Type':'application/json'});} catch (_) { /* Main job surfaces lost host. */ }
       finally {heartbeatBusy = false;}
     }, 5000);
     try {
+      helpers.phase('Verifying workbook identity');
+      try {
+        const workbook = await worker.verifyWorkbook();
+        await request(`/ready?client=${clientPath}`, JSON.stringify({workbook}), {'Content-Type': 'application/json'});
+      } catch (error) {
+        try {await request(`/ready?client=${clientPath}`, JSON.stringify({ok: false,
+          error: {code: error.code || 'ADDIN_INITIALIZATION_FAILED', message: error.message || String(error)}}),
+          {'Content-Type': 'application/json'});} catch (_) { /* Preserve the original failure. */ }
+        throw error;
+      }
       while (true) {
         helpers.phase('Waiting for comparison jobs');
         const command = await request(`/job?client=${clientPath}`);
@@ -314,6 +366,7 @@
           code: error && error.code ? error.code : 'CAPTURE_FAILED',
           message: error && error.message ? error.message : String(error)
         }};}
+        result.pane_resources = worker.resources();
         await request(`/result/${clientPath}/${encodeURIComponent(command.id)}`, JSON.stringify(result),
           {'Content-Type': 'application/json'});
         if (!result.ok) throw new Error(result.error.message);

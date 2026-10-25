@@ -53,12 +53,19 @@ app.MapGet("/health", () => {
             last_heartbeat_at = pair.Value.LastHeartbeatAt,
             data_started = pair.Value.DataStarted, active_command = pair.Value.ActiveCommand,
             command_count = pair.Value.CommandCount, heartbeat_count = pair.Value.HeartbeatCount,
+            ready_at = pair.Value.ReadyAt?.ToString("O"), startup_sampled = pair.Value.StartupSampled,
+            runtime = pair.Value.Runtime,
             error = pair.Value.Error, monitor = pair.Value.Monitor
         }) });
 });
 
 app.MapGet("/config", async (HttpRequest request) => {
     var id = SafeId(request.Query["client"].ToString());
+    // A status probe is not a taskpane restart. Every actual document and run
+    // identifies itself; retrying its same configuration request is harmless.
+    var documentId = SafeId(request.Query["document"].ToString());
+    var runId = SafeId(request.Query["run"].ToString());
+    var requestId = SafeId(request.Query["request"].ToString());
     if (resettingClients.ContainsKey(id)) return Results.Conflict("Excel client is being reset.");
     var configPath = Path.Combine(session, "clients", id + ".json");
     if (!File.Exists(configPath)) return Results.NotFound("Unknown resident client.");
@@ -67,15 +74,29 @@ app.MapGet("/config", async (HttpRequest request) => {
     var client = clients.GetOrAdd(id, _ => new ClientState());
     await client.Gate.WaitAsync();
     try {
+        var sameDocument = client.DocumentId == documentId;
+        var sameRun = sameDocument && client.RunId == runId;
+        client.Telemetry.ConfigurationAttempt(documentId, runId, requestId,
+            sameRun ? "repeated_request" : sameDocument ? "duplicate_run" : "new_document");
+        if (sameRun) {
+            config["client_token"] = client.Token;
+            return Results.Json(config);
+        }
+        if (sameDocument) return Results.Conflict("This document already has a resident worker run.");
         if (client.DataStarted) {
-            client.Error ??= Error("TASKPANE_RESTARTED", "The resident task pane restarted after receiving a job.");
+            client.Error ??= Error("TASKPANE_CONTEXT_CHANGED", "A different taskpane document requested configuration after work started; the cause is not yet known.");
             client.Telemetry.Restarted();
             if (client.ActiveCommand is not null) {
                 await WriteResponse(id, client.ActiveCommand, new JsonObject { ["ok"] = false, ["error"] = client.Error.DeepClone() });
             }
-            return Results.Conflict("Resident capture task pane restarted.");
+            return Results.Conflict("Resident taskpane document changed after work started.");
         }
         client.Token = Guid.NewGuid().ToString("N");
+        client.DocumentId = documentId;
+        client.RunId = runId;
+        client.ExpectedWorkbook = (string?)config["workbook"];
+        client.ReadyAt = null;
+        client.StartupSampled = false;
         client.ConfiguredAt = client.LastActivityAt = DateTimeOffset.UtcNow;
         client.Telemetry.Configured();
         config["client_token"] = client.Token;
@@ -83,10 +104,58 @@ app.MapGet("/config", async (HttpRequest request) => {
     } finally { client.Gate.Release(); }
 });
 
-app.MapGet("/heartbeat", async (HttpRequest request) => {
-    var (_, client) = Authenticate(request.Query["client"].ToString(), request);
+app.MapPost("/ready", async (HttpRequest request) => {
+    var (id, client) = Authenticate(request.Query["client"].ToString(), request);
+    var body = (await JsonNode.ParseAsync(request.Body))?.AsObject() ?? throw new ArgumentException("Missing ready observation.");
     await client.Gate.WaitAsync();
-    try { client.LastHeartbeatAt = client.LastActivityAt = DateTimeOffset.UtcNow; client.HeartbeatCount++; }
+    try {
+        ValidateSession(id, client, request);
+        if (client.Error is not null) return Results.Conflict("Resident client has failed.");
+        if ((bool?)body["ok"] == false) {
+            client.Error = body["error"]?.DeepClone().AsObject() ?? Error("ADDIN_INITIALIZATION_FAILED", "Workbook verification failed.");
+            client.Telemetry.Finished(false, client.Error);
+            return Results.Json(new { ok = false });
+        }
+        if ((string?)body["workbook"] != client.ExpectedWorkbook)
+            throw new ArgumentException("Ready workbook identity differs from the staged workbook.");
+        if (client.ReadyAt is null) {
+            client.ReadyAt = client.LastActivityAt = DateTimeOffset.UtcNow;
+            client.Telemetry.Ready();
+        }
+        return Results.Json(new { ok = true, ready_at = client.ReadyAt.Value.ToString("O") });
+    } finally { client.Gate.Release(); }
+});
+
+app.MapPost("/launcher/startup-sampled/{id}", async (string id, HttpRequest request) => {
+    id = SafeId(id);
+    var token = (string?)settings["launcher_token"];
+    if (string.IsNullOrEmpty(token) || request.Headers["X-Launcher-Token"].ToString() != token)
+        return Results.StatusCode(403);
+    var body = await JsonNode.ParseAsync(request.Body);
+    if (!clients.TryGetValue(id, out var client)) return Results.NotFound();
+    await client.Gate.WaitAsync();
+    try {
+        if (client.ReadyAt is null || (string?)body?["ready_at"] != client.ReadyAt.Value.ToString("O"))
+            return Results.Conflict("Startup sample belongs to a different ready observation.");
+        client.StartupSampled = true;
+        return Results.Json(new { ok = true });
+    } finally { client.Gate.Release(); }
+});
+
+app.MapMethods("/heartbeat", ["GET", "POST"], async (HttpRequest request) => {
+    var (id, client) = Authenticate(request.Query["client"].ToString(), request);
+    JsonObject? sample = null;
+    if (request.Method == "POST") {
+        if (request.ContentLength is null or > 8192) throw new ArgumentException("Pane diagnostics must be a bounded snapshot.");
+        sample = (await JsonNode.ParseAsync(request.Body))?.AsObject();
+    }
+    await client.Gate.WaitAsync();
+    try {
+        ValidateSession(id, client, request);
+        client.LastHeartbeatAt = client.LastActivityAt = DateTimeOffset.UtcNow;
+        client.HeartbeatCount++;
+        if (sample is not null) client.Telemetry.SamplePane(sample);
+    }
     finally { client.Gate.Release(); }
     return Results.Json(new { ok = true });
 });
@@ -96,6 +165,7 @@ app.MapGet("/job", async (HttpRequest request) => {
     await dispatchGate.WaitAsync();
     await client.Gate.WaitAsync();
     try {
+        ValidateSession(id, client, request);
         if (!resettingClients.IsEmpty || !clients.TryGetValue(id, out var current) || !ReferenceEquals(current, client))
             return Results.Json(new { idle = true, resetting_client = true });
         if (client.Error is not null) return Results.Conflict(client.Error.ToJsonString());
@@ -103,8 +173,12 @@ app.MapGet("/job", async (HttpRequest request) => {
         // An incidental poll must not overwrite the observed state of work
         // already in flight, including while dispatch of new work is paused.
         if (client.ActiveCommand is not null) return Results.Conflict("A command is already in progress.");
+        if (client.ReadyAt is null || !client.StartupSampled) {
+            client.Telemetry.Transition("waiting_for_startup_sample", "launcher", "Waiting for workbook verification and the launcher's memory sample.");
+            return Results.Json(new { idle = true, waiting_for_startup_sample = true });
+        }
         if (!string.IsNullOrEmpty(controlRoot)) {
-            if (primaryClients.Any(peer => peer is null || !clients.ContainsKey(peer))) {
+            if (primaryClients.Any(peer => peer is null || !clients.TryGetValue(peer, out var state) || !state.StartupSampled)) {
                 client.Telemetry.Transition("waiting_for_peers", "primary_addins", "Waiting for the other primary add-ins to connect.");
                 return Results.Json(new { idle = true, waiting_for_peers = true });
             }
@@ -183,6 +257,7 @@ app.MapPost("/image/{id}/{commandId}/{sheet:int}/{tile:int}", async (string id, 
     commandId = SafeId(commandId);
     await client.Gate.WaitAsync();
     try {
+        ValidateSession(id, client, request);
         var imageFirst = (string?)client.ActivePayload?["kind"] == "capture_images";
         if (client.ActiveCommand != commandId || (!imageFirst && (string?)client.ActivePayload?["kind"] != "images"))
             return Results.Conflict("Image does not belong to the active evidence command.");
@@ -226,6 +301,7 @@ app.MapPost("/result/{id}/{commandId}", async (string id, string commandId, Http
     var result = (await JsonNode.ParseAsync(request.Body))?.AsObject() ?? throw new ArgumentException("Missing result.");
     await client.Gate.WaitAsync();
     try {
+        ValidateSession(id, client, request);
         if (client.Error is not null || client.ActiveCommand != commandId) return Results.Conflict("Command is no longer active.");
         var ok = (bool?)result["ok"] ?? throw new ArgumentException("Missing result status.");
         if (!ok) client.Error = result["error"]?.DeepClone().AsObject() ?? Error("CAPTURE_FAILED", "Capture failed.");
@@ -248,6 +324,7 @@ app.MapPost("/result/{id}/{commandId}", async (string id, string commandId, Http
             }
         }
         await WriteResponse(id, commandId, result);
+        if (result["pane_resources"] is JsonObject sample) client.Telemetry.SamplePane(sample);
         client.Telemetry.Finished(ok, client.Error);
         client.ActiveCommand = null;
         client.ActivePayload = null;
@@ -268,6 +345,13 @@ async Task WriteResponse(string id, string command, JsonObject response) {
     if (!clients.TryGetValue(id, out var client) || client.Token != request.Headers["X-Client-Token"].ToString())
         throw new ArgumentException("Unknown or retired resident client session.");
     return (id, client);
+}
+void ValidateSession(string id, ClientState client, HttpRequest request) {
+    // Configuration/reset may retire a token while this request awaited the
+    // client lock or its request body. Check again at the mutation boundary.
+    if (!clients.TryGetValue(id, out var current) || !ReferenceEquals(current, client) ||
+        client.Token != request.Headers["X-Client-Token"].ToString())
+        throw new ArgumentException("Unknown or retired resident client session.");
 }
 static string SafeId(string value) {
     if (!Regex.IsMatch(value, "\\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}\\z")) throw new ArgumentException("Invalid resident identifier.");
@@ -313,6 +397,9 @@ sealed class ClientState {
     public readonly WorkerTelemetry Telemetry = new();
     public readonly SemaphoreSlim Gate = new(1);
     public string Token = "";
+    public string? DocumentId, RunId, ExpectedWorkbook;
+    public DateTimeOffset? ReadyAt;
+    public bool StartupSampled;
     public readonly DateTimeOffset SeenAt = DateTimeOffset.UtcNow;
     public DateTimeOffset LastActivityAt = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastHeartbeatAt;
@@ -325,9 +412,11 @@ sealed class ClientState {
     public long HeartbeatCount;
     public SnapshotData Snapshot() {
         Gate.Wait();
-        try { return new(SeenAt, LastActivityAt, LastHeartbeatAt, DataStarted, ActiveCommand, CommandCount, HeartbeatCount, Error?.DeepClone().AsObject(), Telemetry.Snapshot()); }
+        try { return new(SeenAt, LastActivityAt, LastHeartbeatAt, DataStarted, ActiveCommand, CommandCount, HeartbeatCount, Error?.DeepClone().AsObject(), Telemetry.Snapshot(), ReadyAt,
+            StartupSampled, new JsonObject { ["document_id"] = DocumentId, ["run_id"] = RunId }); }
         finally { Gate.Release(); }
     }
 }
 sealed record SnapshotData(DateTimeOffset SeenAt, DateTimeOffset LastActivityAt, DateTimeOffset? LastHeartbeatAt, bool DataStarted,
-    string? ActiveCommand, long CommandCount, long HeartbeatCount, JsonObject? Error, JsonObject Monitor);
+    string? ActiveCommand, long CommandCount, long HeartbeatCount, JsonObject? Error, JsonObject Monitor,
+    DateTimeOffset? ReadyAt, bool StartupSampled, JsonObject Runtime);

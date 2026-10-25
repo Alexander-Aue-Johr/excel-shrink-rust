@@ -91,7 +91,7 @@ function Update-ClientActivity($health) {
         if (-not $metrics.clients.ContainsKey($id)) { continue }
         $sample = $property.Value
         $item = $metrics.clients[$id]
-        foreach ($name in @('heartbeat_count', 'last_heartbeat_at', 'last_activity_at', 'active_command', 'command_count', 'data_started', 'error', 'monitor')) {
+        foreach ($name in @('heartbeat_count', 'last_heartbeat_at', 'last_activity_at', 'active_command', 'command_count', 'data_started', 'error', 'monitor', 'runtime')) {
             $field = $sample.PSObject.Properties[$name]
             if ($null -ne $field) { $item[$name] = $field.Value }
         }
@@ -101,6 +101,50 @@ function Update-ClientActivity($health) {
         } elseif ($sample.monitor -and $sample.monitor.state) { $item.stage = [string]$sample.monitor.state }
         elseif ($sample.active_command) { $item.stage = 'executing_job' }
         elseif ($item.status -eq 'ready') { $item.stage = 'waiting_for_job' }
+    }
+}
+
+function Update-ClientReadySamples($health) {
+    foreach ($property in $health.clients.PSObject.Properties) {
+        $id = $property.Name
+        $sample = $property.Value
+        if (-not $clients.ContainsKey($id) -or -not $sample.ready_at -or $sample.startup_sampled) { continue }
+        $entry = $clients[$id]
+        $item = $metrics.clients[$id]
+        # The host withholds all jobs until this exact ready observation is
+        # sampled. Retain the Process object so a reused PID cannot be sampled.
+        $entry.process.Refresh()
+        if ($entry.process.HasExited) { throw "Excel exited before its startup memory sample: $id" }
+        $readyAt = [DateTimeOffset]::Parse([string]$sample.ready_at)
+        $observedAt = [DateTimeOffset]::UtcNow
+        $seconds = $entry.open_clock.Elapsed.TotalSeconds - ($observedAt - $readyAt).TotalSeconds
+        if ($seconds -lt 0) { throw "Ready observation predates this Excel launch: $id" }
+        $item.startup_seconds = $seconds
+        $item.startup_memory_private_bytes = $entry.process.PrivateMemorySize64
+        $item.startup_memory_working_set_bytes = $entry.process.WorkingSet64
+        $item.startup_sampled_unix_ms = $observedAt.ToUnixTimeMilliseconds()
+        $item.ready_at = [string]$sample.ready_at
+        $item.startup_measurement_method = 'launch-to-addin-ready-v1'
+        $item.status = 'ready'
+        $item.stage = 'waiting_for_job'
+        $entry.seen = $true
+        # Persist provenance before permitting capture allocations.
+        Write-ResourceMetrics
+        $body = @{ ready_at=[string]$sample.ready_at } | ConvertTo-Json -Compress
+        try {
+            $null = Invoke-RestMethod -Uri ($controlUrl + '/launcher/startup-sampled/' + $id) -Method Post `
+                -Headers @{ 'X-Launcher-Token'=$launcherToken } -Body $body -ContentType 'application/json' -TimeoutSec 5
+        } catch {
+            if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 409) {
+                # A replacement document can become ready before its first job.
+                # Its next ready observation needs a fresh, separately bound sample.
+                $entry.seen = $false
+                $item.startup_measurement_method = $null
+                continue
+            }
+            throw
+        }
+        Add-SessionEvent 'addin_ready_sampled' $id @{ startup_seconds=$seconds; ready_at=$item.ready_at; pid=$entry.process.Id; private_bytes=$item.startup_memory_private_bytes; working_set_bytes=$item.startup_memory_working_set_bytes }
     }
 }
 
@@ -251,6 +295,12 @@ function Write-ResourceMetrics {
         $sample = $owned.SampleMemory()
         $metrics.current_job_bytes = $sample.PrivateBytes
         $metrics.current_job_private_working_set_bytes = $sample.PrivateWorkingSetBytes
+        # One replaceable snapshot, including browser/render processes. This
+        # distinguishes pane memory from Excel without collecting heap dumps.
+        $metrics.owned_process_resources = @($sample.Processes | ForEach-Object {
+            @{ pid=$_.Pid; name=$_.Name; process_started_unix_ms=$_.StartedUnixMilliseconds;
+                private_bytes=$_.PrivateBytes; working_set_bytes=$_.WorkingSetBytes }
+        })
         [void]$metrics.Remove('memory_sample_error')
     }
     catch {
@@ -422,6 +472,7 @@ function Read-HostHealth {
     $health = Invoke-RestMethod -Uri ($controlUrl + '/health') -TimeoutSec 5
     Update-ClientActivity $health
     if ($health.errors.Count) { throw ('Resident client error: ' + ($health.errors | ConvertTo-Json -Depth 12 -Compress)) }
+    Update-ClientReadySamples $health
     if ($healthSampleClock.ElapsedMilliseconds -ge 1000) {
         # Diagnostic only: a concurrent Workbooks.Open can pause Office.js.
         # These timestamps let us distinguish that pause from a dead process.
@@ -541,14 +592,14 @@ function Open-ResidentClient($spec, $visibilityOverride = $null) {
         # not prevent other groups from launching their own Excel processes.
         if (Test-Path -LiteralPath (Join-Path $session 'finish.json')) { throw 'Resident session finished before workbook startup.' }
         Add-SessionEvent 'opening_started' $id $null
-        $openClock = [Diagnostics.Stopwatch]::StartNew()
         $arguments = '/x ' + (Quote-Argument $book)
         # Freeze visibility for this process. Study groups use their immutable
         # admission setting; standalone sessions use the next-launch preference.
         $hideClient = Get-ResidentHideExcel
         if ($null -ne $visibilityOverride) { $hideClient = [bool]$visibilityOverride }
+        $openClock = [Diagnostics.Stopwatch]::StartNew()
         $process = $owned.Start($excelExecutable, $arguments, [bool]$hideClient)
-        $clients[$id] = @{ process=$process; seen=$false; closed=$false; registration=$guid; hide_excel=[bool]$hideClient }
+        $clients[$id] = @{ process=$process; open_clock=$openClock; seen=$false; closed=$false; registration=$guid; hide_excel=[bool]$hideClient }
         $metrics.clients[$id].pid = $process.Id
         $metrics.clients[$id].process_started_unix_ms = ([DateTimeOffset]$process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
         $metrics.clients[$id].process_alive = $true
@@ -560,17 +611,14 @@ function Open-ResidentClient($spec, $visibilityOverride = $null) {
         while ($true) {
             Update-Resources
             $health = Read-HostHealth
-            if (@($health.seen) -contains $id) { break }
+            if ($clients[$id].seen) { break }
             if (Test-Path -LiteralPath (Join-Path $session 'finish.json')) { throw 'Resident session finished during workbook startup.' }
             if (Test-ResidentDeadline 'opening' $openClock.Elapsed.TotalSeconds) { throw "Resident Office add-in startup timeout: $id" }
             Start-Sleep -Milliseconds 200
         }
-        $clients[$id].seen = $true
-        $metrics.clients[$id].startup_seconds = $openClock.Elapsed.TotalSeconds
         $metrics.clients[$id].seen_at = [DateTime]::UtcNow.ToString('o')
         $metrics.clients[$id].status = 'ready'
         $metrics.clients[$id].stage = 'waiting_for_job'
-        Add-SessionEvent 'config_seen' $id @{ startup_seconds=$openClock.Elapsed.TotalSeconds; pid=$process.Id }
         Write-ResourceMetrics
     } finally {
         Update-OtherGroupPause

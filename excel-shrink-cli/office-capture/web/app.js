@@ -2,6 +2,14 @@
 (function () {
   'use strict';
 
+  // A repeated script evaluation in the same document must not start a second
+  // polling loop. A genuinely new taskpane document receives a fresh identity.
+  const runtime = window.__excelShrinkPaneRuntime ||= {
+    documentId: crypto.randomUUID(), evaluations: 0, runStarted: false
+  };
+  runtime.evaluations++;
+  if (runtime.evaluations > 1) return;
+
   const residentClient = new URLSearchParams(location.search).get('client');
   // Another Excel instance can serialize a workbook open across the desktop.
   // Resident sessions tolerate that pause; the launcher still bounds the job.
@@ -9,7 +17,6 @@
   const requestTimeoutMs = 120000;
   const started = performance.now();
   let nativeStopped = false;
-  let runStarted = false;
 
   const element = id => document.getElementById(id);
   const show = (id, value) => { element(id).textContent = value; };
@@ -287,13 +294,13 @@
   }
 
   Office.onReady(info => {
-    if (runStarted) return;
+    if (runtime.runStarted) return;
     if (!info || info.host !== Office.HostType.Excel) {
       connection(false, 'Excel unavailable');
       phase('Open this add-in in Excel');
       return;
     }
-    runStarted = true;
+    runtime.runStarted = true;
     run().catch(error => {
       connection(false, 'Capture failed');
       phase(error && error.message ? error.message : String(error));

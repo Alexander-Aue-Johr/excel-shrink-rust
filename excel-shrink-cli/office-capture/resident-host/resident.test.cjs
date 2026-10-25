@@ -77,6 +77,31 @@ test('a task pane in a different workbook fails before reading sheets or capturi
   assert.deepEqual(f.uploads, []);
 });
 
+test('readiness verifies the workbook without planning or allocating captures', async () => {
+  const f = fixture();
+  assert.equal(await f.worker.verifyWorkbook(), 'fixture.xlsx');
+  assert.deepEqual(f.captures, []);
+  assert.deepEqual(f.heightSheets, []);
+  assert.equal(f.worker.resources().retained_capture_plans, 0);
+  await assert.rejects(fixture('another.xlsx').worker.verifyWorkbook(), error => error.code === 'WORKBOOK_IDENTITY');
+});
+
+test('resource snapshots expose bounded image work and release retained geometry', async () => {
+  const f = fixture();
+  const plan = await f.worker.execute({id:'plan',kind:'plan',sheets:[f.sheet]});
+  await f.worker.execute({id:'image',kind:'capture_images',capture_id:'plan',tiles:plan.tiles.slice(0,2)});
+  const before = f.worker.resources();
+  assert.equal(before.retained_tiles, 4);
+  assert.equal(before.geometry_rows, 10);
+  assert.equal(before.pending_png_characters, 0);
+  assert.equal(before.active_batch_pixels, 0);
+  await f.worker.execute({id:'release',kind:'release',capture_id:'plan'});
+  const after = f.worker.resources();
+  assert.equal(after.retained_capture_plans, 0);
+  assert.equal(after.retained_tiles, 0);
+  assert.equal(after.geometry_rows, 0);
+});
+
 test('a partial whitespace capture takes images only for the requested spans', async () => {
   const f = fixture();
   const result = await f.worker.execute({id: 'partial', kind: 'capture',

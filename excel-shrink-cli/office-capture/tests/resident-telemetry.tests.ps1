@@ -108,6 +108,9 @@ while (-not (Test-Path -LiteralPath (Join-Path $Root 'finish'))) { Start-Sleep -
     $child.Refresh()
     $measured = $owned.SampleMemory()
     $current = $measured.PrivateBytes
+    $grandchildPid = [int][IO.File]::ReadAllText((Join-Path $root 'allocated'))
+    Assert (($measured.Processes.Pid -contains $child.Id) -and ($measured.Processes.Pid -contains $grandchildPid)) 'Resource snapshot omitted an owned process.'
+    Assert (($measured.Processes | Where-Object { $_.PrivateBytes -gt 100MB -and $_.StartedUnixMilliseconds -gt 0 }).Count -ge 1) 'Process samples lack private memory or identity.'
     Assert ($current -gt $child.PrivateMemorySize64 + 100MB) 'Current job memory omitted the descendant.'
     if ($null -ne $measured.PrivateWorkingSetBytes) {
         Assert ($measured.PrivateWorkingSetBytes -gt 100MB) 'Private working set omitted the resident descendant allocation.'

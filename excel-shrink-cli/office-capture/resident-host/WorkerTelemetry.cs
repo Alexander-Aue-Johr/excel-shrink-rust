@@ -12,6 +12,20 @@ internal sealed class WorkerTelemetry
     private DateTimeOffset? lastProgress;
     private JsonObject? lastEvent, lastSuccess, activeJob;
     private long sequence, uploadedImages, completedCommands;
+    private JsonObject? paneResources;
+
+    public void SamplePane(JsonObject source)
+    {
+        // Keep one small snapshot. Samples are liveness diagnostics, not work
+        // progress, and never expand the event history or retain image data.
+        var sample = new JsonObject { ["sampled_at"] = DateTimeOffset.UtcNow.ToString("O") };
+        foreach (var key in new[] { "retained_capture_plans", "retained_tiles", "geometry_cache_entries", "geometry_rows",
+            "pending_png_characters", "active_batch_pixels", "active_batch_tiles", "js_heap_used_bytes", "js_heap_limit_bytes", "script_evaluations" }) {
+            if (source[key] is JsonValue field && field.TryGetValue<double>(out var value) && double.IsFinite(value) && value >= 0)
+                sample[key] = value;
+        }
+        paneResources = sample;
+    }
 
     public void Transition(string next, string? waitingFor, string message)
     {
@@ -24,8 +38,21 @@ internal sealed class WorkerTelemetry
 
     public void Configured()
     {
-        Transition("waiting_for_job", "coordinator", "Add-in connected and configured.");
-        Progress("addin_ready", "Add-in configuration completed.");
+        Transition("verifying_workbook", "excel", "Add-in configured; verifying the workbook through Office.js.");
+        Progress("addin_configured", "Add-in configuration completed.");
+    }
+
+    public void Ready()
+    {
+        Transition("waiting_for_startup_sample", "launcher", "Workbook verified; waiting for the launcher's memory sample.");
+        Progress("addin_ready", "Office.js synchronized and verified the staged workbook identity.");
+    }
+
+    public void ConfigurationAttempt(string document, string run, string request, string outcome)
+    {
+        Record("configuration_request", "Taskpane configuration request: " + outcome + ".", new JsonObject {
+            ["document_id"] = document, ["run_id"] = run, ["request_id"] = request, ["outcome"] = outcome
+        });
     }
 
     public void Started(JsonObject command)
@@ -65,7 +92,7 @@ internal sealed class WorkerTelemetry
 
     public void Restarted()
     {
-        Transition("client_error", null, "The task pane restarted after a command was dispatched.");
+        Transition("client_error", null, "A different taskpane document appeared after a command was dispatched; this is not proof of a WebView crash.");
     }
 
     private void Progress(string kind, string message, JsonObject? details = null)
@@ -92,7 +119,8 @@ internal sealed class WorkerTelemetry
         ["last_progress_at"] = lastProgress?.ToString("O"), ["last_event"] = lastEvent?.DeepClone(),
         ["last_success"] = lastSuccess?.DeepClone(), ["active_job"] = activeJob?.DeepClone(),
         ["events"] = new JsonArray(events.Select(entry => (JsonNode)entry.DeepClone()).ToArray()),
-        ["uploaded_images"] = uploadedImages, ["completed_commands"] = completedCommands
+        ["uploaded_images"] = uploadedImages, ["completed_commands"] = completedCommands,
+        ["pane_resources"] = paneResources?.DeepClone()
     };
 
     private static JsonObject Describe(JsonObject command)

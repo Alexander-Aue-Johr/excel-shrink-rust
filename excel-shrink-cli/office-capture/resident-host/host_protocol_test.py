@@ -11,6 +11,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+import uuid
 
 
 class HostProtocol(unittest.TestCase):
@@ -58,8 +59,22 @@ class HostProtocol(unittest.TestCase):
         with urllib.request.urlopen(urllib.request.Request(self.url + path, data=body, headers=headers), timeout=5) as result:
             return json.load(result)
 
+    def config_path(self, client='one', document=None, run=None):
+        return f'/config?client={client}&document={document or uuid.uuid4().hex}&run={run or uuid.uuid4().hex}&request={uuid.uuid4().hex}'
+
+    def configure(self, client='one', ready=True):
+        self.last_config_path = self.config_path(client)
+        config = self.request(self.last_config_path)
+        if ready:
+            self.mark_ready(client, config)
+        return config
+
+    def mark_ready(self, client, config):
+        observed = self.request(f'/ready?client={client}', {'workbook': config['workbook']}, {'X-Client-Token':config['client_token']})
+        self.request(f'/launcher/startup-sampled/{client}', {'ready_at':observed['ready_at']}, {'X-Launcher-Token':'test-launcher'})
+
     def connect(self):
-        self.token = self.request("/config?client=one")["client_token"]
+        self.token = self.configure()["client_token"]
 
     def command(self, data):
         self.write(f"commands/one/{data['id']}.json", data)
@@ -80,14 +95,14 @@ class HostProtocol(unittest.TestCase):
             self.request('/launcher/reset/one', {'stage':'prepare'})
         self.assertEqual(error.exception.code, 403)
         self.write('clients/peer.json', {'client_id':'peer','workbook':'peer.xlsx','sheets':[]})
-        peer = self.request('/config?client=peer')['client_token']
+        peer = self.configure('peer')['client_token']
         header = {'X-Launcher-Token':'test-launcher'}
         self.assertTrue(self.request('/launcher/reset/one', {'stage':'prepare'}, header)['ok'])
         health = self.request('/health')
         self.assertNotIn('one', health['seen'])
         self.assertIn('peer', health['seen'])
         self.assertTrue(self.request('/job?client=peer', extra={'X-Client-Token':peer})['resetting_client'])
-        with self.assertRaises(urllib.error.HTTPError): self.request('/config?client=one')
+        with self.assertRaises(urllib.error.HTTPError): self.request(self.config_path())
         self.request('/launcher/reset/one', {'stage':'ready'}, header)
         self.connect()
         self.assertNotEqual(self.token, old)
@@ -98,7 +113,7 @@ class HostProtocol(unittest.TestCase):
         self.connect()
         self.command({'id':'0001','kind':'plan','sheets':[]})
         self.write('clients/peer.json', {'client_id':'peer','workbook':'peer.xlsx','sheets':[]})
-        self.request('/config?client=peer')
+        self.configure('peer')
         with self.assertRaises(urllib.error.HTTPError) as error:
             self.request('/launcher/reset/peer', {'stage':'prepare'}, {'X-Launcher-Token':'test-launcher'})
         self.assertEqual(error.exception.code, 409)
@@ -126,19 +141,55 @@ class HostProtocol(unittest.TestCase):
         self.connect()
         self.command({"id": "capture", "kind": "capture", "sheets": []})
         with self.assertRaises(urllib.error.HTTPError) as raised:
-            self.request("/config?client=one")
+            self.request(self.config_path())
         self.assertEqual(raised.exception.code, 409)
         result = json.loads((self.session / "responses/one/capture.json").read_text())
         self.assertFalse(result["ok"])
-        self.assertEqual(result["error"]["code"], "TASKPANE_RESTARTED")
+        self.assertEqual(result["error"]["code"], "TASKPANE_CONTEXT_CHANGED")
         self.assertEqual(self.request("/health")["errors"][0]["client_id"], "one")
+
+    def test_workbook_ready_and_exact_launcher_sample_both_precede_dispatch(self):
+        config = self.configure(ready=False)
+        self.token = config['client_token']
+        self.write('commands/one/plan.json', {'id':'plan', 'kind':'plan', 'sheets':[]})
+        self.assertTrue(self.request('/job?client=one')['waiting_for_startup_sample'])
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request('/ready?client=one', {'workbook':'wrong.xlsx'})
+        observed = self.request('/ready?client=one', {'workbook':'test.xlsx'})
+        self.assertTrue(self.request('/job?client=one')['waiting_for_startup_sample'])
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request('/launcher/startup-sampled/one', {'ready_at':observed['ready_at']})
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request('/launcher/startup-sampled/one', {'ready_at':'old-observation'}, {'X-Launcher-Token':'test-launcher'})
+        self.request('/launcher/startup-sampled/one', {'ready_at':observed['ready_at']}, {'X-Launcher-Token':'test-launcher'})
+        self.assertEqual(self.next_job('one')['id'], 'plan')
+
+    def test_same_runtime_configuration_retry_does_not_fail_an_active_job(self):
+        self.connect()
+        path = self.last_config_path
+        self.command({'id':'plan', 'kind':'plan', 'sheets':[]})
+        self.assertEqual(self.request(path)['client_token'], self.token)
+        # A bare status probe must not be interpreted as a replacement pane.
+        with self.assertRaises(urllib.error.HTTPError): self.request('/config?client=one')
+        health = self.request('/health')['clients']['one']
+        self.assertIsNone(health['error'])
+        self.assertEqual(health['active_command'], 'plan')
+        self.assertEqual(health['monitor']['last_event']['details']['outcome'], 'repeated_request')
+
+    def test_replacement_before_work_requires_a_new_ready_sample(self):
+        self.connect()
+        old_ready = self.request('/health')['clients']['one']['ready_at']
+        self.token = self.configure(ready=False)['client_token']
+        self.assertTrue(self.request('/job?client=one')['waiting_for_startup_sample'])
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request('/launcher/startup-sampled/one', {'ready_at':old_ready}, {'X-Launcher-Token':'test-launcher'})
 
     def test_new_client_can_start_while_another_capture_is_in_progress(self):
         self.connect()
         self.command({"id": "capture", "kind": "capture", "sheets": []})
         self.write("clients/two.json", {"client_id": "two", "workbook": "second.xlsx", "sheets": []})
         self.write("commands/two/capture.json", {"id": "capture", "kind": "capture", "sheets": []})
-        self.token = self.request("/config?client=two")["client_token"]
+        self.token = self.configure('two')["client_token"]
         self.assertTrue(self.request("/job?client=two")["settling"])
         self.assertEqual(self.next_job("two")["id"], "capture")
         health = self.request("/health")
@@ -191,6 +242,19 @@ class HostProtocol(unittest.TestCase):
         self.assertIsNotNone(before["last_heartbeat_at"])
         self.assertEqual(after["last_heartbeat_at"], before["last_heartbeat_at"])
         self.assertEqual(after["heartbeat_count"], 1)
+
+    def test_pane_resource_samples_are_bounded_and_do_not_invent_progress(self):
+        self.connect()
+        before = self.request('/health')['clients']['one']['monitor']
+        for count in range(30):
+            self.request('/heartbeat?client=one', {'retained_capture_plans':count,
+                'pending_png_characters':-1, 'untrusted':'ignored'})
+        after = self.request('/health')['clients']['one']['monitor']
+        self.assertEqual(after['events'], before['events'])
+        self.assertEqual(after['last_progress_at'], before['last_progress_at'])
+        self.assertEqual(after['pane_resources']['retained_capture_plans'], 29)
+        self.assertNotIn('untrusted', after['pane_resources'])
+        self.assertNotIn('pending_png_characters', after['pane_resources'])
 
     def test_heartbeats_and_job_polls_do_not_invent_progress_or_reset_state_age(self):
         self.connect()
@@ -263,7 +327,7 @@ class HostProtocol(unittest.TestCase):
         self.connect()
         self.write("commands/one/plan.json",{"id":"plan","kind":"plan","sheets":[]})
         self.assertTrue(self.request("/job?client=one")["waiting_for_peers"])
-        self.request("/config?client=two")
+        self.configure('two')
         self.write("control/control.json",{"paused":True})
         self.assertTrue(self.request("/job?client=one")["paused"])
         (self.session / "control/control.json").write_text("{broken",encoding="utf-8")

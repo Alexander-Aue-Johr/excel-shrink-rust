@@ -136,6 +136,16 @@ public sealed class ResidentProcesses : IDisposable
     {
         public ulong PrivateBytes;
         public ulong? PrivateWorkingSetBytes;
+        public ProcessSample[] Processes;
+    }
+
+    public sealed class ProcessSample
+    {
+        public int Pid;
+        public string Name;
+        public long StartedUnixMilliseconds;
+        public long PrivateBytes;
+        public long WorkingSetBytes;
     }
 
     // Enumerate the job rather than the launcher's Excel list: WebView children
@@ -158,6 +168,7 @@ public sealed class ResidentProcesses : IDisposable
                 if (count < 0 || count > capacity) throw new InvalidOperationException("Invalid job process list.");
                 ulong bytes = 0;
                 ulong? privateWorkingSet = 0;
+                var processes = new System.Collections.Generic.List<ProcessSample>();
                 for (int index = 0; index < count; index++)
                 {
                     int pid = checked((int)Marshal.ReadIntPtr(buffer, 8 + index * IntPtr.Size).ToInt64());
@@ -170,6 +181,9 @@ public sealed class ResidentProcesses : IDisposable
                             if (!member || process.HasExited) continue;
                             process.Refresh();
                             bytes = checked(bytes + (ulong)process.PrivateMemorySize64);
+                            processes.Add(new ProcessSample { Pid = pid, Name = process.ProcessName,
+                                StartedUnixMilliseconds = new DateTimeOffset(process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds(),
+                                PrivateBytes = process.PrivateMemorySize64, WorkingSetBytes = process.WorkingSet64 });
                             // EX2 is supported on updated Windows 10/11 (September
                             // 2023 onward). Older systems keep conservative RAM
                             // reserves: never substitute the shared working set.
@@ -189,7 +203,7 @@ public sealed class ResidentProcesses : IDisposable
                     catch (ArgumentException) { } // Exited between enumeration and opening the handle.
                     catch (InvalidOperationException) { } // Exited while reading its counters.
                 }
-                return new MemorySample { PrivateBytes = bytes, PrivateWorkingSetBytes = privateWorkingSet };
+                return new MemorySample { PrivateBytes = bytes, PrivateWorkingSetBytes = privateWorkingSet, Processes = processes.ToArray() };
             }
             finally { Marshal.FreeHGlobal(buffer); }
         }
