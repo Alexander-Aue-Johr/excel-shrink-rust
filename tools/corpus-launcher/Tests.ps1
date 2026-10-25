@@ -134,7 +134,7 @@ if($DialogTest){
         Assert ($dialog.State.imports.Count -eq 1 -and $dialog.State.imports[0] -eq 'requested import.zip') 'GUI silently discarded command-line result imports.'
         $click=[Windows.RoutedEventArgs]::new([Windows.Controls.Button]::ClickEvent)
         $dialog.Controls.Parts.Text='8';$dialog.Controls.Save.RaiseEvent($click)
-        Assert ($dialog.Controls.Status.Text -match 'Aufteilen' -and (Read-StudyJson $configPath).settings.partitions -eq 4) 'An unapplied partition edit silently changed the selected fraction.'
+        Assert ($dialog.Controls.Status.Text -match 'Partition' -and (Read-StudyJson $configPath).settings.partitions -eq 4) 'An unapplied partition edit silently changed the selected fraction.'
         $dialog.Controls.Parts.Text='3';$dialog.Controls.ApplyParts.RaiseEvent($click)
         Assert ($dialog.State.partition -eq 0 -and $dialog.Controls.PartitionButtons.Children.Count -eq 4) 'WPF repartitioning retained an invalid selection.'
         $dialog.Controls.PartitionButtons.Children[2].IsChecked=$true
@@ -145,7 +145,7 @@ if($DialogTest){
         Assert ($fromDialog.settings.partition -eq 2 -and $fromDialog.settings.partitions -eq 3) 'WPF selected partition did not persist.'
         Assert ($fromDialog.settings.comparison_groups -eq 0 -and $fromDialog.settings.order -eq 'size-desc') 'WPF pause/order settings did not persist.'
         Assert ($fromDialog.settings.tall_sheet_threshold -eq 75 -and $fromDialog.settings.tall_sheet_edge_tiles -eq 3) 'WPF tall-sheet settings did not persist.'
-        Assert ($dialog.Controls.Status.Text -eq 'Konfiguration gespeichert. Kein Lauf gestartet.') 'WPF save handler failed.'
+        Assert ($dialog.Controls.Status.Text -eq 'Configuration saved. No run started.') 'WPF save handler failed.'
         $dialog.Controls.Groups.Text='-1';$dialog.Controls.Save.RaiseEvent($click)
         Assert ($dialog.Controls.Status.Text -match 'comparison_groups') 'WPF accepted a negative group count.'
         Assert ((Read-StudyJson $configPath).settings.comparison_groups -eq 0) 'WPF invalid edit overwrote the valid configuration.'

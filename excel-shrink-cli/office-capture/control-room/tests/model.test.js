@@ -14,8 +14,8 @@ export function runTests() {
   assert(measured.size.includes('−5 MiB') && measured.size.includes('−50 %'), 'File size shows signed savings against original.');
   assert(measured.opening.includes('−6 s') && measured.opening.includes('−60 %'), 'Opening compares independent measured seconds.');
   assert(measured.extra.includes('Shrink: 2 s') && measured.extra.includes('−50 MiB'), 'Shrink time and opening memory remain distinct.');
-  assert(!processMeasurements(measures,'original').opening.includes('zum Original'), 'The baseline does not compare against itself.');
-  assert(processMeasurements(measures,'maximum-cleaning').opening.includes('noch nicht gemessen'), 'Missing measurements never appear as zero seconds.');
+  assert(!processMeasurements(measures,'original').opening.includes('vs original'), 'The baseline does not compare against itself.');
+  assert(processMeasurements(measures,'maximum-cleaning').opening.includes('not measured yet'), 'Missing measurements never appear as zero seconds.');
   const zero = processMeasurements({measurements:{original:{bytes:0,open_seconds:0},default:{bytes:5,open_seconds:2}}},'default');
   assert(!/NaN|Infinity/.test(zero.size+zero.opening) && zero.opening.includes('+2 s'), 'Zero baselines preserve absolute differences without invalid ratios.');
   const pending = normalize({ original: image(null), default: image(null), 'maximum-cleaning': image(null) });
@@ -111,7 +111,7 @@ export function runTests() {
   assert(profileRectangle(bottom, 'default').y - profileRectangle(bottom, 'original').y === 100, 'Real peer layout offsets survive the omitted section.');
   assert(imageStatus(gap, 'original') === 'omitted' && !gap.comparisonComplete && !gap.equalAcrossAll, 'Omission is neither pending nor visual equality.');
   equal(inspectionRegions(gap), [], 'Absent evidence has no image inspection crops.');
-  assert(omissionDescription(gap).includes('Nicht visuell geprüft') && omissionDescription(gap).includes('No changed row heights'), 'The gap tooltip states the coverage limitation and recorded reasons.');
+  assert(omissionDescription(gap).includes('Not visually checked') && omissionDescription(gap).includes('No changed row heights'), 'The gap tooltip states the coverage limitation and recorded reasons.');
   assert(rawTall.sheets[0].tiles[3].y === 99800 && rawTall.sheets[0].tiles.length === 4, 'Display compaction never mutates host evidence.');
   const noOmission = normalizeGroup({ sheets: [{ height: 100000, tiles: [{ id: 'pending', width: 800, height: 100000 }] }] }).sheets[0];
   assert(noOmission.height === 100000 && noOmission.tiles.length === 1, 'A large pending capture is never treated as an omission.');

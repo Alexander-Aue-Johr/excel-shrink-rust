@@ -6,7 +6,7 @@ export function runTests() {
   const start = Date.parse('2026-10-24T09:00:00Z');
   assert(startupSummary(null) === null, 'Legacy queues must not invent startup progress');
   const startup = startupSummary({ stage: 'scanning_archive', corpus: 'Enron', completed: 250, total: 1000, started_unix_ms: start }, start + 60000);
-  assert(startup.percent === 25 && startup.count === '250 / 1.000' && startup.elapsed === '1 min 0 s', 'Startup must report measured stage progress');
+  assert(startup.percent === 25 && startup.count === '250 / 1,000' && startup.elapsed === '1 min 0 s', 'Startup must report measured stage progress');
   assert(startupSummary({ stage: 'opening_archive', completed: 0, total: null }).percent === null, 'Unknown totals must stay indeterminate');
   assert(startupSummary({ stage: 'loading_records', completed: 0, total: 0 }).percent === null, 'Empty phases must not divide by zero');
   const group = { id: 'group', attempt_id: 'attempt-2', active: true, workbook: 'Book.xlsx', clients: [{
@@ -26,7 +26,7 @@ export function runTests() {
   const noProgress = workerRows({ ...group, clients: [{ ...group.clients[0], monitor: undefined }] })[0];
   assert(noProgress.lastProgress === null, 'Legacy LastActivity must not be relabelled as progress.');
   const waiting = workerRows({ ...group, clients: [{ ...group.clients[0], stage: 'waiting_for_addin', monitor: {} }] })[0];
-  assert(waiting.category === 'waiting' && waiting.waitReason.includes('unbekannt'), 'Excel internal wait reasons remain unknown.');
+  assert(waiting.category === 'waiting' && waiting.waitReason.includes('unknown'), 'Excel internal wait reasons remain unknown.');
   const coordinator = workerRows({ ...group, clients: [], coordinator: { phase: 'shrink', pid: 42,
     state_since_unix_ms: start, last_progress_unix_ms: start + 5000,
     last_event: { at_unix_ms: start + 5000, kind: 'shrunk' }, events: [] } })[0];
@@ -38,11 +38,11 @@ export function runTests() {
     scope: { corpora: ['Enron'], size_part: { part: 2, parts: 4 }, order: 'descending' },
     eta: { status: 'estimating', remaining_seconds: 1000, finish_unix_ms: start + 1000000 } });
   assert(summary.completed === '70' && summary.skipped === '5' && summary.total === '100', 'Skips and successful comparisons stay separate.');
-  assert(summary.scope.includes('Partition 2/4') && summary.scope.includes('größte zuerst'), 'Progress is scoped to the selected corpus and partition.');
-  assert(summary.perMinute === '1,2' && summary.averagePerHour === '50' && summary.finish === start + 1000000, 'Window rate, run average and actual ETA remain distinct.');
+  assert(summary.scope.includes('Partition 2/4') && summary.scope.includes('largest first'), 'Progress is scoped to the selected corpus and partition.');
+  assert(summary.perMinute === '1.2' && summary.averagePerHour === '50' && summary.finish === start + 1000000, 'Window rate, run average and actual ETA remain distinct.');
   for (const status of ['insufficient_samples', 'preparation_pending', 'paused', 'complete', 'limited', 'unavailable']) {
     const result = progressSummary({ counts: {}, eta: { status, remaining_seconds: 100, finish_unix_ms: start } });
-    assert(result.finish == null && !result.eta.startsWith('Noch etwa'), `${status} must not display a misleading completion estimate.`);
+    assert(result.finish == null && !result.eta.startsWith('About'), `${status} must not display a misleading completion estimate.`);
   }
   assert(progressSummary({}) === null, 'Old runs do not fabricate rate data.');
   return { passed };

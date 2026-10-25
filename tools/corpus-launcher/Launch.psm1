@@ -8,7 +8,7 @@ function Invoke-StudyReleaseBuild([string]$Repo, [string]$RunDirectory, [string]
     # Windows PowerShell turns redirected native stderr into terminating errors
     # under ErrorActionPreference=Stop, even for successful compiler warnings.
     $build=Start-Process -FilePath $CargoExecutable -ArgumentList @('build','--release','-p','excel-shrink-cli','--bin','excel-shrink-cli') -WorkingDirectory $Repo -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError $stderr -Wait -PassThru
-    if ($build.ExitCode -ne 0) { throw "Release-Build fehlgeschlagen (Code $($build.ExitCode)). Details: $log und $stderr" }
+    if ($build.ExitCode -ne 0) { throw "Release build failed (code $($build.ExitCode)). Details: $log and $stderr" }
 }
 
 function Get-ControlHostVersion([string]$Repo) {
@@ -37,24 +37,24 @@ function Update-OwnedControlHost([string]$Repo, $Plan, [int]$Port) {
     try { $health=Invoke-RestMethod ($Plan.Observatory+'health') -TimeoutSec 2 -ErrorAction Stop } catch { }
     if (-not $health) {
         $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$Port)
-        try { $listener.Start() } catch { throw "Port $Port ist bereits belegt. Einen anderen Observatory-Port wählen." }
+        try { $listener.Start() } catch { throw "Port $Port is already in use. Choose another Observatory port." }
         finally { $listener.Stop() }
         return
     }
     $expected=Join-Path $Plan.OutputRoot 'control-room'
-    if ((Get-Value $health 'kind') -ne 'excel-shrink-control-room' -or (Normalize-StudyPath $health.root) -ne (Normalize-StudyPath $expected)) { throw "Port $Port gehört zu einem anderen Lauf oder Dienst. Bitte einen anderen Port wählen." }
+    if ((Get-Value $health 'kind') -ne 'excel-shrink-control-room' -or (Normalize-StudyPath $health.root) -ne (Normalize-StudyPath $expected)) { throw "Port $Port belongs to another run or service. Choose another port." }
     if ($health.host_version -eq (Get-ControlHostVersion $Repo)) { return }
-    if (Test-StudyOutputBusy $Plan.OutputRoot) { throw 'Der vorhandene Korpuslauf ist noch aktiv.' }
+    if (Test-StudyOutputBusy $Plan.OutputRoot) { throw 'The existing corpus run is still active.' }
     # Only refresh our own idle control host. A foreign listener is never stopped.
     $connections=@(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop)
     $owners=@($connections.OwningProcess | Select-Object -Unique)
-    if ($owners.Count -ne 1) { throw 'Der alte Kontrollserver konnte nicht eindeutig identifiziert werden.' }
+    if ($owners.Count -ne 1) { throw 'The previous control server could not be uniquely identified.' }
     $owner=Get-CimInstance Win32_Process -Filter "ProcessId=$($owners[0])" -ErrorAction Stop
     $settingsPath=Join-Path $expected 'host-settings.json'
     $command=([string]$owner.CommandLine).Replace('\\?\','').Replace('/','\')
-    if ($owner.Name -ne 'dotnet.exe' -or $command -notlike '*--control-room*' -or $command.IndexOf($settingsPath,[StringComparison]::OrdinalIgnoreCase) -lt 0) { throw 'Der alte Kontrollserver gehört nicht eindeutig zu diesem Ergebnisverzeichnis.' }
+    if ($owner.Name -ne 'dotnet.exe' -or $command -notlike '*--control-room*' -or $command.IndexOf($settingsPath,[StringComparison]::OrdinalIgnoreCase) -lt 0) { throw 'The previous control server cannot be uniquely associated with this output directory.' }
     $process=Get-Process -Id $owner.ProcessId -ErrorAction Stop
-    if ([math]::Abs(($process.StartTime.ToUniversalTime()-$owner.CreationDate.ToUniversalTime()).TotalSeconds) -gt 1) { throw 'Die Prozessidentität des Kontrollservers hat sich geändert.' }
+    if ([math]::Abs(($process.StartTime.ToUniversalTime()-$owner.CreationDate.ToUniversalTime()).TotalSeconds) -gt 1) { throw 'The control server process identity has changed.' }
     $process | Stop-Process -Force -ErrorAction Stop
 }
 
@@ -64,14 +64,14 @@ function Start-StudyLaunch {
     $owned=$false
     try {
         try { $owned=$gate.WaitOne(0) } catch [Threading.AbandonedMutexException] { $owned=$true }
-        if (-not $owned -or (Test-StudyOutputBusy $Plan.OutputRoot)) { throw "Dieser Ergebnisordner wird bereits verwendet. Den aktiven Lauf im Observatory öffnen: $($Plan.Observatory)" }
+        if (-not $owned -or (Test-StudyOutputBusy $Plan.OutputRoot)) { throw "This output directory is already in use. Open the active run in the Observatory: $($Plan.Observatory)" }
         [void][IO.Directory]::CreateDirectory($Plan.RunDirectory)
         Save-StudyJson $ConfigurationPath $Configuration
         Save-StudyJson $Plan.RequestFile $Plan.Request
         if ($Configuration.settings.build_release) {
             Invoke-StudyReleaseBuild $Repo $Plan.RunDirectory
         }
-        if (-not [IO.File]::Exists($Plan.Executable)) { throw "Executable fehlt. Zuerst cargo build --release -p excel-shrink-cli ausführen: $($Plan.Executable)" }
+        if (-not [IO.File]::Exists($Plan.Executable)) { throw "Executable not found. First run cargo build --release -p excel-shrink-cli: $($Plan.Executable)" }
         Update-OwnedControlHost $Repo $Plan ([int]$Configuration.settings.control_room_port)
         $original=@{}
         try {
@@ -108,7 +108,7 @@ function Start-StudyLaunch {
         $until=[DateTime]::UtcNow.AddSeconds(5)
         while([DateTime]::UtcNow -lt $until){
             $process.Refresh()
-            if($process.HasExited){throw "Der Runner wurde beendet (Code $($process.ExitCode)). Details: $($Plan.Stderr)"}
+            if($process.HasExited){throw "The runner exited (code $($process.ExitCode)). Details: $($Plan.Stderr)"}
             if(Test-StudyOutputBusy $Plan.OutputRoot){break}
             Start-Sleep -Milliseconds 100
         }

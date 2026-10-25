@@ -1,28 +1,28 @@
 // Read-only presentation of observations. A live heartbeat is never progress,
 // and a long-running command alone is never classified as an error.
 const phases = {
-  starting: 'Startet', staging: 'Arbeitsmappe bereitstellen', waiting_for_open_slot: 'Wartet auf Öffnen',
-  waiting_for_addin: 'Excel öffnen / Add-in verbinden', ready: 'Add-in bereit',
-  waiting_for_job: 'Wartet auf Auftrag', waiting_for_peers: 'Wartet auf andere Add-ins',
-  paused: 'Capture pausiert', settling: 'Wartet nach Excel-Start', planning_sheet: 'Sheet-Geometrie ermitteln',
-  capturing: 'Capture-Auftrag läuft', providing_images: 'Bildbelege liefern', executing_job: 'Office.js-Auftrag läuft',
-  releasing: 'Arbeitsmappe freigeben', closed: 'Geschlossen', client_error: 'Add-in meldet Fehler',
-  blocked_edit_mode: 'Excel ist im Zellenbearbeitungsmodus', waiting_cleanup: 'Wartet auf Aufräumen',
-  restart_waiting_cleanup: 'Neustart wartet auf Aufräumen', prepare: 'Vorbereiten', preparing: 'Vorbereiten',
-  extract: 'Datei entpacken', shrink: 'Varianten erzeugen', compare: 'Vergleich koordinieren',
-  save: 'Ergebnis speichern', capture_planning: 'Capture planen', capture_upload: 'Auf Captures warten',
-  host_pixel_comparison: 'Pixel auf dem Host vergleichen', complete: 'Abgeschlossen', completed: 'Abgeschlossen',
-  failed: 'Fehlgeschlagen', interrupted: 'Unterbrochen', draining: 'Begonnene Gruppen fertigstellen',
-  finished: 'Abgeschlossen', extracting: 'Datei entpacken', converting: 'Altes Excel-Format konvertieren',
-  validating: 'Datei und Capture-Plan prüfen', shrinking: 'Variante shrinken und prüfen', saving: 'Ergebnis speichern',
-  measuring_open: 'Öffnungsdauer in Excel messen', validating_values: 'Zellwerte und Neuberechnung prüfen',
-  opening: 'Excel-Clients starten', comparing: 'Profilvergleich koordinieren',
-  comparing_images: 'Bilddaten auf dem Host vergleichen', processing_result: 'Excel-Antwort verarbeiten',
-  waiting_client: 'Wartet auf Office.js-Antwort', waiting_images: 'Wartet auf Bilder / Batch-Antworten',
-  whitespace_diagnosis: 'Whitespace-Gegenprobe', closing: 'Excel-Prozesse schließen',
+  starting: 'Starting', staging: 'Staging workbook', waiting_for_open_slot: 'Waiting to open',
+  waiting_for_addin: 'Opening Excel / connecting add-in', ready: 'Add-in ready',
+  waiting_for_job: 'Waiting for job', waiting_for_peers: 'Waiting for other add-ins',
+  paused: 'Capture paused', settling: 'Waiting after Excel startup', planning_sheet: 'Determining sheet geometry',
+  capturing: 'Capture job running', providing_images: 'Providing image evidence', executing_job: 'Office.js job running',
+  releasing: 'Releasing workbook', closed: 'Closed', client_error: 'Add-in reported an error',
+  blocked_edit_mode: 'Excel is in cell edit mode', waiting_cleanup: 'Waiting for cleanup',
+  restart_waiting_cleanup: 'Restart waiting for cleanup', prepare: 'Preparing', preparing: 'Preparing',
+  extract: 'Extracting file', shrink: 'Generating variants', compare: 'Coordinating comparison',
+  save: 'Saving result', capture_planning: 'Planning captures', capture_upload: 'Waiting for captures',
+  host_pixel_comparison: 'Comparing pixels on host', complete: 'Completed', completed: 'Completed',
+  failed: 'Failed', interrupted: 'Interrupted', draining: 'Finishing groups in progress',
+  finished: 'Completed', extracting: 'Extracting file', converting: 'Converting legacy Excel format',
+  validating: 'Validating file and capture plan', shrinking: 'Shrinking and validating variant', saving: 'Saving result',
+  measuring_open: 'Measuring Excel opening time', validating_values: 'Checking cell values and recalculation',
+  opening: 'Starting Excel clients', comparing: 'Coordinating profile comparison',
+  comparing_images: 'Comparing image data on host', processing_result: 'Processing Excel response',
+  waiting_client: 'Waiting for Office.js response', waiting_images: 'Waiting for images / batch responses',
+  whitespace_diagnosis: 'Whitespace cross-check', closing: 'Closing Excel processes',
 };
-const waits = { coordinator: 'Nächster Auftrag des Orchestrierers', primary_addins: 'Andere Add-ins der Gruppe',
-  capture_pause: 'Capture-Pause', startup_quiet_period: 'Ruhezeit nach Excel-Start' };
+const waits = { coordinator: 'Next coordinator job', primary_addins: 'Other add-ins in group',
+  capture_pause: 'Capture pause', startup_quiet_period: 'Quiet period after Excel startup' };
 
 export function timestamp(value) {
   if (value == null || value === '') return null;
@@ -41,17 +41,17 @@ export function duration(seconds) {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ${Math.floor(seconds / 60) % 60} min`;
   return `${Math.floor(seconds / 86400)} d ${Math.floor(seconds / 3600) % 24} h`;
 }
-export function phaseLabel(phase) { return phases[phase] || phase || 'Nicht beobachtet'; }
+export function phaseLabel(phase) { return phases[phase] || phase || 'Not observed'; }
 export function startupSummary(startup, now = Date.now()) {
   if (!startup?.stage) return null;
-  const labels = { loading_records: 'Vorhandene Ergebnisse laden', opening_archive: 'ZIP-Katalog öffnen',
-    scanning_archive: 'ZIP-Einträge einlesen', checking_catalog: 'Katalog prüfen',
-    importing_results: 'Ergebnisse übernehmen', selecting_partition: 'Dateigrößen und Partition ermitteln',
-    initializing_run: 'Lauf initialisieren' };
+  const labels = { loading_records: 'Loading existing results', opening_archive: 'Opening ZIP catalog',
+    scanning_archive: 'Reading ZIP entries', checking_catalog: 'Checking catalog',
+    importing_results: 'Importing results', selecting_partition: 'Determining file sizes and partition',
+    initializing_run: 'Initializing run' };
   const total = startup.total, done = startup.completed;
   const measured = Number.isInteger(total) && total > 0 && Number.isInteger(done) && done >= 0 && done <= total;
   return { label: labels[startup.stage] || startup.stage, corpus: startup.corpus || '',
-    count: measured ? `${done.toLocaleString('de-DE')} / ${total.toLocaleString('de-DE')}` : 'Umfang wird ermittelt',
+    count: measured ? `${done.toLocaleString('en-US')} / ${total.toLocaleString('en-US')}` : 'Determining scope',
     percent: measured ? Math.floor(done / total * 100) : null,
     elapsed: duration(age(startup.started_unix_ms, now)) };
 }
@@ -78,7 +78,7 @@ export function workerRows(group) {
       category: category(state, client.process_alive, common.active), lastProgress, lastSuccess, lastEvent,
       heartbeat: client.last_heartbeat_at, heartbeatCount: client.heartbeat_count ?? 0,
       waitReason: waits[monitor.wait_reason] || monitor.wait_reason || (state === 'waiting_for_addin'
-        ? 'Excel-Öffnen oder Add-in-Initialisierung; interne Warteursache unbekannt' : null),
+        ? 'Excel opening or add-in initialization; internal wait reason unknown' : null),
       job, sheet: job?.locations?.map(item => item.sheet_name || item.name || (item.sheet_index != null ? `Sheet ${item.sheet_index}` : null)).filter(Boolean).filter((name, i, names) => names.indexOf(name) === i).join(', ') || monitor.sheet_name,
       events: [...(monitor.events || []), ...(client.last_launcher_event ? [client.last_launcher_event] : [])]
         .sort((a, b) => (timestamp(b) || 0) - (timestamp(a) || 0)).slice(0, 24),
@@ -88,7 +88,7 @@ export function workerRows(group) {
   if (group.coordinator) {
     const monitor = group.coordinator, state = monitor.phase || monitor.state;
     rows.unshift({ ...common, id: `${group.id}/${group.attempt_id}/coordinator/${monitor.pid}/${monitor.process_started_unix_ms}`,
-      clientId: 'Orchestrierer', kind: 'Rust / Host', pid: monitor.pid, processStarted: monitor.process_started_unix_ms,
+      clientId: 'Coordinator', kind: 'Rust / Host', pid: monitor.pid, processStarted: monitor.process_started_unix_ms,
       alive: monitor.process_alive,
       state, stateSince: monitor.state_since ?? monitor.state_since_unix_ms, category: category(state, monitor.process_alive, common.active),
       lastEvent: monitor.last_event, lastProgress: monitor.last_progress_at ?? monitor.last_progress_unix_ms ?? monitor.last_progress,
@@ -102,20 +102,20 @@ export function workerRows(group) {
 export function progressSummary(progress) {
   if (!progress?.counts) return null;
   const counts = progress.counts, rate = progress.rates || {}, eta = progress.eta || {}, scope = progress.scope || {};
-  const number = value => Number.isFinite(value) ? new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(value) : '—';
-  const statuses = { insufficient_samples: 'Warte auf genügend Abschlüsse', preparation_pending: 'Vorbereitung läuft; noch keine Gesamtschätzung',
-    paused: 'Pausiert', complete: 'Auswahl abgeschlossen', limited: 'Lauflimit: keine Schätzung für die ganze Auswahl',
-    unavailable: 'Noch keine belastbare Schätzung' };
-  const scopeLabel = [scope.corpora?.join(', '), scope.size_part ? `Partition ${scope.size_part.part}/${scope.size_part.parts}` : 'Gesamter Korpus',
-    ['descending', 'largest-first', 'size-desc'].includes(scope.order) ? 'größte zuerst' : ['ascending', 'smallest-first', 'size-asc'].includes(scope.order) ? 'kleinste zuerst' : scope.order === 'priority' ? 'Prioritätsreihenfolge' : null].filter(Boolean).join(' · ');
+  const number = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(value) : '—';
+  const statuses = { insufficient_samples: 'Waiting for enough completions', preparation_pending: 'Preparation in progress; no overall estimate yet',
+    paused: 'Paused', complete: 'Selection completed', limited: 'Run limit: no estimate for the full selection',
+    unavailable: 'No reliable estimate yet' };
+  const scopeLabel = [scope.corpora?.join(', '), scope.size_part ? `Partition ${scope.size_part.part}/${scope.size_part.parts}` : 'Entire corpus',
+    ['descending', 'largest-first', 'size-desc'].includes(scope.order) ? 'largest first' : ['ascending', 'smallest-first', 'size-asc'].includes(scope.order) ? 'smallest first' : scope.order === 'priority' ? 'priority order' : null].filter(Boolean).join(' · ');
   return { scope: scopeLabel, completed: number(counts.completed), skipped: number(counts.skipped),
     remaining: number(counts.remaining), total: number(counts.total), inProgress: number(counts.in_progress),
     preparationRemaining: number(counts.preparation_remaining), prepared: number(counts.prepared),
     perMinute: number(rate.completed_per_minute), perHour: number(rate.completed_per_hour),
     averagePerHour: number(rate.average_completed_per_hour),
     preparationPerHour: number(rate.preparation_per_hour), window: duration(rate.window_seconds),
-    eta: eta.status === 'estimating' && Number.isFinite(eta.remaining_seconds) ? `Noch etwa ${duration(eta.remaining_seconds)}` : statuses[eta.status] || 'Noch keine Schätzung',
+    eta: eta.status === 'estimating' && Number.isFinite(eta.remaining_seconds) ? `About ${duration(eta.remaining_seconds)}` : statuses[eta.status] || 'No estimate yet',
     finish: eta.status === 'estimating' ? timestamp(eta.finish_unix_ms) : null,
-    diagnosisFailed: number(progress.diagnosis_failed), phase: progress.phase === 'paused' ? 'Lauf pausiert' : phaseLabel(progress.phase),
+    diagnosisFailed: number(progress.diagnosis_failed), phase: progress.phase === 'paused' ? 'Run paused' : phaseLabel(progress.phase),
   };
 }

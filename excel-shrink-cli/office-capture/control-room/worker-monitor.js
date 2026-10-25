@@ -6,28 +6,28 @@ const element = (tag, className, text) => {
   if (text != null) node.textContent = text;
   return node;
 };
-const timeText = value => timestamp(value) == null ? 'Nicht beobachtet' : new Date(timestamp(value)).toLocaleString('de-DE');
-const sinceText = value => age(value) == null ? 'Nicht beobachtet' : `vor ${duration(age(value))}`;
-const message = event => typeof event === 'string' ? event : event?.message || event?.kind || event?.error || 'Nicht beobachtet';
+const timeText = value => timestamp(value) == null ? 'Not observed' : new Date(timestamp(value)).toLocaleString('en-US');
+const sinceText = value => age(value) == null ? 'Not observed' : `${duration(age(value))} ago`;
+const message = event => typeof event === 'string' ? event : event?.message || event?.kind || event?.error || 'Not observed';
 const observedPhase = row => row.alive === false && !['closed', 'finished', 'complete', 'completed'].includes(row.state)
-  ? `Prozess beendet · zuletzt ${phaseLabel(row.state)}` : phaseLabel(row.state);
+  ? `Process exited · last ${phaseLabel(row.state)}` : phaseLabel(row.state);
 
 export function initWorkerMonitor({ selectGroup } = {}) {
   const stylesheet = element('link');
   stylesheet.rel = 'stylesheet'; stylesheet.href = new URL('./worker-monitor.css', import.meta.url).href;
   document.head.append(stylesheet);
-  const button = element('button', 'wm-open', 'Worker-Übersicht');
+  const button = element('button', 'wm-open', 'Worker overview');
   button.id = 'workerMonitor'; button.type = 'button';
   document.querySelector('#activeGroups')?.after(button);
   const progress = element('section', 'wm-progress');
-  progress.setAttribute('aria-label', 'Fortschritt der ausgewählten Korpora und Partition');
+  progress.setAttribute('aria-label', 'Progress for selected corpora and partition');
   document.querySelector('.controls')?.after(progress);
 
   const dialog = element('dialog', 'wm-dialog');
   dialog.id = 'workerMonitorDialog'; dialog.setAttribute('aria-labelledby', 'wm-title');
-  dialog.innerHTML = `<header class="wm-header"><div><div class="eyebrow">LAUFZEITDIAGNOSE</div><h2 id="wm-title">Worker-Übersicht</h2><p>Heartbeats zeigen Erreichbarkeit. Fortschritt zeigt abgeschlossene Schritte.</p></div><button class="wm-close" aria-label="Worker-Übersicht schließen">×</button></header>
-    <div class="wm-toolbar"><label>Anzeigen <select class="wm-filter"><option value="all">Alle Zustände</option><option value="working">Auftrag läuft / startet</option><option value="waiting">Wartend / pausiert</option><option value="ended">Beendet</option></select></label><label><input type="checkbox" class="wm-recent"> Letzte 8 beendete Gruppen</label><span class="wm-summary"></span></div>
-    <p class="wm-status" role="status"></p><div class="wm-content"><div class="wm-overview"><div class="wm-groups"></div><div class="wm-pager"><button class="wm-prev">Vorherige Gruppen</button><span></span><button class="wm-next">Weitere Gruppen</button></div></div><aside class="wm-detail" aria-label="Worker-Details"><p>Einen Worker auswählen, um seinen letzten erfolgreichen Schritt und die Ereignisse zu sehen.</p></aside></div>`;
+  dialog.innerHTML = `<header class="wm-header"><div><div class="eyebrow">RUNTIME DIAGNOSTICS</div><h2 id="wm-title">Worker overview</h2><p>Heartbeats show connectivity. Progress shows completed steps.</p></div><button class="wm-close" aria-label="Close worker overview">×</button></header>
+    <div class="wm-toolbar"><label>Show <select class="wm-filter"><option value="all">All states</option><option value="working">Job running / starting</option><option value="waiting">Waiting / paused</option><option value="ended">Ended</option></select></label><label><input type="checkbox" class="wm-recent"> Last 8 ended groups</label><span class="wm-summary"></span></div>
+    <p class="wm-status" role="status"></p><div class="wm-content"><div class="wm-overview"><div class="wm-groups"></div><div class="wm-pager"><button class="wm-prev">Previous groups</button><span></span><button class="wm-next">More groups</button></div></div><aside class="wm-detail" aria-label="Worker details"><p>Select a worker to see its last successful step and events.</p></aside></div>`;
   document.body.append(dialog);
   const query = selector => dialog.querySelector(selector);
   const list = query('.wm-groups'), detail = query('.wm-detail'), status = query('.wm-status');
@@ -36,7 +36,7 @@ export function initWorkerMonitor({ selectGroup } = {}) {
 
   function field(container, label, value, title) {
     const block = element('div', 'wm-field');
-    block.append(element('dt', null, label), element('dd', null, value ?? 'Nicht beobachtet'));
+    block.append(element('dt', null, label), element('dd', null, value ?? 'Not observed'));
     if (title) block.lastChild.title = title;
     container.append(block);
   }
@@ -48,26 +48,26 @@ export function initWorkerMonitor({ selectGroup } = {}) {
     heading.append(element('h3', null, row.clientId), element('span', 'wm-kind', row.kind));
     const workbook = element('p', 'wm-workbook', row.workbook);
     const fields = element('dl', 'wm-detail-fields');
-    field(fields, 'Status / Phase', observedPhase(row));
-    field(fields, 'Seit diesem Zustand', duration(age(row.stateSince)), timeText(row.stateSince));
+    field(fields, 'Status / phase', observedPhase(row));
+    field(fields, 'Time in this state', duration(age(row.stateSince)), timeText(row.stateSince));
     field(fields, 'Sheet', row.sheet);
-    field(fields, 'Warteursache', row.waitReason || (row.category === 'working'
-      ? 'Auftrag wurde übergeben; Excel-interne Wartezeiten sind nicht beobachtbar.' : 'Nicht beobachtet'));
-    field(fields, 'Letzter Heartbeat', row.kind === 'Rust / Host' ? 'Kein Add-in-Heartbeat für den Host' : sinceText(row.heartbeat), timeText(row.heartbeat));
-    field(fields, 'Letzter tatsächlicher Fortschritt', sinceText(row.lastProgress), timeText(row.lastProgress));
-    field(fields, 'Letzter erfolgreicher Schritt', message(row.lastSuccess), timeText(row.lastSuccess));
-    field(fields, 'Letztes Ereignis', `${message(row.lastEvent)} · ${sinceText(row.lastEvent)}`, timeText(row.lastEvent));
-    field(fields, 'Prozess', row.pid ? `PID ${row.pid} · ${row.alive === true ? 'läuft' : row.alive === false ? 'beendet' : 'Lebenszeichen nicht separat geprüft'}` : 'Noch keine Prozess-ID');
-    field(fields, 'Prozessstart', timeText(row.processStarted));
-    field(fields, 'Worker-ID', row.id);
-    field(fields, 'Gruppe / Versuch', `${row.groupId} / ${row.attempt || 'älteres Format'}`);
+    field(fields, 'Wait reason', row.waitReason || (row.category === 'working'
+      ? 'Job submitted; waits inside Excel cannot be observed.' : 'Not observed'));
+    field(fields, 'Last heartbeat', row.kind === 'Rust / Host' ? 'No add-in heartbeat for the host' : sinceText(row.heartbeat), timeText(row.heartbeat));
+    field(fields, 'Last actual progress', sinceText(row.lastProgress), timeText(row.lastProgress));
+    field(fields, 'Last successful step', message(row.lastSuccess), timeText(row.lastSuccess));
+    field(fields, 'Last event', `${message(row.lastEvent)} · ${sinceText(row.lastEvent)}`, timeText(row.lastEvent));
+    field(fields, 'Process', row.pid ? `PID ${row.pid} · ${row.alive === true ? 'running' : row.alive === false ? 'exited' : 'liveness not checked separately'}` : 'No process ID yet');
+    field(fields, 'Process start', timeText(row.processStarted));
+    field(fields, 'Worker ID', row.id);
+    field(fields, 'Group / attempt', `${row.groupId} / ${row.attempt || 'legacy format'}`);
     if (row.job) {
-      field(fields, 'Aktueller Auftrag', `${row.job.kind} · ${row.job.id}`);
-      field(fields, 'Erfasste Auftragsbereiche', (row.job.locations || []).map(item => [item.sheet_name || item.name, item.range].filter(Boolean).join('!')).join(', ') || 'Nicht im Auftrag angegeben');
+      field(fields, 'Current job', `${row.job.kind} · ${row.job.id}`);
+      field(fields, 'Job regions', (row.job.locations || []).map(item => [item.sheet_name || item.name, item.range].filter(Boolean).join('!')).join(', ') || 'Not specified in job');
     }
-    if (row.uploadedImages != null) field(fields, 'Bilder empfangen / Aufträge fertig', `${row.uploadedImages} / ${row.completedCommands}`);
-    if (row.error) field(fields, 'Gemeldeter Fehler', message(row.error));
-    const open = element('button', null, 'Gruppe im Atelier zeigen');
+    if (row.uploadedImages != null) field(fields, 'Images received / jobs completed', `${row.uploadedImages} / ${row.completedCommands}`);
+    if (row.error) field(fields, 'Reported error', message(row.error));
+    const open = element('button', null, 'Show group in studio');
     open.addEventListener('click', () => { dialog.close(); selectGroup?.(row.groupId); });
     const events = element('ol', 'wm-events');
     for (const event of row.events || []) {
@@ -77,9 +77,9 @@ export function initWorkerMonitor({ selectGroup } = {}) {
       events.append(item);
     }
     detail.replaceChildren(heading, workbook);
-    if (!current) detail.append(element('p', 'wm-muted', 'Letzter verfügbarer Stand; dieser Worker ist auf der aktuellen Seite nicht mehr enthalten.'));
-    if (!row.active) detail.append(element('p', 'wm-muted', 'Diese Gruppe ist beendet. Die Ereignisse sind der letzte gespeicherte Stand.'));
-    detail.append(fields, open, element('h4', null, 'Letzte Ereignisse · maximal 24'), events);
+    if (!current) detail.append(element('p', 'wm-muted', 'Last available snapshot; this worker is no longer on the current page.'));
+    if (!row.active) detail.append(element('p', 'wm-muted', 'This group has ended. Events show the last saved snapshot.'));
+    detail.append(fields, open, element('h4', null, 'Recent events · up to 24'), events);
     detail.scrollTop = scroll;
   }
 
@@ -98,7 +98,7 @@ export function initWorkerMonitor({ selectGroup } = {}) {
       const groupTitle = element('div', 'wm-group-title');
       groupTitle.append(element('strong', null, group.workbook || group.id), element('span', null, `${group.corpus || ''} · ${phaseLabel(group.status)}`));
       card.append(groupTitle);
-      if (!rows.length) card.append(element('p', 'wm-muted', 'Prozessdaten für diesen Versuch werden noch bereitgestellt.'));
+      if (!rows.length) card.append(element('p', 'wm-muted', 'Process data for this attempt is still being provided.'));
       for (const row of rows) {
         const item = element('button', `wm-worker wm-${row.category}${selected?.id === row.id ? ' wm-selected' : ''}`);
         item.dataset.workerId = row.id;
@@ -107,33 +107,33 @@ export function initWorkerMonitor({ selectGroup } = {}) {
         const heartbeat = element('span', 'wm-heart', row.kind === 'Rust / Host' ? '◇' : '♥');
         const heartbeatAge = age(row.heartbeat), oldCount = heartbeats.get(row.id);
         heartbeat.style.setProperty('--wm-heart-strength', heartbeatAge == null ? '.12' : String(Math.max(.12, 1 - heartbeatAge / 30)));
-        heartbeat.title = row.kind === 'Rust / Host' ? 'Host-Telemetrie' : `Heartbeat ${sinceText(row.heartbeat)}`;
+        heartbeat.title = row.kind === 'Rust / Host' ? 'Host telemetry' : `Heartbeat ${sinceText(row.heartbeat)}`;
         if (oldCount != null && row.heartbeatCount > oldCount) heartbeat.classList.add('wm-beat');
         heartbeats.set(row.id, row.heartbeatCount);
         identity.append(heartbeat, element('strong', null, row.clientId), element('small', null, `${row.kind}${row.pid ? ` · PID ${row.pid}` : ''}`));
         const phase = element('span', 'wm-phase');
-        phase.append(element('strong', null, observedPhase(row)), element('small', null, `${duration(age(row.stateSince))} seit Zustandswechsel${row.sheet ? ` · ${row.sheet}` : ''}`));
+        phase.append(element('strong', null, observedPhase(row)), element('small', null, `${duration(age(row.stateSince))} since state change${row.sheet ? ` · ${row.sheet}` : ''}`));
         const activity = element('span', 'wm-activity');
-        activity.append(element('span', null, `Fortschritt ${sinceText(row.lastProgress)}`), element('small', null, row.kind === 'Rust / Host' ? `Ereignis ${sinceText(row.lastEvent)}` : `Heartbeat ${sinceText(row.heartbeat)}`));
+        activity.append(element('span', null, `Progress ${sinceText(row.lastProgress)}`), element('small', null, row.kind === 'Rust / Host' ? `Event ${sinceText(row.lastEvent)}` : `Heartbeat ${sinceText(row.heartbeat)}`));
         item.append(identity, phase, activity);
         item.addEventListener('click', () => { showDetail(row); render(); });
         card.append(item);
       }
       fragment.append(card);
     }
-    if (!fragment.childNodes.length) fragment.append(element('p', 'wm-muted', 'Keine Worker mit diesem Filter.'));
+    if (!fragment.childNodes.length) fragment.append(element('p', 'wm-muted', 'No workers match this filter.'));
     list.replaceChildren(fragment);
     if (focusedWorker) [...list.querySelectorAll('.wm-worker')]
       .find(item => item.dataset.workerId === focusedWorker)?.focus({ preventScroll: true });
     // Retain only this bounded page, so a day-long run does not grow browser memory.
     const ids = new Set(allRows.map(row => row.id));
     for (const id of heartbeats.keys()) if (!ids.has(id)) heartbeats.delete(id);
-    query('.wm-summary').textContent = `${snapshot.active_groups} aktive Gruppen · ${allRows.filter(row => row.kind !== 'Rust / Host').length} Excel-Worker auf dieser Seite`;
+    query('.wm-summary').textContent = `${snapshot.active_groups} active groups · ${allRows.filter(row => row.kind !== 'Rust / Host').length} Excel workers on this page`;
     query('.wm-prev').disabled = offset === 0;
     query('.wm-next').disabled = snapshot.next_offset == null;
-    query('.wm-pager span').textContent = snapshot.total_groups ? `Gruppen ${offset + 1}–${Math.min(offset + 64, snapshot.total_groups)} von ${snapshot.total_groups}` : 'Keine aktiven Gruppen';
-    const warning = snapshot.runner_alive === false ? 'Runner beendet; gespeicherter letzter Stand.' : snapshot.running === false ? 'Kein aktiver Corpuslauf; gespeicherter letzter Stand.' : 'Lange Wartezeiten allein sind kein Fehler.';
-    status.textContent = `${warning} Stand ${timeText(snapshot.sampled_at)}${snapshot.diagnostics?.length ? ` · ${snapshot.diagnostics.length} Hinweis(e): ${snapshot.diagnostics.map(message).join('; ')}` : ''}`;
+    query('.wm-pager span').textContent = snapshot.total_groups ? `Groups ${offset + 1}–${Math.min(offset + 64, snapshot.total_groups)} of ${snapshot.total_groups}` : 'No active groups';
+    const warning = snapshot.runner_alive === false ? 'Runner exited; showing last saved snapshot.' : snapshot.running === false ? 'No active corpus run; showing last saved snapshot.' : 'Long waits alone do not indicate an error.';
+    status.textContent = `${warning} Snapshot ${timeText(snapshot.sampled_at)}${snapshot.diagnostics?.length ? ` · ${snapshot.diagnostics.length} note(s): ${snapshot.diagnostics.map(message).join('; ')}` : ''}`;
   }
 
   async function refresh() {
@@ -150,13 +150,13 @@ export function initWorkerMonitor({ selectGroup } = {}) {
       if (offset > 0 && offset >= data.total_groups) { offset = 0; return refresh(); }
       render();
     } catch (error) {
-      if (error.name !== 'AbortError') status.textContent = `Worker-Status konnte nicht aktualisiert werden: ${error.message}. Angezeigte Daten sind der letzte empfangene Stand.`;
+      if (error.name !== 'AbortError') status.textContent = `Could not refresh worker status: ${error.message}. Displayed data is the last received snapshot.`;
     } finally {
       if (token === generation && dialog.open) timer = setTimeout(refresh, 2000);
     }
   }
 
-  button.addEventListener('click', () => { dialog.showModal(); status.textContent = 'Worker laden …'; refresh(); });
+  button.addEventListener('click', () => { dialog.showModal(); status.textContent = 'Loading workers …'; refresh(); });
   query('.wm-close').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => { clearTimeout(timer); request?.abort(); generation++; button.focus(); });
   query('.wm-filter').addEventListener('change', render);
@@ -169,34 +169,34 @@ export function initWorkerMonitor({ selectGroup } = {}) {
     const startup = startupSummary(queue.startup);
     if (startup) {
       const heading = element('div', 'wm-progress-heading');
-      heading.append(element('strong', null, 'Vorverarbeitung'), element('span', null, startup.corpus));
+      heading.append(element('strong', null, 'Preparation'), element('span', null, startup.corpus));
       const label = element('p', null, `${startup.label}: ${startup.count}${startup.percent == null ? '' : ` (${startup.percent} %)`}`);
       const bar = element('progress', 'wm-startup-bar');
       bar.max = 100;
       if (startup.percent != null) bar.value = startup.percent;
       bar.setAttribute('aria-label', startup.label);
-      const note = element('p', 'wm-progress-note', `Aktuelle Phase seit ${startup.elapsed}. Die Anzeige bezieht sich auf diese Phase; weitere Vorbereitungsschritte folgen. Vergleiche starten danach.`);
-      if (queue.runner_alive === false || queue.running === false) note.textContent = 'Runner inaktiv: letzter gespeicherter Stand der Vorverarbeitung.';
+      const note = element('p', 'wm-progress-note', `Current phase has run for ${startup.elapsed}. Progress refers to this phase; further preparation steps follow. Comparisons start afterward.`);
+      if (queue.runner_alive === false || queue.running === false) note.textContent = 'Runner inactive: last saved preparation snapshot.';
       progress.replaceChildren(heading, label, bar, note);
       return;
     }
     const summary = progressSummary(queue.progress);
     if (!summary) {
-      progress.replaceChildren(element('p', 'wm-muted', 'Corpusfortschritt wird vom Runner bereitgestellt; ältere Läufe enthalten noch keine Geschwindigkeitsmessung.'));
+      progress.replaceChildren(element('p', 'wm-muted', 'Corpus progress is provided by the runner; older runs do not include throughput measurements.'));
       return;
     }
     const heading = element('div', 'wm-progress-heading');
     heading.append(element('strong', null, summary.scope), element('span', null, summary.phase));
     const numbers = element('dl', 'wm-progress-numbers');
-    field(numbers, 'Verglichen', summary.completed);
-    field(numbers, 'Übersprungen', summary.skipped);
-    field(numbers, 'Übrig / insgesamt', `${summary.remaining} / ${summary.total}`);
-    field(numbers, 'In Bearbeitung', summary.inProgress);
-    field(numbers, 'Verglichen / min', summary.perMinute);
-    field(numbers, 'Verglichen / h', summary.perHour);
-    const footer = element('p', 'wm-progress-note', `${summary.eta}${summary.finish ? ` · etwa ${timeText(summary.finish)}` : ''}. Rate erfolgreich verglichener Arbeitsmappen im aktiven Zeitfenster von ${summary.window}. Laufmittel: ${summary.averagePerHour}/h. Noch vorzubereiten: ${summary.preparationRemaining} (${summary.preparationPerHour}/h). Vollständig ruhende Pausen (Soll 0) zählen nicht mit; Capture-Pausen mit aktiven Gruppen zählen weiter.`);
-    if (Number(queue.progress.diagnosis_failed) > 0) footer.append(document.createTextNode(` Offene Diagnosefehler: ${summary.diagnosisFailed}.`));
-    if (queue.runner_alive === false || queue.running === false) footer.append(document.createTextNode(' Runner inaktiv: letzter gespeicherter Stand.'));
+    field(numbers, 'Compared', summary.completed);
+    field(numbers, 'Skipped', summary.skipped);
+    field(numbers, 'Remaining / total', `${summary.remaining} / ${summary.total}`);
+    field(numbers, 'In progress', summary.inProgress);
+    field(numbers, 'Compared / min', summary.perMinute);
+    field(numbers, 'Compared / h', summary.perHour);
+    const footer = element('p', 'wm-progress-note', `${summary.eta}${summary.finish ? ` · around ${timeText(summary.finish)}` : ''}. Rate of successfully compared workbooks in the active window of ${summary.window}. Run average: ${summary.averagePerHour}/h. Remaining preparation: ${summary.preparationRemaining} (${summary.preparationPerHour}/h). Fully idle pauses (target 0) are excluded; capture pauses with active groups still count.`);
+    if (Number(queue.progress.diagnosis_failed) > 0) footer.append(document.createTextNode(` Unresolved diagnostic failures: ${summary.diagnosisFailed}.`));
+    if (queue.runner_alive === false || queue.running === false) footer.append(document.createTextNode(' Runner inactive: last saved snapshot.'));
     progress.replaceChildren(heading, numbers, footer);
   } };
 }

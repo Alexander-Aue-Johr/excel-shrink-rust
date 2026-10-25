@@ -1,9 +1,18 @@
 # Corpus launcher on Windows
 
-Run the VS Code task **Excel Shrink: Korpuslauf konfigurieren**. It opens the
+Run the VS Code task **Excel Shrink: Configure corpus run**. It opens the
 same kind of PowerShell/WPF dialog used by the existing workbook demo tasks.
 The dialog configures the existing `regression study` runner; it does not create
 a separate results format or a separate comparison engine.
+
+In a WSL workspace the task opens Windows PowerShell through
+`tools/start-corpus-wsl.sh`. The Windows runner requires an output directory
+that supports Windows file locks. WSL filesystem paths such as
+`\\wsl.localhost\Ubuntu\home\...` do not support these locks. Choose a directory
+on a Windows drive under **Advanced settings > Output directory**.
+To resume existing results, retain and transfer the existing results before
+selecting their Windows location; choosing an empty directory starts a separate
+result collection. A lock-check failure is not evidence of an active run.
 
 Select a corpus, one size partition or the whole corpus, and the processing
 order. Partitions contain approximately equal **numbers of files** in the
@@ -23,7 +32,7 @@ XML, recalculation, geometry and visual-content indicators are added. This is
 not a cap on required captures. Smaller sheets retain complete capture, and
 omitted regions are explicitly marked as not visually checked.
 
-The same settings are available under **Capture & Öffnen** in the Observatory
+The same settings are available under **Capture & opening** in the Observatory
 and apply to the next workbook group. Existing launcher configurations acquire
 the defaults without changing archive bindings or completed results. The
 threshold counts actual vertical capture bands, so the capture pixel budget
@@ -68,7 +77,7 @@ selects only one. Workbook identities, prepared artifacts, completed records,
 source-catalog checks and portable result imports continue to use the existing
 runner mechanisms.
 
-Existing IDs never depend on a renamed ZIP path. **Lokales ZIP zuordnen** checks
+Existing IDs never depend on a renamed ZIP path. **Link local ZIP** checks
 the expected workbook count. When replacing an existing binding, it also checks
 SHA-256 against the previous archive or its recorded hash. This occasional
 rebind can take time on a large ZIP; ordinary launches do not hash it again for
@@ -145,7 +154,7 @@ subsequent groups during the run.
 ## Reports, transfer and diagnostics
 
 The Observatory starts before existing results and ZIP catalogs are read. During
-startup it displays **Vorverarbeitung**, the current corpus and phase, and a
+startup it displays **Preparation**, the current corpus and phase, and a
 measured entry counter and progress bar where the phase has a known total.
 Counters refer to the current phase, not the whole launch: archive enumeration,
 catalog checks and partition selection are separate passes. Opening a ZIP,

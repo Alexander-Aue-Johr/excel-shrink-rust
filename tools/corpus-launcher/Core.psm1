@@ -38,11 +38,11 @@ function Save-StudyJson([string]$Path, $Value) {
 
 function Test-LocalWorkbookArchive([string]$Path) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    if (-not [IO.File]::Exists($Path)) { throw "ZIP-Datei fehlt: $Path" }
+    if (-not [IO.File]::Exists($Path)) { throw "ZIP file not found: $Path" }
     $zip = [IO.Compression.ZipFile]::OpenRead($Path)
     try {
         $count = @($zip.Entries | Where-Object { $_.FullName -match '(?i)\.(xlsx|xls)$' -and -not $_.FullName.EndsWith('/') }).Count
-        if ($count -eq 0) { throw "Das ZIP enthält keine XLSX- oder XLS-Arbeitsmappen: $Path" }
+        if ($count -eq 0) { throw "The ZIP contains no XLSX or XLS workbooks: $Path" }
         return $count
     } finally { $zip.Dispose() }
 }
@@ -51,7 +51,7 @@ function Set-StudyArchiveBinding($Entry, [string]$Path, [string]$Repo, [string]$
     $Path=Resolve-StudyPath $Repo $Path
     $count=Test-LocalWorkbookArchive $Path
     $expected=Get-Value $Entry 'total_workbooks'
-    if($null -ne $expected -and $count -ne [int]$expected){throw "Dieses ZIP enthält $count statt $expected Arbeitsmappen. Einen anderen Korpus bitte separat hinzufügen."}
+    if($null -ne $expected -and $count -ne [int]$expected){throw "This ZIP contains $count workbooks; expected $expected. Add a different corpus separately."}
     $oldPath=Get-Value $Entry 'local_archive'
     if($oldPath){$oldPath=Resolve-StudyPath $Repo $oldPath}
     if($oldPath -ne $Path){
@@ -62,10 +62,10 @@ function Set-StudyArchiveBinding($Entry, [string]$Path, [string]$Repo, [string]$
         if($oldPath -and [IO.File]::Exists($oldPath)){$knownHash=(Get-FileHash -LiteralPath $oldPath -Algorithm SHA256).Hash.ToLowerInvariant()}
         $records=Join-Path (Resolve-StudyPath $Repo $OutputRoot) 'records'
         if(-not $knownHash -and [IO.Directory]::Exists($records) -and [IO.Directory]::GetFiles($records,'*.json').Length -gt 0){
-            throw 'Das bisherige ZIP fehlt und es liegt kein verifizierter Archiv-Hash vor. Bei vorhandenen Ergebnissen kann diese Zuordnung nicht sicher geprüft werden. Das ursprüngliche Archiv am bisherigen Ort bereitstellen oder einen neuen Korpus hinzufügen.'
+            throw 'The previous ZIP is missing and no verified archive hash is available. This binding cannot be safely checked against existing results. Restore the original archive at its previous location or add a new corpus.'
         }
         $newHash=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
-        if($knownHash -and $knownHash -ne $newHash){throw 'Dieses ZIP stimmt nicht mit dem bisher zugeordneten Archiv überein. Einen anderen Korpus bitte separat hinzufügen.'}
+        if($knownHash -and $knownHash -ne $newHash){throw 'This ZIP does not match the previously linked archive. Add a different corpus separately.'}
         $Entry | Add-Member -NotePropertyName archive_sha256 -NotePropertyValue $newHash -Force
     }
     $Entry.local_archive=$Path
@@ -203,13 +203,13 @@ function Import-StudyConfiguration {
 function Add-StudyCorpus {
     param($Configuration, [string]$Name, [string]$Source, [string]$Repo)
     $Name = $Name.Trim(); $Source = $Source.Trim()
-    if (-not $Name -or $Name.Length -gt 120 -or ($Name.ToCharArray() | Where-Object { [char]::IsControl($_) })) { throw 'Bitte einen gültigen Namen angeben (maximal 120 Zeichen).' }
-    if (@($Configuration.corpora | Where-Object { $_.name -eq $Name }).Count) { throw 'Dieser Korpusname ist bereits vorhanden.' }
+    if (-not $Name -or $Name.Length -gt 120 -or ($Name.ToCharArray() | Where-Object { [char]::IsControl($_) })) { throw 'Enter a valid name (up to 120 characters).' }
+    if (@($Configuration.corpora | Where-Object { $_.name -eq $Name }).Count) { throw 'This corpus name already exists.' }
     $url = $null; $local = $null; $total = $null
     if ($Source -match '^https?://') {
         $uri = $null
-        if (-not [Uri]::TryCreate($Source, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -notin @('http','https') -or $uri.UserInfo) { throw 'Eine HTTP(S)-Adresse ohne eingebettete Zugangsdaten angeben.' }
-        if ($Source.ToCharArray() | Where-Object { [char]::IsControl($_) }) { throw 'Die URL enthält Steuerzeichen.' }
+        if (-not [Uri]::TryCreate($Source, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -notin @('http','https') -or $uri.UserInfo) { throw 'Enter an HTTP(S) URL without embedded credentials.' }
+        if ($Source.ToCharArray() | Where-Object { [char]::IsControl($_) }) { throw 'The URL contains control characters.' }
         $url = $Source; $id = Get-TextHash $url
         # A URL may redirect or end in a signed download query. The runner checks
         # that the actual response is a ZIP before any workbook processing.
@@ -218,7 +218,7 @@ function Add-StudyCorpus {
         $total = Test-LocalWorkbookArchive $local
         $id = Get-TextHash ('local-corpus:' + [Guid]::NewGuid().ToString('N'))
     }
-    if (@($Configuration.corpora | Where-Object { $_.id -eq $id }).Count) { throw 'Diese Quelle ist bereits im Katalog vorhanden.' }
+    if (@($Configuration.corpora | Where-Object { $_.id -eq $id }).Count) { throw 'This source already exists in the catalog.' }
     $item = [pscustomobject][ordered]@{ name=$Name; id=$id; url=$url; local_archive=$local; total_workbooks=$total }
     $Configuration.corpora += $item
     return $item
@@ -251,12 +251,12 @@ function ConvertTo-StudyRequest {
 function Assert-StudySettings($Settings) {
     foreach ($rule in @(@('comparison_groups',0,2147483647),@('control_room_port',1024,65535),@('partitions',1,1000),@('partition',0,1000),@('worker_memory_mib',512,65536),@('excel_memory_mib',512,65536),@('resident_memory_mib',1024,65536),@('system_reserve_mib',1024,65536),@('open_timeout_seconds',10,600),@('job_timeout_seconds',1,2147483647),@('tall_sheet_threshold',1,2147483647),@('tall_sheet_edge_tiles',1,2147483647))) {
         $number=0L; $value=[string](Get-Value $Settings $rule[0])
-        if (-not [Int64]::TryParse($value,[ref]$number) -or $number -lt $rule[1] -or $number -gt $rule[2]) { throw "Ungültiger Wert für $($rule[0]): $value" }
+        if (-not [Int64]::TryParse($value,[ref]$number) -or $number -lt $rule[1] -or $number -gt $rule[2]) { throw "Invalid value for $($rule[0]): $value" }
     }
-    if ([int]$Settings.partition -gt [int]$Settings.partitions) { throw 'Die gewählte Partition liegt außerhalb der Aufteilung.' }
-    if ($Settings.order -notin @('size-asc','size-desc')) { throw 'Die Reihenfolge muss size-asc oder size-desc sein.' }
-    if ([string]::IsNullOrWhiteSpace($Settings.machine_label) -or ($Settings.machine_label.ToCharArray() | Where-Object { [char]::IsControl($_) })) { throw 'Ein gültiger Rechnername ist erforderlich.' }
-    foreach ($hash in @($Settings.reuse_prepared_from)) { if ($hash -notmatch '\A[0-9a-f]{64}\z') { throw 'Ungültiger freigegebener Build-Hash.' } }
+    if ([int]$Settings.partition -gt [int]$Settings.partitions) { throw 'The selected partition exceeds the partition count.' }
+    if ($Settings.order -notin @('size-asc','size-desc')) { throw 'Order must be size-asc or size-desc.' }
+    if ([string]::IsNullOrWhiteSpace($Settings.machine_label) -or ($Settings.machine_label.ToCharArray() | Where-Object { [char]::IsControl($_) })) { throw 'A valid machine name is required.' }
+    foreach ($hash in @($Settings.reuse_prepared_from)) { if ($hash -notmatch '\A[0-9a-f]{64}\z') { throw 'Invalid approved build hash.' } }
 }
 
 function ConvertTo-WindowsArgument([AllowEmptyString()][string]$Argument) {
@@ -310,7 +310,14 @@ function Test-StudyOutputBusy([string]$OutputRoot) {
         $stream=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::ReadWrite)
         $stream.Lock(0,1); $locked=$true
         return $false
-    } catch [IO.IOException] { return $true }
+    } catch [IO.IOException] {
+        # Only sharing/lock violations prove another process owns the output.
+        # Windows cannot byte-lock files on the WSL UNC filesystem; treating
+        # ERROR_INVALID_FUNCTION as contention falsely reports an active run.
+        $nativeCode=$_.Exception.GetBaseException().HResult -band 0xffff
+        if ($nativeCode -in @(32,33)) { return $true }
+        throw "Could not check the lock in output directory '$OutputRoot' (Windows error $nativeCode). Windows runs require an output directory that supports Windows file locks, such as C:\ or D:\ (Advanced settings > Output directory). Existing results are retained."
+    }
     finally { if($stream){if($locked){$stream.Unlock(0,1)};$stream.Dispose()} }
 }
 

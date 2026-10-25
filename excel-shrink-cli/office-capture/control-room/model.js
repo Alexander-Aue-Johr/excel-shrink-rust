@@ -11,16 +11,16 @@ export function processMeasurements(group, id) {
   const original = measurements.original || {};
   const measured = measurements[id] || measurements[Object.keys(group?.aliases || {}).find(key => group.aliases[key] === id)] || {};
   const known = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
-  const number = (value, digits = 2) => value.toLocaleString('de-DE', {maximumFractionDigits: digits});
+  const number = (value, digits = 2) => value.toLocaleString('en-US', {maximumFractionDigits: digits});
   const delta = (value, baseline, unit) => {
     const change = value - baseline;
-    return `${change > 0 ? '+' : change < 0 ? '−' : '±'}${number(Math.abs(change))} ${unit}${baseline > 0 ? ` · ${change > 0 ? '+' : change < 0 ? '−' : '±'}${number(Math.abs(change / baseline * 100), 1)} %` : ''} zum Original`;
+    return `${change > 0 ? '+' : change < 0 ? '−' : '±'}${number(Math.abs(change))} ${unit}${baseline > 0 ? ` · ${change > 0 ? '+' : change < 0 ? '−' : '±'}${number(Math.abs(change / baseline * 100), 1)} %` : ''} vs original`;
   };
-  const size = known(measured.bytes) ? `Datei: ${number(measured.bytes / 1048576)} MiB${id !== 'original' && known(original.bytes) ? ` (${delta(measured.bytes / 1048576, original.bytes / 1048576, 'MiB')})` : ''}` : 'Dateigröße noch nicht bekannt';
-  const opening = known(measured.open_seconds) ? `Öffnen: ${number(measured.open_seconds)} s${id !== 'original' && known(original.open_seconds) ? ` (${delta(measured.open_seconds, original.open_seconds, 's')})` : ''}` : 'Öffnungszeit noch nicht gemessen';
+  const size = known(measured.bytes) ? `File: ${number(measured.bytes / 1048576)} MiB${id !== 'original' && known(original.bytes) ? ` (${delta(measured.bytes / 1048576, original.bytes / 1048576, 'MiB')})` : ''}` : 'File size not known yet';
+  const opening = known(measured.open_seconds) ? `Open: ${number(measured.open_seconds)} s${id !== 'original' && known(original.open_seconds) ? ` (${delta(measured.open_seconds, original.open_seconds, 's')})` : ''}` : 'Opening time not measured yet';
   const extra = [];
   if (known(measured.shrink_seconds)) extra.push(`Shrink: ${number(measured.shrink_seconds)} s`);
-  if (known(measured.memory_bytes)) extra.push(`RAM beim Öffnen: ${number(measured.memory_bytes / 1048576, 1)} MiB${id !== 'original' && known(original.memory_bytes) ? ` (${delta(measured.memory_bytes / 1048576, original.memory_bytes / 1048576, 'MiB')})` : ''}`);
+  if (known(measured.memory_bytes)) extra.push(`RAM at open: ${number(measured.memory_bytes / 1048576, 1)} MiB${id !== 'original' && known(original.memory_bytes) ? ` (${delta(measured.memory_bytes / 1048576, original.memory_bytes / 1048576, 'MiB')})` : ''}`);
   return {size, opening, extra:extra.join(' · ')};
 }
 
@@ -123,7 +123,7 @@ function compactOmissions(sheet, tiles, profiles) {
         planned_images: Object.fromEntries(ids.map(profile => [profile, {
           ...profileRectangle(tile, profile), y: displayY(cuts[profile][index].start, profile), height: cuts[profile][index].height,
         }])) };
-      gap.address = `Zeilen ${Number(gap.core_rows[0]) + 1}\u2013${gap.core_rows[1]}`;
+      gap.address = `Rows ${Number(gap.core_rows[0]) + 1}\u2013${gap.core_rows[1]}`;
       result.push(gap);
     } else {
       const move = (values = {}) => Object.fromEntries(Object.entries(values).map(([profile, image]) => [profile, {
@@ -137,8 +137,8 @@ function compactOmissions(sheet, tiles, profiles) {
 }
 
 export function omissionDescription(tile) {
-  return [`${tile.omitted_count || 1} Capture-Zeilen ausgelassen`, tile.address,
-    'Nicht visuell gepr\u00fcft; im Atelier verk\u00fcrzt dargestellt.',
+  return [`${tile.omitted_count || 1} capture rows omitted`, tile.address,
+    'Not visually checked; shown in a compact studio view.',
     ...(tile.omission_reasons || [])].filter(Boolean).join(' \u00b7 ');
 }
 

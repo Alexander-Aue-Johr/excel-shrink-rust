@@ -22,6 +22,9 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+# Keep framework errors and native dialogs in the same language as the UI.
+[Threading.Thread]::CurrentThread.CurrentUICulture=[Globalization.CultureInfo]::GetCultureInfo('en-US')
+[Threading.Thread]::CurrentThread.CurrentCulture=[Globalization.CultureInfo]::GetCultureInfo('en-US')
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Import-Module (Join-Path $PSScriptRoot 'corpus-launcher/Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'corpus-launcher/Launch.psm1') -Force

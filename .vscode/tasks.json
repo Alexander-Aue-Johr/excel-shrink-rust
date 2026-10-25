@@ -156,7 +156,7 @@
       }
     },
     {
-      "label": "Excel Shrink: Korpuslauf konfigurieren",
+      "label": "Excel Shrink: Configure corpus run",
       "type": "process",
       "command": "${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
@@ -172,6 +172,18 @@
         "cwd": "${workspaceFolder}",
         "env": {
           "PATH": "${env:PATH};${userHome}/.cargo/bin"
+        }
+      },
+      "linux": {
+        "command": "bash",
+        "args": [
+          "${workspaceFolder}/tools/start-corpus-wsl.sh"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+          }
         }
       },
       "problemMatcher": [],

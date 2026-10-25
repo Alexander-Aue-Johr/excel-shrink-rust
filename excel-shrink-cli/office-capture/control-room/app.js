@@ -59,7 +59,7 @@ function fitSize(aspect, width, height) { return aspect > width / height ? [widt
 function labelGroup(group) { return group.ids.map(profileLabel).join(' · '); }
 function safeImageUrl(url) {
   const value = new URL(url, location.href);
-  if (value.origin !== location.origin || !value.pathname.startsWith('/data/')) throw new Error('Der Bildpfad liegt außerhalb des lokalen Ergebnisverzeichnisses.');
+  if (value.origin !== location.origin || !value.pathname.startsWith('/data/')) throw new Error('The image path is outside the local output directory.');
   return value.href;
 }
 function setNotice(text, failure = false) { $('notice').textContent = text; $('notice').classList.toggle('failure', failure); }
@@ -152,7 +152,7 @@ function loadTexture(url, maxWidth = 1024, region = null) {
   entry.promise = new Promise((resolve, reject) => {
     const run = async () => {
       try {
-        const response = await fetch(safeImageUrl(url)); if (!response.ok) throw new Error(`Bild konnte nicht geladen werden (${response.status}).`);
+        const response = await fetch(safeImageUrl(url)); if (!response.ok) throw new Error(`Could not load image (${response.status}).`);
         let source = await createImageBitmap(await response.blob(), { imageOrientation: region ? 'none' : 'flipY', premultiplyAlpha: 'none' });
         if (region) {
           // Crop before downscaling: a 1,024 px detail must not be sampled from
@@ -173,7 +173,7 @@ function loadTexture(url, maxWidth = 1024, region = null) {
         texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy()); entry.texture = texture; resolve(texture);
       } catch (error) { textureCache.delete(key); reject(error); }
     };
-    loadQueue.push({ url, run, cancel() { textureCache.delete(key); reject(new DOMException('Der sichtbare Ausschnitt hat sich geändert.', 'AbortError')); } });
+    loadQueue.push({ url, run, cancel() { textureCache.delete(key); reject(new DOMException('The visible viewport has changed.', 'AbortError')); } });
     drainLoads();
   }); textureCache.set(key, entry); return entry.promise;
 }
@@ -272,7 +272,7 @@ const fitIcons = {
   height: '<path d="M8 3h7l4 4v14H5V3zM15 3v5h4M12 5v14M12 5l-3 3M12 5l3 3M12 19l-3-3M12 19l3-3"/>',
   sheet: '<path d="M8 3h7l4 4v14H5V3zM15 3v5h4M8 10v3h3M8 10l4 4M16 18v-3h-3M16 18l-4-4"/>',
 };
-const fitLabels = { width: 'Breite einpassen', height: 'Höhe einpassen', sheet: 'Ganzes Sheet einpassen' };
+const fitLabels = { width: 'Fit width', height: 'Fit height', sheet: 'Fit whole sheet' };
 function createSheetToolbar(sheet) {
   let toolbar = sheetToolbars.get(sheet.id);
   if (!toolbar) {
@@ -286,7 +286,7 @@ function createSheetToolbar(sheet) {
     toolbar.addEventListener('pointerenter', cancelHover);
     $('sheetZoomLayer').append(toolbar); sheetToolbars.set(sheet.id, toolbar);
   }
-  toolbar.setAttribute('aria-label', `${sheet.name}: gemeinsamer Zoom aller vier Profile`);
+  toolbar.setAttribute('aria-label', `${sheet.name}: shared zoom for all four profiles`);
   const mode = sheetView(sheet).mode;
   for (const button of toolbar.children) {
     button.title = `${fitLabels[button.dataset.fit]} · ${sheet.name}`;
@@ -323,7 +323,7 @@ function makeSheetCard(sheet, placement) {
   const omitted = Number(sheet.capture_coverage?.omitted_tiles || 0);
   const fullFallback = sheet.capture_coverage?.fallback_reason;
   const title = makeTextPlane([{ text: sheet.name, y: 68, size: 55 },
-    { text: `${arrived} / ${planned} Capture-Aufträge · ${differences} mit Abweichung${omitted ? ` · ${omitted} ausgelassen` : fullFallback ? ' · vollständiger Fallback' : ''}`, y: 130, size: 29, color: fullFallback ? '#ffc987' : differences ? '#ffabbc' : '#8eadc2' }], CARD_W - 4.1, .68);
+    { text: `${arrived} / ${planned} capture jobs · ${differences} with differences${omitted ? ` · ${omitted} omitted` : fullFallback ? ' · full fallback' : ''}`, y: 130, size: 29, color: fullFallback ? '#ffc987' : differences ? '#ffabbc' : '#8eadc2' }], CARD_W - 4.1, .68);
   // Leave the right side of each header for the projected accessible fit tools.
   title.geometry.dispose(); title.geometry = curvedGeometry(CARD_W - 4.1, .68);
   setCurvedPosition(title, -1.775, CARD_H / 2 - .43, .045); card.add(title);
@@ -362,7 +362,7 @@ function makeBoard(card, sheet, profile, profileIndex, shown, view) {
       }
       if (top - bottom > .1) {
         const labelHeight = Math.min(.16, (top - bottom) * .5);
-        const label = makeTextPlane([{ text: `${entry.omitted_count} ausgelassen · ungeprüft`, y: 66, size: 44, align: 'center', color: '#cfcbdf' }], right - left, labelHeight, 100);
+        const label = makeTextPlane([{ text: `${entry.omitted_count} omitted · not checked`, y: 66, size: 44, align: 'center', color: '#cfcbdf' }], right - left, labelHeight, 100);
         label.geometry.dispose(); label.geometry = curvedGeometry(right - left, labelHeight);
         setCurvedPosition(label, (left + right) / 2, center, .025); board.add(label);
       }
@@ -465,7 +465,7 @@ function makeDetailPanel(group, entry, index, count) {
   const rim = frame(imageW + .03, imageH + .03, color); rim.position.copy(image.position); rim.position.z += .019; root.add(rim);
   const glow = makeGlow(imageW + .035, imageH + .035, color); glow.position.copy(image.position); glow.position.z += .014; root.add(glow);
   const title = makeTextPlane([{ text: labelGroup(group), y: 70, size: 56, align: 'center' }], width - .18, .45, 100); title.position.set(0, imageH / 2 + .2, .032); root.add(title);
-  const subtitle = group.original ? 'ORIGINAL · VISUELLE REFERENZ' : group.pixelClass == null ? 'PIXELVERGLEICH AUSSTEHEND' : sameAsOriginal ? 'PIXELIDENTISCH MIT DEM ORIGINAL' : `${Number(representative.changedPixels || 0).toLocaleString('de-DE')} ABWEICHENDE PIXEL IN DER KACHEL`;
+  const subtitle = group.original ? 'ORIGINAL · VISUAL REFERENCE' : group.pixelClass == null ? 'PIXEL COMPARISON PENDING' : sameAsOriginal ? 'PIXEL IDENTICAL TO ORIGINAL' : `${Number(representative.changedPixels || 0).toLocaleString('en-US')} DIFFERING PIXELS IN TILE`;
   const info = makeTextPlane([{ text: subtitle, y: 65, size: 34, color: group.original ? '#94dce8' : sameAsOriginal ? '#8ce8c4' : '#ffb0be', align: 'center' }], width - .2, .23, 100); info.position.set(0, -imageH / 2 - .37, .034); root.add(info);
   let mask = null;
   if ((entry.comparisonComplete || entry.inspection) && representative.maskUrl && (group.original || !sameAsOriginal)) {
@@ -493,7 +493,7 @@ async function showDetails(id, animate = true, region = null) {
   const generation = ++selectedGeneration; state.selected = id; state.regionId = region?.id ?? null; activeDetailSince = animate ? performance.now() : performance.now() - 1000;
   const groups = groupedPanels(entry, data.profiles); groups.forEach((group, index) => makeDetailPanel(group, entry, index, groups.length));
   $('selectionBar').hidden = false; $('selectionText').textContent = `${entry.sheetName} · ${entry.address}`;
-  $('selectionSummary').textContent = `${groups.length} Bildgruppen · ${entry.comparisonComplete ? entry.equalAcrossAll ? 'identisch' : 'Abweichung' : region ? 'Ausschnitt ohne eigene Klassifizierung' : 'Vergleich offen'} · ${region ? `${Math.round(region.width)} × ${Math.round(region.height)} px` : 'Capture'}`;
+  $('selectionSummary').textContent = `${groups.length} image groups · ${entry.comparisonComplete ? entry.equalAcrossAll ? 'identical' : 'Difference' : region ? 'region without separate classification' : 'comparison pending'} · ${region ? `${Math.round(region.width)} × ${Math.round(region.height)} px` : 'Capture'}`;
   renderEvidenceActions(); announce($('selectionText').textContent + ': ' + $('selectionSummary').textContent);
   await Promise.all(detailPanels.map(async panel => {
     try {
@@ -516,9 +516,9 @@ function clearDetails() {
   for (let index = hitTargets.length - 1; index >= 0; index--) if (hitTargets[index].userData.detailPanel) hitTargets.splice(index, 1);
   detailPanels.splice(0).forEach(panel => disposeObject(panel.root));
   connections.splice(0).forEach(link => { disposeObject(link.line); link.dots.forEach(disposeObject); });
-  $('selectionBar').hidden = true; $('evidenceActions').hidden = true; $('pinSelection').setAttribute('aria-pressed', 'false'); $('pinSelection').textContent = 'Festhalten';
+  $('selectionBar').hidden = true; $('evidenceActions').hidden = true; $('pinSelection').setAttribute('aria-pressed', 'false'); $('pinSelection').textContent = 'Pin';
 }
-function setPinned(value) { state.pinned = Boolean(value && state.selected); clearTimeout(leaveTimer); $('pinSelection').setAttribute('aria-pressed', String(state.pinned)); $('pinSelection').textContent = state.pinned ? 'Festgehalten' : 'Festhalten'; }
+function setPinned(value) { state.pinned = Boolean(value && state.selected); clearTimeout(leaveTimer); $('pinSelection').setAttribute('aria-pressed', String(state.pinned)); $('pinSelection').textContent = state.pinned ? 'Pinned' : 'Pin'; }
 function cancelHover() { clearTimeout(hoverTimer); pendingHover = null; }
 function scheduleClear() { cancelHover(); if (state.pinned) return; clearTimeout(leaveTimer); leaveTimer = setTimeout(() => { if (!state.pinned) clearDetails(); }, 480); }
 function intersectionAt(event) {
@@ -586,7 +586,7 @@ function renderTileButtons(shown) {
   $('tileButtons').replaceChildren(...shown.map(entry => {
     const button = document.createElement('button'); button.textContent = entry.address || entry.id; button.dataset.tile = entry.id;
     if (entry.status === 'omitted') {
-      button.textContent = `〰 ${entry.omitted_count} ausgelassen`; button.classList.add('omitted');
+      button.textContent = `〰 ${entry.omitted_count} omitted`; button.classList.add('omitted');
       button.title = omissionDescription(entry); button.setAttribute('aria-label', button.title);
       button.addEventListener('focus', () => { setNotice(button.title); announce(button.title); });
       button.addEventListener('click', () => focusTile(entry, null, true)); return button;
@@ -602,8 +602,8 @@ function renderEvidenceActions() {
 function openEvidence(panel) {
   const image = panel.representative;
   $('fullImage').src = safeImageUrl(image.fullUrl || image.url); $('imageTitle').textContent = labelGroup(panel.group);
-  $('imageDescription').textContent = `${panel.entry.sheetName} · ${panel.entry.address} · ${image.fullUrl ? 'vollständiger Capture' : 'gespeicherte Vorschau'}`;
-  $('imageScroll').classList.remove('native'); $('toggleImageSize').textContent = '1:1 anzeigen'; $('imageDialog').showModal(); setPinned(true);
+  $('imageDescription').textContent = `${panel.entry.sheetName} · ${panel.entry.address} · ${image.fullUrl ? 'full capture' : 'saved preview'}`;
+  $('imageScroll').classList.remove('native'); $('toggleImageSize').textContent = 'Show 1:1'; $('imageDialog').showModal(); setPinned(true);
 }
 
 function updateDetails(now) {
@@ -666,15 +666,15 @@ function updatePanControls() {
     $(id).max = String(Math.max(0, Math.ceil((sheet?.[size] || 0) - current[size]))); $(id).value = String(Math.round(current[axis])); $(id).disabled = Number($(id).max) === 0;
   }
   $('sheetZoomMode').textContent = fitLabels[current.mode] || 'Manueller Zoom';
-  $('viewRange').textContent = sheet ? `${sheet.name} · x ${Math.round(current.x).toLocaleString('de-DE')}–${Math.round(current.x + current.width).toLocaleString('de-DE')} · y ${Math.round(current.y).toLocaleString('de-DE')}–${Math.round(current.y + current.height).toLocaleString('de-DE')} px` : 'Warte auf Capture-Geometrie';
+  $('viewRange').textContent = sheet ? `${sheet.name} · x ${Math.round(current.x).toLocaleString('en-US')}–${Math.round(current.x + current.width).toLocaleString('en-US')} · y ${Math.round(current.y).toLocaleString('en-US')}–${Math.round(current.y + current.height).toLocaleString('en-US')} px` : 'Waiting for capture geometry';
   const shown = visibleTiles(sheet, sheetView(sheet), 100000);
-  $('sheetSummary').textContent = sheet ? `${data.sheets.length} Sheets · ${shown.length} / ${sheet.tiles.length} Capture-Aufträge im Sheet-Ausschnitt` : 'Noch keine Kacheln';
+  $('sheetSummary').textContent = sheet ? `${data.sheets.length} Sheets · ${shown.length} / ${sheet.tiles.length} capture jobs in sheet viewport` : 'No tiles yet';
   if (sheet?.capture_coverage?.omitted_tiles) {
-    $('sheetSummary').textContent = `${data.sheets.length} Sheets · ${sheet.capture_coverage.captured_tiles} / ${sheet.capture_coverage.total_tiles} Capture-Zeilen ausgewählt · ${sheet.capture_coverage.omitted_tiles} nicht visuell geprüft`;
-    $('viewRange').textContent = `${sheet.name} · verkürzte Darstellung; Originalzeilen stehen an den Kacheln`;
+    $('sheetSummary').textContent = `${data.sheets.length} Sheets · ${sheet.capture_coverage.captured_tiles} / ${sheet.capture_coverage.total_tiles} capture rows selected · ${sheet.capture_coverage.omitted_tiles} not visually checked`;
+    $('viewRange').textContent = `${sheet.name} · compact view; original rows are shown on tiles`;
   }
   if (sheet?.capture_coverage?.fallback_reason) {
-    $('sheetSummary').textContent = `${sheet.capture_coverage.total_tiles} Capture-Zeilen · vollständige Erfassung: ${sheet.capture_coverage.fallback_reason}`;
+    $('sheetSummary').textContent = `${sheet.capture_coverage.total_tiles} capture rows · full capture: ${sheet.capture_coverage.fallback_reason}`;
     $('sheetSummary').title = sheet.capture_coverage.fallback_reason;
   } else { $('sheetSummary').title = ''; }
 }
@@ -694,7 +694,7 @@ function renderMinimap() {
     const button = document.createElement('button'); button.className = 'minimap-sheet'; button.textContent = sheet.name; button.title = sheet.name;
     button.classList.toggle('selected', sheet.id === state.sheetId);
     button.classList.toggle('has-difference', sheet.tiles.some(tile => tile.comparisonComplete && !tile.equalAcrossAll));
-    button.setAttribute('aria-label', `Sheet ${sheet.name} ansehen`);
+    button.setAttribute('aria-label', `View sheet ${sheet.name}`);
     let timer;
     button.addEventListener('pointerenter', () => { $('minimapLabel').textContent = sheet.name; timer = setTimeout(() => focusSheet(sheet.id, true, true), 180); });
     button.addEventListener('pointerleave', () => clearTimeout(timer));
@@ -704,7 +704,7 @@ function renderMinimap() {
   $('minimapLabel').textContent = selectedSheet()?.name || `${sheets.length} Sheets`;
 }
 function normalizeStatus(value) {
-  return ({ restart_requested: 'Neustart angefragt', restart_waiting_cleanup: 'Neustart wartet auf sicheres Schließen', preparing: 'Vorbereitung', requested: 'Öffnen angefragt', waiting_open: 'Wartet auf Öffnen', opening: 'Excel öffnet', planning: 'Capture-Bereiche werden geplant', ready: 'Add-in bereit', capturing: 'Captures laufen', comparing: 'Pixelvergleich', complete: 'Abgeschlossen', completed: 'Abgeschlossen', finished: 'Abgeschlossen', unchanged: 'Identisch', differences: 'Unterschiede gefunden', skipped: 'Übersprungen', interrupted: 'Unterbrochen', waiting_cleanup: 'Schließt Excel', failed: 'Fehler', paused: 'Pausiert', closed: 'Geschlossen', queued: 'Eingeplant', running: 'Aktiv', active: 'Aktiv', retrying_classic: 'Klassischer Einzelvergleich läuft' })[value] || value || 'Warte auf Status';
+  return ({ restart_requested: 'Restart requested', restart_waiting_cleanup: 'Restart waiting for safe cleanup', preparing: 'Preparation', requested: 'Open requested', waiting_open: 'Waiting to open', opening: 'Opening Excel', planning: 'Planning capture regions', ready: 'Add-in ready', capturing: 'Capturing', comparing: 'Pixel comparison', complete: 'Completed', completed: 'Completed', finished: 'Completed', unchanged: 'Identical', differences: 'Differences found', skipped: 'Skipped', interrupted: 'Interrupted', waiting_cleanup: 'Closing Excel', failed: 'Error', paused: 'Paused', closed: 'Closed', queued: 'Queued', running: 'Active', active: 'Active', retrying_classic: 'Classic individual comparison running' })[value] || value || 'Waiting for status';
 }
 function groupName(group) { return String(group.workbook || group.name || group.source || group.id || 'Arbeitsmappe').split(/[\\/]/).pop(); }
 function renderGroups() {
@@ -716,19 +716,19 @@ function renderGroups() {
   const selected = groups.find(group => String(group.id) === state.groupId);
   if (selected && !shown.includes(selected)) shown.unshift(selected);
   const signature = JSON.stringify([state.groupId, query, shown]); if (signature === groupSignature) return; groupSignature = signature;
-  $('groupCount').textContent = groups.length.toLocaleString('de-DE');
-  $('moreGroups').hidden = matching.length <= groupLimit; $('moreGroups').textContent = `Weitere ${Math.min(100, matching.length - groupLimit)} anzeigen`;
+  $('groupCount').textContent = groups.length.toLocaleString('en-US');
+  $('moreGroups').hidden = matching.length <= groupLimit; $('moreGroups').textContent = `Show ${Math.min(100, matching.length - groupLimit)} more`;
   $('groups').replaceChildren(...shown.map(group => {
     const button = document.createElement('button'); button.className = 'group'; button.classList.toggle('selected', String(group.id) === state.groupId); button.setAttribute('aria-pressed', String(String(group.id) === state.groupId));
     const head = document.createElement('span'); head.className = 'group-head';
-    const number = document.createElement('span'); number.textContent = `GRUPPE ${String(groups.indexOf(group) + 1).padStart(2, '0')}`;
+    const number = document.createElement('span'); number.textContent = `GROUP ${String(groups.indexOf(group) + 1).padStart(2, '0')}`;
     const status = document.createElement('span'); status.textContent = normalizeStatus(group.status); head.append(number, status);
     const name = document.createElement('span'); name.className = 'group-name'; name.textContent = groupName(group); name.title = String(group.workbook || group.source || name.textContent);
     const description = document.createElement('span'); description.className = 'group-status'; description.textContent = group.stage || group.message || group.corpus || '';
     const progress = document.createElement('span'); progress.className = 'progress'; const fill = document.createElement('i');
     const done = Number(group.completed_tiles ?? group.tiles_compared ?? 0), total = Number(group.total_tiles ?? 0);
     fill.style.width = `${total > 0 ? Math.min(100, done / total * 100) : ['complete', 'completed', 'finished', 'unchanged', 'differences', 'skipped'].includes(group.status) ? 100 : 0}%`; progress.append(fill);
-    const foot = document.createElement('span'); foot.className = 'group-foot'; foot.textContent = total ? `${done} / ${total} Kacheln` : group.corpus || 'Status vom Runner';
+    const foot = document.createElement('span'); foot.className = 'group-foot'; foot.textContent = total ? `${done} / ${total} tiles` : group.corpus || 'Status from runner';
     button.append(head, name, description, progress, foot); button.addEventListener('click', () => selectGroup(String(group.id))); return button;
   }));
 }
@@ -742,13 +742,13 @@ function updateControlInputs() {
   if (document.activeElement !== $('groupRange') && !dirtyControls.has('targetGroups')) $('groupRange').value = String(values.target_groups ?? 1);
   const draining = values.target_groups === 0;
   const active = activeGroupCount(state.queue);
-  $('captureState').textContent = state.queue?.running === false ? 'Beendet' : draining ? state.queue?.phase === 'paused' ? 'Lauf pausiert' : `${active} Gruppen laufen fertig` : values.paused ? 'Captures pausiert' : 'Laufen';
-  $('pauseJobs').textContent = values.paused ? 'Captures fortsetzen' : 'Captures pausieren';
+  $('captureState').textContent = state.queue?.running === false ? 'Ended' : draining ? state.queue?.phase === 'paused' ? 'Run paused' : `${active} groups finishing` : values.paused ? 'Captures paused' : 'Running';
+  $('pauseJobs').textContent = values.paused ? 'Resume captures' : 'Pause captures';
   $('pauseJobs').disabled = controlBusy || draining || state.queue?.running === false;
-  $('pauseNote').textContent = state.queue?.running === false ? 'Der Lauf ist beendet. Seine gespeicherten Bilder bleiben verfügbar.'
-    : draining ? 'Ziel 0: Begonnene Arbeitsmappen werden vollständig fertig. Zum Fortsetzen das Gruppenziel erhöhen.'
-    : values.paused ? 'Bereits laufende Aufträge werden fertig. Neue Captures warten.' : 'Capture-Pause hält Excel geöffnet. Gruppenziel 0 lässt Arbeitsmappen vollständig auslaufen.';
-  $('activeGroups').textContent = `${active} zugelassen · Ziel ${values.target_groups ?? '—'}`;
+  $('pauseNote').textContent = state.queue?.running === false ? 'The run has ended. Its saved images remain available.'
+    : draining ? 'Target 0: workbooks already in progress will finish. Increase the group target to resume.'
+    : values.paused ? 'Jobs already in progress will finish. New captures wait.' : 'Pausing captures keeps Excel open. A group target of 0 lets workbooks finish completely.';
+  $('activeGroups').textContent = `${active} admitted · target ${values.target_groups ?? '—'}`;
 }
 async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;
@@ -756,12 +756,12 @@ async function sendControl(change) {
   for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = true;
   try {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
-    const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Steuerung abgelehnt (${response.status}).`);
+    const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Control change rejected (${response.status}).`);
     state.controls = result.controls;
     for (const [id, key] of [['targetGroups', 'target_groups'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     updateControlInputs();
-    const text = change.target_groups === 0 ? `Ziel 0 bestätigt: begonnene Arbeitsmappen laufen fertig.${wasCapturePaused ? ' Die Capture-Pause wurde dafür aufgehoben.' : ''}`
-      : change.target_groups != null ? `Gruppenziel ${state.controls.target_groups} bestätigt.` : 'Steuerung vom Host bestätigt.';
+    const text = change.target_groups === 0 ? `Target 0 confirmed: workbooks already in progress will finish.${wasCapturePaused ? ' The capture pause was lifted to allow this.' : ''}`
+      : change.target_groups != null ? `Group target ${state.controls.target_groups} confirmed.` : 'Controls confirmed by host.';
     pushEvent(text); setNotice(text);
   } catch (error) { setNotice(error.message, true); updateControlInputs(); if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel); }
   finally { controlBusy = false; for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = false; updateControlInputs(); }
@@ -778,13 +778,13 @@ function selectGroup(id) {
 function acceptGroup(raw) {
   data = normalizeGroup(raw); entries = data.sheets.flatMap(sheet => sheet.tiles);
   $('workbook').textContent = groupName(data); $('workbook').title = String(data.workbook || '');
-  $('groupEyebrow').textContent = [data.corpus, data.capture_mode === 'classic' || data.status === 'retrying_classic' ? 'LETZTE RESIDENT-CAPTURES · KLASSISCHE GEGENPRÜFUNG' : 'LIVE ATELIER'].filter(Boolean).join(' · ');
+  $('groupEyebrow').textContent = [data.corpus, data.capture_mode === 'classic' || data.status === 'retrying_classic' ? 'LAST RESIDENT CAPTURES · CLASSIC CROSS-CHECK' : 'LIVE STUDIO'].filter(Boolean).join(' · ');
   if (!data.sheets.some(sheet => sheet.id === state.sheetId)) state.sheetId = data.sheets[0]?.id ?? null;
   let latest = null;
   for (const tile of entries) for (const [profile, image] of Object.entries(tile.images)) {
     const key = `${tile.id}:${profile}`, signature = JSON.stringify([image.url, image.pixelClass, image.maskUrl]);
     if (image.url && previousImages.get(key) !== signature) {
-      if (previousImages.has(key)) pushEvent(`${tile.sheetName} · ${tile.address} · ${profileLabel(profile)}: ${image.pixelClass == null ? 'Bild empfangen' : imageStatus(tile, profile) === 'different' ? 'Pixelabweichung bestätigt' : 'Pixelvergleich fertig'}`);
+      if (previousImages.has(key)) pushEvent(`${tile.sheetName} · ${tile.address} · ${profileLabel(profile)}: ${image.pixelClass == null ? 'Image received' : imageStatus(tile, profile) === 'different' ? 'Pixel difference confirmed' : 'Pixel comparison complete'}`);
       flashes.set(key, performance.now()); previousImages.set(key, signature); latest = tile;
     }
   }
@@ -799,34 +799,34 @@ function acceptGroup(raw) {
 async function poll() {
   const generation = pollGeneration;
   try {
-    const response = await fetch('/api/state', { cache: 'no-store' }); if (!response.ok) throw new Error(`Status nicht verfügbar (${response.status}).`);
+    const response = await fetch('/api/state', { cache: 'no-store' }); if (!response.ok) throw new Error(`Status unavailable (${response.status}).`);
     const queue = await response.json(); if (generation !== pollGeneration) return;
     const recovered = Boolean(state.error);
     state.queue = queue; state.controls = queue.controls || {}; state.connected = true; state.error = null;
     workerMonitor?.update(queue);
     $('connectionLight').className = 'connected';
-    $('connectionText').textContent = queue.verification_fixture ? 'Gespeicherter Fall · UI-Prüfung'
-      : queue.phase === 'owner_unverified' ? 'Verbunden · Runnerstatus unbestätigt'
-      : queue.phase === 'finished' ? 'Lauf abgeschlossen · Ergebnisse'
-      : queue.runner_alive === false || queue.phase === 'interrupted' ? 'Runner beendet · letzter Stand'
-      : queue.running === false ? 'Lauf beendet · Ergebnisse'
-      : 'Live · lokaler Runner';
-    if (recovered) setNotice('Verbindung zum lokalen Host wiederhergestellt.');
+    $('connectionText').textContent = queue.verification_fixture ? 'Saved case · UI verification'
+      : queue.phase === 'owner_unverified' ? 'Connected · runner status unverified'
+      : queue.phase === 'finished' ? 'Run completed · results'
+      : queue.runner_alive === false || queue.phase === 'interrupted' ? 'Runner exited · last snapshot'
+      : queue.running === false ? 'Run ended · results'
+      : 'Live · local runner';
+    if (recovered) setNotice('Connection to local host restored.');
     const memory = queue.memory;
-    $('memory').textContent = memory?.available_bytes != null ? `${(memory.available_bytes / 1073741824).toFixed(1)} GiB frei / ${(memory.total_bytes / 1073741824).toFixed(0)} GiB` : 'RAM nicht verfügbar';
+    $('memory').textContent = memory?.available_bytes != null ? `${(memory.available_bytes / 1073741824).toFixed(1)} GiB free / ${(memory.total_bytes / 1073741824).toFixed(0)} GiB` : 'RAM unavailable';
     updateControlInputs();
     if (!state.groupId && queue.groups?.length) state.groupId = String((queue.groups.find(group => ['capturing', 'comparing', 'running', 'opening', 'active'].includes(group.status)) || queue.groups[0]).id);
     renderGroups();
     if (state.groupId) {
       const detail = await fetch(`/api/groups/${encodeURIComponent(state.groupId)}`, { cache: 'no-store' });
-      if (!detail.ok) throw new Error(`Gruppendetails nicht verfügbar (${detail.status}).`);
+      if (!detail.ok) throw new Error(`Group details unavailable (${detail.status}).`);
       const raw = await detail.json(); if (generation !== pollGeneration) return; acceptGroup(raw);
     }
     if (queue.diagnostics?.length) setNotice(queue.diagnostics.map(item => typeof item === 'string' ? item : item.message || JSON.stringify(item)).join(' · '), true);
-    $('lastUpdate').textContent = `Aktualisiert ${new Date().toLocaleTimeString('de-DE')}`;
+    $('lastUpdate').textContent = `Updated ${new Date().toLocaleTimeString('en-US')}`;
   } catch (error) {
     if (generation !== pollGeneration) return;
-    state.connected = false; state.error = error.message; $('connectionLight').className = 'failed'; $('connectionText').textContent = 'Verbindung unterbrochen'; setNotice(`${error.message} Letzten bekannten Stand anzeigen; erneuter Verbindungsversuch folgt.`, true);
+    state.connected = false; state.error = error.message; $('connectionLight').className = 'failed'; $('connectionText').textContent = 'Disconnected'; setNotice(`${error.message} Showing the last known state; retrying the connection shortly.`, true);
   } finally { if (generation === pollGeneration) pollTimer = setTimeout(poll, document.hidden ? 2000 : 500); }
 }
 function elapsedText(iso) {
@@ -843,19 +843,19 @@ function updateDiagnosticUi() {
     const opening = clients.filter(([, client]) => ['requested', 'waiting_open', 'opening'].includes(client.status));
     const terminal = ['unchanged', 'differences', 'skipped', 'failed', 'interrupted', 'complete', 'completed', 'finished'].includes(data.status);
     $('groupStatus').textContent = data.status === 'retrying_classic'
-      ? 'Der Runner wiederholt diese Datei im klassischen Einzelvergleich. Die Kacheln zeigen den letzten Resident-Stand.'
+      ? 'The runner is retrying this file with a classic individual comparison. Tiles show the last resident snapshot.'
       : data.capture_mode === 'classic'
-        ? `${normalizeStatus(data.status)} · Klassischer Vergleich. Die Kacheln zeigen den vorherigen Resident-Stand; das endgültige Ergebnis steht im Bericht.`
-        : [normalizeStatus(data.status), clients.length ? terminal ? `${counts.closed || 0} / ${clients.length} Excel-Instanzen geschlossen` : `${counts.ready || 0} / ${clients.length} Add-ins bereit` : '', ...opening.map(([id, client]) => `${profileLabel(id)}: ${normalizeStatus(client.status)} ${elapsedText(client.waiting_since || client.requested_at)}`)].filter(Boolean).join(' · ');
+        ? `${normalizeStatus(data.status)} · Classic comparison. Tiles show the previous resident snapshot; the final result is in the report.`
+        : [normalizeStatus(data.status), clients.length ? terminal ? `${counts.closed || 0} / ${clients.length} Excel instances closed` : `${counts.ready || 0} / ${clients.length} add-ins ready` : '', ...opening.map(([id, client]) => `${profileLabel(id)}: ${normalizeStatus(client.status)} ${elapsedText(client.waiting_since || client.requested_at)}`)].filter(Boolean).join(' · ');
   }
   const events = [...(data?.events || []).map(event => typeof event === 'string' ? { message: event } : event), ...localEvents].sort((a, b) => String(b.at || b.timestamp || '').localeCompare(String(a.at || a.timestamp || ''))).slice(0, 8);
   const fragment = document.createDocumentFragment();
   for (const event of events) {
     const row = document.createElement('div'); row.className = 'event'; const time = document.createElement('time');
-    const iso = event.at || event.timestamp; time.textContent = iso && Number.isFinite(Date.parse(iso)) ? new Date(iso).toLocaleTimeString('de-DE') : '—';
+    const iso = event.at || event.timestamp; time.textContent = iso && Number.isFinite(Date.parse(iso)) ? new Date(iso).toLocaleTimeString('en-US') : '—';
     const text = document.createElement('span'); text.textContent = event.message || event.text || event.kind || ''; row.append(time, text); fragment.append(row);
   }
-  if (!events.length) { const row = document.createElement('div'); row.className = 'event'; row.textContent = 'Neue Capture-Ereignisse erscheinen hier.'; fragment.append(row); }
+  if (!events.length) { const row = document.createElement('div'); row.className = 'event'; row.textContent = 'New capture events appear here.'; fragment.append(row); }
   $('events').replaceChildren(fragment);
   for (const button of $('tileButtons').children) { const active = button.dataset.tile === state.selected; button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); }
   if ($('apiState').closest('details').open) $('apiState').textContent = JSON.stringify(snapshot(), null, 2);
@@ -864,9 +864,9 @@ function renderProcesses() {
   const clients = Object.entries(data?.launcher?.clients || {});
   const ids = new Set(clients.map(([id]) => id));
   for (const [id, card] of processCards) if (!ids.has(id)) { card.element.remove(); processCards.delete(id); }
-  if (!clients.length && !processCards.size) { $('processes').textContent = 'Noch keine Excel-Prozesse gemeldet.'; return; }
+  if (!clients.length && !processCards.size) { $('processes').textContent = 'No Excel processes reported yet.'; return; }
   if (!processCards.size) $('processes').replaceChildren();
-  const stageLabels = { staging: 'Datei wird bereitgestellt', waiting_for_open_slot: 'Wartet auf Öffnen', waiting_for_addin: 'Wartet auf Add-in', waiting_for_job: 'Wartet auf Auftrag', executing_job: 'Capture läuft', blocked_edit_mode: 'Excel im Bearbeitungsmodus', client_error: 'Add-in meldet Fehler', closed: 'Geschlossen' };
+  const stageLabels = { staging: 'Staging file', waiting_for_open_slot: 'Waiting to open', waiting_for_addin: 'Waiting for add-in', waiting_for_job: 'Waiting for job', executing_job: 'Capture running', blocked_edit_mode: 'Excel in edit mode', client_error: 'Add-in reported an error', closed: 'Closed' };
   for (const [id, client] of clients) {
     let card = processCards.get(id);
     if (!card) {
@@ -876,12 +876,12 @@ function renderProcesses() {
       const size = document.createElement('small'), opening = document.createElement('small'), metrics = document.createElement('small');
       size.className = opening.className = metrics.className = 'process-measurement';
       process.className = 'process-id'; status.className = 'process-stage'; error.className = 'process-error'; button.textContent = 'Excel Hard Reset';
-      button.title = 'Beendet diese Excel-Instanz und öffnet eine frische Kopie mit der aktuellen Sichtbarkeit. Nach begonnenen Vergleichsaufträgen wird die Gruppe neu verglichen.';
+      button.title = 'Ends this Excel instance and opens a fresh copy with the current visibility setting. If comparison jobs have started, the group is compared again.';
       button.addEventListener('click', () => restartGroup(id, true));
       element.append(heart, name, process, status, beat, size, opening, metrics, error, button); $('processes').append(element);
       card = { element, heart, name, process, status, beat, size, opening, metrics, error, button, count: null }; processCards.set(id, card);
-      opening.title = 'Separat gemessene Dateiöffnungszeit aus dem Regressionstest. Der Add-in-Start steht im Prozessstatus.';
-      metrics.title = 'RAM-Messwert beim Dateiöffnen und Laufzeit der Bereinigung aus dem Regressionstest.';
+      opening.title = 'File opening time measured separately by the regression test. Add-in startup is shown in process status.';
+      metrics.title = 'RAM measured when opening the file and cleaning duration from the regression test.';
     }
     const count = Number(client.heartbeat_count || 0), age = heartbeatAge(client);
     const alive = client.process_alive;
@@ -894,24 +894,24 @@ function renderProcesses() {
     card.heart.style.opacity = String(.18 + glow * .82);
     card.element.classList.toggle('blocked', client.stage === 'blocked_edit_mode' || Boolean(client.error));
     card.name.textContent = profileLabel(id);
-    card.process.textContent = client.pid ? `PID ${client.pid} · ${alive === true ? 'Prozess läuft' : alive === false ? 'Prozess beendet' : 'Prozessstatus unbestätigt'} · ${client.hide_excel ? 'verborgen' : 'sichtbar'}` : 'Noch keine PID';
+    card.process.textContent = client.pid ? `PID ${client.pid} · ${alive === true ? 'Process running' : alive === false ? 'Process exited' : 'Process status unverified'} · ${client.hide_excel ? 'hidden' : 'visible'}` : 'No PID yet';
     card.status.textContent = [stageLabels[client.stage] || normalizeStatus(client.status), client.active_command].filter(Boolean).join(' · ');
-    card.beat.textContent = count ? `${count.toLocaleString('de-DE')} Heartbeats · letzter vor ${age == null ? '?' : Math.floor(age / 1000)} s` : 'Noch kein Add-in-Heartbeat';
+    card.beat.textContent = count ? `${count.toLocaleString('en-US')} Heartbeats · last received ${age == null ? '?' : Math.floor(age / 1000)} s ago` : 'No add-in heartbeat yet';
     card.error.textContent = client.error || ''; card.error.hidden = !client.error;
     const measurements = processMeasurements(data, id);
     card.size.textContent = measurements.size; card.opening.textContent = measurements.opening;
     card.metrics.textContent = measurements.extra; card.metrics.hidden = !measurements.extra;
     const resetting = data?.client_reset_commands?.some(command => command.client_id === id && ['pending','running'].includes(command.status));
     card.button.disabled = resetting || data?.restart_eligible === false || state.queue?.running === false;
-    card.button.textContent = resetting ? 'Hard Reset läuft…' : 'Excel Hard Reset';
-    card.element.title = 'Ein ausbleibender Heartbeat kann bedeuten, dass Excel gerade öffnet oder beschäftigt ist. Der Prozessstatus wird separat geprüft.';
+    card.button.textContent = resetting ? 'Hard reset running…' : 'Excel Hard Reset';
+    card.element.title = 'A missing heartbeat can mean Excel is opening or busy. Process status is checked separately.';
   }
 }
 function renderThroughput() {
   const metric = data?.throughput, settings = data?.capture_settings;
-  $('pixelRate').textContent = metric?.pixels_per_second != null ? `${(metric.pixels_per_second / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 2 })} MP/s` : '— MP/s';
-  $('captureTotals').textContent = metric ? `${Number(metric.uploaded_images || 0).toLocaleString('de-DE')} Uploads · ${(Number(metric.captured_pixels || 0) / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MP · ${(Number(metric.png_bytes || 0) / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MiB` : 'Warte auf gemessene Captures';
-  $('effectiveCapture').textContent = settings ? `Diese Gruppe: ${settings.tile_megapixels} MP · Batch ${settings.effective_batch_tiles ?? settings.batch_tiles}${settings.effective_batch_tiles != null && settings.effective_batch_tiles !== settings.batch_tiles ? ` / Ziel ${settings.batch_tiles}` : ''}` : 'Einstellungen werden beim Gruppenstart übernommen.';
+  $('pixelRate').textContent = metric?.pixels_per_second != null ? `${(metric.pixels_per_second / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })} MP/s` : '— MP/s';
+  $('captureTotals').textContent = metric ? `${Number(metric.uploaded_images || 0).toLocaleString('en-US')} Uploads · ${(Number(metric.captured_pixels || 0) / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1 })} MP · ${(Number(metric.png_bytes || 0) / 1048576).toLocaleString('en-US', { maximumFractionDigits: 1 })} MiB` : 'Waiting for measured captures';
+  $('effectiveCapture').textContent = settings ? `This group: ${settings.tile_megapixels} MP · Batch ${settings.effective_batch_tiles ?? settings.batch_tiles}${settings.effective_batch_tiles != null && settings.effective_batch_tiles !== settings.batch_tiles ? ` / target ${settings.batch_tiles}` : ''}` : 'Settings take effect when a group starts.';
 }
 async function restartGroup(clientId = null, hardReset = false) {
   if (!state.groupId) return;
@@ -920,28 +920,28 @@ async function restartGroup(clientId = null, hardReset = false) {
   try {
     const controlDeadline = Date.now() + 10000;
     while (hardReset && controlBusy && Date.now() < controlDeadline) await new Promise(resolve => setTimeout(resolve, 50));
-    if (hardReset && controlBusy) throw new Error('Die Sichtbarkeitseinstellung wurde noch nicht bestätigt.');
+    if (hardReset && controlBusy) throw new Error('The visibility setting has not been confirmed yet.');
     const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/restart`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...(clientId ? { client_id: clientId } : {}), ...(hardReset ? {hard_reset:true} : {}), ...(expectedAttempt ? {expected_attempt_id:expectedAttempt} : {}), reason: clientId ? `Excel ${clientId} über Observatory neu laden` : 'Gruppe über Observatory neu einreihen' }) });
-    const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Neustart abgelehnt (${response.status})`);
+      body: JSON.stringify({ ...(clientId ? { client_id: clientId } : {}), ...(hardReset ? {hard_reset:true} : {}), ...(expectedAttempt ? {expected_attempt_id:expectedAttempt} : {}), reason: clientId ? `Excel ${clientId} reload through Observatory` : 'Requeue group through Observatory' }) });
+    const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Restart rejected (${response.status})`);
     setNotice(result.restart_scope === 'client'
-      ? 'Hard Reset angefragt: Excel wird mit der aktuellen Sichtbarkeit neu geöffnet. Falls Vergleichsaufträge bereits liefen, wird die Gruppe neu verglichen.'
-      : 'Neustart angefragt. Die gesamte Gruppe wird mit den aktuellen Einstellungen als Nächstes eingereiht.');
-    pushEvent(`Neustart angefragt${clientId ? ` für ${profileLabel(clientId)} und seine Vergleichsgruppe` : ' für die Gruppe'}.`);
+      ? 'Hard reset requested: Excel will reopen with the current visibility setting. If comparison jobs have started, the group will be compared again.'
+      : 'Restart requested. The entire group will be queued next with the current settings.');
+    pushEvent(`Restart requested${clientId ? ` for ${profileLabel(clientId)} and its comparison group` : ' for the group'}.`);
   } catch (error) { setNotice(error.message, true); }
 }
 function nextDifference() {
   const targets = differenceTargets(entries);
   const index = targets.findIndex(({ tile, region }) => tile.id === state.selected && region.id === state.regionId);
   const target = targets[(index + 1) % targets.length];
-  if (!target) { setNotice('Für diese Gruppe liegt bisher keine bestätigte Pixelabweichung vor.'); return; }
+  if (!target) { setNotice('No confirmed pixel difference for this group yet.'); return; }
   focusTile(target.tile, target.region, true);
 }
 function nextSheetDifference() {
   const sheets = data?.sheets.filter(sheet => sheet.tiles.some(tile => tile.comparisonComplete && !tile.equalAcrossAll)) || [];
   const index = sheets.findIndex(sheet => sheet.id === state.sheetId);
   const sheet = sheets[(index + 1) % sheets.length];
-  if (!sheet) { setNotice('Bisher kein Sheet mit bestätigter Abweichung.'); return; }
+  if (!sheet) { setNotice('No sheet with a confirmed difference yet.'); return; }
   const target = differenceTargets(sheet.tiles)[0]; focusTile(target.tile, target.region, true);
 }
 async function nextGroupDifference() {
@@ -968,7 +968,7 @@ async function nextGroupDifference() {
         stopFollowing(); state.pendingDifference = true; selectGroup(String(group.id)); return;
       }
     }
-    setNotice('Keine weitere Gruppe mit gemeldeter Abweichung gefunden.');
+    setNotice('No further group with a reported difference found.');
   } finally { navigationBusy = false; $('nextGroupDifference').disabled = false; }
 }
 
@@ -981,23 +981,23 @@ function wireControls() {
   $('targetGroups').addEventListener('input', () => { const value = Number($('targetGroups').value); if (Number.isSafeInteger(value) && value >= 0) { $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); } });
   $('groupRange').addEventListener('input', event => { dirtyControls.add('targetGroups'); $('targetGroups').value = event.target.value; });
   $('groupRange').addEventListener('change', event => sendControl({ target_groups: Number(event.target.value) }));
-  $('applyTarget').addEventListener('click', () => { const value = Number($('targetGroups').value); if (!Number.isSafeInteger(value) || value < 0) return setNotice('Bitte eine ganze Gruppenzahl ab 0 eingeben.', true); sendControl({ target_groups: value }); });
+  $('applyTarget').addEventListener('click', () => { const value = Number($('targetGroups').value); if (!Number.isSafeInteger(value) || value < 0) return setNotice('Enter a whole number of groups, at least 0.', true); sendControl({ target_groups: value }); });
   $('targetGroups').addEventListener('keydown', event => { if (event.key === 'Enter') $('applyTarget').click(); });
   $('pauseJobs').addEventListener('click', () => sendControl({ paused: !state.controls.paused }));
   $('applyTimeouts').addEventListener('click', () => {
     const open = Number($('openTimeout').value), job = Number($('jobTimeout').value);
-    if (![open, job].every(value => Number.isSafeInteger(value) && value > 0)) return setNotice('Zeitlimits müssen positive ganze Sekunden sein.', true);
+    if (![open, job].every(value => Number.isSafeInteger(value) && value > 0)) return setNotice('Timeouts must be positive whole seconds.', true);
     sendControl({ open_timeout_seconds: open, job_timeout_seconds: job });
   });
   $('equalPreview').addEventListener('change', event => sendControl({ equal_preview_width: Number(event.target.value) }));
   $('applyCapture').addEventListener('click', () => {
     const size = Number($('captureMegapixels').value), batch = Number($('captureBatch').value);
-    if (!Number.isInteger(size) || size < 1 || size > 32 || !Number.isInteger(batch) || batch < 1 || batch > 16) return setNotice('Capture-Zielgröße: 1–32 MP. Batch: 1–16 Aufträge.', true);
+    if (!Number.isInteger(size) || size < 1 || size > 32 || !Number.isInteger(batch) || batch < 1 || batch > 16) return setNotice('Target capture size: 1–32 MP. Batch: 1–16 jobs.', true);
     sendControl({ capture_tile_megapixels: size, capture_batch_tiles: batch });
   });
   $('applyTallSheet').addEventListener('click', () => {
     const threshold = Number($('tallSheetThreshold').value), edges = Number($('tallSheetEdges').value);
-    if (![threshold, edges].every(value => Number.isInteger(value) && value >= 1 && value <= 2147483647)) return setNotice('Capture-Zeilen müssen positive ganze Zahlen sein (maximal 2.147.483.647).', true);
+    if (![threshold, edges].every(value => Number.isInteger(value) && value >= 1 && value <= 2147483647)) return setNotice('Capture rows must be positive integers (at most 2,147,483,647).', true);
     sendControl({ tall_sheet_threshold: threshold, tall_sheet_edge_tiles: edges });
   });
   $('hideExcel').addEventListener('change', event => sendControl({ hide_excel: event.target.checked }));
@@ -1012,11 +1012,11 @@ function wireControls() {
   $('pulseDiff').checked = state.pulse; $('pulseDiff').addEventListener('change', event => { state.pulse = event.target.checked; });
   $('nextDifference').addEventListener('click', nextDifference); $('nextSheetDifference').addEventListener('click', nextSheetDifference); $('nextGroupDifference').addEventListener('click', nextGroupDifference);
   $('resetCamera').addEventListener('click', () => { stopFollowing(); clearDetails(); state.focus = 'overview'; renderScene(); fitCamera(true); });
-  $('stageMode').addEventListener('click', () => { document.body.classList.toggle('presenting'); $('stageMode').textContent = document.body.classList.contains('presenting') ? '⛶ Zurück' : '⛶ Bühne'; });
+  $('stageMode').addEventListener('click', () => { document.body.classList.toggle('presenting'); $('stageMode').textContent = document.body.classList.contains('presenting') ? '⛶ Back' : '⛶ Present'; });
   $('pinSelection').addEventListener('click', () => setPinned(!state.pinned)); $('closeSelection').addEventListener('click', clearDetails);
   for (const id of ['selectionBar', 'evidenceActions', 'tileButtons']) { $(id).addEventListener('pointerenter', () => clearTimeout(leaveTimer)); $(id).addEventListener('pointerleave', scheduleClear); }
   $('closeImage').addEventListener('click', () => $('imageDialog').close());
-  $('toggleImageSize').addEventListener('click', () => { const native = $('imageScroll').classList.toggle('native'); $('toggleImageSize').textContent = native ? 'An Fenster anpassen' : '1:1 anzeigen'; });
+  $('toggleImageSize').addEventListener('click', () => { const native = $('imageScroll').classList.toggle('native'); $('toggleImageSize').textContent = native ? 'Fit to window' : 'Show 1:1'; });
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !$('imageDialog').open) clearDetails(); });
 }
 function snapshot() {
