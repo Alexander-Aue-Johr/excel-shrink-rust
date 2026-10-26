@@ -2,9 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {createWorker, selectedTiles, encoded} = require('../web/resident.js');
 
-function fixture(workbookName = 'fixture.xlsx') {
+function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
   const captures = [], uploads = [], heightSheets = [], geometryReads = [], captureBatches = [];
+  const events = [];
   let geometriesCreated = 0;
+  let officeActive = 0;
+  let peakOfficeActive = 0;
   let content = 'stable';
   const encode = (width, height) => Buffer.from(JSON.stringify({width, height, content})).toString('base64');
   globalThis.CaptureGeometry = {
@@ -28,15 +31,56 @@ function fixture(workbookName = 'fixture.xlsx') {
       }
     }
   };
-  globalThis.CaptureOverflow = {async crop(base64) {return base64;}, async check() {return {rightEdge: false};}};
+  globalThis.CaptureOverflow = {
+    async crop(base64) {
+      events.push('finalize');
+      if (hooks.crop) return hooks.crop(base64);
+      return base64;
+    },
+    async check(office) {
+      if (hooks.probe) await office(hooks.probe);
+      return {rightEdge: false};
+    }
+  };
   const helpers = {
-    async office(action) {const before = captures.length; const result = await action({workbook: {name: workbookName, load() {}, worksheets: {getItem() {return {
-      getRange(range) {return {getImage() {
-        captures.push(range);
-        const [first, last] = range.split(':').map(Number);
-        return {value: encode(3, last - first)};
-      }};}
-    };}}}, async sync() {}}); if (captures.length > before) captureBatches.push(captures.length-before); return result;},
+    async office(action) {
+      officeActive++;
+      peakOfficeActive = Math.max(peakOfficeActive, officeActive);
+      const before = captures.length;
+      try {
+        const result = await action({
+          workbook: {
+            name: workbookName,
+            load() {},
+            worksheets: {
+              getItem() {
+                return {
+                  getRange(range) {
+                    return {
+                      getImage() {
+                        captures.push(range);
+                        events.push(`capture:${range}`);
+                        const [first, last] = range.split(':').map(Number);
+                        return {
+                          value: hooks.encode ? hooks.encode(3, last - first) : encode(3, last - first)
+                        };
+                      }
+                    };
+                  }
+                };
+              }
+            }
+          },
+          async sync() {
+            if (hooks.sync) await hooks.sync(captures.slice(before));
+          }
+        });
+        if (captures.length > before) captureBatches.push(captures.length - before);
+        return result;
+      } finally {
+        officeActive--;
+      }
+    },
     bounds: sheet => ({bottom: sheet.bottom_row, right: 1}),
     async checkedWorksheet() {}, async hideGridlines() {}, async verifyDrawingBounds() {},
     async rowHeights(sheet) {heightSheets.push(sheet); return {sheet_index: sheet.index, runs: [[0, 10, 1]]};},
@@ -44,12 +88,15 @@ function fixture(workbookName = 'fixture.xlsx') {
   };
   const worker = createWorker(helpers, {async image(command, metadata, bytes) {
     uploads.push({command, metadata, bytes});
+    events.push(`upload:${metadata.range}`);
+    if (hooks.upload) await hooks.upload(command, metadata, bytes);
     return {image_path: `images/${command}/${metadata.tile_index}.png`, width: metadata.width,
       height: metadata.height, sha256: 'a'.repeat(64)};
   }}, 'fixture.xlsx');
   const sheet = {index: 1, name: 'Sheet1', bottom_row: 9, row_height_bottom_row: 2,
     horizontal_overflow_required: false, drawing_fallback_required: false};
-  return {worker, sheet, captures, uploads, heightSheets, geometryReads, captureBatches, change() {content = 'changed';},
+  return {worker, sheet, captures, uploads, heightSheets, geometryReads, captureBatches, events, change() {content = 'changed';},
+    get peakOfficeActive() {return peakOfficeActive;},
     get geometriesCreated() {return geometriesCreated;}};
 }
 
@@ -231,4 +278,275 @@ test('image-first batches reject mixed sheets and unreasonable counts before Exc
   await assert.rejects(f.worker.execute({id:'empty',kind:'capture_images',capture_id:'plan',tiles:[]}), /1 to 16/);
   await assert.rejects(f.worker.execute({id:'many',kind:'capture_images',capture_id:'plan',tiles:Array(17).fill(plan.tiles[0])}), /1 to 16/);
   assert.deepEqual(f.captures,[]);
+});
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(done => {
+    resolve = done;
+  });
+  return {promise, resolve};
+}
+
+function assertReleased(worker) {
+  const resources = worker.resources();
+  assert.equal(resources.pending_png_characters, 0);
+  assert.equal(resources.pending_encoded_bytes, 0);
+  assert.equal(resources.active_batch_pixels, 0);
+  assert.equal(resources.active_batch_tiles, 0);
+}
+
+test('bounded chunks overlap upload with the next capture but keep Office probes serial', async () => {
+  const uploadStarted = deferred();
+  const releaseUpload = deferred();
+  const secondCapture = deferred();
+  const f = fixture('fixture.xlsx', {
+    async upload(command, metadata) {
+      if (metadata.tile_index === 0) {
+        uploadStarted.resolve();
+        await releaseUpload.promise;
+      }
+    },
+    async sync(ranges) {
+      if (ranges.includes('6:9')) secondCapture.resolve();
+    },
+    async probe() {
+      f.events.push('probe');
+      await Promise.resolve();
+    }
+  });
+  const plan = await f.worker.execute({
+    id: 'plan',
+    kind: 'plan',
+    sheets: [{...f.sheet, horizontal_overflow_required: true}]
+  });
+  const execution = f.worker.execute({
+    id: 'pipeline',
+    kind: 'capture_images',
+    capture_id: 'plan',
+    tiles: plan.tiles,
+    capture_batches: [2, 4]
+  });
+  await uploadStarted.promise;
+  await secondCapture.promise;
+  try {
+    assert.equal(f.uploads.length, 1);
+    assert.ok(f.worker.resources().pending_encoded_bytes > 0);
+    assert.ok(f.events.indexOf('probe') < f.events.indexOf('capture:6:9'));
+    const beforeSecondCapture = f.events.slice(0, f.events.indexOf('capture:6:9'));
+    assert.equal(beforeSecondCapture.filter(event => event === 'probe').length, 2);
+  } finally {
+    releaseUpload.resolve();
+  }
+  const result = await execution;
+  assert.deepEqual(f.captureBatches, [2, 2]);
+  assert.equal(f.peakOfficeActive, 1);
+  assert.equal(result.timings.pipeline_overlap_count, 1);
+  assert.ok(result.timings.peak_pending_encoded_bytes > 0);
+  assert.deepEqual(result.images.map(image => image.tile_index), [0, 1, 2, 3]);
+  assertReleased(f.worker);
+});
+
+test('pipeline preserves the sequential image bytes and receipt order', async () => {
+  const reference = fixture();
+  const plan = await reference.worker.execute({id: 'plan', kind: 'plan', sheets: [reference.sheet]});
+  const command = {
+    id: 'images',
+    kind: 'capture_images',
+    capture_id: 'plan',
+    tiles: plan.tiles
+  };
+  const sequential = await reference.worker.execute(command);
+  assert.deepEqual(reference.captureBatches, [4]);
+  assert.deepEqual(reference.events.slice(4), [
+    'finalize', 'upload:0:3', 'finalize', 'upload:3:6',
+    'finalize', 'upload:6:9', 'finalize', 'upload:9:10'
+  ]);
+  assert.equal(sequential.timings.pipeline_overlap_count, 0);
+
+  const pipeline = fixture();
+  await pipeline.worker.execute({id: 'plan', kind: 'plan', sheets: [pipeline.sheet]});
+  const overlapped = await pipeline.worker.execute({...command, capture_batches: [2, 4]});
+  assert.deepEqual(overlapped.images, sequential.images);
+  assert.deepEqual(pipeline.uploads, reference.uploads);
+  assertReleased(reference.worker);
+  assertReleased(pipeline.worker);
+});
+
+test('a single explicit chunk completes without looking for a second chunk', async () => {
+  const f = fixture();
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  const result = await f.worker.execute({
+    id: 'images',
+    kind: 'capture_images',
+    capture_id: 'plan',
+    tiles: plan.tiles.slice(0, 2),
+    capture_batches: [2]
+  });
+  assert.deepEqual(f.captureBatches, [2]);
+  assert.equal(result.images.length, 2);
+  assert.equal(result.timings.pipeline_overlap_count, 0);
+  assertReleased(f.worker);
+});
+
+test('pipeline rejects malformed chunk boundaries before capturing', async () => {
+  const f = fixture();
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  const invalidBoundaries = [null, [], '4', [0, 4], [2, 2], [3, 2], [1, 2, 4], [2, 3], [1.5, 4], [5, 4]];
+  for (const capture_batches of invalidBoundaries) {
+    await assert.rejects(f.worker.execute({
+      id: 'images',
+      kind: 'capture_images',
+      capture_id: 'plan',
+      tiles: plan.tiles,
+      capture_batches
+    }), /batch boundaries/);
+  }
+  assert.deepEqual(f.captures, []);
+  assertReleased(f.worker);
+});
+
+test('an upload failure stops the pipeline and releases both chunks', async () => {
+  const f = fixture('fixture.xlsx', {
+    async upload() {
+      throw new Error('Host rejected the first image');
+    }
+  });
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  await assert.rejects(f.worker.execute({
+    id: 'images',
+    kind: 'capture_images',
+    capture_id: 'plan',
+    tiles: plan.tiles,
+    capture_batches: [2, 4]
+  }), /Host rejected/);
+  assert.equal(f.uploads.length, 1);
+  assertReleased(f.worker);
+});
+
+test('failure in the second capture drains the in-flight upload before returning', async () => {
+  const releaseUpload = deferred();
+  const failedCapture = deferred();
+  const f = fixture('fixture.xlsx', {
+    async upload() {
+      await releaseUpload.promise;
+    },
+    async sync(ranges) {
+      if (ranges.includes('6:9')) {
+        failedCapture.resolve();
+        throw new Error('Excel capture failed');
+      }
+    }
+  });
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  let settled = false;
+  const execution = f.worker.execute({
+    id: 'images',
+    kind: 'capture_images',
+    capture_id: 'plan',
+    tiles: plan.tiles,
+    capture_batches: [2, 4]
+  }).finally(() => {
+    settled = true;
+  });
+  const rejection = assert.rejects(execution, /Excel capture failed/);
+  await failedCapture.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  try {
+    assert.equal(settled, false);
+  } finally {
+    releaseUpload.resolve();
+  }
+  await rejection;
+  assert.equal(f.uploads.length, 1);
+  assertReleased(f.worker);
+});
+
+test('encoded-memory limit rejects oversized captures before decoding or uploading', async () => {
+  // The capture mock reports a large encoded result without allocating it.
+  // The guard must reject it before the PNG parser or decoder can inspect it.
+  const f = fixture('fixture.xlsx', {encode: () => ({length: 100 * 1024 * 1024})});
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  await assert.rejects(f.worker.execute({
+    id: 'images',
+    kind: 'capture_images',
+    capture_id: 'plan',
+    tiles: plan.tiles.slice(0, 1),
+    capture_batches: [1]
+  }), error => error.code === 'IMAGE_BUDGET');
+  assert.deepEqual(f.uploads, []);
+  assertReleased(f.worker);
+});
+
+test('encoded-memory limit includes the earlier chunk while its upload is pending', async () => {
+  const releaseUpload = deferred();
+  const secondCapture = deferred();
+  let captures = 0;
+  const f = fixture('fixture.xlsx', {
+    encode(width, height) {
+      captures++;
+      if (captures === 2) {
+        secondCapture.resolve();
+        // This chunk alone fits exactly. Retaining the earlier binary makes
+        // the combined work exceed the limit.
+        return {length: 80 * 1024 * 1024};
+      }
+      return Buffer.from(JSON.stringify({width, height})).toString('base64');
+    },
+    async upload() {
+      await releaseUpload.promise;
+    }
+  });
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  const execution = f.worker.execute({
+    id: 'images',
+    kind: 'capture_images',
+    capture_id: 'plan',
+    tiles: plan.tiles.slice(0, 2),
+    capture_batches: [1, 2]
+  });
+  const rejection = assert.rejects(execution, error => error.code === 'IMAGE_BUDGET');
+  await secondCapture.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  try {
+    assert.equal(f.uploads.length, 1);
+    assert.ok(f.worker.resources().pending_encoded_bytes > 0);
+  } finally {
+    releaseUpload.resolve();
+  }
+  await rejection;
+  assertReleased(f.worker);
+});
+
+test('finalization budgets cropped strings and decoding buffers before allocating bytes', async () => {
+  const cropped = {length: 40 * 1024 * 1024};
+  const f = fixture('fixture.xlsx', {crop: () => cropped});
+  const pngSize = CaptureGeometry.pngSize;
+  CaptureGeometry.pngSize = value => value === cropped ? {width: 3, height: 3} : pngSize(value);
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  await assert.rejects(f.worker.execute({
+    id: 'images',
+    kind: 'capture_images',
+    capture_id: 'plan',
+    tiles: plan.tiles.slice(0, 1),
+    capture_batches: [1]
+  }), error => error.code === 'IMAGE_BUDGET');
+  assert.deepEqual(f.uploads, []);
+  assertReleased(f.worker);
+});
+
+test('decoding failure releases reserved temporary bytes and the captured input', async () => {
+  const f = fixture('fixture.xlsx', {crop: () => 'invalid base64!'});
+  const pngSize = CaptureGeometry.pngSize;
+  CaptureGeometry.pngSize = value => value === 'invalid base64!' ? {width: 3, height: 3} : pngSize(value);
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  await assert.rejects(f.worker.execute({
+    id: 'images',
+    kind: 'capture_images',
+    capture_id: 'plan',
+    tiles: plan.tiles.slice(0, 1),
+    capture_batches: [1]
+  }), error => error.name === 'InvalidCharacterError');
+  assert.deepEqual(f.uploads, []);
+  assertReleased(f.worker);
 });

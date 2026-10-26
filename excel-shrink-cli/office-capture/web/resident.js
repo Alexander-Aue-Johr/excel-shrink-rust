@@ -4,6 +4,7 @@
 
   const key = tile => `${tile.sheet_index}:${tile.tile_index}`;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const IMAGE_MEMORY_LIMIT_BYTES = 160 * 1024 * 1024;
 
   async function encoded(base64, hash = true) {
     const binary = atob(base64);
@@ -52,6 +53,9 @@
     const geometries = new Map();
     let workbookVerified = false;
     let pendingPngCharacters = 0, activeBatchPixels = 0, activeBatchTiles = 0;
+    let pendingEncodedBytes = 0;
+    let peakPendingEncodedBytes = 0;
+    let pipelineOverlapCount = 0;
     let timings;
     let lastCommandTiming;
 
@@ -71,6 +75,9 @@
         geometry_cache_entries: geometries.size,
         geometry_rows: [...geometries.values()].reduce((sum, geometry) => sum + geometry.rows.length, 0),
         pending_png_characters: pendingPngCharacters,
+        pending_encoded_bytes: pendingEncodedBytes,
+        peak_pending_encoded_bytes: peakPendingEncodedBytes,
+        pipeline_overlap_count: pipelineOverlapCount,
         active_batch_pixels: activeBatchPixels, active_batch_tiles: activeBatchTiles,
         script_evaluations: root.__excelShrinkPaneRuntime?.evaluations ?? 0
       };
@@ -106,7 +113,17 @@
       return geometry;
     }
 
-    async function finishImage(state, tile, base64, hash = true) {
+    function reserveImageBytes(bytes) {
+      if (pendingEncodedBytes + bytes > IMAGE_MEMORY_LIMIT_BYTES) {
+        const error = new Error('Capture images exceed the 160 MiB encoded-memory budget');
+        error.code = 'IMAGE_BUDGET';
+        throw error;
+      }
+      pendingEncodedBytes += bytes;
+      peakPendingEncodedBytes = Math.max(peakPendingEncodedBytes, pendingEncodedBytes);
+    }
+
+    async function finishImage(state, tile, base64, {hash = true, accountMemory = false} = {}) {
       const {sheet, probe, right, end} = state;
       const geometry = await geometryFor(state);
       const dimensions = CaptureGeometry.pngSize(base64);
@@ -127,7 +144,26 @@
       if (size.width !== geometry.imageWidth(end) || size.height !== tile.cropHeight) {
         throw new Error('Image crop changed dimensions');
       }
-      return {...await encoded(final, hash), ...size};
+      // Count strings as UTF-16, including the cropped base64 and atob's
+      // temporary binary string. Native decoded images are covered separately
+      // by the pixel budget; this bound covers retained encoded buffers.
+      const decodedBytes = Math.ceil(final.length / 4) * 3;
+      const temporaryBytes = final.length * 2 + decodedBytes * 3;
+      if (accountMemory) {
+        reserveImageBytes(temporaryBytes);
+      }
+      let image;
+      try {
+        image = {...await encoded(final, hash), ...size};
+      } finally {
+        if (accountMemory) {
+          pendingEncodedBytes -= temporaryBytes;
+        }
+      }
+      if (accountMemory) {
+        reserveImageBytes(image.bytes.byteLength);
+      }
+      return image;
     }
 
     async function render(state, tile, hash = true) {
@@ -138,7 +174,7 @@
         await context.sync();
         return image.value;
       }));
-      return measure('finish_image_ms', () => finishImage(state, tile, base64, hash));
+      return measure('finish_image_ms', () => finishImage(state, tile, base64, {hash}));
     }
 
     async function verifyWorkbook() {
@@ -268,35 +304,139 @@
           states.reduce((sum, state) => sum + state.tile.width * state.tile.expectedHeight, 0) > 64000000) {
         throw new Error('Image-first batch exceeds the same-sheet 64 megapixel budget');
       }
+      const boundaries = command.capture_batches === undefined
+        ? [states.length]
+        : command.capture_batches;
+      if (!Array.isArray(boundaries) || boundaries.length < 1 || boundaries.length > 2 ||
+          boundaries.at(-1) !== states.length || boundaries.some((end, index) =>
+            !Number.isInteger(end) || end <= (boundaries[index - 1] ?? 0))) {
+        throw new Error('Capture batch boundaries must cover the tiles in one or two ordered chunks');
+      }
       helpers.phase(`Capturing synchronized batch (${states.length} tiles)`);
       await checkedWorksheet(states[0].sheet);
       await geometryFor(states[0]);
-      // One Office request captures the bounded batch. Upload each finished PNG
-      // immediately; the host does not wait for the final batch result to paint it.
       activeBatchTiles = states.length;
       activeBatchPixels = states.reduce((sum, state) => sum + state.tile.width * state.tile.expectedHeight, 0);
-      const base64s = await measure('capture_ms', () => office(async context => {
-        const worksheet = context.workbook.worksheets.getItem(states[0].sheet.name);
-        const images = states.map(state => worksheet.getRange(CaptureGeometry.address(state.tile.raw)).getImage());
-        await context.sync();
-        return images.map(image => image.value);
-      }));
-      pendingPngCharacters = base64s.reduce((sum, value) => sum + value.length, 0);
       const result = {images: []};
-      for (let index = 0; index < states.length; index++) {
-        const state = states[index];
-        const image = await measure('finish_image_ms', () => finishImage(state, state.tile, base64s[index], false));
-        pendingPngCharacters -= base64s[index].length;
-        base64s[index] = null;
-        const receipt = await measure('upload_ms', () => transport.image(command.id,
-          {...state.metadata, sha256: undefined}, image.bytes));
-        if (typeof receipt.image_path !== 'string' || !receipt.image_path ||
-            typeof receipt.sha256 !== 'string' || receipt.width !== image.width || receipt.height !== image.height) {
-          throw new Error('Missing or invalid image-first receipt');
+      const retainedImages = new Set();
+      let uploadTask = Promise.resolve();
+      let uploadError;
+      let uploadPending = false;
+      let stopping = false;
+
+      function checkUpload() {
+        if (uploadError) {
+          throw uploadError;
         }
-        result.images.push({...state.metadata, ...receipt});
       }
-      return result;
+
+      function releaseImage(image) {
+        if (!retainedImages.delete(image)) {
+          return;
+        }
+        pendingEncodedBytes -= image.bytes.byteLength;
+        image.bytes = null;
+      }
+
+      async function uploadImage(state, image) {
+        try {
+          const receipt = await measure('upload_ms', () => transport.image(command.id,
+            {...state.metadata, sha256: undefined}, image.bytes));
+          if (typeof receipt.image_path !== 'string' || !receipt.image_path ||
+              typeof receipt.sha256 !== 'string' || receipt.width !== image.width || receipt.height !== image.height) {
+            throw new Error('Missing or invalid image-first receipt');
+          }
+          result.images.push({...state.metadata, ...receipt});
+        } finally {
+          releaseImage(image);
+        }
+      }
+
+      async function uploadChunk(chunk, images) {
+        for (let index = 0; index < images.length && !stopping; index++) {
+          await uploadImage(chunk[index], images[index]);
+        }
+      }
+
+      try {
+        let first = 0;
+        for (const end of boundaries) {
+          checkUpload();
+          const chunk = states.slice(first, end);
+          if (uploadPending) {
+            pipelineOverlapCount++;
+          }
+          const base64s = await measure('capture_ms', () => office(async context => {
+            const worksheet = context.workbook.worksheets.getItem(chunk[0].sheet.name);
+            const images = chunk.map(state =>
+              worksheet.getRange(CaptureGeometry.address(state.tile.raw)).getImage());
+            await context.sync();
+            return images.map(image => image.value);
+          }));
+          const rawCharacters = base64s.reduce((sum, value) => sum + value.length, 0);
+          let remainingCharacters = 0;
+          const finalized = [];
+          try {
+            // Office returns complete strings, so their encoded size is only
+            // known after sync. Check before retaining/decoding; the pixel and
+            // chunk limits bound the capture allocation itself.
+            reserveImageBytes(rawCharacters * 2);
+            remainingCharacters = rawCharacters;
+            pendingPngCharacters += rawCharacters;
+            for (let index = 0; index < chunk.length; index++) {
+              checkUpload();
+              const state = chunk[index];
+              const image = await measure('finish_image_ms', () => finishImage(
+                state, state.tile, base64s[index], {hash: false, accountMemory: true}
+              ));
+              retainedImages.add(image);
+              const characters = base64s[index].length;
+              remainingCharacters -= characters;
+              pendingPngCharacters -= characters;
+              pendingEncodedBytes -= characters * 2;
+              base64s[index] = null;
+              checkUpload();
+              if (command.capture_batches === undefined) {
+                // Preserve the reference path: capture once, then finalize and
+                // upload each tile before finalizing the next.
+                await uploadImage(state, image);
+              } else {
+                finalized.push(image);
+              }
+            }
+            await uploadTask;
+            checkUpload();
+            if (finalized.length) {
+              // Finish every Office operation (including overflow probes)
+              // before starting the next chunk. Only uploads may overlap it.
+              uploadPending = true;
+              uploadTask = uploadChunk(chunk, finalized)
+                .catch(error => {
+                  uploadError = error;
+                })
+                .finally(() => {
+                  uploadPending = false;
+                });
+            }
+          } finally {
+            base64s.fill(null);
+            pendingPngCharacters -= remainingCharacters;
+            pendingEncodedBytes -= remainingCharacters * 2;
+          }
+          first = end;
+        }
+        await uploadTask;
+        checkUpload();
+        return result;
+      } finally {
+        stopping = true;
+        // The HTTP transport has a request deadline. Do not return a failed
+        // command while one of its uploads can still mutate host state.
+        await uploadTask;
+        for (const image of retainedImages) {
+          releaseImage(image);
+        }
+      }
     }
 
     return {
@@ -307,6 +447,8 @@
       },
       async execute(command) {
         const started = performance.now();
+        peakPendingEncodedBytes = 0;
+        pipelineOverlapCount = 0;
         timings = {capture_ms: 0, finish_image_ms: 0, upload_ms: 0};
         let result;
         try {
@@ -326,13 +468,19 @@
             result = {};
           } else throw new Error(`Unknown resident command: ${command.kind}`);
           result.elapsed_ms = performance.now() - started;
-          result.timings = {...timings, execution_ms: result.elapsed_ms};
+          result.timings = {
+            ...timings,
+            execution_ms: result.elapsed_ms,
+            peak_pending_encoded_bytes: peakPendingEncodedBytes,
+            pipeline_overlap_count: pipelineOverlapCount
+          };
           lastCommandTiming = {command_id: command.id, kind: command.kind, ...result.timings};
           result.checksum_tiles = command.kind === 'capture' ? result.tiles?.length ?? 0 : 0;
           result.uploaded_images = result.images?.length ?? 0;
           return result;
         } finally {
           pendingPngCharacters = 0;
+          pendingEncodedBytes = 0;
           activeBatchPixels = 0;
           activeBatchTiles = 0;
           timings = undefined;

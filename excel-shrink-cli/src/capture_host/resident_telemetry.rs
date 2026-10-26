@@ -49,6 +49,9 @@ impl WorkerTelemetry {
             "geometry_cache_entries",
             "geometry_rows",
             "pending_png_characters",
+            "pending_encoded_bytes",
+            "peak_pending_encoded_bytes",
+            "pipeline_overlap_count",
             "active_batch_pixels",
             "active_batch_tiles",
             "js_heap_used_bytes",
@@ -251,8 +254,14 @@ fn command_timing(source: &Value) -> Option<Value> {
             timing[key] = source[key].clone();
         }
     }
-    if let Some(attempts) = source["result_attempts"].as_u64() {
-        timing["result_attempts"] = json!(attempts);
+    for key in [
+        "result_attempts",
+        "peak_pending_encoded_bytes",
+        "pipeline_overlap_count",
+    ] {
+        if let Some(value) = source[key].as_u64() {
+            timing[key] = json!(value);
+        }
     }
     Some(timing)
 }
@@ -321,11 +330,13 @@ mod tests {
         let mut telemetry = WorkerTelemetry::new();
         let before = telemetry.snapshot();
         telemetry.sample_pane(&json!({
+            "pending_encoded_bytes": 1024,
             "last_command_timing": {
                 "command_id": "000003", "kind": "capture_images",
                 "execution_ms": 1500.25, "capture_ms": 0,
                 "finish_image_ms": -1, "upload_ms": "500",
-                "result_attempts": 2, "unknown": {"unbounded": [1, 2, 3]}
+                "result_attempts": 2, "peak_pending_encoded_bytes": 4096,
+                "pipeline_overlap_count": 1, "unknown": {"unbounded": [1, 2, 3]}
             }
         }));
         let after = telemetry.snapshot();
@@ -333,6 +344,9 @@ mod tests {
         assert_eq!(timing["execution_ms"], 1500.25);
         assert_eq!(timing["capture_ms"], 0);
         assert_eq!(timing["result_attempts"], 2);
+        assert_eq!(timing["peak_pending_encoded_bytes"], 4096);
+        assert_eq!(timing["pipeline_overlap_count"], 1);
+        assert_eq!(after["pane_resources"]["pending_encoded_bytes"], 1024);
         assert!(timing.get("finish_image_ms").is_none());
         assert!(timing.get("upload_ms").is_none());
         assert!(timing.get("result_ack_ms").is_none());
