@@ -8,6 +8,12 @@ The UI reads `/api/state` and the selected `/api/groups/{id}`. Controls are part
 JSON updates to `/api/control`; acknowledged values are shown separately from an
 unsubmitted edit. Images are accepted only from same-origin `/data/` paths.
 
+**Free RAM reserve** controls the minimum free physical RAM and commit headroom,
+in whole MiB (1–65536, default 1024). A confirmed `system_reserve_mib` update applies
+to active capture resource checks and future capture sessions. Other partial
+control updates preserve the selected reserve. Explicit existing values remain
+visible until changed; the worker and Excel allocation limits are independent.
+
 Every worksheet has an equally sized 16:9 card in a curved grid. Each card holds
 the original and three profile mosaics. Planned outlines and arriving images use
 the actual per-profile pixel coordinates, including horizontal offsets and changed

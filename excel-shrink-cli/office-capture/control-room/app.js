@@ -738,9 +738,12 @@ function renderGroups() {
 }
 function updateControlInputs() {
   const values = state.controls;
-  for (const [id, key] of [['targetGroups', 'target_groups'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) {
+  for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
   }
+  const confirmedReserve = values.system_reserve_mib ?? 1024;
+  if (values.system_reserve_mib == null && document.activeElement !== $('systemReserve') && !dirtyControls.has('systemReserve')) $('systemReserve').value = String(confirmedReserve);
+  $('systemReserveStatus').textContent = `Confirmed: ${confirmedReserve.toLocaleString('en-US')} MiB`;
   if (document.activeElement !== $('hideExcel')) $('hideExcel').checked = Boolean(values.hide_excel);
   $('groupRange').max = String(Math.max(24, Number(values.target_groups ?? 1), Number($('targetGroups').value || 0)));
   if (document.activeElement !== $('groupRange') && !dirtyControls.has('targetGroups')) $('groupRange').value = String(values.target_groups ?? 1);
@@ -759,18 +762,20 @@ function updateControlInputs() {
 async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;
   const wasCapturePaused = Boolean(state.controls.paused);
-  for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = true;
+  for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = true;
+  if (change.system_reserve_mib != null) $('applyReserve').textContent = 'Setting…';
   try {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
     const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Control change rejected (${response.status}).`);
     state.controls = result.controls;
-    for (const [id, key] of [['targetGroups', 'target_groups'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
+    for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     updateControlInputs();
     const text = change.target_groups === 0 ? `Target 0 confirmed: workbooks already in progress will finish.${wasCapturePaused ? ' The capture pause was lifted to allow this.' : ''}`
-      : change.target_groups != null ? `Group target ${state.controls.target_groups} confirmed.` : 'Controls confirmed by host.';
+      : change.target_groups != null ? `Group target ${state.controls.target_groups} confirmed.`
+      : change.system_reserve_mib != null ? `Free RAM reserve ${state.controls.system_reserve_mib.toLocaleString('en-US')} MiB confirmed.` : 'Controls confirmed by host.';
     pushEvent(text); setNotice(text);
   } catch (error) { setNotice(error.message, true); updateControlInputs(); if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel); }
-  finally { controlBusy = false; for (const id of ['applyTarget', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = false; updateControlInputs(); }
+  finally { controlBusy = false; for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
 }
 function selectGroup(id) {
   if (id === state.groupId) return;
@@ -1055,7 +1060,12 @@ function wireControls() {
   $('moreGroups').addEventListener('click', () => { groupLimit += 100; renderGroups(); });
   function adjustTarget(delta) { const value = Math.max(0, Number($('targetGroups').value || 0) + delta); dirtyControls.add('targetGroups'); $('targetGroups').value = String(value); $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); }
   $('minus').addEventListener('click', () => adjustTarget(-1)); $('plus').addEventListener('click', () => adjustTarget(1));
-  for (const id of ['targetGroups', 'openTimeout', 'jobTimeout', 'equalPreview', 'captureMegapixels', 'captureBatch', 'tallSheetThreshold', 'tallSheetEdges']) $(id).addEventListener('input', () => dirtyControls.add(id));
+  for (const id of ['targetGroups', 'systemReserve', 'openTimeout', 'jobTimeout', 'equalPreview', 'captureMegapixels', 'captureBatch', 'tallSheetThreshold', 'tallSheetEdges']) $(id).addEventListener('input', () => dirtyControls.add(id));
+  $('applyReserve').addEventListener('click', () => {
+    const reserve = Number($('systemReserve').value);
+    if (!Number.isSafeInteger(reserve) || reserve < 1 || reserve > 65536) return setNotice('Free RAM reserve must be a whole number from 1 to 65,536 MiB.', true);
+    sendControl({ system_reserve_mib: reserve });
+  });
   $('targetGroups').addEventListener('input', () => { const value = Number($('targetGroups').value); if (Number.isSafeInteger(value) && value >= 0) { $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); } });
   $('groupRange').addEventListener('input', event => { dirtyControls.add('targetGroups'); $('targetGroups').value = event.target.value; });
   $('groupRange').addEventListener('change', event => sendControl({ target_groups: Number(event.target.value) }));

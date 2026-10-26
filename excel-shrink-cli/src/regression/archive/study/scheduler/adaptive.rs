@@ -3,7 +3,9 @@ use anyhow::{ensure, Context, Result};
 use serde_json::Value;
 use std::collections::VecDeque;
 
+use super::super::control_room::DEFAULT_SYSTEM_RESERVE_MIB;
 use super::super::prepared::PROFILES;
+use super::MIB;
 
 pub(super) const GIB: u64 = 1024 * 1024 * 1024;
 const HISTORY_LENGTH: usize = 8;
@@ -97,8 +99,10 @@ impl Controller {
         );
         ensure!(
             self.config.helper_reserve >= GIB / 4
-                && self.config.system_reserve.is_none_or(|bytes| bytes >= GIB),
-            "comparison reserves require at least 256 MiB for helpers and 1 GiB for the system"
+                && self.config.system_reserve.is_none_or(|bytes| {
+                    (MIB..=65536 * MIB).contains(&bytes) && bytes % MIB == 0
+                }),
+            "comparison reserves require at least 256 MiB for helpers and 1..65536 whole MiB for the system"
         );
         let reference_peak_bytes = self.normalized_peaks.iter().copied().chain(live_peak).max();
         let resident_limit = reference_peak_bytes
@@ -115,7 +119,7 @@ impl Controller {
         let system_reserve = self
             .config
             .system_reserve
-            .unwrap_or_else(|| system_reserve(memory.total_physical));
+            .unwrap_or(DEFAULT_SYSTEM_RESERVE_MIB * MIB);
         let available = memory.physical.min(memory.commit);
         let affordable = available.saturating_sub(system_reserve) / group_reserve;
         let workers = self
@@ -264,11 +268,6 @@ fn estimated_limit(peak: u64, configured: u64) -> u64 {
     rounded.min(u128::from(configured)) as u64
 }
 
-fn system_reserve(total_physical: u64) -> u64 {
-    let units = ceil_div(u128::from(total_physical), u128::from(GIB) * 10);
-    units.clamp(4, 8) as u64 * GIB
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,12 +354,12 @@ mod tests {
             assert_eq!(controller.plan(plentiful, 100)?.workers, requested.min(25));
             assert_eq!(controller.plan(plentiful, 2)?.workers, 2);
             let low_commit = Memory {
-                commit: 42 * GIB,
+                commit: 40 * GIB - 1,
                 ..plentiful
             };
             assert_eq!(controller.plan(low_commit, 100)?.workers, 2);
             let low_ram = Memory {
-                physical: 42 * GIB,
+                physical: 40 * GIB - 1,
                 ..plentiful
             };
             assert_eq!(controller.plan(low_ram, 100)?.workers, 2);
@@ -504,14 +503,14 @@ mod tests {
         controller.observe(&[completed(GIB, 6)]);
         controller.observe(&vec![completed(GIB, 6); 2]);
         let mut available = memory();
-        available.commit = 34 * GIB;
+        available.commit = 27 * GIB;
         let plan = controller.plan(available, 100)?;
         assert_eq!(plan.workers, 2);
-        assert_eq!(plan.system_reserve, 8 * GIB);
+        assert_eq!(plan.system_reserve, GIB);
         assert!(plan.workers as u64 * plan.group_reserve + plan.system_reserve <= available.commit);
         available.commit -= 1;
         assert_eq!(controller.plan(available, 100)?.workers, 1);
-        available.commit = 21 * GIB - 1;
+        available.commit = 14 * GIB - 1;
         assert!(controller
             .plan(available, 100)
             .unwrap_err()
@@ -520,15 +519,42 @@ mod tests {
         available = memory();
         available.physical = 0;
         assert!(controller.plan(available, 100).is_err());
-        assert_eq!(system_reserve(40 * GIB), 4 * GIB);
-        assert_eq!(system_reserve(40 * GIB + 1), 5 * GIB);
-        assert_eq!(system_reserve(64 * GIB), 7 * GIB);
-        assert_eq!(system_reserve(u64::MAX), 8 * GIB);
         Ok(())
     }
 
     #[test]
-    fn explicit_small_machine_reserves_fit_exactly_without_lowering_defaults() -> Result<()> {
+    fn default_system_reserve_is_1024_mib_on_every_machine() -> Result<()> {
+        for total_physical in [8 * GIB, 40 * GIB, 64 * GIB, u64::MAX] {
+            let available = Memory {
+                total_physical,
+                ..memory()
+            };
+            assert_eq!(controller().plan(available, 1)?.system_reserve, GIB);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn system_reserve_accepts_whole_mib_without_changing_group_limits() -> Result<()> {
+        let mut controller = controller();
+        let original = controller.plan(memory(), 1)?;
+        for mib in [1, 512, 1024, 65536] {
+            controller.config.system_reserve = Some(mib * MIB);
+            let plan = controller.plan(memory(), 1)?;
+            assert_eq!(plan.system_reserve, mib * MIB);
+            assert_eq!(plan.group_reserve, original.group_reserve);
+            assert_eq!(plan.resident_limit, original.resident_limit);
+            assert_eq!(plan.helper_reserve, original.helper_reserve);
+        }
+        for bytes in [0, MIB - 1, 65536 * MIB + 1] {
+            controller.config.system_reserve = Some(bytes);
+            assert!(controller.plan(memory(), 1).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_small_machine_reserves_fit_exactly_without_lowering_worker_limits() -> Result<()> {
         let configured = Controller::new(
             1,
             Config {

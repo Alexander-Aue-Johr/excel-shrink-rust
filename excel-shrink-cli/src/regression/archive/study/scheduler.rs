@@ -14,8 +14,8 @@ pub(super) struct Comparison {
     pub position: usize,
 }
 
-const GIB: u64 = 1024 * 1024 * 1024;
-const SYSTEM_RESERVE: u64 = 4 * GIB;
+const MIB: u64 = 1_048_576;
+const GIB: u64 = 1024 * MIB;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn compare(
@@ -40,6 +40,7 @@ pub(super) fn compare(
         );
     }
     let memory_budget = MemoryBudget::configured(run["options"]["resident_capture"] == true)?;
+    let system_reserve = control_room::configured_system_reserve_mib()? * MIB;
     let mut pending: VecDeque<_> = jobs.into();
     let mut batch_number = 0;
     while !pending.is_empty() {
@@ -57,7 +58,8 @@ pub(super) fn compare(
         } else {
             None
         };
-        let count = admitted_workers(requested, available, memory_budget).min(pending.len());
+        let count = admitted_workers(requested, available, memory_budget, system_reserve)
+            .min(pending.len());
         if requested > 1 {
             eprintln!(
                 "[study] {}: comparison batch {batch_number}, {count}/{requested} workers, available RAM {} GiB",
@@ -78,7 +80,7 @@ pub(super) fn compare(
                 record["comparison_batch"] = json!({
                     "run_id":run["run_id"],"number":batch_number,"workers":count,
                     "requested_workers":requested,"available_physical_bytes":available,
-                    "workbook_reserve_bytes":memory_budget.total(),"system_reserve_bytes":SYSTEM_RESERVE,
+                    "workbook_reserve_bytes":memory_budget.total(),"system_reserve_bytes":system_reserve,
                     "rust_worker_reserve_bytes":memory_budget.worker,
                     "excel_session_reserve_bytes":memory_budget.excel,
                 });
@@ -276,9 +278,14 @@ fn configured_excel_limit(name: &str, default_mib: u64, minimum_mib: u64) -> Res
     Ok(mib * 1_048_576)
 }
 
-fn admitted_workers(requested: usize, available: Option<u64>, budget: MemoryBudget) -> usize {
+fn admitted_workers(
+    requested: usize,
+    available: Option<u64>,
+    budget: MemoryBudget,
+    system_reserve: u64,
+) -> usize {
     let affordable = available
-        .map(|bytes| bytes.saturating_sub(SYSTEM_RESERVE) / budget.total())
+        .map(|bytes| bytes.saturating_sub(system_reserve) / budget.total())
         .unwrap_or(1);
     usize::try_from(affordable.max(1))
         .unwrap_or(usize::MAX)
@@ -286,9 +293,7 @@ fn admitted_workers(requested: usize, available: Option<u64>, budget: MemoryBudg
 }
 
 fn configured_reserves() -> Result<(Option<u64>, u64)> {
-    let system = std::env::var_os("EXCEL_SHRINK_SYSTEM_RESERVE_MIB")
-        .map(|_| configured_excel_limit("EXCEL_SHRINK_SYSTEM_RESERVE_MIB", 4096, 1024))
-        .transpose()?;
+    let system = Some(control_room::configured_system_reserve_mib()? * MIB);
     let helpers = configured_excel_limit("EXCEL_SHRINK_HELPER_RESERVE_MIB", 1024, 256)?;
     Ok((system, helpers))
 }
@@ -409,22 +414,45 @@ mod tests {
             excel: 16 * GIB,
         };
         assert_eq!(budget.total(), 24 * GIB);
-        assert_eq!(admitted_workers(3, Some(76 * GIB), budget), 3);
-        assert_eq!(admitted_workers(3, Some(76 * GIB - 1), budget), 2);
-        assert_eq!(admitted_workers(3, Some(65 * GIB), budget), 2);
-        assert_eq!(admitted_workers(3, Some(52 * GIB - 1), budget), 1);
-        assert_eq!(admitted_workers(2, Some(100 * GIB), budget), 2);
-        assert_eq!(admitted_workers(3, None, budget), 1);
-        assert_eq!(admitted_workers(3, Some(0), budget), 1);
-        assert_eq!(admitted_workers(24, Some(1024 * GIB), budget), 24);
-        assert_eq!(admitted_workers(256, Some(76 * GIB), budget), 3);
-        assert_eq!(admitted_workers(usize::MAX, Some(76 * GIB), budget), 3);
+        let reserve = control_room::DEFAULT_SYSTEM_RESERVE_MIB * MIB;
+        let three_groups = 3 * budget.total() + reserve;
+        assert_eq!(admitted_workers(3, Some(three_groups), budget, reserve), 3);
+        assert_eq!(
+            admitted_workers(3, Some(three_groups - 1), budget, reserve),
+            2
+        );
+        assert_eq!(admitted_workers(3, Some(65 * GIB), budget, reserve), 2);
+        assert_eq!(
+            admitted_workers(3, Some(2 * budget.total() + reserve - 1), budget, reserve),
+            1
+        );
+        assert_eq!(admitted_workers(2, Some(100 * GIB), budget, reserve), 2);
+        assert_eq!(admitted_workers(3, None, budget, reserve), 1);
+        assert_eq!(admitted_workers(3, Some(0), budget, reserve), 1);
+        assert_eq!(admitted_workers(24, Some(1024 * GIB), budget, reserve), 24);
+        assert_eq!(
+            admitted_workers(256, Some(three_groups), budget, reserve),
+            3
+        );
+        assert_eq!(
+            admitted_workers(usize::MAX, Some(three_groups), budget, reserve),
+            3
+        );
+        // An explicitly larger reserve still reduces admission without changing job limits.
+        assert_eq!(admitted_workers(3, Some(three_groups), budget, 4 * GIB), 2);
         let defaults = MemoryBudget {
             worker: 4 * GIB,
             excel: 16 * GIB,
         };
-        assert_eq!(admitted_workers(3, Some(64 * GIB), defaults), 3);
-        assert_eq!(admitted_workers(3, Some(64 * GIB - 1), defaults), 2);
+        let three_default_groups = 3 * defaults.total() + reserve;
+        assert_eq!(
+            admitted_workers(3, Some(three_default_groups), defaults, reserve),
+            3
+        );
+        assert_eq!(
+            admitted_workers(3, Some(three_default_groups - 1), defaults, reserve),
+            2
+        );
     }
 
     #[test]

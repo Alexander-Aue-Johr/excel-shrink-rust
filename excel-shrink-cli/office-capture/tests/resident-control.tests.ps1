@@ -5,7 +5,7 @@ $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $captureRoot 'resident.ps1'), [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw 'Resident launcher has syntax errors.' }
 foreach ($function in $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
-    if ($function.Name -in @('Get-ResidentControlRoot', 'Get-ResidentOpenTimeoutSeconds', 'Get-ResidentHideExcel', 'Update-ClientActivity', 'Update-ClientStateTimes', 'Update-ClientProcessMetrics', 'Test-ResidentDeadline', 'Update-Resources')) {
+    if ($function.Name -in @('Get-ResidentControlRoot', 'Get-ResidentOpenTimeoutSeconds', 'Get-ResidentHideExcel', 'Update-ClientActivity', 'Update-ClientStateTimes', 'Update-ClientProcessMetrics', 'Test-ResidentDeadline', 'Update-SystemReserve', 'Update-Resources')) {
         Invoke-Expression $function.Extent.Text
     }
 }

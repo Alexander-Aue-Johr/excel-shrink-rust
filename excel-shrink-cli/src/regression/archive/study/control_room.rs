@@ -32,6 +32,8 @@ pub(super) fn check_stop(root: &Path) -> Result<()> {
 pub(super) struct Controls {
     pub target_groups: usize,
     pub paused: bool,
+    #[serde(default = "default_system_reserve_mib")]
+    pub system_reserve_mib: u64,
     pub open_timeout_seconds: u64,
     pub job_timeout_seconds: u64,
     pub equal_preview_width: u32,
@@ -45,6 +47,46 @@ pub(super) struct Controls {
     pub tall_sheet_edge_tiles: u32,
     #[serde(default)]
     pub hide_excel: bool,
+}
+
+pub(super) const DEFAULT_SYSTEM_RESERVE_MIB: u64 = 1024;
+
+fn default_system_reserve_mib() -> u64 {
+    DEFAULT_SYSTEM_RESERVE_MIB
+}
+
+fn validate_system_reserve_mib(value: u64) -> Result<()> {
+    ensure!(
+        (1..=65536).contains(&value),
+        "system reserve must be between 1 and 65536 MiB"
+    );
+    Ok(())
+}
+
+fn initial_system_reserve_mib(
+    previous: Option<&Value>,
+    environment: std::result::Result<String, std::env::VarError>,
+) -> Result<u64> {
+    let value = if let Some(value) = previous.and_then(|value| value.get("system_reserve_mib")) {
+        // Keep a previously chosen live value, including the older 4096 MiB setting.
+        value
+            .as_u64()
+            .context("system reserve must be an integer")?
+    } else {
+        match environment {
+            Ok(text) => text
+                .parse::<u64>()
+                .context("invalid EXCEL_SHRINK_SYSTEM_RESERVE_MIB")?,
+            Err(std::env::VarError::NotPresent) => DEFAULT_SYSTEM_RESERVE_MIB,
+            Err(error) => return Err(error).context("invalid EXCEL_SHRINK_SYSTEM_RESERVE_MIB"),
+        }
+    };
+    validate_system_reserve_mib(value)?;
+    Ok(value)
+}
+
+pub(super) fn configured_system_reserve_mib() -> Result<u64> {
+    initial_system_reserve_mib(None, std::env::var("EXCEL_SHRINK_SYSTEM_RESERVE_MIB"))
 }
 
 fn default_capture_megapixels() -> u32 {
@@ -78,6 +120,7 @@ fn tall_sheet_setting(name: &str, fallback: u32) -> Result<u32> {
 impl Controls {
     pub fn read(root: &Path) -> Result<Self> {
         let value: Self = serde_json::from_slice(&fs::read(root.join("control.json"))?)?;
+        validate_system_reserve_mib(value.system_reserve_mib)?;
         ensure!(
             value.open_timeout_seconds > 0 && value.job_timeout_seconds > 0,
             "control room limits must be positive"
@@ -189,6 +232,10 @@ impl Room {
         let controls = Controls {
             target_groups: args.comparison_workers,
             paused: false,
+            system_reserve_mib: initial_system_reserve_mib(
+                read_json(&root.join("control.json")).as_ref(),
+                std::env::var("EXCEL_SHRINK_SYSTEM_RESERVE_MIB"),
+            )?,
             open_timeout_seconds: args.startup_timeout_seconds,
             job_timeout_seconds: args.workbook_timeout_seconds,
             equal_preview_width: previous_controls
@@ -548,6 +595,74 @@ mod tests {
     use super::*;
 
     #[test]
+    fn system_reserve_starts_from_saved_controls_then_environment_then_1024_mib() -> Result<()> {
+        assert_eq!(
+            initial_system_reserve_mib(None, Err(std::env::VarError::NotPresent))?,
+            1024
+        );
+        assert_eq!(initial_system_reserve_mib(None, Ok("2048".into()))?, 2048);
+        let legacy = json!({"target_groups": 2});
+        assert_eq!(
+            initial_system_reserve_mib(Some(&legacy), Ok("2048".into()))?,
+            2048
+        );
+        let saved = json!({"system_reserve_mib": 4096});
+        assert_eq!(
+            initial_system_reserve_mib(Some(&saved), Ok("512".into()))?,
+            4096
+        );
+        assert_eq!(
+            initial_system_reserve_mib(Some(&saved), Ok("invalid".into()))?,
+            4096
+        );
+        for valid in ["1", "65536"] {
+            assert_eq!(
+                initial_system_reserve_mib(None, Ok(valid.into()))?,
+                valid.parse::<u64>()?
+            );
+        }
+        for invalid in ["0", "65537", "-1", "1.5", "invalid"] {
+            assert!(initial_system_reserve_mib(None, Ok(invalid.into())).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn live_system_reserve_rejects_invalid_updates_and_preserves_saved_values() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "system-reserve-controls")?;
+        fs::create_dir(&root)?;
+        let mut value = json!({"target_groups":2,"paused":false,
+            "open_timeout_seconds":60,"job_timeout_seconds":60,"equal_preview_width":512});
+        write(&root.join("control.json"), &value)?;
+        assert_eq!(Controls::read(&root)?.system_reserve_mib, 1024);
+        for valid in [1, 512, 1024, 4096, 65536] {
+            value["system_reserve_mib"] = json!(valid);
+            write(&root.join("control.json"), &value)?;
+            let controls = Controls::read(&root)?;
+            assert_eq!(controls.system_reserve_mib, valid);
+            assert_eq!(
+                serde_json::to_value(&controls)?["system_reserve_mib"],
+                valid
+            );
+        }
+        for invalid in [
+            json!(0),
+            json!(65537),
+            json!(-1),
+            json!(1.5),
+            json!("512"),
+            Value::Null,
+        ] {
+            value["system_reserve_mib"] = invalid;
+            write(&root.join("control.json"), &value)?;
+            assert!(Controls::read(&root).is_err());
+            assert!(initial_system_reserve_mib(Some(&value), Ok("512".into())).is_err());
+        }
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
     #[cfg(windows)]
     fn stop_ends_paused_admission_and_ignores_another_process_incarnation() -> Result<()> {
         let output = artifact_cache::unique_path(&std::env::temp_dir(), "stop-admission")?;
@@ -664,6 +779,7 @@ mod tests {
         write(&root.join("control.json"), &value)?;
         let legacy = Controls::read(&root)?;
         assert_eq!(legacy.target_groups, 128);
+        assert_eq!(legacy.system_reserve_mib, 1024);
         assert_eq!(legacy.capture_tile_megapixels, 32);
         assert_eq!(legacy.capture_batch_tiles, 1);
         assert_eq!(legacy.tall_sheet_threshold, 40);

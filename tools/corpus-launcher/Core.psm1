@@ -92,7 +92,7 @@ function Get-DefaultStudySettings {
         worker_memory_mib = $(if ($small) { 2048 } else { 4096 })
         excel_memory_mib = $(if ($small) { 2048 } else { 4096 })
         resident_memory_mib = $(if ($small) { 4096 } else { 16384 })
-        system_reserve_mib = $(if ($small) { 2048 } else { 4096 })
+        system_reserve_mib = 1024
         open_timeout_seconds = 600
         job_timeout_seconds = 1800
         tall_sheet_threshold = 40
@@ -109,9 +109,9 @@ function Import-StudyConfiguration {
     $saved = Read-StudyJson $ConfigurationPath
     if ($saved) {
         if ((Get-Value $saved 'version') -ne 1) { throw 'Unsupported corpus launcher configuration version.' }
-        # New capture settings do not change corpus IDs, archive locations or
+        # New control defaults do not change corpus IDs, archive locations or
         # prior results. Old machine configurations acquire only these defaults.
-        foreach ($setting in @{ tall_sheet_threshold=40; tall_sheet_edge_tiles=2 }.GetEnumerator()) {
+        foreach ($setting in @{ tall_sheet_threshold=40; tall_sheet_edge_tiles=2; system_reserve_mib=1024 }.GetEnumerator()) {
             if ($null -eq (Get-Value $saved.settings $setting.Key)) {
                 $saved.settings | Add-Member -NotePropertyName $setting.Key -NotePropertyValue $setting.Value -Force
             }
@@ -249,7 +249,7 @@ function ConvertTo-StudyRequest {
 }
 
 function Assert-StudySettings($Settings) {
-    foreach ($rule in @(@('comparison_groups',0,2147483647),@('control_room_port',1024,65535),@('partitions',1,1000),@('partition',0,1000),@('worker_memory_mib',512,65536),@('excel_memory_mib',512,65536),@('resident_memory_mib',1024,65536),@('system_reserve_mib',1024,65536),@('open_timeout_seconds',10,600),@('job_timeout_seconds',1,2147483647),@('tall_sheet_threshold',1,2147483647),@('tall_sheet_edge_tiles',1,2147483647))) {
+    foreach ($rule in @(@('comparison_groups',0,2147483647),@('control_room_port',1024,65535),@('partitions',1,1000),@('partition',0,1000),@('worker_memory_mib',512,65536),@('excel_memory_mib',512,65536),@('resident_memory_mib',1024,65536),@('system_reserve_mib',1,65536),@('open_timeout_seconds',10,600),@('job_timeout_seconds',1,2147483647),@('tall_sheet_threshold',1,2147483647),@('tall_sheet_edge_tiles',1,2147483647))) {
         $number=0L; $value=[string](Get-Value $Settings $rule[0])
         if (-not [Int64]::TryParse($value,[ref]$number) -or $number -lt $rule[1] -or $number -gt $rule[2]) { throw "Invalid value for $($rule[0]): $value" }
     }

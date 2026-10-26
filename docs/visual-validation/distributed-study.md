@@ -173,7 +173,7 @@ Remove-Item Env:EXCEL_SHRINK_HELPER_RESERVE_MIB -ErrorAction SilentlyContinue
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 2/4 --machine-label ENRON-LAPTOP-2 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 4
 ```
 
-The 32 GiB profile uses the default 4 GiB system reserve and 1 GiB helper reserve
+The 32 GiB profile uses the default 1024 MiB system reserve and 1 GiB helper reserve
 per group. Four workers is an upper limit, not a starting batch size.
 
 Enron tower 1 (retain its reviewed memory settings, or the defaults):
@@ -199,10 +199,10 @@ Remove-Item Env:EXCEL_SHRINK_HELPER_RESERVE_MIB -ErrorAction SilentlyContinue
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
 ```
 
-On GOTHAM, adaptive admission keeps the default 8 GiB system reserve; the runtime
-guard retains its separate 4 GiB floor. The two Enron towers and the Destatis
-machine retain their existing reviewed settings or defaults until their RAM is
-known. Do not copy the 8 GiB laptop's reserve overrides to those machines.
+The default system reserve is 1024 MiB on all machines. Existing explicit
+machine settings remain in effect. The Observatory's **Free RAM reserve** control
+changes the reserve for active and future capture sessions.
+Rust and Excel allocation limits remain separate settings.
 
 Machine 6 handles Destatis (retain its reviewed memory settings, or the defaults):
 
@@ -230,10 +230,10 @@ estimate adds 50% and 1 GiB, rounds up to whole GiB, and never exceeds the
 configured resident limit. The chosen limit is enforced on that group's Excel
 job. Rust retains its full configured limit, COM retains its own limit, and each
 group additionally reserves 1 GiB for helpers by default. The default system
-reserve is 10% of total RAM rounded up to GiB, with a minimum of 4 and maximum of
-8 GiB. `EXCEL_SHRINK_HELPER_RESERVE_MIB` and
+reserve is 1024 MiB. `EXCEL_SHRINK_HELPER_RESERVE_MIB` and
 `EXCEL_SHRINK_SYSTEM_RESERVE_MIB` override these reserves for an explicitly
-configured machine, as in the constrained 8 GiB profile above. Both free RAM and
+configured machine, as in the constrained 8 GiB profile above. With the control
+room enabled, `system_reserve_mib` in its controls is the live setting. Both free RAM and
 commit headroom must accommodate the next group, remaining budgets of active
 groups, and this reserve. Existing groups keep their assigned limits. Physical
 RAM admission credits only fresh private working-set measurements of the
@@ -466,9 +466,9 @@ keep a stuck comparison alive indefinitely.
 
 Without adaptive concurrency, admission adds each group's configured Rust limit
 and Excel limit, then keeps
-4 GiB for the system. Excel's resident-session limit defaults to 16 GiB; a larger
+1 GiB for the system by default. Excel's resident-session limit defaults to 16 GiB; a larger
 configured COM limit also counts. With an 8 GiB Rust limit and the default
-16 GiB resident limit, two groups need 52 GiB available and three need 76 GiB.
+16 GiB resident limit, two groups need 49 GiB available and three need 73 GiB.
 GOTHAM's command above instead permits a 32 GiB resident limit and uses adaptive
 admission. Unknown available memory falls back to
 one worker. These checks do not lower either allocation limit.
@@ -476,7 +476,7 @@ one worker. These checks do not lower either allocation limit.
 Adaptive concurrency uses the observed peaks to choose an enforced Excel session
 limit for each newly admitted group, bounded by the configured resident limit. It retains the
 full configured Rust and COM limits, reserves another 1 GiB per group for helpers,
-and keeps 4–8 GiB for the system by default. The constrained laptop profile uses
+and keeps 1 GiB for the system by default. The constrained laptop profile uses
 the explicit reserve overrides listed above. Admission checks the sum of these effective
 limits against both available physical RAM and commit capacity. It holds pending
 work when even one group cannot safely fit. The first calibration may also need

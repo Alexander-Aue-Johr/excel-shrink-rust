@@ -213,13 +213,35 @@ function Add-SessionEvent([string]$kind, [string]$client, $extra) {
 }
 
 function Get-SystemReserveBytes($configured) {
-    $mib = 4096
+    $mib = 1024
     if ($null -ne $configured) {
-        if (-not [int]::TryParse($configured, [ref]$mib) -or $mib -lt 1024 -or $mib -gt 65536) {
-            throw 'EXCEL_SHRINK_SYSTEM_RESERVE_MIB must be between 1024 and 65536.'
+        if (-not [int]::TryParse($configured, [ref]$mib) -or $mib -lt 1 -or $mib -gt 65536) {
+            throw 'EXCEL_SHRINK_SYSTEM_RESERVE_MIB must be between 1 and 65536.'
         }
     }
     return [UInt64]$mib * 1MB
+}
+
+function Update-SystemReserve {
+    if ($liveControlPath) {
+        try {
+            $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+            $stream = [IO.File]::Open($liveControlPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
+            try {
+                if ($stream.Length -le 16384) {
+                    $reader = [IO.StreamReader]::new($stream, $utf8)
+                    try { $controls = $reader.ReadToEnd() | ConvertFrom-Json }
+                    finally { $reader.Dispose() }
+                    $value = $controls.system_reserve_mib
+                    if (($value -is [int] -or $value -is [long]) -and $value -ge 1 -and $value -le 65536) {
+                        $script:systemReserveBytes = [UInt64]$value * 1MB
+                    }
+                }
+            } finally { $stream.Dispose() }
+        } catch { } # Keep the last valid reserve during missing, malformed or replaced snapshots.
+    }
+    $metrics.system_reserve_mib = $systemReserveBytes / 1MB
+    $metrics.system_reserve_bytes = $systemReserveBytes
 }
 
 function Get-PrimaryClientIds([string]$directory) {
@@ -353,6 +375,7 @@ function Wait-BatchRelease {
         # pane. Hold every owned process and registration until the whole batch
         # is finished; heartbeat silence is not a reason to dispose the group.
         if ($null -eq $batchOwner -or $batchOwner.HasExited) { $reason='coordinator_exited'; break }
+        Update-SystemReserve
         $available = [ResidentProcesses]::AvailablePhysicalBytes
         $commit = [ResidentProcesses]::AvailableCommitBytes
         $metrics.minimum_available_bytes = [Math]::Min([UInt64]$metrics.minimum_available_bytes, $available)
@@ -439,6 +462,7 @@ function Update-Resources {
     if ($null -ne $batchLifetime -and ($null -eq $batchOwner -or $batchOwner.HasExited)) {
         throw 'Resident batch coordinator exited.'
     }
+    Update-SystemReserve
     $available = [ResidentProcesses]::AvailablePhysicalBytes
     $commit = [ResidentProcesses]::AvailableCommitBytes
     $metrics.minimum_available_bytes = [Math]::Min([UInt64]$metrics.minimum_available_bytes, $available)
@@ -667,9 +691,9 @@ $liveHideExcel = [bool]$HideExcel
 $launcherToken = [Guid]::NewGuid().ToString('N')
 $processingClientReset = $false
 $clientResetClock = [Diagnostics.Stopwatch]::StartNew()
-$systemReserveBytes = [UInt64]4GB
+$systemReserveBytes = [UInt64]1GB
 $primaryClientIds = @()
-$metrics = [ordered]@{ status='starting'; client_reset_supported=$true; attempt_id=$env:EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; memory_limit_mib=16384; system_reserve_mib=4096; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
+$metrics = [ordered]@{ status='starting'; client_reset_supported=$true; attempt_id=$env:EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; memory_limit_mib=16384; system_reserve_mib=1024; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
 try {
     Add-Type -Path @((Join-Path $PSScriptRoot 'ResidentProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureDesktop.cs'))
     if ($env:EXCEL_SHRINK_CONTROL_ROOM_DIR) {
