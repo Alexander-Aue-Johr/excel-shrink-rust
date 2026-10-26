@@ -3,6 +3,46 @@
 use super::*;
 use std::cell::RefCell;
 
+const MAX_PENDING_TILES: usize = 16;
+const MAX_PENDING_PIXELS: u64 = 64_000_000;
+const MAX_PENDING_PNG_BYTES: u64 = 160 * 1024 * 1024;
+
+#[path = "resident_image_processing.rs"]
+mod processing;
+
+#[path = "resident_capture_pipeline.rs"]
+mod pipeline;
+
+/// The coordinator keeps reading controls while the image thread owns the UI.
+struct LiveControls {
+    root: PathBuf,
+    cached: RefCell<Value>,
+}
+
+fn read_controls(root: &Path, cached: &RefCell<Value>) -> Value {
+    if let Some(value) = fs::read(root.join("control.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .filter(|value| value.is_object() && value["paused"].is_boolean())
+    {
+        *cached.borrow_mut() = value;
+    }
+    cached.borrow().clone()
+}
+
+impl LiveControls {
+    fn from_live(live: &LiveCapture) -> Self {
+        Self {
+            root: live.root.clone(),
+            cached: RefCell::new(live.controls()),
+        }
+    }
+
+    fn read(&self) -> Value {
+        read_controls(&self.root, &self.cached)
+    }
+}
+
 /// Totals measured with each process's monotonic clock. Host upload durations
 /// can overlap coordinator work; these fields are not additive wall time.
 #[derive(Default, Serialize)]
@@ -107,14 +147,7 @@ impl LiveCapture {
     }
 
     fn controls(&self) -> Value {
-        if let Some(value) = fs::read(self.root.join("control.json"))
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-            .filter(|value| value.is_object() && value["paused"].is_boolean())
-        {
-            *self.controls.borrow_mut() = value;
-        }
-        self.controls.borrow().clone()
+        read_controls(&self.root, &self.controls)
     }
 
     pub(super) fn paused(&self) -> bool {
@@ -613,7 +646,7 @@ fn batch_end(
             let capture_pixels = tile
                 .capture_pixels
                 .max(tile.width as u64 * tile.height as u64);
-            pixels.get(client).copied().unwrap_or(0) + capture_pixels > 64_000_000
+            pixels.get(client).copied().unwrap_or(0) + capture_pixels > MAX_PENDING_PIXELS
         }) {
             break;
         }
@@ -630,6 +663,13 @@ fn batch_end(
 
 impl ResidentCapture {
     pub(super) fn capture_synchronized(&mut self, clients: &BTreeSet<String>) -> Result<()> {
+        if std::env::var("EXCEL_SHRINK_CAPTURE_PIPELINE").as_deref() == Ok("0") {
+            return self.capture_serialized(clients);
+        }
+        self.capture_pipelined(clients)
+    }
+
+    fn capture_serialized(&mut self, clients: &BTreeSet<String>) -> Result<()> {
         let control_only = !clients.contains("original");
         let reference_client = if control_only {
             clients.first().context("no live clients")?.as_str()
@@ -885,62 +925,74 @@ impl ResidentCapture {
 
     fn next_live_event(&mut self, pending: &mut [PendingCapture]) -> Result<CaptureEvent> {
         loop {
-            self.check_restart()?;
-            let failure = self.directory.join("launcher-error.json");
-            ensure!(
-                !failure.is_file(),
-                "resident Excel launcher failed: {}",
-                fs::read_to_string(failure).unwrap_or_default()
-            );
-            if let Some(status) = self.child.try_wait()? {
-                crate::regression::launcher_journal::mark_exited(&mut self.child)?;
-                bail!("resident Excel launcher exited ({status}) while waiting for tile uploads")
-            }
-            let live = self.live.as_ref().unwrap();
-            let paused = live.paused();
-            let timeout = live.job_timeout(self.timeout);
-            for job in pending.iter_mut() {
-                let now = Instant::now();
-                if job.clock.is_none()
-                    && (client_ready_for_jobs(&self.directory, &job.client)
-                        || self
-                            .directory
-                            .join("dispatched")
-                            .join(&job.client)
-                            .join(format!("{}.json", job.command))
-                            .is_file())
-                {
-                    job.clock = Some(OpeningPause::new(
-                        self.cleanup_barrier
-                            .as_ref()
-                            .and_then(|barrier| barrier.pause_path.as_deref()),
-                    ));
-                    job.sampled = now;
-                    job.user_pause = Duration::ZERO;
-                }
-                if paused {
-                    job.user_pause += now.duration_since(job.sampled);
-                }
-                job.sampled = now;
-                if let Some(clock) = &mut job.clock {
-                    ensure!(
-                        clock.active_elapsed().saturating_sub(job.user_pause) < timeout,
-                        "resident tile deadline exceeded: {}/{}",
-                        job.client,
-                        job.command
-                    );
-                }
-            }
-            if let Some(event) = ready_receipt(&self.directory, pending)? {
+            let controls = self.live.as_ref().unwrap().controls();
+            if let Some(event) = self.poll_live_event(pending, &controls)? {
                 return Ok(event);
-            }
-            if let Some(ready) = ready_response(&self.directory, pending) {
-                return Ok(CaptureEvent::Response(ready));
             }
             let waiting = Instant::now();
             self.events.wait()?;
             self.timings.wait_ms += waiting.elapsed().as_secs_f64() * 1000.0;
         }
+    }
+
+    fn poll_live_event(
+        &mut self,
+        pending: &mut [PendingCapture],
+        controls: &Value,
+    ) -> Result<Option<CaptureEvent>> {
+        self.check_restart()?;
+        let failure = self.directory.join("launcher-error.json");
+        ensure!(
+            !failure.is_file(),
+            "resident Excel launcher failed: {}",
+            fs::read_to_string(failure).unwrap_or_default()
+        );
+        if let Some(status) = self.child.try_wait()? {
+            crate::regression::launcher_journal::mark_exited(&mut self.child)?;
+            bail!("resident Excel launcher exited ({status}) while waiting for tile uploads")
+        }
+        let paused = controls["paused"].as_bool().unwrap_or(true);
+        let timeout = controls["job_timeout_seconds"]
+            .as_u64()
+            .filter(|seconds| *seconds > 0)
+            .map(Duration::from_secs)
+            .unwrap_or(self.timeout);
+        for job in pending.iter_mut() {
+            let now = Instant::now();
+            if job.clock.is_none()
+                && (client_ready_for_jobs(&self.directory, &job.client)
+                    || self
+                        .directory
+                        .join("dispatched")
+                        .join(&job.client)
+                        .join(format!("{}.json", job.command))
+                        .is_file())
+            {
+                job.clock = Some(OpeningPause::new(
+                    self.cleanup_barrier
+                        .as_ref()
+                        .and_then(|barrier| barrier.pause_path.as_deref()),
+                ));
+                job.sampled = now;
+                job.user_pause = Duration::ZERO;
+            }
+            if paused {
+                job.user_pause += now.duration_since(job.sampled);
+            }
+            job.sampled = now;
+            if let Some(clock) = &mut job.clock {
+                ensure!(
+                    clock.active_elapsed().saturating_sub(job.user_pause) < timeout,
+                    "resident tile deadline exceeded: {}/{}",
+                    job.client,
+                    job.command
+                );
+            }
+        }
+        if let Some(event) = ready_receipt(&self.directory, pending)? {
+            return Ok(Some(event));
+        }
+        Ok(ready_response(&self.directory, pending).map(CaptureEvent::Response))
     }
 }
 

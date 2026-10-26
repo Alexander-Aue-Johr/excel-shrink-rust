@@ -31,6 +31,7 @@ impl std::error::Error for SessionRejected {}
 
 pub(super) struct ResidentEvents {
     notices: mpsc::Receiver<()>,
+    notifier: mpsc::SyncSender<()>,
     commands: watch::Sender<u64>,
     shutdown: watch::Sender<bool>,
     thread: Option<JoinHandle<()>>,
@@ -40,6 +41,7 @@ pub(super) struct ResidentEvents {
 impl ResidentEvents {
     pub fn start(directory: &Path, token: String) -> Result<Self> {
         let (notice_tx, notices) = mpsc::sync_channel(1);
+        let notifier = notice_tx.clone();
         let (commands, command_rx) = watch::channel(0);
         let (shutdown, mut shutdown_rx) = watch::channel(false);
         let status = Arc::new(Mutex::new(json!({
@@ -70,6 +72,7 @@ impl ResidentEvents {
             })?;
         Ok(Self {
             notices,
+            notifier,
             commands,
             shutdown,
             thread: Some(thread),
@@ -80,6 +83,11 @@ impl ResidentEvents {
     pub fn command_published(&self) {
         self.commands
             .send_modify(|revision| *revision = revision.wrapping_add(1));
+    }
+
+    /// Local image processing uses the same coalesced wakeup as host evidence.
+    pub fn wake_sender(&self) -> mpsc::SyncSender<()> {
+        self.notifier.clone()
     }
 
     pub fn snapshot(&self) -> Value {
