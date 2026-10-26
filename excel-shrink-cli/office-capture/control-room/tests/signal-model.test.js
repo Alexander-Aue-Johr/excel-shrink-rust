@@ -24,9 +24,19 @@ export function runTests() {
   equal(signal.points.capture, [start + 11000], 'Capture count jumps only draw the one observed capture timestamp.');
   assert(signal.captureEvents.length === 1 && signal.captureEvents[0].details.range === 'B2:E10',
     'Capture events retain authentic worksheet geometry for a visual tile glyph.');
+  assert(signal.captureHistory.length === 1 && signal.captureHistory[0].details.range === 'B2:E10',
+    'The spatial context retains the same authentic capture as the time lane.');
   equal(signal.points.progress, [], 'A capture must not also be drawn as a successful command.');
   assert(store.observe({ ...row, heartbeatCount: 50, heartbeat: at(10000), events: [capture], uploadedImages: 25 }, start + 11500).captureEvents.length === 1,
     'Repeated polls never fabricate additional capture packages.');
+  assert(store.snapshot(row.id, start + 11500).captureHistory.length === 1,
+    'Repeated capture polls do not duplicate spatial history.');
+  const spatialCopy = store.snapshot(row.id, start + 11500);
+  spatialCopy.captureHistory[0].details.range = 'MUTATED'; spatialCopy.captureHistory.push({ at: 0 });
+  const spatialOriginal = store.snapshot(row.id, start + 11500);
+  assert(spatialOriginal.captureHistory.length === 1 && spatialOriginal.captureHistory[0].details.range === 'B2:E10'
+    && spatialOriginal.captureEvents[0].details.range === 'B2:E10',
+    'Returned spatial histories and their geometry cannot mutate retained captures or the time lane.');
   assert(signal.state === 'working' && signal.totals.capture === 25, 'A received image is real activity.');
   const complete = { sequence: 2, kind: 'job_completed', at: at(12000) };
   signal = store.observe({ ...row, heartbeatCount: 50, heartbeat: at(10000), uploadedImages: 25, completedCommands: 1,
@@ -47,6 +57,9 @@ export function runTests() {
   assert(signal.state === 'quiet', 'Old signals fade to quiet rather than a fabricated error.');
   signal = store.snapshot(row.id, start + 80000);
   equal(signal.points, { heartbeat: [], progress: [], capture: [] }, 'Signals fall out of the bounded time window.');
+  assert(signal.captureEvents.length === 0 && signal.captureHistory.length === 1
+    && signal.captureHistory[0].at === start + 11000,
+    'A quiet period expires the time lane while retaining the last observed spatial context.');
   assert(signal.state === 'quiet' && signal.since === start, 'Observed quiet is different from unsupported telemetry.');
 
   const legacy = store.observe({ id: 'legacy', last_activity_at: at(80000), events: [] }, start + 80000);
@@ -79,6 +92,11 @@ export function runTests() {
   assert(signal.since === start + 5000 && signal.totals.heartbeat === 1, 'A reset is not mistaken for a counter increment.');
   signal = resets.observe({ ...row, processStarted: start + 6000, heartbeat: at(7000) }, start + 7000);
   equal(signal.points.heartbeat, [start + 7000], 'A different process identity cannot retain the old process pulses.');
+  const captureResets = createSignalStore();
+  captureResets.observe({ ...row, processStarted: start, uploadedImages: 1, events: [capture] }, start + 11000);
+  const newProcess = captureResets.observe({ ...row, processStarted: start + 12000, uploadedImages: 1, events: [] }, start + 13000);
+  assert(newProcess.captureHistory.length === 0 && newProcess.captureEvents.length === 0,
+    'A different process identity discards the preceding process spatial context.');
   const retryId = row.id.replace('attempt-1', 'attempt-2');
   signal = resets.observe({ ...row, id: retryId, heartbeat: at(8000) }, start + 8000);
   equal(signal.points.heartbeat, [start + 8000], 'Attempts have independent histories.');
@@ -100,6 +118,12 @@ export function runTests() {
   const many = Array.from({ length: 20 }, (_, index) => ({ kind: 'image_received', at_unix_ms: start + index * 1000 }));
   signal = bounded.observe({ id: 'a', events: many }, start + 20000);
   equal(signal.points.capture, [start + 17000, start + 18000, start + 19000], 'Dense event histories are bounded without inventing timestamps.');
+  equal(signal.captureHistory.map(event => event.at), [start + 17000, start + 18000, start + 19000],
+    'Dense spatial history is bounded to the same explicit capture limit.');
+  for (let index = 20; index < 30; index++) bounded.observe({ id: 'a',
+    events: [{ kind: 'image_received', at_unix_ms: start + index * 1000 }] }, start + index * 1000);
+  equal(bounded.snapshot('a', start + 100000).captureHistory.map(event => event.at),
+    [start + 27000, start + 28000, start + 29000], 'Spatial history stays bounded across polls and after the time lane expires.');
   bounded.observe({ id: 'b' }, start + 20000); bounded.observe({ id: 'c' }, start + 20000);
   assert(bounded.snapshot('a', start + 20000) === null && bounded.snapshot('b', start + 20000) != null, 'The worker cache evicts its least recently observed worker.');
   bounded.retain(['c']);

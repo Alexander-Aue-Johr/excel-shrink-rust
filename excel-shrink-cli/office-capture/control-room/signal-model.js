@@ -36,12 +36,15 @@ export function createSignalStore({ windowMs = 60000, maxWorkers = 512, maxEvent
       points: { heartbeat: [], progress: [], capture: [] },
       totals: { heartbeat: undefined, progress: undefined, capture: undefined },
       supported: { heartbeat: false, progress: false, capture: false }, ended: false,
-      captureEvents: [], stateEvents: [], currentState: null, seenEventKeys: new Map() };
+      captureEvents: [], captureHistory: [], stateEvents: [], currentState: null, seenEventKeys: new Map() };
   }
   function trim(entry, now) {
     for (const channel of CHANNELS) entry.points[channel] = entry.points[channel]
       .filter(at => at >= now - windowMs && at <= now).slice(-maxEvents);
     entry.captureEvents = entry.captureEvents.filter(event => event.at >= now - windowMs && event.at <= now).slice(-maxEvents);
+    // The current worksheet miniature keeps its last observed areas during a
+    // quiet period; the time lane still expires normally. Both remain bounded.
+    entry.captureHistory = entry.captureHistory.slice(-maxEvents);
     entry.stateEvents = entry.stateEvents.filter(event => event.at >= now - windowMs && event.at <= now).slice(-maxEvents);
     for (const [key, at] of entry.seenEventKeys) if (at < now - windowMs) entry.seenEventKeys.delete(key);
     while (entry.seenEventKeys.size > maxEvents * 3) entry.seenEventKeys.delete(entry.seenEventKeys.keys().next().value);
@@ -56,6 +59,7 @@ export function createSignalStore({ windowMs = 60000, maxWorkers = 512, maxEvent
     return { id: entry.id, points: Object.fromEntries(CHANNELS.map(channel => [channel, [...entry.points[channel]]])),
       totals: { ...entry.totals }, supported: { ...entry.supported },
       captureEvents: entry.captureEvents.map(event => ({ ...event, details: { ...event.details } })),
+      captureHistory: entry.captureHistory.map(event => ({ ...event, details: { ...event.details } })),
       stateEvents: entry.stateEvents.map(event => ({ ...event })),
       currentState: entry.currentState && { ...entry.currentState },
       since: entry.since, lastObserved: entry.lastObserved, state };
@@ -115,7 +119,9 @@ export function createSignalStore({ windowMs = 60000, maxWorkers = 512, maxEvent
             const key = `capture:${event.sequence ?? ''}:${at}:${JSON.stringify(details)}`;
             if (!entry.seenEventKeys.has(key)) {
               entry.seenEventKeys.set(key, at);
-              entry.captureEvents.push({ at, sequence: event.sequence ?? null, details });
+              const capture = { at, sequence: event.sequence ?? null, details };
+              entry.captureEvents.push(capture);
+              entry.captureHistory.push(capture);
             }
           }
         } else if (COMMAND_PROGRESS.has(event.kind) || (isHost(row) && HOST_PROGRESS.has(event.kind))) add('progress', event);
@@ -129,6 +135,7 @@ export function createSignalStore({ windowMs = 60000, maxWorkers = 512, maxEvent
         }
       }
       entry.captureEvents.sort((a, b) => a.at - b.at);
+      entry.captureHistory.sort((a, b) => a.at - b.at);
       entry.stateEvents.sort((a, b) => a.at - b.at);
       // The backend's last_success / last_progress fields are direct evidence
       // of completion. Dispatch and phase transitions must never become work
