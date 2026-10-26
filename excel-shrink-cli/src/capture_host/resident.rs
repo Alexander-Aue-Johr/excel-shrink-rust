@@ -23,6 +23,8 @@ use super::{
 #[path = "resident_telemetry.rs"]
 mod telemetry;
 use telemetry::WorkerTelemetry;
+#[path = "resident_events.rs"]
+mod events;
 
 const MAX_IMAGE_BYTES: usize = 160 * 1024 * 1024;
 const STARTUP_QUIET_PERIOD: Duration = Duration::from_secs(2);
@@ -37,6 +39,8 @@ struct Host {
     primary_clients: Vec<String>,
     clients: RwLock<HashMap<String, SharedClient>>,
     dispatch: Mutex<Dispatch>,
+    events: events::Changes,
+    coordinator_token: Option<String>,
 }
 
 struct Dispatch {
@@ -61,6 +65,7 @@ struct Client {
     error: Value,
     command_count: u64,
     heartbeat_count: u64,
+    last_result: Option<(String, String)>,
     telemetry: WorkerTelemetry,
 }
 
@@ -83,6 +88,7 @@ impl Client {
             error: Value::Null,
             command_count: 0,
             heartbeat_count: 0,
+            last_result: None,
             telemetry: WorkerTelemetry::new(),
         }
     }
@@ -119,6 +125,14 @@ pub async fn run(settings_path: &Path) -> anyhow::Result<()> {
         "Invalid host settings"
     );
     tokio::fs::create_dir_all(&session).await?;
+    let coordinator_token = match read_json(&session.join("coordinator-token.json")).await {
+        Ok(value) => value["token"]
+            .as_str()
+            .filter(|token| !token.is_empty())
+            .map(str::to_owned),
+        Err(_) if !session.join("coordinator-token.json").exists() => None,
+        Err(error) => return Err(error),
+    };
     let primary_clients = json_files(&session.join("clients"))
         .await?
         .into_iter()
@@ -140,8 +154,20 @@ pub async fn run(settings_path: &Path) -> anyhow::Result<()> {
             resetting: HashSet::new(),
             paused: true,
         }),
+        events: events::Changes::new(),
+        coordinator_token,
     });
+    let _watcher = events::watch_files(&host)?;
+    write_json(
+        &host.session.join("events.json"),
+        &json!({
+            "version": 1, "url": format!("ws://127.0.0.1:{port}/events")
+        }),
+        true,
+    )
+    .await?;
     let router = Router::new()
+        .route("/events", get(events::upgrade))
         .route("/health", get(health))
         .route("/config", get(configure))
         .route("/ready", post(ready))
@@ -225,6 +251,7 @@ impl Host {
         let path = self.response_path(client, command);
         if !path.try_exists()? {
             write_json(&path, value, false).await?;
+            self.events.changed();
         }
         Ok(())
     }
@@ -234,6 +261,9 @@ async fn health(State(host): State<Arc<Host>>) -> Json<Value> {
     let clients = host.clients.read().await.clone();
     let mut snapshots = serde_json::Map::new();
     let mut errors = Vec::new();
+    if let Some(error) = host.events.error() {
+        errors.push(json!({"code": "EVENT_WATCH_FAILED", "message": error}));
+    }
     for (id, shared) in clients {
         let client = shared.lock().await;
         if !client.error.is_null() {
@@ -309,6 +339,7 @@ async fn configure(State(host): State<Arc<Host>>, Query(query): Parameters) -> J
             client.error = failure("TASKPANE_CONTEXT_CHANGED", "A different taskpane document requested configuration after work started; the cause is not yet known.");
         }
         client.telemetry.restarted();
+        host.events.changed();
         if let Some(command) = &client.active_command {
             host.write_response(id, command, &json!({"ok": false, "error": client.error}))
                 .await?;
@@ -326,6 +357,12 @@ async fn configure(State(host): State<Arc<Host>>, Query(query): Parameters) -> J
     client.configured_at = Instant::now();
     client.last_activity_at = now_iso();
     client.telemetry.configured();
+    host.events.changed();
+    let changes = host.events.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(STARTUP_QUIET_PERIOD).await;
+        changes.changed();
+    });
     config["client_token"] = json!(client.token);
     Ok(Json(config))
 }
@@ -355,6 +392,7 @@ async fn ready(
             });
         let error = client.error.clone();
         client.telemetry.finished(false, &error);
+        host.events.changed();
         return Ok(Json(json!({"ok": false})));
     }
     if observation["workbook"].as_str() != client.expected_workbook.as_deref() {
@@ -367,6 +405,7 @@ async fn ready(
         client.ready_at = Some(stamp.clone());
         client.last_activity_at = stamp;
         client.telemetry.ready();
+        host.events.changed();
     }
     Ok(Json(json!({"ok": true, "ready_at": client.ready_at})))
 }
@@ -394,6 +433,7 @@ async fn startup_sampled(
         ));
     }
     client.startup_sampled = true;
+    host.events.changed();
     Ok(Json(json!({"ok": true})))
 }
 
@@ -436,10 +476,19 @@ async fn next_job(
     headers: HeaderMap,
 ) -> JsonResponse {
     let id = query_id(&query, "client")?;
+    dispatch_job(&host, id, &headers, false).await.map(Json)
+}
+
+async fn dispatch_job(
+    host: &Host,
+    id: &str,
+    headers: &HeaderMap,
+    replay_active: bool,
+) -> HttpResult<Value> {
     let mut dispatch = host.dispatch.lock().await;
-    let mut client = host.authenticated(id, &headers).await?;
+    let mut client = host.authenticated(id, headers).await?;
     if !dispatch.resetting.is_empty() {
-        return Ok(Json(json!({"idle": true, "resetting_client": true})));
+        return Ok(json!({"idle": true, "resetting_client": true}));
     }
     if !client.error.is_null() {
         return Err(ApiError::conflict(client.error.to_string()));
@@ -448,6 +497,9 @@ async fn next_job(
     // Polling an active command must not turn its telemetry back into idle,
     // including while dispatch of subsequent work is paused.
     if client.active_command.is_some() {
+        if replay_active {
+            return Ok(client.active_payload.clone());
+        }
         return Err(ApiError::conflict("A command is already in progress."));
     }
     if client.ready_at.is_none() || !client.startup_sampled {
@@ -456,27 +508,29 @@ async fn next_job(
             Some("launcher"),
             "Waiting for workbook verification and the launcher's memory sample.",
         );
-        return Ok(Json(
-            json!({"idle": true, "waiting_for_startup_sample": true}),
-        ));
+        return Ok(json!({"idle": true, "waiting_for_startup_sample": true}));
     }
     if let Some(root) = &host.control_root {
-        for peer in &host.primary_clients {
-            if peer == id {
-                continue;
-            }
-            let shared = host.clients.read().await.get(peer).cloned();
-            let sampled = match shared {
-                Some(shared) => shared.lock().await.startup_sampled,
-                None => false,
-            };
-            if !sampled {
-                client.telemetry.transition(
-                    "waiting_for_peers",
-                    Some("primary_addins"),
-                    "Waiting for the other primary add-ins to connect.",
-                );
-                return Ok(Json(json!({"idle": true, "waiting_for_peers": true})));
+        // Once this barrier passed, resetting a primary client requires a new
+        // group. Later jobs must not wait for peer locks held by image uploads.
+        if !client.data_started {
+            for peer in &host.primary_clients {
+                if peer == id {
+                    continue;
+                }
+                let shared = host.clients.read().await.get(peer).cloned();
+                let sampled = match shared {
+                    Some(shared) => shared.lock().await.startup_sampled,
+                    None => false,
+                };
+                if !sampled {
+                    client.telemetry.transition(
+                        "waiting_for_peers",
+                        Some("primary_addins"),
+                        "Waiting for the other primary add-ins to connect.",
+                    );
+                    return Ok(json!({"idle": true, "waiting_for_peers": true}));
+                }
             }
         }
         // A transient control-file read cannot silently resume a paused run.
@@ -491,7 +545,7 @@ async fn next_job(
                 Some("capture_pause"),
                 "Capture dispatch is paused by the user.",
             );
-            return Ok(Json(json!({"idle": true, "paused": true})));
+            return Ok(json!({"idle": true, "paused": true}));
         }
     }
     if !client.data_started && client.configured_at.elapsed() < STARTUP_QUIET_PERIOD {
@@ -500,7 +554,7 @@ async fn next_job(
             Some("startup_quiet_period"),
             "Waiting for the startup quiet period.",
         );
-        return Ok(Json(json!({"idle": true, "settling": true})));
+        return Ok(json!({"idle": true, "settling": true}));
     }
     for path in json_files(&host.session.join("commands").join(id)).await? {
         let command_id = path
@@ -521,27 +575,26 @@ async fn next_job(
         ) {
             return Err(ApiError::bad_request("Unknown resident command."));
         }
-        if host.control_root.is_some() {
-            let receipt = host
-                .session
-                .join("dispatched")
-                .join(id)
-                .join(format!("{command_id}.json"));
-            write_json(&receipt, &json!({"dispatched_unix_ms": now_ms()}), false).await?;
-        }
+        let receipt = host
+            .session
+            .join("dispatched")
+            .join(id)
+            .join(format!("{command_id}.json"));
+        write_json(&receipt, &json!({"dispatched_unix_ms": now_ms()}), false).await?;
         client.active_command = Some(command_id.to_owned());
         client.active_payload = command.clone();
         client.data_started = true;
         client.command_count += 1;
         client.telemetry.started(&command);
-        return Ok(Json(command));
+        host.events.changed();
+        return Ok(command);
     }
     client.telemetry.transition(
         "waiting_for_job",
         Some("coordinator"),
         "Waiting for the next coordinator command.",
     );
-    Ok(Json(json!({"idle": true})))
+    Ok(json!({"idle": true}))
 }
 
 async fn reset(
@@ -564,6 +617,7 @@ async fn reset(
     }
     if request["stage"] == "ready" {
         dispatch.resetting.remove(&id);
+        host.events.changed();
         return Ok(Json(json!({"ok": true})));
     }
     if request["stage"] != "prepare" {
@@ -579,6 +633,7 @@ async fn reset(
     }
     dispatch.resetting.insert(id.clone());
     host.clients.write().await.remove(&id);
+    host.events.changed();
     Ok(Json(json!({"ok": true})))
 }
 
@@ -612,9 +667,12 @@ async fn image(
             "Image checksum header differs from request.",
         ));
     }
+    let receiving = Instant::now();
     let bytes = axum::body::to_bytes(request.into_body(), MAX_IMAGE_BYTES)
         .await
         .map_err(ApiError::bad_request)?;
+    let upload_receive_ms = receiving.elapsed().as_secs_f64() * 1000.0;
+    let publishing = Instant::now();
     let (width, height) = png_size(&bytes)?;
     let sha = format!("{:x}", Sha256::digest(&bytes));
     if expected["width"].as_i64() != Some(width)
@@ -638,6 +696,10 @@ async fn image(
     receipt["sha256"] = json!(sha);
     receipt["png_bytes"] = json!(bytes.len());
     receipt["received_unix_ms"] = json!(now_ms());
+    receipt["timings"] = json!({
+        "upload_receive_ms": upload_receive_ms,
+        "upload_validate_publish_ms": publishing.elapsed().as_secs_f64() * 1000.0,
+    });
     if image_first {
         let path = host
             .session
@@ -646,6 +708,7 @@ async fn image(
             .join(&command)
             .join(format!("s{sheet:04}-t{tile:05}.json"));
         write_json(&path, &receipt, false).await?;
+        host.events.changed();
     }
     Ok(Json(receipt))
 }
@@ -659,13 +722,40 @@ async fn result(
     safe_id(&command)?;
     let result = parse_object(&body)?;
     let mut client = host.authenticated(&id, &headers).await?;
-    if !client.error.is_null() || client.active_command.as_deref() != Some(&command) {
+    let result_digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&result)?));
+    // A connection can disappear after publication but before the HTTP ACK.
+    // Retry only the identical last result from this authenticated pane session.
+    if let Some((completed, digest)) = &client.last_result {
+        if completed == &command {
+            if digest != &result_digest {
+                return Err(ApiError::conflict(
+                    "Result retry differs from the published result.",
+                ));
+            }
+            return Ok(Json(json!({"ok": true, "repeated": true})));
+        }
+    }
+    if client.active_command.as_deref() != Some(&command) {
         return Err(ApiError::conflict("Command is no longer active."));
+    }
+    let response_path = host.response_path(&id, &command);
+    let already_published = response_path.try_exists()?;
+    if already_published && read_json(&response_path).await? != result {
+        return Err(ApiError::conflict(
+            "Result retry differs from the published result.",
+        ));
+    }
+    if !client.error.is_null() && !already_published {
+        return Err(ApiError::conflict("Resident client has failed."));
     }
     let ok = result["ok"]
         .as_bool()
         .ok_or_else(|| ApiError::bad_request("Missing result status."))?;
-    if ok
+    // Publication can finish before a canceled request updates client state.
+    // Its consumer may already have removed equal PNGs, so only a new result
+    // validates evidence again. The existing result must match exactly above.
+    if !already_published
+        && ok
         && matches!(
             client.active_payload["kind"].as_str(),
             Some("images" | "capture_images")
@@ -681,6 +771,7 @@ async fn result(
             .unwrap_or_else(|| failure("CAPTURE_FAILED", "Capture failed."));
     }
     host.write_response(&id, &command, &result).await?;
+    client.last_result = Some((command.clone(), result_digest));
     if result["pane_resources"].is_object() {
         client.telemetry.sample_pane(&result["pane_resources"]);
     }
@@ -689,6 +780,7 @@ async fn result(
     client.active_command = None;
     client.active_payload = Value::Null;
     client.last_activity_at = now_iso();
+    host.events.changed();
     Ok(Json(json!({"ok": true})))
 }
 
