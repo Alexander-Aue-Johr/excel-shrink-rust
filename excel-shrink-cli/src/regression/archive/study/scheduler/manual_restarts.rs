@@ -130,7 +130,7 @@ pub(super) fn poll(
             }
         } else {
             let record = &mut records[request.job.position];
-            archive_record(room, &request.job.id, record)?;
+            control_room::archive_record(room, &request.job.id, record)?;
             record["complete"] = json!(false);
             record["status"] = json!("restart_pending");
             write_record(
@@ -190,27 +190,6 @@ pub(super) fn finish(requests: &mut [Request], record: &Value) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn archive_record(room: &Path, id: &str, record: &Value) -> Result<()> {
-    let attempt = record["control_room_attempt"]["id"]
-        .as_str()
-        .unwrap_or("legacy");
-    let directory = room
-        .join("groups")
-        .join(control_room::group_id(id))
-        .join("history");
-    fs::create_dir_all(&directory)?;
-    let path = directory.join(format!(
-        "record-{}.json",
-        &artifact_cache::sha256(attempt.as_bytes())[..20]
-    ));
-    // An attempt is archived once; queueing or preparation may already have
-    // changed the live record by the time its replacement is admitted.
-    if !path.is_file() {
-        control_room::write(&path, record)?;
-    }
-    Ok(())
-}
-
 pub(super) fn begin_attempt(
     room: &Path,
     job: &Comparison,
@@ -218,7 +197,7 @@ pub(super) fn begin_attempt(
     controls: &Controls,
     run: &Value,
 ) -> Result<String> {
-    archive_record(room, &job.id, record)?;
+    control_room::archive_record(room, &job.id, record)?;
     let attempt = provenance::new_uuid()?;
     record["control_room_attempt"] = json!({"id":attempt,"run_id":run["run_id"],
         "started_unix_ms":provenance::now_ms(),"settings":controls});
@@ -299,7 +278,8 @@ mod tests {
         let mut record = json!({"complete":true,"results":["previous evidence"]});
         let controls: Controls = serde_json::from_value(json!({"target_groups":2,"paused":false,
             "open_timeout_seconds":60,"job_timeout_seconds":60,"equal_preview_width":512,
-            "capture_tile_megapixels":4,"capture_batch_tiles":3,"hide_excel":true}))?;
+            "capture_tile_megapixels":4,"capture_batch_tiles":3,"hide_excel":true,
+            "system_reserve_mib":3072}))?;
         let first = begin_attempt(
             &room,
             &job,
@@ -311,6 +291,10 @@ mod tests {
         assert_eq!(
             record["control_room_attempt"]["settings"]["capture_tile_megapixels"],
             4
+        );
+        assert_eq!(
+            record["control_room_attempt"]["settings"]["system_reserve_mib"],
+            3072
         );
         let second = begin_attempt(
             &room,

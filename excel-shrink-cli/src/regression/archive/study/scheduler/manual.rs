@@ -223,7 +223,7 @@ pub(super) fn compare(
         ) {
             // A completed historical comparison normally discarded its ZIP.
             // Rebuild it between waves; conversion must not disturb live peers.
-            restarts::archive_record(&room, &front.id, &records[front.position])?;
+            control_room::archive_record(&room, &front.id, &records[front.position])?;
             records[front.position]
                 .as_object_mut()
                 .unwrap()

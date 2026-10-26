@@ -256,6 +256,11 @@ For an existing checkout with prepared bundles, retain any separately reviewed
 executable does not automatically accept preparations from another build. The
 canonical IDs allow GOTHAM to retain results from its earlier private request.
 
+Restarting a study retries previously skipped workbooks in the selected partition
+once. Successful comparisons remain complete, and compatible preparations are
+reused. Previous failures remain in the attempt history. To leave skipped entries
+complete for a particular CLI invocation, pass `--no-retry-skipped`.
+
 Before opening Excel, the runner checks whether all three prepared profiles have
 equivalent package contents to the prepared comparison baseline. This requires matching contents for
 every ZIP member, not just the worksheet XML. The only permitted content change

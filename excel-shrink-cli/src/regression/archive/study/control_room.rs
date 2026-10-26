@@ -154,6 +154,31 @@ pub(super) struct Room {
     _server: Option<Child>,
 }
 
+pub(super) fn archive_record(root: &Path, id: &str, record: &Value) -> Result<()> {
+    let execution_run = record["last_execution"]["run_id"].as_str();
+    let control_run = record["control_room_attempt"]["run_id"].as_str();
+    let attempt = match execution_run {
+        // A later CLI run may still carry an older control-room attempt field.
+        Some(run) if Some(run) != control_run => run,
+        _ => record["control_room_attempt"]["id"]
+            .as_str()
+            .or(execution_run)
+            .unwrap_or("legacy"),
+    };
+    let directory = root.join("groups").join(group_id(id)).join("history");
+    fs::create_dir_all(&directory)?;
+    let path = directory.join(format!(
+        "record-{}.json",
+        &artifact_cache::sha256(attempt.as_bytes())[..20]
+    ));
+    // Archive before queueing or preparation changes the live record. Repeated
+    // admission checkpoints must not replace the original failed attempt.
+    if !path.is_file() {
+        write(&path, record)?;
+    }
+    Ok(())
+}
+
 // Serial preparation and supplemental diagnosis are work too. Publish their
 // actual coordinator, with a fresh attempt identity so stale Excel clients are
 // never mistaken for workers belonging to this invocation.
@@ -166,18 +191,7 @@ pub(super) fn begin_serial(
     run: &Value,
 ) -> Result<()> {
     let root = output.join("control-room");
-    let directory = root.join("groups").join(group_id(id));
-    fs::create_dir_all(directory.join("history"))?;
-    let previous = record["control_room_attempt"]["id"]
-        .as_str()
-        .unwrap_or("legacy");
-    let archive = directory.join("history").join(format!(
-        "record-{}.json",
-        &artifact_cache::sha256(previous.as_bytes())[..20]
-    ));
-    if !archive.exists() {
-        write(&archive, record)?;
-    }
+    archive_record(&root, id, record)?;
     let attempt = provenance::new_uuid()?;
     record["control_room_attempt"] = json!({"id":attempt,"run_id":run["run_id"],
         "started_unix_ms":provenance::now_ms(),"settings":Controls::read(&root)?});
@@ -593,6 +607,30 @@ pub(super) fn wait_for_admission(output: &Path, phase: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retry_history_preserves_each_failed_run_without_overwriting_an_attempt() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "retry-record-history")?;
+        let id = "workbook";
+        let mut record = json!({"complete":true,"status":"skipped","prepared":true,
+            "error":"first failure","control_room_attempt":{"id":"attempt-old","run_id":"run-old"},
+            "last_execution":{"run_id":"run-old"}});
+        archive_record(&root, id, &record)?;
+        record["error"] = json!("changed after queueing");
+        archive_record(&root, id, &record)?;
+        let history = root.join("groups").join(group_id(id)).join("history");
+        let old = history.join(format!("record-{}.json", &artifact_cache::sha256(b"attempt-old")[..20]));
+        assert_eq!(read_json(&old).unwrap()["error"], "first failure");
+        record["last_execution"]["run_id"] = json!("run-new");
+        record["error"] = json!("retry failed differently");
+        archive_record(&root, id, &record)?;
+        let new = history.join(format!("record-{}.json", &artifact_cache::sha256(b"run-new")[..20]));
+        assert_eq!(read_json(&new).unwrap(), record);
+        assert_eq!(fs::read_dir(&history)?.count(), 2);
+        assert_eq!(read_json(&old).unwrap()["prepared"], true);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn system_reserve_starts_from_saved_controls_then_environment_then_1024_mib() -> Result<()> {

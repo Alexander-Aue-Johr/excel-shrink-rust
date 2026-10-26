@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn skipped_retries_default_on_with_compatible_flag_and_explicit_opt_out() -> Result<()> {
+    let defaults = StudyArgs::try_parse_from(["study"])?;
+    assert!(defaults.retry_skipped);
+    assert!(defaults.should_retry_skipped());
+    let explicit = StudyArgs::try_parse_from(["study", "--retry-skipped"])?;
+    assert!(explicit.should_retry_skipped());
+    let disabled = StudyArgs::try_parse_from(["study", "--no-retry-skipped"])?;
+    assert!(!disabled.should_retry_skipped());
+    for flags in [
+        ["--retry-skipped", "--no-retry-skipped"],
+        ["--no-retry-skipped", "--retry-skipped"],
+    ] {
+        assert!(StudyArgs::try_parse_from(["study", flags[0], flags[1]]).is_err());
+    }
+    Ok(())
+}
+
+#[test]
 fn manual_control_requires_resident_and_excludes_automatic_admission() -> Result<()> {
     let args = StudyArgs::try_parse_from([
         "study", "--resident-capture", "--control-room", "--comparison-workers", "128",

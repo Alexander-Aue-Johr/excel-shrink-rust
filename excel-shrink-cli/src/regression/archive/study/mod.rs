@@ -99,15 +99,29 @@ pub(in crate::regression) struct StudyArgs {
     /// Limit new files per corpus, useful for a representative test subset.
     #[arg(long,value_parser=clap::value_parser!(u64).range(1..))]
     limit: Option<u64>,
-    /// Retry files previously skipped because a check could not finish.
-    #[arg(long)]
+    /// Retry previously skipped files once in this invocation (the default).
+    #[arg(
+        long,
+        default_value_t = true,
+        action = clap::ArgAction::SetTrue,
+        conflicts_with = "no_retry_skipped"
+    )]
     retry_skipped: bool,
+    /// Leave previously skipped files complete instead of retrying them.
+    #[arg(long, conflicts_with = "retry_skipped")]
+    no_retry_skipped: bool,
     #[arg(long,default_value_t=1800,value_parser=clap::value_parser!(u64).range(1..))]
     workbook_timeout_seconds: u64,
     #[arg(long,default_value_t=120,value_parser=clap::value_parser!(u64).range(10..=600))]
     startup_timeout_seconds: u64,
     #[arg(long,default_value_t=2_147_483_648u64,value_parser=clap::value_parser!(u64).range(1..))]
     max_workbook_bytes: u64,
+}
+
+impl StudyArgs {
+    fn should_retry_skipped(&self) -> bool {
+        self.retry_skipped && !self.no_retry_skipped
+    }
 }
 
 #[derive(Deserialize)]
@@ -465,7 +479,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             "control_room":args.control_room,"control_room_port":args.control_room_port,
             "adaptive_concurrency":args.adaptive_concurrency,"order":args.order,
             "comparison_scheduling":if args.control_room { "manual-groups" } else if args.adaptive_concurrency { "adaptive-groups" } else { "fixed-batches" },
-            "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.retry_skipped,
+            "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.should_retry_skipped(),
             "workbook_timeout_seconds":args.workbook_timeout_seconds,
             "startup_timeout_seconds":args.startup_timeout_seconds,"max_workbook_bytes":args.max_workbook_bytes,
             "limit":args.limit,"reuse_prepared_from":args.reuse_prepared_from,
@@ -489,7 +503,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         workbook_timeout_seconds: args.workbook_timeout_seconds,
         startup_timeout_seconds: args.startup_timeout_seconds,
         max_success_per_archive: None,
-        retry_skipped: args.retry_skipped,
+        retry_skipped: args.should_retry_skipped(),
         max_workbook_bytes: args.max_workbook_bytes,
     };
     let mut limited = false;
@@ -547,7 +561,12 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         if args.diagnose_whitespace_only {
             continue;
         }
-        let selected = selection::pending_members(source, &records, args.order, args.retry_skipped);
+        let selected = selection::pending_members(
+            source,
+            &records,
+            args.order,
+            args.should_retry_skipped(),
+        );
         let count = args
             .limit
             .map(|n| n as usize)
@@ -555,6 +574,20 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             .min(selected.len());
         limited |= count < selected.len();
         let selected = &selected[..count];
+        // Control-room admission already archives its previous attempts. Keep
+        // the same history for CLI retries before preparation clears old errors.
+        if !args.control_room {
+            for (index, name) in selected {
+                let id = identity(source, *index, name);
+                if let Some(record) = records.iter().find(|record| {
+                    record["identity"] == id
+                        && record["complete"] == true
+                        && record["status"] == "skipped"
+                }) {
+                    control_room::archive_record(&output.join("control-room"), &id, record)?;
+                }
+            }
+        }
         // Save reviewed compatibility before starting any new workbook. A later
         // interruption can then resume normally without repeating the CLI flag.
         if !args.reuse_prepared_from.is_empty() {

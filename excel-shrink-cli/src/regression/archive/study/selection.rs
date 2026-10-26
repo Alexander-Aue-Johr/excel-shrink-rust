@@ -288,6 +288,37 @@ mod tests {
     }
 
     #[test]
+    fn default_retry_keeps_successes_complete_and_skips_outside_the_selected_partition() -> Result<()> {
+        let args = StudyArgs::try_parse_from(["study", "--size-part", "3/4"])?;
+        let catalog = (0..16).map(|index| CatalogMember {
+            archive_index: index,
+            member_name: format!("file-{index}.xlsx"),
+            bytes: Some(index as u64 + 1),
+            crc32: Some(index as u32),
+        }).collect();
+        let selection = Plan::new(catalog, args.size_part)?;
+        let source = Source {
+            id: "example".into(), name: "Example".into(), path: PathBuf::from("unused.zip"),
+            members: (0..16).map(|index| (index, format!("file-{index}.xlsx"))).collect(),
+            fingerprint: "catalog".into(), selection,
+        };
+        let records = vec![
+            json!({"identity":"example:4:file-4.xlsx","complete":true,"status":"skipped"}),
+            json!({"identity":"example:8:file-8.xlsx","complete":true,"status":"skipped","prepared":true,"error":"old failure"}),
+            json!({"identity":"example:9:file-9.xlsx","complete":true,"status":"unchanged","prepared":true}),
+            json!({"identity":"example:10:file-10.xlsx","complete":true,"status":"differences"}),
+            json!({"identity":"example:11:file-11.xlsx","complete":true,"status":"skipped","prepared":false}),
+        ];
+        let before = records.clone();
+        let selected = pending_members(&source, &records, ProcessingOrder::SizeAsc, args.should_retry_skipped());
+        assert_eq!(selected.iter().map(|(index, _)| *index).collect::<Vec<_>>(), [8, 11]);
+        assert_eq!(records, before, "Selecting retries must retain preparation and failure evidence.");
+        let disabled = StudyArgs::try_parse_from(["study", "--size-part", "3/4", "--no-retry-skipped"])?;
+        assert!(pending_members(&source, &records, ProcessingOrder::SizeAsc, disabled.should_retry_skipped()).is_empty());
+        Ok(())
+    }
+
+    #[test]
     fn pending_size_order_keeps_quartiles_and_resume_rules() -> Result<()> {
         let catalog: Vec<_> = [80, 10, 70, 20, 60, 30, 50, 40]
             .into_iter()
