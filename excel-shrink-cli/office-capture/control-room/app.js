@@ -6,6 +6,7 @@ import { initWorkerMonitor } from './worker-monitor.js';
 import { workerRows } from './worker-monitor-model.js';
 import { createSignalMonitor } from './signal-monitor.js';
 import { findCaptureTile, profileForClient, latestTileForProfile } from './capture-navigation-model.js';
+import { createControlUpdates } from './control-state.js';
 
 const $ = id => document.getElementById(id);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -17,6 +18,7 @@ const state = { ready: false, connected: false, groupId: null, sheetId: null, se
   pinned: false, pulse: !reducedMotion, follow: true, error: null, controls: {}, queue: null,
   view: { mode: 'sheet', x: 0, y: 0, width: 1800, height: 1800 * AREA_H / AREA_W },
   focus: 'overview', regionId: null, pendingDifference: false };
+const controlUpdates = createControlUpdates(value => { state.controls = value; });
 const boards = [], sourceTiles = [], hitTargets = [], detailPanels = [], connections = [];
 const sheetCards = new Map(), processCards = new Map();
 const sheetViewports = new Map(), sheetToolbars = new Map();
@@ -761,13 +763,14 @@ function updateControlInputs() {
 }
 async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;
+  controlUpdates.beginWrite();
   const wasCapturePaused = Boolean(state.controls.paused);
   for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = true;
   if (change.system_reserve_mib != null) $('applyReserve').textContent = 'Setting…';
   try {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
     const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Control change rejected (${response.status}).`);
-    state.controls = result.controls;
+    controlUpdates.confirmWrite(result.controls);
     for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     updateControlInputs();
     const text = change.target_groups === 0 ? `Target 0 confirmed: workbooks already in progress will finish.${wasCapturePaused ? ' The capture pause was lifted to allow this.' : ''}`
@@ -775,7 +778,7 @@ async function sendControl(change) {
       : change.system_reserve_mib != null ? `Free RAM reserve ${state.controls.system_reserve_mib.toLocaleString('en-US')} MiB confirmed.` : 'Controls confirmed by host.';
     pushEvent(text); setNotice(text);
   } catch (error) { setNotice(error.message, true); updateControlInputs(); if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel); }
-  finally { controlBusy = false; for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
+  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
 }
 function selectGroup(id) {
   if (id === state.groupId) return;
@@ -863,11 +866,14 @@ function acceptGroup(raw) {
 }
 async function poll() {
   const generation = pollGeneration;
+  const controlRevision = controlUpdates.beginRead();
   try {
     const response = await fetch('/api/state', { cache: 'no-store' }); if (!response.ok) throw new Error(`Status unavailable (${response.status}).`);
     const queue = await response.json(); if (generation !== pollGeneration) return;
     const recovered = Boolean(state.error);
-    state.queue = queue; state.controls = queue.controls || {}; state.connected = true; state.error = null;
+    controlUpdates.acceptRead(controlRevision, queue.controls || {});
+    queue.controls = state.controls;
+    state.queue = queue; state.connected = true; state.error = null;
     workerMonitor?.update(queue);
     $('stopRun').disabled = queue.running !== true || queue.runner_alive !== true || queue.stop_requested === true;
     $('stopRun').textContent = queue.stop_requested && queue.running ? 'Stopping...' : 'Stop run';
