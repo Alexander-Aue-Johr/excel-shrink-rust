@@ -7,6 +7,7 @@ use tracing_appender::rolling;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 mod batch_report;
+mod capture_host;
 mod console_writer;
 mod pipeline;
 mod profiling;
@@ -232,8 +233,10 @@ impl LogLevel {
 fn main() -> anyhow::Result<()> {
     let mut raw_args = std::env::args_os();
     let program = raw_args.next().unwrap_or_else(|| "excel-shrink".into());
-    if raw_args.next().is_some_and(|arg| arg == "regression") {
-        return run_regression_command(program, raw_args.collect());
+    match raw_args.next().as_deref().and_then(OsStr::to_str) {
+        Some("regression") => return run_regression_command(program, raw_args.collect()),
+        Some("capture-host") => return capture_host::run(raw_args.collect()),
+        _ => {}
     }
 
     run_cleanup_command(Cli::parse())
