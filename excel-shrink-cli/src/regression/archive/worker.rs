@@ -459,6 +459,13 @@ pub(super) fn cleanup_windows(work: &Path) -> Result<()> {
             fs::create_dir_all(&logs)?;
             let saved = artifact_cache::unique_path(&logs, "owners")?;
             fs::copy(&registry, &saved).context("retain deferred stage cleanup journal")?;
+            let mut exited = registry.as_os_str().to_os_string();
+            exited.push(".exited");
+            if Path::new(&exited).is_file() {
+                let mut saved_exits = saved.as_os_str().to_os_string();
+                saved_exits.push(".exited");
+                fs::copy(&exited, &saved_exits).context("retain confirmed launcher exits")?;
+            }
             eprintln!("[archive] Owned launchers stopped; stage cleanup deferred: {error:#}; journal {}", saved.display());
             return Ok(());
         }

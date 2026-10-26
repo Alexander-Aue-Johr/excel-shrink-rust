@@ -24,9 +24,15 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 public static class CleanupProcessFixture {
     public static void DenyTerminate(IntPtr process) {
+        Deny(process, "D:(D;;0x0001;;;WD)(A;;GA;;;WD)");
+    }
+    public static void DenyIdentity(IntPtr process) {
+        Deny(process, "D:(D;;0x101001;;;WD)(A;;GA;;;WD)");
+    }
+    static void Deny(IntPtr process, string security) {
         IntPtr descriptor;
         uint size;
-        if (!ConvertStringSecurityDescriptorToSecurityDescriptor("D:(D;;0x0001;;;WD)(A;;GA;;;WD)", 1, out descriptor, out size))
+        if (!ConvertStringSecurityDescriptorToSecurityDescriptor(security, 1, out descriptor, out size))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         try {
             if (!SetKernelObjectSecurity(process, 4, descriptor)) throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -67,6 +73,39 @@ try {
     Assert (([ArchiveProcesses]::StopIfOwned($fixture.Id, [string]$fixtureStarted)) -eq 'gone') 'An exited process must be harmless.'
 } finally { if (-not $fixture.HasExited) { $fixture.Kill() }; $fixture.Dispose() }
 Write-Host 'PASS: query-only identity survives denied termination; owned, gone and reused processes are distinguished.'
+
+# Reproduce an inaccessible replacement PID without relying on Windows to
+# recycle a particular number during the test. Only an exact earlier identity
+# with a confirmed-exit receipt is retired; a different birth stays unverified.
+$receipt = Join-Path $env:TEMP ('es-owner-exit-test-' + [Guid]::NewGuid().ToString('N') + '.jsonl')
+$confirmation = $receipt + '.confirmed'
+$fixture = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList '-NoProfile -Command Start-Sleep -Seconds 120' -WindowStyle Hidden -PassThru
+try {
+    $fixtureHandle = $fixture.Handle
+    $fixtureStarted = $fixture.StartTime.ToUniversalTime().Ticks
+    [CleanupProcessFixture]::DenyIdentity($fixtureHandle)
+    [IO.File]::WriteAllText($receipt, ((@{pid=$fixture.Id;started='1'} | ConvertTo-Json -Compress) + "`n"))
+    $retired = Read-ArchiveExitedOwners $receipt
+    Stop-ArchiveOwners @((@{pid=$fixture.Id;started='1'} | ConvertTo-Json -Compress)) $confirmation $retired
+    Assert ([IO.File]::Exists($confirmation)) 'A confirmed earlier exit attempted to reopen an inaccessible replacement PID.'
+    Assert (-not $fixture.HasExited) 'Cleanup touched the inaccessible replacement process.'
+    Remove-Item -LiteralPath $confirmation
+    $blocked = $false
+    try { Stop-ArchiveOwners @((@{pid=$fixture.Id;started=[string]$fixtureStarted} | ConvertTo-Json -Compress)) $confirmation $retired }
+    catch { $blocked = $_.Exception.Message.Contains('Cannot confirm') }
+    Assert $blocked 'An exit receipt for a different birth time authorized cleanup of a live unverified owner.'
+    Assert (-not [IO.File]::Exists($confirmation)) 'Unverified owner published a cleanup confirmation.'
+    [IO.File]::WriteAllText($receipt, '{"pid":1,"started":"not-a-time"}')
+    $blocked = $false
+    try { Read-ArchiveExitedOwners $receipt | Out-Null } catch { $blocked = $true }
+    Assert $blocked 'A malformed confirmed-exit receipt was trusted.'
+    Write-Host 'PASS: confirmed exits bypass inaccessible replacement PIDs; other births and malformed receipts remain blocked.'
+} finally {
+    [CleanupProcessFixture]::Stop($fixtureHandle)
+    Assert ($fixture.WaitForExit(10000)) 'Inaccessible replacement fixture did not terminate.'
+    $fixture.Dispose()
+    Remove-Item -LiteralPath $receipt,$confirmation -ErrorAction SilentlyContinue
+}
 
 $script:visited = @()
 $script:states = @{}

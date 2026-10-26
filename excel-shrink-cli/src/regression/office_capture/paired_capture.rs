@@ -251,6 +251,7 @@ fn run_pair(
         let _ = std::io::copy(&mut stream, &mut std::io::sink());
     }
     let status = child.wait()?;
+    crate::regression::launcher_journal::mark_exited(&mut child)?;
     let stderr = String::from_utf8_lossy(&errors.join().unwrap_or_default()).into_owned();
     transfer.publish(output)?;
     if let Ok(bytes) = fs::read(output.join("result.json")) {

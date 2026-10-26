@@ -20,6 +20,7 @@ use xlsx_value_compare::{CellValueDifference, MissingCellPolicy, WorkbookCompari
 
 mod visual_diagnostics;
 mod excel_automation;
+mod launcher_journal;
 mod xlsx_value_compare;
 mod artifact_cache;
 mod xml_views;

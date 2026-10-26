@@ -75,14 +75,38 @@ function Remove-ArchiveStage([string]$stage) {
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }
 
-function Stop-ArchiveOwners($lines, [string]$confirmationPath = '') {
+function Get-ArchiveOwnerKey($owner) {
+    $processId = 0
+    $started = 0L
+    if (-not [int]::TryParse([string]$owner.pid, [ref]$processId) -or $processId -le 0 -or
+        -not [long]::TryParse([string]$owner.started, [ref]$started) -or $started -le 0) {
+        throw 'Invalid process identity in the archive ownership journal.'
+    }
+    return ([string]$processId + '|' + [string]$started)
+}
+
+function Read-ArchiveExitedOwners([string]$path) {
+    $exited = New-Object 'Collections.Generic.HashSet[string]'
+    if ([IO.File]::Exists($path)) {
+        foreach ($line in [IO.File]::ReadAllLines($path)) {
+            if ($line.Trim()) { [void]$exited.Add((Get-ArchiveOwnerKey ($line | ConvertFrom-Json))) }
+        }
+    }
+    return ,$exited
+}
+
+function Stop-ArchiveOwners($lines, [string]$confirmationPath = '', $exitedOwners = $null) {
     $failures = @()
     $stages = @()
     foreach ($line in $lines) {
         if (-not $line.Trim()) { continue }
         try {
             $owner = $line | ConvertFrom-Json
-            $state = Stop-ArchiveProcess $owner
+            # The Rust parent records this exact identity only after its retained
+            # Child handle confirms exit. Do not reopen a potentially reused PID.
+            $state = if ($null -ne $exitedOwners -and $exitedOwners.Contains((Get-ArchiveOwnerKey $owner))) {
+                'gone'
+            } else { Stop-ArchiveProcess $owner }
             if ($state -eq 'reused') {
                 Write-Warning "Archive launcher PID $($owner.pid) was reused; preserving its journal stage."
                 continue
@@ -127,4 +151,5 @@ if (-not $Stop) {
     return
 }
 
-Stop-ArchiveOwners ([IO.File]::ReadAllLines($RegistryPath)) $StopConfirmationPath
+$exitedOwners = Read-ArchiveExitedOwners ($RegistryPath + '.exited')
+Stop-ArchiveOwners ([IO.File]::ReadAllLines($RegistryPath)) $StopConfirmationPath $exitedOwners

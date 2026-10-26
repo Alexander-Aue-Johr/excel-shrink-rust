@@ -482,6 +482,7 @@ fn run_power_shell_script_with_status(
         }
         if let Some(status) = child.process.try_wait()? {
             child.finish(status.success());
+            super::launcher_journal::mark_exited(&mut child.process)?;
             if let Some(path) = &progress_path {
                 let _ = progress.poll(path);
             }
@@ -540,7 +541,11 @@ fn power_shell_script_command(
 
 fn terminate_child_process(child: &mut Child) {
     let _ = child.kill();
-    let _ = child.wait();
+    if child.wait().is_ok() {
+        if let Err(error) = super::launcher_journal::mark_exited(child) {
+            eprintln!("Could not retain automation launcher exit confirmation: {error}");
+        }
+    }
 }
 
 fn terminate_excel_processes_from_progress_log(progress_path: &Path) {

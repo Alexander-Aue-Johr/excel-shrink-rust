@@ -589,7 +589,7 @@ fn run_power_shell(workbook: &Path, config: &Path, output: &Path) -> Result<()> 
     // PowerShell 5 file operations reject long UNC paths. Only Rust accesses
     // the report directory; Windows receives short transfer paths.
     let transfer = CaptureTransfer::new(workbook, config)?;
-    let result = Command::new("powershell.exe")
+    let child = Command::new("powershell.exe")
         .args([
             "-STA",
             "-NoLogo",
@@ -608,8 +608,13 @@ fn run_power_shell(workbook: &Path, config: &Path, output: &Path) -> Result<()> 
         .arg("-PublishedOutputDir")
         .arg(windows_path(output)?)
         .args(capture_timeout_args())
-        .output()
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .context("start Windows PowerShell for worksheet capture")?;
+    let result = super::launcher_journal::wait_with_output(child)
+        .context("collect worksheet capture and confirm launcher exit")?;
     transfer
         .publish(output)
         .context("copy worksheet capture output")?;

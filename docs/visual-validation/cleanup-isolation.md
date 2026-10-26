@@ -208,3 +208,19 @@ both ended, and no test Excel processes remained. Four independent groups with
 four Excel clients each also passed sequential closure while another group
 continued uploading identical images. These bounded checks establish the tested
 transitions, not a guarantee against every future Office failure.
+
+## Confirmed launcher exits
+
+A later run stopped on a stale recalculation-launcher PID even though Rust had
+already observed that launcher's exit. Reopening the old PID returned access
+denied. Native Windows automation and capture waits now append confirmed exits
+to `windows-owners.jsonl.exited`, recording the exact PID and creation time from
+the retained child handle. Cleanup skips the process lookup only when both
+fields match; temporary stage cleanup still runs. Unconfirmed identities retain
+the existing checks. WSL keeps its previous behavior because its Rust child PID
+identifies the interop wrapper rather than the native Windows launcher.
+
+Tests cover rejecting retirement of a live child, matching the existing
+PowerShell creation-time representation, and cleanup of a retired identity whose
+PID now identifies an inaccessible process. A different creation time or invalid
+receipt cannot bypass ownership verification.

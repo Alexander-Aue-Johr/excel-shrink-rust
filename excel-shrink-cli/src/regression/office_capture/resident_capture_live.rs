@@ -854,6 +854,7 @@ impl ResidentCapture {
                 fs::read_to_string(failure).unwrap_or_default()
             );
             if let Some(status) = self.child.try_wait()? {
+                crate::regression::launcher_journal::mark_exited(&mut self.child)?;
                 bail!("resident Excel launcher exited ({status}) while waiting for tile uploads")
             }
             let live = self.live.as_ref().unwrap();

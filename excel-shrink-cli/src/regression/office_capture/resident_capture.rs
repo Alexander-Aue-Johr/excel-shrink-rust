@@ -581,6 +581,7 @@ impl ResidentCapture {
                 return Ok(result);
             }
             if let Some(status) = self.child.try_wait()? {
+                crate::regression::launcher_journal::mark_exited(&mut self.child)?;
                 let detail = fs::read_to_string(self.directory.join("launcher-result.json"))
                     .unwrap_or_default();
                 bail!("resident Excel launcher exited ({status}): {detail}");
@@ -1238,6 +1239,7 @@ impl ResidentCapture {
                 );
                 std::thread::sleep(Duration::from_millis(100));
             }
+            crate::regression::launcher_journal::mark_exited(&mut self.child)?;
             self.finished = true;
         }
         let mut metrics: Value =
@@ -1276,6 +1278,9 @@ impl Drop for ResidentCapture {
             if matches!(self.child.try_wait(), Ok(None)) {
                 let _ = self.child.kill();
                 let _ = self.child.wait();
+            }
+            if let Err(error) = crate::regression::launcher_journal::mark_exited(&mut self.child) {
+                eprintln!("Could not retain resident launcher exit confirmation: {error}");
             }
         }
     }
