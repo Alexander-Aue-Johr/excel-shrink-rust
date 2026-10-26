@@ -107,6 +107,11 @@ internal sealed class WorkerTelemetry
             ["sequence"] = ++sequence, ["at"] = DateTimeOffset.UtcNow.ToString("O"),
             ["kind"] = kind, ["message"] = message
         };
+        if (kind == "state_changed") {
+            // Persist the exact state for a time-faithful, read-only status strip.
+            entry["state"] = state;
+            entry["wait_reason"] = waitReason;
+        }
         if (details is not null) entry["details"] = details.DeepClone();
         events.Enqueue(entry);
         while (events.Count > HistoryLimit) events.Dequeue();

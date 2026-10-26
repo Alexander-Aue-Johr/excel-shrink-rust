@@ -261,6 +261,11 @@ class HostProtocol(unittest.TestCase):
         self.command({"id": "capture", "kind": "capture", "sheets": [{"sheet_name": "Observed", "sheet_index": 2}]})
         before = self.request("/health")["clients"]["one"]
         self.assertEqual(before["monitor"]["state"], "capturing")
+        transitions = [event for event in before["monitor"]["events"] if event["kind"] == "state_changed"]
+        self.assertEqual(transitions[-1]["state"], "capturing")
+        self.assertIsNone(transitions[-1]["wait_reason"])
+        startup = next(event for event in transitions if event["state"] == "waiting_for_startup_sample")
+        self.assertEqual(startup["wait_reason"], "launcher")
         self.assertEqual(before["monitor"]["active_job"]["locations"][0]["sheet_name"], "Observed")
         self.request("/heartbeat?client=one")
         after = self.request("/health")["clients"]["one"]
