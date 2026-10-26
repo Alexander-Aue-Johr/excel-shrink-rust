@@ -103,14 +103,6 @@ fn finish_retry(result: &mut Value) {
     );
 }
 
-fn report_refresh_due(output: &Path) -> bool {
-    fs::metadata(output.join("diagnosis.json"))
-        .and_then(|metadata| metadata.modified())
-        .ok()
-        .and_then(|modified| modified.elapsed().ok())
-        .is_none_or(|elapsed| elapsed >= Duration::from_secs(30))
-}
-
 pub(super) fn recoverable_failure(record: &Value) -> Option<&'static str> {
     if record["capture_mode"] != "resident"
         || record["status"] != "skipped"

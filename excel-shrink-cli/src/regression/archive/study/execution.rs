@@ -38,14 +38,23 @@ pub(super) fn process(
         run,
         log_level,
         None,
-        |checkpoint, phase| {
+        |checkpoint, _phase| {
             records[position] = checkpoint.clone();
-            publish_progress(output, records, corpora, phase);
+            // Keep the worker heartbeat and exit polling independent of the
+            // full corpus report, including during preparation and diagnosis.
         },
     )?;
     records[position] = result;
     if run["options"]["control_room"] == true {
         control_room::finish_serial(output, id, &records[position])?;
+    }
+    if report_refresh_due(output) {
+        let phase = match mode {
+            JobMode::Prepare => "shrinking",
+            JobMode::Diagnose => "diagnosing whitespace",
+            _ => "comparing",
+        };
+        publish_progress(output, records, corpora, phase);
     }
     Ok(())
 }

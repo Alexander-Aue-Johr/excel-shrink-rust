@@ -885,6 +885,17 @@ fn import(
     Ok(())
 }
 
+// Serial preparation and fallback share one cadence across workbook boundaries.
+// Call only after saving the result and releasing its active queue entry, never
+// from the worker watchdog's progress callback.
+fn report_refresh_due(output: &Path) -> bool {
+    fs::metadata(output.join("diagnosis.json"))
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_none_or(|elapsed| elapsed >= Duration::from_secs(30))
+}
+
 // These files are derived from the durable workbook records. A viewer or virus
 // scanner can briefly lock one on Windows; that must not stop a healthy worker.
 // Retry at the next changed record or workbook checkpoint, not every polling tick.
