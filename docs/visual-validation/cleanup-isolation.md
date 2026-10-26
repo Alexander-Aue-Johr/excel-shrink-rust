@@ -56,6 +56,40 @@ Temporal proximity is a suspicion, not causal proof. Reproduce the same peer
 capture with and without the other group's cleanup; retain both attempt IDs.
 Failed or missing capture responses remain failures, never equality evidence.
 
+## Confirming shutdown
+
+Disposing the Windows Job Object requests termination. The launcher now waits
+up to three seconds in total for its retained Excel process handles to signal
+exit before publishing final client states. `cleanup_job_released_unix_ms` and
+`exit_confirmed_unix_ms` distinguish the request from observed exit. An
+unconfirmed exit is labelled explicitly; it is not left as an apparently live
+"Closing" operation after the launcher has finished. This check covers Excel
+clients; job-child identities remain available for further investigation.
+
+Classic capture shutdown also uses retained process handles. It does not send
+a synchronous close-window message to an Excel UI that may be unresponsive.
+The corpus parent's separate cleanup helper has a 60-second deadline, including
+PowerShell startup and staging-file removal. A timeout terminates that helper
+through its retained handle. Before stopping the Rust worker, the parent closes
+launcher registration; each PowerShell launcher checks that barrier before and
+after appending its identity, before creating Excel. This prevents a late
+launcher from escaping the cleanup snapshot. An attempt-specific generation
+token also rejects old launchers if a retry has already reused the work path.
+
+The helper publishes a confirmation after all recorded launchers are known
+stopped and before removing temporary stage files. If only that file removal
+times out, the journal is retained under `logs/deferred-cleanup/` and the corpus
+can continue safely. Without confirmation, the ownership journal and work
+directory remain for a bounded retry; no timeout authorizes killing unrelated
+Excel PIDs.
+
+Focused checks without opening Excel:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File excel-shrink-cli/office-capture/tests/closing-processes.tests.ps1
+cargo test -p excel-shrink-cli --bin excel-shrink-cli cleanup_helper
+```
+
 ## Clean-desktop failure and profile isolation
 
 With the corpus stopped, the original shared-profile launcher reproduced
@@ -158,3 +192,19 @@ Local experiment receipts are under `.tmp/profile-concurrency-results/`:
 `1792933860530778300` (shared-profile failure), `1792933949105173400`
 (per-process-profile failure), `1792934302066802600` (private desktop pass),
 and `1792934529662463700` (four groups plus visible reset pass).
+
+## Retry status and shutdown checks, 2026-10-26
+
+The Stomata workbook's classic retry reused its earlier resident attempt ID.
+Consequently, old closing events could describe a new comparison in the UI.
+Classic retries now publish a separate attempt and coordinator phases, and save
+their final status before refreshing the derived corpus report. Report generation
+no longer runs inside the worker's heartbeat and timeout polling callback.
+
+An isolated rerun of that workbook completed in 49 seconds, including its
+19-second classic retry. It still reports the existing image-calibration edge
+budget failure; it is not counted as visually verified. The queue and coordinator
+both ended, and no test Excel processes remained. Four independent groups with
+four Excel clients each also passed sequential closure while another group
+continued uploading identical images. These bounded checks establish the tested
+transitions, not a guarantee against every future Office failure.

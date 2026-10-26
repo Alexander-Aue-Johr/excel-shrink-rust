@@ -45,6 +45,12 @@ fn refresh_groups(queue: &mut Value, active: &[Active], records: &[Value], pendi
             .find(|g| g["id"] == id)
         {
             group["active"] = json!(!job.finished);
+            let record = &records[job.job.position];
+            if let Some(attempt) = record["control_room_attempt"]["id"].as_str() {
+                group["attempt_id"] = json!(attempt);
+                group["started_unix_ms"] = record["control_room_attempt"]["started_unix_ms"].clone();
+            }
+            group["capture_mode"] = record["capture_mode"].clone();
             group["cleanup_pending"] = records[job.job.position]["cleanup_pending"].clone();
             if group["status"] == "cleanup_blocked" {
                 group.as_object_mut().unwrap().remove("error");
@@ -108,23 +114,6 @@ fn update_phase(queue: &mut Value, target: usize) {
             "paused"
         }
     );
-}
-
-fn begin_classic_retry(queue: &mut Value, id: &str, target: usize) {
-    let group = queue["groups"]
-        .as_array_mut()
-        .unwrap()
-        .iter_mut()
-        .find(|group| group["id"] == id)
-        .unwrap();
-    group["status"] = json!("retrying_classic");
-    group["capture_mode"] = json!("classic");
-    group["active"] = json!(true);
-    queue["open_groups"] = json!(1);
-    queue["working_groups"] = json!(1);
-    queue["cleanup_groups"] = json!(0);
-    update_phase(queue, target);
-    queue["updated_unix_ms"] = json!(provenance::now_ms());
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -612,7 +601,11 @@ pub(super) fn compare(
                 continue;
             }
             let id = control_room::group_id(&job.job.id);
+            // A serial fallback is a new admission too. Do not label it active
+            // while target zero or a requested stop prevents it from starting.
+            control_room::wait_for_admission(output, "comparing")?;
             while !disk_guard.allows_admission(&mut queue, provenance::now_ms()) {
+                control_room::check_stop(&room)?;
                 if let Ok(updated) = Controls::read(&room) {
                     controls = updated;
                 }
@@ -624,8 +617,6 @@ pub(super) fn compare(
             if let Ok(updated) = Controls::read(&room) {
                 controls = updated;
             }
-            begin_classic_retry(&mut queue, &id, controls.target_groups);
-            control_room::write(&room.join("queue.json"), &queue)?;
             let result = fallback::after_batch(
                 source,
                 std::slice::from_ref(&job.job),
@@ -664,26 +655,6 @@ pub(super) fn compare(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn classic_retry_is_work_even_after_the_resident_wave_drained() {
-        let mut queue = json!({"phase":"paused", "open_groups":0,
-            "working_groups":0,"cleanup_groups":20,"waiting_groups":7,
-            "groups":[{"id":"retry","active":false,"status":"skipped"}]});
-        begin_classic_retry(&mut queue, "retry", 0);
-        assert_eq!(queue["phase"], "draining");
-        assert_eq!(queue["open_groups"], 1);
-        assert_eq!(queue["working_groups"], 1);
-        assert_eq!(queue["cleanup_groups"], 0);
-        assert_eq!(queue["waiting_groups"], 7);
-        assert_eq!(queue["groups"][0]["status"], "retrying_classic");
-        assert_eq!(queue["groups"][0]["active"], true);
-        queue["open_groups"] = json!(0);
-        update_phase(&mut queue, 0);
-        assert_eq!(queue["phase"], "paused");
-        begin_classic_retry(&mut queue, "retry", 2);
-        assert_eq!(queue["phase"], "comparing");
-    }
-
     #[test]
     fn target_changes_act_without_waiting_for_ready_or_estimating_memory() {
         assert_eq!(slots_to_start(24, 1, 100, false), 23);

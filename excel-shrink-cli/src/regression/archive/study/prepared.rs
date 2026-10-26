@@ -496,8 +496,14 @@ fn compare_profile(
     };
     let mut result = json!({"profile":name,"status":"technical error","checks_complete":false,"sheets":[],"requested_sheets":sheets});
     let checked = (|| -> Result<Vec<String>> {
+        work_state::event("validating_values", "classic_recalculation_started",
+            "Checking cell values before classic capture", false, Some("Excel recalculation"),
+            json!({"profile":name}));
         let (values, mut failures) =
             validate_excel_recalculation(&original, &shrunk, &directory, &cli)?;
+        work_state::event("comparing", "classic_recalculation_complete",
+            "Cell values checked; preparing classic comparison", true, None,
+            json!({"profile":name}));
         // Value differences are recorded but still need images on their affected sheets.
         // Recalculation and open measurements remain independent per profile.
         let original_sha = artifact_cache::hash_file(&original)?;
@@ -518,6 +524,9 @@ fn compare_profile(
             );
             report
         } else {
+            work_state::event("waiting_client", "classic_capture_started",
+                "Classic capture is running in a separate Excel pair", false,
+                Some("classic capture process"), json!({"profile":name}));
             let captured = visual_validation::compare_sheet_visuals(
                 &original,
                 &shrunk,
@@ -578,6 +587,9 @@ fn compare_profile(
         result["checked_sheets"] = json!(checked);
         result["unchanged_sheets"] = json!(unchanged);
     }
+    work_state::event("processing_result", "classic_comparison_complete",
+        "Classic profile comparison returned", true, None,
+        json!({"profile":name,"status":result["status"],"checks_complete":result["checks_complete"]}));
     Ok(result)
 }
 

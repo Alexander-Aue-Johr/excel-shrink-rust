@@ -179,7 +179,7 @@ pub(super) fn archive_record(root: &Path, id: &str, record: &Value) -> Result<()
     Ok(())
 }
 
-// Serial preparation and supplemental diagnosis are work too. Publish their
+// Serial preparation, classic retries and supplemental diagnosis are work too. Publish their
 // actual coordinator, with a fresh attempt identity so stale Excel clients are
 // never mistaken for workers belonging to this invocation.
 pub(super) fn begin_serial(
@@ -200,9 +200,19 @@ pub(super) fn begin_serial(
     let groups = queue["groups"]
         .as_array_mut()
         .context("missing control room groups")?;
+    let status = match mode {
+        JobMode::Prepare => "preparing",
+        JobMode::Compare => "retrying_classic",
+        JobMode::Diagnose => "diagnosing",
+        JobMode::Legacy => "comparing",
+    };
     let mut group = json!({"id":group_id(id),"workbook":record["name"],"corpus":source.name,
         "attempt_id":attempt,"run_id":run["run_id"],"active":true,"restart_eligible":false,
-        "status":if mode==JobMode::Prepare {"preparing"} else {"diagnosing"},"sequence":groups.len()+1});
+        "status":status,"sequence":groups.len()+1,
+        "started_unix_ms":record["control_room_attempt"]["started_unix_ms"]});
+    if mode == JobMode::Compare {
+        group["capture_mode"] = json!("classic");
+    }
     if let Some(old) = groups.iter_mut().find(|g| g["id"] == group["id"]) {
         group["sequence"] = old["sequence"].clone();
         *old = group;
@@ -607,6 +617,46 @@ pub(super) fn wait_for_admission(output: &Path, phase: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn classic_retry_has_its_own_attempt_and_finishes_before_report_publication() -> Result<()> {
+        let output = super::super::tests::test_directory("classic-attempt")?;
+        let room = output.join("control-room");
+        fs::create_dir_all(&room)?;
+        fs::create_dir_all(output.join("records"))?;
+        write(&room.join("control.json"), &json!({"target_groups":1,"paused":false,
+            "open_timeout_seconds":60,"job_timeout_seconds":120,"equal_preview_width":512}))?;
+        let id = "source:0:example.xlsx";
+        let mut record = json!({"identity":id,"name":"example.xlsx","capture_mode":"classic",
+            "status":"skipped","complete":true,"control_room_attempt":{"id":"resident-old",
+            "run_id":"run","started_unix_ms":1},"last_execution":{"run_id":"run"}});
+        write(&room.join("queue.json"), &json!({"groups":[{"id":group_id(id),
+            "attempt_id":"resident-old","sequence":7,"status":"waiting_cleanup","active":true}],
+            "waiting_groups":4,"cleanup_groups":1}))?;
+        let source = Source { id:"source".into(), name:"Example".into(), path:PathBuf::new(),
+            members:vec![], fingerprint:"source".into(), selection:selection::Plan::new(vec![], None)? };
+        begin_serial(&output, &source, id, &mut record, JobMode::Compare, &json!({"run_id":"run"}))?;
+        let queue = read_json(&room.join("queue.json")).unwrap();
+        let group = &queue["groups"][0];
+        assert_ne!(group["attempt_id"], "resident-old");
+        assert_eq!(group["attempt_id"], record["control_room_attempt"]["id"]);
+        assert!(group["started_unix_ms"].as_u64().unwrap() > 1);
+        assert_eq!(group["sequence"], 7);
+        assert_eq!(group["status"], "retrying_classic");
+        assert_eq!(group["capture_mode"], "classic");
+        assert_eq!(queue["cleanup_groups"], 0);
+        assert_eq!(queue["waiting_groups"], 4);
+        // A blocked derived report cannot prevent the small queue update.
+        fs::create_dir(output.join("diagnosis.json"))?;
+        record["status"] = json!("unchanged");
+        finish_serial(&output, id, &record)?;
+        let queue = read_json(&room.join("queue.json")).unwrap();
+        assert_eq!(queue["groups"][0]["active"], false);
+        assert_eq!(queue["groups"][0]["status"], "unchanged");
+        assert_eq!(queue["open_groups"], 0);
+        fs::remove_dir_all(output)?;
+        Ok(())
+    }
 
     #[test]
     fn retry_history_preserves_each_failed_run_without_overwriting_an_attempt() -> Result<()> {

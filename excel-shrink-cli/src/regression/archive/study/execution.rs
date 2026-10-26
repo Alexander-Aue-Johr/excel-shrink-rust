@@ -131,8 +131,9 @@ pub(super) fn run_record(
         hide_excel: state["control_room_attempt"]["settings"]["hide_excel"]
             .as_bool()
             .unwrap_or(run["options"]["hide_excel"] == true),
-        control_room: (run["options"]["control_room"] == true
-            && run["options"]["resident_capture"] == true)
+        // Coordinator observations also belong to classic fallback attempts.
+        // Resident-only client controls are filtered separately by worker::launch.
+        control_room: (run["options"]["control_room"] == true)
             .then(|| output.join("control-room")),
         cleanup_barrier,
         run_manifest: Some(

@@ -18,6 +18,7 @@ pub(super) fn after_batch(
     let mut classic = run.clone();
     classic["options"]["resident_capture"] = json!(false);
     classic["options"]["comparison_workers"] = json!(1);
+    let observed = run["options"]["control_room"] == true;
     // No queue expansion: each original batch member receives at most one retry.
     for job in jobs {
         let previous = &records[job.position];
@@ -31,13 +32,21 @@ pub(super) fn after_batch(
             );
             continue;
         }
+        if observed {
+            control_room::wait_for_admission(output, "comparing")?;
+        }
         scheduler::wait_for_classic_retry_memory(run)?;
-        let initial = prepare_retry(output, &job.id, previous, run, reason)?;
+        let mut initial = prepare_retry(output, &job.id, previous, run, reason)?;
+        if observed {
+            // Retire the resident attempt before the serial worker starts. Its
+            // closed clients and old cleanup event must not describe this retry.
+            control_room::begin_serial(output, source, &job.id, &mut initial, JobMode::Compare, run)?;
+        }
         eprintln!(
             "[study] Retrying {} sequentially with classic capture after {reason}",
             job.id
         );
-        let mut result = execution::run_record(
+        let result = execution::run_record(
             source,
             job.index,
             &job.id,
@@ -48,27 +57,58 @@ pub(super) fn after_batch(
             &classic,
             log_level,
             None,
-            |checkpoint, phase| {
+            |checkpoint, _phase| {
                 records[job.position] = checkpoint.clone();
-                publish_progress(output, records, corpora, phase);
+                // The worker watchdog invokes this callback. A whole-corpus
+                // report must never delay its heartbeat or process polling.
             },
-        )?;
-        result["comparison_fallback"]["status"] = json!(if result["status"] == "skipped" {
-            "failed"
-        } else {
-            "complete"
-        });
-        result["comparison_fallback"]["total_elapsed_seconds"] = json!(
-            result["comparison_fallback"]["original_attempt"]["elapsed_seconds"]
-                .as_f64()
-                .unwrap_or(0.0)
-                + result["comparing_elapsed_seconds"].as_f64().unwrap_or(0.0)
         );
+        let mut result = match result {
+            Ok(result) => result,
+            Err(error) => {
+                if observed {
+                    let mut failed = records[job.position].clone();
+                    failed["status"] = json!("failed");
+                    control_room::finish_serial(output, &job.id, &failed)?;
+                }
+                return Err(error);
+            }
+        };
+        finish_retry(&mut result);
         write_record(&record_path(output, &job.id), &result)?;
         records[job.position] = result;
-        publish_progress(output, records, corpora, "comparing");
+        if observed {
+            control_room::finish_serial(output, &job.id, &records[job.position])?;
+        }
+        // Durable results and queue completion precede this optional derived
+        // report. Share its file timestamp across one-job fallback batches.
+        if report_refresh_due(output) {
+            publish_progress(output, records, corpora, "comparing");
+        }
     }
     Ok(())
+}
+
+fn finish_retry(result: &mut Value) {
+    result["comparison_fallback"]["status"] = json!(if result["status"] == "skipped" {
+        "failed"
+    } else {
+        "complete"
+    });
+    result["comparison_fallback"]["total_elapsed_seconds"] = json!(
+        result["comparison_fallback"]["original_attempt"]["elapsed_seconds"]
+            .as_f64()
+            .unwrap_or(0.0)
+            + result["comparing_elapsed_seconds"].as_f64().unwrap_or(0.0)
+    );
+}
+
+fn report_refresh_due(output: &Path) -> bool {
+    fs::metadata(output.join("diagnosis.json"))
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_none_or(|elapsed| elapsed >= Duration::from_secs(30))
 }
 
 pub(super) fn recoverable_failure(record: &Value) -> Option<&'static str> {
@@ -188,6 +228,31 @@ fn prepare_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn final_fallback_outcome_and_elapsed_time_are_ready_without_a_report_write() {
+        for (status, expected) in [("skipped", "failed"), ("unchanged", "complete"), ("differences", "complete")] {
+            let mut result = json!({"status":status,"comparing_elapsed_seconds":7.5,
+                "comparison_fallback":{"status":"running","original_attempt":{"elapsed_seconds":12.5}}});
+            finish_retry(&mut result);
+            assert_eq!(result["comparison_fallback"]["status"], expected);
+            assert_eq!(result["comparison_fallback"]["total_elapsed_seconds"], 20.0);
+        }
+    }
+
+    #[test]
+    fn sequential_fallback_batches_share_the_report_refresh_interval() -> Result<()> {
+        let output = super::super::tests::test_directory("fallback-report-cadence")?;
+        assert!(report_refresh_due(&output));
+        let path = output.join("diagnosis.json");
+        fs::write(&path, b"{}")?;
+        assert!(!report_refresh_due(&output));
+        fs::File::options().write(true).open(&path)?.set_modified(
+            std::time::SystemTime::now() - Duration::from_secs(31))?;
+        assert!(report_refresh_due(&output));
+        fs::remove_dir_all(output)?;
+        Ok(())
+    }
 
     fn failed_record() -> Value {
         json!({"capture_mode":"resident","complete":true,"status":"skipped",
