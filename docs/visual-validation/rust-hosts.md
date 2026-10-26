@@ -30,7 +30,8 @@ of the executable that actually runs, rather than a hash of source files.
 Excel job ownership, private desktops, memory limits and bounded cleanup stay
 with their existing launcher. Every host remains a separate process. Both
 loopback address families are served: `localhost` must not incur IPv6 connection
-fallback delays on every worker poll.
+fallback delays on worker requests. Resident jobs and result notifications use
+[persistent event connections](resident-events.md); PNG uploads stay on HTTP.
 
 ## Evidence and compatibility
 

@@ -62,6 +62,9 @@ impl WorkerTelemetry {
                 sample[key] = source[key].clone();
             }
         }
+        if let Some(timing) = command_timing(&source["last_command_timing"]) {
+            sample["last_command_timing"] = timing;
+        }
         self.pane_resources = sample;
     }
 
@@ -220,6 +223,40 @@ impl WorkerTelemetry {
     }
 }
 
+fn command_timing(source: &Value) -> Option<Value> {
+    let command = source["command_id"].as_str()?;
+    let kind = source["kind"].as_str()?;
+    if command.is_empty()
+        || command.len() > 128
+        || !matches!(
+            kind,
+            "capture" | "plan" | "capture_images" | "images" | "release"
+        )
+    {
+        return None;
+    }
+    let mut timing = json!({"command_id": command, "kind": kind});
+    for key in [
+        "execution_ms",
+        "capture_ms",
+        "finish_image_ms",
+        "upload_ms",
+        "job_wait_ms",
+        "result_ack_ms",
+    ] {
+        if source[key]
+            .as_f64()
+            .is_some_and(|value| value.is_finite() && value >= 0.0)
+        {
+            timing[key] = source[key].clone();
+        }
+    }
+    if let Some(attempts) = source["result_attempts"].as_u64() {
+        timing["result_attempts"] = json!(attempts);
+    }
+    Some(timing)
+}
+
 fn describe(command: &Value) -> Value {
     let mut result = pick(command, &["id", "kind", "sheet_index", "sheet_name"]);
     let tiles: Vec<_> = command["tiles"]
@@ -273,4 +310,47 @@ fn pick(source: &Value, names: &[&str]) -> Value {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pane_timings_are_bounded_measurements_without_invented_progress() {
+        let mut telemetry = WorkerTelemetry::new();
+        let before = telemetry.snapshot();
+        telemetry.sample_pane(&json!({
+            "last_command_timing": {
+                "command_id": "000003", "kind": "capture_images",
+                "execution_ms": 1500.25, "capture_ms": 0,
+                "finish_image_ms": -1, "upload_ms": "500",
+                "result_attempts": 2, "unknown": {"unbounded": [1, 2, 3]}
+            }
+        }));
+        let after = telemetry.snapshot();
+        let timing = &after["pane_resources"]["last_command_timing"];
+        assert_eq!(timing["execution_ms"], 1500.25);
+        assert_eq!(timing["capture_ms"], 0);
+        assert_eq!(timing["result_attempts"], 2);
+        assert!(timing.get("finish_image_ms").is_none());
+        assert!(timing.get("upload_ms").is_none());
+        assert!(timing.get("result_ack_ms").is_none());
+        assert!(timing.get("unknown").is_none());
+        assert_eq!(after["last_progress_at"], before["last_progress_at"]);
+        assert_eq!(after["events"], before["events"]);
+    }
+
+    #[test]
+    fn pane_timings_require_a_bounded_command_identity() {
+        assert!(command_timing(&json!({"execution_ms": 10})).is_none());
+        assert!(command_timing(&json!({
+            "command_id": "x".repeat(129), "kind": "plan"
+        }))
+        .is_none());
+        assert!(command_timing(&json!({
+            "command_id": "000001", "kind": "unexpected"
+        }))
+        .is_none());
+    }
 }

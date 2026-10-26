@@ -45,6 +45,31 @@ export function duration(seconds) {
   return `${Math.floor(seconds / 86400)} d ${Math.floor(seconds / 3600) % 24} h`;
 }
 export function phaseLabel(phase) { return phases[phase] || phase || 'Not observed'; }
+
+export function commandTimingSummary(timing) {
+  if (!timing?.command_id || !timing.kind) return null;
+  const milliseconds = value => {
+    if (!Number.isFinite(value) || value < 0) return 'Not measured';
+    const seconds = value >= 1000;
+    const formatted = (seconds ? value / 1000 : value).toLocaleString('en-US', { maximumFractionDigits: 1 });
+    return `${formatted} ${seconds ? 's' : 'ms'}`;
+  };
+  return {
+    command: `${timing.kind} · ${timing.command_id}`,
+    fields: [
+      ['Execution', milliseconds(timing.execution_ms)],
+      ['Excel image capture', milliseconds(timing.capture_ms)],
+      ['Image finalization', milliseconds(timing.finish_image_ms)],
+      ['Image upload / receipt', milliseconds(timing.upload_ms)],
+      ['Waiting for job', milliseconds(timing.job_wait_ms)],
+      ['Result delivery / acknowledgment', milliseconds(timing.result_ack_ms)],
+      ['Result delivery attempts', Number.isSafeInteger(timing.result_attempts) && timing.result_attempts >= 0
+        ? timing.result_attempts.toLocaleString('en-US') : 'Not measured'],
+    ],
+    note: 'Subphases are included in execution time; do not add the rows. Image capture measures getImage round trips; finalization includes overflow checks. Waiting for a job includes pauses and peer readiness, not just delivery time.',
+  };
+}
+
 export function startupSummary(startup, now = Date.now()) {
   if (!startup?.stage) return null;
   const labels = { loading_records: 'Loading existing results', opening_archive: 'Opening ZIP catalog',

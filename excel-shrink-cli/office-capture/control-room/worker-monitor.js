@@ -1,4 +1,4 @@
-import { age, duration, phaseLabel, progressSummary, startupSummary, timestamp, workerRows } from './worker-monitor-model.js';
+import { age, commandTimingSummary, duration, phaseLabel, progressSummary, startupSummary, timestamp, workerRows } from './worker-monitor-model.js';
 import { createSignalMonitor } from './signal-monitor.js';
 
 const element = (tag, className, text) => {
@@ -103,7 +103,15 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     detail.replaceChildren(heading, workbook);
     if (!current) detail.append(element('p', 'wm-muted', 'Last available snapshot; this worker is no longer on the current page.'));
     if (!row.active) detail.append(element('p', 'wm-muted', 'This group has ended. Events show the last saved snapshot.'));
-    detail.append(detailSignal.element, fields, open, jump, element('h4', null, 'Recent events · up to 24'), events);
+    detail.append(detailSignal.element, fields);
+    const timing = commandTimingSummary(row.paneResources?.last_command_timing);
+    if (timing) {
+      const timingFields = element('dl', 'wm-detail-fields');
+      for (const [label, value] of timing.fields) field(timingFields, label, value);
+      detail.append(element('h4', null, 'Last measured command'), element('p', 'wm-muted', timing.command),
+        timingFields, element('p', 'wm-muted', timing.note));
+    }
+    detail.append(open, jump, element('h4', null, 'Recent events · up to 24'), events);
     detail.scrollTop = scroll;
   }
 

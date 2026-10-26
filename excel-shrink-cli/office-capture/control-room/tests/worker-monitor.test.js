@@ -1,4 +1,4 @@
-import { age, duration, progressSummary, startupSummary, timestamp, workerRows } from '../worker-monitor-model.js';
+import { age, commandTimingSummary, duration, progressSummary, startupSummary, timestamp, workerRows } from '../worker-monitor-model.js';
 
 export function runTests() {
   let passed = 0;
@@ -59,6 +59,15 @@ export function runTests() {
     assert(result.finish == null && !result.eta.startsWith('About'), `${status} must not display a misleading completion estimate.`);
   }
   assert(progressSummary({}) === null, 'Old runs do not fabricate rate data.');
+  assert(commandTimingSummary(null) === null, 'Old runs do not fabricate command timings.');
+  const timing = commandTimingSummary({ command_id: '000003', kind: 'capture_images',
+    execution_ms: 1250.5, capture_ms: 0, upload_ms: -1, result_ack_ms: '100', result_attempts: 2 });
+  const timings = Object.fromEntries(timing.fields);
+  assert(timing.command === 'capture_images · 000003', 'Timing identity names the measured command, not the currently active job.');
+  assert(timings.Execution === '1.3 s' && timings['Excel image capture'] === '0 ms', 'Measured zero is distinct from a missing duration.');
+  assert(timings['Image finalization'] === 'Not measured' && timings['Image upload / receipt'] === 'Not measured', 'Absent and negative intervals remain unknown.');
+  assert(timings['Result delivery / acknowledgment'] === 'Not measured' && timings['Result delivery attempts'] === '2', 'Strings are not silently converted to measured durations.');
+  assert(timing.note.includes('do not add') && timing.note.includes('pauses'), 'Nested durations and intentional waiting are explained.');
   return { passed };
 }
 
