@@ -1,4 +1,5 @@
 import { age, duration, phaseLabel, progressSummary, startupSummary, timestamp, workerRows } from './worker-monitor-model.js';
+import { createSignalMonitor } from './signal-monitor.js';
 
 const element = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -12,7 +13,7 @@ const message = event => typeof event === 'string' ? event : event?.message || e
 const observedPhase = row => row.alive === false && !['closed', 'finished', 'complete', 'completed'].includes(row.state)
   ? `Process exited · last ${phaseLabel(row.state)}` : phaseLabel(row.state);
 
-export function initWorkerMonitor({ selectGroup } = {}) {
+export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
   const stylesheet = element('link');
   stylesheet.rel = 'stylesheet'; stylesheet.href = new URL('./worker-monitor.css', import.meta.url).href;
   document.head.append(stylesheet);
@@ -25,14 +26,21 @@ export function initWorkerMonitor({ selectGroup } = {}) {
 
   const dialog = element('dialog', 'wm-dialog');
   dialog.id = 'workerMonitorDialog'; dialog.setAttribute('aria-labelledby', 'wm-title');
-  dialog.innerHTML = `<header class="wm-header"><div><div class="eyebrow">RUNTIME DIAGNOSTICS</div><h2 id="wm-title">Worker overview</h2><p>Heartbeats show connectivity. Progress shows completed steps.</p></div><button class="wm-close" aria-label="Close worker overview">×</button></header>
+  dialog.innerHTML = `<header class="wm-header"><div><div class="eyebrow">LIVE TELEMETRY</div><h2 id="wm-title">Worker overview</h2><p>ECG-shaped heartbeat events, spatial capture miniatures and a compact state strip on a shared timeline.</p></div><button class="wm-close" aria-label="Close worker overview">×</button></header>
     <div class="wm-toolbar"><label>Show <select class="wm-filter"><option value="all">All states</option><option value="working">Job running / starting</option><option value="waiting">Waiting / paused</option><option value="ended">Ended</option></select></label><label><input type="checkbox" class="wm-recent"> Last 8 ended groups</label><span class="wm-summary"></span></div>
     <p class="wm-status" role="status"></p><div class="wm-content"><div class="wm-overview"><div class="wm-groups"></div><div class="wm-pager"><button class="wm-prev">Previous groups</button><span></span><button class="wm-next">More groups</button></div></div><aside class="wm-detail" aria-label="Worker details"><p>Select a worker to see its last successful step and events.</p></aside></div>`;
   document.body.append(dialog);
   const query = selector => dialog.querySelector(selector);
   const list = query('.wm-groups'), detail = query('.wm-detail'), status = query('.wm-status');
   let queue, snapshot, selected, offset = 0, timer, request, generation = 0;
-  const heartbeats = new Map();
+  let signalViews = [], detailSignal;
+
+  function openCaptures(row, capture = null, follow = true) {
+    if (row.kind === 'Rust / Host' || !row.groupId) return;
+    dialog.close();
+    if (navigateToCaptures) navigateToCaptures({ groupId: row.groupId, clientId: row.clientId, capture, follow });
+    else selectGroup?.(row.groupId);
+  }
 
   function field(container, label, value, title) {
     const block = element('div', 'wm-field');
@@ -47,6 +55,8 @@ export function initWorkerMonitor({ selectGroup } = {}) {
     const heading = element('div', 'wm-detail-heading');
     heading.append(element('h3', null, row.clientId), element('span', 'wm-kind', row.kind));
     const workbook = element('p', 'wm-workbook', row.workbook);
+    detailSignal ??= createSignalMonitor({ onCaptureNavigate: ({ row, capture, follow }) => openCaptures(row, capture, follow) });
+    detailSignal.update(row, { stale: !current, live: current && snapshot?.running !== false && snapshot?.runner_alive !== false });
     const fields = element('dl', 'wm-detail-fields');
     field(fields, 'Status / phase', observedPhase(row));
     field(fields, 'Time in this state', duration(age(row.stateSince)), timeText(row.stateSince));
@@ -79,6 +89,10 @@ export function initWorkerMonitor({ selectGroup } = {}) {
     if (row.error) field(fields, 'Reported error', message(row.error));
     const open = element('button', null, 'Show group in studio');
     open.addEventListener('click', () => { dialog.close(); selectGroup?.(row.groupId); });
+    const jump = element('button', 'wm-jump', '↗ Follow captures');
+    jump.disabled = row.kind === 'Rust / Host';
+    jump.title = 'Follow this Excel profile directly in the studio.';
+    jump.addEventListener('click', () => openCaptures(row));
     const events = element('ol', 'wm-events');
     for (const event of row.events || []) {
       const item = element('li');
@@ -89,12 +103,14 @@ export function initWorkerMonitor({ selectGroup } = {}) {
     detail.replaceChildren(heading, workbook);
     if (!current) detail.append(element('p', 'wm-muted', 'Last available snapshot; this worker is no longer on the current page.'));
     if (!row.active) detail.append(element('p', 'wm-muted', 'This group has ended. Events show the last saved snapshot.'));
-    detail.append(fields, open, element('h4', null, 'Recent events · up to 24'), events);
+    detail.append(detailSignal.element, fields, open, jump, element('h4', null, 'Recent events · up to 24'), events);
     detail.scrollTop = scroll;
   }
 
   function render() {
     if (!snapshot) return;
+    for (const item of signalViews) item.view.destroy();
+    signalViews = [];
     const focusedWorker = document.activeElement?.dataset?.workerId;
     const filter = query('.wm-filter').value, fragment = document.createDocumentFragment();
     const allRows = snapshot.groups.flatMap(workerRows);
@@ -110,34 +126,31 @@ export function initWorkerMonitor({ selectGroup } = {}) {
       card.append(groupTitle);
       if (!rows.length) card.append(element('p', 'wm-muted', 'Process data for this attempt is still being provided.'));
       for (const row of rows) {
-        const item = element('button', `wm-worker wm-${row.category}${selected?.id === row.id ? ' wm-selected' : ''}`);
-        item.dataset.workerId = row.id;
-        item.type = 'button'; item.setAttribute('aria-pressed', String(selected?.id === row.id));
+        // A non-button wrapper avoids nesting interactive capture controls in a button.
+        const item = element('div', `wm-worker wm-${row.category}${selected?.id === row.id ? ' wm-selected' : ''}`);
+        const select = element('button', 'wm-worker-select');
+        select.dataset.workerId = row.id;
+        select.type = 'button'; select.setAttribute('aria-pressed', String(selected?.id === row.id));
+        select.setAttribute('aria-label', `Select ${row.clientId}, ${observedPhase(row)}`);
         const identity = element('span', 'wm-identity');
-        const heartbeat = element('span', 'wm-heart', row.kind === 'Rust / Host' ? '◇' : '♥');
-        const heartbeatAge = age(row.heartbeat), oldCount = heartbeats.get(row.id);
-        heartbeat.style.setProperty('--wm-heart-strength', heartbeatAge == null ? '.12' : String(Math.max(.12, 1 - heartbeatAge / 30)));
-        heartbeat.title = row.kind === 'Rust / Host' ? 'Host telemetry' : `Heartbeat ${sinceText(row.heartbeat)}`;
-        if (oldCount != null && row.heartbeatCount > oldCount) heartbeat.classList.add('wm-beat');
-        heartbeats.set(row.id, row.heartbeatCount);
-        identity.append(heartbeat, element('strong', null, row.clientId), element('small', null, `${row.kind}${row.pid ? ` · PID ${row.pid}` : ''}`));
+        identity.append(element('strong', null, row.clientId), element('small', null, `${row.kind}${row.pid ? ` · PID ${row.pid}` : ''}`));
         const phase = element('span', 'wm-phase');
         phase.append(element('strong', null, observedPhase(row)), element('small', null, `${duration(age(row.stateSince))} since state change${row.sheet ? ` · ${row.sheet}` : ''}`));
-        const activity = element('span', 'wm-activity');
-        activity.append(element('span', null, `Progress ${sinceText(row.lastProgress)}`), element('small', null, row.kind === 'Rust / Host' ? `Event ${sinceText(row.lastEvent)}` : `Heartbeat ${sinceText(row.heartbeat)}`));
-        item.append(identity, phase, activity);
-        item.addEventListener('click', () => { showDetail(row); render(); });
+        const signals = createSignalMonitor({ compact: true,
+          onCaptureNavigate: ({ capture, follow }) => openCaptures(row, capture, follow) });
+        signals.update(row, { live: snapshot.running !== false && snapshot.runner_alive !== false });
+        signalViews.push({ view: signals, row });
+        select.append(identity, phase);
+        item.append(select, signals.element);
+        select.addEventListener('click', () => { showDetail(row); render(); });
         card.append(item);
       }
       fragment.append(card);
     }
     if (!fragment.childNodes.length) fragment.append(element('p', 'wm-muted', 'No workers match this filter.'));
     list.replaceChildren(fragment);
-    if (focusedWorker) [...list.querySelectorAll('.wm-worker')]
+    if (focusedWorker) [...list.querySelectorAll('.wm-worker-select')]
       .find(item => item.dataset.workerId === focusedWorker)?.focus({ preventScroll: true });
-    // Retain only this bounded page, so a day-long run does not grow browser memory.
-    const ids = new Set(allRows.map(row => row.id));
-    for (const id of heartbeats.keys()) if (!ids.has(id)) heartbeats.delete(id);
     query('.wm-summary').textContent = `${snapshot.active_groups} active groups · ${allRows.filter(row => row.kind !== 'Rust / Host').length} Excel workers on this page`;
     query('.wm-prev').disabled = offset === 0;
     query('.wm-next').disabled = snapshot.next_offset == null;
@@ -153,14 +166,18 @@ export function initWorkerMonitor({ selectGroup } = {}) {
     const token = ++generation;
     try {
       const response = await fetch(`/api/workers?offset=${offset}&include_recent=${query('.wm-recent').checked}`, { signal: request.signal, cache: 'no-store' });
-      if (!response.ok) throw new Error(`Worker-API: HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`Worker API: HTTP ${response.status}`);
       const data = await response.json();
       if (token !== generation || !dialog.open) return;
       snapshot = data;
       if (offset > 0 && offset >= data.total_groups) { offset = 0; return refresh(); }
       render();
     } catch (error) {
-      if (error.name !== 'AbortError') status.textContent = `Could not refresh worker status: ${error.message}. Displayed data is the last received snapshot.`;
+      if (error.name !== 'AbortError') {
+        status.textContent = `Could not refresh worker status: ${error.message}. Displayed data is the last received snapshot.`;
+        for (const item of signalViews) item.view.update(item.row, { connected: false });
+        if (selected) detailSignal?.update(selected, { connected: false });
+      }
     } finally {
       if (token === generation && dialog.open) timer = setTimeout(refresh, 2000);
     }
@@ -168,7 +185,12 @@ export function initWorkerMonitor({ selectGroup } = {}) {
 
   button.addEventListener('click', () => { dialog.showModal(); status.textContent = 'Loading workers …'; refresh(); });
   query('.wm-close').addEventListener('click', () => dialog.close());
-  dialog.addEventListener('close', () => { clearTimeout(timer); request?.abort(); generation++; button.focus(); });
+  dialog.addEventListener('close', () => {
+    clearTimeout(timer); request?.abort(); generation++;
+    for (const item of signalViews) item.view.destroy();
+    signalViews = []; detailSignal?.destroy(); detailSignal = null;
+    button.focus();
+  });
   query('.wm-filter').addEventListener('change', render);
   query('.wm-recent').addEventListener('change', () => { offset = 0; refresh(); });
   query('.wm-prev').addEventListener('click', () => { offset = Math.max(0, offset - 64); refresh(); });

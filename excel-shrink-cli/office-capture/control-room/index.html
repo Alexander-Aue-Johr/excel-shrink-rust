@@ -5,6 +5,7 @@
   <meta name="theme-color" content="#08111c"><title>Excel Observatory · Live</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%2308111c'/%3E%3Cpath d='M7 14h9v24H7zM20 10h9v28h-9zM33 6h9v32h-9z' fill='%2375edc0'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./signal-monitor.css">
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
 </head>
 <body>
@@ -42,7 +43,7 @@
       </section>
       <div class="pan-controls" aria-label="Pan the shared sheet viewport"><label>Horizontal <input id="panX" type="range" min="0" max="0" value="0" step="1"></label><label>Vertical <input id="panY" type="range" min="0" max="0" value="0" step="1"></label><span class="sheet-zoom-mode" id="sheetZoomMode">Fit whole sheet</span></div>
       <div class="detail-tools"><div id="tileButtons" class="tile-buttons" aria-label="Select visible tiles with the keyboard"></div><div id="evidenceActions" class="evidence-actions" hidden></div></div>
-      <section class="process-section"><div class="section-head"><h2>Excel & add-in heartbeats</h2><span>One pulse = one received heartbeat</span></div><div id="processes" class="processes"></div></section>
+      <section class="process-section"><div class="section-head"><h2>Worker signals</h2><span>ECG heartbeat · Capture stream · States</span></div><p class="signal-section-note">Time-aligned heartbeats and spatial capture miniatures · Steps mark completed work. “Follow captures” opens that profile directly in the studio.</p><div id="processes" class="processes"></div></section>
       <section class="events"><div class="section-head"><h2>Events & responses</h2><span id="lastUpdate">—</span></div><div id="events"></div><details><summary>API view · same state</summary><pre id="apiState"></pre></details></section>
     </main>
   </div>

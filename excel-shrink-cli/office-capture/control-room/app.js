@@ -3,6 +3,9 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription, processMeasurements } from './model.js';
 import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey, followSheetViewport } from './sheet-viewport.js';
 import { initWorkerMonitor } from './worker-monitor.js';
+import { workerRows } from './worker-monitor-model.js';
+import { createSignalMonitor } from './signal-monitor.js';
+import { findCaptureTile, profileForClient, latestTileForProfile } from './capture-navigation-model.js';
 
 const $ = id => document.getElementById(id);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -26,6 +29,7 @@ let data, entries = [], renderer, scene, camera, controls, detailRoot, lastUi = 
 let selectedGeneration = 0, sceneGeneration = 0, pollGeneration = 0, activeDetailSince = 0;
 let hoverTimer, leaveTimer, pendingHover, pointerDown, userMovedCamera = false, cameraTween;
 let latestCapture = null, pollTimer, controlBusy = false, localEvents = [];
+let pendingCaptureJump = null, followedProfile = null, lastFollowedKey = null;
 let groupLimit = 100;
 let miniSignature = '', lastFocusKey = '', navigationBusy = false;
 let workerMonitor, omissionTooltip;
@@ -665,7 +669,7 @@ function updatePanControls() {
   for (const [id, axis, size] of [['panX', 'x', 'width'], ['panY', 'y', 'height']]) {
     $(id).max = String(Math.max(0, Math.ceil((sheet?.[size] || 0) - current[size]))); $(id).value = String(Math.round(current[axis])); $(id).disabled = Number($(id).max) === 0;
   }
-  $('sheetZoomMode').textContent = fitLabels[current.mode] || 'Manueller Zoom';
+  $('sheetZoomMode').textContent = fitLabels[current.mode] || 'Manual zoom';
   $('viewRange').textContent = sheet ? `${sheet.name} · x ${Math.round(current.x).toLocaleString('en-US')}–${Math.round(current.x + current.width).toLocaleString('en-US')} · y ${Math.round(current.y).toLocaleString('en-US')}–${Math.round(current.y + current.height).toLocaleString('en-US')} px` : 'Waiting for capture geometry';
   const shown = visibleTiles(sheet, sheetView(sheet), 100000);
   $('sheetSummary').textContent = sheet ? `${data.sheets.length} Sheets · ${shown.length} / ${sheet.tiles.length} capture jobs in sheet viewport` : 'No tiles yet';
@@ -706,7 +710,7 @@ function renderMinimap() {
 function normalizeStatus(value) {
   return ({ restart_requested: 'Restart requested', restart_waiting_cleanup: 'Restart waiting for safe cleanup', preparing: 'Preparation', requested: 'Open requested', waiting_open: 'Waiting to open', opening: 'Opening Excel', planning: 'Planning capture regions', ready: 'Add-in ready', capturing: 'Capturing', comparing: 'Pixel comparison', complete: 'Completed', completed: 'Completed', finished: 'Completed', unchanged: 'Identical', differences: 'Differences found', skipped: 'Skipped', interrupted: 'Interrupted', waiting_cleanup: 'Closing Excel', cleanup_blocked: 'Cleanup blocked', failed: 'Error', paused: 'Paused', closed: 'Closed', queued: 'Queued', running: 'Active', active: 'Active', retrying_classic: 'Classic individual comparison running' })[value] || value || 'Waiting for status';
 }
-function groupName(group) { return String(group.workbook || group.name || group.source || group.id || 'Arbeitsmappe').split(/[\\/]/).pop(); }
+function groupName(group) { return String(group.workbook || group.name || group.source || group.id || 'Workbook').split(/[\\/]/).pop(); }
 function renderGroups() {
   const groups = state.queue?.groups || [];
   const query = $('groupSearch').value.trim().toLocaleLowerCase();
@@ -770,12 +774,61 @@ async function sendControl(change) {
 }
 function selectGroup(id) {
   if (id === state.groupId) return;
+  if (pendingCaptureJump?.groupId !== String(id)) pendingCaptureJump = null;
   state.groupId = id; state.sheetId = null; state.focus = 'overview'; lastFocusKey = ''; state.view = { mode: 'sheet', x: 0, y: 0, width: 1800, height: 1800 * AREA_H / AREA_W }; latestCapture = null; previousImages.clear(); flashes.clear();
+  followedProfile = null; lastFollowedKey = null;
   data = null; entries = []; lastSignature = ''; sheetSignature = ''; clearDetails(); ++sceneGeneration;
-  boards.splice(0).forEach(disposeObject); sourceTiles.length = 0; hitTargets.length = 0; sheetCards.clear(); processCards.clear(); $('processes').replaceChildren();
+  boards.splice(0).forEach(disposeObject); sourceTiles.length = 0; hitTargets.length = 0; sheetCards.clear();
+  for (const card of processCards.values()) card.signals.destroy();
+  processCards.clear(); $('processes').replaceChildren();
   for (const toolbar of sheetToolbars.values()) toolbar.remove(); sheetToolbars.clear();
   $('emptyScene').hidden = false; $('tileButtons').replaceChildren(); renderGroups();
   ++pollGeneration; clearTimeout(pollTimer); poll();
+}
+// The worker list and its capture stream provide a one-click route to the
+// selected physical Excel add-in. No new capture jobs are ever dispatched here.
+function jumpToWorkerCaptures({ groupId, clientId, capture = null, follow = true } = {}) {
+  if (!groupId || !clientId) return;
+  pendingCaptureJump = { groupId: String(groupId), clientId: String(clientId), capture, follow };
+  if (String(state.groupId) !== String(groupId)) selectGroup(String(groupId));
+  else if (data) applyCaptureJump();
+  document.querySelector('.room')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+}
+function applyCaptureJump() {
+  const jump = pendingCaptureJump;
+  if (!data || !jump || jump.groupId !== String(state.groupId)) return;
+  pendingCaptureJump = null;
+  followedProfile = profileForClient(data, jump.clientId);
+  const target = findCaptureTile(data, jump.capture);
+  // Historical tiles are inspected without the live follower overriding them.
+  if (jump.capture && !jump.follow) {
+    state.follow = false; $('followCapture').checked = false;
+    if (target) {
+      focusTile(target, null, true);
+      setNotice(`Capture in studio: ${target.sheetName} · ${target.address}. Manual selection stays visible.`);
+    } else {
+      setNotice('The selected capture is unavailable in this group. Live following remains paused.', true);
+    }
+    return;
+  }
+  state.follow = true; $('followCapture').checked = true;
+  $('followCapture').title = `Following captures from ${jump.clientId}`;
+  clearDetails();
+  const monitor = data.launcher?.clients?.[jump.clientId]?.monitor;
+  const latestEvent = [...(monitor?.events || [])].reverse().find(event => event.kind === 'image_received');
+  const mostRecent = target || findCaptureTile(data, latestEvent) || latestTileForProfile(data, followedProfile);
+  if (mostRecent) {
+    latestCapture = mostRecent.id;
+    lastFollowedKey = `${followedProfile}:${mostRecent.id}`;
+    followTile(mostRecent);
+    setNotice(`Following captures from ${jump.clientId} · ${mostRecent.sheetName} · ${mostRecent.address}`);
+  } else {
+    const location = monitor?.active_job?.locations?.[0];
+    const sheet = data.sheets.find(item => item.name === location?.sheet_name ||
+      (location?.sheet_index != null && String(item.index ?? item.id) === String(location.sheet_index)));
+    if (sheet) focusSheet(sheet.id);
+    setNotice(`Following captures from ${jump.clientId}. No matching capture geometry received yet.`);
+  }
 }
 function acceptGroup(raw) {
   data = normalizeGroup(raw); entries = data.sheets.flatMap(sheet => sheet.tiles);
@@ -783,19 +836,24 @@ function acceptGroup(raw) {
   $('groupEyebrow').textContent = [data.corpus, data.capture_mode === 'classic' || data.status === 'retrying_classic' ? 'LAST RESIDENT CAPTURES · CLASSIC CROSS-CHECK' : 'LIVE STUDIO'].filter(Boolean).join(' · ');
   if (!data.sheets.some(sheet => sheet.id === state.sheetId)) state.sheetId = data.sheets[0]?.id ?? null;
   let latest = null;
+  const changedByProfile = new Map();
   for (const tile of entries) for (const [profile, image] of Object.entries(tile.images)) {
     const key = `${tile.id}:${profile}`, signature = JSON.stringify([image.url, image.pixelClass, image.maskUrl]);
     if (image.url && previousImages.get(key) !== signature) {
       if (previousImages.has(key)) pushEvent(`${tile.sheetName} · ${tile.address} · ${profileLabel(profile)}: ${image.pixelClass == null ? 'Image received' : imageStatus(tile, profile) === 'different' ? 'Pixel difference confirmed' : 'Pixel comparison complete'}`);
       flashes.set(key, performance.now()); previousImages.set(key, signature); latest = tile;
+      changedByProfile.set(profile, tile);
     }
   }
   const active = entries.find(tile => tile.id === String(data.active_tile) && (!data.active_sheet || tile.sheetId === String(data.active_sheet)));
-  latest = active || latest;
-  if (latest && latest.id !== latestCapture) {
-    latestCapture = latest.id; if (state.follow && !state.pinned && !state.selected) followTile(latest);
+  const next = followedProfile ? changedByProfile.get(followedProfile) : active || latest;
+  const key = next ? `${followedProfile || 'any'}:${next.id}` : null;
+  if (next && key !== lastFollowedKey) {
+    lastFollowedKey = key; latestCapture = next.id;
+    if (state.follow && !state.pinned && !state.selected) followTile(next);
   }
   clampView(); updateSheets(); renderScene(); updateDiagnosticUi();
+  applyCaptureJump();
   if (state.pendingDifference) { state.pendingDifference = false; nextDifference(); }
 }
 async function poll() {
@@ -871,48 +929,49 @@ function updateDiagnosticUi() {
   if ($('apiState').closest('details').open) $('apiState').textContent = JSON.stringify(snapshot(), null, 2);
 }
 function renderProcesses() {
-  const clients = Object.entries(data?.launcher?.clients || {});
+  const reported = data?.launcher?.clients || {};
+  const profiles = data?.profiles || [{ id: 'original' }, { id: 'default' }, { id: 'maximum-cleaning' }, { id: 'too-aggressive-cleaning' }];
+  const clients = profiles.map(profile => [profile.id, reported[profile.id] || {}]);
   const ids = new Set(clients.map(([id]) => id));
-  for (const [id, card] of processCards) if (!ids.has(id)) { card.element.remove(); processCards.delete(id); }
-  if (!clients.length && !processCards.size) { $('processes').textContent = 'No Excel processes reported yet.'; return; }
+  for (const [id, card] of processCards) if (!ids.has(id)) { card.signals.destroy(); card.element.remove(); processCards.delete(id); }
   if (!processCards.size) $('processes').replaceChildren();
+  const terminal = ['complete', 'completed', 'finished', 'unchanged', 'differences', 'skipped', 'failed', 'interrupted'].includes(data?.status);
+  const rows = workerRows({ id: data?.id || state.groupId || 'pending', attempt_id: data?.attempt_id,
+    launcher_sampled_unix_ms: data?.launcher?.sampled_unix_ms,
+    active: !terminal, clients: clients.map(([id, client]) => ({ ...client, client_id: id,
+      worker_id: `${state.groupId || 'pending'}/${data?.attempt_id || 'legacy'}/${id}/${client.pid || 'pending'}/${client.process_started_unix_ms || 'pending'}` })) });
   const stageLabels = { staging: 'Staging file', waiting_for_open_slot: 'Waiting to open', waiting_for_addin: 'Waiting for add-in', waiting_for_job: 'Waiting for job', executing_job: 'Capture running', blocked_edit_mode: 'Excel in edit mode', client_error: 'Add-in reported an error', closed: 'Closed' };
   for (const [id, client] of clients) {
     let card = processCards.get(id);
     if (!card) {
       const element = document.createElement('div'); element.className = 'process';
-      const heart = document.createElement('span'); heart.className = 'heartbeat'; heart.textContent = '♥'; heart.setAttribute('aria-hidden', 'true');
-      const name = document.createElement('strong'), process = document.createElement('span'), status = document.createElement('span'), beat = document.createElement('small'), error = document.createElement('small'), button = document.createElement('button');
+      const name = document.createElement('strong'), process = document.createElement('span'), status = document.createElement('span'), error = document.createElement('small'), button = document.createElement('button');
+      const signals = createSignalMonitor({ onCaptureNavigate: ({ capture, follow }) =>
+        jumpToWorkerCaptures({ groupId: state.groupId, clientId: id, capture, follow }) });
       const size = document.createElement('small'), opening = document.createElement('small'), metrics = document.createElement('small');
       size.className = opening.className = metrics.className = 'process-measurement';
       process.className = 'process-id'; status.className = 'process-stage'; error.className = 'process-error'; button.textContent = 'Excel Hard Reset';
       button.title = 'Ends this Excel instance and opens a fresh copy with the current visibility setting. If comparison jobs have started, the group is compared again.';
       button.addEventListener('click', () => restartGroup(id, true));
-      element.append(heart, name, process, status, beat, size, opening, metrics, error, button); $('processes').append(element);
-      card = { element, heart, name, process, status, beat, size, opening, metrics, error, button, count: null }; processCards.set(id, card);
+      element.append(name, process, status, signals.element, size, opening, metrics, error, button); $('processes').append(element);
+      card = { element, signals, name, process, status, size, opening, metrics, error, button }; processCards.set(id, card);
       opening.title = 'Native launch through workbook identity verification by the add-in. Includes Excel startup, workbook loading and add-in initialization. Historical COM Open measurements remain labelled separately.';
       metrics.title = 'One Excel-process memory snapshot at add-in readiness, before capture jobs. Private bytes and working set exclude separate WebView processes. Shrink duration comes from preparation.';
     }
-    const count = Number(client.heartbeat_count || 0), age = heartbeatAge(client);
     const alive = client.process_alive;
-    if (card.count != null && count > card.count && !reducedMotion) {
-      card.heart.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.4)', offset: .2 }, { transform: 'scale(1)' }], { duration: 520, easing: 'ease-out' });
-    }
-    card.count = count;
-    const glow = age == null || client.status === 'closed' ? 0 : Math.max(0, Math.exp(-age / 14000));
-    card.heart.style.setProperty('--beat-glow', String(glow));
-    card.heart.style.opacity = String(.18 + glow * .82);
+    card.signals.update(rows.find(row => row.clientId === id), { connected: state.connected,
+      live: state.queue?.running !== false && state.queue?.runner_alive !== false });
     card.element.classList.toggle('blocked', client.stage === 'blocked_edit_mode' || Boolean(client.error));
     card.name.textContent = profileLabel(id);
     card.process.textContent = client.pid ? `PID ${client.pid} · ${alive === true ? 'Process running' : alive === false ? 'Process exited' : 'Process status unverified'} · ${client.window_mode === 'private_desktop' ? 'private desktop (hidden)' : client.hide_excel ? 'hidden' : 'visible'}` : 'No PID yet';
-    card.status.textContent = [stageLabels[client.stage] || normalizeStatus(client.status), client.active_command].filter(Boolean).join(' · ');
-    card.beat.textContent = count ? `${count.toLocaleString('en-US')} Heartbeats · last received ${age == null ? '?' : Math.floor(age / 1000)} s ago` : 'No add-in heartbeat yet';
+    card.status.textContent = reported[id] ? [stageLabels[client.stage] || normalizeStatus(client.status), client.active_command].filter(Boolean).join(' · ')
+      : data?.status === 'preparing' ? 'Preparing · no add-in started yet' : 'No add-in reported yet';
     card.error.textContent = client.error || ''; card.error.hidden = !client.error;
     const measurements = processMeasurements(data, id);
     card.size.textContent = measurements.size; card.opening.textContent = measurements.opening;
     card.metrics.textContent = measurements.extra; card.metrics.hidden = !measurements.extra;
     const resetting = data?.client_reset_commands?.some(command => command.client_id === id && ['pending','running'].includes(command.status));
-    card.button.disabled = resetting || data?.restart_eligible === false || state.queue?.running === false;
+    card.button.disabled = !reported[id] || resetting || data?.restart_eligible === false || state.queue?.running === false;
     card.button.textContent = resetting ? 'Hard reset running…' : 'Excel Hard Reset';
     card.element.title = 'A missing heartbeat can mean Excel is opening or busy. Process status is checked separately.';
   }
@@ -1021,7 +1080,13 @@ function wireControls() {
   });
   $('hideExcel').addEventListener('change', event => sendControl({ hide_excel: event.target.checked }));
   $('restartGroup').addEventListener('click', () => restartGroup());
-  $('followCapture').addEventListener('change', event => { state.follow = event.target.checked; if (state.follow) { clearDetails(); followTile(tileAt(latestCapture)); } });
+  $('followCapture').addEventListener('change', event => {
+    state.follow = event.target.checked;
+    if (state.follow) {
+      clearDetails();
+      followTile(followedProfile ? latestTileForProfile(data, followedProfile) : tileAt(latestCapture));
+    }
+  });
   $('sheetSelect').addEventListener('change', event => focusSheet(event.target.value, true));
   for (const [id, axis] of [['panX', 'x'], ['panY', 'y']]) $(id).addEventListener('input', event => {
     const sheet = selectedSheet(); if (!sheet) return;
@@ -1075,10 +1140,10 @@ function geometrySnapshot() {
       endError: link.curve.v3.distanceTo(link.panel.root.getWorldPosition(new THREE.Vector3()).addScaledVector(up, -link.panel.height * .48)) })) };
 }
 
-window.__observatory = { snapshot, geometry: geometrySnapshot, selectGroup, nextDifference, nextSheetDifference, nextGroupDifference, focusSheet,
+window.__observatory = { snapshot, geometry: geometrySnapshot, selectGroup, jumpToWorkerCaptures, nextDifference, nextSheetDifference, nextGroupDifference, focusSheet,
   setSheetFit,
   hoverTile(id, regionId) { const tile = tileAt(typeof id === 'number' ? entries[id]?.id : id); return showDetails(tile?.id, true, inspectionRegions(tile).find(region => region.id === regionId)); }, clearHover: clearDetails, pin: setPinned,
   setView(x, y, width = state.view.width) { const sheet = selectedSheet(); if (!sheet) return; stopFollowing(); state.focus = 'tile'; rememberView(sheet, { mode: 'manual', x, y, width }); renderScene(); },
   openEvidence(index = 0) { if (detailPanels[index]) openEvidence(detailPanels[index]); } };
-try { initScene(); wireControls(); workerMonitor = initWorkerMonitor({ selectGroup }); poll(); }
+try { initScene(); wireControls(); workerMonitor = initWorkerMonitor({ selectGroup, navigateToCaptures: jumpToWorkerCaptures }); poll(); }
 catch (error) { state.error = error.message; $('error').textContent = error.message; $('error').hidden = false; console.error(error); }

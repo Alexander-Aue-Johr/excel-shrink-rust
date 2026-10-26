@@ -348,3 +348,18 @@ body.presenting .wm-progress {
     animation:none
   }
 }
+
+/* Observatory v2: a selectable worker and a separately interactive capture strip. */
+.wm-dialog .wm-worker {grid-template-columns:minmax(160px,1.05fr) minmax(0,1.8fr);align-items:center;cursor:default}
+.wm-worker-select {display:grid;grid-template-columns:1fr;gap:7px;min-width:0;width:100%;
+  padding:3px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;
+  font:inherit}
+.wm-worker-select:hover .wm-identity strong {color:#79dce8}
+.wm-worker .wm-phase {text-align:left}
+.wm-detail .wm-jump {margin:8px 0 0 8px;border-color:#427c90;color:#a5e4ed}
+@media(min-width:1450px) {
+  .wm-dialog .wm-worker {grid-template-columns:minmax(165px,1fr) minmax(250px,2fr)}
+}
+@media(max-width:700px) {
+  .wm-dialog .wm-worker {grid-template-columns:minmax(0,1fr)}
+}

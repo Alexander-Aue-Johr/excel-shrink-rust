@@ -1,0 +1,38 @@
+.signal-monitor {
+  --signal-heartbeat:#75edc0; --signal-progress:#e6b66a; --signal-capture:#79dce8;
+  display:block;min-width:0;overflow:hidden;padding:9px 9px 7px;
+  border:1px solid #284150;border-radius:9px;background:linear-gradient(145deg,#10252e,#091820);
+  text-align:left;font:11px/1.4 "Segoe UI",system-ui,sans-serif;
+}
+.signal-heading {display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:5px}
+.signal-state {color:#a1b5c1;font-weight:600;font-size:11px}
+.signal-state::before {content:"";display:inline-block;width:5px;height:5px;margin-right:6px;border-radius:50%;background:currentColor}
+[data-signal-state="working"] .signal-state {color:var(--signal-capture)}
+[data-signal-state="heartbeat-only"] .signal-state {color:var(--signal-heartbeat)}
+[data-signal-state="quiet"] .signal-state {color:#b6b1a1}
+[data-signal-state="disconnected"] .signal-state {color:#e1bc7d}
+.signal-window {flex-shrink:0;color:#7896a6;letter-spacing:.06em;font:8px/1.5 Consolas,monospace}
+.signal-canvas {display:block;width:100%;height:118px;border-radius:4px}
+.signal-compact .signal-canvas {height:97px}
+.signal-canvas[role="button"]:focus-visible {outline:2px solid #79dce8;outline-offset:1px}
+.signal-legend {display:flex;align-items:center;flex-wrap:wrap;gap:5px 10px;padding-top:7px}
+.signal-key {display:inline-flex;align-items:center;gap:4px;color:#93acbb;font-size:9px;white-space:nowrap}
+.signal-key i {width:5px;height:5px;border-radius:50%;background:var(--signal-color)}
+.signal-key b {font-weight:600;color:var(--signal-color);font-variant-numeric:tabular-nums}
+.signal-heartbeat {--signal-color:var(--signal-heartbeat)}
+.signal-progress {--signal-color:var(--signal-progress)}
+.signal-capture {--signal-color:var(--signal-capture)}
+.signal-follow {margin-left:auto;border:1px solid #315468;border-radius:5px;background:#163245;color:#93e1f4;
+  font:10px/1.2 "Segoe UI",system-ui,sans-serif;padding:4px 6px;white-space:nowrap;cursor:pointer}
+.signal-follow:hover {border-color:#70c5d7;background:#1b4053}
+.signal-follow:disabled {opacity:.4;cursor:default}
+.signal-follow:focus-visible {outline:2px solid #79dce8;outline-offset:2px}
+.process .signal-monitor {margin:5px -3px 2px}
+.process .signal-key {font-size:9px}
+.process-section .signal-section-note {color:#91a9bb;font-size:11px;margin-top:8px}
+.controls .control-line {flex-wrap:wrap}
+.wm-worker .signal-monitor {min-width:0;width:100%}
+.wm-detail>.signal-monitor {margin-top:15px}
+.wm-detail h4 {margin-bottom:8px}
+@media(max-width:700px){.signal-heading{flex-wrap:wrap}.signal-follow{margin-left:0}}
+@media(prefers-reduced-motion:reduce){.signal-monitor{scroll-behavior:auto}}

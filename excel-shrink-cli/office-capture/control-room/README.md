@@ -42,9 +42,36 @@ bounded per card; large plans do not allocate one image texture per pending job.
 Capture target megapixels, batch size, and hidden Excel launching apply to newly
 admitted groups. Their effective settings and measured physical capture throughput
 are shown separately. Each Excel card displays its verified process status, PID,
-active command and errors. The green heart pulses only when the real heartbeat
-counter advances; its glow decays from the last heartbeat timestamp. Ordinary
-activity is not treated as a heartbeat, and silence is not classified as death.
+active command and errors. The four process cards below the Atelier and the
+Worker overview show a shared 60-second timeline: mint ECG-shaped symbols for
+observed add-in heartbeats, cyan capture miniatures, and a narrow track of
+reported phases with completed-step milestone markers. The curve shapes are
+event symbols, not physiological measurements. Quiet lanes distinguish
+heartbeat-only activity from completed work without declaring a stalled or dead
+process. Missing telemetry stays unknown; exact timestamps, wait causes and event
+details remain in the Worker detail panel.
+
+Capture miniatures use only reported A1 ranges on the same sheet. Unknown or
+ambiguous geometry is shown as a count. Dense events share screen bins while
+each received event keeps a marker at its actual timestamp. The three newest
+packages have progressively lower opacity; older packages remain faint within
+the time window. Selecting a package opens its worksheet tile in the Atelier
+when the location is available. The follow action tracks the corresponding Excel
+profile across subsequent updates. Selecting historical evidence disables
+auto-follow. These actions are read-only and do not dispatch capture jobs.
+
+The monitor is an original browser implementation inspired by the grid, sweep
+and persistence of [CardioSim](https://github.com/Colby-O2/CardioSim), whose
+[Unlicense](https://github.com/Colby-O2/CardioSim/blob/master/LICENSE) permits
+reuse. No CardioSim code, medical signal model or Unity dependency is included.
+Canvas 2D traces share a visibility-aware animation loop at roughly 15 fps, use
+bounded event histories, and honor reduced motion. Hidden/offscreen monitors
+stop drawing. The browser retains only observed heartbeat timestamps: gaps or
+counter jumps are never filled with invented beats. Capture and completed-job
+events can be backfilled from the host's bounded telemetry journal. Repeated
+polls cannot replay an event, and retries/process replacements get fresh
+histories. Lost connections freeze the last received view and show its status.
+Before the browser first observes a worker, the shaded timeline is incomplete.
 
 Restart actions POST `/api/groups/{id}/restart`; an optional `client_id` identifies
 the problematic instance. Both actions restart the complete comparison group so
