@@ -117,6 +117,7 @@ def main():
     parser.add_argument("--run", action="store_true", help="Explicitly enable native Excel")
     parser.add_argument("--reference", action="store_true", help="Use a threshold above every fixture sheet")
     parser.add_argument("--hard-reset-original", action="store_true", help="Restart only the hidden original visibly before capture")
+    parser.add_argument("--hide-excel", action="store_true", help="Capture on private desktops without taking keyboard focus")
     parser.add_argument("--compare-to", type=Path, help="Previously completed sampled run directory")
     parser.add_argument("--binary", type=Path, default=ROOT / "target/debug/excel-shrink-cli.exe")
     parser.add_argument("--port", type=int, default=8799)
@@ -150,7 +151,7 @@ def main():
         EXCEL_SHRINK_CAPTURE_BATCH_TILES="4",
         EXCEL_SHRINK_TALL_SHEET_THRESHOLD=str(threshold),
         EXCEL_SHRINK_TALL_SHEET_EDGE_TILES="1",
-        EXCEL_SHRINK_RESIDENT_VISIBLE="1",
+        EXCEL_SHRINK_RESIDENT_VISIBLE="0" if args.hide_excel else "1",
     )
     receipt = {
         "status": "running", "command": command, "binary_sha256": digest(binary),
@@ -200,9 +201,9 @@ def main():
         request("/api/control", {
             "target_groups": 1, "capture_tile_megapixels": 1, "capture_batch_tiles": 4,
             "tall_sheet_threshold": threshold, "tall_sheet_edge_tiles": 1,
-            "hide_excel": args.hard_reset_original, "paused": args.hard_reset_original,
+            "hide_excel": args.hide_excel or args.hard_reset_original, "paused": args.hard_reset_original,
         })
-        event("started_isolated_group", hide_excel=args.hard_reset_original)
+        event("started_isolated_group", hide_excel=args.hide_excel or args.hard_reset_original)
         if args.hard_reset_original:
             while True:
                 deadline()

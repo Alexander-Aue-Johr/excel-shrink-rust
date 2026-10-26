@@ -599,6 +599,8 @@ fn run_power_shell(workbook: &Path, config: &Path, output: &Path) -> Result<()> 
             "-File",
         ])
         .arg(windows_path(&script)?)
+        .arg("-HostExecutable")
+        .arg(windows_path(&crate::capture_host::executable()?)?)
         .arg("-WorkbookPath")
         .arg(windows_path(&transfer.0.join("workbook.xlsx"))?)
         .arg("-ConfigPath")

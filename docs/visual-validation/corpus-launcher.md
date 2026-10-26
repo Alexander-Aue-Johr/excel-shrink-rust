@@ -48,9 +48,11 @@ Release builds use the WSL Rust toolchain with the
 `x86_64-pc-windows-gnu` target and MinGW linker, then copy the executable to the
 Windows working copy. The runner locates capture scripts beside its deployed
 workspace rather than using the Linux path embedded by the compiler. Windows
-Git and the .NET 8 SDK must be available; a separate Windows Rust installation
-is not required. The launcher also discovers existing private .NET 8 SDKs in
-the capture toolchain cache and restores the control host before starting it.
+Git must be available; a separate Windows Rust installation is not required.
+The same native Rust executable serves the add-in and Observatory, so there is
+no .NET SDK discovery, restore or host compilation at run time. Windows PowerShell
+and its built-in .NET Framework remain in use for WPF, COM and the Windows process
+helpers; they do not require installing .NET 8.
 
 `bash tools/start-corpus-wsl.sh -PrepareOnly` prepares the working copy without
 building or starting a run. Other arguments, such as `-Preview` or `-Headless`,

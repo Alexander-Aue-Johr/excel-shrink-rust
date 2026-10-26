@@ -294,8 +294,8 @@ impl Room {
             // A previous hidden run must not override today's unchecked box.
             hide_excel: args.hide_excel,
         };
-        let source = repo_root().join("excel-shrink-cli/office-capture/resident-host");
-        let version = host_version(&source)?;
+        let executable = std::env::current_exe()?;
+        let version = host_version(&executable)?;
         let existing_health = health(args.control_room_port);
         let server = if let Some(health) = existing_health {
             ensure!(
@@ -315,41 +315,27 @@ impl Room {
                 "control room port {} is already in use",
                 args.control_room_port
             );
-            // A previous build can remain open for historical inspection. Its
-            // locked DLL must not prevent starting a new version on another port.
+            // Keep a private versioned copy: the Observatory can stay open
+            // after a run without locking the executable needed by cargo build.
             let host = root.join("host").join(&version[..20]);
             fs::create_dir_all(&host)?;
-            let mut build = Command::new("dotnet");
-            build
-                .args([
-                    "build",
-                    "--configuration",
-                    "Release",
-                    "--no-restore",
-                    "--output",
-                ])
-                .arg(&host)
-                .arg(source.join("ResidentCaptureHost.csproj"))
-                .stdout(Stdio::from(fs::File::create(root.join("host-build.log"))?))
-                .stderr(Stdio::from(fs::File::create(
-                    root.join("host-build.stderr.log"),
-                )?));
-            hidden(&mut build);
-            ensure!(
-                build.status()?.success(),
-                "could not build control room host; see {}",
-                root.join("host-build.log").display()
-            );
+            let host_executable = host.join(if cfg!(windows) {
+                "excel-shrink-cli.exe"
+            } else {
+                "excel-shrink-cli"
+            });
+            if !host_executable.is_file() || host_version(&host_executable)? != version {
+                fs::copy(&executable, &host_executable)?;
+            }
             let settings = root.join("host-settings.json");
             write(
                 &settings,
                 &json!({"root":root,"web_root":repo_root().join("excel-shrink-cli/office-capture/control-room"),
                 "port":args.control_room_port,"host_version":version,"initial_controls":controls}),
             )?;
-            let mut command = Command::new("dotnet");
+            let mut command = Command::new(&host_executable);
             command
-                .arg(host.join("ResidentCaptureHost.dll"))
-                .arg("--control-room")
+                .args(["capture-host", "control-room"])
                 .arg(&settings)
                 .stdin(Stdio::null())
                 .stdout(Stdio::from(fs::File::create(root.join("host.stdout.log"))?))
@@ -529,32 +515,19 @@ fn process_started_unix_ms() -> Option<u64> {
     None
 }
 
-fn host_version(source: &Path) -> Result<String> {
-    let mut files = fs::read_dir(source)?
-        .map(|entry| entry.map(|entry| entry.path()))
-        .collect::<std::io::Result<Vec<_>>>()?;
-    files.retain(|path| {
-        path.is_file()
-            && matches!(
-                path.extension().and_then(|extension| extension.to_str()),
-                Some("cs" | "csproj")
-            )
-    });
-    files.sort();
-    ensure!(!files.is_empty(), "control room host sources are missing");
-    let mut bytes = Vec::new();
-    for file in files {
-        let name = file
-            .file_name()
-            .context("host source has no filename")?
-            .to_string_lossy();
-        let contents = fs::read(&file)?;
-        bytes.extend_from_slice(&(name.len() as u64).to_le_bytes());
-        bytes.extend_from_slice(name.as_bytes());
-        bytes.extend_from_slice(&(contents.len() as u64).to_le_bytes());
-        bytes.extend_from_slice(&contents);
+fn host_version(executable: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut file = fs::File::open(executable)?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
     }
-    Ok(artifact_cache::sha256(&bytes))
+    Ok(format!("{:x}", hash.finalize()))
 }
 
 fn health(port: u16) -> Option<Value> {
@@ -842,19 +815,17 @@ mod tests {
         assert_eq!(process_started_unix_ms(), Some(created));
     }
     #[test]
-    fn host_version_tracks_compiled_sources_and_ignores_logs() -> Result<()> {
+    fn host_version_tracks_the_executable_that_will_run() -> Result<()> {
         let root = artifact_cache::unique_path(&std::env::temp_dir(), "control-host-version")?;
         fs::create_dir(&root)?;
-        fs::write(root.join("Program.cs"), b"first host")?;
-        fs::write(root.join("ResidentCaptureHost.csproj"), b"project")?;
-        let first = host_version(&root)?;
+        let executable = root.join("excel-shrink-cli.exe");
+        fs::write(&executable, b"first build")?;
+        let first = host_version(&executable)?;
+        assert_eq!(first, artifact_cache::sha256(b"first build"));
         fs::write(root.join("host.log"), b"runtime messages")?;
-        assert_eq!(host_version(&root)?, first);
-        fs::write(root.join("ControlRoom.cs"), b"new control service")?;
-        let second = host_version(&root)?;
-        assert_ne!(second, first);
-        fs::write(root.join("Program.cs"), b"changed host")?;
-        assert_ne!(host_version(&root)?, second);
+        assert_eq!(host_version(&executable)?, first);
+        fs::write(&executable, b"second build")?;
+        assert_ne!(host_version(&executable)?, first);
         fs::remove_dir_all(root)?;
         Ok(())
     }

@@ -98,8 +98,9 @@ completed before new primary work.
 
 ## Prepare each machine once
 
-Use native Windows with desktop Excel, PowerShell, the .NET 8 SDK, Rust and its
-Windows build tools. Check out the same reviewed commit on every machine. Keep
+Use native Windows with desktop Excel and Windows PowerShell. Building from
+source also requires Rust and its Windows build tools. The HTTP hosts are part
+of the Rust executable; no .NET SDK or separately installed .NET runtime is required. Check out the same reviewed commit on every machine. Keep
 the complete repository, including the Office capture assets, and build in its
 final local location; the executable uses that checkout for its runtime assets.
 

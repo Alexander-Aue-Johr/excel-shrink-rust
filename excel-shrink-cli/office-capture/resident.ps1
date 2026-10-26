@@ -1,5 +1,6 @@
 param(
     [Parameter(Mandatory=$true)][string]$SessionPath,
+    [string]$HostExecutable,
     [ValidateRange(10,600)][int]$StartupTimeoutSeconds = 300,
     [ValidateRange(10,7200)][int]$CaptureTimeoutSeconds = 1800,
     [switch]$Visible,
@@ -15,15 +16,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $session 'clients') -PathType Contai
     throw 'Resident session requires a clients directory.'
 }
 
-# Import the existing staging and registry helpers without running run.ps1.
+Import-Module (Join-Path $PSScriptRoot 'CaptureSetup.psm1') -DisableNameChecking
 $tokens = $null
 $parseErrors = $null
-$ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'run.ps1'), [ref]$tokens, [ref]$parseErrors)
-if ($parseErrors.Count) { throw 'Cannot parse capture launcher helpers.' }
-$runtimeLiteral = "'" + $PSScriptRoot.Replace("'", "''") + "'"
-foreach ($function in $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
-    Invoke-Expression ($function.Extent.Text.Replace('$PSScriptRoot', $runtimeLiteral))
-}
 $archiveLauncher = Join-Path $PSScriptRoot '../src/regression/archive_processes.ps1'
 $ast = [Management.Automation.Language.Parser]::ParseFile($archiveLauncher, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count) { throw 'Cannot parse scoped archive cleanup helpers.' }
@@ -453,47 +448,6 @@ function Wait-BatchRelease {
     return $reason
 }
 
-function Build-ResidentHost([string]$dotnet, [string]$stage) {
-    $source = Join-Path $PSScriptRoot 'resident-host'
-    $key = Get-SourceKey $source
-    $cache = Join-Path $env:LOCALAPPDATA ('excel-shrink-rust\office-capture\resident-host\' + $key)
-    $dll = Join-Path $cache 'ResidentCaptureHost.dll'
-    $buildMutex = New-Object Threading.Mutex($false, ('Local\ExcelShrinkResidentHost-' + $key))
-    $locked = $false
-    try {
-        try { $locked = $buildMutex.WaitOne(180000) } catch [Threading.AbandonedMutexException] { $locked = $true }
-        if (-not $locked) { throw 'Resident host build lock timed out.' }
-        if ((Test-Path -LiteralPath $dll -PathType Leaf) -and
-            (Test-Path -LiteralPath (Join-Path $cache 'ResidentCaptureHost.runtimeconfig.json') -PathType Leaf) -and
-            (Test-Path -LiteralPath (Join-Path $cache 'ResidentCaptureHost.deps.json') -PathType Leaf)) { return $dll }
-        $localSource = Join-Path $stage 'host-source'
-        $localBuild = Join-Path $stage 'host-build'
-        [void][IO.Directory]::CreateDirectory($localSource)
-        foreach ($file in @(Get-ChildItem -LiteralPath $source -File | Where-Object { $_.Extension -in @('.cs', '.csproj') })) {
-            Copy-Item -LiteralPath $file.FullName -Destination $localSource
-        }
-        $project = Join-Path $localSource 'ResidentCaptureHost.csproj'
-        $arguments = 'build {0} -c Release -o {1} --nologo' -f (Quote-Argument $project), (Quote-Argument $localBuild)
-        $build = Start-Process -FilePath $dotnet -ArgumentList $arguments -WorkingDirectory $localSource -WindowStyle Hidden -PassThru `
-            -RedirectStandardOutput (Join-Path $session 'host-build.stdout.log') -RedirectStandardError (Join-Path $session 'host-build.stderr.log')
-        $owned.Add($build)
-        if (-not $build.WaitForExit(180000)) { throw 'Resident host build exceeded 180 seconds.' }
-        $build.Refresh()
-        if (($null -ne $build.ExitCode -and $build.ExitCode -ne 0) -or
-            -not (Test-Path -LiteralPath (Join-Path $localBuild 'ResidentCaptureHost.dll') -PathType Leaf)) {
-            throw 'Resident host build failed; see host-build logs in the session.'
-        }
-        [void][IO.Directory]::CreateDirectory($cache)
-        foreach ($file in @(Get-ChildItem -LiteralPath $localBuild -File)) {
-            Copy-Item -LiteralPath $file.FullName -Destination $cache -Force
-        }
-        return $dll
-    } finally {
-        if ($locked) { $buildMutex.ReleaseMutex() }
-        $buildMutex.Dispose()
-    }
-}
-
 function Update-Resources {
     Update-OtherGroupPause
     if ($null -ne $hostProcess -and -not $script:processingClientReset) { Invoke-ClientResets }
@@ -788,10 +742,7 @@ try {
     $metrics.webview2_user_data_folder = $env:WEBVIEW2_USER_DATA_FOLDER
     $owned = New-Object ResidentProcesses([int]$metrics.memory_limit_mib)
     Update-Resources
-    $dotnet = Get-DotNet8
-    $env:DOTNET_ROOT = Split-Path -Parent $dotnet
-    $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
-    $dll = Build-ResidentHost $dotnet $stage
+    $hostExecutable = Get-CaptureHostExecutable $HostExecutable
     $portProbe = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
     $portProbe.Start()
     try { $port = $portProbe.LocalEndpoint.Port } finally { $portProbe.Stop() }
@@ -805,8 +756,8 @@ try {
     [void][IO.Directory]::CreateDirectory($hostOutput)
     $configPath = Join-Path $stage 'host.json'
     [IO.File]::WriteAllText($configPath, (@{port=$port; web=$webStage; output=$hostOutput; session=$session; launcher_token=$launcherToken} | ConvertTo-Json), $utf8)
-    $arguments = (Quote-Argument $dll) + ' ' + (Quote-Argument $configPath)
-    $hostProcess = Start-Process -FilePath $dotnet -ArgumentList $arguments -WorkingDirectory $stage -WindowStyle Hidden -PassThru `
+    $arguments = 'capture-host resident ' + (Quote-Argument $configPath)
+    $hostProcess = Start-Process -FilePath $hostExecutable -ArgumentList $arguments -WorkingDirectory $stage -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $session 'host.stdout.log') -RedirectStandardError (Join-Path $session 'host.stderr.log')
     $owned.Add($hostProcess)
     $ready = $false

@@ -2,22 +2,6 @@
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Core.psm1')
 
-function Initialize-StudyDotNet([string]$Repo) {
-    $capture=Join-Path $Repo 'excel-shrink-cli/office-capture/run.ps1'
-    if (-not [IO.File]::Exists($capture)) { return }
-    # Reuse capture's SDK discovery, including existing private toolchains.
-    $tokens=$null; $errors=$null
-    $ast=[Management.Automation.Language.Parser]::ParseFile($capture,[ref]$tokens,[ref]$errors)
-    if ($errors.Count) { throw 'Cannot parse the capture SDK discovery helper.' }
-    $helper=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-DotNet8'},$false)
-    if (-not $helper) { throw 'The capture SDK discovery helper is missing.' }
-    $dotnet=& ([scriptblock]::Create($helper.Extent.Text+'; Get-DotNet8'))
-    $env:EXCEL_SHRINK_DOTNET=$dotnet
-    $env:DOTNET_ROOT=[IO.Path]::GetDirectoryName($dotnet)
-    $env:DOTNET_CLI_UI_LANGUAGE='en-US'
-    $env:PATH=$env:DOTNET_ROOT+';'+$env:PATH
-}
-
 function Invoke-StudyReleaseBuild([string]$Repo, [string]$RunDirectory, [string]$CargoExecutable='cargo', $Wsl=$null) {
     $log=Join-Path $RunDirectory 'build.log'
     $stderr=Join-Path $RunDirectory 'build.stderr.log'
@@ -36,27 +20,11 @@ function Invoke-StudyReleaseBuild([string]$Repo, [string]$RunDirectory, [string]
         $destination=Join-Path $Repo 'target/release/excel-shrink-cli.exe'
         [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination))
         [IO.File]::Copy((Join-Path $Wsl.source_repo 'target/x86_64-pc-windows-gnu/release/excel-shrink-cli.exe'),$destination,$true)
-        # The control host uses --no-restore at run time. Restore its local
-        # Windows project once the source copy has been prepared.
-        $project=Join-Path $Repo 'excel-shrink-cli/office-capture/resident-host/ResidentCaptureHost.csproj'
-        $restore=Start-Process -FilePath 'dotnet' -ArgumentList ('restore '+(ConvertTo-WindowsArgument $project)+' --ignore-failed-sources --nologo') -WorkingDirectory $Repo -WindowStyle Hidden -RedirectStandardOutput (Join-Path $RunDirectory 'host-restore.log') -RedirectStandardError (Join-Path $RunDirectory 'host-restore.stderr.log') -Wait -PassThru
-        if ($restore.ExitCode -ne 0) { throw "Control host restore failed. See $(Join-Path $RunDirectory 'host-restore.log')." }
     }
 }
 
-function Get-ControlHostVersion([string]$Repo) {
-    [string[]]$files = @(Get-ChildItem -LiteralPath (Join-Path $Repo 'excel-shrink-cli/office-capture/resident-host') -File | Where-Object { $_.Extension -in @('.cs','.csproj') } | ForEach-Object { $_.FullName })
-    [Array]::Sort($files,[StringComparer]::Ordinal)
-    $stream=[IO.MemoryStream]::new(); $writer=[IO.BinaryWriter]::new($stream)
-    try {
-        foreach($path in $files){
-            $name=[Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFileName($path)); $bytes=[IO.File]::ReadAllBytes($path)
-            $writer.Write([UInt64]$name.Length); $writer.Write($name); $writer.Write([UInt64]$bytes.Length); $writer.Write($bytes)
-        }
-        $writer.Flush(); $hash=[Security.Cryptography.SHA256]::Create()
-        try { return ([BitConverter]::ToString($hash.ComputeHash($stream.ToArray()))).Replace('-','').ToLowerInvariant() }
-        finally { $hash.Dispose() }
-    } finally { $writer.Dispose(); $stream.Dispose() }
+function Get-ControlHostVersion([string]$Executable) {
+    return (Get-FileHash -LiteralPath $Executable -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
 function Normalize-StudyPath([string]$Path) {
@@ -76,7 +44,7 @@ function Update-OwnedControlHost([string]$Repo, $Plan, [int]$Port) {
     }
     $expected=Join-Path $Plan.OutputRoot 'control-room'
     if ((Get-Value $health 'kind') -ne 'excel-shrink-control-room' -or (Normalize-StudyPath $health.root) -ne (Normalize-StudyPath $expected)) { throw "Port $Port belongs to another run or service. Choose another port." }
-    if ($health.host_version -eq (Get-ControlHostVersion $Repo)) { return }
+    if ($health.host_version -eq (Get-ControlHostVersion $Plan.Executable)) { return }
     if (Test-StudyOutputBusy $Plan.OutputRoot) { throw 'The existing corpus run is still active.' }
     # Only refresh our own idle control host. A foreign listener is never stopped.
     $connections=@(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop)
@@ -85,7 +53,14 @@ function Update-OwnedControlHost([string]$Repo, $Plan, [int]$Port) {
     $owner=Get-CimInstance Win32_Process -Filter "ProcessId=$($owners[0])" -ErrorAction Stop
     $settingsPath=Join-Path $expected 'host-settings.json'
     $command=([string]$owner.CommandLine).Replace('\\?\','').Replace('/','\')
-    if ($owner.Name -ne 'dotnet.exe' -or $command -notlike '*--control-room*' -or $command.IndexOf($settingsPath,[StringComparison]::OrdinalIgnoreCase) -lt 0) { throw 'The previous control server cannot be uniquely associated with this output directory.' }
+    # Accept the old host only for this one-time migration; both variants must
+    # still match the exact study settings path and the listening process.
+    $legacyHost = $owner.Name -eq 'dotnet.exe' -and $command -like '*--control-room*'
+    $rustHost = $owner.Name -eq 'excel-shrink-cli.exe' -and $command -like '*capture-host control-room*'
+    if ((-not $legacyHost -and -not $rustHost) -or
+        $command.IndexOf($settingsPath, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw 'The previous control server cannot be uniquely associated with this output directory.'
+    }
     $process=Get-Process -Id $owner.ProcessId -ErrorAction Stop
     if ([math]::Abs(($process.StartTime.ToUniversalTime()-$owner.CreationDate.ToUniversalTime()).TotalSeconds) -gt 1) { throw 'The control server process identity has changed.' }
     $process | Stop-Process -Force -ErrorAction Stop
@@ -98,7 +73,6 @@ function Start-StudyLaunch {
     try {
         try { $owned=$gate.WaitOne(0) } catch [Threading.AbandonedMutexException] { $owned=$true }
         if (-not $owned -or (Test-StudyOutputBusy $Plan.OutputRoot)) { throw "This output directory is already in use. Open the active run in the Observatory: $($Plan.Observatory)" }
-        Initialize-StudyDotNet $Repo
         [void][IO.Directory]::CreateDirectory($Plan.RunDirectory)
         Save-StudyJson $ConfigurationPath $Configuration
         Save-StudyJson $Plan.RequestFile $Plan.Request

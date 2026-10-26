@@ -399,6 +399,8 @@ impl ResidentCapture {
                 "-File",
             ])
             .arg(windows_path(&script)?)
+            .arg("-HostExecutable")
+            .arg(windows_path(&crate::capture_host::executable()?)?)
             .arg("-SessionPath")
             .arg(windows_path(&directory)?)
             .arg("-StartupTimeoutSeconds")

@@ -4,12 +4,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 Add-Type -Path (Join-Path $PSScriptRoot '..\CaptureWorkbook.cs') `
     -ReferencedAssemblies @('System.IO.Compression', 'System.IO.Compression.FileSystem', 'System.Xml')
 
-# Load only the production wrapper, never execute the capture launcher.
-$tokens = $null; $errors = $null
-$ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '..\run.ps1'), [ref]$tokens, [ref]$errors)
-if ($errors.Count) { throw ($errors | Out-String) }
-$wrapper = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Set-InitialWorksheet' }, $true)
-Invoke-Expression $wrapper.Extent.Text
+Import-Module (Join-Path $PSScriptRoot '../CaptureSetup.psm1') -Force -DisableNameChecking
 
 function Assert-Equal($actual, $expected, [string]$message) {
     if ($actual -cne $expected) { throw "$message`: expected '$expected', got '$actual'" }
