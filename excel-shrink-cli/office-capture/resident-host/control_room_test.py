@@ -1,4 +1,4 @@
-"""Loopback control API checks; pass --host path/to/ResidentCaptureHost.dll."""
+"""Loopback control API checks for the Rust CLI or a legacy C# host DLL."""
 import argparse
 import concurrent.futures
 import ctypes
@@ -17,7 +17,8 @@ import urllib.request
 
 HERE = Path(__file__).resolve().parent
 parser = argparse.ArgumentParser(add_help=False)
-parser.add_argument("--host", type=Path, default=HERE / "bin/Debug/net8.0/ResidentCaptureHost.dll")
+parser.add_argument("--host", type=Path,
+                    default=HERE.parents[2] / "target/release/excel-shrink-cli.exe")
 OPTIONS, REMAINING = parser.parse_known_args()
 
 
@@ -35,6 +36,7 @@ def current_process_started_ms():
 
 class ControlRoomProtocol(unittest.TestCase):
     def setUp(self):
+        (HERE / "obj").mkdir(exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(prefix="control-room-", dir=HERE / "obj")
         self.directory = Path(self.temp.name)
         self.data = self.directory / "data"
@@ -51,8 +53,12 @@ class ControlRoomProtocol(unittest.TestCase):
             "initial_controls": {"target_groups": 2, "open_timeout_seconds": 900},
         }), encoding="utf-8")
         self.log = (self.directory / "server.log").open("wb")
+        host = OPTIONS.host.resolve()
+        command = (["dotnet", str(host), "--control-room", str(settings)]
+                   if host.suffix == ".dll" else
+                   [str(host), "capture-host", "control-room", str(settings)])
         self.process = subprocess.Popen(
-            ["dotnet", str(OPTIONS.host.resolve()), "--control-room", str(settings)],
+            command,
             stdout=self.log, stderr=self.log,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
