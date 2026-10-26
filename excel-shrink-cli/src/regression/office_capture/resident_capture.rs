@@ -7,6 +7,8 @@ use serde::Serialize;
 use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
+#[path = "resident_events.rs"]
+mod events;
 #[path = "resident_capture_live.rs"]
 mod live;
 #[path = "tall_sheet_analysis.rs"]
@@ -45,6 +47,8 @@ pub(in crate::regression) struct ResidentCapture {
     original: PathBuf,
     directory: PathBuf,
     child: Child,
+    events: events::ResidentEvents,
+    timings: live::PipelineTimings,
     plans: BTreeMap<String, PairedPlan>,
     configs: BTreeMap<String, Vec<Value>>,
     aliases: BTreeMap<String, String>,
@@ -375,6 +379,7 @@ impl ResidentCapture {
                     .join(format!("{command}.json")),
                 &json!({
                     "id":command,"kind":"plan","sheets":configs[name],
+                    "queued_unix_ms":chrono::Utc::now().timestamp_millis(),
                     "tile_megapixels":live.as_ref().map_or(32, |live| live.tile_megapixels())
                 }),
             )?;
@@ -428,11 +433,19 @@ impl ResidentCapture {
                 &serde_json::to_value(barrier)?,
             )?;
         }
+        let event_token = uuid::Uuid::new_v4().simple().to_string();
+        publish(
+            &directory.join("coordinator-token.json"),
+            &json!({"token":event_token}),
+        )?;
+        let events = events::ResidentEvents::start(&directory, event_token)?;
         let child = command.spawn().context("start resident Excel capture")?;
         Ok(Self {
             original: original.to_owned(),
             directory,
             child,
+            events,
+            timings: live::PipelineTimings::default(),
             plans,
             configs,
             aliases,
@@ -474,6 +487,8 @@ impl ResidentCapture {
         }
         let mut metrics: Value = serde_json::from_slice(&fs::read(path)?)?;
         metrics["capture_client_aliases"] = json!(self.aliases);
+        metrics["event_transport"] = self.events.snapshot();
+        metrics["pipeline_timings"] = serde_json::to_value(&self.timings)?;
         Ok(Some(metrics))
     }
 
@@ -487,6 +502,7 @@ impl ResidentCapture {
         self.sequence += 1;
         let id = format!("{:06}", self.sequence);
         body["id"] = json!(id);
+        body["queued_unix_ms"] = json!(chrono::Utc::now().timestamp_millis());
         crate::regression::archive::work_state::event(
             "waiting_client",
             "command_queued",
@@ -503,6 +519,7 @@ impl ResidentCapture {
                 .join(format!("{id}.json")),
             &body,
         )?;
+        self.events.command_published();
         Ok(id)
     }
 
@@ -567,6 +584,7 @@ impl ResidentCapture {
             }
             if response.exists() {
                 let result: Value = serde_json::from_slice(&fs::read(&response)?)?;
+                self.timings.commands_completed += 1;
                 ensure!(
                     result["ok"] == true,
                     "resident {client}/{command}: {}",
@@ -598,7 +616,9 @@ impl ResidentCapture {
                 clock.wall_elapsed().as_secs_f64(),
                 clock.credited().as_secs_f64()
             );
-            std::thread::sleep(Duration::from_millis(100));
+            let waiting = Instant::now();
+            self.events.wait()?;
+            self.timings.wait_ms += waiting.elapsed().as_secs_f64() * 1000.0;
         }
     }
 

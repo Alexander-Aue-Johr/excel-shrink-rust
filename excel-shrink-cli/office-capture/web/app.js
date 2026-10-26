@@ -229,13 +229,15 @@
 
   async function run() {
     if (residentClient) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = '/resident.js';
-        script.onload = resolve;
-        script.onerror = () => reject(new Error('Cannot load resident capture worker'));
-        document.head.appendChild(script);
-      });
+      for (const source of ['/resident-connection.js', '/resident.js']) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = source;
+          script.onload = resolve;
+          script.onerror = () => reject(new Error(`Cannot load resident capture script: ${source}`));
+          document.head.appendChild(script);
+        });
+      }
       return window.ResidentCapture.run(residentClient, {
         office, bounds, checkedWorksheet, rowHeights, hideGridlines, verifyDrawingBounds,
         phase, progress, show, connection

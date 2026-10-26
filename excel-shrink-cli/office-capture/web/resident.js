@@ -1,4 +1,4 @@
-/* global CaptureGeometry, CaptureOverflow */
+/* global CaptureGeometry, CaptureOverflow, ResidentConnection */
 (function (root) {
   'use strict';
 
@@ -52,6 +52,17 @@
     const geometries = new Map();
     let workbookVerified = false;
     let pendingPngCharacters = 0, activeBatchPixels = 0, activeBatchTiles = 0;
+    let timings;
+    let lastCommandTiming;
+
+    async function measure(field, action) {
+      const started = performance.now();
+      try {
+        return await action();
+      } finally {
+        if (timings) timings[field] += performance.now() - started;
+      }
+    }
 
     function resources() {
       const sample = {
@@ -63,6 +74,7 @@
         active_batch_pixels: activeBatchPixels, active_batch_tiles: activeBatchTiles,
         script_evaluations: root.__excelShrinkPaneRuntime?.evaluations ?? 0
       };
+      if (lastCommandTiming) sample.last_command_timing = {...lastCommandTiming};
       // Chromium may expose approximate JS heap figures. They do not include
       // decoded/native images; launcher process snapshots cover that separately.
       if (performance.memory) {
@@ -120,13 +132,13 @@
 
     async function render(state, tile, hash = true) {
       await geometryFor(state);
-      const base64 = await office(async context => {
+      const base64 = await measure('capture_ms', () => office(async context => {
         const image = context.workbook.worksheets.getItem(state.sheet.name)
           .getRange(CaptureGeometry.address(tile.raw)).getImage();
         await context.sync();
         return image.value;
-      });
-      return finishImage(state, tile, base64, hash);
+      }));
+      return measure('finish_image_ms', () => finishImage(state, tile, base64, hash));
     }
 
     async function verifyWorkbook() {
@@ -227,7 +239,7 @@
           error.code = 'CAPTURE_CHANGED';
           throw error;
         }
-        const receipt = await transport.image(command.id, expected, image.bytes);
+        const receipt = await measure('upload_ms', () => transport.image(command.id, expected, image.bytes));
         if (typeof receipt.image_path !== 'string' || !receipt.image_path) throw new Error('Missing image receipt');
         result.images.push({...expected, image_path: receipt.image_path});
       }
@@ -263,20 +275,21 @@
       // immediately; the host does not wait for the final batch result to paint it.
       activeBatchTiles = states.length;
       activeBatchPixels = states.reduce((sum, state) => sum + state.tile.width * state.tile.expectedHeight, 0);
-      const base64s = await office(async context => {
+      const base64s = await measure('capture_ms', () => office(async context => {
         const worksheet = context.workbook.worksheets.getItem(states[0].sheet.name);
         const images = states.map(state => worksheet.getRange(CaptureGeometry.address(state.tile.raw)).getImage());
         await context.sync();
         return images.map(image => image.value);
-      });
+      }));
       pendingPngCharacters = base64s.reduce((sum, value) => sum + value.length, 0);
       const result = {images: []};
       for (let index = 0; index < states.length; index++) {
         const state = states[index];
-        const image = await finishImage(state, state.tile, base64s[index], false);
+        const image = await measure('finish_image_ms', () => finishImage(state, state.tile, base64s[index], false));
         pendingPngCharacters -= base64s[index].length;
         base64s[index] = null;
-        const receipt = await transport.image(command.id, {...state.metadata, sha256: undefined}, image.bytes);
+        const receipt = await measure('upload_ms', () => transport.image(command.id,
+          {...state.metadata, sha256: undefined}, image.bytes));
         if (typeof receipt.image_path !== 'string' || !receipt.image_path ||
             typeof receipt.sha256 !== 'string' || receipt.width !== image.width || receipt.height !== image.height) {
           throw new Error('Missing or invalid image-first receipt');
@@ -286,42 +299,62 @@
       return result;
     }
 
-    return {verifyWorkbook, resources, async execute(command) {
-      const started = performance.now();
-      let result;
-      try {
-        if (command.kind === 'capture' || command.kind === 'plan') result = await capture(command);
-        else if (command.kind === 'images') result = await images(command);
-        else if (command.kind === 'capture_images') result = await captureImages(command);
-        else if (command.kind === 'release') {
-          if (command.capture_id) {
-            captures.delete(command.capture_id);
-            for (const id of geometries.keys()) if (id.startsWith(command.capture_id + ':')) geometries.delete(id);
-          } else {captures.clear(); geometries.clear();}
-          result = {};
-        } else throw new Error(`Unknown resident command: ${command.kind}`);
-        result.elapsed_ms = performance.now() - started;
-        result.checksum_tiles = command.kind === 'capture' ? result.tiles?.length ?? 0 : 0;
-        result.uploaded_images = result.images?.length ?? 0;
-        return result;
-      } finally {
-        pendingPngCharacters = 0;
-        activeBatchPixels = 0;
-        activeBatchTiles = 0;
+    return {
+      verifyWorkbook,
+      resources,
+      recordAcknowledgment(command, measured, acknowledgment) {
+        lastCommandTiming = {command_id: command.id, kind: command.kind, ...measured, ...acknowledgment};
+      },
+      async execute(command) {
+        const started = performance.now();
+        timings = {capture_ms: 0, finish_image_ms: 0, upload_ms: 0};
+        let result;
+        try {
+          if (command.kind === 'capture' || command.kind === 'plan') result = await capture(command);
+          else if (command.kind === 'images') result = await images(command);
+          else if (command.kind === 'capture_images') result = await captureImages(command);
+          else if (command.kind === 'release') {
+            if (command.capture_id) {
+              captures.delete(command.capture_id);
+              for (const id of geometries.keys()) {
+                if (id.startsWith(command.capture_id + ':')) geometries.delete(id);
+              }
+            } else {
+              captures.clear();
+              geometries.clear();
+            }
+            result = {};
+          } else throw new Error(`Unknown resident command: ${command.kind}`);
+          result.elapsed_ms = performance.now() - started;
+          result.timings = {...timings, execution_ms: result.elapsed_ms};
+          lastCommandTiming = {command_id: command.id, kind: command.kind, ...result.timings};
+          result.checksum_tiles = command.kind === 'capture' ? result.tiles?.length ?? 0 : 0;
+          result.uploaded_images = result.images?.length ?? 0;
+          return result;
+        } finally {
+          pendingPngCharacters = 0;
+          activeBatchPixels = 0;
+          activeBatchTiles = 0;
+          timings = undefined;
+        }
       }
-    }};
+    };
   }
 
   async function run(client, helpers) {
     let token;
-    async function request(path, body, headers = {}) {
+    async function request(path, body, headers = {}, timeoutMs = 120000) {
       const abort = new AbortController();
-      const timer = setTimeout(() => abort.abort(), 120000);
+      const timer = setTimeout(() => abort.abort(), timeoutMs);
       try {
         const response = await fetch(path, {cache: 'no-store', signal: abort.signal,
           method: body === undefined ? 'GET' : 'POST',
           headers: {...(token ? {'X-Client-Token': token} : {}), ...headers}, body});
-        if (!response.ok) throw new Error(`${path}: HTTP ${response.status} ${(await response.text()).slice(0, 500)}`);
+        if (!response.ok) {
+          const error = new Error(`${path}: HTTP ${response.status} ${(await response.text()).slice(0, 500)}`);
+          error.status = response.status;
+          throw error;
+        }
         return await response.json();
       } finally {clearTimeout(timer);}
     }
@@ -345,6 +378,7 @@
         {'Content-Type':'application/json'});} catch (_) { /* Main job surfaces lost host. */ }
       finally {heartbeatBusy = false;}
     }, 5000);
+    let jobs;
     try {
       helpers.phase('Verifying workbook identity');
       try {
@@ -356,22 +390,19 @@
           {'Content-Type': 'application/json'});} catch (_) { /* Preserve the original failure. */ }
         throw error;
       }
-      while (true) {
-        helpers.phase('Waiting for comparison jobs');
-        const command = await request(`/job?client=${clientPath}`);
-        if (command.idle) {await sleep(200); continue;}
-        let result;
-        try {result = {ok: true, ...await worker.execute(command)};}
-        catch (error) {result = {ok: false, error: {
-          code: error && error.code ? error.code : 'CAPTURE_FAILED',
-          message: error && error.message ? error.message : String(error)
-        }};}
-        result.pane_resources = worker.resources();
-        await request(`/result/${clientPath}/${encodeURIComponent(command.id)}`, JSON.stringify(result),
-          {'Content-Type': 'application/json'});
-        if (!result.ok) throw new Error(result.error.message);
-      }
-    } finally {clearInterval(heartbeat);}
+      const url = new URL('/events', location.href);
+      url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      jobs = ResidentConnection.createJobConnection({url: url.href, client, token,
+        connection: helpers.connection});
+      await ResidentConnection.runJobs({jobs, worker, sleep, phase: helpers.phase,
+        sendResult(id, body, timeoutMs) {
+          return request(`/result/${clientPath}/${encodeURIComponent(id)}`, body,
+            {'Content-Type': 'application/json'}, timeoutMs);
+        }});
+    } finally {
+      jobs?.close();
+      clearInterval(heartbeat);
+    }
   }
 
   const api = {run, createWorker, encoded, selectedTiles};

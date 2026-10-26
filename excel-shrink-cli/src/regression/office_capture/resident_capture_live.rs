@@ -3,6 +3,20 @@
 use super::*;
 use std::cell::RefCell;
 
+/// Totals measured with each process's monotonic clock. Host upload durations
+/// can overlap coordinator work; these fields are not additive wall time.
+#[derive(Default, Serialize)]
+pub(super) struct PipelineTimings {
+    pub wait_ms: f64,
+    pub decode_ms: f64,
+    pub preview_ms: f64,
+    pub compare_ms: f64,
+    pub upload_receive_ms: f64,
+    pub upload_validate_publish_ms: f64,
+    pub commands_completed: u64,
+    pub images_received: u64,
+}
+
 pub(super) struct LiveCapture {
     root: PathBuf,
     directory: PathBuf,
@@ -694,6 +708,7 @@ impl ResidentCapture {
                 );
                 match self.next_live_event(&mut commands)? {
                     CaptureEvent::Receipt(index, offset, receipt) => {
+                        let decoding = Instant::now();
                         let job = &mut commands[index];
                         let mut tile = job.tiles[offset].clone();
                         let metadata: Tile = serde_json::from_value(receipt.clone())?;
@@ -729,6 +744,22 @@ impl ResidentCapture {
                             "image-first decoded dimensions differ"
                         );
                         tile.sha256 = artifact_cache::sha256(pixels.as_raw());
+                        self.timings.decode_ms += decoding.elapsed().as_secs_f64() * 1000.0;
+                        self.timings.images_received += 1;
+                        for (key, total) in [
+                            ("upload_receive_ms", &mut self.timings.upload_receive_ms),
+                            (
+                                "upload_validate_publish_ms",
+                                &mut self.timings.upload_validate_publish_ms,
+                            ),
+                        ] {
+                            if let Some(value) = receipt["timings"][key]
+                                .as_f64()
+                                .filter(|value| value.is_finite() && *value >= 0.0)
+                            {
+                                *total += value;
+                            }
+                        }
                         crate::regression::archive::work_state::event(
                             "comparing_images",
                             "image_received",
@@ -755,6 +786,7 @@ impl ResidentCapture {
                         core_pixels += tile.width as u64 * tile.height as u64;
                         png_bytes += bytes;
                         if !control_only {
+                            let previewing = Instant::now();
                             self.live.as_mut().unwrap().received(
                                 &reference.tiles[position],
                                 &job.client,
@@ -762,12 +794,14 @@ impl ResidentCapture {
                                 &pixels,
                                 &self.aliases,
                             )?;
+                            self.timings.preview_ms += previewing.elapsed().as_secs_f64() * 1000.0;
                         }
                         let peer_images = received.entry(position).or_default();
                         peer_images.insert(job.client.clone(), (tile, path, pixels));
                         if peer_images.len() == clients.len() {
                             let peer_images = received.remove(&position).unwrap();
                             if !control_only {
+                                let comparing = Instant::now();
                                 let target = &reference.tiles[position];
                                 let keep = self.live.as_mut().unwrap().retain_tile(
                                     target,
@@ -775,6 +809,8 @@ impl ResidentCapture {
                                     &peer_images,
                                     height_sheets.contains(&target.sheet_index),
                                 )?;
+                                self.timings.compare_ms +=
+                                    comparing.elapsed().as_secs_f64() * 1000.0;
                                 crate::regression::archive::work_state::event(
                                     "comparing_images",
                                     "tile_compared",
@@ -823,6 +859,9 @@ impl ResidentCapture {
             for path in discard_after_result {
                 fs::remove_file(path)?;
             }
+            self.live.as_mut().unwrap().state["pipeline_timings"] =
+                serde_json::to_value(&self.timings)?;
+            self.live.as_mut().unwrap().state["event_transport"] = self.events.snapshot();
             self.live.as_mut().unwrap().record_batch(
                 captured_pixels,
                 core_pixels,
@@ -898,7 +937,9 @@ impl ResidentCapture {
             if let Some(ready) = ready_response(&self.directory, pending) {
                 return Ok(CaptureEvent::Response(ready));
             }
-            std::thread::sleep(Duration::from_millis(100));
+            let waiting = Instant::now();
+            self.events.wait()?;
+            self.timings.wait_ms += waiting.elapsed().as_secs_f64() * 1000.0;
         }
     }
 }
