@@ -1,6 +1,8 @@
-"""Resident HTTP protocol checks; build the Release host before running."""
+"""Resident HTTP contract checks for the Rust CLI or a legacy host DLL."""
+import argparse
 import base64
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -14,10 +16,25 @@ import urllib.request
 import uuid
 
 
+HERE = Path(__file__).resolve().parent
+parser = argparse.ArgumentParser(add_help=False)
+parser.add_argument("--host", type=Path, default=HERE.parents[2] / "target/release/excel-shrink-cli.exe")
+OPTIONS, REMAINING = parser.parse_known_args()
+
+
+def host_command(settings):
+    host = OPTIONS.host.resolve()
+    if host.suffix.lower() == ".dll":
+        return ["dotnet", str(host), str(settings)]
+    return [str(host), "capture-host", "resident", str(settings)]
+
+
 class HostProtocol(unittest.TestCase):
     def setUp(self):
         self.root = Path(__file__).resolve().parent
+        (self.root / "obj").mkdir(exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(prefix="resident-host-", dir=self.root / "obj")
+        self.addCleanup(self.temp.cleanup)
         self.session = Path(self.temp.name)
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
@@ -25,9 +42,12 @@ class HostProtocol(unittest.TestCase):
         settings = {"session": str(self.session), "web": str(self.root.parent / "web"), "port": port, "launcher_token":"test-launcher"}
         config = self.session / "host.json"
         config.write_text(json.dumps(settings), encoding="utf-8")
-        self.process = subprocess.Popen(["dotnet", str(self.root / "bin/Release/net8.0/ResidentCaptureHost.dll"), str(config)],
-                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        self.log = (self.session / "server.log").open("wb")
+        self.addCleanup(self.log.close)
+        self.process = subprocess.Popen(host_command(config),
+                                        stdout=self.log, stderr=self.log,
                                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self.addCleanup(self.stop_host)
         self.url = f"http://localhost:{port}"
         self.token = None
         for _ in range(100):
@@ -35,15 +55,17 @@ class HostProtocol(unittest.TestCase):
                 self.request("/health")
                 break
             except urllib.error.URLError:
+                if self.process.poll() is not None:
+                    self.fail("Resident host exited: " + (self.session / "server.log").read_text())
                 time.sleep(.05)
         else:
             self.fail("Resident host did not start")
         self.write("clients/one.json", {"client_id": "one", "workbook": "test.xlsx", "sheets": []})
 
-    def tearDown(self):
-        self.process.terminate()
+    def stop_host(self):
+        if self.process.poll() is None:
+            self.process.terminate()
         self.process.wait(timeout=10)
-        self.temp.cleanup()
 
     def write(self, relative, data):
         path = self.session / relative
@@ -230,6 +252,51 @@ class HostProtocol(unittest.TestCase):
             self.request("/result/one/tile",{"ok":True,"images":[{**tile,**receipt,"sha256":"f"*64}]})
         self.request("/result/one/tile",{"ok":True,"images":[{**tile,**receipt}]})
 
+    def test_slow_image_upload_does_not_block_a_peer_startup_or_heartbeat(self):
+        self.connect()
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==")
+        tile = {"sheet_index": 1, "tile_index": 0, "width": 1, "height": 1}
+        self.command({"id": "upload", "kind": "capture_images", "tiles": [tile]})
+        port = json.loads((self.session / "host.json").read_text())["port"]
+        connection = http.client.HTTPConnection("localhost", port, timeout=5)
+        self.addCleanup(connection.close)
+        connection.putrequest("POST", "/image/one/upload/1/0")
+        connection.putheader("Content-Type", "image/png")
+        connection.putheader("Content-Length", str(len(png)))
+        connection.putheader("X-Client-Token", self.token)
+        connection.endheaders()
+        connection.send(png[:24])
+
+        self.write("clients/peer.json", {"client_id": "peer", "workbook": "peer.xlsx", "sheets": []})
+        peer = self.configure("peer")
+        self.assertTrue(self.request("/heartbeat?client=peer", extra={"X-Client-Token": peer["client_token"]})["ok"])
+        connection.send(png[24:])
+        response = connection.getresponse()
+        self.assertEqual(response.status, 200)
+        receipt = json.loads(response.read())
+        self.request("/result/one/upload", {"ok": True, "images": [receipt]})
+
+    def test_retired_image_session_and_oversized_diagnostics_fail_before_reading_bodies(self):
+        self.connect()
+        retired_token = self.token
+        self.connect()
+        port = json.loads((self.session / "host.json").read_text())["port"]
+        for path, token, length in [
+            ("/image/one/old/1/0", retired_token, 1024 * 1024),
+            ("/heartbeat?client=one", self.token, 8193),
+        ]:
+            with self.subTest(path=path):
+                connection = http.client.HTTPConnection("localhost", port, timeout=3)
+                try:
+                    connection.putrequest("POST", path)
+                    connection.putheader("Content-Length", str(length))
+                    connection.putheader("X-Client-Token", token)
+                    connection.endheaders()
+                    # Deliberately send no body. Rejection must not wait for it.
+                    self.assertEqual(connection.getresponse().status, 400)
+                finally:
+                    connection.close()
+
     def test_only_an_actual_heartbeat_updates_the_heartbeat_timestamp(self):
         self.connect()
         self.assertIsNone(self.request("/health")["clients"]["one"]["last_heartbeat_at"])
@@ -320,8 +387,8 @@ class HostProtocol(unittest.TestCase):
         self.write("clients/two.json",{"client_id":"two","workbook":"two.xlsx","sheets":[]})
         self.write("control/control.json",{"paused":False})
         environment = {**os.environ,"EXCEL_SHRINK_CONTROL_ROOM_DIR":str(self.session / "control")}
-        self.process = subprocess.Popen(["dotnet",str(self.root / "bin/Release/net8.0/ResidentCaptureHost.dll"),str(self.session / "host.json")],
-                                        env=environment,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+        self.process = subprocess.Popen(host_command(self.session / "host.json"),
+                                        env=environment,stdout=self.log,stderr=self.log,
                                         creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
         for _ in range(100):
             try:
@@ -346,4 +413,4 @@ class HostProtocol(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[__file__, *REMAINING])

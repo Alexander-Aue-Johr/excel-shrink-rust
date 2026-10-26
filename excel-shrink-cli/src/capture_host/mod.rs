@@ -17,6 +17,7 @@ use tokio::io::AsyncWriteExt;
 use tower_http::services::ServeDir;
 
 mod classic;
+mod resident;
 
 /// Use the same Windows build for orchestration and HTTP hosting. WSL callers
 /// can select a native companion executable explicitly.
@@ -48,7 +49,7 @@ pub fn executable() -> Result<std::path::PathBuf> {
 
 pub fn run(arguments: Vec<OsString>) -> Result<()> {
     let Some((mode, arguments)) = arguments.split_first() else {
-        bail!("Expected capture-host classic.");
+        bail!("Expected capture-host resident or classic.");
     };
     // Many comparison groups may have their own host. Two async executor
     // threads per host avoid allocating a thread for every machine CPU.
@@ -58,7 +59,9 @@ pub fn run(arguments: Vec<OsString>) -> Result<()> {
         .build()?;
     runtime.block_on(async {
         match mode.to_str() {
-
+            Some("resident") if arguments.len() == 1 => {
+                resident::run(Path::new(&arguments[0])).await
+            }
 
             Some("classic") => classic::run(arguments.to_vec()).await,
             _ => bail!("Invalid capture-host mode or settings arguments."),
