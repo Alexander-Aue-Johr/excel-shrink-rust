@@ -77,9 +77,10 @@ export function workerRows(group) {
     const job = monitor.active_job;
     return { ...common, id: client.worker_id, clientId: client.client_id, kind: 'Excel / Office.js',
       pid: client.pid, processStarted: client.process_started_unix_ms, alive: client.process_alive, windowMode: client.window_mode,
+      sampledAt: group.launcher_sampled_unix_ms,
       state, stateSince: monitor.state === state ? monitor.state_since : client.stage_since,
       category: category(state, client.process_alive, common.active), lastProgress, lastSuccess, lastEvent,
-      heartbeat: client.last_heartbeat_at, heartbeatCount: client.heartbeat_count ?? 0,
+      heartbeat: client.last_heartbeat_at, heartbeatCount: client.heartbeat_count,
       waitReason: waits[monitor.wait_reason] || monitor.wait_reason || (state === 'waiting_for_addin'
         ? 'Excel opening or add-in initialization; internal wait reason unknown' : null),
       job, sheet: job?.locations?.map(item => item.sheet_name || item.name || (item.sheet_index != null ? `Sheet ${item.sheet_index}` : null)).filter(Boolean).filter((name, i, names) => names.indexOf(name) === i).join(', ') || monitor.sheet_name,
@@ -100,7 +101,7 @@ export function workerRows(group) {
       lastSuccess: monitor.last_success, waitReason: blocked ? 'Process ownership or exit could not be confirmed; this slot stays reserved while cleanup retries.' : monitor.wait_reason,
       error: blocked ? group.cleanup_pending.error : null,
       sheet: monitor.sheet_name || monitor.last_event?.details?.sheet_name,
-      events: [...(monitor.events || [])].reverse().slice(0, 24), heartbeat: null, heartbeatCount: 0 });
+      events: [...(monitor.events || [])].reverse().slice(0, 24), heartbeat: null, heartbeatCount: undefined });
   }
   return rows;
 }

@@ -9,9 +9,9 @@ export function runTests() {
   assert(startup.percent === 25 && startup.count === '250 / 1,000' && startup.elapsed === '1 min 0 s', 'Startup must report measured stage progress');
   assert(startupSummary({ stage: 'opening_archive', completed: 0, total: null }).percent === null, 'Unknown totals must stay indeterminate');
   assert(startupSummary({ stage: 'loading_records', completed: 0, total: 0 }).percent === null, 'Empty phases must not divide by zero');
-  const group = { id: 'group', attempt_id: 'attempt-2', active: true, workbook: 'Book.xlsx', clients: [{
+  const group = { id: 'group', attempt_id: 'attempt-2', active: true, workbook: 'Book.xlsx', launcher_sampled_unix_ms: start, clients: [{
     worker_id: 'group/attempt-2/original/123/456', client_id: 'original', stage: 'capturing', pid: 123,
-    process_alive: true, last_heartbeat_at: '2026-10-24T10:00:00Z', heartbeat_count: 50,
+    process_alive: true, window_mode: 'private-desktop', last_heartbeat_at: '2026-10-24T10:00:00Z', heartbeat_count: 50,
     last_activity_at: '2026-10-24T10:00:00Z',
     monitor: { state: 'capturing', state_since: '2026-10-24T09:00:00Z',
       last_progress_at: '2026-10-24T09:10:00Z', last_event: { at: '2026-10-24T09:20:00Z', kind: 'waiting' },
@@ -23,6 +23,9 @@ export function runTests() {
   assert(row.category === 'working' && row.state === 'capturing', 'A long command alone is not an error.');
   assert(row.sheet === 'Sheet1' && row.job.id === 'command-7', 'Actual command locations identify the current sheet.');
   assert(row.id.includes('attempt-2'), 'Worker identity must distinguish retries.');
+  assert(row.sampledAt === start && row.windowMode === 'private-desktop', 'Signal observations retain their sample time and Excel desktop mode.');
+  const unknownHeartbeat = workerRows({ ...group, clients: [{ ...group.clients[0], heartbeat_count: undefined }] })[0];
+  assert(unknownHeartbeat.heartbeatCount === undefined, 'Missing heartbeat counters must remain unknown.');
   const noProgress = workerRows({ ...group, clients: [{ ...group.clients[0], monitor: undefined }] })[0];
   assert(noProgress.lastProgress === null, 'Legacy LastActivity must not be relabelled as progress.');
   const waiting = workerRows({ ...group, clients: [{ ...group.clients[0], stage: 'waiting_for_addin', monitor: {} }] })[0];
@@ -31,6 +34,7 @@ export function runTests() {
     state_since_unix_ms: start, last_progress_unix_ms: start + 5000,
     last_event: { at_unix_ms: start + 5000, kind: 'shrunk' }, events: [] } })[0];
   assert(coordinator.kind === 'Rust / Host' && coordinator.heartbeat === null, 'Host phases must not invent an Office.js heartbeat.');
+  assert(coordinator.heartbeatCount === undefined, 'Host workers must not invent an Office.js heartbeat counter.');
   assert(timestamp(coordinator.lastEvent) === start + 5000 && age(coordinator.stateSince, start + 5000) === 5, 'Numeric Rust timestamps retain their actual age.');
   const blocked = workerRows({ ...group, clients: [], cleanup_pending: {state:'waiting',since_unix_ms:start,error:'Access denied'},
     coordinator: {phase:'finished',process_alive:true,pid:42} })[0];
