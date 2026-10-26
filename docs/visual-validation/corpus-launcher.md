@@ -5,6 +5,31 @@ same kind of PowerShell/WPF dialog used by the existing workbook demo tasks.
 The dialog configures the existing `regression study` runner; it does not create
 a separate results format or a separate comparison engine.
 
+For a terminal command independent of VS Code, run this once from the repository:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\install-corpus-command.ps1
+```
+
+Then open a new terminal and paste this command from any directory:
+
+```powershell
+excel-shrink-visual-validation -Corpus Enron -Partition 3/4
+```
+
+`-Corpus` selects a corpus from the saved launcher configuration. `-Partition`
+selects its size partition: `3/4` is the third quarter, `1/4` is the first, and
+`all` selects the whole corpus. Both arguments are explicit so the command shows
+which work it requests. The remaining options come from the saved configuration;
+processing order defaults to `size-desc` (largest first), so no direction option
+is needed. Add `-Order size-asc` or `-Order size-desc` to override the saved order.
+
+The command opens the Observatory in the browser and prints its URL and log
+paths. If the requested run is already active, it opens that Observatory without
+starting a second runner. Add `-NoBrowser` to print the link without opening the
+browser. Windows finds the installed command through your user `PATH`; neither
+changing into the repository with `cd` nor keeping VS Code open is required.
+
 In a WSL workspace the task uses `tools/start-corpus-wsl.sh` and
 `tools/start-corpus-wsl.ps1` to prepare a Windows working copy under
 `%LOCALAPPDATA%\excel-shrink-rust\wsl-workspaces\<workspace-id>\repo`.

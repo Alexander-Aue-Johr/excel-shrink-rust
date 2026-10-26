@@ -1,0 +1,126 @@
+﻿[CmdletBinding()]
+param(
+    [string]$Corpus,
+    [string]$Partition,
+    [ValidateSet('size-asc','size-desc')][string]$Order,
+    [string]$ConfigurationPath,
+    [string]$ExcelShrinkExe,
+    [switch]$Build,
+    [switch]$SkipBuild,
+    [switch]$NoBrowser
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+Import-Module (Join-Path $PSScriptRoot 'corpus-launcher/Core.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'corpus-launcher/Launch.psm1') -Force
+
+function Wait-CorpusObservatory([string]$Url, [string]$OutputRoot) {
+    $expected = [IO.Path]::GetFullPath((Join-Path $OutputRoot 'control-room')).TrimEnd('\','/')
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    do {
+        $health = $null
+        try { $health = Invoke-RestMethod ($Url + 'health') -TimeoutSec 2 -ErrorAction Stop } catch { }
+        if ($health) {
+            $actual = [string](Get-Value $health 'root' '')
+            if ($actual.StartsWith('\\?\UNC\')) { $actual = '\\' + $actual.Substring(8) }
+            elseif ($actual.StartsWith('\\?\')) { $actual = $actual.Substring(4) }
+            if ((Get-Value $health 'kind') -ne 'excel-shrink-control-room' -or
+                -not [IO.Path]::IsPathRooted($actual) -or
+                -not [string]::Equals([IO.Path]::GetFullPath($actual).TrimEnd('\','/'), $expected, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "The Observatory port belongs to another run or service: $Url"
+            }
+            return
+        }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "The Observatory is not ready: $Url. Check the printed runner logs."
+}
+
+function Open-CorpusObservatory([string]$Url) { Start-Process -FilePath $Url }
+
+function Start-SavedCorpusRun {
+    param([string]$Repo, [string]$ConfigurationPath, [string]$Executable,
+        [string]$Corpus, [string]$Partition, [string]$Order,
+        [switch]$Build, [switch]$SkipBuild, [switch]$NoBrowser)
+    if ($Build -and $SkipBuild) { throw 'Choose either -Build or -SkipBuild.' }
+    if ([string]::IsNullOrWhiteSpace($Corpus) -or [string]::IsNullOrWhiteSpace($Partition)) {
+        throw 'Specify the corpus and size partition, for example: excel-shrink-visual-validation -Corpus Enron -Partition 3/4'
+    }
+    if (-not [IO.File]::Exists($ConfigurationPath)) {
+        throw "No saved corpus configuration: $ConfigurationPath. Save one with tools/start-corpus.ps1 first."
+    }
+    $configuration = Import-StudyConfiguration $Repo $ConfigurationPath
+    $selected = @($configuration.corpora | Where-Object { $_.name -eq $Corpus })
+    if ($selected.Count -ne 1) { throw "Unknown or ambiguous corpus: $Corpus. Choose a configured corpus." }
+    $configuration.settings.corpus = $selected[0].name
+    if ($Partition -eq 'all') {
+        $configuration.settings.partition = 0
+    } else {
+        $index = 0; $count = 0
+        if ($Partition -notmatch '\A([1-9][0-9]*)/([1-9][0-9]*)\z' -or
+            -not [int]::TryParse($Matches[1], [ref]$index) -or
+            -not [int]::TryParse($Matches[2], [ref]$count) -or
+            $count -gt 1000 -or $index -gt $count) {
+            throw 'Partition must be all or N/M, with 1 <= N <= M <= 1000 (for example 3/4).'
+        }
+        $configuration.settings.partition = $index
+        $configuration.settings.partitions = $count
+    }
+    if ($Order) {
+        if ($Order -notin @('size-asc','size-desc')) { throw 'Order must be size-asc or size-desc.' }
+        $configuration.settings.order = $Order
+    }
+    Assert-StudySettings $configuration.settings
+    $output = Resolve-StudyPath $Repo $configuration.settings.output_root
+    $url = "http://127.0.0.1:$($configuration.settings.control_room_port)/"
+    $status = Get-StudyRunStatus $output
+    $existing = $status.Busy -or $null -ne $status.Process
+    if ($existing) {
+        if (-not $status.Busy -or $null -eq $status.Process) {
+            throw 'The output directory is busy, but its runner could not be verified. No second runner was started.'
+        }
+        $receipt = Read-StudyJson (Join-Path $output 'launch.json')
+        $active = Get-Value $receipt 'Settings'
+        if (-not $active -or (Get-Value $receipt 'Pid' 0) -ne $status.Process.Id) {
+            throw 'The active run selection could not be verified. No second runner was started.'
+        }
+        $samePartition = $active.partition -eq $configuration.settings.partition -and
+            ($active.partition -eq 0 -or $active.partitions -eq $configuration.settings.partitions)
+        if ($active.corpus -ne $configuration.settings.corpus -or -not $samePartition -or
+            $active.order -ne $configuration.settings.order) {
+            $activePartition = if ($active.partition -eq 0) { 'all' } else { "$($active.partition)/$($active.partitions)" }
+            throw "A different visual validation run is already active: $($active.corpus), partition $activePartition, $($active.order). No second runner was started. Observatory: $url"
+        }
+        $result = [pscustomobject]@{
+            Pid = $status.Process.Id; ControlRoom = $url; OutputRoot = $output; AlreadyRunning = $true
+            Stdout = (Get-Value $receipt 'Stdout'); Stderr = (Get-Value $receipt 'Stderr')
+        }
+    } else {
+        if ($Build) { $configuration.settings.build_release = $true }
+        if ($SkipBuild) { $configuration.settings.build_release = $false }
+        $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
+        $directory = Join-Path ([IO.Path]::GetDirectoryName($ConfigurationPath)) ('runs/' + $stamp)
+        $plan = New-StudyLaunchPlan $configuration $Repo $Executable $directory
+        $receipt = Start-StudyLaunch $configuration $ConfigurationPath $Repo $plan
+        $result = [pscustomobject]@{
+            Pid = $receipt.Pid; ControlRoom = $receipt.ControlRoom; OutputRoot = $output; AlreadyRunning = $false
+            Stdout = $receipt.Stdout; Stderr = $receipt.Stderr
+        }
+    }
+    Write-Host "Visual validation: $($configuration.settings.corpus), partition $Partition, $($configuration.settings.order)."
+    $label = if ($result.AlreadyRunning) { 'Already running' } else { 'Runner started' }
+    Write-Host "$label (PID $($result.Pid))."
+    Write-Host "Observatory: $($result.ControlRoom)"
+    if ($result.Stdout) { Write-Host "Output log: $($result.Stdout)" }
+    if ($result.Stderr) { Write-Host "Error log:  $($result.Stderr)" }
+    Write-Host 'Waiting for the Observatory...'
+    Wait-CorpusObservatory $result.ControlRoom $output
+    if (-not $NoBrowser) { Open-CorpusObservatory $result.ControlRoom }
+    return $result
+}
+
+if (-not $ConfigurationPath) { $ConfigurationPath = Join-Path $repo '.tmp/corpus-launcher/config.json' }
+$ConfigurationPath = Resolve-StudyPath $repo $ConfigurationPath
+if (-not $ExcelShrinkExe) { $ExcelShrinkExe = Join-Path $repo 'target/release/excel-shrink-cli.exe' }
+$null = Start-SavedCorpusRun $repo $ConfigurationPath $ExcelShrinkExe -Corpus $Corpus -Partition $Partition -Order $Order -Build:$Build -SkipBuild:$SkipBuild -NoBrowser:$NoBrowser
