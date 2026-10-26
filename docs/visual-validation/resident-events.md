@@ -1,9 +1,9 @@
 # Resident capture events and timings
 
 Resident comparison uses a persistent WebSocket control connection. PNG uploads
-remain bounded HTTP requests. This stage changes delivery and observation only:
-capture geometry, per-workbook Office execution, synchronized batch boundaries,
-pixel comparison and evidence retention keep their existing rules.
+remain bounded HTTP requests. Physical clients advance independently through a
+bounded window of common capture batches. Capture geometry, serial Office calls
+within each workbook, exact pixel comparison and evidence retention remain intact.
 
 ## Delivery and recovery
 
@@ -35,6 +35,42 @@ socket connection.
 Pause prevents dispatch of subsequent work. Already dispatched work may finish,
 and uploads, result acknowledgments and control events remain usable while
 paused. Heartbeats still report liveness independently of successful work.
+
+## Bounded capture pipeline
+
+The coordinator admits the current common batch and at most one following batch.
+Each physical client still executes one command at a time. When both batches fit
+in the same sheet and memory budget, one command contains two `capture_batches`:
+exclusive tile end offsets into its existing `tiles` array. For example, `[4, 8]`
+captures and finalizes four tiles, starts uploading them, then captures the next
+four while those uploads finish. Office calls and overflow probes never overlap
+within one client; there is one uploader per client.
+
+A dedicated image-processing thread decodes PNGs, compares peers and publishes
+previews. Its completion events wake the coordinator immediately. Credits are
+returned only after comparison, so uploaded images and queued decoding count
+against the same window as captures still running in Excel. A fast client can
+advance without waiting for another client's whole command, but cannot build an
+unbounded backlog behind a slow peer or slow image processing.
+
+Each client's outstanding work is limited to 16 tiles and 64 million capture
+pixels across commands. The Office.js worker additionally accounts for retained
+base64 strings, binary PNGs and decoding buffers against a 160 MiB encoded-memory
+budget. Office returns the initial base64 allocation before its encoded length
+is known; this limit does not cover Office/WebView internals or all native bitmap
+scratch space. The pixel limit bounds those capture requests separately. The
+coordinator also limits unclassified PNG bytes to 160 MiB per client.
+
+An equal PNG is removed only after both its comparison and its durable command
+response have completed: the host validates that response against the PNG.
+Differences and row-height evidence retain their full-resolution images. Matched
+whitespace controls use the same pipeline for the already selected ranges.
+Cancellation joins image processing before group cleanup can remove evidence.
+
+For a paired reference experiment, set `EXCEL_SHRINK_CAPTURE_PIPELINE=0` before
+starting the runner. This uses the previous synchronized coordinator and the
+sequential client path. Unset it for the default pipeline. It is an experiment
+switch, not a different capture or comparison policy.
 
 ## Measurements
 
@@ -68,6 +104,11 @@ timestamp or create successful-work events.
 The group state also records coordinator wait, image decoding, preview and
 comparison intervals and host upload intervals. Aggregates across independent
 workers can overlap and must not be interpreted as sequential wall time.
+Pipeline throughput uses elapsed capture-phase wall time, excluding intentional
+pause and Excel-opening pauses; overlapping batch durations are not added. Group
+state records the window limits and peak decoded tile/pixel counts per client.
+Worker resources include peak accounted encoded bytes and the number of capture
+chunks started while an upload was pending.
 
 ## Evaluation boundaries
 
@@ -77,6 +118,32 @@ order and repeat representative small, large, equal and differing cases. Count
 fully completed comparisons, peak memory and failures alongside throughput.
 An inconclusive short measurement is not evidence of a regression or speedup.
 
-Capture/upload overlap, independent batch lookahead, optional hash-first
-transport, preview compression and WASM are separate experiments. They are not
-enabled by this event-delivery change.
+`office-capture/tests/pipeline-smoke.py --run` runs an isolated native Excel
+baseline/pipeline/pipeline/baseline experiment. It checks identical tile coverage,
+pixel hashes, differences and whitespace attribution before comparing timing.
+The fixture contains both whitespace overflow and a chart referring to hidden
+values. Samples use fresh Excel processes; OS and Office caches remain in place.
+Receipts include startup, capture, whole comparison and peak Job Object memory.
+Run the same script with `--run --pause-check --compare-to <completed-sample>`
+for a separate untimed check: it pauses after initial captures, waits for active
+commands to drain, resumes the same Excel processes and compares the final
+evidence with the reference sample.
+
+Local Windows check on 2026-10-26 (fixture v2, four primary Excel clients plus one
+on-demand whitespace client, 1 MP tiles, batches of four, hidden Excel):
+
+| Metric, median of two samples | Synchronized reference | Bounded pipeline |
+| --- | ---: | ---: |
+| Capture, upload and image processing | 6.633 s | 4.232 s |
+| Whole workbook comparison | 31.170 s | 28.609 s |
+| Runner wall time | 35.474 s | 32.741 s |
+| Peak Job Object memory | 1.563 GB | 1.606 GB |
+
+All four samples processed the same 41 tile positions and 167 physical images
+(including controls), with identical pixel hashes, retained evidence, findings
+and whitespace attribution. This supports the local pipeline improvement; two
+samples per mode on one synthetic workbook do not establish corpus-wide speedup.
+GB here means decimal gigabytes. The first functional warmup was excluded.
+
+Optional hash-first transport, preview compression and WASM are separate
+experiments and remain disabled.
