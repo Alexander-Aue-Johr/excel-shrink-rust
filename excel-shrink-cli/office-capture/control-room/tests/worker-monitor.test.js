@@ -30,6 +30,8 @@ export function runTests() {
   assert(noProgress.lastProgress === null, 'Legacy LastActivity must not be relabelled as progress.');
   const waiting = workerRows({ ...group, clients: [{ ...group.clients[0], stage: 'waiting_for_addin', monitor: {} }] })[0];
   assert(waiting.category === 'waiting' && waiting.waitReason.includes('unknown'), 'Excel internal wait reasons remain unknown.');
+  const unconfirmed = workerRows({ ...group, clients: [{ ...group.clients[0], stage: 'exit_unconfirmed', process_alive: null }] })[0];
+  assert(unconfirmed.category === 'waiting' && unconfirmed.alive === null, 'An unconfirmed exit is neither active work nor proof that the process exited.');
   const coordinator = workerRows({ ...group, clients: [], coordinator: { phase: 'shrink', pid: 42,
     state_since_unix_ms: start, last_progress_unix_ms: start + 5000,
     last_event: { at_unix_ms: start + 5000, kind: 'shrunk' }, events: [] } })[0];
@@ -40,6 +42,10 @@ export function runTests() {
     coordinator: {phase:'finished',process_alive:true,pid:42} })[0];
   assert(blocked.state === 'cleanup_blocked' && blocked.category === 'waiting', 'A saved result must not hide unresolved process cleanup.');
   assert(blocked.error === 'Access denied' && blocked.waitReason.includes('slot stays reserved'), 'Cleanup ownership failures expose their reason and retained admission slot.');
+  const exhausted = workerRows({ ...group, active: false, clients: [],
+    cleanup_pending: { state: 'waiting', retry_exhausted: true, error: 'Access denied' },
+    coordinator: { phase: 'finished', pid: 42 } })[0];
+  assert(exhausted.state === 'cleanup_failed' && exhausted.waitReason.includes('run stopped'), 'Exhausted cleanup must not claim retries are still running.');
   assert(duration(null) === '—' && age(null) === null, 'Missing timestamps remain unknown.');
   const summary = progressSummary({ counts: { total: 100, completed: 70, skipped: 5, remaining: 25, in_progress: 2 },
     rates: { completed_per_minute: 1.2, completed_per_hour: 72, average_completed_per_hour: 50, window_seconds: 900 },

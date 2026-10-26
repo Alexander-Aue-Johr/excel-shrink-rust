@@ -216,12 +216,10 @@ function Restore-AddIn([string]$id, $previous) {
 function Stop-OwnedProcess($process) {
     if ($null -eq $process) { return }
     try {
-        $process.Refresh()
-        if ($process.HasExited) { return }
-        if ($process.CloseMainWindow() -and $process.WaitForExit(3000)) { return }
-        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-        [void]$process.WaitForExit(3000)
-    } catch {}
+        if (-not [CaptureProcesses]::Stop($process)) {
+            Write-Warning "Owned capture process $($process.Id) has not confirmed exit after termination."
+        }
+    } catch { Write-Warning "Could not confirm owned capture process exit: $($_.Exception.Message)" }
 }
 
 function Copy-CompletedOutput([string]$from, [string]$to) {

@@ -708,7 +708,7 @@ function renderMinimap() {
   $('minimapLabel').textContent = selectedSheet()?.name || `${sheets.length} Sheets`;
 }
 function normalizeStatus(value) {
-  return ({ restart_requested: 'Restart requested', restart_waiting_cleanup: 'Restart waiting for safe cleanup', preparing: 'Preparation', requested: 'Open requested', waiting_open: 'Waiting to open', opening: 'Opening Excel', planning: 'Planning capture regions', ready: 'Add-in ready', capturing: 'Capturing', comparing: 'Pixel comparison', complete: 'Completed', completed: 'Completed', finished: 'Completed', unchanged: 'Identical', differences: 'Differences found', skipped: 'Skipped', interrupted: 'Interrupted', waiting_cleanup: 'Closing Excel', cleanup_blocked: 'Cleanup blocked', failed: 'Error', paused: 'Paused', closed: 'Closed', queued: 'Queued', running: 'Active', active: 'Active', retrying_classic: 'Classic individual comparison running' })[value] || value || 'Waiting for status';
+  return ({ restart_requested: 'Restart requested', restart_waiting_cleanup: 'Restart waiting for safe cleanup', preparing: 'Preparation', requested: 'Open requested', waiting_open: 'Waiting to open', opening: 'Opening Excel', planning: 'Planning capture regions', ready: 'Add-in ready', capturing: 'Capturing', comparing: 'Pixel comparison', complete: 'Completed', completed: 'Completed', finished: 'Completed', unchanged: 'Identical', differences: 'Differences found', skipped: 'Skipped', interrupted: 'Interrupted', waiting_cleanup: 'Closing Excel', cleanup_blocked: 'Cleanup blocked', failed: 'Error', paused: 'Paused', closed: 'Closed', exit_unconfirmed: 'Excel exit not confirmed', queued: 'Queued', running: 'Active', active: 'Active', retrying_classic: 'Classic individual comparison running' })[value] || value || 'Waiting for status';
 }
 function groupName(group) { return String(group.workbook || group.name || group.source || group.id || 'Workbook').split(/[\\/]/).pop(); }
 function renderGroups() {
@@ -945,7 +945,7 @@ function renderProcesses() {
     launcher_sampled_unix_ms: data?.launcher?.sampled_unix_ms,
     active: !terminal, clients: clients.map(([id, client]) => ({ ...client, client_id: id,
       worker_id: `${state.groupId || 'pending'}/${data?.attempt_id || 'legacy'}/${id}/${client.pid || 'pending'}/${client.process_started_unix_ms || 'pending'}` })) });
-  const stageLabels = { staging: 'Staging file', waiting_for_open_slot: 'Waiting to open', waiting_for_addin: 'Waiting for add-in', waiting_for_job: 'Waiting for job', executing_job: 'Capture running', blocked_edit_mode: 'Excel in edit mode', client_error: 'Add-in reported an error', closed: 'Closed' };
+  const stageLabels = { staging: 'Staging file', waiting_for_open_slot: 'Waiting to open', waiting_for_addin: 'Waiting for add-in', waiting_for_job: 'Waiting for job', executing_job: 'Capture running', blocked_edit_mode: 'Excel in edit mode', client_error: 'Add-in reported an error', closing: 'Closing Excel', exit_unconfirmed: 'Excel exit not confirmed', closed: 'Closed' };
   for (const [id, client] of clients) {
     let card = processCards.get(id);
     if (!card) {
@@ -966,7 +966,7 @@ function renderProcesses() {
     const alive = client.process_alive;
     card.signals.update(rows.find(row => row.clientId === id), { connected: state.connected,
       live: state.queue?.running !== false && state.queue?.runner_alive !== false });
-    card.element.classList.toggle('blocked', client.stage === 'blocked_edit_mode' || Boolean(client.error));
+    card.element.classList.toggle('blocked', ['blocked_edit_mode', 'exit_unconfirmed'].includes(client.stage) || Boolean(client.error));
     card.name.textContent = profileLabel(id);
     card.process.textContent = client.pid ? `PID ${client.pid} · ${alive === true ? 'Process running' : alive === false ? 'Process exited' : 'Process status unverified'} · ${client.window_mode === 'private_desktop' ? 'private desktop (hidden)' : client.hide_excel ? 'hidden' : 'visible'}` : 'No PID yet';
     card.status.textContent = reported[id] ? [stageLabels[client.stage] || normalizeStatus(client.status), client.active_command].filter(Boolean).join(' · ')

@@ -37,6 +37,45 @@ function Write-SessionJson([string]$name, $value) {
     Write-ResidentJsonFile (Join-Path $session $name) $value
 }
 
+function Confirm-ResidentClientExit($ownedClients, $clientMetrics, [int]$TimeoutMilliseconds = 3000) {
+    # Closing a Job Object requests termination; it does not mean every process
+    # has already signalled exit. Use one shared bound for the entire group.
+    $remaining = New-Object 'Collections.Generic.HashSet[string]'
+    foreach ($id in @($ownedClients.Keys)) {
+        [void]$remaining.Add($id)
+        $clientMetrics[$id].status = 'closing'
+        $clientMetrics[$id].stage = 'closing'
+    }
+    $exitClock = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        foreach ($id in @($remaining)) {
+            try {
+                if ($ownedClients[$id].process.WaitForExit(0)) {
+                    $ownedClients[$id].closed = $true
+                    $clientMetrics[$id].closed = $true
+                    $clientMetrics[$id].status = 'closed'
+                    $clientMetrics[$id].process_alive = $false
+                    $clientMetrics[$id].stage = 'closed'
+                    $clientMetrics[$id].exit_confirmed_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+                    [void]$remaining.Remove($id)
+                }
+            } catch {
+                $clientMetrics[$id].exit_confirmation_error = $_.Exception.Message
+            }
+        }
+        if (-not $remaining.Count -or $exitClock.ElapsedMilliseconds -ge $TimeoutMilliseconds) { break }
+        Start-Sleep -Milliseconds 50
+    } while ($true)
+    foreach ($id in $remaining) {
+        # A finished launcher cannot keep observing this process. Explicitly
+        # report uncertainty rather than leaving an apparently active close.
+        $clientMetrics[$id].status = 'exit_unconfirmed'
+        $clientMetrics[$id].stage = 'exit_unconfirmed'
+        $clientMetrics[$id].process_alive = $null
+    }
+    return @($remaining)
+}
+
 function Write-ResidentJsonFile([string]$target, $value) {
     $pending = $target + '.' + [Guid]::NewGuid().ToString('N') + '.pending'
     [IO.File]::WriteAllText($pending, ($value | ConvertTo-Json -Depth 40), $utf8)
@@ -850,14 +889,23 @@ try {
         catch { $metrics.cleanup_snapshot_warning = $_.Exception.Message }
         Add-SessionEvent 'owned_cleanup_started' '' @{ processes=$metrics.cleanup_processes }
         $owned.Dispose()
-        $metrics.cleanup_completed_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-        Add-SessionEvent 'owned_cleanup_completed' '' $null
+        $metrics.cleanup_job_released_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        $unconfirmedClients = @(Confirm-ResidentClientExit $clients $metrics.clients)
+        if ($unconfirmedClients.Count -eq 0) {
+            $metrics.cleanup_completed_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            Add-SessionEvent 'owned_cleanup_completed' '' $null
+        } else {
+            $metrics.cleanup_warning = 'Excel exit unconfirmed after job release: ' + ($unconfirmedClients -join ', ')
+            Add-SessionEvent 'owned_cleanup_unconfirmed' '' @{ clients=$unconfirmedClients }
+        }
         if ($liveGroupDirectory) {
             try {
                 Write-ResidentJsonFile (Join-Path $liveGroupDirectory ('cleanup-' + $metrics.attempt_id + '.json')) @{
                     attempt_id=$metrics.attempt_id; launcher_pid=$PID
                     started_unix_ms=$metrics.cleanup_started_unix_ms
+                    job_released_unix_ms=$metrics.cleanup_job_released_unix_ms
                     completed_unix_ms=$metrics.cleanup_completed_unix_ms
+                    unconfirmed_clients=$unconfirmedClients
                     process_identities=$metrics.cleanup_processes
                     identity_format='pid|process name|UTC process start'
                 }
@@ -866,18 +914,6 @@ try {
         $metrics.primary_clients_ready = $false
         $metrics.current_job_bytes = $null
         $metrics.current_job_private_working_set_bytes = $null
-        foreach ($id in @($clients.Keys)) {
-            $metrics.clients[$id].status = 'closing'
-            try {
-                $clients[$id].process.Refresh()
-                if ($clients[$id].process.HasExited) {
-                    $metrics.clients[$id].closed = $true
-                    $metrics.clients[$id].status = 'closed'
-                    $metrics.clients[$id].process_alive = $false
-                    $metrics.clients[$id].stage = 'closed'
-                }
-            } catch { } # Ownership cleanup has already been requested.
-        }
     }
     foreach ($guid in @($registrations.Keys)) {
         try { Restore-AddIn $guid $registrations[$guid] } catch { $metrics.registry_cleanup_warning = $_.Exception.Message }

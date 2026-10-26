@@ -1,6 +1,7 @@
 param(
     [string]$RegistryPath = $env:EXCEL_SHRINK_ARCHIVE_OWNERS,
     [string]$StagePath,
+    [string]$StopConfirmationPath,
     [switch]$Stop
 )
 
@@ -23,6 +24,23 @@ function Stop-ArchiveProcess($owner) {
             Start-Sleep -Milliseconds 250
         }
     }
+}
+
+function Assert-ArchiveRegistration([string]$path) {
+    $stopping = $path + '.stopping'
+    if (Test-Path -LiteralPath $stopping) { throw 'Workbook cleanup has started; refusing a new Excel launcher.' }
+    if ($env:EXCEL_SHRINK_ARCHIVE_GENERATION -and
+        [IO.File]::ReadAllText($path + '.generation') -cne $env:EXCEL_SHRINK_ARCHIVE_GENERATION) {
+        throw 'Workbook attempt changed; refusing an expired Excel launcher.'
+    }
+}
+
+function Register-ArchiveOwner([string]$path, $record) {
+    Assert-ArchiveRegistration $path
+    [IO.File]::AppendAllText($path, (($record | ConvertTo-Json -Compress) + "`n"))
+    # Pair with the parent's marker-before-stop ordering. A registration that
+    # raced its journal snapshot cannot proceed to create Excel afterwards.
+    Assert-ArchiveRegistration $path
 }
 
 function Get-ArchiveStagePath([string]$stage) {
@@ -57,8 +75,9 @@ function Remove-ArchiveStage([string]$stage) {
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }
 
-function Stop-ArchiveOwners($lines) {
+function Stop-ArchiveOwners($lines, [string]$confirmationPath = '') {
     $failures = @()
+    $stages = @()
     foreach ($line in $lines) {
         if (-not $line.Trim()) { continue }
         try {
@@ -74,23 +93,27 @@ function Stop-ArchiveOwners($lines) {
             $failures += $_.Exception.Message
             continue
         }
-        if ($owner.stage) {
-            for ($attempt = 0; $attempt -lt 10; $attempt++) {
-                try {
-                    Remove-ArchiveStage ([string]$owner.stage)
-                    break
-                } catch {
-                    if ($attempt -eq 9) {
-                        # The owning launcher is gone. Leftover files cannot create
-                        # a concurrent Excel session, so keep them and continue.
-                        Write-Warning "Preserving archive stage $($owner.stage): $($_.Exception.Message)"
-                    } else { Start-Sleep -Milliseconds 250 }
-                }
-            }
-        }
+        if ($owner.stage) { $stages += [string]$owner.stage }
     }
     if ($failures.Count) {
         throw ('Cannot confirm that all owned Windows launchers have stopped: ' + ($failures -join '; '))
+    }
+    # The parent can now distinguish a blocked file deletion from an uncertain
+    # live owner. Only the latter must prevent admitting another workbook.
+    if ($confirmationPath) { [IO.File]::WriteAllText($confirmationPath, 'owned-launchers-stopped') }
+    foreach ($stage in ($stages | Select-Object -Unique)) {
+        for ($attempt = 0; $attempt -lt 10; $attempt++) {
+            try {
+                Remove-ArchiveStage $stage
+                break
+            } catch {
+                if ($attempt -eq 9) {
+                    # The owning launcher is gone. Leftover files cannot create
+                    # a concurrent Excel session, so keep them and continue.
+                    Write-Warning "Preserving archive stage ${stage}: $($_.Exception.Message)"
+                } else { Start-Sleep -Milliseconds 250 }
+            }
+        }
     }
 }
 
@@ -100,8 +123,8 @@ if (-not $Stop) {
     Initialize-ArchiveProcesses
     $stage = if ($StagePath) { Get-ArchiveStagePath $StagePath } else { $null }
     $record = @{ pid = $PID; started = [ArchiveProcesses]::CurrentStartedTicks(); stage = $stage }
-    [IO.File]::AppendAllText($RegistryPath, (($record | ConvertTo-Json -Compress) + "`n"))
+    Register-ArchiveOwner $RegistryPath $record
     return
 }
 
-Stop-ArchiveOwners ([IO.File]::ReadAllLines($RegistryPath))
+Stop-ArchiveOwners ([IO.File]::ReadAllLines($RegistryPath)) $StopConfirmationPath

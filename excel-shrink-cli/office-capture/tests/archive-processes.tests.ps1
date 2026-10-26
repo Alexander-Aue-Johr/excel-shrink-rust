@@ -85,6 +85,46 @@ $goneStage = Join-Path $env:TEMP ('es-open-' + [Guid]::NewGuid().ToString('N'))
 $junctionStage = Join-Path $env:TEMP ('es-open-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root | Out-Null
 try {
+    $registration = Join-Path $root 'owners.jsonl'
+    Register-ArchiveOwner $registration @{pid=123;started='1'}
+    $firstJournal = [IO.File]::ReadAllText($registration)
+    [IO.File]::WriteAllText(($registration + '.stopping'), 'stopping')
+    $blocked = $false
+    try { Register-ArchiveOwner $registration @{pid=456;started='1'} } catch { $blocked=$true }
+    Assert $blocked 'Cleanup did not reject a late launcher.'
+    Assert ([IO.File]::ReadAllText($registration) -eq $firstJournal) 'Rejected launcher altered the ownership journal.'
+
+    $generationJournal = Join-Path $root 'generation-owners.jsonl'
+    $previousGeneration = $env:EXCEL_SHRINK_ARCHIVE_GENERATION
+    try {
+        [IO.File]::WriteAllText(($generationJournal + '.generation'), 'new-attempt')
+        $env:EXCEL_SHRINK_ARCHIVE_GENERATION = 'expired-attempt'
+        $blocked = $false
+        try { Register-ArchiveOwner $generationJournal @{pid=456;started='1'} } catch { $blocked=$true }
+        Assert $blocked 'A launcher from the previous attempt registered in a reused work directory.'
+        Assert (-not [IO.File]::Exists($generationJournal)) 'An expired launcher polluted the new attempt journal.'
+        $env:EXCEL_SHRINK_ARCHIVE_GENERATION = 'new-attempt'
+        Register-ArchiveOwner $generationJournal @{pid=789;started='1'}
+        Assert ([IO.File]::Exists($generationJournal)) 'The current attempt could not register.'
+    } finally { $env:EXCEL_SHRINK_ARCHIVE_GENERATION = $previousGeneration }
+
+    & {
+        $raceJournal = Join-Path $root 'race-owners.jsonl'
+        $script:registrationChecks = 0
+        function Test-Path {
+            param([string]$LiteralPath)
+            $script:registrationChecks++
+            if ($script:registrationChecks -eq 2) { [IO.File]::WriteAllText($LiteralPath, 'stopping') }
+            Microsoft.PowerShell.Management\Test-Path -LiteralPath $LiteralPath
+        }
+        $launched = $false
+        try {
+            Register-ArchiveOwner $raceJournal @{pid=789;started='1'}
+            $launched = $true
+        } catch { }
+        Assert (-not $launched) 'Registration racing the cleanup snapshot was allowed to start Excel.'
+        Assert ([IO.File]::Exists($raceJournal)) 'Race fixture did not append before cleanup began.'
+    }
     New-Item -ItemType Directory -Path $goneStage | Out-Null
     $script:states = @{ 11 = 'gone'; 12 = 'stopped' }
     Stop-ArchiveOwners @((JournalLine 11 $goneStage), (JournalLine 12))
@@ -102,9 +142,11 @@ try {
     $script:visited = @()
     $script:states = @{ 14 = 'unverifiable'; 15 = 'gone' }
     $blocked = $false
-    try { Stop-ArchiveOwners @((JournalLine 14 $unknownStage), (JournalLine 15)) }
+    $confirmation = Join-Path $root 'owners-stopped'
+    try { Stop-ArchiveOwners @((JournalLine 14 $unknownStage), (JournalLine 15)) $confirmation }
     catch { $blocked = $_.Exception.Message.Contains('Cannot confirm') }
     Assert $blocked 'An unverifiable active owner must block another worker.'
+    Assert (-not (Test-Path -LiteralPath $confirmation)) 'An unverified owner published a stop confirmation.'
     Assert (Test-Path -LiteralPath $unknownStage) 'An unverified owner lost its files.'
     Assert (($script:visited -join ',') -eq '14,15') 'A denied process prevented cleanup of other launchers.'
 
@@ -127,11 +169,14 @@ try {
 
     # Once the launcher is confirmed gone, a locked/unsafe leftover directory is
     # only a warning. Its files remain, and another owned launcher is still handled.
-    function Remove-ArchiveStage { throw 'Deterministic sharing violation.' }
+    function Remove-ArchiveStage {
+        Assert ([IO.File]::ReadAllText($confirmation) -eq 'owned-launchers-stopped') 'Optional file cleanup ran before owner-stop confirmation.'
+        throw 'Deterministic sharing violation.'
+    }
     function Start-Sleep {}
     $script:visited = @()
     $script:states = @{ 16 = 'gone'; 17 = 'gone' }
-    Stop-ArchiveOwners @((JournalLine 16 $root), (JournalLine 17))
+    Stop-ArchiveOwners @((JournalLine 16 $root), (JournalLine 17)) $confirmation
     Assert (($script:visited -join ',') -eq '16,17') 'Leftover stage files aborted cleanup.'
     Assert (Test-Path -LiteralPath $root) 'Failed stage cleanup removed files.'
     Write-Host 'PASS: absent/exiting and reused PIDs are safe; unverifiable owners block resume without skipping other cleanup.'

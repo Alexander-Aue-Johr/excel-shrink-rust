@@ -38,6 +38,21 @@ public sealed class CaptureProcesses : IDisposable
         if (!AssignProcessToJobObject(job, process.Handle)) throw new Win32Exception();
     }
 
+    public static bool Stop(Process process)
+    {
+        // Add() retained this handle before the child ran. Never send WM_CLOSE:
+        // a busy Excel window can block that synchronous GUI call indefinitely.
+        // The private workbook copy does not need to be saved on shutdown.
+        IntPtr handle = process.Handle;
+        if (WaitForSingleObject(handle, 0) == 0) return true;
+        if (!TerminateProcess(handle, 0))
+        {
+            int error = Marshal.GetLastWin32Error();
+            if (WaitForSingleObject(handle, 0) != 0) throw new Win32Exception(error);
+        }
+        return WaitForSingleObject(handle, 3000) == 0;
+    }
+
     public void Dispose() { job.Dispose(); }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -70,4 +85,8 @@ public sealed class CaptureProcesses : IDisposable
     static extern bool SetInformationJobObject(SafeFileHandle job, int informationClass, ref ExtendedLimits information, uint length);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool AssignProcessToJobObject(SafeFileHandle job, IntPtr process);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool TerminateProcess(IntPtr process, uint exitCode);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern uint WaitForSingleObject(IntPtr process, uint milliseconds);
 }

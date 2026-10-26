@@ -69,17 +69,20 @@ pub(super) fn run_record(
     let _active_progress = progress::start_job(output, id, mode);
     let key = artifact_cache::sha256(id.as_bytes());
     let work = output.join(".work").join(&key[..20]);
-    wait_for_owned_cleanup(
+    let record = record_path(output, id);
+    if let Err(error) = wait_for_owned_cleanup(
         &work,
         &mut state,
         cleanup_barrier.as_ref(),
         &mut on_progress,
-    )?;
+    ) {
+        write_record(&record, &state)?;
+        return Err(error);
+    }
     if work.exists() {
         fs::remove_dir_all(&work)?;
     }
     fs::create_dir_all(&work)?;
-    let record = record_path(output, id);
     let diagnosis_only = mode == JobMode::Diagnose;
     if !diagnosis_only {
         state["complete"] = json!(false);
@@ -214,12 +217,15 @@ pub(super) fn run_record(
             result["error"] = json!(format!("{error:#}"));
         }
     }
-    wait_for_owned_cleanup(
+    if let Err(error) = wait_for_owned_cleanup(
         &work,
         &mut result,
         job.cleanup_barrier.as_ref(),
         &mut on_progress,
-    )?;
+    ) {
+        write_record(&record, &result)?;
+        return Err(error);
+    }
     if let Err(error) = retain_worker_memory(&mut result, &work) {
         eprintln!("Could not preserve worker memory measurement: {error:#}");
     }
@@ -245,8 +251,8 @@ pub(super) fn run_record(
     Ok(result)
 }
 
-// An uncertain owner keeps this group's slot occupied. Other groups can finish
-// and be replaced, but we never delete its files or accumulate orphan processes.
+// An uncertain owner reserves this slot during bounded retries. If it cannot be
+// verified, stop with its journal intact rather than wait forever or admit orphans.
 fn wait_for_owned_cleanup(
     work: &Path,
     record: &mut Value,
@@ -302,9 +308,16 @@ fn retry_owned_cleanup(
             }
             Err(error) => {
                 attempts += 1;
+                let exhausted = attempts >= 3;
                 observe(json!({"state":"waiting", "error":format!("{error:#}"),
                     "attempts":attempts,"since_unix_ms":since,
+                    "retry_exhausted":exhausted,
                     "last_attempt_unix_ms":provenance::now_ms()}));
+                if exhausted {
+                    return Err(error).context(
+                        "Owned cleanup could not be confirmed after 3 attempts; stopping the run and retaining its process journal"
+                    );
+                }
                 wait().with_context(|| format!("owned cleanup remains unconfirmed: {error:#}"))?;
             }
         }
@@ -519,6 +532,26 @@ fn clear_images(value: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn permanently_unverified_cleanup_stops_after_three_attempts() {
+        let mut attempts = 0;
+        let mut waits = 0;
+        let mut observations = Vec::new();
+        let error = retry_owned_cleanup(
+            || {
+                attempts += 1;
+                bail!("owner identity query denied")
+            },
+            |value| observations.push(value),
+            || { waits += 1; Ok(()) },
+        ).unwrap_err();
+        assert_eq!(attempts, 3);
+        assert_eq!(waits, 2);
+        assert_eq!(observations.last().unwrap()["retry_exhausted"], true);
+        assert!(format!("{error:#}").contains("stopping the run"));
+        assert!(format!("{error:#}").contains("owner identity query denied"));
+    }
 
     #[test]
     fn uncertain_cleanup_keeps_its_slot_until_identity_can_be_verified() -> Result<()> {

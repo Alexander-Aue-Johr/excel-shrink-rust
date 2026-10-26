@@ -9,7 +9,7 @@ const phases = {
   capturing: 'Capture job running', providing_images: 'Providing image evidence', executing_job: 'Office.js job running',
   releasing: 'Releasing workbook', closed: 'Closed', client_error: 'Add-in reported an error',
   blocked_edit_mode: 'Excel is in cell edit mode', waiting_cleanup: 'Waiting for cleanup',
-  cleanup_blocked: 'Cleanup blocked',
+  cleanup_blocked: 'Cleanup blocked', cleanup_failed: 'Cleanup could not be confirmed', exit_unconfirmed: 'Excel exit not confirmed',
   restart_waiting_cleanup: 'Restart waiting for cleanup', prepare: 'Preparing', preparing: 'Preparing',
   extract: 'Extracting file', shrink: 'Generating variants', compare: 'Coordinating comparison',
   save: 'Saving result', capture_planning: 'Planning captures', capture_upload: 'Waiting for captures',
@@ -63,7 +63,7 @@ function latest(...events) {
 }
 function category(state, alive, active) {
   if (!active || alive === false || ['closed', 'completed', 'complete', 'finished', 'failed', 'interrupted'].includes(state)) return 'ended';
-  if (state?.startsWith('waiting') || ['paused', 'settling', 'ready', 'blocked_edit_mode', 'client_error', 'cleanup_blocked'].includes(state)) return 'waiting';
+  if (state?.startsWith('waiting') || ['paused', 'settling', 'ready', 'blocked_edit_mode', 'client_error', 'cleanup_blocked', 'exit_unconfirmed'].includes(state)) return 'waiting';
   return 'working';
 }
 export function workerRows(group) {
@@ -92,13 +92,15 @@ export function workerRows(group) {
   });
   if (group.coordinator) {
     const monitor = group.coordinator, blocked = group.cleanup_pending?.state === 'waiting';
-    const state = blocked ? 'cleanup_blocked' : monitor.phase || monitor.state;
+    const exhausted = blocked && group.cleanup_pending.retry_exhausted === true;
+    const state = blocked ? (exhausted ? 'cleanup_failed' : 'cleanup_blocked') : monitor.phase || monitor.state;
     rows.unshift({ ...common, id: `${group.id}/${group.attempt_id}/coordinator/${monitor.pid}/${monitor.process_started_unix_ms}`,
       clientId: 'Coordinator', kind: 'Rust / Host', pid: monitor.pid, processStarted: monitor.process_started_unix_ms,
       alive: monitor.process_alive,
       state, stateSince: blocked ? group.cleanup_pending.since_unix_ms : monitor.state_since ?? monitor.state_since_unix_ms, category: category(state, monitor.process_alive, common.active),
       lastEvent: monitor.last_event, lastProgress: monitor.last_progress_at ?? monitor.last_progress_unix_ms ?? monitor.last_progress,
-      lastSuccess: monitor.last_success, waitReason: blocked ? 'Process ownership or exit could not be confirmed; this slot stays reserved while cleanup retries.' : monitor.wait_reason,
+      lastSuccess: monitor.last_success, waitReason: exhausted ? 'Cleanup retries exhausted. The run stopped; process journals and working files were retained.'
+        : blocked ? 'Process ownership or exit could not be confirmed; this slot stays reserved while cleanup retries.' : monitor.wait_reason,
       error: blocked ? group.cleanup_pending.error : null,
       sheet: monitor.sheet_name || monitor.last_event?.details?.sheet_name,
       events: [...(monitor.events || [])].reverse().slice(0, 24), heartbeat: null, heartbeatCount: undefined });

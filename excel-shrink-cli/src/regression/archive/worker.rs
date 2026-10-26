@@ -183,7 +183,7 @@ pub(super) fn launch(
         .env(
             "WSLENV",
             format!(
-                "{}:EXCEL_SHRINK_ARCHIVE_OWNERS/p",
+                "{}:EXCEL_SHRINK_ARCHIVE_OWNERS/p:EXCEL_SHRINK_ARCHIVE_GENERATION",
                 std::env::var("WSLENV").unwrap_or_default()
             ),
         )
@@ -276,6 +276,12 @@ pub(super) fn launch(
     }
     let heartbeat = job.work.join("parent-heartbeat");
     fs::write(&heartbeat, b"running")?;
+    // Work paths are reused by retries. A delayed launcher from an earlier
+    // attempt must not register after the old stopping marker was removed.
+    let generation = artifact_cache::unique_path(&job.work, "owner-generation")?
+        .file_name().context("ownership generation filename")?.to_string_lossy().into_owned();
+    fs::write(job.work.join("windows-owners.jsonl.generation"), &generation)?;
+    command.env("EXCEL_SHRINK_ARCHIVE_GENERATION", &generation);
     let mut running = RunningWorker {
         child: command.spawn().context("start isolated workbook worker")?,
         work: job.work.clone(),
@@ -385,22 +391,24 @@ impl RunningWorker {
                 eprintln!("[archive] Bounded batch cleanup wait ended: {error:#}");
             }
         }
-        // Close Windows launchers first: their jobs own only this worker's Excel instances.
-        let cleanup = cleanup_windows(&self.work);
+        // A PowerShell child may still be starting and not yet in the journal.
+        // Registration checks this marker both before and after its append.
+        // After publication it must either be visible to cleanup or abort
+        // before creating Excel, even if the Rust child already exited.
+        fs::write(self.work.join("windows-owners.jsonl.stopping"), b"stopping")
+            .context("close workbook launcher registration")?;
         #[cfg(unix)]
         {
             let _ = Command::new("kill")
                 .args(["-KILL", "--", &format!("-{}", self.child.id())])
                 .output();
         }
-        #[cfg(windows)]
-        {
-            let _ = Command::new("taskkill")
-                .args(["/F", "/T", "/PID", &self.child.id().to_string()])
-                .output();
-        }
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        // Stop admission at its source before taking the ownership snapshot.
+        // The Windows launcher journals below close owned Excel jobs. The
+        // Rust child is stopped through its retained handle, never taskkill on
+        // a PID which may already have been recycled after normal worker exit.
+        stop_child(&mut self.child, Duration::from_secs(5))?;
+        let cleanup = cleanup_windows(&self.work);
         self.stopped = true;
         cleanup
     }
@@ -417,7 +425,8 @@ pub(super) fn cleanup_windows(work: &Path) -> Result<()> {
         return Ok(());
     }
     let script = repo_root().join("excel-shrink-cli/src/regression/archive_processes.ps1");
-    let status = Command::new("powershell.exe")
+    let confirmation = artifact_cache::unique_path(work, "cleanup-confirmed")?;
+    let mut helper = Command::new("powershell.exe")
         .args([
             "-NoLogo",
             "-NoProfile",
@@ -429,13 +438,69 @@ pub(super) fn cleanup_windows(work: &Path) -> Result<()> {
         .arg("-RegistryPath")
         .arg(excel_automation::power_shell_path(&registry)?)
         .arg("-Stop")
-        .status()
-        .context("stop owned Excel launchers")?;
+        .arg("-StopConfirmationPath")
+        .arg(excel_automation::power_shell_path(&confirmation)?)
+        .stdin(Stdio::null())
+        .spawn()
+        .context("start owned Excel cleanup")?;
+    // This runs after the workbook worker has exited, outside its watchdog.
+    // PowerShell startup and temporary-file deletion must not block the entire
+    // corpus indefinitely. A timeout preserves the journal for a safe retry.
+    let outcome = wait_for_cleanup_helper(&mut helper, Duration::from_secs(60));
+    let stopped = fs::read(&confirmation).is_ok_and(|bytes| bytes == b"owned-launchers-stopped");
+    let _ = fs::remove_file(&confirmation);
+    let status = match outcome {
+        Ok(status) => status,
+        Err(error) if stopped && helper.try_wait()?.is_some() => {
+            // No owned launcher remains. Preserve the stage journal outside the
+            // disposable work directory, then release the slot despite slow IO.
+            let logs = work.parent().and_then(Path::parent).context("work output root")?
+                .join("logs").join("deferred-cleanup");
+            fs::create_dir_all(&logs)?;
+            let saved = artifact_cache::unique_path(&logs, "owners")?;
+            fs::copy(&registry, &saved).context("retain deferred stage cleanup journal")?;
+            eprintln!("[archive] Owned launchers stopped; stage cleanup deferred: {error:#}; journal {}", saved.display());
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
     ensure!(
         status.success(),
         "could not stop owned Windows processes; keeping work directory"
     );
     Ok(())
+}
+
+fn stop_child(child: &mut Child, timeout: Duration) -> Result<()> {
+    if child.try_wait()?.is_some() {
+        return Ok(());
+    }
+    child.kill().context("terminate owned child through its process handle")?;
+    let started = Instant::now();
+    while child.try_wait()?.is_none() {
+        ensure!(started.elapsed() < timeout, "owned child exit remains unconfirmed after termination");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Ok(())
+}
+
+fn wait_for_cleanup_helper(child: &mut Child, timeout: Duration) -> Result<std::process::ExitStatus> {
+    let started = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait().context("inspect owned cleanup helper")? {
+            return Ok(status);
+        }
+        if started.elapsed() >= timeout {
+            // Child owns the original process handle; do not resolve a possibly
+            // recycled PID. Stop only this helper, not arbitrary Excel processes.
+            stop_child(child, Duration::from_secs(5)).context("stop timed-out owned cleanup helper")?;
+            anyhow::bail!(
+                "owned Windows cleanup exceeded {:.1} seconds; preserving ownership journal and work directory for retry",
+                timeout.as_secs_f64()
+            );
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 pub(super) fn retain_evidence(value: &mut Value, work: &Path, evidence: &Path) -> Result<()> {
@@ -489,6 +554,56 @@ pub(super) fn retain_evidence(value: &mut Value, work: &Path, evidence: &Path) -
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn cleanup_helper_timeout_reaps_helper_before_retry() -> Result<()> {
+        let mut child = Command::new(std::env::current_exe()?)
+            .args([
+                "--exact",
+                "regression::archive::worker::tests::cleanup_helper_test_child",
+            ])
+            .env("EXCEL_SHRINK_CLEANUP_TEST_HANG", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let started = Instant::now();
+        let result = wait_for_cleanup_helper(&mut child, Duration::from_millis(200));
+        assert!(result.unwrap_err().to_string().contains("preserving ownership journal"));
+        assert!(started.elapsed() < Duration::from_secs(6));
+        assert!(child.try_wait()?.is_some(), "timed-out helper survived");
+
+        let mut next = Command::new(std::env::current_exe()?)
+            .args([
+                "--exact",
+                "regression::archive::worker::tests::cleanup_helper_test_child",
+            ])
+            .env_remove("EXCEL_SHRINK_CLEANUP_TEST_HANG")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        assert!(wait_for_cleanup_helper(&mut next, Duration::from_secs(10))?.success());
+        let mut peer = Command::new(std::env::current_exe()?)
+            .args([
+                "--exact",
+                "regression::archive::worker::tests::cleanup_helper_test_child",
+            ])
+            .env("EXCEL_SHRINK_CLEANUP_TEST_HANG", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        stop_child(&mut next, Duration::from_secs(1))?;
+        let peer_survived = peer.try_wait()?.is_none();
+        stop_child(&mut peer, Duration::from_secs(5))?;
+        assert!(peer_survived, "cleaning an exited worker affected a different child");
+        Ok(())
+    }
+
+    #[test]
+    fn cleanup_helper_test_child() {
+        if std::env::var_os("EXCEL_SHRINK_CLEANUP_TEST_HANG").is_some() {
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    }
 
     #[test]
     fn parent_cancellation_stops_owned_worker_without_waiting_for_manual_peers() -> Result<()> {
