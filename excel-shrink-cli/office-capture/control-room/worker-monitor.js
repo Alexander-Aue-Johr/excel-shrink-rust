@@ -109,6 +109,7 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
 
   function render() {
     if (!snapshot) return;
+    const expandedCaptures = new Set(signalViews.filter(item => item.view.captureExpanded).map(item => item.row.id));
     for (const item of signalViews) item.view.destroy();
     signalViews = [];
     const focusedWorker = document.activeElement?.dataset?.workerId;
@@ -138,6 +139,7 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
         phase.append(element('strong', null, observedPhase(row)), element('small', null, `${duration(age(row.stateSince))} since state change${row.sheet ? ` · ${row.sheet}` : ''}`));
         const signals = createSignalMonitor({ compact: true,
           onCaptureNavigate: ({ capture, follow }) => openCaptures(row, capture, follow) });
+        signals.captureExpanded = expandedCaptures.has(row.id);
         signals.update(row, { live: snapshot.running !== false && snapshot.runner_alive !== false });
         signalViews.push({ view: signals, row });
         select.append(identity, phase);

@@ -1,5 +1,6 @@
 import { createSignalStore } from './signal-model.js';
-import { capturePackages, captureGeometry, captureDescription } from './capture-strip-model.js';
+import { capturePackages, captureDescription } from './capture-strip-model.js';
+import { capturePalette, createCaptureSpatialView } from './capture-spatial-view.js';
 
 // Two data lanes (actual heartbeats and image receipts) plus a slim phase track.
 // An ECG-shaped event glyph is symbolic: no physiological/estimated data exist.
@@ -76,47 +77,62 @@ function drawHeart(ctx, points, now, xAt, y, plotLeft, plotRight) {
   ctx.restore();
 }
 function drawCaptureGlyph(ctx, pack, x, y, compact) {
-  const w = compact ? 19 : 28, h = compact ? 16 : 23;
-  const rects = captureGeometry(pack.events);
-  const alpha = pack.generation === 0 ? 1 : pack.generation === 1 ? .62 : pack.generation === 2 ? .36 : .2;
-  ctx.save(); ctx.globalAlpha = alpha;
-  ctx.fillStyle = '#79dce824'; ctx.strokeStyle = '#79dce8'; ctx.lineWidth = .8;
+  const w = compact ? 34 : 46, h = compact ? 28 : 38, inset = 3;
+  const boxes = [], layers = [...(pack.frame?.layers || [])].sort((a, b) => b.generation-a.generation);
+  ctx.save();
+  ctx.fillStyle = '#10252e'; ctx.strokeStyle = '#34677d'; ctx.lineWidth = .9;
   ctx.fillRect(x-w/2, y-h/2, w, h); ctx.strokeRect(x-w/2+.5, y-h/2+.5, w-1, h-1);
-  if (rects) {
-    const inset = 2, iw = w - 2*inset, ih = h - 2*inset;
-    for (const rect of rects.slice(-24)) {
-      ctx.fillStyle = '#79dce8';
-      const tx = x-w/2+inset+rect.x*iw, ty = y-h/2+inset+rect.y*ih;
-      ctx.fillRect(tx, ty, Math.max(1.2, rect.width*iw), Math.max(1.2, rect.height*ih));
+  ctx.strokeStyle = '#7595a31c'; ctx.lineWidth = .5;
+  for (let i=1;i<4;i++) {
+    ctx.beginPath();ctx.moveTo(x-w/2+w*i/4,y-h/2+1);ctx.lineTo(x-w/2+w*i/4,y+h/2-1);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x-w/2+1,y-h/2+h*i/4);ctx.lineTo(x+w/2-1,y-h/2+h*i/4);ctx.stroke();
+  }
+  for (const layer of layers) {
+    const style = capturePalette[layer.generation];
+    if (!style) continue;
+    ctx.fillStyle = style.color; ctx.globalAlpha = style.opacity;
+    for (const rect of layer.rects || []) {
+      const tx = x-w/2+inset+rect.x*(w-2*inset), ty = y-h/2+inset+rect.y*(h-2*inset);
+      const width = Math.max(.7,rect.width*(w-2*inset)-.7), height = Math.max(.7,rect.height*(h-2*inset)-.7);
+      ctx.fillRect(tx,ty,width,height);
+      boxes.push({x:tx,y:ty,width,height,pack,capture:rect.event});
     }
-  } else {
-    // Rectangles with no valid worksheet geometry must not pretend to encode positions.
-    ctx.fillStyle = '#d6e8f0'; ctx.font = '9px Consolas, monospace'; ctx.textAlign = 'center';
+  }
+  ctx.globalAlpha = 1;
+  if (!boxes.length) {
+    // A count is honest when coordinates or the worksheet are not known.
+    ctx.fillStyle = '#d6e8f0'; ctx.font = '10px Consolas, monospace'; ctx.textAlign = 'center';
     ctx.fillText(String(pack.count), x, y+3);
   }
-  ctx.restore();
-  // Count makes high-throughput aggregation explicit even when glyphs are tiny.
-  if (pack.count > 1 && rects) {
-    ctx.save(); ctx.fillStyle = '#b5d7e4'; ctx.globalAlpha = Math.max(.45, alpha);
-    ctx.font = '9px Consolas, monospace'; ctx.textAlign = 'center';
-    ctx.fillText(String(pack.count), x, y + h/2 + 9); ctx.restore();
+  if (pack.count > 1 || pack.groupCount > 1) {
+    ctx.fillStyle = '#b5d7e4'; ctx.font = '9px Consolas, monospace'; ctx.textAlign = 'center';
+    ctx.fillText(pack.groupCount > 1 ? `+${pack.groupCount-1}` : String(pack.count), x, y+h/2+10);
   }
-  return { x: x-w/2-2, y:y-h/2-3, width:w+4, height:h+14, pack };
+  ctx.restore();
+  // Later layers are on top and win when the same range is captured again.
+  return boxes.reverse();
 }
 function drawCaptures(ctx, events, now, left, width, y, compact) {
   const packages = capturePackages(events, now, WINDOW, width, compact);
   const xAt = at => left + (at - (now - WINDOW)) / WINDOW * width;
   ctx.strokeStyle = '#79dce83b'; ctx.lineWidth = 1; ctx.beginPath();
   ctx.moveTo(left, y); ctx.lineTo(left+width, y); ctx.stroke();
-  ctx.save(); ctx.beginPath(); ctx.rect(left, y-14, width, compact ? 35 : 44); ctx.clip();
+  ctx.save(); ctx.beginPath(); ctx.rect(left, y-25, width, compact ? 51 : 58); ctx.clip();
   // A real timestamp marker is drawn for EVERY received event, including those
-  // combined into a visual package. Pack positions are bounded screen bins.
+  // combined into a visual package. Glyphs remain anchored to real receipt times.
   for (const event of events) {
     if (event.at < now-WINDOW || event.at > now) continue;
     const x = xAt(event.at);
     ctx.strokeStyle = '#79dce84c'; ctx.beginPath(); ctx.moveTo(x,y-11);ctx.lineTo(x,y+11);ctx.stroke();
   }
-  const boxes = packages.map(pack => drawCaptureGlyph(ctx,pack,left+pack.x,y,compact));
+  const halfWidth = (compact ? 34 : 46)/2;
+  const boxes = packages.map(pack => {
+    const at = left+pack.x;
+    // Keep a readable miniature at the edge; its tick stays at the real time.
+    const center = Math.max(left+halfWidth,Math.min(left+width-halfWidth,at));
+    ctx.strokeStyle='#79dce86b';ctx.beginPath();ctx.moveTo(at,y+23);ctx.lineTo(center,y+20);ctx.stroke();
+    return drawCaptureGlyph(ctx,pack,center,y,compact);
+  }).reverse().flat();
   ctx.restore();
   return boxes;
 }
@@ -176,6 +192,8 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
   }
   let row, connected=true, liveSource=true, stale=false, frozenAt, receivedAt, observed=false, signature;
   let frozenSnapshot,lastSnapshot,hitBoxes=[],layout=null;
+  const spatial = createCaptureSpatialView({ compact, onCaptureNavigate: onCaptureNavigate
+    ? payload => { if (row) onCaptureNavigate({ row, ...payload }); } : null });
   const follow = onCaptureNavigate ? element('button', 'signal-follow', '↗ Follow captures') : null;
   if (follow) {
     follow.type = 'button';
@@ -195,9 +213,9 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       const bounds = canvas.getBoundingClientRect();
       const x = (event.clientX - bounds.left) * layout.width / bounds.width;
       const y = (event.clientY - bounds.top) * layout.height / bounds.height;
-      if (y < layout.capY - 17 || y > layout.capY + 23) return;
+      if (y < layout.capY - 25 || y > layout.capY + 29) return;
       const box = hitBoxes.find(b => x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height);
-      onCaptureNavigate({ row, capture: box?.pack.events.at(-1) || null, follow: !box });
+      onCaptureNavigate({ row, capture: box?.capture || null, follow: !box });
     });
     canvas.addEventListener('keydown', event => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -211,14 +229,16 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       const x = (event.clientX - bounds.left) * layout.width / bounds.width;
       const y = (event.clientY - bounds.top) * layout.height / bounds.height;
       const box = hitBoxes.find(b => x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height);
-      canvas.style.cursor = y >= layout.capY - 17 && y <= layout.capY + 23 ? 'pointer' : 'default';
-      canvas.title = box ? captureDescription(box.pack)
+      canvas.style.cursor = y >= layout.capY - 25 && y <= layout.capY + 29 ? 'pointer' : 'default';
+      canvas.title = box ? `${box.capture.details?.range || 'Capture range'} · received ${new Date(box.capture.at).toLocaleTimeString('en-US')} · displayed in ${captureDescription(box.pack)}`
         : 'Select the capture timeline to view current images in the Atelier.';
     });
   }
-  root.append(heading, canvas, legend);
+  root.append(heading, canvas, legend, spatial.element);
   root.title='A 60-second timeline of observed events. Each ECG-shaped pulse represents an observed add-in heartbeat. Miniatures show received captures; the bottom track shows reported phases and completed steps. Quiet signals alone do not diagnose a failure.';
   const view={element:root,visible:false,live:false,
+    get captureExpanded(){return spatial.element.open;},
+    set captureExpanded(value){spatial.element.open=Boolean(value);},
     update(next,options={}){
       if(!next)return;
       const same=row?.id===next.id;
@@ -235,6 +255,9 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       view.live=connected&&!stale&&liveSource&&row.active!==false&&row.alive!==false;
       if(view.live){frozenAt=null;frozenSnapshot=null;}
       else{frozenAt??=receivedAt??now;frozenSnapshot??=lastSnapshot;}
+      spatial.element.hidden = row.kind === 'Rust / Host';
+      const spatialSnapshot = view.live ? lastSnapshot : frozenSnapshot;
+      spatial.update(spatialSnapshot?.captureHistory || spatialSnapshot?.captureEvents || [], view.live ? now : frozenAt);
       view.draw();schedule();
     },
     draw(){
@@ -258,14 +281,14 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       if (document.hidden || !view.visible || !root.isConnected) return;
       const width=Math.round(root.getBoundingClientRect().width);
       if(width<80)return;
-      const height=compact?97:118,ratio=Math.min(devicePixelRatio||1,1.5);
+      const height=compact?126:150,ratio=Math.min(devicePixelRatio||1,1.5);
       if(canvas.width!==Math.round(width*ratio)||canvas.height!==Math.round(height*ratio)){
         canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
       }
       const ctx=canvas.getContext('2d');if(!ctx)return;
       ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,width,height);
       ctx.fillStyle='#08151f';ctx.fillRect(0,0,width,height);
-      const left=34,graphWidth=Math.max(1,width-left-7),heartY=compact?17:23,capY=compact?50:61,stateY=compact?77:96;
+      const left=34,graphWidth=Math.max(1,width-left-7),heartY=compact?17:23,capY=compact?65:81,stateY=compact?106:130;
       const xAt=at=>left+(at-(now-WINDOW))/WINDOW*graphWidth;
       layout={width,height,capY};
       ctx.strokeStyle='#19313e';ctx.lineWidth=.6;

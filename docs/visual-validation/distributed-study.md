@@ -367,6 +367,21 @@ process, including while Excel opening stalls Office.js. Hidden launches can be
 observed entirely through this dashboard; whether an Office build executes its
 add-in reliably while hidden still needs a representative native test.
 
+The capture signal lane shows worksheet ranges as spatial miniatures. New ranges
+are blue, the preceding batch is gray, and the older batch is faded. Expand
+**Worksheet capture area** in the worker overview, or select a worker, to compare
+the last three batches on the same coordinate grid. The four Excel worker cards
+below the Atelier show this area directly. Each tile opens its exact capture and
+pauses following; **Follow captures** resumes live navigation.
+
+Capture timestamps mark receipt and validation by the host, not the instant Excel
+created the image. Command IDs identify actual batches. Missing IDs use labeled
+one-second visual groups; crowded timeline glyphs show an additional-group count.
+Only observed ranges are drawn, and missing coordinates remain explicit. The
+60-second lane expires normally, while the last spatial context stays available
+during quiet periods. This context holds at most 256 observed captures per worker
+and resets with its process or attempt; it is not a complete capture archive.
+
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8771/api/control -Method Post -ContentType application/json -Body '{"capture_tile_megapixels":4,"capture_batch_tiles":4,"hide_excel":true}'
 Invoke-RestMethod http://127.0.0.1:8771/api/groups/GROUP_ID/restart -Method Post -ContentType application/json -Body '{"reason":"Accidental cell edit"}'
