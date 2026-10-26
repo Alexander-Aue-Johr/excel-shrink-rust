@@ -72,9 +72,7 @@ internal static class ControlRoom
             queue["controls"] = await ReadControls(controlPath, initial, diagnostics);
             var stopPath = Path.Combine(root, "stop-request.json");
             var stop = File.Exists(stopPath) ? await ReadSnapshot(stopPath, diagnostics) : null;
-            queue["stop_requested"] = stop is not null &&
-                JsonNode.DeepEquals(stop["runner_pid"], queue["runner_pid"]) &&
-                JsonNode.DeepEquals(stop["runner_started_unix_ms"], queue["runner_started_unix_ms"]);
+            queue["stop_requested"] = ActiveStopRequested(queue, stop);
             queue.Remove("progress");
             var progress = await ReadSnapshot(Path.Combine(root, "progress.json"), diagnostics, 64 * 1024);
             if (queue["run_id"] is not null && (string?)progress?["run_id"] == (string?)queue["run_id"])
@@ -241,9 +239,8 @@ internal static class ControlRoom
                 var stopPath = Path.Combine(root, "stop-request.json");
                 var queue = File.Exists(stopPath) && File.Exists(queuePath) ? await ReadObject(queuePath) : new JsonObject();
                 var stop = File.Exists(stopPath) ? await ReadObject(stopPath) : new JsonObject();
-                if (stop["runner_pid"] is not null &&
-                    JsonNode.DeepEquals(stop["runner_pid"], queue["runner_pid"]) &&
-                    JsonNode.DeepEquals(stop["runner_started_unix_ms"], queue["runner_started_unix_ms"])) {
+                CheckRunnerOwnership(queue, new JsonArray());
+                if (ActiveStopRequested(queue, stop)) {
                     next["target_groups"] = 0;
                     next["paused"] = false;
                 }
@@ -638,6 +635,17 @@ internal static class ControlRoom
         } catch (FileNotFoundException) { return true; }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static bool ActiveStopRequested(JsonObject queue, JsonObject? stop)
+    {
+        // A retained request applies only while its runner might still be
+        // draining. Saving controls for a stopped/dead runner does not start it.
+        return stop is not null && stop["runner_pid"] is not null &&
+            (bool?)queue["runner_alive"] != false &&
+            ((bool?)queue["running"] == true || (bool?)queue["runner_reported_running"] == true) &&
+            JsonNode.DeepEquals(stop["runner_pid"], queue["runner_pid"]) &&
+            JsonNode.DeepEquals(stop["runner_started_unix_ms"], queue["runner_started_unix_ms"]);
     }
 
     private static void CheckRunnerOwnership(JsonObject queue, JsonArray diagnostics)

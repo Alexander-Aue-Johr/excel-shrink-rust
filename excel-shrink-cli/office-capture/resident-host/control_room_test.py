@@ -115,6 +115,61 @@ class ControlRoomProtocol(unittest.TestCase):
         self.write("queue.json", queue)
         self.assertFalse(self.request("/api/state")["stop_requested"])
 
+    def test_completed_stop_request_allows_saving_controls_without_starting_runner(self):
+        queue = {"running": False, "phase": "stopped", "runner_pid": os.getpid(),
+                 "runner_started_unix_ms": current_process_started_ms(), "stop_supported": True}
+        self.write("queue.json", queue)
+        self.write("stop-request.json", {"runner_pid": queue["runner_pid"],
+                   "runner_started_unix_ms": queue["runner_started_unix_ms"]})
+        state = self.request("/api/state")
+        self.assertTrue(state["runner_alive"], "The saved stopped state must win even while the owner process exists")
+        self.assertFalse(state["stop_requested"])
+        controls = self.request("/api/control", {"target_groups": 4})["controls"]
+        self.assertEqual(controls["target_groups"], 4)
+        state = self.request("/api/state")
+        self.assertEqual(state["controls"]["target_groups"], 4)
+        self.assertFalse(state["running"])
+        self.assertEqual(state["phase"], "stopped")
+        self.assertFalse(state["stop_requested"])
+        self.assertEqual(json.loads((self.data / "queue.json").read_text()), queue)
+
+    def test_dead_or_reused_runner_stop_request_does_not_override_saved_controls(self):
+        for label, pid, started in [
+            ("dead", 2147483647, 1),
+            ("reused", os.getpid(), current_process_started_ms() - 1000),
+        ]:
+            with self.subTest(label=label):
+                queue = {"running": True, "phase": "comparing", "runner_pid": pid,
+                         "runner_started_unix_ms": started, "stop_supported": True}
+                self.write("queue.json", queue)
+                self.write("stop-request.json", {"runner_pid": pid, "runner_started_unix_ms": started})
+                state = self.request("/api/state")
+                self.assertFalse(state["runner_alive"])
+                self.assertFalse(state["stop_requested"])
+                controls = self.request("/api/control", {"target_groups": 3, "paused": True})["controls"]
+                self.assertEqual(controls["target_groups"], 3)
+                self.assertTrue(controls["paused"])
+                state = self.request("/api/state")
+                self.assertEqual(state["controls"], controls)
+                self.assertFalse(state["running"])
+                self.assertFalse(state["stop_requested"])
+                self.assertEqual(json.loads((self.data / "queue.json").read_text()), queue)
+
+    def test_unverified_runner_keeps_matching_stop_request_in_force(self):
+        # Missing creation identity leaves the process potentially alive. Keep
+        # the orderly stop in force until the runner is known to have stopped.
+        queue = {"running": True, "phase": "comparing", "runner_pid": os.getpid()}
+        self.write("queue.json", queue)
+        self.write("stop-request.json", {"runner_pid": os.getpid()})
+        state = self.request("/api/state")
+        self.assertIsNone(state["runner_alive"])
+        self.assertEqual(state["phase"], "owner_unverified")
+        self.assertTrue(state["stop_requested"])
+        controls = self.request("/api/control", {"target_groups": 4, "paused": True})["controls"]
+        self.assertEqual(controls["target_groups"], 0)
+        self.assertFalse(controls["paused"])
+        self.assertTrue(self.request("/api/state")["stop_requested"])
+
     def test_update_ready_requires_a_released_output_lock(self):
         import msvcrt
         self.write("queue.json", {"running": False, "runner_pid": os.getpid(),
