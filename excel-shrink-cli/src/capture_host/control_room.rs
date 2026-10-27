@@ -737,7 +737,8 @@ async fn asset(
 fn defaults() -> Value {
     json!({"target_groups": 1, "paused": false, "open_timeout_seconds": 600, "system_reserve_mib": 1024,
         "job_timeout_seconds": 300, "equal_preview_width": 512, "capture_tile_megapixels": 32,
-        "capture_batch_tiles": 1, "hide_excel": false, "tall_sheet_threshold": 40, "tall_sheet_edge_tiles": 2})
+        "capture_batch_tiles": 1, "capture_transport": "live-images", "hide_excel": false,
+        "tall_sheet_threshold": 40, "tall_sheet_edge_tiles": 2})
 }
 
 fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
@@ -750,6 +751,11 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
         ensure!(known.get(key).is_some(), "Unknown control '{key}'.");
         if matches!(key.as_str(), "paused" | "hide_excel") {
             ensure!(value.is_boolean(), "{key} must be a boolean.");
+        } else if key == "capture_transport" {
+            ensure!(
+                matches!(value.as_str(), Some("live-images" | "hash-first")),
+                "capture_transport must be 'live-images' or 'hash-first'."
+            );
         } else {
             let integer = value
                 .as_i64()
@@ -802,4 +808,34 @@ fn active_stop_requested(queue: &Value, stop: Option<&Value>) -> bool {
             && stop["runner_pid"] == queue["runner_pid"]
             && stop["runner_started_unix_ms"] == queue["runner_started_unix_ms"]
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capture_transport_defaults_to_live_images_and_rejects_unknown_modes() -> Result<()> {
+        let current = defaults();
+        assert_eq!(current["capture_transport"], "live-images");
+        let selected = merge_controls(&current, &json!({"capture_transport":"hash-first"}))?;
+        assert_eq!(selected["capture_transport"], "hash-first");
+        assert_eq!(selected["target_groups"], current["target_groups"]);
+        assert_eq!(
+            selected["capture_batch_tiles"],
+            current["capture_batch_tiles"]
+        );
+        let restored = merge_controls(&selected, &json!({"capture_transport":"live-images"}))?;
+        assert_eq!(restored, current);
+        for value in [
+            json!("hash-only"),
+            json!(""),
+            json!(true),
+            json!(1),
+            Value::Null,
+        ] {
+            assert!(merge_controls(&current, &json!({"capture_transport":value})).is_err());
+        }
+        Ok(())
+    }
 }

@@ -296,6 +296,21 @@ class ControlRoomProtocol(unittest.TestCase):
                 self.assertEqual(self.request("/api/state")["controls"], expected)
                 self.assertEqual(json.loads((self.data / "control.json").read_text()), expected)
 
+    def test_capture_transport_is_persisted_without_changing_active_group_state(self):
+        before = self.request("/api/state")["controls"]
+        self.assertEqual(before["capture_transport"], "live-images")
+        group = {"id": "one", "status": "capturing",
+                 "capture_pipeline": {"transport": "live-images"}}
+        self.write("groups/one/state.json", group)
+        for mode in ("hash-first", "live-images"):
+            with self.subTest(mode=mode):
+                expected = {**before, "capture_transport": mode}
+                result = self.request("/api/control", {"capture_transport": mode})
+                self.assertEqual(result["controls"], expected)
+                self.assertEqual(self.request("/api/state")["controls"], expected)
+                self.assertEqual(json.loads((self.data / "control.json").read_text()), expected)
+                self.assertEqual(json.loads((self.data / "groups/one/state.json").read_text()), group)
+
     def test_legacy_ram_reserve_defaults_without_overriding_an_explicit_value(self):
         legacy = self.request("/api/state")["controls"]
         legacy.pop("system_reserve_mib")
@@ -323,6 +338,9 @@ class ControlRoomProtocol(unittest.TestCase):
             {"system_reserve_mib": 65537}, {"system_reserve_mib": 4294967296},
             {"system_reserve_mib": "512"}, {"system_reserve_mib": None}, {"system_reserve_mib": True},
             {"target_groups": 24, "system_reserve_mib": 65537},
+            {"capture_transport": "hash-only"}, {"capture_transport": ""},
+            {"capture_transport": True}, {"capture_transport": 1}, {"capture_transport": None},
+            {"target_groups": 24, "capture_transport": "unknown"},
         ]:
             with self.subTest(patch=patch):
                 self.assert_status(400, "/api/control", patch)

@@ -1,5 +1,5 @@
 //! Keep the original and profile workbooks open throughout their comparisons.
-//! Normal runs exchange digests; the control room uses synchronized PNG uploads.
+//! Live images and hash-first captures share exact pixel comparison and evidence.
 use super::*;
 use crate::regression::archive::{batch_cleanup, opening_pause::OpeningPause};
 use crate::regression::{artifact_cache, visual_compare, visual_validation};
@@ -71,11 +71,7 @@ pub(in crate::regression) struct ResidentCapture {
 }
 
 fn publish(path: &Path, value: &Value) -> Result<()> {
-    fs::create_dir_all(path.parent().context("missing session directory")?)?;
-    let pending = path.with_extension("pending");
-    fs::write(&pending, serde_json::to_vec(value)?)?;
-    fs::rename(pending, path)?;
-    Ok(())
+    artifact_cache::atomic_write(path, &serde_json::to_vec(value)?)
 }
 
 // Byte equality alone cannot certify volatile calculations or refresh-on-open.
@@ -489,6 +485,9 @@ impl ResidentCapture {
         metrics["capture_client_aliases"] = json!(self.aliases);
         metrics["event_transport"] = self.events.snapshot();
         metrics["pipeline_timings"] = serde_json::to_value(&self.timings)?;
+        if let Some(live) = &self.live {
+            metrics["capture_pipeline"] = live.capture_pipeline_metadata();
+        }
         Ok(Some(metrics))
     }
 
@@ -957,12 +956,25 @@ impl ResidentCapture {
             tiles.push(tile);
         }
         fs::create_dir_all(output)?;
+        let transport = self.live.as_ref().map(|live| live.capture_transport());
+        // On-demand controls already target known mismatches and always send
+        // their images. Only primary profile captures can skip equal uploads.
+        let image_first = self.live.is_some()
+            && (transport == Some("live-images") || !self.plans.contains_key(client));
+        let method = match (transport, image_first) {
+            (Some("hash-first"), false) => {
+                "retained PNG SHA-256; host exact pixels for mismatches; adjacent context"
+            }
+            (Some(_), _) => "PNG uploads; host exact pixels",
+            (None, _) => "resident PNG SHA-256 then exact pixels",
+        };
         fs::write(
             output.join("transport.json"),
             serde_json::to_vec_pretty(&json!({
-                "method":if self.live.is_some() {"synchronized PNG uploads; host exact pixels"} else {"resident PNG SHA-256 then exact pixels"}, "tiles":left.tiles.len(),
-                "client_checksum_tiles":if self.live.is_some() {0} else {left.tiles.len()+right.tiles.len()},
-                "image_first":self.live.is_some(),
+                "method":method, "tiles":left.tiles.len(),
+                "client_checksum_tiles":if image_first {0} else {left.tiles.len()+right.tiles.len()},
+                "image_first":image_first,
+                "primary_capture_transport":transport,
                 "requested_image_pairs":a.len(),"hash_equal_tiles":left.tiles.iter().zip(&right.tiles)
                     .filter(|(a,b)|a.sha256 == b.sha256 && a.width == b.width && a.height == b.height).count()
             }))?,
@@ -1273,6 +1285,11 @@ impl ResidentCapture {
         );
         metrics["capture_client_aliases"] = json!(self.aliases);
         metrics["batch_cleanup_wait_seconds"] = json!(cleanup_wait_seconds);
+        metrics["pipeline_timings"] = serde_json::to_value(&self.timings)?;
+        metrics["event_transport"] = self.events.snapshot();
+        if let Some(live) = &self.live {
+            metrics["capture_pipeline"] = live.capture_pipeline_metadata();
+        }
         Ok(metrics)
     }
 }
@@ -1408,6 +1425,56 @@ fn validate_snapshot(snapshot: &Snapshot, configs: &[Value]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn publication_keeps_complete_state_while_a_windows_reader_blocks_replacement() -> Result<()> {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let root =
+            artifact_cache::unique_path(&std::env::temp_dir(), "resident-state-publication")?;
+        let target = root.join("state.json");
+        let before = json!({"status":"capturing","revision":1,"tiles":["first"]});
+        let after = json!({"status":"complete","revision":2,"tiles":["first","second"]});
+        publish(&target, &before)?;
+        // Match a reader that permits reads but omits FILE_SHARE_DELETE.
+        let reader = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&target)?;
+        let writer_target = target.clone();
+        let writer_value = after.clone();
+        let writer = std::thread::spawn(move || publish(&writer_target, &writer_value));
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while fs::read_dir(&root)?.count() == 1
+            && !writer.is_finished()
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        std::thread::sleep(Duration::from_millis(300));
+        let completed_before_release = writer.is_finished();
+        let during: Value = serde_json::from_slice(&fs::read(&target)?)?;
+        drop(reader);
+        writer.join().expect("state publisher panicked")?;
+
+        assert!(
+            !completed_before_release,
+            "publisher must wait for the temporary reader"
+        );
+        assert_eq!(
+            during, before,
+            "readers must retain the previous complete JSON"
+        );
+        assert_eq!(serde_json::from_slice::<Value>(&fs::read(&target)?)?, after);
+        assert_eq!(
+            fs::read_dir(&root)?.count(),
+            1,
+            "publication left a pending file"
+        );
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     fn config() -> Vec<Value> {
         vec![json!({"index":1,"name":"Data","bottom_row":19,"capture_right_column":1})]

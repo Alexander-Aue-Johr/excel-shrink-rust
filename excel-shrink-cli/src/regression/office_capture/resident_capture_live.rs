@@ -13,6 +13,9 @@ mod processing;
 #[path = "resident_capture_pipeline.rs"]
 mod pipeline;
 
+#[path = "resident_capture_hashes.rs"]
+mod hashes;
+
 /// The coordinator keeps reading controls while the image thread owns the UI.
 struct LiveControls {
     root: PathBuf,
@@ -148,6 +151,16 @@ impl LiveCapture {
 
     fn controls(&self) -> Value {
         read_controls(&self.root, &self.controls)
+    }
+
+    pub(super) fn capture_transport(&self) -> &str {
+        self.state["capture_pipeline"]["transport"]
+            .as_str()
+            .unwrap_or("live-images")
+    }
+
+    pub(super) fn capture_pipeline_metadata(&self) -> Value {
+        self.state["capture_pipeline"].clone()
     }
 
     pub(super) fn paused(&self) -> bool {
@@ -734,6 +747,19 @@ fn batch_end(
 
 impl ResidentCapture {
     pub(super) fn capture_synchronized(&mut self, clients: &BTreeSet<String>) -> Result<()> {
+        if clients.contains("original") {
+            let live = self.live.as_mut().context("missing live capture state")?;
+            let hash_first = live.controls()["capture_transport"] == "hash-first";
+            live.state["capture_pipeline"]["transport"] = json!(if hash_first {
+                "hash-first"
+            } else {
+                "live-images"
+            });
+            live.save()?;
+            if hash_first {
+                return self.capture_hash_first(clients);
+            }
+        }
         if std::env::var("EXCEL_SHRINK_CAPTURE_PIPELINE").as_deref() == Ok("0") {
             return self.capture_serialized(clients);
         }

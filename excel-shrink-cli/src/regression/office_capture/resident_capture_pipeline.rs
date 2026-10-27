@@ -209,8 +209,12 @@ impl ResidentCapture {
             }
         }
         let pipeline = &mut live.state["capture_pipeline"];
-        pipeline["mode"] = json!("bounded-overlap");
-        pipeline["window_batches"] = json!(LOOKAHEAD_BATCHES);
+        if !control_only {
+            pipeline["mode"] = json!("bounded-overlap");
+            pipeline["window_batches"] = json!(LOOKAHEAD_BATCHES);
+        } else {
+            pipeline["control_mode"] = json!("bounded-overlap");
+        }
         pipeline["max_pending_tiles_per_client"] = json!(MAX_PENDING_TILES);
         pipeline["max_pending_pixels_per_client"] = json!(MAX_PENDING_PIXELS);
         pipeline["max_pending_png_bytes_per_client"] = json!(MAX_PENDING_PNG_BYTES);
