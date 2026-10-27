@@ -74,6 +74,38 @@ async function geometry(model, bottom = 99, right = 15) {
   return result;
 }
 
+test('million-row planning precedes capture limits and sparse bands omit the middle', () => {
+  // Calibrated geometry matching a sparse sheet with a last-row total. No
+  // Office calls are needed to exercise the planner after those measurements.
+  const rows = 1048574;
+  const result = new SheetGeometry(null, 'Trial 3', rows - 1, 13, 4);
+  result.rows = new Float64Array(rows).fill(12.75);
+  result.pixelY = Float64Array.from({length: rows + 1}, (_, index) => index * 17);
+  result.visibleRows = Uint32Array.from({length: rows + 1}, (_, index) => index);
+  result.columns = new Float64Array(14).fill(100);
+  result.x = Float64Array.from({length: 15}, (_, index) => index * 100);
+  result.scaleX = result.scaleY = 4 / 3;
+  result.fixedWidth = null;
+
+  assert.throws(() => result.tiles(13, null), error => error.code === 'IMAGE_BUDGET');
+  const plan = result.tiles(13, null, undefined, {planOnly: true});
+  assert.ok(plan.length > 4096 && plan.length <= 65536);
+  assert.equal(plan[0].core.r0, 0);
+  assert.equal(plan.at(-1).core.r1, rows);
+  const shared = plan.map(tile => [tile.core.r0, tile.core.r1]);
+  assert.equal(result.tiles(13, null, shared, {planOnly: true}).length, plan.length);
+
+  const wanted = [...shared.slice(0, 2), ...shared.slice(-2)];
+  const {selectedTiles} = require('../web/resident.js');
+  const captures = selectedTiles(result, 13, wanted);
+  assert.deepEqual(captures.map(tile => [tile.core.r0, tile.core.r1]), wanted);
+  assert.ok(captures.every(tile => tile.width * tile.expectedHeight <= result.maxPixels));
+  assert.throws(() => selectedTiles(result, 13, shared), error => error.code === 'IMAGE_BUDGET');
+  assert.throws(() => selectedTiles(result, 13, [[0, rows]]), /exceeds the image budget/);
+  assert.throws(() => result.tiles(13, null, Array(65537).fill([0, 1]), {planOnly: true}),
+    error => error.code === 'IMAGE_BUDGET' && /metadata budget/.test(error.message));
+});
+
 test('configurable 1 to 32 megapixel budgets refine real full-width guarded captures', async () => {
   const model = officeModel();
   const small = new SheetGeometry(model.office, 'Sheet', 999, 15, 1);

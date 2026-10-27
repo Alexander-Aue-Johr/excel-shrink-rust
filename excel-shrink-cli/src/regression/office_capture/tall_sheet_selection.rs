@@ -4,6 +4,8 @@
 use super::*;
 use crate::regression::{excel_automation, xlsx_value_compare};
 
+const MAX_CAPTURE_TILES: usize = 4096;
+
 fn setting(live: Option<&live::LiveCapture>, key: &str, env: &str, default: u64) -> usize {
     live.and_then(|l| l.tall_sheet_setting(key))
         .or_else(|| std::env::var(env).ok()?.parse().ok())
@@ -21,8 +23,8 @@ fn selected_indices(
     threshold: usize,
     edges: usize,
     fallback: bool,
-) -> BTreeSet<usize> {
-    tiles
+) -> Result<BTreeSet<usize>> {
+    let selected: BTreeSet<_> = tiles
         .iter()
         .enumerate()
         .filter(|(i, tile)| {
@@ -33,7 +35,14 @@ fn selected_indices(
                 || rows.iter().any(|span| overlaps(tile.core_rows, *span))
         })
         .map(|(_, tile)| tile.tile_index)
-        .collect()
+        .collect();
+    // Match the worker's actual-capture limit after selection. Large metadata
+    // plans are allowed, but conservative full-capture fallbacks stay bounded.
+    ensure!(
+        selected.len() <= MAX_CAPTURE_TILES,
+        "IMAGE_BUDGET: selected captures exceed the {MAX_CAPTURE_TILES}-tile limit"
+    );
+    Ok(selected)
 }
 
 fn merge_rows(rows: &mut Vec<[u32; 2]>) {
@@ -320,7 +329,8 @@ impl ResidentCapture {
             };
             reasons.sort();
             reasons.dedup();
-            let selected = selected_indices(&tiles, &rows, threshold, edges, fallback.is_some());
+            let selected = selected_indices(&tiles, &rows, threshold, edges, fallback.is_some())
+                .with_context(|| format!("select captures for sheet {sheet}"))?;
             keep.extend(selected.iter().map(|tile| (sheet, *tile)));
             let mut gaps = Vec::<Value>::new();
             for tile in tiles.iter().filter(|t| !selected.contains(&t.tile_index)) {
@@ -399,9 +409,12 @@ mod tests {
     fn only_tall_sheets_are_shortened_and_boundary_is_strict() {
         let tiles: Vec<_> = (0..10).map(tile).collect();
         let refs: Vec<_> = tiles.iter().collect();
-        assert_eq!(selected_indices(&refs, &[], 10, 2, false).len(), 10);
         assert_eq!(
-            selected_indices(&refs, &[], 9, 2, false),
+            selected_indices(&refs, &[], 10, 2, false).unwrap().len(),
+            10
+        );
+        assert_eq!(
+            selected_indices(&refs, &[], 9, 2, false).unwrap(),
             BTreeSet::from([0, 1, 8, 9])
         );
     }
@@ -410,11 +423,30 @@ mod tests {
         let tiles: Vec<_> = (0..10).map(tile).collect();
         let refs: Vec<_> = tiles.iter().collect();
         assert_eq!(
-            selected_indices(&refs, &[[399, 501]], 5, 1, false),
+            selected_indices(&refs, &[[399, 501]], 5, 1, false).unwrap(),
             BTreeSet::from([0, 3, 4, 5, 9])
         );
-        assert_eq!(selected_indices(&refs, &[], 5, 1, true).len(), 10);
-        assert_eq!(selected_indices(&refs, &[], 5, 20, false).len(), 10);
+        assert_eq!(selected_indices(&refs, &[], 5, 1, true).unwrap().len(), 10);
+        assert_eq!(
+            selected_indices(&refs, &[], 5, 20, false).unwrap().len(),
+            10
+        );
+    }
+    #[test]
+    fn large_plans_are_shortened_before_the_capture_budget_applies() {
+        let tiles: Vec<_> = (0..5000).map(tile).collect();
+        let refs: Vec<_> = tiles.iter().collect();
+        assert_eq!(
+            selected_indices(&refs, &[], 40, 2, false).unwrap(),
+            BTreeSet::from([0, 1, 4998, 4999])
+        );
+        for selected in [
+            selected_indices(&refs, &[], 40, 2, true),
+            selected_indices(&refs, &[[0, 500000]], 40, 2, false),
+            selected_indices(&refs, &[], 6000, 2, false),
+        ] {
+            assert!(selected.unwrap_err().to_string().contains("IMAGE_BUDGET"));
+        }
     }
     #[test]
     fn merging_does_not_fill_unobserved_gaps() {

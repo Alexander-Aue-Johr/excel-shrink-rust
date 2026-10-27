@@ -6,6 +6,8 @@
   const MAX_PIXELS = 32000000;
   const MAX_EDGE = 30000;
   const MAX_TILE_ROWS = 8192;
+  const MAX_CAPTURE_TILES = 4096;
+  const MAX_PLANNED_TILES = 65536;
   const BATCH = 384;
 
   function budgetError(message) {
@@ -394,7 +396,14 @@
       return {first, last};
     }
 
-    tiles(endColumn, targets, sharedRows) {
+    tiles(endColumn, targets, sharedRows, {planOnly = false, allowGaps = false} = {}) {
+      // Resident planning carries geometry, not PNGs. A large bounded plan lets
+      // the coordinator choose safe tall-sheet bands before the capture limit
+      // applies. Classic capture and actual resident captures keep their limit.
+      const maxTiles = planOnly ? MAX_PLANNED_TILES : MAX_CAPTURE_TILES;
+      const limitMessage = planOnly
+        ? 'Worksheet exceeds the planned tile metadata budget'
+        : 'Worksheet exceeds the tile count budget';
       const width = this.imageWidth(endColumn);
       if (width > MAX_EDGE || width < 2) throw budgetError(`Full-width capture exceeds the image edge budget (${width} px)`);
       const fits = (start, end, halo, pixelBudget = this.maxPixels) =>
@@ -411,9 +420,10 @@
         }
       } else spans.push({start: 0, end: this.rows.length});
       if (sharedRows !== undefined) {
-        if (!Array.isArray(sharedRows) || !sharedRows.length || sharedRows.length > 4096) {
+        if (!Array.isArray(sharedRows) || !sharedRows.length) {
           throw new Error('Invalid shared tile rows');
         }
+        if (sharedRows.length > maxTiles) throw budgetError(limitMessage);
         const requested = [], coverage = [];
         for (const pair of sharedRows) {
           if (!Array.isArray(pair) || pair.length !== 2 || !pair.every(Number.isInteger) ||
@@ -426,8 +436,8 @@
           if (previous && previous.end === pair[0]) previous.end = pair[1];
           else coverage.push({start: pair[0], end: pair[1]});
         }
-        if (coverage.length !== spans.length || coverage.some((span, index) =>
-          span.start !== spans[index].start || span.end !== spans[index].end)) {
+        if (!allowGaps && (coverage.length !== spans.length || coverage.some((span, index) =>
+          span.start !== spans[index].start || span.end !== spans[index].end))) {
           throw new Error('Shared tile rows do not cover the requested range');
         }
         spans = requested;
@@ -464,7 +474,7 @@
           const cropHeight = this.imageHeight(start, end);
           tiles.push({raw, core, cropY, cropHeight, width, expectedHeight: this.imageHeight(halo.first, halo.last),
             pixelBudget, budgetFallback});
-          if (tiles.length > 4096) throw budgetError('Worksheet exceeds the tile count budget');
+          if (tiles.length > maxTiles) throw budgetError(limitMessage);
           start = end;
         }
       }

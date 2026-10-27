@@ -18,19 +18,21 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
     SheetGeometry: class {
       constructor() {
         geometriesCreated++;
-        this.rows = Array(10).fill(1);
-        this.pixelY = Array.from({length: 11}, (_, i) => i);
+        this.rows = Array(hooks.rowCount ?? 10).fill(1);
+        this.pixelY = Array.from({length: this.rows.length + 1}, (_, i) => i);
         this.maxPixels = hooks.maxPixels ?? 32000000;
         this.fixedWidth = null;
       }
       async read(maximum) {geometryReads.push(maximum);}
       async calibrate() {}
       imageWidth() {return hooks.width ?? 3;}
-      tiles(end, targets, cuts = [[0, 3], [3, 6], [6, 9], [9, 10]]) {
-        assert.equal(cuts[0][0], 0);
-        assert.equal(cuts.at(-1)[1], 10);
+      tiles(end, targets, cuts = hooks.tileRows ?? [[0, 3], [3, 6], [6, 9], [9, 10]], {allowGaps = false} = {}) {
+        if (!allowGaps) {
+          assert.equal(cuts[0][0], 0);
+          assert.equal(cuts.at(-1)[1], this.rows.length);
+        }
         return cuts.map(([first, last], index) => {
-          if (index) assert.equal(cuts[index - 1][1], first);
+          if (index && !allowGaps) assert.equal(cuts[index - 1][1], first);
           assert.ok(last - first <= 3);
           const core = {r0: first, r1: last, c0: 0, c1: end + 1};
           return {core, raw: core, width: hooks.width ?? 3, expectedHeight: last - first, cropHeight: last - first, cropY: 0,
@@ -220,11 +222,27 @@ test('old sheet geometry is evicted and rebuilt only when evidence is requested'
 });
 
 test('invalid or overlapping requested spans are rejected', () => {
-  fixture();
-  const geometry = new CaptureGeometry.SheetGeometry();
+  const {SheetGeometry} = require('../web/capture-geometry.js');
+  const geometry = new SheetGeometry(null, 'Sheet', 9, 1);
+  geometry.rows = Array(10).fill(1);
+  geometry.imageWidth = () => 3;
   for (const spans of [[], [[3, 6], [5, 8]], [[-1, 2]], [[0, 11]], [[1, 1]]]) {
-    assert.throws(() => selectedTiles(geometry, 1, spans), /Invalid requested/);
+    assert.throws(() => selectedTiles(geometry, 1, spans), /Invalid shared/);
   }
+});
+
+test('aggregate planning metadata is bounded across sheets before any captures', async () => {
+  const tileRows = Array.from({length: 4096}, (_, index) => [index, index + 1]);
+  const f = fixture('fixture.xlsx', {rowCount: 4096, tileRows});
+  const sheets = Array.from({length: 33}, (_, index) => ({
+    ...f.sheet, index: index + 1, name: `Sheet ${index + 1}`, bottom_row: 4095,
+  }));
+  await assert.rejects(f.worker.execute({id: 'large-plan', kind: 'plan', sheets}),
+    error => error.code === 'IMAGE_BUDGET' && /metadata budget/.test(error.message));
+  assert.equal(f.captures.length, 0);
+  assert.equal(f.worker.resources().retained_capture_plans, 0);
+  assert.equal(f.worker.resources().retained_tiles, 0);
+  assert.ok(f.worker.resources().geometry_cache_entries <= 2);
 });
 
 test('image-first planning captures no images and uploads one requested tile without calling crypto', async () => {

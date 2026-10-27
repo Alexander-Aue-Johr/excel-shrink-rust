@@ -5,6 +5,7 @@
   const key = tile => `${tile.sheet_index}:${tile.tile_index}`;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const IMAGE_MEMORY_LIMIT_BYTES = 160 * 1024 * 1024;
+  const MAX_PLANNED_TILES_PER_COMMAND = 131072;
 
   async function encoded(base64, hash = true) {
     const binary = atob(base64);
@@ -18,35 +19,10 @@
     return {bytes, sha256, hash_ms: hashMs};
   }
 
-  // The geometry helper verifies complete coverage. Fill unrequested gaps for
-  // that check, then discard them before asking Excel for any images.
-  function selectedTiles(geometry, end, requested) {
-    if (requested === undefined) return geometry.tiles(end, null);
-    if (!Array.isArray(requested) || !requested.length || requested.length > 4096) {
-      throw new Error('Invalid requested tile rows');
-    }
-    const full = [], wanted = new Set();
-    let cursor = 0;
-    for (const span of requested) {
-      if (!Array.isArray(span) || span.length !== 2 || !span.every(Number.isInteger) ||
-          span[0] < cursor || span[0] >= span[1] || span[1] > geometry.rows.length) {
-        throw new Error('Invalid requested tile rows');
-      }
-      // Unrequested spans must also fit the pixel budget. Use the normal plan
-      // to split them; splitting a gap never changes the requested boundaries.
-      if (cursor < span[0]) full.push(...gapCuts(geometry, end, cursor, span[0]));
-      full.push(span);
-      wanted.add(`${span[0]}:${span[1]}`);
-      cursor = span[1];
-    }
-    if (cursor < geometry.rows.length) full.push(...gapCuts(geometry, end, cursor, geometry.rows.length));
-    return geometry.tiles(end, null, full).filter(tile => wanted.has(`${tile.core.r0}:${tile.core.r1}`));
-  }
-
-  function gapCuts(geometry, end, first, last) {
-    const cuts = geometry.tiles(end, null).map(tile => [tile.core.r0, tile.core.r1]);
-    return cuts.filter(span => span[0] < last && span[1] > first)
-      .map(span => [Math.max(first, span[0]), Math.min(last, span[1])]);
+  function selectedTiles(geometry, end, requested, {planOnly = false} = {}) {
+    // Validate and build only the selected row bands. Replanning omitted gaps
+    // would hit the full-sheet budget again after tall-sheet selection.
+    return geometry.tiles(end, null, requested, {planOnly, allowGaps: requested !== undefined});
   }
 
   function createWorker(helpers, transport, expectedWorkbook) {
@@ -235,7 +211,14 @@
         if (!Number.isInteger(end) || end < proposed || end > maximum) {
           throw new Error('Negotiated capture boundary is outside the verified extent');
         }
-        const tiles = selectedTiles(geometry, end, sheet.tile_rows);
+        const tiles = selectedTiles(geometry, end, sheet.tile_rows, {planOnly: command.kind === 'plan'});
+        // Bound aggregate metadata before retaining another sheet. Per-image
+        // and selected-capture limits apply separately when images are needed.
+        if (command.kind === 'plan' && result.tiles.length + tiles.length > MAX_PLANNED_TILES_PER_COMMAND) {
+          const error = new Error('Workbook exceeds the planned tile metadata budget');
+          error.code = 'IMAGE_BUDGET';
+          throw error;
+        }
         await verifyDrawingBounds(sheet, geometry, end);
         const state = {sheet, probe, right, end, geometry_key: `${command.id}:${sheet.index}`,
           megapixels: command.tile_megapixels ?? 32};
