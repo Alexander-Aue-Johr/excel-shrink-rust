@@ -129,8 +129,12 @@ body.presenting .wm-progress {
 }
 .wm-overview {
   overflow:auto;
+  overflow-anchor:none;
   padding:16px;
   min-width:0
+}
+.wm-dialog [hidden] {
+  display:none!important;
 }
 .wm-group {
   margin-bottom:14px;

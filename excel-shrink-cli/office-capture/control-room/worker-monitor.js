@@ -33,7 +33,10 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
   const query = selector => dialog.querySelector(selector);
   const list = query('.wm-groups'), detail = query('.wm-detail'), status = query('.wm-status');
   let queue, snapshot, selected, offset = 0, timer, request, generation = 0;
-  let signalViews = [], detailSignal;
+  const groupViews = new Map();
+  const signalViews = new Map();
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  let detailSignal, detailChrome;
 
   function openCaptures(row, capture = null, follow = true) {
     if (row.kind === 'Rust / Host' || !row.groupId) return;
@@ -52,10 +55,40 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
   function showDetail(row, current = true) {
     selected = row;
     const scroll = detail.scrollTop;
-    const heading = element('div', 'wm-detail-heading');
-    heading.append(element('h3', null, row.clientId), element('span', 'wm-kind', row.kind));
-    const workbook = element('p', 'wm-workbook', row.workbook);
-    detailSignal ??= createSignalMonitor({ onCaptureNavigate: ({ row, capture, follow }) => openCaptures(row, capture, follow) });
+    if (!detailChrome) {
+      const heading = element('div', 'wm-detail-heading');
+      const name = element('h3');
+      const kind = element('span', 'wm-kind');
+      const workbook = element('p', 'wm-workbook');
+      const notices = element('div');
+      const body = element('div');
+      const timing = element('div');
+      const events = element('ol', 'wm-events');
+      const open = element('button', null, 'Show group in studio');
+      open.addEventListener('click', () => {
+        if (!selected) return;
+        dialog.close();
+        selectGroup?.(selected.groupId);
+      });
+      const jump = element('button', 'wm-jump', '↗ Follow captures');
+      jump.title = 'Follow this Excel profile directly in the studio.';
+      jump.addEventListener('click', () => { if (selected) openCaptures(selected); });
+      heading.append(name, kind);
+      detailSignal = createSignalMonitor({ onCaptureNavigate: ({ row, capture, follow }) => openCaptures(row, capture, follow) });
+      // Build the detail shell once. Its signal root stays connected while
+      // snapshots change, including when its fullscreen view is open.
+      detail.replaceChildren(heading, workbook, notices, detailSignal.element, body,
+        timing, open, jump, element('h4', null, 'Recent events · up to 24'), events);
+      detailChrome = { name, kind, workbook, notices, body, timing, jump, events };
+    }
+    detailChrome.name.textContent = row.clientId;
+    detailChrome.kind.textContent = row.kind;
+    detailChrome.workbook.textContent = row.workbook;
+    const notices = [];
+    if (!current) notices.push(element('p', 'wm-muted', 'Last available snapshot; this worker is no longer on the current page.'));
+    if (!row.active) notices.push(element('p', 'wm-muted', 'This group has ended. Events show the last saved snapshot.'));
+    detailChrome.notices.replaceChildren(...notices);
+    detailChrome.jump.disabled = row.kind === 'Rust / Host';
     detailSignal.update(row, { stale: !current, live: current && snapshot?.running !== false && snapshot?.runner_alive !== false });
     const fields = element('dl', 'wm-detail-fields');
     field(fields, 'Status / phase', observedPhase(row));
@@ -95,80 +128,186 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     }
     if (row.uploadedImages != null) field(fields, 'Images received / jobs completed', `${row.uploadedImages} / ${row.completedCommands}`);
     if (row.error) field(fields, 'Reported error', message(row.error));
-    const open = element('button', null, 'Show group in studio');
-    open.addEventListener('click', () => { dialog.close(); selectGroup?.(row.groupId); });
-    const jump = element('button', 'wm-jump', '↗ Follow captures');
-    jump.disabled = row.kind === 'Rust / Host';
-    jump.title = 'Follow this Excel profile directly in the studio.';
-    jump.addEventListener('click', () => openCaptures(row));
-    const events = element('ol', 'wm-events');
+    const events = [];
     for (const event of row.events || []) {
       const item = element('li');
       item.append(element('time', null, timeText(event)), element('span', null, message(event)));
       if (event.details) item.append(element('small', null, [event.details.sheet_name, event.details.range, event.details.command_id || event.details.id].filter(Boolean).join(' · ')));
-      events.append(item);
+      events.push(item);
     }
-    detail.replaceChildren(heading, workbook);
-    if (!current) detail.append(element('p', 'wm-muted', 'Last available snapshot; this worker is no longer on the current page.'));
-    if (!row.active) detail.append(element('p', 'wm-muted', 'This group has ended. Events show the last saved snapshot.'));
-    detail.append(detailSignal.element, fields);
+    detailChrome.body.replaceChildren(fields);
+    detailChrome.events.replaceChildren(...events);
     const timing = commandTimingSummary(row.paneResources?.last_command_timing);
     if (timing) {
       const timingFields = element('dl', 'wm-detail-fields');
       for (const [label, value] of timing.fields) field(timingFields, label, value);
-      detail.append(element('h4', null, 'Last measured command'), element('p', 'wm-muted', timing.command),
+      detailChrome.timing.replaceChildren(element('h4', null, 'Last measured command'), element('p', 'wm-muted', timing.command),
         timingFields, element('p', 'wm-muted', timing.note));
-    }
-    detail.append(open, jump, element('h4', null, 'Recent events · up to 24'), events);
+    } else detailChrome.timing.replaceChildren();
     detail.scrollTop = scroll;
+  }
+
+  const emptyList = element('p', 'wm-muted', 'No workers match this filter.');
+  list.append(emptyList);
+
+  function createGroupView(group, key) {
+    const card = element('section', 'wm-group');
+    card.dataset.groupId = group.id;
+    card.dataset.attemptId = group.attempt_id || 'legacy';
+    const title = element('div', 'wm-group-title');
+    const workbook = element('strong');
+    const phase = element('span');
+    const pending = element('p', 'wm-muted', 'Process data for this attempt is still being provided.');
+    title.append(workbook, phase);
+    card.append(title, pending);
+    list.append(card);
+    const view = { element: card, workbook, phase, pending, workers: new Map() };
+    groupViews.set(key, view);
+    return view;
+  }
+
+  function createWorkerView(group, row) {
+    // Keep interactive capture controls outside the worker selection button.
+    const item = element('div', 'wm-worker');
+    const select = element('button', 'wm-worker-select');
+    select.dataset.workerId = row.id;
+    select.type = 'button';
+    const identity = element('span', 'wm-identity');
+    const name = element('strong');
+    const process = element('small');
+    identity.append(name, process);
+    const phase = element('span', 'wm-phase');
+    const phaseName = element('strong');
+    const phaseAge = element('small');
+    phase.append(phaseName, phaseAge);
+    select.append(identity, phase);
+    const view = { element: item, select, name, process, phaseName, phaseAge, row };
+    view.signals = createSignalMonitor({ compact: true,
+      onCaptureNavigate: ({ capture, follow }) => openCaptures(view.row, capture, follow) });
+    item.append(select, view.signals.element);
+    select.addEventListener('click', () => { selected = view.row; render(); });
+    group.element.append(item);
+    group.workers.set(row.id, view);
+    signalViews.set(row.id, view);
+    return view;
+  }
+
+  function updateWorkerView(view, row, filter) {
+    view.row = row;
+    const isSelected = selected?.id === row.id;
+    view.element.className = `wm-worker wm-${row.category}${isSelected ? ' wm-selected' : ''}`;
+    view.element.hidden = filter !== 'all' && row.category !== filter;
+    view.select.setAttribute('aria-pressed', String(isSelected));
+    view.select.setAttribute('aria-label', `Select ${row.clientId}, ${observedPhase(row)}`);
+    view.name.textContent = row.clientId;
+    view.process.textContent = `${row.kind}${row.pid ? ` · PID ${row.pid}` : ''}`;
+    view.phaseName.textContent = observedPhase(row);
+    view.phaseAge.textContent = `${duration(age(row.stateSince))} since state change${row.sheet ? ` · ${row.sheet}` : ''}`;
+    view.signals.update(row, { live: snapshot.running !== false && snapshot.runner_alive !== false });
+  }
+
+  function captureLayout() {
+    const groups = new Map(), workers = new Map();
+    const overview = query('.wm-overview');
+    const viewport = overview.getBoundingClientRect();
+    let anchor;
+    for (const view of groupViews.values()) {
+      if (view.element.hidden) continue;
+      const rect = view.element.getBoundingClientRect();
+      groups.set(view, rect);
+      if (!anchor && rect.bottom > viewport.top && rect.top < viewport.bottom) {
+        anchor = { view, top: rect.top };
+      }
+      for (const worker of view.workers.values()) {
+        if (worker.element.hidden) continue;
+        const position = worker.element.getBoundingClientRect();
+        workers.set(worker, { left: position.left - rect.left, top: position.top - rect.top });
+      }
+    }
+    // Read current animated positions before cancelling an interrupted move.
+    for (const view of [...groups.keys(), ...workers.keys()]) view.animation?.cancel();
+    return { groups, workers, anchor, overview };
+  }
+
+  function animateLayout(before) {
+    const { anchor, overview } = before;
+    if (anchor?.view.element.isConnected && !anchor.view.element.hidden) {
+      overview.scrollTop += anchor.view.element.getBoundingClientRect().top - anchor.top;
+    }
+    if (reducedMotion.matches || typeof list.animate !== 'function') return;
+    const move = (view, old, position) => {
+      const dx = old ? old.left - position.left : 0;
+      const dy = old ? old.top - position.top : 0;
+      if (old && Math.abs(dx) < .5 && Math.abs(dy) < .5) return;
+      const frames = old
+        ? [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }]
+        : [{ opacity: 0 }, { opacity: 1 }];
+      view.animation = view.element.animate(frames, { duration: 220, easing: 'ease-out' });
+    };
+    for (const view of groupViews.values()) {
+      if (view.element.hidden) continue;
+      const rect = view.element.getBoundingClientRect();
+      const workers = [];
+      for (const worker of view.workers.values()) {
+        if (worker.element.hidden) continue;
+        const position = worker.element.getBoundingClientRect();
+        workers.push([worker, {
+          left: position.left - rect.left, top: position.top - rect.top,
+        }]);
+      }
+      move(view, before.groups.get(view), rect);
+      for (const [worker, position] of workers) move(worker, before.workers.get(worker), position);
+    }
   }
 
   function render() {
     if (!snapshot) return;
-    const expandedCaptures = new Set(signalViews.filter(item => item.view.captureExpanded).map(item => item.row.id));
-    for (const item of signalViews) item.view.destroy();
-    signalViews = [];
-    const focusedWorker = document.activeElement?.dataset?.workerId;
-    const filter = query('.wm-filter').value, fragment = document.createDocumentFragment();
+    const before = captureLayout();
+    const filter = query('.wm-filter').value;
     const allRows = snapshot.groups.flatMap(workerRows);
     const selectedNow = allRows.find(row => row.id === selected?.id);
     if (selectedNow) showDetail(selectedNow);
     else if (selected) showDetail(selected, false);
+    const seenGroups = new Set();
     for (const group of snapshot.groups) {
-      const rows = workerRows(group).filter(row => filter === 'all' || row.category === filter);
-      if (filter !== 'all' && !rows.length) continue;
-      const card = element('section', 'wm-group');
-      const groupTitle = element('div', 'wm-group-title');
-      groupTitle.append(element('strong', null, group.workbook || group.id), element('span', null, `${group.corpus || ''} · ${phaseLabel(group.status)}`));
-      card.append(groupTitle);
-      if (!rows.length) card.append(element('p', 'wm-muted', 'Process data for this attempt is still being provided.'));
+      const key = JSON.stringify([group.id, group.attempt_id ?? null]);
+      seenGroups.add(key);
+      const view = groupViews.get(key) || createGroupView(group, key);
+      const rows = workerRows(group);
+      view.workbook.textContent = group.workbook || group.id;
+      view.phase.textContent = `${group.corpus || ''} · ${phaseLabel(group.status)}`;
+      view.pending.hidden = rows.length > 0;
+      view.element.hidden = filter !== 'all' && !rows.some(row => row.category === filter);
+      const seenWorkers = new Set();
       for (const row of rows) {
-        // A non-button wrapper avoids nesting interactive capture controls in a button.
-        const item = element('div', `wm-worker wm-${row.category}${selected?.id === row.id ? ' wm-selected' : ''}`);
-        const select = element('button', 'wm-worker-select');
-        select.dataset.workerId = row.id;
-        select.type = 'button'; select.setAttribute('aria-pressed', String(selected?.id === row.id));
-        select.setAttribute('aria-label', `Select ${row.clientId}, ${observedPhase(row)}`);
-        const identity = element('span', 'wm-identity');
-        identity.append(element('strong', null, row.clientId), element('small', null, `${row.kind}${row.pid ? ` · PID ${row.pid}` : ''}`));
-        const phase = element('span', 'wm-phase');
-        phase.append(element('strong', null, observedPhase(row)), element('small', null, `${duration(age(row.stateSince))} since state change${row.sheet ? ` · ${row.sheet}` : ''}`));
-        const signals = createSignalMonitor({ compact: true,
-          onCaptureNavigate: ({ capture, follow }) => openCaptures(row, capture, follow) });
-        signals.captureExpanded = expandedCaptures.has(row.id);
-        signals.update(row, { live: snapshot.running !== false && snapshot.runner_alive !== false });
-        signalViews.push({ view: signals, row });
-        select.append(identity, phase);
-        item.append(select, signals.element);
-        select.addEventListener('click', () => { showDetail(row); render(); });
-        card.append(item);
+        seenWorkers.add(row.id);
+        const worker = view.workers.get(row.id) || createWorkerView(view, row);
+        updateWorkerView(worker, row, filter);
       }
-      fragment.append(card);
+      for (const [id, worker] of view.workers) {
+        if (seenWorkers.has(id)) continue;
+        worker.animation?.cancel();
+        worker.signals.destroy();
+        worker.element.remove();
+        view.workers.delete(id);
+        signalViews.delete(id);
+      }
     }
-    if (!fragment.childNodes.length) fragment.append(element('p', 'wm-muted', 'No workers match this filter.'));
-    list.replaceChildren(fragment);
-    if (focusedWorker) [...list.querySelectorAll('.wm-worker-select')]
-      .find(item => item.dataset.workerId === focusedWorker)?.focus({ preventScroll: true });
+    for (const [key, view] of groupViews) {
+      if (seenGroups.has(key)) continue;
+      for (const [id, worker] of view.workers) {
+        worker.animation?.cancel();
+        worker.signals.destroy();
+        signalViews.delete(id);
+      }
+      view.animation?.cancel();
+      view.element.remove();
+      groupViews.delete(key);
+    }
+    // Existing cards retain their admission order. Heartbeats and phase changes
+    // never move the canvas to another DOM position.
+    emptyList.hidden = [...groupViews.values()].some(view => !view.element.hidden);
+    animateLayout(before);
     query('.wm-summary').textContent = `${snapshot.active_groups} active groups · ${allRows.filter(row => row.kind !== 'Rust / Host').length} Excel workers on this page`;
     query('.wm-prev').disabled = offset === 0;
     query('.wm-next').disabled = snapshot.next_offset == null;
@@ -193,7 +332,7 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     } catch (error) {
       if (error.name !== 'AbortError') {
         status.textContent = `Could not refresh worker status: ${error.message}. Displayed data is the last received snapshot.`;
-        for (const item of signalViews) item.view.update(item.row, { connected: false });
+        for (const item of signalViews.values()) item.signals.update(item.row, { connected: false });
         if (selected) detailSignal?.update(selected, { connected: false });
       }
     } finally {
@@ -205,8 +344,15 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
   query('.wm-close').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
     clearTimeout(timer); request?.abort(); generation++;
-    for (const item of signalViews) item.view.destroy();
-    signalViews = []; detailSignal?.destroy(); detailSignal = null;
+    for (const item of signalViews.values()) {
+      item.animation?.cancel();
+      item.signals.destroy();
+    }
+    signalViews.clear();
+    for (const view of groupViews.values()) { view.animation?.cancel(); view.element.remove(); }
+    groupViews.clear();
+    detailSignal?.destroy(); detailSignal = null; detailChrome = null;
+    detail.replaceChildren(element('p', null, 'Select a worker to see its last successful step and events.'));
     button.focus();
   });
   query('.wm-filter').addEventListener('change', render);
