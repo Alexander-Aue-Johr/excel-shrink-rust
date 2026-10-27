@@ -248,49 +248,75 @@
       const smallestVisible = sizes => {
         const first = sizes.findIndex(size => size > 0);
         let best = first;
-        for (let index = first + 1; index < Math.min(sizes.length, first + 64); index++) {
-          if (sizes[index] > 0 && sizes[index] < sizes[best]) best = index;
+        let visible = 1;
+        for (let index = first + 1; index < sizes.length && visible < 32; index++) {
+          if (sizes[index] <= 0) continue;
+          visible++;
+          if (sizes[index] < sizes[best]) best = index;
         }
         return best;
       };
       const firstRow = this.rows.findIndex(size => size > 0);
       const firstColumn = this.columns.findIndex(size => size > 0);
       if (firstRow < 0 || firstColumn < 0) throw new Error('Worksheet has no visible capture geometry');
-      const shortestRow = smallestVisible(this.rows);
-      const narrowestColumn = smallestVisible(this.columns);
-      const rows = this.rows.slice(firstRow, firstRow + 32);
+      let rowEnd = firstRow, visibleRows = 0;
+      while (rowEnd < this.rows.length && visibleRows < 32) {
+        if (this.rows[rowEnd] > 0) visibleRows++;
+        rowEnd++;
+      }
+      // A title row followed by a hidden run still needs controls with distinct
+      // visible heights. Hidden grid rows do not count toward the 32 controls.
+      const rows = this.rows.slice(firstRow, rowEnd);
+      rows.push(...await this.readSizes('rows', rowEnd,
+        Math.min(32 - visibleRows, MAX_ROWS - rowEnd)));
       // Hidden columns consume no image width. Look beyond the first 32 grid
       // columns so a hidden run cannot hide otherwise safe calibration controls.
       const columns = this.columns.slice(firstColumn);
-      rows.push(...await this.readSizes('rows', firstRow + rows.length,
-        Math.min(32 - rows.length, MAX_ROWS - firstRow - rows.length)));
       columns.push(...await this.readSizes('columns', firstColumn + columns.length,
         Math.max(0, Math.min(32 - columns.length, MAX_COLUMNS - firstColumn - columns.length))));
+      let shortestRow = smallestVisible(this.rows);
+      let narrowestColumn = smallestVisible(this.columns);
       const x = prefix(columns), y = prefix(rows);
       // Vary each axis separately so tall rows and wide columns still admit
       // small controls inside the image budget.
       // Three cells can provide a third safe width when four wide columns exceed the budget.
       const counts = [1, 2, 3, 4, 8, 16, 32];
-      const columnCounts = [];
-      let visibleColumns = 0;
-      for (let index = 0; index < columns.length && visibleColumns < 32; index++) {
-        if (columns[index] > 0 && counts.includes(++visibleColumns)) columnCounts.push(index + 1);
+      const visibleCounts = sizes => {
+        const lengths = [];
+        let visible = 0;
+        for (let index = 0; index < sizes.length && visible < 32; index++) {
+          if (sizes[index] > 0 && counts.includes(++visible)) lengths.push(index + 1);
+        }
+        return lengths;
+      };
+      const controlFits = (width, height) => width > 0 && height > 0 &&
+        width * 8 + 1 <= MAX_EDGE && height * 8 + 1 <= MAX_EDGE &&
+        (width * 8 + 1) * (height * 8 + 1) <= 4000000;
+      const rowCounts = visibleCounts(rows), columnCounts = visibleCounts(columns);
+      // Prefer controls within the captured sheet. A tall/wide singleton may
+      // need the smaller default cells already measured just outside its bounds.
+      const safeWidths = columnCounts.filter(count => controlFits(x[count], rows[shortestRow - firstRow]));
+      if (new Set(safeWidths.map(count => x[count])).size < 3) {
+        shortestRow = firstRow + smallestVisible(rows);
+      }
+      const safeHeights = rowCounts.filter(count => controlFits(columns[narrowestColumn - firstColumn], y[count]));
+      if (new Set(safeHeights.map(count => y[count])).size < 3) {
+        narrowestColumn = firstColumn + smallestVisible(columns);
       }
       const candidates = [
-        ...counts.map(count => [firstRow, narrowestColumn, count, 1]),
+        ...rowCounts.map(count => [firstRow, narrowestColumn, count, 1]),
         ...columnCounts.map(count => [shortestRow, firstColumn, 1, count])
       ];
       const samples = [];
       for (const [row, column, rowCount, columnCount] of candidates) {
         if (rowCount > rows.length || columnCount > columns.length) continue;
+        const rowOffset = row - firstRow, columnOffset = column - firstColumn;
         const sample = {
-          width: column === firstColumn ? x[columnCount] : this.columns[column],
-          height: row === firstRow ? y[rowCount] : this.rows[row],
-          rowHeights: row === firstRow ? rows.slice(0, rowCount) : [this.rows[row]]
+          width: x[columnOffset + columnCount] - x[columnOffset],
+          height: y[rowOffset + rowCount] - y[rowOffset],
+          rowHeights: rows.slice(rowOffset, rowOffset + rowCount).filter(height => height > 0)
         };
-        if (sample.width <= 0 || sample.height <= 0 ||
-            (sample.width * 8 + 1) > 8192 || (sample.height * 8 + 1) > 8192 ||
-            (sample.width * 8 + 1) * (sample.height * 8 + 1) > 4000000) continue;
+        if (!controlFits(sample.width, sample.height)) continue;
         const base64 = await this.office(async context => {
           const image = context.workbook.worksheets.getItem(this.sheet)
             .getRangeByIndexes(row, column, rowCount, columnCount).getImage();

@@ -154,6 +154,39 @@ test('calibration crosses hidden columns to find distinct safe widths', async ()
   assert.ok(tiles.every(tile => tile.width * tile.expectedHeight <= result.maxPixels));
 });
 
+test('calibration crosses long hidden row runs to find distinct visible heights', async () => {
+  const rows = [15, ...new Array(4094).fill(0), 15, ...new Array(4094).fill(0), 15];
+  const model = officeModel({rows});
+  const result = await geometry(model, rows.length - 1, 3);
+  assert.equal(result.scaleY, 4 / 3);
+  assert.equal(result.imageHeight(0, rows.length), 61);
+  assert.ok(model.images.some(control => control.nr > 32));
+  assert.equal(result.tiles(3, null).at(-1).core.r1, rows.length);
+});
+
+test('wide default columns use bounded calibration before choosing the overflow margin', async () => {
+  const model = officeModel({defaultWidth: 800});
+  const result = await geometry(model, 12, 64);
+  assert.equal(result.scaleX, 4 / 3);
+  assert.equal(result.fixedWidth, null);
+  assert.ok(model.images.some(control => control.nc >= 3));
+  assert.equal(probeEnd(result, 0), 2);
+  assert.equal(result.imageWidth(2), 3201);
+  assert.ok(result.tiles(2, null).every(tile => tile.width * tile.expectedHeight <= result.maxPixels));
+  assert.throws(() => result.tiles(64, null), /exceeds the image edge budget/);
+});
+
+test('a tall wide singleton calibrates with safe default cells outside its logical bounds', async () => {
+  const model = officeModel({rows: [169], columns: [800]});
+  const result = await geometry(model, 0, 0);
+  assert.equal(result.scaleX, 4 / 3);
+  assert.equal(result.scaleY, 4 / 3);
+  assert.ok(model.images.some(control => control.r > 0));
+  assert.ok(model.images.some(control => control.c > 0));
+  assert.equal(result.tiles(0, null).length, 1);
+  assert.deepEqual(result.tiles(0, null)[0].core, {r0: 0, r1: 1, c0: 0, c1: 1});
+});
+
 test('calibration still rejects images that disagree with measured geometry', async () => {
   await assert.rejects(geometry(officeModel({imageWidthOffset: 3})), /Inconsistent width image calibration/);
 });
