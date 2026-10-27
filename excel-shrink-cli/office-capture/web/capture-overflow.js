@@ -108,6 +108,7 @@
         const cells = batch.map(row => {
           const cell = worksheet.getRangeByIndexes(row, column, 1, 1);
           cell.load('values,formulas,valueTypes,hasSpill');
+          cell.format.load('rowHeight');
           const merges = cell.getMergedAreasOrNullObject();
           merges.load('address');
           const near = worksheet.getRangeByIndexes(row, Math.max(0, column - 1), 1, column ? 2 : 1);
@@ -121,46 +122,66 @@
         return cells.map(item => ({row: item.row, value: item.cell.values[0][0],
           formula: item.cell.formulas[0][0], type: item.cell.valueTypes[0][0],
           spill: item.cell.hasSpill, merged: !item.merges.isNullObject,
+          height: item.cell.format.rowHeight,
           tables: item.tables.items.length, pivots: item.pivots.items.length}));
       });
       for (const item of items) {
         if (item.type !== 'Empty' ||
             (item.value !== '' && item.value !== null) || (item.formula !== '' && item.formula !== null) ||
-            item.spill !== false || item.merged || item.tables || item.pivots) {
+            item.spill !== false || item.merged || item.tables || item.pivots ||
+            !Number.isFinite(item.height) || item.height < 0) {
           throw new Error(`Cannot safely check overflow at ${sheet}!${item.row + 1}`);
         }
-        targets.push(item.row);
+        targets.push({row: item.row, height: item.height});
       }
     }
     return targets;
   }
 
-  async function safeSource(office, sheet, rows, baseColumn) {
-    for (let offset = 0; offset < rows.length; offset += 16) {
-      const batch = rows.slice(offset, offset + 16);
-      const unsafe = await office(async context => {
+  async function sourceRows(office, sheet, candidates, baseColumn, rowCount) {
+    // A merged source can draw text across several rows. Block its full height,
+    // including connected merges, rather than rejecting ordinary merged titles.
+    const rows = new Set(candidates);
+    const checked = new Set();
+    while (checked.size < rows.size) {
+      const batch = [...rows].filter(row => !checked.has(row)).slice(0, 16);
+      const contexts = await office(async context => {
         const worksheet = context.workbook.worksheets.getItem(sheet);
         const sources = batch.map(row => {
           const range = worksheet.getRangeByIndexes(row, 0, 1, baseColumn + 1);
           range.format.load('textOrientation');
           const merged = range.getMergedAreasOrNullObject();
-          merged.load('areas/items/rowCount');
+          merged.load('areas/items/rowIndex,areas/items/rowCount');
           return {row, range, merged};
         });
         await context.sync();
-        for (const {row, range, merged} of sources) {
-          const orientation = range.format.textOrientation;
-          if (orientation !== 0) return {row, reason: orientation == null
-            ? 'mixed or unavailable text orientation' : `text orientation ${orientation} degrees`};
-          if (!merged.isNullObject) {
-            const area = merged.areas.items.find(area => area.rowCount !== 1);
-            if (area) return {row, reason: `merged cells spanning ${area.rowCount} rows`};
+        return sources.map(({row, range, merged}) => ({
+          row, orientation: range.format.textOrientation,
+          merges: merged.isNullObject ? [] : merged.areas.items.map(area =>
+            ({first: area.rowIndex, count: area.rowCount}))
+        }));
+      });
+      for (const source of contexts) {
+        if (source.orientation !== 0) {
+          const reason = source.orientation == null ? 'mixed or unavailable text orientation'
+            : `text orientation ${source.orientation} degrees`;
+          throw new Error(`Cannot verify overflow source context at ${sheet}!${source.row + 1}: ${reason}`);
+        }
+        checked.add(source.row);
+        for (const merge of source.merges) {
+          if (!Number.isInteger(merge.first) || !Number.isInteger(merge.count) ||
+              merge.first < 0 || merge.count < 1 || merge.first + merge.count > rowCount) {
+            throw new Error(`Cannot verify merged overflow source extent at ${sheet}!${source.row + 1}`);
+          }
+          if (merge.count > 2048) throw new Error('Merged overflow source exceeds the bounded row check');
+          for (let row = merge.first; row < merge.first + merge.count; row++) {
+            rows.add(row);
+            if (rows.size > 2048) throw new Error('Merged overflow sources exceed the bounded row check');
           }
         }
-        return null;
-      });
-      if (unsafe) throw new Error(`Cannot verify overflow source context at ${sheet}!${unsafe.row + 1}: ${unsafe.reason}`);
+      }
     }
+    return [...rows].sort((left, right) => left - right);
   }
 
   function contiguous(rows) {
@@ -203,6 +224,29 @@
     }
   }
 
+  async function restoreRowHeights(office, sheet, targets, column) {
+    for (let offset = 0; offset < targets.length; offset += 128) {
+      await office(async context => {
+        const worksheet = context.workbook.worksheets.getItem(sheet);
+        const rows = targets.slice(offset, offset + 128).map(target => {
+          const range = worksheet.getRangeByIndexes(target.row, column, 1, 1);
+          range.format.load('rowHeight');
+          return {range, height: target.height};
+        });
+        await context.sync();
+        const changed = rows.filter(row => row.range.format.rowHeight !== row.height);
+        if (!changed.length) return;
+        for (const row of changed) row.range.format.rowHeight = row.height;
+        await context.sync();
+        for (const row of changed) row.range.format.load('rowHeight');
+        await context.sync();
+        if (changed.some(row => row.range.format.rowHeight !== row.height)) {
+          throw new Error('Overflow check did not restore row heights');
+        }
+      });
+    }
+  }
+
   async function changedPixels(before, blocked, baseEdge, rows, geometry, tile) {
     if (before.width !== blocked.width || before.height !== blocked.height) {
       throw new Error('Worksheet geometry changed during overflow check');
@@ -224,7 +268,8 @@
             before.pixels[at + 2] === blocked.pixels[at + 2] &&
             before.pixels[at + 3] === blocked.pixels[at + 3]) continue;
         if (x < baseEdge - 1 || !allowed) {
-          throw new Error('Overflow check changed pixels outside the checked area');
+          throw new Error(`Overflow check changed pixels outside the checked area at x=${x}, y=${y}; ` +
+            `source boundary=${baseEdge}, checked row=${allowed}`);
         }
         changed++;
         rightmost = Math.max(rightmost, x);
@@ -234,18 +279,22 @@
   }
 
   async function check(office, sheet, geometry, tile, baseColumn, initialBase64) {
-    const baseEdge = Math.round(geometry.x[baseColumn + 1] * geometry.scaleX) + 1;
+    // Cell coordinates exclude getImage's extra outer border pixel. Including
+    // that pixel here misclassifies the source edge as out-of-area changes.
+    const baseEdge = Math.round(geometry.x[baseColumn + 1] * geometry.scaleX);
     let blockerColumn = baseColumn + 1;
     while (blockerColumn < tile.raw.c1 && geometry.columns[blockerColumn] === 0) blockerColumn++;
     let before, blocked, restored, written = [];
     try {
       before = await decode(initialBase64);
-      const candidates = await candidateRows(before, geometry, tile, baseEdge);
+      // The boundary pixel itself may be a cell border rather than overflow.
+      const candidates = await candidateRows(before, geometry, tile, baseEdge + 1);
       if (!candidates.length) return {retainProbe: false, rightEdge: false};
       if (blockerColumn >= tile.raw.c1) throw new Error('No visible blocker column within the image probe');
-      written = await safeTargets(office, sheet, candidates, blockerColumn);
+      const checkedRows = await sourceRows(office, sheet, candidates, baseColumn, geometry.pixelY.length - 1);
+      const targets = await safeTargets(office, sheet, checkedRows, blockerColumn);
+      written = targets.map(target => target.row);
       if (!written.length) return {retainProbe: true, rightEdge: false};
-      await safeSource(office, sheet, written, baseColumn);
       let blockedBase64;
       try {
         await setCells(office, sheet, written, blockerColumn, ' ');
@@ -257,8 +306,14 @@
         });
       } finally {
         // Each run uses a disposable workbook. A native timeout stops further calls.
-        await setCells(office, sheet, written, blockerColumn, '');
-        await confirmCells(office, sheet, written, blockerColumn, '');
+        try {
+          await setCells(office, sheet, written, blockerColumn, '');
+          await confirmCells(office, sheet, written, blockerColumn, '');
+        } finally {
+          // Writing a blocker can auto-fit a row. Merged sources can extend
+          // beyond this image, so restore every touched height explicitly.
+          await restoreRowHeights(office, sheet, targets, blockerColumn);
+        }
       }
       const restoredBase64 = await office(async context => {
         const image = context.workbook.worksheets.getItem(sheet).getRange(root.CaptureGeometry.address(tile.raw)).getImage();
