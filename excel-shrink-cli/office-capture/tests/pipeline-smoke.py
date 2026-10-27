@@ -3,6 +3,9 @@
 Requires openpyxl and Pillow. Without --run, only prepares a fixed local fixture.
 With --run, uses the SAME binary and input in baseline/pipeline/pipeline/baseline
 order, in fresh study directories. The baseline sets EXCEL_SHRINK_CAPTURE_PIPELINE=0.
+With --baseline-binary, compares baseline/candidate/candidate/baseline binaries
+instead, with capture pipelining enabled throughout. Use --equal-preview-width
+to match the dashboard setting being measured (0 keeps full resolution).
 Fresh Excel instances are used throughout; OS/Office caches are not cleared.
 This is a local paired experiment, not a statistically conclusive performance test.
 Use --pause-check --compare-to <completed-sample> for one separate, untimed check.
@@ -137,13 +140,40 @@ def prepare_fixture():
     return archive
 
 
-def pixel_digest(path):
+def pixel_digest(path, expected_size=None):
     from PIL import Image
 
     with Image.open(path) as image:
         rgba = image.convert("RGBA")
+        if expected_size is not None:
+            assert rgba.size == expected_size, f"Unexpected image dimensions: {path}, {rgba.size} != {expected_size}"
         content = rgba.width.to_bytes(4, "little") + rgba.height.to_bytes(4, "little") + rgba.tobytes()
         return hashlib.sha256(content).hexdigest()
+
+
+def dashboard_images(tile, study, equal_preview_width):
+    result = {}
+    for profile, metadata in tile["images"].items():
+        size = (metadata["width"], metadata["height"])
+        max_width = 1024 if tile["status"] == "different" else equal_preview_width
+        preview_size = size
+        if max_width and size[0] > max_width:
+            preview_size = (max_width, max(1, size[1] * max_width // size[0]))
+        assert metadata["url"] == metadata["preview_url"]
+        retained = tile["status"] == "different" or preview_size == size
+        assert metadata["retained_full_resolution"] == retained
+        assert bool(metadata["full_url"]) == retained
+        images = {key: metadata[key] for key in ("x", "y", "width", "height", "retained_full_resolution")}
+        for key, expected_size in (("preview_url", preview_size), ("full_url", size), ("mask_url", size)):
+            url = metadata[key]
+            if url is None:
+                images[key] = None
+                continue
+            assert url.startswith("/data/"), f"Unexpected dashboard image URL: {url}"
+            path = study / "control-room" / url.removeprefix("/data/")
+            images[key] = {"size": list(expected_size), "rgba_sha256": pixel_digest(path, expected_size)}
+        result[profile] = images
+    return result
 
 
 def result_signature(record, study):
@@ -211,6 +241,7 @@ def collect_result(study):
         for sheet in diagnoses["too-aggressive-cleaning"]["sheets"]
     ), "Hidden-chart regression must remain a non-whitespace finding"
     state = read_json(next((study / "control-room/groups").glob("*/state.json")))
+    equal_preview_width = read_json(study / "control-room/control.json")["equal_preview_width"]
     coverage = []
     for sheet in state["sheets"]:
         assert sheet.get("capture_coverage", {}).get("omitted_tiles", 0) == 0
@@ -222,6 +253,8 @@ def collect_result(study):
                 **{key: tile[key] for key in ("range", "core_rows", "width", "height", "status")},
                 "pixels": {profile: image["pixel_class"] for profile, image in tile["images"].items()},
                 "changed_pixels": {profile: image["changed_pixels"] for profile, image in tile["images"].items()},
+                "dashboard_images": dashboard_images(tile, study, equal_preview_width),
+                "inspection_regions": tile["inspection_regions"],
             })
     assert len(coverage) >= 24, "Fixture must cover enough tiles for several capture batches"
     resident = record["resident_capture"]
@@ -233,6 +266,7 @@ def collect_result(study):
             "capture_counts": {key: state["throughput"][key] for key in (
                 "captured_pixels", "core_pixels", "uploaded_images",
             )},
+            "images_received": state["pipeline_timings"]["images_received"],
         },
         "metrics": {
             "physical_primary_clients": physical,
@@ -308,11 +342,13 @@ def pause_and_resume(state_path, request, process, deadline):
     return result
 
 
-def run_sample(args, archive, directory, enabled):
+def run_sample(args, archive, directory, enabled, binary=None):
+    binary = binary or args.binary
+    settings = {**SETTINGS, "equal_preview_width": args.equal_preview_width}
     directory.mkdir()
     study = directory / "study"
     command = [
-        str(args.binary), "regression", "study", "--corpus", "Capture pipeline smoke", str(archive),
+        str(binary), "regression", "study", "--corpus", "Capture pipeline smoke", str(archive),
         "--output-root", str(study), "--resident-capture", "--control-room",
         "--control-room-port", str(args.port), "--comparison-workers", "0",
         "--startup-timeout-seconds", "120", "--workbook-timeout-seconds", "180",
@@ -328,8 +364,9 @@ def run_sample(args, archive, directory, enabled):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", args.port))
     receipt = {
-        "status": "running", "pipeline": enabled, "command": command, "settings": SETTINGS,
-        "binary_sha256": digest(args.binary), "input_sha256": digest(archive),
+        "status": "running", "pipeline": enabled, "command": command, "settings": settings,
+        "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "binary_sha256": digest(binary), "input_sha256": digest(archive),
     }
     write_json(directory / "receipt.json", receipt)
     started = time.monotonic()
@@ -364,7 +401,7 @@ def run_sample(args, archive, directory, enabled):
             except (urllib.error.URLError, OSError, KeyError):
                 pass
             time.sleep(.25)
-        request("/api/control", SETTINGS)
+        request("/api/control", settings)
         receipt["control_start_seconds"] = time.monotonic() - started
         while process.poll() is None:
             deadline()
@@ -412,6 +449,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true", help="Explicitly enable four native Excel study runs")
     parser.add_argument("--binary", type=Path, default=ROOT / "target/release/excel-shrink-cli.exe")
+    parser.add_argument("--baseline-binary", type=Path, help="Compare this binary to --binary, with capture pipelining enabled for both")
+    parser.add_argument("--equal-preview-width", type=int, choices=(0, 128, 256, 512, 1024), default=512,
+                        help="Dashboard width for equal tiles; 0 keeps full resolution (default: 512)")
     parser.add_argument("--port", type=int, default=8827)
     parser.add_argument("--deadline", type=int, default=240, help="Maximum seconds per sample")
     parser.add_argument("--pause-check", action="store_true", help="Run one untimed pipeline pause/resume check instead of ABBA")
@@ -421,17 +461,37 @@ def main():
         parser.error("Use a port from 1024 to 65535 and a deadline from 30 to 600 seconds")
     if args.pause_check != (args.compare_to is not None):
         parser.error("Use --pause-check and --compare-to together")
+    if args.pause_check and args.baseline_binary:
+        parser.error("Use --baseline-binary for ABBA, or --pause-check for a separate untimed check")
     archive = prepare_fixture()
     if not args.run:
         print(json.dumps({"prepared": True, "excel_started": False, "archive": str(archive)}))
         return
     args.binary = args.binary.resolve(strict=True)
-    directory = OUTPUT / (("pause-" if args.pause_check else "abba-") + time.strftime("%Y%m%d-%H%M%S"))
+    if args.baseline_binary:
+        args.baseline_binary = args.baseline_binary.resolve(strict=True)
+    if args.pause_check:
+        prefix = "pause-"
+        modes = (("pipeline", args.binary, True),)
+    elif args.baseline_binary:
+        prefix = "binary-abba-"
+        baseline = ("baseline", args.baseline_binary, True)
+        candidate = ("candidate", args.binary, True)
+        modes = (baseline, candidate, candidate, baseline)
+    else:
+        prefix = "abba-"
+        baseline = ("baseline", args.binary, False)
+        candidate = ("pipeline", args.binary, True)
+        modes = (baseline, candidate, candidate, baseline)
+    directory = OUTPUT / (prefix + time.strftime("%Y%m%d-%H%M%S"))
     directory.mkdir()
-    modes = (True,) if args.pause_check else (False, True, True, False)
+    binaries = {label: {"path": str(binary), "sha256": digest(binary)} for label, binary, _ in modes}
     result = {
         "status": "running", "binary_sha256": digest(args.binary), "input_sha256": digest(archive),
-        "order": ["pipeline" if enabled else "baseline" for enabled in modes], "samples": [],
+        "experiment": "binary-comparison" if args.baseline_binary else "capture-pipeline",
+        "binaries": binaries, "settings": {**SETTINGS, "equal_preview_width": args.equal_preview_width},
+        "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "order": [label for label, _, _ in modes], "samples": [],
         "untimed_pause_check": args.pause_check,
         "cache_policy": "Fresh Excel instances; OS/Office caches retained. ABBA balances sample order, not all sources of noise.",
     }
@@ -440,24 +500,36 @@ def main():
         if args.compare_to:
             previous = read_json(args.compare_to / "receipt.json")
             assert previous["input_sha256"] == result["input_sha256"], "Reference used a different input fixture"
-            reference = previous["signature"]
-        for index, enabled in enumerate(modes, start=1):
-            label = f"{index}-{'pipeline' if enabled else 'baseline'}"
-            sample = run_sample(args, archive, directory / label, enabled)
-            result["samples"].append({"directory": label, "pipeline": enabled, "metrics": sample["metrics"], "runner_wall_seconds": sample["runner_wall_seconds"]})
+            assert previous["settings"]["equal_preview_width"] == args.equal_preview_width, "Reference used a different preview width"
+            # Older receipts predate dashboard image checks; validate their saved
+            # artifacts with the same signature used for this run.
+            reference = collect_result(args.compare_to / "study")["signature"]
+        for index, (variant, binary, enabled) in enumerate(modes, start=1):
+            label = f"{index}-{variant}"
+            sample = run_sample(args, archive, directory / label, enabled, binary)
+            result["samples"].append({
+                "directory": label, "variant": variant, "pipeline": enabled,
+                "binary_sha256": sample["binary_sha256"], "metrics": sample["metrics"],
+                "runner_wall_seconds": sample["runner_wall_seconds"],
+            })
             if reference is None:
                 reference = sample["signature"]
             assert sample["signature"] == reference, f"Coverage, pixels or findings changed in {label}; inspect both receipts"
-            assert digest(args.binary) == result["binary_sha256"], "Binary changed during the benchmark"
+            for entry in binaries.values():
+                assert digest(Path(entry["path"])) == entry["sha256"], "Binary changed during the benchmark"
+            assert digest(archive) == result["input_sha256"], "Fixture changed during the benchmark"
             write_json(directory / "receipt.json", result)
         if args.pause_check:
             result.update(status="passed", identical_coverage_pixels_and_findings=True)
             return
         medians = {}
-        for enabled, label in ((False, "baseline"), (True, "pipeline")):
-            samples = [item for item in result["samples"] if item["pipeline"] == enabled]
+        for label in binaries:
+            samples = [item for item in result["samples"] if item["variant"] == label]
             medians[label] = {
                 "capture_ms": statistics.median(item["metrics"]["throughput"]["capture_elapsed_ms"] for item in samples),
+                "preview_ms": statistics.median(item["metrics"]["pipeline_timings"]["preview_ms"] for item in samples),
+                "compare_ms": statistics.median(item["metrics"]["pipeline_timings"]["compare_ms"] for item in samples),
+                "peak_job_bytes": statistics.median(item["metrics"]["peak_job_bytes"] for item in samples),
                 "comparison_seconds": statistics.median(item["metrics"]["comparing_elapsed_seconds"] for item in samples),
                 "runner_wall_seconds": statistics.median(item["runner_wall_seconds"] for item in samples),
             }
