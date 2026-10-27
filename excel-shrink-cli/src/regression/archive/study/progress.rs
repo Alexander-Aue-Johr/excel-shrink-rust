@@ -72,6 +72,7 @@ struct Tracker {
     active: BTreeMap<String, JobMode>,
     preparation: Rate,
     comparison: Rate,
+    attempts: AttemptActivity,
     phase: String,
     last: Instant,
     active_seconds: f64,
@@ -81,7 +82,70 @@ struct Tracker {
     finished: bool,
 }
 
+#[derive(Default)]
+struct AttemptActivity {
+    started: usize,
+    compared: usize,
+    skipped: usize,
+    interrupted: usize,
+    retried: usize,
+    rate: Rate,
+    outcomes: VecDeque<Value>,
+}
+
+struct Attempt {
+    sequence: usize,
+    retried: bool,
+    workbook: String,
+}
+
 impl Tracker {
+    fn start_attempt(&mut self, record: &Value) -> Attempt {
+        self.attempts.started += 1;
+        Attempt {
+            sequence: self.attempts.started,
+            // Admission clears `complete` before launching the coordinator.
+            // The previous outcome and execution still identify a retry here.
+            retried: matches!(
+                record["status"].as_str(),
+                Some("skipped" | "unchanged" | "differences")
+            ) || record["last_execution"]["mode"] == "Compare",
+            workbook: record["name"].as_str().unwrap_or("Unknown workbook").into(),
+        }
+    }
+
+    fn finish_attempt(&mut self, attempt: Attempt, record: &Value, now_ms: u64) {
+        let status = match record["status"].as_str() {
+            Some("unchanged" | "differences") if record["complete"] == true => {
+                self.attempts.compared += 1;
+                record["status"].as_str().unwrap()
+            }
+            Some("skipped") if record["complete"] == true => {
+                self.attempts.skipped += 1;
+                "skipped"
+            }
+            _ => {
+                self.attempts.interrupted += 1;
+                "interrupted"
+            }
+        };
+        self.attempts.retried += usize::from(attempt.retried);
+        self.attempts.rate.record(&attempt.sequence.to_string());
+        let reason: String = record["error"]
+            .as_str()
+            .unwrap_or_default()
+            .chars()
+            .take(600)
+            .collect();
+        self.attempts.outcomes.push_front(json!({
+            "workbook": attempt.workbook, "status": status, "reason": reason,
+            "retried": attempt.retried, "at_unix_ms": now_ms,
+            "group_id": control_room::group_id(record["identity"].as_str().unwrap_or("")),
+            "attempt_id": record["control_room_attempt"]["id"],
+        }));
+        self.attempts.outcomes.truncate(5);
+    }
+
     fn observe(&mut self, record: &Value) {
         let Some(id) = record["identity"].as_str() else {
             return;
@@ -115,6 +179,7 @@ impl Tracker {
             self.preparation.advance(seconds);
         } else {
             self.comparison.advance(seconds);
+            self.attempts.rate.advance(seconds);
         }
     }
     fn snapshot(&self, now_ms: u64) -> Value {
@@ -168,6 +233,10 @@ impl Tracker {
                 "preparation_per_hour":self.preparation.per_hour(),"samples":self.comparison.recent.len(),
                 "active_seconds":self.active_seconds,"comparison_active_seconds":self.comparison.seconds,
                 "preparation_active_seconds":self.preparation.seconds,"new_completions":self.comparison.finished},
+            "activity":{"source":"runner","started_attempts":self.attempts.started,"finished_attempts":self.attempts.rate.finished,
+                "compared_attempts":self.attempts.compared,"skipped_attempts":self.attempts.skipped,
+                "interrupted_attempts":self.attempts.interrupted,"retried_attempts":self.attempts.retried,
+                "attempts_per_hour":self.attempts.rate.per_hour(),"recent_outcomes":self.attempts.outcomes},
             "eta":{"status":eta_status,"remaining_seconds":eta,
                 "finish_unix_ms":eta.filter(|_| !paused).map(|seconds|now_ms.saturating_add((seconds*1000.0) as u64)),
                 "scope":"selected_workbooks"}})
@@ -199,6 +268,7 @@ pub(super) fn initialize(
         active: BTreeMap::new(),
         preparation: Rate::default(),
         comparison: Rate::default(),
+        attempts: AttemptActivity::default(),
         phase: "preparing".into(),
         last: Instant::now(),
         active_seconds: 0.0,
@@ -265,15 +335,20 @@ pub(super) fn finish(output: &Path) {
 pub(super) fn stop(output: &Path) {
     end(output, "stopped");
 }
-fn end(output:&Path,phase:&str) {
-    update(output, |tracker| { tracker.finished = true;tracker.phase=phase.into(); });
+fn end(output: &Path, phase: &str) {
+    update(output, |tracker| {
+        tracker.finished = true;
+        tracker.phase = phase.into();
+    });
 }
 
 pub(super) struct ActiveJob {
     output: PathBuf,
     id: String,
+    attempt: Option<Attempt>,
 }
-pub(super) fn start_job(output: &Path, id: &str, mode: JobMode) -> ActiveJob {
+pub(super) fn start_job(output: &Path, id: &str, mode: JobMode, record: &Value) -> ActiveJob {
+    let mut attempt = None;
     update(output, |tracker| {
         tracker.phase = if mode == JobMode::Prepare {
             "preparing"
@@ -282,14 +357,33 @@ pub(super) fn start_job(output: &Path, id: &str, mode: JobMode) -> ActiveJob {
         }
         .into();
         tracker.active.insert(id.into(), mode);
+        if mode == JobMode::Compare {
+            attempt = Some(tracker.start_attempt(record));
+        }
     });
     ActiveJob {
         output: output.into(),
         id: id.into(),
+        attempt,
+    }
+}
+impl ActiveJob {
+    pub(super) fn finish(&mut self, record: &Value) {
+        if let Some(attempt) = self.attempt.take() {
+            update(&self.output, |tracker| {
+                tracker.finish_attempt(attempt, record, provenance::now_ms());
+            });
+        }
     }
 }
 impl Drop for ActiveJob {
     fn drop(&mut self) {
+        if let Some(attempt) = self.attempt.take() {
+            update(&self.output, |tracker| {
+                tracker.finish_attempt(attempt, &json!({"status":"interrupted",
+                    "identity":self.id,"error":"Attempt ended before a final result was recorded."}), provenance::now_ms());
+            });
+        }
         update(&self.output, |tracker| {
             tracker.active.remove(&self.id);
         });
@@ -307,6 +401,7 @@ mod tests {
             active: BTreeMap::new(),
             preparation: Rate::default(),
             comparison: Rate::default(),
+            attempts: AttemptActivity::default(),
             phase: "comparing".into(),
             last: Instant::now(),
             active_seconds: 0.0,
@@ -378,6 +473,60 @@ mod tests {
         assert_eq!(s["counts"]["skipped"], 1);
         assert_eq!(s["rates"]["new_completions"], 0);
     }
+
+    #[test]
+    fn skipped_retries_are_activity_without_new_validated_workbooks() {
+        let mut t = tracker();
+        let skipped = json!({"identity":"0","name":"Retry.xlsx","complete":true,
+            "status":"skipped","error":"Excel opening timed out"});
+        t.observe(&skipped);
+        assert_eq!(t.snapshot(0)["activity"]["finished_attempts"], 0);
+        let mut admitted = skipped.clone();
+        admitted["complete"] = json!(false);
+        let attempt = t.start_attempt(&admitted);
+        t.advance(60.0);
+        t.observe(&skipped);
+        t.finish_attempt(attempt, &skipped, 60_000);
+        let s = t.snapshot(60_000);
+        assert_eq!(s["counts"]["skipped"], 1);
+        assert_eq!(s["counts"]["remaining"], 9);
+        assert_eq!(s["rates"]["new_completions"], 0);
+        assert_eq!(s["activity"]["finished_attempts"], 1);
+        assert_eq!(s["activity"]["skipped_attempts"], 1);
+        assert_eq!(s["activity"]["retried_attempts"], 1);
+        assert_eq!(s["activity"]["attempts_per_hour"], 60.0);
+        assert_eq!(
+            s["activity"]["recent_outcomes"][0]["reason"],
+            "Excel opening timed out"
+        );
+        assert_eq!(s["activity"]["recent_outcomes"][0]["at_unix_ms"], 60_000);
+    }
+
+    #[test]
+    fn attempt_results_require_explicit_finish_and_keep_bounded_history() {
+        let mut t = tracker();
+        for id in 0..7 {
+            let record = completed(id);
+            let attempt = t.start_attempt(&json!({"name":format!("{id}.xlsx")}));
+            t.observe(&record);
+            assert_eq!(t.attempts.rate.finished, id);
+            t.finish_attempt(attempt, &record, id as u64);
+        }
+        let interrupted = t.start_attempt(&json!({"name":"Interrupted.xlsx"}));
+        t.finish_attempt(interrupted, &json!({"status":"interrupted"}), 8);
+        let s = t.snapshot(8);
+        assert_eq!(s["activity"]["started_attempts"], 8);
+        assert_eq!(s["activity"]["finished_attempts"], 8);
+        assert_eq!(s["activity"]["compared_attempts"], 7);
+        assert_eq!(s["activity"]["interrupted_attempts"], 1);
+        assert_eq!(s["activity"]["retried_attempts"], 0);
+        assert_eq!(
+            s["activity"]["recent_outcomes"].as_array().unwrap().len(),
+            5
+        );
+        assert_eq!(s["activity"]["recent_outcomes"][0]["status"], "interrupted");
+        assert_eq!(s["counts"]["completed"], 7);
+    }
     #[test]
     fn a_stall_ages_old_completions_out_of_the_rolling_window() {
         let mut t = tracker();
@@ -392,9 +541,13 @@ mod tests {
 
     #[test]
     fn stopped_run_is_neither_paused_nor_forecast_as_still_working() {
-        let mut t=tracker();t.target=0;t.finished=true;t.phase="stopped".into();
-        let snapshot=t.snapshot(0);
-        assert_eq!(snapshot["phase"],"stopped");assert_eq!(snapshot["paused"],false);
-        assert_eq!(snapshot["eta"]["status"],"unavailable");
+        let mut t = tracker();
+        t.target = 0;
+        t.finished = true;
+        t.phase = "stopped".into();
+        let snapshot = t.snapshot(0);
+        assert_eq!(snapshot["phase"], "stopped");
+        assert_eq!(snapshot["paused"], false);
+        assert_eq!(snapshot["eta"]["status"], "unavailable");
     }
 }

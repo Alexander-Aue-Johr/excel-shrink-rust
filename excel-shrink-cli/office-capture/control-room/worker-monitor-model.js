@@ -150,6 +150,11 @@ export function progressSummary(progress) {
     unavailable: 'No reliable estimate yet' };
   const scopeLabel = [scope.corpora?.join(', '), scope.size_part ? `Partition ${scope.size_part.part}/${scope.size_part.parts}` : 'Entire corpus',
     ['descending', 'largest-first', 'size-desc'].includes(scope.order) ? 'largest first' : ['ascending', 'smallest-first', 'size-asc'].includes(scope.order) ? 'smallest first' : scope.order === 'priority' ? 'priority order' : null].filter(Boolean).join(' · ');
+  const activity = progress.activity;
+  const outcomeLabels = {
+    unchanged: 'No differences detected', differences: 'Differences found',
+    skipped: 'Skipped / not validated', interrupted: 'Interrupted',
+  };
   return { scope: scopeLabel, completed: number(counts.completed), skipped: number(counts.skipped),
     remaining: number(counts.remaining), total: number(counts.total), inProgress: number(counts.in_progress),
     preparationRemaining: number(counts.preparation_remaining), prepared: number(counts.prepared),
@@ -159,5 +164,15 @@ export function progressSummary(progress) {
     eta: eta.status === 'estimating' && Number.isFinite(eta.remaining_seconds) ? `About ${duration(eta.remaining_seconds)}` : statuses[eta.status] || 'No estimate yet',
     finish: eta.status === 'estimating' ? timestamp(eta.finish_unix_ms) : null,
     diagnosisFailed: number(progress.diagnosis_failed), phase: progress.phase === 'paused' ? 'Run paused' : phaseLabel(progress.phase),
+    activity: activity ? {
+      observed: activity.source === 'observed_current_run',
+      finished: number(activity.finished_attempts), compared: number(activity.compared_attempts),
+      skipped: number(activity.skipped_attempts), interrupted: number(activity.interrupted_attempts),
+      retried: number(activity.retried_attempts), perHour: number(activity.attempts_per_hour),
+      outcomes: (activity.recent_outcomes || []).slice(0, 3).map(outcome => ({
+        workbook: outcome.workbook, label: outcomeLabels[outcome.status] || outcome.status,
+        reason: outcome.reason, retried: outcome.retried === true, at: outcome.at_unix_ms,
+      })),
+    } : null,
   };
 }

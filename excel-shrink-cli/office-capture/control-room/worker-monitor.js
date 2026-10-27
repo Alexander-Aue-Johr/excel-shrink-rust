@@ -239,9 +239,28 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     field(numbers, 'In progress', summary.inProgress);
     field(numbers, 'Compared / min', summary.perMinute);
     field(numbers, 'Compared / h', summary.perHour);
+    const activity = element('div', 'wm-run-activity');
+    if (summary.activity) {
+      const current = summary.activity;
+      const attempts = element('dl', 'wm-progress-numbers');
+      field(attempts, current.observed ? 'Observed outcomes since restart' : 'Finished attempts this run', current.finished);
+      field(attempts, 'Compared this run', current.compared);
+      field(attempts, 'Skipped this run', current.skipped);
+      field(attempts, 'Interrupted this run', current.interrupted);
+      field(attempts, 'Retries finished this run', current.retried);
+      field(attempts, 'Attempts / h', current.perHour);
+      activity.append(attempts, element('p', 'wm-progress-note',
+        `${current.observed ? 'Observed current-run outcomes; older runner snapshots cannot reconstruct repeated attempts or their rate. ' : ''}Attempts include unsuccessful retries. Retrying an already skipped file can leave corpus totals unchanged; attempts are not successful validations.`));
+      for (const outcome of current.outcomes) {
+        const result = element('p', 'wm-progress-note');
+        result.append(element('strong', null, `${outcome.label}${outcome.retried ? ' (retry)' : ''}`),
+          document.createTextNode(` · ${timeText(outcome.at)} · ${outcome.workbook}${outcome.reason ? ` — ${outcome.reason}` : ''}`));
+        activity.append(result);
+      }
+    }
     const footer = element('p', 'wm-progress-note', `${summary.eta}${summary.finish ? ` · around ${timeText(summary.finish)}` : ''}. Rate of successfully compared workbooks in the active window of ${summary.window}. Run average: ${summary.averagePerHour}/h. Remaining preparation: ${summary.preparationRemaining} (${summary.preparationPerHour}/h). Fully idle pauses (target 0) are excluded; capture pauses with active groups still count.`);
     if (Number(queue.progress.diagnosis_failed) > 0) footer.append(document.createTextNode(` Unresolved diagnostic failures: ${summary.diagnosisFailed}.`));
     if (queue.runner_alive === false || queue.running === false) footer.append(document.createTextNode(' Runner inactive: last saved snapshot.'));
-    progress.replaceChildren(heading, numbers, footer);
+    progress.replaceChildren(heading, numbers, activity, footer);
   } };
 }

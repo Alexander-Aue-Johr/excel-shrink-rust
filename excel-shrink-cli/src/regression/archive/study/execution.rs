@@ -75,7 +75,7 @@ pub(super) fn run_record(
     cleanup_barrier: Option<batch_cleanup::Participant>,
     mut on_progress: impl FnMut(&Value, &str),
 ) -> Result<Value> {
-    let _active_progress = progress::start_job(output, id, mode);
+    let mut active_progress = progress::start_job(output, id, mode, &state);
     let key = artifact_cache::sha256(id.as_bytes());
     let work = output.join(".work").join(&key[..20]);
     let record = record_path(output, id);
@@ -215,6 +215,7 @@ pub(super) fn run_record(
         write_record(&record, &result)?;
         progress::observe(output, &result);
         on_progress(&result, "interrupted");
+        active_progress.finish(&result);
         return Ok(result);
     }
     if let Err(error) = outcome {
@@ -258,6 +259,7 @@ pub(super) fn run_record(
     write_record(&record, &result)?;
     progress::observe(output, &result);
     on_progress(&result, phase);
+    active_progress.finish(&result);
     Ok(result)
 }
 

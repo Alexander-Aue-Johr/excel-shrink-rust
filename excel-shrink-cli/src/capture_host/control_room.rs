@@ -1,6 +1,7 @@
 //! Browser-facing control plane. The scheduler owns scientific work; this host
 //! reads its snapshots and writes explicit, attempt-scoped control requests.
 
+mod activity;
 mod inspection;
 mod platform;
 mod snapshots;
@@ -195,6 +196,7 @@ async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
             queue["progress"] = progress;
         }
     }
+    activity::augment_progress(&mut queue, &room.root).await?;
     queue["memory"] = platform::memory_snapshot();
     queue["server"] =
         json!({"started_at": room.started, "utc": now_iso(), "port": room.port, "live": true});

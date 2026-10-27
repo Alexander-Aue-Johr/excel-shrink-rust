@@ -59,6 +59,23 @@ export function runTests() {
   assert(summary.completed === '70' && summary.skipped === '5' && summary.total === '100', 'Skips and successful comparisons stay separate.');
   assert(summary.scope.includes('Partition 2/4') && summary.scope.includes('largest first'), 'Progress is scoped to the selected corpus and partition.');
   assert(summary.perMinute === '1.2' && summary.averagePerHour === '50' && summary.finish === start + 1000000, 'Window rate, run average and actual ETA remain distinct.');
+  assert(summary.activity === null, 'Legacy progress must not invent attempt counts.');
+  const retryActivity = progressSummary({ counts: { completed: 70, skipped: 5, remaining: 25 },
+    rates: { new_completions: 0, completed_per_hour: 0 }, activity: {
+      finished_attempts: 8, compared_attempts: 0, skipped_attempts: 8, interrupted_attempts: 0,
+      retried_attempts: 8, attempts_per_hour: 16, recent_outcomes: [{ workbook: 'Retry.xlsx',
+        status: 'skipped', reason: 'Excel opening timed out', retried: true, at_unix_ms: start }],
+    } });
+  assert(retryActivity.completed === '70' && retryActivity.activity.finished === '8', 'Retry activity stays distinct from corpus validation totals.');
+  assert(retryActivity.perHour === '0' && retryActivity.activity.perHour === '16', 'Attempt throughput cannot replace successful comparison throughput.');
+  assert(retryActivity.activity.outcomes[0].reason === 'Excel opening timed out'
+    && retryActivity.activity.outcomes[0].retried && retryActivity.activity.outcomes[0].at === start,
+  'Recent retry outcomes preserve their cause and completion timestamp.');
+  assert(retryActivity.activity.outcomes[0].label === 'Skipped / not validated', 'A skipped attempt must never claim visual identity.');
+  const observedActivity = progressSummary({ counts: {}, activity: { source: 'observed_current_run',
+    finished_attempts: 4, retried_attempts: null, attempts_per_hour: null } });
+  assert(observedActivity.activity.observed && observedActivity.activity.retried === '—'
+    && observedActivity.activity.perHour === '—', 'Fallback observations disclose unknown retry counts and throughput.');
   for (const status of ['insufficient_samples', 'preparation_pending', 'paused', 'complete', 'limited', 'unavailable']) {
     const result = progressSummary({ counts: {}, eta: { status, remaining_seconds: 100, finish_unix_ms: start } });
     assert(result.finish == null && !result.eta.startsWith('About'), `${status} must not display a misleading completion estimate.`);
