@@ -336,8 +336,13 @@ async fn group(
     }
     let displayed_attempt =
         scheduled_attempt.or_else(|| merged["attempt_id"].as_str().map(str::to_owned));
+    let launcher_name = if merged["capture_mode"] == "classic" {
+        "classic.json"
+    } else {
+        "launcher.json"
+    };
     let launcher = read_snapshot(
-        &directory.join("launcher.json"),
+        &directory.join(launcher_name),
         &mut diagnostics,
         SNAPSHOT_LIMIT,
     )

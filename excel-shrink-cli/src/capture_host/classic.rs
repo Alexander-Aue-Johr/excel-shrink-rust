@@ -1,10 +1,12 @@
 #[path = "paired.rs"]
 mod paired;
+#[path = "classic_telemetry.rs"]
+mod telemetry;
 
 use super::{read_json, serve, with_web, write_durable_bytes, ApiError, HttpResult};
 use anyhow::{bail, ensure, Context, Result};
 use axum::{
-    extract::{Query, State},
+    extract::{DefaultBodyLimit, Query, State},
     routing::{get, post},
     Json, Router,
 };
@@ -35,9 +37,36 @@ struct Host {
     config_seen: AtomicBool,
     original_seen: AtomicBool,
     shrunk_seen: AtomicBool,
+    telemetry: Option<Mutex<telemetry::Telemetry>>,
+    telemetry_write_failed: AtomicBool,
 }
 
 impl Host {
+    async fn observe(&self, data: &Value) -> Result<bool> {
+        if let Some(telemetry) = &self.telemetry {
+            let mut telemetry = telemetry.lock().await;
+            telemetry.observe(data)?;
+            return Ok(self.publish_observations(&telemetry).await);
+        }
+        Ok(false)
+    }
+
+    async fn publish_observations(&self, telemetry: &telemetry::Telemetry) -> bool {
+        if self.telemetry_write_failed.load(Ordering::Relaxed) {
+            return false;
+        }
+        match tokio::time::timeout(std::time::Duration::from_secs(2), telemetry.publish()).await {
+            Ok(Ok(())) => true,
+            result => {
+                // Optional diagnostics cannot hold up or fail a scientific
+                // comparison. Stop retrying a broken destination in this host.
+                eprintln!("Classic telemetry publishing disabled: {result:?}");
+                self.telemetry_write_failed.store(true, Ordering::Relaxed);
+                false
+            }
+        }
+    }
+
     fn result_path(&self) -> PathBuf {
         self.output.join("result.json")
     }
@@ -112,6 +141,16 @@ pub async fn run(args: Vec<OsString>) -> Result<()> {
         .unwrap_or("3000")
         .parse()?;
     ensure!(port >= 1024, "Invalid localhost port.");
+    let telemetry = if args.contains_key("telemetry-path") {
+        Some(Mutex::new(telemetry::Telemetry::new(
+            absolute(&args, "telemetry-path")?,
+            argument(&args, "attempt-id")?,
+            &run_id,
+            argument(&args, "comparison-profile")?,
+        )))
+    } else {
+        None
+    };
     let host = Arc::new(Host {
         config: capture_config,
         mode,
@@ -124,10 +163,22 @@ pub async fn run(args: Vec<OsString>) -> Result<()> {
         config_seen: AtomicBool::new(false),
         original_seen: AtomicBool::new(false),
         shrunk_seen: AtomicBool::new(false),
+        telemetry,
+        telemetry_write_failed: AtomicBool::new(false),
     });
+    if let Some(telemetry) = &host.telemetry {
+        // Clear the preceding profile's snapshot before accepting clients for
+        // this pair. Its new run id also rejects delayed old observations.
+        let observation = telemetry.lock().await;
+        host.publish_observations(&observation).await;
+    }
     let routes = Router::new()
         .route("/health", get(health))
         .route("/config", get(config))
+        .route(
+            "/telemetry",
+            post(observation).layer(DefaultBodyLimit::max(8192)),
+        )
         .route("/pair/geometry", post(geometry))
         .route("/pair/heights", post(heights))
         .route("/pair/sheet", post(sheet_done))
@@ -143,8 +194,22 @@ async fn health(State(host): State<Arc<Host>>) -> Json<Value> {
         "ok":true, "run_id":host.run_id,
         "config_seen":host.config_seen.load(Ordering::Relaxed),
         "original_seen":host.original_seen.load(Ordering::Relaxed),
-        "shrunk_seen":host.shrunk_seen.load(Ordering::Relaxed)
+        "shrunk_seen":host.shrunk_seen.load(Ordering::Relaxed),
+        "telemetry_available":host.telemetry.is_some() && !host.telemetry_write_failed.load(Ordering::Relaxed)
     }))
+}
+
+async fn observation(
+    State(host): State<Arc<Host>>,
+    Json(data): Json<Value>,
+) -> HttpResult<Json<Value>> {
+    if serde_json::to_vec(&data)?.len() > 8192 {
+        return Err(ApiError::bad_request(
+            "Classic observation exceeds the metadata budget.",
+        ));
+    }
+    let saved = host.observe(&data).await?;
+    Ok(Json(json!({"ok":true,"telemetry_saved":saved})))
 }
 
 async fn config(
@@ -178,6 +243,8 @@ async fn config(
         response["side"] = json!(side);
     }
     response["run_id"] = json!(host.run_id);
+    response["telemetry"] =
+        json!(host.telemetry.is_some() && !host.telemetry_write_failed.load(Ordering::Relaxed));
     Ok(Json(response))
 }
 
@@ -185,6 +252,14 @@ async fn geometry(
     State(host): State<Arc<Host>>,
     Json(data): Json<Value>,
 ) -> HttpResult<Json<Value>> {
+    host.paired()?.validate(&data)?;
+    host.observe(
+        &json!({"run_id":host.run_id,"side":data["side"],"state":"waiting_for_peers",
+        "message":"Geometry measured; waiting for the other workbook's capture boundaries",
+        "kind":"geometry_received","progress":true,"wait_reason":"paired geometry",
+        "details":{"sheet_index":data["sheet_index"],"sheet_name":data["sheet_name"]}}),
+    )
+    .await?;
     Ok(Json(host.paired()?.geometry(data).await?))
 }
 
@@ -192,6 +267,14 @@ async fn heights(
     State(host): State<Arc<Host>>,
     Json(data): Json<Value>,
 ) -> HttpResult<Json<Value>> {
+    host.paired()?.validate(&data)?;
+    host.observe(
+        &json!({"run_id":host.run_id,"side":data["side"],"state":"waiting_for_peers",
+        "message":"Row heights received; waiting for the paired row-height comparison",
+        "kind":"heights_received","progress":true,"wait_reason":"paired row heights",
+        "details":{"sheet_index":data["sheet_index"],"sheet_name":data["sheet_name"]}}),
+    )
+    .await?;
     Ok(Json(host.paired()?.heights(data).await?))
 }
 
@@ -220,6 +303,14 @@ async fn paired_image(
     data.as_object_mut()
         .context("Image payload must be an object.")?
         .remove("base64");
+    host.observe(
+        &json!({"run_id":host.run_id,"side":data["side"],"state":"waiting_for_peers",
+        "message":"Captured image received; waiting for its peer and host pixel comparison",
+        "kind":"image_received","progress":true,"wait_reason":"paired image comparison",
+        "details":{"sheet_index":data["sheet_index"],"sheet_name":data["sheet_name"],
+            "range":data["range"],"tile_index":data["tile_index"]}}),
+    )
+    .await?;
     pair.image(data, bytes).await?;
     Ok(Json(json!({"ok":true})))
 }

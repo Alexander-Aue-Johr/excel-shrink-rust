@@ -83,7 +83,8 @@ fn run_pair(
         std::process::id(),
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
     );
-    let mut child = Command::new("powershell.exe")
+    let mut command = Command::new("powershell.exe");
+    command
         .args([
             "-STA",
             "-NoLogo",
@@ -110,9 +111,19 @@ fn run_pair(
         .args(capture_timeout_args())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("start paired worksheet capture")?;
+        .stderr(Stdio::piped());
+    if let Some((path, attempt)) =
+        crate::regression::archive::work_state::classic_telemetry_target()
+    {
+        command
+            .arg("-TelemetryPath")
+            .arg(windows_path(&path)?)
+            .arg("-AttemptId")
+            .arg(attempt)
+            .arg("-ComparisonProfile")
+            .arg(shrunk.file_stem().unwrap_or_default());
+    }
+    let mut child = command.spawn().context("start paired worksheet capture")?;
     let stderr = child.stderr.take().unwrap();
     let errors = std::thread::spawn(move || {
         let mut message = Vec::new();
@@ -150,6 +161,14 @@ fn run_pair(
             break;
         };
         if info["kind"] == "heights" {
+            crate::regression::archive::work_state::event(
+                "comparing",
+                "classic_heights_comparing",
+                "Comparing measured row heights from both Excel workbooks",
+                false,
+                None,
+                json!({"sheet_index":info["sheet_index"]}),
+            );
             let compared =
                 compare_streamed_heights(&info, &left, &right, &selected, &mut height_sheets);
             match compared {
@@ -173,8 +192,25 @@ fn run_pair(
                     break;
                 }
             }
+            crate::regression::archive::work_state::event(
+                "waiting_classic",
+                "classic_heights_compared",
+                "Row-height comparison finished; waiting for the next classic capture",
+                true,
+                Some("classic capture process"),
+                json!({"sheet_index":info["sheet_index"]}),
+            );
             continue;
         }
+        crate::regression::archive::work_state::event(
+            "comparing_images",
+            "classic_images_comparing",
+            "Comparing captured images from both Excel workbooks",
+            false,
+            None,
+            json!({"sheet_index":info["sheet_index"],"sheet_name":info["sheet_name"],
+                "range":info["range"],"tile_index":info["tile_index"]}),
+        );
         let compared = (|| -> Result<()> {
             let capture_end = info["capture_right_column"].as_u64();
             let info: ImageTile = serde_json::from_value(info)?;
@@ -240,6 +276,15 @@ fn run_pair(
         input.flush()?;
         if let Err(error) = compared {
             consumer_error = Some(error);
+        } else {
+            crate::regression::archive::work_state::event(
+                "waiting_classic",
+                "classic_tile_compared",
+                "Captured tile compared; waiting for the next classic capture",
+                true,
+                Some("classic capture process"),
+                json!({"compared_tiles":tiles.len()}),
+            );
         }
     }
     if consumer_error.is_some() {

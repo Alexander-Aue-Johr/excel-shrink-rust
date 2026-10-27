@@ -162,6 +162,7 @@ pub(super) async fn worker_group(
             "started_unix_ms",
             "cleanup_pending",
             "error",
+            "capture_mode",
         ],
     );
     let attempt = summary["attempt_id"].as_str();
@@ -179,8 +180,12 @@ pub(super) async fn worker_group(
             result["coordinator"] = monitor;
         }
     }
-    let launcher =
-        read_snapshot(&directory.join("launcher.json"), diagnostics, MONITOR_LIMIT).await;
+    let launcher_name = if summary["capture_mode"] == "classic" {
+        "classic.json"
+    } else {
+        "launcher.json"
+    };
+    let launcher = read_snapshot(&directory.join(launcher_name), diagnostics, MONITOR_LIMIT).await;
     let mut clients = Vec::new();
     if let Some(mut launcher) =
         launcher.filter(|launcher| attempt.is_none() || launcher["attempt_id"].as_str() == attempt)

@@ -90,6 +90,18 @@ and expanded capture details, and keep existing groups in their admission order.
 Layout changes caused by added or removed workers animate unless reduced motion
 is enabled. Polling updates do not detach or recreate an existing signal.
 
+Sequential classic fallback comparisons also expose their two Excel processes,
+received add-in heartbeats and current phases in Worker overview. Heartbeats do
+not count as completed work. Their bounded, attempt-tagged diagnostic snapshot
+lives outside the disposable comparison directory, so a timeout retains the
+last observed phase. The coordinator separately reports actual row-height and
+image-comparison milestones.
+
+Resident planning permits bounded tile metadata before the tall-sheet policy
+selects capture bands. The 4,096-tile capture limit applies after selection;
+individual image and memory limits still apply. Ordinary font names and sizes
+do not protect a million empty rows as if they had painted backgrounds.
+
 Restart actions POST `/api/groups/{id}/restart`; an optional `client_id` identifies
 the problematic instance. Both actions restart the complete comparison group so
 that all peer captures belong to one attempt. The UI reports the host's request

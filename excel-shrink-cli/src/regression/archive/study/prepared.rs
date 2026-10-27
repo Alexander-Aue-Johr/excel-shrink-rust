@@ -524,8 +524,8 @@ fn compare_profile(
             );
             report
         } else {
-            work_state::event("waiting_client", "classic_capture_started",
-                "Classic capture is running in a separate Excel pair", false,
+            work_state::event("waiting_classic", "classic_capture_started",
+                "Classic comparison subprocess running; inspect its Excel workers for progress", false,
                 Some("classic capture process"), json!({"profile":name}));
             let captured = visual_validation::compare_sheet_visuals(
                 &original,

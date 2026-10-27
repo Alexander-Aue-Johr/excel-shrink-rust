@@ -17,6 +17,7 @@
   const requestTimeoutMs = 120000;
   const started = performance.now();
   let nativeStopped = false;
+  let classicConfig;
 
   const element = id => document.getElementById(id);
   const show = (id, value) => { element(id).textContent = value; };
@@ -35,9 +36,9 @@
     show('connection', label);
   }
 
-  async function request(path, body) {
+  async function request(path, body, timeoutMs = requestTimeoutMs) {
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), requestTimeoutMs);
+    const timer = setTimeout(() => abort.abort(), timeoutMs);
     try {
       const response = await fetch(path, body === undefined
         ? {signal: abort.signal, cache: 'no-store'}
@@ -46,6 +47,18 @@
       if (!response.ok) throw new Error(`${path}: HTTP ${response.status} ${(await response.text()).slice(0, 500)}`);
       return await response.json();
     } finally { clearTimeout(timer); }
+  }
+
+  async function classicObservation(state, details = {}, progress = false) {
+    if (!classicConfig?.telemetry) return;
+    try {
+      const receipt = await request('/telemetry', {run_id: classicConfig.run_id, side: classicConfig.side || 'original',
+        state, details, progress}, 2000);
+      if (!receipt.telemetry_saved) throw new Error('Host could not save classic telemetry');
+    } catch (error) {
+      classicConfig.telemetry = false;
+      console.warn('Classic observations disabled; capture continues', error);
+    }
   }
 
   async function office(action) {
@@ -151,6 +164,7 @@
   }
 
   async function captureSheet(config, sheet) {
+    await classicObservation('planning_sheet', {sheet_index: sheet.index, sheet_name: sheet.name});
     const {bottom, right} = bounds(sheet, true);
     const targets = targetRows(sheet, bottom);
     await hideGridlines(sheet);
@@ -186,6 +200,9 @@
     const captures = [];
     for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
       const tile = tiles[tileIndex];
+      const details = {sheet_index: sheet.index, sheet_name: sheet.name, tile_index: tileIndex,
+        range: CaptureGeometry.address(tile.core)};
+      await classicObservation('capturing', details);
       const base64 = await office(async context => {
         const image = context.workbook.worksheets.getItem(sheet.name).getRange(CaptureGeometry.address(tile.raw)).getImage();
         await context.sync();
@@ -212,6 +229,7 @@
       if (finalSize.width !== width || finalSize.height !== tile.cropHeight) throw new Error('Image crop changed dimensions');
       const range = CaptureGeometry.address({...tile.core, c1: lastColumn + 1});
       if (config.mode === 'paired') {
+        await classicObservation('providing_images', details);
         await request('/pair/image', {run_id: config.run_id, side: config.side,
           sheet_index: sheet.index, sheet_name: sheet.name, range,
           tile_index: tileIndex, base64: finalPng});
@@ -257,17 +275,34 @@
       throw new Error('Capture configuration is incomplete');
     }
     show('workbook', config.workbook);
+    classicConfig = config;
     connection(true, 'Connected');
     const result = {run_id: config.run_id, side: config.side, heights: [], captures: []};
     const completed = [];
     progress(0, config.sheets.length);
+    let heartbeatPending = false;
+    const heartbeat = config.telemetry ? setInterval(async () => {
+      if (heartbeatPending || !config.telemetry) return;
+      heartbeatPending = true;
+      try {
+        const receipt = await request('/telemetry', {run_id: config.run_id, side: config.side || 'original', heartbeat: true}, 2000);
+        if (!receipt.telemetry_saved) throw new Error('Host could not save classic telemetry');
+      } catch (error) {
+        // The work requests will report a lost host. Heartbeat failures do not
+        // establish whether Excel's native call made progress.
+        config.telemetry = false;
+        console.warn('Classic heartbeat observations disabled; capture continues', error);
+      } finally { heartbeatPending = false; }
+    }, 2000) : null;
     try {
       for (let sheet of config.sheets) {
         progress(completed.length, config.sheets.length, `${sheet.index} · ${sheet.name}`);
         phase(config.mode === 'heights' ? 'Checking row heights' : 'Capturing worksheet');
+        await classicObservation('preparing_sheet', {sheet_index: sheet.index, sheet_name: sheet.name});
         await checkedWorksheet(sheet);
         if (config.mode === 'paired' && config.check_heights) {
           phase('Checking row heights');
+          await classicObservation('checking_row_heights', {sheet_index: sheet.index, sheet_name: sheet.name});
           const heights = await rowHeights(sheet);
           const decision = await request('/pair/heights', {run_id: config.run_id,
             side: config.side, sheet_index: sheet.index, heights});
@@ -284,14 +319,18 @@
         show('completed-sheets', completed.join('\n'));
         progress(completed.length, config.sheets.length);
       }
+      await classicObservation('finished', {}, true);
       await request('/result', result);
       phase('Complete');
       return;
     } catch (error) {
+      await classicObservation('failed', {error: error.message});
       try { await request('/result', {run_id: config.run_id, side: config.side, heights: [], captures: [],
         error: {code: error && error.code ? error.code : 'CAPTURE_FAILED',
           message: error && error.message ? error.message : String(error)}}); } catch (_) { /* Host timeout is also a failure. */ }
       throw error;
+    } finally {
+      if (heartbeat !== null) clearInterval(heartbeat);
     }
   }
 

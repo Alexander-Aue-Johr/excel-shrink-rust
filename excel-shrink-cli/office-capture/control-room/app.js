@@ -1107,7 +1107,8 @@ function renderProcesses() {
     card.size.textContent = measurements.size; card.opening.textContent = measurements.opening;
     card.metrics.textContent = measurements.extra; card.metrics.hidden = !measurements.extra;
     const resetting = data?.client_reset_commands?.some(command => command.client_id === id && ['pending','running'].includes(command.status));
-    card.button.disabled = !reported[id] || resetting || data?.restart_eligible === false || state.queue?.running === false;
+    card.button.disabled = !reported[id] || resetting || data?.restart_eligible === false ||
+      data?.launcher?.client_reset_supported === false || state.queue?.running === false;
     card.button.textContent = resetting ? 'Hard reset running…' : 'Excel Hard Reset';
     card.element.title = 'A missing heartbeat can mean Excel is opening or busy. Process status is checked separately.';
   }

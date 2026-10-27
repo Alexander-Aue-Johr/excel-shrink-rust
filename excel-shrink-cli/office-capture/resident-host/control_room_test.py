@@ -429,6 +429,26 @@ class ControlRoomProtocol(unittest.TestCase):
         self.write("groups/active/launcher.json", {"attempt_id": "old", "clients": {"original": {"pid": 42}}})
         self.assertEqual(self.request("/api/workers")["groups"][0]["clients"], [])
 
+    def test_classic_workers_use_only_the_matching_attempt_and_not_resident_processes(self):
+        self.write("queue.json", {"groups": [{"id": "pair", "attempt_id": "current", "active": True,
+            "capture_mode": "classic", "status": "retrying_classic"}]})
+        self.write("groups/pair/launcher.json", {"attempt_id": "current", "clients": {"stale": {"pid": 99}}})
+        observation = {"attempt_id": "current", "client_reset_supported": False, "clients": {
+            "original": {"pid": 42, "stage": "capturing", "heartbeat_count": 3,
+                         "monitor": {"state": "capturing", "state_since": "2026-01-01T00:00:00Z",
+                                     "last_progress_at": "2026-01-01T00:00:01Z", "events": []}}}}
+        self.write("groups/pair/classic.json", observation)
+        group = self.request("/api/workers")["groups"][0]
+        self.assertEqual([client["client_id"] for client in group["clients"]], ["original"])
+        self.assertEqual(group["clients"][0]["heartbeat_count"], 3)
+        detail = self.request("/api/groups/pair")
+        self.assertEqual(list(detail["launcher"]["clients"]), ["original"])
+        self.assertFalse(detail["launcher"]["client_reset_supported"])
+        observation["attempt_id"] = "previous"
+        self.write("groups/pair/classic.json", observation)
+        self.assertEqual(self.request("/api/workers")["groups"][0]["clients"], [])
+        self.assertNotIn("launcher", self.request("/api/groups/pair"))
+
     def test_completed_worker_is_not_presented_as_waiting_for_cleanup(self):
         self.write("queue.json", {"run_id": "run", "open_groups": 1, "groups": [
             {"id": "done", "run_id": "run", "attempt_id": "new", "active": True,

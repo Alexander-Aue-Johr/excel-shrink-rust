@@ -9,6 +9,14 @@ struct Monitor {
 }
 static MONITOR: OnceLock<Mutex<Monitor>> = OnceLock::new();
 
+pub(in crate::regression) fn classic_telemetry_target() -> Option<(PathBuf, String)> {
+    let monitor = MONITOR.get()?.lock().ok()?;
+    Some((
+        monitor.path.with_file_name("classic.json"),
+        monitor.value["attempt_id"].as_str()?.to_owned(),
+    ))
+}
+
 pub(super) fn initialize(job: &MemberJob, record: &Value) {
     let Some(root) = &job.control_room else {
         return;

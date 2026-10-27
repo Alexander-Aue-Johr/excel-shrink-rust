@@ -52,7 +52,7 @@ class ClassicHostProtocol(unittest.TestCase):
         self.pipe_name = "excel-shrink-host-test-" + uuid.uuid4().hex
         self.process = None
 
-    def start(self, mode="capture", sheets=(1,)):
+    def start(self, mode="capture", sheets=(1,), telemetry=False):
         web = self.root / "web"
         web.mkdir()
         (web / "index.html").write_text("<title>Capture host test</title>")
@@ -74,6 +74,11 @@ class ClassicHostProtocol(unittest.TestCase):
         ]
         if mode == "paired":
             command += ["--stream-pipe", self.pipe_name]
+        if telemetry:
+            self.telemetry = self.root / "observatory" / "classic.json"
+            self.telemetry.parent.mkdir()
+            command += ["--telemetry-path", str(self.telemetry), "--attempt-id", "attempt-1",
+                        "--comparison-profile", "too-aggressive-cleaning"]
         self.log = (self.root / "host.log").open("wb")
         self.process = subprocess.Popen(
             command, stdout=self.log, stderr=self.log,
@@ -156,6 +161,46 @@ class ClassicHostProtocol(unittest.TestCase):
         self.assertTrue(self.request("/result", result)["ok"])
         self.assertEqual(json.loads((self.output / "result.json").read_text()), result)
         self.assert_http(409, "/result", result)
+
+    @unittest.skipIf(OPTIONS.host.suffix == ".dll", "Rust classic telemetry")
+    def test_classic_observations_survive_worker_cleanup_and_separate_heartbeat_from_progress(self):
+        self.start(telemetry=True)
+        phase = {"run_id": self.run_id, "side": "shrunk", "state": "capturing",
+                 "kind": "image_received", "progress": True,
+                 "details": {"sheet_name": "S1", "range": "A1:B1"}}
+        self.request("/telemetry", phase)
+        before = json.loads(self.telemetry.read_text())
+        self.request("/telemetry", {"run_id": self.run_id, "side": "shrunk", "heartbeat": True})
+        after = json.loads(self.telemetry.read_text())
+        self.assertEqual(after["attempt_id"], "attempt-1")
+        client = after["clients"]["too-aggressive-cleaning"]
+        self.assertEqual(client["heartbeat_count"], 1)
+        self.assertEqual(client["monitor"]["uploaded_images"], 1)
+        self.assertEqual(client["monitor"], before["clients"]["too-aggressive-cleaning"]["monitor"])
+        self.request("/telemetry", {**phase, "state": "closed", "kind": "classic_phase", "progress": False})
+        self.request("/telemetry", {"run_id": self.run_id, "side": "shrunk", "heartbeat": True})
+        self.assertEqual(json.loads(self.telemetry.read_text())["clients"]["too-aggressive-cleaning"]["stage"], "closed")
+        self.assert_http(400, "/telemetry", {**phase, "run_id": "retired"})
+        self.assert_http(413, "/telemetry", {**phase, "details": {"unbounded": "x" * 9000}})
+        # The durable observation is outside the disposable capture output.
+        self.output.mkdir(exist_ok=True)
+        self.output.rmdir()
+        self.assertTrue(self.telemetry.is_file())
+
+    @unittest.skipUnless(os.name == "nt" and OPTIONS.host.suffix != ".dll", "Rust paired telemetry")
+    def test_snapshot_write_failure_does_not_abort_paired_geometry(self):
+        self.start(mode="paired", telemetry=True)
+        self.telemetry.unlink()
+        self.telemetry.mkdir()  # A directory cannot be replaced by a JSON file.
+        data = [{**self.data(side), "tile_rows": [[0, 1]], "end_column": 4, "max_end_column": 8}
+                for side in ("original", "shrunk")]
+        with self.workers(2) as executor:
+            geometry = self.exchange(executor, "/pair/geometry", data)
+        self.assertEqual(geometry, [{"tile_rows": [[0, 1]], "capture_right_column": 4}] * 2)
+        self.assertFalse(self.request("/health")["telemetry_available"])
+        receipt = self.request("/telemetry", {"run_id": self.run_id, "side": "original", "heartbeat": True})
+        self.assertTrue(receipt["ok"])
+        self.assertFalse(receipt["telemetry_saved"])
 
     def open_pipe(self):
         for _ in range(100):

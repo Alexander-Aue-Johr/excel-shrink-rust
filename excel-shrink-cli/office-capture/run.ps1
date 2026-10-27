@@ -6,6 +6,9 @@ param(
     [string]$ComparisonWorkbookPath,
     [string]$StreamPipe,
     [string]$HostExecutable,
+    [string]$TelemetryPath,
+    [string]$AttemptId,
+    [string]$ComparisonProfile = 'shrunk',
     [ValidateRange(10, 600)][int]$StartupTimeoutSeconds = 180,
     [ValidateRange(10, 7200)][int]$CaptureTimeoutSeconds = 1800
 )
@@ -44,6 +47,26 @@ $addInId = $null
 $registrationDone = $false
 $previousRegistration = $null
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
+$classicTelemetryAvailable = $true
+
+function Write-ClassicObservation([string]$Side, [string]$State, $Process = $null) {
+    if (-not $TelemetryPath -or -not $hostReady -or -not $classicTelemetryAvailable) { return }
+    $body = @{ run_id = $runId; side = $Side; state = $State; message = ('Classic Excel ' + $State) }
+    try {
+        if ($null -ne $Process) {
+            $body.pid = $Process.Id
+            $body.process_started_unix_ms = ([DateTimeOffset]($Process.StartTime.ToUniversalTime())).ToUnixTimeMilliseconds()
+        }
+        $receipt = Invoke-RestMethod -Uri ($controlUrl + '/telemetry') -Method Post -ContentType 'application/json' `
+            -Body ($body | ConvertTo-Json -Compress) -TimeoutSec 2
+        if (-not $receipt.telemetry_saved) { throw 'The classic host could not save its observations.' }
+    } catch {
+        $script:classicTelemetryAvailable = $false
+        # Stdout carries binary image frames in paired mode.
+        [Console]::Error.WriteLine('Classic telemetry update failed: ' + $_.Exception.Message)
+    }
+}
+
 try {
     Add-Type -Path @((Join-Path $PSScriptRoot 'CaptureProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureDesktop.cs'))
     $ownedProcesses = New-Object CaptureProcesses
@@ -111,6 +134,11 @@ try {
         (Quote-Argument $PublishedOutputDir), (Quote-Argument $webStage), (Quote-Argument $runId)
     $hostArguments += ' --port ' + $port
     if ($StreamPipe) { $hostArguments += ' --stream-pipe ' + (Quote-Argument $StreamPipe) }
+    if ($TelemetryPath) {
+        if (-not $AttemptId) { throw 'Classic telemetry requires an attempt id.' }
+        $hostArguments += ' --telemetry-path {0} --attempt-id {1} --comparison-profile {2}' -f `
+            (Quote-Argument $TelemetryPath), (Quote-Argument $AttemptId), (Quote-Argument $ComparisonProfile)
+    }
     $hostProcess = Start-Process -FilePath $hostExecutable -ArgumentList $hostArguments -WorkingDirectory $stage `
         -RedirectStandardOutput $hostStdout -RedirectStandardError $hostStderr -WindowStyle Hidden -PassThru
     $ownedProcesses.Add($hostProcess)
@@ -138,7 +166,9 @@ try {
     $previousRegistration = Register-AddIn $addInId $manifestPath
     $registrationDone = $true
     $excelExecutable = Find-ExcelExecutable
+    Write-ClassicObservation 'original' 'opening'
     $excelProcess = $captureDesktop.Start($excelExecutable, ('/x ' + (Quote-Argument $workbookCopy)), $ownedProcesses)
+    Write-ClassicObservation 'original' 'waiting_for_addin' $excelProcess
 
     if ($ComparisonWorkbookPath) {
         # Starting both Office runtimes together can leave one waiting for startup.
@@ -151,7 +181,9 @@ try {
             if ($startup.Elapsed.TotalSeconds -gt $StartupTimeoutSeconds) { throw 'Original Office add-in did not start before the startup timeout.' }
             Start-Sleep -Milliseconds 250
         }
+        Write-ClassicObservation 'shrunk' 'opening'
         $comparisonProcess = $captureDesktop.Start($excelExecutable, ('/x ' + (Quote-Argument $comparisonCopy)), $ownedProcesses)
+        Write-ClassicObservation 'shrunk' 'waiting_for_addin' $comparisonProcess
     }
 
     $startup.Restart()
@@ -194,12 +226,28 @@ try {
     }
     throw
 } finally {
-    if ($null -ne $ownedProcesses) { $ownedProcesses.Dispose() }
-    Stop-OwnedProcess $comparisonProcess
-    Stop-OwnedProcess $excelProcess
-    Stop-OwnedProcess $hostProcess
-    if ($null -ne $captureDesktop) { $captureDesktop.Dispose() }
-    if ($comparisonRegistration) { Restore-AddIn $comparisonAddInId $comparisonPrevious }
-    if ($registrationDone) { Restore-AddIn $addInId $previousRegistration }
-    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    try {
+        if ($null -ne $excelProcess) { Write-ClassicObservation 'original' 'closing' }
+        if ($null -ne $comparisonProcess) { Write-ClassicObservation 'shrunk' 'closing' }
+        Stop-OwnedProcess $comparisonProcess
+        Stop-OwnedProcess $excelProcess
+        foreach ($entry in @(@('original', $excelProcess), @('shrunk', $comparisonProcess))) {
+            if ($null -eq $entry[1]) { continue }
+            try {
+                $entry[1].Refresh()
+                if ($entry[1].HasExited) { Write-ClassicObservation $entry[0] 'closed' }
+            } catch {
+                [Console]::Error.WriteLine('Could not confirm classic Excel exit: ' + $_.Exception.Message)
+            }
+        }
+    } finally {
+        # Keep the host alive through the exit observations. The ownership job
+        # still catches every remaining child if individual shutdown fails.
+        if ($null -ne $ownedProcesses) { $ownedProcesses.Dispose() }
+        Stop-OwnedProcess $hostProcess
+        if ($null -ne $captureDesktop) { $captureDesktop.Dispose() }
+        if ($comparisonRegistration) { Restore-AddIn $comparisonAddInId $comparisonPrevious }
+        if ($registrationDone) { Restore-AddIn $addInId $previousRegistration }
+        Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }

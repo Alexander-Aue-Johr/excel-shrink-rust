@@ -24,6 +24,8 @@ const phases = {
   opening: 'Starting Excel clients', comparing: 'Coordinating profile comparison',
   comparing_images: 'Comparing image data on host', processing_result: 'Processing Excel response',
   waiting_client: 'Waiting for Office.js response', waiting_images: 'Waiting for images / batch responses',
+  waiting_classic: 'Classic comparison subprocess running',
+  preparing_sheet: 'Preparing worksheet', checking_row_heights: 'Reading Excel row heights',
   whitespace_diagnosis: 'Whitespace cross-check', closing: 'Closing Excel processes',
 };
 const waits = { coordinator: 'Next coordinator job', primary_addins: 'Other add-ins in group',
