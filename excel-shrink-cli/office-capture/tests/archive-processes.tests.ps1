@@ -96,10 +96,24 @@ try {
     Assert $blocked 'An exit receipt for a different birth time authorized cleanup of a live unverified owner.'
     Assert (-not [IO.File]::Exists($confirmation)) 'Unverified owner published a cleanup confirmation.'
     [IO.File]::WriteAllText($receipt, '{"pid":1,"started":"not-a-time"}')
+    $invalidReceipts = Read-ArchiveExitedOwners $receipt -WarningAction SilentlyContinue
+    Assert ($invalidReceipts.Count -eq 0) 'A malformed confirmed-exit receipt was trusted.'
     $blocked = $false
-    try { Read-ArchiveExitedOwners $receipt | Out-Null } catch { $blocked = $true }
-    Assert $blocked 'A malformed confirmed-exit receipt was trusted.'
-    Write-Host 'PASS: confirmed exits bypass inaccessible replacement PIDs; other births and malformed receipts remain blocked.'
+    try { Stop-ArchiveOwners @((@{pid=$fixture.Id;started=[string]$fixtureStarted} | ConvertTo-Json -Compress)) $confirmation $invalidReceipts }
+    catch { $blocked = $_.Exception.Message.Contains('Cannot confirm') }
+    Assert $blocked 'An invalid exit receipt bypassed process identity verification.'
+    Assert (-not [IO.File]::Exists($confirmation)) 'Invalid exit receipt authorized cleanup confirmation.'
+
+    # Reproduce the retained journal: valid exit receipts followed by a
+    # NUL-filled append. Preserve the valid evidence;
+    # never interpret the damaged tail as another confirmed process exit.
+    [IO.File]::WriteAllText($receipt, ((@{pid=$fixture.Id;started='1'} | ConvertTo-Json -Compress) + "`n" + ([string][char]0 * 43)))
+    $retired = Read-ArchiveExitedOwners $receipt -WarningAction SilentlyContinue
+    Assert ($retired.Count -eq 1) 'A torn exit append discarded valid earlier receipts or invented another identity.'
+    Stop-ArchiveOwners @((@{pid=$fixture.Id;started='1'} | ConvertTo-Json -Compress)) $confirmation $retired
+    Assert ([IO.File]::Exists($confirmation)) 'A torn advisory exit append prevented safe cleanup of a confirmed earlier exit.'
+    Assert (-not $fixture.HasExited) 'A torn exit append authorized stopping a replacement process.'
+    Write-Host 'PASS: valid exits survive torn receipts; invalid receipts confer no authority and require normal identity verification.'
 } finally {
     [CleanupProcessFixture]::Stop($fixtureHandle)
     Assert ($fixture.WaitForExit(10000)) 'Inaccessible replacement fixture did not terminate.'
@@ -188,6 +202,15 @@ try {
     Assert (-not (Test-Path -LiteralPath $confirmation)) 'An unverified owner published a stop confirmation.'
     Assert (Test-Path -LiteralPath $unknownStage) 'An unverified owner lost its files.'
     Assert (($script:visited -join ',') -eq '14,15') 'A denied process prevented cleanup of other launchers.'
+
+    $script:visited = @()
+    $script:states = @{ 15 = 'gone' }
+    $blocked = $false
+    try { Stop-ArchiveOwners @('not-json', (JournalLine 15)) $confirmation }
+    catch { $blocked = $_.Exception.Message.Contains('Cannot confirm') }
+    Assert $blocked 'A malformed ownership journal was silently discarded.'
+    Assert (-not (Test-Path -LiteralPath $confirmation)) 'A malformed ownership journal authorized cleanup confirmation.'
+    Assert (($script:visited -join ',') -eq '15') 'A malformed owner prevented closing other verifiable owners.'
 
     foreach ($invalid in @($env:TEMP, $root, (Join-Path $root 'es-123456789abc'), 'es-123456789abc')) {
         $refused = $false

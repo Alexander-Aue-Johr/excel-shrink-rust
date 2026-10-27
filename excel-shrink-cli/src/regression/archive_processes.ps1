@@ -88,8 +88,19 @@ function Get-ArchiveOwnerKey($owner) {
 function Read-ArchiveExitedOwners([string]$path) {
     $exited = New-Object 'Collections.Generic.HashSet[string]'
     if ([IO.File]::Exists($path)) {
+        $lineNumber = 0
         foreach ($line in [IO.File]::ReadAllLines($path)) {
-            if ($line.Trim()) { [void]$exited.Add((Get-ArchiveOwnerKey ($line | ConvertFrom-Json))) }
+            $lineNumber++
+            if (-not $line.Trim()) { continue }
+            try {
+                [void]$exited.Add((Get-ArchiveOwnerKey ($line | ConvertFrom-Json -ErrorAction Stop)))
+            } catch {
+                # Exit receipts only avoid reopening already confirmed dead
+                # identities. A torn receipt proves nothing: verify that owner
+                # through the normal PID-and-birth check instead. The actual
+                # ownership journal remains strict in Stop-ArchiveOwners.
+                Write-Warning "Ignoring invalid exit receipt at ${path}:$lineNumber; the owner still requires normal identity verification. $($_.Exception.Message)"
+            }
         }
     }
     return ,$exited
