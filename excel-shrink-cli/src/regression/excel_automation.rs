@@ -65,7 +65,7 @@ fn open_workbook(
     if output.is_some() {
         args.push(("OutputPath", power_shell_path(&converted)?));
     }
-    let result = run_power_shell_script(&script, &args);
+    let result = run_power_shell_script(&script, &args, None);
     if progress.is_file() {
         fs::copy(&progress, work_dir.join("excel-open-progress.log"))?;
     }
@@ -126,6 +126,7 @@ pub fn save_recalculated_copy(
         input_path.display().to_string(),
     );
     let before = super::artifact_cache::snapshot(input_path)?;
+    let observation = RecalculationObservation::new(input_path, &before.manifest);
     anyhow::ensure!(
         input_path != output_path,
         "recalculation input and output must differ"
@@ -160,6 +161,7 @@ pub fn save_recalculated_copy(
             ("OutputPath", power_shell_path(&transfer_output)?),
             ("ProgressPath", power_shell_path(&local_progress)?),
         ],
+        Some(observation),
     );
     if local_progress.is_file() {
         fs::copy(&local_progress, work_dir.join("excel-recalc-progress.log"))?;
@@ -439,8 +441,12 @@ fn windows_path_to_wsl_mnt_path(path: &str) -> Option<String> {
     ))
 }
 
-fn run_power_shell_script(script_path: &Path, args: &[(&str, String)]) -> anyhow::Result<()> {
-    let status = run_power_shell_script_with_status(script_path, args)?;
+fn run_power_shell_script(
+    script_path: &Path,
+    args: &[(&str, String)],
+    observation: Option<RecalculationObservation>,
+) -> anyhow::Result<()> {
+    let status = run_power_shell_script_with_status(script_path, args, observation)?;
     anyhow::ensure!(
         status.success(),
         "Excel automation script failed: {}",
@@ -452,8 +458,10 @@ fn run_power_shell_script(script_path: &Path, args: &[(&str, String)]) -> anyhow
 fn run_power_shell_script_with_status(
     script_path: &Path,
     args: &[(&str, String)],
+    observation: Option<RecalculationObservation>,
 ) -> anyhow::Result<std::process::ExitStatus> {
     let mut progress = ExcelProgressTail::new(&script_path.display().to_string());
+    progress.recalculation_observation = observation;
     let progress_path = args
         .iter()
         .find(|(name, _)| *name == "ProgressPath")
@@ -492,16 +500,18 @@ fn run_power_shell_script_with_status(
             if elapsed >= recalculation_timeout {
                 child.terminate();
                 anyhow::bail!(
-                    "Excel recalculation exceeded {:.1}s: {}",
+                    "Excel recalculation exceeded {:.1}s; last confirmed step: {}: {}",
                     recalculation_timeout.as_secs_f64(),
+                    progress.last_message.as_deref().unwrap_or("No progress message received"),
                     script_path.display()
                 );
             }
         } else if last_progress.elapsed() >= automation_timeout {
             child.terminate();
             anyhow::bail!(
-                "Excel automation stalled for {:.1}s: {}",
+                "Excel automation stalled for {:.1}s; last confirmed step: {}: {}",
                 automation_timeout.as_secs_f64(),
+                progress.last_message.as_deref().unwrap_or("No progress message received"),
                 script_path.display()
             );
         }

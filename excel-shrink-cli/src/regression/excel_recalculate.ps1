@@ -81,6 +81,7 @@ try {
         '',          # WriteResPassword
         $true        # IgnoreReadOnlyRecommended
     )
+    Write-RecalcProgress 'workbook opened'
 
     $workbook.ForceFullCalculation = $true
 
@@ -97,6 +98,7 @@ try {
     $workbook.Close($false)
     [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($workbook)
     $workbook = $null
+    Write-RecalcProgress 'workbook closed'
 
     Write-RecalcProgress 'copying recalculated output'
     Copy-Item -LiteralPath $localOutput -Destination $OutputPath -Force

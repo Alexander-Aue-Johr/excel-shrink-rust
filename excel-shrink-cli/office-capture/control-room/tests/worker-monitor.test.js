@@ -3,6 +3,9 @@ import { age, commandTimingSummary, duration, phaseLabel, progressSummary, retai
 export function runTests() {
   let passed = 0;
   const assert = (condition, message) => { if (!condition) throw new Error(message); passed++; };
+  assert(phaseLabel('recalc_opening') === 'Opening workbook for recalculation', 'Opening remains distinct from calculation.');
+  assert(phaseLabel('recalculating') === 'Recalculating workbook', 'The calculation phase starts only when reported.');
+  assert(phaseLabel('recalc_saving') === 'Saving recalculated workbook', 'Saving has its own observed phase.');
   assert(retainedImageSummary(null) === null, 'Legacy workers do not invent retained-image counts');
   assert(retainedImageSummary({ retained_image_tiles: 0, retained_image_bytes: 0 }) === '0 tiles ? 0 MiB of retained PNGs', 'Released image buffers remain a measured zero');
   assert(retainedImageSummary({ retained_image_tiles: 3, retained_image_bytes: 1572864 }) === '3 tiles ? 1.5 MiB of retained PNGs', 'Retained image memory uses explicit binary units');
@@ -42,6 +45,10 @@ export function runTests() {
     last_event: { at_unix_ms: start + 5000, kind: 'shrunk' }, events: [] } })[0];
   assert(coordinator.kind === 'Rust / Host' && coordinator.heartbeat === null, 'Host phases must not invent an Office.js heartbeat.');
   assert(coordinator.heartbeatCount === undefined, 'Host workers must not invent an Office.js heartbeat counter.');
+  const recalculating = workerRows({ ...group, clients: [], coordinator: { phase: 'recalc_opening',
+    last_event: { details: { profile: 'maximum-cleaning', external_workbook_links: 2, link_updates: 'disabled' } } } })[0];
+  assert(recalculating.profile === 'maximum-cleaning' && recalculating.externalWorkbookLinks === 2
+    && recalculating.linkUpdates === 'disabled', 'Recalculation dependencies retain their observed count and update policy.');
   assert(timestamp(coordinator.lastEvent) === start + 5000 && age(coordinator.stateSince, start + 5000) === 5, 'Numeric Rust timestamps retain their actual age.');
   const blocked = workerRows({ ...group, clients: [], cleanup_pending: {state:'waiting',since_unix_ms:start,error:'Access denied'},
     coordinator: {phase:'finished',process_alive:true,pid:42} })[0];

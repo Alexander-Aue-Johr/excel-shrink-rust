@@ -61,6 +61,11 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     field(fields, 'Status / phase', observedPhase(row));
     field(fields, 'Time in this state', duration(age(row.stateSince)), timeText(row.stateSince));
     field(fields, 'Sheet', row.sheet);
+    if (row.profile) field(fields, 'Profile / input', row.profile);
+    if (Number.isInteger(row.externalWorkbookLinks)) {
+      field(fields, 'External workbook links', row.externalWorkbookLinks.toLocaleString('en-US'),
+        row.linkUpdates === 'disabled' ? 'Link updates are disabled for this recalculation.' : null);
+    }
     field(fields, 'Wait reason', row.waitReason || (row.category === 'working'
       ? 'Job submitted; waits inside Excel cannot be observed.' : 'Not observed'));
     field(fields, 'Last heartbeat', row.kind === 'Rust / Host' ? 'No add-in heartbeat for the host' : sinceText(row.heartbeat), timeText(row.heartbeat));

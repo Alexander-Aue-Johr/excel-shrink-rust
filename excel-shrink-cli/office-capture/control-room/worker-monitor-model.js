@@ -18,6 +18,9 @@ const phases = {
   finished: 'Completed', extracting: 'Extracting file', converting: 'Converting legacy Excel format',
   validating: 'Validating file and capture plan', shrinking: 'Shrinking and validating variant', saving: 'Saving result',
   measuring_open: 'Measuring Excel opening time', validating_values: 'Checking cell values and recalculation',
+  recalc_starting_excel: 'Starting Excel for recalculation', recalc_opening: 'Opening workbook for recalculation',
+  recalculating: 'Recalculating workbook', recalc_saving: 'Saving recalculated workbook',
+  recalc_closing: 'Closing recalculation workbook',
   opening: 'Starting Excel clients', comparing: 'Coordinating profile comparison',
   comparing_images: 'Comparing image data on host', processing_result: 'Processing Excel response',
   waiting_client: 'Waiting for Office.js response', waiting_images: 'Waiting for images / batch responses',
@@ -136,6 +139,9 @@ export function workerRows(group) {
         : blocked ? 'Process ownership or exit could not be confirmed; this slot stays reserved while cleanup retries.' : monitor.wait_reason,
       error: blocked ? group.cleanup_pending.error : null,
       sheet: monitor.sheet_name || monitor.last_event?.details?.sheet_name,
+      profile: monitor.last_event?.details?.profile,
+      externalWorkbookLinks: monitor.last_event?.details?.external_workbook_links,
+      linkUpdates: monitor.last_event?.details?.link_updates,
       events: [...(monitor.events || [])].reverse().slice(0, 24), heartbeat: null, heartbeatCount: undefined });
   }
   return rows;

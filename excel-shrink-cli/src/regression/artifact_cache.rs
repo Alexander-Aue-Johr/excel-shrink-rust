@@ -155,10 +155,9 @@ fn visual_flags(name: &str, data: &[u8]) -> (bool, bool) {
         || name == "xl/connections.xml"
         || name.starts_with("xl/queryTables/")
         || name.starts_with("xl/externalLinks/");
-    // Screenshot workbooks are opened read-only with manual calculation, macros/events
-    // disabled and external-link updates disabled. Merely containing external-link,
-    // connection, VBA, or embedded-object parts therefore is not a runtime dependency.
-    // Explicit volatile functions / refresh-on-open flags remain runtime-sensitive.
+    // Explicit volatile functions and refresh-on-open flags are runtime-sensitive.
+    // Dependency parts are also rejected by calculation_certificate below;
+    // native capture does not share the COM recalculation startup settings.
     (
         chart || (worksheet && context.is_match(data)),
         refresh_sensitive && live.is_match(data),
