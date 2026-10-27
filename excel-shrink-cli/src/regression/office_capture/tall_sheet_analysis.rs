@@ -188,6 +188,7 @@ fn decorated_styles(bytes: Option<&[u8]>) -> Result<Vec<bool>> {
         return Ok(vec![false]);
     };
     let decorated_default = default_resources_decorated(bytes)?;
+    let plain_fonts = plain_font_resources(bytes)?;
     let mut reader = Reader::<64>::new(bytes)?;
     let mut styles = Vec::new();
     while let Some(tag) = reader.next()? {
@@ -200,7 +201,17 @@ fn decorated_styles(bytes: Option<&[u8]>) -> Result<Vec<bool>> {
             if xf.kind == Kind::End || xf.local() != b"xf" {
                 continue;
             }
-            let decorated = [b"fontId".as_slice(), b"fillId", b"borderId", b"xfId"]
+            // A separate font record can merely change Calibri's point size.
+            // It does not paint the empty cells of an entire column. Unknown
+            // resources and visible font decorations remain conservative.
+            let decorated_font = match xf.attr(b"fontId")? {
+                None | Some(b"0") => false,
+                Some(id) => !plain_fonts
+                    .get(decimal(id)? as usize)
+                    .copied()
+                    .unwrap_or(false),
+            };
+            let decorated = [b"fillId".as_slice(), b"borderId", b"xfId"]
                 .iter()
                 .any(|attr| xf.attr(attr).map_or(true, |v| v.is_some_and(|v| v != b"0")));
             let body = xfs.element(xf)?;
@@ -210,11 +221,65 @@ fn decorated_styles(bytes: Option<&[u8]>) -> Result<Vec<bool>> {
             while let Some(child) = children.next()? {
                 alignment |= child.kind != Kind::End && child.local() == b"alignment";
             }
-            styles.push(decorated_default || decorated || alignment);
+            styles.push(decorated_default || decorated_font || decorated || alignment);
         }
     }
     ensure!(!styles.is_empty(), "cell style table unavailable");
     Ok(styles)
+}
+
+fn plain_font_resources(bytes: &[u8]) -> Result<Vec<bool>> {
+    let mut reader = Reader::<64>::new(bytes)?;
+    while let Some(tag) = reader.next()? {
+        if tag.kind == Kind::End || tag.local() != b"fonts" {
+            continue;
+        }
+        let collection = reader.element(tag)?;
+        let mut fonts = Reader::<64>::new(collection.body)?;
+        let mut plain = Vec::new();
+        while let Some(font) = fonts.next()? {
+            if font.kind == Kind::End || font.local() != b"font" {
+                continue;
+            }
+            let font = fonts.element(font)?;
+            let mut fields = Reader::<64>::new(font.body)?;
+            let mut regular = true;
+            while let Some(field) = fields.next()? {
+                if field.kind == Kind::End {
+                    continue;
+                }
+                regular &= match field.local() {
+                    b"name" | b"sz" | b"family" | b"charset" | b"scheme" => true,
+                    b"color" => !color_decorated(field.attrs)?,
+                    b"b" | b"i" | b"u" | b"strike" | b"outline" | b"shadow" | b"vertAlign" => field
+                        .attr(b"val")?
+                        .is_some_and(|v| matches!(v, b"0" | b"false" | b"none" | b"baseline")),
+                    _ => false,
+                };
+            }
+            plain.push(regular);
+        }
+        return Ok(plain);
+    }
+    Ok(Vec::new())
+}
+
+fn color_decorated(attrs: &[u8]) -> Result<bool> {
+    for attr in Attributes::new(attrs) {
+        let (name, value) = attr?;
+        let plain = match name {
+            b"rgb" => value.eq_ignore_ascii_case(b"FF000000") || value == b"00000000",
+            b"theme" => value == b"1",
+            b"indexed" => matches!(value, b"8" | b"64"),
+            b"auto" => matches!(value, b"1" | b"true"),
+            b"tint" => value == b"0",
+            _ => false,
+        };
+        if !plain {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 // A workbook can put bold text or a background in resource zero itself.
@@ -253,21 +318,8 @@ fn default_resources_decorated(bytes: &[u8]) -> Result<bool> {
             if field.local() == b"gradientFill" || field.attr(b"style")?.is_some() {
                 return Ok(true);
             }
-            if field.local() == b"color" {
-                for attr in Attributes::new(field.attrs) {
-                    let (name, value) = attr?;
-                    let plain = match name {
-                        b"rgb" => value.eq_ignore_ascii_case(b"FF000000") || value == b"00000000",
-                        b"theme" => value == b"1",
-                        b"indexed" => matches!(value, b"8" | b"64"),
-                        b"auto" => matches!(value, b"1" | b"true"),
-                        b"tint" => value == b"0",
-                        _ => false,
-                    };
-                    if !plain {
-                        return Ok(true);
-                    }
-                }
+            if field.local() == b"color" && color_decorated(field.attrs)? {
+                return Ok(true);
             }
         }
     }
@@ -710,6 +762,70 @@ mod tests {
             decorated_styles(Some(decorated_default)).unwrap(),
             vec![true]
         );
+    }
+
+    #[test]
+    fn regular_font_columns_do_not_protect_a_million_empty_rows() {
+        let xml = br#"<styleSheet><fonts>
+            <font><sz val="11"/><name val="Calibri"/><family val="2"/></font>
+            <font><sz val="12"/><name val="Calibri"/><family val="2"/></font>
+            </fonts><cellXfs><xf/><xf fontId="1" fillId="0" borderId="0" xfId="0"/>
+            </cellXfs></styleSheet>"#;
+        let styles = decorated_styles(Some(xml)).unwrap();
+        assert_eq!(styles, vec![false, false]);
+        // Trial3 has ordinary data near the top and a SUM close to the last
+        // worksheet row. Its regular column font is not a painted background.
+        let sheet = br#"<worksheet><cols><col min="1" max="16384" style="1"/></cols>
+            <sheetData><row r="3"><c r="N3" s="1"><v>12</v></c></row>
+            <row r="1048574"><c r="N1048574" s="1"><f>SUM(N3:N1048573)</f><v>12</v></c></row>
+            </sheetData></worksheet>"#;
+        let mut out = SheetIndicators::default();
+        scan_pair(sheet, sheet, &styles, &styles, &mut out).unwrap();
+        assert!(out.rows.is_empty());
+        assert!(out.full_capture_reason.is_none());
+
+        let changed = String::from_utf8(sheet.to_vec())
+            .unwrap()
+            .replace("<v>12</v>", "<v>13</v>");
+        let mut out = SheetIndicators::default();
+        scan_pair(sheet, changed.as_bytes(), &styles, &styles, &mut out).unwrap();
+        out.merge();
+        assert_eq!(out.rows, vec![[2, 3], [1_048_573, 1_048_574]]);
+    }
+
+    #[test]
+    fn decorated_and_unknown_font_resources_remain_capture_indicators() {
+        let xml = br#"<styleSheet><fonts><font/>
+            <font><name val="Arial"/><color rgb="FF000000"/></font>
+            <font><b/></font><font><color rgb="FFFF0000"/></font>
+            <font><condense/></font><font><i val="0"/><u val="none"/></font>
+            </fonts><cellXfs><xf/><xf fontId="1"/><xf fontId="2"/>
+            <xf fontId="3"/><xf fontId="4"/><xf fontId="5"/>
+            <xf fontId="99"/><xf fillId="2"/><xf borderId="1"/>
+            </cellXfs></styleSheet>"#;
+        let styles = decorated_styles(Some(xml)).unwrap();
+        assert_eq!(
+            styles,
+            vec![false, false, true, true, true, false, true, true, true]
+        );
+        let sheet = br#"<worksheet><sheetData><row r="500"><c r="A500" s="2"><v>1</v></c></row></sheetData></worksheet>"#;
+        let mut out = SheetIndicators::default();
+        scan_pair(sheet, sheet, &styles, &styles, &mut out).unwrap();
+        assert_eq!(out.rows, vec![[499, 500]]);
+        for style in [2, 3, 4, 6, 7, 8] {
+            let sheet = format!("<worksheet><cols><col min=\"1\" max=\"1\" style=\"{style}\"/></cols><sheetData/></worksheet>");
+            let mut out = SheetIndicators::default();
+            scan_pair(
+                sheet.as_bytes(),
+                sheet.as_bytes(),
+                &styles,
+                &styles,
+                &mut out,
+            )
+            .unwrap();
+            out.merge();
+            assert_eq!(out.rows, vec![[0, MAX_ROWS]], "style {style}");
+        }
     }
 
     #[test]
