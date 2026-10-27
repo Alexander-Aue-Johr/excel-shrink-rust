@@ -1,4 +1,4 @@
-import { normalizeGroup, groupedPanels, imageStatus, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, fitSheetView, inspectionEntry, inspectionRegions, differenceTargets, heartbeatAge, omissionDescription, processMeasurements, tileEvidenceDescription, captureTransportSummary } from '../model.js';
+import { normalizeGroup, groupedPanels, imageStatus, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, fitSheetView, inspectionEntry, inspectionRegions, differenceTargets, heartbeatAge, omissionDescription, processMeasurements, tileEvidenceDescription, captureTransportSummary, groupOutcome } from '../model.js';
 import { result as viewportTests } from './sheet-viewport.test.js';
 import { result as workerTests } from './worker-monitor.test.js';
 import { result as signalTests } from './signal-model.test.js';
@@ -13,6 +13,20 @@ const image = pixelClass => ({ url: '/data/image.png', pixel_class: pixelClass }
 const normalize = images => normalizeGroup({ profiles, sheets: [{ id: 'sheet', tiles: [{ id: 'tile', width: 800, height: 200, images }] }] }).sheets[0].tiles[0];
 
 export function runTests() {
+  const skipped = groupOutcome({ status: 'skipped', outcome_error: 'Excel opening timed out after 600 s' });
+  assert(skipped.title === 'Skipped' && skipped.detail.includes('600 s'), 'Skipped groups expose their recorded reason.');
+  assert(groupOutcome({ status: 'skipped', outcome_error: 'Current attempt', error: 'Earlier attempt' }).detail === 'Current attempt', 'Current attempt outcome takes precedence over older detail.');
+  assert(groupOutcome({ status: 'skipped' }).detail.includes('No visual result'), 'Missing skip reasons never imply an identical result.');
+  const packageOutcome = groupOutcome({ status: 'unchanged', outcome_method: 'package-equivalence' });
+  assert(packageOutcome.title === 'Package unchanged' && packageOutcome.detail.includes('No captures were performed'), 'Package equivalence is never presented as a visual capture comparison.');
+  assert(groupOutcome({ status: 'unchanged' }).title === 'No differences detected', 'A result without capture evidence keeps neutral wording.');
+  const visuallyEqual = normalizeGroup({ status: 'unchanged', profiles, sheets: [{ tiles: [{ status: 'equal', images: Object.fromEntries(profiles.map(profile => [profile.id, image(0)])) }] }] });
+  assert(groupOutcome(visuallyEqual).title === 'Compared captures identical' && groupOutcome(visuallyEqual).detail.includes('unchecked'), 'Completed equal captures are identified without certifying omitted areas.');
+  assert(groupOutcome({ status: 'unchanged', sheets: [{ tiles: [{ status: 'omitted', comparisonComplete: true, equalAcrossAll: true }] }] }).title === 'No differences detected', 'An omitted tile cannot establish capture equality.');
+  assert(groupOutcome({ status: 'failed', error: 'Excel exited' }).kind === 'error', 'A validation failure remains an error.');
+  assert(groupOutcome({ status: 'comparing', error: 'Earlier attempt' }) === null, 'Active retries do not show a stale terminal result.');
+  assert(groupOutcome({ status: 'differences' }).title === 'Differences found', 'Cell-value differences alone never imply visual differences.');
+  assert(groupOutcome({ status: 'differences', sheets: [{ tiles: [{ comparisonComplete: true, equalAcrossAll: false, status: 'different' }] }] }).title === 'Visual differences found', 'Completed differing captures justify a visual finding.');
   const measures = {measurements:{original:{bytes:10485760,open_seconds:10,memory_bytes:104857600},
     default:{bytes:5242880,open_seconds:4,memory_bytes:52428800,shrink_seconds:2}}};
   const measured = processMeasurements(measures,'default');
@@ -158,7 +172,7 @@ export function runTests() {
   assert(rawTall.sheets[0].tiles[3].y === 99800 && rawTall.sheets[0].tiles.length === 4, 'Display compaction never mutates host evidence.');
   const noOmission = normalizeGroup({ sheets: [{ height: 100000, tiles: [{ id: 'pending', width: 800, height: 100000 }] }] }).sheets[0];
   assert(noOmission.height === 100000 && noOmission.tiles.length === 1, 'A large pending capture is never treated as an omission.');
-  return { passed: 72 + viewportTests.passed + workerTests.passed + signalTests.passed
+  return { passed: 83 + viewportTests.passed + workerTests.passed + signalTests.passed
     + captureStripTests.checks + captureNavigationTests.checks + controlTests.passed };
 }
 

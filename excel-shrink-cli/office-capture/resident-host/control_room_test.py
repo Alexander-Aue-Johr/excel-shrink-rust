@@ -13,6 +13,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+import zipfile
 
 
 HERE = Path(__file__).resolve().parent
@@ -102,6 +103,37 @@ class ControlRoomProtocol(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as raised:
             self.request(path, body, headers)
         self.assertEqual(raised.exception.code, code)
+
+    def test_inspection_profiles_and_skipped_reason_follow_current_attempt(self):
+        self.write("queue.json", {"groups": [{"id": "book", "status": "skipped",
+            "attempt_id": "current", "active": False}]})
+        self.write("../records/book.json", {"status": "skipped", "error": "Excel opening timed out",
+            "control_room_attempt": {"id": "current"}})
+        prepared = self.data.parent / "prepared"
+        prepared.mkdir()
+        with zipfile.ZipFile(prepared / "book.zip", "w") as bundle:
+            bundle.writestr("original.xlsx", b"original")
+            bundle.writestr("maximum-cleaning.xlsx", b"maximum")
+        detail = self.request("/api/groups/book")
+        self.assertEqual(detail["inspection_profiles"], ["original", "maximum-cleaning"])
+        self.assertEqual(detail["outcome_error"], "Excel opening timed out")
+        self.assert_status(400, "/api/groups/book/inspect", {"profile": "../../outside"})
+        self.assert_status(400, "/api/groups/book/inspect", {"profile": "original", "path": "outside"})
+        self.assert_status(404, "/api/groups/unknown/inspect", {"profile": "original"})
+        self.write("queue.json", {"groups": [{"id": "book", "status": "opening",
+            "attempt_id": "retry", "active": True}]})
+        self.assertIsNone(self.request("/api/groups/book").get("outcome_error"))
+
+    def test_corrupt_inspection_bundle_keeps_result_and_reason_visible(self):
+        self.write("queue.json", {"groups": [{"id": "book", "status": "skipped", "active": False}]})
+        self.write("../records/book.json", {"status": "skipped", "error": "Malformed workbook"})
+        prepared = self.data.parent / "prepared"
+        prepared.mkdir()
+        (prepared / "book.zip").write_bytes(b"not a ZIP")
+        detail = self.request("/api/groups/book")
+        self.assertEqual(detail["outcome_error"], "Malformed workbook")
+        self.assertEqual(detail["inspection_profiles"], [])
+        self.assertTrue(detail["diagnostics"])
 
     def test_stop_is_scoped_to_verified_runner_and_cannot_be_unpaused(self):
         self.write("queue.json", {"running": True, "runner_pid": os.getpid(),

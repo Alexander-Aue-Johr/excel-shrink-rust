@@ -6,6 +6,46 @@ export const PRIMARY_PROFILES = [
   { id: 'too-aggressive-cleaning', label: 'Too aggressive' },
 ];
 
+export function groupOutcome(group) {
+  const status = group?.status;
+  const reason = [group?.outcome_error, group?.skip_reason, group?.error, group?.result_reason]
+    .find(value => typeof value === 'string' && value.trim());
+  if (status === 'skipped') {
+    return { kind: 'warning', title: 'Skipped',
+      detail: reason || 'The runner did not provide a skip reason. No visual result is established.' };
+  }
+  if (status === 'failed' || status === 'interrupted') {
+    return { kind: 'error', title: status === 'failed' ? 'Validation failed' : 'Interrupted',
+      detail: reason || 'Validation did not finish. No visual result is established.' };
+  }
+  if (status === 'unchanged') {
+    if (group.outcome_method === 'package-equivalence') {
+      return { kind: 'complete', title: 'Package unchanged',
+        detail: 'The runner used package equivalence to finish this file. No captures were performed.' };
+    }
+    const hasComparedCaptures = group.sheets?.some(sheet => sheet.tiles?.some(tile =>
+      tile.comparisonComplete && tile.equalAcrossAll && tile.status !== 'omitted'));
+    if (hasComparedCaptures) {
+      return { kind: 'equal', title: 'Compared captures identical',
+        detail: 'The compared captures matched. Any omitted areas remain unchecked.' };
+    }
+    return { kind: 'complete', title: 'No differences detected',
+      detail: 'The recorded result reports no differences. No completed capture evidence is available in this view.' };
+  }
+  if (status === 'differences') {
+    const visualDifference = group.sheets?.some(sheet => sheet.tiles?.some(tile =>
+      tile.comparisonComplete && !tile.equalAcrossAll && tile.status !== 'omitted'));
+    return { kind: 'different', title: visualDifference ? 'Visual differences found' : 'Differences found',
+      detail: visualDifference ? 'Select a differing capture to inspect the profiles side by side.'
+        : 'Differences may concern cell values or visual checks. See the report for the recorded findings.' };
+  }
+  if (['complete', 'completed', 'finished'].includes(status)) {
+    return { kind: 'complete', title: 'Processing completed',
+      detail: reason || 'See the report for the recorded comparison result.' };
+  }
+  return null;
+}
+
 export function processMeasurements(group, id) {
   const measurements = group?.measurements || {};
   const original = measurements.original || {};

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription, processMeasurements, tileEvidenceDescription, captureTransportSummary } from './model.js';
+import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription, processMeasurements, tileEvidenceDescription, captureTransportSummary, groupOutcome, PRIMARY_PROFILES } from './model.js';
 import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey, followSheetViewport } from './sheet-viewport.js';
 import { initWorkerMonitor } from './worker-monitor.js';
 import { workerRows } from './worker-monitor-model.js';
@@ -21,6 +21,7 @@ const state = { ready: false, connected: false, groupId: null, sheetId: null, se
 const controlUpdates = createControlUpdates(value => { state.controls = value; });
 const boards = [], sourceTiles = [], hitTargets = [], detailPanels = [], connections = [];
 const sheetCards = new Map(), processCards = new Map();
+const inspectionButtons = new Map(), pendingInspections = new Set();
 const sheetViewports = new Map(), sheetToolbars = new Map();
 const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2();
 const textureCache = new Map(), flashes = new Map(), previousImages = new Map();
@@ -833,6 +834,8 @@ function selectGroup(id) {
   processCards.clear(); $('processes').replaceChildren();
   for (const toolbar of sheetToolbars.values()) toolbar.remove(); sheetToolbars.clear();
   $('emptyScene').hidden = false; $('tileButtons').replaceChildren(); renderGroups();
+  $('inspectionStatus').textContent = '';
+  renderGroupOutcome(); renderInspectionCopies();
   ++pollGeneration; clearTimeout(pollTimer); poll();
 }
 // The worker list and its capture stream provide a one-click route to the
@@ -961,7 +964,79 @@ function elapsedText(iso) {
   const milliseconds = Date.now() - Date.parse(iso); if (!Number.isFinite(milliseconds)) return '';
   const seconds = Math.max(0, Math.floor(milliseconds / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
+function renderGroupOutcome() {
+  const outcome = groupOutcome(data);
+  const banner = $('groupOutcome');
+  banner.hidden = !outcome;
+  if (outcome) {
+    banner.dataset.kind = outcome.kind;
+    $('groupOutcomeTitle').textContent = outcome.title;
+    $('groupOutcomeReason').textContent = outcome.detail;
+  }
+  const empty = $('emptyScene');
+  empty.querySelector('strong').textContent = outcome?.title || 'The next capture will appear here.';
+  empty.querySelector('span').textContent = outcome?.detail || 'Only actual jobs and images are shown.';
+}
+function renderInspectionCopies() {
+  const availableProfiles = data?.inspection_profiles || [];
+  const availability = $('inspectionAvailability');
+  availability.hidden = availableProfiles.length > 0;
+  availability.textContent = data
+    ? 'No prepared workbook copies are available for this file.'
+    : 'Waiting for workbook details.';
+  for (const profile of PRIMARY_PROFILES) {
+    let button = inspectionButtons.get(profile.id);
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.title = `Open a separate ${profile.label} copy in visible Excel.`;
+      button.addEventListener('click', () => openInspectionCopy(profile));
+      inspectionButtons.set(profile.id, button);
+      $('inspectionButtons').append(button);
+    }
+    const pending = pendingInspections.has(`${state.groupId}/${profile.id}`);
+    const available = availableProfiles.includes(profile.id);
+    button.disabled = !state.groupId || !available || pending;
+    button.textContent = pending ? `${profile.label}: requesting...` : profile.label;
+  }
+}
+async function openInspectionCopy(profile) {
+  const groupId = state.groupId;
+  if (!groupId) return;
+  const key = `${groupId}/${profile.id}`;
+  if (pendingInspections.has(key)) return;
+  pendingInspections.add(key);
+  const status = $('inspectionStatus');
+  status.classList.remove('failure');
+  status.textContent = `Preparing ${profile.label} inspection copy...`;
+  renderInspectionCopies();
+  try {
+    const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/inspect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: profile.id }),
+    });
+    const result = await response.json();
+    if (!response.ok || result.ok === false) {
+      throw new Error(result.error || `Inspection request failed (${response.status}).`);
+    }
+    if (state.groupId === groupId) {
+      status.textContent = `Inspection copy requested in visible Excel: ${result.path}`;
+      pushEvent(`${profile.label} inspection copy requested in visible Excel.`);
+    }
+  } catch (error) {
+    if (state.groupId === groupId) {
+      status.classList.add('failure');
+      status.textContent = error.message;
+    }
+  } finally {
+    pendingInspections.delete(key);
+    renderInspectionCopies();
+  }
+}
 function updateDiagnosticUi() {
+  renderGroupOutcome();
+  renderInspectionCopies();
   renderThroughput();
   renderProcesses();
   $('captureTransportStatus').textContent = captureTransportSummary(state.controls, data);

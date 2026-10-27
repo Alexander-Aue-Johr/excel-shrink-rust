@@ -39,6 +39,15 @@
     <aside class="sidebar"><div class="section-head"><h2>Workbooks</h2><span id="groupCount">0</span></div><input id="groupSearch" class="group-search" type="search" placeholder="Filename or corpus" aria-label="Filter workbooks"><div id="groups" class="groups"></div><button id="moreGroups" class="more-groups" hidden>Show 100 more</button><p class="sidebar-note">Open requested, add-in ready, and capturing are separate states. Missing images alone do not indicate a crash.</p></aside>
     <main>
       <div class="workbook-heading"><div><div class="eyebrow" id="groupEyebrow">LIVE STUDIO</div><h2 id="workbook">Waiting for the first group.</h2><p id="groupStatus">Actual capture jobs appear here.</p></div><div class="heading-actions"><button id="restartGroup">Requeue group</button><button id="resetCamera">All sheets</button></div></div>
+      <section id="groupOutcome" class="group-outcome" hidden aria-label="Workbook result">
+        <strong id="groupOutcomeTitle"></strong><span id="groupOutcomeReason"></span>
+      </section>
+      <section class="inspection-copies" aria-label="Open workbook inspection copies">
+        <div><strong>Inspect in Excel</strong><small>Opens a separate temporary copy of the comparison input in visible Excel.</small></div>
+        <div id="inspectionButtons" class="inspection-buttons"></div>
+        <span id="inspectionAvailability">Select a workbook to inspect its prepared copies.</span>
+        <span id="inspectionStatus" role="status" aria-live="polite"></span>
+      </section>
       <div class="sheetbar"><label for="sheetSelect">Sheet</label><select id="sheetSelect" aria-label="Displayed sheet"></select><span id="sheetSummary">No tiles yet</span><label class="toggle"><input id="followCapture" type="checkbox" checked> Follow captures</label></div>
       <section class="room" aria-label="Curved studio with synchronized sheet viewports">
         <div id="viewport" tabindex="0" aria-label="Inside a sheet: scroll with the wheel, Shift to scroll horizontally, Ctrl to zoom at the pointer. Outside: drag to rotate the camera and use the wheel to zoom. Hover to compare tiles."><div id="sheetZoomLayer"></div></div>

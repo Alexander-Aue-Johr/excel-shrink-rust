@@ -1,6 +1,7 @@
 //! Browser-facing control plane. The scheduler owns scientific work; this host
 //! reads its snapshots and writes explicit, attempt-scoped control requests.
 
+mod inspection;
 mod platform;
 mod snapshots;
 
@@ -74,6 +75,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         .route("/api/run/stop", post(stop))
         .route("/api/control", post(control))
         .route("/api/groups/{id}/restart", post(restart))
+        .route("/api/groups/{id}/inspect", post(inspect))
         .route("/api/commands/{id}", get(command))
         .route("/data/{*path}", get(asset))
         .with_state(room.clone());
@@ -365,11 +367,77 @@ async fn group(
     if record["cleanup_pending"].is_object() {
         merged["cleanup_pending"] = record["cleanup_pending"].clone();
     }
+    attach_outcome(&mut merged, &record, displayed_attempt.as_deref());
+    let inspection_root = room.root.clone();
+    let inspection_id = id.clone();
+    let profiles = tokio::task::spawn_blocking(move || {
+        inspection::available_profiles(&inspection_root, &inspection_id)
+    })
+    .await
+    .context("Read inspection variants")?;
+    merged["inspection_profiles"] = match profiles {
+        Ok(profiles) => json!(profiles),
+        Err(error) => {
+            diagnostics.push(json!({"file":"prepared workbook bundle","error":error.to_string()}));
+            json!([])
+        }
+    };
     merged["measurements"] = measurements(&record, &merged, displayed_attempt.as_deref());
     merged["id"] = json!(id);
     merged["available"] = json!(available);
     merged["diagnostics"] = json!(diagnostics);
     Ok(Json(merged))
+}
+
+fn attach_outcome(group: &mut Value, record: &Value, attempt: Option<&str>) {
+    // A live record can still hold the previous attempt's result while a retry
+    // is starting. Only attach a result belonging to the displayed attempt.
+    if record["control_room_attempt"]["id"].as_str() != attempt
+        || !matches!(
+            group["status"].as_str(),
+            Some("skipped" | "failed" | "unchanged" | "differences")
+        )
+        || group["status"] != record["status"]
+    {
+        return;
+    }
+    group["outcome_error"] = record["error"].clone();
+    group["error"] = record["error"].clone();
+    if record["capture_mode"] == "package-audit" {
+        group["outcome_method"] = json!("package-equivalence");
+    }
+}
+
+async fn inspect(
+    State(room): State<Arc<Room>>,
+    RoutePath(id): RoutePath<String>,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> HttpResult<Json<Value>> {
+    safe_id(&id)?;
+    let body = object_payload(payload)?;
+    if body.as_object().unwrap().keys().any(|key| key != "profile") {
+        return Err(ApiError::bad_request("Unknown inspection option."));
+    }
+    let profile = required_string(&body, "profile")?.to_owned();
+    if !inspection::PROFILES.contains(&profile.as_str()) {
+        return Err(ApiError::bad_request("Unknown inspection profile."));
+    }
+    let queue = read_queue(&room, &mut Vec::new()).await?;
+    if !queue["groups"]
+        .as_array()
+        .is_some_and(|groups| groups.iter().any(|group| group["id"] == id))
+    {
+        return Err(ApiError::not_found("Unknown comparison group."));
+    }
+    let root = room.root.clone();
+    let requested_profile = profile.clone();
+    let path =
+        tokio::task::spawn_blocking(move || inspection::open_copy(&root, &id, &requested_profile))
+            .await
+            .context("Open inspection copy")??;
+    Ok(Json(
+        json!({"ok":true,"status":"launch_requested","profile":profile,"path":path}),
+    ))
 }
 
 fn scheduler_status_wins(status: &str) -> bool {
@@ -813,6 +881,21 @@ fn active_stop_requested(queue: &Value, stop: Option<&Value>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn outcome_reason_must_belong_to_the_displayed_attempt() {
+        let record = json!({"status":"skipped","error":"Excel opening timed out",
+            "control_room_attempt":{"id":"current"}});
+        let mut current = json!({"status":"skipped"});
+        attach_outcome(&mut current, &record, Some("current"));
+        assert_eq!(current["outcome_error"], "Excel opening timed out");
+        let mut retry = json!({"status":"skipped"});
+        attach_outcome(&mut retry, &record, Some("next"));
+        assert!(retry["outcome_error"].is_null());
+        let mut active = json!({"status":"capturing"});
+        attach_outcome(&mut active, &record, Some("current"));
+        assert!(active["outcome_error"].is_null());
+    }
 
     #[test]
     fn capture_transport_defaults_to_live_images_and_rejects_unknown_modes() -> Result<()> {

@@ -345,6 +345,61 @@ select {
   font-size:10px;
   white-space:nowrap;
 }
+.group-outcome {
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  margin-bottom:12px;
+  padding:12px 14px;
+  border:1px solid var(--line);
+  border-left:3px solid var(--cyan);
+  border-radius:7px;
+  background:#102332;
+  overflow-wrap:anywhere;
+}
+.group-outcome[data-kind=warning] {
+  border-left-color:#e7ba70;
+}
+.group-outcome[data-kind=error],.group-outcome[data-kind=different] {
+  border-left-color:var(--red);
+}
+.group-outcome[data-kind=equal] {
+  border-left-color:var(--green);
+}
+.group-outcome span {
+  color:#b1c6d6;
+  font-size:12px;
+  white-space:pre-wrap;
+}
+.inspection-copies {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:9px 16px;
+  padding:0 2px 13px;
+}
+.inspection-copies strong,.inspection-copies small {
+  display:block;
+}
+.inspection-copies small,#inspectionStatus,#inspectionAvailability {
+  color:var(--muted);
+  font-size:11px;
+}
+.inspection-buttons {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.inspection-buttons button {
+  font-size:11px;
+}
+#inspectionStatus,#inspectionAvailability {
+  flex-basis:100%;
+  overflow-wrap:anywhere;
+}
+#inspectionStatus.failure {
+  color:var(--red);
+}
 .sheetbar {
   display:flex;
   gap:10px;
