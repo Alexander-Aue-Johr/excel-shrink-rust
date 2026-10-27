@@ -617,6 +617,104 @@ fn parse_drawing(bytes: &[u8]) -> Result<DrawingSummary> {
     Ok(summary)
 }
 
+fn hidden_note_shape(style: &[u8], body: &[u8]) -> Result<bool> {
+    let style = decode_attr(style)?.to_ascii_lowercase();
+    let visibility = style
+        .split(';')
+        .filter_map(|declaration| {
+            let (name, value) = declaration.split_once(':')?;
+            (name.trim() == "visibility").then(|| value.trim())
+        })
+        .last();
+    if visibility != Some("hidden") {
+        return Ok(false);
+    }
+    let mut reader = Reader::<64>::new(body)?;
+    let mut note = false;
+    while let Some(tag) = reader.next()? {
+        if tag.kind == Kind::End {
+            continue;
+        }
+        let element = reader.element(tag)?;
+        match tag.local() {
+            b"ClientData" => {
+                if note || tag.attr(b"ObjectType")? != Some(b"Note") {
+                    return Ok(false);
+                }
+                let mut data = Reader::<32>::new(element.body)?;
+                while let Some(child) = data.next()? {
+                    // Excel also persists a visibility flag separately from
+                    // the VML style. A contradictory flag is not proof of a
+                    // hidden note, even if its value is unfamiliar.
+                    if child.kind != Kind::End && child.local() == b"Visible" {
+                        return Ok(false);
+                    }
+                }
+                note = true;
+            }
+            b"fill" | b"shadow" | b"path" | b"stroke" | b"textbox" => {}
+            _ => return Ok(false),
+        }
+    }
+    Ok(note)
+}
+
+fn known_vml_definition(name: &[u8], body: &[u8]) -> Result<bool> {
+    let children: &[&[u8]] = match name {
+        b"shapelayout" => &[b"idmap"],
+        b"shapetype" => &[b"stroke", b"path"],
+        _ => return Ok(false),
+    };
+    let mut reader = Reader::<64>::new(body)?;
+    while let Some(tag) = reader.next()? {
+        if tag.kind != Kind::End && (tag.depth != 0 || !children.contains(&tag.local())) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn vml_has_only_hidden_notes(bytes: &[u8]) -> Result<bool> {
+    let mut document = Reader::<128>::new(bytes)?;
+    let root = document.next()?.context("VML root missing")?;
+    ensure!(
+        root.depth == 0 && root.local() == b"xml",
+        "Expected VML root"
+    );
+    let root = document.element(root)?;
+    ensure!(
+        document.next()?.is_none(),
+        "Unexpected content after VML root"
+    );
+    let mut reader = Reader::<128>::new(root.body)?;
+    while let Some(tag) = reader.next()? {
+        if tag.kind == Kind::End {
+            continue;
+        }
+        let element = reader.element(tag)?;
+        match tag.local() {
+            b"shapelayout" | b"shapetype" => {
+                // Standard comment definitions contain only ID mappings and
+                // path/stroke properties. Unknown template contents can carry
+                // inherited visibility or objects; do not treat them as inert.
+                if !known_vml_definition(tag.local(), element.body)? {
+                    return Ok(false);
+                }
+            }
+            b"shape" => {
+                let Some(style) = tag.attr(b"style")? else {
+                    return Ok(false);
+                };
+                if !hidden_note_shape(style, element.body)? {
+                    return Ok(false);
+                }
+            }
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
+}
+
 fn drawing_summary<R: Read + std::io::Seek>(
     zip: &mut ZipArchive<R>,
     sheet_part: &str,
@@ -628,7 +726,19 @@ fn drawing_summary<R: Read + std::io::Seek>(
     let mut summary = DrawingSummary::default();
     for relationship in parse_relationships(&rels)? {
         let kind = relationship.kind.rsplit('/').next().unwrap_or("");
-        if matches!(kind, "vmlDrawing" | "oleObject" | "control") {
+        if kind == "vmlDrawing" {
+            // Legacy comments are VML drawings but are absent from Office.js
+            // worksheet.shapes. Hidden notes add no visible extent to capture.
+            let hidden_notes_only = if relationship.external {
+                false
+            } else {
+                let target = resolve_part_target(sheet_part, &relationship.target)?;
+                read_optional_zip_entry(zip, &target)?
+                    .is_some_and(|bytes| vml_has_only_hidden_notes(&bytes).unwrap_or(false))
+            };
+            summary.fallback_required |= !hidden_notes_only;
+        }
+        if matches!(kind, "oleObject" | "control") {
             summary.fallback_required = true;
         }
         if kind != "drawing" {
@@ -860,6 +970,79 @@ mod tests {
         assert!(plan.fallback_required);
         assert_eq!((plan.max_row, plan.max_column), (8, 5));
     }
+
+    #[test]
+    fn hidden_legacy_notes_do_not_require_office_shape_bounds() {
+        let vml = br##"<xml xmlns:v="urn:schemas-microsoft-com:vml"
+            xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:o="urn:schemas-microsoft-com:office:office">
+            <o:shapelayout><o:idmap data="1"/></o:shapelayout>
+            <v:shapetype id="_x0000_t202"><v:stroke joinstyle="miter"/></v:shapetype>
+            <v:shape type="#_x0000_t202" style="position:absolute; width:108.6pt; height:57pt; visibility:hidden">
+                <v:fill/><v:shadow/><v:path/><v:textbox><div>Note text</div></v:textbox>
+                <x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/>
+                    <x:Anchor>7, 10, 84, 1, 8, 56, 88, 17</x:Anchor>
+                    <x:Row>84</x:Row><x:Column>8</x:Column>
+                </x:ClientData>
+            </v:shape>
+        </xml>"##;
+        assert!(vml_has_only_hidden_notes(vml).unwrap());
+        let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        use std::io::Write;
+        archive
+            .start_file(
+                "xl/worksheets/_rels/sheet1.xml.rels",
+                zip::write::FileOptions::default(),
+            )
+            .unwrap();
+        archive.write_all(br#"<Relationships><Relationship Type="x/vmlDrawing" Target="../drawings/notes.vml"/></Relationships>"#).unwrap();
+        archive
+            .start_file("xl/drawings/notes.vml", zip::write::FileOptions::default())
+            .unwrap();
+        archive.write_all(vml).unwrap();
+        let mut archive = ZipArchive::new(archive.finish().unwrap()).unwrap();
+        let summary = drawing_summary(&mut archive, "xl/worksheets/sheet1.xml").unwrap();
+        assert!(!summary.fallback_required);
+        assert_eq!((summary.max_row, summary.max_column), (0, 0));
+    }
+
+    #[test]
+    fn visible_or_unknown_vml_keeps_conservative_drawing_fallback() {
+        let note = r#"<xml xmlns:v="v" xmlns:x="x"><v:shape style="visibility:hidden">
+            <x:ClientData ObjectType="Note"><x:Row>84</x:Row></x:ClientData></v:shape></xml>"#;
+        assert!(vml_has_only_hidden_notes(note.as_bytes()).unwrap());
+        for unknown in [
+            note.replace("visibility:hidden", "visibility:visible"),
+            note.replace("visibility:hidden", "visibility:hidden; visibility:visible"),
+            note.replace("visibility:hidden", ""),
+            note.replace("ObjectType=\"Note\"", "ObjectType=\"Button\""),
+            note.replace("<x:Row>", "<x:Visible/><x:Row>"),
+            note.replace("<v:shape", "<v:group")
+                .replace("</v:shape>", "</v:group>"),
+            note.replace("</xml>", "<v:rect/></xml>"),
+        ] {
+            assert!(
+                !vml_has_only_hidden_notes(unknown.as_bytes()).unwrap(),
+                "{unknown}"
+            );
+        }
+        assert!(vml_has_only_hidden_notes(b"<xml><v:shape").is_err());
+    }
+
+    #[test]
+    fn hidden_note_definitions_cannot_hide_unverified_visibility_or_objects() {
+        let note =
+            r#"<v:shape style="visibility:hidden"><x:ClientData ObjectType="Note"/></v:shape>"#;
+        for definition in [
+            "<v:shapetype><x:ClientData ObjectType=\"Note\"><x:Visible/></x:ClientData></v:shapetype>",
+            "<v:shapetype><v:group><v:shape/></v:group></v:shapetype>",
+            "<o:shapelayout><v:group/></o:shapelayout>",
+            "<v:shapetype><v:path><x:Visible/></v:path></v:shapetype>",
+        ] {
+            let vml = format!("<xml xmlns:v=\"v\" xmlns:x=\"x\" xmlns:o=\"o\">{definition}{note}</xml>");
+            assert!(!vml_has_only_hidden_notes(vml.as_bytes()).unwrap(), "{vml}");
+        }
+    }
+
     #[test]
     fn content_and_merge_bounds_ignore_declared_dimension() {
         let xml = br#"<worksheet><dimension ref="A1:XFD1048576"/><sheetData>
