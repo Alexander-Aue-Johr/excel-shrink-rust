@@ -72,6 +72,21 @@ starting the runner. This uses the previous synchronized coordinator and the
 sequential client path. Unset it for the default pipeline. It is an experiment
 switch, not a different capture or comparison policy.
 
+## Preview reuse and equal images
+
+Incoming images still appear immediately as previews up to 1024 pixels wide.
+When the tile is classified, a matching preview is reused if its source pixel
+identity, current-attempt URL and required dimensions match and the file exists.
+Missing or incompatible previews are regenerated from the full-resolution pixels.
+Changing the retained-preview width therefore still takes effect at classification.
+
+Exact RGBA equality remains the comparison criterion. An identical peer needs no
+difference mask; the original's combined mask is allocated only when a differing
+peer requires it. Different images retain their full-resolution evidence, and
+equal images needed for row-height reports retain their original evidence too.
+These changes affect derived display assets, not capture coverage or whitespace
+attribution.
+
 ## Measurements
 
 The worker records elapsed durations with `performance.now()`. Rust records its
@@ -128,6 +143,11 @@ Run the same script with `--run --pause-check --compare-to <completed-sample>`
 for a separate untimed check: it pauses after initial captures, waits for active
 commands to drain, resumes the same Excel processes and compares the final
 evidence with the reference sample.
+With `--baseline-binary <previous.exe> --binary <candidate.exe>`, the same harness
+compares two builds with pipelining enabled for both. Set `--equal-preview-width`
+to the same retained-preview width as the production run (currently 1024 on this
+machine). It also checks decoded dashboard previews, full-resolution display
+images and masks, independently of their filenames or encoding.
 
 Local Windows check on 2026-10-26 (fixture v2, four primary Excel clients plus one
 on-demand whitespace client, 1 MP tiles, batches of four, hidden Excel):
@@ -144,6 +164,25 @@ All four samples processed the same 41 tile positions and 167 physical images
 and whitespace attribution. This supports the local pipeline improvement; two
 samples per mode on one synthetic workbook do not establish corpus-wide speedup.
 GB here means decimal gigabytes. The first functional warmup was excluded.
+
+On 2026-10-27, a two-build ABBA check isolated preview reuse and equal-image mask
+elision. Both builds used the bounded pipeline and 1024-pixel retained previews:
+
+| Metric, median of two samples | Before preview reuse | With preview reuse |
+| --- | ---: | ---: |
+| Capture, upload and image processing | 4.150 s | 3.403 s |
+| Whole workbook comparison | 28.582 s | 27.174 s |
+| Final tile comparison and display publication | 1.554 s | 0.293 s |
+| Initial preview publication | 1.228 s | 1.635 s |
+| Peak Job Object memory | 1.591 GB | 1.621 GB |
+
+The initial preview interval increased in this small sample; the savings came
+from final tile processing. Those worker intervals overlap the capture phase and
+are not additional wall time. All four runs produced identical scientific
+evidence and decoded dashboard previews, full images and masks. A separate
+512-pixel preview test paused after 32 images, drained to 64, then resumed the same
+four Excel processes to 167 images with identical results. These are local checks,
+not estimates of corpus-wide performance.
 
 Optional hash-first transport, preview compression and WASM are separate
 experiments and remain disabled.

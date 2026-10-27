@@ -368,6 +368,7 @@ impl LiveCapture {
         ));
         let metadata = json!({"url":url,"preview_url":url,"pixel_class":format!("{}x{}:{}",tile.width,tile.height,tile.sha256),
             "mask_url":null,"full_url":null,"changed_pixels":null,"width":tile.width,"height":tile.height,
+            "preview_width":preview.width(),"preview_height":preview.height(),
             "x":tile.x,"y":tile.y,"status":"received","updated_at":timestamp});
         if let Some(target) = self.tile_mut(reference) {
             for (logical, client) in aliases {
@@ -380,6 +381,17 @@ impl LiveCapture {
         }
         self.save()
     }
+
+    fn tile(&self, tile: &Tile) -> Option<&Value> {
+        self.state["sheets"]
+            .as_array()?
+            .iter()
+            .find(|sheet| sheet["index"] == tile.sheet_index)?["tiles"]
+            .as_array()?
+            .iter()
+            .find(|entry| entry["address"] == tile.range)
+    }
+
     fn tile_mut(&mut self, tile: &Tile) -> Option<&mut Value> {
         self.state["sheets"]
             .as_array_mut()?
@@ -388,6 +400,44 @@ impl LiveCapture {
             .as_array_mut()?
             .iter_mut()
             .find(|entry| entry["address"] == tile.range)
+    }
+
+    fn retain_preview(
+        &self,
+        reference: &Tile,
+        physical: &str,
+        tile: &Tile,
+        pixels: &image::RgbaImage,
+        max_width: u32,
+    ) -> Result<(u32, u32)> {
+        let dimensions = preview_dimensions(pixels, max_width);
+        let name = format!(
+            "s{}-t{}-{physical}-preview.png",
+            reference.sheet_index, reference.tile_index
+        );
+        let path = self.images_directory().join(&name);
+        let url = self.image_url(&name);
+        let pixel_class = format!("{}x{}:{}", pixels.width(), pixels.height(), tile.sha256);
+        // The URL includes the attempt and physical client. Metadata belongs to
+        // this exact source image, so a stale preview cannot stand in for it.
+        let recorded = !tile.sha256.is_empty()
+            && self
+                .tile(reference)
+                .and_then(|target| target["images"].as_object())
+                .is_some_and(|images| {
+                    images.values().any(|image| {
+                        image["preview_url"].as_str() == Some(url.as_str())
+                            && image["pixel_class"].as_str() == Some(pixel_class.as_str())
+                            && image["preview_width"].as_u64() == Some(dimensions.0 as u64)
+                            && image["preview_height"].as_u64() == Some(dimensions.1 as u64)
+                    })
+                });
+        if recorded && image::image_dimensions(&path).ok() == Some(dimensions) {
+            return Ok(dimensions);
+        }
+        // Always resize from the full image, never from an earlier preview.
+        save_png(&preview(pixels, max_width), &path)?;
+        Ok(dimensions)
     }
 
     // Scientific evidence keeps its exact PNG. Dashboard previews are separate
@@ -406,7 +456,11 @@ impl LiveCapture {
         let Some((_, _, original)) = images.get("original") else {
             return Ok(true);
         };
-        let equal = images.values().all(|(_, _, image)| image == original);
+        let differing_clients: BTreeSet<_> = images
+            .iter()
+            .filter_map(|(client, (_, _, pixels))| (pixels != original).then_some(client.as_str()))
+            .collect();
+        let equal = differing_clients.is_empty();
         // Row-height reports may still need the exact source PNG even when
         // the displayed pixels match. That scientific evidence is independent
         // of the user's resolution setting for equal dashboard tiles.
@@ -416,43 +470,48 @@ impl LiveCapture {
         let timestamp = now_ms();
         let prefix = format!("s{}-t{}", reference.sheet_index, reference.tile_index);
         let mut urls = BTreeMap::<String, Value>::new();
-        let mut union = image::RgbaImage::new(original.width(), original.height());
+        let mut union: Option<image::RgbaImage> = None;
         for (physical, (tile, path, pixels)) in images {
             let basename = format!("{prefix}-{physical}");
             let full_path = self.images_directory().join(format!("{basename}.png"));
             if full {
                 fs::copy(path, &full_path)?;
             }
-            let preview_path = self
-                .images_directory()
-                .join(format!("{basename}-preview.png"));
             let max_width = if full { 1024 } else { preview_width };
-            let scaled = preview(pixels, max_width);
-            save_png(&scaled, &preview_path)?;
-            let (mask, changed) = difference_mask(original, pixels);
+            let preview_size = self.retain_preview(reference, physical, tile, pixels, max_width)?;
+            let full_preview = preview_size == pixels.dimensions();
             let mask_name = format!("{basename}-mask.png");
-            if changed > 0 {
+            let changed = if differing_clients.contains(physical.as_str()) {
+                let (mask, changed) = difference_mask(original, pixels);
                 save_png(&mask, &self.images_directory().join(&mask_name))?;
-                for (x, y, pixel) in union.enumerate_pixels_mut() {
+                for (x, y, original_pixel) in original.enumerate_pixels() {
                     if x >= pixels.width()
                         || y >= pixels.height()
-                        || original.get_pixel(x, y) != pixels.get_pixel(x, y)
+                        || original_pixel != pixels.get_pixel(x, y)
                     {
-                        *pixel = image::Rgba([255, 30, 55, 210]);
+                        union
+                            .get_or_insert_with(|| {
+                                image::RgbaImage::new(original.width(), original.height())
+                            })
+                            .put_pixel(x, y, image::Rgba([255, 30, 55, 210]));
                     }
                 }
-            }
+                changed
+            } else {
+                0
+            };
             let url = |name: &str| self.image_url(name);
             urls.insert(physical.clone(), json!({
                 "url":url(&format!("{basename}-preview.png")),"preview_url":url(&format!("{basename}-preview.png")),
-                "full_url":if full {Some(url(&format!("{basename}.png")))} else if scaled.dimensions()==pixels.dimensions() {Some(url(&format!("{basename}-preview.png")))} else {None},
+                "full_url":if full {Some(url(&format!("{basename}.png")))} else if full_preview {Some(url(&format!("{basename}-preview.png")))} else {None},
                 "mask_url":if changed > 0 {Some(url(&mask_name))} else {None},
                 "pixel_class":format!("{}x{}:{}",pixels.width(),pixels.height(),tile.sha256),
                 "changed_pixels":changed,"width":pixels.width(),"height":pixels.height(),"x":tile.x,"y":tile.y,
-                "retained_full_resolution":full || scaled.dimensions()==pixels.dimensions(),"updated_at":timestamp,
+                "preview_width":preview_size.0,"preview_height":preview_size.1,
+                "retained_full_resolution":full || full_preview,"updated_at":timestamp,
             }));
         }
-        if union.pixels().any(|pixel| pixel[3] != 0) {
+        if let Some(union) = union {
             let name = format!("{prefix}-original-mask.png");
             save_png(&union, &self.images_directory().join(&name))?;
             urls.get_mut("original").unwrap()["mask_url"] = json!(self.image_url(&name));
@@ -507,14 +566,26 @@ pub(super) fn client_ready_for_jobs(session: &Path, client: &str) -> bool {
         })
 }
 
-fn preview(pixels: &image::RgbaImage, max_width: u32) -> image::RgbaImage {
+fn preview_dimensions(pixels: &image::RgbaImage, max_width: u32) -> (u32, u32) {
     if max_width == 0 || pixels.width() <= max_width {
+        pixels.dimensions()
+    } else {
+        (
+            max_width,
+            ((pixels.height() as u64 * max_width as u64) / pixels.width() as u64).max(1) as u32,
+        )
+    }
+}
+
+fn preview(pixels: &image::RgbaImage, max_width: u32) -> image::RgbaImage {
+    let dimensions = preview_dimensions(pixels, max_width);
+    if dimensions == pixels.dimensions() {
         pixels.clone()
     } else {
         image::imageops::resize(
             pixels,
-            max_width,
-            ((pixels.height() as u64 * max_width as u64) / pixels.width() as u64).max(1) as u32,
+            dimensions.0,
+            dimensions.1,
             image::imageops::FilterType::Triangle,
         )
     }
@@ -1487,6 +1558,287 @@ mod tests {
         assert!(!directory.join("images/s1-t0-original.png").exists());
         assert_eq!(image::image_dimensions(&source)?, (1024, 8));
         fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    struct PreviewFixture {
+        root: PathBuf,
+        live: LiveCapture,
+        tile: Tile,
+        aliases: BTreeMap<String, String>,
+        images: BTreeMap<String, (Tile, PathBuf, image::RgbaImage)>,
+    }
+
+    impl PreviewFixture {
+        fn new(pixels: image::RgbaImage) -> Result<Self> {
+            let root = artifact_cache::unique_path(&std::env::temp_dir(), "live-preview-reuse")?;
+            let mut live = LiveCapture {
+                root: root.clone(),
+                directory: root.join("groups/fixture"),
+                id: "fixture".into(),
+                state: json!({"sheets":[],"attempt_id":"first"}),
+                controls: RefCell::new(json!({"paused":false,"equal_preview_width":1024})),
+            };
+            fs::create_dir_all(live.images_directory())?;
+            let tile = Tile {
+                width: pixels.width(),
+                height: pixels.height(),
+                sha256: artifact_cache::sha256(pixels.as_raw()),
+                ..fixture_tile(0, u64::from(pixels.width()) * u64::from(pixels.height()))
+            };
+            live.plan(&Snapshot {
+                tiles: vec![tile.clone()],
+                heights: vec![],
+                command: "plan".into(),
+            })?;
+            let mut fixture = Self {
+                root,
+                live,
+                tile,
+                aliases: BTreeMap::new(),
+                images: BTreeMap::new(),
+            };
+            fixture.add_peer("original", pixels)?;
+            Ok(fixture)
+        }
+
+        fn add_peer(&mut self, name: &str, pixels: image::RgbaImage) -> Result<()> {
+            let path = self.root.join(format!("{name}-source.png"));
+            pixels.save(&path)?;
+            let tile = Tile {
+                width: pixels.width(),
+                height: pixels.height(),
+                sha256: artifact_cache::sha256(pixels.as_raw()),
+                ..self.tile.clone()
+            };
+            self.aliases.insert(name.into(), name.into());
+            self.images.insert(name.into(), (tile, path, pixels));
+            Ok(())
+        }
+
+        fn receive(&mut self) -> Result<()> {
+            for (name, (tile, _, pixels)) in &self.images {
+                self.live
+                    .received(&self.tile, name, tile, pixels, &self.aliases)?;
+            }
+            Ok(())
+        }
+
+        fn retain(&mut self, keep_for_heights: bool) -> Result<bool> {
+            self.live
+                .retain_tile(&self.tile, &self.aliases, &self.images, keep_for_heights)
+        }
+
+        fn asset(&self, name: &str) -> PathBuf {
+            self.live
+                .images_directory()
+                .join(format!("s1-t0-{name}.png"))
+        }
+
+        fn image_metadata(&mut self, name: &str) -> &mut Value {
+            &mut self.live.state["sheets"][0]["tiles"][0]["images"][name]
+        }
+    }
+
+    impl Drop for PreviewFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn alternate_png_encoding(path: &Path) -> Result<Vec<u8>> {
+        use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+        use image::ImageEncoder;
+
+        let before = fs::read(path)?;
+        let pixels = image::open(path)?.to_rgba8();
+        let mut bytes = Vec::new();
+        PngEncoder::new_with_quality(&mut bytes, CompressionType::Best, FilterType::NoFilter)
+            .write_image(
+                pixels.as_raw(),
+                pixels.width(),
+                pixels.height(),
+                image::ExtendedColorType::Rgba8,
+            )?;
+        assert_ne!(
+            bytes, before,
+            "fixture must distinguish reuse from re-encoding"
+        );
+        fs::write(path, &bytes)?;
+        Ok(bytes)
+    }
+
+    #[test]
+    fn received_preview_is_reused_when_effective_dimensions_match() -> Result<()> {
+        let pixels = image::RgbaImage::from_pixel(128, 16, image::Rgba([8, 40, 90, 255]));
+        let mut fixture = PreviewFixture::new(pixels.clone())?;
+        fixture.add_peer("default", pixels)?;
+        fixture.receive()?;
+        let original_preview = fixture.asset("original-preview");
+        let default_preview = fixture.asset("default-preview");
+        let original_bytes = alternate_png_encoding(&original_preview)?;
+        let default_bytes = alternate_png_encoding(&default_preview)?;
+        for width in [0, 128, 256, 512, 1024] {
+            fixture.live.controls.borrow_mut()["equal_preview_width"] = json!(width);
+            assert!(!fixture.retain(false)?);
+            assert_eq!(fs::read(&original_preview)?, original_bytes);
+            assert_eq!(fs::read(&default_preview)?, default_bytes);
+            for name in ["original", "default"] {
+                let metadata = fixture.image_metadata(name);
+                assert_eq!(metadata["preview_width"], 128);
+                assert_eq!(metadata["preview_height"], 16);
+                assert_eq!(metadata["changed_pixels"], 0);
+                assert!(metadata["mask_url"].is_null());
+                assert!(!fixture.asset(&format!("{name}-mask")).exists());
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn missing_stale_or_wrong_sized_previews_are_regenerated() -> Result<()> {
+        for invalid in [
+            "missing",
+            "source",
+            "url",
+            "metadata-size",
+            "file-size",
+            "empty-digest",
+        ] {
+            let pixels = image::RgbaImage::from_pixel(128, 16, image::Rgba([8, 40, 90, 255]));
+            let mut fixture = PreviewFixture::new(pixels.clone())?;
+            fixture.receive()?;
+            let path = fixture.asset("original-preview");
+            let expected = fs::read(&path)?;
+            alternate_png_encoding(&path)?;
+            match invalid {
+                "missing" => fs::remove_file(&path)?,
+                "source" => {
+                    fixture.image_metadata("original")["pixel_class"] = json!("stale-pixels")
+                }
+                "url" => {
+                    fixture.image_metadata("original")["preview_url"] =
+                        json!("/previous-attempt.png")
+                }
+                "metadata-size" => fixture.image_metadata("original")["preview_width"] = json!(64),
+                "file-size" => image::RgbaImage::new(1, 1).save(&path)?,
+                "empty-digest" => {
+                    fixture.images.get_mut("original").unwrap().0.sha256.clear();
+                    fixture.image_metadata("original")["pixel_class"] = json!("128x16:");
+                }
+                _ => unreachable!(),
+            }
+            assert!(!fixture.retain(false)?);
+            assert_eq!(fs::read(&path)?, expected, "{invalid}");
+            assert_eq!(image::open(&path)?.to_rgba8(), pixels);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn preview_reuse_never_crosses_attempt_paths() -> Result<()> {
+        let pixels = image::RgbaImage::from_pixel(128, 16, image::Rgba([8, 40, 90, 255]));
+        let mut fixture = PreviewFixture::new(pixels)?;
+        fixture.receive()?;
+        let old_path = fixture.asset("original-preview");
+        let expected = fs::read(&old_path)?;
+        let old_bytes = alternate_png_encoding(&old_path)?;
+        fixture.live.state["attempt_id"] = json!("second");
+        fs::create_dir_all(fixture.live.images_directory())?;
+        let current_path = fixture.asset("original-preview");
+        fs::copy(&old_path, &current_path)?;
+        assert!(!fixture.retain(false)?);
+        assert_eq!(fs::read(current_path)?, expected);
+        assert_eq!(fs::read(old_path)?, old_bytes);
+        assert!(fixture.image_metadata("original")["preview_url"]
+            .as_str()
+            .unwrap()
+            .contains("/second/"));
+        Ok(())
+    }
+
+    #[test]
+    fn preview_width_changes_use_full_source_and_preserve_height_evidence() -> Result<()> {
+        let pixels = image::RgbaImage::from_fn(2048, 16, |x, y| {
+            image::Rgba([(x % 256) as u8, (y * 16) as u8, (x / 16) as u8, 255])
+        });
+        let mut fixture = PreviewFixture::new(pixels.clone())?;
+        fixture.receive()?;
+        let source = fixture.images["original"].1.clone();
+        let source_bytes = fs::read(&source)?;
+        for width in [128, 0, 512, 1024] {
+            fixture.live.controls.borrow_mut()["equal_preview_width"] = json!(width);
+            assert!(fixture.retain(true)?);
+            let expected = preview(&pixels, width);
+            assert_eq!(
+                image::open(fixture.asset("original-preview"))?.to_rgba8(),
+                expected
+            );
+            assert_eq!(
+                fixture.image_metadata("original")["retained_full_resolution"],
+                width == 0
+            );
+            assert_eq!(fs::read(&source)?, source_bytes);
+            assert!(!fixture.asset("original").exists());
+            assert!(!fixture.asset("original-mask").exists());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn only_different_peers_get_masks_and_original_union_includes_removed_pixels() -> Result<()> {
+        let original = image::RgbaImage::from_pixel(3, 2, image::Rgba([1, 2, 3, 255]));
+        let mut fixture = PreviewFixture::new(original.clone())?;
+        fixture.add_peer("default", original.clone())?;
+        fixture.add_peer(
+            "maximum-cleaning",
+            image::RgbaImage::from_pixel(2, 2, image::Rgba([1, 2, 3, 255])),
+        )?;
+        let mut changed = original;
+        changed.put_pixel(1, 1, image::Rgba([1, 2, 3, 254]));
+        fixture.add_peer("too-aggressive-cleaning", changed)?;
+        fixture.receive()?;
+        assert!(fixture.retain(false)?);
+        assert_eq!(fixture.image_metadata("default")["changed_pixels"], 0);
+        assert!(fixture.image_metadata("default")["mask_url"].is_null());
+        assert!(!fixture.asset("default-mask").exists());
+        assert_eq!(
+            fixture.image_metadata("maximum-cleaning")["changed_pixels"],
+            2
+        );
+        assert_eq!(
+            fixture.image_metadata("too-aggressive-cleaning")["changed_pixels"],
+            1
+        );
+        let union = image::open(fixture.asset("original-mask"))?.to_rgba8();
+        assert_eq!(union.pixels().filter(|pixel| pixel[3] != 0).count(), 3);
+        assert_ne!(union.get_pixel(2, 0)[3], 0);
+        assert_ne!(union.get_pixel(2, 1)[3], 0);
+        assert_ne!(union.get_pixel(1, 1)[3], 0);
+        for (name, (_, source, _)) in &fixture.images {
+            assert_eq!(fs::read(fixture.asset(name))?, fs::read(source)?);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn added_pixels_do_not_create_an_empty_original_mask() -> Result<()> {
+        let mut fixture = PreviewFixture::new(image::RgbaImage::from_pixel(
+            2,
+            2,
+            image::Rgba([1, 2, 3, 255]),
+        ))?;
+        fixture.add_peer(
+            "maximum-cleaning",
+            image::RgbaImage::from_pixel(3, 2, image::Rgba([1, 2, 3, 255])),
+        )?;
+        assert!(fixture.retain(false)?);
+        assert_eq!(
+            fixture.image_metadata("maximum-cleaning")["changed_pixels"],
+            2
+        );
+        assert!(fixture.image_metadata("original")["mask_url"].is_null());
+        assert!(!fixture.asset("original-mask").exists());
         Ok(())
     }
 }
