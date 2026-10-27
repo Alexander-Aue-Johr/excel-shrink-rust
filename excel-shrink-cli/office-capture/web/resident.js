@@ -11,9 +11,11 @@
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
     if (!hash) return {bytes};
+    const started = performance.now();
     const digest = new Uint8Array(await root.crypto.subtle.digest('SHA-256', bytes));
+    const hashMs = performance.now() - started;
     const sha256 = Array.from(digest, value => value.toString(16).padStart(2, '0')).join('');
-    return {bytes, sha256};
+    return {bytes, sha256, hash_ms: hashMs};
   }
 
   // The geometry helper verifies complete coverage. Fill unrequested gaps for
@@ -51,6 +53,9 @@
     const {office, bounds, checkedWorksheet, rowHeights, hideGridlines, verifyDrawingBounds} = helpers;
     const captures = new Map();
     const geometries = new Map();
+    // Retained PNGs are immutable evidence. Later upload commands send these
+    // exact bytes, even if Excel's current rendering has changed meanwhile.
+    const retainedPngs = new Map();
     let workbookVerified = false;
     let pendingPngCharacters = 0, activeBatchPixels = 0, activeBatchTiles = 0;
     let pendingEncodedBytes = 0;
@@ -71,6 +76,8 @@
     function resources() {
       const sample = {
         retained_capture_plans: captures.size,
+        retained_image_tiles: retainedPngs.size,
+        retained_image_bytes: retainedImageBytes(),
         retained_tiles: [...captures.values()].reduce((sum, plan) => sum + plan.size, 0),
         geometry_cache_entries: geometries.size,
         geometry_rows: [...geometries.values()].reduce((sum, geometry) => sum + geometry.rows.length, 0),
@@ -148,13 +155,15 @@
       // temporary binary string. Native decoded images are covered separately
       // by the pixel budget; this bound covers retained encoded buffers.
       const decodedBytes = Math.ceil(final.length / 4) * 3;
-      const temporaryBytes = final.length * 2 + decodedBytes * 3;
+      // SubtleCrypto may also copy its input while digesting.
+      const temporaryBytes = final.length * 2 + decodedBytes * (hash ? 4 : 3);
       if (accountMemory) {
         reserveImageBytes(temporaryBytes);
       }
       let image;
       try {
         image = {...await encoded(final, hash), ...size};
+        if (timings) timings.hash_ms += image.hash_ms ?? 0;
       } finally {
         if (accountMemory) {
           pendingEncodedBytes -= temporaryBytes;
@@ -282,9 +291,84 @@
       return result;
     }
 
-    // The host requests a bounded set after every peer has offered its geometry.
-    // No digest is calculated in this path, including on evidence recaptures.
+    const retainedKey = (captureId, tile) => `${captureId}:${key(tile)}`;
+
+    function retainedImageBytes() {
+      let bytes = 0;
+      for (const entry of retainedPngs.values()) bytes += entry.image.bytes.byteLength;
+      return bytes;
+    }
+
+    function discardImage(id) {
+      const retained = retainedPngs.get(id);
+      if (!retained) return;
+      pendingEncodedBytes -= retained.image.bytes.byteLength;
+      retained.image.bytes = null;
+      retainedPngs.delete(id);
+    }
+
+    function checkRetainedBudget(states) {
+      let pixels = states.reduce((sum, state) => sum + state.metadata.capture_pixels, 0);
+      for (const entry of retainedPngs.values()) pixels += entry.metadata.capture_pixels;
+      if (retainedPngs.size + states.length > 16 || pixels > 64000000) {
+        const error = new Error('Retained images and new captures exceed the 16 tile / 64 megapixel budget');
+        error.code = 'IMAGE_BUDGET';
+        throw error;
+      }
+    }
+
+    function requestedRetained(command) {
+      if (!captures.has(command.capture_id) || !Array.isArray(command.tiles) ||
+          !command.tiles.length || command.tiles.length > 16) {
+        throw new Error('Invalid retained-image request');
+      }
+      const seen = new Set();
+      return command.tiles.map(tile => {
+        const id = retainedKey(command.capture_id, tile);
+        const entry = retainedPngs.get(id);
+        if (!entry || seen.has(id) || ['sheet_name', 'range', 'width', 'height', 'sha256',
+          'x', 'y', 'capture_pixels', 'capture_right_column'].some(field => tile[field] !== entry.metadata[field]) ||
+          !Array.isArray(tile.core_rows) || tile.core_rows.length !== 2 ||
+          tile.core_rows.some((row, index) => row !== entry.metadata.core_rows[index])) {
+          throw new Error('Retained image no longer matches the requested capture');
+        }
+        seen.add(id);
+        return entry;
+      });
+    }
+
+    async function uploadRetained(command) {
+      const images = requestedRetained(command);
+      const result = {images: []};
+      helpers.phase('Uploading retained capture images');
+      for (const {metadata, image} of images) {
+        const receipt = await measure('upload_ms', () => transport.image(command.id, metadata, image.bytes));
+        if (typeof receipt.image_path !== 'string' || !receipt.image_path ||
+            receipt.sha256 !== metadata.sha256 || receipt.width !== metadata.width ||
+            receipt.height !== metadata.height) {
+          throw new Error('Missing or invalid retained-image receipt');
+        }
+        result.images.push({...metadata, ...receipt});
+      }
+      return result;
+    }
+
+    function discardRetained(command) {
+      if (typeof command.capture_id !== 'string' || !command.capture_id ||
+          !Array.isArray(command.tiles) || command.tiles.length > 16 ||
+          command.tiles.some(tile => !Number.isInteger(tile.sheet_index) ||
+            !Number.isInteger(tile.tile_index) || tile.sheet_index < 0 || tile.tile_index < 0)) {
+        throw new Error('Invalid retained-image release');
+      }
+      for (const tile of command.tiles) discardImage(retainedKey(command.capture_id, tile));
+      return {};
+    }
+
+    // Both transport modes capture identical finalized PNGs. Live mode uploads
+    // immediately; hash-first mode retains them until the coordinator decides
+    // whether they are needed as evidence or neighboring context.
     async function captureImages(command) {
+      const hashFirst = command.kind === 'capture_hashes';
       if (!Array.isArray(command.tiles) || !command.tiles.length || command.tiles.length > 16) {
         throw new Error('Image-first jobs require 1 to 16 tiles');
       }
@@ -312,13 +396,19 @@
             !Number.isInteger(end) || end <= (boundaries[index - 1] ?? 0))) {
         throw new Error('Capture batch boundaries must cover the tiles in one or two ordered chunks');
       }
+      checkRetainedBudget(states);
+      if (hashFirst && states.some(state => retainedPngs.has(retainedKey(command.capture_id, state.metadata)))) {
+        throw new Error('Capture image is already retained; release it before capturing again');
+      }
       helpers.phase(`Capturing synchronized batch (${states.length} tiles)`);
       await checkedWorksheet(states[0].sheet);
       await geometryFor(states[0]);
       activeBatchTiles = states.length;
       activeBatchPixels = states.reduce((sum, state) => sum + state.tile.width * state.tile.expectedHeight, 0);
-      const result = {images: []};
+      const result = hashFirst ? {tiles: []} : {images: []};
       const retainedImages = new Set();
+      const addedRetained = [];
+      let completed = false;
       let uploadTask = Promise.resolve();
       let uploadError;
       let uploadPending = false;
@@ -387,7 +477,7 @@
               checkUpload();
               const state = chunk[index];
               const image = await measure('finish_image_ms', () => finishImage(
-                state, state.tile, base64s[index], {hash: false, accountMemory: true}
+                state, state.tile, base64s[index], {hash: hashFirst, accountMemory: true}
               ));
               retainedImages.add(image);
               const characters = base64s[index].length;
@@ -396,7 +486,14 @@
               pendingEncodedBytes -= characters * 2;
               base64s[index] = null;
               checkUpload();
-              if (command.capture_batches === undefined) {
+              if (hashFirst) {
+                const metadata = {...state.metadata, sha256: image.sha256, png_bytes: image.bytes.byteLength};
+                const id = retainedKey(command.capture_id, metadata);
+                retainedPngs.set(id, {captureId: command.capture_id, metadata, image});
+                addedRetained.push(id);
+                retainedImages.delete(image);
+                result.tiles.push(metadata);
+              } else if (command.capture_batches === undefined) {
                 // Preserve the reference path: capture once, then finalize and
                 // upload each tile before finalizing the next.
                 await uploadImage(state, image);
@@ -427,6 +524,7 @@
         }
         await uploadTask;
         checkUpload();
+        completed = true;
         return result;
       } finally {
         stopping = true;
@@ -435,6 +533,9 @@
         await uploadTask;
         for (const image of retainedImages) {
           releaseImage(image);
+        }
+        if (!completed) {
+          for (const id of addedRetained) discardImage(id);
         }
       }
     }
@@ -447,15 +548,20 @@
       },
       async execute(command) {
         const started = performance.now();
-        peakPendingEncodedBytes = 0;
+        peakPendingEncodedBytes = pendingEncodedBytes;
         pipelineOverlapCount = 0;
-        timings = {capture_ms: 0, finish_image_ms: 0, upload_ms: 0};
+        timings = {capture_ms: 0, finish_image_ms: 0, hash_ms: 0, upload_ms: 0};
         let result;
         try {
           if (command.kind === 'capture' || command.kind === 'plan') result = await capture(command);
           else if (command.kind === 'images') result = await images(command);
-          else if (command.kind === 'capture_images') result = await captureImages(command);
+          else if (command.kind === 'capture_images' || command.kind === 'capture_hashes') result = await captureImages(command);
+          else if (command.kind === 'upload_retained') result = await uploadRetained(command);
+          else if (command.kind === 'discard_retained') result = discardRetained(command);
           else if (command.kind === 'release') {
+            for (const [id, entry] of retainedPngs) {
+              if (!command.capture_id || entry.captureId === command.capture_id) discardImage(id);
+            }
             if (command.capture_id) {
               captures.delete(command.capture_id);
               for (const id of geometries.keys()) {
@@ -475,12 +581,12 @@
             pipeline_overlap_count: pipelineOverlapCount
           };
           lastCommandTiming = {command_id: command.id, kind: command.kind, ...result.timings};
-          result.checksum_tiles = command.kind === 'capture' ? result.tiles?.length ?? 0 : 0;
+          result.checksum_tiles = ['capture', 'capture_hashes'].includes(command.kind) ? result.tiles?.length ?? 0 : 0;
           result.uploaded_images = result.images?.length ?? 0;
           return result;
         } finally {
           pendingPngCharacters = 0;
-          pendingEncodedBytes = 0;
+          pendingEncodedBytes = retainedImageBytes();
           activeBatchPixels = 0;
           activeBatchTiles = 0;
           timings = undefined;

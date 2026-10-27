@@ -7,7 +7,7 @@ const phases = {
   waiting_for_job: 'Waiting for job', waiting_for_peers: 'Waiting for other add-ins',
   paused: 'Capture paused', settling: 'Waiting after Excel startup', planning_sheet: 'Determining sheet geometry',
   capturing: 'Capture job running', providing_images: 'Providing image evidence', executing_job: 'Office.js job running',
-  releasing: 'Releasing workbook', closed: 'Closed', client_error: 'Add-in reported an error',
+  releasing_images: 'Releasing capture images', releasing: 'Releasing workbook', closed: 'Closed', client_error: 'Add-in reported an error',
   blocked_edit_mode: 'Excel is in cell edit mode', waiting_cleanup: 'Waiting for cleanup',
   cleanup_blocked: 'Cleanup blocked', cleanup_failed: 'Cleanup could not be confirmed', exit_unconfirmed: 'Excel exit not confirmed',
   restart_waiting_cleanup: 'Restart waiting for cleanup', prepare: 'Preparing', preparing: 'Preparing',
@@ -60,14 +60,22 @@ export function commandTimingSummary(timing) {
       ['Execution', milliseconds(timing.execution_ms)],
       ['Excel image capture', milliseconds(timing.capture_ms)],
       ['Image finalization', milliseconds(timing.finish_image_ms)],
+      ['PNG checksum (within finalization)', milliseconds(timing.hash_ms)],
       ['Image upload / receipt', milliseconds(timing.upload_ms)],
       ['Waiting for job', milliseconds(timing.job_wait_ms)],
       ['Result delivery / acknowledgment', milliseconds(timing.result_ack_ms)],
       ['Result delivery attempts', Number.isSafeInteger(timing.result_attempts) && timing.result_attempts >= 0
         ? timing.result_attempts.toLocaleString('en-US') : 'Not measured'],
     ],
-    note: 'Subphases are included in execution time; do not add the rows. Image capture measures getImage round trips; finalization includes overflow checks. Waiting for a job includes pauses and peer readiness, not just delivery time.',
+    note: 'Subphases are included in execution time; do not add the rows. Image capture measures getImage round trips; finalization includes overflow checks and checksum time. Waiting for a job includes pauses and peer readiness, not just delivery time.',
   };
+}
+
+export function retainedImageSummary(resources) {
+  const tiles = resources?.retained_image_tiles, bytes = resources?.retained_image_bytes;
+  if (!Number.isSafeInteger(tiles) || tiles < 0 || !Number.isFinite(bytes) || bytes < 0) return null;
+  const mib = (bytes / (1024 * 1024)).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return `${tiles.toLocaleString('en-US')} tiles ? ${mib} MiB of retained PNGs`;
 }
 
 export function startupSummary(startup, now = Date.now()) {

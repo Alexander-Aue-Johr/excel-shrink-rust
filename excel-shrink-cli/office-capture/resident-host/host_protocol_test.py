@@ -252,6 +252,48 @@ class HostProtocol(unittest.TestCase):
             self.request("/result/one/tile",{"ok":True,"images":[{**tile,**receipt,"sha256":"f"*64}]})
         self.request("/result/one/tile",{"ok":True,"images":[{**tile,**receipt}]})
 
+    def test_hash_first_results_and_retained_uploads_are_bound_to_exact_tiles(self):
+        self.connect()
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==")
+        tile = {
+            "sheet_index": 1, "sheet_name": "Sheet1", "tile_index": 0,
+            "range": "A1:A1", "core_rows": [0, 1], "x": 0, "y": 0,
+            "width": 1, "height": 1, "capture_pixels": 1,
+            "capture_right_column": 0, "sha256": "0" * 64,
+        }
+        self.command({"id": "hash", "kind": "capture_hashes", "capture_id": "plan", "tiles": [tile]})
+        hashed = {**tile, "sha256": hashlib.sha256(png).hexdigest(), "png_bytes": len(png)}
+        for patch in [
+            {"sha256": "invalid"}, {"sha256": "A" * 64}, {"width": 2},
+            {"core_rows": [1, 2]}, {"tile_index": 1}, {"range": "B1:B1"},
+            {"png_bytes": 0}, {"png_bytes": 161 * 1024 * 1024},
+        ]:
+            with self.subTest(patch=patch), self.assertRaises(urllib.error.HTTPError):
+                self.request("/result/one/hash", {"ok": True, "tiles": [{**hashed, **patch}]})
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request("/result/one/hash", {"ok": True, "tiles": []})
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request("/image/one/hash/1/0", png, {"X-Sha256": hashed["sha256"]})
+        result = {"ok": True, "tiles": [hashed]}
+        self.request("/result/one/hash", result)
+        self.assertTrue(self.request("/result/one/hash", result)["repeated"])
+        self.assertFalse((self.session / "images").exists())
+
+        self.command({"id": "upload", "kind": "upload_retained", "capture_id": "plan", "tiles": [hashed]})
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request("/image/one/upload/1/0", png)
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request("/image/one/upload/1/0", png, {"X-Sha256": "f" * 64})
+        receipt = self.request("/image/one/upload/1/0", png, {"X-Sha256": hashed["sha256"]})
+        self.assertEqual(Path(receipt["image_path"]).read_bytes(), png)
+        self.assertEqual(json.loads((self.session / "receipts/one/upload/s0001-t00000.json").read_text()), receipt)
+        result = {"ok": True, "images": [receipt]}
+        self.request("/result/one/upload", result)
+        Path(receipt["image_path"]).unlink()
+        self.assertTrue(self.request("/result/one/upload", result)["repeated"])
+        self.command({"id": "discard", "kind": "discard_retained", "capture_id": "plan", "tiles": [hashed]})
+        self.request("/result/one/discard", {"ok": True})
+
     def test_slow_image_upload_does_not_block_a_peer_startup_or_heartbeat(self):
         self.connect()
         png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==")
@@ -410,6 +452,22 @@ class HostProtocol(unittest.TestCase):
         # An already dispatched job is allowed to report completion while paused.
         self.request("/result/one/plan",{"ok":True,"tiles":[],"heights":[]})
         self.assertTrue(self.request("/job?client=one")["paused"])
+
+        # A pause must still let already captured images leave the worker and
+        # release their buffers. None of these commands invokes Excel capture.
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==")
+        tile = {"sheet_index": 1, "tile_index": 0, "width": 1, "height": 1,
+                "sha256": hashlib.sha256(png).hexdigest()}
+        self.assertEqual(self.command({"id": "upload", "kind": "upload_retained", "capture_id": "plan", "tiles": [tile]})["kind"], "upload_retained")
+        receipt = self.request("/image/one/upload/1/0", png, {"X-Sha256": tile["sha256"]})
+        self.request("/result/one/upload", {"ok": True, "images": [receipt]})
+        for kind in ["discard_retained", "release"]:
+            self.assertEqual(self.command({"id": kind, "kind": kind, "capture_id": "plan", "tiles": [tile]})["kind"], kind)
+            self.request(f"/result/one/{kind}", {"ok": True})
+        self.write("commands/one/new-hashes.json", {"id": "new-hashes", "kind": "capture_hashes", "tiles": [tile]})
+        self.assertTrue(self.request("/job?client=one")["paused"])
+        self.write("control/control.json", {"paused": False})
+        self.assertEqual(self.next_job("one")["kind"], "capture_hashes")
 
 
 if __name__ == "__main__":

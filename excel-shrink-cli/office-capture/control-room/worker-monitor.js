@@ -1,4 +1,4 @@
-import { age, commandTimingSummary, duration, phaseLabel, progressSummary, startupSummary, timestamp, workerRows } from './worker-monitor-model.js';
+import { age, commandTimingSummary, duration, phaseLabel, progressSummary, retainedImageSummary, startupSummary, timestamp, workerRows } from './worker-monitor-model.js';
 import { createSignalMonitor } from './signal-monitor.js';
 
 const element = (tag, className, text) => {
@@ -78,7 +78,10 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
       field(fields, 'Taskpane initialization', row.runtime.run_id);
     }
     if (row.paneResources) {
-      const counts = Object.entries(row.paneResources).filter(([,value]) => typeof value === 'number');
+      const retained = retainedImageSummary(row.paneResources);
+      if (retained) field(fields, 'Retained capture images', retained, 'Exact PNGs kept until the coordinator requests evidence or releases them.');
+      const counts = Object.entries(row.paneResources).filter(([name,value]) => typeof value === 'number' &&
+        !['retained_image_tiles', 'retained_image_bytes'].includes(name));
       for (const [name,value] of counts) field(fields, `Pane: ${name.replaceAll('_',' ')}`, value.toLocaleString('en-US'));
     }
     if (row.job) {

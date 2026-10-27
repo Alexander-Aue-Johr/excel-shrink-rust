@@ -539,14 +539,9 @@ async fn dispatch_job(
                 dispatch.paused = paused;
             }
         }
-        if dispatch.paused {
-            client.telemetry.transition(
-                "paused",
-                Some("capture_pause"),
-                "Capture dispatch is paused by the user.",
-            );
-            return Ok(json!({"idle": true, "paused": true}));
-        }
+    }
+    if host.control_root.is_some() && dispatch.paused && !client.data_started {
+        return Ok(paused_job(&mut client));
     }
     if !client.data_started && client.configured_at.elapsed() < STARTUP_QUIET_PERIOD {
         client.telemetry.transition(
@@ -571,9 +566,23 @@ async fn dispatch_job(
         }
         if !matches!(
             command["kind"].as_str(),
-            Some("capture" | "plan" | "capture_images" | "images" | "release")
+            Some(
+                "capture"
+                    | "plan"
+                    | "capture_images"
+                    | "capture_hashes"
+                    | "images"
+                    | "upload_retained"
+                    | "discard_retained"
+                    | "release"
+            )
         ) {
             return Err(ApiError::bad_request("Unknown resident command."));
+        }
+        // Pausing stops new Office captures. Already captured PNGs may still
+        // be uploaded and released so a paused group can drain its buffers.
+        if host.control_root.is_some() && dispatch.paused && !drains_retained_images(&command) {
+            return Ok(paused_job(&mut client));
         }
         let receipt = host
             .session
@@ -589,12 +598,31 @@ async fn dispatch_job(
         host.events.changed();
         return Ok(command);
     }
+    if host.control_root.is_some() && dispatch.paused {
+        return Ok(paused_job(&mut client));
+    }
     client.telemetry.transition(
         "waiting_for_job",
         Some("coordinator"),
         "Waiting for the next coordinator command.",
     );
     Ok(json!({"idle": true}))
+}
+
+fn drains_retained_images(command: &Value) -> bool {
+    matches!(
+        command["kind"].as_str(),
+        Some("upload_retained" | "discard_retained" | "release")
+    )
+}
+
+fn paused_job(client: &mut Client) -> Value {
+    client.telemetry.transition(
+        "paused",
+        Some("capture_pause"),
+        "Capture dispatch is paused by the user.",
+    );
+    json!({"idle": true, "paused": true})
 }
 
 async fn reset(
@@ -648,7 +676,11 @@ async fn image(
     let mut client = host.authenticated(&id, request.headers()).await?;
     let image_first = client.active_payload["kind"] == "capture_images";
     if client.active_command.as_deref() != Some(&command)
-        || (!image_first && client.active_payload["kind"] != "images")
+        || (!image_first
+            && !matches!(
+                client.active_payload["kind"].as_str(),
+                Some("images" | "upload_retained")
+            ))
     {
         return Err(ApiError::conflict(
             "Image does not belong to the active evidence command.",
@@ -700,7 +732,7 @@ async fn image(
         "upload_receive_ms": upload_receive_ms,
         "upload_validate_publish_ms": publishing.elapsed().as_secs_f64() * 1000.0,
     });
-    if image_first {
+    if image_first || client.active_payload["kind"] == "upload_retained" {
         let path = host
             .session
             .join("receipts")
@@ -754,11 +786,14 @@ async fn result(
     // Publication can finish before a canceled request updates client state.
     // Its consumer may already have removed equal PNGs, so only a new result
     // validates evidence again. The existing result must match exactly above.
+    if !already_published && ok && client.active_payload["kind"] == "capture_hashes" {
+        validate_hashes(&client.active_payload, &result)?;
+    }
     if !already_published
         && ok
         && matches!(
             client.active_payload["kind"].as_str(),
-            Some("images" | "capture_images")
+            Some("images" | "capture_images" | "upload_retained")
         )
     {
         validate_receipts(&host, &id, &command, &client.active_payload, &result).await?;
@@ -782,6 +817,54 @@ async fn result(
     client.last_activity_at = now_iso();
     host.events.changed();
     Ok(Json(json!({"ok": true})))
+}
+
+fn validate_hashes(payload: &Value, result: &Value) -> HttpResult<()> {
+    let requested = payload["tiles"]
+        .as_array()
+        .ok_or_else(|| ApiError::bad_request("No requested checksum tiles."))?;
+    let tiles = result["tiles"]
+        .as_array()
+        .ok_or_else(|| ApiError::bad_request("Missing checksum tiles."))?;
+    if requested.is_empty() || requested.len() > 16 || tiles.len() != requested.len() {
+        return Err(ApiError::bad_request("Incomplete checksum result."));
+    }
+    let mut used = HashSet::new();
+    for tile in tiles {
+        let sheet = tile["sheet_index"]
+            .as_i64()
+            .filter(|index| *index >= 0)
+            .ok_or_else(|| ApiError::bad_request("Invalid checksum sheet."))?;
+        let index = tile["tile_index"]
+            .as_i64()
+            .filter(|index| *index >= 0)
+            .ok_or_else(|| ApiError::bad_request("Invalid checksum tile."))?;
+        let expected = requested_tile(payload, sheet, index)?;
+        if !used.insert((sheet, index))
+            || !tile["sha256"].as_str().is_some_and(valid_sha)
+            || !tile["png_bytes"]
+                .as_u64()
+                .is_some_and(|bytes| bytes > 0 && bytes <= MAX_IMAGE_BYTES as u64)
+            || [
+                "sheet_name",
+                "range",
+                "core_rows",
+                "x",
+                "y",
+                "width",
+                "height",
+                "capture_pixels",
+                "capture_right_column",
+            ]
+            .iter()
+            .any(|key| expected[*key].is_null() || tile[*key] != expected[*key])
+        {
+            return Err(ApiError::bad_request(
+                "Checksum tile differs from the capture plan.",
+            ));
+        }
+    }
+    Ok(())
 }
 
 async fn validate_receipts(

@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const {createHash} = require('node:crypto');
 const {createWorker, selectedTiles, encoded} = require('../web/resident.js');
 
 function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
@@ -18,7 +19,7 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
       constructor() {geometriesCreated++; this.rows = Array(10).fill(1); this.pixelY = Array.from({length: 11}, (_, i) => i); this.maxPixels = 32000000; this.fixedWidth = null;}
       async read(maximum) {geometryReads.push(maximum);}
       async calibrate() {}
-      imageWidth() {return 3;}
+      imageWidth() {return hooks.width ?? 3;}
       tiles(end, targets, cuts = [[0, 3], [3, 6], [6, 9], [9, 10]]) {
         assert.equal(cuts[0][0], 0);
         assert.equal(cuts.at(-1)[1], 10);
@@ -26,7 +27,7 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
           if (index) assert.equal(cuts[index - 1][1], first);
           assert.ok(last - first <= 3);
           const core = {r0: first, r1: last, c0: 0, c1: end + 1};
-          return {core, raw: core, width: 3, expectedHeight: last - first, cropHeight: last - first, cropY: 0};
+          return {core, raw: core, width: hooks.width ?? 3, expectedHeight: last - first, cropHeight: last - first, cropY: 0};
         });
       }
     }
@@ -62,7 +63,7 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
                         events.push(`capture:${range}`);
                         const [first, last] = range.split(':').map(Number);
                         return {
-                          value: hooks.encode ? hooks.encode(3, last - first) : encode(3, last - first)
+                          value: hooks.encode ? hooks.encode(hooks.width ?? 3, last - first) : encode(hooks.width ?? 3, last - first)
                         };
                       }
                     };
@@ -91,7 +92,7 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
     events.push(`upload:${metadata.range}`);
     if (hooks.upload) await hooks.upload(command, metadata, bytes);
     return {image_path: `images/${command}/${metadata.tile_index}.png`, width: metadata.width,
-      height: metadata.height, sha256: 'a'.repeat(64)};
+      height: metadata.height, sha256: createHash('sha256').update(bytes).digest('hex')};
   }}, 'fixture.xlsx');
   const sheet = {index: 1, name: 'Sheet1', bottom_row: 9, row_height_bottom_row: 2,
     horizontal_overflow_required: false, drawing_fallback_required: false};
@@ -232,7 +233,7 @@ test('image-first planning captures no images and uploads one requested tile wit
     assert.deepEqual(f.captures,['6:9']);
     assert.equal(f.uploads.length,1);
     assert.equal(f.uploads[0].metadata.sha256,undefined);
-    assert.equal(image.images[0].sha256,'a'.repeat(64));
+    assert.equal(image.images[0].sha256, createHash('sha256').update(f.uploads[0].bytes).digest('hex'));
     assert.equal(image.uploaded_images,1);
   } finally {globalThis.crypto.subtle.digest = digest;}
 });
@@ -548,5 +549,161 @@ test('decoding failure releases reserved temporary bytes and the captured input'
     capture_batches: [1]
   }), error => error.name === 'InvalidCharacterError');
   assert.deepEqual(f.uploads, []);
+  assertReleased(f.worker);
+});
+
+
+test('hash-first retains exact PNGs and uploads them without another Excel capture', async () => {
+  const f = fixture();
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  const result = await f.worker.execute({
+    id: 'hashes', kind: 'capture_hashes', capture_id: 'plan', tiles: plan.tiles.slice(0, 2)
+  });
+  assert.equal(result.checksum_tiles, 2);
+  assert.equal(result.uploaded_images, 0);
+  assert.ok(result.timings.hash_ms >= 0);
+  assert.deepEqual(f.uploads, []);
+  const resources = f.worker.resources();
+  assert.equal(resources.retained_image_tiles, 2);
+  assert.equal(resources.retained_image_bytes, result.tiles.reduce((sum, tile) => sum + tile.png_bytes, 0));
+  assert.equal(resources.pending_encoded_bytes, resources.retained_image_bytes);
+
+  f.change();
+  const uploaded = await f.worker.execute({
+    id: 'upload', kind: 'upload_retained', capture_id: 'plan', tiles: result.tiles
+  });
+  assert.deepEqual(f.captures, ['0:3', '3:6']);
+  assert.equal(uploaded.uploaded_images, 2);
+  assert.equal(f.worker.resources().retained_image_tiles, 2);
+  for (let index = 0; index < f.uploads.length; index++) {
+    assert.equal(createHash('sha256').update(f.uploads[index].bytes).digest('hex'), result.tiles[index].sha256);
+    assert.equal(JSON.parse(Buffer.from(f.uploads[index].bytes)).content, 'stable');
+  }
+  const discard = {id: 'discard', kind: 'discard_retained', capture_id: 'plan', tiles: [result.tiles[0]]};
+  await f.worker.execute(discard);
+  await f.worker.execute({...discard, id: 'discard-again'});
+  assert.equal(f.worker.resources().retained_image_tiles, 1);
+  await f.worker.execute({id: 'release', kind: 'release', capture_id: 'plan'});
+  assert.equal(f.worker.resources().retained_image_tiles, 0);
+  assertReleased(f.worker);
+});
+
+test('retained images are isolated by capture plan and reject forged metadata', async () => {
+  const f = fixture();
+  const snapshots = [];
+  for (const capture_id of ['first', 'second']) {
+    const plan = await f.worker.execute({id: capture_id, kind: 'plan', sheets: [f.sheet]});
+    snapshots.push(await f.worker.execute({
+      id: `${capture_id}-hash`, kind: 'capture_hashes', capture_id, tiles: [plan.tiles[0]]
+    }));
+  }
+  const request = {id: 'upload', kind: 'upload_retained', capture_id: 'first', tiles: snapshots[0].tiles};
+  for (const change of [{sha256: '0'.repeat(64)}, {width: 1}, {range: 'wrong'}]) {
+    await assert.rejects(f.worker.execute({...request, tiles: [{...request.tiles[0], ...change}]}), /no longer matches/);
+  }
+  await assert.rejects(f.worker.execute({...request, tiles: [...request.tiles, ...request.tiles]}), /no longer matches/);
+  await f.worker.execute({id: 'release', kind: 'release', capture_id: 'first'});
+  await assert.rejects(f.worker.execute(request), /Invalid retained-image request/);
+  assert.deepEqual(f.uploads, []);
+  await f.worker.execute({...request, capture_id: 'second', tiles: snapshots[1].tiles});
+  assert.equal(f.uploads.length, 1);
+  assert.equal(f.worker.resources().retained_image_tiles, 1);
+  await f.worker.execute({id: 'release-all', kind: 'release'});
+  assertReleased(f.worker);
+});
+
+test('retained tiles cannot silently be replaced by a recapture', async () => {
+  const f = fixture();
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  const command = {id: 'hash', kind: 'capture_hashes', capture_id: 'plan', tiles: [plan.tiles[0]]};
+  await f.worker.execute(command);
+  f.change();
+  await assert.rejects(f.worker.execute({...command, id: 'again'}), /already retained/);
+  assert.deepEqual(f.captures, ['0:3']);
+  assert.equal(f.worker.resources().retained_image_tiles, 1);
+});
+
+test('failed checksum batches release their new images and preserve earlier context', async () => {
+  let finalized = 0;
+  const f = fixture('fixture.xlsx', {async crop(base64) {
+    if (++finalized === 3) throw new Error('Crop failed');
+    return base64;
+  }});
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  const previous = await f.worker.execute({
+    id: 'first', kind: 'capture_hashes', capture_id: 'plan', tiles: [plan.tiles[0]]
+  });
+  await assert.rejects(f.worker.execute({
+    id: 'next', kind: 'capture_hashes', capture_id: 'plan', tiles: plan.tiles.slice(1, 3)
+  }), /Crop failed/);
+  assert.equal(f.worker.resources().retained_image_tiles, 1);
+  assert.equal(f.worker.resources().pending_encoded_bytes, previous.tiles[0].png_bytes);
+  await f.worker.execute({id: 'context', kind: 'upload_retained', capture_id: 'plan', tiles: previous.tiles});
+  assert.equal(f.uploads.length, 1);
+});
+
+test('retained tile credits cover all capture plans and are returned explicitly', async () => {
+  const f = fixture();
+  let lastPlan;
+  for (let index = 0; index < 5; index++) {
+    const id = `plan-${index}`;
+    const plan = await f.worker.execute({id, kind: 'plan', sheets: [f.sheet]});
+    lastPlan = {id: `hash-${index}`, kind: 'capture_hashes', capture_id: id, tiles: plan.tiles};
+    if (index < 4) await f.worker.execute(lastPlan);
+  }
+  await assert.rejects(f.worker.execute(lastPlan), error => error.code === 'IMAGE_BUDGET');
+  assert.equal(f.captures.length, 16);
+  assert.equal(f.worker.resources().retained_image_tiles, 16);
+  await f.worker.execute({id: 'release', kind: 'release', capture_id: 'plan-0'});
+  await f.worker.execute(lastPlan);
+  assert.equal(f.worker.resources().retained_image_tiles, 16);
+  await f.worker.execute({id: 'all', kind: 'release'});
+  assertReleased(f.worker);
+});
+
+test('retained pixels count against the next capture budget', async () => {
+  // Mock dimensions exercise the pixel ledger without allocating decoded images.
+  const f = fixture('fixture.xlsx', {width: 7000000});
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  await f.worker.execute({id: 'first', kind: 'capture_hashes', capture_id: 'plan', tiles: plan.tiles.slice(0, 2)});
+  await assert.rejects(f.worker.execute({
+    id: 'next', kind: 'capture_hashes', capture_id: 'plan', tiles: plan.tiles.slice(2)
+  }), error => error.code === 'IMAGE_BUDGET');
+  assert.deepEqual(f.captures, ['0:3', '3:6']);
+  assert.equal(f.worker.resources().retained_image_tiles, 2);
+});
+
+test('encoded-memory guard includes PNGs retained by a previous command', async () => {
+  let captures = 0;
+  const f = fixture('fixture.xlsx', {encode(width, height) {
+    if (++captures === 2) return {length: 80 * 1024 * 1024};
+    return Buffer.from(JSON.stringify({width, height})).toString('base64');
+  }});
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  const first = await f.worker.execute({id: 'first', kind: 'capture_hashes', capture_id: 'plan', tiles: [plan.tiles[0]]});
+  await assert.rejects(f.worker.execute({
+    id: 'next', kind: 'capture_hashes', capture_id: 'plan', tiles: [plan.tiles[1]]
+  }), error => error.code === 'IMAGE_BUDGET');
+  assert.equal(f.worker.resources().retained_image_tiles, 1);
+  assert.equal(f.worker.resources().pending_encoded_bytes, first.tiles[0].png_bytes);
+  assert.equal(f.worker.resources().pending_png_characters, 0);
+});
+
+test('a failed retained upload keeps its original bytes available until release', async () => {
+  let rejectUpload = true;
+  const f = fixture('fixture.xlsx', {async upload() {
+    if (rejectUpload) throw new Error('Upload failed');
+  }});
+  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
+  const result = await f.worker.execute({id: 'hash', kind: 'capture_hashes', capture_id: 'plan', tiles: [plan.tiles[0]]});
+  const upload = {id: 'upload', kind: 'upload_retained', capture_id: 'plan', tiles: result.tiles};
+  await assert.rejects(f.worker.execute(upload), /Upload failed/);
+  assert.equal(f.worker.resources().retained_image_tiles, 1);
+  rejectUpload = false;
+  f.change();
+  await f.worker.execute({...upload, id: 'retry'});
+  assert.deepEqual(f.captures, ['0:3']);
+  assert.deepEqual(f.uploads[0].bytes, f.uploads[1].bytes);
+  await f.worker.execute({id: 'discard', kind: 'discard_retained', capture_id: 'plan', tiles: result.tiles});
   assertReleased(f.worker);
 });

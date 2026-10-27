@@ -46,6 +46,8 @@ impl WorkerTelemetry {
         for key in [
             "retained_capture_plans",
             "retained_tiles",
+            "retained_image_tiles",
+            "retained_image_bytes",
             "geometry_cache_entries",
             "geometry_rows",
             "pending_png_characters",
@@ -123,7 +125,8 @@ impl WorkerTelemetry {
         let kind = command["kind"].as_str().unwrap_or_default();
         let state = match kind {
             "plan" => "planning_sheet",
-            "images" => "providing_images",
+            "images" | "upload_retained" => "providing_images",
+            "discard_retained" => "releasing_images",
             "release" => "releasing",
             _ => "capturing",
         };
@@ -233,7 +236,14 @@ fn command_timing(source: &Value) -> Option<Value> {
         || command.len() > 128
         || !matches!(
             kind,
-            "capture" | "plan" | "capture_images" | "images" | "release"
+            "capture"
+                | "plan"
+                | "capture_images"
+                | "capture_hashes"
+                | "images"
+                | "upload_retained"
+                | "discard_retained"
+                | "release"
         )
     {
         return None;
@@ -243,6 +253,7 @@ fn command_timing(source: &Value) -> Option<Value> {
         "execution_ms",
         "capture_ms",
         "finish_image_ms",
+        "hash_ms",
         "upload_ms",
         "job_wait_ms",
         "result_ack_ms",
@@ -353,6 +364,17 @@ mod tests {
         assert!(timing.get("unknown").is_none());
         assert_eq!(after["last_progress_at"], before["last_progress_at"]);
         assert_eq!(after["events"], before["events"]);
+    }
+
+    #[test]
+    fn discarding_png_buffers_does_not_report_workbook_release() {
+        let mut telemetry = WorkerTelemetry::new();
+        telemetry.started(&json!({"id":"discard", "kind":"discard_retained"}));
+        assert_eq!(telemetry.snapshot()["state"], "releasing_images");
+        telemetry.finished(true, &Value::Null);
+        assert_eq!(telemetry.snapshot()["state"], "waiting_for_job");
+        telemetry.started(&json!({"id":"release", "kind":"release"}));
+        assert_eq!(telemetry.snapshot()["state"], "releasing");
     }
 
     #[test]

@@ -1,8 +1,13 @@
-import { age, commandTimingSummary, duration, progressSummary, startupSummary, timestamp, workerRows } from '../worker-monitor-model.js';
+import { age, commandTimingSummary, duration, phaseLabel, progressSummary, retainedImageSummary, startupSummary, timestamp, workerRows } from '../worker-monitor-model.js';
 
 export function runTests() {
   let passed = 0;
   const assert = (condition, message) => { if (!condition) throw new Error(message); passed++; };
+  assert(retainedImageSummary(null) === null, 'Legacy workers do not invent retained-image counts');
+  assert(retainedImageSummary({ retained_image_tiles: 0, retained_image_bytes: 0 }) === '0 tiles ? 0 MiB of retained PNGs', 'Released image buffers remain a measured zero');
+  assert(retainedImageSummary({ retained_image_tiles: 3, retained_image_bytes: 1572864 }) === '3 tiles ? 1.5 MiB of retained PNGs', 'Retained image memory uses explicit binary units');
+  assert(retainedImageSummary({ retained_image_tiles: -1, retained_image_bytes: 10 }) === null, 'Invalid retained counts are not rendered as observations');
+  assert(phaseLabel('releasing_images') === 'Releasing capture images', 'Discarding PNG buffers is not reported as closing the workbook');
   const start = Date.parse('2026-10-24T09:00:00Z');
   assert(startupSummary(null) === null, 'Legacy queues must not invent startup progress');
   const startup = startupSummary({ stage: 'scanning_archive', corpus: 'Enron', completed: 250, total: 1000, started_unix_ms: start }, start + 60000);
@@ -68,6 +73,8 @@ export function runTests() {
   assert(timings['Image finalization'] === 'Not measured' && timings['Image upload / receipt'] === 'Not measured', 'Absent and negative intervals remain unknown.');
   assert(timings['Result delivery / acknowledgment'] === 'Not measured' && timings['Result delivery attempts'] === '2', 'Strings are not silently converted to measured durations.');
   assert(timing.note.includes('do not add') && timing.note.includes('pauses'), 'Nested durations and intentional waiting are explained.');
+  const hashes = Object.fromEntries(commandTimingSummary({ command_id: '000004', kind: 'capture_hashes', hash_ms: 2.5 }).fields);
+  assert(hashes['PNG checksum (within finalization)'] === '2.5 ms', 'Native digest time is identified as a part of finalization');
   return { passed };
 }
 
