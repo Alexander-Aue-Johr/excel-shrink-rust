@@ -397,11 +397,10 @@
     tiles(endColumn, targets, sharedRows) {
       const width = this.imageWidth(endColumn);
       if (width > MAX_EDGE || width < 2) throw budgetError(`Full-width capture exceeds the image edge budget (${width} px)`);
-      const maxHeight = Math.min(MAX_EDGE, Math.floor(this.maxPixels / width));
-      const fits = (start, end, halo) =>
+      const fits = (start, end, halo, pixelBudget = this.maxPixels) =>
         this.visibleRows[end] - this.visibleRows[start] <= MAX_TILE_ROWS &&
         this.visibleRows[halo.last] - this.visibleRows[halo.first] <= MAX_TILE_ROWS + 2048 &&
-        this.imageHeight(halo.first, halo.last) <= maxHeight;
+        this.imageHeight(halo.first, halo.last) <= Math.min(MAX_EDGE, Math.floor(pixelBudget / width));
       let spans = [];
       if (targets) {
         for (const row of targets) {
@@ -446,12 +445,25 @@
           }
           const end = sharedRows === undefined ? low : span.end;
           const halo = this.halo(start, end);
-          if (!fits(start, end, halo)) throw budgetError(`Row ${start + 1} exceeds the image budget`);
+          let pixelBudget = this.maxPixels, budgetFallback = null;
+          if (!fits(start, end, halo)) {
+            // Excel can capture only whole rows. A tall title or its required
+            // halo can exceed the requested tile size even at one visible row.
+            // Keep that indivisible image within the same hard 32 MP ceiling;
+            // larger or multi-row requests still fail instead of clipping.
+            const singleVisibleRow = this.visibleRows[end] - this.visibleRows[start] === 1;
+            if (!singleVisibleRow || !fits(start, end, halo, MAX_PIXELS)) {
+              throw budgetError(`Row ${start + 1} exceeds the image budget`);
+            }
+            pixelBudget = MAX_PIXELS;
+            budgetFallback = 'single-visible-row';
+          }
           const raw = {r0: halo.first, r1: halo.last, c0: 0, c1: endColumn + 1};
           const core = {r0: start, r1: end, c0: 0, c1: endColumn + 1};
           const cropY = this.pixelY[start] - this.pixelY[halo.first];
           const cropHeight = this.imageHeight(start, end);
-          tiles.push({raw, core, cropY, cropHeight, width, expectedHeight: this.imageHeight(halo.first, halo.last)});
+          tiles.push({raw, core, cropY, cropHeight, width, expectedHeight: this.imageHeight(halo.first, halo.last),
+            pixelBudget, budgetFallback});
           if (tiles.length > 4096) throw budgetError('Worksheet exceeds the tile count budget');
           start = end;
         }

@@ -671,6 +671,8 @@ mod tests {
                     x: 0,
                     y: position as u32,
                     capture_pixels: cost,
+                    pixel_budget: 0,
+                    capture_budget_fallback: None,
                     sha256: String::new(),
                 })
                 .collect(),

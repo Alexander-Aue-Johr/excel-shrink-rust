@@ -390,6 +390,8 @@ mod tests {
             x: 0,
             y: index as u32 * 100,
             capture_pixels: 20000,
+            pixel_budget: 0,
+            capture_budget_fallback: None,
             sha256: "0".repeat(64),
         }
     }

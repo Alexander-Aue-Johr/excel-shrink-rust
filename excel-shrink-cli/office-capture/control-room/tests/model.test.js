@@ -13,6 +13,8 @@ const image = pixelClass => ({ url: '/data/image.png', pixel_class: pixelClass }
 const normalize = images => normalizeGroup({ profiles, sheets: [{ id: 'sheet', tiles: [{ id: 'tile', width: 800, height: 200, images }] }] }).sheets[0].tiles[0];
 
 export function runTests() {
+  assert(tileEvidenceDescription({ address: 'A1:FT1', capture_budget_fallback: 'single-visible-row',
+    capture_pixels: 6398529 }).includes('6.4 MP'), 'Oversized indivisible rows explain their bounded actual image size.');
   const skipped = groupOutcome({ status: 'skipped', outcome_error: 'Excel opening timed out after 600 s' });
   assert(skipped.title === 'Skipped' && skipped.detail.includes('600 s'), 'Skipped groups expose their recorded reason.');
   assert(groupOutcome({ status: 'skipped', outcome_error: 'Current attempt', error: 'Earlier attempt' }).detail === 'Current attempt', 'Current attempt outcome takes precedence over older detail.');
@@ -172,7 +174,7 @@ export function runTests() {
   assert(rawTall.sheets[0].tiles[3].y === 99800 && rawTall.sheets[0].tiles.length === 4, 'Display compaction never mutates host evidence.');
   const noOmission = normalizeGroup({ sheets: [{ height: 100000, tiles: [{ id: 'pending', width: 800, height: 100000 }] }] }).sheets[0];
   assert(noOmission.height === 100000 && noOmission.tiles.length === 1, 'A large pending capture is never treated as an omission.');
-  return { passed: 83 + viewportTests.passed + workerTests.passed + signalTests.passed
+  return { passed: 84 + viewportTests.passed + workerTests.passed + signalTests.passed
     + captureStripTests.checks + captureNavigationTests.checks + controlTests.passed };
 }
 

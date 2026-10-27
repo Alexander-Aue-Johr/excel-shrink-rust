@@ -16,7 +16,13 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
     pngSize: value => JSON.parse(Buffer.from(value, 'base64').toString()),
     probeEnd: () => 3,
     SheetGeometry: class {
-      constructor() {geometriesCreated++; this.rows = Array(10).fill(1); this.pixelY = Array.from({length: 11}, (_, i) => i); this.maxPixels = 32000000; this.fixedWidth = null;}
+      constructor() {
+        geometriesCreated++;
+        this.rows = Array(10).fill(1);
+        this.pixelY = Array.from({length: 11}, (_, i) => i);
+        this.maxPixels = hooks.maxPixels ?? 32000000;
+        this.fixedWidth = null;
+      }
       async read(maximum) {geometryReads.push(maximum);}
       async calibrate() {}
       imageWidth() {return hooks.width ?? 3;}
@@ -27,7 +33,8 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
           if (index) assert.equal(cuts[index - 1][1], first);
           assert.ok(last - first <= 3);
           const core = {r0: first, r1: last, c0: 0, c1: end + 1};
-          return {core, raw: core, width: hooks.width ?? 3, expectedHeight: last - first, cropHeight: last - first, cropY: 0};
+          return {core, raw: core, width: hooks.width ?? 3, expectedHeight: last - first, cropHeight: last - first, cropY: 0,
+            pixelBudget: hooks.pixelBudget ?? this.maxPixels, budgetFallback: hooks.budgetFallback ?? null};
         });
       }
     }
@@ -270,6 +277,26 @@ test('image-first batches render in one Office call and upload individual un-has
     assert.equal(result.checksum_tiles,0);
     assert.ok(f.uploads.every(upload => upload.metadata.sha256 === undefined));
   } finally {globalThis.crypto.subtle.digest = digest;}
+});
+
+test('indivisible row budget is explicit in the plan and honored while capturing', async () => {
+  const f = fixture('fixture.xlsx', {maxPixels: 5, pixelBudget: 32000000,
+    budgetFallback: 'single-visible-row'});
+  const plan = await f.worker.execute({id:'plan',kind:'plan',sheets:[f.sheet]});
+  assert.equal(plan.tiles[0].pixel_budget, 32000000);
+  assert.equal(plan.tiles[0].capture_budget_fallback, 'single-visible-row');
+  assert.ok(plan.tiles[0].capture_pixels > 5);
+  const result = await f.worker.execute({id:'capture',kind:'capture_images',capture_id:'plan',tiles:[plan.tiles[0]]});
+  assert.equal(result.uploaded_images, 1);
+});
+
+test('ordinary captures cannot exceed their planned tile target', async () => {
+  const f = fixture('fixture.xlsx', {maxPixels: 5});
+  const plan = await f.worker.execute({id:'plan',kind:'plan',sheets:[f.sheet]});
+  assert.equal(plan.tiles[0].pixel_budget, 5);
+  assert.equal(plan.tiles[0].capture_budget_fallback, null);
+  await assert.rejects(f.worker.execute({id:'capture',kind:'capture_images',capture_id:'plan',tiles:[plan.tiles[0]]}), /tile pixel budget/);
+  assert.deepEqual(f.uploads, []);
 });
 
 test('image-first batches reject mixed sheets and unreasonable counts before Excel rendering', async () => {

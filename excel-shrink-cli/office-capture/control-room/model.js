@@ -138,6 +138,11 @@ export function imageStatus(entry, profileId) {
 export function tileEvidenceDescription(tile) {
   if (tile.status === 'omitted') return omissionDescription(tile);
   const details = [tile.address];
+  if (tile.capture_budget_fallback === 'single-visible-row') {
+    const pixels = Number(tile.capture_pixels);
+    const size = Number.isFinite(pixels) ? `${(pixels / 1000000).toFixed(1)} MP` : 'a larger image';
+    details.push(`This indivisible row and its border rows require ${size}, above the target tile size. Hard limit: 32 MP.`);
+  }
   if (tile.comparison_method === 'png-sha256' && tile.equalAcrossAll) {
     details.push('Identical PNG SHA-256 across all profiles; captured images matched.');
     if (!Object.values(tile.images).some(image => image.url)) {

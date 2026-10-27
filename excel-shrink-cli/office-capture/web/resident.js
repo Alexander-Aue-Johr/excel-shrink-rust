@@ -134,7 +134,7 @@
       const {sheet, probe, right, end} = state;
       const geometry = await geometryFor(state);
       const dimensions = CaptureGeometry.pngSize(base64);
-      if (dimensions.width * dimensions.height > geometry.maxPixels) {
+      if (dimensions.width * dimensions.height > (tile.pixelBudget ?? geometry.maxPixels)) {
         const error = new Error('Image exceeds the tile pixel budget');
         error.code = 'IMAGE_BUDGET';
         throw error;
@@ -251,6 +251,8 @@
             range: CaptureGeometry.address(tile.core), core_rows: [tile.core.r0, tile.core.r1],
             x: 0, y: geometry.pixelY[tile.core.r0],
             capture_pixels: tile.width * tile.expectedHeight,
+            pixel_budget: tile.pixelBudget ?? geometry.maxPixels,
+            capture_budget_fallback: tile.budgetFallback ?? null,
             capture_right_column: end, width: image.width, height: image.height, sha256: image.sha256};
           result.tiles.push(metadata);
           retained.set(key(metadata), {...state, tile, metadata});

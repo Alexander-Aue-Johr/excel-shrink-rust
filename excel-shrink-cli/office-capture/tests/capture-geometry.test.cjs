@@ -187,6 +187,45 @@ test('a tall wide singleton calibrates with safe default cells outside its logic
   assert.deepEqual(result.tiles(0, null)[0].core, {r0: 0, r1: 1, c0: 0, c1: 1});
 });
 
+test('an indivisible tall row and its halo may exceed the tile target within the hard pixel limit', async () => {
+  // Paleosol's first rows are 23/169/127 points. The halo needs the next
+  // whole row even though only two pixels of that row provide context.
+  const model = officeModel({rows: [23, 169, 127, ...new Array(40).fill(19)], defaultWidth: 120});
+  const result = new SheetGeometry(model.office, 'Sheet', 42, 161, 4);
+  await result.read(161); await result.calibrate();
+  const tiles = result.tiles(161, null);
+  assert.equal(result.maxPixels, 4000000);
+  assert.equal(tiles[0].core.r1, 1);
+  assert.equal(tiles[0].budgetFallback, 'single-visible-row');
+  assert.equal(tiles[0].pixelBudget, 32000000);
+  assert.ok(tiles[0].width * tiles[0].expectedHeight > result.maxPixels);
+  assert.ok(tiles.every(tile => tile.width * tile.expectedHeight <= tile.pixelBudget));
+  assert.ok(tiles.filter(tile => !tile.budgetFallback).every(tile => tile.pixelBudget === result.maxPixels));
+  const sharedRows = tiles.map(tile => [tile.core.r0, tile.core.r1]);
+  assert.deepEqual(result.tiles(161, null, sharedRows), tiles);
+  assert.equal(tiles.at(-1).core.r1, result.rows.length);
+});
+
+test('one-row fallback never admits a larger shared multi-row request', async () => {
+  const model = officeModel({rows: [252, 92, 243, ...new Array(32).fill(16)], defaultWidth: 60});
+  const result = new SheetGeometry(model.office, 'Sheet', 34, 179, 4);
+  await result.read(179); await result.calibrate();
+  const tiles = result.tiles(179, null);
+  assert.equal(tiles[0].budgetFallback, 'single-visible-row');
+  assert.throws(() => result.tiles(179, null, [[0, 2], ...tiles.slice(2).map(tile => [tile.core.r0, tile.core.r1])]), /exceeds the image budget/);
+});
+
+test('even a single row remains rejected when its guarded image exceeds 32 megapixels', async () => {
+  const model = officeModel({rows: [409, 409, 409, ...new Array(32).fill(15)],
+    columns: [10, 10, 10, ...new Array(220).fill(100)]});
+  const result = new SheetGeometry(model.office, 'Sheet', 34, 222, 4);
+  await result.read(222); await result.calibrate();
+  assert.ok(result.imageWidth(222) < 30000);
+  const halo = result.halo(0, 1);
+  assert.ok(result.imageWidth(222) * result.imageHeight(halo.first, halo.last) > 32000000);
+  assert.throws(() => result.tiles(222, null), /Row 1 exceeds the image budget/);
+});
+
 test('calibration still rejects images that disagree with measured geometry', async () => {
   await assert.rejects(geometry(officeModel({imageWidthOffset: 3})), /Inconsistent width image calibration/);
 });

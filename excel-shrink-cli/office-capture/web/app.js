@@ -192,7 +192,7 @@
         return image.value;
       });
       const png = CaptureGeometry.pngSize(base64);
-      if (png.width * png.height > geometry.maxPixels) {
+      if (png.width * png.height > (tile.pixelBudget ?? geometry.maxPixels)) {
         const error = new Error(`Image exceeds the tile budget (${png.width} × ${png.height})`);
         error.code = 'IMAGE_BUDGET';
         throw error;

@@ -32,6 +32,10 @@ struct Tile {
     y: u32,
     #[serde(default)]
     capture_pixels: u64,
+    #[serde(default)]
+    pixel_budget: u64,
+    #[serde(default)]
+    capture_budget_fallback: Option<String>,
     sha256: String,
 }
 
@@ -1370,6 +1374,22 @@ fn validate_snapshot(snapshot: &Snapshot, configs: &[Value]) -> Result<()> {
             keys.insert((tile.sheet_index, tile.tile_index)),
             "duplicate resident tile"
         );
+        // The fallback explains a larger indivisible row image; it never
+        // authorizes pixels beyond the hard limit or the declared tile budget.
+        let pixels = tile
+            .capture_pixels
+            .max(u64::from(tile.width) * u64::from(tile.height));
+        ensure!(
+            pixels <= 32_000_000
+                && tile.pixel_budget <= 32_000_000
+                && (tile.pixel_budget == 0 || pixels <= tile.pixel_budget)
+                && match tile.capture_budget_fallback.as_deref() {
+                    None => true,
+                    Some("single-visible-row") => tile.pixel_budget == 32_000_000,
+                    Some(_) => false,
+                },
+            "invalid resident tile pixel budget"
+        );
     }
     ensure!(
         snapshot
@@ -1500,9 +1520,35 @@ mod tests {
                     x: 0,
                     y: 0,
                     capture_pixels: 0,
+                    pixel_budget: 0,
+                    capture_budget_fallback: None,
                 })
                 .collect(),
         }
+    }
+
+    #[test]
+    fn tile_budget_metadata_roundtrips_without_bypassing_hard_limits() -> Result<()> {
+        let mut plan = snapshot(&[[0, 20]]);
+        plan.tiles[0].capture_pixels = 5_000_000;
+        plan.tiles[0].pixel_budget = 32_000_000;
+        plan.tiles[0].capture_budget_fallback = Some("single-visible-row".into());
+        let tile: Tile = serde_json::from_value(serde_json::to_value(&plan.tiles[0])?)?;
+        assert_eq!(tile.pixel_budget, 32_000_000);
+        assert_eq!(
+            tile.capture_budget_fallback.as_deref(),
+            Some("single-visible-row")
+        );
+        validate_snapshot(&plan, &config())?;
+        plan.tiles[0].capture_pixels = 32_000_001;
+        assert!(validate_snapshot(&plan, &config()).is_err());
+        plan.tiles[0].capture_pixels = 5_000_000;
+        plan.tiles[0].pixel_budget = 64_000_000;
+        assert!(validate_snapshot(&plan, &config()).is_err());
+        plan.tiles[0].pixel_budget = 4_000_000;
+        plan.tiles[0].capture_budget_fallback = None;
+        assert!(validate_snapshot(&plan, &config()).is_err());
+        Ok(())
     }
 
     #[test]

@@ -665,6 +665,8 @@ mod tests {
             x: 0,
             y: rows[0] * 20,
             capture_pixels: 400,
+            pixel_budget: 0,
+            capture_budget_fallback: None,
             sha256: "a".repeat(64),
         }
     }

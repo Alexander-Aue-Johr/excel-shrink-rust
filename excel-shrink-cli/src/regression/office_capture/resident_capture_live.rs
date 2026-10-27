@@ -291,7 +291,8 @@ impl LiveCapture {
                 "address":tile.range,"range":tile.range,"row":tile.core_rows[0],"col":0,
                 "core_rows":tile.core_rows,"capture_right_column":tile.capture_right_column,
                 "x":tile.x,"y":tile.y,"width":tile.width,"height":tile.height,"status":"pending","images":{},
-                "capture_pixels":tile.capture_pixels,"inspection_regions":[]
+                "capture_pixels":tile.capture_pixels,"pixel_budget":tile.pixel_budget,
+                "capture_budget_fallback":tile.capture_budget_fallback,"inspection_regions":[]
             }));
             sheet["width"] = json!(sheet["width"]
                 .as_u64()
@@ -346,7 +347,8 @@ impl LiveCapture {
                     peers.insert(
                         profile.clone(),
                         json!({"x":tile.x,"y":tile.y,"width":tile.width,"height":tile.height,
-                        "capture_pixels":tile.capture_pixels}),
+                        "capture_pixels":tile.capture_pixels,"pixel_budget":tile.pixel_budget,
+                        "capture_budget_fallback":tile.capture_budget_fallback}),
                     );
                     width = width.max(tile.x + tile.width);
                     height = height.max(tile.y + tile.height);
@@ -1178,6 +1180,8 @@ mod tests {
             x: 0,
             y: index as u32 * 576,
             capture_pixels: pixels,
+            pixel_budget: 0,
+            capture_budget_fallback: None,
             sha256: String::new(),
         }
     }
@@ -1299,6 +1303,8 @@ mod tests {
         let mut variant = original.clone();
         variant.tiles[1].y = 800;
         variant.tiles[1].width = 3000;
+        variant.tiles[1].pixel_budget = 32_000_000;
+        variant.tiles[1].capture_budget_fallback = Some("single-visible-row".into());
         let snapshots = BTreeMap::from([
             ("original".into(), original.clone()),
             ("variant".into(), variant),
@@ -1313,6 +1319,14 @@ mod tests {
         assert_eq!(sheet["width"], 3000);
         assert_eq!(sheet["height"], 1377);
         assert_eq!(sheet["tiles"][1]["planned_images"]["default"]["y"], 800);
+        assert_eq!(
+            sheet["tiles"][1]["planned_images"]["default"]["pixel_budget"],
+            32_000_000
+        );
+        assert_eq!(
+            sheet["tiles"][1]["planned_images"]["default"]["capture_budget_fallback"],
+            "single-visible-row"
+        );
         assert_eq!(sheet["tiles"][1]["status"], "pending");
         assert_eq!(sheet["tiles"][1]["images"], json!({}));
         let previous = live.images_directory().join("tile.png");
@@ -1424,6 +1438,8 @@ mod tests {
             x: 0,
             y: 0,
             capture_pixels: 512,
+            pixel_budget: 0,
+            capture_budget_fallback: None,
         };
         let snapshot = Snapshot {
             tiles: vec![tile.clone()],
@@ -1555,6 +1571,8 @@ mod tests {
             x: 0,
             y: 0,
             capture_pixels: 8192,
+            pixel_budget: 0,
+            capture_budget_fallback: None,
         };
         live.plan(&Snapshot {
             tiles: vec![tile.clone()],
