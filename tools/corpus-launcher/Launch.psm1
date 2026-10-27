@@ -168,4 +168,4 @@ function Complete-StudyLegacyStop([string]$OutputRoot, $Requested) {
     $status.Process | Stop-Process -Force -ErrorAction Stop
 }
 
-Export-ModuleMember -Function Start-StudyLaunch,Get-ControlHostVersion,Get-StudyRunStatus,Request-StudyRunStop,Complete-StudyLegacyStop
+Export-ModuleMember -Function Start-StudyLaunch,Get-ControlHostVersion,Get-StudyRunStatus,Request-StudyRunStop,Complete-StudyLegacyStop,Invoke-StudyReleaseBuild

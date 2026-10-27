@@ -116,6 +116,18 @@ try {
     Assert ($planned.order -eq 'size-asc') 'Omitting the processing order did not retain a saved non-default order.'
     $configuration.settings.order = 'size-desc'
 
+    Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' -Corpus Destatis -Standalone -NoBrowser } 'A normal configuration was accepted as a standalone deployment.'
+    $configuration | Add-Member -NotePropertyName standalone_windows -NotePropertyValue $true
+    $configuration | Add-Member -NotePropertyName standalone_corpora -NotePropertyValue @('Destatis')
+    $configuration.settings.build_release = $true
+    $null = Start-SavedCorpusRun $root $configPath 'fake runner.exe' -Corpus Destatis -Standalone -NoBrowser
+    Assert (-not $planned.build -and $planned.corpus -eq 'Destatis' -and $planned.partition -eq 1) 'Standalone launch rebuilt or lost its saved selection.'
+    Assert $configuration.settings.build_release 'Standalone launch changed the normal build preference.'
+    Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' -Corpus Destatis -Standalone -Build -NoBrowser } 'Standalone launch accepted a Windows rebuild.'
+    Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' -Corpus Enron -Partition all -Standalone -NoBrowser } 'An unprepared standalone corpus was accepted.'
+    $configuration.standalone_windows = $false
+    $configuration.settings.build_release = $false
+
     $beforeInvalidLaunches = $launches; $beforeInvalidBrowsers = $browserOpens
     Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' -Partition 3/4 } 'A missing corpus silently selected saved work.'
     Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' -Corpus Enron } 'A missing partition silently selected saved work.'

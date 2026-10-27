@@ -19,8 +19,8 @@ excel-shrink-visual-validation -Corpus Enron -Partition 3/4
 
 `-Corpus` selects a corpus from the saved launcher configuration. `-Partition`
 selects its size partition: `3/4` is the third quarter, `1/4` is the first, and
-`all` selects the whole corpus. Both arguments are explicit so the command shows
-which work it requests. The remaining options come from the saved configuration;
+`all` selects the whole corpus. Both arguments are required for the normal
+command. The remaining options come from the saved configuration;
 processing order defaults to `size-desc` (largest first), so no direction option
 is needed. Add `-Order size-asc` or `-Order size-desc` to override the saved order.
 
@@ -29,6 +29,47 @@ paths. If the requested run is already active, it opens that Observatory without
 starting a second runner. Add `-NoBrowser` to print the link without opening the
 browser. Windows finds the installed command through your user `PATH`; neither
 changing into the repository with `cd` nor keeping VS Code open is required.
+
+## Run on Windows with WSL shut down
+
+After stopping the current corpus run, prepare the Windows deployment from the
+WSL checkout:
+
+```bash
+bash tools/start-corpus-wsl.sh -PrepareStandalone -Corpus Destatis
+```
+
+This cross-compiles the Windows release, copies the selected corpus ZIP to the
+Windows disk and verifies its SHA-256. It writes a separate
+`.tmp/corpus-launcher/standalone.json` configuration. That configuration
+uses native Windows paths and the existing results directory and approved
+preparations. The original WSL configuration and ZIP remain available. The
+installed terminal command remains bound to its normal configuration. If it is
+not installed yet, run `tools/install-corpus-command.ps1` once from the deployed
+Windows workspace as described above.
+
+Open a new **Windows PowerShell** terminal. To release the WSL VM's memory and
+resume the saved Destatis selection, run:
+
+```powershell
+wsl --shutdown
+excel-shrink-visual-validation -Standalone -Corpus Destatis
+```
+
+The `-Standalone` option selects the prepared Windows configuration and build.
+Without it, the existing command still requires `-Corpus` and `-Partition` and
+uses the normal configuration. The standalone command opens the Observatory and
+uses Windows Excel; .NET 8 is not required by the current Rust capture hosts.
+`-Partition all` explicitly selects the whole corpus. Other corpora
+must first be prepared with `-PrepareStandalone -Corpus <name>`.
+
+Standalone starts use the prepared build. To update it, stop the active run,
+return to the WSL checkout and repeat the preparation command. `-Build` on the
+standalone Windows command prints that update instruction instead of starting
+WSL. `-PrepareStandalone -SkipBuild` refreshes the deployment configuration
+using an executable that was already built.
+
+## Development launches from WSL
 
 In a WSL workspace the task uses `tools/start-corpus-wsl.sh` and
 `tools/start-corpus-wsl.ps1` to prepare a Windows working copy under
@@ -56,7 +97,8 @@ helpers; they do not require installing .NET 8.
 
 `bash tools/start-corpus-wsl.sh -PrepareOnly` prepares the working copy without
 building or starting a run. Other arguments, such as `-Preview` or `-Headless`,
-are forwarded to the Windows launcher. A lock-check failure is not evidence of
+are forwarded to the Windows launcher. `-PrepareStandalone` instead prepares
+the independent Windows command described above. A lock-check failure is not evidence of
 an active run.
 
 Select a corpus, one size partition or the whole corpus, and the processing

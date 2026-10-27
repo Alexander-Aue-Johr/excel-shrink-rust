@@ -1,8 +1,9 @@
 # Invoked by start-corpus-wsl.sh using Windows PowerShell. Unknown arguments
 # remain in $args and are forwarded to the normal launcher as native arguments.
-param([string]$LinuxRepo, [string]$Distribution, [switch]$PrepareOnly)
+param([string]$LinuxRepo, [string]$Distribution, [switch]$PrepareOnly, [switch]$PrepareStandalone)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+if($PrepareOnly -and $PrepareStandalone){throw 'Choose either -PrepareOnly or -PrepareStandalone.'}
 $forward=@($args)
 [Threading.Thread]::CurrentThread.CurrentUICulture=[Globalization.CultureInfo]::GetCultureInfo('en-US')
 $source=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -114,5 +115,6 @@ try {
 }
 if ($PrepareOnly) { return }
 $powerShell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-& $powerShell -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File (Join-Path $workspace 'tools/start-corpus.ps1') @forward
+$entry=if($PrepareStandalone){'tools/prepare-corpus-windows.ps1'}else{'tools/start-corpus.ps1'}
+& $powerShell -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File (Join-Path $workspace $entry) @forward
 exit $LASTEXITCODE

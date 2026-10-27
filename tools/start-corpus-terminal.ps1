@@ -4,6 +4,7 @@ param(
     [string]$Partition,
     [ValidateSet('size-asc','size-desc')][string]$Order,
     [string]$ConfigurationPath,
+    [switch]$Standalone,
     [string]$ExcelShrinkExe,
     [switch]$Build,
     [switch]$SkipBuild,
@@ -11,6 +12,8 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+[Threading.Thread]::CurrentThread.CurrentUICulture=[Globalization.CultureInfo]::GetCultureInfo('en-US')
+[Threading.Thread]::CurrentThread.CurrentCulture=[Globalization.CultureInfo]::GetCultureInfo('en-US')
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Import-Module (Join-Path $PSScriptRoot 'corpus-launcher/Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'corpus-launcher/Launch.psm1') -Force
@@ -42,9 +45,11 @@ function Open-CorpusObservatory([string]$Url) { Start-Process -FilePath $Url }
 function Start-SavedCorpusRun {
     param([string]$Repo, [string]$ConfigurationPath, [string]$Executable,
         [string]$Corpus, [string]$Partition, [string]$Order,
-        [switch]$Build, [switch]$SkipBuild, [switch]$NoBrowser)
+        [switch]$Build, [switch]$SkipBuild, [switch]$NoBrowser,
+        [switch]$Standalone)
     if ($Build -and $SkipBuild) { throw 'Choose either -Build or -SkipBuild.' }
-    if ([string]::IsNullOrWhiteSpace($Corpus) -or [string]::IsNullOrWhiteSpace($Partition)) {
+    if ([string]::IsNullOrWhiteSpace($Corpus) -or
+        (-not $Standalone -and [string]::IsNullOrWhiteSpace($Partition))) {
         throw 'Specify the corpus and size partition, for example: excel-shrink-visual-validation -Corpus Enron -Partition 3/4'
     }
     if (-not [IO.File]::Exists($ConfigurationPath)) {
@@ -53,6 +58,26 @@ function Start-SavedCorpusRun {
     $configuration = Import-StudyConfiguration $Repo $ConfigurationPath
     $selected = @($configuration.corpora | Where-Object { $_.name -eq $Corpus })
     if ($selected.Count -ne 1) { throw "Unknown or ambiguous corpus: $Corpus. Choose a configured corpus." }
+    $isStandaloneConfiguration = Get-Value $configuration 'standalone_windows' $false
+    $isStandaloneConfiguration = ($isStandaloneConfiguration -is [bool]) -and $isStandaloneConfiguration
+    if ($Standalone -and -not $isStandaloneConfiguration) {
+        throw 'The selected configuration is not a standalone Windows deployment.'
+    }
+    if ($isStandaloneConfiguration) {
+        $update = "bash tools/start-corpus-wsl.sh -PrepareStandalone -Corpus $($selected[0].name)"
+        if ($Build) { throw "This standalone Windows deployment uses prepared binaries. Update it from WSL with: $update" }
+        if ($selected[0].name -notin @(Get-Value $configuration 'standalone_corpora' @())) {
+            throw "This corpus has not been prepared for standalone Windows use. Prepare it from WSL with: $update"
+        }
+        $configuration.settings.build_release = $false
+    }
+    if ($Standalone -and [string]::IsNullOrWhiteSpace($Partition)) {
+        if ($selected[0].name -ne $configuration.settings.corpus) {
+            throw 'Specify -Partition all or N/M when changing the saved corpus.'
+        }
+        $Partition = if ($configuration.settings.partition -eq 0) { 'all' }
+            else { "$($configuration.settings.partition)/$($configuration.settings.partitions)" }
+    }
     $configuration.settings.corpus = $selected[0].name
     if ($Partition -eq 'all') {
         $configuration.settings.partition = 0
@@ -120,7 +145,14 @@ function Start-SavedCorpusRun {
     return $result
 }
 
-if (-not $ConfigurationPath) { $ConfigurationPath = Join-Path $repo '.tmp/corpus-launcher/config.json' }
+if ($Standalone -and $ConfigurationPath) { throw 'Choose either -Standalone or -ConfigurationPath.' }
+if (-not $ConfigurationPath) {
+    $configurationName = if ($Standalone) { 'standalone.json' } else { 'config.json' }
+    $ConfigurationPath = Join-Path $repo ".tmp/corpus-launcher/$configurationName"
+}
 $ConfigurationPath = Resolve-StudyPath $repo $ConfigurationPath
+if ($Standalone -and -not [IO.File]::Exists($ConfigurationPath)) {
+    throw 'No standalone deployment found. Prepare one from WSL with -PrepareStandalone.'
+}
 if (-not $ExcelShrinkExe) { $ExcelShrinkExe = Join-Path $repo 'target/release/excel-shrink-cli.exe' }
-$null = Start-SavedCorpusRun $repo $ConfigurationPath $ExcelShrinkExe -Corpus $Corpus -Partition $Partition -Order $Order -Build:$Build -SkipBuild:$SkipBuild -NoBrowser:$NoBrowser
+$null = Start-SavedCorpusRun $repo $ConfigurationPath $ExcelShrinkExe -Corpus $Corpus -Partition $Partition -Order $Order -Build:$Build -SkipBuild:$SkipBuild -NoBrowser:$NoBrowser -Standalone:$Standalone
