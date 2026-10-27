@@ -46,8 +46,9 @@ bash tools/start-corpus-wsl.sh -PrepareStandalone -Corpus Destatis
 
 This synchronizes the Windows workspace, cross-compiles the Rust CLI for
 Windows, copies the selected archive to a Windows drive, and verifies its
-SHA-256. It saves a separate Windows configuration. The regular configuration
-and terminal command remain available.
+SHA-256. It saves a separate Windows configuration and installs the terminal
+command. Without `-Standalone`, that command still uses the regular
+configuration.
 
 Then, in **Windows PowerShell**:
 

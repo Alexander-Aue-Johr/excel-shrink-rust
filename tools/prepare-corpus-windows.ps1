@@ -49,6 +49,9 @@ try {
     # Store the deployment separately; the WSL build configuration and all
     # existing records, prepared variants and provenance keep their locations.
     Save-StudyJson $standalonePath $standalone
+    # Replace wrappers from older deployments that bound every invocation to
+    # standalone.json. The current command selects it only with -Standalone.
+    & (Join-Path $PSScriptRoot 'install-corpus-command.ps1')
     $commit=(& git -C $repo rev-parse HEAD).Trim()
     if($LASTEXITCODE -ne 0){throw 'Could not record the deployed source commit.'}
     $receipt=[pscustomobject][ordered]@{

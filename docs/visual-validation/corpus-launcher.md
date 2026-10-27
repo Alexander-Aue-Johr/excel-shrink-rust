@@ -46,10 +46,10 @@ This cross-compiles the Windows release, copies the selected corpus ZIP to the
 Windows disk and verifies its SHA-256. It writes a separate
 `.tmp/corpus-launcher/standalone.json` configuration. That configuration
 uses native Windows paths and the existing results directory and approved
-preparations. The original WSL configuration and ZIP remain available. The
-installed terminal command remains bound to its normal configuration. If it is
-not installed yet, run `tools/install-corpus-command.ps1` once from the deployed
-Windows workspace as described above.
+preparations. The original WSL configuration and ZIP remain available. It also
+installs the regular terminal wrapper, replacing older wrappers that bound all
+calls to the standalone configuration. The `-Standalone` option selects the
+separate configuration when needed.
 
 Open a new **Windows PowerShell** terminal. To release the WSL VM's memory and
 resume the saved Destatis selection, run:
