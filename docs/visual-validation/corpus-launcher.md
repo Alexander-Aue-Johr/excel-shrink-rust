@@ -1,5 +1,8 @@
 # Corpus launcher on Windows
 
+For the short command sequence, partition choice and rebuild after a pull, see
+[Running corpus studies](README.md).
+
 Run the VS Code task **Excel Shrink: Configure corpus run**. It opens the
 same kind of PowerShell/WPF dialog used by the existing workbook demo tasks.
 The dialog configures the existing `regression study` runner; it does not create
