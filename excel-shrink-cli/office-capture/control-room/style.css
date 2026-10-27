@@ -883,3 +883,21 @@ body.presenting .experiment-controls,body.presenting .process-section { display:
 .omission-tooltip[hidden] { display:none; }
 .tile-buttons button.omitted { border-style:dashed; border-color:#a5a3bb; color:#d0cddd; }
 .legend i.omitted { background:transparent; border:1px dashed #a5a3bb; }
+
+.tile-buttons button.hash-equal {
+  border-color: #98badf;
+  color: #c1d7ef;
+}
+.legend i.hash-equal {
+  background: transparent;
+  color: #98badf;
+  font-style: normal;
+  text-align: center;
+}
+.legend i.hash-equal::after {
+  content: '#';
+}
+#captureTransport {
+  width: 100%;
+  margin: 5px 0;
+}

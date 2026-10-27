@@ -1,4 +1,4 @@
-import { normalizeGroup, groupedPanels, imageStatus, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, fitSheetView, inspectionEntry, inspectionRegions, differenceTargets, heartbeatAge, omissionDescription, processMeasurements } from '../model.js';
+import { normalizeGroup, groupedPanels, imageStatus, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, fitSheetView, inspectionEntry, inspectionRegions, differenceTargets, heartbeatAge, omissionDescription, processMeasurements, tileEvidenceDescription, captureTransportSummary } from '../model.js';
 import { result as viewportTests } from './sheet-viewport.test.js';
 import { result as workerTests } from './worker-monitor.test.js';
 import { result as signalTests } from './signal-model.test.js';
@@ -47,6 +47,34 @@ export function runTests() {
   const allEqual = normalize(Object.fromEntries(profiles.map(profile => [profile.id, image('a')])));
   assert(allEqual.equalAcrossAll, 'Complete equal captures are recognized.');
   equal(groupedPanels(allEqual, profiles).map(group => group.ids), [['original'], ['default', 'maximum-cleaning', 'too-aggressive-cleaning']], 'All variants merge beside the reference.');
+
+  const hashImages = Object.fromEntries(profiles.map(profile => [profile.id, {
+    width: 800, height: 200, x: 0, y: 0, pixel_class: '800x200:png:abc',
+  }]));
+  const hashEqual = normalizeGroup({ profiles, sheets: [{ tiles: [{
+    status: 'equal', comparison_method: 'png-sha256', width: 800, height: 200,
+    images: hashImages,
+  }] }] }).sheets[0].tiles[0];
+  assert(hashEqual.comparisonComplete && hashEqual.equalAcrossAll, 'Hash-verified captures count as compared even without image previews.');
+  assert(imageStatus(hashEqual, 'original') === 'hash-equal' && imageStatus(hashEqual, 'default') === 'hash-equal', 'Hash equality has its own placeholder state, not waiting or omission.');
+  equal(groupedPanels(hashEqual, profiles), [], 'Hash metadata never fabricates image detail panels.');
+  assert(tileEvidenceDescription(hashEqual).includes('SHA-256') && tileEvidenceDescription(hashEqual).includes('not omitted'), 'No-preview explanation states the equality proof and retained evidence.');
+  const pendingHashes = { ...hashEqual, comparisonComplete: false, equalAcrossAll: false, status: 'receiving' };
+  assert(imageStatus(pendingHashes, 'default') === 'waiting', 'Incomplete hash results cannot claim equality.');
+  const unequalHashes = { ...hashEqual, equalAcrossAll: false, images: {
+    ...hashEqual.images, default: { ...hashEqual.images.default, pixelClass: 'other-png' },
+  } };
+  assert(imageStatus(unequalHashes, 'default') === 'waiting', 'Different PNG hashes require the pixel fallback before displaying a visual difference.');
+  const context = { ...allEqual, comparison_method: 'rgba', context_for: ['s0-t2', 's0-t4'] };
+  assert(tileEvidenceDescription(context).includes('Full-resolution context beside 2 differing captures'), 'Equal neighboring context explains why its image was retained.');
+  assert(imageStatus(context, 'default') === 'equal', 'An uploaded equal context image retains ordinary pixel equality.');
+  assert(captureTransportSummary({}, null).includes('Live images'), 'Older controls preserve the live-image default.');
+  assert(captureTransportSummary({ capture_transport: 'hash-first' }, {
+    capture_pipeline: { transport: 'live-images' },
+  }).includes('Selected group: Live images. Next primary capture phase: Hash first.'), 'Pending transport selection never mislabels a running group.');
+  assert(captureTransportSummary({ capture_transport: 'hash-first' }, {
+    capture_pipeline: { transport: 'hash-first' },
+  }) === 'Selected group: Hash first.', 'The active mode is shown once adopted.');
 
   const receiving = normalizeGroup({ profiles, sheets: [{ tiles: [{ status: 'receiving', width: 800, height: 200,
     images: Object.fromEntries(profiles.map(profile => [profile.id, { ...image('a'), updated_at: 1234, preview_url: '/data/preview.png' }])) }] }] }).sheets[0].tiles[0];
@@ -130,7 +158,7 @@ export function runTests() {
   assert(rawTall.sheets[0].tiles[3].y === 99800 && rawTall.sheets[0].tiles.length === 4, 'Display compaction never mutates host evidence.');
   const noOmission = normalizeGroup({ sheets: [{ height: 100000, tiles: [{ id: 'pending', width: 800, height: 100000 }] }] }).sheets[0];
   assert(noOmission.height === 100000 && noOmission.tiles.length === 1, 'A large pending capture is never treated as an omission.');
-  return { passed: 61 + viewportTests.passed + workerTests.passed + signalTests.passed
+  return { passed: 72 + viewportTests.passed + workerTests.passed + signalTests.passed
     + captureStripTests.checks + captureNavigationTests.checks + controlTests.passed };
 }
 

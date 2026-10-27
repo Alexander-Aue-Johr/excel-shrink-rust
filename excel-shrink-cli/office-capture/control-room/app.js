@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription, processMeasurements } from './model.js';
+import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription, processMeasurements, tileEvidenceDescription, captureTransportSummary } from './model.js';
 import { fitSheetViewport, resolveSheetViewport, zoomSheetViewport, scrollSheetViewport, sheetViewportKey, followSheetViewport } from './sheet-viewport.js';
 import { initWorkerMonitor } from './worker-monitor.js';
 import { workerRows } from './worker-monitor-model.js';
@@ -10,7 +10,7 @@ import { createControlUpdates } from './control-state.js';
 
 const $ = id => document.getElementById(id);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const C = { waiting: 0x3c566b, received: 0x79dce8, equal: 0x75edc0, different: 0xff7a91, omitted: 0xa5a3bb };
+const C = { waiting: 0x3c566b, received: 0x79dce8, equal: 0x75edc0, 'hash-equal': 0x98badf, different: 0xff7a91, omitted: 0xa5a3bb };
 const CARD_W = 16, CARD_H = 9, BOARD_W = 3.67, BOARD_H = 7.75, BOARD_STEP = 3.87;
 const AREA_W = 3.43, AREA_H = 7.08, AREA_Y = -.16;
 let RADIUS = 24, layout = sheetLayout([]);
@@ -252,6 +252,11 @@ function followTile(tile) {
 function focusTile(tile, region = null, manual = false) {
   if (!tile) return;
   if (tile.status === 'omitted') { if (manual) focusSheet(tile.sheetId, true); setNotice(omissionDescription(tile)); announce(omissionDescription(tile)); return; }
+  if (tile.comparison_method === 'png-sha256' && tile.equalAcrossAll && !Object.values(tile.images).some(image => image.url)) {
+    if (manual) focusSheet(tile.sheetId, true);
+    const description = tileEvidenceDescription(tile);
+    setNotice(description); announce(description); return;
+  }
   if (manual) stopFollowing();
   clearDetails(); state.sheetId = tile.sheetId; state.focus = 'tile';
   const inspect = region || inspectionRegions(tile, !tile.equalAcrossAll)[0];
@@ -356,7 +361,8 @@ function makeBoard(card, sheet, profile, profileIndex, shown, view) {
     const clip = clippedTile(profileRectangle(entry, profile.id), view); if (clip.width <= 0 || clip.height <= 0) continue;
     const left = (clip.x - view.x) * px - AREA_W / 2, right = left + clip.width * px;
     const top = AREA_Y + AREA_H / 2 - (clip.y - view.y) * px, bottom = top - clip.height * px;
-    const color = new THREE.Color(C[imageStatus(entry, profile.id)]);
+    const status = imageStatus(entry, profile.id);
+    const color = new THREE.Color(C[status]);
     if (entry.status === 'omitted') {
       // A broken axis denotes absent evidence, never equality or pending work.
       const center = (top + bottom) / 2, amplitude = Math.min(.025, (top - bottom) / 10);
@@ -373,6 +379,18 @@ function makeBoard(card, sheet, profile, profileIndex, shown, view) {
         setCurvedPosition(label, (left + right) / 2, center, .025); board.add(label);
       }
       continue;
+    }
+    if (status === 'hash-equal' && top - bottom > .04) {
+      // A hash mark distinguishes verified equality without a preview from
+      // pending captures, pixel previews and explicitly omitted regions.
+      const size = Math.min(.1, (top - bottom) * .65, (right - left) * .12);
+      const x = left + size * .4, y = top - size * .2;
+      for (const offset of [.3, .7]) {
+        lines.push(...point(x + size * offset, y), ...point(x + size * offset, y - size));
+        lines.push(...point(x, y - size * offset), ...point(x + size, y - size * offset));
+        colors.push(color.r, color.g, color.b, color.r, color.g, color.b,
+          color.r, color.g, color.b, color.r, color.g, color.b);
+      }
     }
     for (const [x1, y1, x2, y2] of [[left, top, right, top], [right, top, right, bottom], [right, bottom, left, bottom], [left, bottom, left, top]]) {
       lines.push(...point(x1, y1), ...point(x2, y2)); colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
@@ -574,13 +592,14 @@ function hitAt(event) {
 function handlePointerMove(event) {
   if (!state.ready || event.buttons) return;
   const hit = hitAt(event); renderer.domElement.style.cursor = hit ? 'pointer' : 'grab';
-  const omitted = hit?.userData.sourceTile?.entry;
-  omissionTooltip.hidden = omitted?.status !== 'omitted';
+  const entry = hit?.userData.sourceTile?.entry;
+  const noPreview = entry && Object.keys(entry.images).some(profile => imageStatus(entry, profile) === 'hash-equal');
+  omissionTooltip.hidden = !entry || !(entry.status === 'omitted' || noPreview || entry.context_for?.length);
   if (!omissionTooltip.hidden) {
-    omissionTooltip.textContent = omissionDescription(omitted);
+    omissionTooltip.textContent = tileEvidenceDescription(entry);
     omissionTooltip.style.left = `${Math.max(8, Math.min(event.clientX + 16, innerWidth - 380))}px`;
     omissionTooltip.style.top = `${Math.max(8, Math.min(event.clientY + 16, innerHeight - omissionTooltip.offsetHeight - 8))}px`;
-    cancelHover(); return;
+    if (entry.status === 'omitted' || noPreview) { cancelHover(); return; }
   }
   if (hit?.userData.detailPanel) { clearTimeout(leaveTimer); cancelHover(); return; }
   const tile = hit?.userData.sourceTile; if (!tile) { scheduleClear(); return; } clearTimeout(leaveTimer);
@@ -596,6 +615,15 @@ function renderTileButtons(shown) {
       button.title = omissionDescription(entry); button.setAttribute('aria-label', button.title);
       button.addEventListener('focus', () => { setNotice(button.title); announce(button.title); });
       button.addEventListener('click', () => focusTile(entry, null, true)); return button;
+    }
+    if (entry.comparison_method === 'png-sha256' && entry.equalAcrossAll) {
+      button.classList.add('hash-equal');
+      button.textContent = `# ${button.textContent}`;
+      button.title = tileEvidenceDescription(entry);
+      button.setAttribute('aria-label', button.title);
+      button.addEventListener('focus', () => { setNotice(button.title); announce(button.title); });
+    } else if (entry.context_for?.length) {
+      button.title = tileEvidenceDescription(entry);
     }
     button.classList.toggle('different', Object.keys(entry.images).some(profile => imageStatus(entry, profile) === 'different'));
     button.addEventListener('focus', () => showDetails(entry.id)); button.addEventListener('click', () => focusTile(entry, null, true)); return button;
@@ -743,6 +771,10 @@ function updateControlInputs() {
   for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
   }
+  if (document.activeElement !== $('captureTransport') && !dirtyControls.has('captureTransport')) {
+    $('captureTransport').value = values.capture_transport || 'live-images';
+  }
+  $('captureTransportStatus').textContent = captureTransportSummary(values, data);
   const confirmedReserve = values.system_reserve_mib ?? 1024;
   if (values.system_reserve_mib == null && document.activeElement !== $('systemReserve') && !dirtyControls.has('systemReserve')) $('systemReserve').value = String(confirmedReserve);
   $('systemReserveStatus').textContent = `Confirmed: ${confirmedReserve.toLocaleString('en-US')} MiB`;
@@ -765,7 +797,7 @@ async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;
   controlUpdates.beginWrite();
   const wasCapturePaused = Boolean(state.controls.paused);
-  for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = true;
+  for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = true;
   if (change.system_reserve_mib != null) $('applyReserve').textContent = 'Setting…';
   try {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
@@ -773,12 +805,22 @@ async function sendControl(change) {
     controlUpdates.confirmWrite(result.controls);
     for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     updateControlInputs();
+    if (change.capture_transport === $('captureTransport').value) dirtyControls.delete('captureTransport');
     const text = change.target_groups === 0 ? `Target 0 confirmed: workbooks already in progress will finish.${wasCapturePaused ? ' The capture pause was lifted to allow this.' : ''}`
       : change.target_groups != null ? `Group target ${state.controls.target_groups} confirmed.`
+      : change.capture_transport != null ? 'Capture transport confirmed for the next primary capture phase.'
       : change.system_reserve_mib != null ? `Free RAM reserve ${state.controls.system_reserve_mib.toLocaleString('en-US')} MiB confirmed.` : 'Controls confirmed by host.';
     pushEvent(text); setNotice(text);
-  } catch (error) { setNotice(error.message, true); updateControlInputs(); if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel); }
-  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
+  } catch (error) {
+    setNotice(error.message, true);
+    if ('capture_transport' in change) {
+      dirtyControls.delete('captureTransport');
+      $('captureTransport').value = state.controls.capture_transport || 'live-images';
+    }
+    updateControlInputs();
+    if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel);
+  }
+  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
 }
 function selectGroup(id) {
   if (id === state.groupId) return;
@@ -847,8 +889,15 @@ function acceptGroup(raw) {
   const changedByProfile = new Map();
   for (const tile of entries) for (const [profile, image] of Object.entries(tile.images)) {
     const key = `${tile.id}:${profile}`, signature = JSON.stringify([image.url, image.pixelClass, image.maskUrl]);
-    if (image.url && previousImages.get(key) !== signature) {
-      if (previousImages.has(key)) pushEvent(`${tile.sheetName} · ${tile.address} · ${profileLabel(profile)}: ${image.pixelClass == null ? 'Image received' : imageStatus(tile, profile) === 'different' ? 'Pixel difference confirmed' : 'Pixel comparison complete'}`);
+    if ((image.url || imageStatus(tile, profile) === 'hash-equal') && previousImages.get(key) !== signature) {
+      if (previousImages.has(key)) {
+        const status = imageStatus(tile, profile);
+        let message = 'Pixel comparison complete';
+        if (status === 'hash-equal') message = 'PNG hash equality confirmed; no preview retained';
+        else if (image.pixelClass == null) message = 'Image received';
+        else if (status === 'different') message = 'Pixel difference confirmed';
+        pushEvent(`${tile.sheetName} \u00b7 ${tile.address} \u00b7 ${profileLabel(profile)}: ${message}`);
+      }
       flashes.set(key, performance.now()); previousImages.set(key, signature); latest = tile;
       changedByProfile.set(profile, tile);
     }
@@ -915,6 +964,7 @@ function elapsedText(iso) {
 function updateDiagnosticUi() {
   renderThroughput();
   renderProcesses();
+  $('captureTransportStatus').textContent = captureTransportSummary(state.controls, data);
   $('restartGroup').disabled = !state.groupId || data?.restart_eligible === false || state.queue?.running === false;
   if (data) {
     const clients = Object.entries(data.launcher?.clients || {});
@@ -1084,6 +1134,11 @@ function wireControls() {
     sendControl({ open_timeout_seconds: open, job_timeout_seconds: job });
   });
   $('equalPreview').addEventListener('change', event => sendControl({ equal_preview_width: Number(event.target.value) }));
+  $('captureTransport').addEventListener('change', event => {
+    dirtyControls.add('captureTransport');
+    sendControl({ capture_transport: event.target.value });
+  });
+
   $('applyCapture').addEventListener('click', () => {
     const size = Number($('captureMegapixels').value), batch = Number($('captureBatch').value);
     if (!Number.isInteger(size) || size < 1 || size > 32 || !Number.isInteger(batch) || batch < 1 || batch > 16) return setNotice('Target capture size: 1–32 MP. Batch: 1–16 jobs.', true);

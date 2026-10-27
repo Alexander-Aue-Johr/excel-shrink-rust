@@ -18,6 +18,14 @@
     <div class="control ram-reserve"><label for="systemReserve">FREE RAM RESERVE</label><div class="control-line"><input id="systemReserve" type="number" min="1" max="65536" step="1" value="1024" aria-describedby="systemReserveStatus systemReserveNote"><span>MiB</span><button id="applyReserve">Set</button></div><small id="systemReserveStatus" role="status">Waiting for confirmed value.</small><small id="systemReserveNote">Applies to the live RAM guard and new groups.</small></div>
   </section>
   <details class="experiment-controls" open><summary>Capture & opening <span>New settings apply to the next group.</span></summary><div class="experiment-grid">
+    <label for="captureTransport">Capture transport
+      <select id="captureTransport" aria-describedby="captureTransportNote captureTransportStatus">
+        <option value="live-images">Live images</option>
+        <option value="hash-first">Hash first</option>
+      </select>
+      <small id="captureTransportNote">Hash first uploads differences and their neighboring captures. A change applies at the next primary capture phase.</small>
+      <small id="captureTransportStatus" role="status">Waiting for confirmed mode.</small>
+    </label>
     <label>Target capture size <span><input id="captureMegapixels" type="number" min="1" max="32" step="1" value="32"> MP</span><small>Original capture jobs retain complete, protected row bands.</small></label>
     <label>Jobs per batch <span><input id="captureBatch" type="number" min="1" max="16" step="1" value="1"><button id="applyCapture">Set</button></span><small>A shared pixel budget limits the actual batch size.</small></label>
     <label>Reduce tall-sheet captures <span>Above <input id="tallSheetThreshold" type="number" min="1" max="2147483647" step="1" value="40"> capture rows</span><small>Smaller sheets are captured in full.</small></label>
@@ -39,7 +47,7 @@
         <div class="minimap" aria-label="All sheets"><div class="minimap-heading"><span>SHEET MAP</span><span id="minimapLabel">—</span></div><div id="minimapGrid" class="minimap-grid"></div></div>
         <div id="emptyScene" class="empty-scene"><strong>The next capture will appear here.</strong><span>Only actual jobs and images are shown.</span></div>
         <div id="selectionBar" class="selection-bar" hidden><strong id="selectionText"></strong><span id="selectionSummary"></span><button id="pinSelection" aria-pressed="false">Pin</button><button id="closeSelection" aria-label="Close details">×</button></div>
-        <div class="room-bottom"><div class="legend"><span><i class="waiting"></i>requested</span><span><i class="received"></i>image received</span><span><i class="equal"></i>identical</span><span><i class="different"></i>different</span><span><i class="omitted"></i>omitted · not checked</span></div><label class="toggle"><input type="checkbox" id="pulseDiff" checked> Pulse differences</label></div>
+        <div class="room-bottom"><div class="legend"><span><i class="waiting"></i>requested</span><span><i class="received"></i>image received</span><span><i class="equal"></i>identical</span><span><i class="hash-equal"></i>hash identical</span><span><i class="different"></i>different</span><span><i class="omitted"></i>omitted · not checked</span></div><label class="toggle"><input type="checkbox" id="pulseDiff" checked> Pulse differences</label></div>
         <div id="error" class="error" hidden role="alert"></div>
       </section>
       <div class="pan-controls" aria-label="Pan the shared sheet viewport"><label>Horizontal <input id="panX" type="range" min="0" max="0" value="0" step="1"></label><label>Vertical <input id="panY" type="range" min="0" max="0" value="0" step="1"></label><span class="sheet-zoom-mode" id="sheetZoomMode">Fit whole sheet</span></div>

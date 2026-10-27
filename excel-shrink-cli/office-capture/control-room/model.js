@@ -86,10 +86,38 @@ export function normalizeGroup(raw) {
 export function imageStatus(entry, profileId) {
   if (entry.status === 'omitted') return 'omitted';
   const image = entry.images[profileId], original = entry.images.original;
-  if (!image?.url) return 'waiting';
+  if (!image?.url) {
+    return entry.comparison_method === 'png-sha256' && entry.equalAcrossAll
+      ? 'hash-equal' : 'waiting';
+  }
   if (!entry.comparisonComplete || image.pixelClass == null || original?.pixelClass == null) return 'received';
   if (profileId === 'original') return entry.comparisonComplete ? (entry.equalAcrossAll ? 'equal' : 'different') : 'received';
   return image.pixelClass === original.pixelClass ? 'equal' : 'different';
+}
+
+export function tileEvidenceDescription(tile) {
+  if (tile.status === 'omitted') return omissionDescription(tile);
+  const details = [tile.address];
+  if (tile.comparison_method === 'png-sha256' && tile.equalAcrossAll) {
+    details.push('Identical PNG SHA-256 across all profiles; captured images matched.');
+    if (!Object.values(tile.images).some(image => image.url)) {
+      details.push('No image preview retained. This capture was checked, not omitted.');
+    }
+  }
+  if (tile.context_for?.length) {
+    details.push(`Full-resolution context beside ${tile.context_for.length} differing capture${tile.context_for.length === 1 ? '' : 's'}.`);
+  }
+  return details.join(' \u00b7 ');
+}
+
+export function captureTransportSummary(controls, group) {
+  const labels = { 'live-images': 'Live images', 'hash-first': 'Hash first' };
+  const requested = controls.capture_transport || 'live-images';
+  const active = group?.capture_pipeline?.transport;
+  if (!active) return `${labels[requested]} selected for the next primary capture phase.`;
+  return active === requested
+    ? `Selected group: ${labels[active] || active}.`
+    : `Selected group: ${labels[active] || active}. Next primary capture phase: ${labels[requested]}.`;
 }
 
 // Collapse only explicit omissions. Pending captures retain their real geometry.
