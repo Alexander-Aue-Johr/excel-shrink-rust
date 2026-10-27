@@ -1,9 +1,10 @@
 # Resident capture events and timings
 
 Resident comparison uses a persistent WebSocket control connection. PNG uploads
-remain bounded HTTP requests. Physical clients advance independently through a
-bounded window of common capture batches. Capture geometry, serial Office calls
-within each workbook, exact pixel comparison and evidence retention remain intact.
+remain bounded HTTP requests. Live-image clients advance independently through a
+bounded window; hash-first clients capture one common batch before deciding which
+images to transfer. Both modes use the same capture geometry and serial Office
+calls within each workbook.
 
 ## Delivery and recovery
 
@@ -86,6 +87,55 @@ peer requires it. Different images retain their full-resolution evidence, and
 equal images needed for row-height reports retain their original evidence too.
 These changes affect derived display assets, not capture coverage or whitespace
 attribution.
+
+## Hash-first transport and neighboring context
+
+The Observatory's **CAPTURE TRANSPORT** control accepts `live-images` (the
+compatible default) and `hash-first`. Changes apply at the next primary capture
+phase. A group already capturing keeps its selected mode; the UI shows both the
+requested and actual mode. On-demand whitespace controls still upload images,
+because their ranges already correspond to known differences.
+
+Hash-first uses three bounded commands:
+
+- `capture_hashes` captures and finalizes the same PNGs as live mode, computes
+  native Web Crypto SHA-256, and retains the immutable bytes in the taskpane.
+- `upload_retained` sends selected retained PNGs without calling Excel again.
+- `discard_retained` releases specified buffers; repeating a release is safe.
+
+Matching PNG digests **and dimensions across every peer** certify equal images.
+Unequal PNG digests do not prove a visual difference: the coordinator requests
+all peer images at that position and compares decoded RGBA pixels. Encoding-only
+differences therefore produce no visual finding. Row-height evidence still
+requires images even when the PNGs match. Every peer at a decoded position moves
+to the pixel-digest domain together; hash-only dashboard classes explicitly use
+the `png:` prefix.
+
+Actual differences retain full-resolution images and masks. Their neighboring
+capture tiles retain full-resolution context, including matching peers. Current
+capture geometry consists of full-width row bands, so the existing neighbors
+are immediately above and below. Worksheet cell boundaries determine adjacency;
+a tall-sheet omission or a sheet boundary never creates a fictitious neighbor.
+There are currently no separate horizontal or diagonal capture tiles.
+
+At a batch boundary, the last touching band is temporarily uploaded to session
+disk before releasing the batch's worker buffers. If the next band differs, this
+original capture becomes retained context; otherwise it is deleted. Thus a slow
+peer or a late difference cannot force an unbounded taskpane cache or an evidence
+recapture. This costs at most one extra band per batch: batches of one cannot
+benefit from this transport reduction. Statistics expose these boundary uploads
+separately. The worker's 16-tile, 64-megapixel and 160-MiB accounting limits remain
+in force, including retained buffers. They are not a cap on total Excel memory.
+
+Pausing blocks new captures but allows retained-image uploads and releases to
+drain. A socket reconnect preserves the pane's current job and buffers; a new
+pane document is still a new session and cannot claim the old captures.
+
+Hash-only equal tiles appear with a distinct outline and `#` marker, without a
+fabricated preview. They are different from uncaptured omissions. Neighbor
+images carry `context_for`; group JSON records the transport, hash timing,
+uploaded bytes, boundary spills and captured tile counts. Hash durations summed
+across clients overlap and are not additional wall time.
 
 ## Measurements
 
@@ -184,5 +234,48 @@ evidence and decoded dashboard previews, full images and masks. A separate
 four Excel processes to 167 images with identical results. These are local checks,
 not estimates of corpus-wide performance.
 
-Optional hash-first transport, preview compression and WASM are separate
-experiments and remain disabled.
+`office-capture/tests/hash-first-smoke.py --run` compares live/hash/hash/live
+using the same binary and capture settings. It verifies coverage, findings,
+whitespace attribution, all available preview/mask pixels and full-resolution
+neighbor context against the live reference. Hash-only tiles are checked for
+within-run digest equality; their encoded PNG digests are not falsely compared
+to the live reference's decoded RGBA digests. `--batch-tiles` permits a matched
+batch-size experiment. A separate `--pause-check --compare-to <live-sample>`
+checks pause/resume without replacing the Excel processes. Add
+`--switch-during-pause` to verify that a requested live transport does not change
+the active hash-first phase. The pause check also requires zero retained image
+buffers on all primary clients before resuming.
+
+On 2026-10-27, two separate ABBA experiments used the same v2 fixture, four
+physical primary clients, 1-MP tiles and 1024-pixel retained previews:
+
+| Median of two samples per mode | Live, batch 4 | Hash-first, batch 4 | Live, batch 16 | Hash-first, batch 16 |
+| --- | ---: | ---: | ---: | ---: |
+| Capture phase | 3.216 s | 4.200 s | 3.815 s | 3.075 s |
+| Whole workbook comparison | 27.157 s | 28.960 s | 27.518 s | 26.600 s |
+| Uploaded images, including controls | 167 | 59 | 167 | 35 |
+| Uploaded PNG bytes | 5,480,706 | 1,821,742 | 5,480,706 | 992,078 |
+| Peak Job Object memory | 1.615 GB | 1.586 GB | 1.593 GB | 1.624 GB |
+
+Every run completed the same 41 tile positions, three differing positions and
+whitespace attribution. Hash-first retained five neighboring context positions
+and left 35 distant equal positions without previews. Batches of four incurred
+more command round trips and were slower; batches of 16 amortized that overhead.
+Native hashing itself took roughly 6–7 ms summed over all primary clients. These
+are local fixture measurements, not a corpus-wide speed guarantee. The previous
+live mode remains available, and changing transport does not change coverage.
+
+The pause test exposed a Windows reader-lock race in resident status publication.
+Resident snapshots now use the existing bounded atomic writer: a transient reader
+may delay replacement, but cannot leave partial JSON or immediately abort capture.
+A focused test holds a reader for 300 ms; the existing persistent-lock test
+verifies bounded failure while preserving the old complete report.
+
+Repeating the batch-16 ABBA experiment with this final publication behavior gave
+4.585 s live versus 3.323 s hash-first for the capture phase, and 28.057 s versus
+27.510 s for the whole comparison. Peak Job Object memory was 1.576 GB versus
+1.635 GB. Findings, context and upload counts were unchanged. The separate final
+pause check drained 16 to 20 uploads, released all four taskpane image buffers,
+then resumed the same four Excel processes to 35 uploads with identical evidence.
+
+Preview compression and WASM remain separate, unimplemented experiments.

@@ -303,7 +303,7 @@ Get-CimInstance Win32_Process -Filter "Name = 'excel-shrink-cli.exe'" |
     )
 
 
-def pause_and_resume(state_path, request, process, deadline):
+def pause_and_resume(state_path, request, process, deadline, next_transport=None):
     before = read_json(state_path)
     metrics_path = state_path.parent / "launcher.json"
     clients = read_json(metrics_path)["clients"]
@@ -325,26 +325,43 @@ def pause_and_resume(state_path, request, process, deadline):
             not clients[name].get("active_command") and not clients[name].get("monitor", {}).get("active_job")
             for name in PROFILES
         )
+        if before.get("capture_pipeline", {}).get("transport") == "hash-first":
+            idle = idle and all(
+                clients[name].get("monitor", {}).get("pane_resources", {}).get("retained_image_tiles") == 0
+                and clients[name].get("monitor", {}).get("pane_resources", {}).get("retained_image_bytes") == 0
+                for name in PROFILES
+            )
         if idle and time.monotonic() - stable_since >= 2:
             break
         time.sleep(.25)
     assert not state.get("primary_complete"), "Pause arrived after all primary captures finished"
     assert state["attempt_id"] == before["attempt_id"], "Pausing restarted the group"
     assert {name: clients[name]["pid"] for name in PROFILES} == pids, "Pausing replaced an Excel process"
+    if next_transport is not None:
+        assert before["capture_pipeline"]["transport"] == "hash-first"
+        confirmed = request("/api/control", {"capture_transport": next_transport})["controls"]
+        assert confirmed["capture_transport"] == next_transport and confirmed["paused"]
+        assert read_json(state_path)["capture_pipeline"]["transport"] == "hash-first", "An active phase changed transport"
     request("/api/control", {"paused": False})
     result = {
         "duration_seconds": time.monotonic() - requested,
         "images_before_pause": before["throughput"]["uploaded_images"],
         "images_after_drain": count, "stable_seconds": time.monotonic() - stable_since,
         "attempt_id": before["attempt_id"], "primary_pids": pids,
+        "next_capture_transport": next_transport,
+        "retained_images_after_drain": {
+            name: {key: clients[name].get("monitor", {}).get("pane_resources", {}).get(key)
+                   for key in ("retained_image_tiles", "retained_image_bytes")}
+            for name in PROFILES
+        },
     }
     print(json.dumps({"pause_resumed": result}), flush=True)
     return result
 
 
-def run_sample(args, archive, directory, enabled, binary=None):
+def run_sample(args, archive, directory, enabled, binary=None, *, settings_patch=None, collector=collect_result):
     binary = binary or args.binary
-    settings = {**SETTINGS, "equal_preview_width": args.equal_preview_width}
+    settings = {**SETTINGS, "equal_preview_width": args.equal_preview_width, **(settings_patch or {})}
     directory.mkdir()
     study = directory / "study"
     command = [
@@ -357,7 +374,8 @@ def run_sample(args, archive, directory, enabled, binary=None):
     environment = os.environ.copy()
     environment.update(
         EXCEL_SHRINK_CAPTURE_PIPELINE="1" if enabled else "0",
-        EXCEL_SHRINK_CAPTURE_TILE_MEGAPIXELS="1", EXCEL_SHRINK_CAPTURE_BATCH_TILES="4",
+        EXCEL_SHRINK_CAPTURE_TILE_MEGAPIXELS="1",
+        EXCEL_SHRINK_CAPTURE_BATCH_TILES=str(settings["capture_batch_tiles"]),
         EXCEL_SHRINK_TALL_SHEET_THRESHOLD="100000", EXCEL_SHRINK_TALL_SHEET_EDGE_TILES="1",
         EXCEL_SHRINK_RESIDENT_VISIBLE="0",
     )
@@ -410,19 +428,23 @@ def run_sample(args, archive, directory, enabled, binary=None):
                 if paths:
                     state = read_json(paths[0])
                     if not state.get("primary_complete") and state.get("throughput", {}).get("uploaded_images", 0) > 0:
-                        receipt["pause"] = pause_and_resume(paths[0], request, process, deadline)
+                        next_transport = "live-images" if getattr(args, "switch_during_pause", False) else None
+                        receipt["pause"] = pause_and_resume(paths[0], request, process, deadline, next_transport)
             time.sleep(.25)
         receipt["runner_wall_seconds"] = time.monotonic() - started
         assert process.returncode in (0, 1), process.returncode
         # Exit 1 also denotes the intentional visual differences in this fixture.
-        receipt.update(collect_result(study))
+        receipt.update(collector(study))
         if args.pause_check:
             assert "pause" in receipt, "Did not pause during primary captures"
             assert receipt["metrics"]["throughput"]["uploaded_images"] > receipt["pause"]["images_after_drain"]
             assert receipt["metrics"]["primary_pids"] == receipt["pause"]["primary_pids"], "Resuming replaced an Excel process"
             pipeline = receipt["metrics"]["capture_pipeline"]
+            if receipt["pause"]["next_capture_transport"] is not None:
+                assert pipeline["transport"] == "hash-first", "Resuming changed the active capture phase transport"
             peaks = pipeline["processing"]["clients"]
-            assert set(PROFILES).issubset(peaks), "Primary processing peaks were lost during control captures"
+            if pipeline.get("transport") != "hash-first":
+                assert set(PROFILES).issubset(peaks), "Primary processing peaks were lost during control captures"
             assert any(name.startswith("control-") for name in peaks), "Missing on-demand control processing peaks"
             assert all(peak["tiles"] <= pipeline["max_pending_tiles_per_client"] for peak in peaks.values())
             assert all(peak["pixels"] <= pipeline["max_pending_pixels_per_client"] for peak in peaks.values())
