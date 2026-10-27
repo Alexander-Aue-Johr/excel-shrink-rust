@@ -70,14 +70,25 @@ The monitor is an original browser implementation inspired by the grid, sweep
 and persistence of [CardioSim](https://github.com/Colby-O2/CardioSim), whose
 [Unlicense](https://github.com/Colby-O2/CardioSim/blob/master/LICENSE) permits
 reuse. No CardioSim code, medical signal model or Unity dependency is included.
-Canvas 2D traces share a visibility-aware animation loop at roughly 15 fps, use
-bounded event histories, and honor reduced motion. Hidden/offscreen monitors
-stop drawing. The browser retains only observed heartbeat timestamps: gaps or
-counter jumps are never filled with invented beats. Capture and completed-job
+The supplied Shadertoy P–QRS–T curve and green CRT grid are rendered through one
+shared WebGL 2 context. Each received heartbeat is traced over 850 ms; the
+60-second timeline keeps its actual timestamp. Capture miniatures and phase
+markers remain on Canvas 2D. All monitors share a visibility-aware animation
+loop capped at 30 fps, use bounded histories, and honor reduced motion. A labeled
+Canvas 2D fallback preserves event timing when WebGL is unavailable.
+Hidden/offscreen monitors stop drawing. The browser retains only observed
+heartbeat timestamps: gaps or counter jumps are never filled with invented beats.
+Capture and completed-job
 events can be backfilled from the host's bounded telemetry journal. Repeated
 polls cannot replay an event, and retries/process replacements get fresh
 histories. Lost connections freeze the last received view and show its status.
 Before the browser first observes a worker, the shaded timeline is incomplete.
+
+Each signal has a **Full screen** button; Escape returns to its original place.
+Worker overview updates reuse group cards and signal canvases, preserve selection
+and expanded capture details, and keep existing groups in their admission order.
+Layout changes caused by added or removed workers animate unless reduced motion
+is enabled. Polling updates do not detach or recreate an existing signal.
 
 Restart actions POST `/api/groups/{id}/restart`; an optional `client_id` identifies
 the problematic instance. Both actions restart the complete comparison group so

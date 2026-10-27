@@ -1,6 +1,7 @@
 import { createSignalStore } from './signal-model.js';
 import { capturePackages, captureDescription } from './capture-strip-model.js';
 import { capturePalette, createCaptureSpatialView } from './capture-spatial-view.js';
+import { createHeartbeatTrace } from './heartbeat-shader.js';
 
 // Two data lanes (actual heartbeats and image receipts) plus a slim phase track.
 // An ECG-shaped event glyph is symbolic: no physiological/estimated data exist.
@@ -29,6 +30,9 @@ const element = (tag, className, text) => {
   if (text != null) node.textContent = text;
   return node;
 };
+function setText(node, text) {
+  if (node.textContent !== text) node.textContent = text;
+}
 let frame, lastFrame = 0;
 const observer = new IntersectionObserver(entries => {
   for (const entry of entries) {
@@ -44,7 +48,7 @@ function schedule() {
 function tick(time) {
   frame = null;
   if (document.hidden) return;
-  if (time - lastFrame >= 66) {
+  if (time - lastFrame >= 1000 / 30) {
     lastFrame = time;
     for (const view of views) {
       if (!view.element.isConnected) { view.destroy(); continue; }
@@ -58,24 +62,6 @@ motion.addEventListener('change', () => { for (const view of views) view.draw();
 
 const colorFor = state => phaseColors[state] || (state?.startsWith('waiting') ? '#648ba4' : '#526878');
 const compactNumber = number => Number.isFinite(number) ? number.toLocaleString('en-US') : '—';
-const pulseForm = [[-1, 0], [-.7, 0], [-.52, -2], [-.38, 2], [-.12, 2], [0, -15],
-  [.12, 12], [.26, -3], [.39, 0], [.62, 0], [.77, -3], [.9, -2], [1, 0]];
-
-function drawHeart(ctx, points, now, xAt, y, plotLeft, plotRight) {
-  ctx.save(); ctx.beginPath(); ctx.rect(plotLeft, y - 18, plotRight - plotLeft, 33); ctx.clip();
-  ctx.strokeStyle = '#75edc04c'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(plotLeft, y); ctx.lineTo(plotRight, y); ctx.stroke();
-  const halfWidth = 9; // Symbol width, NOT a reconstructed waveform.
-  for (const at of points) {
-    if (at < now - WINDOW || at > now) continue;
-    const x = xAt(at);
-    ctx.strokeStyle = '#75edc0'; ctx.globalAlpha = .34 + .66 * Math.max(0, 1 - (now - at) / WINDOW);
-    ctx.lineWidth = 1.7; ctx.lineJoin = 'round'; ctx.beginPath();
-    pulseForm.forEach(([px, py], i) => i ? ctx.lineTo(x + px * halfWidth, y + py) : ctx.moveTo(x + px * halfWidth, y + py));
-    ctx.stroke();
-  }
-  ctx.restore();
-}
 function drawCaptureGlyph(ctx, pack, x, y, compact) {
   const w = compact ? 34 : 46, h = compact ? 28 : 38, inset = 3;
   const boxes = [], layers = [...(pack.frame?.layers || [])].sort((a, b) => b.generation-a.generation);
@@ -173,7 +159,13 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
   const heading = element('span', 'signal-heading');
   const state = element('span', 'signal-state', 'Waiting for telemetry');
   const interval = element('span', 'signal-window', '60 s');
-  heading.append(state, interval);
+  const fullscreen = element('button', 'signal-fullscreen', 'Full screen');
+  fullscreen.type = 'button';
+  fullscreen.setAttribute('aria-label', 'Fullscreen signal');
+  fullscreen.setAttribute('aria-pressed', 'false');
+  fullscreen.title = 'Expand this signal display. Press Escape to return.';
+  fullscreen.disabled = !root.requestFullscreen;
+  heading.append(state, interval, fullscreen);
   const canvas = element('canvas', 'signal-canvas');
   canvas.setAttribute('aria-hidden', 'true');
   const legend = element('span', 'signal-legend');
@@ -192,6 +184,42 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
   }
   let row, connected=true, liveSource=true, stale=false, frozenAt, receivedAt, observed=false, signature;
   let frozenSnapshot,lastSnapshot,hitBoxes=[],layout=null;
+  let destroyed = false;
+  const trace = createHeartbeatTrace();
+  const displayNote = element('span', 'signal-display-note');
+  displayNote.hidden = true;
+  displayNote.setAttribute('role', 'status');
+
+  const showDisplayNote = text => {
+    setText(displayNote, text);
+    if (displayNote.hidden !== !text) displayNote.hidden = !text;
+  };
+  fullscreen.addEventListener('click', async event => {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      if (document.fullscreenElement === root) await document.exitFullscreen();
+      else await root.requestFullscreen();
+      showDisplayNote('');
+    } catch (error) {
+      showDisplayNote(`Fullscreen could not start: ${error.message}`);
+    }
+  });
+  const fullscreenChanged = () => {
+    if (destroyed) return;
+    const expanded = document.fullscreenElement === root;
+    fullscreen.textContent = expanded ? 'Exit full screen' : 'Full screen';
+    fullscreen.setAttribute('aria-label', expanded ? 'Exit fullscreen signal' : 'Fullscreen signal');
+    fullscreen.setAttribute('aria-pressed', String(expanded));
+    if (expanded) view.visible = true;
+    view.draw();
+    schedule();
+  };
+  document.addEventListener('fullscreenchange', fullscreenChanged);
+  const resize = new ResizeObserver(() => {
+    if (!destroyed) view.draw();
+  });
+  resize.observe(root);
   const spatial = createCaptureSpatialView({ compact, onCaptureNavigate: onCaptureNavigate
     ? payload => { if (row) onCaptureNavigate({ row, ...payload }); } : null });
   const follow = onCaptureNavigate ? element('button', 'signal-follow', '↗ Follow captures') : null;
@@ -234,7 +262,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
         : 'Select the capture timeline to view current images in the Atelier.';
     });
   }
-  root.append(heading, canvas, legend, spatial.element);
+  root.append(heading, canvas, legend, displayNote, spatial.element);
   root.title='A 60-second timeline of observed events. Each ECG-shaped pulse represents an observed add-in heartbeat. Miniatures show received captures; the bottom track shows reported phases and completed steps. Quiet signals alone do not diagnose a failure.';
   const view={element:root,visible:false,live:false,
     get captureExpanded(){return spatial.element.open;},
@@ -246,7 +274,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       const now=options.now??Date.now();
       const nextSignature=JSON.stringify([row.heartbeat,row.heartbeatCount,row.uploadedImages,row.completedCommands,
         row.lastProgress,row.lastSuccess,row.lastEvent,row.state,row.stateSince,row.active,row.alive,row.events]);
-      if(!same){frozenAt=null;frozenSnapshot=null;lastSnapshot=null;observed=false;}
+      if(!same){frozenAt=null;frozenSnapshot=null;lastSnapshot=null;observed=false;trace.reset();}
       if(connected&&!stale){
         lastSnapshot=signalHistory.observe(row,now);receivedAt=now;observed=true;
         if(signature!==nextSignature){frozenAt=null;frozenSnapshot=null;}
@@ -267,51 +295,103 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       if(!snapshot)return;
       const status=!connected?'Disconnected · last received snapshot'
         :stale||!liveSource?'Saved signal history':stateLabels[snapshot.state]||stateLabels.unknown;
-      root.dataset.signalState=!connected?'disconnected':snapshot.state;
-      state.textContent=status;
-      interval.textContent=view.live?'LIVE · 60 s':'60 s · last snapshot';
+      const signalState = !connected ? 'disconnected' : snapshot.state;
+      if (root.dataset.signalState !== signalState) root.dataset.signalState = signalState;
+      setText(state, status);
+      setText(interval, view.live ? 'LIVE · 60 s' : '60 s · last snapshot');
       const totals=snapshot.totals;
-      counterHeartbeat.textContent=compactNumber(totals.heartbeat);
-      counterCaptures.textContent=compactNumber(totals.capture);
-      counterSteps.textContent=compactNumber(totals.progress);
+      setText(counterHeartbeat, compactNumber(totals.heartbeat));
+      setText(counterCaptures, compactNumber(totals.capture));
+      setText(counterSteps, compactNumber(totals.progress));
       const lastHeartbeat=snapshot.points.heartbeat.at(-1);
       const heartbeatAge=lastHeartbeat==null?'last heartbeat unknown':`last heartbeat ${Math.max(0,Math.floor((now-lastHeartbeat)/1000))} s ago`;
-      root.setAttribute('aria-label',`${status}. ${snapshot.points.heartbeat.length} observed heartbeats; ${heartbeatAge}. ${snapshot.captureEvents.length} capture events and ${snapshot.points.progress.length} completed steps in 60 seconds. Unreported channels remain unknown.`);
-      if (follow) follow.disabled = row.kind === 'Rust / Host' || !row.groupId;
+      const label = `${status}. ${snapshot.points.heartbeat.length} observed heartbeats; ${heartbeatAge}. ${snapshot.captureEvents.length} capture events and ${snapshot.points.progress.length} completed steps in 60 seconds. Unreported channels remain unknown.`;
+      if (root.getAttribute('aria-label') !== label) root.setAttribute('aria-label', label);
+      if (follow) {
+        const disabled = row.kind === 'Rust / Host' || !row.groupId;
+        if (follow.disabled !== disabled) follow.disabled = disabled;
+      }
       if (document.hidden || !view.visible || !root.isConnected) return;
-      const width=Math.round(root.getBoundingClientRect().width);
-      if(width<80)return;
-      const height=compact?126:150,ratio=Math.min(devicePixelRatio||1,1.5);
-      if(canvas.width!==Math.round(width*ratio)||canvas.height!==Math.round(height*ratio)){
-        canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
+      const bounds = canvas.getBoundingClientRect();
+      const width = Math.round(bounds.width), height = Math.round(bounds.height);
+      if (width < 80 || height < 40) return;
+      const expanded = document.fullscreenElement === root;
+      const small = compact && !expanded;
+      const ratio = Math.min(devicePixelRatio || 1, 1.5);
+      if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
       }
-      const ctx=canvas.getContext('2d');if(!ctx)return;
-      ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,width,height);
-      ctx.fillStyle='#08151f';ctx.fillRect(0,0,width,height);
-      const left=34,graphWidth=Math.max(1,width-left-7),heartY=compact?17:23,capY=compact?65:81,stateY=compact?106:130;
-      const xAt=at=>left+(at-(now-WINDOW))/WINDOW*graphWidth;
-      layout={width,height,capY};
-      ctx.strokeStyle='#19313e';ctx.lineWidth=.6;
-      for(let i=0;i<=12;i++){
-        const x=left+graphWidth*i/12;ctx.beginPath();ctx.moveTo(x,4);ctx.lineTo(x,stateY+5);ctx.stroke();
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#06140e';
+      ctx.fillRect(0, 0, width, height);
+      const left = expanded ? 48 : 34;
+      const graphWidth = Math.max(1, width - left - 7);
+      const traceHeight = expanded ? height * .58 : small ? 44 : 56;
+      const heartY = 4 + traceHeight * .57;
+      const capY = expanded ? height * .79 : small ? 83 : 103;
+      const stateY = height - (expanded ? 30 : 20);
+      layout = { width, height, capY };
+
+      const rendered = trace.draw(ctx, {
+        left, top: 4, width: graphWidth, height: height - 22,
+        traceTop: 0, traceHeight,
+        points: snapshot.points.heartbeat, now, windowMs: WINDOW,
+        pixelRatio: ratio, reducedMotion: motion.matches,
+        live: view.live, showTrace: snapshot.supported.heartbeat,
+        observedSince: snapshot.since,
+      });
+      if (root.dataset.heartbeatRenderer !== rendered.renderer) {
+        root.dataset.heartbeatRenderer = rendered.renderer;
       }
-      for(const y of [heartY,capY,stateY]){
-        ctx.strokeStyle='#1c3440';ctx.beginPath();ctx.moveTo(left,y+14);ctx.lineTo(left+graphWidth,y+14);ctx.stroke();
+      if (rendered.renderer === 'canvas2d') {
+        showDisplayNote('Software signal renderer: WebGL is unavailable.');
+      } else if (displayNote.textContent.startsWith('Software signal renderer:')) {
+        showDisplayNote('');
       }
-      const observeStart=Math.max(now-WINDOW,snapshot.since);
-      if(observeStart>now-WINDOW){ctx.fillStyle='#070e18d0';ctx.fillRect(left,4,Math.max(0,xAt(observeStart)-left),stateY+6);}
-      for(const [text,y,color] of [['HB',heartY,'#75edc0'],['CAP',capY,'#79dce8'],['STATE',stateY,'#9bb3c2']]){
-        ctx.fillStyle=color;ctx.font='8px Consolas,monospace';ctx.fillText(text,2,y+3);
+
+      for (const [text, y, color] of [
+        ['HB', heartY, '#75edc0'], ['CAP', capY, '#79dce8'], ['STATE', stateY, '#9bb3c2'],
+      ]) {
+        ctx.fillStyle = color;
+        ctx.font = `${expanded ? 11 : 8}px Consolas, monospace`;
+        ctx.fillText(text, 2, y + 3);
       }
-      if(snapshot.supported.heartbeat) drawHeart(ctx,snapshot.points.heartbeat,now,xAt,heartY,left,left+graphWidth);
-      else {ctx.strokeStyle='#485963';ctx.setLineDash([3,4]);ctx.beginPath();ctx.moveTo(left,heartY);ctx.lineTo(left+graphWidth,heartY);ctx.stroke();ctx.setLineDash([]);}
-      hitBoxes=drawCaptures(ctx,snapshot.captureEvents,now,left,graphWidth,capY,compact);
-      drawStates(ctx,snapshot,now,left,graphWidth,stateY);
-      ctx.font='8px Segoe UI,sans-serif';ctx.fillStyle='#7998aa';ctx.textAlign='left';
-      ctx.fillText('−60 s',left,height-3);ctx.fillText('−30 s',left+graphWidth/2-10,height-3);
-      ctx.textAlign='right';ctx.fillText(view.live?'now':'saved',width-6,height-3);ctx.textAlign='left';
+      if (!snapshot.supported.heartbeat) {
+        ctx.strokeStyle = '#485963';
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(left, heartY);
+        ctx.lineTo(left + graphWidth, heartY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      hitBoxes = drawCaptures(ctx, snapshot.captureEvents, now, left, graphWidth, capY, small);
+      drawStates(ctx, snapshot, now, left, graphWidth, stateY);
+      ctx.font = `${expanded ? 11 : 8}px Segoe UI, sans-serif`;
+      ctx.fillStyle = '#99bda9';
+      ctx.textAlign = 'left';
+      ctx.fillText('−60 s', left, height - 3);
+      ctx.fillText('−30 s', left + graphWidth / 2 - 10, height - 3);
+      ctx.textAlign = 'right';
+      ctx.fillText(view.live ? 'now' : 'saved', width - 6, height - 3);
+      ctx.textAlign = 'left';
     },
-    destroy(){observer.unobserve(root);views.delete(view);root.remove();},
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      observer.unobserve(root);
+      resize.disconnect();
+      document.removeEventListener('fullscreenchange', fullscreenChanged);
+      trace.destroy();
+      views.delete(view);
+      // Removing a fullscreen element also exits browser fullscreen. Its DOM
+      // position never changes merely to enter or leave the expanded display.
+      root.remove();
+    },
   };
   views.add(view);observer.observe(root);
   return view;

@@ -12,8 +12,8 @@
 [data-signal-state="quiet"] .signal-state {color:#b6b1a1}
 [data-signal-state="disconnected"] .signal-state {color:#e1bc7d}
 .signal-window {flex-shrink:0;color:#7896a6;letter-spacing:.06em;font:8px/1.5 Consolas,monospace}
-.signal-canvas {display:block;width:100%;height:150px;border-radius:4px}
-.signal-compact .signal-canvas {height:126px}
+.signal-canvas {display:block;width:100%;height:172px;border-radius:4px}
+.signal-compact .signal-canvas {height:148px}
 .signal-canvas[role="button"]:focus-visible {outline:2px solid #79dce8;outline-offset:1px}
 .signal-legend {display:flex;align-items:center;flex-wrap:wrap;gap:5px 10px;padding-top:7px}
 .signal-key {display:inline-flex;align-items:center;gap:4px;color:#93acbb;font-size:9px;white-space:nowrap}
@@ -57,3 +57,75 @@
 .signal-compact .capture-spatial-status {display:block;margin-left:12px}
 @media(max-width:700px){.signal-heading{flex-wrap:wrap}.signal-follow{margin-left:0}}
 @media(prefers-reduced-motion:reduce){.signal-monitor{scroll-behavior:auto}}
+
+.signal-fullscreen {
+  flex-shrink:0;
+  padding:4px 6px;
+  border:1px solid #39644d;
+  border-radius:5px;
+  background:#0b2c1c;
+  color:#b0e7c6;
+  font:10px/1.2 "Segoe UI",system-ui,sans-serif;
+  cursor:pointer;
+}
+.signal-fullscreen:hover {
+  background:#16452b;
+  border-color:#74d69d;
+}
+.signal-fullscreen:focus-visible {
+  outline:2px solid #a6f2cb;
+  outline-offset:2px;
+}
+.signal-fullscreen:disabled {
+  opacity:.4;
+  cursor:default;
+}
+.signal-display-note {
+  display:block;
+  margin-top:6px;
+  color:#dfc794;
+  font-size:10px;
+}
+.signal-display-note[hidden] {
+  display:none;
+}
+.signal-monitor:fullscreen {
+  display:flex;
+  flex-direction:column;
+  box-sizing:border-box;
+  width:100vw;
+  height:100vh;
+  margin:0!important;
+  padding:clamp(16px,3vw,44px);
+  border:0;
+  border-radius:0;
+  background:#04100a;
+  overflow:auto;
+}
+.signal-monitor:fullscreen .signal-heading {
+  margin-bottom:16px;
+}
+.signal-monitor:fullscreen .signal-state {
+  font-size:16px;
+}
+.signal-monitor:fullscreen .signal-window {
+  font-size:12px;
+}
+.signal-monitor:fullscreen .signal-fullscreen {
+  padding:8px 12px;
+  font-size:12px;
+}
+.signal-monitor:fullscreen .signal-canvas {
+  flex-shrink:0;
+  height:clamp(280px,65vh,880px);
+}
+.signal-monitor:fullscreen .signal-legend {
+  padding-top:14px;
+  gap:10px 20px;
+}
+.signal-monitor:fullscreen .signal-key {
+  font-size:12px;
+}
+.signal-monitor:fullscreen .capture-spatial {
+  margin-top:20px;
+}
