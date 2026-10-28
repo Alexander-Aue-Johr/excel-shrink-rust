@@ -338,6 +338,7 @@ impl Drop for ExcelProgressTail {
 #[cfg(test)]
 mod excel_progress_tail_tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
 
