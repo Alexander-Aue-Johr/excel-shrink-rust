@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{collections::{BTreeMap, BTreeSet}, fs::{self, File}, io::{Read, Write}, path::{Path, PathBuf}, sync::atomic::{AtomicU64, Ordering}, time::{SystemTime, UNIX_EPOCH}};
 use zip::{ZipArchive, ZipWriter};
 
+mod scan;
+
 const SCHEMA: u32 = 10;
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -138,87 +140,6 @@ pub(crate) fn write_record<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 pub(crate) fn is_sheet(name: &str) -> bool {
     name.starts_with("xl/worksheets/") && name.ends_with(".xml") && !name[14..].contains('/')
 }
-fn visual_flags(name: &str, data: &[u8]) -> (bool, bool) {
-    static CONTEXT: std::sync::OnceLock<regex::bytes::Regex> = std::sync::OnceLock::new();
-    static LIVE: std::sync::OnceLock<regex::bytes::Regex> = std::sync::OnceLock::new();
-    let context = CONTEXT.get_or_init(|| regex::bytes::Regex::new(
-        r"(?i)<(?:[^\s<>:/]+:)?(?:conditionalFormatting|sparklineGroups|drawing|legacyDrawing|picture|oleObjects|controls|extLst|pivotTableParts|tableParts)\b"
-    ).unwrap());
-    let live = LIVE.get_or_init(|| regex::bytes::Regex::new(
-        r#"(?i)(?:\b(?:NOW|TODAY|RAND|RANDBETWEEN|RANDARRAY|RTD|WEBSERVICE|STOCKHISTORY|CELL|INFO|INDIRECT|IMAGE)\s*\(|\b(?:refreshOnLoad|refreshOnFileOpen)\s*=\s*["'](?:1|true)["'])"#
-    ).unwrap());
-    let worksheet = is_sheet(name);
-    let chart = name.starts_with("xl/chartsheets/") || name.starts_with("xl/charts/");
-    let refresh_sensitive = worksheet
-        || chart
-        || name == "xl/workbook.xml"
-        || name == "xl/connections.xml"
-        || name.starts_with("xl/queryTables/")
-        || name.starts_with("xl/externalLinks/");
-    // Explicit volatile functions and refresh-on-open flags are runtime-sensitive.
-    // Dependency parts are also rejected by calculation_certificate below;
-    // native capture does not share the COM recalculation startup settings.
-    (
-        chart || (worksheet && context.is_match(data)),
-        refresh_sensitive && live.is_match(data),
-    )
-}
-// Deliberately conservative whitelist. Unknown/UDF/external/volatile formulas
-// are recalculated on both sides each run, not persisted as timeless references.
-fn calculation_certificate(name: &str, data: &[u8]) -> (bool, bool) {
-    if name.starts_with("xl/externalLinks/") || name == "xl/connections.xml"
-        || name.starts_with("xl/queryTables/") || name.starts_with("xl/model/")
-        || name.ends_with("vbaProject.bin") || name.starts_with("xl/embeddings/") {
-        return (false, false);
-    }
-    if name.ends_with(".rels") {
-        let safe = (|| -> Result<bool> {
-            let mut reader = super::xml_views::Reader::<128>::new(data)?;
-            while let Some(tag) = reader.next()? {
-                if tag.local() != b"Relationship" || tag.kind == super::xml_views::Kind::End { continue; }
-                if tag.attr(b"TargetMode")? == Some(b"External".as_slice())
-                    && !tag.attr(b"Type")?.unwrap_or_default().ends_with(b"/hyperlink") { return Ok(false); }
-            }
-            Ok(true)
-        })();
-        return (safe.unwrap_or(false), false);
-    }
-    if !name.ends_with(".xml") { return (true, false); }
-    let result = (|| -> Result<(bool, bool)> {
-        use super::xml_views::{Reader, Kind, truth};
-        static FUNCTIONS: std::sync::OnceLock<regex::bytes::Regex> = std::sync::OnceLock::new();
-        let calls = FUNCTIONS.get_or_init(|| regex::bytes::Regex::new(r"([A-Za-z_][A-Za-z_0-9.]*)\s*\(").unwrap());
-        const PURE: &[&[u8]] = &[b"SUM", b"SUMIF", b"SUMIFS", b"SUMPRODUCT", b"PRODUCT", b"AVERAGE", b"AVERAGEIF", b"AVERAGEIFS",
-            b"COUNT", b"COUNTA", b"COUNTBLANK", b"COUNTIF", b"COUNTIFS", b"MIN", b"MAX", b"ABS", b"ROUND", b"ROUNDUP", b"ROUNDDOWN",
-            b"INT", b"MOD", b"POWER", b"SQRT", b"AND", b"OR", b"NOT", b"IF", b"IFERROR", b"IFNA", b"ISBLANK", b"ISNUMBER", b"ISTEXT", b"ISERROR", b"ISNA",
-            b"INDEX", b"MATCH", b"VLOOKUP", b"HLOOKUP", b"XLOOKUP", b"CHOOSE", b"ROW", b"ROWS", b"COLUMN", b"COLUMNS", b"LEN", b"LEFT", b"RIGHT", b"MID",
-            b"TRIM", b"CLEAN", b"SUBSTITUTE", b"REPLACE", b"CONCATENATE", b"CONCAT", b"TEXTJOIN", b"VALUE", b"TEXT", b"DATE", b"YEAR", b"MONTH", b"DAY",
-            b"HOUR", b"MINUTE", b"SECOND", b"TIME", b"TRUE", b"FALSE", b"NA", b"SUBTOTAL", b"AGGREGATE", b"LN", b"LOG", b"LOG10", b"EXP", b"SIN", b"COS", b"TAN"];
-        let mut reader = Reader::<128>::new(data)?; let mut safe = true; let mut has_formula = false;
-        while let Some(tag) = reader.next()? {
-            if tag.kind == Kind::End { continue; }
-            if tag.local() == b"calcPr" && truth(tag.attr(b"iterate")?) { safe = false; }
-            if matches!(tag.local(), b"connection" | b"queryTable" | b"pivotCacheDefinition")
-                && (truth(tag.attr(b"refreshOnLoad")?) || truth(tag.attr(b"refreshOnFileOpen")?)) { safe = false; }
-            if matches!(tag.local(), b"f" | b"formula" | b"formula1" | b"formula2" | b"definedName" | b"calculatedColumnFormula" | b"totalsRowFormula") {
-                has_formula = true;
-                if tag.attr(b"t")? == Some(b"dataTable".as_slice()) { safe = false; }
-                let element = reader.element(tag)?;
-                // Entity-encoded or non-ASCII call spellings must not bypass the
-                // ASCII pure-function certificate. Conservative cache miss only.
-                if !element.body.is_ascii() || element.body.contains(&b'&')
-                    || element.body.contains(&b'[') || element.body.contains(&b'|') { safe = false; }
-                for call in calls.captures_iter(element.body) {
-                    let function = call.get(1).unwrap().as_bytes();
-                    if !PURE.iter().any(|allowed| allowed.eq_ignore_ascii_case(function)) { safe = false; }
-                }
-            }
-        }
-        Ok((safe, has_formula))
-    })();
-    result.unwrap_or((false, true))
-}
-
 fn package_hash(parts: &BTreeMap<String, PartDigest>) -> String {
     let mut hash = Sha256::new(); hash.update(b"excel-shrink-package-v9\0");
     for (name, part) in parts {
@@ -227,13 +148,18 @@ fn package_hash(parts: &BTreeMap<String, PartDigest>) -> String {
     }
     hex(&hash.finalize())
 }
+pub(crate) fn manifest_algorithm_key() -> String {
+    let mut hash = Sha256::new();
+    hash.update(include_bytes!("artifact_cache.rs"));
+    hash.update(include_bytes!("artifact_cache/scan.rs"));
+    hash.update(include_bytes!("streaming_xml.rs"));
+    hash.update(include_bytes!("xml_views.rs"));
+    hex(&hash.finalize())
+}
 pub(crate) fn manifest(path: &Path) -> Result<PackageManifest> { manifest_in(path, &root()?) }
 pub(crate) fn manifest_in(path: &Path, cache: &Path) -> Result<PackageManifest> {
     let raw_hash = hash_file(path)?;
-    let mut algorithm_hash = Sha256::new();
-    algorithm_hash.update(include_bytes!("artifact_cache.rs"));
-    algorithm_hash.update(include_bytes!("xml_views.rs"));
-    let algorithm = hex(&algorithm_hash.finalize());
+    let algorithm = manifest_algorithm_key();
     let record = cache.join("packages").join(&algorithm[..16]).join(format!("{raw_hash}.json"));
     if let Some(manifest) = read_record::<PackageManifest>(&record) {
         if manifest.archive_sha256 == raw_hash && package_hash(&manifest.parts) == manifest.package_sha256 {
@@ -243,17 +169,15 @@ pub(crate) fn manifest_in(path: &Path, cache: &Path) -> Result<PackageManifest> 
     let _phase = super::visual_diagnostics::phase("validation.package_manifest", path.display().to_string());
     let mut zip = ZipArchive::new(File::open(path)?)?;
     let mut parts = BTreeMap::new();
-    let mut buffer = Vec::new();
     for index in 0..zip.len() {
         let mut part = zip.by_index(index)?;
         if part.is_dir() { continue; }
         let name = part.name().to_owned();
         ensure!(!parts.contains_key(&name), "duplicate ZIP member {name}");
-        buffer.clear();
-        part.read_to_end(&mut buffer).with_context(|| format!("read ZIP member {name}"))?;
-        let (visual_context, visual_runtime) = visual_flags(&name, &buffer);
-        let (recalc_cacheable, has_formula) = calculation_certificate(&name, &buffer);
-        parts.insert(name, PartDigest { bytes: buffer.len() as u64, sha256: sha256(&buffer), visual_context, visual_runtime, recalc_cacheable, has_formula });
+        let expected_bytes = part.size();
+        let digest = scan::digest_part(&name, &mut part, expected_bytes)
+            .with_context(|| format!("stream ZIP member {name}"))?;
+        parts.insert(name, digest);
     }
     drop(zip);
     ensure!(hash_file(path)? == raw_hash, "workbook changed while indexing {}", path.display());
@@ -281,8 +205,7 @@ pub(crate) fn prepare_baseline(source: &Path) -> Result<PreparedBaseline> {
     let logical = sha256(source_path.to_string_lossy().as_bytes());
     let mut recipe = Sha256::new();
     recipe.update(include_bytes!("../../../excel-shrink-core/src/workbook.rs"));
-    recipe.update(include_bytes!("artifact_cache.rs"));
-    recipe.update(include_bytes!("xml_views.rs"));
+    recipe.update(manifest_algorithm_key().as_bytes());
     let repair_key = hex(&recipe.finalize());
     let revision = sha256(format!("{source_sha256}/{repair_key}").as_bytes());
     let directory = cache.join("baselines").join(&logical[..16]).join(&revision[..32]);

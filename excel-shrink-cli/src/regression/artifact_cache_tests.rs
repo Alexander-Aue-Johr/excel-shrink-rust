@@ -134,3 +134,51 @@ fn v9_repair_is_idempotent_and_changes_workbook_xml_only() ->Result<()> {
     let cleaned=member(&baseline.snapshot.path,"xl/workbook.xml")?.unwrap();
     assert_eq!(excel_shrink_core::workbook::clean_workbook(&cleaned)?,cleaned);Ok(())
 }
+
+// Exercise the public streaming path, including EOF/length verification.
+fn calculation_certificate(name: &str, data: &[u8]) -> (bool, bool) {
+    let part = scan::digest_part(name, &mut &data[..], data.len() as u64).unwrap();
+    (part.recalc_cacheable, part.has_formula)
+}
+
+#[test]
+fn streamed_manifest_keeps_zip_crc_errors_fatal() -> Result<()> {
+    let directory = Directory::new();
+    let input = directory.0.join("corrupt.xlsx");
+    let sheet = b"<worksheet><sheetData><row><c><v>1</v></c></row></sheetData></worksheet>";
+    fixture(&input, sheet, None, false)?;
+    let mut bytes = fs::read(&input)?;
+    let position = memchr::memmem::find(&bytes, b"<v>1</v>").unwrap();
+    bytes[position + 3] = b'2'; // Stored payload changes; the recorded CRC does not.
+    fs::write(&input, bytes)?;
+    assert!(manifest_in(&input, &directory.0.join("cache")).is_err());
+    Ok(())
+}
+
+#[test]
+fn streamed_manifest_hashes_large_compressed_parts_exactly() -> Result<()> {
+    let directory = Directory::new();
+    let input = directory.0.join("large.xlsx");
+    let mut writer = ZipWriter::new(File::create(&input)?);
+    writer.start_file("xl/worksheets/sheet1.xml", zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated))?;
+    let prefix = b"<worksheet><sheetData><row><c t='inlineStr'><is><t>";
+    let suffix = b"</t></is></c></row></sheetData></worksheet>";
+    let block = [b'x'; 64 * 1024];
+    let mut expected = Sha256::new();
+    writer.write_all(prefix)?;
+    expected.update(prefix);
+    for _ in 0..64 {
+        writer.write_all(&block)?;
+        expected.update(&block);
+    }
+    writer.write_all(suffix)?;
+    expected.update(suffix);
+    writer.finish()?;
+    let manifest = manifest_in(&input, &directory.0.join("cache"))?;
+    let sheet = &manifest.parts["xl/worksheets/sheet1.xml"];
+    assert_eq!(sheet.bytes, (prefix.len() + block.len() * 64 + suffix.len()) as u64);
+    assert_eq!(sheet.sha256, hex(&expected.finalize()));
+    assert!(sheet.recalc_cacheable && !sheet.has_formula);
+    Ok(())
+}

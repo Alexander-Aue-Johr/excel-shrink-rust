@@ -1,4 +1,7 @@
-use super::visual_xml::{decimal, decode_attr, truth, Kind, Reader};
+#[path = "streaming_sheet.rs"]
+mod streaming_sheet;
+
+use super::visual_xml::{decimal, decode_attr, Kind, Reader};
 use anyhow::{ensure, Context, Result};
 use memchr::memmem;
 use serde::Serialize;
@@ -272,200 +275,9 @@ pub(in crate::regression) fn parse_column_width(value: &[u8]) -> Result<f64> {
     Ok(width)
 }
 
-fn scan_columns(body: &[u8], columns: &mut CaptureColumns) -> Result<()> {
-    let mut reader = Reader::<64>::new(body)?;
-    while let Some(tag) = reader.next()? {
-        if tag.kind == Kind::End || tag.local() != b"col" {
-            continue;
-        }
-        let min = decimal(tag.attr(b"min")?.context("column min missing")?)?;
-        let max = decimal(tag.attr(b"max")?.context("column max missing")?)?;
-        ensure!(
-            min > 0 && min <= max && max <= MAX_COLUMNS,
-            "invalid column range"
-        );
-        let width = tag.attr(b"width")?.map(parse_column_width).transpose()?;
-        columns.spans.push(CaptureColumnSpan {
-            min,
-            max,
-            width,
-            hidden: truth(tag.attr(b"hidden")?),
-        });
-    }
-    Ok(())
-}
-
-fn cell_body_flags(body: &[u8]) -> Result<(bool, bool)> {
-    if body.is_empty() {
-        return Ok((false, false));
-    }
-    let mut reader = Reader::<32>::new(body)?;
-    let mut content = false;
-    let mut inline_text = false;
-    while let Some(tag) = reader.next()? {
-        if tag.kind == Kind::End {
-            continue;
-        }
-        match tag.local() {
-            b"f" => {
-                content = true;
-                let _ = reader.element(tag)?;
-            }
-            b"v" => {
-                let element = reader.element(tag)?;
-                if element.body.iter().any(|byte| !byte.is_ascii_whitespace()) {
-                    content = true;
-                }
-            }
-            b"is" => {
-                let element = reader.element(tag)?;
-                let mut inline_reader = Reader::<32>::new(element.body)?;
-                while let Some(child) = inline_reader.next()? {
-                    if child.kind == Kind::End || child.local() != b"t" {
-                        continue;
-                    }
-                    let text = inline_reader.element(child)?;
-                    if text.body.iter().any(|byte| !byte.is_ascii_whitespace()) {
-                        content = true;
-                        inline_text = true;
-                    }
-                }
-            }
-            _ => {
-                let _ = reader.element(tag)?;
-            }
-        }
-    }
-    Ok((content, inline_text))
-}
-
-fn include_merge(summary: &mut SheetXmlSummary, reference: &[u8]) -> Result<()> {
-    for cell in reference.split(|byte| *byte == b':') {
-        let coordinate = Coordinate::parse(cell)?;
-        summary.max_row = summary.max_row.max(coordinate.row);
-        summary.max_column = summary.max_column.max(coordinate.column);
-    }
-    Ok(())
-}
-
-fn scan_merge_cells(body: &[u8], summary: &mut SheetXmlSummary) -> Result<()> {
-    let mut reader = Reader::<64>::new(body)?;
-    while let Some(tag) = reader.next()? {
-        if tag.kind == Kind::End || tag.local() != b"mergeCell" {
-            continue;
-        }
-        if let Some(reference) = tag.attr(b"ref")? {
-            include_merge(summary, reference)?;
-        }
-        let _ = reader.element(tag)?;
-    }
-    Ok(())
-}
-
+#[cfg(test)]
 fn scan_sheet(bytes: &[u8]) -> Result<SheetXmlSummary> {
-    let mut summary = SheetXmlSummary {
-        max_row: 1,
-        max_column: 1,
-        ..Default::default()
-    };
-    let mut reader = Reader::<128>::new(bytes)?;
-    let mut current_row = 0u32;
-    let mut current_column = 0u32;
-    let mut in_sheet_data = false;
-    let mut in_row = false;
-
-    while let Some(tag) = reader.next()? {
-        let local = tag.local();
-        if tag.kind == Kind::End {
-            if local == b"row" && tag.depth == 2 {
-                in_row = false;
-            } else if local == b"sheetData" && tag.depth == 1 {
-                in_sheet_data = false;
-            }
-            continue;
-        }
-
-        if tag.depth == 1 && local == b"dimension" {
-            let _ = reader.element(tag)?;
-            continue;
-        }
-        if tag.depth == 1 && local == b"sheetFormatPr" {
-            if let Some(width) = tag.attr(b"defaultColWidth")? {
-                summary.columns.default_width = parse_column_width(width)?;
-            }
-            let _ = reader.element(tag)?;
-            continue;
-        }
-        if tag.depth == 1 && local == b"cols" {
-            let element = reader.element(tag)?;
-            scan_columns(element.body, &mut summary.columns)?;
-            continue;
-        }
-        if tag.depth == 1 && local == b"sheetData" {
-            in_sheet_data = tag.kind == Kind::Start;
-            continue;
-        }
-        if tag.depth == 1 && local == b"mergeCells" {
-            let element = reader.element(tag)?;
-            scan_merge_cells(element.body, &mut summary)?;
-            continue;
-        }
-        if in_sheet_data && tag.depth == 2 && local == b"row" {
-            current_row = match tag.attr(b"r")? {
-                Some(value) => decimal(value)?,
-                None => current_row.checked_add(1).context("row overflow")?,
-            };
-            ensure!(
-                (1..=MAX_ROWS).contains(&current_row),
-                "row outside XLSX grid"
-            );
-            current_column = 0;
-            let hidden = truth(tag.attr(b"hidden")?);
-            if hidden {
-                // Visual-tail heuristic: once an
-                // explicit hidden row starts a trailing suffix, omitted row
-                // definitions do not cancel it. A later explicit visible row
-                // does cancel it and may start a new suffix further down.
-                if summary.trailing_hidden_row_start.is_none() {
-                    summary.trailing_hidden_row_start = Some(current_row);
-                }
-            } else {
-                summary.trailing_hidden_row_start = None;
-            }
-            in_row = tag.kind == Kind::Start;
-            continue;
-        }
-        if in_row && tag.depth == 3 && local == b"c" {
-            let reference = tag.attr(b"r")?;
-            let coordinate = match reference {
-                Some(value) => Coordinate::parse(value)?,
-                None => Coordinate {
-                    row: current_row,
-                    column: current_column.checked_add(1).context("column overflow")?,
-                },
-            };
-            ensure!(
-                coordinate.row == current_row && coordinate.column <= MAX_COLUMNS,
-                "cell reference disagrees with row"
-            );
-            current_column = coordinate.column;
-            let cell_type = tag.attr(b"t")?.unwrap_or(b"n");
-            let element = reader.element(tag)?;
-            let (content, inline_text) = cell_body_flags(element.body)?;
-            if content {
-                summary.max_row = summary.max_row.max(coordinate.row);
-                summary.max_column = summary.max_column.max(coordinate.column);
-                summary.has_text |=
-                    inline_text || matches!(cell_type, b"s" | b"inlineStr" | b"str");
-            }
-            continue;
-        }
-        if tag.depth == 1 {
-            let _ = reader.element(tag)?;
-        }
-    }
-
-    Ok(summary)
+    streaming_sheet::scan(bytes)
 }
 
 fn worksheet_relationships_path(sheet_part: &str) -> Result<String> {
@@ -772,8 +584,10 @@ pub(crate) fn build_workbook_visual_plan(path: &Path) -> Result<WorkbookVisualPl
     let mut sheets = Vec::with_capacity(descriptors.len());
 
     for descriptor in descriptors {
-        let sheet_xml = read_zip_entry(&mut zip, &descriptor.file)?;
-        let xml = scan_sheet(&sheet_xml)?;
+        let sheet = zip.by_name(&descriptor.file)
+            .with_context(|| format!("open worksheet {}", descriptor.file))?;
+        let xml = streaming_sheet::scan(sheet)
+            .with_context(|| format!("stream capture bounds for {}", descriptor.file))?;
         let drawing = drawing_summary(&mut zip, &descriptor.file)?;
 
         let trailing_column = xml.columns.trailing_hidden_start()?;
