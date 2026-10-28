@@ -473,6 +473,7 @@ dependencies = [
  "excel-shrink-core",
  "futures-util",
  "image",
+ "libc",
  "memchr",
  "notify",
  "rayon",

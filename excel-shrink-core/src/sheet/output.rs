@@ -106,6 +106,7 @@ pub fn build_clean_sheet_xml_with_progress(
     progress("scan_reference_hints");
     let mut metrics = preprocessed.clean_sheet_metrics;
     metrics.has_hints = crate::reference_scanner::check_for_reference_hints(&assembled.xml);
+    metrics.source_content_cell_count_complete = true;
 
     Ok(CleanedSheetData {
         xml: assembled.xml,
@@ -207,6 +208,17 @@ fn clean_pruned_sheet_data(
         metrics.sheet_protection_enabled,
         preserve_through_row,
     );
+    if tail_contains_content_cell(&sheet_data[ranges.cells_range.len()..]) {
+        metrics.tail_content_guard_triggered = true;
+        progress("clean_content_cell_tail");
+        return clean_cells_range(
+            sheet_data,
+            params,
+            metrics,
+            parallel_range_chunk_size,
+            progress,
+        );
+    }
     record_pruned_sheet_data_tail(sheet_data.len(), &ranges, metrics);
 
     let cleaned_cells = clean_cells_range(
@@ -691,8 +703,64 @@ fn cutoff_after_row_boundary(
         .map(|end| extend_cutoff_to_visible_row_before_hidden_tail(sheet_data, end, params))
         .unwrap_or_else(|| scan_cutoff_after_row_boundary(sheet_data, max_row, params));
 
+    if tail_contains_content_cell(&sheet_data[cutoff..]) {
+        metrics.tail_content_guard_triggered = true;
+        return sheet_data.len();
+    }
+
     record_removed_sheet_data_tail(metrics, sheet_data.len(), cutoff);
     cutoff
+}
+
+/// A range heuristic may miss cells whose opening tag has no literal space
+/// after `<c`. Scan only the suffix outside its recognized cell range.
+fn tail_contains_content_cell(tail: &[u8]) -> bool {
+    let mut position = 0;
+
+    while let Some(relative) = find_bytes(&tail[position..], b"<c") {
+        let cell_start = position + relative;
+        let after_name = cell_start + b"<c".len();
+        if !xml_name_is_delimited(tail, after_name) {
+            position = after_name;
+            continue;
+        }
+
+        let Some(tag_end) = find_byte_from(tail, b'>', cell_start) else {
+            return true;
+        };
+        if tag_end > cell_start && tail[tag_end - 1] == b'/' {
+            position = tag_end + 1;
+            continue;
+        }
+
+        let content_start = tag_end + 1;
+        let Some(close_relative) = find_bytes(&tail[content_start..], b"</c>") else {
+            return true;
+        };
+        let content_end = content_start + close_relative;
+        if cell_has_content_markup(&tail[content_start..content_end]) {
+            return true;
+        }
+        position = content_end + b"</c>".len();
+    }
+
+    false
+}
+
+fn cell_has_content_markup(cell_content: &[u8]) -> bool {
+    let mut position = 0;
+    while let Some(tag_start) = find_byte_from(cell_content, b'<', position) {
+        let tag = &cell_content[tag_start..];
+        if tag.starts_with(b"<![CDATA[")
+            || (tag.starts_with(b"<v") && xml_name_is_delimited(cell_content, tag_start + 2))
+            || (tag.starts_with(b"<f") && xml_name_is_delimited(cell_content, tag_start + 2))
+            || (tag.starts_with(b"<is") && xml_name_is_delimited(cell_content, tag_start + 3))
+        {
+            return true;
+        }
+        position = tag_start + 1;
+    }
+    false
 }
 
 fn scan_cutoff_after_row_boundary(
@@ -1207,6 +1275,86 @@ mod tests {
             until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
             clean_sheet_metrics: CleanSheetMetrics::default(),
         }
+    }
+
+    #[test]
+    fn range_tail_pruning_preserves_content_cells_with_other_tag_delimiters() {
+        let params = default_params();
+        let sheet_data = br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="2"><c
+r="A2"><v>42</v></c></row><row r="3"><c	r="A3"><f>1+1</f></c></row><row r="4"><c> <is><t>text</t></is></c></row>"#;
+        let cleaned = build_clean_sheet_xml(
+            preprocessed_with_sheet_data(sheet_data, None),
+            &params,
+            false,
+        )
+        .unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+
+        assert!(xml.contains("<v>42</v>"));
+        assert!(xml.contains("<f>1+1</f>"));
+        assert!(xml.contains("<is><t>text</t></is>"));
+        assert_eq!(cleaned.metrics.source_content_cell_count, 4);
+        assert!(cleaned.metrics.tail_content_guard_triggered);
+
+        let mut metrics = cleaned.metrics;
+        let touched_rows = std::collections::HashSet::from([2]);
+        crate::sheet::sheet_data::clean_selected_rows_and_cells_in_cell_range(
+            sheet_data,
+            &params,
+            &mut metrics,
+            &touched_rows,
+        )
+        .unwrap();
+        assert_eq!(metrics.source_content_cell_count, 4);
+    }
+
+    #[test]
+    fn content_cell_in_visible_rows_range_is_counted() {
+        let params = default_params();
+        let sheet_data = b"<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"2\" hidden=\"1\"><c\nr=\"A2\"><v>42</v></c></row><row r=\"3\"/>";
+        let ranges = crate::sheet::ranges::retrieve_sheet_data_range_containing_cells(
+            sheet_data, &params, false, None,
+        );
+        assert!(ranges
+            .rows_range
+            .windows(b"<v>42</v>".len())
+            .any(|window| window == b"<v>42</v>"));
+
+        let cleaned = build_clean_sheet_xml(
+            preprocessed_with_sheet_data(sheet_data, None),
+            &params,
+            false,
+        )
+        .unwrap();
+
+        assert!(cleaned
+            .xml
+            .windows(b"<v>42</v>".len())
+            .any(|window| window == b"<v>42</v>"));
+        assert_eq!(cleaned.metrics.source_content_cell_count, 2);
+        assert!(cleaned.metrics.tail_content_guard_triggered);
+    }
+
+    #[test]
+    fn row_boundary_cutoff_preserves_later_content_cell() {
+        let params = default_params();
+        let mut metrics = CleanSheetMetrics::default();
+        let sheet_data = b"<row r=\"1\"/><row r=\"2\"><c\nr=\"A2\"><v>42</v></c></row>";
+
+        let cutoff = super::cutoff_after_row_boundary(sheet_data, 1, &params, &mut metrics);
+
+        assert_eq!(cutoff, sheet_data.len());
+        assert!(metrics.tail_content_guard_triggered);
+    }
+
+    #[test]
+    fn candidate_tail_scan_preserves_cdata_and_skips_empty_cells() {
+        assert!(super::tail_contains_content_cell(
+            b"<row r=\"2\"><c r=\"A2\"><is><t><![CDATA[text]]></t></is></c></row>"
+        ));
+        assert!(!super::tail_contains_content_cell(
+            b"<row r=\"2\"><c r=\"A2\"/><c r=\"B2\"></c></row>"
+        ));
     }
 
     fn temp_xlsx_path(name: &str) -> PathBuf {

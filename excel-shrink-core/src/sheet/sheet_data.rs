@@ -242,7 +242,6 @@ struct RowAlignedChunk {
 }
 
 struct CleanedChunk {
-    index: usize,
     xml: Vec<u8>,
     metrics: CleanSheetMetrics,
 }
@@ -454,14 +453,7 @@ fn clean_row_aligned_chunks_by_max_size(
         sheet_name,
         &chunks,
     );
-    let cleaned_chunks =
-        clean_chunks_in_parallel(sheet_data, params, metrics, &chunks, clean_chunk)?;
-
-    Ok(assemble_cleaned_chunks(
-        cleaned_chunks,
-        sheet_data.len(),
-        metrics,
-    ))
+    clean_chunks_in_parallel(sheet_data, params, metrics, &chunks, clean_chunk)
 }
 
 fn log_chunking_plan(
@@ -488,10 +480,10 @@ fn log_chunking_plan(
 fn clean_chunks_in_parallel(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
-    metrics: &CleanSheetMetrics,
+    metrics: &mut CleanSheetMetrics,
     chunks: &[RowAlignedChunk],
     clean_chunk: CleanChunkFn,
-) -> Result<Vec<CleanedChunk>> {
+) -> Result<Vec<u8>> {
     let _profile = profiling::phase(
         "range_chunks_fork_join",
         &params.xlsx_file_path,
@@ -514,13 +506,36 @@ fn clean_chunks_in_parallel(
             )
         })
         .collect();
-    jobs.into_par_iter()
-        .map(|(chunk, pending, handoff)| {
-            drop(pending);
-            handoff.finish();
-            clean_chunk_in_isolation(sheet_data, params, &base_metrics, chunk, clean_chunk)
-        })
-        .collect()
+    let mut output = Vec::with_capacity(sheet_data.len().min(64 * 1024 * 1024));
+    let mut remaining_jobs = jobs.into_iter();
+    let batch_size = rayon::current_num_threads();
+
+    loop {
+        let batch: Vec<_> = remaining_jobs.by_ref().take(batch_size).collect();
+        if batch.is_empty() {
+            break;
+        }
+
+        // Keep only one worker's result per thread while the assembled output grows.
+        let cleaned_chunks: Result<Vec<_>> = batch
+            .into_par_iter()
+            .map(|(chunk, pending, handoff)| {
+                drop(pending);
+                handoff.finish();
+                clean_chunk_in_isolation(sheet_data, params, &base_metrics, chunk, clean_chunk)
+            })
+            .collect();
+
+        for chunk in cleaned_chunks? {
+            {
+                let _copy = profiling::phase("append_chunk_xml", "", "");
+                extend_without_large_growth(&mut output, &chunk.xml);
+            }
+            merge_chunk_metrics(metrics, chunk.metrics);
+        }
+    }
+
+    Ok(output)
 }
 
 fn clean_chunk_in_isolation(
@@ -544,32 +559,9 @@ fn clean_chunk_in_isolation(
     )?;
 
     Ok(CleanedChunk {
-        index: chunk.index,
         xml,
         metrics: chunk_metrics,
     })
-}
-
-fn assemble_cleaned_chunks(
-    mut cleaned_chunks: Vec<CleanedChunk>,
-    input_size: usize,
-    metrics: &mut CleanSheetMetrics,
-) -> Vec<u8> {
-    let _profile = profiling::phase("assemble_range_chunks", "", "");
-    cleaned_chunks.sort_by_key(|chunk| chunk.index);
-
-    let mut output = Vec::with_capacity(input_size.min(64 * 1024 * 1024));
-    for chunk in cleaned_chunks {
-        {
-            let _copy = profiling::phase("append_chunk_xml", "", "");
-            extend_without_large_growth(&mut output, &chunk.xml);
-        }
-        {
-            let _merge = profiling::phase("merge_chunk_metrics", "", "");
-            merge_chunk_metrics(metrics, chunk.metrics);
-        }
-    }
-    output
 }
 
 fn row_end_positions(sheet_data: &[u8]) -> impl Iterator<Item = usize> + '_ {
@@ -620,6 +612,7 @@ fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {
         sheet_protection_enabled: base.sheet_protection_enabled,
         visible_data_range_bounds: base.visible_data_range_bounds.clone(),
         has_hints: base.has_hints,
+        source_content_cell_count_complete: base.source_content_cell_count_complete,
         cleanup_stats: if base.cleanup_stats.enabled {
             crate::models::CleanupStats::enabled()
         } else {
@@ -632,6 +625,7 @@ fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {
 fn merge_chunk_metrics(target: &mut CleanSheetMetrics, chunk: CleanSheetMetrics) {
     target.kept_cell_states.extend(chunk.kept_cell_states);
     target.deleted_cell_count += chunk.deleted_cell_count;
+    target.source_content_cell_count += chunk.source_content_cell_count;
 
     target.whitespace_candidates += chunk.whitespace_candidates;
     target.hidden_candidates += chunk.hidden_candidates;
@@ -986,15 +980,22 @@ mod tests {
                 .unwrap();
 
         let mut parallel_metrics = CleanSheetMetrics::default();
-        let parallel = clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
-            sheet_data,
-            &params,
-            &mut parallel_metrics,
-            80,
-            "cells_range",
-            &params.zip_info_filename,
-        )
-        .unwrap();
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(2)
+            .build()
+            .unwrap();
+        let parallel = pool
+            .install(|| {
+                clean_sheet_rows_and_cells_in_cell_range_parallel_by_max_chunk_size(
+                    sheet_data,
+                    &params,
+                    &mut parallel_metrics,
+                    80,
+                    "cells_range",
+                    &params.zip_info_filename,
+                )
+            })
+            .unwrap();
 
         assert_eq!(parallel, sequential);
         assert_eq!(
@@ -1004,6 +1005,11 @@ mod tests {
         assert_eq!(
             parallel_metrics.deleted_cell_count,
             sequential_metrics.deleted_cell_count
+        );
+        assert_eq!(parallel_metrics.source_content_cell_count, 4);
+        assert_eq!(
+            parallel_metrics.source_content_cell_count,
+            sequential_metrics.source_content_cell_count
         );
         assert_eq!(
             parallel_metrics.candidates.len(),
@@ -1050,15 +1056,22 @@ mod tests {
                 .unwrap();
 
         let mut parallel_metrics = CleanSheetMetrics::default();
-        let parallel = clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size(
-            sheet_data,
-            &params,
-            &mut parallel_metrics,
-            70,
-            "rows_range",
-            &params.zip_info_filename,
-        )
-        .unwrap();
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(2)
+            .build()
+            .unwrap();
+        let parallel = pool
+            .install(|| {
+                clean_empty_rows_from_after_cell_range_parallel_by_max_chunk_size(
+                    sheet_data,
+                    &params,
+                    &mut parallel_metrics,
+                    40,
+                    "rows_range",
+                    &params.zip_info_filename,
+                )
+            })
+            .unwrap();
 
         assert_eq!(parallel, sequential);
     }

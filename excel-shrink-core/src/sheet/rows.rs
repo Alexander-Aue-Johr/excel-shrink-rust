@@ -701,6 +701,9 @@ fn clean_cells<'a, const SAMPLED: bool>(
         }) else {
             break;
         };
+        if block.has_content && !metrics.source_content_cell_count_complete {
+            metrics.source_content_cell_count += 1;
+        }
         let cleaned_cell = clean_cell_block(
             block,
             params,

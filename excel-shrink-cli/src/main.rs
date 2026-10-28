@@ -41,6 +41,10 @@ pub struct Cli {
     #[arg(long)]
     disable_multiprocessing: bool,
 
+    /// Rayon worker threads used during cleanup, up to the available logical CPUs.
+    #[arg(long, value_parser = parse_rayon_threads)]
+    rayon_threads: Option<usize>,
+
     /// Read buffer size for streaming XML preprocessing.
     /// This is not the number or size of Rayon work items.
     #[arg(long, default_value_t = 16_777_216)]
@@ -69,20 +73,27 @@ pub struct Cli {
     #[arg(long)]
     disable_sheetdata_splitting: bool,
 
-    /// Run slower but attribution-safe analysis mode.
+    /// Collect cleanup statistics while using the normal cleanup policy.
+    /// Use --analysis-csv to write the statistics to a file.
     #[arg(long)]
     analysis_mode: bool,
 
     /// Write per-sheet cleanup statistics to this CSV file.
-    /// This also uses attribution-safe analysis behavior.
+    /// The cleanup policy stays the same unless --disable-tail-pruning is set.
     #[arg(long)]
     analysis_csv: Option<PathBuf>,
+
+    /// Write ZIP size/CRC identity evidence for each output workbook as JSON.
+    /// This does not change cleanup behavior or enable attribution analysis.
+    #[arg(long)]
+    shrink_evidence_json: Option<PathBuf>,
 
     /// Resolve relative input, output, log, and report paths from this directory.
     #[arg(long)]
     working_directory: Option<PathBuf>,
 
-    /// Disable trailing sheetData range pruning in analysis-sensitive runs.
+    /// Disable trailing sheetData range pruning for a separate attribution comparison.
+    /// With --analysis-csv, this reproduces the former analysis cleanup policy.
     #[arg(long)]
     disable_tail_pruning: bool,
 
@@ -135,6 +146,16 @@ pub struct Cli {
     /// 1 is much faster than the ZIP default and usually still compresses XLSX XML very well.
     #[arg(long, default_value_t = 2)]
     compression_level: i32,
+
+    /// Verify matching ZIP size and CRC-32 by comparing XML byte for byte.
+    /// By default, matching size and CRC-32 are trusted.
+    #[arg(long)]
+    verify_unchanged_xml: bool,
+
+    /// Publish changes to workbook.xml even when no worksheet XML changed.
+    /// By default, workbook-only cleanup is reported but the source archive is copied.
+    #[arg(long)]
+    write_workbook_only_changes: bool,
 
     /// Store cleaned XML entries without Deflate compression.
     /// Useful for RAM-disk throughput benchmarks and for showing pure cleaning/package speed.
@@ -262,6 +283,19 @@ fn run_cleanup_command(cli: Cli) -> anyhow::Result<()> {
     let result = run_cleanup_pipeline(&cli);
     guard.finish()?;
     result
+}
+
+fn parse_rayon_threads(value: &str) -> Result<usize, String> {
+    let threads = value
+        .parse::<usize>()
+        .map_err(|_| "Rayon threads must be a positive integer".to_owned())?;
+    let logical_cpus = std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1);
+    if !(1..=logical_cpus).contains(&threads) {
+        return Err(format!("Rayon threads must be between 1 and {logical_cpus}"));
+    }
+    Ok(threads)
 }
 
 fn set_working_directory(cli: &Cli) -> anyhow::Result<()> {
@@ -487,6 +521,40 @@ mod tests {
             ])),
             None
         );
+    }
+
+    #[test]
+    fn cli_bounds_rayon_threads_to_available_logical_cpus() {
+        let cli = Cli::try_parse_from([
+            "excel-shrink",
+            "input.xlsx",
+            "out",
+            "--rayon-threads",
+            "1",
+        ])
+        .unwrap();
+        assert_eq!(cli.rayon_threads, Some(1));
+
+        for invalid in [
+            "0".to_owned(),
+            (std::thread::available_parallelism()
+                .map(|count| count.get())
+                .unwrap_or(1)
+                + 1)
+            .to_string(),
+        ] {
+            assert!(
+                Cli::try_parse_from([
+                    "excel-shrink",
+                    "input.xlsx",
+                    "out",
+                    "--rayon-threads",
+                    &invalid,
+                ])
+                .is_err(),
+                "{invalid} must be rejected"
+            );
+        }
     }
 
     #[test]

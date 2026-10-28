@@ -319,7 +319,18 @@ cargo run --release -- data/xlsx_files output --analysis-csv analysis.csv
 Each row contains the cleanup `cause`, the exact per-cause XML byte reduction in
 `reduction_bytes_uncompressed_xml`, and `reduction_ratio`, which divides that per-cause reduction by
 the original sheet or workbook XML size. The ZIP-compressed XLSX file size is not used for these
-analysis rows.
+analysis rows. This CSV records the normal cleanup policy, including sheet-data
+tail pruning. To reproduce the older attribution variant without tail pruning,
+add `--disable-tail-pruning` explicitly. That variant can produce a different
+XLSX and should be measured separately. The CSV column `tail_pruning_disabled`
+records which policy produced each row.
+
+`--shrink-evidence-json evidence.json` writes per-sheet ZIP CRC-32 and
+uncompressed-length identities, source content-cell counts, tail-pruning byte
+counts, and whether the content guard kept a candidate tail for full cleaning.
+A null sheet metric means that sheet was not cleaned, for example because it
+contained CDATA. The package SHA-256 fields hash ZIP member names, lengths,
+and CRC-32 values; they are not hashes of the XLSX bytes.
 
 ## Setting up WSL on Windows
 

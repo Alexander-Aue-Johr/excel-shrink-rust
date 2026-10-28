@@ -10,10 +10,43 @@ use crate::sheet::worksheet::{process_worksheet_node, WorksheetTag};
 use crate::xml::namespaces::NamespaceGuard;
 use crate::xml::{find_byte_from, find_bytes, rfind_bytes};
 use regex::bytes::Regex;
+use memchr::memmem;
 use std::io::Read;
 use std::sync::OnceLock;
 
 static WORKSHEET_START_RE: OnceLock<Regex> = OnceLock::new();
+const CDATA_START: &[u8] = b"<![CDATA[";
+
+#[derive(Default)]
+struct CdataMarker {
+    tail: [u8; CDATA_START.len() - 1],
+    tail_len: usize,
+}
+
+impl CdataMarker {
+    fn found(&mut self, chunk: &[u8]) -> bool {
+        let head_len = chunk.len().min(self.tail.len());
+        let mut boundary = [0u8; 2 * (CDATA_START.len() - 1)];
+        boundary[..self.tail_len].copy_from_slice(&self.tail[..self.tail_len]);
+        boundary[self.tail_len..self.tail_len + head_len].copy_from_slice(&chunk[..head_len]);
+        if memmem::find(&boundary[..self.tail_len + head_len], CDATA_START).is_some()
+            || memmem::find(chunk, CDATA_START).is_some()
+        {
+            return true;
+        }
+
+        let keep = self.tail.len().min(self.tail_len + chunk.len());
+        if chunk.len() >= keep {
+            self.tail[..keep].copy_from_slice(&chunk[chunk.len() - keep..]);
+        } else {
+            let old_len = keep - chunk.len();
+            self.tail.copy_within(self.tail_len - old_len..self.tail_len, 0);
+            self.tail[old_len..keep].copy_from_slice(chunk);
+        }
+        self.tail_len = keep;
+        false
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct PreprocessedSheetXml {
@@ -109,6 +142,7 @@ struct SheetXmlPreprocessor<'a, R, P> {
     last_reported_state: Option<SheetStreamingState>,
     reached_eof: bool,
     namespace_guard: NamespaceGuard,
+    cdata_marker: CdataMarker,
     processed_tags: Vec<WorksheetTag>,
     result: PreprocessedSheetXml,
     column_definitions: Option<ColumnRangeMap>,
@@ -139,6 +173,7 @@ where
             last_reported_state: None,
             reached_eof: false,
             namespace_guard: NamespaceGuard::default(),
+            cdata_marker: CdataMarker::default(),
             processed_tags: Vec::new(),
             result,
             column_definitions: None,
@@ -194,6 +229,9 @@ where
                 return Err(ShrinkError::UnsupportedNamespace);
             }
         } else {
+            if self.cdata_marker.found(&self.read_buffer[..bytes_read]) {
+                return Err(ShrinkError::UnsupportedCData);
+            }
             if self.namespace_guard.check(&self.read_buffer[..bytes_read]) {
                 return Err(ShrinkError::UnsupportedNamespace);
             }
@@ -391,4 +429,26 @@ fn extend_without_large_growth(out: &mut Vec<u8>, bytes: &[u8]) {
         out.reserve_exact((bytes.len() - spare).max(16 * 1024 * 1024));
     }
     out.extend_from_slice(bytes);
+}
+
+#[cfg(test)]
+mod cdata_tests {
+    use super::CdataMarker;
+
+    #[test]
+    fn marker_is_detected_across_every_input_boundary() {
+        let xml = b"<worksheet><oddFooter><![CDATA[&P]]></oddFooter></worksheet>";
+        for chunk_size in 1..=xml.len() {
+            let mut marker = CdataMarker::default();
+            let found = xml.chunks(chunk_size).any(|chunk| marker.found(chunk));
+            assert!(found, "chunk size {chunk_size}");
+        }
+    }
+
+    #[test]
+    fn incomplete_marker_does_not_trigger_passthrough() {
+        let mut marker = CdataMarker::default();
+        assert!(!marker.found(b"<worksheet><!-- <![CDATA"));
+        assert!(!marker.found(b" --></worksheet>"));
+    }
 }

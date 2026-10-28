@@ -22,6 +22,7 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         recursive: false,
         batch_report: None,
         disable_multiprocessing: false,
+        rayon_threads: None,
         chunk_size: 16_777_216,
         parallel_range_chunk_size: crate::DEFAULT_PARALLEL_RANGE_CHUNK_SIZE,
         force_overwrite: false,
@@ -30,6 +31,7 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         disable_sheetdata_splitting: false,
         analysis_mode,
         analysis_csv,
+        shrink_evidence_json: None,
         working_directory: None,
         disable_tail_pruning: false,
         disable_trailing_layout_only_rows: false,
@@ -42,6 +44,8 @@ fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -
         writer_workers: None,
         max_active_workbooks: None,
         compression_level: 1,
+        verify_unchanged_xml: false,
+        write_workbook_only_changes: false,
         store_output: false,
         remove_unreferenced_whitespace_cells: false,
         keep_unreferenced_hidden_content_cells: false,
@@ -116,6 +120,177 @@ fn equal_size_and_crc_do_not_hide_changed_xml() {
 }
 
 #[test]
+fn unchanged_check_filters_length_and_crc_before_optional_exact_comparison() {
+    let original_xml = b"<worksheet><!--a02552f76dbdf5fd--></worksheet>";
+    let collision_xml = b"<worksheet><!--670009b22c087272--></worksheet>";
+    let original = compressed_test_entry(original_xml, CompressionMethod::Stored, 0);
+
+    for trust_crc in [false, true] {
+        assert!(unchanged_original_entry(
+            &original,
+            0,
+            original_xml,
+            CompressionMethod::Stored,
+            trust_crc,
+        )
+        .unwrap());
+        assert!(!unchanged_original_entry(
+            &original,
+            0,
+            &original_xml[..original_xml.len() - 1],
+            CompressionMethod::Stored,
+            trust_crc,
+        )
+        .unwrap());
+        assert!(!unchanged_original_entry(
+            &original,
+            0,
+            original_xml,
+            CompressionMethod::Deflated,
+            trust_crc,
+        )
+        .unwrap());
+    }
+
+    assert!(!unchanged_original_entry(
+        &original,
+        0,
+        collision_xml,
+        CompressionMethod::Stored,
+        false,
+    )
+    .unwrap());
+    assert!(unchanged_original_entry(
+        &original,
+        0,
+        collision_xml,
+        CompressionMethod::Stored,
+        true,
+    )
+    .unwrap());
+}
+
+#[test]
+fn unchanged_workbook_is_copied_byte_for_byte_in_both_modes() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("excel_shrink_noop_{unique}"));
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("unchanged.xlsx");
+    let mut writer = ZipWriter::new(File::create(&input).unwrap());
+    for (name, xml) in [
+        ("xl/workbook.xml", b"<workbook><sheets/></workbook>".as_slice()),
+        ("xl/worksheets/sheet1.xml", b"<worksheet><sheetData><row r=\"1\"><c r=\"A1\"><v>1</v></c></row></sheetData></worksheet>"),
+    ] {
+        writer
+            .start_file(
+                name,
+                FileOptions::default().compression_method(CompressionMethod::Deflated),
+            )
+            .unwrap();
+        writer.write_all(xml).unwrap();
+    }
+    writer.finish().unwrap();
+    let source = std::fs::read(&input).unwrap();
+
+    for trust_crc in [false, true] {
+        let mut cli = cli_with_analysis_flags(false, None);
+        cli.output = root.join(format!("out-{trust_crc}"));
+        cli.disable_multiprocessing = true;
+        cli.writer_workers = Some(1);
+        cli.verify_unchanged_xml = !trust_crc;
+        cli.shrink_evidence_json = Some(root.join(format!("evidence-{trust_crc}.json")));
+        process_files(vec![input.clone()], &cli).unwrap();
+        assert_eq!(std::fs::read(cli.output.join("unchanged.xlsx")).unwrap(), source);
+        let evidence: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(cli.shrink_evidence_json.as_ref().unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(evidence["version"], 1);
+        assert_eq!(evidence["workbooks"][0]["workbook_original_archive_reused"], true);
+        assert_eq!(evidence["workbooks"][0]["workbook_crc_length_equal"], true);
+        assert_eq!(
+            evidence["workbooks"][0]["original_package_crc_length_sha256"],
+            evidence["workbooks"][0]["cleaned_package_crc_length_sha256"]
+        );
+        assert_eq!(
+            evidence["workbooks"][0]["workbook_xml_original_entries"],
+            evidence["workbooks"][0]["workbook_xml_cleaned_entries"]
+        );
+        assert_eq!(
+            evidence["workbooks"][0]["sheets"]["xl/worksheets/sheet1.xml"]
+                ["crc_length_equal"],
+            true
+        );
+        let sheet = &evidence["workbooks"][0]["sheets"]["xl/worksheets/sheet1.xml"];
+        assert_eq!(sheet["source_content_cell_count"], 1);
+        assert_eq!(sheet["tail_pruning_removed_bytes_uncompressed_xml"], 0);
+        assert_eq!(sheet["tail_content_guard_triggered"], false);
+    }
+
+    let mut cli = cli_with_analysis_flags(false, None);
+    cli.output = root.join("stored-output");
+    cli.disable_multiprocessing = true;
+    cli.writer_workers = Some(1);
+    cli.store_output = true;
+    cli.shrink_evidence_json = Some(root.join("stored-evidence.json"));
+    assert!(!attribution_safe_analysis(&cli));
+    process_files(vec![input.clone()], &cli).unwrap();
+    let evidence: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(cli.shrink_evidence_json.as_ref().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(evidence["workbooks"][0]["workbook_original_archive_reused"], false);
+    assert_eq!(evidence["workbooks"][0]["workbook_crc_length_equal"], true);
+    assert_eq!(
+        evidence["workbooks"][0]["sheets"]["xl/worksheets/sheet1.xml"]
+            ["crc_length_equal"],
+        true
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn workbook_only_cleanup_is_reported_and_published_only_when_requested() {
+    let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!("excel_shrink_workbook_only_{unique}"));
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("workbook-only.xlsx");
+    let mut writer = ZipWriter::new(File::create(&input).unwrap());
+    writer.start_file("xl/workbook.xml", FileOptions::default()).unwrap();
+    writer.write_all(br#"<workbook><sheets/><definedNames><definedName name="Print_Area" localSheetId="0">A</definedName><definedName name="_xlnm.Print_Area" localSheetId="0">A</definedName></definedNames></workbook>"#).unwrap();
+    writer.start_file("xl/worksheets/sheet1.xml", FileOptions::default()).unwrap();
+    writer.write_all(b"<worksheet><sheetData/></worksheet>").unwrap();
+    writer.finish().unwrap();
+    let source = std::fs::read(&input).unwrap();
+
+    for write_workbook_only_changes in [false, true] {
+        let mut cli = cli_with_analysis_flags(false, None);
+        cli.output = root.join(format!("out-{write_workbook_only_changes}"));
+        cli.shrink_evidence_json = Some(root.join(format!("evidence-{write_workbook_only_changes}.json")));
+        cli.write_workbook_only_changes = write_workbook_only_changes;
+        cli.disable_multiprocessing = true;
+        cli.writer_workers = Some(1);
+        process_files(vec![input.clone()], &cli).unwrap();
+
+        let output = std::fs::read(cli.output.join("workbook-only.xlsx")).unwrap();
+        assert_eq!(output == source, !write_workbook_only_changes);
+        let evidence: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(cli.shrink_evidence_json.unwrap()).unwrap(),
+        ).unwrap();
+        let workbook = &evidence["workbooks"][0];
+        assert_eq!(workbook["workbook_defined_names_cleanup_available"], true);
+        assert_eq!(workbook["workbook_only_cleanup_available"], true);
+        assert_eq!(workbook["worksheet_xml_changed"], false);
+        assert_eq!(workbook["workbook_original_archive_reused"], !write_workbook_only_changes);
+        assert_eq!(workbook["workbook_xml_crc_length_equal"], !write_workbook_only_changes);
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn store_output_does_not_reuse_deflated_original_xml() {
     let xml = b"<worksheet><sheetData/></worksheet>";
     let original = compressed_test_entry(xml, CompressionMethod::Deflated, 9);
@@ -134,17 +309,40 @@ fn store_output_does_not_reuse_deflated_original_xml() {
 }
 
 #[test]
-fn analysis_csv_implies_attribution_safe_analysis() {
+fn analysis_csv_collects_statistics_without_changing_tail_pruning() {
     let cli = cli_with_analysis_flags(false, Some(PathBuf::from("analysis.csv")));
 
-    assert!(attribution_safe_analysis(&cli));
+    assert!(cleanup_stats_enabled(&cli));
+    assert!(!attribution_safe_analysis(&cli));
+    assert!(cleanup_switches(&cli, advanced_cleanup_selection(&cli)).sheetdata_range_tail_pruning);
+}
+
+#[test]
+fn analysis_mode_keeps_the_normal_tail_pruning_policy() {
+    let cli = cli_with_analysis_flags(true, None);
+
+    assert!(cleanup_stats_enabled(&cli));
+    assert!(!attribution_safe_analysis(&cli));
+    assert!(cleanup_switches(&cli, advanced_cleanup_selection(&cli)).sheetdata_range_tail_pruning);
 }
 
 #[test]
 fn no_analysis_flags_uses_production_tail_pruning_policy() {
     let cli = cli_with_analysis_flags(false, None);
 
+    assert!(!cleanup_stats_enabled(&cli));
     assert!(!attribution_safe_analysis(&cli));
+    assert!(cleanup_switches(&cli, advanced_cleanup_selection(&cli)).sheetdata_range_tail_pruning);
+}
+
+#[test]
+fn explicit_tail_pruning_switch_selects_the_old_attribution_policy() {
+    let mut cli = cli_with_analysis_flags(false, Some(PathBuf::from("analysis.csv")));
+    cli.disable_tail_pruning = true;
+
+    assert!(cleanup_stats_enabled(&cli));
+    assert!(attribution_safe_analysis(&cli));
+    assert!(!cleanup_switches(&cli, advanced_cleanup_selection(&cli)).sheetdata_range_tail_pruning);
 }
 
 #[test]
@@ -205,7 +403,7 @@ fn analysis_csv_row_includes_net_bytes_and_ratios() {
         cleaned_sheet_xml_bytes: 160,
         sheet_reduction_bytes_uncompressed_xml: 40,
         sheet_reduction_ratio: 0.2,
-        analysis_mode: true,
+        tail_pruning_disabled: true,
     };
     let mut out = Vec::new();
 
@@ -226,8 +424,47 @@ fn analysis_csv_header_uses_long_format_columns() {
 
     assert_eq!(
         header,
-        "input_file,sheet_file,cause,removed_items,removed_bytes_uncompressed_xml,added_bytes_uncompressed_xml,reduction_bytes_uncompressed_xml,reduction_ratio,original_sheet_xml_bytes,cleaned_sheet_xml_bytes,sheet_reduction_bytes_uncompressed_xml,sheet_reduction_ratio,analysis_mode\n"
+        "input_file,sheet_file,cause,removed_items,removed_bytes_uncompressed_xml,added_bytes_uncompressed_xml,reduction_bytes_uncompressed_xml,reduction_ratio,original_sheet_xml_bytes,cleaned_sheet_xml_bytes,sheet_reduction_bytes_uncompressed_xml,sheet_reduction_ratio,tail_pruning_disabled\n"
     );
+}
+
+#[test]
+fn analysis_writer_failure_is_reported_after_batch_cleanup() {
+    let writer = std::thread::spawn(|| Err(std::io::Error::other("analysis disk full")));
+    let writer_pool = ThreadPool::new(1);
+    let (stop_watchdog_tx, stop_watchdog_rx) = mpsc::channel();
+    let watchdog = std::thread::spawn(move || {
+        stop_watchdog_rx.recv().unwrap();
+    });
+
+    let error = finish_batch(None, Some(writer), &writer_pool, stop_watchdog_tx, watchdog)
+        .unwrap_err();
+
+    assert!(error.to_string().contains("analysis disk full"));
+}
+
+#[test]
+fn package_fingerprint_includes_non_sheet_members() {
+    let mut original = BTreeMap::from([
+        (
+            "xl/workbook.xml".to_string(),
+            vec![ZipEntryIdentity {
+                uncompressed_bytes: 30,
+                crc32: 11,
+            }],
+        ),
+        (
+            "xl/styles.xml".to_string(),
+            vec![ZipEntryIdentity {
+                uncompressed_bytes: 40,
+                crc32: 22,
+            }],
+        ),
+    ]);
+    let before = package_crc_length_fingerprint(&original);
+    original.get_mut("xl/styles.xml").unwrap()[0].crc32 = 23;
+
+    assert_ne!(before, package_crc_length_fingerprint(&original));
 }
 
 fn candidate_s41() -> CleanupCandidate {
@@ -414,6 +651,107 @@ fn write_batch_test_workbook(path: &Path, sheet: &[u8]) {
         writer.write_all(bytes).unwrap();
     }
     writer.finish().unwrap();
+}
+
+#[test]
+fn analysis_csv_keeps_the_measured_shrink_output() {
+    let root = batch_test_directory("analysis_same_output");
+    let input = root.join("source.xlsx");
+    let sheet = br#"<worksheet><sheetData><row r="1"><c r="A1"><v>7</v></c><c r="B1"/><c r="C1"/><c r="D1"/></row><row r="2"></row></sheetData></worksheet>"#;
+    write_batch_test_workbook(&input, sheet);
+    let original_bytes = std::fs::read(&input).unwrap();
+
+    let mut measured = cli_with_analysis_flags(false, None);
+    measured.output = root.join("measured");
+    measured.disable_multiprocessing = true;
+    measured.writer_workers = Some(1);
+    process_files(vec![input.clone()], &measured).unwrap();
+
+    let mut analyzed = cli_with_analysis_flags(false, Some(root.join("analysis.csv")));
+    analyzed.output = root.join("analyzed");
+    analyzed.disable_multiprocessing = true;
+    analyzed.writer_workers = Some(1);
+    process_files(vec![input], &analyzed).unwrap();
+
+    assert_eq!(
+        std::fs::read(measured.output.join("source.xlsx")).unwrap(),
+        std::fs::read(analyzed.output.join("source.xlsx")).unwrap()
+    );
+    assert_ne!(std::fs::read(measured.output.join("source.xlsx")).unwrap(), original_bytes);
+    assert!(root.join("analysis.csv").exists());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn cdata_sheet_is_published_unchanged_across_decompression_boundaries() {
+    let root = batch_test_directory("cdata_passthrough");
+    let input = root.join("cdata.xlsx");
+    let sheet = br#"<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t><![CDATA[<row r="999"></sheetData>&text]]></t></is></c></row></sheetData></worksheet>"#;
+    write_batch_test_workbook(&input, sheet);
+    let mut original_archive = ZipArchive::new(File::open(&input).unwrap()).unwrap();
+    let original_sheet = original_archive.by_name("xl/worksheets/sheet1.xml").unwrap();
+    let original_crc = original_sheet.crc32();
+    let original_compressed_size = original_sheet.compressed_size();
+
+    for chunk_size in [1, 7, 64] {
+        let mut cli = cli_with_analysis_flags(false, None);
+        cli.output = root.join(format!("out-{chunk_size}"));
+        cli.chunk_size = chunk_size;
+        cli.disable_multiprocessing = true;
+        cli.writer_workers = Some(1);
+        process_files(vec![input.clone()], &cli).unwrap();
+        let mut output = ZipArchive::new(File::open(cli.output.join("cdata.xlsx")).unwrap()).unwrap();
+        let mut copied_sheet = output.by_name("xl/worksheets/sheet1.xml").unwrap();
+        let mut bytes = Vec::new();
+        copied_sheet.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, sheet);
+        assert_eq!(copied_sheet.crc32(), original_crc);
+        assert_eq!(copied_sheet.compressed_size(), original_compressed_size);
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn cdata_in_one_sheet_does_not_prevent_cleaning_another_sheet() {
+    let root = batch_test_directory("cdata_with_cleanable_sheet");
+    let input = root.join("mixed.xlsx");
+    let cdata_sheet = br#"<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t><![CDATA[<&text]]></t></is></c></row></sheetData></worksheet>"#;
+    let cleanable_sheet = br#"<worksheet><sheetData><row r="1"><c r="A1"><v>7</v></c><c r="B1"/><c r="C1"/><c r="D1"/></row></sheetData></worksheet>"#;
+    let mut writer = ZipWriter::new(File::create(&input).unwrap());
+    for (name, bytes) in [
+        ("xl/workbook.xml", br#"<workbook><sheets><sheet name="First" sheetId="1" r:id="rId1"/><sheet name="Second" sheetId="2" r:id="rId2"/></sheets></workbook>"#.as_slice()),
+        ("xl/_rels/workbook.xml.rels", br#"<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>"#),
+        ("xl/worksheets/sheet1.xml", cdata_sheet),
+        ("xl/worksheets/sheet2.xml", cleanable_sheet),
+    ] {
+        writer.start_file(name, FileOptions::default()).unwrap();
+        writer.write_all(bytes).unwrap();
+    }
+    writer.finish().unwrap();
+
+    let mut cli = cli_with_analysis_flags(false, None);
+    cli.output = root.join("output");
+    cli.chunk_size = 7;
+    cli.preprocess_empty_cells = true;
+    cli.disable_multiprocessing = true;
+    cli.writer_workers = Some(1);
+    cli.shrink_evidence_json = Some(root.join("evidence.json"));
+    process_files(vec![input], &cli).unwrap();
+    let mut output = ZipArchive::new(File::open(cli.output.join("mixed.xlsx")).unwrap()).unwrap();
+    let mut preserved = Vec::new();
+    output.by_name("xl/worksheets/sheet1.xml").unwrap().read_to_end(&mut preserved).unwrap();
+    assert_eq!(preserved, cdata_sheet);
+    let mut cleaned = Vec::new();
+    output.by_name("xl/worksheets/sheet2.xml").unwrap().read_to_end(&mut cleaned).unwrap();
+    assert_ne!(cleaned, cleanable_sheet);
+    assert!(cleaned.windows(b"<v>7</v>".len()).any(|part| part == b"<v>7</v>"));
+    let evidence: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(cli.shrink_evidence_json.unwrap()).unwrap())
+            .unwrap();
+    let sheets = &evidence["workbooks"][0]["sheets"];
+    assert!(sheets["xl/worksheets/sheet1.xml"]["source_content_cell_count"].is_null());
+    assert_eq!(sheets["xl/worksheets/sheet2.xml"]["source_content_cell_count"], 1);
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

@@ -396,6 +396,13 @@ pub struct CleanSheetMetrics {
     pub kept_cell_states: Vec<CellAttributes>,
     /// Number of removed cells; individual deleted coordinates are not retained.
     pub deleted_cell_count: usize,
+    /// Content-bearing cells seen during the initial sheet cleanup.
+    pub source_content_cell_count: usize,
+    /// Prevents deferred row cleanup from counting source cells a second time.
+    pub source_content_cell_count_complete: bool,
+    /// Content beyond the recognized cell range required full cleaning, or a
+    /// later row-boundary cut was prevented to preserve such a cell.
+    pub tail_content_guard_triggered: bool,
     pub max_merge_cells_column_and_row: Option<CellCoordinate>,
     pub merge_cell_ranges: Vec<CellRange>,
 

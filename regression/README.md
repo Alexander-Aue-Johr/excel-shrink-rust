@@ -100,7 +100,7 @@ Use `relative_input` for files below the corpus root. Use `input_path` only for 
 
 Use `download_url` and `cached_file_name` when the workbook should be fetched into the local gitignored cache automatically.
 
-`analysis_mode: true` makes the runner pass `--analysis-csv`, which uses attribution-safe analysis behavior. Use this only for cases where analysis-mode expectations matter.
+`analysis_mode: true` makes the runner pass `--analysis-csv` and check its cleanup statistics. The normal cleanup policy, including tail pruning, remains active. For a separate attribution run without tail pruning, add `--disable-tail-pruning` to `cli_args`.
 
 ## Analysis checks
 
