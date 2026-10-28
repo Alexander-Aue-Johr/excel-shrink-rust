@@ -19,7 +19,6 @@ precision highp float;
 uniform vec2 resolution;
 uniform float baseline;
 uniform bool showTrace;
-uniform float observationX;
 out vec4 fragColor;
 
 // Grid from the user's original green CRT shader. The cells remain square.
@@ -48,7 +47,7 @@ void main() {
         color += vec3(0.0, 0.11, 0.075) * exp(-abs(y - baseline));
     }
     color *= mix(1.0, 0.3, pow(v, 4.0));
-    if (gl_FragCoord.x < observationX) color *= 0.22;
+    color *= 0.12;
     fragColor = vec4(color, 1.0);
 }`;
 
@@ -267,7 +266,7 @@ function initialise(renderer) {
   gl.vertexAttribDivisor(1, 1);
   renderer.uniforms = new Map();
   for (const target of [renderer.background, renderer.pulse]) {
-    renderer.uniforms.set(target, Object.fromEntries(['resolution', 'baseline', 'showTrace', 'traceBand', 'pixelRatio', 'observationX']
+    renderer.uniforms.set(target, Object.fromEntries(['resolution', 'baseline', 'showTrace', 'traceBand', 'pixelRatio']
       .map(name => [name, gl.getUniformLocation(target, name)])));
   }
   renderer.error = null;
@@ -302,7 +301,7 @@ function renderGpu(ctx, options, pulses) {
   const renderer = sharedRenderer();
   if (!renderer.gl || renderer.error) return renderer.error;
   const {gl, canvas} = renderer;
-  const {width, height, left, top, traceTop, traceHeight, pixelRatio, showTrace, observationX} = options;
+  const {width, height, left, top, traceTop, traceHeight, pixelRatio, showTrace} = options;
   const scale = Math.min(pixelRatio, 4096 / width, 4096 / height,
     Math.sqrt(MAX_RENDER_PIXELS / (width * height)));
   const pixelWidth = Math.max(1, Math.round(width * scale));
@@ -319,7 +318,6 @@ function renderGpu(ctx, options, pulses) {
   gl.uniform2f(uniforms.resolution, pixelWidth, pixelHeight);
   gl.uniform1f(uniforms.baseline, (traceTop + traceHeight * 4 / 7) * scale);
   gl.uniform1i(uniforms.showTrace, showTrace);
-  gl.uniform1f(uniforms.observationX, observationX * scale);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
   if (showTrace && pulses.length) {
     const instances = new Float32Array(pulses.length * 4);
@@ -356,7 +354,7 @@ function heartbeat(phase) {
 }
 
 function renderFallback(ctx, options, pulses) {
-  const {left, top, width, height, traceTop, traceHeight, showTrace, observationX} = options;
+  const {left, top, width, height, traceTop, traceHeight, showTrace} = options;
   ctx.save();
   ctx.beginPath(); ctx.rect(left, top, width, height); ctx.clip();
   const background = ctx.createRadialGradient(left + width / 2, top + height / 2, 0,
@@ -369,7 +367,7 @@ function renderFallback(ctx, options, pulses) {
   for (let x = left; x <= left + width; x += pitch) { ctx.moveTo(x, top); ctx.lineTo(x, top + height); }
   for (let y = top + height / 2 % pitch; y <= top + height; y += pitch) { ctx.moveTo(left, y); ctx.lineTo(left + width, y); }
   ctx.stroke();
-  ctx.fillStyle = '#000000c7'; ctx.fillRect(left, top, observationX, height);
+  ctx.fillStyle = '#000000e0'; ctx.fillRect(left, top, width, height);
   const baseline = top + traceTop + traceHeight * 4 / 7;
   if (showTrace) {
     ctx.strokeStyle = '#00ffb32e'; ctx.beginPath();
@@ -401,7 +399,7 @@ export function createHeartbeatTrace() {
   return {
     draw(ctx, {width, height, left = 0, top = 0, traceTop = 0, traceHeight = height,
       points = [], now = Date.now(), windowMs = 60000, pixelRatio = 1,
-      reducedMotion = false, live = true, showTrace = true, observedSince = now - windowMs} = {}) {
+      reducedMotion = false, live = true, showTrace = true} = {}) {
       if (!ctx || !(width > 0) || !(height > 0) || !(windowMs > 0)) return {renderer: 'none', error: null};
       const animationNow = performance.now();
       const visible = [...new Set(points)].filter(at => Number.isFinite(at) && at <= now && at >= now - windowMs).slice(-MAX_POINTS);
@@ -419,8 +417,7 @@ export function createHeartbeatTrace() {
         alpha: Math.pow(Math.max(0, 1 - (now - at) / windowMs), 1.4),
       }));
       const options = {width, height, left, top, traceTop, traceHeight,
-        pixelRatio: Math.max(.5, Math.min(2, pixelRatio)), showTrace,
-        observationX: Math.max(0, Math.min(width, (observedSince - (now - windowMs)) / windowMs * width))};
+        pixelRatio: Math.max(.5, Math.min(2, pixelRatio)), showTrace};
       let error;
       try { error = renderGpu(ctx, options, pulses); }
       catch (failure) { error = failure.message; }

@@ -15,7 +15,7 @@ const CARD_W = 16, CARD_H = 9, BOARD_W = 3.67, BOARD_H = 7.75, BOARD_STEP = 3.87
 const AREA_W = 3.43, AREA_H = 7.08, AREA_Y = -.16;
 let RADIUS = 24, layout = sheetLayout([]);
 const state = { ready: false, connected: false, groupId: null, sheetId: null, selected: null,
-  pinned: false, pulse: !reducedMotion, follow: true, error: null, controls: {}, queue: null,
+  pinned: false, highlightDiff: true, follow: true, error: null, controls: {}, queue: null,
   view: { mode: 'sheet', x: 0, y: 0, width: 1800, height: 1800 * AREA_H / AREA_W },
   focus: 'overview', regionId: null, pendingDifference: false };
 const controlUpdates = createControlUpdates(value => { state.controls = value; });
@@ -28,9 +28,13 @@ const textureCache = new Map(), flashes = new Map(), previousImages = new Map();
 const dirtyControls = new Set();
 const loadQueue = [];
 let activeLoads = 0, lastSignature = '', detailSignature = '', groupSignature = '', sheetSignature = '';
-let data, entries = [], renderer, scene, camera, controls, detailRoot, lastUi = 0;
-let selectedGeneration = 0, sceneGeneration = 0, pollGeneration = 0, activeDetailSince = 0;
-let hoverTimer, leaveTimer, pendingHover, pointerDown, userMovedCamera = false, cameraTween;
+let data, entries = [], renderer, scene, camera, controls, lastUi = 0;
+let selectedGeneration = 0, sceneGeneration = 0, pollGeneration = 0;
+let hoverTimer, pendingHover, pointerDown, userMovedCamera = false, cameraTween;
+let dockCloseTimer, compareRegion = { x: 0, y: 0, width: 1, height: 1 };
+let compareZoom = 1, compareCenter = { x: .5, y: .5 };
+let compareCropTimer, compareCropToken = 0, compareCropBusy = false, compareCropAbort;
+const compareCropQueue = [];
 let latestCapture = null, pollTimer, controlBusy = false, localEvents = [];
 let pendingCaptureJump = null, followedProfile = null, lastFollowedKey = null;
 let groupLimit = 100;
@@ -79,7 +83,6 @@ function setSheetFit(sheetId, mode) {
   updateSheets(); renderScene(); renderMinimap();
 }
 function stopFollowing() { state.follow = false; $('followCapture').checked = false; }
-function fitSize(aspect, width, height) { return aspect > width / height ? [width, width / aspect] : [height * aspect, height]; }
 function labelGroup(group) { return group.ids.map(profileLabel).join(' · '); }
 function safeImageUrl(url) {
   const value = new URL(url, location.href);
@@ -128,12 +131,6 @@ function curvedGeometry(width, height, uv) {
       THREE.MathUtils.lerp(uv.u0, uv.u1, values.getX(index)), THREE.MathUtils.lerp(uv.v0, uv.v1, values.getY(index)));
   }
   geometry.computeVertexNormals(); return geometry;
-}
-function clippedPlane(width, height, clip) {
-  const geometry = new THREE.PlaneGeometry(width, height), uv = geometry.attributes.uv;
-  for (let index = 0; index < uv.count; index++) uv.setXY(index,
-    THREE.MathUtils.lerp(clip.u0, clip.u1, uv.getX(index)), THREE.MathUtils.lerp(clip.v0, clip.v1, uv.getY(index)));
-  return geometry;
 }
 function frame(width, height, color, curved = false) {
   const vertices = [], count = curved ? 32 : 1;
@@ -216,8 +213,8 @@ function initScene() {
   controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = !reducedMotion; controls.dampingFactor = .075;
   controls.minDistance = 2; controls.maxDistance = 800; controls.maxPolarAngle = Math.PI * .85; controls.rotateSpeed = .5; controls.panSpeed = .7;
   controls.addEventListener('start', () => { userMovedCamera = true; cameraTween = null; cancelHover(); stopFollowing(); });
-  detailRoot = new THREE.Group(); scene.add(detailRoot);
   new ResizeObserver(resize).observe($('viewport')); resize();
+  new ResizeObserver(() => { renderComparePanels(); scheduleCompareCrops(); }).observe($('comparePanels'));
   renderer.domElement.addEventListener('pointermove', handlePointerMove);
   renderer.domElement.addEventListener('pointerleave', () => { omissionTooltip.hidden = true; scheduleClear(); });
   renderer.domElement.addEventListener('pointerdown', event => { pointerDown = { x: event.clientX, y: event.clientY }; });
@@ -225,7 +222,6 @@ function initScene() {
     if (!pointerDown || Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 7) return;
     const hit = hitAt(event);
     if (hit?.userData.sourceTile) { const tile = hit.userData.sourceTile; focusTile(tile.entry, hit.userData.region, true); }
-    else if (hit?.userData.detailPanel) setPinned(!state.pinned);
     else if (hit?.userData.sheetId) focusSheet(hit.userData.sheetId, true);
     pointerDown = null;
   });
@@ -239,7 +235,7 @@ function fitCamera(animate = false) {
 }
 function moveCamera(position, target, animate = true) {
   if (animate && !reducedMotion) cameraTween = { start: performance.now(), from: camera.position.clone(), to: position, fromTarget: controls.target.clone(), target };
-  else { camera.position.copy(position); controls.target.copy(target); controls.update(); }
+  else { cameraTween = null; camera.position.copy(position); controls.target.copy(target); controls.update(); }
   userMovedCamera = false;
 }
 function focusCardCamera(sheetId, animate = true) {
@@ -248,7 +244,8 @@ function focusCardCamera(sheetId, animate = true) {
   const target = card.getWorldPosition(new THREE.Vector3());
   const outward = new THREE.Vector3(0, 0, 1).applyQuaternion(card.getWorldQuaternion(new THREE.Quaternion()));
   const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-  const distance = Math.max(CARD_W / 2 / (tangent * camera.aspect * .82), CARD_H / 2 / (tangent * .77));
+  const distance = Math.max(CARD_W / 2 / (tangent * camera.aspect * .82), CARD_H / 2 / (tangent * .77))
+    * ($('compareDock').closest('.room').classList.contains('comparison-open') ? 1.08 : 1);
   moveCamera(target.clone().addScaledVector(outward, distance).add(new THREE.Vector3(0, .2, 0)), target, animate);
 }
 function focusSheet(id, manual = false, preview = false) {
@@ -276,7 +273,9 @@ function focusTile(tile, region = null, manual = false) {
     setNotice(description); announce(description); return;
   }
   if (manual) stopFollowing();
-  clearDetails(); state.sheetId = tile.sheetId; state.focus = 'tile';
+  const compare = manual && (Boolean(state.selected) || tile.comparisonComplete && !tile.equalAcrossAll);
+  if (!compare) clearDetails();
+  state.sheetId = tile.sheetId; state.focus = 'tile';
   const inspect = region || inspectionRegions(tile, !tile.equalAcrossAll)[0];
   const area = inspect || { x: 0, y: 0, width: tile.width, height: tile.height };
   const width = Math.max(64, Math.min(1800, Math.max(area.width, area.height * AREA_W / AREA_H)) * 1.12);
@@ -284,7 +283,7 @@ function focusTile(tile, region = null, manual = false) {
     x: Math.max(0, tile.x + area.x - (width - area.width) / 2),
     y: Math.max(0, tile.y + area.y - (width * AREA_H / AREA_W - area.height) / 2) });
   clampView(); updateSheets(); renderScene(); focusCardCamera(tile.sheetId);
-  if (manual) { showDetails(tile.id, true, inspect); setPinned(true); }
+  if (compare) showDetails(tile.id, true, inspect);
 }
 function resize() {
   const { width, height } = $('viewport').getBoundingClientRect(); if (!width || !height) return;
@@ -461,7 +460,7 @@ function renderScene(force = false) {
   if (!force && signature === lastSignature) return;
   lastSignature = signature; const generation = ++sceneGeneration;
   const selection = state.selected, regionId = state.regionId, pinned = state.pinned;
-  clearDetails(); boards.splice(0).forEach(disposeObject); sourceTiles.length = 0; hitTargets.length = 0; sheetCards.clear();
+  clearDetails(!selection); boards.splice(0).forEach(disposeObject); sourceTiles.length = 0; hitTargets.length = 0; sheetCards.clear();
   for (const [id, toolbar] of sheetToolbars) if (!data.sheets.some(sheet => sheet.id === id)) { toolbar.remove(); sheetToolbars.delete(id); }
   layout = sheetLayout(data.sheets); RADIUS = Math.max(24, layout.width / 1.6);
   camera.far = Math.max(180, layout.width * 10, layout.height * 10); camera.updateProjectionMatrix();
@@ -480,95 +479,315 @@ function renderScene(force = false) {
     } catch (error) { if (generation === sceneGeneration && error.name !== 'AbortError') setNotice(error.message, true); }
   });
   Promise.all(loads).then(() => { if (generation === sceneGeneration) sweepTextures(); });
-  if (selectedEntry && sourceTiles.some(tile => tile.entry.id === selection)) { showDetails(selection, false, inspectionRegions(selectedEntry).find(region => region.id === regionId)); setPinned(pinned); }
+  if (selectedEntry && sourceTiles.some(tile => tile.entry.id === selection)) {
+    showDetails(selection, false, inspectionRegions(selectedEntry).find(region => region.id === regionId));
+    setPinned(pinned);
+  } else if (selection) clearDetails();
   updatePanControls(); renderMinimap();
   updateSheetToolbarPositions();
   if (!lastFocusKey) { fitCamera(); lastFocusKey = state.groupId; }
 }
 
-function makeDetailPanel(group, entry, index, count) {
-  const source = sourceTiles.find(tile => tile.entry.id === entry.id && tile.profile.id === group.ids[0]);
-  if (!source) return;
-  const representative = entry.images[group.ids[0]], sameAsOriginal = group.pixelClass != null && group.pixelClass === entry.images.original?.pixelClass;
-  const width = count >= 4 ? 3.65 : count === 3 ? 4.7 : 6.2;
-  // A huge job tile may extend beyond the shared sheet window. Its detail clone
-  // uses the same tile-local pixel window for every peer. Different row heights
-  // must neither stretch an image nor make peers show different local regions.
-  const focus = sourceTiles.find(tile => tile.entry.id === entry.id && !tile.offscreen && tile.profile.id === 'original')
-    || sourceTiles.find(tile => tile.entry.id === entry.id && !tile.offscreen) || source;
-  const textureRegion = entry.inspection || { x: Math.max(0, focus.clip.x - focus.rectangle.x), y: Math.max(0, focus.clip.y - focus.rectangle.y), width: focus.clip.width, height: focus.clip.height };
-  const clip = { ...textureRegion, u0: textureRegion.x / source.rectangle.width, u1: (textureRegion.x + textureRegion.width) / source.rectangle.width,
-    v0: 1 - (textureRegion.y + textureRegion.height) / source.rectangle.height, v1: 1 - textureRegion.y / source.rectangle.height };
-  const [imageW, imageH] = fitSize(clip.width / clip.height, width - .2, 3.1), height = imageH + .94;
-  const root = new THREE.Group(); detailRoot.add(root);
-  const backing = new THREE.Mesh(new THREE.BoxGeometry(width, height, .045), new THREE.MeshBasicMaterial({ color: 0x102335 })); root.add(backing);
-  const color = group.original ? C.received : group.pixelClass == null ? C.received : sameAsOriginal ? C.equal : C.different;
-  const image = new THREE.Mesh(clippedPlane(imageW, imageH, clip), new THREE.MeshBasicMaterial({ map: source.image.material.map, color: 0xffffff, side: THREE.DoubleSide, toneMapped: false, fog: false })); image.position.set(0, -.12, .031); root.add(image);
-  const rim = frame(imageW + .03, imageH + .03, color); rim.position.copy(image.position); rim.position.z += .019; root.add(rim);
-  const glow = makeGlow(imageW + .035, imageH + .035, color); glow.position.copy(image.position); glow.position.z += .014; root.add(glow);
-  const title = makeTextPlane([{ text: labelGroup(group), y: 70, size: 56, align: 'center' }], width - .18, .45, 100); title.position.set(0, imageH / 2 + .2, .032); root.add(title);
-  const subtitle = group.original ? 'ORIGINAL · VISUAL REFERENCE' : group.pixelClass == null ? 'PIXEL COMPARISON PENDING' : sameAsOriginal ? 'PIXEL IDENTICAL TO ORIGINAL' : `${Number(representative.changedPixels || 0).toLocaleString('en-US')} DIFFERING PIXELS IN TILE`;
-  const info = makeTextPlane([{ text: subtitle, y: 65, size: 34, color: group.original ? '#94dce8' : sameAsOriginal ? '#8ce8c4' : '#ffb0be', align: 'center' }], width - .2, .23, 100); info.position.set(0, -imageH / 2 - .37, .034); root.add(info);
-  let mask = null;
-  if ((entry.comparisonComplete || entry.inspection) && representative.maskUrl && (group.original || !sameAsOriginal)) {
-    mask = new THREE.Mesh(clippedPlane(imageW, imageH, clip), new THREE.MeshBasicMaterial({ color: 0xff315c, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false }));
-    mask.position.copy(image.position); mask.position.z += .012; root.add(mask);
+function comparisonColor(group, entry) {
+  if (group.original || group.pixelClass == null) return C.received;
+  if (entry.blank_margin_normalized && Number(entry.images[group.ids[0]]?.changedPixels) === 0) return C.equal;
+  return group.pixelClass === entry.images.original?.pixelClass ? C.equal : C.different;
+}
+
+function resetCompareZoom() {
+  compareZoom = 1;
+  compareCenter = {
+    x: compareRegion.x + compareRegion.width / 2,
+    y: compareRegion.y + compareRegion.height / 2,
+  };
+  for (const panel of detailPanels) {
+    panel.fullCrop?.bitmap.close(); panel.fullCrop = null; panel.fullReady = false;
+    panel.mask?.bitmap.close(); panel.mask = null;
   }
-  const start = source.group.getWorldPosition(new THREE.Vector3()); root.position.copy(start); root.quaternion.copy(source.group.getWorldQuaternion(new THREE.Quaternion())); root.scale.setScalar(source.width / width);
-  const panel = { root, image, mask, rim, glow, group, entry, representative, source, clip, textureRegion, width, height, imageW, imageH, index, count, start, startQuaternion: root.quaternion.clone(), startScale: root.scale.x, target: new THREE.Vector3(), sameAsOriginal, fullReady: false };
-  backing.userData.detailPanel = panel; image.userData.detailPanel = panel; hitTargets.push(backing, image); detailPanels.push(panel);
-  group.ids.forEach(id => makeConnection(sourceTiles.find(tile => tile.entry.id === entry.id && tile.profile.id === id), panel, color));
+  renderComparePanels();
+  scheduleCompareCrops();
 }
-function makeConnection(source, panel, color) {
-  if (!source) return;
-  const geometry = new THREE.BufferGeometry(), positions = new Float32Array(65 * 3); geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color, transparent: true, opacity: .55, depthWrite: false })); line.frustumCulled = false; scene.add(line);
-  const dots = Array.from({ length: 3 }, () => { const dot = new THREE.Mesh(new THREE.SphereGeometry(.045, 9, 6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .95, depthWrite: false })); scene.add(dot); return dot; });
-  connections.push({ source, panel, line, dots, positions, curve: new THREE.CubicBezierCurve3(), offset: source.p * .12 });
+
+function clampCompareCenter() {
+  compareCenter.x = THREE.MathUtils.clamp(compareCenter.x, compareRegion.x,
+    compareRegion.x + compareRegion.width);
+  compareCenter.y = THREE.MathUtils.clamp(compareCenter.y, compareRegion.y,
+    compareRegion.y + compareRegion.height);
 }
-async function showDetails(id, animate = true, region = null) {
-  cancelHover(); clearTimeout(leaveTimer);
-  const originalEntry = tileAt(id); if (!originalEntry || !state.ready || !sourceTiles.some(tile => tile.entry.id === id)) return;
-  const entry = inspectionEntry(originalEntry, region, data.profiles);
-  const signature = JSON.stringify([id, region?.id, entry.comparisonComplete, entry.images]); if (state.selected === id && signature === detailSignature) return;
-  clearDetails(); detailSignature = signature;
-  const generation = ++selectedGeneration; state.selected = id; state.regionId = region?.id ?? null; activeDetailSince = animate ? performance.now() : performance.now() - 1000;
-  const groups = groupedPanels(entry, data.profiles); groups.forEach((group, index) => makeDetailPanel(group, entry, index, groups.length));
-  $('selectionBar').hidden = false; $('selectionText').textContent = `${entry.sheetName} · ${entry.address}`;
-  $('selectionSummary').textContent = `${groups.length} image groups · ${entry.comparisonComplete ? entry.equalAcrossAll ? 'identical' : 'Difference' : region ? 'region without separate classification' : 'comparison pending'} · ${region ? `${Math.round(region.width)} × ${Math.round(region.height)} px` : 'Capture'}`;
-  renderEvidenceActions(); announce($('selectionText').textContent + ': ' + $('selectionSummary').textContent);
-  await Promise.all(detailPanels.map(async panel => {
+
+function renderComparePanels() {
+  for (const panel of detailPanels) {
+    const { stage, canvas, preview, fullCrop, mask, representative } = panel;
+    const width = stage.clientWidth, height = stage.clientHeight;
+    if (!width || !height) continue;
+    const ratio = Math.min(devicePixelRatio, 2);
+    const pixelWidth = Math.max(1, Math.round(width * ratio));
+    const pixelHeight = Math.max(1, Math.round(height * ratio));
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    if (!preview && !fullCrop) continue;
+    const fit = Math.min(width / compareRegion.width, height / compareRegion.height);
+    const scale = fit * compareZoom;
+    const x = width / 2 - compareCenter.x * scale;
+    const y = height / 2 - compareCenter.y * scale;
+    const imageWidth = Number(representative.width) || preview?.naturalWidth || 1;
+    const imageHeight = Number(representative.height) || preview?.naturalHeight || 1;
+    if (preview) ctx.drawImage(preview, x, y, imageWidth * scale, imageHeight * scale);
+    if (fullCrop) ctx.drawImage(fullCrop.bitmap, x + fullCrop.x * scale, y + fullCrop.y * scale,
+      fullCrop.width * scale, fullCrop.height * scale);
+    if (state.highlightDiff && cropHasEnoughDetail(mask, visibleComparisonCrop(panel))) {
+      ctx.globalAlpha = .7;
+      ctx.drawImage(mask.bitmap, x + mask.x * scale, y + mask.y * scale,
+        mask.width * scale, mask.height * scale);
+      ctx.globalAlpha = 1;
+    }
+    stage.classList.toggle('zoomed', compareZoom > 1);
+  }
+}
+
+function visibleComparisonCrop(panel) {
+  const width = panel.stage.clientWidth, height = panel.stage.clientHeight;
+  if (!width || !height) return null;
+  const fit = Math.min(width / compareRegion.width, height / compareRegion.height);
+  const scale = fit * compareZoom;
+  const halfWidth = width / (2 * scale), halfHeight = height / (2 * scale);
+  const sourceWidth = Number(panel.representative.width) || 0;
+  const sourceHeight = Number(panel.representative.height) || 0;
+  const x = Math.max(0, Math.floor(compareCenter.x - halfWidth * 1.12));
+  const y = Math.max(0, Math.floor(compareCenter.y - halfHeight * 1.12));
+  const right = Math.min(sourceWidth, Math.ceil(compareCenter.x + halfWidth * 1.12));
+  const bottom = Math.min(sourceHeight, Math.ceil(compareCenter.y + halfHeight * 1.12));
+  if (right <= x || bottom <= y) return null;
+  const cropWidth = right - x, cropHeight = bottom - y;
+  const deviceScale = Math.min(devicePixelRatio, 2);
+  const targetWidth = cropWidth * scale * deviceScale;
+  const targetHeight = cropHeight * scale * deviceScale;
+  const limit = Math.min(1, 2048 / targetWidth, 2048 / targetHeight,
+    Math.sqrt(1000000 / (targetWidth * targetHeight)));
+  return { x, y, width: cropWidth, height: cropHeight,
+    outputWidth: Math.max(1, Math.round(targetWidth * limit)),
+    outputHeight: Math.max(1, Math.round(targetHeight * limit)), scale: scale * deviceScale };
+}
+
+function cropHasEnoughDetail(crop, desired) {
+  return crop && desired && crop.x <= desired.x && crop.y <= desired.y
+    && crop.x + crop.width >= desired.x + desired.width
+    && crop.y + crop.height >= desired.y + desired.height
+    && crop.bitmap.width / crop.width >= desired.outputWidth / desired.width * .8;
+}
+
+function scheduleCompareCrops() {
+  ++compareCropToken;
+  compareCropAbort?.abort();
+  compareCropQueue.length = 0;
+  clearTimeout(compareCropTimer);
+  compareCropTimer = setTimeout(() => {
+    const token = compareCropToken;
+    for (const panel of detailPanels) {
+      const desired = visibleComparisonCrop(panel);
+      if (!desired) continue;
+      if (state.highlightDiff && panel.representative.maskUrl && !cropHasEnoughDetail(panel.mask, desired)) {
+        compareCropQueue.push({ panel, field: 'mask', url: panel.representative.maskUrl, crop: desired, token });
+      }
+      const { preview, representative } = panel;
+      const previewScale = preview && preview.naturalWidth / Number(representative.width);
+      if (representative.fullUrl && (!previewScale || desired.scale > previewScale * 1.2)
+          && !cropHasEnoughDetail(panel.fullCrop, desired)) {
+        compareCropQueue.push({ panel, field: 'fullCrop', url: representative.fullUrl, crop: desired, token });
+      }
+    }
+    void drainCompareCrops();
+  }, 180);
+}
+
+async function drainCompareCrops() {
+  if (compareCropBusy) return;
+  compareCropBusy = true;
+  try {
+    while (compareCropQueue.length) {
+      const job = compareCropQueue.shift();
+      if (job.token !== compareCropToken) continue;
+      const controller = new AbortController();
+      compareCropAbort = controller;
+      try {
+        const response = await fetch(safeImageUrl(job.url), { signal: controller.signal });
+        if (!response.ok) throw new Error(`Could not load comparison crop (${response.status}).`);
+        const blob = await response.blob();
+        const crop = job.crop;
+        const bitmap = await createImageBitmap(blob, crop.x, crop.y, crop.width, crop.height, {
+          resizeWidth: crop.outputWidth, resizeHeight: crop.outputHeight, resizeQuality: 'high',
+          imageOrientation: 'none', premultiplyAlpha: 'none',
+        });
+        if (job.token !== compareCropToken) { bitmap.close(); continue; }
+        job.panel[job.field]?.bitmap.close();
+        job.panel[job.field] = { ...crop, bitmap };
+        if (job.field === 'fullCrop') job.panel.fullReady = true;
+        renderComparePanels();
+      } catch (error) {
+        if (job.token === compareCropToken && error.name !== 'AbortError') setNotice(error.message, true);
+      } finally { if (compareCropAbort === controller) compareCropAbort = null; }
+    }
+  } finally { compareCropBusy = false; }
+}
+
+function zoomComparison(event) {
+  event.preventDefault();
+  const stage = event.currentTarget;
+  const bounds = stage.getBoundingClientRect();
+  const fit = Math.min(bounds.width / compareRegion.width, bounds.height / compareRegion.height);
+  if (!fit) return;
+  const x = event.clientX - bounds.left - bounds.width / 2;
+  const y = event.clientY - bounds.top - bounds.height / 2;
+  const before = { x: compareCenter.x + x / (fit * compareZoom), y: compareCenter.y + y / (fit * compareZoom) };
+  const next = THREE.MathUtils.clamp(compareZoom * Math.exp(-event.deltaY * .0015), 1, 24);
+  compareZoom = next;
+  compareCenter = next === 1 ? {
+    x: compareRegion.x + compareRegion.width / 2,
+    y: compareRegion.y + compareRegion.height / 2,
+  } : {
+    x: before.x - x / (fit * next),
+    y: before.y - y / (fit * next),
+  };
+  clampCompareCenter();
+  renderComparePanels();
+  scheduleCompareCrops();
+}
+
+function makeDetailPanel(group, entry, generation) {
+  const representative = entry.images[group.ids[0]];
+  if (!representative) return;
+  const color = comparisonColor(group, entry);
+  const sameAsOriginal = group.pixelClass != null && (
+    group.pixelClass === entry.images.original?.pixelClass
+    || entry.blank_margin_normalized && Number(representative.changedPixels) === 0);
+  const element = document.createElement('div');
+  element.className = `compare-panel compare-${group.original ? 'received' : sameAsOriginal ? 'equal' : 'different'}`;
+  const title = document.createElement('strong'); title.className = 'compare-panel-title'; title.textContent = labelGroup(group);
+  const stage = document.createElement('div'); stage.className = 'compare-panel-stage';
+  stage.setAttribute('aria-label', `${labelGroup(group)}. Scroll to zoom all comparison images, drag to pan.`);
+  const canvas = document.createElement('canvas'); stage.append(canvas);
+  const status = document.createElement('span'); status.className = 'compare-panel-status';
+  const blankMargin = Number(representative.blankMarginPixels ?? representative.blank_margin_pixels ?? 0);
+  status.textContent = group.original ? 'Visual reference' : blankMargin > 0 && entry.blank_margin_normalized
+    ? `${blankMargin.toLocaleString('en-US')} blank margin pixels · content equal`
+    : group.pixelClass == null ? 'Comparison pending' : sameAsOriginal ? 'Pixels equal to original'
+      : `${Number(representative.changedPixels || 0).toLocaleString('en-US')} differing pixels`;
+  if (representative.url && !representative.fullUrl) status.textContent += ' · saved preview';
+  element.append(title, stage, status); $('comparePanels').append(element);
+  const panel = { element, stage, canvas, group, entry, representative, sameAsOriginal,
+    preview: null, fullCrop: null, mask: null, fullReady: false, clip: compareRegion };
+  detailPanels.push(panel);
+  stage.addEventListener('wheel', zoomComparison, { passive: false });
+  let drag = null;
+  stage.addEventListener('pointerdown', event => {
+    if (compareZoom <= 1) return;
+    drag = { x: event.clientX, y: event.clientY, center: { ...compareCenter } };
+    stage.setPointerCapture(event.pointerId); stage.classList.add('dragging');
+  });
+  stage.addEventListener('pointermove', event => {
+    if (!drag) return;
+    const fit = Math.min(stage.clientWidth / compareRegion.width, stage.clientHeight / compareRegion.height);
+    compareCenter = { x: drag.center.x - (event.clientX - drag.x) / (fit * compareZoom),
+      y: drag.center.y - (event.clientY - drag.y) / (fit * compareZoom) };
+    clampCompareCenter();
+    renderComparePanels();
+    scheduleCompareCrops();
+  });
+  const endDrag = () => { drag = null; stage.classList.remove('dragging'); };
+  stage.addEventListener('pointerup', endDrag); stage.addEventListener('pointercancel', endDrag);
+  for (const id of group.ids) {
+    const source = sourceTiles.find(tile => tile.entry.id === entry.id && tile.profile.id === id && !tile.offscreen);
+    if (source) makeConnection(source, panel, color);
+  }
+  const previewUrl = representative.previewUrl || (representative.url === representative.fullUrl ? null : representative.url);
+  if (previewUrl) {
     try {
-      const image = panel.representative;
-      const rect = panel.source.rectangle;
-      // Preview files have fewer pixels; crop coordinates follow the retained
-      // file dimensions rather than pretending that preview pixels are 1:1.
-      const textureRegion = { ...panel.textureRegion, sourceWidth: rect.width, sourceHeight: rect.height };
-      const [texture, mask] = await Promise.all([loadTexture(image.fullUrl || image.url, 2048, textureRegion), panel.mask ? loadTexture(image.maskUrl, 2048, panel.textureRegion) : null]);
-      if (generation !== selectedGeneration) return;
-      panel.image.geometry.dispose(); panel.image.geometry = new THREE.PlaneGeometry(panel.imageW, panel.imageH);
-      panel.image.material.map = texture; panel.image.material.needsUpdate = true; panel.fullReady = true;
-      if (panel.mask && mask) { panel.mask.geometry.dispose(); panel.mask.geometry = new THREE.PlaneGeometry(panel.imageW, panel.imageH); panel.mask.material.map = mask; panel.mask.material.needsUpdate = true; }
-    } catch (error) { if (generation === selectedGeneration && error.name !== 'AbortError') setNotice(error.message, true); }
-  }));
-  sweepTextures();
+      const image = new Image();
+      image.onload = () => {
+        if (generation !== selectedGeneration) return;
+        panel.preview = image;
+        renderComparePanels(); scheduleCompareCrops();
+      };
+      image.onerror = () => { if (generation === selectedGeneration) setNotice(`Could not load ${labelGroup(group)} preview.`, true); };
+      image.src = safeImageUrl(previewUrl);
+    } catch (error) { setNotice(error.message, true); }
+  }
 }
-function clearDetails() {
-  ++selectedGeneration; clearTimeout(leaveTimer); cancelHover(); state.selected = null; state.regionId = null; state.pinned = false; detailSignature = '';
-  for (let index = hitTargets.length - 1; index >= 0; index--) if (hitTargets[index].userData.detailPanel) hitTargets.splice(index, 1);
-  detailPanels.splice(0).forEach(panel => disposeObject(panel.root));
-  connections.splice(0).forEach(link => { disposeObject(link.line); link.dots.forEach(disposeObject); });
-  $('selectionBar').hidden = true; $('evidenceActions').hidden = true; $('pinSelection').setAttribute('aria-pressed', 'false'); $('pinSelection').textContent = 'Pin';
+
+function makeConnection(source, panel, color) {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', `#${color.toString(16).padStart(6, '0')}`);
+  path.setAttribute('stroke-width', '1.4');
+  path.setAttribute('stroke-opacity', '.65');
+  $('comparisonLinks').append(path);
+  connections.push({ source, panel, path });
 }
-function setPinned(value) { state.pinned = Boolean(value && state.selected); clearTimeout(leaveTimer); $('pinSelection').setAttribute('aria-pressed', String(state.pinned)); $('pinSelection').textContent = state.pinned ? 'Pinned' : 'Pin'; }
+
+function showDetails(id, animate = true, region = null) {
+  cancelHover();
+  const originalEntry = tileAt(id);
+  if (!originalEntry || !state.ready || !sourceTiles.some(tile => tile.entry.id === id)) return;
+  const entry = inspectionEntry(originalEntry, region, data.profiles);
+  const signature = JSON.stringify([id, region?.id, entry.comparisonComplete, entry.images]);
+  if (state.selected === id && signature === detailSignature) return;
+  clearDetails(false); detailSignature = signature;
+  const generation = ++selectedGeneration;
+  state.selected = id; state.regionId = region?.id ?? null; setPinned(true);
+  compareRegion = region || { x: 0, y: 0,
+    width: Math.max(1, ...Object.values(entry.images).map(image => Number(image.width) || 0)),
+    height: Math.max(1, ...Object.values(entry.images).map(image => Number(image.height) || 0)) };
+  const groups = groupedPanels(entry, data.profiles);
+  $('comparePanels').style.setProperty('--compare-count', String(Math.max(1, groups.length)));
+  groups.forEach(group => makeDetailPanel(group, entry, generation));
+  resetCompareZoom();
+  $('selectionBar').hidden = false;
+  $('selectionText').textContent = `${entry.sheetName} · ${entry.address}`;
+  const result = entry.blank_margin_normalized ? 'Blank canvas margin only'
+    : entry.comparisonComplete ? entry.equalAcrossAll ? 'Identical' : 'Difference'
+      : region ? 'Region without separate classification' : 'Comparison pending';
+  $('selectionSummary').textContent = `${groups.length} image groups · ${result} · ${region ? `Inspection window ${Math.round(region.width)} × ${Math.round(region.height)} px` : 'Full capture'}`;
+  clearTimeout(dockCloseTimer);
+  $('compareDock').setAttribute('aria-hidden', 'false');
+  $('compareDock').closest('.room').classList.add('comparison-open');
+  renderEvidenceActions();
+  announce($('selectionText').textContent + ': ' + $('selectionSummary').textContent);
+  if (!animate) renderComparePanels();
+}
+
+function clearDetails(closeDock = true) {
+  ++selectedGeneration; cancelHover(); state.selected = null; state.regionId = null; state.pinned = false; detailSignature = '';
+  ++compareCropToken; compareCropAbort?.abort(); compareCropQueue.length = 0; clearTimeout(compareCropTimer);
+  detailPanels.splice(0).forEach(panel => { panel.fullCrop?.bitmap.close(); panel.mask?.bitmap.close(); });
+  connections.splice(0).forEach(link => link.path.remove());
+  $('evidenceActions').hidden = true;
+  if (!closeDock) {
+    $('comparePanels').replaceChildren();
+    return;
+  }
+  $('selectionBar').hidden = true;
+  $('compareDock').setAttribute('aria-hidden', 'true');
+  $('compareDock').closest('.room').classList.remove('comparison-open');
+  clearTimeout(dockCloseTimer);
+  dockCloseTimer = setTimeout(() => {
+    if (!$('compareDock').closest('.room').classList.contains('comparison-open')) $('comparePanels').replaceChildren();
+  }, 500);
+}
+function setPinned(value) { state.pinned = Boolean(value && state.selected); }
 function cancelHover() { clearTimeout(hoverTimer); pendingHover = null; }
-function scheduleClear() { cancelHover(); if (state.pinned) return; clearTimeout(leaveTimer); leaveTimer = setTimeout(() => { if (!state.pinned) clearDetails(); }, 480); }
+function scheduleClear() { cancelHover(); }
 function intersectionAt(event) {
   const rect = renderer.domElement.getBoundingClientRect(); pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1); raycaster.setFromCamera(pointer, camera);
   return raycaster.intersectObjects(hitTargets, false)[0];
 }
 function sheetPointAt(event) {
-  const hit = intersectionAt(event); if (!hit || hit.object.userData.detailPanel) return null;
+  const hit = intersectionAt(event); if (!hit) return null;
   let object = hit.object;
   while (object && !object.userData.pixelBoard) object = object.parent;
   const info = object?.userData.pixelBoard; if (!info) return null;
@@ -619,10 +838,10 @@ function handlePointerMove(event) {
     omissionTooltip.style.top = `${Math.max(8, Math.min(event.clientY + 16, innerHeight - omissionTooltip.offsetHeight - 8))}px`;
     if (entry.status === 'omitted' || noPreview) { cancelHover(); return; }
   }
-  if (hit?.userData.detailPanel) { clearTimeout(leaveTimer); cancelHover(); return; }
-  const tile = hit?.userData.sourceTile; if (!tile) { scheduleClear(); return; } clearTimeout(leaveTimer);
+  if (!state.selected) { cancelHover(); return; }
+  const tile = hit?.userData.sourceTile; if (!tile) { scheduleClear(); return; }
   const region = hit.userData.region, key = `${tile.entry.id}:${region?.id || ''}`;
-  if (state.pinned || (state.selected === tile.entry.id && state.regionId === (region?.id || null)) || pendingHover === key) return;
+  if ((state.selected === tile.entry.id && state.regionId === (region?.id || null)) || pendingHover === key) return;
   cancelHover(); pendingHover = key; hoverTimer = setTimeout(() => showDetails(tile.entry.id, true, region), 125);
 }
 function renderTileButtons(shown) {
@@ -644,7 +863,8 @@ function renderTileButtons(shown) {
       button.title = tileEvidenceDescription(entry);
     }
     button.classList.toggle('different', Object.keys(entry.images).some(profile => imageStatus(entry, profile) === 'different'));
-    button.addEventListener('focus', () => showDetails(entry.id)); button.addEventListener('click', () => focusTile(entry, null, true)); return button;
+    button.addEventListener('focus', () => { if (state.selected) showDetails(entry.id); });
+    button.addEventListener('click', () => focusTile(entry, null, true)); return button;
   }));
 }
 function renderEvidenceActions() {
@@ -658,35 +878,27 @@ function openEvidence(panel) {
   $('imageScroll').classList.remove('native'); $('toggleImageSize').textContent = 'Show 1:1'; $('imageDialog').showModal(); setPinned(true);
 }
 
-function updateDetails(now) {
-  if (!detailPanels.length) return;
-  const t = reducedMotion ? 1 : Math.min(1, (now - activeDetailSince) / 720), ease = 1 - Math.pow(1 - t, 3);
-  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-  const toward = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
-  const anchor = controls.target.clone().addScaledVector(up, 1.9).addScaledVector(toward, 2.7);
-  const width = detailPanels.reduce((sum, panel) => sum + panel.width, 0) + (detailPanels.length - 1) * .33;
-  let cursor = -width / 2;
-  detailPanels.forEach(panel => {
-    panel.target.copy(anchor).addScaledVector(right, cursor + panel.width / 2); cursor += panel.width + .33;
-    panel.root.position.lerpVectors(panel.start, panel.target, ease);
-    panel.root.quaternion.slerpQuaternions(panel.startQuaternion, camera.quaternion, ease);
-    panel.root.scale.setScalar(THREE.MathUtils.lerp(panel.startScale, 1, ease)); panel.root.position.addScaledVector(up, Math.sin(t * Math.PI) * .4);
-    const phase = (now / 1000) % 4.8;
-    const pulse = phase < 2.35 ? Math.pow(Math.sin(phase / 2.35 * Math.PI), 2) * .88 : 0;
-    if (panel.mask) panel.mask.material.opacity = state.pulse && panel.mask.material.map ? (reducedMotion ? .6 : pulse) : 0;
-    panel.glow.material.uniforms.uStrength.value = .5 + (state.pulse && !panel.sameAsOriginal ? pulse * .4 : 0);
-  });
+function updateDetails() {
+  if (!connections.length) return;
+  const room = $('compareDock').closest('.room').getBoundingClientRect();
+  const viewport = $('viewport').getBoundingClientRect();
+  $('comparisonLinks').setAttribute('viewBox', `0 0 ${room.width} ${room.height}`);
   scene.updateMatrixWorld(true);
-  connections.forEach(link => {
-    const start = link.source.group.getWorldPosition(new THREE.Vector3());
-    const end = link.panel.root.getWorldPosition(new THREE.Vector3()).addScaledVector(up, -link.panel.height * .48);
-    link.curve.v0.copy(start); link.curve.v1.copy(start).addScaledVector(toward, 1.3).addScaledVector(up, 1.2);
-    link.curve.v2.copy(end).addScaledVector(up, -1.1).addScaledVector(toward, .5); link.curve.v3.copy(end);
-    for (let index = 0; index <= 64; index++) link.curve.getPoint(index / 64).toArray(link.positions, index * 3);
-    link.line.geometry.attributes.position.needsUpdate = true; link.line.material.opacity = .55 * ease;
-    link.dots.forEach((dot, index) => { const progress = reducedMotion ? (index + 1) / 4 : (now / 4200 + index / 3 + link.offset) % 1; dot.position.copy(link.curve.getPoint(progress)); dot.material.opacity = ease * .92; });
-  });
+  for (const link of connections) {
+    const point = link.source.group.getWorldPosition(new THREE.Vector3()).project(camera);
+    if (point.z < -1 || point.z > 1 || Math.abs(point.x) > 1 || Math.abs(point.y) > 1) {
+      link.path.setAttribute('visibility', 'hidden');
+      continue;
+    }
+    link.path.removeAttribute('visibility');
+    const startX = viewport.left - room.left + (point.x + 1) * viewport.width / 2;
+    const startY = viewport.top - room.top + (1 - point.y) * viewport.height / 2;
+    const target = link.panel.element.getBoundingClientRect();
+    const endX = target.left - room.left + target.width / 2;
+    const endY = target.bottom - room.top;
+    const bend = Math.max(20, Math.abs(startY - endY) * .35);
+    link.path.setAttribute('d', `M ${startX} ${startY} C ${startX} ${startY - bend}, ${endX} ${endY + bend}, ${endX} ${endY}`);
+  }
 }
 function updateSourceTiles(now) {
   for (const tile of sourceTiles) {
@@ -1671,7 +1883,7 @@ function wireControls() {
 
   $('applyCapture').addEventListener('click', () => {
     const size = Number($('captureMegapixels').value), batch = Number($('captureBatch').value);
-    if (!Number.isInteger(size) || size < 1 || size > 32 || !Number.isInteger(batch) || batch < 1 || batch > 16) return setNotice('Target capture size: 1–32 MP. Batch: 1–16 jobs.', true);
+    if (!Number.isInteger(size) || size < 1 || size > 64 || !Number.isInteger(batch) || batch < 1 || batch > 16) return setNotice('Target capture size: 1–64 MP. Batch: 1–16 jobs.', true);
     sendControl({ capture_tile_megapixels: size, capture_batch_tiles: batch });
   });
   $('applyTallSheet').addEventListener('click', () => {
@@ -1702,12 +1914,13 @@ function wireControls() {
     stopFollowing(); rememberView(sheet, { ...sheetView(sheet), [axis]: Number(event.target.value) });
     clearDetails(); renderScene();
   });
-  $('pulseDiff').checked = state.pulse; $('pulseDiff').addEventListener('change', event => { state.pulse = event.target.checked; });
+  $('highlightDiff').checked = state.highlightDiff;
+  $('highlightDiff').addEventListener('change', event => { state.highlightDiff = event.target.checked; renderComparePanels(); });
   $('nextDifference').addEventListener('click', nextDifference); $('nextSheetDifference').addEventListener('click', nextSheetDifference); $('nextGroupDifference').addEventListener('click', nextGroupDifference);
   $('resetCamera').addEventListener('click', () => { stopFollowing(); clearDetails(); state.focus = 'overview'; renderScene(); fitCamera(true); });
   $('stageMode').addEventListener('click', () => { document.body.classList.toggle('presenting'); $('stageMode').textContent = document.body.classList.contains('presenting') ? '⛶ Back' : '⛶ Present'; });
-  $('pinSelection').addEventListener('click', () => setPinned(!state.pinned)); $('closeSelection').addEventListener('click', clearDetails);
-  for (const id of ['selectionBar', 'evidenceActions', 'tileButtons']) { $(id).addEventListener('pointerenter', () => clearTimeout(leaveTimer)); $(id).addEventListener('pointerleave', scheduleClear); }
+  $('resetCompareZoom').addEventListener('click', resetCompareZoom);
+  $('closeSelection').addEventListener('click', () => clearDetails());
   $('closeImage').addEventListener('click', () => $('imageDialog').close());
   $('toggleImageSize').addEventListener('click', () => { const native = $('imageScroll').classList.toggle('native'); $('toggleImageSize').textContent = native ? 'Fit to window' : 'Show 1:1'; });
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !$('imageDialog').open) clearDetails(); });
@@ -1719,14 +1932,16 @@ function snapshot() {
     view: { ...sheetView(selectedSheet()) }, sheetViews: data?.sheets.map(sheet => ({ id: sheet.id, view: sheetView(sheet) })), profiles: data?.profiles, status: data?.status, launcher: data?.launcher,
     groupCount: state.queue?.groups?.length || 0, totalTiles: entries.length, visibleTiles: [...new Set(sourceTiles.map(tile => tile.entry.id))],
     tiles: sourceTiles.map(tile => ({ id: tile.entry.id, address: tile.entry.address, profile: tile.profile.id, status: imageStatus(tile.entry, tile.profile.id), loaded: tile.loaded, rectangle: tile.rectangle, clip: tile.clip, offscreen: tile.offscreen })),
-    details: detailPanels.map(panel => ({ profiles: panel.group.ids, pixelClass: panel.group.pixelClass, sameAsOriginal: panel.sameAsOriginal, fullReady: panel.fullReady, maskPresent: Boolean(panel.mask), maskOpacity: panel.mask?.material.opacity || 0, clip: panel.clip, aspect: panel.imageW / panel.imageH })),
+    details: detailPanels.map(panel => ({ profiles: panel.group.ids, pixelClass: panel.group.pixelClass,
+      sameAsOriginal: panel.sameAsOriginal, fullReady: panel.fullReady, maskPresent: Boolean(panel.mask),
+      maskOpacity: state.highlightDiff && panel.mask ? .7 : 0, clip: panel.clip, aspect: panel.clip.width / panel.clip.height })),
+    compareZoom, compareOpen: $('compareDock').closest('.room').classList.contains('comparison-open'),
     connections: connections.length, textureCount: renderer?.info.memory.textures || 0, textureCache: textureCache.size,
     viewport: { width: renderer?.domElement.clientWidth, height: renderer?.domElement.clientHeight } };
 }
 function geometrySnapshot() {
   scene.updateMatrixWorld(true); const rect = renderer.domElement.getBoundingClientRect();
   const project = value => { const ndc = value.clone().project(camera); return { world: value.toArray(), screen: [rect.left + (ndc.x + 1) * rect.width / 2, rect.top + (1 - ndc.y) * rect.height / 2] }; };
-  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
   const planned = [], profileWindows = [];
   sheetCards.get(state.sheetId)?.traverse(board => {
     const info = board.userData.pixelBoard; if (!info || !info.profile || info.board) return;
@@ -1743,10 +1958,10 @@ function geometrySnapshot() {
   return { sources: sourceTiles.map(tile => ({ id: tile.entry.id, profile: tile.profile.id, center: project(tile.group.getWorldPosition(new THREE.Vector3())) })),
     planned, profileWindows, camera: { position: camera.position.toArray(), target: controls.target.toArray() },
     boards: boards.map(board => ({ sheet: board.userData.sheetId, position: board.position.toArray(), rotationY: board.rotation.y, center: project(board.getWorldPosition(new THREE.Vector3())) })),
-    details: detailPanels.map(panel => ({ profiles: panel.group.ids, center: project(panel.root.getWorldPosition(new THREE.Vector3())) })),
+    details: detailPanels.map(panel => { const bounds = panel.element.getBoundingClientRect(); return {
+      profiles: panel.group.ids, center: { screen: [bounds.left + bounds.width / 2, bounds.top + bounds.height / 2] } }; }),
     connections: connections.map(link => ({ sourceProfile: link.source.profile.id, profiles: link.panel.group.ids,
-      startError: link.curve.v0.distanceTo(link.source.group.getWorldPosition(new THREE.Vector3())),
-      endError: link.curve.v3.distanceTo(link.panel.root.getWorldPosition(new THREE.Vector3()).addScaledVector(up, -link.panel.height * .48)) })) };
+      path: link.path.getAttribute('d') })) };
 }
 
 window.__observatory = { snapshot, geometry: geometrySnapshot, selectGroup, jumpToWorkerCaptures, nextDifference, nextSheetDifference, nextGroupDifference, focusSheet,

@@ -95,13 +95,32 @@ export function captureFrames(events, { now = Date.now(), windowMs = 60000, limi
   return shown.map(group => frameFor(group, sameSheet, bounds));
 }
 
+const GLYPH_DIMENSIONS = {
+  compact: {
+    small: { width: 20, height: 17, spacing: 25 },
+    medium: { width: 27, height: 23, spacing: 34 },
+    large: { width: 34, height: 28, spacing: 42 },
+  },
+  regular: {
+    small: { width: 24, height: 20, spacing: 30 },
+    medium: { width: 34, height: 28, spacing: 42 },
+    large: { width: 46, height: 38, spacing: 56 },
+  },
+};
+
+export function captureGlyphDimensions(compact, size = 'large') {
+  const dimensions = compact ? GLYPH_DIMENSIONS.compact : GLYPH_DIMENSIONS.regular;
+  return dimensions[size] || dimensions.large;
+}
+
 // Screen-sized groups only avoid overlapping glyphs. Real groups and their
 // receipt times survive aggregation; generations never depend on screen space.
-export function capturePackages(events, now, windowMs, width, compact = false) {
+export function capturePackages(events, now, windowMs, width, compact = false, glyphSize = 'large') {
   if (!Number.isFinite(width) || width <= 0) return [];
   const groups = captureGroups(events, now, windowMs);
-  const glyphSpacing = compact ? 42 : 56;
-  const glyphHalfWidth = compact ? 17 : 23;
+  const dimensions = captureGlyphDimensions(compact, glyphSize);
+  const glyphSpacing = dimensions.spacing;
+  const glyphHalfWidth = dimensions.width / 2;
   const bounds = new Map();
   for (const group of groups) if (group.sheetKey != null && !bounds.has(group.sheetKey)) {
     bounds.set(group.sheetKey, boundsFor(groups.filter(item => item.sheetKey === group.sheetKey).flatMap(item => item.events)));

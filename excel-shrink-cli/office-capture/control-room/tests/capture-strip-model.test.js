@@ -56,6 +56,11 @@ export function runTests() {
   check(dense[0].groups.length === 3 && dense[0].events.every((event, index) => event === burst[index]),
     'Aggregation preserves every underlying group, capture and receipt timestamp.');
   check(captureDescription(dense[0]).includes('3 groups combined for display'), 'The tooltip distinguishes display aggregation from a capture job.');
+  const spaced = [capture('A1', 'window-a', now - 20000), capture('B1', 'window-b', now - 16000)];
+  check(capturePackages(spaced, now, 60000, 600).length === 1
+    && capturePackages(spaced, now, 30000, 600).length === 2
+    && capturePackages(spaced, now, 60000, 600, false, 'small').length === 2,
+  'Shorter history or smaller glyphs separate nearby captures without changing their source groups.');
   const wide = capturePackages(burst, now, 60000, 60000);
   check(wide.at(-1).frame.layers.length === dense[0].frame.layers.length,
     'Changing the pixel bins cannot change logical generation membership.');

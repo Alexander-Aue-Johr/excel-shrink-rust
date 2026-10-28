@@ -20,23 +20,28 @@ the actual per-profile pixel coordinates, including horizontal offsets and chang
 row heights. Capture jobs currently remain full-width guarded row bands; the
 visual inspection grid does not change the scientific capture boundaries.
 
-The overview fits whole worksheets. Selecting a capture focuses the same pixel
-window in all four profiles; panning and zooming do not create capture jobs.
+The overview fits whole worksheets. Clicking a differing capture opens a fixed
+comparison area above the sheet cards. Hovering another card updates the open
+comparison and resets its zoom. The mouse wheel zooms all shown profiles around
+the same point; dragging pans them together. Fit, close, and Escape end or reset
+the inspection. The camera refits the sheet when the comparison area opens.
+Panning and zooming do not create capture jobs.
 The minimap previews sheets on hover and focuses them on click. Manual navigation
 stops auto-follow; the follow toggle resumes at the current capture. Separate
 buttons navigate differing inspection regions, worksheets, and workbook groups.
 
-Hover details retain a separate original reference and combine variants only
-where pixel equality is proven. Host-provided inspection regions supply exact
-regional equivalence and difference counts. Older results get bounded display
-crops without invented regional classifications. Full images and masks are
-cropped before GPU upload/downscaling so fine changes survive even in captures
-wider than the GPU's maximum texture size. The linked PNG remains the complete
-saved capture.
+The comparison retains a separate original reference and combines variants
+only where raw pixel equality is proven. Host-provided inspection regions supply
+exact regional equivalence and difference counts. Older results get bounded
+display crops without invented regional classifications. Full images and masks
+remain linked as complete saved evidence.
 
-Only host-provided pixel classes determine equivalence. Missing classes remain
-unclassified, and the original always has a separate detail panel. Red pulse masks
-are supplied by the host. No browser hashing or illustrative progress is used.
+The host's tile decision can also classify a verified opaque-white margin as
+visually equal while retaining distinct raw image classes and dimensions. Any
+nonwhite or translucent pixels in the extra margin remain a difference.
+Missing classes remain unclassified, and the original always has a separate
+comparison panel. Difference masks are supplied by the host and shown without
+pulsing. No browser hashing or illustrative progress is used.
 
 The group list initially renders 100 rows, with a filename/corpus filter and a
 load-more button. The selected group remains reachable outside that window. Only
@@ -49,7 +54,8 @@ Capture target megapixels, batch size, and hidden Excel launching apply to newly
 admitted groups. Their effective settings and measured physical capture throughput
 are shown separately. Each Excel card displays its verified process status, PID,
 active command and errors. The four process cards below the Atelier and the
-Worker overview show a shared 60-second timeline: mint ECG-shaped symbols for
+Worker overview show a shared timeline (30 seconds by default, adjustable to
+20 or 60 seconds): mint ECG-shaped symbols for
 observed add-in heartbeats, cyan capture miniatures, and a narrow track of
 reported phases with completed-step milestone markers. The curve shapes are
 event symbols, not physiological measurements. Quiet lanes distinguish
@@ -99,7 +105,7 @@ image-comparison milestones.
 
 Resident planning permits bounded tile metadata before the tall-sheet policy
 selects capture bands. The 4,096-tile capture limit applies after selection;
-individual image and memory limits still apply. Ordinary font names and sizes
+individual image and protocol byte limits still apply. Ordinary font names and sizes
 do not protect a million empty rows as if they had painted backgrounds.
 
 Restart actions POST `/api/groups/{id}/restart`; an optional `client_id` identifies

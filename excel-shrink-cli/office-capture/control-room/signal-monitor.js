@@ -1,13 +1,32 @@
 import { createSignalStore } from './signal-model.js';
-import { capturePackages, captureDescription } from './capture-strip-model.js';
+import { capturePackages, captureDescription, captureGlyphDimensions } from './capture-strip-model.js';
 import { capturePalette, createCaptureSpatialView } from './capture-spatial-view.js';
 import { createHeartbeatTrace } from './heartbeat-shader.js';
 
 // Two data lanes (actual heartbeats and image receipts) plus a slim phase track.
 // An ECG-shaped event glyph is symbolic: no physiological/estimated data exist.
 export const signalHistory = createSignalStore();
-const WINDOW = 60000;
 const views = new Set();
+const WINDOW_OPTIONS = [20, 30, 60];
+const GLYPH_OPTIONS = ['small', 'medium', 'large'];
+function savedSetting(key, allowed, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return allowed.find(option => String(option) === value) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+const settings = {
+  windowSeconds: savedSetting('signal-window-seconds', WINDOW_OPTIONS, 30),
+  glyphSize: savedSetting('signal-glyph-size', GLYPH_OPTIONS, 'medium'),
+};
+function updateSettings(key, value) {
+  settings[key] = value;
+  try { localStorage.setItem(key === 'windowSeconds' ? 'signal-window-seconds' : 'signal-glyph-size', String(value)); }
+  catch { /* The settings still apply for this page when storage is unavailable. */ }
+  for (const view of views) view.refreshSettings();
+}
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const phaseColors = {
   capturing: '#67ddaf', providing_images: '#67ddaf', executing_job: '#67ddaf',
@@ -62,8 +81,8 @@ motion.addEventListener('change', () => { for (const view of views) view.draw();
 
 const colorFor = state => phaseColors[state] || (state?.startsWith('waiting') ? '#648ba4' : '#526878');
 const compactNumber = number => Number.isFinite(number) ? number.toLocaleString('en-US') : '—';
-function drawCaptureGlyph(ctx, pack, x, y, compact) {
-  const w = compact ? 34 : 46, h = compact ? 28 : 38, inset = 3;
+function drawCaptureGlyph(ctx, pack, x, y, dimensions) {
+  const w = dimensions.width, h = dimensions.height, inset = Math.min(3, Math.floor(w / 8));
   const boxes = [], layers = [...(pack.frame?.layers || [])].sort((a, b) => b.generation-a.generation);
   ctx.save();
   ctx.fillStyle = '#10252e'; ctx.strokeStyle = '#34677d'; ctx.lineWidth = .9;
@@ -87,7 +106,7 @@ function drawCaptureGlyph(ctx, pack, x, y, compact) {
   ctx.globalAlpha = 1;
   if (!boxes.length) {
     // A count is honest when coordinates or the worksheet are not known.
-    ctx.fillStyle = '#d6e8f0'; ctx.font = '10px Consolas, monospace'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#d6e8f0'; ctx.font = `${w < 30 ? 8 : 10}px Consolas, monospace`; ctx.textAlign = 'center';
     ctx.fillText(String(pack.count), x, y+3);
   }
   if (pack.count > 1 || pack.groupCount > 1) {
@@ -98,37 +117,38 @@ function drawCaptureGlyph(ctx, pack, x, y, compact) {
   // Later layers are on top and win when the same range is captured again.
   return boxes.reverse();
 }
-function drawCaptures(ctx, events, now, left, width, y, compact) {
-  const packages = capturePackages(events, now, WINDOW, width, compact);
-  const xAt = at => left + (at - (now - WINDOW)) / WINDOW * width;
+function drawCaptures(ctx, events, now, windowMs, left, width, y, compact, glyphSize) {
+  const dimensions = captureGlyphDimensions(compact, glyphSize);
+  const packages = capturePackages(events, now, windowMs, width, compact, glyphSize);
+  const xAt = at => left + (at - (now - windowMs)) / windowMs * width;
   ctx.strokeStyle = '#79dce83b'; ctx.lineWidth = 1; ctx.beginPath();
   ctx.moveTo(left, y); ctx.lineTo(left+width, y); ctx.stroke();
   ctx.save(); ctx.beginPath(); ctx.rect(left, y-25, width, compact ? 51 : 58); ctx.clip();
   // A real timestamp marker is drawn for EVERY received event, including those
   // combined into a visual package. Glyphs remain anchored to real receipt times.
   for (const event of events) {
-    if (event.at < now-WINDOW || event.at > now) continue;
+    if (event.at < now-windowMs || event.at > now) continue;
     const x = xAt(event.at);
     ctx.strokeStyle = '#79dce84c'; ctx.beginPath(); ctx.moveTo(x,y-11);ctx.lineTo(x,y+11);ctx.stroke();
   }
-  const halfWidth = (compact ? 34 : 46)/2;
+  const halfWidth = dimensions.width / 2;
   const boxes = packages.map(pack => {
     const at = left+pack.x;
     // Keep a readable miniature at the edge; its tick stays at the real time.
     const center = Math.max(left+halfWidth,Math.min(left+width-halfWidth,at));
     ctx.strokeStyle='#79dce86b';ctx.beginPath();ctx.moveTo(at,y+23);ctx.lineTo(center,y+20);ctx.stroke();
-    return drawCaptureGlyph(ctx,pack,center,y,compact);
+    return drawCaptureGlyph(ctx,pack,center,y,dimensions);
   }).reverse().flat();
   ctx.restore();
   return boxes;
 }
-function drawStates(ctx, snapshot, now, left, width, y) {
-  const first = now - WINDOW, historyStart = Math.max(first, snapshot.since);
+function drawStates(ctx, snapshot, now, windowMs, left, width, y) {
+  const first = now - windowMs, historyStart = Math.max(first, snapshot.since);
   const items = snapshot.stateEvents.filter(item => item.state && item.at <= now);
   if (snapshot.currentState?.state && Number.isFinite(snapshot.currentState.at))
     items.push({ at: snapshot.currentState.at, state: snapshot.currentState.state });
   items.sort((a,b) => a.at-b.at);
-  const xAt = at => left + (at-first)/WINDOW*width;
+  const xAt = at => left + (at-first)/windowMs*width;
   let prevTime = historyStart, lastState = null;
   for (const item of items) if (item.at <= historyStart) lastState = item.state;
   const drawPart = (start,end,state) => {
@@ -158,14 +178,40 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
   const root = element('span', `signal-monitor${compact ? ' signal-compact' : ''}`);
   const heading = element('span', 'signal-heading');
   const state = element('span', 'signal-state', 'Waiting for telemetry');
-  const interval = element('span', 'signal-window', '60 s');
+  const interval = element('span', 'signal-window', '30 s');
+  const controls = element('span', 'signal-controls');
+  const windowLabel = element('label', 'signal-setting', 'Window');
+  const windowSelect = element('select', 'signal-setting-select');
+  windowSelect.setAttribute('aria-label', 'Signal timeline duration');
+  windowSelect.title = 'Visible signal history';
+  for (const seconds of WINDOW_OPTIONS) {
+    const option = element('option', '', `${seconds} s`);
+    option.value = String(seconds);
+    windowSelect.append(option);
+  }
+  windowSelect.value = String(settings.windowSeconds);
+  windowSelect.addEventListener('change', () => updateSettings('windowSeconds', Number(windowSelect.value)));
+  windowLabel.append(windowSelect);
+  const glyphLabel = element('label', 'signal-setting', 'Size');
+  const glyphSelect = element('select', 'signal-setting-select');
+  glyphSelect.setAttribute('aria-label', 'Capture rectangle size');
+  glyphSelect.title = 'Capture rectangle size';
+  for (const size of GLYPH_OPTIONS) {
+    const option = element('option', '', size[0].toUpperCase() + size.slice(1));
+    option.value = size;
+    glyphSelect.append(option);
+  }
+  glyphSelect.value = settings.glyphSize;
+  glyphSelect.addEventListener('change', () => updateSettings('glyphSize', glyphSelect.value));
+  glyphLabel.append(glyphSelect);
   const fullscreen = element('button', 'signal-fullscreen', 'Full screen');
   fullscreen.type = 'button';
   fullscreen.setAttribute('aria-label', 'Fullscreen signal');
   fullscreen.setAttribute('aria-pressed', 'false');
   fullscreen.title = 'Expand this signal display. Press Escape to return.';
   fullscreen.disabled = !root.requestFullscreen;
-  heading.append(state, interval, fullscreen);
+  controls.append(windowLabel, glyphLabel, fullscreen);
+  heading.append(state, interval, controls);
   const canvas = element('canvas', 'signal-canvas');
   canvas.setAttribute('aria-hidden', 'true');
   const legend = element('span', 'signal-legend');
@@ -263,8 +309,13 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
     });
   }
   root.append(heading, canvas, legend, displayNote, spatial.element);
-  root.title='A 60-second timeline of observed events. Each ECG-shaped pulse represents an observed add-in heartbeat. Miniatures show received captures; the bottom track shows reported phases and completed steps. Quiet signals alone do not diagnose a failure.';
   const view={element:root,visible:false,live:false,
+    refreshSettings() {
+      windowSelect.value = String(settings.windowSeconds);
+      glyphSelect.value = settings.glyphSize;
+      root.title = `A ${settings.windowSeconds}-second timeline of observed events. Each ECG-shaped pulse represents an observed add-in heartbeat. Miniatures show received captures; the bottom track shows reported phases and completed steps. Quiet signals alone do not diagnose a failure.`;
+      view.draw();
+    },
     get captureExpanded(){return spatial.element.open;},
     set captureExpanded(value){spatial.element.open=Boolean(value);},
     update(next,options={}){
@@ -298,14 +349,19 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       const signalState = !connected ? 'disconnected' : snapshot.state;
       if (root.dataset.signalState !== signalState) root.dataset.signalState = signalState;
       setText(state, status);
-      setText(interval, view.live ? 'LIVE · 60 s' : '60 s · last snapshot');
+      const windowMs = settings.windowSeconds * 1000;
+      setText(interval, view.live ? `LIVE · ${settings.windowSeconds} s` : `${settings.windowSeconds} s · last snapshot`);
       const totals=snapshot.totals;
       setText(counterHeartbeat, compactNumber(totals.heartbeat));
       setText(counterCaptures, compactNumber(totals.capture));
       setText(counterSteps, compactNumber(totals.progress));
       const lastHeartbeat=snapshot.points.heartbeat.at(-1);
       const heartbeatAge=lastHeartbeat==null?'last heartbeat unknown':`last heartbeat ${Math.max(0,Math.floor((now-lastHeartbeat)/1000))} s ago`;
-      const label = `${status}. ${snapshot.points.heartbeat.length} observed heartbeats; ${heartbeatAge}. ${snapshot.captureEvents.length} capture events and ${snapshot.points.progress.length} completed steps in 60 seconds. Unreported channels remain unknown.`;
+      const inWindow = at => at >= now - windowMs && at <= now;
+      const heartbeatCount = snapshot.points.heartbeat.filter(inWindow).length;
+      const captureCount = snapshot.captureEvents.filter(event => inWindow(event.at)).length;
+      const stepCount = snapshot.points.progress.filter(inWindow).length;
+      const label = `${status}. ${heartbeatCount} observed heartbeats; ${heartbeatAge}. ${captureCount} capture events and ${stepCount} completed steps in ${settings.windowSeconds} seconds. Unreported channels remain unknown.`;
       if (root.getAttribute('aria-label') !== label) root.setAttribute('aria-label', label);
       if (follow) {
         const disabled = row.kind === 'Rust / Host' || !row.groupId;
@@ -339,10 +395,9 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       const rendered = trace.draw(ctx, {
         left, top: 4, width: graphWidth, height: height - 22,
         traceTop: 0, traceHeight,
-        points: snapshot.points.heartbeat, now, windowMs: WINDOW,
+        points: snapshot.points.heartbeat, now, windowMs,
         pixelRatio: ratio, reducedMotion: motion.matches,
         live: view.live, showTrace: snapshot.supported.heartbeat,
-        observedSince: snapshot.since,
       });
       if (root.dataset.heartbeatRenderer !== rendered.renderer) {
         root.dataset.heartbeatRenderer = rendered.renderer;
@@ -369,13 +424,13 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      hitBoxes = drawCaptures(ctx, snapshot.captureEvents, now, left, graphWidth, capY, small);
-      drawStates(ctx, snapshot, now, left, graphWidth, stateY);
+      hitBoxes = drawCaptures(ctx, snapshot.captureEvents, now, windowMs, left, graphWidth, capY, small, settings.glyphSize);
+      drawStates(ctx, snapshot, now, windowMs, left, graphWidth, stateY);
       ctx.font = `${expanded ? 11 : 8}px Segoe UI, sans-serif`;
       ctx.fillStyle = '#99bda9';
       ctx.textAlign = 'left';
-      ctx.fillText('−60 s', left, height - 3);
-      ctx.fillText('−30 s', left + graphWidth / 2 - 10, height - 3);
+      ctx.fillText(`−${settings.windowSeconds} s`, left, height - 3);
+      ctx.fillText(`−${settings.windowSeconds / 2} s`, left + graphWidth / 2 - 10, height - 3);
       ctx.textAlign = 'right';
       ctx.fillText(view.live ? 'now' : 'saved', width - 6, height - 3);
       ctx.textAlign = 'left';
@@ -393,6 +448,6 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       root.remove();
     },
   };
-  views.add(view);observer.observe(root);
+  views.add(view);view.refreshSettings();observer.observe(root);
   return view;
 }
