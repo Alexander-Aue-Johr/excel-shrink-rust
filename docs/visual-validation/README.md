@@ -27,14 +27,44 @@ regular configuration. It opens the Observatory. Running the same command
 again while that study is active opens its Observatory instead of starting a
 second study.
 
+## Example overnight assignments on native Windows
+
+Run one assignment per computer in **Windows PowerShell**. These examples use
+the installed command, each computer's saved configuration and its local corpus
+ZIP. They do not require WSL.
+
+Enron, first half (the smaller files):
+
+```powershell
+excel-shrink-visual-validation -Corpus Enron -Partition 1/2 -Order size-desc
+```
+
+Enron, second half (the larger files):
+
+```powershell
+excel-shrink-visual-validation -Corpus Enron -Partition 2/2 -Order size-desc
+```
+
+Data.gov, entire corpus:
+
+```powershell
+excel-shrink-visual-validation -Corpus Data.gov -Partition all -Order size-desc
+```
+
+Enron's halves are selected by the original workbooks' uncompressed file sizes,
+not by archive order. `-Order size-desc` processes the largest files *within*
+each selected half first. Update and build the intended version on each computer
+before starting a night run.
+
 ## Preparation and visual scope
 
 The study prepares and shrinks **all selected workbooks first**. Only after
 every preparation has a final result does it fix the visual comparison queue
 and start comparisons. The Observatory shows separate preparation and visual
 totals. Setting the comparison group target to zero pauses new visual
-comparisons; preparation continues. An explicit Stop ends the run after the
-current workbooks and retains their completed preparation records for a restart.
+comparisons; preparation continues. **Finish active workbooks** ends the run
+after current workbooks complete. **Stop now** cancels active workers and closes
+their owned Excel sessions. Completed records remain available for a restart.
 The Observatory has separate controls for simultaneous shrink processes and
 Rayon threads per process. Both range from 1 to the available logical CPU count;
 changes apply only to newly admitted workbooks. Preparation does not gate new
@@ -71,7 +101,8 @@ control defaults to 256 MiB of uncompressed sheet XML. Omitted ranges are shown
 as deferred, even if conditional formatting exists or Excel's recalculated
 copy has different ZIP metadata. After normal comparisons, the Observatory
 stays open in **Awaiting manual full scan** with no Excel clients. Use **Start
-deferred full scan** for a selected workbook, or **Stop** to end the runner.
+deferred full scan** for a selected workbook, or **Finish active workbooks** to
+end the runner.
 The saved state can be resumed later with the same corpus and partition:
 
 ```powershell
@@ -88,17 +119,19 @@ separate research comparisons and is not part of the visual study's timing.
 ## Install the Windows command
 
 If `excel-shrink-visual-validation` is not installed, open Windows PowerShell
-in the Windows workspace printed by the WSL launcher. Install the command
-once, then open a new Windows PowerShell terminal:
+in the repository root (or the Windows workspace printed by the WSL launcher).
+Install the command once, then open a new Windows PowerShell terminal:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\install-corpus-command.ps1
 ```
 
-## Run from a WSL checkout with WSL shut down
+## Optional: release WSL memory for a Windows run
 
-The source is in WSL, while Excel runs on Windows. First, **from the repository
-root in a WSL terminal**, prepare the selected corpus:
+If the source checkout is in WSL and you want its memory available to Excel
+during a night run, prepare a standalone Windows copy before shutting WSL down.
+Destatis is the example here. First, **from the repository root in a WSL
+terminal**, run:
 
 ```bash
 bash tools/start-corpus-wsl.sh -PrepareStandalone -Corpus Destatis
@@ -114,7 +147,7 @@ Then, in **Windows PowerShell**:
 
 ```powershell
 wsl --shutdown
-excel-shrink-visual-validation -Standalone -Corpus Destatis -Partition 3/4
+excel-shrink-visual-validation -Standalone -Corpus Destatis -Partition all -Order size-desc
 ```
 
 `-Standalone` selects the prepared Windows configuration and executable. You
@@ -126,8 +159,12 @@ Windows Rust or .NET 8 SDK installation.
 
 ## Rebuild after a pull
 
-1. In the Observatory, select **Stop run** for any active study. Wait until
-   its active workbooks finish and the study reports that it has stopped.
+On a native Windows computer, stop its active run, update the local checkout,
+and add `-Build` to the next example command to rebuild before starting. The
+steps below apply to a checkout kept in WSL.
+
+1. In the Observatory, select **Finish active workbooks** for any active study.
+   Wait until its active workbooks finish and the study reports that it has stopped.
    Setting the group count to **0** only pauses admission and keeps the output
    directory in use.
 2. Run `git pull` in the **WSL checkout**, not in the deployed Windows copy.
@@ -144,7 +181,7 @@ Windows Rust or .NET 8 SDK installation.
 
    ```powershell
    wsl --shutdown
-   excel-shrink-visual-validation -Standalone -Corpus Destatis -Partition 3/4
+   excel-shrink-visual-validation -Standalone -Corpus Destatis -Partition all -Order size-desc
    ```
 
    **Keep WSL available during the study:** Synchronize the updated source to
@@ -158,7 +195,7 @@ Windows Rust or .NET 8 SDK installation.
    cross-compiles the Windows executable in WSL before starting the study:
 
    ```powershell
-   excel-shrink-visual-validation -Corpus Destatis -Partition 3/4 -Build
+   excel-shrink-visual-validation -Corpus Destatis -Partition all -Order size-desc -Build
    ```
 
 Use `-PrepareStandalone -SkipBuild` only when a suitable Windows executable
