@@ -2,12 +2,15 @@ use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::time::Duration;
+#[cfg(windows)]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{watch, Mutex};
 use tokio::time::timeout;
 
 const PEER_TIMEOUT: Duration = Duration::from_secs(120);
+#[cfg(windows)]
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+#[cfg(windows)]
 const MAX_HEIGHT_RESPONSE: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

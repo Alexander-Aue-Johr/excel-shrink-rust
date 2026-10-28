@@ -5,11 +5,12 @@ mod activity;
 mod inspection;
 mod platform;
 mod snapshots;
+mod workbook_index;
 
 use super::{now_iso, now_ms, read_json, serve, with_web, write_json, ApiError, HttpResult};
 use anyhow::{ensure, Context, Result};
 use axum::{
-    body::Body,
+    body::{Body, Bytes},
     extract::{rejection::JsonRejection, Path as RoutePath, Query, Request, State},
     http::{HeaderMap, StatusCode, Uri},
     middleware::{self, Next},
@@ -19,7 +20,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use snapshots::*;
-use std::{collections::HashMap, path::Path, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, io::Read, path::Path, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 use tower_http::services::ServeFile;
 
@@ -71,12 +72,14 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
     let routes = Router::new()
         .route("/health", get(health))
         .route("/api/state", get(state))
+        .route("/api/workbooks", get(workbooks))
         .route("/api/workers", get(workers))
         .route("/api/groups/{id}", get(group))
         .route("/api/run/stop", post(stop))
         .route("/api/control", post(control))
         .route("/api/groups/{id}/restart", post(restart))
         .route("/api/groups/{id}/inspect", post(inspect))
+        .route("/api/groups/{id}/variants/{profile}", get(download_variant))
         .route("/api/commands/{id}", get(command))
         .route("/data/{*path}", get(asset))
         .with_state(room.clone());
@@ -168,6 +171,53 @@ async fn read_queue(room: &Room, diagnostics: &mut Vec<Value>) -> Result<Value> 
     Ok(queue)
 }
 
+async fn read_workbook_index(root: &Path, diagnostics: &mut Vec<Value>) -> Option<Value> {
+    read_snapshot(
+        &root.join("workbook-index.json"),
+        diagnostics,
+        64 * 1024 * 1024,
+    )
+    .await
+}
+
+async fn workbooks(
+    State(room): State<Arc<Room>>,
+    Query(query): Query<HashMap<String, String>>,
+) -> HttpResult<Json<Value>> {
+    let filter = query.get("filter").map(String::as_str).unwrap_or("all");
+    if !workbook_index::FILTERS.contains(&filter) {
+        return Err(ApiError::bad_request("Unknown workbook filter."));
+    }
+    let search = query.get("search").map(String::as_str).unwrap_or("").trim();
+    if search.len() > 200 {
+        return Err(ApiError::bad_request("Workbook search is too long."));
+    }
+    let offset = query
+        .get("offset")
+        .map(|value| value.parse::<usize>())
+        .transpose()
+        .map_err(|_| ApiError::bad_request("Workbook page offset must be nonnegative."))?
+        .unwrap_or(0);
+    let limit = query
+        .get("limit")
+        .map(|value| value.parse::<usize>())
+        .transpose()
+        .map_err(|_| ApiError::bad_request("Workbook page size must be an integer."))?
+        .unwrap_or(100);
+    if !(1..=100).contains(&limit) {
+        return Err(ApiError::bad_request("Workbook page size must be 1..100."));
+    }
+    let mut diagnostics = Vec::new();
+    let Some(index) = read_workbook_index(&room.root, &mut diagnostics).await else {
+        return Ok(Json(json!({"available":false,"workbooks":[],"counts":{},
+            "total":0,"offset":offset,"next_offset":null,"diagnostics":diagnostics})));
+    };
+    let mut response = workbook_index::page(&index, filter, search, offset, limit);
+    response["available"] = json!(true);
+    response["diagnostics"] = json!(diagnostics);
+    Ok(Json(response))
+}
+
 async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
     let mut diagnostics = Vec::new();
     let mut queue = read_queue(&room, &mut diagnostics).await?;
@@ -177,6 +227,7 @@ async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
         queue["groups"] = json!([]);
     }
     queue["controls"] = read_controls(&room, &mut diagnostics).await;
+    queue["logical_cores"] = json!(logical_cores());
     let stop = read_snapshot(
         &room.root.join("stop-request.json"),
         &mut diagnostics,
@@ -196,12 +247,63 @@ async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
             queue["progress"] = progress;
         }
     }
+    attach_active_preparation_profile(&room.root, &mut queue, &mut diagnostics).await;
     activity::augment_progress(&mut queue, &room.root).await?;
     queue["memory"] = platform::memory_snapshot();
     queue["server"] =
         json!({"started_at": room.started, "utc": now_iso(), "port": room.port, "live": true});
     queue["diagnostics"] = json!(diagnostics);
     Ok(Json(queue))
+}
+
+async fn attach_active_preparation_profile(
+    root: &Path,
+    queue: &mut Value,
+    diagnostics: &mut Vec<Value>,
+) {
+    let Some(active) = queue["progress"]["active_preparation"].as_array() else {
+        return;
+    };
+    if active.len() != 1 {
+        return;
+    }
+    let workbook = &active[0]["workbook"];
+    let Some(group) = queue["groups"].as_array().and_then(|groups| {
+        groups.iter().find(|group| {
+            group["active"] == true
+                && group["status"] == "preparing"
+                && group["workbook"] == *workbook
+                && group["run_id"] == queue["run_id"]
+        })
+    }) else {
+        return;
+    };
+    let Some(id) = group["id"].as_str() else {
+        return;
+    };
+    let attempt = group["attempt_id"].clone();
+    let Ok(directory) = confined_path(root, &format!("groups/{id}")) else {
+        return;
+    };
+    let Some(coordinator) = read_snapshot(
+        &directory.join("coordinator.json"),
+        diagnostics,
+        SNAPSHOT_LIMIT,
+    )
+    .await
+    else {
+        return;
+    };
+    if attempt.is_null() || coordinator["attempt_id"] != attempt {
+        return;
+    }
+    if coordinator["phase"] != "shrinking" || coordinator["last_event"]["kind"] != "profile_started"
+    {
+        return;
+    }
+    if let Some(profile) = coordinator["last_event"]["details"]["profile"].as_str() {
+        queue["progress"]["active_preparation"][0]["profile"] = json!(profile);
+    }
 }
 
 async fn workers(
@@ -234,6 +336,9 @@ async fn workers(
                         group["status"].as_str(),
                         Some(
                             "unchanged"
+                                | "crc-identical"
+                                | "workbook-only"
+                                | "paused-for-later"
                                 | "differences"
                                 | "skipped"
                                 | "failed"
@@ -269,10 +374,29 @@ async fn group(
     safe_id(&id)?;
     let mut diagnostics = Vec::new();
     let queue = read_queue(&room, &mut diagnostics).await?;
-    let summary = queue["groups"]
+    let queued_summary = queue["groups"]
         .as_array()
-        .and_then(|groups| groups.iter().find(|group| group["id"] == id))
+        .and_then(|groups| {
+            groups.iter().find(|group| {
+                group["id"] == id
+                    && (group["run_id"].is_null()
+                        || queue["run_id"].is_null()
+                        || group["run_id"] == queue["run_id"])
+            })
+        })
         .cloned();
+    let in_queue = queued_summary.is_some();
+    let summary = if queued_summary.is_some() {
+        queued_summary
+    } else {
+        read_workbook_index(&room.root, &mut diagnostics)
+            .await
+            .and_then(|index| {
+                (queue["run_id"].is_null() || index["run_id"] == queue["run_id"])
+                    .then(|| workbook_index::find(&index, &id).cloned())
+                    .flatten()
+            })
+    };
     let scheduled_status = summary
         .as_ref()
         .and_then(|group| group["status"].as_str())
@@ -296,8 +420,8 @@ async fn group(
         )
         .await;
     }
-    if summary.is_some()
-        && scheduled_attempt.as_deref()
+    if !in_queue
+        || scheduled_attempt.as_deref()
             != detail
                 .as_ref()
                 .and_then(|detail| detail["attempt_id"].as_str())
@@ -371,6 +495,24 @@ async fn group(
     let record = read_snapshot(&record_path, &mut diagnostics, SNAPSHOT_LIMIT)
         .await
         .unwrap_or(json!({}));
+    if merged["shrink_identity"].is_null() {
+        merged["shrink_identity"] = record["shrink_identity"].clone();
+    }
+    if merged["cleanup_analysis"].is_null() {
+        merged["cleanup_analysis"] = record["cleanup_analysis"].clone();
+    }
+    if merged["capture_deferred"].is_null() {
+        merged["capture_deferred"] = record["capture_deferred"].clone();
+    }
+    if merged["recalc_identity_changed"].is_null() {
+        merged["recalc_identity_changed"] = record["recalc_identity_changed"].clone();
+    }
+    if merged["baseline_repaired"].is_null() {
+        merged["baseline_repaired"] = record["baseline_repaired"].clone();
+    }
+    if merged["source_format"].is_null() {
+        merged["source_format"] = record["source_format"].clone();
+    }
     if record["cleanup_pending"].is_object() {
         merged["cleanup_pending"] = record["cleanup_pending"].clone();
     }
@@ -402,7 +544,15 @@ fn attach_outcome(group: &mut Value, record: &Value, attempt: Option<&str>) {
     if record["control_room_attempt"]["id"].as_str() != attempt
         || !matches!(
             group["status"].as_str(),
-            Some("skipped" | "failed" | "unchanged" | "differences")
+            Some(
+                "skipped"
+                    | "failed"
+                    | "unchanged"
+                    | "crc-identical"
+                    | "workbook-only"
+                    | "paused-for-later"
+                    | "differences"
+            )
         )
         || group["status"] != record["status"]
     {
@@ -429,11 +579,7 @@ async fn inspect(
     if !inspection::PROFILES.contains(&profile.as_str()) {
         return Err(ApiError::bad_request("Unknown inspection profile."));
     }
-    let queue = read_queue(&room, &mut Vec::new()).await?;
-    if !queue["groups"]
-        .as_array()
-        .is_some_and(|groups| groups.iter().any(|group| group["id"] == id))
-    {
+    if !known_workbook(&room, &id).await? {
         return Err(ApiError::not_found("Unknown comparison group."));
     }
     let root = room.root.clone();
@@ -447,6 +593,89 @@ async fn inspect(
     ))
 }
 
+async fn known_workbook(room: &Room, id: &str) -> Result<bool> {
+    let queue = read_queue(&room, &mut Vec::new()).await?;
+    let queued = queue["groups"].as_array().is_some_and(|groups| {
+        groups.iter().any(|group| {
+            group["id"] == id
+                && (group["run_id"].is_null()
+                    || queue["run_id"].is_null()
+                    || group["run_id"] == queue["run_id"])
+        })
+    });
+    let indexed = if queued {
+        false
+    } else {
+        read_workbook_index(&room.root, &mut Vec::new())
+            .await
+            .is_some_and(|index| {
+                (queue["run_id"].is_null() || index["run_id"] == queue["run_id"])
+                    && workbook_index::find(&index, &id).is_some()
+            })
+    };
+    Ok(queued || indexed)
+}
+
+async fn download_variant(
+    State(room): State<Arc<Room>>,
+    RoutePath((id, profile)): RoutePath<(String, String)>,
+) -> HttpResult<Response> {
+    safe_id(&id)?;
+    if !inspection::PROFILES.contains(&profile.as_str()) {
+        return Err(ApiError::bad_request("Unknown inspection profile."));
+    }
+    if !known_workbook(&room, &id).await? {
+        return Err(ApiError::not_found("Unknown comparison group."));
+    }
+    let root = room.root.clone();
+    let requested_id = id.clone();
+    let requested_profile = profile.clone();
+    let (mut archive, member, size) = tokio::task::spawn_blocking(move || {
+        inspection::open_variant(&root, &requested_id, &requested_profile)
+    })
+    .await
+    .context("Open prepared workbook variant")??;
+    let (sender, receiver) = tokio::sync::mpsc::channel::<std::io::Result<Bytes>>(4);
+    tokio::task::spawn_blocking(move || {
+        let transfer = (|| -> std::io::Result<()> {
+            let mut entry = archive.by_name(&member).map_err(std::io::Error::other)?;
+            let mut buffer = [0_u8; 64 * 1024];
+            loop {
+                let read = entry.read(&mut buffer)?;
+                if read == 0 {
+                    return Ok(());
+                }
+                if sender
+                    .blocking_send(Ok(Bytes::copy_from_slice(&buffer[..read])))
+                    .is_err()
+                {
+                    return Ok(());
+                }
+            }
+        })();
+        if let Err(error) = transfer {
+            let _ = sender.blocking_send(Err(error));
+        }
+    });
+    let stream = futures_util::stream::unfold(receiver, |mut receiver| async move {
+        receiver.recv().await.map(|chunk| (chunk, receiver))
+    });
+    let filename = format!("{id}-{profile}.xlsx");
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(
+            "content-type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        .header(
+            "content-disposition",
+            format!("attachment; filename=\"{filename}\""),
+        )
+        .header("content-length", size.to_string())
+        .body(Body::from_stream(stream))
+        .map_err(|error| ApiError::bad_request(error))
+}
+
 fn scheduler_status_wins(status: &str) -> bool {
     matches!(
         status,
@@ -458,6 +687,9 @@ fn scheduler_status_wins(status: &str) -> bool {
             | "failed"
             | "skipped"
             | "unchanged"
+            | "crc-identical"
+            | "workbook-only"
+            | "paused-for-later"
             | "differences"
             | "waiting_cleanup"
             | "cleanup_blocked"
@@ -622,7 +854,7 @@ async fn restart(
     if body.as_object().unwrap().keys().any(|key| {
         !matches!(
             key.as_str(),
-            "client_id" | "reason" | "hard_reset" | "expected_attempt_id"
+            "client_id" | "reason" | "hard_reset" | "expected_attempt_id" | "full_scan_deferred"
         )
     }) {
         return Err(ApiError::bad_request("Unknown restart option."));
@@ -633,6 +865,13 @@ async fn restart(
         body["hard_reset"]
             .as_bool()
             .context("hard_reset must be a boolean.")?
+    };
+    let full_scan_deferred = if body["full_scan_deferred"].is_null() {
+        false
+    } else {
+        body["full_scan_deferred"]
+            .as_bool()
+            .context("full_scan_deferred must be a boolean.")?
     };
     let client_id = optional_string(&body, "client_id")?
         .map(safe_id)
@@ -652,6 +891,11 @@ async fn restart(
             "Start the corpus runner before requesting a restart.",
         ));
     }
+    if queue["phase"] == "awaiting_deferred_manual" && !full_scan_deferred {
+        return Err(ApiError::conflict(
+            "Only deferred full scans can start after regular comparisons finish.",
+        ));
+    }
     let group = queue["groups"]
         .as_array()
         .and_then(|groups| groups.iter().find(|group| group["id"] == id))
@@ -665,6 +909,27 @@ async fn restart(
     let run_id = required_string(&queue, "run_id")?;
     if group["run_id"] != run_id || group["restart_eligible"] == false {
         return Err(ApiError::conflict("This group belongs to an earlier run; select it in a new corpus run to compare it again."));
+    }
+    if full_scan_deferred {
+        if queue["phase"] != "awaiting_deferred_manual" {
+            return Err(ApiError::conflict(
+                "Deferred full scans can start after all regular comparisons finish.",
+            ));
+        }
+        let pending = match &group["capture_deferred"] {
+            Value::Bool(value) => *value,
+            Value::Array(items) => !items.is_empty(),
+            Value::Object(profiles) => profiles.values().any(|value| {
+                value.as_bool() == Some(true)
+                    || value.as_array().is_some_and(|items| !items.is_empty())
+            }),
+            _ => false,
+        };
+        if !pending || client_id.is_some() || hard_reset {
+            return Err(ApiError::bad_request(
+                "A deferred full scan requires a group with pending sheets and no client reset.",
+            ));
+        }
     }
     if let Some(client_id) = client_id {
         let launcher = read_snapshot(
@@ -703,14 +968,30 @@ async fn restart(
                 Some("pending" | "restarting" | "queued")
             )
         {
+            if full_scan_deferred && pending["full_scan_deferred"] != true {
+                return Err(ApiError::conflict(
+                    "A regular restart is already pending for this group.",
+                ));
+            }
+            if full_scan_deferred {
+                resume_for_deferred_scan(&room, &queue).await?;
+            }
             return Ok(accepted_restart("group", pending));
         }
     }
+    if full_scan_deferred {
+        resume_for_deferred_scan(&room, &queue).await?;
+    }
     let command_id = uuid::Uuid::new_v4().simple().to_string();
     let command = json!({"id": command_id, "type": "restart_group", "group_id": id,
-        "run_id": run_id, "client_id": client_id, "reason": reason, "attempt_id": group["attempt_id"],
-        "requested_unix_ms": now_ms(), "status": "pending", "restart_scope": "group",
-        "message": "The whole comparison will be requeued next after safe cleanup of its current peer groups."});
+    "run_id": run_id, "client_id": client_id, "reason": reason, "attempt_id": group["attempt_id"],
+    "requested_unix_ms": now_ms(), "status": "pending", "restart_scope": "group",
+    "full_scan_deferred": full_scan_deferred,
+    "message": if full_scan_deferred {
+        "Deferred sheets will be fully captured after safe cleanup of current groups."
+    } else {
+        "The whole comparison will be requeued next after safe cleanup of its current peer groups."
+    }});
     write_json(
         &confined_path(&room.root, &format!("commands/{command_id}.json"))?,
         &command,
@@ -718,6 +999,25 @@ async fn restart(
     )
     .await?;
     Ok(accepted_restart("group", command))
+}
+
+async fn resume_for_deferred_scan(room: &Room, queue: &Value) -> HttpResult<()> {
+    let stop = read_snapshot(
+        &room.root.join("stop-request.json"),
+        &mut Vec::new(),
+        SNAPSHOT_LIMIT,
+    )
+    .await;
+    if active_stop_requested(queue, stop.as_ref()) {
+        return Err(ApiError::conflict("The study runner is stopping."));
+    }
+    let path = room.root.join("control.json");
+    let current = merge_controls(&defaults(), &read_object(&path, SNAPSHOT_LIMIT).await?)?;
+    if current["target_groups"] == 0 {
+        let resumed = merge_controls(&current, &json!({"target_groups": 1}))?;
+        write_json(&path, &resumed, true).await?;
+    }
+    Ok(())
 }
 
 fn accepted_restart(scope: &str, command: Value) -> Response {
@@ -809,11 +1109,19 @@ async fn asset(
     Ok(ServeFile::new(path).try_call(request).await?.map(Body::new))
 }
 
+fn logical_cores() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1)
+}
+
 fn defaults() -> Value {
-    json!({"target_groups": 1, "paused": false, "open_timeout_seconds": 600, "system_reserve_mib": 1024,
+    json!({"target_groups": 1, "prepare_processes": 1, "shrink_threads": logical_cores(),
+        "paused": false, "open_timeout_seconds": 600, "system_reserve_mib": 1024,
         "job_timeout_seconds": 300, "equal_preview_width": 512, "capture_tile_megapixels": 32,
         "capture_batch_tiles": 1, "capture_transport": "live-images", "hide_excel": false,
-        "tall_sheet_threshold": 40, "tall_sheet_edge_tiles": 2})
+        "tall_sheet_threshold": 40, "tall_sheet_edge_tiles": 2,
+        "crc_equal_sheet_threshold_mib": 256})
 }
 
 fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
@@ -839,6 +1147,9 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
             let valid = match key.as_str() {
                 "equal_preview_width" => matches!(integer, 0 | 128 | 256 | 512 | 1024),
                 "target_groups" => integer >= 0,
+                "prepare_processes" | "shrink_threads" => {
+                    integer > 0 && (integer as usize) <= logical_cores()
+                }
                 "capture_tile_megapixels" => (1..=32).contains(&integer),
                 "capture_batch_tiles" => (1..=16).contains(&integer),
                 "system_reserve_mib" => (1..=65536).contains(&integer),
@@ -888,6 +1199,136 @@ fn active_stop_requested(queue: &Value, stop: Option<&Value>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn preparation_controls_are_bounded_by_available_logical_cores() -> Result<()> {
+        let max = logical_cores();
+        let controls = merge_controls(
+            &defaults(),
+            &json!({"prepare_processes": max, "shrink_threads": 1}),
+        )?;
+        assert_eq!(controls["prepare_processes"], max);
+        assert_eq!(controls["shrink_threads"], 1);
+        assert!(merge_controls(&controls, &json!({"prepare_processes": 0})).is_err());
+        assert!(merge_controls(&controls, &json!({"shrink_threads": 0})).is_err());
+        assert!(merge_controls(&controls, &json!({"prepare_processes": max + 1})).is_err());
+        assert!(merge_controls(&controls, &json!({"shrink_threads": max + 1})).is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn explicit_deferred_scan_resumes_one_group_but_never_counters_a_stop() -> Result<()> {
+        let root =
+            std::env::temp_dir().join(format!("control-room-deferred-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root)?;
+        let path = root.join("control.json");
+        let controls = merge_controls(&defaults(), &json!({"target_groups":0}))?;
+        std::fs::write(&path, serde_json::to_vec(&controls)?)?;
+        let room = Room {
+            root: root.clone(),
+            port: 0,
+            version: "test".into(),
+            started: "test".into(),
+            initial_controls: defaults(),
+            control_gate: Mutex::new(()),
+        };
+        let queue = json!({"running":true,"runner_alive":true,
+            "runner_pid":42,"runner_started_unix_ms":100});
+        resume_for_deferred_scan(&room, &queue)
+            .await
+            .map_err(|error| anyhow::anyhow!("resume failed: {error:?}"))?;
+        assert_eq!(
+            read_object(&path, SNAPSHOT_LIMIT).await?["target_groups"],
+            1
+        );
+
+        std::fs::write(&path, serde_json::to_vec(&controls)?)?;
+        std::fs::write(
+            root.join("stop-request.json"),
+            serde_json::to_vec(&json!({"runner_pid":42,"runner_started_unix_ms":100}))?,
+        )?;
+        assert!(resume_for_deferred_scan(&room, &queue).await.is_err());
+        assert_eq!(
+            read_object(&path, SNAPSHOT_LIMIT).await?["target_groups"],
+            0
+        );
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn download_streams_an_aliased_prepared_variant() -> Result<()> {
+        let base =
+            std::env::temp_dir().join(format!("control-room-download-{}", uuid::Uuid::new_v4()));
+        let root = base.join("study/control-room");
+        let prepared = base.join("study/prepared");
+        std::fs::create_dir_all(&root)?;
+        std::fs::create_dir_all(&prepared)?;
+        std::fs::write(
+            root.join("queue.json"),
+            serde_json::to_vec(&json!({"run_id":"run-a","groups":[
+                {"id":"book","run_id":"run-a","status":"prepared","active":false}
+            ]}))?,
+        )?;
+        let mut bundle = zip::ZipWriter::new(std::fs::File::create(prepared.join("book.zip"))?);
+        bundle.start_file("original.xlsx", zip::write::FileOptions::default())?;
+        bundle.write_all(b"prepared bytes")?;
+        bundle.start_file("preparation.json", zip::write::FileOptions::default())?;
+        bundle.write_all(
+            br#"{"version":2,"variants":[{"profile":"default","member":"original.xlsx"}]}"#,
+        )?;
+        bundle.finish()?;
+        let room = Arc::new(Room {
+            root,
+            port: 0,
+            version: "test".into(),
+            started: "test".into(),
+            initial_controls: defaults(),
+            control_gate: Mutex::new(()),
+        });
+        let response = download_variant(State(room), RoutePath(("book".into(), "default".into())))
+            .await
+            .map_err(|error| anyhow::anyhow!("download failed: {error:?}"))?;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["content-length"], "14");
+        let body = axum::body::to_bytes(response.into_body(), 1024).await?;
+        assert_eq!(&body[..], b"prepared bytes");
+        std::fs::remove_dir_all(base)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn active_preparation_profile_comes_from_the_current_worker_attempt() -> Result<()> {
+        let root =
+            std::env::temp_dir().join(format!("control-room-profile-{}", uuid::Uuid::new_v4()));
+        let worker = root.join("groups/group-a/coordinator.json");
+        std::fs::create_dir_all(worker.parent().unwrap())?;
+        let mut queue = json!({"run_id":"run-a","groups":[{"id":"group-a",
+            "workbook":"book.xlsx","run_id":"run-a","attempt_id":"attempt-a",
+            "status":"preparing","active":true}],
+            "progress":{"active_preparation":[{"id":"source-a","workbook":"book.xlsx"}]}});
+        let worker_state = json!({"attempt_id":"attempt-a","phase":"shrinking",
+            "last_event":{"kind":"profile_started","details":{"profile":"maximum-cleaning"}}});
+        std::fs::write(&worker, serde_json::to_vec(&worker_state)?)?;
+        attach_active_preparation_profile(&root, &mut queue, &mut Vec::new()).await;
+        assert_eq!(
+            queue["progress"]["active_preparation"][0]["profile"],
+            "maximum-cleaning"
+        );
+
+        queue["progress"]["active_preparation"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("profile");
+        let mut stale = worker_state;
+        stale["attempt_id"] = json!("previous-attempt");
+        std::fs::write(&worker, serde_json::to_vec(&stale)?)?;
+        attach_active_preparation_profile(&root, &mut queue, &mut Vec::new()).await;
+        assert!(queue["progress"]["active_preparation"][0]["profile"].is_null());
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn outcome_reason_must_belong_to_the_displayed_attempt() {
@@ -902,6 +1343,13 @@ mod tests {
         let mut active = json!({"status":"capturing"});
         attach_outcome(&mut active, &record, Some("current"));
         assert!(active["outcome_error"].is_null());
+        for status in ["crc-identical", "paused-for-later"] {
+            let record = json!({"status":status,"error":"Evidence remains incomplete",
+                "control_room_attempt":{"id":"current"}});
+            let mut group = json!({"status":status});
+            attach_outcome(&mut group, &record, Some("current"));
+            assert_eq!(group["outcome_error"], "Evidence remains incomplete");
+        }
     }
 
     #[test]
@@ -926,6 +1374,16 @@ mod tests {
         ] {
             assert!(merge_controls(&current, &json!({"capture_transport":value})).is_err());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn crc_equal_sheet_threshold_is_a_live_control() -> Result<()> {
+        let current = defaults();
+        assert_eq!(current["crc_equal_sheet_threshold_mib"], 256);
+        let selected = merge_controls(&current, &json!({"crc_equal_sheet_threshold_mib": 512}))?;
+        assert_eq!(selected["crc_equal_sheet_threshold_mib"], 512);
+        assert!(merge_controls(&current, &json!({"crc_equal_sheet_threshold_mib": 0})).is_err());
         Ok(())
     }
 }

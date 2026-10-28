@@ -2,6 +2,7 @@
 //! workbook. Each click gets its own copy so edits cannot affect a later test.
 use super::snapshots::{confined_path, safe_id};
 use anyhow::{ensure, Context, Result};
+use serde_json::Value;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -20,6 +21,56 @@ fn bundle_path(root: &Path, id: &str) -> Result<PathBuf> {
     confined_path(study, &format!("prepared/{id}.zip"))
 }
 
+fn stored_member(archive: &mut zip::ZipArchive<fs::File>, profile: &str) -> Result<Option<String>> {
+    ensure!(PROFILES.contains(&profile), "Unknown inspection profile.");
+    let fallback = format!("{profile}.xlsx");
+    let member = match archive.by_name("preparation.json") {
+        Ok(metadata) => {
+            let preparation: Value = serde_json::from_reader(metadata)?;
+            if profile == "original" {
+                fallback
+            } else {
+                let Some(member) = preparation["variants"]
+                    .as_array()
+                    .and_then(|variants| variants.iter().find(|item| item["profile"] == profile))
+                    .and_then(|variant| variant["member"].as_str())
+                else {
+                    return Ok(None);
+                };
+                member.to_owned()
+            }
+        }
+        Err(zip::result::ZipError::FileNotFound) => fallback,
+        Err(error) => return Err(error.into()),
+    };
+    // A profile may alias another stored variant, but never an arbitrary ZIP
+    // member or a path supplied by the bundle.
+    ensure!(
+        PROFILES
+            .iter()
+            .any(|known| member == format!("{known}.xlsx")),
+        "Invalid prepared workbook member."
+    );
+    Ok(archive.by_name(&member).is_ok().then_some(member))
+}
+
+pub(super) fn open_variant(
+    root: &Path,
+    id: &str,
+    profile: &str,
+) -> Result<(zip::ZipArchive<fs::File>, String, u64)> {
+    let file = fs::File::open(bundle_path(root, id)?)
+        .context("No prepared workbook copy is available for this group.")?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    let member = stored_member(&mut archive, profile)?
+        .context("This workbook variant is not available in the prepared bundle.")?;
+    let entry = archive.by_name(&member)?;
+    ensure!(!entry.is_dir(), "Prepared workbook is not a file.");
+    let size = entry.size();
+    drop(entry);
+    Ok((archive, member, size))
+}
+
 pub(super) fn available_profiles(root: &Path, id: &str) -> Result<Vec<&'static str>> {
     let path = bundle_path(root, id)?;
     if !path.exists() {
@@ -27,10 +78,13 @@ pub(super) fn available_profiles(root: &Path, id: &str) -> Result<Vec<&'static s
     }
     let file = fs::File::open(path)?;
     let mut archive = zip::ZipArchive::new(file)?;
-    Ok(PROFILES
-        .into_iter()
-        .filter(|profile| archive.by_name(&format!("{profile}.xlsx")).is_ok())
-        .collect())
+    let mut available = Vec::new();
+    for profile in PROFILES {
+        if stored_member(&mut archive, profile)?.is_some() {
+            available.push(profile);
+        }
+    }
+    Ok(available)
 }
 
 pub(super) fn copy_workbook(
@@ -40,13 +94,10 @@ pub(super) fn copy_workbook(
     destination: &Path,
 ) -> Result<PathBuf> {
     ensure!(PROFILES.contains(&profile), "Unknown inspection profile.");
-    let file = fs::File::open(bundle_path(root, id)?)
-        .context("No prepared workbook copy is available for this group.")?;
-    let mut archive = zip::ZipArchive::new(file)?;
+    let (mut archive, member_name, _) = open_variant(root, id, profile)?;
     let mut member = archive
-        .by_name(&format!("{profile}.xlsx"))
+        .by_name(&member_name)
         .context("This workbook variant is not available in the prepared bundle.")?;
-    ensure!(!member.is_dir(), "Prepared workbook is not a file.");
     fs::create_dir_all(destination)?;
     let path = destination.join(format!("{id}-{profile}.xlsx"));
     let mut output = fs::OpenOptions::new()
@@ -138,6 +189,46 @@ mod tests {
         assert!(copy_workbook(&root, "workbook", "../outside", &base.join("other")).is_err());
         assert!(copy_workbook(&root, "workbook", "default", &base.join("other")).is_err());
         assert!(available_profiles(&root, "absent")?.is_empty());
+        fs::remove_dir_all(base)?;
+        Ok(())
+    }
+
+    #[test]
+    fn inspection_resolves_profile_aliases_in_compact_bundles() -> Result<()> {
+        let base = std::env::temp_dir().join(format!("inspection-alias-{}", uuid::Uuid::new_v4()));
+        let root = base.join("study/control-room");
+        fs::create_dir_all(&root)?;
+        fs::create_dir_all(base.join("study/prepared"))?;
+        let bundle = bundle_path(&root, "workbook")?;
+        let mut zip = zip::ZipWriter::new(fs::File::create(&bundle)?);
+        for (name, bytes) in [
+            ("original.xlsx", b"original".as_slice()),
+            ("maximum-cleaning.xlsx", b"maximum".as_slice()),
+            ("preparation.json", br#"{"version":2,"variants":[{"profile":"default","member":"original.xlsx"},{"profile":"maximum-cleaning","member":"maximum-cleaning.xlsx"},{"profile":"too-aggressive-cleaning","member":"maximum-cleaning.xlsx"}]}"#.as_slice()),
+        ] {
+            zip.start_file(name, zip::write::FileOptions::default())?;
+            zip.write_all(bytes)?;
+        }
+        zip.finish()?;
+        assert_eq!(available_profiles(&root, "workbook")?, PROFILES);
+        assert_eq!(
+            fs::read(copy_workbook(
+                &root,
+                "workbook",
+                "default",
+                &base.join("copies")
+            )?)?,
+            b"original"
+        );
+        assert_eq!(
+            fs::read(copy_workbook(
+                &root,
+                "workbook",
+                "too-aggressive-cleaning",
+                &base.join("copies")
+            )?)?,
+            b"maximum"
+        );
         fs::remove_dir_all(base)?;
         Ok(())
     }
