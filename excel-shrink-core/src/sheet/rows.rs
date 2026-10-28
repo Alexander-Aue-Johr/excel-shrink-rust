@@ -138,6 +138,8 @@ struct RowCellCleanupState<'a> {
     kept_default_style_cell: bool,
     tentative_style_representatives: Vec<TentativeStyleRepresentative<'a>>,
     kept_represented_style_ids: std::collections::HashSet<u32>,
+    // Most rows use one font; its ID needs no per-row hash table allocation.
+    first_kept_font_id: Option<u32>,
     kept_font_ids: std::collections::HashSet<u32>,
 }
 
@@ -153,7 +155,22 @@ impl<'a> RowCellCleanupState<'a> {
             kept_default_style_cell: false,
             tentative_style_representatives: Vec::new(),
             kept_represented_style_ids: std::collections::HashSet::new(),
+            first_kept_font_id: None,
             kept_font_ids: std::collections::HashSet::new(),
+        }
+    }
+
+    fn has_kept_font_id(&self, font: u32) -> bool {
+        self.first_kept_font_id == Some(font) || self.kept_font_ids.contains(&font)
+    }
+
+    fn record_kept_font_id(&mut self, font: u32) {
+        if let Some(first) = self.first_kept_font_id {
+            if first != font {
+                self.kept_font_ids.insert(font);
+            }
+        } else {
+            self.first_kept_font_id = Some(font);
         }
     }
 
@@ -825,7 +842,7 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
         state.record_kept_cell(&cell, row, has_cell_content);
         // Both visible and hidden kept cells can already represent this font.
         if let Some(font) = representative_font_id(&cell, params) {
-            state.kept_font_ids.insert(font);
+            state.record_kept_font_id(font);
         }
     }
     if !cleaned_cell.is_empty() && !has_cell_content {
@@ -876,7 +893,7 @@ fn select_empty_style_representative(
     let hidden_font_representative = hidden_auto_height && !has_cell_content
         && !row_represents_font
         && representative_font_id(cell, params)
-            .is_some_and(|font| !state.kept_font_ids.contains(&font));
+            .is_some_and(|font| !state.has_kept_font_id(font));
     let keep_font_only = hidden_font_representative || (!hidden_auto_height && policy.keep_font_styles
         && !row_represents_font
         && empty_cell_has_no_empty_cell_visible_style(cell, params, has_cell_content)
