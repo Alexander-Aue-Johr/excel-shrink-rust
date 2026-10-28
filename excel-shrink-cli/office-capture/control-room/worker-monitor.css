@@ -21,6 +21,28 @@ body.presenting .wm-progress {
 .wm-progress-heading>span {
   color:#79dce8
 }
+.wm-phase-progress {
+  display:grid;
+  gap:6px;
+  margin-top:14px;
+}
+.wm-phase-row {
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  font-variant-numeric:tabular-nums;
+}
+.wm-phase-row:not(:first-child) {
+  margin-top:12px;
+}
+.wm-phase-row span {
+  color:#9cc0d0;
+}
+.wm-phase-bar {
+  width:100%;
+  height:12px;
+  accent-color:#75edc0;
+}
 .wm-progress-numbers {
   display:grid;
   grid-template-columns:repeat(6,minmax(0,1fr));

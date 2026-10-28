@@ -21,7 +21,7 @@ const state = { ready: false, connected: false, groupId: null, sheetId: null, se
 const controlUpdates = createControlUpdates(value => { state.controls = value; });
 const boards = [], sourceTiles = [], hitTargets = [], detailPanels = [], connections = [];
 const sheetCards = new Map(), processCards = new Map();
-const inspectionButtons = new Map(), pendingInspections = new Set();
+const inspectionButtons = new Map(), inspectionDownloads = new Map(), pendingInspections = new Set();
 const sheetViewports = new Map(), sheetToolbars = new Map();
 const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2();
 const textureCache = new Map(), flashes = new Map(), previousImages = new Map();
@@ -36,6 +36,23 @@ let pendingCaptureJump = null, followedProfile = null, lastFollowedKey = null;
 let groupLimit = 100;
 let miniSignature = '', lastFocusKey = '', navigationBusy = false;
 let workerMonitor, omissionTooltip;
+let workbookIndex = null, workbookRows = [], nextWorkbookOffset = null;
+let workbookRequest = 0, lastWorkbookRefresh = 0, workbookSearchTimer;
+let workbookPageLoading = false;
+
+const WORKBOOK_FILTER_LABELS = {
+  all: 'All selected workbooks',
+  'needs-visual': 'Visual comparison needed',
+  identical: 'Visually identical',
+  differences: 'Differences found',
+  'crc-unchanged': 'Unchanged by shrink',
+  'workbook-only': 'Only workbook.xml cleanup',
+  namespace: 'Unsupported namespace',
+  'preparation-failed': 'Preparation failed',
+  'other-excluded': 'Other preparation exclusions',
+  deferred: 'Full scan paused',
+  'recalc-drift': 'Shrink equal, recalc changed',
+};
 
 function announce(text) { $('announcement').textContent = text; }
 function profileLabel(id) { return data?.profiles.find(profile => profile.id === id)?.label || id; }
@@ -708,6 +725,16 @@ function updatePanControls() {
     $('sheetSummary').textContent = `${data.sheets.length} Sheets · ${sheet.capture_coverage.captured_tiles} / ${sheet.capture_coverage.total_tiles} capture rows selected · ${sheet.capture_coverage.omitted_tiles} not visually checked`;
     $('viewRange').textContent = `${sheet.name} · compact view; original rows are shown on tiles`;
   }
+  if (sheet?.capture_coverage?.crc_length_equal_after_shrink) {
+    const coverage = sheet.capture_coverage;
+    const recalc = coverage.crc_length_equal_after_recalc === true
+      ? 'ZIP CRC + length still equal after Excel save'
+      : coverage.crc_length_equal_after_recalc === false
+        ? 'ZIP CRC or length changed after Excel save'
+        : 'ZIP identity after Excel save unavailable';
+    const deferred = coverage.deferred_full_scan ? ' · full scan paused for later' : '';
+    $('sheetSummary').textContent += ` · CRC + length equal after shrink · ${recalc}${deferred}`;
+  }
   if (sheet?.capture_coverage?.fallback_reason) {
     $('sheetSummary').textContent = `${sheet.capture_coverage.total_tiles} capture rows · full capture: ${sheet.capture_coverage.fallback_reason}`;
     $('sheetSummary').title = sheet.capture_coverage.fallback_reason;
@@ -739,37 +766,288 @@ function renderMinimap() {
   $('minimapLabel').textContent = selectedSheet()?.name || `${sheets.length} Sheets`;
 }
 function normalizeStatus(value) {
-  return ({ restart_requested: 'Restart requested', restart_waiting_cleanup: 'Restart waiting for safe cleanup', preparing: 'Preparation', requested: 'Open requested', waiting_open: 'Waiting to open', opening: 'Opening Excel', planning: 'Planning capture regions', ready: 'Add-in ready', capturing: 'Capturing', comparing: 'Pixel comparison', complete: 'Completed', completed: 'Completed', finished: 'Completed', unchanged: 'Identical', differences: 'Differences found', skipped: 'Skipped', interrupted: 'Interrupted', waiting_cleanup: 'Closing Excel', cleanup_blocked: 'Cleanup blocked', failed: 'Error', paused: 'Paused', closed: 'Closed', exit_unconfirmed: 'Excel exit not confirmed', queued: 'Queued', running: 'Active', active: 'Active', retrying_classic: 'Classic individual comparison running' })[value] || value || 'Waiting for status';
+  return ({ restart_requested: 'Restart requested', restart_waiting_cleanup: 'Restart waiting for safe cleanup', preparing: 'Preparation', prepared: 'Prepared for visual comparison', requested: 'Open requested', waiting_open: 'Opening Excel', planning: 'Planning capture regions', ready: 'Add-in ready', capturing: 'Capturing', comparing: 'Pixel comparison', complete: 'Completed', completed: 'Completed', finished: 'Completed', unchanged: 'No differences reported', 'crc-identical': 'CRC + length equal to shrink input', 'workbook-only': 'Only workbook.xml cleanup available', 'paused-for-later': 'Full scan paused for later', differences: 'Differences found', skipped: 'Skipped', interrupted: 'Interrupted', waiting_cleanup: 'Closing Excel', cleanup_blocked: 'Cleanup blocked', failed: 'Error', paused: 'Paused', closed: 'Closed', exit_unconfirmed: 'Excel exit not confirmed', queued: 'Queued', running: 'Active', active: 'Active', retrying_classic: 'Classic individual comparison running' })[value] || value || 'Waiting for status';
 }
 function groupName(group) { return String(group.workbook || group.name || group.source || group.id || 'Workbook').split(/[\\/]/).pop(); }
+function inspectionProfileLabel(profile, workbook) {
+  if (profile.id !== 'original') return profile.label;
+  if (workbook?.baseline_repaired === true) return 'Repaired baseline';
+  if (workbook?.source_format?.toLowerCase() === 'xls') return 'Converted baseline';
+  return 'Original XLSX';
+}
+function variantDownloadUrl(groupId, profileId) {
+  return `/api/groups/${encodeURIComponent(groupId)}/variants/${encodeURIComponent(profileId)}`;
+}
+function hasMarkedSheets(value) {
+  if (value === true) return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === 'object') return Object.values(value).some(hasMarkedSheets);
+  return false;
+}
+function matchesGroupFilter(group, filter) {
+  switch (filter) {
+    case 'needs-visual':
+      return group.preparation_disposition === 'needs_visual';
+    case 'identical':
+      return group.visually_identical === true;
+    case 'differences':
+      return group.differences_found === true || group.status === 'differences';
+    case 'crc-unchanged':
+      return group.preparation_disposition === 'crc_unchanged';
+    case 'workbook-only':
+      return group.preparation_disposition === 'workbook_only';
+    case 'namespace':
+      return group.preparation_disposition === 'unsupported_namespace';
+    case 'preparation-failed':
+      return ['shrink_failed', 'preparation_failed'].includes(group.preparation_disposition);
+    case 'other-excluded':
+      return group.preparation_disposition != null
+        && !['needs_visual', 'crc_unchanged', 'workbook_only', 'unsupported_namespace',
+          'shrink_failed', 'preparation_failed'].includes(group.preparation_disposition);
+    case 'deferred':
+      return group.has_capture_deferred === true || hasMarkedSheets(group.capture_deferred);
+    case 'recalc-drift':
+      return group.has_recalc_identity_changed === true || hasMarkedSheets(group.recalc_identity_changed);
+    default:
+      return true;
+  }
+}
+function indexedWorkbookRow(row) {
+  const live = state.queue?.groups?.find(group => String(group.id) === String(row.id)
+    && (!group.run_id || !state.queue?.run_id || group.run_id === state.queue.run_id));
+  return live ? { ...row, ...live, available_variants: row.available_variants,
+    preparation_disposition: row.preparation_disposition } : row;
+}
+async function loadWorkbookPage(reset = true) {
+  if (!reset && workbookPageLoading) return;
+  const filter = $('groupFilter').value;
+  const search = $('groupSearch').value.trim();
+  const offset = reset ? 0 : nextWorkbookOffset;
+  if (offset == null) return;
+  const request = ++workbookRequest;
+  workbookPageLoading = true;
+  const query = new URLSearchParams({ filter, search, offset: String(offset), limit: '100' });
+  try {
+    const response = await fetch(`/api/workbooks?${query}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Workbook index unavailable (${response.status}).`);
+    const page = await response.json();
+    if (request !== workbookRequest) return;
+    if (page.run_id && state.queue?.run_id && page.run_id !== state.queue.run_id) {
+      workbookIndex = null;
+      workbookRows = [];
+      nextWorkbookOffset = null;
+      lastWorkbookRefresh = Date.now() - 3000;
+      groupSignature = '';
+      renderWorkbookKpis();
+      renderGroups();
+      return;
+    }
+    workbookIndex = page;
+    workbookRows = reset ? page.workbooks || [] : [...workbookRows, ...(page.workbooks || [])];
+    nextWorkbookOffset = page.next_offset;
+    lastWorkbookRefresh = Date.now();
+    groupSignature = '';
+    renderWorkbookKpis();
+    renderGroups();
+    renderWorkbookResultList();
+  } catch (error) {
+    if (request !== workbookRequest) return;
+    $('workbookResultStatus').textContent = error.message;
+  } finally {
+    if (request === workbookRequest) workbookPageLoading = false;
+  }
+}
+async function refreshWorkbookSummary() {
+  const filter = $('groupFilter').value;
+  const search = $('groupSearch').value.trim();
+  const query = new URLSearchParams({ filter, search, offset: '0', limit: '1' });
+  try {
+    const response = await fetch(`/api/workbooks?${query}`, { cache: 'no-store' });
+    if (!response.ok) return;
+    const page = await response.json();
+    if (filter !== $('groupFilter').value || search !== $('groupSearch').value.trim()) return;
+    if (page.run_id && state.queue?.run_id && page.run_id !== state.queue.run_id) return;
+    if (!page.available) return;
+    if (JSON.stringify(page.counts) !== JSON.stringify(workbookIndex?.counts)) {
+      void loadWorkbookPage(true);
+      return;
+    }
+    workbookIndex = { ...workbookIndex, counts: page.counts, total: page.total,
+      visual_scope_frozen: page.visual_scope_frozen };
+    renderWorkbookKpis();
+    renderWorkbookResultList();
+  } catch {
+    // Keep the last complete workbook page while the host is unavailable.
+  }
+}
+function maybeRefreshWorkbookIndex() {
+  if (Date.now() - lastWorkbookRefresh < 5000) return;
+  lastWorkbookRefresh = Date.now();
+  if (workbookRows.length > 100) void refreshWorkbookSummary();
+  else void loadWorkbookPage(true);
+}
+function renderWorkbookKpis() {
+  const counts = workbookIndex?.counts;
+  $('workbookScope').textContent = workbookIndex?.visual_scope_frozen
+    ? 'Preparation complete · visual scope fixed'
+    : 'Preparation in progress · visual scope pending';
+  if (!workbookIndex?.available || !counts) {
+    $('workbookKpis').replaceChildren();
+    return;
+  }
+  const buttons = Object.entries(WORKBOOK_FILTER_LABELS).map(([filter, label]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'workbook-kpi';
+    button.setAttribute('aria-label', `${label}: ${counts[filter] ?? 0} workbooks. Open list.`);
+    const value = document.createElement('strong');
+    value.textContent = Number(counts[filter] ?? 0).toLocaleString('en-US');
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    button.append(value, caption);
+    button.addEventListener('click', () => {
+      $('groupFilter').value = filter;
+      $('workbookResultList').hidden = false;
+      void loadWorkbookPage(true);
+      $('workbookResultList').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'nearest' });
+    });
+    return button;
+  });
+  $('workbookKpis').replaceChildren(...buttons);
+}
+function renderWorkbookResultList() {
+  const panel = $('workbookResultList');
+  if (panel.hidden) return;
+  const filter = $('groupFilter').value;
+  $('workbookResultTitle').textContent = WORKBOOK_FILTER_LABELS[filter] || 'Selected workbooks';
+  $('workbookResultCount').textContent = workbookIndex?.available
+    ? `${workbookIndex.total.toLocaleString('en-US')} matching workbooks`
+    : 'Workbook index is being prepared.';
+  $('moreWorkbookResults').hidden = nextWorkbookOffset == null;
+  $('workbookResultRows').replaceChildren(...workbookRows.map(indexedWorkbookRow).map(row => {
+    const item = document.createElement('div');
+    item.className = 'workbook-result-row';
+    const name = document.createElement('button');
+    name.type = 'button';
+    name.className = 'workbook-result-name';
+    name.textContent = groupName(row);
+    name.addEventListener('click', () => {
+      panel.hidden = true;
+      selectGroup(String(row.id));
+    });
+    const details = document.createElement('span');
+    details.className = 'workbook-result-reason';
+    details.textContent = [row.corpus, workbookReason(row), row.error].filter(Boolean).join(' · ');
+    const links = document.createElement('div');
+    links.className = 'workbook-result-links';
+    for (const profile of PRIMARY_PROFILES) {
+      if (row.available_variants?.[profile.id] !== true) continue;
+      const variant = document.createElement('span');
+      variant.className = 'workbook-result-variant';
+      const download = document.createElement('a');
+      download.href = variantDownloadUrl(String(row.id), profile.id);
+      download.textContent = `Download ${inspectionProfileLabel(profile, row)}`;
+      download.title = 'Download the prepared XLSX variant from the local Observatory host.';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = 'Open in Excel';
+      button.title = `Open a separate ${inspectionProfileLabel(profile, row)} copy in visible Excel.`;
+      button.setAttribute('aria-label', `Open ${inspectionProfileLabel(profile, row)} in Excel`);
+      button.addEventListener('click', () => void requestInspectionCopy(String(row.id), profile, $('workbookResultStatus')));
+      variant.append(download, button);
+      links.append(variant);
+    }
+    item.append(name, details, links);
+    return item;
+  }));
+  if (workbookRows.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'workbook-result-empty';
+    empty.textContent = workbookIndex?.available
+      ? 'No selected workbook matches this filter.' : 'The workbook index is being prepared.';
+    $('workbookResultRows').append(empty);
+  }
+}
+function workbookReason(row) {
+  const reasons = [];
+  if (row.preparation_disposition === 'evidence_missing') reasons.push('Source evidence missing');
+  if (row.preparation_disposition === 'unsupported_namespace') {
+    reasons.push(row.reason_code ? `Unsupported namespace (${row.reason_code})` : 'Unsupported namespace');
+  }
+  if (row.preparation_disposition === 'crc_unchanged') reasons.push('CRC-32 and length equal after shrink');
+  if (row.preparation_disposition === 'workbook_only') reasons.push('Only workbook.xml changed');
+  if (['shrink_failed', 'preparation_failed'].includes(row.preparation_disposition)) {
+    reasons.push('Preparation failed');
+  }
+  if (row.has_recalc_identity_changed) reasons.push('Shrink equal; Excel save changed CRC-32 or length');
+  if (row.has_capture_deferred) reasons.push('Full scan paused for later');
+  return reasons.length ? reasons.join(' · ') : normalizeStatus(row.status);
+}
 function renderGroups() {
-  const groups = state.queue?.groups || [];
+  const indexed = workbookIndex?.available === true;
+  const queued = state.queue?.groups || [];
   const query = $('groupSearch').value.trim().toLocaleLowerCase();
-  const matching = query ? groups.filter(group => `${groupName(group)} ${group.corpus || ''}`.toLocaleLowerCase().includes(query)) : groups;
-  const shown = matching.slice(0, groupLimit);
-  // Keep the selected active workbook reachable even when thousands precede it.
-  const selected = groups.find(group => String(group.id) === state.groupId);
-  if (selected && !shown.includes(selected)) shown.unshift(selected);
-  const signature = JSON.stringify([state.groupId, query, shown]); if (signature === groupSignature) return; groupSignature = signature;
-  $('groupCount').textContent = groups.length.toLocaleString('en-US');
-  $('moreGroups').hidden = matching.length <= groupLimit; $('moreGroups').textContent = `Show ${Math.min(100, matching.length - groupLimit)} more`;
+  const filter = $('groupFilter').value;
+  const matching = indexed
+    ? workbookRows.map(indexedWorkbookRow)
+    : queued.filter(group => matchesGroupFilter(group, filter)
+      && (!query || `${groupName(group)} ${group.corpus || ''}`.toLocaleLowerCase().includes(query)));
+  const shown = indexed ? matching : matching.slice(0, groupLimit);
+  const selected = queued.find(group => String(group.id) === state.groupId);
+  if (!indexed && selected && matching.includes(selected) && !shown.includes(selected)) shown.unshift(selected);
+  const signature = JSON.stringify([state.groupId, query, filter, shown]);
+  if (signature === groupSignature) return;
+  groupSignature = signature;
+  const total = indexed ? workbookIndex.total : matching.length;
+  const all = indexed ? workbookIndex.counts.all : queued.length;
+  $('groupCount').textContent = `${total.toLocaleString('en-US')} / ${all.toLocaleString('en-US')}`;
+  $('moreGroups').hidden = indexed ? nextWorkbookOffset == null : matching.length <= groupLimit;
+  $('moreGroups').textContent = `Show ${Math.min(100, indexed ? total - shown.length : matching.length - groupLimit)} more`;
   $('groups').replaceChildren(...shown.map(group => {
     const button = document.createElement('button'); button.className = 'group'; button.classList.toggle('selected', String(group.id) === state.groupId); button.setAttribute('aria-pressed', String(String(group.id) === state.groupId));
     const head = document.createElement('span'); head.className = 'group-head';
-    const number = document.createElement('span'); number.textContent = `GROUP ${String(groups.indexOf(group) + 1).padStart(2, '0')}`;
+    const number = document.createElement('span'); number.textContent = group.corpus || 'WORKBOOK';
     const status = document.createElement('span'); status.textContent = normalizeStatus(group.status); head.append(number, status);
     const name = document.createElement('span'); name.className = 'group-name'; name.textContent = groupName(group); name.title = String(group.workbook || group.source || name.textContent);
-    const description = document.createElement('span'); description.className = 'group-status'; description.textContent = group.stage || group.message || group.corpus || '';
+    const description = document.createElement('span'); description.className = 'group-status';
+    const evidence = [
+      group.preparation_disposition === 'crc_unchanged' ? 'Unchanged by shrink' : null,
+      group.has_capture_deferred || hasMarkedSheets(group.capture_deferred) ? 'Full scan paused for later' : null,
+      group.has_recalc_identity_changed || hasMarkedSheets(group.recalc_identity_changed)
+        ? 'ZIP length/CRC changed after Excel save' : null,
+    ].filter(Boolean).join(' · ');
+    description.textContent = [evidence, group.error || group.stage || group.message
+      || (evidence ? null : workbookReason(group))].filter(Boolean).join(' · ');
     const progress = document.createElement('span'); progress.className = 'progress'; const fill = document.createElement('i');
     const done = Number(group.completed_tiles ?? group.tiles_compared ?? 0), total = Number(group.total_tiles ?? 0);
-    fill.style.width = `${total > 0 ? Math.min(100, done / total * 100) : ['complete', 'completed', 'finished', 'unchanged', 'differences', 'skipped'].includes(group.status) ? 100 : 0}%`; progress.append(fill);
+    fill.style.width = `${total > 0 ? Math.min(100, done / total * 100) : ['complete', 'completed', 'finished', 'unchanged', 'crc-identical', 'workbook-only', 'differences', 'skipped'].includes(group.status) ? 100 : 0}%`; progress.append(fill);
     const foot = document.createElement('span'); foot.className = 'group-foot'; foot.textContent = total ? `${done} / ${total} tiles` : group.corpus || 'Status from runner';
     button.append(head, name, description, progress, foot); button.addEventListener('click', () => selectGroup(String(group.id))); return button;
   }));
 }
 function updateControlInputs() {
   const values = state.controls;
-  for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) {
+  const logicalCores = Math.max(1, Number(state.queue?.logical_cores || 1));
+  for (const [id, key, valueId, statusId] of [
+    ['prepareProcesses', 'prepare_processes', 'prepareProcessesValue', 'prepareProcessesStatus'],
+    ['shrinkThreads', 'shrink_threads', 'shrinkThreadsValue', 'shrinkThreadsStatus'],
+  ]) {
+    const slider = $(id);
+    slider.max = String(logicalCores);
+    if (values[key] != null && document.activeElement !== slider && !dirtyControls.has(id)) {
+      slider.value = String(values[key]);
+    }
+    $(valueId).textContent = slider.value;
+    const running = key === 'prepare_processes' && state.queue?.phase === 'preparing'
+      && Array.isArray(state.queue?.progress?.active_preparation)
+      ? ` · ${state.queue.progress.active_preparation.length} active now` : '';
+    $(statusId).textContent = values[key] == null
+      ? 'Waiting for confirmed value.'
+      : dirtyControls.has(id)
+        ? `Selected: ${slider.value} · confirmed: ${values[key]} · release to apply.`
+      : `Confirmed: ${values[key]}${running} · applies to newly started shrink processes · maximum ${logicalCores} logical cores.`;
+  }
+  for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
   }
   if (document.activeElement !== $('captureTransport') && !dirtyControls.has('captureTransport')) {
@@ -785,35 +1063,59 @@ function updateControlInputs() {
   const draining = values.target_groups === 0;
   const active = activeGroupCount(state.queue);
   const diskGuard = state.queue?.admission_guard;
-  $('captureState').textContent = state.queue?.running === false ? 'Ended' : draining ? state.queue?.phase === 'paused' ? 'Run paused' : `${active} groups finishing` : diskGuard?.blocked ? 'Waiting for disk space' : values.paused ? 'Captures paused' : 'Running';
+  const preparing = state.queue?.progress?.visual_scope_frozen === false;
+  $('captureState').textContent = state.queue?.running === false ? 'Ended'
+    : state.queue?.phase === 'awaiting_deferred_manual' ? 'Deferred scans waiting'
+    : draining ? state.queue?.phase === 'paused' ? 'Run paused'
+      : preparing ? 'Shrinking continues' : `${active} groups finishing`
+      : diskGuard?.blocked ? 'Waiting for disk space' : values.paused ? 'Captures paused' : 'Running';
   $('pauseJobs').textContent = values.paused ? 'Resume captures' : 'Pause captures';
   $('pauseJobs').disabled = controlBusy || draining || state.queue?.running === false;
   $('pauseNote').textContent = state.queue?.running === false ? 'The run has ended. Its saved images remain available.'
-    : draining ? 'Target 0: workbooks already in progress will finish. Increase the group target to resume.'
+    : state.queue?.phase === 'awaiting_deferred_manual'
+      ? 'All regular comparisons are finished. Start each deferred full scan manually or stop the run.'
+    : draining ? preparing
+      ? 'Target 0: all selected workbooks continue shrinking. Visual comparisons wait when preparation finishes.'
+      : 'Target 0: active comparisons finish, then the run pauses. Increase the group target to resume.'
     : diskGuard?.blocked ? `${diskGuard.message}${diskGuard.free_bytes != null ? ` Free: ${(diskGuard.free_bytes / 1073741824).toFixed(2)} GiB.` : ''}${diskGuard.error ? ` ${diskGuard.error}` : ''}`
-    : values.paused ? 'Jobs already in progress will finish. New captures wait.' : 'Pausing captures keeps Excel open. A group target of 0 lets workbooks finish completely.';
+    : values.paused ? 'Jobs already in progress will finish. New captures wait.'
+      : 'Pausing captures keeps Excel open. A group target of 0 lets preparation finish, then pauses comparisons.';
   $('activeGroups').textContent = `${active} admitted · target ${values.target_groups ?? '—'}`;
 }
 async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;
   controlUpdates.beginWrite();
   const wasCapturePaused = Boolean(state.controls.paused);
-  for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = true;
+  for (const id of ['prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = true;
   if (change.system_reserve_mib != null) $('applyReserve').textContent = 'Setting…';
   try {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
     const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Control change rejected (${response.status}).`);
     controlUpdates.confirmWrite(result.controls);
-    for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
+    for (const [id, key] of [['prepareProcesses', 'prepare_processes'], ['shrinkThreads', 'shrink_threads']]) {
+      if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
+    }
+    for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     updateControlInputs();
     if (change.capture_transport === $('captureTransport').value) dirtyControls.delete('captureTransport');
-    const text = change.target_groups === 0 ? `Target 0 confirmed: workbooks already in progress will finish.${wasCapturePaused ? ' The capture pause was lifted to allow this.' : ''}`
+    const text = change.target_groups === 0
+      ? `Target 0 confirmed: ${state.queue?.progress?.visual_scope_frozen === false
+        ? 'preparation continues; visual comparison waits at the barrier.'
+        : 'active comparisons finish, then the run pauses.'}${wasCapturePaused ? ' The capture pause was lifted to allow this.' : ''}`
       : change.target_groups != null ? `Group target ${state.controls.target_groups} confirmed.`
+      : change.prepare_processes != null ? `${state.controls.prepare_processes} simultaneous shrink processes confirmed for future starts.`
+      : change.shrink_threads != null ? `${state.controls.shrink_threads} Rayon threads per shrink process confirmed for future starts.`
       : change.capture_transport != null ? 'Capture transport confirmed for the next primary capture phase.'
       : change.system_reserve_mib != null ? `Free RAM reserve ${state.controls.system_reserve_mib.toLocaleString('en-US')} MiB confirmed.` : 'Controls confirmed by host.';
     pushEvent(text); setNotice(text);
   } catch (error) {
     setNotice(error.message, true);
+    for (const [id, key] of [['prepareProcesses', 'prepare_processes'], ['shrinkThreads', 'shrink_threads']]) {
+      if (key in change) {
+        dirtyControls.delete(id);
+        $(id).value = String(state.controls[key] ?? 1);
+      }
+    }
     if ('capture_transport' in change) {
       dirtyControls.delete('captureTransport');
       $('captureTransport').value = state.controls.capture_transport || 'live-images';
@@ -821,7 +1123,7 @@ async function sendControl(change) {
     updateControlInputs();
     if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel);
   }
-  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
+  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
 }
 function selectGroup(id) {
   if (id === state.groupId) return;
@@ -922,16 +1224,48 @@ async function poll() {
   try {
     const response = await fetch('/api/state', { cache: 'no-store' }); if (!response.ok) throw new Error(`Status unavailable (${response.status}).`);
     const queue = await response.json(); if (generation !== pollGeneration) return;
+    const newRun = state.queue?.run_id && queue.run_id && state.queue.run_id !== queue.run_id;
+    if (newRun) {
+      state.groupId = null;
+      data = null;
+      entries = [];
+      $('workbook').textContent = 'Waiting for the first current-run workbook.';
+      $('groupStatus').textContent = 'Shrink preparation is running.';
+      $('emptyScene').hidden = false;
+      boards.splice(0).forEach(disposeObject);
+      sourceTiles.length = 0;
+      hitTargets.length = 0;
+      for (const card of processCards.values()) card.signals.destroy();
+      processCards.clear();
+      $('processes').replaceChildren();
+      $('sheetSelect').replaceChildren();
+      $('minimapGrid').replaceChildren();
+      renderGroupOutcome();
+      renderInspectionCopies();
+    }
+    if (newRun || (workbookIndex?.run_id && queue.run_id && workbookIndex.run_id !== queue.run_id)) {
+      ++workbookRequest;
+      workbookPageLoading = false;
+      workbookIndex = null;
+      workbookRows = [];
+      nextWorkbookOffset = null;
+      lastWorkbookRefresh = 0;
+      groupSignature = '';
+      renderWorkbookKpis();
+    }
     const recovered = Boolean(state.error);
     controlUpdates.acceptRead(controlRevision, queue.controls || {});
     queue.controls = state.controls;
     state.queue = queue; state.connected = true; state.error = null;
+    maybeRefreshWorkbookIndex();
     workerMonitor?.update(queue);
     $('stopRun').disabled = queue.running !== true || queue.runner_alive !== true || queue.stop_requested === true;
     $('stopRun').textContent = queue.stop_requested && queue.running ? 'Stopping...' : 'Stop run';
     $('runLifecycle').textContent = queue.update_ready === true
       ? 'Runner ended. You can pull and rebuild; results are retained.'
       : queue.stop_requested ? 'Finishing active workbooks and Excel cleanup. Wait before updating.'
+      : queue.phase === 'awaiting_deferred_manual'
+        ? 'Regular comparisons finished. Deferred full scans wait for manual start; Stop run ends this session.'
       : queue.running ? 'Stop finishes active workbooks, saves results and exits the runner.'
       : 'Waiting for the runner process to exit.';
 
@@ -946,7 +1280,11 @@ async function poll() {
     const memory = queue.memory;
     $('memory').textContent = memory?.available_bytes != null ? `${(memory.available_bytes / 1073741824).toFixed(1)} GiB free / ${(memory.total_bytes / 1073741824).toFixed(0)} GiB` : 'RAM unavailable';
     updateControlInputs();
-    if (!state.groupId && queue.groups?.length) state.groupId = String((queue.groups.find(group => ['capturing', 'comparing', 'running', 'opening', 'active'].includes(group.status)) || queue.groups[0]).id);
+    const currentGroups = queue.groups?.filter(group => !group.run_id || !queue.run_id
+      || group.run_id === queue.run_id) || [];
+    if (!state.groupId && currentGroups.length) {
+      state.groupId = String((currentGroups.find(group => ['capturing', 'comparing', 'running', 'opening', 'active'].includes(group.status)) || currentGroups[0]).id);
+    }
     renderGroups();
     if (state.groupId) {
       const detail = await fetch(`/api/groups/${encodeURIComponent(state.groupId)}`, { cache: 'no-store' });
@@ -976,6 +1314,55 @@ function renderGroupOutcome() {
   const empty = $('emptyScene');
   empty.querySelector('strong').textContent = outcome?.title || 'The next capture will appear here.';
   empty.querySelector('span').textContent = outcome?.detail || 'Only actual jobs and images are shown.';
+  renderCleanupAnalysis();
+}
+function renderCleanupAnalysis() {
+  const group = data || state.queue?.groups?.find(item => String(item.id) === String(state.groupId));
+  const profiles = Object.entries(group?.cleanup_analysis || {});
+  const panel = $('cleanupAnalysis');
+  panel.hidden = profiles.length === 0;
+  if (panel.hidden) return;
+
+  const content = $('cleanupAnalysisContent');
+  content.replaceChildren();
+  for (const [profile, result] of profiles) {
+    const heading = document.createElement('h4');
+    heading.textContent = profile;
+    content.append(heading);
+    const provenance = document.createElement('p');
+    provenance.textContent = result?.method === 'measured_shrink'
+      ? 'Category counts come from the measured shrink run.'
+      : result?.matches_measured_output === false
+        ? 'Separate analysis pass; output differs from the measured shrink run.'
+        : 'Separate analysis pass; category counts describe that pass.';
+    content.append(provenance);
+    if (result?.status !== 'complete') {
+      const note = document.createElement('p');
+      note.textContent = result?.status === 'skipped_unchanged'
+        ? 'No cleanup changes were applied to the published workbook.'
+        : result?.error || 'Analysis unavailable.';
+      content.append(note);
+      continue;
+    }
+    const table = document.createElement('table');
+    const header = document.createElement('tr');
+    for (const label of ['Cause', 'Removed items', 'Removed bytes', 'Net XML reduction']) {
+      const cell = document.createElement('th');
+      cell.textContent = label;
+      header.append(cell);
+    }
+    table.append(header);
+    for (const row of result.rows || []) {
+      const line = document.createElement('tr');
+      for (const value of [row.cause, row.removed_items, row.removed_bytes_uncompressed_xml, row.reduction_bytes_uncompressed_xml]) {
+        const cell = document.createElement('td');
+        cell.textContent = typeof value === 'number' ? value.toLocaleString('en-US') : String(value ?? '—');
+        line.append(cell);
+      }
+      table.append(line);
+    }
+    content.append(table);
+  }
 }
 function renderInspectionCopies() {
   const availableProfiles = data?.inspection_profiles || [];
@@ -992,21 +1379,36 @@ function renderInspectionCopies() {
       button.title = `Open a separate ${profile.label} copy in visible Excel.`;
       button.addEventListener('click', () => openInspectionCopy(profile));
       inspectionButtons.set(profile.id, button);
-      $('inspectionButtons').append(button);
+      const download = document.createElement('a');
+      download.className = 'inspection-download';
+      download.textContent = 'Download';
+      inspectionDownloads.set(profile.id, download);
+      const variant = document.createElement('span');
+      variant.className = 'inspection-variant';
+      variant.append(button, download);
+      $('inspectionButtons').append(variant);
     }
     const pending = pendingInspections.has(`${state.groupId}/${profile.id}`);
     const available = availableProfiles.includes(profile.id);
     button.disabled = !state.groupId || !available || pending;
-    button.textContent = pending ? `${profile.label}: requesting...` : profile.label;
+    const label = inspectionProfileLabel(profile, data);
+    button.textContent = pending ? `${label}: requesting...` : label;
+    const download = inspectionDownloads.get(profile.id);
+    download.hidden = !state.groupId || !available;
+    if (download.hidden) download.removeAttribute('href');
+    else download.href = variantDownloadUrl(state.groupId, profile.id);
+    download.setAttribute('aria-label', `Download ${label}`);
   }
 }
 async function openInspectionCopy(profile) {
   const groupId = state.groupId;
   if (!groupId) return;
+  await requestInspectionCopy(groupId, profile, $('inspectionStatus'));
+}
+async function requestInspectionCopy(groupId, profile, status) {
   const key = `${groupId}/${profile.id}`;
   if (pendingInspections.has(key)) return;
   pendingInspections.add(key);
-  const status = $('inspectionStatus');
   status.classList.remove('failure');
   status.textContent = `Preparing ${profile.label} inspection copy...`;
   renderInspectionCopies();
@@ -1020,15 +1422,11 @@ async function openInspectionCopy(profile) {
     if (!response.ok || result.ok === false) {
       throw new Error(result.error || `Inspection request failed (${response.status}).`);
     }
-    if (state.groupId === groupId) {
-      status.textContent = `Inspection copy requested in visible Excel: ${result.path}`;
-      pushEvent(`${profile.label} inspection copy requested in visible Excel.`);
-    }
+    status.textContent = `Inspection copy requested in visible Excel: ${result.path}`;
+    pushEvent(`${profile.label} inspection copy requested in visible Excel.`);
   } catch (error) {
-    if (state.groupId === groupId) {
-      status.classList.add('failure');
-      status.textContent = error.message;
-    }
+    status.classList.add('failure');
+    status.textContent = error.message;
   } finally {
     pendingInspections.delete(key);
     renderInspectionCopies();
@@ -1040,12 +1438,30 @@ function updateDiagnosticUi() {
   renderThroughput();
   renderProcesses();
   $('captureTransportStatus').textContent = captureTransportSummary(state.controls, data);
-  $('restartGroup').disabled = !state.groupId || data?.restart_eligible === false || state.queue?.running === false;
+  const selectedGroup = state.queue?.groups?.find(group => String(group.id) === String(state.groupId)
+    && (!group.run_id || !state.queue?.run_id || group.run_id === state.queue.run_id));
+  $('restartGroup').disabled = !selectedGroup || selectedGroup.restart_eligible === false
+    || data?.restart_eligible === false || state.queue?.running === false
+    || state.queue?.phase === 'awaiting_deferred_manual';
+  const hasDeferredScan = hasMarkedSheets(selectedGroup?.capture_deferred);
+  const deferredReady = state.queue?.phase === 'awaiting_deferred_manual'
+    && state.queue?.running === true && state.queue?.runner_alive === true;
+  $('startDeferredScan').hidden = !hasDeferredScan || !deferredReady;
+  $('startDeferredScan').disabled = $('startDeferredScan').hidden
+    || selectedGroup?.restart_eligible === false
+    || data?.restart_eligible === false;
+  $('startDeferredScan').title = 'Starts this deferred full scan after regular comparisons. If the group target is 0, it becomes 1. The 4,096-tile capture limit still applies.';
+  $('deferredResume').hidden = !hasDeferredScan;
+  $('deferredResume').textContent = deferredReady
+    ? 'Deferred sheets have only edge captures. Start the full scan when you are ready; the 4,096-tile capture limit still applies.'
+    : state.queue?.running === true
+      ? 'Deferred sheets have only edge captures. The manual full scan becomes available after regular comparisons finish.'
+    : `Deferred sheets have only edge captures. Resume with excel-shrink-visual-validation -Corpus "${selectedGroup?.corpus || '<NAME>'}" -Partition <N/M> -FullScanDeferred. Use the same corpus and partition as the original run. The 4,096-tile capture limit still applies.`;
   if (data) {
     const clients = Object.entries(data.launcher?.clients || {});
     const counts = clients.reduce((result, [, client]) => { result[client.status] = (result[client.status] || 0) + 1; return result; }, {});
     const opening = clients.filter(([, client]) => ['requested', 'waiting_open', 'opening'].includes(client.status));
-    const terminal = ['unchanged', 'differences', 'skipped', 'failed', 'interrupted', 'complete', 'completed', 'finished'].includes(data.status);
+    const terminal = ['unchanged', 'crc-identical', 'workbook-only', 'paused-for-later', 'differences', 'skipped', 'failed', 'interrupted', 'complete', 'completed', 'finished'].includes(data.status);
     $('groupStatus').textContent = data.status === 'retrying_classic'
       ? 'The runner is retrying this file with a classic individual comparison. Tiles show the last resident snapshot.'
       : data.capture_mode === 'classic'
@@ -1066,12 +1482,12 @@ function updateDiagnosticUi() {
 }
 function renderProcesses() {
   const reported = data?.launcher?.clients || {};
-  const profiles = data?.profiles || [{ id: 'original' }, { id: 'default' }, { id: 'maximum-cleaning' }, { id: 'too-aggressive-cleaning' }];
+  const profiles = data?.available === false ? [] : data?.profiles || PRIMARY_PROFILES;
   const clients = profiles.map(profile => [profile.id, reported[profile.id] || {}]);
   const ids = new Set(clients.map(([id]) => id));
   for (const [id, card] of processCards) if (!ids.has(id)) { card.signals.destroy(); card.element.remove(); processCards.delete(id); }
   if (!processCards.size) $('processes').replaceChildren();
-  const terminal = ['complete', 'completed', 'finished', 'unchanged', 'differences', 'skipped', 'failed', 'interrupted'].includes(data?.status);
+  const terminal = ['complete', 'completed', 'finished', 'unchanged', 'crc-identical', 'workbook-only', 'paused-for-later', 'differences', 'skipped', 'failed', 'interrupted'].includes(data?.status);
   const rows = workerRows({ id: data?.id || state.groupId || 'pending', attempt_id: data?.attempt_id,
     launcher_sampled_unix_ms: data?.launcher?.sampled_unix_ms,
     active: !terminal, clients: clients.map(([id, client]) => ({ ...client, client_id: id,
@@ -1119,7 +1535,7 @@ function renderThroughput() {
   $('captureTotals').textContent = metric ? `${Number(metric.uploaded_images || 0).toLocaleString('en-US')} Uploads · ${(Number(metric.captured_pixels || 0) / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1 })} MP · ${(Number(metric.png_bytes || 0) / 1048576).toLocaleString('en-US', { maximumFractionDigits: 1 })} MiB` : 'Waiting for measured captures';
   $('effectiveCapture').textContent = settings ? `This group: ${settings.tile_megapixels} MP · Batch ${settings.effective_batch_tiles ?? settings.batch_tiles}${settings.effective_batch_tiles != null && settings.effective_batch_tiles !== settings.batch_tiles ? ` / target ${settings.batch_tiles}` : ''}` : 'Settings take effect when a group starts.';
 }
-async function restartGroup(clientId = null, hardReset = false) {
+async function restartGroup(clientId = null, hardReset = false, fullScanDeferred = false) {
   if (!state.groupId) return;
   const groupId = state.groupId;
   const expectedAttempt = data?.attempt_id;
@@ -1128,11 +1544,13 @@ async function restartGroup(clientId = null, hardReset = false) {
     while (hardReset && controlBusy && Date.now() < controlDeadline) await new Promise(resolve => setTimeout(resolve, 50));
     if (hardReset && controlBusy) throw new Error('The visibility setting has not been confirmed yet.');
     const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/restart`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...(clientId ? { client_id: clientId } : {}), ...(hardReset ? {hard_reset:true} : {}), ...(expectedAttempt ? {expected_attempt_id:expectedAttempt} : {}), reason: clientId ? `Excel ${clientId} reload through Observatory` : 'Requeue group through Observatory' }) });
+      body: JSON.stringify({ ...(clientId ? { client_id: clientId } : {}), ...(hardReset ? {hard_reset:true} : {}), ...(fullScanDeferred ? {full_scan_deferred:true} : {}), ...(expectedAttempt ? {expected_attempt_id:expectedAttempt} : {}), reason: clientId ? `Excel ${clientId} reload through Observatory` : fullScanDeferred ? 'Start deferred full scan through Observatory' : 'Requeue group through Observatory' }) });
     const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Restart rejected (${response.status})`);
     setNotice(result.restart_scope === 'client'
       ? 'Hard reset requested: Excel will reopen with the current visibility setting. If comparison jobs have started, the group will be compared again.'
-      : 'Restart requested. The entire group will be queued next with the current settings.');
+      : fullScanDeferred
+        ? 'Deferred full scan queued. If the group target was 0, it was raised to 1. The 4,096-tile capture limit may still stop exceptionally large sheets.'
+        : 'Restart requested. The entire group will be queued next with the current settings.');
     pushEvent(`Restart requested${clientId ? ` for ${profileLabel(clientId)} and its comparison group` : ' for the group'}.`);
   } catch (error) { setNotice(error.message, true); }
 }
@@ -1188,11 +1606,39 @@ function wireControls() {
       setNotice(result.message);
     } catch (error) { setNotice(error.message, true); $('stopRun').disabled = false; }
   });
-  $('groupSearch').addEventListener('input', () => { groupLimit = 100; renderGroups(); });
-  $('moreGroups').addEventListener('click', () => { groupLimit += 100; renderGroups(); });
+  $('groupSearch').addEventListener('input', () => {
+    clearTimeout(workbookSearchTimer);
+    workbookSearchTimer = setTimeout(() => {
+      groupLimit = 100;
+      void loadWorkbookPage(true);
+    }, 250);
+  });
+  $('groupFilter').addEventListener('change', () => {
+    groupLimit = 100;
+    void loadWorkbookPage(true);
+  });
+  $('moreGroups').addEventListener('click', () => {
+    if (workbookIndex?.available) void loadWorkbookPage(false);
+    else { groupLimit += 100; renderGroups(); }
+  });
+  $('moreWorkbookResults').addEventListener('click', () => void loadWorkbookPage(false));
+  $('closeWorkbookResults').addEventListener('click', () => {
+    $('workbookResultList').hidden = true;
+  });
   function adjustTarget(delta) { const value = Math.max(0, Number($('targetGroups').value || 0) + delta); dirtyControls.add('targetGroups'); $('targetGroups').value = String(value); $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); }
   $('minus').addEventListener('click', () => adjustTarget(-1)); $('plus').addEventListener('click', () => adjustTarget(1));
-  for (const id of ['targetGroups', 'systemReserve', 'openTimeout', 'jobTimeout', 'equalPreview', 'captureMegapixels', 'captureBatch', 'tallSheetThreshold', 'tallSheetEdges']) $(id).addEventListener('input', () => dirtyControls.add(id));
+  for (const [id, key, valueId, statusId] of [
+    ['prepareProcesses', 'prepare_processes', 'prepareProcessesValue', 'prepareProcessesStatus'],
+    ['shrinkThreads', 'shrink_threads', 'shrinkThreadsValue', 'shrinkThreadsStatus'],
+  ]) {
+    $(id).addEventListener('input', () => {
+      dirtyControls.add(id);
+      $(valueId).textContent = $(id).value;
+      $(statusId).textContent = `Selected: ${$(id).value} · release to apply to new processes.`;
+    });
+    $(id).addEventListener('change', () => sendControl({ [key]: Number($(id).value) }));
+  }
+  for (const id of ['targetGroups', 'systemReserve', 'openTimeout', 'jobTimeout', 'equalPreview', 'captureMegapixels', 'captureBatch', 'tallSheetThreshold', 'tallSheetEdges', 'crcEqualSheetThreshold']) $(id).addEventListener('input', () => dirtyControls.add(id));
   $('applyReserve').addEventListener('click', () => {
     const reserve = Number($('systemReserve').value);
     if (!Number.isSafeInteger(reserve) || reserve < 1 || reserve > 65536) return setNotice('Free RAM reserve must be a whole number from 1 to 65,536 MiB.', true);
@@ -1225,8 +1671,16 @@ function wireControls() {
     if (![threshold, edges].every(value => Number.isInteger(value) && value >= 1 && value <= 2147483647)) return setNotice('Capture rows must be positive integers (at most 2,147,483,647).', true);
     sendControl({ tall_sheet_threshold: threshold, tall_sheet_edge_tiles: edges });
   });
+  $('applyCrcEqualSheet').addEventListener('click', () => {
+    const threshold = Number($('crcEqualSheetThreshold').value);
+    if (!Number.isInteger(threshold) || threshold < 1 || threshold > 2147483647) {
+      return setNotice('CRC-equal sheet threshold must be a positive integer in MiB.', true);
+    }
+    sendControl({ crc_equal_sheet_threshold_mib: threshold });
+  });
   $('hideExcel').addEventListener('change', event => sendControl({ hide_excel: event.target.checked }));
   $('restartGroup').addEventListener('click', () => restartGroup());
+  $('startDeferredScan').addEventListener('click', () => restartGroup(null, false, true));
   $('followCapture').addEventListener('change', event => {
     state.follow = event.target.checked;
     if (state.follow) {

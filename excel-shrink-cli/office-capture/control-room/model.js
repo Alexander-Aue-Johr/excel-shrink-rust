@@ -14,6 +14,18 @@ export function groupOutcome(group) {
     return { kind: 'warning', title: 'Skipped',
       detail: reason || 'The runner did not provide a skip reason. No visual result is established.' };
   }
+  if (status === 'crc-identical') {
+    return { kind: 'warning', title: 'Archive unchanged after shrink',
+      detail: 'Length and CRC-32 matched the shrink input. The original archive was reused; no visual comparison was performed.' };
+  }
+  if (status === 'workbook-only') {
+    return { kind: 'warning', title: 'Only workbook.xml cleanup available',
+      detail: 'Worksheet XML was unchanged. Baseline repair and visual comparison were skipped.' };
+  }
+  if (status === 'paused-for-later') {
+    return { kind: 'warning', title: 'Full scan paused for later',
+      detail: 'Only selected edge captures were compared. Omitted areas remain unchecked; start the deferred full scan to continue.' };
+  }
   if (status === 'failed' || status === 'interrupted') {
     return { kind: 'error', title: status === 'failed' ? 'Validation failed' : 'Interrupted',
       detail: reason || 'Validation did not finish. No visual result is established.' };

@@ -28,6 +28,8 @@ export function runTests() {
   assert(groupOutcome({ status: 'failed', error: 'Excel exited' }).kind === 'error', 'A validation failure remains an error.');
   assert(groupOutcome({ status: 'comparing', error: 'Earlier attempt' }) === null, 'Active retries do not show a stale terminal result.');
   assert(groupOutcome({ status: 'differences' }).title === 'Differences found', 'Cell-value differences alone never imply visual differences.');
+  assert(groupOutcome({ status: 'crc-identical' }).detail.includes('no visual comparison'), 'CRC equality is not reported as a visual comparison.');
+  assert(groupOutcome({ status: 'paused-for-later' }).detail.includes('unchecked'), 'Deferred capture coverage remains incomplete.');
   assert(groupOutcome({ status: 'differences', sheets: [{ tiles: [{ comparisonComplete: true, equalAcrossAll: false, status: 'different' }] }] }).title === 'Visual differences found', 'Completed differing captures justify a visual finding.');
   const measures = {measurements:{original:{bytes:10485760,open_seconds:10,memory_bytes:104857600},
     default:{bytes:5242880,open_seconds:4,memory_bytes:52428800,shrink_seconds:2}}};

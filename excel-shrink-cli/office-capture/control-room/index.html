@@ -10,8 +10,28 @@
 </head>
 <body>
   <header class="masthead"><div><div class="eyebrow">EXCEL SHRINK / VISUAL REGRESSION</div><h1>See the comparison unfold.</h1></div><div class="connection"><i id="connectionLight"></i><span id="connectionText">Connecting</span><span class="pill" id="memory">RAM —</span></div></header>
+  <section class="controls preparation-controls" aria-label="Shrink preparation controls">
+    <div class="control">
+      <label for="prepareProcesses">SIMULTANEOUS SHRINK PROCESSES</label>
+      <div class="control-line"><input id="prepareProcesses" type="range" min="1" max="1" step="1" value="1" aria-describedby="prepareProcessesStatus"><strong id="prepareProcessesValue">1</strong></div>
+      <small id="prepareProcessesStatus" role="status">Waiting for confirmed value.</small>
+    </div>
+    <div class="control">
+      <label for="shrinkThreads">RAYON THREADS PER SHRINK PROCESS</label>
+      <div class="control-line"><input id="shrinkThreads" type="range" min="1" max="1" step="1" value="1" aria-describedby="shrinkThreadsStatus"><strong id="shrinkThreadsValue">1</strong></div>
+      <small id="shrinkThreadsStatus" role="status">Waiting for confirmed value.</small>
+    </div>
+  </section>
   <section class="controls run-controls" aria-label="Active run controls">
-    <div class="control"><label for="targetGroups">COMPARISON GROUPS · MANUAL</label><div class="control-line"><div class="stepper"><button id="minus" aria-label="One fewer group">−</button><input id="targetGroups" type="number" min="0" step="1" value="1" aria-label="Target concurrent comparison groups"><button id="plus" aria-label="One more group">+</button></div><button id="applyTarget">Apply</button><span id="activeGroups">— active</span></div><input id="groupRange" type="range" min="0" max="24" value="1" aria-label="Group target"><small>0 finishes workbooks already in progress and pauses the run.</small></div>
+    <div class="control">
+      <label for="targetGroups">COMPARISON GROUPS · MANUAL</label>
+      <div class="control-line">
+        <div class="stepper"><button id="minus" aria-label="One fewer group">−</button><input id="targetGroups" type="number" min="0" step="1" value="1" aria-label="Target concurrent comparison groups"><button id="plus" aria-label="One more group">+</button></div>
+        <button id="applyTarget">Apply</button><span id="activeGroups">— active</span>
+      </div>
+      <input id="groupRange" type="range" min="0" max="24" value="1" aria-label="Group target">
+      <small>0 lets all selected workbooks shrink, then pauses visual comparisons.</small>
+    </div>
     <div class="control"><label>CAPTURE JOBS</label><div class="control-line"><strong id="captureState">—</strong><button id="pauseJobs">Pause</button></div><small id="pauseNote">Pause takes effect before the next job. Excel can continue opening workbooks.</small></div>
     <div class="control timeouts"><label>TIMEOUTS</label><div><label for="openTimeout">Open</label><input id="openTimeout" type="number" min="1" step="1" value="1800"><span>s</span><label for="jobTimeout">Job</label><input id="jobTimeout" type="number" min="1" step="1" value="600"><span>s</span><button id="applyTimeouts">Set</button></div><small>Confirmed values come from the runner.</small></div>
     <div class="control"><label for="equalPreview">RETAIN MATCHING TILES</label><select id="equalPreview"><option value="128">128 px</option><option value="256">256 px</option><option value="512" selected>512 px</option><option value="1024">1,024 px</option><option value="0">Original size</option></select><small>Differences and their reference images retain full resolution.</small></div>
@@ -30,20 +50,57 @@
     <label>Jobs per batch <span><input id="captureBatch" type="number" min="1" max="16" step="1" value="1"><button id="applyCapture">Set</button></span><small>A shared pixel budget limits the actual batch size.</small></label>
     <label>Reduce tall-sheet captures <span>Above <input id="tallSheetThreshold" type="number" min="1" max="2147483647" step="1" value="40"> capture rows</span><small>Smaller sheets are captured in full.</small></label>
     <label>Retain at top and bottom <span>Each <input id="tallSheetEdges" type="number" min="1" max="2147483647" step="1" value="2"> capture rows <button id="applyTallSheet">Set</button></span><small>Areas with change indicators are also included.</small></label>
+    <label>CRC-equal sheet sample <span>Above <input id="crcEqualSheetThreshold" type="number" min="1" max="2147483647" step="1" value="256"> MiB <button id="applyCrcEqualSheet">Set</button></span><small>Large sheets whose length and CRC match keep only top and bottom captures first. Recalculation drift is marked for later full review.</small></label>
     <label class="hidden-control" title="Excel renders on a private Windows desktop without receiving your keyboard input."><span><input id="hideExcel" type="checkbox"> Open Excel hidden</span><small>Uses a private desktop for the next group. Active windows keep their current mode.</small></label>
     <div class="throughput"><span id="pixelRate">— MP/s</span><small id="captureTotals">Waiting for measured captures</small><small id="effectiveCapture">—</small></div>
   </div></details>
   <section class="controls" aria-label="Stop the run"><button id="stopRun" disabled>Stop run</button><span id="runLifecycle" role="status">Checking runner status...</span></section>
   <div id="notice" role="status" aria-live="polite">Status and image evidence are loaded directly from the local host.</div>
+  <section class="workbook-kpis" aria-label="Workbook outcomes">
+    <div class="section-head"><h2>Workbook outcomes</h2><span id="workbookScope">Preparing selected workbooks</span></div>
+    <div id="workbookKpis" class="workbook-kpi-grid"></div>
+    <div id="workbookResultList" class="workbook-result-list" hidden>
+      <div class="section-head"><h3 id="workbookResultTitle">Selected workbooks</h3><button id="closeWorkbookResults" type="button">Close list</button></div>
+      <p id="workbookResultCount"></p>
+      <div id="workbookResultRows"></div>
+      <button id="moreWorkbookResults" type="button" hidden>Show 100 more</button>
+      <p id="workbookResultStatus" role="status"></p>
+    </div>
+  </section>
   <div class="workspace">
-    <aside class="sidebar"><div class="section-head"><h2>Workbooks</h2><span id="groupCount">0</span></div><input id="groupSearch" class="group-search" type="search" placeholder="Filename or corpus" aria-label="Filter workbooks"><div id="groups" class="groups"></div><button id="moreGroups" class="more-groups" hidden>Show 100 more</button><p class="sidebar-note">Open requested, add-in ready, and capturing are separate states. Missing images alone do not indicate a crash.</p></aside>
+    <aside class="sidebar">
+      <div class="section-head"><h2>Workbooks</h2><span id="groupCount">0</span></div>
+      <input id="groupSearch" class="group-search" type="search" placeholder="Filename or corpus" aria-label="Filter workbooks">
+      <label for="groupFilter" class="sidebar-filter-label">Show</label>
+      <select id="groupFilter" class="group-filter" aria-label="Filter workbooks by result">
+        <option value="all">All workbooks</option>
+        <option value="needs-visual">Visual comparison needed</option>
+        <option value="identical">Visually identical</option>
+        <option value="differences">Differences found</option>
+        <option value="crc-unchanged">Unchanged by shrink</option>
+        <option value="workbook-only">Only workbook.xml cleanup</option>
+        <option value="namespace">Unsupported namespace</option>
+        <option value="preparation-failed">Preparation failed</option>
+        <option value="other-excluded">Other preparation exclusions</option>
+        <option value="deferred">Full scan paused</option>
+        <option value="recalc-drift">Shrink equal, recalc changed</option>
+      </select>
+      <div id="groups" class="groups"></div>
+      <button id="moreGroups" class="more-groups" hidden>Show 100 more</button>
+      <p class="sidebar-note">Open requested, add-in ready, and capturing are separate states. Missing images alone do not indicate a crash.</p>
+    </aside>
     <main>
-      <div class="workbook-heading"><div><div class="eyebrow" id="groupEyebrow">LIVE STUDIO</div><h2 id="workbook">Waiting for the first group.</h2><p id="groupStatus">Actual capture jobs appear here.</p></div><div class="heading-actions"><button id="restartGroup">Requeue group</button><button id="resetCamera">All sheets</button></div></div>
+      <div class="workbook-heading"><div><div class="eyebrow" id="groupEyebrow">LIVE STUDIO</div><h2 id="workbook">Waiting for the first group.</h2><p id="groupStatus">Actual capture jobs appear here.</p></div><div class="heading-actions"><button id="startDeferredScan" hidden>Start deferred full scan</button><button id="restartGroup">Requeue group</button><button id="resetCamera">All sheets</button></div></div>
+      <p id="deferredResume" class="deferred-resume" hidden></p>
       <section id="groupOutcome" class="group-outcome" hidden aria-label="Workbook result">
         <strong id="groupOutcomeTitle"></strong><span id="groupOutcomeReason"></span>
       </section>
+      <section id="cleanupAnalysis" class="cleanup-analysis" hidden aria-label="Cleanup analysis">
+        <h3>Removed XML bloat</h3>
+        <div id="cleanupAnalysisContent"></div>
+      </section>
       <section class="inspection-copies" aria-label="Open workbook inspection copies">
-        <div><strong>Inspect in Excel</strong><small>Opens a separate temporary copy of the comparison input in visible Excel.</small></div>
+        <div><strong>Prepared workbooks</strong><small>Download a variant or open a separate temporary copy in visible Excel. The original variant may be a repaired or converted baseline.</small></div>
         <div id="inspectionButtons" class="inspection-buttons"></div>
         <span id="inspectionAvailability">Select a workbook to inspect its prepared copies.</span>
         <span id="inspectionStatus" role="status" aria-live="polite"></span>

@@ -159,6 +159,10 @@ export function progressSummary(progress) {
   const scopeLabel = [scope.corpora?.join(', '), scope.size_part ? `Partition ${scope.size_part.part}/${scope.size_part.parts}` : 'Entire corpus',
     ['descending', 'largest-first', 'size-desc'].includes(scope.order) ? 'largest first' : ['ascending', 'smallest-first', 'size-asc'].includes(scope.order) ? 'smallest first' : scope.order === 'priority' ? 'priority order' : null].filter(Boolean).join(' · ');
   const activity = progress.activity;
+  const preparationTotal = counts.preparation_total;
+  const preparationTerminal = counts.preparation_terminal;
+  const visualTotal = counts.visual_total;
+  const visualCompleted = counts.visual_completed;
   const outcomeLabels = {
     unchanged: 'No differences detected', differences: 'Differences found',
     skipped: 'Skipped / not validated', interrupted: 'Interrupted',
@@ -166,9 +170,27 @@ export function progressSummary(progress) {
   return { scope: scopeLabel, completed: number(counts.completed), skipped: number(counts.skipped),
     remaining: number(counts.remaining), total: number(counts.total), inProgress: number(counts.in_progress),
     preparationRemaining: number(counts.preparation_remaining), prepared: number(counts.prepared),
+    preparationTotal: number(preparationTotal), preparationTerminal: number(preparationTerminal),
+    preparationRatio: Number.isFinite(preparationTotal) && preparationTotal > 0
+      ? Math.min(1, Number(preparationTerminal || 0) / preparationTotal) : null,
+    visualScopeFrozen: progress.visual_scope_frozen === true,
+    visualTotal: number(visualTotal), visualCompleted: number(visualCompleted),
+    visualRemaining: number(counts.visual_remaining), visualExcluded: number(counts.visual_excluded),
+    visualDeferred: number(counts.visual_deferred),
+    visualRatio: progress.visual_scope_frozen === true && Number.isFinite(visualTotal) && visualTotal > 0
+      ? Math.min(1, Number(visualCompleted || 0) / visualTotal) : null,
+    activePreparation: (progress.active_preparation || []).filter(item => item.workbook).map(item => {
+      const profile = ({ default: 'default', 'maximum-cleaning': 'maximum cleaning',
+        'too-aggressive-cleaning': 'too aggressive cleaning' })[item.profile] || item.profile;
+      return profile ? `${item.workbook} · ${profile}` : item.workbook;
+    }),
     perMinute: number(rate.completed_per_minute), perHour: number(rate.completed_per_hour),
     averagePerHour: number(rate.average_completed_per_hour),
-    preparationPerHour: number(rate.preparation_per_hour), window: duration(rate.window_seconds),
+    preparationPerMinute: number(rate.preparation_per_minute),
+    preparationPerHour: number(rate.preparation_per_hour),
+    preparationEta: Number.isFinite(eta.preparation_remaining_seconds)
+      ? `About ${duration(eta.preparation_remaining_seconds)}` : 'Estimating after more workbooks',
+    window: duration(rate.window_seconds),
     eta: eta.status === 'estimating' && Number.isFinite(eta.remaining_seconds) ? `About ${duration(eta.remaining_seconds)}` : statuses[eta.status] || 'No estimate yet',
     finish: eta.status === 'estimating' ? timestamp(eta.finish_unix_ms) : null,
     diagnosisFailed: number(progress.diagnosis_failed), phase: progress.phase === 'paused' ? 'Run paused' : phaseLabel(progress.phase),

@@ -383,6 +383,27 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     }
     const heading = element('div', 'wm-progress-heading');
     heading.append(element('strong', null, summary.scope), element('span', null, summary.phase));
+    const phases = element('div', 'wm-phase-progress');
+    const preparation = element('div', 'wm-phase-row');
+    preparation.append(element('strong', null, 'Shrink preparation'),
+      element('span', null, `${summary.preparationTerminal} / ${summary.preparationTotal}`));
+    const preparationBar = element('progress', 'wm-phase-bar');
+    preparationBar.max = 100;
+    preparationBar.value = 100 * (summary.preparationRatio ?? 0);
+    const active = summary.activePreparation.length
+      ? ` · Current: ${summary.activePreparation.join(', ')}` : '';
+    phases.append(preparation, preparationBar,
+      element('p', 'wm-progress-note', `${summary.preparationPerMinute}/min · ${summary.preparationPerHour}/h · ${summary.preparationEta}${active}`));
+    if (summary.visualScopeFrozen) {
+      const comparison = element('div', 'wm-phase-row');
+      comparison.append(element('strong', null, 'Visual comparison'),
+        element('span', null, `${summary.visualCompleted} / ${summary.visualTotal} · ${summary.visualRemaining} remaining · ${summary.visualDeferred} deferred`));
+      const comparisonBar = element('progress', 'wm-phase-bar');
+      comparisonBar.max = 100;
+      comparisonBar.value = 100 * (summary.visualRatio ?? 1);
+      phases.append(comparison, comparisonBar,
+        element('p', 'wm-progress-note', `${summary.visualExcluded} workbooks excluded from visual comparison after preparation.`));
+    }
     const numbers = element('dl', 'wm-progress-numbers');
     field(numbers, 'Compared', summary.completed);
     field(numbers, 'Skipped', summary.skipped);
@@ -412,6 +433,6 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     const footer = element('p', 'wm-progress-note', `${summary.eta}${summary.finish ? ` · around ${timeText(summary.finish)}` : ''}. Rate of successfully compared workbooks in the active window of ${summary.window}. Run average: ${summary.averagePerHour}/h. Remaining preparation: ${summary.preparationRemaining} (${summary.preparationPerHour}/h). Fully idle pauses (target 0) are excluded; capture pauses with active groups still count.`);
     if (Number(queue.progress.diagnosis_failed) > 0) footer.append(document.createTextNode(` Unresolved diagnostic failures: ${summary.diagnosisFailed}.`));
     if (queue.runner_alive === false || queue.running === false) footer.append(document.createTextNode(' Runner inactive: last saved snapshot.'));
-    progress.replaceChildren(heading, numbers, activity, footer);
+    progress.replaceChildren(heading, phases, numbers, activity, footer);
   } };
 }

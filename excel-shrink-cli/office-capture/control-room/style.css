@@ -106,6 +106,18 @@ h1 {
 .run-controls {
   grid-template-columns:1.05fr .9fr 1.3fr .85fr .9fr;
 }
+.preparation-controls {
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  margin-bottom:8px;
+}
+.preparation-controls input[type=range] {
+  flex:1;
+}
+.preparation-controls .control-line>strong {
+  min-width:2ch;
+  margin-right:0;
+  text-align:right;
+}
 .ram-reserve input {
   width:76px;
   min-width:0;
@@ -220,6 +232,100 @@ select {
 }
 #notice.failure {
   color:#ffadbc;
+}
+.workbook-kpis {
+  margin:0 24px 18px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:#0d1d2a;
+}
+.workbook-kpi-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(145px,1fr));
+  gap:8px;
+  margin-top:12px;
+}
+.workbook-kpi {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  min-height:68px;
+  text-align:left;
+}
+.workbook-kpi strong {
+  font-size:21px;
+  font-variant-numeric:tabular-nums;
+}
+.workbook-kpi span {
+  color:#a6c1d1;
+  font-size:11px;
+}
+.workbook-result-list {
+  margin-top:16px;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+}
+.workbook-result-list .section-head h3 {
+  margin:0;
+  font-size:14px;
+}
+#workbookResultCount,#workbookResultStatus {
+  margin:8px 0;
+  color:var(--muted);
+}
+#workbookResultRows {
+  max-height:55vh;
+  overflow:auto;
+}
+.workbook-result-row {
+  display:grid;
+  grid-template-columns:minmax(170px,2fr) minmax(150px,2fr) minmax(240px,3fr);
+  align-items:center;
+  gap:10px;
+  padding:8px 0;
+  border-bottom:1px solid #274153;
+}
+.workbook-result-name {
+  min-width:0;
+  overflow-wrap:anywhere;
+  text-align:left;
+}
+.workbook-result-reason {
+  color:var(--muted);
+  overflow-wrap:anywhere;
+}
+.workbook-result-links {
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+}
+.workbook-result-variant {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:3px 5px;
+  border:1px solid #355069;
+  border-radius:6px;
+}
+.workbook-result-variant a,.inspection-download {
+  color:#9ce5e9;
+  text-decoration:underline;
+  text-underline-offset:2px;
+  font-size:11px;
+}
+.workbook-result-variant a:focus-visible,.inspection-download:focus-visible {
+  outline:2px solid var(--cyan);
+  outline-offset:3px;
+}
+.workbook-result-links button {
+  padding:4px 7px;
+  font-size:11px;
+}
+@media(max-width:900px) {
+  .workbook-result-row {
+    grid-template-columns:1fr;
+  }
 }
 .workspace {
   display:grid;
@@ -392,6 +498,12 @@ select {
 }
 .inspection-buttons button {
   font-size:11px;
+}
+.inspection-variant {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding-right:8px;
 }
 #inspectionStatus,#inspectionAvailability {
   flex-basis:100%;
@@ -738,7 +850,7 @@ dialog::backdrop {
   white-space:nowrap;
   border:0;
 }
-body.presenting .masthead,body.presenting .controls,body.presenting #notice,body.presenting .sidebar,body.presenting .events,body.presenting .detail-tools {
+body.presenting .masthead,body.presenting .controls,body.presenting #notice,body.presenting .workbook-kpis,body.presenting .sidebar,body.presenting .events,body.presenting .detail-tools {
   display:none;
 }
 body.presenting .workspace {
@@ -757,6 +869,9 @@ body.presenting .room {
   }
   .control:nth-child(-n+2) {
     border-bottom:1px solid var(--line);
+  }
+  .preparation-controls .control {
+    border-bottom:0;
   }
   .run-controls .control {
     border-bottom:1px solid var(--line);
@@ -790,6 +905,13 @@ body.presenting .room {
   }
 }
 @media(max-width:850px) {
+  .preparation-controls {
+    grid-template-columns:1fr;
+  }
+  .preparation-controls .control:first-child {
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
   .masthead {
     padding:18px;
   }
@@ -874,6 +996,54 @@ body.presenting .room {
   padding:7px 9px;
   color:#c2dbe7;
   font-size:10px;
+}
+.sidebar-filter-label {
+  display:block;
+  margin-top:10px;
+  color:#8eadc2;
+  font-size:10px;
+}
+.group-filter {
+  width:100%;
+  margin-top:4px;
+  padding:7px 9px;
+  border:1px solid #2b465a;
+  border-radius:6px;
+  background:#0d1f2d;
+  color:#c2dbe7;
+  font-size:10px;
+}
+.cleanup-analysis {
+  margin:12px 0;
+  padding:12px;
+  border:1px solid #2b465a;
+  border-radius:8px;
+  background:#0d1f2d;
+  color:#c2dbe7;
+}
+.deferred-resume {
+  margin:4px 0 12px;
+  color:#ffc987;
+  font-size:11px;
+}
+.cleanup-analysis h3 {
+  margin:0 0 8px;
+  font-size:13px;
+}
+.cleanup-analysis table {
+  width:100%;
+  border-collapse:collapse;
+  font-size:11px;
+}
+.cleanup-analysis th,
+.cleanup-analysis td {
+  padding:4px 8px;
+  border-bottom:1px solid #2b465a;
+  text-align:left;
+}
+.cleanup-analysis th:not(:first-child),
+.cleanup-analysis td:not(:first-child) {
+  text-align:right;
 }
 .more-groups {
   width:100%;

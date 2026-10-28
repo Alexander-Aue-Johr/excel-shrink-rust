@@ -67,6 +67,19 @@ export function runTests() {
   assert(summary.scope.includes('Partition 2/4') && summary.scope.includes('largest first'), 'Progress is scoped to the selected corpus and partition.');
   assert(summary.perMinute === '1.2' && summary.averagePerHour === '50' && summary.finish === start + 1000000, 'Window rate, run average and actual ETA remain distinct.');
   assert(summary.activity === null, 'Legacy progress must not invent attempt counts.');
+  const phases = progressSummary({ visual_scope_frozen: true,
+    counts: { preparation_total: 10, preparation_terminal: 10, visual_total: 4,
+      visual_completed: 2, visual_remaining: 1, visual_deferred: 1, visual_excluded: 6 },
+    rates: { preparation_per_minute: 2, preparation_per_hour: 120 },
+    eta: { preparation_remaining_seconds: 0 },
+    active_preparation: [{ id: 'a', workbook: 'sample.xlsx', profile: 'maximum-cleaning' }] });
+  assert(phases.preparationRatio === 1 && phases.visualRatio === 0.5,
+    'Preparation and visual comparison keep separate denominators.');
+  assert(phases.visualDeferred === '1' && phases.visualRemaining === '1',
+    'Deferred full scans remain separate from completed visual comparisons.');
+  assert(phases.preparationPerMinute === '2'
+    && phases.activePreparation[0] === 'sample.xlsx · maximum cleaning',
+  'The shrink phase exposes throughput, current workbook, and profile.');
   const retryActivity = progressSummary({ counts: { completed: 70, skipped: 5, remaining: 25 },
     rates: { new_completions: 0, completed_per_hour: 0 }, activity: {
       finished_attempts: 8, compared_attempts: 0, skipped_attempts: 8, interrupted_attempts: 0,
