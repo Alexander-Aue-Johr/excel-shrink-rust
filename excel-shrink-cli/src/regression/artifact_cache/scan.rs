@@ -79,6 +79,11 @@ impl Metadata {
                     }
                 }
             }
+            Event::Cdata(_) => {
+                if self.formula_depth.is_some() {
+                    self.uncertain_formula();
+                }
+            }
             Event::Tag(tag) => self.tag(tag)?,
         }
         Ok(())

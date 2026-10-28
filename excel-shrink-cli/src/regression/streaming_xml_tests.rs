@@ -11,7 +11,7 @@ fn streamed(bytes: &[u8], chunk_size: usize) -> Result<(Vec<TagRecord>, Vec<u8>)
         scanner.feed(chunk, |event| {
             match event {
                 Event::Tag(tag) => tags.push((tag.kind, tag.name.to_vec(), tag.attrs.to_vec(), tag.depth)),
-                Event::Text(bytes) => text.extend_from_slice(bytes),
+                Event::Text(bytes) | Event::Cdata(bytes) => text.extend_from_slice(bytes),
             }
             Ok(())
         })?;
@@ -53,11 +53,26 @@ fn comment_and_processing_instruction_delimiters_survive_all_splits() -> Result<
 }
 
 #[test]
+fn cdata_survives_all_chunk_boundaries_and_preserves_cell_text() -> Result<()> {
+    let xml = b"<worksheet><headerFooter><oddFooter><![CDATA[&C Page < 1 ]]]]></oddFooter></headerFooter><sheetData><row><c><v>7</v></c></row></sheetData></worksheet>";
+    for size in 1..=xml.len() {
+        let (tags, text) = streamed(xml, size)?;
+        assert!(tags.iter().any(|(_, name, _, _)| name == b"oddFooter"));
+        assert_eq!(text, b"&C Page < 1 ]]7", "chunk size {size}");
+    }
+    assert!(streamed(b"<worksheet><oddFooter><![CDATA[unterminated</oddFooter></worksheet>", 3).is_err());
+    for size in 1..=b"<root><v><![CDATA[a<&b]]></v></root>".len() {
+        assert_eq!(streamed(b"<root><v><![CDATA[a<&b]]></v></root>", size)?.1, b"a<&b");
+    }
+    Ok(())
+}
+
+#[test]
 fn malformed_or_unsupported_xml_never_finishes_successfully() {
     for xml in [
         b"<root><child></root>".as_slice(), b"<root>", b"<root attr='open>",
         b"<root attr=value/>", b"<root attr='a<b'/>", b"<root/><!--open",
-        b"<root/><?open", b"<!DOCTYPE root><root/>", b"<root><![CDATA[x]]></root>",
+        b"<root/><?open", b"<!DOCTYPE root><root/>", b"<root><![CDATA[x</root>",
         b"<root/><second/>", b"</root>", b"<root></root bad='1'>", b"<>",
         b"<\0r\0o\0o\0t\0/\0>\0", b"plain text",
     ] {

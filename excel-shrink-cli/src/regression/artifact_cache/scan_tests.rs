@@ -88,9 +88,9 @@ fn external_relationships_and_refresh_flags_are_not_reusable() -> Result<()> {
 }
 
 #[test]
-fn unsupported_xml_disables_reuse_without_truncating_the_hash() -> Result<()> {
+fn uncertifiable_xml_disables_reuse_without_truncating_the_hash() -> Result<()> {
     for xml in [
-        b"<worksheet><![CDATA[NOW()]]></worksheet>trailing bytes".as_slice(),
+        b"<worksheet><f><![CDATA[NOW()]]></f></worksheet>".as_slice(),
         b"<!DOCTYPE worksheet><worksheet/>",
         b"<worksheet><f>SUM(A1)",
         b"<worksheet><f>RAND&#40;)</f></worksheet>",

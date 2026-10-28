@@ -643,6 +643,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn footer_cdata_does_not_change_sheet_capture_bounds() {
+        let xml = br#"<worksheet><sheetData><row r="3"><c r="B3"><v>7</v></c></row></sheetData>
+            <headerFooter><oddFooter><![CDATA[&C Page < 1]]></oddFooter></headerFooter></worksheet>"#;
+        let summary = scan_sheet(xml).unwrap();
+        assert_eq!((summary.max_row, summary.max_column), (3, 2));
+    }
+
+    #[test]
+    fn inline_cell_cdata_contributes_to_capture_bounds() {
+        let xml = br#"<worksheet><sheetData><row r="3"><c r="B3" t="inlineStr"><is><t><![CDATA[<&text]]></t></is></c></row></sheetData></worksheet>"#;
+        let summary = scan_sheet(xml).unwrap();
+        assert_eq!((summary.max_row, summary.max_column), (3, 2));
+        assert!(summary.has_text);
+    }
+
+    #[test]
     fn excel_maximum_widths_include_padding_and_retain_the_source_geometry() {
         let xml = br#"<worksheet><sheetFormatPr defaultColWidth="255.7109375"/>
             <cols>

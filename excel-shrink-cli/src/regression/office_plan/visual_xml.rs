@@ -132,10 +132,6 @@ impl<'a, const N: usize> Reader<'a, N> {
             memmem::find(bytes, b"<!DOCTYPE").is_none(),
             "DTD XML is unsupported"
         );
-        ensure!(
-            memmem::find(bytes, b"<![CDATA[").is_none(),
-            "CDATA XML is unsupported"
-        );
         Ok(Self {
             bytes,
             pos: 0,
@@ -162,6 +158,12 @@ impl<'a, const N: usize> Reader<'a, N> {
                 let close = memmem::find(&self.bytes[start + 2..], b"?>")
                     .ok_or_else(|| anyhow::anyhow!("unclosed XML processing instruction"))?;
                 self.pos = start + 2 + close + 2;
+                continue;
+            }
+            if self.bytes[start..].starts_with(b"<![CDATA[") {
+                let close = memmem::find(&self.bytes[start + 9..], b"]]>")
+                    .ok_or_else(|| anyhow::anyhow!("unclosed XML CDATA"))?;
+                self.pos = start + 9 + close + 3;
                 continue;
             }
             if self.bytes[start..].starts_with(b"<!") {
@@ -282,10 +284,6 @@ pub(crate) fn decimal(bytes: &[u8]) -> Result<u32> {
             .ok_or_else(|| anyhow::anyhow!("decimal integer overflow"))?;
     }
     Ok(value)
-}
-
-pub(crate) fn truth(bytes: Option<&[u8]>) -> bool {
-    bytes.is_some_and(|value| value == b"1" || value.eq_ignore_ascii_case(b"true"))
 }
 
 pub(crate) fn decode_attr(bytes: &[u8]) -> Result<String> {

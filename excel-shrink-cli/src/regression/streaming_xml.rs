@@ -1,6 +1,6 @@
 //! Bounded byte-token stream for validation preflight. Ordinary text is borrowed
 //! from the input chunk; only one unfinished tag and the open names are retained.
-//! This is the same UTF-8, no-DTD/CDATA subset as `xml_views`, not a DOM parser.
+//! CDATA text is streamed without treating its markup characters as tags.
 use super::xml_views::{Attributes, Kind, Tag};
 use anyhow::{ensure, Result};
 use memchr::{memchr, memchr3, memmem};
@@ -15,6 +15,7 @@ pub(super) enum Event<'a> {
     // start/end are offsets within the temporary tag, not the whole document.
     Tag(Tag<'a>),
     Text(&'a [u8]),
+    Cdata(&'a [u8]),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,6 +25,7 @@ enum State {
     Tag,
     Comment(usize),
     ProcessingInstruction(usize),
+    Cdata(usize),
 }
 
 pub(super) struct Scanner {
@@ -75,7 +77,11 @@ impl Scanner {
                     self.append(&bytes[..1])?;
                     bytes = &bytes[1..];
                     match self.token.as_slice() {
-                        b"<!" | b"<!-" => {}
+                        b"<!" | b"<!-" | b"<![" | b"<![C" | b"<![CD" | b"<![CDA" | b"<![CDAT" | b"<![CDATA" => {}
+                        b"<![CDATA[" => {
+                            self.token.clear();
+                            self.state = State::Cdata(0);
+                        }
                         b"<!--" => {
                             self.token.clear();
                             self.state = State::Comment(0);
@@ -118,9 +124,14 @@ impl Scanner {
                     }
                     bytes = &bytes[count..];
                 }
+                State::Cdata(matched) => {
+                    let (remaining, pending, complete) = scan_cdata(bytes, matched, &mut emit)?;
+                    bytes = remaining;
+                    self.state = if complete { State::Text } else { State::Cdata(pending) };
+                }
                 State::Comment(matched) | State::ProcessingInstruction(matched) => {
                     let comment = matches!(self.state, State::Comment(_));
-                    let delimiter = if comment { b"-->".as_slice() } else { b"?>" };
+                    let delimiter = if comment { b"-->".as_slice() } else { b"?>".as_slice() };
                     let (count, matched, complete) = skip_delimited(bytes, delimiter, matched);
                     bytes = &bytes[count..];
                     self.state = if complete {
@@ -135,6 +146,7 @@ impl Scanner {
         }
         Ok(())
     }
+
 
     fn append(&mut self, bytes: &[u8]) -> Result<()> {
         ensure!(
@@ -204,6 +216,42 @@ impl Scanner {
         ensure!(self.roots == 1, "missing XML root");
         Ok(())
     }
+}
+
+/// Keep at most two trailing `]` bytes so `]]>` can cross input chunks.
+fn scan_cdata<'a>(
+    mut bytes: &'a [u8],
+    mut pending: usize,
+    emit: &mut impl FnMut(Event<'_>) -> Result<()>,
+) -> Result<(&'a [u8], usize, bool)> {
+    while !bytes.is_empty() {
+        if pending > 0 {
+            if bytes[0] == b']' {
+                if pending == 2 {
+                    emit(Event::Cdata(b"]"))?;
+                } else {
+                    pending += 1;
+                }
+                bytes = &bytes[1..];
+                continue;
+            }
+            if pending == 2 && bytes[0] == b'>' {
+                return Ok((&bytes[1..], 0, true));
+            }
+            emit(Event::Cdata(&b"]]"[..pending]))?;
+            pending = 0;
+        }
+        let end = memchr(b']', bytes).unwrap_or(bytes.len());
+        if end > 0 {
+            emit(Event::Cdata(&bytes[..end]))?;
+            bytes = &bytes[end..];
+        }
+        if !bytes.is_empty() {
+            pending = 1;
+            bytes = &bytes[1..];
+        }
+    }
+    Ok((bytes, pending, false))
 }
 
 /// Skip arbitrarily long comments/PIs with only a delimiter prefix as state.

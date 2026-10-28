@@ -49,7 +49,7 @@ impl SheetScan {
 
     fn event(&mut self, event: Event<'_>) -> Result<()> {
         match event {
-            Event::Text(bytes) => {
+            Event::Text(bytes) | Event::Cdata(bytes) => {
                 if let Some(cell) = &mut self.cell {
                     if (cell.value_depth.is_some() || cell.text_depth.is_some())
                         && bytes.iter().any(|byte| !byte.is_ascii_whitespace())

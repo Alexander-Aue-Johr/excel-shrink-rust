@@ -1,5 +1,5 @@
 //! Borrowed XML token/element views. No DOM and no allocation per tag.
-//! DTDs, CDATA and UTF-16 are explicitly rejected rather than partially read.
+//! DTDs and UTF-16 are explicitly rejected rather than partially read.
 use anyhow::{bail, ensure, Result};
 use memchr::{memchr, memmem};
 
@@ -109,7 +109,12 @@ impl<'a, const DEPTH: usize> Reader<'a, DEPTH> {
                 self.pos = start + 2 + memmem::find(&tail[2..], b"?>").ok_or_else(|| anyhow::anyhow!("unclosed XML processing instruction"))? + 2;
                 continue;
             }
-            ensure!(!tail.starts_with(b"<!"), "DTD/CDATA/declarations are not supported in byte-view XML");
+            if tail.starts_with(b"<![CDATA[") {
+                self.pos = start + 9 + memmem::find(&tail[9..], b"]]>")
+                    .ok_or_else(|| anyhow::anyhow!("unclosed XML CDATA"))? + 3;
+                continue;
+            }
+            ensure!(!tail.starts_with(b"<!"), "DTD/declarations are not supported in byte-view XML");
             let closing = tail.get(1) == Some(&b'/');
             let name_start = start + if closing { 2 } else { 1 };
             let mut p = name_start;
