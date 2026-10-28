@@ -27,6 +27,66 @@ regular configuration. It opens the Observatory. Running the same command
 again while that study is active opens its Observatory instead of starting a
 second study.
 
+## Preparation and visual scope
+
+The study prepares and shrinks **all selected workbooks first**. Only after
+every preparation has a final result does it fix the visual comparison queue
+and start comparisons. The Observatory shows separate preparation and visual
+totals. Setting the comparison group target to zero pauses new visual
+comparisons; preparation continues. An explicit Stop ends the run after the
+current workbooks and retains their completed preparation records for a restart.
+The Observatory has separate controls for simultaneous shrink processes and
+Rayon threads per process. Both range from 1 to the available logical CPU count;
+changes apply only to newly admitted workbooks. Preparation does not gate new
+processes on free RAM. The existing worker memory limit remains independent.
+Before each preparation, the runner checks free space on the output volume.
+It pauses with **waiting for disk** when less than 8 GiB, or the larger
+combined reserve for active workbooks and the next one, is available. Free
+space and start the same run again to resume; completed preparations remain
+available.
+Unsupported XML namespace roots are classified by the shrinker; the study
+uses its batch outcome instead of scanning the ZIP members again.
+Worksheets containing CDATA are copied unchanged while other worksheets can
+still be cleaned. The streaming validator retains CDATA text but does not
+certify formulas represented that way for cache reuse.
+The shrinker records ZIP member length and CRC-32 for each sheet. A profile
+whose entire output reuses the input archive is listed as **CRC + length equal
+to shrink input** and receives no visual comparison. This is distinct from a
+visually identical result. Shrinking uses the converted corpus file. If only
+`xl/workbook.xml` defined names could be cleaned, the default output retains
+the source archive and the study reports **Only workbook.xml cleanup available**.
+These files receive neither a repaired baseline nor a visual comparison.
+Unsupported namespaces, preparation failures, and preparations missing required
+shrink evidence also stay out of the visual queue, with their reason recorded
+in the workbook index.
+`--write-workbook-only-changes` opts into publishing the workbook-only cleanup.
+When a profile changes worksheet XML, baseline repair runs after shrinking,
+before package and visual comparison.
+
+## Deferred full scans
+
+The Observatory can initially capture only the top and bottom of a large sheet
+whose length and CRC-32 match after shrinking. Its **CRC-equal sheet threshold**
+control defaults to 256 MiB of uncompressed sheet XML. Omitted ranges are shown
+as deferred, even if conditional formatting exists or Excel's recalculated
+copy has different ZIP metadata. After normal comparisons, the Observatory
+stays open in **Awaiting manual full scan** with no Excel clients. Use **Start
+deferred full scan** for a selected workbook, or **Stop** to end the runner.
+The saved state can be resumed later with the same corpus and partition:
+
+```powershell
+excel-shrink-visual-validation -Corpus Destatis -Partition 3/4 -FullScanDeferred
+```
+
+This reuses prepared workbooks; the full scan remains subject to the capture
+budget of 4096 image tiles. The Observatory distinguishes these deferred
+checks, CRC equality, recalculation metadata changes, visual identity, and
+visual differences. Bloat category totals are collected during the measured
+shrink run. The optional `--analysis-csv --disable-tail-pruning` variant is for
+separate research comparisons and is not part of the visual study's timing.
+
+## Install the Windows command
+
 If `excel-shrink-visual-validation` is not installed, open Windows PowerShell
 in the Windows workspace printed by the WSL launcher. Install the command
 once, then open a new Windows PowerShell terminal:
