@@ -360,36 +360,21 @@ fn available_memory() -> std::io::Result<u64> {
 
 #[cfg(windows)]
 fn memory_status() -> std::io::Result<adaptive::Memory> {
-    #[repr(C)]
-    #[derive(Default)]
-    struct MemoryStatus {
-        length: u32,
-        load: u32,
-        total_physical: u64,
-        available_physical: u64,
-        total_page_file: u64,
-        available_page_file: u64,
-        total_virtual: u64,
-        available_virtual: u64,
-        available_extended_virtual: u64,
-    }
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn GlobalMemoryStatusEx(status: *mut MemoryStatus) -> i32;
-    }
-    let mut status = MemoryStatus {
-        length: std::mem::size_of::<MemoryStatus>() as u32,
-        ..Default::default()
-    };
-    // SAFETY: the writable buffer has the documented MEMORYSTATUSEX layout and
-    // its initialized length matches the allocation for the duration of the call.
-    if unsafe { GlobalMemoryStatusEx(&mut status) } == 0 {
+    use windows_sys::Win32::System::ProcessStatus::{GetPerformanceInfo, PERFORMANCE_INFORMATION};
+
+    // Unlike GlobalMemoryStatusEx's available page-file value, these counters
+    // describe system-wide commit, independent of the calling worker's limits.
+    let mut status: PERFORMANCE_INFORMATION = unsafe { std::mem::zeroed() };
+    status.cb = std::mem::size_of::<PERFORMANCE_INFORMATION>() as u32;
+    // SAFETY: status has the documented layout and the supplied buffer size.
+    if unsafe { GetPerformanceInfo(&mut status, status.cb) } == 0 {
         return Err(std::io::Error::last_os_error());
     }
+    let page_size = status.PageSize as u64;
     Ok(adaptive::Memory {
-        physical: status.available_physical,
-        commit: status.available_page_file,
-        total_physical: status.total_physical,
+        physical: status.PhysicalAvailable as u64 * page_size,
+        commit: status.CommitLimit.saturating_sub(status.CommitTotal) as u64 * page_size,
+        total_physical: status.PhysicalTotal as u64 * page_size,
     })
 }
 

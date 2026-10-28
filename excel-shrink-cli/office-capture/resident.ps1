@@ -461,7 +461,7 @@ function Update-Resources {
     $metrics.minimum_available_bytes = [Math]::Min([UInt64]$metrics.minimum_available_bytes, $available)
     $metrics.minimum_commit_bytes = [Math]::Min([UInt64]$metrics.minimum_commit_bytes, $commit)
     if ($available -lt $systemReserveBytes -or $commit -lt $systemReserveBytes) {
-        throw "Resident RAM guard: less than $($metrics.system_reserve_mib) MiB physical RAM or commit headroom remains."
+        throw "Resident RAM guard: physical available $([Math]::Floor($available / 1MB)) MiB; system commit headroom $([Math]::Floor($commit / 1MB)) MiB; required reserve $($metrics.system_reserve_mib) MiB."
     }
     if ($null -ne $hostProcess) {
         $hostProcess.Refresh()

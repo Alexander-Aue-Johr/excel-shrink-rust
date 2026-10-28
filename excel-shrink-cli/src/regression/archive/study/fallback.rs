@@ -132,6 +132,11 @@ pub(super) fn recoverable_failure(record: &Value) -> Option<&'static str> {
         )
         .flatten()
         .collect::<Vec<_>>();
+    // The resident guard measures a temporary system condition, not workbook
+    // validity. Retry once with fewer live Excel instances after peers drain.
+    if messages.iter().any(|message| message.contains("Resident RAM guard:")) {
+        return Some("SYSTEM_MEMORY_PRESSURE");
+    }
     for message in &messages {
         for token in message.split(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
             match token {
@@ -220,6 +225,30 @@ fn prepare_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn memory_pressure_retries_once_after_the_resident_batch() {
+        let mut record = failed_record();
+        record["error"] = json!(concat!(
+            "resident Excel launcher failed: Resident RAM guard: ",
+            "less than 1024 MiB physical RAM or commit headroom remains."
+        ));
+        assert_eq!(recoverable_failure(&record), Some("SYSTEM_MEMORY_PRESSURE"));
+
+        record["capture_mode"] = json!("classic");
+        assert_eq!(recoverable_failure(&record), None, "serial retries must not recurse");
+        record["capture_mode"] = json!("resident");
+        record["complete"] = json!(false);
+        assert_eq!(recoverable_failure(&record), None, "active work must not be retried");
+
+        record["complete"] = json!(true);
+        record["results"] = json!(
+            prepared::PROFILES.iter().map(|name| {
+                json!({"profile": name, "checks_complete": true})
+            }).collect::<Vec<_>>()
+        );
+        assert_eq!(recoverable_failure(&record), None, "completed comparisons must remain complete");
+    }
 
     #[test]
     fn final_fallback_outcome_and_elapsed_time_are_ready_without_a_report_write() {

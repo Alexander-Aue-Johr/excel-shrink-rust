@@ -218,7 +218,20 @@ public sealed class ResidentProcesses : IDisposable
     }
 
     public static ulong AvailablePhysicalBytes { get { return GetMemory().AvailablePhysical; } }
-    public static ulong AvailableCommitBytes { get { return GetMemory().AvailablePage; } }
+    public static ulong AvailableCommitBytes
+    {
+        get
+        {
+            // GlobalMemoryStatusEx.AvailablePage can reflect process limits.
+            // The system reserve must use system-wide commit headroom.
+            var info = new PerformanceInformation();
+            info.Size = (uint)Marshal.SizeOf(typeof(PerformanceInformation));
+            if (!GetPerformanceInfo(ref info, info.Size)) throw new Win32Exception();
+            ulong limit = info.CommitLimit.ToUInt64();
+            ulong used = info.CommitTotal.ToUInt64();
+            return limit > used ? checked((limit - used) * info.PageSize.ToUInt64()) : 0;
+        }
+    }
     static MemoryStatus GetMemory()
     {
         var info = new MemoryStatus { Length = (uint)Marshal.SizeOf(typeof(MemoryStatus)) };
@@ -251,6 +264,15 @@ public sealed class ResidentProcesses : IDisposable
 
     public void Dispose() { job.Dispose(); }
 
+    [StructLayout(LayoutKind.Sequential)]
+    struct PerformanceInformation
+    {
+        public uint Size;
+        public UIntPtr CommitTotal, CommitLimit, CommitPeak;
+        public UIntPtr PhysicalTotal, PhysicalAvailable, SystemCache;
+        public UIntPtr KernelTotal, KernelPaged, KernelNonpaged, PageSize;
+        public uint HandleCount, ProcessCount, ThreadCount;
+    }
     [StructLayout(LayoutKind.Sequential)]
     struct MemoryStatus
     {
@@ -332,6 +354,8 @@ public sealed class ResidentProcesses : IDisposable
     static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool GlobalMemoryStatusEx(ref MemoryStatus status);
+    [DllImport("psapi.dll", SetLastError = true)]
+    static extern bool GetPerformanceInfo(ref PerformanceInformation information, uint size);
     [DllImport("user32.dll")]
     static extern bool IsIconic(IntPtr window);
     [DllImport("user32.dll")]
