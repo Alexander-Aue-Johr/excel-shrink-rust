@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -23,14 +24,24 @@ parser.add_argument("--host", type=Path,
 OPTIONS, REMAINING = parser.parse_known_args()
 
 
-def current_process_started_ms():
+def current_process_started_ms(pid=None):
     from ctypes import wintypes
     kernel = ctypes.windll.kernel32
     kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    handle = kernel.GetCurrentProcess() if pid is None else kernel.OpenProcess(0x1000, False, pid)
+    if not handle:
+        raise OSError("Cannot open the test process")
     stamps = [wintypes.FILETIME() for _ in range(4)]
-    if not kernel.GetProcessTimes(kernel.GetCurrentProcess(), *(ctypes.byref(stamp) for stamp in stamps)):
-        raise OSError("Cannot inspect the test process identity")
+    try:
+        if not kernel.GetProcessTimes(handle, *(ctypes.byref(stamp) for stamp in stamps)):
+            raise OSError("Cannot inspect the test process identity")
+    finally:
+        if pid is not None:
+            kernel.CloseHandle(handle)
     ticks = (stamps[0].dwHighDateTime << 32) | stamps[0].dwLowDateTime
     return (ticks - 116444736000000000) // 10000
 
@@ -152,6 +163,30 @@ class ControlRoomProtocol(unittest.TestCase):
         queue["runner_started_unix_ms"] += 1
         self.write("queue.json", queue)
         self.assertFalse(self.request("/api/state")["stop_requested"])
+
+    def test_immediate_stop_cancels_admission_for_verified_runner(self):
+        dummy = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        try:
+            started = current_process_started_ms(dummy.pid)
+            queue = {"running": True, "runner_pid": dummy.pid,
+                     "runner_started_unix_ms": started - 1000,
+                     "terminate_supported": True}
+            self.write("queue.json", queue)
+            self.assert_status(409, "/api/run/terminate", b"")
+            self.assertFalse((self.data / "terminate-request.json").exists())
+            queue["runner_started_unix_ms"] = started
+            self.write("queue.json", queue)
+            self.assertTrue(self.request("/api/run/terminate", b"")["ok"])
+            self.assertTrue(self.request("/api/state")["terminate_requested"])
+            controls = self.request("/api/control", {"target_groups": 4, "paused": True})["controls"]
+            self.assertEqual(controls["target_groups"], 0)
+            self.assertFalse(controls["paused"])
+            self.assertEqual(json.loads((self.data / "terminate-request.json").read_text()),
+                             {"runner_pid": dummy.pid, "runner_started_unix_ms": started})
+        finally:
+            dummy.terminate()
+            dummy.wait(timeout=10)
 
     def test_completed_stop_request_allows_saving_controls_without_starting_runner(self):
         queue = {"running": False, "phase": "stopped", "runner_pid": os.getpid(),

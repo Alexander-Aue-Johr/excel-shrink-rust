@@ -318,9 +318,14 @@ pub(super) fn compare(
                 if let Ok(updated) = Controls::read(&room) {
                     controls = updated;
                 }
-                // Finish admitted groups, including fallback and cleanup, then
-                // let the outer admission checkpoint end the runner.
-                if control_room::stop_requested(&room) {
+                // Immediate stop closes admission and cancels active workers.
+                // Orderly stop still finishes admitted groups and cleanup.
+                if control_room::terminate_requested(&room) {
+                    controls.target_groups = 0;
+                    controls.paused = false;
+                    cleanup.close_admission();
+                    cancel_active(&active);
+                } else if control_room::stop_requested(&room) {
                     controls.target_groups = 0;
                     controls.paused = false;
                     if initial_admission.is_none() {
@@ -621,6 +626,7 @@ pub(super) fn compare(
                 }
             }
         });
+        control_room::check_stop(&room)?;
         ensure!(
             errors.is_empty(),
             "manual comparison failed: {}",
@@ -678,6 +684,7 @@ pub(super) fn compare(
                 group["error"] = json!(format!("{error:#}"));
             }
             control_room::write(&room.join("queue.json"), &queue)?;
+            control_room::check_stop(&room)?;
             result?;
         }
         for job in &mut active {

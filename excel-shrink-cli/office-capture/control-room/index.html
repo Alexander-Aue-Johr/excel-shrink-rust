@@ -10,6 +10,16 @@
 </head>
 <body>
   <header class="masthead"><div><div class="eyebrow">EXCEL SHRINK / VISUAL REGRESSION</div><h1>See the comparison unfold.</h1></div><div class="connection"><i id="connectionLight"></i><span id="connectionText">Connecting</span><span class="pill" id="memory">RAM —</span></div></header>
+  <section class="run-lifecycle" aria-label="Run status and stop controls">
+    <div>
+      <strong>Run status</strong>
+      <span id="runLifecycle" role="status">Checking runner status...</span>
+    </div>
+    <div class="run-lifecycle-actions">
+      <button id="stopRun" type="button" disabled title="Finish active workbooks and Excel cleanup, then exit">Finish active workbooks</button>
+      <button id="terminateRun" type="button" disabled title="Cancel active workers and close their Excel sessions now">Stop now</button>
+    </div>
+  </section>
   <section class="controls preparation-controls" aria-label="Shrink preparation controls">
     <div class="control">
       <label for="prepareProcesses">SIMULTANEOUS SHRINK PROCESSES</label>
@@ -54,7 +64,6 @@
     <label class="hidden-control" title="Excel renders on a private Windows desktop without receiving your keyboard input."><span><input id="hideExcel" type="checkbox"> Open Excel hidden</span><small>Uses a private desktop for the next group. Active windows keep their current mode.</small></label>
     <div class="throughput"><span id="pixelRate">— MP/s</span><small id="captureTotals">Waiting for measured captures</small><small id="effectiveCapture">—</small></div>
   </div></details>
-  <section class="controls" aria-label="Stop the run"><button id="stopRun" disabled>Stop run</button><span id="runLifecycle" role="status">Checking runner status...</span></section>
   <div id="notice" role="status" aria-live="polite">Status and image evidence are loaded directly from the local host.</div>
   <section class="workbook-kpis" aria-label="Workbook outcomes">
     <div class="section-head"><h2>Workbook outcomes</h2><span id="workbookScope">Preparing selected workbooks</span></div>

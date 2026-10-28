@@ -7,22 +7,30 @@ use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 pub(super) struct StopRequested;
 impl std::fmt::Display for StopRequested {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("run stopped after finishing admitted workbooks")
+        f.write_str("run stopped at user request")
     }
 }
 impl std::error::Error for StopRequested {}
 
 // Scope requests to the exact process, including across the startup/run-ID change.
-pub(super) fn stop_requested(root: &Path) -> bool {
-    read_json(&root.join("stop-request.json")).is_some_and(|request| {
+fn request_matches_runner(root: &Path, file: &str) -> bool {
+    read_json(&root.join(file)).is_some_and(|request| {
         request["runner_pid"] == std::process::id()
             && process_started_unix_ms().is_some_and(|started|
                 request["runner_started_unix_ms"].as_u64() == Some(started))
     })
 }
 
+pub(super) fn stop_requested(root: &Path) -> bool {
+    request_matches_runner(root, "stop-request.json")
+}
+
+pub(super) fn terminate_requested(root: &Path) -> bool {
+    request_matches_runner(root, "terminate-request.json")
+}
+
 pub(super) fn check_stop(root: &Path) -> Result<()> {
-    if stop_requested(root) {
+    if stop_requested(root) || terminate_requested(root) {
         return Err(StopRequested.into());
     }
     Ok(())
@@ -490,6 +498,7 @@ impl Room {
             .unwrap_or_else(|| "This machine".into()));
         queue["runner_pid"] = json!(std::process::id());
         queue["stop_supported"] = json!(true);
+        queue["terminate_supported"] = json!(true);
         queue["runner_started_unix_ms"] = json!(process_started_unix_ms());
         queue["running"] = json!(true);
         queue["phase"] = json!("preparing");
@@ -857,6 +866,14 @@ mod tests {
         request["runner_pid"] = json!(0);
         write(&root.join("stop-request.json"), &request)?;
         assert!(!stop_requested(&root));
+        request["runner_pid"] = json!(std::process::id());
+        request["runner_started_unix_ms"] = json!(started - 1);
+        write(&root.join("terminate-request.json"), &request)?;
+        assert!(!terminate_requested(&root));
+        request["runner_started_unix_ms"] = json!(started);
+        write(&root.join("terminate-request.json"), &request)?;
+        assert!(terminate_requested(&root));
+        assert!(check_stop(&root).unwrap_err().is::<StopRequested>());
         fs::remove_dir_all(output)?;
         Ok(())
     }

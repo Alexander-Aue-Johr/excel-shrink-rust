@@ -1474,14 +1474,18 @@ async function poll() {
     state.queue = queue; state.connected = true; state.error = null;
     maybeRefreshWorkbookIndex();
     workerMonitor?.update(queue);
-    $('stopRun').disabled = queue.running !== true || queue.runner_alive !== true || queue.stop_requested === true;
-    $('stopRun').textContent = queue.stop_requested && queue.running ? 'Stopping...' : 'Stop run';
+    const runnerActive = queue.running === true && queue.runner_alive === true;
+    $('stopRun').disabled = !runnerActive || queue.stop_requested === true || queue.terminate_requested === true;
+    $('stopRun').textContent = queue.stop_requested && queue.running ? 'Finishing...' : 'Finish active workbooks';
+    $('terminateRun').disabled = !runnerActive || queue.terminate_supported !== true || queue.terminate_requested === true;
+    $('terminateRun').textContent = queue.terminate_requested && queue.running ? 'Stopping...' : 'Stop now';
     $('runLifecycle').textContent = queue.update_ready === true
       ? 'Runner ended. You can pull and rebuild; results are retained.'
+      : queue.terminate_requested ? 'Cancelling active work and closing Excel sessions. The runner exits after cleanup.'
       : queue.stop_requested ? 'Finishing active workbooks and Excel cleanup. Wait before updating.'
       : queue.phase === 'awaiting_deferred_manual'
-        ? 'Regular comparisons finished. Deferred full scans wait for manual start; Stop run ends this session.'
-      : queue.running ? 'Stop finishes active workbooks, saves results and exits the runner.'
+        ? 'Regular comparisons finished. Deferred full scans wait for manual start.'
+      : queue.running ? 'Finish lets active workbooks complete; Stop now cancels them.'
       : 'Waiting for the runner process to exit.';
 
     $('connectionLight').className = 'connected';
@@ -1510,6 +1514,8 @@ async function poll() {
     $('lastUpdate').textContent = `Updated ${new Date().toLocaleTimeString('en-US')}`;
   } catch (error) {
     if (generation !== pollGeneration) return;
+    $('stopRun').disabled = true;
+    $('terminateRun').disabled = true;
     state.connected = false; state.error = error.message; $('connectionLight').className = 'failed'; $('connectionText').textContent = 'Disconnected'; setNotice(`${error.message} Showing the last known state; retrying the connection shortly.`, true);
   } finally { if (generation === pollGeneration) pollTimer = setTimeout(poll, document.hidden ? 2000 : 500); }
 }
@@ -1820,6 +1826,20 @@ function wireControls() {
       if (!response.ok) throw new Error(result.error || `Stop failed (${response.status}).`);
       setNotice(result.message);
     } catch (error) { setNotice(error.message, true); $('stopRun').disabled = false; }
+  });
+  $('terminateRun').addEventListener('click', async () => {
+    if (!window.confirm('Stop this run now? Active workbook workers will be cancelled and their Excel sessions closed. Completed results remain saved.')) return;
+    $('terminateRun').disabled = true;
+    try {
+      const response = await fetch('/api/run/terminate', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `Immediate stop failed (${response.status}).`);
+      $('stopRun').disabled = true;
+      setNotice(result.message);
+    } catch (error) {
+      setNotice(error.message, true);
+      $('terminateRun').disabled = false;
+    }
   });
   $('groupSearch').addEventListener('input', () => {
     clearTimeout(workbookSearchTimer);

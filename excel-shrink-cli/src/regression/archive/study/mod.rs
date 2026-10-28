@@ -17,6 +17,10 @@ mod storage_guard;
 mod transfer;
 mod whitespace;
 
+pub(super) fn terminate_requested(root: &Path) -> bool {
+    control_room::terminate_requested(root)
+}
+
 #[derive(Parser, Debug)]
 pub(in crate::regression) struct StudyArgs {
     /// Corpus name followed by an HTTP(S) ZIP URL or a local ZIP path. Repeat per corpus.

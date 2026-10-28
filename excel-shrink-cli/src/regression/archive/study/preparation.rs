@@ -320,7 +320,7 @@ pub(super) fn run_all(
                 ));
             }
         }
-        if args.control_room && halt.is_none() {
+        if args.control_room && (halt.is_none() || control_room::terminate_requested(&room)) {
             control_room::check_stop(&room)?;
         }
         if let Some((position, reason, storage)) = disk_wait {

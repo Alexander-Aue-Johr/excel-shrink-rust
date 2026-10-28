@@ -20,7 +20,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use snapshots::*;
-use std::{collections::HashMap, io::Read, path::Path, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, io::Read, path::Path, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use tower_http::services::ServeFile;
 
@@ -76,6 +76,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         .route("/api/workers", get(workers))
         .route("/api/groups/{id}", get(group))
         .route("/api/run/stop", post(stop))
+        .route("/api/run/terminate", post(terminate))
         .route("/api/control", post(control))
         .route("/api/groups/{id}/restart", post(restart))
         .route("/api/groups/{id}/inspect", post(inspect))
@@ -235,6 +236,13 @@ async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
     )
     .await;
     queue["stop_requested"] = json!(active_stop_requested(&queue, stop.as_ref()));
+    let terminate = read_snapshot(
+        &room.root.join("terminate-request.json"),
+        &mut diagnostics,
+        SNAPSHOT_LIMIT,
+    )
+    .await;
+    queue["terminate_requested"] = json!(active_stop_requested(&queue, terminate.as_ref()));
     queue.as_object_mut().unwrap().remove("progress");
     if let Some(progress) = read_snapshot(
         &room.root.join("progress.json"),
@@ -779,6 +787,15 @@ async fn stop(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
             "This runner predates orderly stopping. Stop it from the updated corpus configurator.",
         ));
     }
+    let terminate = read_snapshot(
+        &room.root.join("terminate-request.json"),
+        &mut Vec::new(),
+        SNAPSHOT_LIMIT,
+    )
+    .await;
+    if active_stop_requested(&queue, terminate.as_ref()) {
+        return Err(ApiError::conflict("This runner is already stopping immediately."));
+    }
     write_json(
         &room.root.join("stop-request.json"),
         &json!({"runner_pid": queue["runner_pid"],
@@ -799,6 +816,50 @@ async fn stop(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
     ))
 }
 
+async fn terminate(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
+    let _guard = room.control_gate.lock().await;
+    let mut queue = read_object(&room.root.join("queue.json"), SNAPSHOT_LIMIT).await?;
+    check_runner(&mut queue, &mut Vec::new());
+    if queue["running"] != true || queue["runner_alive"] != true {
+        return Err(ApiError::conflict(
+            "There is no verified active runner to terminate.",
+        ));
+    }
+    if queue["terminate_supported"] != true {
+        return Err(ApiError::conflict(
+            "This runner does not support immediate termination.",
+        ));
+    }
+    let pid = queue["runner_pid"]
+        .as_i64()
+        .ok_or_else(|| ApiError::conflict("Runner PID is unavailable."))?;
+    let started = queue["runner_started_unix_ms"]
+        .as_i64()
+        .ok_or_else(|| ApiError::conflict("Runner creation time is unavailable."))?;
+    let path = room.root.join("control.json");
+    let current = merge_controls(&defaults(), &read_object(&path, SNAPSHOT_LIMIT).await?)?;
+    write_json(
+        &path,
+        &merge_controls(&current, &json!({"target_groups": 0, "paused": false}))?,
+        true,
+    )
+    .await?;
+    let request = json!({"runner_pid": pid, "runner_started_unix_ms": started});
+    write_json(&room.root.join("terminate-request.json"), &request, true).await?;
+
+    // Workers observe the request within their progress loop and close owned
+    // Excel sessions. If that bounded cleanup stalls, end only this verified
+    // runner process. A reused PID can never match the saved creation time.
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(120)).await;
+        if let Err(error) = platform::terminate_verified_process(pid, started) {
+            eprintln!("[control-room] Could not terminate stalled runner {pid}: {error}");
+        }
+    });
+    Ok(Json(json!({"ok": true, "message":
+        "Stopping active workers and owned Excel sessions now. If cleanup stalls, the verified runner will be terminated after 120 seconds."})))
+}
+
 async fn control(
     State(room): State<Arc<Room>>,
     payload: Result<Json<Value>, JsonRejection>,
@@ -809,8 +870,9 @@ async fn control(
     let current = merge_controls(&defaults(), &read_object(&path, SNAPSHOT_LIMIT).await?)?;
     let mut next = merge_controls(&current, &patch)?;
     let stop_path = room.root.join("stop-request.json");
+    let terminate_path = room.root.join("terminate-request.json");
     let queue_path = room.root.join("queue.json");
-    let mut queue = if stop_path.exists() && queue_path.exists() {
+    let mut queue = if (stop_path.exists() || terminate_path.exists()) && queue_path.exists() {
         read_object(&queue_path, SNAPSHOT_LIMIT).await?
     } else {
         json!({})
@@ -820,8 +882,15 @@ async fn control(
     } else {
         None
     };
+    let terminate = if terminate_path.exists() {
+        Some(read_object(&terminate_path, SNAPSHOT_LIMIT).await?)
+    } else {
+        None
+    };
     check_runner(&mut queue, &mut Vec::new());
-    if active_stop_requested(&queue, stop.as_ref()) {
+    if active_stop_requested(&queue, stop.as_ref())
+        || active_stop_requested(&queue, terminate.as_ref())
+    {
         next["target_groups"] = json!(0);
         next["paused"] = json!(false);
     }
@@ -1008,7 +1077,15 @@ async fn resume_for_deferred_scan(room: &Room, queue: &Value) -> HttpResult<()> 
         SNAPSHOT_LIMIT,
     )
     .await;
-    if active_stop_requested(queue, stop.as_ref()) {
+    let terminate = read_snapshot(
+        &room.root.join("terminate-request.json"),
+        &mut Vec::new(),
+        SNAPSHOT_LIMIT,
+    )
+    .await;
+    if active_stop_requested(queue, stop.as_ref())
+        || active_stop_requested(queue, terminate.as_ref())
+    {
         return Err(ApiError::conflict("The study runner is stopping."));
     }
     let path = room.root.join("control.json");

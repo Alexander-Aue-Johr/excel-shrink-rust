@@ -173,10 +173,15 @@ pub(super) fn run_record(
         Ok(())
     });
     let mut result: Value = serde_json::from_slice(&fs::read(&record)?)?;
-    if job
-        .cleanup_barrier
+    let immediate_stop = job
+        .control_room
         .as_ref()
-        .is_some_and(|barrier| barrier.cancelled() || barrier.restart_requested())
+        .is_some_and(|root| control_room::terminate_requested(root));
+    if immediate_stop
+        || job
+            .cleanup_barrier
+            .as_ref()
+            .is_some_and(|barrier| barrier.cancelled() || barrier.restart_requested())
     {
         let restarting = job
             .cleanup_barrier

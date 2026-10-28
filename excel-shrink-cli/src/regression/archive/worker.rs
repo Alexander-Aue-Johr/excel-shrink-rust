@@ -280,6 +280,16 @@ pub(super) fn launch(
         Duration::from_secs(args.workbook_timeout_seconds),
         job.cleanup_barrier.as_ref(),
         || {
+            if job
+                .control_room
+                .as_ref()
+                .is_some_and(|root| super::study::terminate_requested(root))
+            {
+                if let Some(barrier) = &job.cleanup_barrier {
+                    barrier.cancel();
+                }
+                anyhow::bail!("run stopped immediately by user");
+            }
             fs::write(&heartbeat, b"running")?;
             on_progress()
         },
