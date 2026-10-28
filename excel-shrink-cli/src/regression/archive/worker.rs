@@ -2,8 +2,8 @@ use super::*;
 
 mod memory;
 
-pub(super) fn memory_limit_bytes() -> std::io::Result<u64> {
-    memory::limit_bytes()
+pub(super) fn memory_reserve_bytes() -> std::io::Result<u64> {
+    memory::configured_reserve_bytes()
 }
 
 #[derive(Parser, Debug)]
@@ -13,12 +13,8 @@ pub(in crate::regression) struct WorkerArgs {
 }
 
 pub(in crate::regression) fn run_worker(args: WorkerArgs, log_level: LogLevel) -> Result<()> {
-    let memory_limit = memory::limit_bytes().context("configure workbook worker memory limit")?;
-    #[cfg(windows)]
-    let _memory_limit = memory::enforce_limit(memory_limit)
-        .context("enforce Windows workbook worker memory limit")?;
     let job: MemberJob = serde_json::from_slice(&fs::read(args.job)?)?;
-    let _watchdog = start_watchdog(&job, memory_limit);
+    let _watchdog = start_watchdog(&job);
     let mut record: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
     work_state::initialize(&job, &record);
     if job.mode != JobMode::Legacy {
@@ -246,15 +242,6 @@ pub(super) fn launch(
             .env_remove("EXCEL_SHRINK_CAPTURE_TILE_MEGAPIXELS")
             .env_remove("EXCEL_SHRINK_CAPTURE_BATCH_TILES");
     }
-    if job.resident_capture {
-        let record: Value = serde_json::from_slice(&fs::read(&job.record)?)?;
-        if let Some(mib) = resident_memory_limit_mib(&record)? {
-            // Each adaptive wave chooses its own Excel budget. Keep this local
-            // to the child so concurrent workers and classic retries retain
-            // their independently configured limits.
-            command.env("EXCEL_SHRINK_RESIDENT_MEMORY_MIB", mib.to_string());
-        }
-    }
     if let Some(barrier) = &job.cleanup_barrier {
         let config = job.work.join("batch-cleanup.json");
         fs::write(&config, serde_json::to_vec(barrier)?)?;
@@ -299,19 +286,6 @@ pub(super) fn launch(
     );
     running.stop()?;
     outcome
-}
-
-fn resident_memory_limit_mib(record: &Value) -> Result<Option<u64>> {
-    let value = &record["comparison_batch"]["resident_memory_limit_mib"];
-    if value.is_null() {
-        return Ok(None);
-    }
-    let mib = value.as_u64().filter(|mib| (1024..=65536).contains(mib));
-    ensure!(
-        mib.is_some(),
-        "comparison_batch.resident_memory_limit_mib must be an integer between 1024 and 65536"
-    );
-    Ok(mib)
 }
 
 fn wait_for_worker(
@@ -670,35 +644,6 @@ mod tests {
     }
 
     #[test]
-    fn per_wave_resident_memory_limit_is_optional_and_bounded() -> Result<()> {
-        assert_eq!(resident_memory_limit_mib(&json!({}))?, None);
-        for mib in [1024, 4096, 16384, 65536] {
-            assert_eq!(
-                resident_memory_limit_mib(
-                    &json!({"comparison_batch":{"resident_memory_limit_mib":mib}})
-                )?,
-                Some(mib)
-            );
-        }
-        for value in [
-            json!(0),
-            json!(1023),
-            json!(65537),
-            json!(-1),
-            json!(1.5),
-            json!("4096"),
-        ] {
-            assert!(
-                resident_memory_limit_mib(
-                    &json!({"comparison_batch":{"resident_memory_limit_mib":value}})
-                )
-                .is_err()
-            );
-        }
-        Ok(())
-    }
-
-    #[test]
     fn extracts_one_member_and_rejects_parent_paths_and_size_overruns() -> Result<()> {
         let root = std::env::temp_dir().join(format!("archive-worker-test-{}", std::process::id()));
         fs::create_dir_all(&root)?;
@@ -776,12 +721,12 @@ mod tests {
 
     #[cfg(any(windows, target_os = "linux"))]
     #[test]
-    fn watchdog_limits_isolated_workers_and_reports_memory_peaks() -> Result<()> {
+    fn watchdog_enforces_deadlines_and_reports_memory_peaks() -> Result<()> {
         let root =
             std::env::temp_dir().join(format!("archive-watchdog-test-{}", std::process::id()));
         fs::create_dir_all(&root)?;
         let heartbeat = root.join("parent-heartbeat");
-        for scenario in ["memory", "deadline", "complete"] {
+        for scenario in ["deadline", "complete"] {
             fs::write(&heartbeat, b"running")?;
             let mut command = Command::new(std::env::current_exe()?);
             command
@@ -825,14 +770,7 @@ mod tests {
             } else {
                 assert!(result.is_err());
                 assert_eq!(status.code(), Some(124), "{scenario}: {log}");
-                assert!(
-                    log.contains(if scenario == "memory" {
-                        "exceeded memory limit"
-                    } else {
-                        "deadline reached"
-                    }),
-                    "{log}"
-                );
+                assert!(log.contains("deadline reached"), "{log}");
             }
             assert_eq!(log.matches("Worker memory (").count(), 1, "{log}");
             assert!(log.contains(memory::METRIC), "{log}");
@@ -852,8 +790,7 @@ mod tests {
         Ok(())
     }
 
-    // Invoked in a separate process so exiting on a watchdog limit cannot kill
-    // the test runner. The small test limit exercises the real memory API.
+    // Invoked in a separate process so a watchdog deadline cannot kill the test runner.
     #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn watchdog_test_child() -> Result<()> {
@@ -868,7 +805,6 @@ mod tests {
         assert!(during.current_bytes >= before.current_bytes + 8 * 1024 * 1024);
         assert!(during.peak_bytes >= during.current_bytes);
         drop(allocation);
-        assert!(memory::usage()?.peak_bytes >= during.peak_bytes);
 
         let watchdog = WorkerWatchdog::start(
             root.clone(),
@@ -878,7 +814,6 @@ mod tests {
             } else {
                 Duration::from_secs(30)
             },
-            if scenario == "memory" { 1 } else { u64::MAX },
             None,
         );
         if scenario != "complete" {
@@ -938,7 +873,6 @@ mod tests {
             root.clone(),
             root.join("parent-heartbeat"),
             Duration::ZERO,
-            u64::MAX,
             Some(participant),
         );
         std::thread::sleep(Duration::from_millis(2300));
@@ -1007,7 +941,6 @@ mod tests {
             root.clone(),
             root.join("parent-heartbeat"),
             Duration::from_secs(1),
-            u64::MAX,
             Some(participant),
         );
         std::thread::sleep(Duration::from_millis(2300));
@@ -1041,7 +974,7 @@ mod tests {
 }
 
 // The worker also enforces its deadline: the terminal or parent runner can disappear.
-fn start_watchdog(job: &MemberJob, memory_limit: u64) -> Option<WorkerWatchdog> {
+fn start_watchdog(job: &MemberJob) -> Option<WorkerWatchdog> {
     let heartbeat = std::env::var_os("EXCEL_SHRINK_PARENT_HEARTBEAT").map(PathBuf::from)?;
     let timeout = std::env::var("EXCEL_SHRINK_WORKER_DEADLINE")
         .ok()
@@ -1051,7 +984,6 @@ fn start_watchdog(job: &MemberJob, memory_limit: u64) -> Option<WorkerWatchdog> 
         job.work.clone(),
         heartbeat,
         Duration::from_secs(timeout),
-        memory_limit,
         job.cleanup_barrier.clone(),
     ))
 }
@@ -1066,7 +998,6 @@ impl WorkerWatchdog {
         work: PathBuf,
         heartbeat: PathBuf,
         timeout: Duration,
-        memory_limit: u64,
         cleanup_barrier: Option<batch_cleanup::Participant>,
     ) -> Self {
         let (stop, stopped) = std::sync::mpsc::channel();
@@ -1094,7 +1025,6 @@ impl WorkerWatchdog {
                 record_memory_usage(
                     &work,
                     memory,
-                    memory_limit,
                     false,
                     &mut telemetry_warning_logged,
                 );
@@ -1115,13 +1045,11 @@ impl WorkerWatchdog {
                         .is_some_and(|barrier| barrier.deadline_paused())
                 {
                     Some("workbook deadline reached")
-                } else if memory.is_some_and(|usage| usage.current_bytes > memory_limit) {
-                    Some("workbook worker exceeded memory limit")
                 } else {
                     None
                 };
                 if let Some(reason) = reason {
-                    log_memory_usage(memory, memory_limit);
+                    log_memory_usage(memory);
                     eprintln!(
                         "[archive] {reason}; {:.1}s wall time, {:.1}s opening pause; closing owned Excel processes",
                         clock.wall_elapsed().as_secs_f64(),
@@ -1138,7 +1066,6 @@ impl WorkerWatchdog {
                     record_memory_usage(
                         &work,
                         memory::usage().ok().or(memory),
-                        memory_limit,
                         true,
                         &mut telemetry_warning_logged,
                     );
@@ -1149,11 +1076,10 @@ impl WorkerWatchdog {
             record_memory_usage(
                 &work,
                 memory,
-                memory_limit,
                 true,
                 &mut telemetry_warning_logged,
             );
-            log_memory_usage(memory, memory_limit);
+            log_memory_usage(memory);
         });
         Self {
             stop,
@@ -1165,7 +1091,6 @@ impl WorkerWatchdog {
 fn record_memory_usage(
     work: &Path,
     usage: Option<memory::Usage>,
-    limit: u64,
     final_sample: bool,
     warning_logged: &mut bool,
 ) {
@@ -1177,7 +1102,7 @@ fn record_memory_usage(
     let measured = json!({
         "version":1,"pid":std::process::id(),"metric":memory::METRIC,
         "current_bytes":usage.current_bytes,"peak_bytes":usage.peak_bytes,
-        "limit_bytes":limit,"sampled_unix_ms":sampled_unix_ms,
+        "sampled_unix_ms":sampled_unix_ms,
         "final_sample":final_sample,
     });
     let saved = serde_json::to_vec(&measured)
@@ -1201,14 +1126,13 @@ impl Drop for WorkerWatchdog {
     }
 }
 
-fn log_memory_usage(usage: Option<memory::Usage>, limit: u64) {
+fn log_memory_usage(usage: Option<memory::Usage>) {
     if let Some(usage) = usage {
         eprintln!(
-            "[archive] Worker memory ({}): current {:.1} MiB; peak {:.1} MiB; limit {:.0} MiB",
+            "[archive] Worker memory ({}): current {:.1} MiB; peak {:.1} MiB",
             memory::METRIC,
             usage.current_bytes as f64 / 1_048_576.0,
             usage.peak_bytes as f64 / 1_048_576.0,
-            limit as f64 / 1_048_576.0,
         );
     }
 }

@@ -148,29 +148,6 @@ pub(super) fn recoverable_failure(record: &Value) -> Option<&'static str> {
             }
         }
     }
-    let batch = &record["comparison_batch"];
-    let reduced_budget = batch["adaptive"] == true
-        && match (
-            batch["resident_memory_limit_mib"].as_u64(),
-            batch["configured_resident_memory_mib"].as_u64(),
-        ) {
-            (Some(effective), Some(configured)) => effective > 0 && effective < configured,
-            _ => false,
-        };
-    let deterministic_failure = messages.iter().any(|message| {
-        let lower = message.to_ascii_lowercase();
-        lower.contains("drawing boundary is unresolved")
-            || lower.contains("drawing anchor exceeds capture boundary")
-    });
-    if reduced_budget
-        && !deterministic_failure
-        && messages.iter().any(|message| !message.trim().is_empty())
-    {
-        // A Windows allocation limit can surface as an exit or timeout rather
-        // than an explicit memory error. The existing classic retry runs only
-        // after the batch drains and does not inherit the reduced resident cap.
-        return Some("ADAPTIVE_MEMORY_BUDGET");
-    }
     None
 }
 
@@ -283,89 +260,18 @@ mod tests {
             "last_execution":{"run_id":"test-run"},"resident_capture":{"status":"failed"}})
     }
 
-    fn adaptive_failure() -> Value {
-        let mut record = failed_record();
-        record["error"] = json!("resident Excel process exited unexpectedly: original");
-        record["comparison_batch"]["adaptive"] = json!(true);
-        record["comparison_batch"]["resident_memory_limit_mib"] = json!(2048);
-        record["comparison_batch"]["configured_resident_memory_mib"] = json!(16384);
-        record
-    }
-
     #[test]
-    fn adaptive_retry_requires_a_reduced_cap_and_completed_primary_failure() {
-        let record = adaptive_failure();
-        assert_eq!(recoverable_failure(&record), Some("ADAPTIVE_MEMORY_BUDGET"));
-        for effective in [json!(16384), json!(32768), json!(0), Value::Null] {
-            let mut unchanged = record.clone();
-            unchanged["comparison_batch"]["resident_memory_limit_mib"] = effective;
-            assert_eq!(recoverable_failure(&unchanged), None);
-        }
-        for (field, value) in [
-            ("adaptive", json!(false)),
-            ("configured_resident_memory_mib", Value::Null),
-        ] {
-            let mut unchanged = record.clone();
-            unchanged["comparison_batch"][field] = value;
-            assert_eq!(recoverable_failure(&unchanged), None);
-        }
-        for (field, value) in [
-            ("complete", json!(false)),
-            ("capture_mode", json!("classic")),
-            ("status", json!("comparing")),
-        ] {
-            let mut unchanged = record.clone();
-            unchanged[field] = value;
-            assert_eq!(recoverable_failure(&unchanged), None);
-        }
-    }
-
-    #[test]
-    fn explicit_recovery_codes_take_priority_over_reduced_memory_cap() {
+    fn explicit_recovery_codes_are_recognized_without_a_memory_cap() {
         for code in [
             "IMAGE_BUDGET",
             "TASKPANE_RESTARTED",
             "TASKPANE_CONTEXT_CHANGED",
             "InvalidOperationInCellEditMode",
         ] {
-            let mut record = adaptive_failure();
+            let mut record = failed_record();
             record["error"] = json!(format!("resident capture failed: {code}"));
             assert_eq!(recoverable_failure(&record), Some(code));
         }
-    }
-
-    #[test]
-    fn adaptive_retry_excludes_deterministic_auxiliary_and_historical_errors() {
-        for message in [
-            "Drawing boundary is unresolved on Sheet1",
-            "drawing anchor exceeds capture boundary",
-        ] {
-            let mut record = adaptive_failure();
-            record["error"] = json!(message);
-            assert_eq!(recoverable_failure(&record), None);
-            record["error"] = json!("One or more comparisons could not be completed.");
-            record["results"][0]["failures"] = json!([message]);
-            assert_eq!(recoverable_failure(&record), None);
-        }
-        let mut record = adaptive_failure();
-        record["results"] = json!(
-            prepared::PROFILES
-                .iter()
-                .map(|name| json!({
-                    "profile":name,"checks_complete":true
-                }))
-                .collect::<Vec<_>>()
-        );
-        record["whitespace_diagnosis"] = json!({"status":"failed","error":"worker exited"});
-        assert_eq!(recoverable_failure(&record), None);
-
-        let mut record = adaptive_failure();
-        record["error"] = Value::Null;
-        record["whitespace_diagnosis"] = json!({"status":"failed","error":"worker exited"});
-        record["comparison_fallback"] = json!({"original_attempt":{"error":"TASKPANE_RESTARTED"}});
-        assert_eq!(recoverable_failure(&record), None);
-        record["results"][0]["failures"] = json!(["workbook timed out"]);
-        assert_eq!(recoverable_failure(&record), Some("ADAPTIVE_MEMORY_BUDGET"));
     }
 
     #[test]

@@ -1,13 +1,13 @@
-//! Estimate enforceable group budgets from live and completed memory samples.
+//! Estimate group admission budgets from live and completed memory samples.
 use anyhow::{ensure, Context, Result};
 use serde_json::Value;
 use std::collections::VecDeque;
 
-use super::super::control_room::DEFAULT_SYSTEM_RESERVE_MIB;
 use super::super::prepared::PROFILES;
 use super::MIB;
 
 pub(super) const GIB: u64 = 1024 * 1024 * 1024;
+const DEFAULT_ADAPTIVE_RESERVE_MIB: u64 = 1024;
 const HISTORY_LENGTH: usize = 8;
 
 #[derive(Clone, Copy, Debug)]
@@ -58,7 +58,7 @@ impl Controller {
         self.plan_with_peak(memory, remaining, None)
     }
 
-    // Existing jobs retain their original enforceable limits. Only commit can
+    // Existing jobs retain their admission estimates. Only commit can
     // credit their measured current usage: private commit is not physical RAM.
     pub fn plan_next(
         &self,
@@ -100,16 +100,16 @@ impl Controller {
         ensure!(
             self.config.helper_reserve >= GIB / 4
                 && self.config.system_reserve.is_none_or(|bytes| {
-                    (MIB..=65536 * MIB).contains(&bytes) && bytes % MIB == 0
+                    bytes <= 65536 * MIB && bytes % MIB == 0
                 }),
-            "comparison reserves require at least 256 MiB for helpers and 1..65536 whole MiB for the system"
+            "comparison reserves require at least 256 MiB for helpers and 0..65536 whole MiB for the system"
         );
         let reference_peak_bytes = self.normalized_peaks.iter().copied().chain(live_peak).max();
         let resident_limit = reference_peak_bytes
             .map(|peak| estimated_limit(peak, self.config.resident))
             .unwrap_or(self.config.resident);
-        // Rust retains its full allocation limit. COM and resident Excel run in
-        // separate phases, so reserve the larger of their enforceable limits.
+        // Rust retains its full estimate. COM and resident Excel run in
+        // separate phases, so reserve the larger estimate.
         let group_reserve = self
             .config
             .worker
@@ -119,7 +119,7 @@ impl Controller {
         let system_reserve = self
             .config
             .system_reserve
-            .unwrap_or(DEFAULT_SYSTEM_RESERVE_MIB * MIB);
+            .unwrap_or(DEFAULT_ADAPTIVE_RESERVE_MIB * MIB);
         let available = memory.physical.min(memory.commit);
         let affordable = available.saturating_sub(system_reserve) / group_reserve;
         let workers = self
@@ -150,11 +150,6 @@ impl Controller {
     // them. A smaller file is not evidence that its memory demand is smaller.
     pub fn observe(&mut self, records: &[Value]) {
         if records.is_empty() {
-            return;
-        }
-        if records.iter().any(reduced_budget_failure) {
-            self.normalized_peaks.clear();
-            self.width_ceiling = 1;
             return;
         }
         let mut learned = 0;
@@ -221,41 +216,6 @@ pub(super) fn normalized_peak(peak: u64, clients: usize) -> Option<u64> {
     Some(ceil_div(numerator, clients as u128).min(u128::from(u64::MAX)) as u64)
 }
 
-fn reduced_budget_failure(record: &Value) -> bool {
-    if record["capture_mode"] != "resident"
-        || record["status"] != "skipped"
-        || primary_complete(record)
-        || record["comparison_batch"]["adaptive"] != true
-    {
-        return false;
-    }
-    let batch = &record["comparison_batch"];
-    let reduced = match (
-        batch["resident_memory_limit_mib"].as_u64(),
-        batch["configured_resident_memory_mib"].as_u64(),
-    ) {
-        (Some(effective), Some(configured)) => effective > 0 && effective < configured,
-        _ => false,
-    };
-    let deterministic = std::iter::once(record["error"].as_str())
-        .chain(
-            record["results"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|profile| profile["checks_complete"] != true)
-                .flat_map(|profile| profile["failures"].as_array().into_iter().flatten())
-                .map(Value::as_str),
-        )
-        .flatten()
-        .any(|message| {
-            let lower = message.to_ascii_lowercase();
-            lower.contains("drawing boundary is unresolved")
-                || lower.contains("drawing anchor exceeds capture boundary")
-        });
-    reduced && !deterministic
-}
-
 fn ceil_div(value: u128, divisor: u128) -> u128 {
     value / divisor + u128::from(value % divisor != 0)
 }
@@ -303,7 +263,7 @@ mod tests {
             "source_bytes":100,
             "results":PROFILES.iter().map(|name| json!({"profile":name,"checks_complete":true})).collect::<Vec<_>>(),
             "resident_capture":{"status":"complete","peak_job_bytes":peak,"clients":clients},
-            "comparison_batch":{"adaptive":true,"resident_memory_limit_mib":4096,"configured_resident_memory_mib":16384}
+            "comparison_batch":{"adaptive":true,"resident_memory_estimate_mib":4096,"configured_resident_memory_estimate_mib":16384}
         })
     }
 
@@ -476,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn reduced_cap_failure_resets_learning_but_boundary_failure_only_holds_width() -> Result<()> {
+    fn failed_group_holds_width_without_discarding_completed_peak() -> Result<()> {
         for message in [
             "Drawing boundary is unresolved",
             "drawing anchor exceeds capture boundary",
@@ -492,13 +452,13 @@ mod tests {
         controller.observe(&[completed(GIB, 6)]);
         controller.observe(&[completed(GIB, 6), failed("resident Excel process exited")]);
         let plan = controller.plan(memory(), 100)?;
-        assert_eq!(plan.workers, 1);
-        assert_eq!(plan.resident_limit, 16 * GIB);
+        assert_eq!(plan.workers, 2);
+        assert_eq!(plan.resident_limit, 3 * GIB);
         Ok(())
     }
 
     #[test]
-    fn commit_headroom_and_enforced_limits_bound_every_wave() -> Result<()> {
+    fn commit_headroom_and_admission_estimates_bound_every_wave() -> Result<()> {
         let mut controller = controller();
         controller.observe(&[completed(GIB, 6)]);
         controller.observe(&vec![completed(GIB, 6); 2]);
@@ -538,7 +498,7 @@ mod tests {
     fn system_reserve_accepts_whole_mib_without_changing_group_limits() -> Result<()> {
         let mut controller = controller();
         let original = controller.plan(memory(), 1)?;
-        for mib in [1, 512, 1024, 65536] {
+        for mib in [0, 1, 512, 1024, 65536] {
             controller.config.system_reserve = Some(mib * MIB);
             let plan = controller.plan(memory(), 1)?;
             assert_eq!(plan.system_reserve, mib * MIB);
@@ -546,7 +506,7 @@ mod tests {
             assert_eq!(plan.resident_limit, original.resident_limit);
             assert_eq!(plan.helper_reserve, original.helper_reserve);
         }
-        for bytes in [0, MIB - 1, 65536 * MIB + 1] {
+        for bytes in [MIB - 1, 65536 * MIB + 1] {
             controller.config.system_reserve = Some(bytes);
             assert!(controller.plan(memory(), 1).is_err());
         }

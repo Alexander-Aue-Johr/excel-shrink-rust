@@ -46,7 +46,7 @@ Assert ($config.settings.reuse_prepared_from.Count -eq 1 -and $config.settings.r
 Assert ($config.settings.reuse_prepared_from -notcontains $previous) 'Previous executable was implicitly approved.'
 Assert ($null -eq $config.settings.import_report) 'A stale metadata field added an unwanted import.'
 Assert ($config.settings.tall_sheet_threshold -eq 40 -and $config.settings.tall_sheet_edge_tiles -eq 2) 'Tall-sheet defaults are missing.'
-Assert ($config.settings.system_reserve_mib -eq 1024) 'A new machine configuration did not default to a 1024 MiB system reserve.'
+Assert ($config.settings.system_reserve_mib -eq 0) 'A new machine configuration did not default to a disabled system reserve.'
 $plan=New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/example with spaces')
 Assert ($plan.Request.corpora.Count -eq 3) 'Selecting one corpus removed other import identities.'
 foreach($entry in $portable.corpora){$mapped=@($plan.Request.corpora | Where-Object id -eq $entry.id);Assert ($mapped.Count -eq 1 -and $mapped[0].url -eq $entry.url) 'Existing ZIP binding or stable identity changed.'}
@@ -55,7 +55,7 @@ Assert ($null -eq (Arg-Value $plan '--size-part')) 'Whole-corpus mode added a pa
 Assert ((Arg-Value $plan '--output-root') -eq $output) 'Existing output directory was changed.'
 Assert ($plan.ExportResults.StartsWith((Join-Path $output 'exports'))) 'Result export was not retained.'
 Assert ($plan.Environment.EXCEL_SHRINK_TALL_SHEET_THRESHOLD -eq '40' -and $plan.Environment.EXCEL_SHRINK_TALL_SHEET_EDGE_TILES -eq '2') 'Tall-sheet settings do not reach the runner.'
-Assert ($plan.Environment.EXCEL_SHRINK_SYSTEM_RESERVE_MIB -eq '1024') 'The default reserve did not reach the runner environment.'
+Assert ($plan.Environment.EXCEL_SHRINK_SYSTEM_RESERVE_MIB -eq '0') 'The default reserve did not reach the runner environment.'
 foreach($path in $before.Keys){Assert ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $before[$path]) 'Migration rewrote an existing artifact.'}
 Assert ((@(Get-ChildItem -LiteralPath $root -File -Recurse)).Count -eq $before.Count) 'Read-only planning wrote files.'
 Assert (-not [IO.File]::Exists($configPath)) 'Preview saved configuration unexpectedly.'
@@ -97,12 +97,12 @@ foreach($name in @('tall_sheet_threshold','tall_sheet_edge_tiles')){
     $config.settings.$name=$old
 }
 $reserve=$config.settings.system_reserve_mib
-foreach($valid in @(1,512,65536)) {
+foreach($valid in @(0,1,512,65536)) {
     $config.settings.system_reserve_mib=$valid
     Assert-StudySettings $config.settings
     Assert ($config.settings.system_reserve_mib -eq $valid) "Valid system reserve was rejected: $valid"
 }
-foreach($invalid in @(0,-1,65537,1.5,'invalid')) {
+foreach($invalid in @(-1,65537,1.5,'invalid')) {
     $config.settings.system_reserve_mib=$invalid
     Reject {Assert-StudySettings $config.settings} "Invalid system reserve was accepted: $invalid"
 }
@@ -124,7 +124,7 @@ Save-StudyJson $configPath $loaded
 $legacyBytes=[IO.File]::ReadAllText($configPath)
 $loaded=Import-StudyConfiguration $root $configPath $catalogPath
 Assert ($loaded.settings.tall_sheet_threshold -eq 40 -and $loaded.settings.tall_sheet_edge_tiles -eq 2) 'Existing launcher configurations did not acquire tall-sheet defaults.'
-Assert ($loaded.settings.system_reserve_mib -eq 1024) 'A legacy configuration without a reserve did not acquire the default.'
+Assert ($loaded.settings.system_reserve_mib -eq 0) 'A legacy configuration without a reserve did not acquire the default.'
 Assert ([IO.File]::ReadAllText($configPath) -ceq $legacyBytes) 'Loading legacy configuration changed it on disk.'
 $loaded.settings.system_reserve_mib=4096;Save-StudyJson $configPath $loaded
 $loaded=Import-StudyConfiguration $root $configPath $catalogPath
@@ -132,7 +132,7 @@ Assert ($loaded.settings.system_reserve_mib -eq 4096) 'Loading a saved profile r
 $loaded.settings.machine_name='DIFFERENT-COMPUTER';$loaded.settings.worker_memory_mib=65536;Save-StudyJson $configPath $loaded
 $rebound=Import-StudyConfiguration $root $configPath $catalogPath
 Assert ($rebound.settings.worker_memory_mib -ne 65536 -and $rebound.settings.comparison_groups -eq 1) 'A copied machine config imposed foreign memory settings.'
-Assert ($rebound.settings.system_reserve_mib -eq 1024) 'A copied machine profile did not retain the existing local-default migration policy.'
+Assert ($rebound.settings.system_reserve_mib -eq 0) 'A copied machine profile did not retain the existing local-default migration policy.'
 Assert (-not (Test-StudyOutputBusy $output)) 'An idle output was marked busy.'
 $heldLock=[IO.File]::Open((Join-Path $output '.run.lock'),[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::ReadWrite)
 try {
@@ -171,7 +171,7 @@ if($DialogTest){
         Assert ($dialog.Controls.Status.Text -match 'tall_sheet_edge_tiles' -and (Read-StudyJson $configPath).settings.tall_sheet_edge_tiles -eq 3) 'WPF accepted zero edge captures or overwrote valid settings.'
         $dialog.Controls.TallEdges.Text='3';$dialog.Controls.Save.RaiseEvent($click)
         $dialog.Controls.Reserve.Text='0';$dialog.Controls.Save.RaiseEvent($click)
-        Assert ($dialog.Controls.Status.Text -match 'system_reserve_mib' -and (Read-StudyJson $configPath).settings.system_reserve_mib -eq 512) 'WPF accepted a disabled reserve or overwrote valid settings.'
+        Assert ((Read-StudyJson $configPath).settings.system_reserve_mib -eq 0) 'WPF did not accept a disabled reserve.'
         $dialog.Controls.Reserve.Text='512';$dialog.Controls.Save.RaiseEvent($click)
     } finally { $dialog.Window.Close() }
 }

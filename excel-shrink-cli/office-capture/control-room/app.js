@@ -1054,9 +1054,10 @@ function updateControlInputs() {
     $('captureTransport').value = values.capture_transport || 'live-images';
   }
   $('captureTransportStatus').textContent = captureTransportSummary(values, data);
-  const confirmedReserve = values.system_reserve_mib ?? 1024;
+  const confirmedReserve = values.system_reserve_mib ?? 0;
   if (values.system_reserve_mib == null && document.activeElement !== $('systemReserve') && !dirtyControls.has('systemReserve')) $('systemReserve').value = String(confirmedReserve);
-  $('systemReserveStatus').textContent = `Confirmed: ${confirmedReserve.toLocaleString('en-US')} MiB`;
+  $('systemReserveStatus').textContent = confirmedReserve === 0
+    ? 'Confirmed: RAM guard off' : `Confirmed: ${confirmedReserve.toLocaleString('en-US')} MiB`;
   if (document.activeElement !== $('hideExcel')) $('hideExcel').checked = Boolean(values.hide_excel);
   $('groupRange').max = String(Math.max(24, Number(values.target_groups ?? 1), Number($('targetGroups').value || 0)));
   if (document.activeElement !== $('groupRange') && !dirtyControls.has('targetGroups')) $('groupRange').value = String(values.target_groups ?? 1);
@@ -1086,7 +1087,7 @@ async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;
   controlUpdates.beginWrite();
   const wasCapturePaused = Boolean(state.controls.paused);
-  for (const id of ['prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = true;
+  for (const id of ['prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = true;
   if (change.system_reserve_mib != null) $('applyReserve').textContent = 'Setting…';
   try {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
@@ -1106,7 +1107,9 @@ async function sendControl(change) {
       : change.prepare_processes != null ? `${state.controls.prepare_processes} simultaneous shrink processes confirmed for future starts.`
       : change.shrink_threads != null ? `${state.controls.shrink_threads} Rayon threads per shrink process confirmed for future starts.`
       : change.capture_transport != null ? 'Capture transport confirmed for the next primary capture phase.'
-      : change.system_reserve_mib != null ? `Free RAM reserve ${state.controls.system_reserve_mib.toLocaleString('en-US')} MiB confirmed.` : 'Controls confirmed by host.';
+      : change.system_reserve_mib != null ? state.controls.system_reserve_mib === 0
+        ? 'Free RAM guard disabled.'
+        : `Free RAM reserve ${state.controls.system_reserve_mib.toLocaleString('en-US')} MiB confirmed.` : 'Controls confirmed by host.';
     pushEvent(text); setNotice(text);
   } catch (error) {
     setNotice(error.message, true);
@@ -1123,7 +1126,7 @@ async function sendControl(change) {
     updateControlInputs();
     if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel);
   }
-  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
+  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
 }
 function selectGroup(id) {
   if (id === state.groupId) return;
@@ -1641,8 +1644,13 @@ function wireControls() {
   for (const id of ['targetGroups', 'systemReserve', 'openTimeout', 'jobTimeout', 'equalPreview', 'captureMegapixels', 'captureBatch', 'tallSheetThreshold', 'tallSheetEdges', 'crcEqualSheetThreshold']) $(id).addEventListener('input', () => dirtyControls.add(id));
   $('applyReserve').addEventListener('click', () => {
     const reserve = Number($('systemReserve').value);
-    if (!Number.isSafeInteger(reserve) || reserve < 1 || reserve > 65536) return setNotice('Free RAM reserve must be a whole number from 1 to 65,536 MiB.', true);
+    if (!Number.isSafeInteger(reserve) || reserve < 0 || reserve > 65536) return setNotice('Free RAM reserve must be a whole number from 0 to 65,536 MiB.', true);
     sendControl({ system_reserve_mib: reserve });
+  });
+  $('disableReserve').addEventListener('click', () => {
+    $('systemReserve').value = '0';
+    dirtyControls.delete('systemReserve');
+    sendControl({ system_reserve_mib: 0 });
   });
   $('targetGroups').addEventListener('input', () => { const value = Number($('targetGroups').value); if (Number.isSafeInteger(value) && value >= 0) { $('groupRange').max = String(Math.max(24, value)); $('groupRange').value = String(value); } });
   $('groupRange').addEventListener('input', event => { dirtyControls.add('targetGroups'); $('targetGroups').value = event.target.value; });

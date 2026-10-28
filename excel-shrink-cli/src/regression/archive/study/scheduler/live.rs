@@ -236,15 +236,15 @@ pub(super) fn compare(
                         "run_id":run["run_id"],"number":wave_number,"workers":active.len()+1,
                         "admission_slot":active.len()+1,
                         "requested_workers":requested,"adaptive":true,"scheduling":"live admission after primary clients are ready; drain together",
-                        "resident_memory_limit_mib":plan.resident_limit / 1_048_576,
-                        "configured_resident_memory_mib":configured_resident / 1_048_576,
+                        "resident_memory_estimate_mib":plan.resident_limit / 1_048_576,
+                        "configured_resident_memory_estimate_mib":configured_resident / 1_048_576,
                         "available_physical_bytes":memory.physical,"available_commit_bytes":memory.commit,
                         "total_physical_bytes":memory.total_physical,"workbook_reserve_bytes":plan.group_reserve,
                         "system_reserve_bytes":plan.system_reserve,"helper_reserve_bytes":plan.helper_reserve,
                         "rust_worker_reserve_bytes":budget.worker,"excel_session_reserve_bytes":plan.group_reserve-budget.worker-plan.helper_reserve,
                         "reference_peak_bytes":plan.reference_peak_bytes,"calibration_samples":plan.calibration_samples,
-                        "estimate_rule":"maximum live and recent completed resident peaks, normalized to at least 6 clients; 1.5x plus 1 GiB rounded up; existing caps retained",
-                        "physical_reserve_rule":"active caps minus fresh private resident job pages when available; Rust and helpers fully reserved"
+                        "estimate_rule":"maximum live and recent completed resident peaks, normalized to at least 6 clients; 1.5x plus 1 GiB rounded up; configured estimate retained",
+                        "physical_reserve_rule":"active estimates minus fresh private resident job pages when available; Rust and helpers fully reserved"
                     });
                     initial["comparison_batch"]["admission_reason"] = json!(if active.is_empty() {
                         "first group"

@@ -15,16 +15,7 @@ public sealed class CaptureProcesses : IDisposable
         job = new SafeFileHandle(CreateJobObject(IntPtr.Zero, null), true);
         if (job.IsInvalid) throw new Win32Exception();
         var limits = new ExtendedLimits();
-        uint memoryMiB = 4096;
-        var configured = Environment.GetEnvironmentVariable("EXCEL_SHRINK_EXCEL_MEMORY_MIB");
-        if (configured != null && (!UInt32.TryParse(configured, out memoryMiB) || memoryMiB < 256 || memoryMiB > 65536))
-        {
-            job.Dispose();
-            throw new ArgumentException("EXCEL_SHRINK_EXCEL_MEMORY_MIB must be between 256 and 65536.");
-        }
-        // Bound the combined private memory of Excel, its add-ins and the host.
-        limits.JobMemory = new UIntPtr((ulong)memoryMiB * 1024 * 1024);
-        limits.Basic.LimitFlags = 0x2200; // KILL_ON_JOB_CLOSE | JOB_MEMORY
+        limits.Basic.LimitFlags = 0x2000; // KILL_ON_JOB_CLOSE
         if (!SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf(typeof(ExtendedLimits))))
         {
             var error = new Win32Exception();

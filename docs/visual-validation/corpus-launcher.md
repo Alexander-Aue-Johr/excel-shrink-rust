@@ -129,22 +129,20 @@ threshold counts actual vertical capture bands, so the capture pixel budget
 also affects when it is reached.
 
 With the Observatory enabled, this count is the manually controlled target for
-concurrent workbook groups. Memory limits remain safety limits; they do not
-silently replace the target with the adaptive admission mode used by older CLI
-examples without the control room.
+concurrent workbook groups. The Observatory target is not reduced by a RAM admission check. The older
+adaptive CLI mode still uses RAM estimates when admitting groups.
 
 Advanced settings expose the output and download directories, Observatory port,
-memory caps, timeouts, release build, and result-package imports. Initial memory
-caps are conservative on small machines. Explicit limits from this machine's
-existing launch metadata are retained. A copied configuration resets machine
-memory limits and group count to local defaults before use.
+RAM estimates, timeouts, release build, and result-package imports. Existing
+machine estimates are retained. A copied configuration resets machine estimates
+and group count to local defaults before use.
 
-The system reserve defaults to **1024 MiB (1 GiB)**. Set it before launch under
+The system reserve defaults to **0 MiB (off)**. Set it before launch under
 **Advanced settings → Reserved system RAM (MiB)**, or change it during a run with
-**Free RAM reserve** in the Observatory. The control accepts whole MiB from 1 to
+**Free RAM reserve** in the Observatory. The control accepts whole MiB from 0 to
 65536 and shows the last confirmed value. Existing explicit saved values remain
 unchanged. Active capture sessions pick up a valid change on their next resource
-check; the per-worker and Excel allocation caps are separate settings.
+check; the Rust and Excel RAM estimates are separate settings for older adaptive runs.
 
 The release build starts only after the launcher checks that the result directory
 is idle. A second start against an active directory is rejected with its

@@ -247,10 +247,10 @@ function Add-SessionEvent([string]$kind, [string]$client, $extra) {
 }
 
 function Get-SystemReserveBytes($configured) {
-    $mib = 1024
+    $mib = 0
     if ($null -ne $configured) {
-        if (-not [int]::TryParse($configured, [ref]$mib) -or $mib -lt 1 -or $mib -gt 65536) {
-            throw 'EXCEL_SHRINK_SYSTEM_RESERVE_MIB must be between 1 and 65536.'
+        if (-not [int]::TryParse($configured, [ref]$mib) -or $mib -lt 0 -or $mib -gt 65536) {
+            throw 'EXCEL_SHRINK_SYSTEM_RESERVE_MIB must be between 0 and 65536.'
         }
     }
     return [UInt64]$mib * 1MB
@@ -267,7 +267,7 @@ function Update-SystemReserve {
                     try { $controls = $reader.ReadToEnd() | ConvertFrom-Json }
                     finally { $reader.Dispose() }
                     $value = $controls.system_reserve_mib
-                    if (($value -is [int] -or $value -is [long]) -and $value -ge 1 -and $value -le 65536) {
+                    if (($value -is [int] -or $value -is [long]) -and $value -ge 0 -and $value -le 65536) {
                         $script:systemReserveBytes = [UInt64]$value * 1MB
                     }
                 }
@@ -460,7 +460,7 @@ function Update-Resources {
     $commit = [ResidentProcesses]::AvailableCommitBytes
     $metrics.minimum_available_bytes = [Math]::Min([UInt64]$metrics.minimum_available_bytes, $available)
     $metrics.minimum_commit_bytes = [Math]::Min([UInt64]$metrics.minimum_commit_bytes, $commit)
-    if ($available -lt $systemReserveBytes -or $commit -lt $systemReserveBytes) {
+    if ($systemReserveBytes -gt 0 -and ($available -lt $systemReserveBytes -or $commit -lt $systemReserveBytes)) {
         throw "Resident RAM guard: physical available $([Math]::Floor($available / 1MB)) MiB; system commit headroom $([Math]::Floor($commit / 1MB)) MiB; required reserve $($metrics.system_reserve_mib) MiB."
     }
     if ($null -ne $hostProcess) {
@@ -684,9 +684,9 @@ $liveHideExcel = [bool]$HideExcel
 $launcherToken = [Guid]::NewGuid().ToString('N')
 $processingClientReset = $false
 $clientResetClock = [Diagnostics.Stopwatch]::StartNew()
-$systemReserveBytes = [UInt64]1GB
+$systemReserveBytes = [UInt64]0
 $primaryClientIds = @()
-$metrics = [ordered]@{ status='starting'; client_reset_supported=$true; attempt_id=$env:EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; memory_limit_mib=16384; system_reserve_mib=1024; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
+$metrics = [ordered]@{ status='starting'; client_reset_supported=$true; attempt_id=$env:EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID; visible=[bool]$Visible; hide_excel=[bool]$HideExcel; system_reserve_mib=0; system_reserve_bytes=$systemReserveBytes; minimum_available_bytes=[UInt64]::MaxValue; minimum_commit_bytes=[UInt64]::MaxValue; clients=@{}; expected_primary_clients=0; primary_clients_ready=$false }
 try {
     Add-Type -Path @((Join-Path $PSScriptRoot 'ResidentProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureDesktop.cs'))
     if ($env:EXCEL_SHRINK_CONTROL_ROOM_DIR) {
@@ -729,18 +729,11 @@ try {
         # HasExited checks refer to this process even if Windows reuses its PID.
         $null = $batchOwner.Handle
     }
-    if ($env:EXCEL_SHRINK_RESIDENT_MEMORY_MIB) {
-        $budget = 0
-        if (-not [int]::TryParse($env:EXCEL_SHRINK_RESIDENT_MEMORY_MIB, [ref]$budget) -or $budget -lt 1024 -or $budget -gt 65536) {
-            throw 'EXCEL_SHRINK_RESIDENT_MEMORY_MIB must be between 1024 and 65536.'
-        }
-        $metrics.memory_limit_mib = $budget
-    }
     # Separate browser profiles prevent Office add-ins in independent jobs from
     # attaching to a browser process owned (and terminated) by another group.
     $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $stage 'webview2-profile'
     $metrics.webview2_user_data_folder = $env:WEBVIEW2_USER_DATA_FOLDER
-    $owned = New-Object ResidentProcesses([int]$metrics.memory_limit_mib)
+    $owned = New-Object ResidentProcesses
     Update-Resources
     $hostExecutable = Get-CaptureHostExecutable $HostExecutable
     $portProbe = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)

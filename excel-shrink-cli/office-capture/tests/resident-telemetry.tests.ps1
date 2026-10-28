@@ -14,7 +14,7 @@ function Assert($condition, [string]$message) { if (-not $condition) { throw $me
 $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $root = Join-Path ([IO.Path]::GetTempPath()) ('es-resident-telemetry-' + [Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
-$owned = New-Object ResidentProcesses(1024)
+$owned = New-Object ResidentProcesses
 $child = $null
 $self = [Diagnostics.Process]::GetCurrentProcess()
 try {

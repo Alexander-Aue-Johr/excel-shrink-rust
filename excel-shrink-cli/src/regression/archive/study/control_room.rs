@@ -55,7 +55,7 @@ pub(super) struct Controls {
     pub hide_excel: bool,
 }
 
-pub(super) const DEFAULT_SYSTEM_RESERVE_MIB: u64 = 1024;
+pub(super) const DEFAULT_SYSTEM_RESERVE_MIB: u64 = 0;
 
 fn logical_cores() -> usize {
     std::thread::available_parallelism()
@@ -73,8 +73,8 @@ fn default_system_reserve_mib() -> u64 {
 
 fn validate_system_reserve_mib(value: u64) -> Result<()> {
     ensure!(
-        (1..=65536).contains(&value),
-        "system reserve must be between 1 and 65536 MiB"
+        value <= 65536,
+        "system reserve must be between 0 and 65536 MiB"
     );
     Ok(())
 }
@@ -155,8 +155,8 @@ impl Controls {
             "invalid equal tile preview width"
         );
         ensure!(
-            (1..=32).contains(&value.capture_tile_megapixels),
-            "capture size must be 1..32 MP"
+            (1..=64).contains(&value.capture_tile_megapixels),
+            "capture size must be 1..64 MP"
         );
         ensure!(
             (1..=16).contains(&value.capture_batch_tiles),
@@ -775,10 +775,10 @@ mod tests {
     }
 
     #[test]
-    fn system_reserve_starts_from_saved_controls_then_environment_then_1024_mib() -> Result<()> {
+    fn system_reserve_starts_from_saved_controls_then_environment_then_off() -> Result<()> {
         assert_eq!(
             initial_system_reserve_mib(None, Err(std::env::VarError::NotPresent))?,
-            1024
+            0
         );
         assert_eq!(initial_system_reserve_mib(None, Ok("2048".into()))?, 2048);
         let legacy = json!({"target_groups": 2});
@@ -795,13 +795,13 @@ mod tests {
             initial_system_reserve_mib(Some(&saved), Ok("invalid".into()))?,
             4096
         );
-        for valid in ["1", "65536"] {
+        for valid in ["0", "1", "65536"] {
             assert_eq!(
                 initial_system_reserve_mib(None, Ok(valid.into()))?,
                 valid.parse::<u64>()?
             );
         }
-        for invalid in ["0", "65537", "-1", "1.5", "invalid"] {
+        for invalid in ["65537", "-1", "1.5", "invalid"] {
             assert!(initial_system_reserve_mib(None, Ok(invalid.into())).is_err());
         }
         Ok(())
@@ -814,8 +814,8 @@ mod tests {
         let mut value = json!({"target_groups":2,"paused":false,
             "open_timeout_seconds":60,"job_timeout_seconds":60,"equal_preview_width":512});
         write(&root.join("control.json"), &value)?;
-        assert_eq!(Controls::read(&root)?.system_reserve_mib, 1024);
-        for valid in [1, 512, 1024, 4096, 65536] {
+        assert_eq!(Controls::read(&root)?.system_reserve_mib, 0);
+        for valid in [0, 1, 512, 1024, 4096, 65536] {
             value["system_reserve_mib"] = json!(valid);
             write(&root.join("control.json"), &value)?;
             let controls = Controls::read(&root)?;
@@ -826,7 +826,6 @@ mod tests {
             );
         }
         for invalid in [
-            json!(0),
             json!(65537),
             json!(-1),
             json!(1.5),
@@ -959,15 +958,19 @@ mod tests {
         assert_eq!(legacy.target_groups, 128);
         assert_eq!(legacy.prepare_processes, 1);
         assert_eq!(legacy.shrink_threads, logical_cores());
-        assert_eq!(legacy.system_reserve_mib, 1024);
+        assert_eq!(legacy.system_reserve_mib, 0);
         assert_eq!(legacy.capture_tile_megapixels, 32);
         assert_eq!(legacy.capture_batch_tiles, 1);
         assert_eq!(legacy.tall_sheet_threshold, 40);
         assert_eq!(legacy.tall_sheet_edge_tiles, 2);
         assert!(!legacy.hide_excel);
+        let mut experimental = value.clone();
+        experimental["capture_tile_megapixels"] = json!(64);
+        write(&root.join("control.json"), &experimental)?;
+        assert_eq!(Controls::read(&root)?.capture_tile_megapixels, 64);
         for (key, bad) in [
             ("capture_tile_megapixels", 0),
-            ("capture_tile_megapixels", 33),
+            ("capture_tile_megapixels", 65),
             ("capture_batch_tiles", 0),
             ("capture_batch_tiles", 17),
             ("tall_sheet_threshold", 0),

@@ -234,7 +234,7 @@ struct MemoryBudget {
 impl MemoryBudget {
     fn configured(resident: bool) -> Result<Self> {
         let worker =
-            worker::memory_limit_bytes().context("configure comparison worker RAM reserve")?;
+            worker::memory_reserve_bytes().context("configure comparison worker RAM reserve")?;
         let automation = configured_excel_limit("EXCEL_SHRINK_EXCEL_MEMORY_MIB", 4096, 256)?;
         let excel = if resident {
             // COM validation runs before resident capture. Reserve the larger

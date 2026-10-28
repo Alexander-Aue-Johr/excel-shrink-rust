@@ -140,7 +140,7 @@ The CLI records this choice in the run metadata and resident metrics (`hide_exce
 Without the flag, the existing interactive
 startup followed by minimization remains in use. Classic comparisons (including
 fallback retries) already use a private desktop. COM opening measurements and
-recalculation already run invisibly. Worker counts and memory limits still apply;
+recalculation already run invisibly. Worker counts and timeouts still apply;
 hidden-mode concurrency on each target machine should be assessed separately.
 
 Laptop 1, 8 GiB RAM (constrained profile, one source workbook at a time):
@@ -154,13 +154,12 @@ $env:EXCEL_SHRINK_HELPER_RESERVE_MIB = '512'
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 1/4 --machine-label ENRON-LAPTOP-1 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 1
 ```
 
-Two selected files completed resident comparison on GOTHAM with these limits,
+Two selected files completed resident comparison on GOTHAM with these settings,
 without a fallback: measured Excel-job peaks were 1.306 and 1.313 GiB, and Rust
 worker peaks were 173 and 91 MiB. Behavior on the actual 8 GiB laptop remains
-unverified. These limits may reject a memory-demanding workbook even in the
-smallest quarter. A recoverable resident
-failure gets at most one sequential paired retry; if that also exceeds its
-limits, the result remains a reported skip. File size alone cannot guarantee that
+unverified. Actual machine memory pressure can still stop a comparison. A recoverable
+resident failure gets at most one sequential paired retry; persistent failures
+remain reported skips. File size alone cannot guarantee that
 every workbook will fit. The reserve overrides apply only to this profile.
 
 Laptop 2, 32 GiB RAM:
@@ -174,8 +173,8 @@ Remove-Item Env:EXCEL_SHRINK_HELPER_RESERVE_MIB -ErrorAction SilentlyContinue
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Enron --size-part 2/4 --machine-label ENRON-LAPTOP-2 --order size-asc --resident-capture --adaptive-concurrency --comparison-workers 4
 ```
 
-The 32 GiB profile uses the default 1024 MiB system reserve and 1 GiB helper reserve
-per group. Four workers is an upper limit, not a starting batch size.
+The 32 GiB profile uses no live system RAM guard by default. The older
+adaptive scheduler retains a 1 GiB helper estimate per group. Four workers is an upper limit, not a starting batch size.
 
 Enron tower 1 (retain its reviewed memory settings, or the defaults):
 
@@ -200,10 +199,11 @@ Remove-Item Env:EXCEL_SHRINK_HELPER_RESERVE_MIB -ErrorAction SilentlyContinue
 & .\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/study --run-corpus Data.gov --machine-label GOTHAM --order size-desc --resident-capture --adaptive-concurrency --comparison-workers 8
 ```
 
-The default system reserve is 1024 MiB on all machines. Existing explicit
-machine settings remain in effect. The Observatory's **Free RAM reserve** control
-changes the reserve for active and future capture sessions.
-Rust and Excel allocation limits remain separate settings.
+The default system reserve is 0 MiB on all machines, disabling the live RAM
+guard. Existing saved nonzero values remain in effect until changed. The
+Observatory's **Free RAM reserve** control can set **Off** during a run.
+Rust and Excel RAM settings are estimates used by the older adaptive scheduler,
+not enforced process limits.
 
 Machine 6 handles Destatis (retain its reviewed memory settings, or the defaults):
 
@@ -228,15 +228,15 @@ The estimate considers the live peaks of admitted groups and the last eight
 fully measured groups. A group that shared byte-identical variants is scaled to
 allow six physical clients (four primary workbooks and two controls). The
 estimate adds 50% and 1 GiB, rounds up to whole GiB, and never exceeds the
-configured resident limit. The chosen limit is enforced on that group's Excel
-job. Rust retains its full configured limit, COM retains its own limit, and each
-group additionally reserves 1 GiB for helpers by default. The default system
-reserve is 1024 MiB. `EXCEL_SHRINK_HELPER_RESERVE_MIB` and
+configured resident estimate. The chosen value is an admission estimate, not
+an Excel job cap. The scheduler retains the configured Rust and COM estimates,
+and each group additionally reserves 1 GiB for helpers by default. The default
+system reserve is 0 MiB. `EXCEL_SHRINK_HELPER_RESERVE_MIB` and
 `EXCEL_SHRINK_SYSTEM_RESERVE_MIB` override these reserves for an explicitly
 configured machine, as in the constrained 8 GiB profile above. With the control
 room enabled, `system_reserve_mib` in its controls is the live setting. Both free RAM and
 commit headroom must accommodate the next group, remaining budgets of active
-groups, and this reserve. Existing groups keep their assigned limits. Physical
+groups, and this reserve. Existing groups keep their assigned estimates. Physical
 RAM admission credits only fresh private working-set measurements of the
 resident job; shared pages and private committed memory are not substitutes.
 When that measurement is unavailable, the full budget remains reserved.
@@ -245,11 +245,11 @@ separately for remaining commit budgets. Rust and helper physical budgets stay
 fully reserved. An observed live peak is not a promise
 that a group will never allocate more memory later.
 
-If another application consumes the available memory, the runner waits between
-waves without holding Excel processes. Limits that cannot fit even one group on
-the machine are rejected with a configuration error. A failure under a reduced
-Excel limit resets calibration and receives one sequential paired retry, except
-for known unresolved drawing boundaries. The original attempt remains visible;
+If another application consumes the available memory, adaptive admission waits
+between waves without holding Excel processes. Estimates that cannot fit even
+one group on the machine are rejected with a configuration error. A failed
+group pauses concurrency growth, while completed peak samples remain available.
+The original attempt remains visible;
 incomplete measurements never justify increasing concurrency.
 
 For an existing checkout with prepared bundles, retain any separately reviewed
@@ -304,7 +304,7 @@ the dashboard can raise or lower it during the run, without a fixed eight-group
 ceiling. Increasing it admits additional groups without waiting for the current
 group's startup or estimating another group's RAM. Lowering it prevents further
 admission until the target permits it; existing comparisons finish normally.
-Per-process memory limits and the emergency system-memory guard still apply.
+There is no fixed process RAM cap; the free RAM guard applies only if its reserve is positive.
 Completed interactive groups close independently and free their admission slot.
 Cleanup process identities and timestamps are retained for peer-failure diagnosis;
 see [cleanup isolation](cleanup-isolation.md). Preparation remains serial.
@@ -351,11 +351,13 @@ it, or a capture region to inspect matching areas across profiles. The minimap
 previews sheets on hover. Camera following can be disabled while inspecting
 history; navigation buttons find the next differing region, sheet or group.
 
-Capture size (`capture_tile_megapixels`, integer 1–32, default 32), batch size
+Capture size (`capture_tile_megapixels`, integer 1–64, default 32), batch size
 (`capture_batch_tiles`, integer 1–16, default 1) and `hide_excel` apply to the
 next admitted group. Each attempt records those settings. The batch is also
-bounded to 64 MP per physical client. Actual capture jobs remain full-width,
-guarded row bands so overflow text and charts are rendered consistently. Large
+bounded to 64 MP per physical client. Sizes above 32 MP are experimental; the
+captured PNG must decode at the planned dimensions or the job fails. Actual
+capture jobs remain full-width, guarded row bands so overflow text and charts
+are rendered consistently. Large
 images are subdivided into explicitly labelled inspection regions, with exact
 per-region pixel comparisons; these regions are not extra Excel capture jobs.
 The throughput display counts real uploaded pixels and bytes, including repeated
@@ -401,18 +403,16 @@ record. A new attempt cannot silently mix images from an interrupted one.
 
 ## Memory and timing interpretation
 
-The Rust worker defaults to a 4,096 MiB process limit. An existing reviewed
+The Rust worker defaults to a 4,096 MiB admission estimate for older adaptive runs. An existing reviewed
 8 GiB configuration, such as GOTHAM's, can be retained in that PowerShell session:
 
 ```powershell
 $env:EXCEL_SHRINK_WORKER_MEMORY_MIB = '8192'
 ```
 
-This caps the Rust worker rather than preallocating memory; admission budgets
-reserve that full limit. It does not cap all processes combined. Excel has a
-separate limit and the operating system, Excel,
-WebView and other applications also need RAM. Do not apply the tower setting to
-small laptops without checking their available memory. Record any changed limits.
+This does not cap or preallocate worker memory; adaptive admission reserves
+that estimate. Excel has a separate estimate. The operating system, Excel,
+WebView and other applications also need RAM. Record any changed estimates.
 
 Compare original and shrunk open times **within the same paired measurement on
 the same machine and run**: `original_seconds / shrunk_seconds`. A value of `2`
@@ -458,7 +458,7 @@ explicit value replaces the default, including values above 16 or 255. It
 controls source workbooks, each of which can have several Excel instances.
 More than one worker and `--adaptive-concurrency` require `--resident-capture`.
 Without the adaptive flag, the requested fixed batch size is still limited by
-available memory; no calibration changes the configured allocation limits.
+available memory; no calibration changes the configured admission estimates.
 
 Workers first send tile dimensions and PNG SHA-256 digests. Only differing tiles
 are transferred for exact pixel comparison. Certified byte-identical workbooks
@@ -482,32 +482,23 @@ While a newly admitted group prepares and opens its primary clients, the
 coordinator records bounded pause time for existing peers. Their processing
 deadlines exclude these opening pauses, because Excel startup can stall Office.js
 in another group. The newly opening group's own deadline, parent liveness,
-memory guards, and cleanup deadlines remain active. A stale pause counter cannot
+configured live RAM guard, and cleanup deadlines remain active. A stale pause counter cannot
 keep a stuck comparison alive indefinitely.
 
-Without adaptive concurrency, admission adds each group's configured Rust limit
-and Excel limit, then keeps
-1 GiB for the system by default. Excel's resident-session limit defaults to 16 GiB; a larger
-configured COM limit also counts. With an 8 GiB Rust limit and the default
-16 GiB resident limit, two groups need 49 GiB available and three need 73 GiB.
-GOTHAM's command above instead permits a 32 GiB resident limit and uses adaptive
-admission. Unknown available memory falls back to
-one worker. These checks do not lower either allocation limit.
+Without adaptive concurrency, the manual Observatory target admits the requested
+number of groups without a RAM estimate. The live free RAM guard is off by
+default and can be turned on or off in the Observatory. Rust, COM Excel, and
+resident Excel jobs have no fixed RAM cap; their usage is still measured.
 
-Adaptive concurrency uses the observed peaks to choose an enforced Excel session
-limit for each newly admitted group, bounded by the configured resident limit. It retains the
-full configured Rust and COM limits, reserves another 1 GiB per group for helpers,
-and keeps 1 GiB for the system by default. The constrained laptop profile uses
-the explicit reserve overrides listed above. Admission checks the sum of these effective
-limits against both available physical RAM and commit capacity. It holds pending
-work when even one group cannot safely fit. The first calibration may also need
-a lower Excel limit on a small machine; a laptop with 16 GiB cannot reserve a
-4 GiB Rust worker plus a 16 GiB Excel session and system memory simultaneously.
-The laptop commands therefore provide separate memory settings suited to their
-reported RAM; they do not promise that every selected workbook fits those caps.
+The older `--adaptive-concurrency` mode uses configured Rust, COM, and resident
+RAM figures as admission estimates. It may wait or reject a group if its
+estimate does not fit available physical RAM and commit headroom. The resident
+estimate can use observed peaks from completed groups. These estimates do not
+terminate a process that exceeds them. Use the control room when manually
+controlling the number of concurrent groups.
 
 The requested order and concurrency settings remain in the run metadata. Each
-record retains wave size, admission reason, effective and reserved limits,
+record retains wave size, admission reason, effective and reserved estimates,
 capture method, session memory and machine provenance. These are throughput runs for visual regression; opening times under
 concurrent load should not be pooled with an isolated performance experiment.
 

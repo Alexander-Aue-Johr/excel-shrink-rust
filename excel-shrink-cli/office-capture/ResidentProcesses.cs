@@ -6,21 +6,18 @@ using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 // A resident session keeps several private workbook copies alive. Assign Excel
-// before its first instruction so its Office/WebView children share the budget
-// and are closed if the launcher is interrupted.
+// before its first instruction so its Office/WebView children are closed if the
+// launcher is interrupted. Memory is measured, not capped by this job.
 public sealed class ResidentProcesses : IDisposable
 {
     readonly SafeFileHandle job;
 
-    public ResidentProcesses(int memoryMiB)
+    public ResidentProcesses()
     {
-        if (memoryMiB < 1024 || memoryMiB > 65536)
-            throw new ArgumentOutOfRangeException("memoryMiB");
         job = new SafeFileHandle(CreateJobObject(IntPtr.Zero, null), true);
         if (job.IsInvalid) throw new Win32Exception();
         var limits = new ExtendedLimits();
-        limits.JobMemory = new UIntPtr((ulong)memoryMiB * 1024 * 1024);
-        limits.Basic.LimitFlags = 0x2200; // KILL_ON_JOB_CLOSE | JOB_MEMORY
+        limits.Basic.LimitFlags = 0x2000; // KILL_ON_JOB_CLOSE
         if (!SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf(typeof(ExtendedLimits))))
         {
             var error = new Win32Exception();

@@ -27,7 +27,7 @@ The Observatory uses a versioned copy of the runner executable so an idle
 historical view does not lock the next release build. Its version is the SHA-256
 of the executable that actually runs, rather than a hash of source files.
 
-Excel job ownership, private desktops, memory limits and bounded cleanup stay
+Excel job ownership, private desktops and bounded cleanup stay
 with their existing launcher. Every host remains a separate process. Both
 loopback address families are served: `localhost` must not incur IPv6 connection
 fallback delays on worker requests. Resident jobs and result notifications use

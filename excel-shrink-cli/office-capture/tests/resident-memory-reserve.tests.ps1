@@ -57,16 +57,16 @@ $metrics = @{
     status = 'running'
     system_reserve_mib = 4096; system_reserve_bytes = [UInt64]4GB
     minimum_available_bytes = [UInt64]::MaxValue; minimum_commit_bytes = [UInt64]::MaxValue
-    memory_limit_mib = 4096; clients = @{}
+    clients = @{}
 }
 [ResidentProcesses]::AvailablePhysicalBytes = 768MB
 [ResidentProcesses]::AvailableCommitBytes = 2GB
 try {
-    Assert ((Get-SystemReserveBytes $null) -eq 1GB) 'The default reserve is not 1024 MiB.'
-    foreach ($value in @('1', '512', '65536')) {
+    Assert ((Get-SystemReserveBytes $null) -eq 0) 'The default reserve is not disabled.'
+    foreach ($value in @('0', '1', '512', '65536')) {
         Assert ((Get-SystemReserveBytes $value) -eq ([UInt64]$value * 1MB)) "Valid initial reserve rejected: $value"
     }
-    foreach ($value in @('0', '-1', '65537', '1.5', 'invalid', '')) {
+    foreach ($value in @('-1', '65537', '1.5', 'invalid', '')) {
         $rejected = $false
         try { Get-SystemReserveBytes $value | Out-Null } catch { $rejected = $true }
         Assert $rejected "Invalid initial reserve accepted: $value"
@@ -75,6 +75,10 @@ try {
     $script:systemReserveBytes = Get-SystemReserveBytes '4096'
     Assert-RamGuard 'A missing control file discarded the explicit initial reserve.'
     Assert ($metrics.system_reserve_mib -eq 4096) 'The explicit initial reserve was not reported.'
+
+    [IO.File]::WriteAllText($liveControlPath, '{"system_reserve_mib":0}', $utf8)
+    Update-Resources
+    Assert ($systemReserveBytes -eq 0 -and $metrics.system_reserve_mib -eq 0) 'Disabling the live guard did not take effect.'
 
     [IO.File]::WriteAllText($liveControlPath, '{"system_reserve_mib":512}', $utf8)
     Update-Resources
@@ -95,7 +99,7 @@ try {
     [IO.File]::WriteAllText($liveControlPath, '{"system_reserve_mib":512}', $utf8)
     Update-Resources
     foreach ($invalid in @(
-        '{', '{}', '{"system_reserve_mib":null}', '{"system_reserve_mib":0}',
+        '{', '{}', '{"system_reserve_mib":null}',
         '{"system_reserve_mib":-1}', '{"system_reserve_mib":65537}',
         '{"system_reserve_mib":1.5}', '{"system_reserve_mib":"1"}',
         '{"system_reserve_mib":true}', '{"system_reserve_mib":[1]}'
@@ -111,7 +115,6 @@ try {
     [IO.File]::Delete($liveControlPath)
     Update-Resources
     Assert ($systemReserveBytes -eq 512MB) 'A temporarily missing control snapshot reset the reserve.'
-    Assert ($metrics.memory_limit_mib -eq 4096) 'Changing free-memory reserve changed the Excel job memory cap.'
 
     [IO.File]::WriteAllText($liveControlPath, '{"system_reserve_mib":1}', $utf8)
     [ResidentProcesses]::AvailablePhysicalBytes = 1MB
@@ -145,7 +148,7 @@ try {
     Assert ((Wait-BatchRelease) -eq 'memory_guard') 'The batch guard did not apply a raised live reserve.'
     Assert ($waitIterations -eq 1) 'Lowering the reserve did not allow the first batch-wait iteration.'
     Assert ($metrics.system_reserve_mib -eq 2048 -and $metrics.system_reserve_bytes -eq 2GB) 'The batch guard reported an obsolete reserve.'
-    Write-Host "PASS: $checks reserve checks; live and batch lower/raise, commit guard, shared writer, invalid/missing snapshots, unchanged memory caps."
+    Write-Host "PASS: $checks reserve checks; default off, live off/lower/raise, commit guard, shared writer, invalid/missing snapshots."
 } finally {
     if ([IO.File]::Exists($liveControlPath)) { [IO.File]::Delete($liveControlPath) }
     $ready = Join-Path $root 'ready.json'

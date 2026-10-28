@@ -1117,7 +1117,7 @@ fn logical_cores() -> usize {
 
 fn defaults() -> Value {
     json!({"target_groups": 1, "prepare_processes": 1, "shrink_threads": logical_cores(),
-        "paused": false, "open_timeout_seconds": 600, "system_reserve_mib": 1024,
+        "paused": false, "open_timeout_seconds": 600, "system_reserve_mib": 0,
         "job_timeout_seconds": 300, "equal_preview_width": 512, "capture_tile_megapixels": 32,
         "capture_batch_tiles": 1, "capture_transport": "live-images", "hide_excel": false,
         "tall_sheet_threshold": 40, "tall_sheet_edge_tiles": 2,
@@ -1150,9 +1150,9 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
                 "prepare_processes" | "shrink_threads" => {
                     integer > 0 && (integer as usize) <= logical_cores()
                 }
-                "capture_tile_megapixels" => (1..=32).contains(&integer),
+                "capture_tile_megapixels" => (1..=64).contains(&integer),
                 "capture_batch_tiles" => (1..=16).contains(&integer),
-                "system_reserve_mib" => (1..=65536).contains(&integer),
+                "system_reserve_mib" => (0..=65536).contains(&integer),
                 _ => integer > 0,
             };
             ensure!(valid, "Invalid value for {key}.");

@@ -318,8 +318,8 @@ class ControlRoomProtocol(unittest.TestCase):
 
     def test_ram_reserve_changes_persist_and_leave_other_controls_unchanged(self):
         before = self.request("/api/state")["controls"]
-        self.assertEqual(before["system_reserve_mib"], 1024)
-        for reserve in (4096, 512, 2048, 1, 65536):
+        self.assertEqual(before["system_reserve_mib"], 0)
+        for reserve in (4096, 512, 2048, 1, 65536, 0):
             with self.subTest(reserve=reserve):
                 result = self.request("/api/control", {"system_reserve_mib": reserve})
                 self.assertTrue(result["ok"])
@@ -347,7 +347,7 @@ class ControlRoomProtocol(unittest.TestCase):
         legacy = self.request("/api/state")["controls"]
         legacy.pop("system_reserve_mib")
         self.write("control.json", legacy)
-        self.assertEqual(self.request("/api/state")["controls"]["system_reserve_mib"], 1024)
+        self.assertEqual(self.request("/api/state")["controls"]["system_reserve_mib"], 0)
         self.write("control.json", {**legacy, "system_reserve_mib": 4096})
         self.assertEqual(self.request("/api/state")["controls"]["system_reserve_mib"], 4096)
         result = self.request("/api/control", {"job_timeout_seconds": 1200})["controls"]
@@ -362,11 +362,11 @@ class ControlRoomProtocol(unittest.TestCase):
             {"target_groups": -1}, {"target_groups": 1.5}, {"paused": "true"},
             {"job_timeout_seconds": -1}, {"equal_preview_width": 513}, {"typo": 2},
             {"target_groups": 24, "equal_preview_width": None},
-            {"hide_excel": "false"}, {"capture_tile_megapixels": 0}, {"capture_tile_megapixels": 33},
+            {"hide_excel": "false"}, {"capture_tile_megapixels": 0}, {"capture_tile_megapixels": 65},
             {"capture_batch_tiles": 0}, {"capture_batch_tiles": 17}, {"capture_batch_tiles": 1.5},
             {"tall_sheet_threshold": 0}, {"tall_sheet_threshold": 1.5}, {"tall_sheet_threshold": 2147483648},
             {"tall_sheet_edge_tiles": 0}, {"tall_sheet_edge_tiles": -1}, {"tall_sheet_edge_tiles": "2"},
-            {"system_reserve_mib": 0}, {"system_reserve_mib": -1}, {"system_reserve_mib": 1.5},
+            {"system_reserve_mib": -1}, {"system_reserve_mib": 1.5},
             {"system_reserve_mib": 65537}, {"system_reserve_mib": 4294967296},
             {"system_reserve_mib": "512"}, {"system_reserve_mib": None}, {"system_reserve_mib": True},
             {"target_groups": 24, "system_reserve_mib": 65537},

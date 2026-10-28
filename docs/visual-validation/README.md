@@ -38,7 +38,7 @@ current workbooks and retains their completed preparation records for a restart.
 The Observatory has separate controls for simultaneous shrink processes and
 Rayon threads per process. Both range from 1 to the available logical CPU count;
 changes apply only to newly admitted workbooks. Preparation does not gate new
-processes on free RAM. The existing worker memory limit remains independent.
+processes on free RAM. The Rust worker still reports its measured memory peak.
 Before each preparation, the runner checks free space on the output volume.
 It pauses with **waiting for disk** when less than 8 GiB, or the larger
 combined reserve for active workbooks and the next one, is available. Free
