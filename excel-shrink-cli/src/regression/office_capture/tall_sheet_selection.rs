@@ -5,6 +5,73 @@ use super::*;
 use crate::regression::{excel_automation, xlsx_value_compare};
 
 const MAX_CAPTURE_TILES: usize = 4096;
+const MIB: u64 = 1024 * 1024;
+
+#[derive(Debug)]
+struct CrcEqualSheet {
+    recalc_equal: Option<bool>,
+    changed_profiles: Vec<String>,
+}
+
+fn member_signature(path: &Path, member: &str) -> Result<(u64, u32)> {
+    let mut archive = zip::ZipArchive::new(fs::File::open(path)?)?;
+    let entry = archive.by_name(member)?;
+    Ok((entry.size(), entry.crc32()))
+}
+
+fn crc_equal_sheets(
+    original: &Path,
+    variants: &BTreeMap<String, PathBuf>,
+    hints: &Value,
+    threshold_mib: usize,
+) -> Result<BTreeMap<usize, CrcEqualSheet>> {
+    let paths = tall_sheet_analysis::sheet_paths(original)?;
+    let mut result = BTreeMap::new();
+    for (index, member) in paths {
+        if variants.is_empty() || !variants.keys().all(|profile| {
+            let evidence = &hints["shrink_identity"][profile.as_str()]["sheets"][member.as_str()];
+            evidence["crc_length_equal"] == true
+                && evidence["original_uncompressed_bytes"]
+                    .as_u64()
+                    .is_some_and(|bytes| bytes >= threshold_mib as u64 * MIB)
+        }) {
+            continue;
+        }
+
+        let baseline = hints["original"]
+            .as_str()
+            .map(PathBuf::from)
+            .filter(|path| path.is_file());
+        let baseline_signature = baseline
+            .as_deref()
+            .and_then(|path| member_signature(path, &member).ok());
+        let mut changed_profiles = Vec::new();
+        let mut unavailable = baseline_signature.is_none();
+        for profile in variants.keys() {
+            let saved = hints["variants"][profile.as_str()]
+                .as_str()
+                .map(PathBuf::from)
+                .filter(|path| path.is_file());
+            let saved_signature = saved
+                .as_deref()
+                .and_then(|path| member_signature(path, &member).ok());
+            match baseline_signature.zip(saved_signature) {
+                Some((before, after)) if before != after => changed_profiles.push(profile.clone()),
+                Some(_) => {}
+                None => unavailable = true,
+            }
+        }
+        let recalc_equal = if !changed_profiles.is_empty() {
+            Some(false)
+        } else if unavailable {
+            None
+        } else {
+            Some(true)
+        };
+        result.insert(index, CrcEqualSheet { recalc_equal, changed_profiles });
+    }
+    Ok(result)
+}
 
 fn setting(live: Option<&live::LiveCapture>, key: &str, env: &str, default: u64) -> usize {
     live.and_then(|l| l.tall_sheet_setting(key))
@@ -218,6 +285,23 @@ impl ResidentCapture {
             "EXCEL_SHRINK_TALL_SHEET_EDGE_TILES",
             2,
         );
+        let crc_equal_threshold_mib = setting(
+            self.live.as_ref(),
+            "crc_equal_sheet_threshold_mib",
+            "EXCEL_SHRINK_CRC_EQUAL_SHEET_THRESHOLD_MIB",
+            256,
+        );
+        let hints: Value = fs::read(self.directory.join("recalc-inputs.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or(Value::Null);
+        let force_full_scan = hints["full_scan_deferred"] == true;
+        let crc_equal = crc_equal_sheets(
+            &self.original,
+            &self.variants,
+            &hints,
+            crc_equal_threshold_mib,
+        )?;
         let original = self.snapshots["original"].clone();
         let mut by_sheet = BTreeMap::<usize, Vec<&Tile>>::new();
         for tile in &original.tiles {
@@ -226,6 +310,7 @@ impl ResidentCapture {
         let wanted: BTreeSet<_> = by_sheet
             .iter()
             .filter(|(_, tiles)| tiles.len() > threshold)
+            .filter(|(index, _)| !crc_equal.contains_key(index))
             .map(|(index, _)| *index)
             .collect();
         let mut indicators = BTreeMap::new();
@@ -304,6 +389,8 @@ impl ResidentCapture {
         let mut keep = BTreeSet::new();
         for (sheet, tiles) in by_sheet {
             let indicator = indicators.get_mut(&sheet);
+            let crc_sample = crc_equal.get(&sheet);
+            let full_deferred_scan = force_full_scan && crc_sample.is_some();
             let (rows, mut reasons, fallback) = if wanted.contains(&sheet) {
                 match indicator {
                     Some(i) => {
@@ -327,9 +414,30 @@ impl ResidentCapture {
             } else {
                 (vec![], vec![], None)
             };
+            if let Some(sample) = crc_sample {
+                reasons.push(if full_deferred_scan {
+                    "worksheet length and CRC-32 matched after shrink"
+                } else {
+                    "worksheet length and CRC-32 matched after shrink; sampling edges first"
+                }.into());
+                if sample.recalc_equal == Some(false) {
+                    reasons.push("recalculated worksheet length or CRC-32 changed; full scan deferred".into());
+                } else if sample.recalc_equal.is_none() {
+                    reasons.push("recalculated worksheet identity unavailable; full scan deferred".into());
+                }
+            }
+            if full_deferred_scan {
+                reasons.push("manually resumed deferred full scan".into());
+            }
             reasons.sort();
             reasons.dedup();
-            let selected = selected_indices(&tiles, &rows, threshold, edges, fallback.is_some())
+            let selected = selected_indices(
+                &tiles,
+                &rows,
+                if crc_sample.is_some() { 0 } else { threshold },
+                edges,
+                fallback.is_some() || full_deferred_scan,
+            )
                 .with_context(|| format!("select captures for sheet {sheet}"))?;
             keep.extend(selected.iter().map(|tile| (sheet, *tile)));
             let mut gaps = Vec::<Value>::new();
@@ -356,9 +464,16 @@ impl ResidentCapture {
                     .unwrap_or_else(|| json!([]));
                 sheet_recalc["original_changed_rows"] = rows;
             }
-            self.capture_coverage.insert(sheet, json!({"policy":"tall-sheet-v1", "total_tiles":tiles.len(),
+            self.capture_coverage.insert(sheet, json!({"policy":if full_deferred_scan {"deferred-full-scan-v1"} else if crc_sample.is_some() {"crc-equal-edge-first-v1"} else {"tall-sheet-v1"}, "total_tiles":tiles.len(),
                 "captured_tiles":selected.len(),"omitted_tiles":tiles.len()-selected.len(),"threshold":threshold,"edge_tiles":edges,
                 "omitted_ranges":gaps,"selection_reasons":reasons,"fallback_reason":fallback,
+                "crc_length_equal_after_shrink":crc_sample.is_some(),
+                "crc_length_equal_after_recalc":crc_sample.and_then(|sample| sample.recalc_equal),
+                "recalc_identity_changed":crc_sample.is_some_and(|sample| sample.recalc_equal == Some(false)),
+                "recalc_changed_profiles":crc_sample.map(|sample| &sample.changed_profiles),
+                "deferred_full_scan":crc_sample.is_some() && selected.len() < tiles.len(),
+                "checks_complete":selected.len() == tiles.len(),
+                "crc_equal_threshold_mib":crc_equal_threshold_mib,
                 "recalc":if wanted.contains(&sheet) {sheet_recalc} else {json!({"status":"not required"})}}));
         }
         // Publish the full geometry once, then mark the intentionally absent tiles.
@@ -387,6 +502,59 @@ impl ResidentCapture {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    fn identity_workbook(path: &Path, value: &str) {
+        let mut writer = zip::ZipWriter::new(fs::File::create(path).unwrap());
+        for (name, xml) in [
+            (
+                "xl/workbook.xml",
+                "<workbook><sheets><sheet name=\"Data\" r:id=\"r1\"/></sheets></workbook>",
+            ),
+            (
+                "xl/_rels/workbook.xml.rels",
+                "<Relationships><Relationship Id=\"r1\" Type=\"office/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>",
+            ),
+            ("xl/worksheets/sheet1.xml", value),
+        ] {
+            writer.start_file(name, zip::write::FileOptions::default()).unwrap();
+            writer.write_all(xml.as_bytes()).unwrap();
+        }
+        writer.finish().unwrap();
+    }
+
+    #[test]
+    fn crc_equal_sheet_records_recalc_drift_without_reading_sheet_xml() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("crc_equal_selection_{unique}"));
+        fs::create_dir_all(&root).unwrap();
+        let original = root.join("original.xlsx");
+        let variant = root.join("variant.xlsx");
+        let baseline = root.join("baseline.xlsx");
+        let saved = root.join("saved.xlsx");
+        identity_workbook(&original, "<worksheet><v>1</v></worksheet>");
+        identity_workbook(&variant, "<worksheet><v>1</v></worksheet>");
+        identity_workbook(&baseline, "<worksheet><v>1</v></worksheet>");
+        identity_workbook(&saved, "<worksheet><v>2</v></worksheet>");
+        let variants = BTreeMap::from([("default".to_string(), variant)]);
+        let hints = json!({"original":baseline,"shrink_identity":{"default":{"sheets":{
+            "xl/worksheets/sheet1.xml":{"crc_length_equal":true,"original_uncompressed_bytes":31}
+        }}},"variants":{"default":saved}});
+
+        let result = crc_equal_sheets(&original, &variants, &hints, 0).unwrap();
+        assert_eq!(result[&1].recalc_equal, Some(false));
+        assert_eq!(result[&1].changed_profiles, ["default"]);
+        identity_workbook(&baseline, "<worksheet><v>2</v></worksheet>");
+        let recalc_equal = crc_equal_sheets(&original, &variants, &hints, 0).unwrap();
+        assert_eq!(recalc_equal[&1].recalc_equal, Some(true));
+        assert!(crc_equal_sheets(&original, &variants, &hints, 1)
+            .unwrap()
+            .is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
     fn tile(index: usize) -> Tile {
         Tile {
             sheet_index: 1,

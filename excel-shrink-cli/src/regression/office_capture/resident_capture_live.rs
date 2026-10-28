@@ -143,7 +143,9 @@ impl LiveCapture {
             "tall_sheet_threshold":controls["tall_sheet_threshold"].as_u64()
                 .or_else(|| std::env::var("EXCEL_SHRINK_TALL_SHEET_THRESHOLD").ok()?.parse().ok()).unwrap_or(40),
             "tall_sheet_edge_tiles":controls["tall_sheet_edge_tiles"].as_u64()
-                .or_else(|| std::env::var("EXCEL_SHRINK_TALL_SHEET_EDGE_TILES").ok()?.parse().ok()).unwrap_or(2)
+                .or_else(|| std::env::var("EXCEL_SHRINK_TALL_SHEET_EDGE_TILES").ok()?.parse().ok()).unwrap_or(2),
+            "crc_equal_sheet_threshold_mib":controls["crc_equal_sheet_threshold_mib"].as_u64()
+                .or_else(|| std::env::var("EXCEL_SHRINK_CRC_EQUAL_SHEET_THRESHOLD_MIB").ok()?.parse().ok()).unwrap_or(256)
         });
         live.save()?;
         Ok(Some(live))
