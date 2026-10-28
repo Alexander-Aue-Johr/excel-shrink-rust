@@ -52,6 +52,7 @@ fn shrink(
         false,
         false,
         &visual_validation::VisualCheckOptions::default(),
+        false,
         log_level,
         &case,
     )?;
@@ -153,13 +154,15 @@ fn diagnose_with_session(
             matches!(
                 p["profile"].as_str(),
                 Some("maximum-cleaning" | "too-aggressive-cleaning")
-            ) && p["checks_complete"] == true
+            ) && p["comparison_reused_from"].is_null()
+                && p["checks_complete"] == true
                 && !image_sheets(p).is_empty()
         })
         .collect();
     // Height changes are not evidence of a completed pixel check. No control is
     // needed to preserve that warning, and Default never deletes whitespace.
     if candidates.is_empty() {
+        record_alias_diagnoses(record);
         record["whitespace_diagnosis"]["status"] = json!("complete");
         return Ok(());
     }
@@ -320,8 +323,30 @@ fn diagnose_with_session(
         }));
         write_record(&job.record, record)?;
     }
+    record_alias_diagnoses(record);
     record["whitespace_diagnosis"]["status"] = json!("complete");
     Ok(())
+}
+
+fn record_alias_diagnoses(record: &mut Value) {
+    let aliases: Vec<_> = items(record, "results")
+        .iter()
+        .filter(|profile| matches!(profile["profile"].as_str(),
+            Some("maximum-cleaning" | "too-aggressive-cleaning")))
+        .filter(|profile| !image_sheets(profile).is_empty())
+        .filter_map(|profile| Some((
+            profile["profile"].as_str()?.to_owned(),
+            profile["comparison_reused_from"].as_str()?.to_owned(),
+        )))
+        .collect();
+    for (profile, representative) in aliases {
+        record["whitespace_diagnosis"]["profiles"].as_array_mut().unwrap().push(json!({
+            "profile":profile,
+            "status":"not_run_reused_visual_input",
+            "comparison_reused_from":representative,
+            "reason":"matched whitespace control depends on profile flags",
+        }));
+    }
 }
 
 pub(super) fn run(job: &MemberJob, record: &mut Value, log_level: LogLevel) {
@@ -348,6 +373,22 @@ pub(super) fn run_resident(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aliased_primary_result_does_not_inherit_a_different_profiles_whitespace_control() {
+        let mut record = json!({
+            "results":[{"profile":"too-aggressive-cleaning",
+                "comparison_reused_from":"maximum-cleaning",
+                "sheets":[{"index":1,"image_differences":[{}]}]}],
+            "whitespace_diagnosis":{"profiles":[]}
+        });
+        record_alias_diagnoses(&mut record);
+        let entry = &record["whitespace_diagnosis"]["profiles"][0];
+        assert_eq!(entry["profile"], "too-aggressive-cleaning");
+        assert_eq!(entry["status"], "not_run_reused_visual_input");
+        assert_eq!(entry["comparison_reused_from"], "maximum-cleaning");
+        assert!(entry["sheets"].is_null());
+    }
 
     #[test]
     fn running_diagnosis_checkpoint_has_its_own_machine_without_relabeling_comparison() -> Result<()>

@@ -4,14 +4,32 @@ use crate::regression::office_capture::ResidentCapture;
 use std::collections::BTreeMap;
 mod startup;
 
-pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
+pub(super) fn compare(
+    job: &MemberJob,
+    record: &mut Value,
+    comparison_plan: &ProfileComparisonPlan,
+) -> Result<()> {
     let original = job.work.join("original.xlsx");
     let original_sha = artifact_cache::hash_file(&original)?;
+    let active_profiles: Vec<_> = PROFILES
+        .into_iter()
+        .filter(|name| !profile_archive_reused(record, name)
+            && !profile_workbook_only(record, name)
+            && !comparison_plan.aliases.contains_key(name))
+        .collect();
+    for name in PROFILES {
+        if profile_workbook_only(record, name) {
+            mark_workbook_only(profile_mut(record, name)?);
+        } else if profile_archive_reused(record, name) {
+            mark_crc_identical(profile_mut(record, name)?);
+        }
+    }
+    write_record(&job.record, record)?;
     // Finish the existing recalculation checks before opening the resident set.
     // Their independent Excel instances would otherwise compete with capture.
     let mut validations = BTreeMap::new();
     let mut recalc_inputs = json!({"variants":{}});
-    for name in PROFILES {
+    for name in active_profiles.iter().copied() {
         work_state::event(
             "validating_values",
             "recalculation_started",
@@ -63,7 +81,7 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             json!({"profile":name}),
         );
     }
-    let variants: Vec<_> = PROFILES
+    let variants: Vec<_> = active_profiles
         .iter()
         .map(|name| (*name, job.work.join(format!("{name}.xlsx"))))
         .collect();
@@ -77,12 +95,17 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     );
     let resident_dir = job.work.join("resident");
     fs::create_dir_all(&resident_dir)?;
+    recalc_inputs["shrink_identity"] = record["shrink_identity"].clone();
+    recalc_inputs["full_scan_deferred"] = record["full_scan_deferred"].clone();
     fs::write(
         resident_dir.join("recalc-inputs.json"),
         serde_json::to_vec(&recalc_inputs)?,
     )?;
     let mut session = ResidentCapture::start(&original, &variants, &resident_dir)?;
     for name in ["too-aggressive-cleaning", "maximum-cleaning", "default"] {
+        if !active_profiles.contains(&name) {
+            continue;
+        }
         work_state::event(
             "comparing",
             "comparison_started",
@@ -96,7 +119,8 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         // Persist completed startup samples even if capture or cleanup fails.
         // A metrics read must not hide the original comparison failure.
         match session.startup_metrics() {
-            Ok(Some(metrics)) => {
+            Ok(Some(mut metrics)) => {
+                comparison_plan.include_startup_aliases(&mut metrics);
                 startup::record(record, &metrics);
                 write_record(&job.record, record)?;
             }
@@ -112,6 +136,19 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         let sampled = sheets
             .iter()
             .any(|s| s["capture_coverage"]["omitted_tiles"].as_u64().unwrap_or(0) > 0);
+        let deferred_sheets: Vec<_> = sheets.iter()
+            .filter(|sheet| sheet["capture_coverage"]["deferred_full_scan"] == true)
+            .filter_map(|sheet| sheet["index"].as_u64())
+            .collect();
+        let recalc_drift_sheets: Vec<_> = sheets.iter()
+            .filter(|sheet| sheet["capture_coverage"]["recalc_identity_changed"] == true)
+            .filter(|sheet| sheet["capture_coverage"]["recalc_changed_profiles"]
+                .as_array()
+                .is_some_and(|profiles| profiles.iter().any(|profile| profile.as_str() == Some(name))))
+            .filter_map(|sheet| sheet["index"].as_u64())
+            .collect();
+        record["capture_deferred"][name] = json!(deferred_sheets);
+        record["recalc_identity_changed"][name] = json!(recalc_drift_sheets);
         visual["checked_sheets"] = json!(sheets.len());
         visual["unchanged_sheets"] = json!(visual["sheets"]
             .as_array()
@@ -126,18 +163,21 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             "visual differences"
         } else if !failures.is_empty() {
             "cell value differences"
+        } else if !deferred_sheets.is_empty() {
+            "paused for later full scan"
         } else if sampled {
             "checked ranges visually unchanged; tall-sheet ranges omitted"
         } else {
             "visually unchanged"
         });
-        visual["checks_complete"] = json!(true);
+        visual["checks_complete"] = json!(!sampled);
         visual["requested_sheets"] = Value::Null;
         visual["failures"] = json!(failures);
         let target = profile_mut(record, name)?;
         for (key, value) in visual.as_object().unwrap() {
             target[key] = value.clone();
         }
+        comparison_plan.copy_aliases(record, name)?;
         write_record(&job.record, record)?;
         work_state::event(
             "comparing",
@@ -155,7 +195,12 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         .unwrap()
         .iter()
         .any(|p| p["failures"].as_array().is_some_and(|a| !a.is_empty()));
-    record["status"] = json!(if changed { "differences" } else { "unchanged" });
+    let deferred = record["capture_deferred"].as_object().is_some_and(|profiles| profiles.values()
+        .any(|sheets| sheets.as_array().is_some_and(|items| !items.is_empty())));
+    if record["full_scan_deferred"] == true {
+        record["full_scan_deferred_completed"] = json!(!deferred);
+    }
+    record["status"] = json!(if changed { "differences" } else if deferred { "paused-for-later" } else { "unchanged" });
     record["capture_policy"] = json!("tall-sheet-v1");
     record["visual_coverage"] = json!(if record["results"].as_array().unwrap().iter().any(|p| p
         ["sheets"]
@@ -180,11 +225,12 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         super::super::whitespace::run_resident(job, record, LogLevel::Warn, &mut session);
     }
     write_record(&job.record, record)?;
-    for name in PROFILES {
+    for name in active_profiles {
         session.close(name)?;
     }
     match session.finish() {
-        Ok(metrics) => {
+        Ok(mut metrics) => {
+            comparison_plan.include_startup_aliases(&mut metrics);
             startup::record(record, &metrics);
             record["resident_capture"] = metrics;
         }
@@ -197,7 +243,7 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     }
     for profile in record["results"].as_array_mut().unwrap() {
         if let Some(sheets) = profile["sheets"].as_array_mut() {
-            sheets.retain(|s| s["status"] != "same");
+            sheets.retain(|s| s["status"] != "same" || s["capture_coverage"]["deferred_full_scan"] == true);
         }
     }
     write_record(&job.record, record)

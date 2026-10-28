@@ -32,7 +32,8 @@ struct Manifest {
 
 /// Export completed durable records, their referenced PNG evidence and immutable
 /// machine/run manifests. Prepared bundles and private request files are excluded.
-pub(super) fn export_package(output: &Path, package: &Path) -> Result<Value> {
+#[cfg(test)]
+fn export_package(output: &Path, package: &Path) -> Result<Value> {
     let lock = output_lock(output)?;
     export_package_locked(output, package, &lock)
 }
@@ -154,7 +155,8 @@ pub(super) fn export_package_locked(
 /// An empty fingerprint means that corpus is known but its archive is unavailable
 /// here. Catalog/source hashes are still checked against any existing records.
 /// Nonidentical existing results are retained as conflicts, never overwritten.
-pub(super) fn import_package(
+#[cfg(test)]
+fn import_package(
     output: &Path,
     package: &Path,
     expected_sources: &BTreeMap<String, String>,
@@ -640,6 +642,7 @@ fn copy_new_or_identical(source: &Path, target: &Path) -> Result<()> {
     artifact_cache::atomic_write(target, &fs::read(source)?)
 }
 
+#[cfg(test)]
 fn output_lock(output: &Path) -> Result<fs::File> {
     fs::create_dir_all(output)?;
     let lock = fs::OpenOptions::new()

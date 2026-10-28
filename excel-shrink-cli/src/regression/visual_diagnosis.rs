@@ -289,6 +289,7 @@ pub(super) fn diagnose_case(
             true,
             true,
             &options,
+            false,
             log_level,
             case,
         );

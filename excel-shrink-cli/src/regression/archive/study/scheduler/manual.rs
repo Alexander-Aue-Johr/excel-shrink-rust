@@ -51,6 +51,8 @@ fn refresh_groups(queue: &mut Value, active: &[Active], records: &[Value], pendi
                 group["started_unix_ms"] = record["control_room_attempt"]["started_unix_ms"].clone();
             }
             group["capture_mode"] = record["capture_mode"].clone();
+            group["capture_deferred"] = record["capture_deferred"].clone();
+            group["recalc_identity_changed"] = record["recalc_identity_changed"].clone();
             group["cleanup_pending"] = records[job.job.position]["cleanup_pending"].clone();
             if group["status"] == "cleanup_blocked" {
                 group.as_object_mut().unwrap().remove("error");
@@ -143,6 +145,7 @@ pub(super) fn compare(
     let mut controls = Controls::read(&room)?;
     let mut queue =
         control_room::read_json(&room.join("queue.json")).unwrap_or_else(|| json!({"groups":[]}));
+    let resuming_deferred = jobs.is_empty() && queue["phase"] == "awaiting_deferred_manual";
     queue["phase"] = json!("comparing");
     queue["running"] = json!(true);
     let groups = queue["groups"]
@@ -153,7 +156,9 @@ pub(super) fn compare(
         let allowed = group["id"]
             .as_str()
             .is_some_and(|id| eligible.contains_key(id));
-        group["restart_eligible"] = json!(allowed);
+        if allowed || !resuming_deferred {
+            group["restart_eligible"] = json!(allowed);
+        }
         if allowed {
             group["run_id"] = run["run_id"].clone();
         }
@@ -212,20 +217,43 @@ pub(super) fn compare(
         ) {
             // A completed historical comparison normally discarded its ZIP.
             // Rebuild it between waves; conversion must not disturb live peers.
-            control_room::archive_record(&room, &front.id, &records[front.position])?;
-            records[front.position]
-                .as_object_mut()
-                .unwrap()
-                .remove("preparation_accepted_by");
-            records[front.position]["prepared_by"] = json!(producer);
-            records[front.position]["source_fingerprint"] = json!(source.fingerprint);
-            records[front.position]["run_selection"] = source.selection.provenance(
+            let provenance = source.selection.provenance(
                 front.index,
                 &source.id,
                 &source.fingerprint,
                 &manifest,
                 order,
             );
+            let storage = storage_guard::check(output, provenance["bytes"].as_u64());
+            let storage_error = match &storage {
+                Ok(space) if !space.blocked => None,
+                Ok(space) => Some(format!(
+                    "Preparation needs {} free bytes on the study output volume; {} bytes available.",
+                    space.required_free_bytes, space.free_bytes
+                )),
+                Err(error) => Some(format!(
+                    "Cannot verify free space on the study output volume: {error:#}"
+                )),
+            };
+            if let Some(error) = storage_error {
+                queue["phase"] = json!("waiting_disk");
+                queue["preparation_storage"] = match storage {
+                    Ok(space) => serde_json::to_value(space)?,
+                    Err(_) => Value::Null,
+                };
+                queue["preparation_storage_error"] = json!(error);
+                control_room::write(&room.join("queue.json"), &queue)?;
+                progress::tick(output);
+                std::thread::sleep(Duration::from_secs(1));
+                continue;
+            }
+            queue.as_object_mut().unwrap().remove("preparation_storage");
+            queue.as_object_mut().unwrap().remove("preparation_storage_error");
+            control_room::archive_record(&room, &front.id, &records[front.position])?;
+            invalidate_preparation_claim(&mut records[front.position]);
+            records[front.position]["prepared_by"] = json!(producer);
+            records[front.position]["source_fingerprint"] = json!(source.fingerprint);
+            records[front.position]["run_selection"] = provenance;
             let id = control_room::group_id(&front.id);
             if let Some(group) = queue["groups"]
                 .as_array_mut()
@@ -249,7 +277,11 @@ pub(super) fn compare(
                 run,
                 log_level,
             )?;
-            if records[front.position]["prepared"] != true
+            if classify_preparation(&mut records[front.position]) {
+                write_record(&record_path(output, &front.id), &records[front.position])?;
+                progress::observe(output, &records[front.position]);
+            }
+            if records[front.position]["preparation_disposition"] != "needs_visual"
                 || !bundle_path(output, &front.id).is_file()
             {
                 pending.pop_front();
@@ -360,6 +392,10 @@ pub(super) fn compare(
                         }
                     };
                     let mut record = records[job.position].clone();
+                    let mut restart_requests = queued_restarts.remove(&job.id).unwrap_or_default();
+                    if !restart_requests.is_empty() {
+                        record["full_scan_deferred"] = json!(restarts::full_scan_requested(&restart_requests));
+                    }
                     let attempt =
                         match restarts::begin_attempt(&room, &job, &mut record, &controls, run) {
                             Ok(attempt) => attempt,
@@ -394,7 +430,6 @@ pub(super) fn compare(
                         group["started_unix_ms"] = json!(provenance::now_ms());
                         group["attempt_id"] = json!(attempt);
                     }
-                    let mut restart_requests = queued_restarts.remove(&job.id).unwrap_or_default();
                     for request in &mut restart_requests {
                         request.value["replacement_attempt_id"] = json!(attempt);
                         if let Err(error) = request.update(
@@ -650,6 +685,105 @@ pub(super) fn compare(
         }
     }
     Ok(())
+}
+
+/// Keep the control room available for explicit full-scan requests after the
+/// normal queue has drained. No workbook or Excel process remains open here.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn await_deferred_manual(
+    sources: &[Source],
+    output: &Path,
+    records: &mut Vec<Value>,
+    corpora: &[Value],
+    limits: &ArchiveArgs,
+    run: &Value,
+    log_level: LogLevel,
+) -> Result<()> {
+    let room = output.join("control-room");
+    let source_by_group: BTreeMap<String, usize> = sources.iter().enumerate()
+        .flat_map(|(source_index, source)| restarts::eligible(source, records)
+            .into_keys().map(move |group| (group, source_index)))
+        .collect();
+    fs::create_dir_all(room.join("commands"))?;
+    let mut idle_published = false;
+
+    loop {
+        control_room::check_stop(&room)?;
+        let deferred: BTreeMap<String, usize> = records.iter().enumerate()
+            .filter(|(_, record)| record["status"] == "paused-for-later"
+                && record["complete"] == true && has_deferred_full_scan(record))
+            .filter_map(|(position, record)| {
+                let group = control_room::group_id(record["identity"].as_str()?);
+                source_by_group.contains_key(&group).then_some((group, position))
+            })
+            .collect();
+        if deferred.is_empty() {
+            return Ok(());
+        }
+
+        if !idle_published {
+            let mut queue = control_room::read_json(&room.join("queue.json"))
+                .context("missing control room queue while awaiting deferred full scans")?;
+            queue["phase"] = json!("awaiting_deferred_manual");
+            queue["running"] = json!(true);
+            queue["updated_unix_ms"] = json!(provenance::now_ms());
+            if let Some(groups) = queue["groups"].as_array_mut() {
+                for (id, &position) in &deferred {
+                    if groups.iter().any(|group| group["id"] == *id) {
+                        continue;
+                    }
+                    let record = &records[position];
+                    groups.push(json!({"id":id,"workbook":record["name"],
+                        "corpus":record["corpus_name"],"attempt_id":record["control_room_attempt"]["id"],
+                        "sequence":groups.len()+1,"active":false}));
+                }
+                for group in groups {
+                    let Some(id) = group["id"].as_str() else { continue };
+                    if let Some(&position) = deferred.get(id) {
+                        let record = &records[position];
+                        group["run_id"] = run["run_id"].clone();
+                        group["restart_eligible"] = json!(true);
+                        group["capture_deferred"] = record["capture_deferred"].clone();
+                        group["status"] = record["status"].clone();
+                        group["active"] = json!(false);
+                    } else {
+                        group["restart_eligible"] = json!(false);
+                    }
+                }
+            }
+            control_room::write(&room.join("queue.json"), &queue)?;
+            progress::await_deferred(output);
+            idle_published = true;
+        }
+
+        let mut requested_source = None;
+        for entry in fs::read_dir(room.join("commands"))? {
+            let path = entry?.path();
+            if path.extension().is_none_or(|ext| ext != "json") {
+                continue;
+            }
+            let Some(command) = control_room::read_json(&path) else { continue };
+            if command["status"] != "pending"
+                || command["full_scan_deferred"] != true
+                || command["run_id"] != run["run_id"]
+            {
+                continue;
+            }
+            let Some(group) = command["group_id"].as_str() else { continue };
+            if deferred.contains_key(group) {
+                requested_source = source_by_group.get(group).copied();
+                break;
+            }
+        }
+        if let Some(source_index) = requested_source {
+            compare(&sources[source_index], Vec::new(), output, records, corpora,
+                limits, run, log_level, None)?;
+            publish_progress(output, records, corpora, "awaiting deferred full scan");
+            idle_published = false;
+            continue;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
 }
 
 #[cfg(test)]

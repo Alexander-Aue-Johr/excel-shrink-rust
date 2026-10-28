@@ -277,6 +277,7 @@ function New-StudyLaunchPlan {
         '--run-corpus',$settings.corpus,'--machine-label',$settings.machine_label,'--resident-capture','--control-room','--control-room-port',[string]$settings.control_room_port,
         '--comparison-workers',[string]$settings.comparison_groups,'--order',$settings.order,'--startup-timeout-seconds',[string]$settings.open_timeout_seconds,'--workbook-timeout-seconds',[string]$settings.job_timeout_seconds)
     if ([int]$settings.partition -gt 0) { $argsList += @('--size-part',"$($settings.partition)/$($settings.partitions)") }
+    if (Get-Value $settings 'full_scan_deferred' $false) { $argsList += @('--compare-only', '--full-scan-deferred') }
     if ($settings.hide_excel) { $argsList += '--hide-excel' }
     foreach ($hash in @($settings.reuse_prepared_from | Select-Object -Unique)) { $argsList += @('--reuse-prepared-from',$hash) }
     if ($settings.import_report) { $argsList += @('--import-report',(Resolve-StudyPath $Repo $settings.import_report)) }

@@ -10,7 +10,10 @@ static RUNS: OnceLock<Mutex<BTreeMap<PathBuf, Tracker>>> = OnceLock::new();
 struct State {
     completed: bool,
     skipped: bool,
+    deferred: bool,
     prepared: bool,
+    preparation_terminal: bool,
+    visual_eligible: bool,
     diagnosis_failed: bool,
 }
 
@@ -22,7 +25,10 @@ impl State {
         Self {
             completed,
             skipped: record["complete"] == true && record["status"] == "skipped",
+            deferred: record["complete"] == true && record["status"] == "paused-for-later",
             prepared: record["prepared"] == true || completed,
+            preparation_terminal: record["preparation_disposition"].is_string(),
+            visual_eligible: record["preparation_disposition"] == "needs_visual",
             diagnosis_failed: record["whitespace_diagnosis"]["status"] == "failed",
         }
     }
@@ -69,6 +75,7 @@ struct Tracker {
     run_id: Value,
     scope: Value,
     rows: BTreeMap<String, State>,
+    names: BTreeMap<String, String>,
     active: BTreeMap<String, JobMode>,
     preparation: Rate,
     comparison: Rate,
@@ -80,6 +87,7 @@ struct Tracker {
     captures_paused: bool,
     limited: bool,
     finished: bool,
+    visual_scope_frozen: bool,
 }
 
 #[derive(Default)]
@@ -157,21 +165,25 @@ impl Tracker {
         if state.completed {
             self.comparison.record(id);
         }
-        if state.prepared {
+        if state.preparation_terminal || state.prepared {
             self.preparation.record(id);
         }
         self.rows.insert(id.to_owned(), state);
     }
     fn paused(&self) -> bool {
-        !self.finished
-            && ((self.target == 0 && self.active.is_empty())
-                || (self.captures_paused && self.phase != "preparing"))
+        matches!(self.phase.as_str(), "waiting for disk" | "awaiting_deferred_manual")
+            || (!self.finished
+                && self.phase != "preparing"
+                && ((self.target == 0 && self.active.is_empty()) || self.captures_paused))
     }
     fn advance(&mut self, seconds: f64) {
         // Capture pause only prevents new jobs; already dispatched jobs may
         // still finish. Keep their wall time in the denominator. Only a fully
         // drained workbook pause proves that no work is being performed.
-        if self.finished || (self.target == 0 && self.active.is_empty()) {
+        if self.finished
+            || self.phase == "awaiting_deferred_manual"
+            || (self.phase != "preparing" && self.target == 0 && self.active.is_empty())
+        {
             return;
         }
         self.active_seconds += seconds;
@@ -183,19 +195,32 @@ impl Tracker {
         }
     }
     fn snapshot(&self, now_ms: u64) -> Value {
-        let total = self.rows.len();
-        let completed = self.rows.values().filter(|row| row.completed).count();
-        let skipped = self.rows.values().filter(|row| row.skipped).count();
-        let remaining = total - completed - skipped;
+        let preparation_total = self.rows.len();
+        let preparation_terminal = self.rows.values().filter(|row| row.preparation_terminal).count();
+        let preparation_remaining = preparation_total - preparation_terminal;
+        let visual_total = self.rows.values().filter(|row| row.visual_eligible).count();
+        let visual_completed = self.rows.values().filter(|row| row.visual_eligible && row.completed).count();
+        let visual_skipped = self.rows.values().filter(|row| row.visual_eligible && row.skipped).count();
+        let visual_deferred = self.rows.values().filter(|row| row.visual_eligible && row.deferred).count();
+        let visual_remaining = visual_total - visual_completed - visual_skipped - visual_deferred;
+        let visual_excluded = self.rows.values().filter(|row| row.preparation_terminal && !row.visual_eligible).count();
+        let preparation_skipped = self.rows.values()
+            .filter(|row| row.preparation_terminal && row.skipped).count();
+        let (total, completed, skipped, remaining) = if self.visual_scope_frozen {
+            (visual_total, visual_completed, visual_skipped, visual_remaining)
+        } else {
+            (preparation_total, preparation_terminal - preparation_skipped,
+                preparation_skipped, preparation_remaining)
+        };
         let prepared = self.rows.values().filter(|row| row.prepared).count();
-        let preparation_remaining = self
-            .rows
-            .values()
-            .filter(|row| !row.prepared && !row.skipped)
-            .count();
+        let active_preparation: Vec<_> = self.active.iter()
+            .filter(|(_, mode)| **mode == JobMode::Prepare)
+            .map(|(id, _)| json!({"id":id,"workbook":self.names.get(id)}))
+            .collect();
         let phase = if self.finished {
             &self.phase
-        } else if self.target == 0 {
+        } else if self.target == 0
+            && !matches!(self.phase.as_str(), "preparing" | "awaiting_deferred_manual") {
             if self.active.is_empty() {
                 "paused"
             } else {
@@ -206,8 +231,12 @@ impl Tracker {
         };
         let paused = self.paused();
         let preparation_eta = self.preparation.estimate(preparation_remaining);
-        let comparison_eta = self.comparison.estimate(remaining);
-        let (eta_status, eta) = if remaining == 0 {
+        let comparison_eta = self.comparison.estimate(visual_remaining);
+        let (eta_status, eta) = if self.phase == "waiting for disk" {
+            ("waiting_for_disk", None)
+        } else if self.phase == "awaiting_deferred_manual" {
+            ("awaiting_manual", None)
+        } else if remaining == 0 {
             ("complete", Some(0.0))
         } else if paused {
             ("paused", None)
@@ -223,14 +252,24 @@ impl Tracker {
             ("insufficient_samples", None)
         };
         let rate = self.comparison.per_hour();
-        json!({"version":1,"run_id":self.run_id,"scope":self.scope,"phase":phase,"paused":paused,
+        json!({"version":2,"run_id":self.run_id,"scope":self.scope,"phase":phase,"paused":paused,
+            "visual_scope_frozen":self.visual_scope_frozen,"active_preparation":active_preparation,
             "updated_unix_ms":now_ms,
             "counts":{"total":total,"completed":completed,"skipped":skipped,"remaining":remaining,
-                "in_progress":self.active.len(),"prepared":prepared,"preparation_remaining":preparation_remaining},
+                "in_progress":self.active.len(),"prepared":prepared,
+                "preparation_total":preparation_total,"preparation_terminal":preparation_terminal,
+                "preparation_remaining":preparation_remaining,
+                "visual_total":self.visual_scope_frozen.then_some(visual_total),
+                "visual_completed":self.visual_scope_frozen.then_some(visual_completed),
+                "visual_deferred":self.visual_scope_frozen.then_some(visual_deferred),
+                "visual_remaining":self.visual_scope_frozen.then_some(visual_remaining),
+                "visual_excluded":self.visual_scope_frozen.then_some(visual_excluded)},
             "diagnosis_failed":self.rows.values().filter(|row| row.diagnosis_failed).count(),
             "rates":{"window_seconds":WINDOW,"completed_per_hour":rate,"completed_per_minute":rate.map(|rate|rate/60.0),
                 "average_completed_per_hour":if self.active_seconds>0.0 {Some(self.comparison.finished as f64*3600.0/self.active_seconds)} else {None},
-                "preparation_per_hour":self.preparation.per_hour(),"samples":self.comparison.recent.len(),
+                "preparation_per_hour":self.preparation.per_hour(),
+                "preparation_per_minute":self.preparation.per_hour().map(|rate|rate/60.0),
+                "samples":self.comparison.recent.len(),
                 "active_seconds":self.active_seconds,"comparison_active_seconds":self.comparison.seconds,
                 "preparation_active_seconds":self.preparation.seconds,"new_completions":self.comparison.finished},
             "activity":{"source":"runner","started_attempts":self.attempts.started,"finished_attempts":self.attempts.rate.finished,
@@ -238,6 +277,7 @@ impl Tracker {
                 "interrupted_attempts":self.attempts.interrupted,"retried_attempts":self.attempts.retried,
                 "attempts_per_hour":self.attempts.rate.per_hour(),"recent_outcomes":self.attempts.outcomes},
             "eta":{"status":eta_status,"remaining_seconds":eta,
+                "preparation_remaining_seconds":preparation_eta,
                 "finish_unix_ms":eta.filter(|_| !paused).map(|seconds|now_ms.saturating_add((seconds*1000.0) as u64)),
                 "scope":"selected_workbooks"}})
     }
@@ -249,22 +289,24 @@ pub(super) fn initialize(
     records: &[Value],
     run: &Value,
 ) -> Result<()> {
-    let rows = sources
+    let names: BTreeMap<_, _> = sources
         .iter()
         .flat_map(|source| {
             source
                 .members
                 .iter()
                 .filter(|(index, _)| source.selection.contains(*index))
-                .map(|(index, name)| (identity(source, *index, name), State::default()))
+                .map(|(index, name)| (identity(source, *index, name), name.clone()))
         })
         .collect();
+    let rows = names.keys().cloned().map(|id| (id, State::default())).collect();
     let controls = control_room::Controls::read(&output.join("control-room"))?;
     let mut tracker = Tracker {
         run_id: run["run_id"].clone(),
         scope: json!({"corpora":sources.iter().map(|s|&s.name).collect::<Vec<_>>(),
             "size_part":sources.first().map(|s|s.selection.size_part),"order":run["options"]["order"],"limit":run["options"]["limit"]}),
         rows,
+        names,
         active: BTreeMap::new(),
         preparation: Rate::default(),
         comparison: Rate::default(),
@@ -278,6 +320,7 @@ pub(super) fn initialize(
             || run["options"]["prepare_only"] == true
             || run["options"]["diagnose_whitespace_only"] == true,
         finished: false,
+        visual_scope_frozen: false,
     };
     for record in records {
         tracker.observe(record);
@@ -329,11 +372,31 @@ pub(super) fn tick(output: &Path) {
 pub(super) fn observe(output: &Path, record: &Value) {
     update(output, |tracker| tracker.observe(record));
 }
+pub(super) fn set_selection(output: &Path, selected: &HashSet<String>) {
+    update(output, |tracker| {
+        tracker.rows.retain(|id, _| selected.contains(id));
+        tracker.names.retain(|id, _| selected.contains(id));
+    });
+}
+pub(super) fn freeze_visual_scope(output: &Path) {
+    update(output, |tracker| tracker.visual_scope_frozen = true);
+}
+pub(super) fn selection_scope(output: &Path) -> Option<(Value, HashSet<String>, bool)> {
+    let runs = RUNS.get()?.lock().ok()?;
+    let tracker = runs.get(output)?;
+    Some((tracker.run_id.clone(), tracker.rows.keys().cloned().collect(), tracker.visual_scope_frozen))
+}
 pub(super) fn finish(output: &Path) {
     end(output, "finished");
 }
 pub(super) fn stop(output: &Path) {
     end(output, "stopped");
+}
+pub(super) fn wait_for_disk(output: &Path) {
+    end(output, "waiting for disk");
+}
+pub(super) fn await_deferred(output: &Path) {
+    update(output, |tracker| tracker.phase = "awaiting_deferred_manual".into());
 }
 fn end(output: &Path, phase: &str) {
     update(output, |tracker| {
@@ -398,6 +461,7 @@ mod tests {
             run_id: json!("run"),
             scope: json!({}),
             rows: (0..10).map(|i| (i.to_string(), State::default())).collect(),
+            names: BTreeMap::new(),
             active: BTreeMap::new(),
             preparation: Rate::default(),
             comparison: Rate::default(),
@@ -409,14 +473,25 @@ mod tests {
             captures_paused: false,
             limited: false,
             finished: false,
+            visual_scope_frozen: false,
         }
     }
     fn completed(id: usize) -> Value {
-        json!({"identity":id.to_string(),"complete":true,"status":"unchanged"})
+        json!({"identity":id.to_string(),"complete":true,"status":"unchanged",
+            "preparation_disposition":"needs_visual"})
+    }
+    fn visual_tracker() -> Tracker {
+        let mut tracker = tracker();
+        for row in tracker.rows.values_mut() {
+            row.preparation_terminal = true;
+            row.visual_eligible = true;
+        }
+        tracker.visual_scope_frozen = true;
+        tracker
     }
     #[test]
     fn resumed_and_repeated_records_never_inflate_speed() {
-        let mut t = tracker();
+        let mut t = visual_tracker();
         t.observe(&completed(0));
         t.comparison.finished = 0;
         t.comparison.recent.clear();
@@ -445,6 +520,21 @@ mod tests {
         assert_eq!(t.comparison.seconds, 720.0);
     }
     #[test]
+    fn zero_visual_groups_does_not_pause_preparation() {
+        let mut t = tracker();
+        t.phase = "preparing".into();
+        t.target = 0;
+        assert!(!t.paused());
+        assert_eq!(t.snapshot(0)["phase"], "preparing");
+        t.advance(60.0);
+        assert_eq!(t.preparation.seconds, 60.0);
+
+        t.phase = "waiting for disk".into();
+        t.finished = true;
+        assert!(t.paused());
+        assert_eq!(t.snapshot(0)["eta"]["status"], "waiting_for_disk");
+    }
+    #[test]
     fn pending_preparation_and_small_samples_do_not_claim_total_eta() {
         let mut t = tracker();
         t.advance(60.0);
@@ -454,7 +544,10 @@ mod tests {
         assert_eq!(t.snapshot(0)["eta"]["status"], "preparation_pending");
         for row in t.rows.values_mut() {
             row.prepared = true;
+            row.preparation_terminal = true;
+            row.visual_eligible = true;
         }
+        t.visual_scope_frozen = true;
         let s = t.snapshot(1000);
         assert_eq!(s["eta"]["remaining_seconds"], 140.0);
         t.target = 0;
@@ -463,9 +556,10 @@ mod tests {
     }
     #[test]
     fn skips_and_other_partitions_never_count_as_successful_completions() {
-        let mut t = tracker();
+        let mut t = visual_tracker();
         t.advance(60.0);
-        t.observe(&json!({"identity":"0","complete":true,"status":"skipped"}));
+        t.observe(&json!({"identity":"0","complete":true,"status":"skipped",
+            "preparation_disposition":"needs_visual"}));
         t.observe(&completed(100));
         let s = t.snapshot(0);
         assert_eq!(s["counts"]["total"], 10);
@@ -475,10 +569,47 @@ mod tests {
     }
 
     #[test]
-    fn skipped_retries_are_activity_without_new_validated_workbooks() {
+    fn visual_denominator_is_frozen_after_preparation_and_excludes_nonvisual_files() {
         let mut t = tracker();
+        for id in 0..3 {
+            t.observe(&json!({"identity":id.to_string(),"prepared":true,
+                "preparation_disposition":"needs_visual","status":"prepared"}));
+        }
+        for id in 3..5 {
+            t.observe(&json!({"identity":id.to_string(),"prepared":true,"complete":true,
+                "preparation_disposition":"crc_unchanged","status":"crc-identical"}));
+        }
+        t.observe(&json!({"identity":"5","complete":true,
+            "preparation_disposition":"unsupported_namespace","status":"skipped"}));
+        let preparing = t.snapshot(0);
+        assert_eq!(preparing["counts"]["preparation_total"], 10);
+        assert_eq!(preparing["counts"]["preparation_terminal"], 6);
+        assert!(preparing["counts"]["visual_total"].is_null());
+
+        t.visual_scope_frozen = true;
+        let comparing = t.snapshot(0);
+        assert_eq!(comparing["counts"]["visual_total"], 3);
+        assert_eq!(comparing["counts"]["visual_excluded"], 3);
+        assert_eq!(comparing["counts"]["remaining"], 3);
+        t.observe(&json!({"identity":"0","prepared":true,"complete":true,
+            "preparation_disposition":"needs_visual","status":"unchanged"}));
+        t.observe(&json!({"identity":"1","prepared":true,"complete":true,
+            "preparation_disposition":"needs_visual","status":"skipped"}));
+        t.observe(&json!({"identity":"2","prepared":true,"complete":true,
+            "preparation_disposition":"needs_visual","status":"paused-for-later"}));
+        let after = t.snapshot(0);
+        assert_eq!(after["counts"]["visual_completed"], 1);
+        assert_eq!(after["counts"]["skipped"], 1);
+        assert_eq!(after["counts"]["visual_deferred"], 1);
+        assert_eq!(after["counts"]["visual_remaining"], 0);
+    }
+
+    #[test]
+    fn skipped_retries_are_activity_without_new_validated_workbooks() {
+        let mut t = visual_tracker();
         let skipped = json!({"identity":"0","name":"Retry.xlsx","complete":true,
-            "status":"skipped","error":"Excel opening timed out"});
+            "status":"skipped","error":"Excel opening timed out",
+            "preparation_disposition":"needs_visual"});
         t.observe(&skipped);
         assert_eq!(t.snapshot(0)["activity"]["finished_attempts"], 0);
         let mut admitted = skipped.clone();
@@ -504,7 +635,7 @@ mod tests {
 
     #[test]
     fn attempt_results_require_explicit_finish_and_keep_bounded_history() {
-        let mut t = tracker();
+        let mut t = visual_tracker();
         for id in 0..7 {
             let record = completed(id);
             let attempt = t.start_attempt(&json!({"name":format!("{id}.xlsx")}));

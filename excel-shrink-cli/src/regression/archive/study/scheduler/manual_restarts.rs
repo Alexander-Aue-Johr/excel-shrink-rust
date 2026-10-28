@@ -17,6 +17,10 @@ impl Request {
     }
 }
 
+pub(super) fn full_scan_requested(requests: &[Request]) -> bool {
+    requests.iter().any(|request| request.value["full_scan_deferred"] == true)
+}
+
 pub(super) fn eligible(source: &Source, records: &[Value]) -> BTreeMap<String, Comparison> {
     let positions: BTreeMap<_, _> = records
         .iter()
@@ -85,6 +89,17 @@ pub(super) fn read_pending(
             continue;
         }
         let job = value["group_id"].as_str().and_then(|id| eligible.get(id));
+        // The idle deferred phase can hold pending requests from several
+        // corpora. A source coordinator must leave another source's accepted
+        // request for that coordinator instead of rejecting it as unselected.
+        if job.is_none() && value["full_scan_deferred"] == true
+            && queue["groups"].as_array().is_some_and(|groups| groups.iter().any(|group| {
+            group["id"] == value["group_id"]
+                && group["run_id"] == value["run_id"]
+                && group["restart_eligible"] == true
+        })) {
+            continue;
+        }
         if let Some(reason) = invalid_reason(&value, queue, job.is_some()) {
             value["status"] = json!("rejected");
             value["message"] = json!(reason);
@@ -224,6 +239,32 @@ pub(super) fn begin_attempt(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn source_coordinator_preserves_another_deferred_sources_request() -> Result<()> {
+        let output = super::super::super::super::tests::test_directory("deferred-other-source")?;
+        let room = output.join("control-room");
+        fs::create_dir_all(room.join("commands"))?;
+        let command = json!({"type":"restart_group","run_id":"run","group_id":"other",
+            "attempt_id":"old","status":"pending","full_scan_deferred":true});
+        control_room::write(&room.join("commands/other.json"), &command)?;
+        let queue = json!({"run_id":"run","groups":[{"id":"other","run_id":"run",
+            "attempt_id":"old","restart_eligible":true}]});
+        let eligible = BTreeMap::new();
+        assert!(read_pending(&room, &queue, &eligible)?.is_empty());
+        assert_eq!(control_room::read_json(&room.join("commands/other.json")).unwrap(), command);
+        fs::remove_dir_all(output)?;
+        Ok(())
+    }
+    #[test]
+    fn restart_command_carries_explicit_deferred_full_scan_intent() {
+        let request = |full_scan_deferred| Request {
+            path: PathBuf::new(),
+            value: json!({"full_scan_deferred":full_scan_deferred}),
+            job: Comparison { index:0, id:"book".into(), position:0 },
+        };
+        assert!(!full_scan_requested(&[request(false)]));
+        assert!(full_scan_requested(&[request(true)]));
+    }
     #[test]
     fn stale_attempts_and_unselected_workbooks_cannot_restart() {
         let queue = json!({"run_id":"current","groups":[{"id":"a","attempt_id":"new"}]});

@@ -130,9 +130,8 @@ pub(super) fn compare(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn finish_preparing_workbook(
-    source: &Source,
-    job: Comparison,
+pub(super) fn await_deferred_manual(
+    sources: &[Source],
     output: &Path,
     records: &mut Vec<Value>,
     corpora: &[Value],
@@ -140,18 +139,7 @@ pub(super) fn finish_preparing_workbook(
     run: &Value,
     log_level: LogLevel,
 ) -> Result<()> {
-    let id = job.id.clone();
-    manual::compare(
-        source,
-        vec![job],
-        output,
-        records,
-        corpora,
-        limits,
-        run,
-        log_level,
-        Some(id),
-    )
+    manual::await_deferred_manual(sources, output, records, corpora, limits, run, log_level)
 }
 
 enum Event {

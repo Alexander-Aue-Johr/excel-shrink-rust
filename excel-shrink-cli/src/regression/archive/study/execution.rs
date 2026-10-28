@@ -16,14 +16,13 @@ pub(super) fn process(
     log_level: LogLevel,
 ) -> Result<()> {
     if run["options"]["control_room"] == true {
-        control_room::wait_for_admission(
-            output,
-            if mode == JobMode::Prepare {
-                "preparing"
-            } else {
-                "comparing"
-            },
-        )?;
+        if mode == JobMode::Prepare {
+            // The group target controls visual comparisons. Preparation must
+            // finish for the whole selection before that target is admitted.
+            control_room::check_stop(&output.join("control-room"))?;
+        } else {
+            control_room::wait_for_admission(output, "comparing")?;
+        }
         control_room::begin_serial(output, source, id, &mut records[position], mode, run)?;
     }
     let initial = records[position].clone();

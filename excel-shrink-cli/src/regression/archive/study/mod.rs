@@ -4,6 +4,7 @@ use super::*;
 mod control_room;
 mod execution;
 mod fallback;
+mod preparation;
 mod progress;
 mod startup;
 use super::verified as ledger;
@@ -12,6 +13,7 @@ mod prepared;
 mod provenance;
 mod scheduler;
 mod selection;
+mod storage_guard;
 mod transfer;
 mod whitespace;
 
@@ -66,13 +68,17 @@ pub(in crate::regression) struct StudyArgs {
     /// Compare already prepared ZIP bundles without shrinking again.
     #[arg(long)]
     compare_only: bool,
+    /// Revisit the full scans deferred by CRC/length-based edge captures.
+    /// Requires reusable preparation bundles from an earlier study run.
+    #[arg(long, requires = "compare_only", conflicts_with = "report_only")]
+    full_scan_deferred: bool,
     /// Keep original and shrink variants open for visual comparisons.
     #[arg(long)]
     resident_capture: bool,
     /// Hide Excel comparison windows from startup while keeping the Office add-in active.
     #[arg(long)]
     hide_excel: bool,
-    /// Maximum concurrent comparisons: 8 in resident mode, 1 otherwise. Preparation stays serial.
+    /// Maximum concurrent comparisons: 8 in resident mode, 1 otherwise.
     #[arg(
         long,
         default_value_t = 1,
@@ -154,6 +160,16 @@ struct Source {
     selection: selection::Plan,
 }
 
+fn has_deferred_full_scan(record: &Value) -> bool {
+    record["capture_deferred"]
+        .as_object()
+        .is_some_and(|profiles| {
+            profiles.values().any(|sheets| {
+                sheets.as_array().is_some_and(|indices| !indices.is_empty())
+            })
+        })
+}
+
 pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result<()> {
     match run_inner(args, log_level) {
         Err(error) if error.is::<control_room::StopRequested>() => {
@@ -165,6 +181,10 @@ pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result
 }
 
 fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
+    ensure!(
+        !args.full_scan_deferred || args.resident_capture,
+        "--full-scan-deferred requires --resident-capture"
+    );
     ensure!(
         args.comparison_workers > 0 || args.control_room,
         "zero comparison groups require --control-room so the run can be resumed"
@@ -474,6 +494,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         manifest,
         json!({
             "prepare_only":args.prepare_only,"compare_only":args.compare_only,
+            "full_scan_deferred":args.full_scan_deferred,
             "resident_capture":args.resident_capture,"comparison_workers":args.comparison_workers,
             "hide_excel":args.hide_excel,
             "control_room":args.control_room,"control_room_port":args.control_room_port,
@@ -509,8 +530,141 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
     let mut limited = false;
     let mut missing_prepared = false;
     let producer = artifact_cache::hash_file(&std::env::current_exe()?)?;
-    for source in &sources {
-        let mut drained_ids = HashSet::new();
+    // Freeze each source's pending selection before preparation changes records.
+    // The comparison pass must use the same workbooks even if preparation skips one.
+    let selected_by_source: Vec<Vec<(usize, String)>> = sources
+        .iter()
+        .map(|source| {
+            if args.diagnose_whitespace_only {
+                return Vec::new();
+            }
+            let mut pending = if args.full_scan_deferred {
+                selection::ordered_members(source, args.order)
+                    .into_iter()
+                    .filter(|(index, name)| {
+                        let id = identity(source, *index, name);
+                        records.iter().find(|record| record["identity"] == id)
+                            .is_some_and(has_deferred_full_scan)
+                    })
+                    .collect()
+            } else {
+                selection::pending_members(
+                    source,
+                    &records,
+                    args.order,
+                    args.should_retry_skipped(),
+                )
+            };
+            // A completed result from an older build can be in the selected
+            // partition but lack the shrink evidence needed by this workflow.
+            // Prepare it again instead of silently treating it as eligible.
+            if !args.full_scan_deferred && !args.compare_only {
+                let queued: HashSet<_> = pending.iter().map(|(index, _)| *index).collect();
+                pending.extend(selection::ordered_members(source, args.order)
+                    .into_iter()
+                    .filter(|(index, name)| {
+                        if queued.contains(index) {
+                            return false;
+                        }
+                        let id = identity(source, *index, name);
+                        records.iter().find(|record| record["identity"] == id)
+                            .is_some_and(|record| {
+                                matches!(record["status"].as_str(),
+                                    Some("unchanged" | "differences" | "paused-for-later"
+                                        | "crc-identical" | "workbook-only"))
+                                    && !has_required_shrink_evidence(record)
+                            })
+                    }));
+            }
+            let count = args
+                .limit
+                .map(|n| n as usize)
+                .unwrap_or(pending.len())
+                .min(pending.len());
+            limited |= count < pending.len();
+            pending.into_iter().take(count).collect()
+        })
+        .collect();
+    let current_work: HashSet<String> = sources.iter().zip(&selected_by_source)
+        .flat_map(|(source, selected)| selected.iter()
+            .map(|(index, name)| identity(source, *index, name)))
+        .collect();
+    let completed_ids: HashSet<&str> = records.iter()
+        .filter(|record| record["complete"] == true)
+        .filter_map(|record| record["identity"].as_str())
+        .collect();
+    let selected_ids: HashSet<String> = sources.iter()
+        .flat_map(|source| source.members.iter()
+            .filter(|(index, _)| source.selection.contains(*index))
+            .map(|(index, name)| identity(source, *index, name)))
+        .filter(|id| !limited || current_work.contains(id) || completed_ids.contains(id.as_str()))
+        .collect();
+    progress::set_selection(&output, &selected_ids);
+    if !args.compare_only && !args.diagnose_whitespace_only {
+        preparation::run_all(
+            &sources,
+            &selected_by_source,
+            &args,
+            &manifest_hash,
+            &producer,
+            &output,
+            &mut records,
+            &corpus_info,
+            &limits,
+            &run,
+            log_level,
+            limited,
+        )?;
+    }
+    let mut visual_scope_frozen = false;
+    // Comparison starts only after every selected preparation has finished.
+    for (source, selected) in sources.iter().zip(&selected_by_source) {
+        if !visual_scope_frozen && !args.diagnose_whitespace_only {
+            // Freeze eligibility only after every selected workbook has reached
+            // a terminal preparation result, including reused preparations.
+            let mut incomplete = Vec::new();
+            for (prepared_source, prepared_members) in sources.iter().zip(&selected_by_source) {
+                for (index, name) in prepared_members {
+                    ensure_record(&mut records, prepared_source, *index, name);
+                }
+            }
+            let mut observed = HashSet::new();
+            for record in &mut records {
+                let Some(id) = record["identity"].as_str().map(str::to_owned) else {
+                    continue;
+                };
+                if !selected_ids.contains(&id) {
+                    continue;
+                }
+                observed.insert(id.clone());
+                if classify_preparation(record) {
+                    write_record(&record_path(&output, &id), record)?;
+                }
+                if !record["preparation_disposition"].is_string() {
+                    let name = record["name"].as_str().unwrap_or("unknown workbook");
+                        if args.compare_only {
+                            record["preparation_disposition"] = json!("evidence_missing");
+                            record["status"] = json!("skipped");
+                            record["complete"] = json!(true);
+                            record["error"] = json!("No prepared bundle with required shrink evidence; run preparation with this build.");
+                            write_record(&record_path(&output, &id), record)?;
+                            missing_prepared = true;
+                        } else {
+                            incomplete.push(name.to_owned());
+                        }
+                }
+                progress::observe(&output, record);
+            }
+            incomplete.extend(selected_ids.difference(&observed).cloned());
+            if !incomplete.is_empty() {
+                publish_progress(&output, &records, &corpus_info, "preparation incomplete");
+                anyhow::bail!("Preparation ended before a terminal result for {} selected workbooks; first: {}",
+                    incomplete.len(), incomplete[0]);
+            }
+            progress::freeze_visual_scope(&output);
+            publish_progress(&output, &records, &corpus_info, "prepared");
+            visual_scope_frozen = true;
+        }
         // Freeze membership over the entire corpus before removing completed files.
         let members = selection::ordered_members(source, args.order);
         // Completed differences get their missing causal diagnosis before new work.
@@ -561,22 +715,9 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         if args.diagnose_whitespace_only {
             continue;
         }
-        let selected = selection::pending_members(
-            source,
-            &records,
-            args.order,
-            args.should_retry_skipped(),
-        );
-        let count = args
-            .limit
-            .map(|n| n as usize)
-            .unwrap_or(selected.len())
-            .min(selected.len());
-        limited |= count < selected.len();
-        let selected = &selected[..count];
         // Control-room admission already archives its previous attempts. Keep
         // the same history for CLI retries before preparation clears old errors.
-        if !args.control_room {
+        if !args.control_room && args.compare_only {
             for (index, name) in selected {
                 let id = identity(source, *index, name);
                 if let Some(record) = records.iter().find(|record| {
@@ -588,112 +729,21 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                 }
             }
         }
-        // Save reviewed compatibility before starting any new workbook. A later
-        // interruption can then resume normally without repeating the CLI flag.
-        if !args.reuse_prepared_from.is_empty() {
-            for (index, name) in selected {
-                let id = identity(source, *index, name);
-                let pos = ensure_record(&mut records, source, *index, name);
-                if records[pos]["prepared_by"] != producer
-                    && records[pos]["preparation_accepted_by"] != producer
-                    && reusable_preparation(
-                        &records[pos],
-                        &bundle_path(&output, &id),
-                        &producer,
-                        &source.fingerprint,
-                        &args.reuse_prepared_from,
-                    )
-                {
-                    records[pos]["preparation_accepted_by"] = json!(producer);
-                    write_record(&record_path(&output, &id), &records[pos])?;
-                }
-            }
-        }
-        if !args.compare_only {
-            let mut reused = 0;
-            for (index, name) in selected {
-                let id = identity(source, *index, name);
-                let pos = ensure_record(&mut records, source, *index, name);
-                let bundle = bundle_path(&output, &id);
-                if reusable_preparation(
-                    &records[pos],
-                    &bundle,
-                    &producer,
-                    &source.fingerprint,
-                    &args.reuse_prepared_from,
-                ) {
-                    reused += 1;
-                    continue;
-                }
-                records[pos]
-                    .as_object_mut()
-                    .unwrap()
-                    .remove("preparation_accepted_by");
-                records[pos]["prepared_by"] = json!(producer);
-                records[pos]["source_fingerprint"] = json!(source.fingerprint);
-                records[pos]["run_selection"] = source.selection.provenance(
-                    *index,
-                    &source.id,
-                    &source.fingerprint,
-                    &manifest_hash,
-                    args.order,
-                );
-                process(
-                    source,
-                    *index,
-                    &id,
-                    pos,
-                    JobMode::Prepare,
-                    &output,
-                    &mut records,
-                    &corpus_info,
-                    &limits,
-                    &run,
-                    log_level,
-                )?;
-                // A drain requested during shrinking finishes this already
-                // begun workbook, including its visual controls, before pausing.
-                if args.control_room
-                    && !args.prepare_only
-                    && records[pos]["prepared"] == true
-                    && (control_room::Controls::read(&output.join("control-room"))?.target_groups
-                        == 0 || control_room::stop_requested(&output.join("control-room")))
-                {
-                    records[pos]["compared_by"] = json!(producer);
-                    scheduler::finish_preparing_workbook(
-                        source,
-                        scheduler::Comparison {
-                            index: *index,
-                            id: id.clone(),
-                            position: pos,
-                        },
-                        &output,
-                        &mut records,
-                        &corpus_info,
-                        &limits,
-                        &run,
-                        log_level,
-                    )?;
-                    drained_ids.insert(id);
-                }
-            }
-            if reused > 0 {
-                eprintln!(
-                    "[study] {}: reused {reused} prepared workbooks",
-                    source.name
-                );
-            }
-        }
         if !args.prepare_only {
             let mut comparisons = Vec::new();
             for (index, name) in selected {
                 let id = identity(source, *index, name);
-                // A drain already completed this invocation's attempt. Skipped
-                // comparisons retain their ZIP, but must not run twice here.
-                if drained_ids.contains(&id) {
+                let pos = ensure_record(&mut records, source, *index, name);
+                if records[pos]["preparation_disposition"] != "needs_visual" {
+                    if args.compare_only
+                        && (records[pos]["preparation_disposition"].is_null()
+                            || records[pos]["preparation_disposition"] == "evidence_missing")
+                    {
+                        eprintln!("[study] Not prepared with required evidence: {name}");
+                        missing_prepared = true;
+                    }
                     continue;
                 }
-                let pos = ensure_record(&mut records, source, *index, name);
                 if !reusable_preparation(
                     &records[pos],
                     &bundle_path(&output, &id),
@@ -708,6 +758,9 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                     continue;
                 }
                 records[pos]["compared_by"] = json!(producer);
+                if args.full_scan_deferred {
+                    records[pos]["full_scan_deferred"] = json!(true);
+                }
                 records[pos]["run_selection"] = source.selection.provenance(
                     *index,
                     &source.id,
@@ -733,6 +786,22 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                 log_level,
             )?;
         }
+    }
+    if args.control_room
+        && args.resident_capture
+        && !args.prepare_only
+        && !args.diagnose_whitespace_only
+        && !args.full_scan_deferred
+    {
+        scheduler::await_deferred_manual(
+            &sources,
+            &output,
+            &mut records,
+            &corpus_info,
+            &limits,
+            &run,
+            log_level,
+        )?;
     }
     if args.control_room {
         control_room::check_stop(&output.join("control-room"))?;
@@ -936,8 +1005,85 @@ fn publish(
         &output.join("diagnosis.json"),
         &serde_json::to_vec_pretty(&report)?,
     )?;
+    if phase != "loading archives" && phase != "selection ready" {
+        write_workbook_index(output, &records)?;
+    }
     ledger::write(output, &records)?;
     diagnosis_report::write(output, &report).map(|_| ())
+}
+
+fn has_marked_sheets(value: &Value) -> bool {
+    match value {
+        Value::Array(items) => !items.is_empty(),
+        Value::Object(fields) => fields.values().any(has_marked_sheets),
+        _ => false,
+    }
+}
+
+fn fully_visually_identical(record: &Value) -> bool {
+    if record["status"] != "unchanged"
+        || record["preparation_disposition"] != "needs_visual"
+        || !has_required_shrink_evidence(record)
+        || has_marked_sheets(&record["capture_deferred"])
+    {
+        return false;
+    }
+    let Some(profiles) = record["results"].as_array() else {
+        return false;
+    };
+    let mut visually_checked = 0;
+    let all_complete = profiles.iter().all(|profile| {
+        let shrink = &profile["shrink_identity"];
+        if shrink["workbook_original_archive_reused"] == true
+            || shrink["workbook_only_cleanup_available"] == true
+        {
+            return true;
+        }
+        visually_checked += 1;
+        profile["checks_complete"] == true
+            && profile["status"] == "visually unchanged"
+            && profile["failures"].as_array().is_none_or(|errors| errors.is_empty())
+    });
+    all_complete && visually_checked > 0
+}
+
+fn write_workbook_index(output: &Path, records: &[Value]) -> Result<()> {
+    let Some((run_id, selected, visual_scope_frozen)) = progress::selection_scope(output) else {
+        return Ok(());
+    };
+    let workbooks: Vec<_> = records.iter().filter_map(|record| {
+        let identity = record["identity"].as_str()?;
+        if !selected.contains(identity) {
+            return None;
+        }
+        let available = record["prepared"] == true && bundle_path(output, identity).is_file();
+        let visually_identical = fully_visually_identical(record);
+        let has_reused_comparison = record["results"].as_array().is_some_and(|profiles| profiles.iter()
+            .any(|profile| profile["comparison_reused_from"].is_string()));
+        Some(json!({
+            "id":control_room::group_id(identity),
+            "name":record["name"],"corpus":record["corpus_name"],
+            "preparation_disposition":record["preparation_disposition"],
+            "reason_code":record["namespace_exclusion"]["code"].as_str()
+                .or_else(|| record["preparation_disposition"].as_str()),
+            "status":record["status"],"error":record["error"],
+            "crc_equal_after_shrink":record["preparation_disposition"] == "crc_unchanged",
+            "visually_identical":visually_identical,
+            "differences_found":record["status"] == "differences",
+            "has_capture_deferred":has_marked_sheets(&record["capture_deferred"]),
+            "has_recalc_identity_changed":has_marked_sheets(&record["recalc_identity_changed"]),
+            "has_reused_comparison":has_reused_comparison,
+            "baseline_repaired":record["baseline_repaired"],
+            "source_format":record["source_format"],
+            "profile_equivalence":record["profile_equivalence"],
+            "available_variants":{"original":available,"default":available,
+                "maximum-cleaning":available,"too-aggressive-cleaning":available}
+        }))
+    }).collect();
+    let index = json!({"version":1,"run_id":run_id,
+        "visual_scope_frozen":visual_scope_frozen,"workbooks":workbooks});
+    artifact_cache::atomic_write(&output.join("control-room/workbook-index.json"),
+        &serde_json::to_vec(&index)?)
 }
 
 pub(super) fn run_job(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
@@ -1001,6 +1147,7 @@ fn reusable_preparation(
                 .iter()
                 .any(|hash| record["prepared_by"] == *hash))
         && record["source_fingerprint"] == source
+        && has_required_shrink_evidence(record)
         && prepared::PROFILES.iter().all(|name| {
             let config = &predefined_visual_profiles()
                 .iter()
@@ -1014,6 +1161,116 @@ fn reusable_preparation(
                         .any(|p| p["profile"] == *name && p["config_hash"] == config.config_hash())
             })
         })
+}
+
+fn has_required_shrink_evidence(record: &Value) -> bool {
+    let Some(profiles) = record["results"].as_array() else {
+        return false;
+    };
+    prepared::PROFILES.iter().all(|name| {
+        let Some(profile) = profiles.iter().find(|profile| profile["profile"] == *name) else {
+            return false;
+        };
+        let evidence = &profile["shrink_identity"];
+        evidence["workbook_original_archive_reused"].is_boolean()
+            && evidence["workbook_only_cleanup_available"].is_boolean()
+            && evidence["worksheet_xml_changed"].is_boolean()
+            && evidence["cleaned_package_crc_length_sha256"].as_str().is_some_and(|hash| hash.len() == 64)
+            && evidence["workbook_xml_cleaned_entries"].is_array()
+            && evidence["sheets"].is_object()
+            && profile["cleanup_analysis"].is_object()
+    })
+}
+
+fn invalidate_preparation_claim(record: &mut Value) {
+    let fields = record.as_object_mut().expect("workbook record is an object");
+    for name in [
+        "preparation_accepted_by",
+        "preparation_disposition",
+        "namespace_exclusion",
+        "profile_equivalence",
+        "package_identity",
+    ] {
+        fields.remove(name);
+    }
+    record["prepared"] = json!(false);
+    record["complete"] = json!(false);
+    record["results"] = json!([]);
+    record["shrink_identity"] = json!({});
+    record["cleanup_analysis"] = json!({});
+    record["baseline_repaired"] = Value::Null;
+}
+
+fn classify_preparation(record: &mut Value) -> bool {
+    if record["namespace_exclusion"].is_object() {
+        if record["preparation_disposition"] == "unsupported_namespace" {
+            return false;
+        }
+        record["preparation_disposition"] = json!("unsupported_namespace");
+        record["complete"] = json!(true);
+        return true;
+    }
+
+    if record["prepared"] == true {
+        if !has_required_shrink_evidence(record) {
+            if record["preparation_disposition"] == "evidence_missing" {
+                return false;
+            }
+            record["preparation_disposition"] = json!("evidence_missing");
+            record["status"] = json!("skipped");
+            record["error"] = json!("Prepared workbook lacks required shrink evidence; prepare it again with this build.");
+            record["complete"] = json!(true);
+            return true;
+        }
+        let identities: Vec<_> = record["results"].as_array().unwrap().iter()
+            .filter_map(|profile| profile["profile"].as_str()
+                .map(|name| (name.to_owned(), profile["shrink_identity"].clone())))
+            .collect();
+        record["shrink_identity"] = json!({});
+        for (name, identity) in identities {
+            record["shrink_identity"][name] = identity;
+        }
+        let nonvisual = prepared::finalize_nonvisual_preparation(record);
+        let disposition = if nonvisual {
+            if record["status"] == "workbook-only" { "workbook_only" } else { "crc_unchanged" }
+        } else {
+            "needs_visual"
+        };
+        if !nonvisual
+            && record["complete"] == true
+            && matches!(record["status"].as_str(),
+                Some("unchanged" | "differences" | "paused-for-later" | "skipped"))
+        {
+            if record["preparation_disposition"] == "needs_visual" {
+                return false;
+            }
+            record["preparation_disposition"] = json!("needs_visual");
+            return true;
+        }
+        let already_classified = record["preparation_disposition"] == disposition
+            && record["complete"] == nonvisual
+            && (nonvisual || record["status"] == "prepared");
+        if already_classified {
+            return false;
+        }
+        record["preparation_disposition"] = json!(disposition);
+        record["complete"] = json!(nonvisual);
+        if !nonvisual {
+            record["status"] = json!("prepared");
+            record["error"] = Value::Null;
+        }
+        return true;
+    }
+
+    if record["status"] == "skipped" {
+        if record["preparation_disposition"] == "preparation_failed" {
+            return false;
+        }
+        record["preparation_disposition"] = json!("preparation_failed");
+        record["complete"] = json!(true);
+        return true;
+    }
+    false
 }
 
 fn verified_unchanged(record: &Value) -> bool {

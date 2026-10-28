@@ -1,6 +1,8 @@
 use super::visual_diagnostics;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+#[cfg(not(windows))]
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{self, BufReader, Read, Write};

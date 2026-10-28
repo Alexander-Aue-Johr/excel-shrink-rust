@@ -31,6 +31,10 @@ pub(super) fn check_stop(root: &Path) -> Result<()> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(super) struct Controls {
     pub target_groups: usize,
+    #[serde(default = "default_prepare_processes")]
+    pub prepare_processes: usize,
+    #[serde(default = "logical_cores")]
+    pub shrink_threads: usize,
     pub paused: bool,
     #[serde(default = "default_system_reserve_mib")]
     pub system_reserve_mib: u64,
@@ -45,11 +49,23 @@ pub(super) struct Controls {
     pub tall_sheet_threshold: u32,
     #[serde(default = "default_tall_sheet_edges")]
     pub tall_sheet_edge_tiles: u32,
+    #[serde(default = "default_crc_equal_sheet_threshold_mib")]
+    pub crc_equal_sheet_threshold_mib: u32,
     #[serde(default)]
     pub hide_excel: bool,
 }
 
 pub(super) const DEFAULT_SYSTEM_RESERVE_MIB: u64 = 1024;
+
+fn logical_cores() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1)
+}
+
+fn default_prepare_processes() -> usize {
+    1
+}
 
 fn default_system_reserve_mib() -> u64 {
     DEFAULT_SYSTEM_RESERVE_MIB
@@ -101,6 +117,9 @@ fn default_tall_sheet_threshold() -> u32 {
 fn default_tall_sheet_edges() -> u32 {
     2
 }
+fn default_crc_equal_sheet_threshold_mib() -> u32 {
+    256
+}
 
 fn tall_sheet_setting(name: &str, fallback: u32) -> Result<u32> {
     let value = match std::env::var(name) {
@@ -120,6 +139,12 @@ fn tall_sheet_setting(name: &str, fallback: u32) -> Result<u32> {
 impl Controls {
     pub fn read(root: &Path) -> Result<Self> {
         let value: Self = serde_json::from_slice(&fs::read(root.join("control.json"))?)?;
+        let max = logical_cores();
+        ensure!(
+            (1..=max).contains(&value.prepare_processes)
+                && (1..=max).contains(&value.shrink_threads),
+            "preparation processes and shrink threads must each be between 1 and {max}"
+        );
         validate_system_reserve_mib(value.system_reserve_mib)?;
         ensure!(
             value.open_timeout_seconds > 0 && value.job_timeout_seconds > 0,
@@ -139,7 +164,8 @@ impl Controls {
         );
         ensure!(
             (1..=i32::MAX as u32).contains(&value.tall_sheet_threshold)
-                && (1..=i32::MAX as u32).contains(&value.tall_sheet_edge_tiles),
+                && (1..=i32::MAX as u32).contains(&value.tall_sheet_edge_tiles)
+                && (1..=i32::MAX as u32).contains(&value.crc_equal_sheet_threshold_mib),
             "tall sheet settings must be positive 32-bit integers"
         );
         Ok(value)
@@ -190,6 +216,37 @@ pub(super) fn begin_serial(
     mode: JobMode,
     run: &Value,
 ) -> Result<()> {
+    begin_job(output, source, id, record, mode, run, 1)
+}
+
+pub(super) fn begin_preparation(
+    output: &Path,
+    source: &Source,
+    id: &str,
+    record: &mut Value,
+    run: &Value,
+    active_count: usize,
+) -> Result<()> {
+    begin_job(
+        output,
+        source,
+        id,
+        record,
+        JobMode::Prepare,
+        run,
+        active_count,
+    )
+}
+
+fn begin_job(
+    output: &Path,
+    source: &Source,
+    id: &str,
+    record: &mut Value,
+    mode: JobMode,
+    run: &Value,
+    active_count: usize,
+) -> Result<()> {
     let root = output.join("control-room");
     archive_record(&root, id, record)?;
     let attempt = provenance::new_uuid()?;
@@ -209,7 +266,9 @@ pub(super) fn begin_serial(
     let mut group = json!({"id":group_id(id),"workbook":record["name"],"corpus":source.name,
         "attempt_id":attempt,"run_id":run["run_id"],"active":true,"restart_eligible":false,
         "status":status,"sequence":groups.len()+1,
-        "started_unix_ms":record["control_room_attempt"]["started_unix_ms"]});
+        "started_unix_ms":record["control_room_attempt"]["started_unix_ms"],
+        "capture_deferred":record["capture_deferred"],
+        "recalc_identity_changed":record["recalc_identity_changed"]});
     if mode == JobMode::Compare {
         group["capture_mode"] = json!("classic");
     }
@@ -224,14 +283,27 @@ pub(super) fn begin_serial(
     } else {
         "comparing"
     });
-    queue["open_groups"] = json!(1);
-    queue["working_groups"] = json!(1);
+    queue["open_groups"] = json!(active_count);
+    queue["working_groups"] = json!(active_count);
     queue["cleanup_groups"] = json!(0);
     queue["updated_unix_ms"] = json!(provenance::now_ms());
     write(&root.join("queue.json"), &queue)
 }
 
 pub(super) fn finish_serial(output: &Path, id: &str, record: &Value) -> Result<()> {
+    finish_job(output, id, record, 0)
+}
+
+pub(super) fn finish_preparation(
+    output: &Path,
+    id: &str,
+    record: &Value,
+    active_count: usize,
+) -> Result<()> {
+    finish_job(output, id, record, active_count)
+}
+
+fn finish_job(output: &Path, id: &str, record: &Value, active_count: usize) -> Result<()> {
     let path = output.join("control-room/queue.json");
     let mut queue = read_json(&path).context("missing control room queue")?;
     if let Some(group) = queue["groups"]
@@ -240,12 +312,28 @@ pub(super) fn finish_serial(output: &Path, id: &str, record: &Value) -> Result<(
     {
         group["active"] = json!(false);
         group["status"] = record["status"].clone();
+        group["capture_deferred"] = record["capture_deferred"].clone();
+        group["recalc_identity_changed"] = record["recalc_identity_changed"].clone();
     }
-    queue["open_groups"] = json!(0);
-    queue["working_groups"] = json!(0);
+    queue["open_groups"] = json!(active_count);
+    queue["working_groups"] = json!(active_count);
     queue["cleanup_groups"] = json!(0);
     queue["updated_unix_ms"] = json!(provenance::now_ms());
     write(&path, &queue)
+}
+
+// Detailed shrink evidence already lives in each workbook record and is loaded
+// by /api/groups/{id}. Keeping another copy in every queue summary makes each
+// new workbook admission rewrite many megabytes of unrelated sheet data.
+fn compact_group_summaries(queue: &mut Value) {
+    if let Some(groups) = queue["groups"].as_array_mut() {
+        for group in groups {
+            if let Some(fields) = group.as_object_mut() {
+                fields.remove("shrink_identity");
+                fields.remove("cleanup_analysis");
+            }
+        }
+    }
 }
 
 impl Room {
@@ -255,6 +343,14 @@ impl Room {
         let previous_controls = Controls::read(&root).ok();
         let controls = Controls {
             target_groups: args.comparison_workers,
+            prepare_processes: previous_controls
+                .as_ref()
+                .map(|old| old.prepare_processes)
+                .unwrap_or_else(default_prepare_processes),
+            shrink_threads: previous_controls
+                .as_ref()
+                .map(|old| old.shrink_threads)
+                .unwrap_or_else(logical_cores),
             paused: false,
             system_reserve_mib: initial_system_reserve_mib(
                 read_json(&root.join("control.json")).as_ref(),
@@ -289,6 +385,13 @@ impl Room {
                     .as_ref()
                     .map(|old| old.tall_sheet_edge_tiles)
                     .unwrap_or_else(default_tall_sheet_edges),
+            )?,
+            crc_equal_sheet_threshold_mib: tall_sheet_setting(
+                "EXCEL_SHRINK_CRC_EQUAL_SHEET_THRESHOLD_MIB",
+                previous_controls
+                    .as_ref()
+                    .map(|old| old.crc_equal_sheet_threshold_mib)
+                    .unwrap_or_else(default_crc_equal_sheet_threshold_mib),
             )?,
             // The launcher supplies the saved visibility choice explicitly.
             // A previous hidden run must not override today's unchecked box.
@@ -377,6 +480,7 @@ impl Room {
         )?;
         let mut queue =
             read_json(&room.root.join("queue.json")).unwrap_or_else(|| json!({"groups":[]}));
+        compact_group_summaries(&mut queue);
         queue.as_object_mut().context("invalid control room queue")?.remove("startup");
         queue["run_id"] = run["run_id"].clone();
         queue["machine_id"] = run["machine_id"].clone();
@@ -590,6 +694,21 @@ pub(super) fn wait_for_admission(output: &Path, phase: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queue_compaction_keeps_group_state_but_drops_record_evidence() {
+        let mut queue = json!({"groups":[{"id":"one","active":true,
+            "capture_deferred":{"default":true},
+            "shrink_identity":{"default":{"sheets":{"sheet1.xml":{"crc32":123}}}},
+            "cleanup_analysis":{"default":{"rows":[{"removed_bytes":42}]}}}]});
+        compact_group_summaries(&mut queue);
+        let group = &queue["groups"][0];
+        assert_eq!(group["id"], "one");
+        assert_eq!(group["active"], true);
+        assert_eq!(group["capture_deferred"]["default"], true);
+        assert!(group.get("shrink_identity").is_none());
+        assert!(group.get("cleanup_analysis").is_none());
+    }
 
     #[test]
     fn classic_retry_has_its_own_attempt_and_finishes_before_report_publication() -> Result<()> {
@@ -838,6 +957,8 @@ mod tests {
         write(&root.join("control.json"), &value)?;
         let legacy = Controls::read(&root)?;
         assert_eq!(legacy.target_groups, 128);
+        assert_eq!(legacy.prepare_processes, 1);
+        assert_eq!(legacy.shrink_threads, logical_cores());
         assert_eq!(legacy.system_reserve_mib, 1024);
         assert_eq!(legacy.capture_tile_megapixels, 32);
         assert_eq!(legacy.capture_batch_tiles, 1);
@@ -862,12 +983,27 @@ mod tests {
                 "accepted invalid {key}={bad}"
             );
         }
+        for key in ["prepare_processes", "shrink_threads"] {
+            for bad in [0, logical_cores() + 1] {
+                let mut invalid = value.clone();
+                invalid[key] = json!(bad);
+                write(&root.join("control.json"), &invalid)?;
+                assert!(
+                    Controls::read(&root).is_err(),
+                    "accepted invalid {key}={bad}"
+                );
+            }
+        }
+        value["prepare_processes"] = json!(logical_cores());
+        value["shrink_threads"] = json!(1);
         value["target_groups"] = json!(0);
         value["tall_sheet_threshold"] = json!(75);
         value["tall_sheet_edge_tiles"] = json!(3);
         write(&root.join("control.json"), &value)?;
         let updated = Controls::read(&root)?;
         assert_eq!(updated.target_groups, 0);
+        assert_eq!(updated.prepare_processes, logical_cores());
+        assert_eq!(updated.shrink_threads, 1);
         assert_eq!(updated.tall_sheet_threshold, 75);
         assert_eq!(updated.tall_sheet_edge_tiles, 3);
         value["job_timeout_seconds"] = json!(0);

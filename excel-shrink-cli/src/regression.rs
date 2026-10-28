@@ -1019,6 +1019,7 @@ fn run_suite(
                 keep_screenshots: args.keep_screenshots,
                 ..Default::default()
             },
+            false,
             console_log_level,
             &case,
         );
@@ -1352,6 +1353,7 @@ fn run_case(
     excel_recalc_check: bool,
     excel_screenshot_check: bool,
     visual_options: &visual_validation::VisualCheckOptions,
+    defer_xml_analysis: bool,
     console_log_level: LogLevel,
     case: &RegressionCase,
 ) -> anyhow::Result<CaseReport> {
@@ -1409,13 +1411,17 @@ fn run_case(
                 failures.push(format!("output history failed: {error:#}"));
             }
         }
-        if let Err(error) = excel_automation::replace_workbook_with_shared_cache_link(
-            &output_path,
-            &case_output_dir,
-        ) {
-            failures.push(format!(
-                "failed to link cleaned workbook through shared cache: {error:#}"
-            ));
+        // An analysis-only run may need only its CSV and output hash.
+        // Keep its temporary workbook out of the persistent shared cache.
+        if !(defer_xml_analysis && analysis_mode) {
+            if let Err(error) = excel_automation::replace_workbook_with_shared_cache_link(
+                &output_path,
+                &case_output_dir,
+            ) {
+                failures.push(format!(
+                    "failed to link cleaned workbook through shared cache: {error:#}"
+                ));
+            }
         }
     }
 
@@ -1432,11 +1438,13 @@ fn run_case(
     let mut excel_recalc_details = None;
     let mut excel_screenshot_details = None;
 
-    match workbook_uncompressed_bytes(&input) {
-        Ok(bytes) => original_uncompressed_bytes = Some(bytes),
-        Err(error) => failures.push(format!(
-            "original workbook uncompressed size analysis failed: {error:#}"
-        )),
+    if !defer_xml_analysis {
+        match workbook_uncompressed_bytes(&input) {
+            Ok(bytes) => original_uncompressed_bytes = Some(bytes),
+            Err(error) => failures.push(format!(
+                "original workbook uncompressed size analysis failed: {error:#}"
+            )),
+        }
     }
 
     if output_path.exists() {
@@ -1448,22 +1456,24 @@ fn run_case(
         };
         cleaned_bytes = Some(output_bytes);
         reduction_ratio = Some(ratio);
-        match workbook_uncompressed_bytes(&output_path) {
-            Ok(bytes) => {
-                cleaned_uncompressed_bytes = Some(bytes);
-                uncompressed_reduction_ratio =
-                    original_uncompressed_bytes.map(|original| ratio_reduced(original, bytes));
+        if !defer_xml_analysis {
+            match workbook_uncompressed_bytes(&output_path) {
+                Ok(bytes) => {
+                    cleaned_uncompressed_bytes = Some(bytes);
+                    uncompressed_reduction_ratio =
+                        original_uncompressed_bytes.map(|original| ratio_reduced(original, bytes));
+                }
+                Err(error) => failures.push(format!(
+                    "cleaned workbook uncompressed size analysis failed: {error:#}"
+                )),
             }
-            Err(error) => failures.push(format!(
-                "cleaned workbook uncompressed size analysis failed: {error:#}"
-            )),
-        }
-        match sheet_size_details_by_uncompressed_xml(&input, &output_path) {
-            Ok(details) => {
-                top_sheet_reductions = top_sheet_reductions_from_details(&details, 5);
-                sheet_size_details = details;
+            match sheet_size_details_by_uncompressed_xml(&input, &output_path) {
+                Ok(details) => {
+                    top_sheet_reductions = top_sheet_reductions_from_details(&details, 5);
+                    sheet_size_details = details;
+                }
+                Err(error) => failures.push(format!("sheet reduction analysis failed: {error:#}")),
             }
-            Err(error) => failures.push(format!("sheet reduction analysis failed: {error:#}")),
         }
 
         if let Some(max_output_bytes) = case.max_output_bytes {

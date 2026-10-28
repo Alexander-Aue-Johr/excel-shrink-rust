@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn deferred_full_scan_requires_an_explicit_comparison_run() -> Result<()> {
+    assert!(StudyArgs::try_parse_from(["study", "--full-scan-deferred"]).is_err());
+    let args = StudyArgs::try_parse_from([
+        "study", "--compare-only", "--resident-capture", "--full-scan-deferred",
+    ])?;
+    assert!(args.full_scan_deferred);
+    assert!(has_deferred_full_scan(&json!({
+        "capture_deferred": {"default": [1], "maximum-cleaning": []}
+    })));
+    assert!(!has_deferred_full_scan(&json!({
+        "capture_deferred": {"default": [], "maximum-cleaning": []}
+    })));
+    Ok(())
+}
+
+#[test]
 fn skipped_retries_default_on_with_compatible_flag_and_explicit_opt_out() -> Result<()> {
     let defaults = StudyArgs::try_parse_from(["study"])?;
     assert!(defaults.retry_skipped);
@@ -103,11 +119,19 @@ fn reviewed_build_reuse_still_requires_matching_source_and_profiles() -> Result<
                 .iter()
                 .find(|p| p.name == *name)
                 .unwrap();
-            json!({"profile":name,"config_hash":profile.config.config_hash()})
+            json!({"profile":name,"config_hash":profile.config.config_hash(),
+                "shrink_identity":{"workbook_original_archive_reused":false,
+                    "workbook_only_cleanup_available":false,"worksheet_xml_changed":true,
+                    "cleaned_package_crc_length_sha256":"a".repeat(64),
+                    "workbook_xml_cleaned_entries":[],"sheets":{}},
+                "cleanup_analysis":{"status":"complete"}})
         })
         .collect();
     let record = json!({"prepared":true,"prepared_by":old_build,"source_fingerprint":"catalog","results":profiles});
     let accepted = vec![old_build.clone()];
+    let mut legacy = record.clone();
+    legacy["results"][0].as_object_mut().unwrap().remove("shrink_identity");
+    assert!(!reusable_preparation(&legacy, &bundle, &old_build, "catalog", &[]));
     assert!(reusable_preparation(
         &record,
         &bundle,
@@ -199,6 +223,76 @@ fn reviewed_build_reuse_still_requires_matching_source_and_profiles() -> Result<
     ));
     fs::remove_dir_all(output)?;
     Ok(())
+}
+
+#[test]
+fn preparation_classification_excludes_nonvisual_workbooks_before_comparison() {
+    let make_record = |workbook_only: bool, changed_profile: Option<&str>| {
+        let profiles: Vec<_> = prepared::PROFILES.iter().map(|name| {
+            let changed = changed_profile == Some(*name);
+            json!({"profile":name,"shrink_identity":{
+                "workbook_original_archive_reused":!changed,
+                "workbook_only_cleanup_available":workbook_only && *name == "default",
+                "worksheet_xml_changed":changed,
+                "cleaned_package_crc_length_sha256":"a".repeat(64),
+                "workbook_xml_cleaned_entries":[],"sheets":{}},
+                "cleanup_analysis":{"status":"complete"}})
+        }).collect();
+        json!({"prepared":true,"status":"prepared","complete":false,"results":profiles})
+    };
+
+    let mut unchanged = make_record(false, None);
+    assert!(classify_preparation(&mut unchanged));
+    assert_eq!(unchanged["preparation_disposition"], "crc_unchanged");
+    assert_eq!(unchanged["status"], "crc-identical");
+    assert_eq!(unchanged["complete"], true);
+    assert_eq!(unchanged["checks_complete"], false);
+
+    let mut workbook_only = make_record(true, None);
+    assert!(classify_preparation(&mut workbook_only));
+    assert_eq!(workbook_only["preparation_disposition"], "workbook_only");
+    assert_eq!(workbook_only["status"], "workbook-only");
+    assert_eq!(workbook_only["complete"], true);
+
+    let mut changed = make_record(false, Some("maximum-cleaning"));
+    assert!(classify_preparation(&mut changed));
+    assert_eq!(changed["preparation_disposition"], "needs_visual");
+    assert_eq!(changed["complete"], false);
+    assert_eq!(changed["status"], "prepared");
+
+    // A resumed run may already hold a completed comparison. The global
+    // preparation barrier must not erase it before a new attempt is admitted.
+    changed["complete"] = json!(true);
+    changed["status"] = json!("paused-for-later");
+    assert!(!classify_preparation(&mut changed));
+    assert_eq!(changed["status"], "paused-for-later");
+    assert_eq!(changed["complete"], true);
+
+    let mut old_bundle = make_record(false, Some("maximum-cleaning"));
+    old_bundle["results"][0].as_object_mut().unwrap().remove("shrink_identity");
+    assert!(classify_preparation(&mut old_bundle));
+    assert_eq!(old_bundle["preparation_disposition"], "evidence_missing");
+    assert_eq!(old_bundle["status"], "skipped");
+}
+
+#[test]
+fn identical_kpi_requires_every_applicable_profile_to_be_fully_checked() {
+    let profiles: Vec<_> = prepared::PROFILES.iter().map(|name| json!({
+        "profile":name,"status":"visually unchanged","checks_complete":true,"failures":[],
+        "shrink_identity":{"workbook_original_archive_reused":false,
+            "workbook_only_cleanup_available":false,"worksheet_xml_changed":true,
+            "cleaned_package_crc_length_sha256":"a".repeat(64),
+            "workbook_xml_cleaned_entries":[],"sheets":{}},
+        "cleanup_analysis":{"status":"complete"}
+    })).collect();
+    let mut record = json!({"status":"unchanged","preparation_disposition":"needs_visual",
+        "results":profiles});
+    assert!(fully_visually_identical(&record));
+    record["results"][1]["checks_complete"] = json!(false);
+    assert!(!fully_visually_identical(&record));
+    record["results"][1]["checks_complete"] = json!(true);
+    record["capture_deferred"] = json!({"default":[7]});
+    assert!(!fully_visually_identical(&record));
 }
 
 #[test]

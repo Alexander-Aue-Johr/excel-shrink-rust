@@ -8,6 +8,7 @@ param(
     [string]$ExcelShrinkExe,
     [switch]$Build,
     [switch]$SkipBuild,
+    [switch]$FullScanDeferred,
     [switch]$NoBrowser
 )
 Set-StrictMode -Version Latest
@@ -45,7 +46,7 @@ function Open-CorpusObservatory([string]$Url) { Start-Process -FilePath $Url }
 function Start-SavedCorpusRun {
     param([string]$Repo, [string]$ConfigurationPath, [string]$Executable,
         [string]$Corpus, [string]$Partition, [string]$Order,
-        [switch]$Build, [switch]$SkipBuild, [switch]$NoBrowser,
+        [switch]$Build, [switch]$SkipBuild, [switch]$FullScanDeferred, [switch]$NoBrowser,
         [switch]$Standalone)
     if ($Build -and $SkipBuild) { throw 'Choose either -Build or -SkipBuild.' }
     if ([string]::IsNullOrWhiteSpace($Corpus) -or
@@ -96,6 +97,7 @@ function Start-SavedCorpusRun {
         if ($Order -notin @('size-asc','size-desc')) { throw 'Order must be size-asc or size-desc.' }
         $configuration.settings.order = $Order
     }
+    $configuration.settings | Add-Member -NotePropertyName full_scan_deferred -NotePropertyValue ([bool]$FullScanDeferred) -Force
     Assert-StudySettings $configuration.settings
     $output = Resolve-StudyPath $Repo $configuration.settings.output_root
     $url = "http://127.0.0.1:$($configuration.settings.control_room_port)/"
@@ -155,4 +157,4 @@ if ($Standalone -and -not [IO.File]::Exists($ConfigurationPath)) {
     throw 'No standalone deployment found. Prepare one from WSL with -PrepareStandalone.'
 }
 if (-not $ExcelShrinkExe) { $ExcelShrinkExe = Join-Path $repo 'target/release/excel-shrink-cli.exe' }
-$null = Start-SavedCorpusRun $repo $ConfigurationPath $ExcelShrinkExe -Corpus $Corpus -Partition $Partition -Order $Order -Build:$Build -SkipBuild:$SkipBuild -NoBrowser:$NoBrowser -Standalone:$Standalone
+$null = Start-SavedCorpusRun $repo $ConfigurationPath $ExcelShrinkExe -Corpus $Corpus -Partition $Partition -Order $Order -Build:$Build -SkipBuild:$SkipBuild -FullScanDeferred:$FullScanDeferred -NoBrowser:$NoBrowser -Standalone:$Standalone
