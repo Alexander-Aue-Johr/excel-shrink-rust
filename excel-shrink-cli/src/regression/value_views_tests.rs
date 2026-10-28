@@ -329,3 +329,45 @@ fn v9_benchmark_value_comparison() -> Result<()> {
     }
     println!("V9_VALUE_BENCHMARK {}",serde_json::json!({"synthetic":synthetic,"rows":rows,"left":a,"right":b,"allocation_instrumentation_enabled":track,"samples":samples}));Ok(())
 }
+
+#[test]
+fn converted_vba_placeholder_does_not_hide_real_sheet_relationship_errors() -> Result<()> {
+    let fixture = Fixture::new();
+    let path = fixture.0.join("converted.xlsx");
+    for (id, state, succeeds) in [
+        ("", "veryHidden", true),
+        ("", "hidden", false),
+        ("", "visible", false),
+        ("missing", "veryHidden", false),
+    ] {
+        let mut writer = zip::ZipWriter::new(fs::File::create(&path)?);
+        let options = zip::write::FileOptions::default();
+        let book = format!(r#"<workbook><sheets>
+            <sheet name="Data" r:id="rId1"/>
+            <sheet name="Module1" state="{state}" r:id="{id}"/>
+            </sheets><externalReferences><externalReference r:id="rId2"/></externalReferences></workbook>"#);
+        let rels = br#"<Relationships>
+            <Relationship Id="rId1" Target="worksheets/sheet1.xml"/>
+            <Relationship Id="rId2" Target="externalLinks/externalLink1.xml"/>
+            <Relationship Id="rId3" TargetMode="External" Target="file:///missing.xlsx"/>
+            </Relationships>"#;
+        for (name, bytes) in [
+            ("xl/workbook.xml", book.as_bytes()),
+            ("xl/_rels/workbook.xml.rels", rels.as_slice()),
+            ("xl/worksheets/sheet1.xml", b"<worksheet><sheetData><row r='1'><c r='A1'><v>42</v></c></row></sheetData></worksheet>".as_slice()),
+        ] {
+            writer.start_file(name, options)?;
+            writer.write_all(bytes)?;
+        }
+        writer.finish()?;
+        let result = compare_workbook_values(&path, &path, MissingCellPolicy::strict(), None);
+        if succeeds {
+            let report = result?;
+            assert_eq!(report.compared_sheets, 1);
+            assert_eq!(report.difference_count, 0);
+        } else {
+            assert!(result.unwrap_err().to_string().contains("unresolved sheet relationship"));
+        }
+    }
+    Ok(())
+}

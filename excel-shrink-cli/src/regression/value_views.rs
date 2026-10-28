@@ -457,6 +457,12 @@ fn read_order(zip: &mut ZipArchive<File>) -> Result<Vec<String>> {
         while let Some(tag) = reader.next()? {
             if tag.local() == b"sheet" && tag.kind != Kind::End {
                 let id = decode_attr(tag.attr(b"r:id")?.context("sheet relationship Id missing")?)?;
+                // Excel's XLS-to-XLSX conversion can leave a veryHidden VBA
+                // module placeholder with an explicitly empty relationship Id
+                // after removing macros. It has no worksheet XML to compare.
+                if id.is_empty() && tag.attr(b"state")? == Some(b"veryHidden".as_slice()) {
+                    continue;
+                }
                 let target = targets.get(&id).context("unresolved sheet relationship")?;
                 if cache::is_sheet(target) { order.push(target.clone()); }
             }
