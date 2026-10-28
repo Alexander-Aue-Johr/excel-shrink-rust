@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const MAX_IMAGE_PIXELS: u64 = 32_000_000;
+const MAX_IMAGE_PIXELS: u64 = 64_000_000;
 const CROP_MARGIN: u32 = 16;
 
 #[derive(Debug, Clone, Serialize)]

@@ -829,7 +829,7 @@ impl ResidentCapture {
                 "resident image outside session"
             );
             ensure!(
-                fs::metadata(&path)?.len() <= 160 * 1024 * 1024,
+                fs::metadata(&path)?.len() <= 512 * 1024 * 1024,
                 "resident PNG too large"
             );
             ensure!(
@@ -1365,7 +1365,7 @@ fn validate_snapshot(snapshot: &Snapshot, configs: &[Value]) -> Result<()> {
                 && tile.height > 0
                 && tile.width <= 30000
                 && tile.height <= 30000
-                && u64::from(tile.width) * u64::from(tile.height) <= 32_000_000
+                && u64::from(tile.width) * u64::from(tile.height) <= 64_000_000
                 && tile.sha256.len() == 64
                 && tile.sha256.bytes().all(|b| b.is_ascii_hexdigit()),
             "invalid resident tile metadata"
@@ -1380,8 +1380,8 @@ fn validate_snapshot(snapshot: &Snapshot, configs: &[Value]) -> Result<()> {
             .capture_pixels
             .max(u64::from(tile.width) * u64::from(tile.height));
         ensure!(
-            pixels <= 32_000_000
-                && tile.pixel_budget <= 32_000_000
+            pixels <= 64_000_000
+                && tile.pixel_budget <= 64_000_000
                 && (tile.pixel_budget == 0 || pixels <= tile.pixel_budget)
                 && match tile.capture_budget_fallback.as_deref() {
                     None => true,
@@ -1548,6 +1548,11 @@ mod tests {
         plan.tiles[0].pixel_budget = 4_000_000;
         plan.tiles[0].capture_budget_fallback = None;
         assert!(validate_snapshot(&plan, &config()).is_err());
+        plan.tiles[0].capture_pixels = 48_000_000;
+        plan.tiles[0].pixel_budget = 48_000_000;
+        validate_snapshot(&plan, &config())?;
+        plan.tiles[0].capture_pixels = 64_000_001;
+        assert!(validate_snapshot(&plan, &config()).is_err());
         Ok(())
     }
 
@@ -1626,7 +1631,7 @@ mod tests {
     #[test]
     fn capture_metadata_rejects_invalid_dimensions_hashes_and_tile_ids() {
         let good = snapshot(&[[0, 10], [10, 20]]);
-        for (width, height) in [(0, 60), (40, 0), (30_001, 1), (1, 30_001), (6_000, 6_000)] {
+        for (width, height) in [(0, 60), (40, 0), (30_001, 1), (1, 30_001), (8_001, 8_000)] {
             let mut bad = good.clone();
             bad.tiles[0].width = width;
             bad.tiles[0].height = height;

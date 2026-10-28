@@ -707,7 +707,7 @@ fn validate_image_path(
         "captured image is outside its output directory"
     );
     ensure!(
-        fs::metadata(&actual)?.len() <= 160 * 1024 * 1024,
+        fs::metadata(&actual)?.len() <= 512 * 1024 * 1024,
         "captured image is too large"
     );
     let reader = image::ImageReader::open(&actual)?.with_guessed_format()?;
@@ -723,7 +723,7 @@ fn validate_image_path(
             && height > 0
             && width <= 30_000
             && height <= 30_000
-            && u64::from(width) * u64::from(height) <= 32_000_000,
+            && u64::from(width) * u64::from(height) <= 64_000_000,
         "captured image exceeds image bounds"
     );
     Ok(actual)

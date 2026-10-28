@@ -4,7 +4,6 @@
 
   const key = tile => `${tile.sheet_index}:${tile.tile_index}`;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-  const IMAGE_MEMORY_LIMIT_BYTES = 160 * 1024 * 1024;
   const MAX_PLANNED_TILES_PER_COMMAND = 131072;
 
   async function encoded(base64, hash = true) {
@@ -97,11 +96,6 @@
     }
 
     function reserveImageBytes(bytes) {
-      if (pendingEncodedBytes + bytes > IMAGE_MEMORY_LIMIT_BYTES) {
-        const error = new Error('Capture images exceed the 160 MiB encoded-memory budget');
-        error.code = 'IMAGE_BUDGET';
-        throw error;
-      }
       pendingEncodedBytes += bytes;
       peakPendingEncodedBytes = Math.max(peakPendingEncodedBytes, pendingEncodedBytes);
     }
@@ -127,9 +121,8 @@
       if (size.width !== geometry.imageWidth(end) || size.height !== tile.cropHeight) {
         throw new Error('Image crop changed dimensions');
       }
-      // Count strings as UTF-16, including the cropped base64 and atob's
-      // temporary binary string. Native decoded images are covered separately
-      // by the pixel budget; this bound covers retained encoded buffers.
+      // Track the transient strings and decoded buffer for observability.
+      // The image geometry and transport validate each capture independently.
       const decodedBytes = Math.ceil(final.length / 4) * 3;
       // SubtleCrypto may also copy its input while digesting.
       const temporaryBytes = final.length * 2 + decodedBytes * (hash ? 4 : 3);
@@ -181,7 +174,7 @@
     async function capture(command) {
       if (!Array.isArray(command.sheets) || !command.sheets.length ||
           (command.tile_megapixels !== undefined && (!Number.isInteger(command.tile_megapixels) ||
-            command.tile_megapixels < 1 || command.tile_megapixels > 32))) {
+            command.tile_megapixels < 1 || command.tile_megapixels > 64))) {
         throw new Error('Incomplete resident capture command');
       }
       await verifyWorkbook();

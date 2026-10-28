@@ -341,7 +341,7 @@
     if (![x, y, width, height].every(Number.isInteger) || x < 0 || y < 0 || width < 1 || height < 1 ||
         x + width > size.width || y + height > size.height) throw new Error('Invalid image crop');
     // A complete tile is forwarded byte-for-byte. Reading its PNG header avoids
-    // decoding a potentially 32 MP bitmap just to discover no crop is needed.
+    // decoding a potentially 64 MP bitmap just to discover no crop is needed.
     if (x === 0 && y === 0 && width === size.width && height === size.height) return base64;
     const source = await loadImage(base64);
     const sourceWidth = source.naturalWidth, sourceHeight = source.naturalHeight;

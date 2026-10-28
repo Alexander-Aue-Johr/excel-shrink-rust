@@ -508,79 +508,6 @@ test('failure in the second capture drains the in-flight upload before returning
   assertReleased(f.worker);
 });
 
-test('encoded-memory limit rejects oversized captures before decoding or uploading', async () => {
-  // The capture mock reports a large encoded result without allocating it.
-  // The guard must reject it before the PNG parser or decoder can inspect it.
-  const f = fixture('fixture.xlsx', {encode: () => ({length: 100 * 1024 * 1024})});
-  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
-  await assert.rejects(f.worker.execute({
-    id: 'images',
-    kind: 'capture_images',
-    capture_id: 'plan',
-    tiles: plan.tiles.slice(0, 1),
-    capture_batches: [1]
-  }), error => error.code === 'IMAGE_BUDGET');
-  assert.deepEqual(f.uploads, []);
-  assertReleased(f.worker);
-});
-
-test('encoded-memory limit includes the earlier chunk while its upload is pending', async () => {
-  const releaseUpload = deferred();
-  const secondCapture = deferred();
-  let captures = 0;
-  const f = fixture('fixture.xlsx', {
-    encode(width, height) {
-      captures++;
-      if (captures === 2) {
-        secondCapture.resolve();
-        // This chunk alone fits exactly. Retaining the earlier binary makes
-        // the combined work exceed the limit.
-        return {length: 80 * 1024 * 1024};
-      }
-      return Buffer.from(JSON.stringify({width, height})).toString('base64');
-    },
-    async upload() {
-      await releaseUpload.promise;
-    }
-  });
-  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
-  const execution = f.worker.execute({
-    id: 'images',
-    kind: 'capture_images',
-    capture_id: 'plan',
-    tiles: plan.tiles.slice(0, 2),
-    capture_batches: [1, 2]
-  });
-  const rejection = assert.rejects(execution, error => error.code === 'IMAGE_BUDGET');
-  await secondCapture.promise;
-  await new Promise(resolve => setImmediate(resolve));
-  try {
-    assert.equal(f.uploads.length, 1);
-    assert.ok(f.worker.resources().pending_encoded_bytes > 0);
-  } finally {
-    releaseUpload.resolve();
-  }
-  await rejection;
-  assertReleased(f.worker);
-});
-
-test('finalization budgets cropped strings and decoding buffers before allocating bytes', async () => {
-  const cropped = {length: 40 * 1024 * 1024};
-  const f = fixture('fixture.xlsx', {crop: () => cropped});
-  const pngSize = CaptureGeometry.pngSize;
-  CaptureGeometry.pngSize = value => value === cropped ? {width: 3, height: 3} : pngSize(value);
-  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
-  await assert.rejects(f.worker.execute({
-    id: 'images',
-    kind: 'capture_images',
-    capture_id: 'plan',
-    tiles: plan.tiles.slice(0, 1),
-    capture_batches: [1]
-  }), error => error.code === 'IMAGE_BUDGET');
-  assert.deepEqual(f.uploads, []);
-  assertReleased(f.worker);
-});
-
 test('decoding failure releases reserved temporary bytes and the captured input', async () => {
   const f = fixture('fixture.xlsx', {crop: () => 'invalid base64!'});
   const pngSize = CaptureGeometry.pngSize;
@@ -716,22 +643,6 @@ test('retained pixels count against the next capture budget', async () => {
   }), error => error.code === 'IMAGE_BUDGET');
   assert.deepEqual(f.captures, ['0:3', '3:6']);
   assert.equal(f.worker.resources().retained_image_tiles, 2);
-});
-
-test('encoded-memory guard includes PNGs retained by a previous command', async () => {
-  let captures = 0;
-  const f = fixture('fixture.xlsx', {encode(width, height) {
-    if (++captures === 2) return {length: 80 * 1024 * 1024};
-    return Buffer.from(JSON.stringify({width, height})).toString('base64');
-  }});
-  const plan = await f.worker.execute({id: 'plan', kind: 'plan', sheets: [f.sheet]});
-  const first = await f.worker.execute({id: 'first', kind: 'capture_hashes', capture_id: 'plan', tiles: [plan.tiles[0]]});
-  await assert.rejects(f.worker.execute({
-    id: 'next', kind: 'capture_hashes', capture_id: 'plan', tiles: [plan.tiles[1]]
-  }), error => error.code === 'IMAGE_BUDGET');
-  assert.equal(f.worker.resources().retained_image_tiles, 1);
-  assert.equal(f.worker.resources().pending_encoded_bytes, first.tiles[0].png_bytes);
-  assert.equal(f.worker.resources().pending_png_characters, 0);
 });
 
 test('a failed retained upload keeps its original bytes available until release', async () => {

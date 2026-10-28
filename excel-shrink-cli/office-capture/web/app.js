@@ -267,7 +267,8 @@
         typeof config.run_id !== 'string' || !config.run_id.length ||
         typeof config.workbook !== 'string' || !config.workbook.length ||
         !Array.isArray(config.sheets) || !config.sheets.length ||
-        (config.tile_megapixels !== undefined && ![16, 32].includes(config.tile_megapixels))) {
+        (config.tile_megapixels !== undefined && (!Number.isInteger(config.tile_megapixels) ||
+          config.tile_megapixels < 1 || config.tile_megapixels > 64))) {
       if (config && typeof config.run_id === 'string' && config.run_id.length) {
         try { await request('/result', {run_id: config.run_id, side: config.side, heights: [], captures: [],
           error: {code: 'CAPTURE_FAILED', message: 'Capture configuration is incomplete'}}); } catch (_) { /* The host may be unavailable. */ }

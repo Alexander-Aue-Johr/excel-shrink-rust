@@ -3,7 +3,7 @@
 
   const MAX_ROWS = 1048576;
   const MAX_COLUMNS = 16384;
-  const MAX_PIXELS = 32000000;
+  const MAX_PIXELS = 64000000;
   const MAX_EDGE = 30000;
   const MAX_TILE_ROWS = 8192;
   const MAX_CAPTURE_TILES = 4096;
@@ -188,8 +188,8 @@
 
   class SheetGeometry {
     constructor(office, sheet, bottomRow, baseColumn, tileMegapixels = 32) {
-      if (!Number.isInteger(tileMegapixels) || tileMegapixels < 1 || tileMegapixels > 32) {
-        throw new Error('Invalid tile megapixel budget (expected 1 to 32)');
+      if (!Number.isInteger(tileMegapixels) || tileMegapixels < 1 || tileMegapixels > 64) {
+        throw new Error('Invalid tile megapixel budget (expected 1 to 64)');
       }
       this.office = office;
       this.sheet = sheet;
@@ -459,13 +459,14 @@
           if (!fits(start, end, halo)) {
             // Excel can capture only whole rows. A tall title or its required
             // halo can exceed the requested tile size even at one visible row.
-            // Keep that indivisible image within the same hard 32 MP ceiling;
-            // larger or multi-row requests still fail instead of clipping.
+            // Preserve the existing 32 MP fallback for smaller targets. Larger
+            // targets never admit an image beyond their requested pixel budget.
             const singleVisibleRow = this.visibleRows[end] - this.visibleRows[start] === 1;
-            if (!singleVisibleRow || !fits(start, end, halo, MAX_PIXELS)) {
+            const fallbackPixels = Math.max(32000000, this.maxPixels);
+            if (!singleVisibleRow || !fits(start, end, halo, fallbackPixels)) {
               throw budgetError(`Row ${start + 1} exceeds the image budget`);
             }
-            pixelBudget = MAX_PIXELS;
+            pixelBudget = fallbackPixels;
             budgetFallback = 'single-visible-row';
           }
           const raw = {r0: halo.first, r1: halo.last, c0: 0, c1: endColumn + 1};

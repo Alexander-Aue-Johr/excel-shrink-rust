@@ -22,7 +22,7 @@ use std::sync::{
 };
 use tokio::sync::Mutex;
 
-const MAX_IMAGE_BYTES: usize = 160 * 1024 * 1024;
+const MAX_IMAGE_BYTES: usize = 512 * 1024 * 1024;
 const MAX_IMAGE_PIXELS: u64 = 120_000_000;
 
 struct Host {
@@ -295,7 +295,7 @@ async fn paired_image(
     host.check_sheet(&data)?;
     let bytes = decode_image(&data)?;
     let (width, height) = check_png(&bytes)?;
-    if width > 30_000 || height > 30_000 || u64::from(width) * u64::from(height) > 32_000_000 {
+    if width > 30_000 || height > 30_000 || u64::from(width) * u64::from(height) > 64_000_000 {
         return Err(ApiError::bad_request(
             "Paired image exceeds the tile budget.",
         ));

@@ -66,6 +66,22 @@ export function runTests() {
   assert(allEqual.equalAcrossAll, 'Complete equal captures are recognized.');
   equal(groupedPanels(allEqual, profiles).map(group => group.ids), [['original'], ['default', 'maximum-cleaning', 'too-aggressive-cleaning']], 'All variants merge beside the reference.');
 
+  const blankMarginImages = Object.fromEntries(profiles.map(profile => [profile.id, {
+    ...image(profile.id === 'maximum-cleaning' ? 'wider' : 'original'),
+    width: profile.id === 'maximum-cleaning' ? 803 : 800,
+    changed_pixels: 0,
+    blank_margin_pixels: profile.id === 'maximum-cleaning' ? 600 : 0,
+  }]));
+  const blankMarginGroup = normalizeGroup({ status: 'unchanged', profiles, sheets: [{ tiles: [{
+    status: 'equal', equal_across_all: true, blank_margin_normalized: true,
+    width: 800, height: 200, images: blankMarginImages,
+  }] }] });
+  const blankMarginTile = blankMarginGroup.sheets[0].tiles[0];
+  assert(blankMarginTile.comparisonComplete && blankMarginTile.equalAcrossAll, 'Host-confirmed white-margin equality overrides differing raw image dimensions.');
+  assert(imageStatus(blankMarginTile, 'maximum-cleaning') === 'equal', 'A verified blank margin is not presented as content change.');
+  assert(tileEvidenceDescription(blankMarginTile).includes('opaque-white margin'), 'The normalized margin remains visible in the evidence description.');
+  assert(groupOutcome(blankMarginGroup).title === 'No visible content difference', 'Outcome does not claim raw PNG identity after margin normalization.');
+
   const hashImages = Object.fromEntries(profiles.map(profile => [profile.id, {
     width: 800, height: 200, x: 0, y: 0, pixel_class: '800x200:png:abc',
   }]));
@@ -176,7 +192,7 @@ export function runTests() {
   assert(rawTall.sheets[0].tiles[3].y === 99800 && rawTall.sheets[0].tiles.length === 4, 'Display compaction never mutates host evidence.');
   const noOmission = normalizeGroup({ sheets: [{ height: 100000, tiles: [{ id: 'pending', width: 800, height: 100000 }] }] }).sheets[0];
   assert(noOmission.height === 100000 && noOmission.tiles.length === 1, 'A large pending capture is never treated as an omission.');
-  return { passed: 84 + viewportTests.passed + workerTests.passed + signalTests.passed
+  return { passed: 88 + viewportTests.passed + workerTests.passed + signalTests.passed
     + captureStripTests.checks + captureNavigationTests.checks + controlTests.passed };
 }
 

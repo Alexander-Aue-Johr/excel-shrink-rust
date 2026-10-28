@@ -26,7 +26,7 @@ use telemetry::WorkerTelemetry;
 #[path = "resident_events.rs"]
 mod events;
 
-const MAX_IMAGE_BYTES: usize = 160 * 1024 * 1024;
+const MAX_IMAGE_BYTES: usize = 512 * 1024 * 1024;
 const STARTUP_QUIET_PERIOD: Duration = Duration::from_secs(2);
 type JsonResponse = HttpResult<Json<Value>>;
 type SharedClient = Arc<Mutex<Client>>;
@@ -939,7 +939,7 @@ fn png_size(bytes: &[u8]) -> HttpResult<(i64, i64)> {
     }
     let width = i64::from(u32::from_be_bytes(bytes[16..20].try_into().unwrap()));
     let height = i64::from(u32::from_be_bytes(bytes[20..24].try_into().unwrap()));
-    if width < 1 || height < 1 || width > 30_000 || height > 30_000 || width * height > 32_000_000 {
+    if width < 1 || height < 1 || width > 30_000 || height > 30_000 || width * height > 64_000_000 {
         return Err(ApiError::bad_request(
             "Evidence PNG exceeds the tile budget.",
         ));

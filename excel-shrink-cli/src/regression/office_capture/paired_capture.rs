@@ -3,7 +3,7 @@ use crate::regression::visual_compare::{compare_tile_images, ImageDifference};
 use std::io::{BufReader, Read, Write};
 use std::process::Stdio;
 
-const MAX_PNG_BYTES: usize = 160 * 1024 * 1024;
+const MAX_PNG_BYTES: usize = 512 * 1024 * 1024;
 
 #[derive(Debug)]
 struct TaskpaneRestarted(String);
@@ -422,7 +422,7 @@ fn decode(bytes: &[u8]) -> Result<image::RgbaImage> {
             && height > 0
             && width <= 30_000
             && height <= 30_000
-            && u64::from(width) * u64::from(height) <= 32_000_000,
+            && u64::from(width) * u64::from(height) <= 64_000_000,
         "streamed PNG exceeds image bounds"
     );
     Ok(image::load_from_memory_with_format(bytes, image::ImageFormat::Png)?.to_rgba8())

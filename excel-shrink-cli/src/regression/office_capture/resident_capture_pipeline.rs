@@ -487,7 +487,7 @@ impl PipelineProgress<'_> {
             .sum();
         ensure!(
             bytes <= MAX_PENDING_PNG_BYTES.saturating_sub(queued_bytes),
-            "pending PNGs exceed the per-client 160 MiB budget"
+            "pending PNGs exceed the per-client encoded image budget"
         );
         self.evidence.insert(
             (job.client.clone(), position),

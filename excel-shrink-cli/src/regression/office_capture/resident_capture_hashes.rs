@@ -524,9 +524,9 @@ impl ResidentCapture {
         let started = Instant::now();
         let images = decode_retained_images(clients, &mut self.snapshots, &self.images, position)?;
         self.timings.decode_ms += started.elapsed().as_secs_f64() * 1000.0;
-        let different = images
-            .values()
-            .any(|(_, _, pixels)| pixels != &images["original"].2);
+        let different = images.values().any(|(_, _, pixels)| {
+            !visually_equal_with_blank_margins(&images["original"].2, pixels)
+        });
         let started = Instant::now();
         let target = &reference.tiles[position];
         let live = self.live.as_mut().unwrap();

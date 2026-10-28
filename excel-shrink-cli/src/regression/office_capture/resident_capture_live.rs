@@ -5,7 +5,7 @@ use std::cell::RefCell;
 
 const MAX_PENDING_TILES: usize = 16;
 const MAX_PENDING_PIXELS: u64 = 64_000_000;
-const MAX_PENDING_PNG_BYTES: u64 = 160 * 1024 * 1024;
+const MAX_PENDING_PNG_BYTES: u64 = 512 * 1024 * 1024;
 
 #[path = "resident_image_processing.rs"]
 mod processing;
@@ -128,7 +128,7 @@ impl LiveCapture {
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .or_else(|| controls["capture_tile_megapixels"].as_u64())
-            .filter(|value| (1..=32).contains(value))
+            .filter(|value| (1..=64).contains(value))
             .unwrap_or(32);
         let batch_tiles = std::env::var("EXCEL_SHRINK_CAPTURE_BATCH_TILES")
             .ok()
@@ -475,14 +475,20 @@ impl LiveCapture {
         };
         let differing_clients: BTreeSet<_> = images
             .iter()
-            .filter_map(|(client, (_, _, pixels))| (pixels != original).then_some(client.as_str()))
+            .filter_map(|(client, (_, _, pixels))| {
+                (!visually_equal_with_blank_margins(original, pixels)).then_some(client.as_str())
+            })
             .collect();
         let equal = differing_clients.is_empty();
+        let blank_margin_normalized = images.iter().any(|(client, (_, _, pixels))| {
+            pixels.dimensions() != original.dimensions()
+                && !differing_clients.contains(client.as_str())
+        });
         // Row-height reports may still need the exact source PNG even when
         // the displayed pixels match. That scientific evidence is independent
         // of the user's resolution setting for equal dashboard tiles.
-        let keep_evidence = !equal || keep_for_heights;
-        let full = !equal;
+        let keep_evidence = !equal || keep_for_heights || blank_margin_normalized;
+        let full = !equal || blank_margin_normalized;
         let preview_width = self.preview_width();
         let timestamp = now_ms();
         let prefix = format!("s{}-t{}", reference.sheet_index, reference.tile_index);
@@ -502,10 +508,7 @@ impl LiveCapture {
                 let (mask, changed) = difference_mask(original, pixels);
                 save_png(&mask, &self.images_directory().join(&mask_name))?;
                 for (x, y, original_pixel) in original.enumerate_pixels() {
-                    if x >= pixels.width()
-                        || y >= pixels.height()
-                        || original_pixel != pixels.get_pixel(x, y)
-                    {
+                    if *original_pixel != pixel_or_white(pixels, x, y) {
                         union
                             .get_or_insert_with(|| {
                                 image::RgbaImage::new(original.width(), original.height())
@@ -524,6 +527,10 @@ impl LiveCapture {
                 "mask_url":if changed > 0 {Some(url(&mask_name))} else {None},
                 "pixel_class":format!("{}x{}:{}",pixels.width(),pixels.height(),tile.sha256),
                 "changed_pixels":changed,"width":pixels.width(),"height":pixels.height(),"x":tile.x,"y":tile.y,
+                "blank_margin_pixels":if pixels.dimensions() != original.dimensions()
+                    && !differing_clients.contains(physical.as_str()) {
+                    nonoverlap_pixels(original, pixels)
+                } else { 0 },
                 "preview_width":preview_size.0,"preview_height":preview_size.1,
                 "retained_full_resolution":full || full_preview,"updated_at":timestamp,
             }));
@@ -548,6 +555,7 @@ impl LiveCapture {
         if let Some(tile) = self.tile_mut(reference) {
             tile["status"] = json!(if equal { "equal" } else { "different" });
             tile["equal_across_all"] = json!(equal);
+            tile["blank_margin_normalized"] = json!(blank_margin_normalized);
             tile["images"] = json!(logical);
             tile["updated_at"] = json!(timestamp);
             tile["inspection_regions"] = json!(regions);
@@ -614,6 +622,61 @@ fn save_png(pixels: &image::RgbaImage, path: &Path) -> Result<()> {
     Ok(())
 }
 
+const BLANK_PIXEL: image::Rgba<u8> = image::Rgba([255, 255, 255, 255]);
+
+fn pixel_or_white(image: &image::RgbaImage, x: u32, y: u32) -> image::Rgba<u8> {
+    if x < image.width() && y < image.height() {
+        *image.get_pixel(x, y)
+    } else {
+        BLANK_PIXEL
+    }
+}
+
+fn all_opaque_white(bytes: &[u8]) -> bool {
+    bytes.chunks_exact(4).all(|pixel| pixel == BLANK_PIXEL.0)
+}
+
+fn visually_equal_with_blank_margins(
+    original: &image::RgbaImage,
+    variant: &image::RgbaImage,
+) -> bool {
+    if original.dimensions() == variant.dimensions() {
+        return original == variant;
+    }
+
+    let common_width_bytes = original.width().min(variant.width()) as usize * 4;
+    let common_height = original.height().min(variant.height());
+    let original_stride = original.width() as usize * 4;
+    let variant_stride = variant.width() as usize * 4;
+    for y in 0..common_height as usize {
+        let original_row = &original.as_raw()[y * original_stride..(y + 1) * original_stride];
+        let variant_row = &variant.as_raw()[y * variant_stride..(y + 1) * variant_stride];
+        if original_row[..common_width_bytes] != variant_row[..common_width_bytes]
+            || !all_opaque_white(&original_row[common_width_bytes..])
+            || !all_opaque_white(&variant_row[common_width_bytes..])
+        {
+            return false;
+        }
+    }
+    for image in [original, variant] {
+        let stride = image.width() as usize * 4;
+        if !(common_height as usize..image.height() as usize)
+            .all(|y| all_opaque_white(&image.as_raw()[y * stride..(y + 1) * stride]))
+        {
+            return false;
+        }
+    }
+    true
+}
+
+fn nonoverlap_pixels(original: &image::RgbaImage, variant: &image::RgbaImage) -> u64 {
+    let overlap = u64::from(original.width().min(variant.width()))
+        * u64::from(original.height().min(variant.height()));
+    u64::from(original.width()) * u64::from(original.height())
+        + u64::from(variant.width()) * u64::from(variant.height())
+        - 2 * overlap
+}
+
 fn difference_mask(
     original: &image::RgbaImage,
     variant: &image::RgbaImage,
@@ -621,19 +684,20 @@ fn difference_mask(
     let mut mask = image::RgbaImage::new(variant.width(), variant.height());
     let mut changed = 0;
     for (x, y, pixel) in mask.enumerate_pixels_mut() {
-        if x >= original.width()
-            || y >= original.height()
-            || variant.get_pixel(x, y) != original.get_pixel(x, y)
-        {
+        if *variant.get_pixel(x, y) != pixel_or_white(original, x, y) {
             *pixel = image::Rgba([255, 30, 55, 210]);
             changed += 1;
         }
     }
-    // Pixels removed by a smaller image are differences too, even though their
-    // mask only fits on the original panel.
-    changed += (original.width() as u64 * original.height() as u64)
-        - original.width().min(variant.width()) as u64
-            * original.height().min(variant.height()) as u64;
+    // Changed pixels outside the variant fit only in the original-panel mask.
+    if original.width() > variant.width() || original.height() > variant.height() {
+        changed += original
+            .enumerate_pixels()
+            .filter(|(x, y, pixel)| {
+                (*x >= variant.width() || *y >= variant.height()) && **pixel != BLANK_PIXEL
+            })
+            .count() as u64;
+    }
     (mask, changed)
 }
 
@@ -681,11 +745,7 @@ fn inspection_regions(
                 let mut count = 0u64;
                 for py in y..bottom {
                     for px in x..right {
-                        let before = (px < original.width() && py < original.height())
-                            .then(|| original.get_pixel(px, py));
-                        let after = (px < pixels.width() && py < pixels.height())
-                            .then(|| pixels.get_pixel(px, py));
-                        if before != after {
+                        if pixel_or_white(original, px, py) != pixel_or_white(pixels, px, py) {
                             count += 1;
                             changed[((py - y) * (right - x) + px - x) as usize] = true;
                         }
@@ -874,7 +934,7 @@ impl ResidentCapture {
                             "image-first PNG outside session"
                         );
                         let bytes = fs::metadata(&path)?.len();
-                        ensure!(bytes <= 160 * 1024 * 1024, "image-first PNG too large");
+                        ensure!(bytes <= MAX_PENDING_PNG_BYTES, "image-first PNG too large");
                         ensure!(
                             artifact_cache::hash_file(&path)? == metadata.sha256,
                             "image-first receipt digest mismatch"
@@ -1354,6 +1414,68 @@ mod tests {
         assert_ne!(mask.get_pixel(1, 1)[3], 0);
         let smaller = image::RgbaImage::from_pixel(2, 2, image::Rgba([1, 2, 3, 255]));
         assert_eq!(difference_mask(&original, &smaller).1, 2);
+    }
+
+    #[test]
+    fn blank_canvas_margins_are_equal_but_ink_and_alpha_are_not() {
+        let mut original = image::RgbaImage::from_pixel(3, 2, BLANK_PIXEL);
+        original.put_pixel(0, 0, image::Rgba([10, 20, 30, 255]));
+        let mut wider = image::RgbaImage::from_pixel(4, 2, BLANK_PIXEL);
+        wider.put_pixel(0, 0, image::Rgba([10, 20, 30, 255]));
+        assert!(visually_equal_with_blank_margins(&original, &wider));
+        assert_eq!(difference_mask(&original, &wider).1, 0);
+        assert_eq!(nonoverlap_pixels(&original, &wider), 2);
+
+        wider.put_pixel(3, 1, image::Rgba([0, 0, 0, 255]));
+        assert!(!visually_equal_with_blank_margins(&original, &wider));
+        assert_eq!(difference_mask(&original, &wider).1, 1);
+        wider.put_pixel(3, 1, image::Rgba([255, 255, 255, 254]));
+        assert!(!visually_equal_with_blank_margins(&original, &wider));
+
+        original.put_pixel(2, 0, image::Rgba([0, 0, 0, 255]));
+        let mut narrower = image::RgbaImage::from_pixel(2, 2, BLANK_PIXEL);
+        narrower.put_pixel(0, 0, image::Rgba([10, 20, 30, 255]));
+        assert!(!visually_equal_with_blank_margins(&original, &narrower));
+        assert_eq!(difference_mask(&original, &narrower).1, 1);
+    }
+
+    #[test]
+    fn inspection_regions_exclude_blank_margins_when_another_peer_differs() {
+        let original = image::RgbaImage::from_pixel(2, 2, BLANK_PIXEL);
+        let wider = image::RgbaImage::from_pixel(3, 2, BLANK_PIXEL);
+        let mut changed = original.clone();
+        changed.put_pixel(0, 0, image::Rgba([0, 0, 0, 255]));
+        let tile = fixture_tile(0, 6);
+        let images = BTreeMap::from([
+            ("original".into(), (tile.clone(), PathBuf::new(), original)),
+            (
+                "maximum-cleaning".into(),
+                (tile.clone(), PathBuf::new(), wider),
+            ),
+            (
+                "too-aggressive-cleaning".into(),
+                (tile, PathBuf::new(), changed),
+            ),
+        ]);
+        let aliases = BTreeMap::from([
+            ("original".into(), "original".into()),
+            ("maximum-cleaning".into(), "maximum-cleaning".into()),
+            (
+                "too-aggressive-cleaning".into(),
+                "too-aggressive-cleaning".into(),
+            ),
+        ]);
+        let regions = inspection_regions(&images, &aliases);
+        assert_eq!(regions.len(), 1);
+        assert_eq!(regions[0]["changed_pixels"], 1);
+        assert_eq!(
+            regions[0]["changed_pixels_by_profile"]["maximum-cleaning"],
+            0
+        );
+        assert_eq!(
+            regions[0]["changed_pixels_by_profile"]["too-aggressive-cleaning"],
+            1
+        );
     }
 
     #[test]
@@ -1885,6 +2007,32 @@ mod tests {
         );
         assert!(fixture.image_metadata("original")["mask_url"].is_null());
         assert!(!fixture.asset("original-mask").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn equal_blank_margin_keeps_original_dimensions_and_full_evidence() -> Result<()> {
+        let mut original = image::RgbaImage::from_pixel(3, 2, BLANK_PIXEL);
+        original.put_pixel(0, 0, image::Rgba([10, 20, 30, 255]));
+        let mut wider = image::RgbaImage::from_pixel(4, 2, BLANK_PIXEL);
+        wider.put_pixel(0, 0, image::Rgba([10, 20, 30, 255]));
+        let mut fixture = PreviewFixture::new(original)?;
+        fixture.add_peer("maximum-cleaning", wider)?;
+        assert!(fixture.retain(false)?);
+        let tile = &fixture.live.state["sheets"][0]["tiles"][0];
+        assert_eq!(tile["status"], "equal");
+        assert_eq!(tile["blank_margin_normalized"], true);
+        assert_eq!(tile["images"]["original"]["width"], 3);
+        assert_eq!(tile["images"]["maximum-cleaning"]["width"], 4);
+        assert_eq!(tile["images"]["maximum-cleaning"]["blank_margin_pixels"], 2);
+        assert_eq!(tile["images"]["maximum-cleaning"]["changed_pixels"], 0);
+        assert_ne!(
+            tile["images"]["original"]["pixel_class"],
+            tile["images"]["maximum-cleaning"]["pixel_class"]
+        );
+        assert!(fixture.asset("original").is_file());
+        assert!(fixture.asset("maximum-cleaning").is_file());
+        assert!(!fixture.asset("maximum-cleaning-mask").exists());
         Ok(())
     }
 }

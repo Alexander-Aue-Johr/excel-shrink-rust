@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {SheetGeometry, probeEnd} = require('../web/capture-geometry.js');
+const {SheetGeometry, probeEnd, pngSize} = require('../web/capture-geometry.js');
 
 test('overflow width uses measured pixels and skips hidden columns', () => {
   const measured = columns => {
@@ -34,6 +34,14 @@ function png(width, height) {
   bytes.write('IEND', 49);
   return bytes.toString('base64');
 }
+
+test('large PNG dimensions are accepted only within the explicit capture limit', () => {
+  assert.deepEqual(pngSize(png(8000, 6000)), {width: 8000, height: 6000});
+  assert.deepEqual(pngSize(png(8000, 8000)), {width: 8000, height: 8000});
+  assert.throws(() => pngSize(png(8001, 8000)), /capture budget/);
+  const truncated = Buffer.from(png(8000, 6000), 'base64').subarray(0, -12).toString('base64');
+  assert.throws(() => pngSize(truncated), /invalid or truncated PNG/);
+});
 
 // Office exposes point heights finer than a PNG pixel. Images round each row
 // down independently; aggregate point heights are not image dimensions.
@@ -106,7 +114,7 @@ test('million-row planning precedes capture limits and sparse bands omit the mid
     error => error.code === 'IMAGE_BUDGET' && /metadata budget/.test(error.message));
 });
 
-test('configurable 1 to 32 megapixel budgets refine real full-width guarded captures', async () => {
+test('configurable 1 to 64 megapixel budgets refine real full-width guarded captures', async () => {
   const model = officeModel();
   const small = new SheetGeometry(model.office, 'Sheet', 999, 15, 1);
   await small.read(15); await small.calibrate();
@@ -116,9 +124,22 @@ test('configurable 1 to 32 megapixel budgets refine real full-width guarded capt
   assert.equal(tiles[0].core.r0,0);
   assert.equal(tiles.at(-1).core.r1,1000);
   assert.ok(tiles.every(tile => tile.raw.c0 === 0 && tile.raw.c1 === 16 && tile.width*tile.expectedHeight <= 1000000));
-  for (const value of [0,-1,33,1.5,NaN]) {
+  for (const value of [0,-1,65,1.5,NaN]) {
     assert.throws(() => new SheetGeometry(model.office,'Sheet',99,15,value), /megapixel budget/);
   }
+});
+
+test('an opted-in larger tile preserves the full measured width and height', async () => {
+  const model = officeModel({rows: new Array(180).fill(16), columns: new Array(100).fill(75)});
+  const geometry = new SheetGeometry(model.office, 'Sheet', 179, 99, 48);
+  await geometry.read(99);
+  await geometry.calibrate();
+  const tiles = geometry.tiles(99, null);
+  assert.equal(tiles.length, 1);
+  assert.ok(tiles[0].width * tiles[0].expectedHeight > 32000000);
+  assert.ok(tiles[0].width * tiles[0].expectedHeight <= 48000000);
+  assert.equal(tiles[0].width, geometry.imageWidth(99));
+  assert.equal(tiles[0].expectedHeight, geometry.imageHeight(0, 180));
 });
 
 test('tall title rows allow independent narrow calibration controls', async () => {

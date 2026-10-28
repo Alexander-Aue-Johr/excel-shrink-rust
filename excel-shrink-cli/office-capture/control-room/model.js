@@ -38,6 +38,12 @@ export function groupOutcome(group) {
     const hasComparedCaptures = group.sheets?.some(sheet => sheet.tiles?.some(tile =>
       tile.comparisonComplete && tile.equalAcrossAll && tile.status !== 'omitted'));
     if (hasComparedCaptures) {
+      const blankMargins = group.sheets?.some(sheet => sheet.tiles?.some(tile =>
+        tile.comparisonComplete && tile.blank_margin_normalized));
+      if (blankMargins) {
+        return { kind: 'equal', title: 'No visible content difference',
+          detail: 'Compared pixels matched; extra capture margins contained only opaque white. Full images and original dimensions were retained. Omitted areas remain unchecked.' };
+      }
       return { kind: 'equal', title: 'Compared captures identical',
         detail: 'The compared captures matched. Any omitted areas remain unchecked.' };
     }
@@ -107,6 +113,7 @@ export function normalizeGroup(raw) {
         pixelClass: image.pixel_class ?? image.pixelClass ?? null,
         maskUrl: versioned(image.mask_url || image.maskUrl, image.updated_at ?? tile.updated_at),
         changedPixels: image.changed_pixels ?? image.changedPixels ?? null,
+        blankMarginPixels: image.blank_margin_pixels ?? image.blankMarginPixels ?? 0,
       }]));
       const width = Math.max(0, Number(tile.width || 0));
       const height = Math.max(0, Number(tile.height || 0));
@@ -121,7 +128,8 @@ export function normalizeGroup(raw) {
       const classes = profiles.map(profile => images[profile.id]?.pixelClass);
       entry.comparisonComplete = classes.every(value => value !== undefined && value !== null)
         && (!tile.status || ['equal', 'different', 'complete'].includes(tile.status));
-      entry.equalAcrossAll = entry.comparisonComplete && classes.every(value => value === classes[0]);
+      entry.equalAcrossAll = entry.comparisonComplete && (typeof tile.equal_across_all === 'boolean'
+        ? tile.equal_across_all : classes.every(value => value === classes[0]));
       return entry;
     });
     const sourceHeight = Math.max(Number(sheet.height || 0), nextY);
@@ -144,7 +152,8 @@ export function imageStatus(entry, profileId) {
   }
   if (!entry.comparisonComplete || image.pixelClass == null || original?.pixelClass == null) return 'received';
   if (profileId === 'original') return entry.comparisonComplete ? (entry.equalAcrossAll ? 'equal' : 'different') : 'received';
-  return image.pixelClass === original.pixelClass ? 'equal' : 'different';
+  return image.pixelClass === original.pixelClass || (entry.blank_margin_normalized && image.blankMarginPixels > 0 && image.changedPixels === 0)
+    ? 'equal' : 'different';
 }
 
 export function tileEvidenceDescription(tile) {
@@ -153,13 +162,16 @@ export function tileEvidenceDescription(tile) {
   if (tile.capture_budget_fallback === 'single-visible-row') {
     const pixels = Number(tile.capture_pixels);
     const size = Number.isFinite(pixels) ? `${(pixels / 1000000).toFixed(1)} MP` : 'a larger image';
-    details.push(`This indivisible row and its border rows require ${size}, above the target tile size. Hard limit: 32 MP.`);
+    details.push(`This indivisible row and its border rows require ${size}, above the target tile size. Single-row fallback limit: 32 MP.`);
   }
   if (tile.comparison_method === 'png-sha256' && tile.equalAcrossAll) {
     details.push('Identical PNG SHA-256 across all profiles; captured images matched.');
     if (!Object.values(tile.images).some(image => image.url)) {
       details.push('No image preview retained. This capture was checked, not omitted.');
     }
+  }
+  if (tile.blank_margin_normalized) {
+    details.push('At least one profile has a verified opaque-white margin; full images and original dimensions were retained.');
   }
   if (tile.context_for?.length) {
     details.push(`Full-resolution context beside ${tile.context_for.length} differing capture${tile.context_for.length === 1 ? '' : 's'}.`);
@@ -326,7 +338,7 @@ export function inspectionEntry(tile, region, profiles) {
   const classes = tile.equalAcrossAll ? Object.fromEntries(profiles.map(profile => [profile.id, tile.images[profile.id]?.pixelClass])) : region.pixel_classes || {};
   const complete = (region.exact || tile.equalAcrossAll) && profiles.every(profile => classes[profile.id] != null);
   return { ...tile, inspection: region, comparisonComplete: complete,
-    equalAcrossAll: complete && profiles.every(profile => classes[profile.id] === classes.original),
+    equalAcrossAll: complete && (tile.equalAcrossAll || profiles.every(profile => classes[profile.id] === classes.original)),
     images: Object.fromEntries(Object.entries(tile.images).map(([profile, image]) => [profile, { ...image,
       pixelClass: complete ? classes[profile] : null,
       changedPixels: region.changed_pixels_by_profile?.[profile] ?? image.changedPixels }])) };
