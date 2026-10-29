@@ -48,7 +48,14 @@ $registrationDone = $false
 $previousRegistration = $null
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 $classicTelemetryAvailable = $true
+$errorCheckingScopes = @{}
+$captureReadyPath = $null
 
+function Update-ClassicErrorChecking([string]$Side, $Process) {
+    if (-not $hideErrorIndicators -or $null -eq $Process -or $errorCheckingScopes.ContainsKey($Side)) { return }
+    $scope = [CaptureErrorChecking]::TryDisable($Process, $captureDesktop.Name)
+    if ($null -ne $scope) { $errorCheckingScopes[$Side] = $scope }
+}
 function Write-ClassicObservation([string]$Side, [string]$State, $Process = $null) {
     if (-not $TelemetryPath -or -not $hostReady -or -not $classicTelemetryAvailable) { return }
     $body = @{ run_id = $runId; side = $Side; state = $State; message = ('Classic Excel ' + $State) }
@@ -124,6 +131,14 @@ try {
     Add-Type -Path (Join-Path $PSScriptRoot 'CaptureWorkbook.cs') `
         -ReferencedAssemblies @('System.IO.Compression', 'System.IO.Compression.FileSystem', 'System.Xml')
     $hideErrorIndicators = $captureConfig.mode -in @('capture', 'paired')
+    if ($hideErrorIndicators) {
+        # The host holds configuration responses until this launcher verifies
+        # the setting on every owned Excel instance. No image job can race it.
+        $captureReadyPath = Join-Path $stage 'capture-ready.json'
+        $captureConfig | Add-Member -NotePropertyName _capture_ready_path -NotePropertyValue $captureReadyPath -Force
+        $captureConfig | Add-Member -NotePropertyName _capture_ready_timeout_seconds -NotePropertyValue $StartupTimeoutSeconds -Force
+        [IO.File]::WriteAllText($configCopy, ($captureConfig | ConvertTo-Json -Depth 30), $utf8)
+    }
     Set-InitialWorksheet $workbookCopy ([int]$captureConfig.sheets[0].index) $hideErrorIndicators
     if ($ComparisonWorkbookPath) { Set-InitialWorksheet $comparisonCopy ([int]$captureConfig.sheets[0].index) $hideErrorIndicators }
 
@@ -177,7 +192,9 @@ try {
             $excelProcess.Refresh()
             if ($excelProcess.HasExited) { throw 'Original Excel process exited before its add-in started.' }
             $health = Invoke-RestMethod -Uri ($controlUrl + '/health') -TimeoutSec 2
-            if ($health.run_id -eq $runId -and $health.original_seen) { break }
+            Update-ClassicErrorChecking 'original' $excelProcess
+            if ($health.run_id -eq $runId -and $health.original_seen -and
+                (-not $hideErrorIndicators -or $errorCheckingScopes.ContainsKey('original'))) { break }
             if ($startup.Elapsed.TotalSeconds -gt $StartupTimeoutSeconds) { throw 'Original Office add-in did not start before the startup timeout.' }
             Start-Sleep -Milliseconds 250
         }
@@ -195,10 +212,19 @@ try {
         $hostProcess.Refresh()
         if ($hostProcess.HasExited) { throw 'Worksheet capture host exited before writing a result.' }
         if (-not $captureStarted) {
+            Update-ClassicErrorChecking 'original' $excelProcess
+            Update-ClassicErrorChecking 'shrunk' $comparisonProcess
+            $expected = if ($ComparisonWorkbookPath) { 2 } else { 1 }
+            if ($captureReadyPath -and $errorCheckingScopes.Count -eq $expected -and
+                -not (Test-Path -LiteralPath $captureReadyPath)) {
+                $pending = $captureReadyPath + '.pending'
+                [IO.File]::WriteAllText($pending, '{"background_error_checking_disabled":true}', $utf8)
+                [IO.File]::Move($pending, $captureReadyPath)
+            }
             try {
                 $health = Invoke-RestMethod -Uri ($controlUrl + '/health') -TimeoutSec 2
                 $ready = if ($ComparisonWorkbookPath) { $health.original_seen -and $health.shrunk_seen } else { $health.config_seen }
-                if ($health.run_id -eq $runId -and $ready) {
+                if ($health.run_id -eq $runId -and $ready -and (-not $hideErrorIndicators -or $errorCheckingScopes.Count -eq $expected)) {
                     $captureStarted = $true
                     $captureTimer.Restart()
                 }
@@ -229,6 +255,10 @@ try {
     try {
         if ($null -ne $excelProcess) { Write-ClassicObservation 'original' 'closing' }
         if ($null -ne $comparisonProcess) { Write-ClassicObservation 'shrunk' 'closing' }
+        foreach ($scope in $errorCheckingScopes.Values) {
+            try { $scope.Dispose() }
+            catch { [Console]::Error.WriteLine('Could not restore owned Excel error checking: ' + $_.Exception.Message) }
+        }
         Stop-OwnedProcess $comparisonProcess
         Stop-OwnedProcess $excelProcess
         foreach ($entry in @(@('original', $excelProcess), @('shrunk', $comparisonProcess))) {

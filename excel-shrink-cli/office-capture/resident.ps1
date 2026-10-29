@@ -145,6 +145,14 @@ function Update-ClientReadySamples($health) {
         if (-not $clients.ContainsKey($id) -or -not $sample.ready_at -or $sample.startup_sampled) { continue }
         $entry = $clients[$id]
         $item = $metrics.clients[$id]
+        if ($null -eq $entry.error_checking_scope) {
+            $entry.error_checking_scope = [CaptureErrorChecking]::TryDisable($entry.process, $entry.desktop_name)
+            if ($null -eq $entry.error_checking_scope) { continue }
+            if (-not $entry.error_checking_scope.IsDisabled) { throw "Owned Excel background error checking is still enabled: $id" }
+            $item.error_indicators_disabled = $true
+            $item.previous_background_error_checking = $entry.error_checking_scope.PreviousBackgroundChecking
+            Add-SessionEvent 'error_indicators_disabled' $id @{ pid=$entry.process.Id }
+        }
         # The host withholds all jobs until this exact ready observation is
         # sampled. Retain the Process object so a reused PID cannot be sampled.
         $entry.process.Refresh()
@@ -540,6 +548,10 @@ function Invoke-ClientResets {
                     message='Hard reset requested after comparison started; requeueing the group.' }
                 Write-ResidentJsonFile (Join-Path (Join-Path $liveRoot 'commands') ($retry.id + '.json')) $retry
             }
+            if ($null -ne $clients[$id].error_checking_scope) {
+                $clients[$id].error_checking_scope.Dispose()
+                $clients[$id].error_checking_scope = $null
+            }
             [ResidentProcesses]::Stop($clients[$id].process)
             $clients[$id].closed = $true
             $metrics.clients[$id].closed = $true
@@ -628,7 +640,7 @@ function Open-ResidentClient($spec, $visibilityOverride = $null) {
         $metrics.clients[$id].webview2_user_data_folder = $env:WEBVIEW2_USER_DATA_FOLDER
         $openClock = [Diagnostics.Stopwatch]::StartNew()
         $process = $owned.Start($excelExecutable, $arguments, [bool]$hideClient, $desktopName)
-        $clients[$id] = @{ process=$process; open_clock=$openClock; seen=$false; closed=$false; registration=$guid; hide_excel=[bool]$hideClient; private_desktop=($null -ne $desktopName) }
+        $clients[$id] = @{ process=$process; open_clock=$openClock; seen=$false; closed=$false; registration=$guid; error_checking_scope=$null; desktop_name=$desktopName; hide_excel=[bool]$hideClient; private_desktop=($null -ne $desktopName) }
         $metrics.clients[$id].window_mode = if ($desktopName) { 'private_desktop' } elseif ($hideClient) { 'hidden_window' } else { 'interactive_desktop' }
         $metrics.clients[$id].pid = $process.Id
         $metrics.clients[$id].process_started_unix_ms = ([DateTimeOffset]$process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
@@ -773,6 +785,10 @@ try {
         }
         foreach ($id in @($clients.Keys)) {
             if ($null -eq $batchLifetime -and -not $clients[$id].closed -and (Test-Path -LiteralPath (Join-Path $session ('close\' + $id + '.json')))) {
+                if ($null -ne $clients[$id].error_checking_scope) {
+                    $clients[$id].error_checking_scope.Dispose()
+                    $clients[$id].error_checking_scope = $null
+                }
                 [ResidentProcesses]::Stop($clients[$id].process)
                 $clients[$id].closed = $true
                 $metrics.clients[$id].closed = $true
@@ -832,6 +848,13 @@ try {
         try { $metrics.cleanup_processes = @($owned.ProcessIdentities()) }
         catch { $metrics.cleanup_snapshot_warning = $_.Exception.Message }
         Add-SessionEvent 'owned_cleanup_started' '' @{ processes=$metrics.cleanup_processes }
+        foreach ($entry in $clients.Values) {
+            if ($null -ne $entry.error_checking_scope) {
+                try { $entry.error_checking_scope.Dispose() }
+                catch { $metrics.error_checking_restore_warning = $_.Exception.Message }
+                finally { $entry.error_checking_scope = $null }
+            }
+        }
         $owned.Dispose()
         $metrics.cleanup_job_released_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
         $unconfirmedClients = @(Confirm-ResidentClientExit $clients $metrics.clients)

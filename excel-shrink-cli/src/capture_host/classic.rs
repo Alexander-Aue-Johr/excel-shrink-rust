@@ -242,6 +242,22 @@ async fn config(
         response["mode"] = json!("paired");
         response["side"] = json!(side);
     }
+    // The launcher releases captures only after error indicators are disabled
+    // in both exact, owned Excel instances. Health flags above remain visible.
+    if let Some(ready) = host.config["_capture_ready_path"].as_str() {
+        let timeout = host.config["_capture_ready_timeout_seconds"].as_u64().unwrap_or(600).clamp(1, 86400);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout);
+        while !Path::new(ready).is_file() {
+            if tokio::time::Instant::now() >= deadline {
+                return Err(ApiError::conflict("Excel capture configuration was not confirmed by its launcher."));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+    if let Some(fields) = response.as_object_mut() {
+        fields.remove("_capture_ready_path");
+        fields.remove("_capture_ready_timeout_seconds");
+    }
     response["run_id"] = json!(host.run_id);
     response["telemetry"] =
         json!(host.telemetry.is_some() && !host.telemetry_write_failed.load(Ordering::Relaxed));
