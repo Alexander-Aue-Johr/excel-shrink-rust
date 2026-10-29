@@ -80,6 +80,11 @@ public static class CaptureWorkbook
     {
         var id = sheet.GetAttribute("id", "http://schemas.openxmlformats.org/officeDocument/2006/relationships");
         if (id.Length == 0) id = sheet.GetAttribute("id", "http://purl.oclc.org/ooxml/officeDocument/relationships");
+        // Excel can retain a veryHidden VBA module placeholder after XLS to
+        // macro-free XLSX conversion. Its explicitly empty r:id has no part.
+        if (id.Length == 0 && sheet.GetAttribute("state") == "veryHidden" &&
+            (sheet.HasAttribute("id", "http://schemas.openxmlformats.org/officeDocument/2006/relationships") ||
+             sheet.HasAttribute("id", "http://purl.oclc.org/ooxml/officeDocument/relationships"))) return null;
         if (id.Length == 0) throw new InvalidDataException("Worksheet relationship ID is missing.");
         return id;
     }
@@ -125,7 +130,9 @@ public static class CaptureWorkbook
         foreach (XmlElement sheet in sheets)
         {
             string target;
-            if (!partsById.TryGetValue(RelationshipId(sheet), out target)) throw new InvalidDataException("Worksheet relationship is missing.");
+            var relationshipId = RelationshipId(sheet);
+            if (relationshipId == null) continue;
+            if (!partsById.TryGetValue(relationshipId, out target)) throw new InvalidDataException("Worksheet relationship is missing.");
             var part = SheetPart(target);
             if (source.GetEntry(part) == null || !sheetParts.Add(part)) throw new InvalidDataException("Missing or duplicate worksheet part.");
             if (sheet == selected) selectedPart = part;

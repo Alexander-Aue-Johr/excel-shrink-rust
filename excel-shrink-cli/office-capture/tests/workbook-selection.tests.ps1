@@ -161,6 +161,27 @@ try {
     Assert-Equal (Semantic-Xml $after.DocumentElement) (Semantic-Xml $before.DocumentElement) 'Chartsheet metadata must otherwise remain unchanged'
     Remove-Item -LiteralPath $source -Force
 
+    foreach ($placeholder in @(
+        @{ state='veryHidden'; id='r:id=""'; succeeds=$true },
+        @{ state='hidden'; id='r:id=""'; succeeds=$false },
+        @{ state='visible'; id='r:id=""'; succeeds=$false },
+        @{ state='veryHidden'; id=''; succeeds=$false },
+        @{ state='veryHidden'; id='r:id="missing"'; succeeds=$false }
+    )) {
+        $source = Join-Path $root ('macro-placeholder-' + [Guid]::NewGuid().ToString('N') + '.xlsx')
+        $parts = Fixture 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' ''
+        $stub = '<sheet name="Module1" sheetId="4" state="' + $placeholder.state + '" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' + $placeholder.id + '/>'
+        $parts['xl/workbook.xml'] = $parts['xl/workbook.xml'].Replace('</sheets>', ($stub + '</sheets>'))
+        New-Workbook $source $parts
+        $hash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+        $succeeded = $true
+        try { Set-InitialWorksheet $source 3 $true } catch { $succeeded = $false; if ($placeholder.succeeds) { throw } }
+        Assert-Equal $succeeded $placeholder.succeeds 'Only explicit empty veryHidden macro placeholders may have no part'
+        if (-not $succeeded) {
+            Assert-Equal (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash $hash 'Invalid real sheet relationships must preserve the original ZIP'
+        }
+        Remove-Item -LiteralPath $source -Force
+    }
     foreach ($failure in @('hidden', 'outside', 'missing-relationship', 'missing-part', 'invalid-view-id')) {
         $source = Join-Path $root ($failure + '.xlsx')
         $parts = Fixture 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' ''
