@@ -36,6 +36,7 @@ function New-StudyLaunchPlan {
         corpus=$Configuration.settings.corpus; partition=$Configuration.settings.partition
         partitions=$Configuration.settings.partitions; order=$Configuration.settings.order
         build=$Configuration.settings.build_release; directory=$RunDirectory
+        aggressive_first=(Get-Value $Configuration.settings 'aggressive_first' $false)
     }
     return @{ Executable=$Executable }
 }
@@ -83,6 +84,7 @@ try {
     Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' -Corpus Enron -Partition 2/4 } 'A request for another quarter opened an unrelated active run.'
     Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' -Corpus Enron -Partition all } 'A whole-corpus request opened an active quarter run.'
     Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -Order size-asc } 'A request for another processing order opened an unrelated active run.'
+    Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -Order priority } 'A priority request opened an active size-desc run.'
     Assert ($launches -eq 1 -and $browserOpens -eq 2) 'A selection mismatch launched work or opened the wrong dashboard.'
     $health.root = Join-Path $root 'another output/control-room'
     Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection } 'A foreign output root was accepted as this run.'
@@ -116,6 +118,43 @@ try {
     Assert ($planned.order -eq 'size-asc') 'Omitting the processing order did not retain a saved non-default order.'
     $configuration.settings.order = 'size-desc'
 
+    $null = Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -Order priority -NoBrowser
+    Assert ($planned.order -eq 'priority' -and $configuration.settings.order -eq 'size-desc') 'An explicit priority order was rejected, lost, or leaked into saved settings.'
+    $configuration.settings.order = 'priority'
+    $null = Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -NoBrowser
+    Assert ($planned.order -eq 'priority') 'Omitting Order lost the saved priority order.'
+    $configuration.settings.order = 'size-desc'
+
+    # The switch changes one invocation; saved strategy and the strategy of an
+    # already active run are separate sources of truth that must not be merged.
+    $null = Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -AggressiveFirst -NoBrowser
+    Assert $planned.aggressive_first '-AggressiveFirst was not forwarded to the plan.'
+    Assert (-not (Get-Value $configuration.settings 'aggressive_first' $false)) 'The strategy override changed the source configuration.'
+    $null = Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -NoBrowser
+    Assert (-not $planned.aggressive_first) 'An aggressive-first override leaked into the next regular invocation.'
+    $configuration.settings | Add-Member -NotePropertyName aggressive_first -NotePropertyValue $true -Force
+    $null = Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -NoBrowser
+    Assert $planned.aggressive_first 'Omitting the strategy switch lost saved aggressive-first selection.'
+
+    $script:status = [pscustomobject]@{ Busy=$true; Process=[pscustomobject]@{Id=42424} }
+    $receipt.Settings | Add-Member -NotePropertyName aggressive_first -NotePropertyValue $true -Force
+    $beforeStrategyLaunches = $launches
+    $beforeStrategyBrowsers = $browserOpens
+    $result = Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -NoBrowser
+    Assert ($result.AlreadyRunning -and $launches -eq $beforeStrategyLaunches) 'A matching saved aggressive-first strategy started a second runner.'
+    $configuration.settings.aggressive_first = $false
+    Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -NoBrowser } 'A normal request accepted an active aggressive-first run.'
+    $result = Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -AggressiveFirst -NoBrowser
+    Assert ($result.AlreadyRunning -and $launches -eq $beforeStrategyLaunches) 'Explicit aggressive-first did not match an already active screening run.'
+
+    $receipt.Settings.aggressive_first = $false
+    Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -AggressiveFirst -NoBrowser } 'Aggressive-first opened an active full-validation run.'
+    $configuration.settings.aggressive_first = $true
+    Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' @selection -NoBrowser } 'Saved aggressive-first opened an active full-validation run.'
+    Assert ($launches -eq $beforeStrategyLaunches -and $browserOpens -eq $beforeStrategyBrowsers) 'A strategy mismatch started work or opened an unrelated dashboard.'
+    $configuration.settings.aggressive_first = $false
+    $receipt.Settings.PSObject.Properties.Remove('aggressive_first')
+    $script:status = [pscustomobject]@{ Busy=$false; Process=$null }
     Reject { Start-SavedCorpusRun $root $configPath 'fake runner.exe' -Corpus Destatis -Standalone -NoBrowser } 'A normal configuration was accepted as a standalone deployment.'
     $configuration | Add-Member -NotePropertyName standalone_windows -NotePropertyValue $true
     $configuration | Add-Member -NotePropertyName standalone_corpora -NotePropertyValue @('Destatis')
@@ -146,8 +185,8 @@ try {
     [void][IO.Directory]::CreateDirectory($entryDirectory)
     $entry = Join-Path $entryDirectory 'entry.ps1'
     @'
-param([string]$Output, [string]$Value, [string]$Corpus, [string]$Partition, [string]$Order, [switch]$NoBrowser)
-[IO.File]::WriteAllText($Output, (@{value=$Value;corpus=$Corpus;partition=$Partition;order=$Order;no_browser=[bool]$NoBrowser} | ConvertTo-Json))
+param([string]$Output, [string]$Value, [string]$Corpus, [string]$Partition, [string]$Order, [switch]$NoBrowser, [switch]$AggressiveFirst)
+[IO.File]::WriteAllText($Output, (@{value=$Value;corpus=$Corpus;partition=$Partition;order=$Order;no_browser=[bool]$NoBrowser;aggressive_first=[bool]$AggressiveFirst} | ConvertTo-Json))
 exit 7
 '@ | Set-Content -LiteralPath $entry -Encoding UTF8
     $command = Install-CorpusCommand $bin $entry -NoPathUpdate
@@ -170,7 +209,7 @@ exit 7
         $capture = Join-Path $root 'arguments.json'
         $info = [Diagnostics.ProcessStartInfo]::new()
         $info.FileName = $env:ComSpec
-        $info.Arguments = '/d /c ""' + $command + '" -Output "' + $capture + '" -Value "hello & world !" -Corpus Enron -Partition 3/4 -Order size-asc -NoBrowser"'
+        $info.Arguments = '/d /c ""' + $command + '" -Output "' + $capture + '" -Value "hello & world !" -Corpus Enron -Partition 3/4 -Order priority -NoBrowser -AggressiveFirst"'
         $info.WorkingDirectory = $elsewhere
         $info.UseShellExecute = $false; $info.CreateNoWindow = $true
         $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true
@@ -182,10 +221,10 @@ exit 7
             Assert ($process.ExitCode -eq 7) ('The wrapper lost the entry script exit code. ' + $stderr.Result)
             $actual = [IO.File]::ReadAllText($capture) | ConvertFrom-Json
             Assert ($actual.value -ceq 'hello & world !' -and $actual.no_browser) 'The wrapper changed quoted arguments or switches.'
-            Assert ($actual.corpus -ceq 'Enron' -and $actual.partition -ceq '3/4' -and $actual.order -ceq 'size-asc') 'The wrapper changed corpus, partition, or order arguments.'
+            Assert ($actual.corpus -ceq 'Enron' -and $actual.partition -ceq '3/4' -and $actual.order -ceq 'priority' -and $actual.aggressive_first) 'The wrapper changed corpus, partition, priority order, or strategy arguments.'
         } finally { $process.Dispose() }
     }
-    Write-Host "PASS: $checks terminal command checks; saved settings, active-run ownership, browser choice, PATH, wrapper preservation."
+    Write-Host "PASS: $checks terminal command checks; saved settings, strategy guards, priority order, active-run ownership, browser choice, PATH, wrapper preservation."
 } finally {
     Set-Location -LiteralPath $beforeLocation
     $prefix = [IO.Path]::GetFullPath((Join-Path $repo '.tmp/terminal-command-tests')).TrimEnd('\') + '\'

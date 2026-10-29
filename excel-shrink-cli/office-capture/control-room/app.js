@@ -56,8 +56,28 @@ const WORKBOOK_FILTER_LABELS = {
   'other-excluded': 'Other preparation exclusions',
   deferred: 'Full scan paused',
   'recalc-drift': 'Shrink equal, recalc changed',
+  'default-investigate': 'Default: investigate difference',
+  screened: 'Aggressive screening complete',
+  'secondary-pending': 'Full validation pending',
+  'diagnosis-row_height': 'Explained: row heights',
+  'diagnosis-local_whitespace': 'Explained: local whitespace',
+  'diagnosis-local_hidden_content': 'Explained: local hidden content',
+  'diagnosis-cross_sheet_hidden_content': 'Explained: cross-sheet hidden content',
+  'diagnosis-cross_sheet_whitespace': 'Explained: cross-sheet whitespace',
+  'diagnosis-recalculation': 'Explained after recalculation',
+  'diagnosis-combined': 'Resolved after combined repairs',
+  'diagnosis-unstable': 'Unstable / not reproducible',
+  'diagnosis-unresolved': 'Unexplained differences',
 };
 
+for (const [value, label] of Object.entries(WORKBOOK_FILTER_LABELS)) {
+  if (!$('groupFilter').querySelector(`option[value="${value}"]`)) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    $('groupFilter').append(option);
+  }
+}
 function announce(text) { $('announcement').textContent = text; }
 function profileLabel(id) { return data?.profiles.find(profile => profile.id === id)?.label || id; }
 function tileAt(id) { return entries.find(tile => tile.id === id); }
@@ -997,6 +1017,10 @@ function hasMarkedSheets(value) {
   return false;
 }
 function matchesGroupFilter(group, filter) {
+  if (filter === 'default-investigate') return group.default_regression_candidate === true;
+  if (filter.startsWith('diagnosis-')) return group.diagnosis_categories?.includes(filter.slice(10)) || false;
+  if (filter === 'screened') return group.priority_validation?.primary?.status === 'complete';
+  if (filter === 'secondary-pending') return Boolean(group.priority_validation) && group.priority_validation.secondary?.status !== 'complete';
   switch (filter) {
     case 'needs-visual':
       return group.preparation_disposition === 'needs_visual';
@@ -1100,7 +1124,12 @@ function maybeRefreshWorkbookIndex() {
 }
 function renderWorkbookKpis() {
   const counts = workbookIndex?.counts;
-  $('workbookScope').textContent = workbookIndex?.visual_scope_frozen
+  const priorityPass = state.queue?.progress?.priority_validation?.active_pass;
+  $('workbookScope').textContent = priorityPass === 'aggressive_primary'
+    ? 'Aggressive screening first; full validation follows'
+    : priorityPass === 'secondary_full'
+      ? 'Full validation of all profiles; screening results retained'
+      : workbookIndex?.visual_scope_frozen
     ? 'Preparation complete · visual scope fixed'
     : 'Preparation in progress · visual scope pending';
   if (!workbookIndex?.available || !counts) {
@@ -1259,7 +1288,7 @@ function updateControlInputs() {
         ? `Selected: ${slider.value} · confirmed: ${values[key]} · release to apply.`
       : `Confirmed: ${values[key]}${running} · applies to newly started shrink processes · maximum ${logicalCores} logical cores.`;
   }
-  for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) {
+  for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
   }
   if (document.activeElement !== $('captureTransport') && !dirtyControls.has('captureTransport')) {
@@ -1308,7 +1337,7 @@ async function sendControl(change) {
     for (const [id, key] of [['prepareProcesses', 'prepare_processes'], ['shrinkThreads', 'shrink_threads']]) {
       if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     }
-    for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
+    for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     updateControlInputs();
     if (change.capture_transport === $('captureTransport').value) dirtyControls.delete('captureTransport');
     const text = change.target_groups === 0
@@ -1536,6 +1565,43 @@ function renderGroupOutcome() {
   empty.querySelector('strong').textContent = outcome?.title || 'The next capture will appear here.';
   empty.querySelector('span').textContent = outcome?.detail || 'Only actual jobs and images are shown.';
   renderCleanupAnalysis();
+  renderVisualDiagnosis();
+}
+function renderVisualDiagnosis() {
+  const diagnoses = data?.visual_diagnoses || [];
+  $('visualDiagnosis').hidden = diagnoses.length === 0;
+  const content = $('visualDiagnosisContent');
+  content.replaceChildren();
+  const labels = {
+    row_height: 'Row heights', local_whitespace: 'Local whitespace restoration',
+    local_hidden_content: 'Local hidden content restoration',
+    cross_sheet_hidden_content: 'Hidden content on other sheets',
+    cross_sheet_whitespace: 'Whitespace across sheets', recalculation: 'Recalculation',
+    combined: 'Resolved after combined repairs', unstable: 'Unstable / not reproducible',
+    unresolved: 'Unresolved', identical: 'No remaining pixel difference',
+  };
+  for (const { profile, diagnosis } of diagnoses) {
+    const heading = document.createElement('h4');
+    heading.textContent = `${profileLabel(profile)}: ${labels[diagnosis.category] || diagnosis.category || diagnosis.status}`;
+    content.append(heading);
+    const note = document.createElement('p');
+    note.textContent = diagnosis.category === 'combined'
+      ? 'Several repairs were retained together. This identifies a cumulative explanation, not an exclusive single cause.'
+      : diagnosis.category === 'unstable'
+        ? 'Repeated captures or recalculations changed the reference state. No shrinking cause is certified.'
+        : `Scope: ${diagnosis.scope || 'recorded mismatch regions'}. Original comparison evidence is retained.`;
+    content.append(note);
+    for (const step of diagnosis.steps || []) {
+      const item = document.createElement('p');
+      item.textContent = `${labels[step.kind] || step.kind || 'Control'}: ${step.status || (step.same === true ? 'pixels equal' : 'recorded')}`;
+      content.append(item);
+    }
+    if (diagnosis.error) {
+      const error = document.createElement('p');
+      error.textContent = diagnosis.error;
+      content.append(error);
+    }
+  }
 }
 function renderCleanupAnalysis() {
   const group = data || state.queue?.groups?.find(item => String(item.id) === String(state.groupId));
@@ -1873,7 +1939,7 @@ function wireControls() {
     });
     $(id).addEventListener('change', () => sendControl({ [key]: Number($(id).value) }));
   }
-  for (const id of ['targetGroups', 'systemReserve', 'openTimeout', 'jobTimeout', 'equalPreview', 'captureMegapixels', 'captureBatch', 'tallSheetThreshold', 'tallSheetEdges', 'crcEqualSheetThreshold']) $(id).addEventListener('input', () => dirtyControls.add(id));
+  for (const id of ['targetGroups', 'systemReserve', 'openTimeout', 'jobTimeout', 'equalPreview', 'captureMegapixels', 'captureBatch', 'captureContext', 'tallSheetThreshold', 'tallSheetEdges', 'crcEqualSheetThreshold']) $(id).addEventListener('input', () => dirtyControls.add(id));
   $('applyReserve').addEventListener('click', () => {
     const reserve = Number($('systemReserve').value);
     if (!Number.isSafeInteger(reserve) || reserve < 0 || reserve > 65536) return setNotice('Free RAM reserve must be a whole number from 0 to 65,536 MiB.', true);
@@ -1902,9 +1968,12 @@ function wireControls() {
   });
 
   $('applyCapture').addEventListener('click', () => {
+
     const size = Number($('captureMegapixels').value), batch = Number($('captureBatch').value);
     if (!Number.isInteger(size) || size < 1 || size > 64 || !Number.isInteger(batch) || batch < 1 || batch > 16) return setNotice('Target capture size: 1–64 MP. Batch: 1–16 jobs.', true);
-    sendControl({ capture_tile_megapixels: size, capture_batch_tiles: batch });
+    const context = Number($('captureContext').value);
+    if (!Number.isInteger(context) || context < 0 || context > 16) return setNotice('Difference context must be 0 to 16 capture bands.', true);
+    sendControl({ capture_tile_megapixels: size, capture_batch_tiles: batch, capture_context_tiles: context });
   });
   $('applyTallSheet').addEventListener('click', () => {
     const threshold = Number($('tallSheetThreshold').value), edges = Number($('tallSheetEdges').value);

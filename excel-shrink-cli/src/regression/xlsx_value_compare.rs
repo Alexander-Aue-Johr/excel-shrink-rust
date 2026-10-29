@@ -59,6 +59,7 @@ pub struct WorksheetCaptureRange {
 #[path = "value_views.rs"]
 mod views;
 pub use views::{compare_workbook_changed_rows, compare_workbook_preservation, compare_workbook_values};
+pub(in crate::regression) use views::removed_diagnostic_cells;
 
 #[cfg(test)]
 #[path = "xlsx_value_compare_legacy.rs"]

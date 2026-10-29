@@ -9,6 +9,8 @@ static RUNS: OnceLock<Mutex<BTreeMap<PathBuf, Tracker>>> = OnceLock::new();
 #[derive(Clone, Copy, Default)]
 struct State {
     completed: bool,
+    primary_checked: bool,
+    primary_failed: bool,
     skipped: bool,
     deferred: bool,
     prepared: bool,
@@ -21,9 +23,15 @@ impl State {
     fn from_record(record: &Value) -> Self {
         let completed = record["complete"] == true
             && matches!(record["status"].as_str(), Some("unchanged" | "differences"))
-            && !whitespace::needed(record);
+            && !whitespace::needed(record)
+            && (!strategy::is_priority(record) || strategy::full_complete(record));
+        let primary_checked = strategy::full_complete(record)
+            || record["priority_validation"]["primary"]["status"] == "complete";
         Self {
             completed,
+            primary_checked,
+            primary_failed: !primary_checked
+                && record["priority_validation"]["primary"]["status"] == "failed",
             skipped: record["complete"] == true && record["status"] == "skipped",
             deferred: record["complete"] == true && record["status"] == "paused-for-later",
             prepared: record["prepared"] == true || completed,
@@ -81,6 +89,7 @@ struct Tracker {
     comparison: Rate,
     attempts: AttemptActivity,
     phase: String,
+    comparison_pass: String,
     last: Instant,
     active_seconds: f64,
     target: usize,
@@ -128,6 +137,16 @@ impl Tracker {
                 self.attempts.compared += 1;
                 record["status"].as_str().unwrap()
             }
+            Some("screened" | "screening-differences")
+                if record["priority_validation"]["primary"]["status"] == "complete" =>
+            {
+                self.attempts.compared += 1;
+                record["status"].as_str().unwrap()
+            }
+            Some("screening-failed" | "validation-incomplete") => {
+                self.attempts.skipped += 1;
+                record["status"].as_str().unwrap()
+            }
             Some("skipped") if record["complete"] == true => {
                 self.attempts.skipped += 1;
                 "skipped"
@@ -162,7 +181,9 @@ impl Tracker {
             return;
         }
         let state = State::from_record(record);
-        if state.completed {
+        if (self.comparison_pass == strategy::PRIMARY && state.primary_checked)
+            || (self.comparison_pass != strategy::PRIMARY && state.completed)
+        {
             self.comparison.record(id);
         }
         if state.preparation_terminal || state.prepared {
@@ -171,10 +192,12 @@ impl Tracker {
         self.rows.insert(id.to_owned(), state);
     }
     fn paused(&self) -> bool {
-        matches!(self.phase.as_str(), "waiting for disk" | "awaiting_deferred_manual")
-            || (!self.finished
-                && self.phase != "preparing"
-                && ((self.target == 0 && self.active.is_empty()) || self.captures_paused))
+        matches!(
+            self.phase.as_str(),
+            "waiting for disk" | "awaiting_deferred_manual"
+        ) || (!self.finished
+            && self.phase != "preparing"
+            && ((self.target == 0 && self.active.is_empty()) || self.captures_paused))
     }
     fn advance(&mut self, seconds: f64) {
         // Capture pause only prevents new jobs; already dispatched jobs may
@@ -196,31 +219,94 @@ impl Tracker {
     }
     fn snapshot(&self, now_ms: u64) -> Value {
         let preparation_total = self.rows.len();
-        let preparation_terminal = self.rows.values().filter(|row| row.preparation_terminal).count();
+        let preparation_terminal = self
+            .rows
+            .values()
+            .filter(|row| row.preparation_terminal)
+            .count();
         let preparation_remaining = preparation_total - preparation_terminal;
         let visual_total = self.rows.values().filter(|row| row.visual_eligible).count();
-        let visual_completed = self.rows.values().filter(|row| row.visual_eligible && row.completed).count();
-        let visual_skipped = self.rows.values().filter(|row| row.visual_eligible && row.skipped).count();
-        let visual_deferred = self.rows.values().filter(|row| row.visual_eligible && row.deferred).count();
-        let visual_remaining = visual_total - visual_completed - visual_skipped - visual_deferred;
-        let visual_excluded = self.rows.values().filter(|row| row.preparation_terminal && !row.visual_eligible).count();
-        let preparation_skipped = self.rows.values()
-            .filter(|row| row.preparation_terminal && row.skipped).count();
-        let (total, completed, skipped, remaining) = if self.visual_scope_frozen {
-            (visual_total, visual_completed, visual_skipped, visual_remaining)
+        let visual_completed = self
+            .rows
+            .values()
+            .filter(|row| row.visual_eligible && row.completed)
+            .count();
+        let visual_skipped = self
+            .rows
+            .values()
+            .filter(|row| row.visual_eligible && row.skipped)
+            .count();
+        let visual_deferred = self
+            .rows
+            .values()
+            .filter(|row| row.visual_eligible && row.deferred)
+            .count();
+        let full_remaining = visual_total - visual_completed - visual_skipped - visual_deferred;
+        let primary_completed = self
+            .rows
+            .values()
+            .filter(|row| row.visual_eligible && row.primary_checked)
+            .count();
+        let primary_failed = self
+            .rows
+            .values()
+            .filter(|row| row.visual_eligible && row.primary_failed)
+            .count();
+        let primary_remaining = visual_total.saturating_sub(primary_completed + primary_failed);
+        let visual_remaining = if self.comparison_pass == strategy::PRIMARY {
+            primary_remaining
         } else {
-            (preparation_total, preparation_terminal - preparation_skipped,
-                preparation_skipped, preparation_remaining)
+            full_remaining
+        };
+        let visual_excluded = self
+            .rows
+            .values()
+            .filter(|row| row.preparation_terminal && !row.visual_eligible)
+            .count();
+        let preparation_skipped = self
+            .rows
+            .values()
+            .filter(|row| row.preparation_terminal && row.skipped)
+            .count();
+        let (total, completed, skipped, remaining) = if self.visual_scope_frozen {
+            if self.comparison_pass == strategy::PRIMARY {
+                (
+                    visual_total,
+                    primary_completed,
+                    primary_failed,
+                    visual_remaining,
+                )
+            } else {
+                (
+                    visual_total,
+                    visual_completed,
+                    visual_skipped,
+                    visual_remaining,
+                )
+            }
+        } else {
+            (
+                preparation_total,
+                preparation_terminal - preparation_skipped,
+                preparation_skipped,
+                preparation_remaining,
+            )
         };
         let prepared = self.rows.values().filter(|row| row.prepared).count();
-        let active_preparation: Vec<_> = self.active.iter()
+        let active_preparation: Vec<_> = self
+            .active
+            .iter()
             .filter(|(_, mode)| **mode == JobMode::Prepare)
             .map(|(id, _)| json!({"id":id,"workbook":self.names.get(id)}))
             .collect();
         let phase = if self.finished {
             &self.phase
         } else if self.target == 0
-            && !matches!(self.phase.as_str(), "preparing" | "awaiting_deferred_manual") {
+            && !matches!(
+                self.phase.as_str(),
+                "preparing" | "awaiting_deferred_manual"
+            )
+        {
             if self.active.is_empty() {
                 "paused"
             } else {
@@ -264,6 +350,9 @@ impl Tracker {
                 "visual_deferred":self.visual_scope_frozen.then_some(visual_deferred),
                 "visual_remaining":self.visual_scope_frozen.then_some(visual_remaining),
                 "visual_excluded":self.visual_scope_frozen.then_some(visual_excluded)},
+            "priority_validation":{"active_pass":self.comparison_pass,"primary_completed":primary_completed,
+                "primary_failed":primary_failed,"primary_remaining":primary_remaining,
+                "full_completed":visual_completed,"full_remaining":full_remaining},
             "diagnosis_failed":self.rows.values().filter(|row| row.diagnosis_failed).count(),
             "rates":{"window_seconds":WINDOW,"completed_per_hour":rate,"completed_per_minute":rate.map(|rate|rate/60.0),
                 "average_completed_per_hour":if self.active_seconds>0.0 {Some(self.comparison.finished as f64*3600.0/self.active_seconds)} else {None},
@@ -299,7 +388,11 @@ pub(super) fn initialize(
                 .map(|(index, name)| (identity(source, *index, name), name.clone()))
         })
         .collect();
-    let rows = names.keys().cloned().map(|id| (id, State::default())).collect();
+    let rows = names
+        .keys()
+        .cloned()
+        .map(|id| (id, State::default()))
+        .collect();
     let controls = control_room::Controls::read(&output.join("control-room"))?;
     let mut tracker = Tracker {
         run_id: run["run_id"].clone(),
@@ -312,6 +405,11 @@ pub(super) fn initialize(
         comparison: Rate::default(),
         attempts: AttemptActivity::default(),
         phase: "preparing".into(),
+        comparison_pass: if run["options"]["aggressive_first"] == true {
+            strategy::PRIMARY.into()
+        } else {
+            "full".into()
+        },
         last: Instant::now(),
         active_seconds: 0.0,
         target: controls.target_groups,
@@ -378,13 +476,34 @@ pub(super) fn set_selection(output: &Path, selected: &HashSet<String>) {
         tracker.names.retain(|id, _| selected.contains(id));
     });
 }
+pub(super) fn set_comparison_pass(output: &Path, comparison_pass: &str) {
+    update(output, |tracker| {
+        if tracker.comparison_pass == comparison_pass {
+            return;
+        }
+        tracker.comparison_pass = comparison_pass.to_owned();
+        tracker.comparison = Rate::default();
+        for (id, state) in &tracker.rows {
+            if (comparison_pass == strategy::PRIMARY && state.primary_checked)
+                || (comparison_pass != strategy::PRIMARY && state.completed)
+            {
+                tracker.comparison.seen.insert(id.clone());
+            }
+        }
+    });
+}
+
 pub(super) fn freeze_visual_scope(output: &Path) {
     update(output, |tracker| tracker.visual_scope_frozen = true);
 }
 pub(super) fn selection_scope(output: &Path) -> Option<(Value, HashSet<String>, bool)> {
     let runs = RUNS.get()?.lock().ok()?;
     let tracker = runs.get(output)?;
-    Some((tracker.run_id.clone(), tracker.rows.keys().cloned().collect(), tracker.visual_scope_frozen))
+    Some((
+        tracker.run_id.clone(),
+        tracker.rows.keys().cloned().collect(),
+        tracker.visual_scope_frozen,
+    ))
 }
 pub(super) fn finish(output: &Path) {
     end(output, "finished");
@@ -396,7 +515,9 @@ pub(super) fn wait_for_disk(output: &Path) {
     end(output, "waiting for disk");
 }
 pub(super) fn await_deferred(output: &Path) {
-    update(output, |tracker| tracker.phase = "awaiting_deferred_manual".into());
+    update(output, |tracker| {
+        tracker.phase = "awaiting_deferred_manual".into()
+    });
 }
 fn end(output: &Path, phase: &str) {
     update(output, |tracker| {
@@ -467,6 +588,7 @@ mod tests {
             comparison: Rate::default(),
             attempts: AttemptActivity::default(),
             phase: "comparing".into(),
+            comparison_pass: "full".into(),
             last: Instant::now(),
             active_seconds: 0.0,
             target: 3,
@@ -576,8 +698,10 @@ mod tests {
                 "preparation_disposition":"needs_visual","status":"prepared"}));
         }
         for id in 3..5 {
-            t.observe(&json!({"identity":id.to_string(),"prepared":true,"complete":true,
-                "preparation_disposition":"crc_unchanged","status":"crc-identical"}));
+            t.observe(
+                &json!({"identity":id.to_string(),"prepared":true,"complete":true,
+                "preparation_disposition":"crc_unchanged","status":"crc-identical"}),
+            );
         }
         t.observe(&json!({"identity":"5","complete":true,
             "preparation_disposition":"unsupported_namespace","status":"skipped"}));
@@ -680,5 +804,64 @@ mod tests {
         assert_eq!(snapshot["phase"], "stopped");
         assert_eq!(snapshot["paused"], false);
         assert_eq!(snapshot["eta"]["status"], "unavailable");
+    }
+    #[test]
+    fn priority_counts_distinguish_screening_from_full_completion() {
+        let mut tracker = visual_tracker();
+        tracker.comparison_pass = strategy::PRIMARY.into();
+        let mut record = json!({"identity":"0","complete":false,"status":"screened",
+            "preparation_disposition":"needs_visual","comparison_pass":strategy::PRIMARY,
+            "priority_validation":{"primary":{"status":"complete"}},
+            "results":[{"profile":strategy::AGGRESSIVE,"checks_complete":true}]});
+        tracker.observe(&record);
+        let snapshot = tracker.snapshot(0);
+        assert_eq!(snapshot["counts"]["completed"], 1);
+        assert_eq!(snapshot["priority_validation"]["full_completed"], 0);
+        tracker.comparison_pass = strategy::SECONDARY.into();
+        record["comparison_pass"] = json!(strategy::SECONDARY);
+        record["complete"] = json!(true);
+        record["status"] = json!("differences");
+        tracker.observe(&record);
+        assert_eq!(tracker.snapshot(0)["counts"]["completed"], 0);
+    }
+    #[test]
+    fn recovered_full_checks_are_not_also_failed_screening_work() {
+        let mut tracker = visual_tracker();
+        tracker.comparison_pass = strategy::PRIMARY.into();
+        let mut recovered = json!({"identity":"0","complete":true,"status":"unchanged",
+            "preparation_disposition":"needs_visual","comparison_pass":strategy::SECONDARY,
+            "priority_validation":{"primary":{"status":"failed"}},"results":[]});
+        for profile in prepared::PROFILES {
+            recovered["results"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"profile":profile,"checks_complete":true}));
+        }
+        tracker.observe(&recovered);
+        tracker.observe(
+            &json!({"identity":"1","preparation_disposition":"needs_visual",
+            "priority_validation":{"primary":{"status":"failed"}}}),
+        );
+        let snapshot = tracker.snapshot(0);
+        assert_eq!(snapshot["priority_validation"]["primary_completed"], 1);
+        assert_eq!(snapshot["priority_validation"]["primary_failed"], 1);
+        assert_eq!(snapshot["priority_validation"]["primary_remaining"], 8);
+    }
+
+    #[test]
+    fn screening_success_is_a_finished_attempt_without_full_completion() {
+        let mut tracker = visual_tracker();
+        tracker.comparison_pass = strategy::PRIMARY.into();
+        let record = json!({"identity":"0","name":"Screen.xlsx","complete":false,"status":"screened",
+            "preparation_disposition":"needs_visual","comparison_pass":strategy::PRIMARY,
+            "priority_validation":{"primary":{"status":"complete"}},
+            "results":[{"profile":strategy::AGGRESSIVE,"checks_complete":true}]});
+        let attempt = tracker.start_attempt(&record);
+        tracker.observe(&record);
+        tracker.finish_attempt(attempt, &record, 1000);
+        let snapshot = tracker.snapshot(1000);
+        assert_eq!(snapshot["activity"]["compared_attempts"], 1);
+        assert_eq!(snapshot["activity"]["interrupted_attempts"], 0);
+        assert_eq!(snapshot["priority_validation"]["full_completed"], 0);
     }
 }

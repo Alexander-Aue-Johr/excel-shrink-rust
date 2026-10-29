@@ -533,3 +533,13 @@ fn processing_order_and_adaptive_ceiling_are_explicit_cli_options() -> Result<()
     assert!(StudyArgs::try_parse_from(["study", "--adaptive-concurrency"]).is_err());
     Ok(())
 }
+
+#[test]
+fn aggressive_first_requires_resident_and_keeps_normal_default() -> Result<()> {
+    assert!(!StudyArgs::try_parse_from(["study"])?.aggressive_first);
+    assert!(StudyArgs::try_parse_from(["study", "--aggressive-first"]).is_err());
+    let args = StudyArgs::try_parse_from(["study", "--aggressive-first", "--resident-capture", "--control-room"])?;
+    assert!(args.aggressive_first);
+    assert!(StudyArgs::try_parse_from(["study", "--aggressive-first", "--resident-capture", "--prepare-only"]).is_err());
+    Ok(())
+}

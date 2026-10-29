@@ -16,6 +16,9 @@ mod pipeline;
 #[path = "resident_capture_hashes.rs"]
 mod hashes;
 
+#[path = "resident_capture_sweep.rs"]
+mod sweep;
+
 /// The coordinator keeps reading controls while the image thread owns the UI.
 struct LiveControls {
     root: PathBuf,

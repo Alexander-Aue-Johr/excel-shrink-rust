@@ -14,6 +14,7 @@ mod provenance;
 mod scheduler;
 mod selection;
 mod storage_guard;
+mod strategy;
 mod transfer;
 mod whitespace;
 
@@ -79,6 +80,9 @@ pub(in crate::regression) struct StudyArgs {
     /// Keep original and shrink variants open for visual comparisons.
     #[arg(long)]
     resident_capture: bool,
+    /// Screen the selection with the aggressive profile before full follow-up.
+    #[arg(long, requires = "resident_capture", conflicts_with_all = ["prepare_only", "diagnose_whitespace_only", "full_scan_deferred"])]
+    aggressive_first: bool,
     /// Hide Excel comparison windows from startup while keeping the Office add-in active.
     #[arg(long)]
     hide_excel: bool,
@@ -492,7 +496,12 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         );
     }
     startup.update("initializing_run", "", 0, None)?;
-    let run = provenance::start_run(
+    if args.aggressive_first {
+        // Set before any worker threads are created; child coordinators inherit
+        // the autonomous protocol selected by this explicit experiment option.
+        std::env::set_var("EXCEL_SHRINK_CAPTURE_SWEEP", "1");
+    }
+    let mut run = provenance::start_run(
         &output,
         args.machine_label.as_deref(),
         manifest,
@@ -507,7 +516,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.should_retry_skipped(),
             "workbook_timeout_seconds":args.workbook_timeout_seconds,
             "startup_timeout_seconds":args.startup_timeout_seconds,"max_workbook_bytes":args.max_workbook_bytes,
-            "limit":args.limit,"reuse_prepared_from":args.reuse_prepared_from,
+            "limit":args.limit,"reuse_prepared_from":args.reuse_prepared_from,"aggressive_first":args.aggressive_first,
             "worker_memory_estimate_mib":std::env::var("EXCEL_SHRINK_WORKER_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
             "excel_memory_estimate_mib":std::env::var("EXCEL_SHRINK_EXCEL_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
             "resident_memory_estimate_mib":std::env::var("EXCEL_SHRINK_RESIDENT_MEMORY_MIB").unwrap_or_else(|_|"16384".into())
@@ -542,7 +551,17 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             if args.diagnose_whitespace_only {
                 return Vec::new();
             }
-            let mut pending = if args.full_scan_deferred {
+            let mut pending = if args.aggressive_first {
+                // Historical tall-sheet or targeted attempts may be terminal in
+                // the ordinary workflow without full coverage. Include them.
+                selection::ordered_members(source, args.order).into_iter().filter(|(index, name)| {
+                    let id = identity(source, *index, name);
+                    records.iter().find(|record| record["identity"] == id).is_none_or(|record| {
+                        !strategy::full_complete(record)
+                            && (record["status"] != "skipped" || args.should_retry_skipped())
+                    })
+                }).collect()
+            } else if args.full_scan_deferred {
                 selection::ordered_members(source, args.order)
                     .into_iter()
                     .filter(|(index, name)| {
@@ -579,6 +598,9 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                                     && !has_required_shrink_evidence(record)
                             })
                     }));
+            }
+            if args.aggressive_first && args.order == selection::ProcessingOrder::Priority {
+                pending.sort_by_key(|(index, name)| member_priority(&records, &identity(source, *index, name)));
             }
             let count = args
                 .limit
@@ -621,6 +643,18 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         )?;
     }
     let mut visual_scope_frozen = false;
+    // Screening spans the complete selection before any full secondary pass.
+    let comparison_passes: &[&str] = if args.aggressive_first {
+        &[strategy::PRIMARY, strategy::SECONDARY]
+    } else {
+        &["full"]
+    };
+    for &comparison_pass in comparison_passes {
+        run["options"]["comparison_pass"] = json!(comparison_pass);
+        progress::set_comparison_pass(&output, comparison_pass);
+        if let Some(room) = &room {
+            room.set_run(&run, if comparison_pass == strategy::PRIMARY { "screening" } else { "comparing" })?;
+        }
     // Comparison starts only after every selected preparation has finished.
     for (source, selected) in sources.iter().zip(&selected_by_source) {
         if !visual_scope_frozen && !args.diagnose_whitespace_only {
@@ -673,7 +707,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         let members = selection::ordered_members(source, args.order);
         // Completed differences get their missing causal diagnosis before new work.
         // The primary measurements and comparisons are never reset for this pass.
-        if !args.prepare_only && !args.compare_only {
+        if !args.prepare_only && !args.compare_only && !args.aggressive_first {
             let backfill: Vec<_> = members
                 .iter()
                 .filter(|(index, name)| {
@@ -738,6 +772,9 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             for (index, name) in selected {
                 let id = identity(source, *index, name);
                 let pos = ensure_record(&mut records, source, *index, name);
+                if args.aggressive_first && !strategy::needs_pass(&records[pos], comparison_pass) {
+                    continue;
+                }
                 if records[pos]["preparation_disposition"] != "needs_visual" {
                     if args.compare_only
                         && (records[pos]["preparation_disposition"].is_null()
@@ -791,8 +828,10 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             )?;
         }
     }
+    }
     if args.control_room
         && args.resident_capture
+        && !args.aggressive_first
         && !args.prepare_only
         && !args.diagnose_whitespace_only
         && !args.full_scan_deferred
@@ -1073,7 +1112,10 @@ fn write_workbook_index(output: &Path, records: &[Value]) -> Result<()> {
             "status":record["status"],"error":record["error"],
             "crc_equal_after_shrink":record["preparation_disposition"] == "crc_unchanged",
             "visually_identical":visually_identical,
-            "differences_found":record["status"] == "differences",
+            "differences_found":matches!(record["status"].as_str(), Some("differences" | "screening-differences")),
+            "priority_validation":record["priority_validation"],
+            "diagnosis_categories":strategy::diagnosis_categories(record),
+            "default_regression_candidate":strategy::default_regression_candidate(record),
             "has_capture_deferred":has_marked_sheets(&record["capture_deferred"]),
             "has_recalc_identity_changed":has_marked_sheets(&record["recalc_identity_changed"]),
             "has_reused_comparison":has_reused_comparison,

@@ -1,5 +1,8 @@
 # Running corpus studies
 
+The experiment branch also provides [aggressive-first screening followed by full validation](aggressive-first-study.md).
+See the [two confirmed Default formatting regressions](confirmed-default-regressions.md) for the controlled findings.
+
 This guide assumes you have saved a corpus configuration. If you have not,
 run **Excel Shrink: Configure corpus run** in VS Code. The full
 [launcher guide](corpus-launcher.md) covers setup, archive binding, and

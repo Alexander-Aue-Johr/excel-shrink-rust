@@ -198,3 +198,10 @@ export function runTests() {
 
 export const result = runTests();
 if (typeof process !== 'undefined' && process.versions?.node) console.log(`Control-room model: ${result.passed} checks passed.`);
+
+{
+  const screened = groupOutcome({ status: 'screened' });
+  assert(screened.title === 'Aggressive screening complete', 'Screening has its own terminal banner.');
+  assert(screened.detail.includes('full validation follows'), 'Screening must disclose remaining validation.');
+  assert(groupOutcome({ status: 'screening-failed' }).kind === 'warning', 'Incomplete screening is not reported as equal.');
+}

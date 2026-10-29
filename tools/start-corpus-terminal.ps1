@@ -2,13 +2,14 @@
 param(
     [string]$Corpus,
     [string]$Partition,
-    [ValidateSet('size-asc','size-desc')][string]$Order,
+    [ValidateSet('priority','size-asc','size-desc')][string]$Order,
     [string]$ConfigurationPath,
     [switch]$Standalone,
     [string]$ExcelShrinkExe,
     [switch]$Build,
     [switch]$SkipBuild,
     [switch]$FullScanDeferred,
+    [switch]$AggressiveFirst,
     [switch]$NoBrowser
 )
 Set-StrictMode -Version Latest
@@ -47,7 +48,7 @@ function Start-SavedCorpusRun {
     param([string]$Repo, [string]$ConfigurationPath, [string]$Executable,
         [string]$Corpus, [string]$Partition, [string]$Order,
         [switch]$Build, [switch]$SkipBuild, [switch]$FullScanDeferred, [switch]$NoBrowser,
-        [switch]$Standalone)
+        [switch]$Standalone, [switch]$AggressiveFirst)
     if ($Build -and $SkipBuild) { throw 'Choose either -Build or -SkipBuild.' }
     if ([string]::IsNullOrWhiteSpace($Corpus) -or
         (-not $Standalone -and [string]::IsNullOrWhiteSpace($Partition))) {
@@ -94,9 +95,10 @@ function Start-SavedCorpusRun {
         $configuration.settings.partitions = $count
     }
     if ($Order) {
-        if ($Order -notin @('size-asc','size-desc')) { throw 'Order must be size-asc or size-desc.' }
+        if ($Order -notin @('priority','size-asc','size-desc')) { throw 'Order must be priority, size-asc or size-desc.' }
         $configuration.settings.order = $Order
     }
+    if ($AggressiveFirst) { $configuration.settings | Add-Member -NotePropertyName aggressive_first -NotePropertyValue $true -Force }
     $configuration.settings | Add-Member -NotePropertyName full_scan_deferred -NotePropertyValue ([bool]$FullScanDeferred) -Force
     Assert-StudySettings $configuration.settings
     $output = Resolve-StudyPath $Repo $configuration.settings.output_root
@@ -111,6 +113,9 @@ function Start-SavedCorpusRun {
         $active = Get-Value $receipt 'Settings'
         if (-not $active -or (Get-Value $receipt 'Pid' 0) -ne $status.Process.Id) {
             throw 'The active run selection could not be verified. No second runner was started.'
+        }
+        if ((Get-Value $active 'aggressive_first' $false) -ne (Get-Value $configuration.settings 'aggressive_first' $false)) {
+            throw 'The active run uses a different comparison strategy. Stop it before changing screening versus full validation.'
         }
         $samePartition = $active.partition -eq $configuration.settings.partition -and
             ($active.partition -eq 0 -or $active.partitions -eq $configuration.settings.partitions)
@@ -157,4 +162,4 @@ if ($Standalone -and -not [IO.File]::Exists($ConfigurationPath)) {
     throw 'No standalone deployment found. Prepare one from WSL with -PrepareStandalone.'
 }
 if (-not $ExcelShrinkExe) { $ExcelShrinkExe = Join-Path $repo 'target/release/excel-shrink-cli.exe' }
-$null = Start-SavedCorpusRun $repo $ConfigurationPath $ExcelShrinkExe -Corpus $Corpus -Partition $Partition -Order $Order -Build:$Build -SkipBuild:$SkipBuild -FullScanDeferred:$FullScanDeferred -NoBrowser:$NoBrowser -Standalone:$Standalone
+$null = Start-SavedCorpusRun $repo $ConfigurationPath $ExcelShrinkExe -Corpus $Corpus -Partition $Partition -Order $Order -Build:$Build -SkipBuild:$SkipBuild -FullScanDeferred:$FullScanDeferred -NoBrowser:$NoBrowser -Standalone:$Standalone -AggressiveFirst:$AggressiveFirst

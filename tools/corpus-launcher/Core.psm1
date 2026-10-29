@@ -254,7 +254,7 @@ function Assert-StudySettings($Settings) {
         if (-not [Int64]::TryParse($value,[ref]$number) -or $number -lt $rule[1] -or $number -gt $rule[2]) { throw "Invalid value for $($rule[0]): $value" }
     }
     if ([int]$Settings.partition -gt [int]$Settings.partitions) { throw 'The selected partition exceeds the partition count.' }
-    if ($Settings.order -notin @('size-asc','size-desc')) { throw 'Order must be size-asc or size-desc.' }
+    if ($Settings.order -notin @('priority','size-asc','size-desc')) { throw 'Order must be priority, size-asc or size-desc.' }
     if ([string]::IsNullOrWhiteSpace($Settings.machine_label) -or ($Settings.machine_label.ToCharArray() | Where-Object { [char]::IsControl($_) })) { throw 'A valid machine name is required.' }
     foreach ($hash in @($Settings.reuse_prepared_from)) { if ($hash -notmatch '\A[0-9a-f]{64}\z') { throw 'Invalid approved build hash.' } }
 }
@@ -278,6 +278,7 @@ function New-StudyLaunchPlan {
         '--comparison-workers',[string]$settings.comparison_groups,'--order',$settings.order,'--startup-timeout-seconds',[string]$settings.open_timeout_seconds,'--workbook-timeout-seconds',[string]$settings.job_timeout_seconds)
     if ([int]$settings.partition -gt 0) { $argsList += @('--size-part',"$($settings.partition)/$($settings.partitions)") }
     if (Get-Value $settings 'full_scan_deferred' $false) { $argsList += @('--compare-only', '--full-scan-deferred') }
+    if (Get-Value $settings 'aggressive_first' $false) { $argsList += '--aggressive-first' }
     if ($settings.hide_excel) { $argsList += '--hide-excel' }
     foreach ($hash in @($settings.reuse_prepared_from | Select-Object -Unique)) { $argsList += @('--reuse-prepared-from',$hash) }
     if ($settings.import_report) { $argsList += @('--import-report',(Resolve-StudyPath $Repo $settings.import_report)) }

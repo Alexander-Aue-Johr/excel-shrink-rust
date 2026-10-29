@@ -544,7 +544,7 @@ impl ResidentCapture {
         Ok(different)
     }
 
-    fn publish_hash_equal(&mut self, reference: &Tile, position: usize) -> Result<()> {
+    pub(super) fn publish_hash_equal(&mut self, reference: &Tile, position: usize) -> Result<()> {
         let images: BTreeMap<_, _> = self
             .aliases
             .iter()

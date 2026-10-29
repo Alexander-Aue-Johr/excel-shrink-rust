@@ -1,7 +1,7 @@
 //! A paged view of the study's durable preparation and comparison records.
 use serde_json::{json, Value};
 
-pub(super) const FILTERS: [&str; 11] = [
+pub(super) const FILTERS: [&str; 23] = [
     "all",
     "crc-unchanged",
     "workbook-only",
@@ -13,6 +13,18 @@ pub(super) const FILTERS: [&str; 11] = [
     "differences",
     "deferred",
     "recalc-drift",
+    "screened",
+    "secondary-pending",
+    "default-investigate",
+    "diagnosis-row_height",
+    "diagnosis-local_whitespace",
+    "diagnosis-local_hidden_content",
+    "diagnosis-cross_sheet_hidden_content",
+    "diagnosis-cross_sheet_whitespace",
+    "diagnosis-recalculation",
+    "diagnosis-combined",
+    "diagnosis-unstable",
+    "diagnosis-unresolved",
 ];
 
 fn matches_filter(row: &Value, filter: &str) -> bool {
@@ -44,6 +56,11 @@ fn matches_filter(row: &Value, filter: &str) -> bool {
         "differences" => row["differences_found"] == true,
         "deferred" => row["has_capture_deferred"] == true,
         "recalc-drift" => row["has_recalc_identity_changed"] == true,
+        "default-investigate" => row["default_regression_candidate"] == true,
+        "screened" => row["priority_validation"]["primary"]["status"] == "complete",
+        "secondary-pending" => row["priority_validation"].is_object() && row["priority_validation"]["secondary"]["status"] != "complete",
+        value if value.starts_with("diagnosis-") => row["diagnosis_categories"].as_array()
+            .is_some_and(|categories| categories.iter().any(|category| category.as_str() == value.strip_prefix("diagnosis-"))),
         _ => false,
     }
 }
@@ -111,6 +128,22 @@ pub(super) fn find<'a>(index: &'a Value, id: &str) -> Option<&'a Value> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn diagnosis_and_screening_filters_do_not_claim_full_identity() {
+        let index = json!({"workbooks":[
+            {"id":"a","priority_validation":{"primary":{"status":"complete"},"secondary":{"status":"pending"}},
+             "diagnosis_categories":["row_height","combined"],"visually_identical":false},
+            {"id":"b","diagnosis_categories":["unstable"]},
+            {"id":"c","priority_validation":{"primary":{"status":"failed"},"secondary":{"status":"failed"}}}
+        ]});
+        let result = page(&index, "screened", "", 0, 10);
+        assert_eq!(result["total"], 1);
+        assert_eq!(result["counts"]["secondary-pending"], 2);
+        assert_eq!(result["counts"]["diagnosis-row_height"], 1);
+        assert_eq!(result["counts"]["diagnosis-combined"], 1);
+        assert_eq!(result["counts"]["diagnosis-unstable"], 1);
+        assert_eq!(result["counts"]["identical"], 0);
+    }
     #[test]
     fn categories_are_derived_from_all_records_before_paging() {
         let index = json!({"version":1,"visual_scope_frozen":true,"workbooks":[

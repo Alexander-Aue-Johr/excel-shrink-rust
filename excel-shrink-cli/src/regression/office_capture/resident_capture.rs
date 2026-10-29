@@ -16,6 +16,9 @@ mod tall_sheet_analysis;
 #[path = "tall_sheet_selection.rs"]
 mod tall_sheet_selection;
 
+#[path = "resident_capture_diagnosis.rs"]
+mod diagnosis;
+
 #[derive(Clone, Deserialize, Serialize)]
 struct Tile {
     sheet_index: usize,
@@ -60,6 +63,7 @@ pub(in crate::regression) struct ResidentCapture {
     closed: BTreeSet<String>,
     physical_closed: BTreeSet<String>,
     initial_aligned: bool,
+    sweep_mode: bool,
     comparisons: BTreeMap<(String, String, String), Value>,
     snapshots: BTreeMap<String, Snapshot>,
     compared_originals: BTreeMap<String, Snapshot>,
@@ -453,6 +457,7 @@ impl ResidentCapture {
             closed: BTreeSet::new(),
             physical_closed: BTreeSet::new(),
             initial_aligned: false,
+            sweep_mode: std::env::var("EXCEL_SHRINK_CAPTURE_SWEEP").as_deref() == Ok("1"),
             comparisons: BTreeMap::new(),
             snapshots: BTreeMap::new(),
             compared_originals: BTreeMap::new(),
@@ -721,6 +726,11 @@ impl ResidentCapture {
                 "resident tile partitions still differ"
             );
         }
+        if self.sweep_mode {
+            self.capture_full_sweep(&clients)?;
+            self.initial_aligned = true;
+            return Ok(());
+        }
         self.select_tall_sheet_captures(&clients)?;
         if self.live.is_some() {
             self.capture_synchronized(&clients)?;
@@ -784,7 +794,7 @@ impl ResidentCapture {
             return Ok(None);
         }
         ensure!(
-            self.live.is_none(),
+            self.live.is_none() || self.sweep_mode,
             "image-first comparison lost a retained evidence tile"
         );
         self.issue(
@@ -806,6 +816,17 @@ impl ResidentCapture {
         };
         let client = self.client(logical)?.to_owned();
         let result = self.wait(&client, &command)?;
+        self.receive_image_result(logical, snapshot, requested, &result)
+    }
+
+    fn receive_image_result(
+        &mut self,
+        logical: &str,
+        snapshot: &Snapshot,
+        requested: &[Tile],
+        result: &Value,
+    ) -> Result<()> {
+        let client = self.client(logical)?.to_owned();
         for item in result["images"]
             .as_array()
             .context("missing resident images")?
@@ -843,6 +864,15 @@ impl ResidentCapture {
                 dimensions == (tile.width, tile.height),
                 "resident PNG dimensions mismatch"
             );
+            self.timings.images_received += 1;
+            for (name, total) in [
+                ("upload_receive_ms", &mut self.timings.upload_receive_ms),
+                ("upload_validate_publish_ms", &mut self.timings.upload_validate_publish_ms),
+            ] {
+                if let Some(value) = item["timings"][name].as_f64().filter(|value| value.is_finite() && *value >= 0.0) {
+                    *total += value;
+                }
+            }
             self.images.insert(
                 (
                     client.clone(),
@@ -946,7 +976,8 @@ impl ResidentCapture {
                 if height_tile(a) {
                     tile.original_image = ap.clone();
                     tile.shrunk_image = bp.clone();
-                } else {
+                }
+                if !height_tile(a) || self.sweep_mode {
                     let ai = image::open(ap)?.to_rgba8();
                     let bi = image::open(bp)?.to_rgba8();
                     differences.extend(visual_compare::compare_tile_images(
@@ -964,13 +995,18 @@ impl ResidentCapture {
         // On-demand controls already target known mismatches and always send
         // their images. Only primary profile captures can skip equal uploads.
         let image_first = self.live.is_some()
+            && !self.sweep_mode
             && (transport == Some("live-images") || !self.plans.contains_key(client));
-        let method = match (transport, image_first) {
-            (Some("hash-first"), false) => {
-                "retained PNG SHA-256; host exact pixels for mismatches; adjacent context"
+        let method = if self.sweep_mode {
+            "autonomous PNG SHA-256 sweep; exact verified mismatch replay"
+        } else {
+            match (transport, image_first) {
+                (Some("hash-first"), false) => {
+                    "retained PNG SHA-256; host exact pixels for mismatches; adjacent context"
+                }
+                (Some(_), _) => "PNG uploads; host exact pixels",
+                (None, _) => "resident PNG SHA-256 then exact pixels",
             }
-            (Some(_), _) => "PNG uploads; host exact pixels",
-            (None, _) => "resident PNG SHA-256 then exact pixels",
         };
         fs::write(
             output.join("transport.json"),
@@ -1030,7 +1066,9 @@ impl ResidentCapture {
                 serde_json::from_slice(&fs::read(output.join("transport.json"))?)?;
             result
         };
-        result["capture_method"] = json!(if self.live.is_some() {
+        result["capture_method"] = json!(if self.sweep_mode {
+            "autonomous finalized PNG hash sweep; exact verified mismatch replay"
+        } else if self.live.is_some() {
             "synchronized PNG uploads; host exact pixels"
         } else {
             "resident PNG SHA-256 then exact pixels"
@@ -1052,7 +1090,7 @@ impl ResidentCapture {
                 }
             }
         }
-        result["capture_policy"] = json!("tall-sheet-v1");
+        result["capture_policy"] = json!(if self.sweep_mode { "autonomous-full-sweep-v1" } else { "tall-sheet-v1" });
         if self
             .capture_coverage
             .values()

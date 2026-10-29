@@ -8,6 +8,9 @@ use zip::ZipArchive;
 use super::{CellValueDifference, CellDifferenceKind, MissingCellPolicy, WorkbookComparisonReport, WorksheetCaptureRange};
 use super::super::{artifact_cache as cache, xml_views::{self as xml, Reader, Kind, TextBytes}};
 use super::super::office_plan::parse_column_width as column_width;
+#[path = "value_restoration.rs"]
+mod restoration;
+pub(in crate::regression) use restoration::removed_diagnostic_cells;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub(super) struct Coordinate { pub row: u32, pub column: u32 }

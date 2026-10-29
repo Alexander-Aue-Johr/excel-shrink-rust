@@ -111,6 +111,7 @@ pub(super) fn run_record(
     state["last_execution"] = json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
         "machine_manifest":run["machine_manifest"],"mode":mode,"started_unix_ms":provenance::now_ms()});
     if mode == JobMode::Compare {
+        state["comparison_pass"] = run["options"]["comparison_pass"].clone();
         prepared::clear_startup_measurements(&mut state);
         state["capture_mode"] = json!(if run["options"]["resident_capture"] == true {
             "resident"
@@ -259,6 +260,9 @@ pub(super) fn run_record(
     result[format!("{phase}_elapsed_seconds")] = json!(started.elapsed().as_secs_f64());
     result["complete"] =
         json!(diagnosis_only || mode == JobMode::Compare || result["status"] == "skipped");
+    if mode == JobMode::Compare {
+        strategy::finish(&mut result);
+    }
     cleanup_work(&work, &bundle_path(output, id), &mut result)?;
     write_record(&record, &result)?;
     progress::observe(output, &result);
@@ -385,6 +389,27 @@ fn retain_visual_evidence(
             evidence = evidence.join("classic-fallback").join(&attempt[..16]);
         }
     }
+    // Reused primary evidence already lives under output, outside this worker's
+    // temporary directory. Retain only fresh profiles, including freshly retried
+    // aggressive comparisons; leave the preserved profile and its diagnosis intact.
+    let secondary = super::strategy::pass(result) == super::strategy::SECONDARY;
+    let mut reused_profiles = Vec::new();
+    if secondary {
+        for (index, profile) in result["results"].as_array_mut().into_iter().flatten().enumerate() {
+            if profile["profile"] == super::strategy::AGGRESSIVE
+                && profile["comparison_reused_from_pass"] == super::strategy::PRIMARY
+                && (profile["checks_complete"] == true || profile["package_checks_complete"] == true)
+            {
+                reused_profiles.push((index, profile.take()));
+            }
+        }
+    }
+    let mut visual_diagnoses = Vec::new();
+    for profile in result["results"].as_array_mut().into_iter().flatten() {
+        if profile["visual_diagnosis"].is_object() {
+            visual_diagnoses.push((profile["profile"].as_str().unwrap_or("unknown").to_owned(), profile["visual_diagnosis"].take()));
+        }
+    }
     let mut diagnosis = result["whitespace_diagnosis"].take();
     if !diagnosis_only {
         if let Err(error) = worker::retain_evidence(result, work, &evidence.join("comparison")) {
@@ -402,6 +427,21 @@ fn retain_visual_evidence(
         clear_images(&mut diagnosis);
     }
     result["whitespace_diagnosis"] = diagnosis;
+    for (name, mut diagnosis) in visual_diagnoses {
+        let directory = evidence.join("visual-diagnosis").join(&artifact_cache::sha256(name.as_bytes())[..16]);
+        if let Err(error) = worker::retain_evidence(&mut diagnosis, work, &directory) {
+            diagnosis["status"] = json!("unresolved");
+            diagnosis["category"] = json!("unresolved");
+            diagnosis["error"] = json!(format!("preserve diagnostic evidence: {error:#}"));
+            clear_images(&mut diagnosis);
+        }
+        if let Some(profile) = result["results"].as_array_mut().into_iter().flatten().find(|profile| profile["profile"] == name) {
+            profile["visual_diagnosis"] = diagnosis;
+        }
+    }
+    for (index, profile) in reused_profiles {
+        result["results"][index] = profile;
+    }
 }
 
 fn retain_capture_logs(work: &Path, output: &Path, key: &str) -> Result<()> {
@@ -708,6 +748,90 @@ mod tests {
         assert_ne!(first, second);
         assert_eq!(fs::read(first)?, b"resident evidence");
         assert_eq!(fs::read(second)?, b"classic evidence");
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn priority_secondary_preserves_primary_evidence_and_retains_new_profiles() -> Result<()> {
+        let root = super::super::tests::test_directory("priority-secondary-evidence")?;
+        let work = root.join("work");
+        fs::create_dir(&work)?;
+        let primary_image = work.join("aggressive.png");
+        let primary_diagnosis = work.join("aggressive-diagnosis.png");
+        fs::write(&primary_image, b"primary comparison")?;
+        fs::write(&primary_diagnosis, b"primary diagnosis")?;
+        let mut primary = json!({"status":"differences","comparison_pass":super::super::strategy::PRIMARY,
+            "results":[{"profile":super::super::strategy::AGGRESSIVE,"checks_complete":true,
+                "sheets":[{"original_image":primary_image}],
+                "visual_diagnosis":{"status":"classified","category":"row_height",
+                    "repair_image":primary_diagnosis}}]});
+        retain_visual_evidence(&mut primary, &work, &root, "example", false);
+        relative_images(&mut primary, &root);
+        let mut reused = primary["results"][0].clone();
+        reused["comparison_reused_from_pass"] = json!(super::super::strategy::PRIMARY);
+        let image = work.join("default.png");
+        let diagnosis = work.join("default-diagnosis.png");
+        fs::write(&image, b"secondary comparison")?;
+        fs::write(&diagnosis, b"secondary diagnosis")?;
+        let mut record = json!({"status":"differences","complete":true,
+            "comparison_pass":super::super::strategy::SECONDARY,
+            "results":[{"profile":"default","checks_complete":true,"shrunk_image":image,
+                "visual_diagnosis":{"status":"classified","repair_image":diagnosis}},reused]});
+        retain_visual_evidence(&mut record, &work, &root, "example", false);
+        relative_images(&mut record, &root);
+        fs::remove_dir_all(&work)?;
+        assert_eq!(record["status"], "differences");
+        assert_eq!(record["complete"], true);
+        assert_eq!(record["results"][1], reused);
+        for (path, bytes) in [
+            (&record["results"][1]["sheets"][0]["original_image"], b"primary comparison".as_slice()),
+            (&record["results"][1]["visual_diagnosis"]["repair_image"], b"primary diagnosis".as_slice()),
+            (&record["results"][0]["shrunk_image"], b"secondary comparison".as_slice()),
+            (&record["results"][0]["visual_diagnosis"]["repair_image"], b"secondary diagnosis".as_slice()),
+        ] {
+            assert_eq!(fs::read(root.join(path.as_str().unwrap()))?, bytes);
+        }
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn priority_secondary_failure_keeps_primary_evidence_for_retry() -> Result<()> {
+        let root = super::super::tests::test_directory("priority-secondary-evidence-failure")?;
+        let work = root.join("work");
+        fs::create_dir(&work)?;
+        let reused = json!({"profile":super::super::strategy::AGGRESSIVE,"checks_complete":true,
+            "comparison_reused_from_pass":super::super::strategy::PRIMARY,
+            "original_image":"evidence/previous.png",
+            "visual_diagnosis":{"status":"classified","repair_image":"evidence/repair.png"}});
+        let mut record = json!({"status":"differences","comparison_pass":super::super::strategy::SECONDARY,
+            "results":[reused,{"profile":"default","shrunk_image":work.join("missing.png")}]});
+        retain_visual_evidence(&mut record, &work, &root, "example", false);
+        assert_eq!(record["status"], "skipped");
+        assert!(record["error"].as_str().unwrap().contains("preserve image evidence"));
+        assert_eq!(record["results"][0], reused);
+        assert!(record["results"][1].get("shrunk_image").is_none());
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn priority_secondary_retains_fresh_aggressive_retry_evidence() -> Result<()> {
+        let root = super::super::tests::test_directory("priority-secondary-aggressive-retry")?;
+        let work = root.join("work");
+        fs::create_dir(&work)?;
+        let image = work.join("aggressive.png");
+        fs::write(&image, b"fresh aggressive retry")?;
+        let mut record = json!({"status":"differences","comparison_pass":super::super::strategy::SECONDARY,
+            "priority_validation":{"primary":{"status":"failed"}},
+            "results":[{"profile":super::super::strategy::AGGRESSIVE,"checks_complete":true,"shrunk_image":image}]});
+        retain_visual_evidence(&mut record, &work, &root, "example", false);
+        relative_images(&mut record, &root);
+        fs::remove_dir_all(&work)?;
+        assert_eq!(record["status"], "differences");
+        let retained = root.join(record["results"][0]["shrunk_image"].as_str().unwrap());
+        assert_eq!(fs::read(retained)?, b"fresh aggressive retry");
         fs::remove_dir_all(root)?;
         Ok(())
     }

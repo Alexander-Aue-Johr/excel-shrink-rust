@@ -10,6 +10,11 @@ export function groupOutcome(group) {
   const status = group?.status;
   const reason = [group?.outcome_error, group?.skip_reason, group?.error, group?.result_reason]
     .find(value => typeof value === 'string' && value.trim());
+  if (['screened', 'screening-differences', 'screening-failed', 'validation-incomplete'].includes(status)) {
+    return { kind: ['screening-failed', 'validation-incomplete'].includes(status) ? 'warning' : status === 'screening-differences' ? 'different' : 'complete',
+      title: status === 'validation-incomplete' ? 'Full validation incomplete' : status === 'screening-failed' ? 'Aggressive screening incomplete' : status === 'screening-differences' ? 'Differences found during screening' : 'Aggressive screening complete',
+      detail: 'Original versus Too Aggressive was prioritized. Default/Maximum may have targeted evidence; their full validation follows after screening the entire selection.' };
+  }
   if (status === 'skipped') {
     return { kind: 'warning', title: 'Skipped',
       detail: reason || 'The runner did not provide a skip reason. No visual result is established.' };

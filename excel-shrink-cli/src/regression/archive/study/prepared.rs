@@ -4,6 +4,7 @@ use std::io::Write;
 mod package_audit;
 mod namespace_exclusion;
 mod resident;
+mod prioritized;
 
 pub(super) const PROFILES: [&str; 3] = ["default", "maximum-cleaning", "too-aggressive-cleaning"];
 
@@ -373,7 +374,30 @@ fn unpack(bundle: &Path, work: &Path) -> Result<Value> {
     Ok(measurements)
 }
 
+// Only this profile already owns retained comparison and diagnosis evidence.
+// Mark its origin so the execution layer leaves those paths untouched while
+// retaining newly captured secondary profiles.
+fn reuse_primary_profile(record: &mut Value, previous_results: &Value) -> Result<()> {
+    if super::strategy::pass(record) != super::strategy::SECONDARY
+        || record["priority_validation"]["primary"]["status"] == "failed"
+    {
+        return Ok(());
+    }
+    if let Some(previous) = previous_results.as_array().and_then(|profiles| {
+        profiles.iter().find(|profile| {
+            profile["profile"] == super::strategy::AGGRESSIVE
+                && (profile["checks_complete"] == true || profile["package_checks_complete"] == true)
+        })
+    }) {
+        let mut preserved = previous.clone();
+        preserved["comparison_reused_from_pass"] = json!(super::strategy::PRIMARY);
+        *profile_mut(record, super::strategy::AGGRESSIVE)? = preserved;
+    }
+    Ok(())
+}
+
 pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
+    record.as_object_mut().unwrap().remove("auxiliary_capture_errors");
     provenance::retire(record, provenance::Stage::Comparison);
     provenance::retire(record, provenance::Stage::WhitespaceDiagnosis);
     record["whitespace_diagnosis"] = json!({"status":"not_investigated"});
@@ -386,6 +410,7 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         record.as_object_mut().unwrap().remove("recalc_identity_changed");
     }
     record.as_object_mut().unwrap().remove("full_scan_deferred_completed");
+    let previous_results = record["results"].clone();
     record["results"] = json!([]);
     write_record(&job.record, record)?;
     work_state::event(
@@ -400,6 +425,7 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         job.bundle.as_ref().context("missing prepared bundle")?,
         &job.work,
     )?;
+    reuse_primary_profile(record, &previous_results)?;
     let identities: Vec<_> = record["results"]
         .as_array()
         .context("missing profile measurements")?
@@ -431,7 +457,12 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         return Ok(());
     }
     verify_partial_reused_archives(job, record, &original)?;
-    let comparison_plan = plan_profile_comparisons(job, record, &original)?;
+    let comparison_plan = if super::strategy::is_priority(record) {
+        record.as_object_mut().unwrap().remove("profile_equivalence");
+        ProfileComparisonPlan::default()
+    } else {
+        plan_profile_comparisons(job, record, &original)?
+    };
     audit_prepared_profiles(job, record, &original, &comparison_plan)?;
     work_state::event(
         "validating",
@@ -449,11 +480,17 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     // Resident clients measure native launch through add-in readiness themselves.
     // Do not open these workbooks again through COM just for dashboard metrics.
     if job.resident_capture {
+        if super::strategy::is_priority(record) {
+            return prioritized::compare(job, record);
+        }
         return resident::compare(job, record, &comparison_plan);
     }
     // The classic fallback has no native readiness handshake. Leave its startup
     // metrics unavailable rather than launching extra measurement-only Excels.
     for name in PROFILES {
+        if !super::strategy::profiles(record).contains(&name) {
+            continue;
+        }
         if profile_workbook_only(record, name) {
             mark_workbook_only(profile_mut(record, name)?);
             write_record(&job.record, record)?;
@@ -986,6 +1023,36 @@ pub(super) fn reusable_visual_manifest(manifest: &artifact_cache::PackageManifes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reuse_primary_profile_marks_only_successful_secondary_reuse() -> Result<()> {
+        let previous = json!([{"profile":super::super::strategy::AGGRESSIVE,"checks_complete":true,
+            "sheets":[{"original_image":"evidence/primary.png"}],
+            "visual_diagnosis":{"status":"classified","repair_image":"evidence/repair.png"}}]);
+        let fresh = json!({"profile":super::super::strategy::AGGRESSIVE,"shrunk_bytes":100});
+        for (pass, status, should_reuse) in [
+            (super::super::strategy::SECONDARY, "complete", true),
+            (super::super::strategy::SECONDARY, "failed", false),
+            (super::super::strategy::PRIMARY, "complete", false),
+        ] {
+            let mut record = json!({"comparison_pass":pass,"priority_validation":{"primary":{"status":status}},
+                "results":[fresh]});
+            reuse_primary_profile(&mut record, &previous)?;
+            if should_reuse {
+                let mut expected = previous[0].clone();
+                expected["comparison_reused_from_pass"] = json!(super::super::strategy::PRIMARY);
+                assert_eq!(record["results"][0], expected);
+            } else {
+                assert_eq!(record["results"][0], fresh);
+            }
+        }
+        let mut incomplete = previous.clone();
+        incomplete[0]["checks_complete"] = json!(false);
+        let mut record = json!({"comparison_pass":super::super::strategy::SECONDARY,"results":[fresh]});
+        reuse_primary_profile(&mut record, &incomplete)?;
+        assert_eq!(record["results"][0], fresh);
+        Ok(())
+    }
 
     #[test]
     fn preparation_uses_admitted_thread_count_for_the_workbook() -> Result<()> {

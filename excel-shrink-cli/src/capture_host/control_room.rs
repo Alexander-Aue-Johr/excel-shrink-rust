@@ -348,6 +348,9 @@ async fn workers(
                                 | "workbook-only"
                                 | "paused-for-later"
                                 | "differences"
+                    | "screened"
+                    | "screening-differences"
+                    | "screening-failed"
                                 | "skipped"
                                 | "failed"
                                 | "interrupted"
@@ -524,6 +527,11 @@ async fn group(
     if record["cleanup_pending"].is_object() {
         merged["cleanup_pending"] = record["cleanup_pending"].clone();
     }
+    merged["priority_validation"] = record["priority_validation"].clone();
+    merged["visual_diagnoses"] = json!(record["results"].as_array().into_iter().flatten()
+        .filter(|profile| profile["visual_diagnosis"].is_object())
+        .map(|profile| json!({"profile":profile["profile"],"diagnosis":profile["visual_diagnosis"]}))
+        .collect::<Vec<_>>());
     attach_outcome(&mut merged, &record, displayed_attempt.as_deref());
     let inspection_root = room.root.clone();
     let inspection_id = id.clone();
@@ -560,6 +568,9 @@ fn attach_outcome(group: &mut Value, record: &Value, attempt: Option<&str>) {
                     | "workbook-only"
                     | "paused-for-later"
                     | "differences"
+                    | "screened"
+                    | "screening-differences"
+                    | "screening-failed"
             )
         )
         || group["status"] != record["status"]
@@ -1196,7 +1207,7 @@ fn defaults() -> Value {
     json!({"target_groups": 1, "prepare_processes": 1, "shrink_threads": logical_cores(),
         "paused": false, "open_timeout_seconds": 600, "system_reserve_mib": 0,
         "job_timeout_seconds": 300, "equal_preview_width": 512, "capture_tile_megapixels": 32,
-        "capture_batch_tiles": 1, "capture_transport": "live-images", "hide_excel": false,
+        "capture_batch_tiles": 1, "capture_context_tiles": 0, "capture_transport": "live-images", "hide_excel": false,
         "tall_sheet_threshold": 40, "tall_sheet_edge_tiles": 2,
         "crc_equal_sheet_threshold_mib": 256})
 }
@@ -1229,6 +1240,7 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
                 }
                 "capture_tile_megapixels" => (1..=64).contains(&integer),
                 "capture_batch_tiles" => (1..=16).contains(&integer),
+                "capture_context_tiles" => (0..=16).contains(&integer),
                 "system_reserve_mib" => (0..=65536).contains(&integer),
                 _ => integer > 0,
             };

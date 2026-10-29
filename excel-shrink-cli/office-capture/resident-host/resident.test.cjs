@@ -389,6 +389,10 @@ test('bounded chunks overlap upload with the next capture but keep Office probes
   assert.equal(f.peakOfficeActive, 1);
   assert.equal(result.timings.pipeline_overlap_count, 1);
   assert.ok(result.timings.peak_pending_encoded_bytes > 0);
+  const single = fixture();
+  const one = await single.worker.execute({id: 'one', kind: 'capture', sheets: [{...single.sheet, tile_rows: [[0, 3]]}]});
+  assert.equal(result.timings.peak_pending_encoded_bytes, one.timings.peak_pending_encoded_bytes,
+    'the sweep peak must remain the size of one image, not grow with worksheet count');
   assert.deepEqual(result.images.map(image => image.tile_index), [0, 1, 2, 3]);
   assertReleased(f.worker);
 });
@@ -662,4 +666,32 @@ test('a failed retained upload keeps its original bytes available until release'
   assert.deepEqual(f.uploads[0].bytes, f.uploads[1].bytes);
   await f.worker.execute({id: 'discard', kind: 'discard_retained', capture_id: 'plan', tiles: result.tiles});
   assertReleased(f.worker);
+});
+
+test('autonomous sweep crosses sheets, reports progress and releases each encoded image', async () => {
+  const f = fixture();
+  const result = await f.worker.execute({id: 'sweep', kind: 'capture', sheets: [f.sheet, {...f.sheet, index: 2, name: 'Sheet2'}]});
+  assert.equal(result.tiles.length, 8);
+  assert.equal(f.uploads.length, 0);
+  assert.equal(f.worker.resources().retained_image_bytes, 0);
+  assert.equal(f.worker.resources().pending_encoded_bytes, 0);
+  assert.equal(f.worker.resources().retained_image_tiles, 0);
+  assert.ok(result.timings.peak_pending_encoded_bytes > 0);
+  const single = fixture();
+  const one = await single.worker.execute({id: 'one', kind: 'capture', sheets: [{...single.sheet, tile_rows: [[0, 3]]}]});
+  assert.equal(result.timings.peak_pending_encoded_bytes, one.timings.peak_pending_encoded_bytes,
+    'the sweep peak must remain the size of one image, not grow with worksheet count');
+  assert.equal(result.tiles.every(tile => /^[a-f0-9]{64}$/.test(tile.sha256)), true);
+  await f.worker.execute({id: 'witness', kind: 'images', capture_id: 'sweep', tiles: [result.tiles[6]]});
+  assert.equal(f.uploads.length, 1);
+  assert.equal(f.uploads[0].metadata.sha256, result.tiles[6].sha256);
+});
+
+test('autonomous sweep refuses a witness when later workbook rendering has changed', async () => {
+  const f = fixture();
+  const result = await f.worker.execute({id: 'sweep', kind: 'capture', sheets: [f.sheet]});
+  f.change();
+  await assert.rejects(f.worker.execute({id: 'witness', kind: 'images', capture_id: 'sweep', tiles: [result.tiles[0]]}),
+    error => error.code === 'CAPTURE_CHANGED');
+  assert.equal(f.uploads.length, 0);
 });

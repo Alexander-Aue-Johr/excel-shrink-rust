@@ -2,7 +2,7 @@
 use super::*;
 use crate::regression::office_capture::ResidentCapture;
 use std::collections::BTreeMap;
-mod startup;
+pub(super) mod startup;
 
 pub(super) fn compare(
     job: &MemberJob,

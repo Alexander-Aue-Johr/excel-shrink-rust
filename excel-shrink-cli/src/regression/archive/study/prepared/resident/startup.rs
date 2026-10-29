@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 
 const METHOD: &str = "launch-to-addin-ready-v1";
 
-pub(super) fn record(record: &mut Value, metrics: &Value) {
+pub(crate) fn record(record: &mut Value, metrics: &Value) {
     let reference = record["provenance"]["comparison"].clone();
     let original = sample(metrics, "original");
     for profile in record["results"].as_array_mut().into_iter().flatten() {

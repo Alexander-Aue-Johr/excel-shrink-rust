@@ -575,6 +575,7 @@ async fn dispatch_job(
                     | "upload_retained"
                     | "discard_retained"
                     | "release"
+                    | "diagnosis"
             )
         ) {
             return Err(ApiError::bad_request("Unknown resident command."));
@@ -1006,4 +1007,54 @@ fn valid_sha(value: &str) -> bool {
 
 fn failure(code: &str, message: &str) -> Value {
     json!({"code": code, "message": message})
+}
+
+#[cfg(test)]
+mod diagnosis_dispatch_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn diagnosis_commands_reach_ready_clients_through_the_real_dispatch_gate() {
+        let root =
+            std::env::temp_dir().join(format!("diagnosis-dispatch-{}", uuid::Uuid::new_v4()));
+        let command_path = root.join("commands/original/000008.json");
+        std::fs::create_dir_all(command_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &command_path,
+            serde_json::to_vec(&json!({
+                "id":"000008","kind":"diagnosis","operation":"recalculate"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let mut client = Client::new();
+        client.token = "fixture-token".into();
+        client.ready_at = Some(now_iso());
+        client.startup_sampled = true;
+        client.configured_at = Instant::now() - Duration::from_secs(10);
+        let shared = Arc::new(Mutex::new(client));
+        let host = Host {
+            session: root.clone(),
+            launcher_token: None,
+            control_root: None,
+            primary_clients: vec!["original".into()],
+            clients: RwLock::new(HashMap::from([("original".into(), shared.clone())])),
+            dispatch: Mutex::new(Dispatch {
+                resetting: HashSet::new(),
+                paused: false,
+            }),
+            events: events::Changes::new(),
+            coordinator_token: None,
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Client-Token", "fixture-token".parse().unwrap());
+        let result = dispatch_job(&host, "original", &headers, false)
+            .await
+            .expect("the Rust host must dispatch the diagnostic command");
+        assert_eq!(result["kind"], "diagnosis");
+        assert_eq!(result["operation"], "recalculate");
+        assert!(root.join("dispatched/original/000008.json").is_file());
+        assert_eq!(shared.lock().await.command_count, 1);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

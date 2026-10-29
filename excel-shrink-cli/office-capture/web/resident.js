@@ -144,7 +144,7 @@
       return image;
     }
 
-    async function render(state, tile, hash = true) {
+    async function render(state, tile, hash = true, accountMemory = false) {
       await geometryFor(state);
       const base64 = await measure('capture_ms', () => office(async context => {
         const image = context.workbook.worksheets.getItem(state.sheet.name)
@@ -152,7 +152,7 @@
         await context.sync();
         return image.value;
       }));
-      return measure('finish_image_ms', () => finishImage(state, tile, base64, {hash}));
+      return measure('finish_image_ms', () => finishImage(state, tile, base64, {hash, accountMemory}));
     }
 
     async function verifyWorkbook() {
@@ -207,7 +207,7 @@
         const tiles = selectedTiles(geometry, end, sheet.tile_rows, {planOnly: command.kind === 'plan'});
         // Bound aggregate metadata before retaining another sheet. Per-image
         // and selected-capture limits apply separately when images are needed.
-        if (command.kind === 'plan' && result.tiles.length + tiles.length > MAX_PLANNED_TILES_PER_COMMAND) {
+        if (result.tiles.length + tiles.length > MAX_PLANNED_TILES_PER_COMMAND) {
           const error = new Error('Workbook exceeds the planned tile metadata budget');
           error.code = 'IMAGE_BUDGET';
           throw error;
@@ -222,7 +222,7 @@
           const tile = tiles[index];
           const image = command.kind === 'plan'
             ? {width: geometry.imageWidth(end), height: tile.cropHeight, sha256: '0'.repeat(64)}
-            : await render(state, tile);
+            : await render(state, tile, true, true);
           const metadata = {sheet_index: sheet.index, sheet_name: sheet.name, tile_index: index,
             range: CaptureGeometry.address(tile.core), core_rows: [tile.core.r0, tile.core.r1],
             x: 0, y: geometry.pixelY[tile.core.r0],
@@ -232,6 +232,12 @@
             capture_right_column: end, width: image.width, height: image.height, sha256: image.sha256};
           result.tiles.push(metadata);
           retained.set(key(metadata), {...state, tile, metadata});
+          // The autonomous sweep retains only metadata across tiles and sheets.
+          if (image.bytes) {
+            pendingEncodedBytes -= image.bytes.byteLength;
+            image.bytes = null;
+          }
+          if (command.kind !== 'plan') helpers.phase(`Hashing ${sheet.name}: tile ${index + 1}/${tiles.length}`);
           // No encoded or decoded images are retained while waiting for peers.
         }
       }
@@ -534,6 +540,11 @@
           if (command.kind === 'capture' || command.kind === 'plan') result = await capture(command);
           else if (command.kind === 'images') result = await images(command);
           else if (command.kind === 'capture_images' || command.kind === 'capture_hashes') result = await captureImages(command);
+          else if (command.kind === 'diagnosis') {
+            if (!root.ResidentDiagnosis?.run) throw new Error('Resident diagnosis helper is unavailable');
+            result = await root.ResidentDiagnosis.run(command, {office, bounds, checkedWorksheet, rowHeights, helpers, transport});
+            if (command.operation !== 'read_cells') geometries.clear();
+          }
           else if (command.kind === 'upload_retained') result = await uploadRetained(command);
           else if (command.kind === 'discard_retained') result = discardRetained(command);
           else if (command.kind === 'release') {

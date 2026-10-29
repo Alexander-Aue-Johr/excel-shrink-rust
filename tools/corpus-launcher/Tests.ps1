@@ -59,6 +59,21 @@ Assert ($plan.Environment.EXCEL_SHRINK_SYSTEM_RESERVE_MIB -eq '0') 'The default 
 foreach($path in $before.Keys){Assert ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $before[$path]) 'Migration rewrote an existing artifact.'}
 Assert ((@(Get-ChildItem -LiteralPath $root -File -Recurse)).Count -eq $before.Count) 'Read-only planning wrote files.'
 Assert (-not [IO.File]::Exists($configPath)) 'Preview saved configuration unexpectedly.'
+Assert ($plan.Arguments -notcontains '--aggressive-first') 'A legacy configuration unexpectedly enabled aggressive-first screening.'
+$config.settings | Add-Member -NotePropertyName aggressive_first -NotePropertyValue $true -Force
+$screeningPlan=New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/screening')
+Assert (@($screeningPlan.Arguments | Where-Object {$_ -eq '--aggressive-first'}).Count -eq 1) 'Aggressive-first must be represented by exactly one runner switch.'
+Assert ((Arg-Value $screeningPlan '--run-corpus') -eq 'Data.gov' -and (Arg-Value $screeningPlan '--output-root') -eq $output) 'Screening strategy changed corpus identity or output location.'
+$config.settings.aggressive_first=$false
+$fullPlan=New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/full-validation')
+Assert ($fullPlan.Arguments -notcontains '--aggressive-first') 'A false strategy setting added the aggressive-first switch.'
+$oldOrder=$config.settings.order
+$config.settings.order='priority'
+$priorityPlan=New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/priority')
+Assert ((Arg-Value $priorityPlan '--order') -eq 'priority') 'The priority processing order did not reach the runner.'
+$config.settings.order='unknown-order'
+Reject {Assert-StudySettings $config.settings} 'Adding priority accidentally accepted an unsupported order.'
+$config.settings.order=$oldOrder
 $metadataPath=Join-Path $root '.tmp/archive-regression/tower-active-run.json'
 $metadata=Read-StudyJson $metadataPath
 $metadata.Arguments=@('regression','study','--size-part','3/4','--order','size-asc','--run-corpus','Enron','--output-root','.tmp/actual selected output')
