@@ -2099,7 +2099,7 @@ fn plan_archive<R: Read + Seek>(
         };
         let filename = file.name().to_string();
         let compression = file.compression();
-        let kind = classify_archive_entry(&filename, context);
+        let kind = classify_archive_entry(&filename, context.cli, context.selected_sheets);
         let entry_plan = match kind {
             ArchiveEntryKind::Sheet => {
                 plan.sheet_tasks.push(build_sheet_task(
@@ -2209,12 +2209,13 @@ fn collect_pivot_owners(part: &str, xml: &[u8], owners: &mut HashMap<String, Str
 
 fn classify_archive_entry(
     filename: &str,
-    context: &ArchivePlanningContext<'_>,
+    cli: &Cli,
+    selected_sheets: &HashSet<String>,
 ) -> ArchiveEntryKind {
     let selected_sheet = filename.starts_with("xl/worksheets/sheet")
         && filename.ends_with(".xml")
-        && !context.cli.only_clean_workbook
-        && sheet_selected_for_cleanup(filename, context.selected_sheets);
+        && !cli.only_clean_workbook
+        && sheet_selected_for_cleanup(filename, selected_sheets);
     if selected_sheet {
         return ArchiveEntryKind::Sheet;
     }
@@ -3152,7 +3153,9 @@ fn process_initial_sheets(
 
 fn namespace_passthrough_part<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
+    cli: &Cli,
 ) -> zip::result::ZipResult<Option<String>> {
+    let selected_sheets = selected_sheet_targets(&cli.sheets);
     // Most generated workbooks declare their prefixes here. Reject them before
     // reading even the compressed workbook into memory or visiting other parts.
     match archive.by_name("xl/workbook.xml") {
@@ -3166,8 +3169,11 @@ fn namespace_passthrough_part<R: Read + Seek>(
     }
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
+        // CopyOriginal parts stay byte-for-byte intact. Parts later parsed for
+        // cleanup are checked when they are loaded instead of in this sweep.
         if entry.name() != "xl/workbook.xml"
-            && (entry.name().ends_with(".xml") || entry.name().ends_with(".rels"))
+            && classify_archive_entry(entry.name(), cli, &selected_sheets)
+                != ArchiveEntryKind::CopyOriginal
             && requires_namespace_root_passthrough(&mut entry)?
         {
             return Ok(Some(entry.name().to_owned()));
@@ -3242,7 +3248,7 @@ fn process_file(
     };
     // Only XML root headers are read here. Worksheet bodies are checked inline
     // during their normal processing; loaded global parts are checked below.
-    match namespace_passthrough_part(&mut archive) {
+    match namespace_passthrough_part(&mut archive, cli) {
         Ok(Some(part)) => {
             report_namespace_exclusion(
                 &mut file_progress,

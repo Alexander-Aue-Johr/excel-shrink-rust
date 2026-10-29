@@ -41,6 +41,11 @@ fn counted_archive(bytes: Vec<u8>) -> (ZipArchive<CountedArchive>, Rc<Cell<u64>>
     (archive, bytes_read)
 }
 
+fn preflight<R: Read + Seek>(archive: &mut ZipArchive<R>) -> zip::result::ZipResult<Option<String>> {
+    let cli = test_cli(Path::new("probe.xlsx"), Path::new("out"));
+    namespace_passthrough_part(archive, &cli)
+}
+
 fn archive_with_large_sheet(body_bytes: usize, compression: CompressionMethod) -> Vec<u8> {
     let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
     let options = FileOptions::default()
@@ -70,6 +75,22 @@ fn archive_with_large_sheet(body_bytes: usize, compression: CompressionMethod) -
 }
 
 #[test]
+fn root_preflight_ignores_copy_original_custom_xml() {
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    let options = FileOptions::default();
+    writer.start_file("xl/workbook.xml", options).unwrap();
+    write!(writer, "<workbook xmlns=\"{MAIN}\"/>").unwrap();
+    writer.start_file("customXml/item1.xml", options).unwrap();
+    writer
+        .write_all(b"\xff\xfe<\0D\0a\0t\0a\0M\0a\0s\0h\0u\0p\0/\0>\0")
+        .unwrap();
+    let mut archive = ZipArchive::new(writer.finish().unwrap()).unwrap();
+    assert_eq!(preflight(&mut archive).unwrap(), None);
+    let mut custom_xml = archive.by_name("customXml/item1.xml").unwrap();
+    assert!(requires_namespace_root_passthrough(&mut custom_xml).unwrap());
+}
+
+#[test]
 fn root_preflight_reads_headers_instead_of_stored_sheet_bodies() {
     let mut observations = Vec::new();
     for body_bytes in [4 * 1024 * 1024, 8 * 1024 * 1024] {
@@ -77,7 +98,7 @@ fn root_preflight_reads_headers_instead_of_stored_sheet_bodies() {
             body_bytes,
             CompressionMethod::Stored,
         ));
-        assert_eq!(namespace_passthrough_part(&mut archive).unwrap(), None);
+        assert_eq!(preflight(&mut archive).unwrap(), None);
         let inspected = reads.get();
         assert!(
             inspected > 512,
@@ -210,7 +231,7 @@ fn late_namespaces_abort_output_without_replacing_prior_results() {
         write_late_namespace_case(&input, part, &xml);
         let mut archive = ZipArchive::new(File::open(&input).unwrap()).unwrap();
         assert_eq!(
-            namespace_passthrough_part(&mut archive).unwrap(),
+            preflight(&mut archive).unwrap(),
             None,
             "{name}: the header probe must not inspect the body"
         );
@@ -272,7 +293,7 @@ fn median_probe(bytes: &[u8], full: bool) -> (f64, u64) {
         if full {
             old_full_preflight(&mut archive);
         } else {
-            assert_eq!(namespace_passthrough_part(&mut archive).unwrap(), None);
+            assert_eq!(preflight(&mut archive).unwrap(), None);
         }
         samples.push((start.elapsed().as_secs_f64() * 1000.0, reads.get()));
     }
