@@ -1204,7 +1204,7 @@ fn logical_cores() -> usize {
 }
 
 fn defaults() -> Value {
-    json!({"target_groups": 1, "prepare_processes": 1, "shrink_threads": logical_cores(),
+    json!({"target_groups": 1, "excel_process_limit": 8, "prepare_processes": 1, "shrink_threads": logical_cores(),
         "paused": false, "open_timeout_seconds": 600, "system_reserve_mib": 0,
         "job_timeout_seconds": 300, "equal_preview_width": 512, "capture_tile_megapixels": 32,
         "capture_batch_tiles": 1, "capture_context_tiles": 0, "capture_transport": "live-images", "hide_excel": false,
@@ -1235,6 +1235,7 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
             let valid = match key.as_str() {
                 "equal_preview_width" => matches!(integer, 0 | 128 | 256 | 512 | 1024),
                 "target_groups" => integer >= 0,
+                "excel_process_limit" => (4..=32).contains(&integer),
                 "prepare_processes" | "shrink_threads" => {
                     integer > 0 && (integer as usize) <= logical_cores()
                 }
@@ -1462,6 +1463,20 @@ mod tests {
             Value::Null,
         ] {
             assert!(merge_controls(&current, &json!({"capture_transport":value})).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn excel_process_limit_accepts_only_bounded_live_values() -> Result<()> {
+        let current = defaults();
+        assert_eq!(current["excel_process_limit"], 8);
+        for limit in [4, 8, 32] {
+            let next = merge_controls(&current, &json!({"excel_process_limit":limit}))?;
+            assert_eq!(next["excel_process_limit"], limit);
+        }
+        for limit in [0, 3, 33] {
+            assert!(merge_controls(&current, &json!({"excel_process_limit":limit})).is_err());
         }
         Ok(())
     }

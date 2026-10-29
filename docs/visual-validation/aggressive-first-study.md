@@ -60,6 +60,22 @@ Targeted results carry `targeted_checks_complete=true`, `checks_complete=false`
 and explicit checked ranges. They cannot increment the full-validation count.
 The Observatory displays the active pass and separate screening/full counts.
 
+## Excel process pipeline
+
+The control room admits one additional comparison group during aggressive-first
+runs. That group can finish stored-value checks, isolated recalculations and
+capture planning while the configured number of other groups capture images.
+It waits for a capture-group slot before opening its resident workbooks. As soon
+as a capture group exits, the prepared group can begin opening its workbooks.
+
+The **Excel process limit** in the Observatory defaults to 8 (range 4–32) and
+applies to owned recalculation, conversion and capture Excel processes together.
+Capture groups reserve their required slots together before opening any workbook,
+so two groups cannot each hold too few slots to finish. Waiting workers do not
+create an extra Excel process. Lowering the limit affects new starts, while
+already open processes finish normally. A group target of zero still drains
+groups that were already admitted, including the preparing group.
+
 ## Capture and replay
 
 See [the autonomous protocol](aggressive-first-capture-protocol.md). Workers

@@ -39,6 +39,8 @@ pub(super) fn check_stop(root: &Path) -> Result<()> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(super) struct Controls {
     pub target_groups: usize,
+    #[serde(default = "default_excel_process_limit")]
+    pub excel_process_limit: usize,
     #[serde(default = "default_prepare_processes")]
     pub prepare_processes: usize,
     #[serde(default = "logical_cores")]
@@ -75,6 +77,10 @@ fn logical_cores() -> usize {
 
 fn default_prepare_processes() -> usize {
     1
+}
+
+fn default_excel_process_limit() -> usize {
+    8
 }
 
 fn default_system_reserve_mib() -> u64 {
@@ -156,6 +162,10 @@ impl Controls {
             "preparation processes and shrink threads must each be between 1 and {max}"
         );
         validate_system_reserve_mib(value.system_reserve_mib)?;
+        ensure!(
+            (4..=32).contains(&value.excel_process_limit),
+            "Excel process limit must be 4..32"
+        );
         ensure!(value.capture_context_tiles <= 16, "capture context must be 0..16 tiles");
         ensure!(
             value.open_timeout_seconds > 0 && value.job_timeout_seconds > 0,
@@ -354,6 +364,10 @@ impl Room {
         let previous_controls = Controls::read(&root).ok();
         let controls = Controls {
             target_groups: args.comparison_workers,
+            excel_process_limit: previous_controls
+                .as_ref()
+                .map(|old| old.excel_process_limit)
+                .unwrap_or_else(default_excel_process_limit),
             prepare_processes: previous_controls
                 .as_ref()
                 .map(|old| old.prepare_processes)
@@ -977,6 +991,7 @@ mod tests {
         write(&root.join("control.json"), &value)?;
         let legacy = Controls::read(&root)?;
         assert_eq!(legacy.target_groups, 128);
+        assert_eq!(legacy.excel_process_limit, 8);
         assert_eq!(legacy.prepare_processes, 1);
         assert_eq!(legacy.shrink_threads, logical_cores());
         assert_eq!(legacy.system_reserve_mib, 0);
@@ -990,6 +1005,9 @@ mod tests {
         write(&root.join("control.json"), &experimental)?;
         assert_eq!(Controls::read(&root)?.capture_tile_megapixels, 64);
         for (key, bad) in [
+            ("excel_process_limit", 0),
+            ("excel_process_limit", 3),
+            ("excel_process_limit", 33),
             ("capture_tile_megapixels", 0),
             ("capture_tile_megapixels", 65),
             ("capture_batch_tiles", 0),

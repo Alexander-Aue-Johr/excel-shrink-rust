@@ -1288,7 +1288,7 @@ function updateControlInputs() {
         ? `Selected: ${slider.value} · confirmed: ${values[key]} · release to apply.`
       : `Confirmed: ${values[key]}${running} · applies to newly started shrink processes · maximum ${logicalCores} logical cores.`;
   }
-  for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) {
+  for (const [id, key] of [['targetGroups', 'target_groups'], ['excelProcessLimit', 'excel_process_limit'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
   }
   if (document.activeElement !== $('captureTransport') && !dirtyControls.has('captureTransport')) {
@@ -1322,13 +1322,13 @@ function updateControlInputs() {
     : diskGuard?.blocked ? `${diskGuard.message}${diskGuard.free_bytes != null ? ` Free: ${(diskGuard.free_bytes / 1073741824).toFixed(2)} GiB.` : ''}${diskGuard.error ? ` ${diskGuard.error}` : ''}`
     : values.paused ? 'Jobs already in progress will finish. New captures wait.'
       : 'Pausing captures keeps Excel open. A group target of 0 lets preparation finish, then pauses comparisons.';
-  $('activeGroups').textContent = `${active} admitted · target ${values.target_groups ?? '—'}`;
+  $('activeGroups').textContent = `${active} admitted · ${values.target_groups ?? '—'} capture + ${state.queue?.prefetch_groups ?? 0} preparing`;
 }
 async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;
   controlUpdates.beginWrite();
   const wasCapturePaused = Boolean(state.controls.paused);
-  for (const id of ['prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = true;
+  for (const id of ['prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyExcelProcessLimit', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = true;
   if (change.system_reserve_mib != null) $('applyReserve').textContent = 'Setting…';
   try {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
@@ -1337,7 +1337,7 @@ async function sendControl(change) {
     for (const [id, key] of [['prepareProcesses', 'prepare_processes'], ['shrinkThreads', 'shrink_threads']]) {
       if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     }
-    for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
+    for (const [id, key] of [['targetGroups', 'target_groups'], ['excelProcessLimit', 'excel_process_limit'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     updateControlInputs();
     if (change.capture_transport === $('captureTransport').value) dirtyControls.delete('captureTransport');
     const text = change.target_groups === 0
@@ -1345,6 +1345,7 @@ async function sendControl(change) {
         ? 'preparation continues; visual comparison waits at the barrier.'
         : 'active comparisons finish, then the run pauses.'}${wasCapturePaused ? ' The capture pause was lifted to allow this.' : ''}`
       : change.target_groups != null ? `Group target ${state.controls.target_groups} confirmed.`
+      : change.excel_process_limit != null ? `Excel process limit ${state.controls.excel_process_limit} confirmed.`
       : change.prepare_processes != null ? `${state.controls.prepare_processes} simultaneous shrink processes confirmed for future starts.`
       : change.shrink_threads != null ? `${state.controls.shrink_threads} Rayon threads per shrink process confirmed for future starts.`
       : change.capture_transport != null ? 'Capture transport confirmed for the next primary capture phase.'
@@ -1367,7 +1368,7 @@ async function sendControl(change) {
     updateControlInputs();
     if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel);
   }
-  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
+  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyExcelProcessLimit', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
 }
 function selectGroup(id) {
   if (id === state.groupId) return;
@@ -1955,6 +1956,11 @@ function wireControls() {
   $('groupRange').addEventListener('change', event => sendControl({ target_groups: Number(event.target.value) }));
   $('applyTarget').addEventListener('click', () => { const value = Number($('targetGroups').value); if (!Number.isSafeInteger(value) || value < 0) return setNotice('Enter a whole number of groups, at least 0.', true); sendControl({ target_groups: value }); });
   $('targetGroups').addEventListener('keydown', event => { if (event.key === 'Enter') $('applyTarget').click(); });
+  $('applyExcelProcessLimit').addEventListener('click', () => {
+    const value = Number($('excelProcessLimit').value);
+    if (!Number.isSafeInteger(value) || value < 4 || value > 32) return setNotice('Enter an Excel process limit from 4 to 32.', true);
+    sendControl({ excel_process_limit: value });
+  });
   $('pauseJobs').addEventListener('click', () => sendControl({ paused: !state.controls.paused }));
   $('applyTimeouts').addEventListener('click', () => {
     const open = Number($('openTimeout').value), job = Number($('jobTimeout').value);

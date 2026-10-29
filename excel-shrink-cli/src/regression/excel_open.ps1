@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'ExcelProcessSlots.ps1')
 function Progress([string]$message) {
     # Rust polls this file while Excel is running; neither handle may exclude readers.
     $bytes = [Text.Encoding]::UTF8.GetBytes("$(Get-Date -Format o) open $message" + [Environment]::NewLine)
@@ -30,11 +31,13 @@ $owned = New-Object CaptureProcesses
 $excel = $null
 $workbook = $null
 $settings = $null
+$excelSlot = $null
 try {
     Progress 'staging input'
     $localInput = Join-Path $stage ('input' + [IO.Path]::GetExtension($InputPath))
     Copy-Item -LiteralPath $InputPath -Destination $localInput
     Progress 'starting Excel'
+    $excelSlot = Enter-ExcelProcessSlot
     $excel = New-Object -ComObject Excel.Application
     $excelProcessId = [uint32]0
     [void][ExcelOpenWindow]::GetWindowThreadProcessId([IntPtr]$excel.Hwnd, [ref]$excelProcessId)
@@ -95,5 +98,6 @@ try {
         [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel)
     }
     $owned.Dispose()
+    Exit-ExcelProcessSlot $excelSlot
     Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 }

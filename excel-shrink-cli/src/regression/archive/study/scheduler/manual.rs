@@ -104,6 +104,14 @@ fn slots_to_start(target: usize, open: usize, pending: usize, draining: bool) ->
     }
 }
 
+fn admission_target(target_groups: usize, aggressive_first: bool) -> usize {
+    if target_groups == 0 {
+        0
+    } else {
+        target_groups + usize::from(aggressive_first)
+    }
+}
+
 fn update_phase(queue: &mut Value, target: usize) {
     queue["phase"] = json!(
         if target > 0 && queue["admission_guard"]["blocked"] == true {
@@ -177,6 +185,8 @@ pub(super) fn compare(
     }
     control_room::write(&room.join("queue.json"), &queue)?;
     let mut pending: VecDeque<_> = jobs.into();
+    let aggressive_first = run["options"]["aggressive_first"] == true;
+    queue["prefetch_groups"] = json!(usize::from(aggressive_first));
     let mut wave = 0;
     let mut report_dirty = false;
     let mut last_report = Instant::now();
@@ -365,7 +375,7 @@ pub(super) fn compare(
                     {
                         1
                     } else {
-                        controls.target_groups
+                        admission_target(controls.target_groups, aggressive_first)
                     },
                     active.iter().filter(|group| !group.finished).count(),
                     pending.len(),
@@ -805,6 +815,14 @@ mod tests {
         assert_eq!(slots_to_start(24, 2, 100, true), 0);
         assert_eq!(slots_to_start(0, 0, 100, false), 0);
         assert_eq!(slots_to_start(0, 20, 100, false), 0);
+    }
+
+    #[test]
+    fn aggressive_screening_admits_one_preparing_group_ahead() {
+        assert_eq!(admission_target(2, true), 3);
+        assert_eq!(slots_to_start(admission_target(2, true), 2, 100, false), 1);
+        assert_eq!(admission_target(2, false), 2);
+        assert_eq!(admission_target(0, true), 0);
     }
 
     #[test]

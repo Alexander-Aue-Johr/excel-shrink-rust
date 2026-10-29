@@ -53,6 +53,7 @@ fn open_workbook(
     fs::copy(input, &local_input)?;
     let script = transfer.0.join("open.ps1");
     fs::write(&script, include_str!("excel_open.ps1"))?;
+    fs::write(transfer.0.join("ExcelProcessSlots.ps1"), include_str!("../../office-capture/ExcelProcessSlots.ps1"))?;
     fs::write(transfer.0.join("archive_processes.ps1"), include_str!("archive_processes.ps1"))?;
     fs::write(transfer.0.join("ArchiveProcesses.cs"), include_str!("ArchiveProcesses.cs"))?;
     fs::write(transfer.0.join("CaptureProcesses.cs"), include_str!("../../office-capture/CaptureProcesses.cs"))?;
@@ -151,6 +152,7 @@ pub fn save_recalculated_copy(
     let local_script = transfer.0.join("recalculate.ps1");
     let local_progress = transfer.0.join("recalc-progress.log");
     fs::write(&local_script, RECALCULATE_AND_SAVE_SCRIPT)?;
+    fs::write(transfer.0.join("ExcelProcessSlots.ps1"), include_str!("../../office-capture/ExcelProcessSlots.ps1"))?;
     for directory in [&transfer.0, work_dir] {
         fs::write(directory.join("archive_processes.ps1"), include_str!("archive_processes.ps1"))?;
         fs::write(directory.join("ArchiveProcesses.cs"), include_str!("ArchiveProcesses.cs"))?;
