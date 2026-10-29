@@ -9,6 +9,7 @@ static RUNS: OnceLock<Mutex<BTreeMap<PathBuf, Tracker>>> = OnceLock::new();
 #[derive(Clone, Copy, Default)]
 struct State {
     completed: bool,
+    full_checked: bool,
     primary_checked: bool,
     primary_failed: bool,
     skipped: bool,
@@ -25,10 +26,12 @@ impl State {
             && matches!(record["status"].as_str(), Some("unchanged" | "differences"))
             && !whitespace::needed(record)
             && (!strategy::is_priority(record) || strategy::full_complete(record));
-        let primary_checked = strategy::full_complete(record)
+        let full_checked = strategy::full_complete(record);
+        let primary_checked = full_checked
             || record["priority_validation"]["primary"]["status"] == "complete";
         Self {
             completed,
+            full_checked,
             primary_checked,
             primary_failed: !primary_checked
                 && record["priority_validation"]["primary"]["status"] == "failed",
@@ -38,6 +41,22 @@ impl State {
             preparation_terminal: record["preparation_disposition"].is_string(),
             visual_eligible: record["preparation_disposition"] == "needs_visual",
             diagnosis_failed: record["whitespace_diagnosis"]["status"] == "failed",
+        }
+    }
+
+    fn full_completed(&self, comparison_pass: &str) -> bool {
+        if matches!(comparison_pass, strategy::PRIMARY | strategy::SECONDARY) {
+            self.full_checked
+        } else {
+            self.completed
+        }
+    }
+
+    fn completed_for_pass(&self, comparison_pass: &str) -> bool {
+        if comparison_pass == strategy::PRIMARY {
+            self.primary_checked
+        } else {
+            self.full_completed(comparison_pass)
         }
     }
 }
@@ -181,9 +200,7 @@ impl Tracker {
             return;
         }
         let state = State::from_record(record);
-        if (self.comparison_pass == strategy::PRIMARY && state.primary_checked)
-            || (self.comparison_pass != strategy::PRIMARY && state.completed)
-        {
+        if state.completed_for_pass(&self.comparison_pass) {
             self.comparison.record(id);
         }
         if state.preparation_terminal || state.prepared {
@@ -191,6 +208,19 @@ impl Tracker {
         }
         self.rows.insert(id.to_owned(), state);
     }
+    fn set_comparison_pass(&mut self, comparison_pass: &str) {
+        if self.comparison_pass == comparison_pass {
+            return;
+        }
+        self.comparison_pass = comparison_pass.to_owned();
+        self.comparison = Rate::default();
+        for (id, state) in &self.rows {
+            if state.completed_for_pass(comparison_pass) {
+                self.comparison.seen.insert(id.clone());
+            }
+        }
+    }
+
     fn paused(&self) -> bool {
         matches!(
             self.phase.as_str(),
@@ -229,7 +259,7 @@ impl Tracker {
         let visual_completed = self
             .rows
             .values()
-            .filter(|row| row.visual_eligible && row.completed)
+            .filter(|row| row.visual_eligible && row.full_completed(&self.comparison_pass))
             .count();
         let visual_skipped = self
             .rows
@@ -241,7 +271,13 @@ impl Tracker {
             .values()
             .filter(|row| row.visual_eligible && row.deferred)
             .count();
-        let full_remaining = visual_total - visual_completed - visual_skipped - visual_deferred;
+        let full_remaining = if matches!(self.comparison_pass.as_str(), strategy::PRIMARY | strategy::SECONDARY) {
+            // A failed or deferred attempt is still missing independent full
+            // validation, even though ordinary runs treat it as terminal work.
+            visual_total - visual_completed
+        } else {
+            visual_total - visual_completed - visual_skipped - visual_deferred
+        };
         let primary_completed = self
             .rows
             .values()
@@ -477,20 +513,7 @@ pub(super) fn set_selection(output: &Path, selected: &HashSet<String>) {
     });
 }
 pub(super) fn set_comparison_pass(output: &Path, comparison_pass: &str) {
-    update(output, |tracker| {
-        if tracker.comparison_pass == comparison_pass {
-            return;
-        }
-        tracker.comparison_pass = comparison_pass.to_owned();
-        tracker.comparison = Rate::default();
-        for (id, state) in &tracker.rows {
-            if (comparison_pass == strategy::PRIMARY && state.primary_checked)
-                || (comparison_pass != strategy::PRIMARY && state.completed)
-            {
-                tracker.comparison.seen.insert(id.clone());
-            }
-        }
-    });
+    update(output, |tracker| tracker.set_comparison_pass(comparison_pass));
 }
 
 pub(super) fn freeze_visual_scope(output: &Path) {
@@ -835,7 +858,7 @@ mod tests {
             recovered["results"]
                 .as_array_mut()
                 .unwrap()
-                .push(json!({"profile":profile,"checks_complete":true}));
+                .push(json!({"profile":profile,"checks_complete":true,"image_comparison":"complete"}));
         }
         tracker.observe(&recovered);
         tracker.observe(
@@ -846,6 +869,96 @@ mod tests {
         assert_eq!(snapshot["priority_validation"]["primary_completed"], 1);
         assert_eq!(snapshot["priority_validation"]["primary_failed"], 1);
         assert_eq!(snapshot["priority_validation"]["primary_remaining"], 8);
+    }
+
+    #[test]
+    fn experimental_progress_requires_full_checks_for_legacy_results() {
+        // Ordinary historical runs can be complete after a partial capture.
+        // Their old completion flag retains its meaning in the normal workflow.
+        let legacy = json!({"identity":"0","complete":true,"status":"differences",
+            "whitespace_diagnosis":{"version":whitespace::VERSION,"status":"not_applicable"},
+            "preparation_disposition":"needs_visual","results":[
+                {"profile":strategy::AGGRESSIVE,"checks_complete":true},
+                {"profile":"default","checks_complete":false},
+                {"profile":"maximum-cleaning","checks_complete":false}
+            ]});
+        let mut normal = visual_tracker();
+        normal.observe(&legacy);
+        assert_eq!(normal.snapshot(0)["counts"]["completed"], 1);
+        assert_eq!(normal.comparison.finished, 1);
+
+        let mut experimental = visual_tracker();
+        experimental.set_comparison_pass(strategy::PRIMARY);
+        experimental.observe(&legacy);
+        let primary = experimental.snapshot(0);
+        assert_eq!(primary["priority_validation"]["primary_completed"], 0);
+        assert_eq!(primary["priority_validation"]["full_completed"], 0);
+        assert_eq!(primary["priority_validation"]["full_remaining"], 10);
+        assert_eq!(experimental.comparison.finished, 0);
+        experimental.set_comparison_pass(strategy::SECONDARY);
+        experimental.observe(&legacy);
+        let secondary = experimental.snapshot(0);
+        assert_eq!(secondary["counts"]["completed"], 0);
+        assert_eq!(secondary["counts"]["visual_completed"], 0);
+        assert_eq!(secondary["counts"]["remaining"], 10);
+        assert_eq!(secondary["rates"]["new_completions"], 0);
+        assert!(!experimental.comparison.seen.contains("0"));
+    }
+
+    #[test]
+    fn experimental_full_coverage_keeps_failed_and_deferred_records_pending() {
+        let mut tracker = visual_tracker();
+        let mut checked = completed(0);
+        checked["results"] = json!(prepared::PROFILES.iter()
+            .map(|name| json!({"profile":name,"checks_complete":true,"image_comparison":"complete"}))
+            .collect::<Vec<_>>());
+        tracker.observe(&checked);
+        tracker.observe(&json!({"identity":"1","complete":true,"status":"skipped",
+            "preparation_disposition":"needs_visual"}));
+        tracker.observe(&json!({"identity":"2","complete":true,"status":"paused-for-later",
+            "preparation_disposition":"needs_visual"}));
+        tracker.observe(&json!({"identity":"3","complete":false,"status":"screening-failed",
+            "preparation_disposition":"needs_visual","priority_validation":{"primary":{"status":"failed"}}}));
+        // Ordinary runs retain their historical terminal-work accounting.
+        assert_eq!(tracker.snapshot(0)["counts"]["remaining"], 7);
+        tracker.set_comparison_pass(strategy::PRIMARY);
+        let primary = tracker.snapshot(0);
+        assert_eq!(primary["priority_validation"]["full_completed"], 1);
+        assert_eq!(primary["priority_validation"]["full_remaining"], 9);
+        tracker.set_comparison_pass(strategy::SECONDARY);
+        let secondary = tracker.snapshot(0);
+        assert_eq!(secondary["counts"]["remaining"], 9);
+        assert_eq!(secondary["counts"]["visual_remaining"], 9);
+        assert_eq!(secondary["priority_validation"]["full_remaining"], 9);
+        assert_eq!(secondary["counts"]["skipped"], 1);
+        assert_eq!(secondary["counts"]["visual_deferred"], 1);
+    }
+
+    #[test]
+    fn experimental_secondary_rates_seed_only_fully_checked_legacy_results() {
+        let mut tracker = visual_tracker();
+        tracker.set_comparison_pass(strategy::PRIMARY);
+        let mut legacy = completed(0);
+        legacy["results"] = json!([{"profile":strategy::AGGRESSIVE,"checks_complete":true}]);
+        tracker.observe(&legacy);
+        let mut checked = completed(1);
+        checked["results"] = json!(prepared::PROFILES.iter()
+            .map(|name| json!({"profile":name,"checks_complete":true,"image_comparison":"complete"})).collect::<Vec<_>>());
+        tracker.observe(&checked);
+        tracker.set_comparison_pass(strategy::SECONDARY);
+        assert_eq!(tracker.comparison.seen, HashSet::from(["1".to_owned()]));
+        tracker.observe(&checked);
+        tracker.observe(&legacy);
+        assert_eq!(tracker.comparison.finished, 0);
+        assert_eq!(tracker.snapshot(0)["priority_validation"]["full_completed"], 1);
+        legacy["results"] = checked["results"].clone();
+        tracker.advance(60.0);
+        tracker.observe(&legacy);
+        tracker.observe(&legacy);
+        let snapshot = tracker.snapshot(0);
+        assert_eq!(snapshot["priority_validation"]["full_completed"], 2);
+        assert_eq!(snapshot["rates"]["new_completions"], 1);
+        assert_eq!(snapshot["rates"]["completed_per_hour"], 60.0);
     }
 
     #[test]

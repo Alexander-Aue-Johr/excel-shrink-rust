@@ -386,7 +386,7 @@ fn reuse_primary_profile(record: &mut Value, previous_results: &Value) -> Result
     if let Some(previous) = previous_results.as_array().and_then(|profiles| {
         profiles.iter().find(|profile| {
             profile["profile"] == super::strategy::AGGRESSIVE
-                && (profile["checks_complete"] == true || profile["package_checks_complete"] == true)
+                && super::strategy::profile_complete(profile)
         })
     }) {
         let mut preserved = previous.clone();
@@ -1026,7 +1026,7 @@ mod tests {
 
     #[test]
     fn reuse_primary_profile_marks_only_successful_secondary_reuse() -> Result<()> {
-        let previous = json!([{"profile":super::super::strategy::AGGRESSIVE,"checks_complete":true,
+        let previous = json!([{"profile":super::super::strategy::AGGRESSIVE,"checks_complete":true,"image_comparison":"complete",
             "sheets":[{"original_image":"evidence/primary.png"}],
             "visual_diagnosis":{"status":"classified","repair_image":"evidence/repair.png"}}]);
         let fresh = json!({"profile":super::super::strategy::AGGRESSIVE,"shrunk_bytes":100});
@@ -1051,6 +1051,11 @@ mod tests {
         let mut record = json!({"comparison_pass":super::super::strategy::SECONDARY,"results":[fresh]});
         reuse_primary_profile(&mut record, &incomplete)?;
         assert_eq!(record["results"][0], fresh);
+        let mut legacy_partial = previous.clone();
+        legacy_partial[0]["image_comparison"] = json!("complete on sheets with equal row heights; changed rows captured as evidence");
+        reuse_primary_profile(&mut record, &legacy_partial)?;
+        assert_eq!(record["results"][0], fresh);
+        assert!(record["results"][0]["comparison_reused_from_pass"].is_null());
         Ok(())
     }
 

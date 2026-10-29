@@ -35,6 +35,8 @@ comparison strategy.
 The scope selected by `--limit` applies to both passes. All selected corpora are
 screened before starting the secondary pass. Historical partial captures are
 queued again, rather than treated as complete independent validation.
+This includes historical row-height policies that compared pixels only on sheets
+with equal heights; their completed-policy flag alone is not full pixel coverage.
 
 A stop and later restart preserve both passes. `priority_validation.primary`
 records whether the aggressive check completed; `priority_validation.secondary`

@@ -13,16 +13,21 @@ pub(super) fn is_priority(record: &Value) -> bool {
     matches!(pass(record), PRIMARY | SECONDARY)
 }
 
+// A historical row-height result may have completed its own policy without
+// comparing pixels on every selected sheet. Only full pixel checks or verified
+// package identity satisfy this experiment's later independent validation.
+pub(super) fn profile_complete(profile: &Value) -> bool {
+    profile["package_checks_complete"] == true
+        || (profile["checks_complete"] == true && profile["image_comparison"] == "complete")
+}
 pub(super) fn profiles(record: &Value) -> &'static [&'static str] {
     match pass(record) {
         PRIMARY => &[AGGRESSIVE],
         SECONDARY => {
             let aggressive_checked = record["results"].as_array().is_some_and(|profiles| {
-                profiles.iter().any(|profile| {
-                    profile["profile"] == AGGRESSIVE
-                        && (profile["checks_complete"] == true
-                            || profile["package_checks_complete"] == true)
-                })
+                profiles
+                    .iter()
+                    .any(|profile| profile["profile"] == AGGRESSIVE && profile_complete(profile))
             });
             if aggressive_checked {
                 &["default", "maximum-cleaning"]
@@ -42,11 +47,9 @@ pub(super) fn full_complete(record: &Value) -> bool {
         )
         && prepared::PROFILES.iter().all(|name| {
             record["results"].as_array().is_some_and(|profiles| {
-                profiles.iter().any(|profile| {
-                    profile["profile"] == *name
-                        && (profile["checks_complete"] == true
-                            || profile["package_checks_complete"] == true)
-                })
+                profiles
+                    .iter()
+                    .any(|profile| profile["profile"] == *name && profile_complete(profile))
             })
         })
 }
@@ -74,10 +77,7 @@ pub(super) fn finish(record: &mut Value) {
                 .iter()
                 .find(|profile| profile["profile"] == AGGRESSIVE)
         });
-        let checked = record["status"] != "skipped"
-            && aggressive.is_some_and(|profile| {
-                profile["checks_complete"] == true || profile["package_checks_complete"] == true
-            });
+        let checked = record["status"] != "skipped" && aggressive.is_some_and(profile_complete);
         let changed = aggressive.is_some_and(|profile| {
             profile["failures"]
                 .as_array()
@@ -124,11 +124,9 @@ pub(super) fn finish(record: &mut Value) {
         let complete = record["status"] != "skipped"
             && prepared::PROFILES.iter().all(|name| {
                 record["results"].as_array().is_some_and(|profiles| {
-                    profiles.iter().any(|profile| {
-                        profile["profile"] == *name
-                            && (profile["checks_complete"] == true
-                                || profile["package_checks_complete"] == true)
-                    })
+                    profiles
+                        .iter()
+                        .any(|profile| profile["profile"] == *name && profile_complete(profile))
                 })
             });
         record["priority_validation"]["secondary"] = json!({
@@ -182,7 +180,7 @@ mod tests {
     #[test]
     fn screening_never_claims_all_profiles_were_checked() {
         let mut record = json!({"comparison_pass":PRIMARY,"complete":true,"status":"unchanged",
-            "results":[{"profile":AGGRESSIVE,"checks_complete":true,"status":"visually unchanged","failures":[]}]});
+            "results":[{"profile":AGGRESSIVE,"checks_complete":true,"image_comparison":"complete","status":"visually unchanged","failures":[]}]});
         finish(&mut record);
         assert_eq!(record["complete"], false);
         assert_eq!(record["checks_complete"], false);
@@ -195,17 +193,16 @@ mod tests {
     #[test]
     fn secondary_requires_the_primary_result_and_both_other_profiles() {
         let mut record = json!({"comparison_pass":SECONDARY,"results":[
-            {"profile":"default","checks_complete":true},
-            {"profile":"maximum-cleaning","checks_complete":true}]});
+            {"profile":"default","checks_complete":true,"image_comparison":"complete"},
+            {"profile":"maximum-cleaning","checks_complete":true,"image_comparison":"complete"}]});
         finish(&mut record);
         assert_eq!(
             record["priority_validation"]["secondary"]["status"],
             "failed"
         );
-        record["results"]
-            .as_array_mut()
-            .unwrap()
-            .push(json!({"profile":AGGRESSIVE,"checks_complete":true}));
+        record["results"].as_array_mut().unwrap().push(
+            json!({"profile":AGGRESSIVE,"checks_complete":true,"image_comparison":"complete"}),
+        );
         finish(&mut record);
         assert_eq!(
             record["priority_validation"]["secondary"]["status"],
@@ -216,7 +213,7 @@ mod tests {
     #[test]
     fn targeted_followups_are_not_full_comparisons() {
         let mut record = json!({"comparison_pass":SECONDARY,"complete":true,"status":"differences","results":[
-            {"profile":AGGRESSIVE,"checks_complete":true},
+            {"profile":AGGRESSIVE,"checks_complete":true,"image_comparison":"complete"},
             {"profile":"default","targeted_checks_complete":true,"checks_complete":false},
             {"profile":"maximum-cleaning","targeted_checks_complete":true,"checks_complete":false}]});
         assert!(!full_complete(&record));
@@ -226,9 +223,24 @@ mod tests {
     #[test]
     fn missing_mandatory_evidence_cannot_certify_primary() {
         let mut record = json!({"comparison_pass":PRIMARY,"status":"skipped","error":"preserve image evidence failed",
-            "results":[{"profile":AGGRESSIVE,"checks_complete":true}]});
+            "results":[{"profile":AGGRESSIVE,"checks_complete":true,"image_comparison":"complete"}]});
         finish(&mut record);
         assert_eq!(record["priority_validation"]["primary"]["status"], "failed");
         assert_eq!(record["complete"], false);
+    }
+    #[test]
+    fn historical_row_height_policy_is_not_a_full_pixel_comparison() {
+        let mut record = json!({"complete":true,"status":"differences","results":[]});
+        for name in prepared::PROFILES {
+            record["results"].as_array_mut().unwrap().push(json!({"profile":name,"checks_complete":true,
+                "image_comparison":"complete on sheets with equal row heights; changed rows captured as evidence"}));
+        }
+        assert!(!full_complete(&record));
+        assert!(needs_pass(&record, PRIMARY));
+        for profile in record["results"].as_array_mut().unwrap() {
+            profile["image_comparison"] = json!("complete");
+        }
+        assert!(full_complete(&record));
+        assert!(!needs_pass(&record, PRIMARY));
     }
 }
