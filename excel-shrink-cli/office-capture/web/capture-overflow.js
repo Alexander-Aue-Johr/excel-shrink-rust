@@ -204,10 +204,20 @@
     });
   }
 
+  async function clearCells(office, sheet, rows, column) {
+    await office(async context => {
+      const worksheet = context.workbook.worksheets.getItem(sheet);
+      for (const group of contiguous(rows)) {
+        worksheet.getRangeByIndexes(group[0], column, group.length, 1).clear('Contents');
+      }
+      await context.sync();
+    });
+  }
+
   async function confirmCells(office, sheet, rows, column, expected) {
     for (let offset = 0; offset < rows.length; offset += 128) {
       const batch = rows.slice(offset, offset + 128);
-      const valid = await office(async context => {
+      const invalid = await office(async context => {
         const worksheet = context.workbook.worksheets.getItem(sheet);
         const cells = batch.map(row => {
           const cell = worksheet.getRangeByIndexes(row, column, 1, 1);
@@ -216,11 +226,17 @@
         });
         await context.sync();
         // For a literal value, Office also returns that value in formulas.
-        return cells.every(cell => expected === ' '
-          ? cell.values[0][0] === ' ' && cell.formulas[0][0] === ' '
-          : cell.valueTypes[0][0] === 'Empty' && cell.formulas[0][0] === '');
+        return cells.map((cell, index) => ({row: batch[index],
+          value: cell.values[0][0], formula: cell.formulas[0][0], type: cell.valueTypes[0][0]}))
+          .find(cell => expected === ' '
+            ? cell.value !== ' ' || cell.formula !== ' '
+            : cell.type !== 'Empty' || cell.formula !== '');
       });
-      if (!valid) throw new Error(`Overflow check did not ${expected === ' ' ? 'write' : 'restore'} cells`);
+      if (invalid) {
+        const address = `${sheet}!R${invalid.row + 1}C${column + 1}`;
+        throw new Error(`Overflow check did not ${expected === ' ' ? 'write' : 'restore'} cells at ${address}: ` +
+          `type=${invalid.type}, value=${JSON.stringify(invalid.value)}, formula=${JSON.stringify(invalid.formula)}`);
+      }
     }
   }
 
@@ -307,7 +323,7 @@
       } finally {
         // Each run uses a disposable workbook. A native timeout stops further calls.
         try {
-          await setCells(office, sheet, written, blockerColumn, '');
+          await clearCells(office, sheet, written, blockerColumn);
           await confirmCells(office, sheet, written, blockerColumn, '');
         } finally {
           // Writing a blocker can auto-fit a row. Merged sources can extend

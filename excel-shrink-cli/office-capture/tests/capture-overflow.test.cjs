@@ -4,6 +4,7 @@ const {check, crop, decode, release, sameImage} = require('../web/capture-overfl
 
 function overflowFixture(options = {}) {
   let value = '';
+  let valueType = 'Empty';
   const writes = [];
   const canvases = [];
   const images = [], contexts = [], draws = [];
@@ -65,13 +66,20 @@ function overflowFixture(options = {}) {
     get values() {return [[value]];},
     set values(cells) {
       writes.push(...cells.map(row => row[0]));
-      if ((cells[0][0] === ' ' && options.skipWrite) ||
-          (cells[0][0] === '' && options.skipRestore)) return;
+      if (cells[0][0] === ' ' && options.skipWrite) return;
       value = cells[0][0];
+      valueType = 'String';
       if (value === ' ' && options.resizeRowOnWrite !== undefined) rowHeights[options.resizeRowOnWrite] = 10;
     },
+    clear(applyTo) {
+      assert.equal(applyTo, 'Contents');
+      writes.push('');
+      if (options.skipRestore) return;
+      value = '';
+      valueType = 'Empty';
+    },
     get formulas() {return [[value === ' ' && options.formula ? '=" "' : value]];},
-    get valueTypes() {return [[value === '' ? 'Empty' : 'String']];},
+    get valueTypes() {return [[valueType]];},
     hasSpill: false,
     format: {load() {}, textOrientation: 0},
     getMergedAreasOrNullObject() {return {load() {}, isNullObject: true};},
