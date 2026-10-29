@@ -70,6 +70,17 @@ impl WorkerTelemetry {
         if let Some(timing) = command_timing(&source["last_command_timing"]) {
             sample["last_command_timing"] = timing;
         }
+        if let Some(progress) = capture_progress(&source["capture_progress"]) {
+            let previous = &self.pane_resources["capture_progress"];
+            if progress["completed"].as_u64().unwrap_or(0)
+                > previous["completed"].as_u64().unwrap_or(0)
+                || progress["sheet_index"] != previous["sheet_index"]
+                || progress["command_id"] != previous["command_id"]
+            {
+                self.last_progress = Some(now_iso());
+            }
+            sample["capture_progress"] = progress;
+        }
         self.pane_resources = sample;
     }
 
@@ -229,6 +240,32 @@ impl WorkerTelemetry {
     }
 }
 
+fn capture_progress(source: &Value) -> Option<Value> {
+    let command = source["command_id"].as_str()?;
+    let kind = source["kind"].as_str()?;
+    let sheet = source["sheet_name"].as_str()?;
+    let index = source["sheet_index"].as_u64()?;
+    let completed = source["completed"].as_u64()?;
+    let total = source["total"].as_u64();
+    if command.is_empty()
+        || command.len() > 128
+        || sheet.is_empty()
+        || sheet.len() > 256
+        || !matches!(
+            kind,
+            "capture" | "images" | "capture_images" | "capture_hashes"
+        )
+        || index == 0
+        || total.is_some_and(|total| total > 4096 || completed > total)
+        || completed > 4096
+    {
+        return None;
+    }
+    Some(json!({"command_id":command,"kind":kind,"sheet_index":index,
+        "sheet_name":sheet,"completed":completed,"total":total,
+        "updated_unix_ms":source["updated_unix_ms"]}))
+}
+
 fn command_timing(source: &Value) -> Option<Value> {
     let command = source["command_id"].as_str()?;
     let kind = source["kind"].as_str()?;
@@ -335,6 +372,35 @@ fn pick(source: &Value, names: &[&str]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capture_sheet_progress_advances_only_after_a_capture() {
+        let mut telemetry = WorkerTelemetry::new();
+        let sample = |completed| {
+            json!({"capture_progress": {"command_id":"000002",
+            "kind":"capture","sheet_index":6,"sheet_name":"46331-01",
+            "completed":completed,"total":4,"updated_unix_ms":123}})
+        };
+        telemetry.sample_pane(&sample(0));
+        let started = telemetry.snapshot();
+        assert_eq!(
+            started["pane_resources"]["capture_progress"]["sheet_name"],
+            "46331-01"
+        );
+        telemetry.last_progress = Some("unchanged".to_owned());
+        telemetry.sample_pane(&sample(0));
+        assert_eq!(telemetry.snapshot()["last_progress_at"], "unchanged");
+        telemetry.sample_pane(&sample(1));
+        assert_eq!(
+            telemetry.snapshot()["pane_resources"]["capture_progress"]["completed"],
+            1
+        );
+        assert!(
+            capture_progress(&json!({"command_id":"000002","kind":"capture",
+            "sheet_index":6,"sheet_name":"46331-01","completed":5,"total":4}))
+            .is_none()
+        );
+    }
 
     #[test]
     fn pane_timings_are_bounded_measurements_without_invented_progress() {

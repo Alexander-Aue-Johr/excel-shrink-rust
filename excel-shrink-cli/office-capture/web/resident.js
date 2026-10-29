@@ -38,6 +38,7 @@
     let pipelineOverlapCount = 0;
     let timings;
     let lastCommandTiming;
+    let captureProgress = null;
 
     async function measure(field, action) {
       const started = performance.now();
@@ -64,6 +65,7 @@
         script_evaluations: root.__excelShrinkPaneRuntime?.evaluations ?? 0
       };
       if (lastCommandTiming) sample.last_command_timing = {...lastCommandTiming};
+      if (captureProgress) sample.capture_progress = {...captureProgress};
       // Chromium may expose approximate JS heap figures. They do not include
       // decoded/native images; launcher process snapshots cover that separately.
       if (performance.memory) {
@@ -182,6 +184,11 @@
       if (captures.has(command.id)) throw new Error('Capture command was already executed');
       const retained = new Map();
       for (const sheet of command.sheets) {
+        if (command.kind === 'capture') {
+          captureProgress = {command_id: command.id, kind: command.kind,
+            sheet_index: sheet.index, sheet_name: sheet.name, completed: 0, total: null,
+            updated_unix_ms: Date.now()};
+        }
         helpers.phase(command.kind === 'plan' ? 'Planning capture tiles' : 'Capturing tile checksums');
         helpers.progress(result.sheets.length, command.sheets.length, sheet.name);
         const {bottom, right} = bounds(sheet, true);
@@ -205,6 +212,7 @@
           throw new Error('Negotiated capture boundary is outside the verified extent');
         }
         const tiles = selectedTiles(geometry, end, sheet.tile_rows, {planOnly: command.kind === 'plan'});
+        if (captureProgress) captureProgress.total = tiles.length;
         // Bound aggregate metadata before retaining another sheet. Per-image
         // and selected-capture limits apply separately when images are needed.
         if (result.tiles.length + tiles.length > MAX_PLANNED_TILES_PER_COMMAND) {
@@ -231,6 +239,10 @@
             capture_budget_fallback: tile.budgetFallback ?? null,
             capture_right_column: end, width: image.width, height: image.height, sha256: image.sha256};
           result.tiles.push(metadata);
+          if (captureProgress) {
+            captureProgress.completed = index + 1;
+            captureProgress.updated_unix_ms = Date.now();
+          }
           retained.set(key(metadata), {...state, tile, metadata});
           // The autonomous sweep retains only metadata across tiles and sheets.
           if (image.bytes) {
@@ -257,6 +269,9 @@
         if (!state || visited.has(id)) throw new Error('Unknown or duplicate evidence tile');
         visited.add(id);
         const expected = state.metadata;
+        captureProgress = {command_id: command.id, kind: command.kind,
+          sheet_index: state.sheet.index, sheet_name: state.sheet.name, completed: 0, total: 1,
+          updated_unix_ms: Date.now()};
         if (requested.sha256 !== expected.sha256 || requested.width !== expected.width || requested.height !== expected.height) {
           throw new Error('Evidence request no longer matches offered tile');
         }
@@ -271,6 +286,8 @@
         const receipt = await measure('upload_ms', () => transport.image(command.id, expected, image.bytes));
         if (typeof receipt.image_path !== 'string' || !receipt.image_path) throw new Error('Missing image receipt');
         result.images.push({...expected, image_path: receipt.image_path});
+        captureProgress.completed = 1;
+        captureProgress.updated_unix_ms = Date.now();
       }
       return result;
     }
@@ -385,6 +402,9 @@
         throw new Error('Capture image is already retained; release it before capturing again');
       }
       helpers.phase(`Capturing synchronized batch (${states.length} tiles)`);
+      captureProgress = {command_id: command.id, kind: command.kind,
+        sheet_index: states[0].sheet.index, sheet_name: states[0].sheet.name,
+        completed: 0, total: states.length, updated_unix_ms: Date.now()};
       await checkedWorksheet(states[0].sheet);
       await geometryFor(states[0]);
       activeBatchTiles = states.length;
@@ -484,6 +504,8 @@
               } else {
                 finalized.push(image);
               }
+              captureProgress.completed++;
+              captureProgress.updated_unix_ms = Date.now();
             }
             await uploadTask;
             checkUpload();
@@ -574,6 +596,7 @@
           result.uploaded_images = result.images?.length ?? 0;
           return result;
         } finally {
+          captureProgress = null;
           pendingPngCharacters = 0;
           pendingEncodedBytes = retainedImageBytes();
           activeBatchPixels = 0;

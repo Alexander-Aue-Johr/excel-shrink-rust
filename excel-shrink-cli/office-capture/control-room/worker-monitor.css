@@ -43,6 +43,42 @@ body.presenting .wm-progress {
   height:12px;
   accent-color:#75edc0;
 }
+.wm-capture-row {
+  margin:8px 0 2px;
+}
+.wm-capture-eyebrow {
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:5px;
+  color:#9cc0d0;
+  font-size:10px;
+  overflow-wrap:anywhere;
+}
+.wm-capture-eyebrow span {
+  flex:none;
+}
+.wm-capture-track {
+  position:relative;
+  min-height:28px;
+  border:1px solid #406176;
+  border-radius:6px;
+  background:#132b3a;
+  overflow:hidden;
+}
+.wm-capture-fill {
+  position:absolute;
+  inset:0 auto 0 0;
+  background:#267f87;
+}
+.wm-capture-label {
+  position:relative;
+  display:block;
+  padding:4px 9px;
+  color:#f1f8fb;
+  font-size:11px;
+  overflow-wrap:anywhere;
+}
 .wm-progress-numbers {
   display:grid;
   grid-template-columns:repeat(6,minmax(0,1fr));

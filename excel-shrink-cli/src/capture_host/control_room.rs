@@ -236,6 +236,66 @@ async fn capture_opening_demand(root: &Path, queue: &Value) -> Value {
     })
 }
 
+/// Reads per-sheet capture progress from current Excel clients only.
+///
+/// Preparation clients publish in `.work`; comparison clients publish in the
+/// control room. Attempt matching keeps old session files out of a resumed run.
+async fn capture_workers(root: &Path, queue: &Value) -> Vec<Value> {
+    let mut workers = Vec::new();
+    let Some(groups) = queue["groups"].as_array() else {
+        return workers;
+    };
+    for group in groups {
+        if group["active"] != true || group["run_id"] != queue["run_id"] {
+            continue;
+        }
+        let Some(id) = group["id"].as_str().filter(|id| safe_id(id).is_ok()) else {
+            continue;
+        };
+        let session = if group["status"] == "preparing" {
+            root.parent().map(|output| {
+                output
+                    .join(".work")
+                    .join(id)
+                    .join("preparation-capture/metrics.json")
+            })
+        } else {
+            Some(root.join("groups").join(id).join("launcher.json"))
+        };
+        let Some(session) = session else {
+            continue;
+        };
+        let Ok(metrics) = read_object(&session, SNAPSHOT_LIMIT).await else {
+            continue;
+        };
+        if metrics["attempt_id"] != group["attempt_id"] {
+            continue;
+        }
+        let Some(clients) = metrics["clients"].as_object() else {
+            continue;
+        };
+        for (profile, client) in clients {
+            let progress = &client["monitor"]["pane_resources"]["capture_progress"];
+            if !matches!(
+                client["monitor"]["state"].as_str(),
+                Some("capturing" | "providing_images")
+            )
+                || client["active_command"] != progress["command_id"]
+                || progress["sheet_name"].as_str().is_none()
+                || progress["completed"].as_u64().is_none()
+                || client["pid"].as_u64().is_none()
+            {
+                continue;
+            }
+            workers.push(json!({"workbook":group["workbook"],"profile":profile,
+                "pid":client["pid"],"sheet_name":progress["sheet_name"],
+                "sheet_index":progress["sheet_index"],"completed":progress["completed"],
+                "total":progress["total"],"updated_unix_ms":progress["updated_unix_ms"]}));
+        }
+    }
+    workers
+}
+
 async fn read_workbook_index(root: &Path, diagnostics: &mut Vec<Value>) -> Option<Value> {
     read_snapshot(
         &root.join("workbook-index.json"),
@@ -295,6 +355,8 @@ async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
     queue["logical_cores"] = json!(logical_cores());
     let opening_demand = capture_opening_demand(&room.root, &queue).await;
     queue["excel_opening_demand"] = opening_demand;
+    let workers = capture_workers(&room.root, &queue).await;
+    queue["capture_workers"] = json!(workers);
     let stop = read_snapshot(
         &room.root.join("stop-request.json"),
         &mut diagnostics,
@@ -1372,7 +1434,7 @@ mod tests {
             session.join("metrics.json"),
             br#"{"attempt_id":"current","clients":{}}"#,
         )?;
-        let queue = json!({"run_id":"run","groups":[{"id":"workbook","run_id":"run",
+        let queue = json!({"run_id":"run","groups":[{"id":"workbook","workbook":"book.xlsx","run_id":"run",
             "attempt_id":"current","active":true,"status":"preparing"}]});
         let waiting = capture_opening_demand(&root, &queue).await;
         assert_eq!(waiting["waiting_workbooks"], 2);
@@ -1385,6 +1447,17 @@ mod tests {
         let opening = capture_opening_demand(&root, &queue).await;
         assert_eq!(opening["waiting_workbooks"], 1);
         assert_eq!(opening["opening_workbooks"], 1);
+        assert!(capture_workers(&root, &queue).await.is_empty());
+
+        std::fs::write(
+            session.join("metrics.json"),
+            br#"{"attempt_id":"current","clients":{"original":{"pid":42,"status":"running","active_command":"000002","monitor":{"state":"capturing","pane_resources":{"capture_progress":{"command_id":"000002","sheet_name":"Titel","sheet_index":1,"completed":3,"total":7,"updated_unix_ms":123}}}}}}"#,
+        )?;
+        let workers = capture_workers(&root, &queue).await;
+        assert_eq!(workers.len(), 1);
+        assert_eq!(workers[0]["sheet_name"], "Titel");
+        assert_eq!(workers[0]["completed"], 3);
+        assert_eq!(workers[0]["total"], 7);
 
         std::fs::write(
             session.join("metrics.json"),
@@ -1394,6 +1467,7 @@ mod tests {
             capture_opening_demand(&root, &queue).await["observed_sessions"],
             0
         );
+        assert!(capture_workers(&root, &queue).await.is_empty());
         std::fs::remove_dir_all(output)?;
         Ok(())
     }

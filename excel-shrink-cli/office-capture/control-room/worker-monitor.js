@@ -10,6 +10,29 @@ const element = (tag, className, text) => {
 const timeText = value => timestamp(value) == null ? 'Not observed' : new Date(timestamp(value)).toLocaleString('en-US');
 const sinceText = value => age(value) == null ? 'Not observed' : `${duration(age(value))} ago`;
 const message = event => typeof event === 'string' ? event : event?.message || event?.kind || event?.error || 'Not observed';
+function captureProgressRow(worker) {
+  const row = element('div', 'wm-capture-row');
+  const eyebrow = element('div', 'wm-capture-eyebrow');
+  eyebrow.append(element('strong', null, worker.workbook),
+    element('span', null, `${worker.profile} · Excel PID ${worker.pid}`));
+  const track = element('div', 'wm-capture-track');
+  const completed = Number(worker.completed);
+  const total = Number(worker.total);
+  const measured = Number.isSafeInteger(total) && total > 0;
+  track.setAttribute('role', 'progressbar');
+  track.setAttribute('aria-label', `${worker.workbook}: ${worker.sheet_name}`);
+  if (measured) {
+    track.setAttribute('aria-valuemin', '0');
+    track.setAttribute('aria-valuemax', String(total));
+    track.setAttribute('aria-valuenow', String(completed));
+  }
+  const fill = element('div', 'wm-capture-fill');
+  fill.style.width = `${measured ? Math.min(100, completed / total * 100) : 0}%`;
+  const label = element('span', 'wm-capture-label', `${worker.sheet_name} · ${measured ? `${completed} / ${total} captures` : 'Counting captures'}`);
+  track.append(fill, label);
+  row.append(eyebrow, track);
+  return row;
+}
 const observedPhase = row => row.alive === false && !['closed', 'finished', 'complete', 'completed'].includes(row.state)
   ? `Process exited · last ${phaseLabel(row.state)}` : phaseLabel(row.state);
 
@@ -392,8 +415,9 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     preparationBar.value = 100 * (summary.preparationRatio ?? 0);
     const active = summary.activePreparation.length
       ? ` · Current: ${summary.activePreparation.join(', ')}` : '';
-    phases.append(preparation, preparationBar,
-      element('p', 'wm-progress-note', `${summary.preparationPerMinute}/min · ${summary.preparationPerHour}/h · ${summary.preparationEta}${active}`));
+    phases.append(preparation, preparationBar);
+    for (const worker of queue.capture_workers || []) phases.append(captureProgressRow(worker));
+    phases.append(element('p', 'wm-progress-note', `${summary.preparationPerMinute}/min · ${summary.preparationPerHour}/h · ${summary.preparationEta}${active}`));
     if (summary.visualScopeFrozen) {
       const comparison = element('div', 'wm-phase-row');
       comparison.append(element('strong', null, 'Visual comparison'),

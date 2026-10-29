@@ -113,6 +113,10 @@ export function workerRows(group) {
     const lastProgress = latest(monitor.last_progress_at, monitor.last_progress, lastSuccess);
     const lastEvent = latest(monitor.last_event, client.last_launcher_event);
     const job = monitor.active_job;
+    const plannedSheets = job?.locations?.map(item => item.sheet_name || item.name ||
+      (item.sheet_index != null ? `Sheet ${item.sheet_index}` : null))
+      .filter(Boolean).filter((name, index, names) => names.indexOf(name) === index).join(', ');
+    const sheet = monitor.pane_resources?.capture_progress?.sheet_name || plannedSheets || monitor.sheet_name;
     return { ...common, id: client.worker_id, clientId: client.client_id, kind: 'Excel / Office.js',
       pid: client.pid, processStarted: client.process_started_unix_ms, alive: client.process_alive, windowMode: client.window_mode,
       sampledAt: group.launcher_sampled_unix_ms,
@@ -121,7 +125,7 @@ export function workerRows(group) {
       heartbeat: client.last_heartbeat_at, heartbeatCount: client.heartbeat_count,
       waitReason: waits[monitor.wait_reason] || monitor.wait_reason || (state === 'waiting_for_addin'
         ? 'Excel opening or add-in initialization; internal wait reason unknown' : null),
-      job, sheet: job?.locations?.map(item => item.sheet_name || item.name || (item.sheet_index != null ? `Sheet ${item.sheet_index}` : null)).filter(Boolean).filter((name, i, names) => names.indexOf(name) === i).join(', ') || monitor.sheet_name,
+      job, sheet,
       events: [...(monitor.events || []), ...(client.last_launcher_event ? [client.last_launcher_event] : [])]
         .sort((a, b) => (timestamp(b) || 0) - (timestamp(a) || 0)).slice(0, 24),
       uploadedImages: monitor.uploaded_images, completedCommands: monitor.completed_commands, error: client.error,
