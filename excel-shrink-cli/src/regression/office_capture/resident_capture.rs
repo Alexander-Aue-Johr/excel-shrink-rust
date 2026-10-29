@@ -64,6 +64,7 @@ pub(in crate::regression) struct ResidentCapture {
     physical_closed: BTreeSet<String>,
     initial_aligned: bool,
     sweep_mode: bool,
+    screening_mode: bool,
     comparisons: BTreeMap<(String, String, String), Value>,
     snapshots: BTreeMap<String, Snapshot>,
     compared_originals: BTreeMap<String, Snapshot>,
@@ -275,11 +276,167 @@ fn fingerprint_control_snapshot(snapshot: &Snapshot, bounds: &[Value]) -> Result
     }))?))
 }
 
+fn screen_sheet_hashes(original: &Snapshot, variant: &Snapshot) -> Result<Vec<Value>> {
+    ensure!(
+        same_ranges(original, variant),
+        "screening tile ranges differ"
+    );
+    let indexes: BTreeSet<_> = original.tiles.iter().map(|tile| tile.sheet_index).collect();
+    let mut sheets = Vec::new();
+    for index in indexes {
+        let left: Vec<_> = original
+            .tiles
+            .iter()
+            .filter(|tile| tile.sheet_index == index)
+            .collect();
+        let right: Vec<_> = variant
+            .tiles
+            .iter()
+            .filter(|tile| tile.sheet_index == index)
+            .collect();
+        let left_heights = original
+            .heights
+            .iter()
+            .find(|sheet| sheet.sheet_index == index);
+        let right_heights = variant
+            .heights
+            .iter()
+            .find(|sheet| sheet.sheet_index == index);
+        ensure!(
+            left_heights.is_some() && right_heights.is_some(),
+            "screening sheet has no row heights"
+        );
+        let original_sha256 = artifact_cache::sha256(&serde_json::to_vec(&json!({
+            "tiles": left, "row_heights": left_heights,
+        }))?);
+        let variant_sha256 = artifact_cache::sha256(&serde_json::to_vec(&json!({
+            "tiles": right, "row_heights": right_heights,
+        }))?);
+        sheets.push(json!({
+            "sheet_index": index,
+            "sheet_name": left[0].sheet_name,
+            "tile_count": left.len(),
+            "tiles": left.iter().zip(&right).map(|(original, variant)| json!({
+                "tile_index": original.tile_index,
+                "range": original.range,
+                "core_rows": original.core_rows,
+                "width": original.width,
+                "height": original.height,
+                "original_sha256": original.sha256,
+                "variant_sha256": variant.sha256,
+            })).collect::<Vec<_>>(),
+            "original_sha256": original_sha256,
+            "variant_sha256": variant_sha256,
+        }));
+    }
+    Ok(sheets)
+}
+
 impl ResidentCapture {
+    /// Capture every negotiated tile twice while both Excel workbooks remain open.
+    /// The returned hashes are screening evidence, not a pixel comparison result.
+    /// Captures both open workbooks twice, with a Full recalculation between sweeps.
+    ///
+    /// Returns stable tile and sheet hashes for the selected profile. An unstable
+    /// sweep cannot be treated as equal during preparation screening.
+    pub(in crate::regression) fn screen_twice(&mut self, profile: &str) -> Result<Value> {
+        self.align_initial_clients()?;
+        let first_original = self.snapshot("original")?;
+        let first_variant = self.snapshot(profile)?;
+        let clients: BTreeSet<_> = self.aliases.values().cloned().collect();
+        // A second screenshot without calculation would miss formulas whose
+        // display changes only when Excel recalculates the already open file.
+        let mut calculations = Vec::new();
+        for client in &clients {
+            let command = self.issue(
+                client,
+                json!({
+                    "kind": "diagnosis", "operation": "recalculate",
+                }),
+            )?;
+            calculations.push((client.clone(), command));
+        }
+        for (client, command) in calculations {
+            self.wait(&client, &command)?;
+        }
+        self.capture_full_sweep(&clients)?;
+        let second_original = self.snapshot("original")?;
+        let second_variant = self.snapshot(profile)?;
+        let first = screen_sheet_hashes(&first_original, &first_variant)?;
+        let second = screen_sheet_hashes(&second_original, &second_variant)?;
+        let stable = first == second;
+        let changed_sheets: Vec<_> = second
+            .iter()
+            .filter(|sheet| sheet["original_sha256"] != sheet["variant_sha256"])
+            .map(|sheet| sheet["sheet_index"].clone())
+            .collect();
+        Ok(json!({
+            "version": 1,
+            "profile": profile,
+            "hash_algorithm": "SHA-256",
+            "hash_domain": "ordered tile metadata, finalized PNG hashes and row heights",
+            "calculation_between_sweeps": "Excel Full",
+            "first_sheets": first,
+            "sheets": second,
+            "stable": stable,
+            "changed_sheets": changed_sheets,
+            "global_sha256": artifact_cache::sha256(&serde_json::to_vec(&json!({"first":first,"second":second}))?),
+        }))
+    }
+
     pub(in crate::regression) fn start(
         original: &Path,
         variants: &[(&str, PathBuf)],
         directory: &Path,
+    ) -> Result<Self> {
+        Self::start_inner(original, variants, directory, false, None, 0)
+    }
+
+    /// Starts a capture that may open targeted follow-up profiles after the first comparison.
+    ///
+    /// `additional_profiles` reserves their Excel slots with the initial clients so
+    /// concurrent groups cannot each hold a partial allocation while waiting.
+    pub(in crate::regression) fn start_prioritized(
+        original: &Path,
+        variants: &[(&str, PathBuf)],
+        directory: &Path,
+        sheets: Option<&BTreeSet<usize>>,
+        additional_profiles: usize,
+    ) -> Result<Self> {
+        Self::start_inner(
+            original,
+            variants,
+            directory,
+            false,
+            sheets,
+            additional_profiles,
+        )
+    }
+
+    /// Opens the original and one prepared profile for two capture sweeps in one session.
+    pub(in crate::regression) fn start_screening(
+        original: &Path,
+        profile: &str,
+        variant: &Path,
+        directory: &Path,
+    ) -> Result<Self> {
+        Self::start_inner(
+            original,
+            &[(profile, variant.to_owned())],
+            directory,
+            true,
+            None,
+            0,
+        )
+    }
+
+    fn start_inner(
+        original: &Path,
+        variants: &[(&str, PathBuf)],
+        directory: &Path,
+        screening: bool,
+        selected_sheets: Option<&BTreeSet<usize>>,
+        additional_profiles: usize,
     ) -> Result<Self> {
         ensure!(!variants.is_empty(), "resident comparison has no profiles");
         let cleanup_barrier = batch_cleanup::Participant::from_environment()?;
@@ -297,7 +454,16 @@ impl ResidentCapture {
         );
         let mut plans = BTreeMap::new();
         for (name, path) in variants {
-            plans.insert((*name).to_owned(), plan_pair(original, path)?);
+            let mut plan = plan_pair(original, path)?;
+            if let Some(selected) = selected_sheets {
+                plan.sheets
+                    .retain(|sheet| selected.contains(&sheet.sheet_index));
+                ensure!(
+                    !plan.sheets.is_empty(),
+                    "screening selected no visible sheets"
+                );
+            }
+            plans.insert((*name).to_owned(), plan);
         }
         // Every client uses the union of the required bounds. Its actual row
         // geometry is measured independently; differing tile cuts are reconciled.
@@ -356,7 +522,21 @@ impl ResidentCapture {
             aliases,
             reusable: reusable_clients,
         } = capture_clients(&inputs)?;
-        let live = live::LiveCapture::from_environment(&directory, original, &aliases)?;
+        let reserved_clients =
+            aliases.values().collect::<BTreeSet<_>>().len() + additional_profiles;
+        ensure!(
+            reserved_clients <= 16,
+            "resident session exceeded 16 clients"
+        );
+        publish(
+            &directory.join("capacity.json"),
+            &json!({"reserved_clients": reserved_clients}),
+        )?;
+        let live = if screening {
+            None
+        } else {
+            live::LiveCapture::from_environment(&directory, original, &aliases)?
+        };
         tall_sheet_selection::prepare_recalc_inputs(
             original,
             variants,
@@ -457,7 +637,9 @@ impl ResidentCapture {
             closed: BTreeSet::new(),
             physical_closed: BTreeSet::new(),
             initial_aligned: false,
-            sweep_mode: std::env::var("EXCEL_SHRINK_CAPTURE_SWEEP").as_deref() == Ok("1"),
+            sweep_mode: screening
+                || std::env::var("EXCEL_SHRINK_CAPTURE_SWEEP").as_deref() == Ok("1"),
+            screening_mode: screening,
             comparisons: BTreeMap::new(),
             snapshots: BTreeMap::new(),
             compared_originals: BTreeMap::new(),
@@ -867,9 +1049,15 @@ impl ResidentCapture {
             self.timings.images_received += 1;
             for (name, total) in [
                 ("upload_receive_ms", &mut self.timings.upload_receive_ms),
-                ("upload_validate_publish_ms", &mut self.timings.upload_validate_publish_ms),
+                (
+                    "upload_validate_publish_ms",
+                    &mut self.timings.upload_validate_publish_ms,
+                ),
             ] {
-                if let Some(value) = item["timings"][name].as_f64().filter(|value| value.is_finite() && *value >= 0.0) {
+                if let Some(value) = item["timings"][name]
+                    .as_f64()
+                    .filter(|value| value.is_finite() && *value >= 0.0)
+                {
                     *total += value;
                 }
             }
@@ -1090,7 +1278,11 @@ impl ResidentCapture {
                 }
             }
         }
-        result["capture_policy"] = json!(if self.sweep_mode { "autonomous-full-sweep-v1" } else { "tall-sheet-v1" });
+        result["capture_policy"] = json!(if self.sweep_mode {
+            "autonomous-full-sweep-v1"
+        } else {
+            "tall-sheet-v1"
+        });
         if self
             .capture_coverage
             .values()

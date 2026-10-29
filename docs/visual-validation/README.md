@@ -1,6 +1,38 @@
 # Running corpus studies
 
 The experiment branch also provides [aggressive-first screening followed by full validation](aggressive-first-study.md).
+It also supports preparation-time hash screening. In the Windows terminal launcher,
+select one profile with `-PreparationHashProfile default`,
+`-PreparationHashProfile maximum-cleaning`, or
+`-PreparationHashProfile too-aggressive-cleaning`. The direct CLI option is
+`--preparation-hash-profile` and requires `--resident-capture`.
+
+Preparation opens Original and the selected output in one resident group,
+captures every tile, runs Excel Full recalculation in both open workbooks, and
+captures every tile again. Each workbook bundle contains `capture-hashes.json`
+with both passes, per-tile and per-sheet SHA-256 hashes, and a global SHA-256.
+Preparation stores hashes only; it defers image replay and exact pixel checks
+to selected sheets in the comparison phase.
+Only stable hash differences select sheets for later pixel comparison. A missing
+or unstable manifest selects all sheets of the chosen profile. Hash equality is
+reported as `screened-equal`; it is not a complete visual or cell-value check.
+`default` stops after that profile. `maximum-cleaning` adds targeted Default
+captures if Maximum has visual differences. `too-aggressive-cleaning` adds
+targeted Maximum and Default captures if Too Aggressive has visual differences.
+Targeted follow-up captures do not run independent recalculation validation.
+One preparation worker uses two Excel instances for the Original and selected
+profile; the existing preparation-process control sets concurrent workbook
+groups. For `N` simultaneous preparation groups, set `prepare_processes` and
+`target_groups` to at least `N` and `excel_process_limit` to at least `2N`
+(identical certified copies may share one instance). The control's minimum is
+four Excel slots; start with one group and that minimum, which leaves room for
+the two Excel instances used during preparation. Comparison groups reserve
+slots for possible follow-up profiles at admission, even if they prove
+unnecessary. No RAM-based control is added for this mode.
+The two sweeps detect changes caused by an explicit Full recalculation in that
+Excel session. They cannot rule out later refresh-on-open behavior, external
+data changes, or a different rendering in a new Excel session; the report
+therefore keeps screened results separate from complete visual validation.
 See the [two confirmed Default formatting regressions](confirmed-default-regressions.md) for the controlled findings.
 
 This guide assumes you have saved a corpus configuration. If you have not,

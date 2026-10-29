@@ -182,6 +182,11 @@ impl ResidentCapture {
             live.state["capture_pipeline"]["replay_verified"] = json!(false);
             live.save()?;
         }
+        // Preparation persists only the checksums. Evidence replay belongs to
+        // the later pixel comparison of sheets selected by those checksums.
+        if self.screening_mode {
+            return Ok(());
+        }
         let mut commands = Vec::new();
         for client in clients {
             let snapshot = self.snapshot(client)?;

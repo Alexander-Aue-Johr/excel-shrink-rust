@@ -83,6 +83,11 @@ pub(in crate::regression) struct StudyArgs {
     /// Screen the selection with the aggressive profile before full follow-up.
     #[arg(long, requires = "resident_capture", conflicts_with_all = ["prepare_only", "diagnose_whitespace_only", "full_scan_deferred"])]
     aggressive_first: bool,
+    /// Capture twice during preparation and screen this profile before visual follow-up.
+    #[arg(long, value_parser = ["default", "maximum-cleaning", "too-aggressive-cleaning"],
+        requires = "resident_capture",
+        conflicts_with_all = ["aggressive_first", "full_scan_deferred", "diagnose_whitespace_only"])]
+    preparation_hash_profile: Option<String>,
     /// Hide Excel comparison windows from startup while keeping the Office add-in active.
     #[arg(long)]
     hide_excel: bool,
@@ -496,10 +501,18 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         );
     }
     startup.update("initializing_run", "", 0, None)?;
-    if args.aggressive_first {
+    if args.aggressive_first || args.preparation_hash_profile.is_some() {
         // Set before any worker threads are created; child coordinators inherit
         // the autonomous protocol selected by this explicit experiment option.
         std::env::set_var("EXCEL_SHRINK_CAPTURE_SWEEP", "1");
+        std::env::set_var(
+            "EXCEL_SHRINK_EXCEL_SLOT_ROOT",
+            output.join("control-room"),
+        );
+        std::env::set_var(
+            "EXCEL_SHRINK_CAPTURE_GROUP_LIMIT",
+            args.comparison_workers.to_string(),
+        );
     }
     let mut run = provenance::start_run(
         &output,
@@ -517,6 +530,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             "workbook_timeout_seconds":args.workbook_timeout_seconds,
             "startup_timeout_seconds":args.startup_timeout_seconds,"max_workbook_bytes":args.max_workbook_bytes,
             "limit":args.limit,"reuse_prepared_from":args.reuse_prepared_from,"aggressive_first":args.aggressive_first,
+            "preparation_hash_profile":args.preparation_hash_profile,
             "worker_memory_estimate_mib":std::env::var("EXCEL_SHRINK_WORKER_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
             "excel_memory_estimate_mib":std::env::var("EXCEL_SHRINK_EXCEL_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
             "resident_memory_estimate_mib":std::env::var("EXCEL_SHRINK_RESIDENT_MEMORY_MIB").unwrap_or_else(|_|"16384".into())
@@ -551,7 +565,20 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             if args.diagnose_whitespace_only {
                 return Vec::new();
             }
-            let mut pending = if args.aggressive_first {
+            let mut pending = if let Some(profile) = args.preparation_hash_profile.as_deref() {
+                selection::ordered_members(source, args.order).into_iter().filter(|(index, name)| {
+                    let id = identity(source, *index, name);
+                    records.iter().find(|record| record["identity"] == id).is_none_or(|record| {
+                        if record["status"] == "skipped" {
+                            return args.should_retry_skipped();
+                        }
+                        record["complete"] != true
+                            || !has_required_shrink_evidence(record)
+                            || (record["preparation_disposition"] == "needs_visual"
+                                && record["last_hash_screen_profile"] != profile)
+                    })
+                }).collect()
+            } else if args.aggressive_first {
                 // Historical tall-sheet or targeted attempts may be terminal in
                 // the ordinary workflow without full coverage. Include them.
                 selection::ordered_members(source, args.order).into_iter().filter(|(index, name)| {
@@ -578,6 +605,24 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                     args.should_retry_skipped(),
                 )
             };
+            if args.preparation_hash_profile.is_none()
+                && !args.aggressive_first
+                && !args.full_scan_deferred {
+                let queued: HashSet<_> = pending.iter().map(|(index, _)| *index).collect();
+                pending.extend(selection::ordered_members(source, args.order)
+                    .into_iter()
+                    .filter(|(index, name)| {
+                        if queued.contains(index) {
+                            return false;
+                        }
+                        let id = identity(source, *index, name);
+                        records.iter().find(|record| record["identity"] == id)
+                            .is_some_and(|record| {
+                                record["last_hash_screen_profile"].is_string()
+                                    && !strategy::full_complete(record)
+                            })
+                    }));
+            }
             // A completed result from an older build can be in the selected
             // partition but lack the shrink evidence needed by this workflow.
             // Prepare it again instead of silently treating it as eligible.
@@ -644,7 +689,9 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
     }
     let mut visual_scope_frozen = false;
     // Screening spans the complete selection before any full secondary pass.
-    let comparison_passes: &[&str] = if args.aggressive_first {
+    let comparison_passes: &[&str] = if args.preparation_hash_profile.is_some() {
+        &[strategy::HASH_SCREEN]
+    } else if args.aggressive_first {
         &[strategy::PRIMARY, strategy::SECONDARY]
     } else {
         &["full"]
@@ -707,7 +754,8 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         let members = selection::ordered_members(source, args.order);
         // Completed differences get their missing causal diagnosis before new work.
         // The primary measurements and comparisons are never reset for this pass.
-        if !args.prepare_only && !args.compare_only && !args.aggressive_first {
+        if !args.prepare_only && !args.compare_only && !args.aggressive_first
+            && args.preparation_hash_profile.is_none() {
             let backfill: Vec<_> = members
                 .iter()
                 .filter(|(index, name)| {
@@ -772,7 +820,11 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             for (index, name) in selected {
                 let id = identity(source, *index, name);
                 let pos = ensure_record(&mut records, source, *index, name);
-                if args.aggressive_first && !strategy::needs_pass(&records[pos], comparison_pass) {
+                if let Some(profile) = &args.preparation_hash_profile {
+                    records[pos]["comparison_hash_profile"] = json!(profile);
+                }
+                if (args.aggressive_first || args.preparation_hash_profile.is_some())
+                    && !strategy::needs_pass(&records[pos], comparison_pass) {
                     continue;
                 }
                 if records[pos]["preparation_disposition"] != "needs_visual" {
@@ -832,6 +884,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
     if args.control_room
         && args.resident_capture
         && !args.aggressive_first
+        && args.preparation_hash_profile.is_none()
         && !args.prepare_only
         && !args.diagnose_whitespace_only
         && !args.full_scan_deferred
@@ -1285,7 +1338,7 @@ fn classify_preparation(record: &mut Value) -> bool {
         if !nonvisual
             && record["complete"] == true
             && matches!(record["status"].as_str(),
-                Some("unchanged" | "differences" | "paused-for-later" | "skipped"))
+                Some("unchanged" | "differences" | "screened-equal" | "paused-for-later" | "skipped"))
         {
             if record["preparation_disposition"] == "needs_visual" {
                 return false;

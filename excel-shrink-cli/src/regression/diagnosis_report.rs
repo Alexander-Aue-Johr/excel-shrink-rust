@@ -121,6 +121,7 @@ fn write_page(
         )
     });
     let unchanged: Vec<_> = files.iter().copied().filter(|f| is_unchanged(f)).collect();
+    let screened: Vec<_> = files.iter().copied().filter(|f| is_screened(f)).collect();
     let skipped: Vec<_> = files.iter().copied().filter(|f| is_skipped(f)).collect();
     let partial: Vec<_> = files
         .iter()
@@ -151,6 +152,9 @@ fn write_page(
     }
     if !unchanged.is_empty() {
         html.push_str("<a class=\"nav-link\" href=\"#unchanged\">Unchanged workbooks</a>");
+    }
+    if !screened.is_empty() {
+        html.push_str("<a class=\"nav-link\" href=\"#screened\">Hash screened</a>");
     }
     if !skipped.is_empty() {
         html.push_str("<a class=\"nav-link\" href=\"#skipped\">Skipped / errors</a>");
@@ -183,8 +187,8 @@ fn write_page(
     if let Some(total) = total {
         let _ = write!(html, " / {total} total");
     }
-    let _ = write!(html, "</p><p>{}</p><div class=\"metrics\"><div class=\"metric\"><strong>{}</strong><span>Unchanged</span></div><div class=\"metric\"><strong>{}</strong><span>With differences</span></div><div class=\"metric\"><strong>{}</strong><span>Skipped / errors</span></div></div><p class=\"muted\">{} unchanged · {} with differences · {} skipped/errors</p></header>",
-        if report["complete"] == true { "Run completed" } else { "Run not finished" }, unchanged.len(), changed.len(), skipped.len(), unchanged.len(), changed.len(), skipped.len());
+    let _ = write!(html, "</p><p>{}</p><div class=\"metrics\"><div class=\"metric\"><strong>{}</strong><span>Unchanged</span></div><div class=\"metric\"><strong>{}</strong><span>With differences</span></div><div class=\"metric\"><strong>{}</strong><span>Hash screened</span></div><div class=\"metric\"><strong>{}</strong><span>Skipped / errors</span></div></div><p class=\"muted\">{} unchanged · {} with differences · {} hash screened · {} skipped/errors</p></header>",
+        if report["complete"] == true { "Run completed" } else { "Run not finished" }, unchanged.len(), changed.len(), screened.len(), skipped.len(), unchanged.len(), changed.len(), screened.len(), skipped.len());
     package_summary(&mut html, &unchanged);
     if !partial.is_empty() {
         let _ = write!(html, "<p>{} workbooks without differences in the selected captures; tall-sheet ranges were omitted and remain visually unchecked.</p>", partial.len());
@@ -227,6 +231,12 @@ fn write_page(
         );
     }
     tables::unchanged(&mut html, &unchanged);
+    if !screened.is_empty() {
+        html.push_str("<h2 id=\"screened\" class=\"section-heading\">Hash screened</h2><p class=\"muted\">These workbooks completed the selected screening profile. Matching preparation hashes are not a complete visual or cell-value validation; only sheets with differing stable hashes received a pixel comparison.</p>");
+        for file in &screened {
+            workbook::render(&mut html, root, file);
+        }
+    }
     tables::skipped(&mut html, &skipped);
     if !changed.is_empty() {
         html.push_str("<h2 class=\"section-heading\">Visual differences</h2>");
@@ -260,6 +270,7 @@ fn corpus_cards(html: &mut String, corpora: &BTreeMap<String, Corpus<'_>>) {
     html.push_str("<div class=\"corpus-grid\">");
     for corpus in corpora.values() {
         let unchanged = corpus.files.iter().filter(|f| is_unchanged(f)).count();
+        let screened = corpus.files.iter().filter(|f| is_screened(f)).count();
         let changed = corpus.files.iter().filter(|f| has_differences(f)).count();
         let skipped = corpus.files.iter().filter(|f| is_skipped(f)).count();
         let partial = corpus
@@ -273,7 +284,7 @@ fn corpus_cards(html: &mut String, corpora: &BTreeMap<String, Corpus<'_>>) {
             .filter(|f| f["complete"] == true)
             .count();
         let total = corpus.total.map(|n| format!(" / {n}")).unwrap_or_default();
-        let _ = write!(html, "<article class=\"hero corpus-card\"><h2><a href=\"{}\">{}</a></h2><p>{processed}{total} workbooks processed</p><p>{unchanged} unchanged · {changed} with differences · {skipped} skipped/errors</p>", corpus.page(), escape(&corpus.name));
+        let _ = write!(html, "<article class=\"hero corpus-card\"><h2><a href=\"{}\">{}</a></h2><p>{processed}{total} workbooks processed</p><p>{unchanged} unchanged · {changed} with differences · {screened} hash screened · {skipped} skipped/errors</p>", corpus.page(), escape(&corpus.name));
         if partial > 0 {
             let _ = write!(html, "<p>{partial} without differences in selected captures; tall-sheet ranges omitted</p>");
         }
@@ -291,6 +302,9 @@ fn corpus_cards(html: &mut String, corpora: &BTreeMap<String, Corpus<'_>>) {
 fn is_skipped(file: &Value) -> bool {
     matches!(file["status"].as_str(), Some("skipped" | "archive error"))
 }
+fn is_screened(file: &Value) -> bool {
+    file["complete"] == true && file["status"] == "screened-equal"
+}
 fn has_differences(file: &Value) -> bool {
     !is_skipped(file)
         && (file["status"] == "differences"
@@ -303,6 +317,7 @@ fn has_differences(file: &Value) -> bool {
 }
 fn is_unchanged(file: &Value) -> bool {
     file["complete"] == true
+        && !is_screened(file)
         && !is_skipped(file)
         && !has_differences(file)
         && !has_omitted_captures(file)
@@ -348,6 +363,25 @@ fn items<'a>(value: &'a Value, key: &str) -> &'a [Value] {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn hash_screened_results_have_their_own_report_category() -> Result<()> {
+        let dir = std::env::temp_dir().join(format!("hash-screen-report-{}", std::process::id()));
+        let file = json!({
+            "identity":"screened","name":"screened.xlsx","complete":true,
+            "status":"screened-equal",
+            "results":[{"profile":"default","status":"selected regions visually unchanged",
+                "checks_complete":false,"sheets":[{"index":0,"name":"Sheet1","status":"same"}]}]
+        });
+        assert!(is_screened(&file));
+        assert!(!is_unchanged(&file));
+        let html = fs::read_to_string(write(&dir, &json!({"workbooks":[file]}))?)?;
+        assert!(html.contains("<strong>1</strong><span>Hash screened</span>"));
+        assert!(html.contains("Hash screening complete · 1 worksheet visually checked"));
+        assert!(html.contains("Matching preparation hashes are not a complete visual"));
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
 
     #[test]
     fn shortened_workbooks_have_visible_coverage_outside_unchanged_list() -> Result<()> {
@@ -499,16 +533,16 @@ mod tests {
                         {"profile":"default","status":"visually unchanged","checks_complete":true,
                             "original_open_seconds":2.0,"shrunk_open_seconds":1.0}]}]});
         let all = fs::read_to_string(write(&dir, &report)?)?;
-        assert!(all.contains("2 unchanged · 0 with differences · 0 skipped/errors"));
+        assert!(
+            all.contains("2 unchanged · 0 with differences · 0 hash screened · 0 skipped/errors")
+        );
         assert!(all.contains("Includes 1 with equivalent package contents"));
         assert!(!all.contains("visually unchanged workbooks"));
         let a = fs::read_to_string(dir.join(format!("{}.html", anchor("corpus", "a"))))?;
         assert!(a.contains("Equivalent package contents – Excel comparison omitted"));
         assert!(a.contains("not visually verified"));
         assert!(a.contains("checked against the prepared baseline"));
-        assert!(a.contains(
-            "The workbook.xml baseline was repaired before shrinking"
-        ));
+        assert!(a.contains("The workbook.xml baseline was repaired before shrinking"));
         assert!(a.contains("1.25 s"));
         assert!(a.contains("10.00%"));
         assert_eq!(a.matches("package unchanged").count(), 3);
@@ -630,7 +664,9 @@ mod tests {
         ]});
         let html = fs::read_to_string(write(&dir, &report)?)?;
         assert!(html.contains("2 workbooks processed"));
-        assert!(html.contains("1 unchanged · 0 with differences · 1 skipped/errors"));
+        assert!(
+            html.contains("1 unchanged · 0 with differences · 0 hash screened · 1 skipped/errors")
+        );
         assert!(html.contains("Repair &lt;required&gt;"));
         assert!(html.contains("Remaining archive entries have not been checked"));
         fs::remove_dir_all(dir)?;

@@ -543,3 +543,24 @@ fn aggressive_first_requires_resident_and_keeps_normal_default() -> Result<()> {
     assert!(StudyArgs::try_parse_from(["study", "--aggressive-first", "--resident-capture", "--prepare-only"]).is_err());
     Ok(())
 }
+
+#[test]
+fn preparation_hash_profile_selects_one_resident_screening_mode() -> Result<()> {
+    for profile in prepared::PROFILES {
+        let args = StudyArgs::try_parse_from([
+            "study", "--resident-capture", "--preparation-hash-profile", profile,
+        ])?;
+        assert_eq!(args.preparation_hash_profile.as_deref(), Some(profile));
+        let record = json!({"comparison_pass":strategy::HASH_SCREEN,
+            "comparison_hash_profile":profile});
+        assert_eq!(strategy::profiles(&record), &[profile]);
+    }
+    assert!(StudyArgs::try_parse_from([
+        "study", "--preparation-hash-profile", "default",
+    ]).is_err());
+    assert!(StudyArgs::try_parse_from([
+        "study", "--resident-capture", "--aggressive-first",
+        "--preparation-hash-profile", "default",
+    ]).is_err());
+    Ok(())
+}

@@ -147,7 +147,8 @@ pub(super) fn run_record(
         cleanup_barrier,
         run_manifest: Some(
             json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
-            "machine_manifest":run["machine_manifest"]}),
+            "machine_manifest":run["machine_manifest"],
+            "preparation_hash_profile":run["options"]["preparation_hash_profile"]}),
         ),
     };
     let path = work.join("job.json");

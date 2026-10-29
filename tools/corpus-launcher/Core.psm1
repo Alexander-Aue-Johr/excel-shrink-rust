@@ -257,6 +257,16 @@ function Assert-StudySettings($Settings) {
     if ($Settings.order -notin @('priority','size-asc','size-desc')) { throw 'Order must be priority, size-asc or size-desc.' }
     if ([string]::IsNullOrWhiteSpace($Settings.machine_label) -or ($Settings.machine_label.ToCharArray() | Where-Object { [char]::IsControl($_) })) { throw 'A valid machine name is required.' }
     foreach ($hash in @($Settings.reuse_prepared_from)) { if ($hash -notmatch '\A[0-9a-f]{64}\z') { throw 'Invalid approved build hash.' } }
+    $screenProfile = Get-Value $Settings 'preparation_hash_profile' $null
+    if ($screenProfile -and $screenProfile -notin @('default','maximum-cleaning','too-aggressive-cleaning')) {
+        throw "Invalid preparation hash profile: $screenProfile"
+    }
+    if ($screenProfile -and (Get-Value $Settings 'aggressive_first' $false)) {
+        throw 'Choose one screening strategy.'
+    }
+    if ($screenProfile -and (Get-Value $Settings 'full_scan_deferred' $false)) {
+        throw 'Preparation hash screening cannot run with a deferred full scan.'
+    }
 }
 
 function ConvertTo-WindowsArgument([AllowEmptyString()][string]$Argument) {
@@ -279,6 +289,8 @@ function New-StudyLaunchPlan {
     if ([int]$settings.partition -gt 0) { $argsList += @('--size-part',"$($settings.partition)/$($settings.partitions)") }
     if (Get-Value $settings 'full_scan_deferred' $false) { $argsList += @('--compare-only', '--full-scan-deferred') }
     if (Get-Value $settings 'aggressive_first' $false) { $argsList += '--aggressive-first' }
+    $screenProfile = Get-Value $settings 'preparation_hash_profile' $null
+    if ($screenProfile) { $argsList += @('--preparation-hash-profile', [string]$screenProfile) }
     if ($settings.hide_excel) { $argsList += '--hide-excel' }
     foreach ($hash in @($settings.reuse_prepared_from | Select-Object -Unique)) { $argsList += @('--reuse-prepared-from',$hash) }
     if ($settings.import_report) { $argsList += @('--import-report',(Resolve-StudyPath $Repo $settings.import_report)) }

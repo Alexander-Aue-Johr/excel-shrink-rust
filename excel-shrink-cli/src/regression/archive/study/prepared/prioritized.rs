@@ -2,7 +2,78 @@
 use super::super::strategy;
 use super::*;
 use crate::regression::office_capture::ResidentCapture;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
+fn preparation_screen_sheets(
+    record: &Value,
+    profile: &str,
+    original: &Path,
+    variant: &Path,
+) -> Result<Option<BTreeSet<usize>>> {
+    let screen = &record["preparation_hash_screen"];
+    if screen["version"] != 1
+        || screen["profile"] != profile
+        || screen["stable"] != true
+        || screen["original_file_sha256"] != artifact_cache::hash_file(original)?
+        || screen["variant_file_sha256"] != artifact_cache::hash_file(variant)?
+    {
+        return Ok(None);
+    }
+    let Some(first) = screen["first_sheets"].as_array() else {
+        return Ok(None);
+    };
+    let Some(sheets) = screen["sheets"].as_array() else {
+        return Ok(None);
+    };
+    if sheets.is_empty() || first != sheets {
+        return Ok(None);
+    }
+    let digest = artifact_cache::sha256(&serde_json::to_vec(&json!({
+        "first": first, "second": sheets,
+    }))?);
+    if screen["global_sha256"] != digest {
+        return Ok(None);
+    }
+    let mut changed = BTreeSet::new();
+    let mut seen = BTreeSet::new();
+    for sheet in sheets {
+        let Some(index) = sheet["sheet_index"]
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+        else {
+            return Ok(None);
+        };
+        let Some(tiles) = sheet["tiles"].as_array() else {
+            return Ok(None);
+        };
+        if !seen.insert(index) || tiles.is_empty() || sheet["tile_count"] != tiles.len() {
+            return Ok(None);
+        }
+        if sheet["original_sha256"]
+            .as_str()
+            .is_none_or(|hash| hash.len() != 64)
+            || sheet["variant_sha256"]
+                .as_str()
+                .is_none_or(|hash| hash.len() != 64)
+        {
+            return Ok(None);
+        }
+        if tiles.iter().any(|tile| {
+            tile["original_sha256"]
+                .as_str()
+                .is_none_or(|hash| hash.len() != 64)
+                || tile["variant_sha256"]
+                    .as_str()
+                    .is_none_or(|hash| hash.len() != 64)
+        }) {
+            return Ok(None);
+        }
+        if sheet["original_sha256"] != sheet["variant_sha256"] {
+            changed.insert(index);
+        }
+    }
+    Ok(Some(changed))
+}
 
 fn validate_profile(
     job: &MemberJob,
@@ -59,6 +130,18 @@ fn changed(visual: &Value) -> bool {
         .is_some_and(|sheets| sheets.iter().any(|sheet| sheet["status"] == "changed"))
 }
 
+fn followup_profiles(primary_pass: bool, screened_profile: &str) -> &'static [&'static str] {
+    if primary_pass {
+        &["default", "maximum-cleaning"]
+    } else {
+        match screened_profile {
+            "maximum-cleaning" => &["default"],
+            strategy::AGGRESSIVE => &["maximum-cleaning", "default"],
+            _ => &[],
+        }
+    }
+}
+
 fn save_visual(
     record: &mut Value,
     name: &str,
@@ -89,12 +172,12 @@ fn save_visual(
     visual["checks_complete"] = json!(!targeted && !omitted);
     visual["targeted_checks_complete"] = json!(targeted && !omitted);
     visual["requested_sheets"] = if targeted {
-        json!("aggressive mismatch regions")
+        json!("primary mismatch regions")
     } else {
         Value::Null
     };
     visual["coverage_scope"] = json!(if targeted {
-        "aggressive mismatch regions only"
+        "primary mismatch regions only"
     } else {
         "full selected profile"
     });
@@ -118,19 +201,34 @@ fn save_visual(
 }
 
 fn set_comparison_status(record: &mut Value) {
-    let differences = record["results"].as_array().into_iter().flatten().any(|profile| {
-        changed(profile)
-            || profile["failures"].as_array().is_some_and(|errors| !errors.is_empty())
+    let differences = record["results"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|profile| {
+            changed(profile)
+                || profile["failures"]
+                    .as_array()
+                    .is_some_and(|errors| !errors.is_empty())
+        });
+    record["status"] = json!(if differences {
+        "differences"
+    } else {
+        "unchanged"
     });
-    record["status"] = json!(if differences { "differences" } else { "unchanged" });
 }
 
 fn finish_without_capture(record: &mut Value) {
     // The secondary pass may reuse an aggressive difference even when every
     // newly selected profile is package-identical and needs no Excel client.
     set_comparison_status(record);
+    if strategy::pass(record) == strategy::HASH_SCREEN && record["status"] == "unchanged" {
+        record["status"] = json!("screened-equal");
+    }
     record["capture_mode"] = json!("package-audit");
-    record["visual_coverage"] = json!(if strategy::pass(record) == strategy::PRIMARY {
+    record["visual_coverage"] = json!(if strategy::pass(record) == strategy::HASH_SCREEN {
+        "selected profile package identity; no visual comparison"
+    } else if strategy::pass(record) == strategy::PRIMARY {
         "aggressive profile plus targeted follow-up"
     } else {
         "all profiles"
@@ -141,14 +239,19 @@ fn finish_without_capture(record: &mut Value) {
 
 pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     let primary = strategy::pass(record) == strategy::PRIMARY;
+    let hash_screen = strategy::pass(record) == strategy::HASH_SCREEN;
     let selected = strategy::profiles(record).to_vec();
     let active: Vec<_> = selected
-        .into_iter()
+        .iter()
+        .copied()
         .filter(|name| {
             !profile_archive_reused(record, name) && !profile_workbook_only(record, name)
         })
         .collect();
     for name in PROFILES {
+        if hash_screen && !selected.contains(&name) {
+            continue;
+        }
         if profile_workbook_only(record, name) {
             mark_workbook_only(profile_mut(record, name)?);
         } else if profile_archive_reused(record, name) {
@@ -157,6 +260,37 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     }
     if active.is_empty() {
         finish_without_capture(record);
+        return write_record(&job.record, record);
+    }
+    let screen_sheets = if hash_screen {
+        let name = active[0];
+        let original = job.work.join("original.xlsx");
+        let variant = job.work.join(format!("{name}.xlsx"));
+        let selected_sheets = preparation_screen_sheets(record, name, &original, &variant)?;
+        record["hash_screening"] = json!({
+            "profile": name,
+            "status": if selected_sheets.is_some() { "accepted" } else { "full_visual_fallback" },
+            "reason": if selected_sheets.is_none() {
+                "missing, unstable, or incompatible preparation hashes"
+            } else {
+                "stable preparation hashes and matching workbook identities"
+            },
+            "changed_sheets": selected_sheets,
+        });
+        selected_sheets
+    } else {
+        None
+    };
+    if hash_screen && screen_sheets.as_ref().is_some_and(BTreeSet::is_empty) {
+        let name = active[0];
+        let evidence = record["preparation_hash_screen"].clone();
+        let target = profile_mut(record, name)?;
+        target["status"] = json!("hash-screened-equal");
+        target["checks_complete"] = json!(false);
+        target["image_comparison"] = json!("preparation hash screening only");
+        target["preparation_hash_screen"] = evidence;
+        record["status"] = json!("screened-equal");
+        record["visual_coverage"] = json!("stable preparation hashes; no visual comparison");
         return write_record(&job.record, record);
     }
     let mut inputs = json!({"variants":{}});
@@ -176,37 +310,60 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         .iter()
         .map(|name| (*name, job.work.join(format!("{name}.xlsx"))))
         .collect();
-    let mut session =
-        ResidentCapture::start(&job.work.join("original.xlsx"), &variants, &directory)?;
+    let additional_profiles = if primary || hash_screen {
+        followup_profiles(primary, active[0]).len()
+    } else {
+        0
+    };
+    let mut session = ResidentCapture::start_prioritized(
+        &job.work.join("original.xlsx"),
+        &variants,
+        &directory,
+        screen_sheets.as_ref(),
+        additional_profiles,
+    )?;
     let mut captured = Vec::new();
-    let mut aggressive_visual = None;
+    let mut primary_visual = None;
     for name in &active {
         let output = job.work.join("comparisons").join(name).join("visual");
         let visual = session.compare(name, &output)?;
-        if *name == strategy::AGGRESSIVE {
-            aggressive_visual = Some(visual.clone());
+        if *name == strategy::AGGRESSIVE || hash_screen {
+            primary_visual = Some(visual.clone());
         }
         save_visual(
             record,
             name,
             visual,
             validations.remove(name).unwrap_or_default(),
-            false,
+            hash_screen && screen_sheets.is_some(),
         )?;
+        if hash_screen && screen_sheets.is_some() {
+            let target = profile_mut(record, name)?;
+            target["requested_sheets"] = json!("preparation hash mismatch sheets");
+            target["coverage_scope"] = json!("sheets with differing stable preparation hashes");
+        }
         captured.push(*name);
         write_record(&job.record, record)?;
     }
-    if primary {
-        if let Some(visual) = aggressive_visual.as_ref().filter(|visual| changed(visual)) {
-            for name in ["default", "maximum-cleaning"] {
-                if profile_archive_reused(record, name) || profile_workbook_only(record, name) {
+    if primary || hash_screen {
+        if let Some(visual) = primary_visual.as_ref().filter(|visual| changed(visual)) {
+            for &name in followup_profiles(primary, active[0]) {
+                if profile_archive_reused(record, name) {
+                    mark_crc_identical(profile_mut(record, name)?);
                     continue;
                 }
-                // These are targeted raw-input captures, not full value checks.
-                // The second global pass performs the existing recalc validation.
+                if profile_workbook_only(record, name) {
+                    mark_workbook_only(profile_mut(record, name)?);
+                    continue;
+                }
+                // Follow-up profiles are targeted raw-input captures. Only the
+                // old two-pass strategy schedules full recalc validation later.
                 let failures = Vec::new();
-                profile_mut(record, name)?["recalculation_validation"] =
-                    json!("deferred_to_full_pass");
+                profile_mut(record, name)?["recalculation_validation"] = json!(if hash_screen {
+                    "not_performed_in_targeted_screening"
+                } else {
+                    "deferred_to_full_pass"
+                });
                 session.add_profile(name, &job.work.join(format!("{name}.xlsx")))?;
                 let output = job.work.join("comparisons").join(name).join("visual");
                 let result = session.compare_selected(name, &output, visual)?;
@@ -245,8 +402,19 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         write_record(&job.record, record)?;
     }
     set_comparison_status(record);
-    record["capture_policy"] = json!("aggressive-first-autonomous-sweep-v1");
-    record["visual_coverage"] = json!(if primary {
+    if hash_screen && record["status"] == "unchanged" {
+        record["status"] = json!("screened-equal");
+    }
+    record["capture_policy"] = json!(if hash_screen {
+        "preparation-hash-screening-v1"
+    } else {
+        "aggressive-first-autonomous-sweep-v1"
+    });
+    record["visual_coverage"] = json!(if hash_screen && screen_sheets.is_some() {
+        "stable preparation hash differences; selected sheets visually compared"
+    } else if hash_screen {
+        "selected profile visually compared after hash fallback"
+    } else if primary {
         "aggressive profile plus targeted follow-up"
     } else {
         "all profiles"
@@ -274,6 +442,76 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         record["auxiliary_capture_errors"] = json!(cleanup_errors);
     }
     write_record(&job.record, record)
+}
+
+#[cfg(test)]
+mod screen_tests {
+    use super::*;
+
+    #[test]
+    fn hash_screen_followup_profiles_match_selected_mode() {
+        assert!(followup_profiles(false, "default").is_empty());
+        assert_eq!(followup_profiles(false, "maximum-cleaning"), &["default"]);
+        assert_eq!(
+            followup_profiles(false, strategy::AGGRESSIVE),
+            &["maximum-cleaning", "default"]
+        );
+        assert_eq!(
+            followup_profiles(true, strategy::AGGRESSIVE),
+            &["default", "maximum-cleaning"]
+        );
+    }
+
+    #[test]
+    fn stable_screen_selects_only_changed_sheets_and_rejects_changed_inputs() -> Result<()> {
+        let root = super::super::super::tests::test_directory("hash-screen")?;
+        let original = root.join("original.xlsx");
+        let variant = root.join("default.xlsx");
+        fs::write(&original, b"original")?;
+        fs::write(&variant, b"variant")?;
+        let sheets = json!([
+            {"sheet_index":0,"tile_count":1,"tiles":[{"original_sha256":"a".repeat(64),"variant_sha256":"a".repeat(64)}],
+                "original_sha256":"a".repeat(64),
+                "variant_sha256":"a".repeat(64)},
+            {"sheet_index":2,"tile_count":1,"tiles":[{"original_sha256":"b".repeat(64),"variant_sha256":"c".repeat(64)}],
+                "original_sha256":"b".repeat(64),
+                "variant_sha256":"c".repeat(64)}
+        ]);
+        let global_sha256 = artifact_cache::sha256(&serde_json::to_vec(&json!({
+            "first":sheets,"second":sheets,
+        }))?);
+        let mut record = json!({"preparation_hash_screen":{
+            "version":1,"profile":"default","stable":true,
+            "original_file_sha256":artifact_cache::hash_file(&original)?,
+            "variant_file_sha256":artifact_cache::hash_file(&variant)?,
+            "first_sheets":sheets,"sheets":sheets,"global_sha256":global_sha256,
+        }});
+        assert_eq!(
+            preparation_screen_sheets(&record, "default", &original, &variant)?,
+            Some(BTreeSet::from([2]))
+        );
+        let mut equal = record.clone();
+        let sheet = &mut equal["preparation_hash_screen"]["sheets"][1];
+        sheet["variant_sha256"] = sheet["original_sha256"].clone();
+        sheet["tiles"][0]["variant_sha256"] = sheet["tiles"][0]["original_sha256"].clone();
+        equal["preparation_hash_screen"]["first_sheets"] =
+            equal["preparation_hash_screen"]["sheets"].clone();
+        equal["preparation_hash_screen"]["global_sha256"] =
+            json!(artifact_cache::sha256(&serde_json::to_vec(&json!({
+                "first": equal["preparation_hash_screen"]["first_sheets"],
+                "second": equal["preparation_hash_screen"]["sheets"],
+            }))?));
+        assert_eq!(
+            preparation_screen_sheets(&equal, "default", &original, &variant)?,
+            Some(BTreeSet::new())
+        );
+        record["preparation_hash_screen"]["stable"] = json!(false);
+        assert!(preparation_screen_sheets(&record, "default", &original, &variant)?.is_none());
+        record["preparation_hash_screen"]["stable"] = json!(true);
+        fs::write(&variant, b"changed")?;
+        assert!(preparation_screen_sheets(&record, "default", &original, &variant)?.is_none());
+        Ok(())
+    }
 }
 
 #[cfg(test)]

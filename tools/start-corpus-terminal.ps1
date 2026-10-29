@@ -10,6 +10,8 @@ param(
     [switch]$SkipBuild,
     [switch]$FullScanDeferred,
     [switch]$AggressiveFirst,
+    [ValidateSet('default','maximum-cleaning','too-aggressive-cleaning')]
+    [string]$PreparationHashProfile,
     [switch]$NoBrowser
 )
 Set-StrictMode -Version Latest
@@ -48,7 +50,8 @@ function Start-SavedCorpusRun {
     param([string]$Repo, [string]$ConfigurationPath, [string]$Executable,
         [string]$Corpus, [string]$Partition, [string]$Order,
         [switch]$Build, [switch]$SkipBuild, [switch]$FullScanDeferred, [switch]$NoBrowser,
-        [switch]$Standalone, [switch]$AggressiveFirst)
+        [switch]$Standalone, [switch]$AggressiveFirst,
+        [string]$PreparationHashProfile)
     if ($Build -and $SkipBuild) { throw 'Choose either -Build or -SkipBuild.' }
     if ([string]::IsNullOrWhiteSpace($Corpus) -or
         (-not $Standalone -and [string]::IsNullOrWhiteSpace($Partition))) {
@@ -98,7 +101,14 @@ function Start-SavedCorpusRun {
         if ($Order -notin @('priority','size-asc','size-desc')) { throw 'Order must be priority, size-asc or size-desc.' }
         $configuration.settings.order = $Order
     }
-    if ($AggressiveFirst) { $configuration.settings | Add-Member -NotePropertyName aggressive_first -NotePropertyValue $true -Force }
+    if ($PreparationHashProfile) {
+        $configuration.settings | Add-Member -NotePropertyName preparation_hash_profile -NotePropertyValue $PreparationHashProfile -Force
+        $configuration.settings | Add-Member -NotePropertyName aggressive_first -NotePropertyValue $false -Force
+    }
+    if ($AggressiveFirst) {
+        $configuration.settings | Add-Member -NotePropertyName aggressive_first -NotePropertyValue $true -Force
+        $configuration.settings | Add-Member -NotePropertyName preparation_hash_profile -NotePropertyValue $null -Force
+    }
     $configuration.settings | Add-Member -NotePropertyName full_scan_deferred -NotePropertyValue ([bool]$FullScanDeferred) -Force
     Assert-StudySettings $configuration.settings
     $output = Resolve-StudyPath $Repo $configuration.settings.output_root
@@ -116,6 +126,9 @@ function Start-SavedCorpusRun {
         }
         if ((Get-Value $active 'aggressive_first' $false) -ne (Get-Value $configuration.settings 'aggressive_first' $false)) {
             throw 'The active run uses a different comparison strategy. Stop it before changing screening versus full validation.'
+        }
+        if ((Get-Value $active 'preparation_hash_profile' $null) -ne (Get-Value $configuration.settings 'preparation_hash_profile' $null)) {
+            throw 'The active run uses a different preparation hash profile. Stop it before changing the profile.'
         }
         $samePartition = $active.partition -eq $configuration.settings.partition -and
             ($active.partition -eq 0 -or $active.partitions -eq $configuration.settings.partitions)
@@ -162,4 +175,4 @@ if ($Standalone -and -not [IO.File]::Exists($ConfigurationPath)) {
     throw 'No standalone deployment found. Prepare one from WSL with -PrepareStandalone.'
 }
 if (-not $ExcelShrinkExe) { $ExcelShrinkExe = Join-Path $repo 'target/release/excel-shrink-cli.exe' }
-$null = Start-SavedCorpusRun $repo $ConfigurationPath $ExcelShrinkExe -Corpus $Corpus -Partition $Partition -Order $Order -Build:$Build -SkipBuild:$SkipBuild -FullScanDeferred:$FullScanDeferred -NoBrowser:$NoBrowser -Standalone:$Standalone -AggressiveFirst:$AggressiveFirst
+$null = Start-SavedCorpusRun $repo $ConfigurationPath $ExcelShrinkExe -Corpus $Corpus -Partition $Partition -Order $Order -Build:$Build -SkipBuild:$SkipBuild -FullScanDeferred:$FullScanDeferred -NoBrowser:$NoBrowser -Standalone:$Standalone -AggressiveFirst:$AggressiveFirst -PreparationHashProfile $PreparationHashProfile

@@ -37,11 +37,29 @@ pub(super) fn render(html: &mut String, root: &Path, file: &Value) {
         })
     };
     let changed = sheets.keys().filter(|&&index| has_change(index)).count();
-    let summary = equal
-        .map(|count| format!("{count} unchanged worksheets · {changed} with differences"))
-        .unwrap_or_else(|| format!("{changed} worksheets with differences"));
+    let summary = if file["status"] == "screened-equal" {
+        format!(
+            "Hash screening complete · {} {} visually checked",
+            sheets.len(),
+            if sheets.len() == 1 {
+                "worksheet"
+            } else {
+                "worksheets"
+            }
+        )
+    } else {
+        equal
+            .map(|count| format!("{count} unchanged worksheets · {changed} with differences"))
+            .unwrap_or_else(|| format!("{changed} worksheets with differences"))
+    };
     let _ = write!(html, "<section id=\"{id}\" class=\"workbook\"><header class=\"hero\"><h2>{}</h2>{}<p>{summary}</p><p>{}</p>",
-        escape(text(file, "name")), permalink(&id), if file["complete"] == true { "Complete" } else { "In progress" });
+        escape(text(file, "name")), permalink(&id), if file["status"] == "screened-equal" {
+            "Screening complete"
+        } else if file["complete"] == true {
+            "Complete"
+        } else {
+            "In progress"
+        });
     tables::profiles(html, file);
     for result in results {
         for sheet in items(result, "sheets")

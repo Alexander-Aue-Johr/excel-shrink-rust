@@ -460,7 +460,7 @@ fn completed(record: &Value) -> bool {
     record["complete"] == true
         && matches!(
             record["status"].as_str(),
-            Some("unchanged" | "differences" | "skipped")
+            Some("unchanged" | "differences" | "screened-equal" | "skipped")
         )
 }
 

@@ -3,6 +3,7 @@ use super::*;
 
 pub(super) const PRIMARY: &str = "aggressive_primary";
 pub(super) const SECONDARY: &str = "secondary_full";
+pub(super) const HASH_SCREEN: &str = "preparation_hash_screen";
 pub(super) const AGGRESSIVE: &str = "too-aggressive-cleaning";
 
 pub(super) fn pass(record: &Value) -> &str {
@@ -10,7 +11,7 @@ pub(super) fn pass(record: &Value) -> &str {
 }
 
 pub(super) fn is_priority(record: &Value) -> bool {
-    matches!(pass(record), PRIMARY | SECONDARY)
+    matches!(pass(record), PRIMARY | SECONDARY | HASH_SCREEN)
 }
 
 // A historical row-height result may have completed its own policy without
@@ -22,6 +23,12 @@ pub(super) fn profile_complete(profile: &Value) -> bool {
 }
 pub(super) fn profiles(record: &Value) -> &'static [&'static str] {
     match pass(record) {
+        HASH_SCREEN => match record["comparison_hash_profile"].as_str() {
+            Some("default") => &["default"],
+            Some("maximum-cleaning") => &["maximum-cleaning"],
+            Some(AGGRESSIVE) => &[AGGRESSIVE],
+            _ => &[],
+        },
         PRIMARY => &[AGGRESSIVE],
         SECONDARY => {
             let aggressive_checked = record["results"].as_array().is_some_and(|profiles| {
@@ -64,6 +71,11 @@ pub(super) fn primary_terminal(record: &Value) -> bool {
 
 pub(super) fn needs_pass(record: &Value, comparison_pass: &str) -> bool {
     match comparison_pass {
+        HASH_SCREEN => {
+            record["complete"] != true
+                || record["status"] == "skipped"
+                || record["comparison_hash_profile"] != record["last_hash_screen_profile"]
+        }
         PRIMARY => !primary_terminal(record),
         SECONDARY => !full_complete(record),
         _ => true,
@@ -71,7 +83,13 @@ pub(super) fn needs_pass(record: &Value, comparison_pass: &str) -> bool {
 }
 
 pub(super) fn finish(record: &mut Value) {
-    if pass(record) == PRIMARY {
+    if pass(record) == HASH_SCREEN {
+        if record["status"] != "skipped" {
+            record["last_hash_screen_profile"] = record["comparison_hash_profile"].clone();
+            record["checks_complete"] = json!(false);
+            record["validation_scope"] = json!("selected profile and changed sheets only");
+        }
+    } else if pass(record) == PRIMARY {
         let aggressive = record["results"].as_array().and_then(|profiles| {
             profiles
                 .iter()
@@ -176,6 +194,22 @@ pub(super) fn diagnosis_categories(record: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hash_screen_reruns_when_the_selected_profile_changes() {
+        let mut record = json!({
+            "comparison_pass": HASH_SCREEN,
+            "comparison_hash_profile": "default",
+            "complete": true,
+            "status": "screened-equal",
+        });
+        assert!(needs_pass(&record, HASH_SCREEN));
+        finish(&mut record);
+        assert!(!needs_pass(&record, HASH_SCREEN));
+        assert_eq!(record["checks_complete"], false);
+        record["comparison_hash_profile"] = json!("maximum-cleaning");
+        assert!(needs_pass(&record, HASH_SCREEN));
+    }
 
     #[test]
     fn screening_never_claims_all_profiles_were_checked() {

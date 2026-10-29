@@ -34,6 +34,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     record.as_object_mut().unwrap().remove("package_identity");
     record.as_object_mut().unwrap().remove("namespace_exclusion");
     record.as_object_mut().unwrap().remove("profile_equivalence");
+    record.as_object_mut().unwrap().remove("preparation_hash_screen");
     record["prepared"] = json!(false);
     record["results"] = json!([]);
     if let Some(run) = &job.run_manifest {
@@ -201,8 +202,31 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
         record["baseline_repaired"] = json!(baseline.workbook_xml_changed);
         outputs[0].1 = baseline.snapshot.path;
     }
-    // Capture planning and package audits belong to the comparison pass,
-    // after every selected workbook has been shrunk.
+    if let Some(profile) = job
+        .run_manifest
+        .as_ref()
+        .and_then(|run| run["preparation_hash_profile"].as_str())
+    {
+        let original = &outputs[0].1;
+        let variant = outputs
+            .iter()
+            .find(|(name, _)| name == profile)
+            .map(|(_, path)| path)
+            .context("missing screening profile output")?;
+        let mut session = crate::regression::office_capture::ResidentCapture::start_screening(
+            original,
+            profile,
+            variant,
+            &job.work.join("preparation-capture"),
+        )?;
+        let mut screen = session.screen_twice(profile)?;
+        session.finish()?;
+        screen["original_file_sha256"] = json!(artifact_cache::hash_file(original)?);
+        screen["variant_file_sha256"] = json!(artifact_cache::hash_file(variant)?);
+        record["preparation_hash_screen"] = screen;
+        write_record(&job.record, record)?;
+    }
+    // The preparation capture is stored in the reusable bundle with its source identity.
     let bundle = job
         .bundle
         .as_ref()
@@ -322,15 +346,23 @@ fn save_bundle(
         std::io::copy(&mut fs::File::open(converted)?, &mut zip)?;
         "converted.xlsx".to_owned()
     };
+    let capture_hashes_member = record["preparation_hash_screen"]
+        .is_object()
+        .then_some("capture-hashes.json");
     let metadata = json!({"version":2,"identity":record["identity"],"name":record["name"],
         "source_sha256":record["source_sha256"],"source_format":record["source_format"],
         "source_fingerprint":record["source_fingerprint"],"prepared_by":record["prepared_by"],
         "converted_sha256":record["converted_sha256"],"converted_member":converted_member,
         "conversion":record["conversion"],"baseline_sha256":record["baseline_sha256"],
         "baseline_repaired":record["baseline_repaired"],"variants":variants,
-        "provenance":record["provenance"]["preparation"]});
+        "provenance":record["provenance"]["preparation"],
+        "capture_hashes_member":capture_hashes_member});
     zip.start_file("preparation.json", options)?;
     zip.write_all(&serde_json::to_vec_pretty(&metadata)?)?;
+    if capture_hashes_member.is_some() {
+        zip.start_file("capture-hashes.json", options)?;
+        zip.write_all(&serde_json::to_vec_pretty(&record["preparation_hash_screen"])?)?;
+    }
     zip.start_file("measurements.json", options)?;
     zip.write_all(&serde_json::to_vec_pretty(&record["results"])?)?;
     zip.finish()?.sync_all()?;
@@ -341,7 +373,7 @@ fn save_bundle(
     Ok(())
 }
 
-fn unpack(bundle: &Path, work: &Path) -> Result<Value> {
+fn unpack(bundle: &Path, work: &Path) -> Result<(Value, Value)> {
     let mut zip = ZipArchive::new(fs::File::open(bundle)?)?;
     let metadata: Value = serde_json::from_reader(zip.by_name("preparation.json")?)?;
     ensure!(matches!(metadata["version"].as_u64(), Some(1 | 2)),
@@ -371,7 +403,12 @@ fn unpack(bundle: &Path, work: &Path) -> Result<Value> {
         }
     }
     let measurements = serde_json::from_reader(zip.by_name("measurements.json")?)?;
-    Ok(measurements)
+    let screen = if metadata["capture_hashes_member"] == "capture-hashes.json" {
+        serde_json::from_reader(zip.by_name("capture-hashes.json")?)?
+    } else {
+        Value::Null
+    };
+    Ok((measurements, screen))
 }
 
 // Only this profile already owns retained comparison and diagnosis evidence.
@@ -397,6 +434,21 @@ fn reuse_primary_profile(record: &mut Value, previous_results: &Value) -> Result
 }
 
 pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
+    if let Some(profile) = job
+        .run_manifest
+        .as_ref()
+        .and_then(|run| run["preparation_hash_profile"].as_str())
+    {
+        record["comparison_hash_profile"] = json!(profile);
+    }
+    if super::strategy::pass(record) == super::strategy::HASH_SCREEN {
+        ensure!(
+            record["comparison_hash_profile"]
+                .as_str()
+                .is_some_and(|profile| PROFILES.contains(&profile)),
+            "hash screening requires one selected profile"
+        );
+    }
     record.as_object_mut().unwrap().remove("auxiliary_capture_errors");
     provenance::retire(record, provenance::Stage::Comparison);
     provenance::retire(record, provenance::Stage::WhitespaceDiagnosis);
@@ -421,10 +473,12 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         None,
         json!({}),
     );
-    record["results"] = unpack(
+    let (measurements, screen) = unpack(
         job.bundle.as_ref().context("missing prepared bundle")?,
         &job.work,
     )?;
+    record["results"] = measurements;
+    record["preparation_hash_screen"] = screen;
     reuse_primary_profile(record, &previous_results)?;
     let identities: Vec<_> = record["results"]
         .as_array()
@@ -1134,7 +1188,7 @@ mod tests {
             drop(zip);
             let reopened = root.join("reopened");
             fs::create_dir(&reopened)?;
-            assert_eq!(unpack(&bundle, &reopened)?, record["results"]);
+            assert_eq!(unpack(&bundle, &reopened)?.0, record["results"]);
             assert_eq!(
                 artifact_cache::hash_file(&reopened.join("original.xlsx"))?,
                 record["baseline_sha256"]

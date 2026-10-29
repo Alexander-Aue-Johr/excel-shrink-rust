@@ -8,6 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'ExcelProcessSlots.ps1')
 if ($Visible -and $HideExcel) { throw 'Visible and HideExcel cannot be combined.' }
 $ProgressPreference = 'SilentlyContinue'
 $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
@@ -586,10 +587,22 @@ function Invoke-ClientResets {
 }
 
 function Open-ResidentClient($spec, $visibilityOverride = $null) {
+    if ($null -eq $script:captureGroupSlot) {
+        $script:captureGroupSlot = Enter-CaptureGroupSlot
+        $specs = @(Get-ChildItem -LiteralPath (Join-Path $session 'clients') -File -Filter '*.json' | Sort-Object Name)
+        $capacity = [IO.File]::ReadAllText((Join-Path $session 'capacity.json'), $utf8) | ConvertFrom-Json
+        $script:reservedClientCount = [int]$capacity.reserved_clients
+        if ($reservedClientCount -lt $specs.Count -or $reservedClientCount -gt 16) {
+            throw 'Invalid resident client reservation.'
+        }
+        $script:captureSlots = @(Enter-ExcelProcessSlots $reservedClientCount)
+    }
     $id = [string]$spec.client_id
     if ($id -notmatch '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$') { throw 'Invalid resident client id.' }
     if ($clients.ContainsKey($id)) { return }
     if ($clients.Count -ge 16) { throw 'Resident session exceeded 16 clients.' }
+    $specCount = @(Get-ChildItem -LiteralPath (Join-Path $session 'clients') -File -Filter '*.json').Count
+    if ($specCount -gt $reservedClientCount) { throw 'Resident session exceeded reserved Excel slots.' }
     $source = [IO.Path]::GetFullPath([string]$spec.source_path)
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Resident workbook missing: $id" }
     if (-not @($spec.sheets).Count) { throw "Resident client has no planned sheets: $id" }
@@ -683,6 +696,9 @@ $captureDesktop = $null
 $hostProcess = $null
 $registrations = @{}
 $clients = @{}
+$captureGroupSlot = $null
+$captureSlots = @()
+$reservedClientCount = 0
 $batchLifetime = $null
 $batchOwner = $null
 $batchReleased = $false
@@ -859,6 +875,9 @@ try {
         $metrics.cleanup_job_released_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
         $unconfirmedClients = @(Confirm-ResidentClientExit $clients $metrics.clients)
         if ($unconfirmedClients.Count -eq 0) {
+            foreach ($slot in $captureSlots) {
+                Exit-ExcelProcessSlot $slot
+            }
             $metrics.cleanup_completed_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
             Add-SessionEvent 'owned_cleanup_completed' '' $null
         } else {
@@ -888,6 +907,7 @@ try {
     if ($null -ne $captureDesktop) { $captureDesktop.Dispose() }
     if ($null -ne $batchOwner) { $batchOwner.Dispose() }
     if ($null -ne $liveOwner) { $liveOwner.Dispose() }
+    Exit-ExcelProcessSlot $captureGroupSlot
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         try { Remove-ArchiveStage $stage; break }
         catch { if ($attempt -eq 19) { $metrics.cleanup_warning = $_.Exception.Message } else { Start-Sleep -Milliseconds 250 } }

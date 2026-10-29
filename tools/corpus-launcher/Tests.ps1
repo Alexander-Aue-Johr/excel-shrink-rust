@@ -65,6 +65,11 @@ $screeningPlan=New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cl
 Assert (@($screeningPlan.Arguments | Where-Object {$_ -eq '--aggressive-first'}).Count -eq 1) 'Aggressive-first must be represented by exactly one runner switch.'
 Assert ((Arg-Value $screeningPlan '--run-corpus') -eq 'Data.gov' -and (Arg-Value $screeningPlan '--output-root') -eq $output) 'Screening strategy changed corpus identity or output location.'
 $config.settings.aggressive_first=$false
+$config.settings | Add-Member -NotePropertyName preparation_hash_profile -NotePropertyValue 'default' -Force
+$hashPlan=New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/hash-screening')
+Assert ((Arg-Value $hashPlan '--preparation-hash-profile') -eq 'default') 'Preparation hash profile did not reach the runner.'
+Assert ($hashPlan.Arguments -notcontains '--aggressive-first') 'Hash screening enabled the old two-pass strategy.'
+$config.settings.preparation_hash_profile=$null
 $fullPlan=New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/full-validation')
 Assert ($fullPlan.Arguments -notcontains '--aggressive-first') 'A false strategy setting added the aggressive-first switch.'
 $oldOrder=$config.settings.order
