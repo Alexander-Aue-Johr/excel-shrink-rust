@@ -145,10 +145,10 @@ h1 {
   background:#101e2c;
 }
 .run-controls {
-  grid-template-columns:1.05fr .9fr 1.3fr .85fr .9fr;
+  grid-template-columns:1.3fr .9fr .85fr .9fr;
 }
 .preparation-controls {
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   margin-bottom:8px;
 }
 .preparation-controls input[type=range] {
@@ -158,6 +158,11 @@ h1 {
   min-width:2ch;
   margin-right:0;
   text-align:right;
+}
+.preparation-controls #excelProcessLimit {
+  width:76px;
+  min-width:0;
+  padding:5px 7px;
 }
 .ram-reserve input {
   width:76px;
@@ -1031,6 +1036,10 @@ body.presenting .room {
   .preparation-controls .control {
     border-bottom:0;
   }
+  .preparation-controls .control:last-child {
+    grid-column:1 / -1;
+    border-top:1px solid var(--line);
+  }
   .run-controls .control {
     border-bottom:1px solid var(--line);
   }
@@ -1069,6 +1078,9 @@ body.presenting .room {
   .preparation-controls .control:first-child {
     border-right:0;
     border-bottom:1px solid var(--line);
+  }
+  .preparation-controls .control:last-child {
+    grid-column:auto;
   }
   .masthead {
     padding:18px;

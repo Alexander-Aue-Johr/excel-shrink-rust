@@ -1323,6 +1323,10 @@ function updateControlInputs() {
     : values.paused ? 'Jobs already in progress will finish. New captures wait.'
       : 'Pausing captures keeps Excel open. A group target of 0 lets preparation finish, then pauses comparisons.';
   $('activeGroups').textContent = `${active} admitted · ${values.target_groups ?? '—'} capture + ${state.queue?.prefetch_groups ?? 0} preparing`;
+  const demand = state.queue?.excel_opening_demand;
+  $('excelProcessDemand').textContent = demand?.observed_sessions
+    ? `${demand.waiting_workbooks} capture workbooks waiting to open in ${demand.waiting_sessions} sessions · ${demand.opening_workbooks} opening now. Capture group limit ${values.target_groups ?? '—'} also gates these starts; recalculation starts are separate.`
+    : 'No preparation capture sessions waiting to open. Recalculation starts are not included in this count.';
 }
 async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;

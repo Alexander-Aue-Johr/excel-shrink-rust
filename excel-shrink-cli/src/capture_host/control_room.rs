@@ -172,6 +172,70 @@ async fn read_queue(room: &Room, diagnostics: &mut Vec<Value>) -> Result<Value> 
     Ok(queue)
 }
 
+fn capture_clients_waiting(capacity: &Value, metrics: &Value) -> Option<usize> {
+    let reserved = usize::try_from(capacity["reserved_clients"].as_u64()?).ok()?;
+    let clients = metrics["clients"].as_object()?;
+    let started = clients
+        .values()
+        .filter(|client| client["pid"].as_u64().is_some())
+        .count();
+    (reserved <= 16 && started <= reserved).then_some(reserved - started)
+}
+
+/// Counts prepared capture workbooks that have not yet started Excel.
+///
+/// The count includes sessions waiting for a capture-group slot. It is a
+/// demand signal, not a count of Excel processes already running.
+async fn capture_opening_demand(root: &Path, queue: &Value) -> Value {
+    let mut waiting_workbooks = 0;
+    let mut waiting_sessions = 0;
+    let mut opening_workbooks = 0;
+    let mut observed_sessions = 0;
+    let work = root.parent().map(|output| output.join(".work"));
+    if let (Some(work), Some(groups)) = (work, queue["groups"].as_array()) {
+        for group in groups {
+            if group["active"] != true
+                || group["status"] != "preparing"
+                || group["run_id"] != queue["run_id"]
+            {
+                continue;
+            }
+            let Some(id) = group["id"].as_str().filter(|id| safe_id(id).is_ok()) else {
+                continue;
+            };
+            let session = work.join(id).join("preparation-capture");
+            let (Ok(capacity), Ok(metrics)) = (
+                read_object(&session.join("capacity.json"), 4096).await,
+                read_object(&session.join("metrics.json"), SNAPSHOT_LIMIT).await,
+            ) else {
+                continue;
+            };
+            if metrics["attempt_id"] != group["attempt_id"] {
+                continue;
+            }
+            let Some(waiting) = capture_clients_waiting(&capacity, &metrics) else {
+                continue;
+            };
+            observed_sessions += 1;
+            waiting_workbooks += waiting;
+            waiting_sessions += usize::from(waiting > 0);
+            opening_workbooks += metrics["clients"]
+                .as_object()
+                .unwrap()
+                .values()
+                .filter(|client| client["status"] == "opening")
+                .count();
+        }
+    }
+    json!({
+        "waiting_workbooks": waiting_workbooks,
+        "waiting_sessions": waiting_sessions,
+        "opening_workbooks": opening_workbooks,
+        "observed_sessions": observed_sessions,
+        "scope": "preparation capture sessions"
+    })
+}
+
 async fn read_workbook_index(root: &Path, diagnostics: &mut Vec<Value>) -> Option<Value> {
     read_snapshot(
         &root.join("workbook-index.json"),
@@ -229,6 +293,8 @@ async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
     }
     queue["controls"] = read_controls(&room, &mut diagnostics).await;
     queue["logical_cores"] = json!(logical_cores());
+    let opening_demand = capture_opening_demand(&room.root, &queue).await;
+    queue["excel_opening_demand"] = opening_demand;
     let stop = read_snapshot(
         &room.root.join("stop-request.json"),
         &mut diagnostics,
@@ -1290,6 +1356,47 @@ fn active_stop_requested(queue: &Value, stop: Option<&Value>) -> bool {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[tokio::test]
+    async fn preparation_capture_demand_counts_unstarted_excel_clients() -> Result<()> {
+        let output = std::env::temp_dir().join(format!(
+            "control-room-excel-demand-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let root = output.join("control-room");
+        let session = output.join(".work/workbook/preparation-capture");
+        std::fs::create_dir_all(&root)?;
+        std::fs::create_dir_all(&session)?;
+        std::fs::write(session.join("capacity.json"), br#"{"reserved_clients":2}"#)?;
+        std::fs::write(
+            session.join("metrics.json"),
+            br#"{"attempt_id":"current","clients":{}}"#,
+        )?;
+        let queue = json!({"run_id":"run","groups":[{"id":"workbook","run_id":"run",
+            "attempt_id":"current","active":true,"status":"preparing"}]});
+        let waiting = capture_opening_demand(&root, &queue).await;
+        assert_eq!(waiting["waiting_workbooks"], 2);
+        assert_eq!(waiting["waiting_sessions"], 1);
+
+        std::fs::write(
+            session.join("metrics.json"),
+            br#"{"attempt_id":"current","clients":{"original":{"pid":42,"status":"opening"}}}"#,
+        )?;
+        let opening = capture_opening_demand(&root, &queue).await;
+        assert_eq!(opening["waiting_workbooks"], 1);
+        assert_eq!(opening["opening_workbooks"], 1);
+
+        std::fs::write(
+            session.join("metrics.json"),
+            br#"{"attempt_id":"old","clients":{}}"#,
+        )?;
+        assert_eq!(
+            capture_opening_demand(&root, &queue).await["observed_sessions"],
+            0
+        );
+        std::fs::remove_dir_all(output)?;
+        Ok(())
+    }
 
     #[test]
     fn preparation_controls_are_bounded_by_available_logical_cores() -> Result<()> {
