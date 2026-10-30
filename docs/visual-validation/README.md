@@ -7,6 +7,12 @@ select one profile with `-PreparationHashProfile default`,
 `-PreparationHashProfile too-aggressive-cleaning`. The direct CLI option is
 `--preparation-hash-profile` and requires `--resident-capture`.
 
+New preparations build only the variants needed by the selected mode:
+`default` builds Default only, `maximum-cleaning` builds Default and Maximum,
+and `too-aggressive-cleaning` builds all three for possible targeted follow-up.
+Existing compatible bundles with additional variants remain reusable. A later
+request for a profile absent from a partial bundle requires new preparation.
+Comparisons unpack and audit only the variants required by the current mode.
 Preparation opens Original and the selected output in one resident group,
 captures every tile, runs Excel Full recalculation in both open workbooks, and
 captures every tile again. Each workbook bundle contains `capture-hashes.json`

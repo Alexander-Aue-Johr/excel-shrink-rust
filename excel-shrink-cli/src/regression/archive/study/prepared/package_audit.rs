@@ -50,9 +50,9 @@ struct Package {
 pub(super) fn compare(original: &Path, variants: &[(&str, PathBuf)]) -> Result<Option<Value>> {
     let supplied: BTreeSet<_> = variants.iter().map(|(name, _)| *name).collect();
     ensure!(
-        variants.len() == super::PROFILES.len()
-            && supplied == super::PROFILES.into_iter().collect(),
-        "package audit requires each of the three cleaning profiles exactly once"
+        !variants.is_empty() && variants.len() == supplied.len()
+            && supplied.iter().all(|name| super::PROFILES.contains(name)),
+        "package audit requires distinct known cleaning profiles"
     );
     let original_catalog = catalog(original)?;
     let mut variant_catalogs = Vec::with_capacity(variants.len());
@@ -561,7 +561,7 @@ mod tests {
     }
 
     #[test]
-    fn every_member_and_all_three_profiles_must_match() -> Result<()> {
+    fn every_member_and_selected_profiles_must_match() -> Result<()> {
         let directory = Directory::new()?;
         let original_entries = entries(XML);
         let original = directory.zip("original.xlsx", &original_entries, false)?;
@@ -587,7 +587,8 @@ mod tests {
             let output = directory.zip("changed.xlsx", &changed, false)?;
             assert!(compare(&original, &variants(&output))?.is_none());
         }
-        assert!(compare(&original, &variants(&original)[..2]).is_err());
+        assert_eq!(compare(&original, &variants(&original)[..2])?.unwrap()["profiles"].as_array().unwrap().len(), 2);
+        assert!(compare(&original, &[]).is_err());
         let mut duplicate = variants(&original);
         duplicate[2].0 = duplicate[1].0;
         assert!(compare(&original, &duplicate).is_err());

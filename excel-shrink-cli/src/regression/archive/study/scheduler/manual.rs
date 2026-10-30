@@ -224,6 +224,7 @@ pub(super) fn compare(
             producer,
             &source.fingerprint,
             &compatible,
+            run["options"]["preparation_hash_profile"].as_str(),
         ) {
             // A completed historical comparison normally discarded its ZIP.
             // Rebuild it between waves; conversion must not disturb live peers.
@@ -391,6 +392,7 @@ pub(super) fn compare(
                         producer,
                         &source.fingerprint,
                         &compatible,
+                        run["options"]["preparation_hash_profile"].as_str(),
                     ) {
                         pending.push_front(job);
                         cleanup.close_admission();

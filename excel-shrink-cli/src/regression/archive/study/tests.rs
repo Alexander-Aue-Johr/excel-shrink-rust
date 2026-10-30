@@ -130,35 +130,49 @@ fn reviewed_build_reuse_still_requires_matching_source_and_profiles() -> Result<
     let record = json!({"prepared":true,"prepared_by":old_build,"source_fingerprint":"catalog","results":profiles});
     let accepted = vec![old_build.clone()];
     let mut legacy = record.clone();
-    legacy["results"][0].as_object_mut().unwrap().remove("shrink_identity");
-    assert!(!reusable_preparation(&legacy, &bundle, &old_build, "catalog", &[]));
+    legacy["results"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("shrink_identity");
+    assert!(!reusable_preparation(
+        &legacy,
+        &bundle,
+        &old_build,
+        "catalog",
+        &[],
+        None
+    ));
     assert!(reusable_preparation(
         &record,
         &bundle,
         &old_build,
         "catalog",
-        &[]
+        &[],
+        None
     ));
     assert!(!reusable_preparation(
         &record,
         &bundle,
         &current_build,
         "catalog",
-        &[]
+        &[],
+        None
     ));
     assert!(reusable_preparation(
         &record,
         &bundle,
         &current_build,
         "catalog",
-        &accepted
+        &accepted,
+        None
     ));
     assert!(!reusable_preparation(
         &record,
         &bundle,
         &current_build,
         "changed catalog",
-        &accepted
+        &accepted,
+        None
     ));
     assert_eq!(record["prepared_by"], old_build);
     let mut approved = record.clone();
@@ -168,21 +182,24 @@ fn reviewed_build_reuse_still_requires_matching_source_and_profiles() -> Result<
         &bundle,
         &current_build,
         "catalog",
-        &[]
+        &[],
+        None
     ));
     assert!(!reusable_preparation(
         &approved,
         &bundle,
         &"c".repeat(64),
         "catalog",
-        &[]
+        &[],
+        None
     ));
     assert!(!reusable_preparation(
         &approved,
         &bundle,
         &current_build,
         "changed catalog",
-        &[]
+        &[],
+        None
     ));
     for field in ["prepared", "prepared_by", "source_fingerprint"] {
         let mut changed = record.clone();
@@ -192,7 +209,8 @@ fn reviewed_build_reuse_still_requires_matching_source_and_profiles() -> Result<
             &bundle,
             &current_build,
             "catalog",
-            &accepted
+            &accepted,
+            None
         ));
     }
     let mut changed = record.clone();
@@ -202,7 +220,8 @@ fn reviewed_build_reuse_still_requires_matching_source_and_profiles() -> Result<
         &bundle,
         &current_build,
         "catalog",
-        &accepted
+        &accepted,
+        None
     ));
     changed = record.clone();
     changed["results"].as_array_mut().unwrap().pop();
@@ -211,15 +230,69 @@ fn reviewed_build_reuse_still_requires_matching_source_and_profiles() -> Result<
         &bundle,
         &current_build,
         "catalog",
-        &accepted
+        &accepted,
+        None
     ));
+    let mut default_only = record.clone();
+    default_only["results"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|profile| profile["profile"] == "default");
+    assert!(has_required_shrink_evidence(&default_only));
+    assert!(reusable_preparation(
+        &default_only,
+        &bundle,
+        &old_build,
+        "catalog",
+        &[],
+        Some("default")
+    ));
+    assert!(reusable_preparation(
+        &record,
+        &bundle,
+        &old_build,
+        "catalog",
+        &[],
+        Some("default")
+    ));
+    assert!(!reusable_preparation(
+        &default_only,
+        &bundle,
+        &old_build,
+        "catalog",
+        &[],
+        None
+    ));
+    assert!(!reusable_preparation(
+        &default_only,
+        &bundle,
+        &old_build,
+        "catalog",
+        &[],
+        Some("maximum-cleaning")
+    ));
+    let mut default_visual = default_only.clone();
+    default_visual["status"] = json!("unchanged");
+    default_visual["preparation_disposition"] = json!("needs_visual");
+    default_visual["results"][0]["status"] = json!("visually unchanged");
+    default_visual["results"][0]["checks_complete"] = json!(true);
+    default_visual["results"][0]["failures"] = json!([]);
+    assert!(
+        !fully_visually_identical(&default_visual),
+        "a Default result is not an all-profile certificate"
+    );
+    assert!(
+        !has_preparation_for_screen(&default_visual, None),
+        "widening the request requires preparation"
+    );
     fs::remove_file(&bundle)?;
     assert!(!reusable_preparation(
         &record,
         &bundle,
         &current_build,
         "catalog",
-        &accepted
+        &accepted,
+        None
     ));
     fs::remove_dir_all(output)?;
     Ok(())

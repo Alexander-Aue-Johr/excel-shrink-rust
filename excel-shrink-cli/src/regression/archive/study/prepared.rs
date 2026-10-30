@@ -8,6 +8,30 @@ mod prioritized;
 
 pub(super) const PROFILES: [&str; 3] = ["default", "maximum-cleaning", "too-aggressive-cleaning"];
 
+/// Profiles needed by the selected screen and its possible targeted follow-ups.
+/// Ordinary studies prepare all profiles. A Default screen needs only Default;
+/// Maximum also needs Default for follow-up, and Aggressive needs all three.
+pub(super) fn preparation_profiles(screen_profile: Option<&str>) -> &'static [&'static str] {
+    match screen_profile {
+        Some("default") => &["default"],
+        Some("maximum-cleaning") => &["default", "maximum-cleaning"],
+        _ => &PROFILES,
+    }
+}
+
+/// Stored profiles in canonical order, including single-profile bundles.
+/// Evidence validation separately rejects unknown and duplicate measurements.
+pub(super) fn available_profiles(record: &Value) -> Vec<&'static str> {
+    PROFILES
+        .into_iter()
+        .filter(|name| {
+            record["results"]
+                .as_array()
+                .is_some_and(|profiles| profiles.iter().any(|profile| profile["profile"] == *name))
+        })
+        .collect()
+}
+
 // A new attempt can fail before its worker unpacks the preparation bundle.
 // Clear old startup claims at admission, not only once the worker begins.
 pub(super) fn clear_startup_measurements(record: &mut Value) {
@@ -21,6 +45,9 @@ pub(super) fn clear_startup_measurements(record: &mut Value) {
     }
 }
 
+/// Convert the source when needed and shrink only profiles selected by the run.
+/// Hash-screening runs also capture the selected pair twice in temporary Excel
+/// instances before publishing the reusable bundle; source files remain intact.
 pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
     // Admission snapshots the controls before starting this workbook worker.
     // Keep its thread count fixed across all three profiles.
@@ -104,7 +131,9 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     record["results"] = json!([]);
     record["shrink_identity"] = json!({});
     record["cleanup_analysis"] = json!({});
-    for name in PROFILES {
+    let profiles = preparation_profiles(job.run_manifest.as_ref()
+        .and_then(|run| run["preparation_hash_profile"].as_str()));
+    for &name in profiles {
         work_state::event(
             "shrinking",
             "profile_started",
@@ -373,26 +402,49 @@ fn save_bundle(
     Ok(())
 }
 
-fn unpack(bundle: &Path, work: &Path) -> Result<(Value, Value)> {
+/// Extract Original and requested variants, retaining all stored measurements.
+/// Missing or inconsistent profile mappings fail instead of implying coverage.
+fn unpack(bundle: &Path, work: &Path, required: &[&str]) -> Result<(Value, Value)> {
     let mut zip = ZipArchive::new(fs::File::open(bundle)?)?;
     let metadata: Value = serde_json::from_reader(zip.by_name("preparation.json")?)?;
-    ensure!(matches!(metadata["version"].as_u64(), Some(1 | 2)),
-        "unsupported preparation bundle version");
-    let variants = metadata["variants"].as_array().context("preparation bundle lacks variants")?;
-    let mut members = std::collections::BTreeMap::from([("original".to_owned(), "original.xlsx".to_owned())]);
+    ensure!(
+        matches!(metadata["version"].as_u64(), Some(1 | 2)),
+        "unsupported preparation bundle version"
+    );
+    let variants = metadata["variants"]
+        .as_array()
+        .context("preparation bundle lacks variants")?;
+    let mut members =
+        std::collections::BTreeMap::from([("original".to_owned(), "original.xlsx".to_owned())]);
     for variant in variants {
-        let profile = variant["profile"].as_str().context("preparation variant lacks profile")?;
-        let member = variant["member"].as_str().context("preparation variant lacks member")?;
-        ensure!(PROFILES.contains(&profile), "unexpected preparation profile {profile}");
-        ensure!(member == "original.xlsx" || PROFILES.iter().any(|name| member == format!("{name}.xlsx")),
-            "preparation variant refers to unexpected member {member}");
-        ensure!(members.insert(profile.to_owned(), member.to_owned()).is_none(),
-            "duplicate preparation profile {profile}");
+        let profile = variant["profile"]
+            .as_str()
+            .context("preparation variant lacks profile")?;
+        let member = variant["member"]
+            .as_str()
+            .context("preparation variant lacks member")?;
+        ensure!(
+            PROFILES.contains(&profile),
+            "unexpected preparation profile {profile}"
+        );
+        ensure!(
+            member == "original.xlsx"
+                || PROFILES.iter().any(|name| member == format!("{name}.xlsx")),
+            "preparation variant refers to unexpected member {member}"
+        );
+        ensure!(
+            members
+                .insert(profile.to_owned(), member.to_owned())
+                .is_none(),
+            "duplicate preparation profile {profile}"
+        );
     }
     let mut extracted = std::collections::BTreeMap::<String, PathBuf>::new();
-    for name in std::iter::once("original").chain(PROFILES) {
+    for name in std::iter::once("original").chain(required.iter().copied()) {
         let filename = format!("{name}.xlsx");
-        let member = members.get(name).with_context(|| format!("missing {name} variant"))?;
+        let member = members
+            .get(name)
+            .with_context(|| format!("missing {name} variant"))?;
         let output = work.join(filename);
         if let Some(existing) = extracted.get(member) {
             fs::copy(existing, &output)?;
@@ -402,7 +454,25 @@ fn unpack(bundle: &Path, work: &Path) -> Result<(Value, Value)> {
             extracted.insert(member.clone(), output);
         }
     }
-    let measurements = serde_json::from_reader(zip.by_name("measurements.json")?)?;
+    // Keep the full preparation inventory so a later wider request can reuse
+    // an existing multi-profile bundle without rebuilding its variants.
+    let measurements: Value = serde_json::from_reader(zip.by_name("measurements.json")?)?;
+    let profiles = measurements
+        .as_array()
+        .context("missing profile measurements")?;
+    let measured: std::collections::BTreeSet<_> = profiles
+        .iter()
+        .filter_map(|profile| profile["profile"].as_str())
+        .collect();
+    ensure!(
+        measured.len() == profiles.len()
+            && profiles.len() == variants.len()
+            && measured
+                .iter()
+                .all(|name| *name != "original" && members.contains_key(*name))
+            && required.iter().all(|name| measured.contains(name)),
+        "preparation measurements do not match the requested profiles"
+    );
     let screen = if metadata["capture_hashes_member"] == "capture-hashes.json" {
         serde_json::from_reader(zip.by_name("capture-hashes.json")?)?
     } else {
@@ -476,6 +546,8 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
     let (measurements, screen) = unpack(
         job.bundle.as_ref().context("missing prepared bundle")?,
         &job.work,
+        preparation_profiles(job.run_manifest.as_ref()
+            .and_then(|run| run["preparation_hash_profile"].as_str())),
     )?;
     record["results"] = measurements;
     record["preparation_hash_screen"] = screen;
@@ -589,7 +661,9 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
 // An unchanged package needs no Excel run. Check every profile and every ZIP
 // member before taking this path; equal worksheet XML alone is not sufficient.
 fn finish_unchanged_package(job: &MemberJob, record: &mut Value, original: &Path) -> Result<bool> {
-    let variants: Vec<_> = PROFILES
+    let profiles = preparation_profiles(job.run_manifest.as_ref()
+        .and_then(|run| run["preparation_hash_profile"].as_str()));
+    let variants: Vec<_> = profiles
         .iter()
         .map(|name| (*name, job.work.join(format!("{name}.xlsx"))))
         .collect();
@@ -603,7 +677,7 @@ fn finish_unchanged_package(job: &MemberJob, record: &mut Value, original: &Path
     );
     certificate["baseline_repaired"] = record["baseline_repaired"].clone();
     certificate["source_sha256"] = record["source_sha256"].clone();
-    for name in PROFILES {
+    for &name in profiles {
         let profile = profile_mut(record, name)?;
         let fields = profile.as_object_mut().unwrap();
         // Never carry old visual claims or opening measurements into a package
@@ -648,7 +722,7 @@ fn finish_unchanged_package(job: &MemberJob, record: &mut Value, original: &Path
         record["comparison_fallback"]["status"] = json!("superseded_by_package_audit");
     }
     eprintln!(
-        "[study] {}: all three package contents equivalent; Excel comparison omitted",
+        "[study] {}: selected package contents equivalent; Excel comparison omitted",
         job.name
     );
     write_record(&job.record, record)?;
@@ -878,15 +952,16 @@ fn mark_crc_identical(profile: &mut Value) {
 /// Finish a preparation whose published outputs contain no worksheet cleanup.
 /// This is a terminal shrink outcome, not a visual identity certificate.
 pub(super) fn finalize_nonvisual_preparation(record: &mut Value) -> bool {
-    if !PROFILES.iter().all(|name| profile_archive_reused(record, name) || profile_workbook_only(record, name)) {
+    let names = available_profiles(record);
+    if names.is_empty() || !names.iter().all(|name| profile_archive_reused(record, name) || profile_workbook_only(record, name)) {
         return false;
     }
-    if !record["results"].as_array().is_some_and(|profiles| PROFILES.iter().all(|name| {
+    if !record["results"].as_array().is_some_and(|profiles| profiles.len() == names.len() && names.iter().all(|name| {
         profiles.iter().filter(|profile| profile["profile"] == *name).count() == 1
     })) {
         return false;
     }
-    for name in PROFILES {
+    for name in available_profiles(record) {
         let workbook_only = profile_workbook_only(record, name);
         let profile = profile_mut(record, name).expect("all prepared profiles are present");
         if workbook_only {
@@ -895,7 +970,7 @@ pub(super) fn finalize_nonvisual_preparation(record: &mut Value) -> bool {
             mark_crc_identical(profile);
         }
     }
-    record["status"] = json!(if PROFILES.iter().any(|name| profile_workbook_only(record, name)) {
+    record["status"] = json!(if names.iter().any(|name| profile_workbook_only(record, name)) {
         "workbook-only"
     } else {
         "crc-identical"
@@ -904,7 +979,7 @@ pub(super) fn finalize_nonvisual_preparation(record: &mut Value) -> bool {
     record["capture_mode"] = json!("shrink-identity");
     record["error"] = Value::Null;
     record["whitespace_diagnosis"] = json!({"status":"not_applicable",
-        "reason":"all cleaning profiles reused the original archive"});
+        "reason":"all prepared profiles reused the original archive"});
     if record["last_execution"].is_object() {
         record["last_execution"]["capture_mode"] = json!("shrink-identity");
     }
@@ -919,7 +994,8 @@ fn verify_partial_reused_archives(job: &MemberJob, record: &Value, original: &Pa
     ensure!(artifact_cache::hash_file(original)? == baseline_sha,
         "prepared original differs from baseline fingerprint");
     let source_sha = record["converted_sha256"].as_str().context("missing converted fingerprint")?;
-    for name in PROFILES {
+    for &name in preparation_profiles(job.run_manifest.as_ref()
+        .and_then(|run| run["preparation_hash_profile"].as_str())) {
         if profile_archive_reused(record, name) {
             ensure!(artifact_cache::hash_file(&job.work.join(format!("{name}.xlsx")))? == source_sha,
                 "{name}: reused archive differs from converted source");
@@ -937,7 +1013,8 @@ fn audit_prepared_profiles(
     let plan = office_plan::build_workbook_visual_plan(original)
         .context("validate workbook capture plan")?;
     ensure!(!plan.sheets.is_empty(), "workbook has no visible worksheets to compare");
-    for name in PROFILES {
+    for &name in preparation_profiles(job.run_manifest.as_ref()
+        .and_then(|run| run["preparation_hash_profile"].as_str())) {
         let measured_output = job.work.join(format!("{name}.xlsx"));
         if profile_archive_reused(record, name)
             || profile_workbook_only(record, name)
@@ -959,7 +1036,11 @@ fn audit_prepared_profiles(
 // its unchanged check. Verify the raw archive identity after bundle extraction,
 // without decompressing any XML or claiming a visual comparison took place.
 fn finish_reused_archives(job: &MemberJob, record: &mut Value, original: &Path) -> Result<bool> {
-    if !PROFILES.iter().all(|name| profile_archive_reused(record, name) || profile_workbook_only(record, name)) {
+    let names = available_profiles(record);
+    let required = preparation_profiles(job.run_manifest.as_ref()
+        .and_then(|run| run["preparation_hash_profile"].as_str()));
+    if names.len() != required.len() { return Ok(false); }
+    if names.is_empty() || !names.iter().all(|name| profile_archive_reused(record, name) || profile_workbook_only(record, name)) {
         return Ok(false);
     }
     verify_partial_reused_archives(job, record, original)?;
@@ -1079,6 +1160,158 @@ mod tests {
     use super::*;
 
     #[test]
+    fn preparation_only_builds_profiles_needed_for_the_requested_screen() {
+        assert_eq!(preparation_profiles(Some("default")), &["default"]);
+        assert_eq!(
+            preparation_profiles(Some("maximum-cleaning")),
+            &["default", "maximum-cleaning"]
+        );
+        assert_eq!(
+            preparation_profiles(Some("too-aggressive-cleaning")),
+            &PROFILES
+        );
+        assert_eq!(preparation_profiles(None), &PROFILES);
+    }
+
+    #[test]
+    fn partial_and_full_bundles_extract_only_requested_variants() -> Result<()> {
+        for stored in [vec!["default"], PROFILES.to_vec()] {
+            let root = super::super::tests::test_directory("selected-bundle")?;
+            let (job, mut record) = package_job(&root)?;
+            record["results"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|profile| stored.contains(&profile["profile"].as_str().unwrap()));
+            let original = job.work.join("original.xlsx");
+            record["converted_sha256"] = json!(artifact_cache::hash_file(&original)?);
+            let outputs: Vec<_> = std::iter::once("original")
+                .chain(stored.iter().copied())
+                .map(|name| (name.to_owned(), job.work.join(format!("{name}.xlsx"))))
+                .collect();
+            let bundle = root.join("prepared.zip");
+            save_bundle(
+                &job.work.join("pending.zip"),
+                &bundle,
+                &outputs,
+                &original,
+                &mut record,
+            )?;
+            let reopened = root.join("reopened");
+            fs::create_dir(&reopened)?;
+            let (measurements, _) = unpack(&bundle, &reopened, &["default"])?;
+            assert_eq!(
+                measurements, record["results"],
+                "retain the cached inventory for later reuse"
+            );
+            assert!(reopened.join("original.xlsx").is_file());
+            assert!(reopened.join("default.xlsx").is_file());
+            assert!(!reopened.join("maximum-cleaning.xlsx").exists());
+            assert!(!reopened.join("too-aggressive-cleaning.xlsx").exists());
+            if stored.len() == 1 {
+                let wider = root.join("wider");
+                fs::create_dir(&wider)?;
+                assert!(unpack(&bundle, &wider, &PROFILES).is_err());
+            }
+            fs::remove_dir_all(root)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn default_package_audit_does_not_read_other_variants() -> Result<()> {
+        let root = super::super::tests::test_directory("default-package-only")?;
+        let (mut job, mut record) = package_job(&root)?;
+        job.run_manifest.as_mut().unwrap()["preparation_hash_profile"] = json!("default");
+        for name in ["maximum-cleaning", "too-aggressive-cleaning"] {
+            fs::remove_file(job.work.join(format!("{name}.xlsx")))?;
+        }
+        assert!(finish_unchanged_package(
+            &job,
+            &mut record,
+            &job.work.join("original.xlsx")
+        )?);
+        assert_eq!(
+            record["package_identity"]["profiles"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            record["package_identity"]["profiles"][0]["profile"],
+            "default"
+        );
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    /// Exercise shrinking, native Excel sweeps and partial-bundle reuse together.
+    /// Run alone after building the release host; the input fixture is never changed.
+    #[test]
+    #[ignore = "requires desktop Excel and EXCEL_SHRINK_DEFAULT_PREPARATION_FIXTURE; run serially"]
+    fn default_only_preparation_excel_fixture() -> Result<()> {
+        let source = PathBuf::from(
+            std::env::var_os("EXCEL_SHRINK_DEFAULT_PREPARATION_FIXTURE")
+                .context("Set EXCEL_SHRINK_DEFAULT_PREPARATION_FIXTURE to an XLSX file")?,
+        );
+        let before = artifact_cache::hash_file(&source)?;
+        let host = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../target/release/excel-shrink-cli.exe")
+            .canonicalize()?;
+        std::env::set_var("EXCEL_SHRINK_CAPTURE_HOST", &host);
+        std::env::set_var("EXCEL_SHRINK_HIDE_EXCEL", "1");
+        std::env::set_var("EXCEL_SHRINK_CAPTURE_SWEEP", "1");
+        std::env::remove_var("EXCEL_SHRINK_CONTROL_ROOM_DIR");
+        let root = super::super::tests::test_directory("default-preparation-excel")?;
+        let mut job = provenance_job(&root);
+        job.max_workbook_bytes = 16 * 1024 * 1024;
+        job.hide_excel = true;
+        job.resident_capture = true;
+        job.run_manifest.as_mut().unwrap()["preparation_hash_profile"] = json!("default");
+        fs::create_dir_all(&job.work)?;
+        let mut archive = zip::ZipWriter::new(fs::File::create(&job.archive)?);
+        archive.start_file("example.xlsx", zip::write::FileOptions::default())?;
+        std::io::copy(&mut fs::File::open(&source)?, &mut archive)?;
+        archive.finish()?;
+        let producer = artifact_cache::hash_file(&host)?;
+        let mut record = json!({"identity":job.identity,"name":job.name,
+            "prepared_by":producer,"source_fingerprint":"fixture","results":[]});
+        prepare(&job, &mut record, LogLevel::Warn)?;
+        assert_eq!(record["results"].as_array().unwrap().len(), 1);
+        assert_eq!(record["results"][0]["profile"], "default");
+        assert_eq!(record["preparation_hash_screen"]["profile"], "default");
+        assert!(!job.work.join("maximum-cleaning").exists());
+        assert!(!job.work.join("too-aggressive-cleaning").exists());
+        let bundle = job.bundle.as_ref().unwrap();
+        assert!(super::super::reusable_preparation(
+            &record,
+            bundle,
+            &producer,
+            "fixture",
+            &[],
+            Some("default")
+        ));
+        assert!(!super::super::reusable_preparation(
+            &record,
+            bundle,
+            &producer,
+            "fixture",
+            &[],
+            None
+        ));
+        let mut zip = ZipArchive::new(fs::File::open(bundle)?)?;
+        let metadata: Value = serde_json::from_reader(zip.by_name("preparation.json")?)?;
+        assert_eq!(metadata["variants"].as_array().unwrap().len(), 1);
+        assert!(zip.by_name("maximum-cleaning.xlsx").is_err());
+        assert!(zip.by_name("too-aggressive-cleaning.xlsx").is_err());
+        assert_eq!(artifact_cache::hash_file(&source)?, before);
+        println!(
+            "DEFAULT_PREPARATION_FIXTURE {}",
+            json!({"output":root,"profile":"default","bundle":bundle})
+        );
+        Ok(())
+    }
+    #[test]
     fn reuse_primary_profile_marks_only_successful_secondary_reuse() -> Result<()> {
         let previous = json!([{"profile":super::super::strategy::AGGRESSIVE,"checks_complete":true,"image_comparison":"complete",
             "sheets":[{"original_image":"evidence/primary.png"}],
@@ -1188,7 +1421,7 @@ mod tests {
             drop(zip);
             let reopened = root.join("reopened");
             fs::create_dir(&reopened)?;
-            assert_eq!(unpack(&bundle, &reopened)?.0, record["results"]);
+            assert_eq!(unpack(&bundle, &reopened, &PROFILES)?.0, record["results"]);
             assert_eq!(
                 artifact_cache::hash_file(&reopened.join("original.xlsx"))?,
                 record["baseline_sha256"]

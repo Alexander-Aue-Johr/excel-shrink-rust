@@ -573,7 +573,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                             return args.should_retry_skipped();
                         }
                         record["complete"] != true
-                            || !has_required_shrink_evidence(record)
+                            || !has_preparation_for_screen(record, args.preparation_hash_profile.as_deref())
                             || (record["preparation_disposition"] == "needs_visual"
                                 && record["last_hash_screen_profile"] != profile)
                     })
@@ -640,7 +640,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                                 matches!(record["status"].as_str(),
                                     Some("unchanged" | "differences" | "paused-for-later"
                                         | "crc-identical" | "workbook-only"))
-                                    && !has_required_shrink_evidence(record)
+                                    && !has_preparation_for_screen(record, args.preparation_hash_profile.as_deref())
                             })
                     }));
             }
@@ -843,6 +843,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                     &producer,
                     &source.fingerprint,
                     &args.reuse_prepared_from,
+                    args.preparation_hash_profile.as_deref(),
                 ) {
                     if args.compare_only && records[pos]["status"] != "skipped" {
                         eprintln!("[study] Not prepared with this build: {name}");
@@ -1117,7 +1118,8 @@ fn has_marked_sheets(value: &Value) -> bool {
 }
 
 fn fully_visually_identical(record: &Value) -> bool {
-    if record["status"] != "unchanged"
+    if prepared::available_profiles(record).len() != prepared::PROFILES.len()
+        || record["status"] != "unchanged"
         || record["preparation_disposition"] != "needs_visual"
         || !has_required_shrink_evidence(record)
         || has_marked_sheets(&record["capture_deferred"])
@@ -1231,12 +1233,14 @@ fn preparation_build_hash(value: &str) -> std::result::Result<String, String> {
     Ok(value.to_ascii_lowercase())
 }
 
+/// Accept a bundle only for a reviewed producer, matching source and requested profiles.
 fn reusable_preparation(
     record: &Value,
     bundle: &Path,
     producer: &str,
     source: &str,
     compatible_builds: &[String],
+    screen_profile: Option<&str>,
 ) -> bool {
     record["prepared"] == true
         && bundle.is_file()
@@ -1246,39 +1250,53 @@ fn reusable_preparation(
                 .iter()
                 .any(|hash| record["prepared_by"] == *hash))
         && record["source_fingerprint"] == source
-        && has_required_shrink_evidence(record)
-        && prepared::PROFILES.iter().all(|name| {
-            let config = &predefined_visual_profiles()
-                .iter()
-                .find(|p| p.name == *name)
-                .unwrap()
-                .config;
-            record["results"].as_array().is_some_and(|profiles| {
-                profiles.iter().filter(|p| p["profile"] == *name).count() == 1
-                    && profiles
-                        .iter()
-                        .any(|p| p["profile"] == *name && p["config_hash"] == config.config_hash())
+        && has_preparation_for_screen(record, screen_profile)
+}
+
+/// Validate the stored evidence and every profile needed by this request.
+/// A partial bundle can satisfy a narrow screen without satisfying a later
+/// wider request; comparison completion alone must not skip that preparation.
+fn has_preparation_for_screen(record: &Value, screen_profile: Option<&str>) -> bool {
+    has_required_shrink_evidence(record)
+        && prepared::preparation_profiles(screen_profile)
+            .iter()
+            .all(|name| {
+                let config = &predefined_visual_profiles()
+                    .iter()
+                    .find(|p| p.name == *name)
+                    .unwrap()
+                    .config;
+                record["results"].as_array().is_some_and(|profiles| {
+                    profiles.iter().filter(|p| p["profile"] == *name).count() == 1
+                        && profiles.iter().any(|p| {
+                            p["profile"] == *name && p["config_hash"] == config.config_hash()
+                        })
+                })
             })
-        })
 }
 
 fn has_required_shrink_evidence(record: &Value) -> bool {
     let Some(profiles) = record["results"].as_array() else {
         return false;
     };
-    prepared::PROFILES.iter().all(|name| {
-        let Some(profile) = profiles.iter().find(|profile| profile["profile"] == *name) else {
-            return false;
-        };
-        let evidence = &profile["shrink_identity"];
-        evidence["workbook_original_archive_reused"].is_boolean()
-            && evidence["workbook_only_cleanup_available"].is_boolean()
-            && evidence["worksheet_xml_changed"].is_boolean()
-            && evidence["cleaned_package_crc_length_sha256"].as_str().is_some_and(|hash| hash.len() == 64)
-            && evidence["workbook_xml_cleaned_entries"].is_array()
-            && evidence["sheets"].is_object()
-            && profile["cleanup_analysis"].is_object()
-    })
+    let names = prepared::available_profiles(record);
+    !profiles.is_empty()
+        && names.len() == profiles.len()
+        && names.iter().all(|name| {
+            let Some(profile) = profiles.iter().find(|profile| profile["profile"] == *name) else {
+                return false;
+            };
+            let evidence = &profile["shrink_identity"];
+            evidence["workbook_original_archive_reused"].is_boolean()
+                && evidence["workbook_only_cleanup_available"].is_boolean()
+                && evidence["worksheet_xml_changed"].is_boolean()
+                && evidence["cleaned_package_crc_length_sha256"]
+                    .as_str()
+                    .is_some_and(|hash| hash.len() == 64)
+                && evidence["workbook_xml_cleaned_entries"].is_array()
+                && evidence["sheets"].is_object()
+                && profile["cleanup_analysis"].is_object()
+        })
 }
 
 fn invalidate_preparation_claim(record: &mut Value) {

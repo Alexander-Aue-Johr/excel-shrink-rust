@@ -56,6 +56,7 @@ pub(super) fn run_all(
                     producer,
                     &source.fingerprint,
                     &args.reuse_prepared_from,
+                    args.preparation_hash_profile.as_deref(),
                 )
             {
                 records[position]["preparation_accepted_by"] = json!(producer);
@@ -76,6 +77,7 @@ pub(super) fn run_all(
                 producer,
                 &source.fingerprint,
                 &args.reuse_prepared_from,
+                args.preparation_hash_profile.as_deref(),
             ) {
                 reused += 1;
                 if classify_preparation(&mut records[position]) {
