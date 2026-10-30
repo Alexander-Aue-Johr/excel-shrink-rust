@@ -29,6 +29,13 @@ pub(super) struct SheetIndicators {
     one_cell_drawings: Vec<OneCellDrawing>,
 }
 
+#[derive(Debug)]
+struct ConditionalFormatting {
+    raw: Vec<u8>,
+    ranges: Vec<[u32; 2]>,
+    constant_cell_is: bool,
+}
+
 impl SheetIndicators {
     pub(super) fn measured_drawing_rows(
         &self,
@@ -440,12 +447,152 @@ fn inspect_row(raw: &[u8], row: u32, styles: &[bool], out: &mut SheetIndicators)
     Ok(())
 }
 
+fn literal_operand(bytes: &[u8]) -> bool {
+    if bytes.len() >= 2 && bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"' {
+        return bytes[1..bytes.len() - 1]
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b' ');
+    }
+    bytes
+        .iter()
+        .all(|byte| matches!(byte, b'0'..=b'9' | b'+' | b'-' | b'.' | b'E' | b'e'))
+        && std::str::from_utf8(bytes)
+            .ok()
+            .and_then(|text| text.parse::<f64>().ok())
+            .is_some_and(f64::is_finite)
+}
+
+/// Recognize only `cellIs` rules whose operands cannot depend on other cells.
+/// Unknown XML remains a capture candidate rather than a claim of equality.
+fn constant_cell_is_rules(raw: &[u8]) -> Result<bool> {
+    let mut reader = Reader::<64>::new(raw)?;
+    let root = reader.next()?.context("conditional formatting element missing")?;
+    if root.name != b"conditionalFormatting" || root.kind != Kind::Start {
+        return Ok(false);
+    }
+    for attribute in Attributes::new(root.attrs) {
+        if attribute?.0 != b"sqref" {
+            return Ok(false);
+        }
+    }
+    let outer = reader.element(root)?;
+    let mut rules = Reader::<64>::new(outer.body)?;
+    let mut previous = 0;
+    let mut count = 0;
+    while let Some(rule) = rules.next()? {
+        if rule.name != b"cfRule" || rule.kind != Kind::Start
+            || !outer.body[previous..rule.start].iter().all(u8::is_ascii_whitespace)
+        {
+            return Ok(false);
+        }
+        let mut kind = None;
+        let mut operator = None;
+        let mut seen = BTreeSet::new();
+        for attribute in Attributes::new(rule.attrs) {
+            let (name, value) = attribute?;
+            if !seen.insert(name) {
+                return Ok(false);
+            }
+            match name {
+                b"type" => kind = Some(value),
+                b"operator" => operator = Some(value),
+                b"dxfId" | b"priority" | b"stopIfTrue" => {}
+                _ => return Ok(false),
+            }
+        }
+        if kind != Some(b"cellIs".as_slice()) {
+            return Ok(false);
+        }
+        let expected = match operator {
+            Some(b"between" | b"notBetween") => 2,
+            Some(
+                b"equal" | b"notEqual" | b"lessThan" | b"lessThanOrEqual"
+                | b"greaterThan" | b"greaterThanOrEqual",
+            ) => 1,
+            _ => return Ok(false),
+        };
+        let body = rules.element(rule)?;
+        previous = rule.start + body.raw.len();
+        let mut formulas = Reader::<8>::new(body.body)?;
+        let mut formula_end = 0;
+        let mut found = 0;
+        while let Some(formula) = formulas.next()? {
+            if formula.name != b"formula" || formula.kind != Kind::Start
+                || !formula.attrs.iter().all(u8::is_ascii_whitespace)
+                || !body.body[formula_end..formula.start].iter().all(u8::is_ascii_whitespace)
+            {
+                return Ok(false);
+            }
+            let value = formulas.element(formula)?;
+            if !literal_operand(value.body) {
+                return Ok(false);
+            }
+            formula_end = formula.start + value.raw.len();
+            found += 1;
+        }
+        if found != expected || !body.body[formula_end..].iter().all(u8::is_ascii_whitespace) {
+            return Ok(false);
+        }
+        count += 1;
+    }
+    Ok(count > 0 && outer.body[previous..].iter().all(u8::is_ascii_whitespace))
+}
+
+fn conditional_ranges(
+    tag: crate::regression::xml_views::Tag<'_>,
+    body: &[u8],
+) -> Result<Vec<[u32; 2]>> {
+    if let Some(sqref) = tag.attr(b"sqref")? {
+        return range_rows(sqref);
+    }
+    let mut reader = Reader::<64>::new(body)?;
+    while let Some(child) = reader.next()? {
+        if child.kind != Kind::End && child.local() == b"sqref" {
+            return range_rows(reader.element(child)?.body);
+        }
+    }
+    bail!("conditional formatting range missing")
+}
+
+/// Constant rules with identical markup cannot change appearance unless their
+/// target values change. `recalc_selection` adds those changed rows separately;
+/// if that check fails, the caller selects the full sheet.
+fn compare_conditional_formatting(
+    left: &[ConditionalFormatting],
+    right: &[ConditionalFormatting],
+    out: &mut SheetIndicators,
+) {
+    if left.len() == right.len()
+        && left
+            .iter()
+            .zip(right)
+            .all(|(a, b)| a.raw == b.raw && a.constant_cell_is)
+    {
+        if !left.is_empty()
+            && !out
+                .reasons
+                .iter()
+                .any(|reason| reason == "conditional_formatting_literal_rules")
+        {
+            out.reasons.push("conditional_formatting_literal_rules".into());
+        }
+        return;
+    }
+    for rule in left.iter().chain(right) {
+        for &range in &rule.ranges {
+            out.add(range, "conditional_formatting");
+        }
+    }
+}
+
 struct RowCursor<'a> {
     reader: Reader<'a>,
     styles: &'a [bool],
     last_row: u32,
     geometry: Vec<Vec<u8>>,
     drawing_ids: BTreeSet<String>,
+    conditional: Vec<ConditionalFormatting>,
+    conditional_bytes: usize,
 }
 impl<'a> RowCursor<'a> {
     fn new(bytes: &'a [u8], styles: &'a [bool]) -> Result<Self> {
@@ -455,6 +602,8 @@ impl<'a> RowCursor<'a> {
             last_row: 0,
             geometry: Vec::new(),
             drawing_ids: BTreeSet::new(),
+            conditional: Vec::new(),
+            conditional_bytes: 0,
         })
     }
     fn next(&mut self, out: &mut SheetIndicators) -> Result<Option<(u32, &'a [u8])>> {
@@ -476,23 +625,14 @@ impl<'a> RowCursor<'a> {
                 }
                 b"conditionalFormatting" => {
                     let body = self.reader.element(tag)?;
-                    if let Some(sqref) = tag.attr(b"sqref")? {
-                        add_ranges(out, sqref, "conditional_formatting")?;
-                    } else {
-                        let mut ranges = Reader::<64>::new(body.body)?;
-                        let mut found = false;
-                        while let Some(child) = ranges.next()? {
-                            if child.kind != Kind::End && child.local() == b"sqref" {
-                                add_ranges(
-                                    out,
-                                    ranges.element(child)?.body,
-                                    "conditional_formatting",
-                                )?;
-                                found = true;
-                            }
-                        }
-                        ensure!(found, "conditional formatting range missing");
-                    }
+                    self.conditional_bytes += body.raw.len();
+                    ensure!(self.conditional_bytes <= 8 * 1024 * 1024,
+                        "conditional formatting metadata exceeds streaming buffer limit");
+                    self.conditional.push(ConditionalFormatting {
+                        raw: body.raw.to_vec(),
+                        ranges: conditional_ranges(tag, body.body)?,
+                        constant_cell_is: constant_cell_is_rules(body.raw)?,
+                    });
                 }
                 b"mergeCell" => add_ranges(
                     out,
@@ -602,6 +742,7 @@ fn scan_buffered_pair(
     if a.geometry != b.geometry {
         out.full("column or worksheet geometry changed");
     }
+    compare_conditional_formatting(&a.conditional, &b.conditional, out);
     Ok((a.drawing_ids, b.drawing_ids))
 }
 
@@ -613,6 +754,8 @@ struct StreamingRows<'a, R: Read> {
     geometry: Vec<Vec<u8>>,
     geometry_bytes: usize,
     drawing_ids: BTreeSet<String>,
+    conditional: Vec<ConditionalFormatting>,
+    conditional_bytes: usize,
 }
 
 impl<'a, R: Read> StreamingRows<'a, R> {
@@ -625,6 +768,8 @@ impl<'a, R: Read> StreamingRows<'a, R> {
             geometry: Vec::new(),
             geometry_bytes: 0,
             drawing_ids: BTreeSet::new(),
+            conditional: Vec::new(),
+            conditional_bytes: 0,
         }
     }
 
@@ -637,8 +782,12 @@ impl<'a, R: Read> StreamingRows<'a, R> {
             self.geometry_bytes += cursor.geometry.iter().map(Vec::len).sum::<usize>();
             self.geometry.extend(cursor.geometry);
             self.drawing_ids.extend(cursor.drawing_ids);
+            self.conditional_bytes += cursor.conditional_bytes;
+            self.conditional.extend(cursor.conditional);
             ensure!(self.geometry_bytes <= 8 * 1024 * 1024,
                 "worksheet geometry metadata exceeds streaming buffer limit");
+            ensure!(self.conditional_bytes <= 8 * 1024 * 1024,
+                "conditional formatting metadata exceeds streaming buffer limit");
             if row.is_some() { return Ok(row); }
         }
         Ok(None)
@@ -682,6 +831,7 @@ fn scan_stream_pair(
         }
     }
     if a.geometry != b.geometry { out.full("column or worksheet geometry changed"); }
+    compare_conditional_formatting(&a.conditional, &b.conditional, out);
     #[cfg(test)]
     if std::env::var_os("EXCEL_SHRINK_ANALYSIS_FIXTURE").is_some() {
         println!("stream_row_buffer_capacity_bytes={} geometry_bytes={}",
@@ -930,6 +1080,66 @@ pub(super) fn analyze(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn literal_cell_is_rules_do_not_select_unchanged_conditional_ranges() {
+        let original = br#"<worksheet>
+            <sheetData><row r="5"><c r="J5"><v>1</v></c></row></sheetData>
+            <conditionalFormatting sqref="J5:J1048576">
+                <cfRule type="cellIs" dxfId="2" priority="1" stopIfTrue="1" operator="equal">
+                    <formula>1</formula>
+                </cfRule>
+                <cfRule type="cellIs" dxfId="3" priority="2" operator="between">
+                    <formula>-0.1</formula><formula>0.1</formula>
+                </cfRule>
+            </conditionalFormatting>
+        </worksheet>"#;
+        let mut out = SheetIndicators::default();
+        scan_pair(original, original, &[false], &[false], &mut out).unwrap();
+        assert!(out.rows.is_empty());
+        assert!(out
+            .reasons
+            .iter()
+            .any(|reason| reason == "conditional_formatting_literal_rules"));
+
+        let changed_value = String::from_utf8_lossy(original).replace("<v>1</v>", "<v>2</v>");
+        let mut out = SheetIndicators::default();
+        scan_pair(original, changed_value.as_bytes(), &[false], &[false], &mut out).unwrap();
+        assert_eq!(out.rows, vec![[4, 5]]);
+    }
+
+    #[test]
+    fn cell_references_and_changed_rules_keep_conditional_ranges() {
+        let base = r#"<worksheet><sheetData/>
+            <conditionalFormatting sqref="J5:J100">
+                <cfRule type="cellIs" dxfId="2" priority="1" operator="equal">
+                    <formula>{operand}</formula>
+                </cfRule>
+            </conditionalFormatting>
+        </worksheet>"#;
+        let literal = base.replace("{operand}", "\"D\"");
+        let reference = base.replace("{operand}", "$D$5");
+        for (left, right) in [(&reference, &reference), (&literal, &reference)] {
+            let mut out = SheetIndicators::default();
+            scan_pair(left.as_bytes(), right.as_bytes(), &[false], &[false], &mut out).unwrap();
+            assert_eq!(out.rows, vec![[4, 100]]);
+            assert!(out.reasons.iter().any(|reason| reason == "conditional_formatting"));
+        }
+        let unsupported = base.replace("{operand}", "NOW()");
+        let mut out = SheetIndicators::default();
+        scan_pair(unsupported.as_bytes(), unsupported.as_bytes(), &[false], &[false], &mut out).unwrap();
+        assert_eq!(out.rows, vec![[4, 100]]);
+
+        let expression = literal.replace("type=\"cellIs\"", "type=\"expression\"");
+        let mut out = SheetIndicators::default();
+        scan_pair(expression.as_bytes(), expression.as_bytes(), &[false], &[false], &mut out).unwrap();
+        assert_eq!(out.rows, vec![[4, 100]]);
+
+        let changed_style = literal.replace("dxfId=\"2\"", "dxfId=\"3\"");
+        let mut out = SheetIndicators::default();
+        scan_pair(literal.as_bytes(), changed_style.as_bytes(), &[false], &[false], &mut out).unwrap();
+        assert_eq!(out.rows, vec![[4, 100]]);
+    }
 
     // Existing indicator fixtures exercise both implementations. The buffered
     // implementation stays test-only as an independent compatibility oracle.

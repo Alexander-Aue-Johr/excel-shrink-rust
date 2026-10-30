@@ -36,7 +36,8 @@ For a tall sheet, the runner retains the union of the edge samples and bands
 intersecting any of these indicators across the original and profile variants:
 
 - Changed, inserted, or removed worksheet XML rows.
-- Conditional-formatting targets, including extended Excel `sqref` ranges.
+- Conditional-formatting targets whose rules cannot be proven stable, including
+  extended Excel `sqref` ranges.
 - Decorated cells, rows, columns, and merged regions. Number/date formats alone
   do not select every row; fills, borders, fonts, and alignment can do so.
 - Drawing and chart anchors from both versions, including their old positions.
@@ -53,7 +54,13 @@ full-capture fallback. A rectangle changing after selection invalidates the
 sampled comparison instead of silently accepting its old bounds.
 
 Deleted areas remain represented by the original geometry. Conditional-formatting
-targets are not clipped to populated cells. Unknown layout changes, unsupported
+targets are not clipped to populated cells. Ordinary `cellIs` rules with literal
+text or number operands need no blanket target capture when their XML is identical
+in both workbooks: changed cell values are already selected using the saved
+recalculation copies. Other rule types, cell references, changed rules and
+unrecognized markup retain the whole target range as a capture candidate.
+This shortcut does not remove candidates from changed worksheet rows, styles,
+geometry or drawings. Unknown layout changes, unsupported
 objects or extensions, changed global styles/shared strings, missing analysis
 inputs, and failed recalculation cause conservative full capture. Worksheet
 indicators are read directly from the decompression stream, one row or other
@@ -117,11 +124,13 @@ Its `1990 E Maize Lys 15-Min` sheet had 1,062 planned bands; static XML analysis
 found only one decorated header row before adding edge, recalculation, and
 measured-height candidates.
 
-Its `1990 E Maize Lys 5-Min` sheet does contain conditional formatting, including
-targets `J70953:J1048576` and `H55417:H1048576` in the original and all three
-profiles. Those long tails must remain capture candidates under this policy.
-A tall, mostly numeric appearance alone is therefore insufficient to justify
-omission.
+Its `1990 E Maize Lys 5-Min` sheet contains conditional formatting, including
+targets `J70953:J1048576` and `H55417:H1048576`. Its ordinary rules compare each
+target cell to a fixed text or number. The literal-rule shortcut can avoid
+selecting those entire tails when the rule XML matches and saved recalc values
+provide complete change candidates. Other changed or decorated rows remain
+selected. Before the shortcut, those long conditional-formatting ranges were
+one reason every planned `5-Min` capture band was selected.
 
 ## Bounded native check
 
