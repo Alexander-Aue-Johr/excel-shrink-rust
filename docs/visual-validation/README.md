@@ -13,12 +13,28 @@ and `too-aggressive-cleaning` builds all three for possible targeted follow-up.
 Existing compatible bundles with additional variants remain reusable. A later
 request for a profile absent from a partial bundle requires new preparation.
 Comparisons unpack and audit only the variants required by the current mode.
-Preparation opens Original and the selected output in one resident group,
-captures every tile, runs Excel Full recalculation in both open workbooks, and
-captures every tile again. Each workbook bundle contains `capture-hashes.json`
-with both passes, per-tile and per-sheet SHA-256 hashes, and a global SHA-256.
-Preparation stores hashes only; it defers image replay and exact pixel checks
-to selected sheets in the comparison phase.
+Preparation has two corpus-wide phases. First, every selected workbook is
+converted if necessary, shrunk, and saved in its reusable ZIP bundle. Only after
+that queue drains do hash sweeps open Original and the selected output, capture
+every tile, run Excel Full recalculation in both workbooks, and capture again.
+The Observatory shows separate shrink and hash-sweep progress bars.
+
+`prepare_processes` controls simultaneous shrink jobs; `shrink_threads` sets
+Rayon threads per shrink job. `sweep_processes` independently controls concurrent
+hash-sweep groups, each normally using two Excel instances. The comparison-group
+target does not gate sweeps. `excel_process_limit` defaults to `0` (unlimited);
+a positive value is an optional shared limit, without the former 32-slot ceiling.
+Existing saved positive limits are retained until explicitly changed.
+
+Sweeps save both passes, per-tile and per-sheet SHA-256 hashes, and a global hash
+in a `*.capture-hashes.json` sidecar beside the preparation ZIP. The sidecar is
+bound to that exact bundle's SHA-256 and selected profile. Existing bundles are
+not rewritten; embedded hashes from older bundles remain readable. Preserve the
+sidecars when copying a run to reuse its new sweeps. Missing or invalid caches
+remain eligible for capture; they never establish equality. Failed sweeps retain
+the preparation and diagnostic error and fall back to selected-profile visual
+comparison rather than losing the shrinking work.
+
 Only stable hash differences select sheets for later pixel comparison. A missing
 or unstable manifest selects all sheets of the chosen profile. Hash equality is
 reported as `screened-equal`; it is not a complete visual or cell-value check.
@@ -26,15 +42,7 @@ reported as `screened-equal`; it is not a complete visual or cell-value check.
 captures if Maximum has visual differences. `too-aggressive-cleaning` adds
 targeted Maximum and Default captures if Too Aggressive has visual differences.
 Targeted follow-up captures do not run independent recalculation validation.
-One preparation worker uses two Excel instances for the Original and selected
-profile; the existing preparation-process control sets concurrent workbook
-groups. For `N` simultaneous preparation groups, set `prepare_processes` and
-`target_groups` to at least `N` and `excel_process_limit` to at least `2N`
-(identical certified copies may share one instance). The control's minimum is
-four Excel slots; start with one group and that minimum, which leaves room for
-the two Excel instances used during preparation. Comparison groups reserve
-slots for possible follow-up profiles at admission, even if they prove
-unnecessary. No RAM-based control is added for this mode.
+
 The two sweeps detect changes caused by an explicit Full recalculation in that
 Excel session. They cannot rule out later refresh-on-open behavior, external
 data changes, or a different rendering in a new Excel session; the report

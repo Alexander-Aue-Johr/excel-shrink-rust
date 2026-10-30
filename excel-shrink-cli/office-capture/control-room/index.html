@@ -21,6 +21,11 @@
     </div>
   </section>
   <section class="controls preparation-controls" aria-label="Shrink preparation controls">
+      <div class="control">
+        <label for="sweepProcesses">SIMULTANEOUS HASH-SWEEP PROCESSES</label>
+        <div class="control-line"><input id="sweepProcesses" type="range" min="1" max="128" step="1" value="1" aria-describedby="sweepProcessesStatus"><strong id="sweepProcessesValue">1</strong></div>
+        <small id="sweepProcessesStatus" role="status">Starts after all shrinking finishes; each sweep opens Original and the selected variant.</small>
+      </div>
     <div class="control">
       <label for="prepareProcesses">SIMULTANEOUS SHRINK PROCESSES</label>
       <div class="control-line"><input id="prepareProcesses" type="range" min="1" max="1" step="1" value="1" aria-describedby="prepareProcessesStatus"><strong id="prepareProcessesValue">1</strong></div>
@@ -32,8 +37,8 @@
       <small id="shrinkThreadsStatus" role="status">Waiting for confirmed value.</small>
     </div>
     <div class="control">
-      <label for="excelProcessLimit">MAXIMUM OWNED EXCEL PROCESSES</label>
-      <div class="control-line"><input id="excelProcessLimit" type="number" min="4" max="32" step="1" value="8" aria-describedby="excelProcessDemand"><button id="applyExcelProcessLimit">Apply</button></div>
+      <label for="excelProcessLimit">EXCEL PROCESS LIMIT · 0 = UNLIMITED</label>
+      <div class="control-line"><input id="excelProcessLimit" type="number" min="0" step="1" value="0" aria-describedby="excelProcessDemand"><button id="applyExcelProcessLimit">Apply</button></div>
       <small id="excelProcessDemand" role="status">Checking Excel opening demand.</small>
     </div>
   </section>

@@ -195,6 +195,14 @@ pub(super) fn launch(
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log));
     command.env(
+        "EXCEL_SHRINK_PREPARATION_SWEEP",
+        if job.run_manifest.as_ref().is_some_and(|run| run["preparation_stage"] == "hash_sweep") {
+            "1"
+        } else {
+            "0"
+        },
+    );
+    command.env(
         "EXCEL_SHRINK_HIDE_EXCEL",
         if job.hide_excel { "1" } else { "0" },
     );

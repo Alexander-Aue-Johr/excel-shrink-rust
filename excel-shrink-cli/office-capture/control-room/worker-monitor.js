@@ -416,6 +416,14 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     const active = summary.activePreparation.length
       ? ` · Current: ${summary.activePreparation.join(', ')}` : '';
     phases.append(preparation, preparationBar);
+    const sweep = element('div', 'wm-phase-row');
+    const sweepProgress = summary.hashSweep;
+    sweep.append(element('strong', null, 'Hash sweeps'), element('span', null,
+      sweepProgress ? `${sweepProgress.completed} / ${sweepProgress.total} · ${sweepProgress.failed} failed (visual fallback)` : 'Waiting for all shrinking to finish'));
+    const sweepBar = element('progress', 'wm-phase-bar');
+    sweepBar.max = 100;
+    sweepBar.value = sweepProgress ? (sweepProgress.total ? 100 * sweepProgress.completed / sweepProgress.total : 100) : 0;
+    phases.append(sweep, sweepBar);
     for (const worker of queue.capture_workers || []) phases.append(captureProgressRow(worker));
     phases.append(element('p', 'wm-progress-note', `${summary.preparationPerMinute}/min · ${summary.preparationPerHour}/h · ${summary.preparationEta}${active}`));
     if (summary.visualScopeFrozen) {

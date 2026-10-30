@@ -80,6 +80,11 @@ export function runTests() {
   assert(phases.preparationPerMinute === '2'
     && phases.activePreparation[0] === 'sample.xlsx · maximum cleaning',
   'The shrink phase exposes throughput, current workbook, and profile.');
+  const sweep = progressSummary({ counts: { preparation_total: 10, preparation_terminal: 10 },
+    hash_sweep: { total: 4, completed: 2, failed: 1 } });
+  assert(sweep.preparationRatio === 1 && sweep.hashSweep.completed === 2 && sweep.hashSweep.total === 4,
+    'Completed shrinking and half-completed sweeps retain independent progress.');
+  assert(sweep.hashSweep.failed === 1, 'Failed sweeps expose the visual-fallback count.');
   const retryActivity = progressSummary({ counts: { completed: 70, skipped: 5, remaining: 25 },
     rates: { new_completions: 0, completed_per_hour: 0 }, activity: {
       finished_attempts: 8, compared_attempts: 0, skipped_attempts: 8, interrupted_attempts: 0,

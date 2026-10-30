@@ -1,6 +1,7 @@
 // Read-only presentation of observations. A live heartbeat is never progress,
 // and a long-running command alone is never classified as an error.
 const phases = {
+  hash_sweeping: 'Hash sweeps',
   starting: 'Starting', staging: 'Staging workbook', waiting_for_open_slot: 'Waiting to open',
   waiting_for_addin: 'Opening Excel / connecting add-in', ready: 'Add-in ready',
   verifying_workbook: 'Verifying workbook identity', waiting_for_startup_sample: 'Sampling startup memory',
@@ -171,7 +172,7 @@ export function progressSummary(progress) {
     unchanged: 'No differences detected', differences: 'Differences found',
     skipped: 'Skipped / not validated', interrupted: 'Interrupted',
   };
-  return { scope: scopeLabel, completed: number(counts.completed), skipped: number(counts.skipped),
+  return { hashSweep: progress.hash_sweep, scope: scopeLabel, completed: number(counts.completed), skipped: number(counts.skipped),
     remaining: number(counts.remaining), total: number(counts.total), inProgress: number(counts.in_progress),
     preparationRemaining: number(counts.preparation_remaining), prepared: number(counts.prepared),
     preparationTotal: number(preparationTotal), preparationTerminal: number(preparationTerminal),

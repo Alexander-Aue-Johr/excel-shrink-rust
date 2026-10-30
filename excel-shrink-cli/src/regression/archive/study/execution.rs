@@ -95,7 +95,7 @@ pub(super) fn run_record(
     if !diagnosis_only {
         state["complete"] = json!(false);
     }
-    if mode == JobMode::Prepare {
+    if mode == JobMode::Prepare && run["options"]["preparation_stage"] != "hash_sweep" {
         state["prepared"] = json!(false);
     }
     if !diagnosis_only {
@@ -148,13 +148,16 @@ pub(super) fn run_record(
         run_manifest: Some(
             json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
             "machine_manifest":run["machine_manifest"],
-            "preparation_hash_profile":run["options"]["preparation_hash_profile"]}),
+            "preparation_hash_profile":run["options"]["preparation_hash_profile"],
+            "preparation_stage":run["options"]["preparation_stage"]}),
         ),
     };
     let path = work.join("job.json");
     fs::write(&path, serde_json::to_vec_pretty(&job)?)?;
     let phase = if diagnosis_only {
         "diagnosing whitespace"
+    } else if mode == JobMode::Prepare && run["options"]["preparation_stage"] == "hash_sweep" {
+        "hash sweeping"
     } else if mode == JobMode::Prepare {
         "shrinking"
     } else {
@@ -248,8 +251,9 @@ pub(super) fn run_record(
     }
     retain_visual_evidence(&mut result, &work, output, &key[..20], diagnosis_only);
     relative_images(&mut result, output);
-    let failed =
-        result["status"] == "skipped" || result["whitespace_diagnosis"]["status"] == "failed";
+    let failed = result["status"] == "skipped"
+        || result["hash_sweep_error"].is_string()
+        || result["whitespace_diagnosis"]["status"] == "failed";
     if failed {
         if let Err(error) = retain_capture_logs(&work, output, &key[..20]) {
             eprintln!("Could not preserve capture diagnostics: {error:#}");

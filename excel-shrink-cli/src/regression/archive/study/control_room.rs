@@ -43,6 +43,8 @@ pub(super) struct Controls {
     pub excel_process_limit: usize,
     #[serde(default = "default_prepare_processes")]
     pub prepare_processes: usize,
+    #[serde(default = "default_prepare_processes")]
+    pub sweep_processes: usize,
     #[serde(default = "logical_cores")]
     pub shrink_threads: usize,
     pub paused: bool,
@@ -80,7 +82,7 @@ fn default_prepare_processes() -> usize {
 }
 
 fn default_excel_process_limit() -> usize {
-    8
+    0
 }
 
 fn default_system_reserve_mib() -> u64 {
@@ -161,10 +163,14 @@ impl Controls {
                 && (1..=max).contains(&value.shrink_threads),
             "preparation processes and shrink threads must each be between 1 and {max}"
         );
+        ensure!(
+            (1..=i32::MAX as usize).contains(&value.sweep_processes),
+            "sweep processes must be positive"
+        );
         validate_system_reserve_mib(value.system_reserve_mib)?;
         ensure!(
-            (4..=32).contains(&value.excel_process_limit),
-            "Excel process limit must be 4..32"
+            value.excel_process_limit <= i32::MAX as usize,
+            "Excel process limit must be nonnegative (0 means unlimited)"
         );
         ensure!(value.capture_context_tiles <= 16, "capture context must be 0..16 tiles");
         ensure!(
@@ -279,6 +285,7 @@ fn begin_job(
         .as_array_mut()
         .context("missing control room groups")?;
     let status = match mode {
+        JobMode::Prepare if run["options"]["preparation_stage"] == "hash_sweep" => "hash_sweeping",
         JobMode::Prepare => "preparing",
         JobMode::Compare => "retrying_classic",
         JobMode::Diagnose => "diagnosing",
@@ -299,7 +306,9 @@ fn begin_job(
     } else {
         groups.push(group);
     }
-    queue["phase"] = json!(if mode == JobMode::Prepare {
+    queue["phase"] = json!(if mode == JobMode::Prepare && run["options"]["preparation_stage"] == "hash_sweep" {
+        "hash_sweeping"
+    } else if mode == JobMode::Prepare {
         "preparing"
     } else {
         "comparing"
@@ -372,6 +381,7 @@ impl Room {
                 .as_ref()
                 .map(|old| old.prepare_processes)
                 .unwrap_or_else(default_prepare_processes),
+            sweep_processes: previous_controls.as_ref().map(|old| old.sweep_processes).unwrap_or(1),
             shrink_threads: previous_controls
                 .as_ref()
                 .map(|old| old.shrink_threads)
@@ -991,8 +1001,9 @@ mod tests {
         write(&root.join("control.json"), &value)?;
         let legacy = Controls::read(&root)?;
         assert_eq!(legacy.target_groups, 128);
-        assert_eq!(legacy.excel_process_limit, 8);
+        assert_eq!(legacy.excel_process_limit, 0);
         assert_eq!(legacy.prepare_processes, 1);
+        assert_eq!(legacy.sweep_processes, 1);
         assert_eq!(legacy.shrink_threads, logical_cores());
         assert_eq!(legacy.system_reserve_mib, 0);
         assert_eq!(legacy.capture_tile_megapixels, 32);
@@ -1005,9 +1016,6 @@ mod tests {
         write(&root.join("control.json"), &experimental)?;
         assert_eq!(Controls::read(&root)?.capture_tile_megapixels, 64);
         for (key, bad) in [
-            ("excel_process_limit", 0),
-            ("excel_process_limit", 3),
-            ("excel_process_limit", 33),
             ("capture_tile_megapixels", 0),
             ("capture_tile_megapixels", 65),
             ("capture_batch_tiles", 0),

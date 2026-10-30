@@ -5,6 +5,8 @@ mod package_audit;
 mod namespace_exclusion;
 mod resident;
 mod prioritized;
+mod sweep;
+pub(super) use sweep::cached_exists as sweep_cached;
 
 pub(super) const PROFILES: [&str; 3] = ["default", "maximum-cleaning", "too-aggressive-cleaning"];
 
@@ -46,11 +48,15 @@ pub(super) fn clear_startup_measurements(record: &mut Value) {
 }
 
 /// Convert the source when needed and shrink only profiles selected by the run.
-/// Hash-screening runs also capture the selected pair twice in temporary Excel
-/// instances before publishing the reusable bundle; source files remain intact.
+/// Hash sweeps run separately after every shrink bundle is saved.
 pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
+    if job.run_manifest.as_ref()
+        .is_some_and(|run| run["preparation_stage"] == "hash_sweep")
+    {
+        return sweep::run(job, record);
+    }
     // Admission snapshots the controls before starting this workbook worker.
-    // Keep its thread count fixed across all three profiles.
+    // Keep its thread count fixed across the selected profiles.
     let rayon_threads = preparation_rayon_threads(record, job.control_room.is_some())?;
     record["rayon_threads"] = json!(rayon_threads);
     record["full_scan_deferred"] = json!(false);
@@ -231,31 +237,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
         record["baseline_repaired"] = json!(baseline.workbook_xml_changed);
         outputs[0].1 = baseline.snapshot.path;
     }
-    if let Some(profile) = job
-        .run_manifest
-        .as_ref()
-        .and_then(|run| run["preparation_hash_profile"].as_str())
-    {
-        let original = &outputs[0].1;
-        let variant = outputs
-            .iter()
-            .find(|(name, _)| name == profile)
-            .map(|(_, path)| path)
-            .context("missing screening profile output")?;
-        let mut session = crate::regression::office_capture::ResidentCapture::start_screening(
-            original,
-            profile,
-            variant,
-            &job.work.join("preparation-capture"),
-        )?;
-        let mut screen = session.screen_twice(profile)?;
-        session.finish()?;
-        screen["original_file_sha256"] = json!(artifact_cache::hash_file(original)?);
-        screen["variant_file_sha256"] = json!(artifact_cache::hash_file(variant)?);
-        record["preparation_hash_screen"] = screen;
-        write_record(&job.record, record)?;
-    }
-    // The preparation capture is stored in the reusable bundle with its source identity.
+    // Publish shrinking independently; sweeps start after the shrink queue drains.
     let bundle = job
         .bundle
         .as_ref()
@@ -550,7 +532,11 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             .and_then(|run| run["preparation_hash_profile"].as_str())),
     )?;
     record["results"] = measurements;
-    record["preparation_hash_screen"] = screen;
+    record["preparation_hash_screen"] = sweep::cached(
+        job.bundle.as_ref().context("missing prepared bundle")?,
+        job.run_manifest.as_ref()
+            .and_then(|run| run["preparation_hash_profile"].as_str()),
+    )?.unwrap_or(screen);
     reuse_primary_profile(record, &previous_results)?;
     let identities: Vec<_> = record["results"]
         .as_array()
@@ -1245,6 +1231,29 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn failed_hash_sweep_preserves_preparation_for_visual_fallback() -> Result<()> {
+        let root = super::super::tests::test_directory("failed-preparation-sweep")?;
+        let mut job = provenance_job(&root);
+        fs::create_dir_all(&job.work)?;
+        let bundle = job.bundle.as_ref().unwrap();
+        fs::write(bundle, b"invalid ZIP; must not be overwritten or reshrunk")?;
+        let before = fs::read(bundle)?;
+        job.run_manifest.as_mut().unwrap()["preparation_hash_profile"] = json!("default");
+        job.run_manifest.as_mut().unwrap()["preparation_stage"] = json!("hash_sweep");
+        let mut record = json!({"prepared":true});
+        prepare(&job, &mut record, LogLevel::Warn)?;
+        assert_eq!(record["prepared"], true);
+        assert_eq!(record["status"], "prepared");
+        assert_eq!(record["complete"], false);
+        assert!(record["hash_sweep_error"].is_string());
+        assert!(record["preparation_hash_screen"].is_null());
+        assert_eq!(fs::read(bundle)?, before);
+        assert!(!job.work.join("default").exists());
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
     /// Exercise shrinking, native Excel sweeps and partial-bundle reuse together.
     /// Run alone after building the release host; the input fixture is never changed.
     #[test]
@@ -1279,7 +1288,15 @@ mod tests {
         prepare(&job, &mut record, LogLevel::Warn)?;
         assert_eq!(record["results"].as_array().unwrap().len(), 1);
         assert_eq!(record["results"][0]["profile"], "default");
+        assert!(record["preparation_hash_screen"].is_null());
+        assert!(!job.work.join("preparation-capture").exists());
+        let before_sweep = artifact_cache::hash_file(job.bundle.as_ref().unwrap())?;
+        job.run_manifest.as_mut().unwrap()["preparation_stage"] = json!("hash_sweep");
+        prepare(&job, &mut record, LogLevel::Warn)?;
+        assert!(record["hash_sweep_error"].is_null(), "{}", record["hash_sweep_error"]);
         assert_eq!(record["preparation_hash_screen"]["profile"], "default");
+        assert_eq!(artifact_cache::hash_file(job.bundle.as_ref().unwrap())?, before_sweep);
+        assert!(sweep_cached(job.bundle.as_ref().unwrap(), Some("default"))?);
         assert!(!job.work.join("maximum-cleaning").exists());
         assert!(!job.work.join("too-aggressive-cleaning").exists());
         let bundle = job.bundle.as_ref().unwrap();

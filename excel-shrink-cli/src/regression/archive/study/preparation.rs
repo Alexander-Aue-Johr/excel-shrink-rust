@@ -19,7 +19,7 @@ enum Event {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn run_all(
+fn run_phase(
     sources: &[Source],
     selected_by_source: &[Vec<(usize, String)>],
     args: &StudyArgs,
@@ -32,7 +32,12 @@ pub(super) fn run_all(
     run: &Value,
     log_level: LogLevel,
     limited: bool,
+    hash_sweep: bool,
 ) -> Result<()> {
+    let mut phase_run = run.clone();
+    phase_run["options"]["preparation_stage"] =
+        json!(if hash_sweep { "hash_sweep" } else { "shrink" });
+    let run = &phase_run;
     let room = output.join("control-room");
 
     // Record positions and compatibility decisions must be stable before any
@@ -66,25 +71,42 @@ pub(super) fn run_all(
     }
 
     let mut pending = VecDeque::new();
+    let mut sweep_total: usize = 0;
     for (source, selected) in sources.iter().zip(selected_by_source) {
         let mut reused = 0;
         for (index, name) in selected {
             let id = identity(source, *index, name);
             let position = ensure_record(records, source, *index, name);
-            if reusable_preparation(
-                &records[position],
-                &bundle_path(output, &id),
-                producer,
-                &source.fingerprint,
-                &args.reuse_prepared_from,
-                args.preparation_hash_profile.as_deref(),
-            ) {
+            if !hash_sweep
+                && reusable_preparation(
+                    &records[position],
+                    &bundle_path(output, &id),
+                    producer,
+                    &source.fingerprint,
+                    &args.reuse_prepared_from,
+                    args.preparation_hash_profile.as_deref(),
+                )
+            {
                 reused += 1;
                 if classify_preparation(&mut records[position]) {
                     write_record(&record_path(output, &id), &records[position])?;
                 }
                 progress::observe(output, &records[position]);
                 continue;
+            }
+            if hash_sweep {
+                if records[position]["prepared"] != true
+                    || records[position]["preparation_disposition"] != "needs_visual"
+                {
+                    continue;
+                }
+                sweep_total += 1;
+                if prepared::sweep_cached(
+                    &bundle_path(output, &id),
+                    args.preparation_hash_profile.as_deref(),
+                )? {
+                    continue;
+                }
             }
             let provenance = source.selection.provenance(
                 *index,
@@ -110,6 +132,11 @@ pub(super) fn run_all(
             );
         }
     }
+    let mut sweep_completed = sweep_total.saturating_sub(pending.len());
+    let mut sweep_failed = 0;
+    if hash_sweep {
+        progress::hash_sweep(output, sweep_total, sweep_completed, sweep_failed);
+    }
     if pending.is_empty() {
         if args.control_room {
             control_room::check_stop(&room)?;
@@ -128,7 +155,13 @@ pub(super) fn run_all(
             while halt.is_none() && disk_wait.is_none() && !pending.is_empty() {
                 let target = if args.control_room {
                     match control_room::Controls::read(&room) {
-                        Ok(controls) => controls.prepare_processes,
+                        Ok(controls) => {
+                            if hash_sweep {
+                                controls.sweep_processes
+                            } else {
+                                controls.prepare_processes
+                            }
+                        }
                         Err(error) => {
                             halt = Some(error.context("read preparation controls"));
                             break;
@@ -168,7 +201,9 @@ pub(super) fn run_all(
 
                 let next = pending.pop_front().expect("pending job exists");
                 let position = next.position;
-                invalidate_preparation_claim(&mut records[position]);
+                if !hash_sweep {
+                    invalidate_preparation_claim(&mut records[position]);
+                }
                 records[position]["run_selection"] = next.provenance;
                 records[position]
                     .as_object_mut()
@@ -178,8 +213,12 @@ pub(super) fn run_all(
                     .as_object_mut()
                     .unwrap()
                     .remove("preparation_storage");
-                records[position]["prepared_by"] = json!(producer);
+                if !hash_sweep {
+                    records[position]["prepared_by"] = json!(producer);
+                }
                 records[position]["source_fingerprint"] = json!(next.source.fingerprint);
+                records[position]["preparation_stage"] =
+                    json!(if hash_sweep { "hash_sweep" } else { "shrink" });
                 if args.control_room {
                     if let Err(error) = control_room::begin_preparation(
                         output,
@@ -226,12 +265,27 @@ pub(super) fn run_all(
             match receiver.recv_timeout(Duration::from_millis(250)) {
                 Ok(Event::Checkpoint(position, record)) => {
                     records[position] = record;
+                    if hash_sweep {
+                        progress::hash_sweep(output, sweep_total, sweep_completed, sweep_failed);
+                    }
                     if report_refresh_due(output) {
-                        publish_progress(output, records, corpora, "shrinking");
+                        publish_progress(
+                            output,
+                            records,
+                            corpora,
+                            if hash_sweep {
+                                "hash sweeping"
+                            } else {
+                                "shrinking"
+                            },
+                        );
                     }
                 }
                 Ok(Event::Finished(position, result)) => {
                     active.remove(&position);
+                    if hash_sweep {
+                        sweep_completed += 1;
+                    }
                     // Cleanup may have released enough disk to admit the next
                     // workbook while other preparations are still running.
                     disk_wait = None;
@@ -243,6 +297,9 @@ pub(super) fn run_all(
                     match result {
                         Ok(record) => {
                             records[position] = record;
+                            if hash_sweep && records[position]["hash_sweep_error"].is_string() {
+                                sweep_failed += 1;
+                            }
                             let id = records[position]["identity"].as_str().unwrap().to_owned();
                             if classify_preparation(&mut records[position]) {
                                 if let Err(error) =
@@ -260,6 +317,11 @@ pub(super) fn run_all(
                             if let Ok(bytes) = fs::read(record_path(output, id)) {
                                 if let Ok(record) = serde_json::from_slice(&bytes) {
                                     records[position] = record;
+                                    if hash_sweep
+                                        && records[position]["hash_sweep_error"].is_string()
+                                    {
+                                        sweep_failed += 1;
+                                    }
                                 }
                             }
                             if halt.is_none() {
@@ -278,8 +340,20 @@ pub(super) fn run_all(
                             halt.get_or_insert(error.context("finish preparation in control room"));
                         }
                     }
+                    if hash_sweep {
+                        progress::hash_sweep(output, sweep_total, sweep_completed, sweep_failed);
+                    }
                     if report_refresh_due(output) {
-                        publish_progress(output, records, corpora, "shrinking");
+                        publish_progress(
+                            output,
+                            records,
+                            corpora,
+                            if hash_sweep {
+                                "hash sweeping"
+                            } else {
+                                "shrinking"
+                            },
+                        );
                     }
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -296,6 +370,9 @@ pub(super) fn run_all(
                         let handle = handles.remove(&position).unwrap();
                         if handle.join().is_err() {
                             active.remove(&position);
+                            if hash_sweep {
+                                sweep_completed += 1;
+                            }
                             disk_wait = None;
                             halt.get_or_insert_with(|| {
                                 anyhow::anyhow!(
@@ -345,10 +422,70 @@ pub(super) fn run_all(
             anyhow::bail!(reason);
         }
         if let Some(error) = halt {
-            publish_progress(output, records, corpora, "shrinking");
+            publish_progress(
+                output,
+                records,
+                corpora,
+                if hash_sweep {
+                    "hash sweeping"
+                } else {
+                    "shrinking"
+                },
+            );
             return Err(error);
         }
         publish_progress(output, records, corpora, "prepared");
         Ok(())
     })
+}
+
+/// Drain all shrinking before admitting any hash-sweep session.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_all(
+    sources: &[Source],
+    selected_by_source: &[Vec<(usize, String)>],
+    args: &StudyArgs,
+    manifest_hash: &str,
+    producer: &str,
+    output: &Path,
+    records: &mut Vec<Value>,
+    corpora: &[Value],
+    limits: &ArchiveArgs,
+    run: &Value,
+    log_level: LogLevel,
+    limited: bool,
+) -> Result<()> {
+    run_phase(
+        sources,
+        selected_by_source,
+        args,
+        manifest_hash,
+        producer,
+        output,
+        records,
+        corpora,
+        limits,
+        run,
+        log_level,
+        limited,
+        false,
+    )?;
+    if args.preparation_hash_profile.is_some() {
+        run_phase(
+            sources,
+            selected_by_source,
+            args,
+            manifest_hash,
+            producer,
+            output,
+            records,
+            corpora,
+            limits,
+            run,
+            log_level,
+            limited,
+            true,
+        )?;
+    }
+    Ok(())
 }

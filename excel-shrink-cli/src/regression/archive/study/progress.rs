@@ -127,6 +127,7 @@ struct Tracker {
     attempts: AttemptActivity,
     phase: String,
     comparison_pass: String,
+    hash_sweep: Option<Value>,
     last: Instant,
     active_seconds: f64,
     target: usize,
@@ -244,7 +245,7 @@ impl Tracker {
             self.phase.as_str(),
             "waiting for disk" | "awaiting_deferred_manual"
         ) || (!self.finished
-            && self.phase != "preparing"
+            && !matches!(self.phase.as_str(), "preparing" | "hash_sweeping")
             && ((self.target == 0 && self.active.is_empty()) || self.captures_paused))
     }
     fn advance(&mut self, seconds: f64) {
@@ -253,7 +254,9 @@ impl Tracker {
         // drained workbook pause proves that no work is being performed.
         if self.finished
             || self.phase == "awaiting_deferred_manual"
-            || (self.phase != "preparing" && self.target == 0 && self.active.is_empty())
+            || (!matches!(self.phase.as_str(), "preparing" | "hash_sweeping")
+                && self.target == 0
+                && self.active.is_empty())
         {
             return;
         }
@@ -361,7 +364,7 @@ impl Tracker {
         } else if self.target == 0
             && !matches!(
                 self.phase.as_str(),
-                "preparing" | "awaiting_deferred_manual"
+                "preparing" | "hash_sweeping" | "awaiting_deferred_manual"
             )
         {
             if self.active.is_empty() {
@@ -397,6 +400,7 @@ impl Tracker {
         let rate = self.comparison.per_hour();
         json!({"version":2,"run_id":self.run_id,"scope":self.scope,"phase":phase,"paused":paused,
             "visual_scope_frozen":self.visual_scope_frozen,"active_preparation":active_preparation,
+            "hash_sweep":self.hash_sweep,
             "updated_unix_ms":now_ms,
             "counts":{"total":total,"completed":completed,"skipped":skipped,"remaining":remaining,
                 "in_progress":self.active.len(),"prepared":prepared,
@@ -462,6 +466,7 @@ pub(super) fn initialize(
         comparison: Rate::default(),
         attempts: AttemptActivity::default(),
         phase: "preparing".into(),
+        hash_sweep: None,
         comparison_pass: if run["options"]["preparation_hash_profile"].is_string() {
             strategy::HASH_SCREEN.into()
         } else if run["options"]["aggressive_first"] == true {
@@ -582,7 +587,9 @@ pub(super) struct ActiveJob {
 pub(super) fn start_job(output: &Path, id: &str, mode: JobMode, record: &Value) -> ActiveJob {
     let mut attempt = None;
     update(output, |tracker| {
-        tracker.phase = if mode == JobMode::Prepare {
+        tracker.phase = if record["preparation_stage"] == "hash_sweep" && mode == JobMode::Prepare {
+            "hash_sweeping"
+        } else if mode == JobMode::Prepare {
             "preparing"
         } else {
             "comparing"
@@ -625,6 +632,22 @@ impl Drop for ActiveJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn hash_sweep_progress_has_its_own_denominator_and_ignores_comparison_target() {
+        let mut tracker = tracker();
+        tracker.phase = "hash_sweeping".into();
+        tracker.target = 0;
+        for row in tracker.rows.values_mut() { row.preparation_terminal = true; }
+        tracker.hash_sweep = Some(json!({"total":4,"completed":2,"failed":1}));
+        let snapshot = tracker.snapshot(100);
+        assert_eq!(snapshot["counts"]["preparation_terminal"], 10);
+        assert_eq!(snapshot["hash_sweep"]["completed"], 2);
+        assert_eq!(snapshot["hash_sweep"]["total"], 4);
+        assert_eq!(snapshot["hash_sweep"]["failed"], 1);
+        assert_eq!(snapshot["phase"], "hash_sweeping");
+        assert_eq!(snapshot["paused"], false);
+    }
+
     fn tracker() -> Tracker {
         Tracker {
             run_id: json!("run"),
@@ -637,6 +660,7 @@ mod tests {
             attempts: AttemptActivity::default(),
             phase: "comparing".into(),
             comparison_pass: "full".into(),
+            hash_sweep: None,
             last: Instant::now(),
             active_seconds: 0.0,
             target: 3,
@@ -1013,4 +1037,11 @@ mod tests {
         assert_eq!(snapshot["activity"]["interrupted_attempts"], 0);
         assert_eq!(snapshot["priority_validation"]["full_completed"], 0);
     }
+}
+
+/// Publish the independent sweep queue; failures remain eligible for visual fallback.
+pub(super) fn hash_sweep(output: &Path, total: usize, completed: usize, failed: usize) {
+    update(output, |tracker| {
+        tracker.hash_sweep = Some(json!({"total":total,"completed":completed,"failed":failed}));
+    });
 }
