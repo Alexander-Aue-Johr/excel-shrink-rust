@@ -10,6 +10,9 @@ use super::super::{artifact_cache as cache, xml_views::{self as xml, Reader, Kin
 use super::super::office_plan::parse_column_width as column_width;
 #[path = "value_restoration.rs"]
 mod restoration;
+#[cfg(test)]
+#[path = "value_stream_tests.rs"]
+mod stream_tests;
 pub(in crate::regression) use restoration::removed_diagnostic_cells;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -500,7 +503,8 @@ pub fn compare_workbook_changed_rows(left: &Path, right: &Path, only: &HashSet<S
     for book in [&a, &b] {
         for name in only.iter().map(String::as_str).chain(std::iter::once("xl/sharedStrings.xml")) {
             if let Some(part) = book.manifest.parts.get(name) {
-                ensure!(part.bytes <= MAX_PART_BYTES, "capture-selection XML memory limit exceeded: {name}");
+                ensure!(name != "xl/sharedStrings.xml" || part.bytes <= MAX_PART_BYTES,
+                    "capture-selection shared strings memory limit exceeded: {name}");
             } else {
                 ensure!(name == "xl/sharedStrings.xml", "capture-selection worksheet missing: {name}");
             }
@@ -515,18 +519,91 @@ pub fn compare_workbook_changed_rows(left: &Path, right: &Path, only: &HashSet<S
     let mut left_buffer = Vec::new();
     let mut right_buffer = Vec::new();
     for name in only.iter().collect::<BTreeSet<_>>() {
-        let sa = a.summary(name, &mut left_buffer, &root, use_cache)?;
-        let sb = b.summary(name, &mut right_buffer, &root, use_cache)?;
-        ensure!(sa.ordered && sb.ordered, "unordered cells require full capture: {name}");
-        if sa.values_sha256 == sb.values_sha256 && sa.value_count == sb.value_count { continue; }
-        a.ensure_sst()?; b.ensure_sst()?;
-        a.read_sheet(name, &mut left_buffer)?;
-        b.read_sheet(name, &mut right_buffer)?;
-        let rows = changed_row_ranges(&left_buffer, &right_buffer, a.sst.as_ref().unwrap(), b.sst.as_ref().unwrap())?;
+        let large = a.manifest.parts[name].bytes > MAX_PART_BYTES
+            || b.manifest.parts[name].bytes > MAX_PART_BYTES;
+        let rows = if large {
+            a.ensure_sst()?;
+            b.ensure_sst()?;
+            streamed_changed_row_ranges(a.zip.by_name(name)?, b.zip.by_name(name)?,
+                a.sst.as_ref().unwrap(), b.sst.as_ref().unwrap())?
+        } else {
+            // Preserve the established digest-cache fast path for ordinary sheets.
+            let sa = a.summary(name, &mut left_buffer, &root, use_cache)?;
+            let sb = b.summary(name, &mut right_buffer, &root, use_cache)?;
+            ensure!(sa.ordered && sb.ordered, "unordered cells require full capture: {name}");
+            if sa.values_sha256 == sb.values_sha256 && sa.value_count == sb.value_count { continue; }
+            a.ensure_sst()?;
+            b.ensure_sst()?;
+            a.read_sheet(name, &mut left_buffer)?;
+            b.read_sheet(name, &mut right_buffer)?;
+            changed_row_ranges(&left_buffer, &right_buffer, a.sst.as_ref().unwrap(), b.sst.as_ref().unwrap())?
+        };
         if !rows.is_empty() { result.insert(name.clone(), rows); }
     }
     a.check_unchanged()?; b.check_unchanged()?;
     Ok(result)
+}
+
+struct ValueRows<R: Read> {
+    stream: super::super::worksheet_stream::WorksheetStream<R>,
+    buffer: Vec<u8>,
+    last_row: u32,
+}
+
+impl<R: Read> ValueRows<R> {
+    fn new(input: R) -> Self {
+        Self { stream: super::super::worksheet_stream::WorksheetStream::new(input),
+            buffer: Vec::new(), last_row: 0 }
+    }
+
+    fn next(&mut self, shared: &SharedStrings) -> Result<Option<u32>> {
+        while self.stream.next(&mut self.buffer)? {
+            if self.buffer.starts_with(b"<worksheet><sheetData>") {
+                let mut reader = Reader::<128>::new(&self.buffer)?;
+                while let Some(tag) = reader.next()? {
+                    if tag.kind != Kind::End && tag.local() == b"row" && tag.depth == 2 {
+                        let row = xml::decimal(tag.attr(b"r")?.context("streamed selection requires explicit row indices")?)?;
+                        ensure!(row > self.last_row && row <= 1_048_576, "unordered rows require full capture");
+                        self.last_row = row;
+                        return Ok(Some(row));
+                    }
+                }
+            }
+            // Validate non-row fragments as well, including dimensions/columns.
+            let closing_root = self.buffer.len() - b"</worksheet>".len();
+            self.buffer.truncate(closing_root);
+            self.buffer.extend_from_slice(b"<sheetData/></worksheet>");
+            let mut cells = Cells::new(&self.buffer, shared)?;
+            while cells.next()?.is_some() {}
+        }
+        Ok(None)
+    }
+}
+
+fn streamed_changed_row_ranges(
+    left: impl Read, right: impl Read,
+    left_sst: &SharedStrings, right_sst: &SharedStrings,
+) -> Result<Vec<[u32; 2]>> {
+    let mut a = ValueRows::new(left);
+    let mut b = ValueRows::new(right);
+    let mut ar = a.next(left_sst)?;
+    let mut br = b.next(right_sst)?;
+    let empty = b"<worksheet><sheetData/></worksheet>";
+    let mut rows: Vec<[u32; 2]> = Vec::new();
+    while ar.is_some() || br.is_some() {
+        let take_a = br.is_none() || ar.zip(br).is_some_and(|(a, b)| a <= b);
+        let take_b = ar.is_none() || ar.zip(br).is_some_and(|(a, b)| b <= a);
+        let left = if take_a { a.buffer.as_slice() } else { empty };
+        let right = if take_b { b.buffer.as_slice() } else { empty };
+        for span in changed_row_ranges(left, right, left_sst, right_sst)? {
+            if let Some(last) = rows.last_mut().filter(|last| span[0] <= last[1]) {
+                last[1] = last[1].max(span[1]);
+            } else { rows.push(span); }
+        }
+        if take_a { ar = a.next(left_sst)?; }
+        if take_b { br = b.next(right_sst)?; }
+    }
+    Ok(rows)
 }
 
 fn changed_row_ranges(left: &[u8], right: &[u8], left_sst: &SharedStrings, right_sst: &SharedStrings) -> Result<Vec<[u32; 2]>> {

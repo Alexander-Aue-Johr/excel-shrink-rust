@@ -53,6 +53,12 @@ A single element or accumulated geometry metadata exceeding 8 MiB retains the
 explicit full-capture fallback. Global parts such as styles and shared strings
 still have the existing 256 MiB limit.
 
+Saved-recalculation value selection also streams worksheet parts larger than
+256 MiB, resolving typed cell values and shared strings one row pair at a time.
+Smaller parts keep their existing value-digest cache. Missing row indices,
+unordered cells, malformed XML and oversized single elements still require
+full capture; they never produce a partial equality result.
+
 Unlike the earlier proposed blanket fallback, deleting a hidden or whitespace
 value does not by itself force every sheet in the workbook to be captured.
 Small sheets are already complete; tall-sheet selection uses the indicators
