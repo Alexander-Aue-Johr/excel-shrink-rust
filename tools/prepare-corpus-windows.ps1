@@ -28,8 +28,12 @@ try {
     $stamp=(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
     $directory=Join-Path $repo ('.tmp/corpus-launcher/deployments/'+$stamp)
     [void][IO.Directory]::CreateDirectory($directory)
-    if(-not $SkipBuild){Invoke-StudyReleaseBuild $repo $directory 'cargo' (Get-Value $configuration 'wsl_workspace')}
-    $executable=Join-Path $repo 'target/release/excel-shrink-cli.exe'
+    if(-not $SkipBuild){
+        $executable=Invoke-StudyReleaseBuild $repo $directory 'cargo' (Get-Value $configuration 'wsl_workspace') -Versioned
+    }else{
+        $previousDeployment=Read-StudyJson (Join-Path $repo '.tmp/corpus-launcher/standalone-deployment.json')
+        $executable=Get-Value $previousDeployment 'executable'
+    }
     if(-not [IO.File]::Exists($executable)){throw "The Windows release executable is missing: $executable"}
     $source=Get-Value $selected[0] 'local_archive'
     if(-not $source){throw "Link a local archive for $Corpus before preparing its Windows deployment."}

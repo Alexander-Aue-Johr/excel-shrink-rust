@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Core.psm1')
 
-function Invoke-StudyReleaseBuild([string]$Repo, [string]$RunDirectory, [string]$CargoExecutable='cargo', $Wsl=$null) {
+function Invoke-StudyReleaseBuild([string]$Repo, [string]$RunDirectory, [string]$CargoExecutable='cargo', $Wsl=$null, [switch]$Versioned) {
     $log=Join-Path $RunDirectory 'build.log'
     $stderr=Join-Path $RunDirectory 'build.stderr.log'
     # Windows PowerShell turns redirected native stderr into terminating errors
@@ -17,9 +17,24 @@ function Invoke-StudyReleaseBuild([string]$Repo, [string]$RunDirectory, [string]
     }
     if ($build.ExitCode -ne 0) { throw "Release build failed (code $($build.ExitCode)). Details: $log and $stderr" }
     if ($Wsl) {
+        $source=Join-Path $Wsl.source_repo 'target/x86_64-pc-windows-gnu/release/excel-shrink-cli.exe'
         $destination=Join-Path $Repo 'target/release/excel-shrink-cli.exe'
+        if ($Versioned) {
+            $sha256=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+            $destination=Join-Path $Repo "target/release/deployments/$sha256/excel-shrink-cli.exe"
+        }
         [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination))
-        [IO.File]::Copy((Join-Path $Wsl.source_repo 'target/x86_64-pc-windows-gnu/release/excel-shrink-cli.exe'),$destination,$true)
+        if (-not [IO.File]::Exists($destination)) {
+            [IO.File]::Copy($source,$destination,$false)
+        } elseif (-not $Versioned) {
+            [IO.File]::Copy($source,$destination,$true)
+        }
+        if ($Versioned) {
+            if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sha256) {
+                throw "Versioned Windows executable does not match its source: $destination"
+            }
+            return $destination
+        }
     }
 }
 

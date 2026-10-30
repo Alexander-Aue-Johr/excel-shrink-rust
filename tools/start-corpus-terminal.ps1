@@ -174,5 +174,17 @@ $ConfigurationPath = Resolve-StudyPath $repo $ConfigurationPath
 if ($Standalone -and -not [IO.File]::Exists($ConfigurationPath)) {
     throw 'No standalone deployment found. Prepare one from WSL with -PrepareStandalone.'
 }
-if (-not $ExcelShrinkExe) { $ExcelShrinkExe = Join-Path $repo 'target/release/excel-shrink-cli.exe' }
+if (-not $ExcelShrinkExe) {
+    if ($Standalone) {
+        $deployment=Read-StudyJson (Join-Path $repo '.tmp/corpus-launcher/standalone-deployment.json')
+        $ExcelShrinkExe=Get-Value $deployment 'executable'
+        $expectedHash=Get-Value $deployment 'binary_sha256'
+        if (-not $ExcelShrinkExe -or -not [IO.File]::Exists($ExcelShrinkExe) -or
+            -not $expectedHash -or (Get-FileHash -LiteralPath $ExcelShrinkExe -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedHash) {
+            throw 'The standalone executable is missing or differs from its deployment receipt. Prepare it again from WSL.'
+        }
+    } else {
+        $ExcelShrinkExe = Join-Path $repo 'target/release/excel-shrink-cli.exe'
+    }
+}
 $null = Start-SavedCorpusRun $repo $ConfigurationPath $ExcelShrinkExe -Corpus $Corpus -Partition $Partition -Order $Order -Build:$Build -SkipBuild:$SkipBuild -FullScanDeferred:$FullScanDeferred -NoBrowser:$NoBrowser -Standalone:$Standalone -AggressiveFirst:$AggressiveFirst -PreparationHashProfile $PreparationHashProfile
