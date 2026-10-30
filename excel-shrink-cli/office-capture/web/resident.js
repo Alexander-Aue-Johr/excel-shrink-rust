@@ -105,7 +105,14 @@
       if (!geometry) {
         geometry = new CaptureGeometry.SheetGeometry(office, state.sheet.name,
           state.sheet.bottom_row, state.right, state.megapixels);
-        await geometry.read(state.end);
+        const heights = await rowHeights(state.sheet);
+        if (heights.runs.length !== state.height_runs.length || heights.runs.some((run, index) =>
+          run.start_row !== state.height_runs[index].start_row ||
+          run.end_row !== state.height_runs[index].end_row ||
+          run.height !== state.height_runs[index].height)) {
+          throw new Error(`Row heights changed after planning ${state.sheet.name}`);
+        }
+        await geometry.read(state.end, heights.runs);
         await geometry.calibrate();
         if (state.probe && geometry.fixedWidth !== null) throw new Error(`Cannot check fixed-width sheet ${state.sheet.name}`);
         await verifyDrawingBounds(state.sheet, geometry, state.end);
@@ -197,7 +204,7 @@
         throw new Error('Incomplete resident capture command');
       }
       await verifyWorkbook();
-      const result = {heights: [], sheets: [], tiles: []};
+      const result = {heights: [], sheets: [], tiles: [], planning_timings: []};
       if (captures.has(command.id)) throw new Error('Capture command was already executed');
       const retained = new Map();
       for (const sheet of command.sheets) {
@@ -211,7 +218,10 @@
         helpers.progress(result.sheets.length, command.sheets.length, sheet.name);
         const {bottom, right} = bounds(sheet, true);
         await checkedWorksheet(sheet);
-        result.heights.push(await rowHeights(sheet));
+        const measuredAt = performance.now();
+        const heights = await rowHeights(sheet);
+        result.heights.push(heights);
+        const rowHeightMs = performance.now() - measuredAt;
         await hideGridlines(sheet);
         const geometry = new CaptureGeometry.SheetGeometry(office, sheet.name, bottom, right,
           command.tile_megapixels ?? 32);
@@ -221,15 +231,23 @@
             (probe && maximum === right)) throw new Error('Invalid maximum capture boundary');
         // Read enough geometry to negotiate a wider peer boundary, but capture
         // only the verified local extent until the orchestrator requests more.
-        await geometry.read(maximum);
+        const geometryAt = performance.now();
+        await geometry.read(maximum, heights.runs);
+        const geometryMs = performance.now() - geometryAt;
+        const calibrationAt = performance.now();
         await geometry.calibrate();
+        const calibrationMs = performance.now() - calibrationAt;
         if (probe && geometry.fixedWidth !== null) throw new Error(`Cannot check fixed-width sheet ${sheet.name}`);
         const proposed = probe ? CaptureGeometry.probeEnd(geometry, right) : right;
         const end = sheet.capture_end_column ?? proposed;
         if (!Number.isInteger(end) || end < proposed || end > maximum) {
           throw new Error('Negotiated capture boundary is outside the verified extent');
         }
+        const tilesAt = performance.now();
         const tiles = selectedTiles(geometry, end, sheet.tile_rows, {planOnly: command.kind === 'plan'});
+        result.planning_timings.push({sheet_index: sheet.index, sheet_name: sheet.name,
+          row_height_ms: rowHeightMs, geometry_ms: geometryMs,
+          calibration_ms: calibrationMs, tile_split_ms: performance.now() - tilesAt});
         if (captureProgress) captureProgress.total = tiles.length;
         // Bound aggregate metadata before retaining another sheet. Per-image
         // and selected-capture limits apply separately when images are needed.
@@ -239,7 +257,8 @@
           throw error;
         }
         const drawingBounds = await verifyDrawingBounds(sheet, geometry, end);
-        const state = {sheet, probe, right, end, geometry_key: `${command.id}:${sheet.index}`,
+        const state = {sheet, probe, right, end, height_runs: heights.runs,
+          geometry_key: `${command.id}:${sheet.index}`,
           megapixels: command.tile_megapixels ?? 32};
         rememberGeometry(state.geometry_key, geometry);
         result.sheets.push({sheet_index: sheet.index, sheet_name: sheet.name,

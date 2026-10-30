@@ -48,6 +48,7 @@ test('large PNG dimensions are accepted only within the explicit capture limit',
 function officeModel({rows = [], columns = [], defaultHeight = 14, defaultWidth = 60,
     scale = 4 / 3, imageWidthOffset = 0, imageHeightOffset = 0, imageHeight} = {}) {
   const images = [];
+  const rangeRequests = [];
   const row = index => rows[index] ?? defaultHeight;
   const column = index => columns[index] ?? defaultWidth;
   const pointHeight = index => Math.round(row(index) * 16 / 3) * 3 / 16;
@@ -58,6 +59,7 @@ function officeModel({rows = [], columns = [], defaultHeight = 14, defaultWidth 
   };
   const sheet = {
     getRangeByIndexes(r, c, nr, nc) {
+      rangeRequests.push({r, c, nr, nc});
       return {
         load() {},
         width: sum(column, c, nc),
@@ -72,7 +74,8 @@ function officeModel({rows = [], columns = [], defaultHeight = 14, defaultWidth 
       };
     }
   };
-  return {images, office: fn => fn({sync: async () => {}, workbook: {worksheets: {getItem: () => sheet}}})};
+  return {images, rangeRequests,
+    office: fn => fn({sync: async () => {}, workbook: {worksheets: {getItem: () => sheet}}})};
 }
 
 async function geometry(model, bottom = 99, right = 15) {
@@ -81,6 +84,31 @@ async function geometry(model, bottom = 99, right = 15) {
   await result.calibrate();
   return result;
 }
+
+test('measured height runs preserve full geometry without per-row Office reads', async () => {
+  const options = {rows: [15, 15, 0, 18, 18]};
+  const runs = [
+    {start_row: 1, end_row: 2, height: 15},
+    {start_row: 3, end_row: 3, height: 0},
+    {start_row: 4, end_row: 5, height: 18},
+    {start_row: 6, end_row: 10000, height: 14.0625}
+  ];
+  const fullModel = officeModel(options);
+  const reusedModel = officeModel(options);
+  const full = new SheetGeometry(fullModel.office, 'Sheet', 9999, 15);
+  const reused = new SheetGeometry(reusedModel.office, 'Sheet', 9999, 15);
+  await full.read(15);
+  await reused.read(15, runs);
+  await full.calibrate();
+  await reused.calibrate();
+
+  assert.deepEqual(reused.rows, full.rows);
+  assert.deepEqual(reused.pixelY, full.pixelY);
+  assert.deepEqual(reused.tiles(15, null), full.tiles(15, null));
+  assert.ok(fullModel.rangeRequests.length > 10000);
+  assert.ok(reusedModel.rangeRequests.length < 100);
+  await assert.rejects(() => reused.read(15, runs.slice(1)), /Invalid measured row-height coverage/);
+});
 
 test('million-row planning precedes capture limits and sparse bands omit the middle', () => {
   // Calibrated geometry matching a sparse sheet with a last-row total. No

@@ -230,16 +230,34 @@
       return sizes;
     }
 
-    async read(endColumn) {
+    /** Read column geometry and use complete, Excel-measured row runs when supplied. */
+    async read(endColumn, heightRuns) {
       if (!Number.isInteger(this.bottomRow) || this.bottomRow < 0 || this.bottomRow >= MAX_ROWS ||
           !Number.isInteger(endColumn) || endColumn < 0 || endColumn >= MAX_COLUMNS) {
         throw new Error('Worksheet capture bounds are outside the supported grid');
       }
       this.columns = await this.readSizes('columns', 0, endColumn + 1);
       this.columnAnchor = Math.max(0, this.columns.findIndex(size => size > 0));
-      // Keep measured points separate from the per-row image pixel positions,
-      // which become available after image calibration.
-      this.rows = await this.readSizes('rows', 0, this.bottomRow + 1);
+      // The resident already measured uniform height runs for comparison.
+      // Reusing them avoids querying every row a second time through Office.js.
+      if (heightRuns === undefined) {
+        this.rows = await this.readSizes('rows', 0, this.bottomRow + 1);
+      } else {
+        this.rows = new Array(this.bottomRow + 1);
+        let nextRow = 1;
+        for (const run of heightRuns) {
+          if (!Number.isInteger(run.start_row) || !Number.isInteger(run.end_row) ||
+              run.start_row !== nextRow || run.end_row < nextRow ||
+              run.end_row > this.rows.length || !Number.isFinite(run.height) || run.height < 0) {
+            throw new Error('Invalid measured row-height coverage');
+          }
+          this.rows.fill(run.height, run.start_row - 1, run.end_row);
+          nextRow = run.end_row + 1;
+        }
+        if (nextRow !== this.rows.length + 1) {
+          throw new Error('Incomplete measured row-height coverage');
+        }
+      }
       this.x = prefix(this.columns);
       this.y = prefix(this.rows);
       // Hidden rows stay in the covered range without consuming render capacity.
