@@ -67,6 +67,7 @@ try {
         $field = [CaptureErrorChecking].GetField('options', [Reflection.BindingFlags]'NonPublic,Instance')
         $application = $field.GetValue($scope).Application
         $applications += @($application)
+        Assert (-not $application.ActiveWorkbook.EnableAutoRecover) 'Capture workbook AutoRecover must be disabled.'
         $sheet = $application.Workbooks.Item(1).Worksheets.Item('Indicators')
         $ref = $sheet.Range('B1')
         $division = $sheet.Range('B2')

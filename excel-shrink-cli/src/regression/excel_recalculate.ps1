@@ -82,6 +82,7 @@ try {
         $true        # IgnoreReadOnlyRecommended
     )
     Write-RecalcProgress 'workbook opened'
+    $workbook.EnableAutoRecover = $false
 
     $workbook.ForceFullCalculation = $true
 

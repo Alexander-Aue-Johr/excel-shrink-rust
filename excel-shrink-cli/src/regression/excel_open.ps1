@@ -64,6 +64,7 @@ try {
         $true        # IgnoreReadOnlyRecommended
     )
     $timer.Stop()
+    $workbook.EnableAutoRecover = $false
     $process.Refresh()
     $metrics = [ordered]@{
         open_seconds = $timer.Elapsed.TotalSeconds

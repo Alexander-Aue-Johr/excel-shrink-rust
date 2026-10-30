@@ -144,6 +144,7 @@ public sealed class CaptureErrorChecking : IDisposable
                 if (owner != (uint)process.Id || process.HasExited)
                     throw new InvalidOperationException("Native Excel window does not belong to the owned capture process.");
 
+                DisableWorkbookRecovery(application);
                 checking = Property(application, "ErrorCheckingOptions");
                 bool previous = Convert.ToBoolean(Property(checking, "BackgroundChecking"));
                 pending = new CaptureErrorChecking(process, checking, previous);
@@ -173,6 +174,22 @@ public sealed class CaptureErrorChecking : IDisposable
             }
         }
         return null;
+    }
+
+    static void DisableWorkbookRecovery(object application)
+    {
+        object workbook = null;
+        try
+        {
+            workbook = Property(application, "ActiveWorkbook");
+            if (workbook == null)
+                throw new InvalidOperationException("Owned Excel has no active capture workbook.");
+            // Only the disposable workbook changes; personal Excel recovery settings remain intact.
+            SetProperty(workbook, "EnableAutoRecover", false);
+            if (Convert.ToBoolean(Property(workbook, "EnableAutoRecover")))
+                throw new InvalidOperationException("Owned Excel did not disable workbook AutoRecover.");
+        }
+        finally { Release(workbook); }
     }
 
     public void Dispose()
