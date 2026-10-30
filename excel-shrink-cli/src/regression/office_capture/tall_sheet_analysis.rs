@@ -1,5 +1,5 @@
 //! Conservative row indicators for abbreviated, unusually tall worksheets.
-//! XML buffers are borrowed, one sheet pair at a time; no per-cell maps or DOM.
+//! Worksheet XML is streamed one row at a time; no per-cell maps or DOM.
 use crate::regression::xml_views::{decimal, Attributes, Kind, Reader, TextBytes};
 use anyhow::{bail, ensure, Context, Result};
 use std::{
@@ -10,10 +10,12 @@ use std::{
 };
 use zip::ZipArchive;
 
+use crate::regression::worksheet_stream;
+
 const MAX_ROWS: u32 = 1_048_576;
 const MAX_XML_BYTES: u64 = 256 * 1024 * 1024;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(super) struct SheetIndicators {
     /// Zero-based, half-open rows; never clipped to populated cells.
     pub rows: Vec<[u32; 2]>,
@@ -388,6 +390,11 @@ fn add_ranges(output: &mut SheetIndicators, raw: &[u8], reason: &str) -> Result<
 }
 
 fn inspect_row(raw: &[u8], row: u32, styles: &[bool], out: &mut SheetIndicators) -> Result<()> {
+    // Numeric export rows often have no style attributes at all. Any explicit
+    // style needs an ASCII 's'; its absence avoids a second token walk.
+    if memchr::memchr(b's', raw).is_none() {
+        return Ok(());
+    }
     let mut reader = Reader::<32>::new(raw)?;
     while let Some(tag) = reader.next()? {
         if tag.kind == Kind::End || !matches!(tag.local(), b"row" | b"c") {
@@ -522,7 +529,8 @@ impl<'a> RowCursor<'a> {
     }
 }
 
-fn scan_pair(
+#[cfg(test)]
+fn scan_buffered_pair(
     left: &[u8],
     right: &[u8],
     left_styles: &[bool],
@@ -564,6 +572,91 @@ fn scan_pair(
     }
     if a.geometry != b.geometry {
         out.full("column or worksheet geometry changed");
+    }
+    Ok((a.drawing_ids, b.drawing_ids))
+}
+
+struct StreamingRows<'a, R: Read> {
+    stream: worksheet_stream::WorksheetStream<R>,
+    buffer: Vec<u8>,
+    styles: &'a [bool],
+    last_row: u32,
+    geometry: Vec<Vec<u8>>,
+    geometry_bytes: usize,
+    drawing_ids: BTreeSet<String>,
+}
+
+impl<'a, R: Read> StreamingRows<'a, R> {
+    fn new(input: R, styles: &'a [bool]) -> Self {
+        Self {
+            stream: worksheet_stream::WorksheetStream::new(input),
+            buffer: Vec::new(),
+            styles,
+            last_row: 0,
+            geometry: Vec::new(),
+            geometry_bytes: 0,
+            drawing_ids: BTreeSet::new(),
+        }
+    }
+
+    fn next(&mut self, out: &mut SheetIndicators) -> Result<Option<u32>> {
+        while self.stream.next(&mut self.buffer)? {
+            let mut cursor = RowCursor::new(&self.buffer, self.styles)?;
+            cursor.last_row = self.last_row;
+            let row = cursor.next(out)?.map(|(index, _)| index);
+            self.last_row = cursor.last_row;
+            self.geometry_bytes += cursor.geometry.iter().map(Vec::len).sum::<usize>();
+            self.geometry.extend(cursor.geometry);
+            self.drawing_ids.extend(cursor.drawing_ids);
+            ensure!(self.geometry_bytes <= 8 * 1024 * 1024,
+                "worksheet geometry metadata exceeds streaming buffer limit");
+            if row.is_some() { return Ok(row); }
+        }
+        Ok(None)
+    }
+}
+
+fn scan_stream_pair(
+    left: impl Read,
+    right: impl Read,
+    left_styles: &[bool],
+    right_styles: &[bool],
+    out: &mut SheetIndicators,
+) -> Result<(BTreeSet<String>, BTreeSet<String>)> {
+    if left_styles.first() == Some(&true) || right_styles.first() == Some(&true) {
+        out.add([0, MAX_ROWS], "decorated_default_style");
+    }
+    let mut a = StreamingRows::new(left, left_styles);
+    let mut b = StreamingRows::new(right, right_styles);
+    let mut ar = a.next(out)?;
+    let mut br = b.next(out)?;
+    while ar.is_some() || br.is_some() {
+        match (ar, br) {
+            (Some(ai), Some(bi)) if ai == bi => {
+                if a.buffer != b.buffer { out.add([ai - 1, ai], "worksheet_xml_changed"); }
+                ar = a.next(out)?;
+                br = b.next(out)?;
+            }
+            (Some(ai), Some(bi)) if ai < bi => {
+                out.add([ai - 1, ai], "worksheet_xml_changed");
+                ar = a.next(out)?;
+            }
+            (Some(ai), None) => {
+                out.add([ai - 1, ai], "worksheet_xml_changed");
+                ar = a.next(out)?;
+            }
+            (_, Some(bi)) => {
+                out.add([bi - 1, bi], "worksheet_xml_changed");
+                br = b.next(out)?;
+            }
+            _ => unreachable!(),
+        }
+    }
+    if a.geometry != b.geometry { out.full("column or worksheet geometry changed"); }
+    #[cfg(test)]
+    if std::env::var_os("EXCEL_SHRINK_ANALYSIS_FIXTURE").is_some() {
+        println!("stream_row_buffer_capacity_bytes={} geometry_bytes={}",
+            a.buffer.capacity() + b.buffer.capacity(), a.geometry_bytes + b.geometry_bytes);
     }
     Ok((a.drawing_ids, b.drawing_ids))
 }
@@ -700,10 +793,10 @@ pub(super) fn analyze(
             }
             let file = &sheets.get(&index).context("requested sheet missing")?.1;
             let scanned = (|| -> Result<()> {
-                let left = required_part(&mut baseline, file)?;
-                let right = required_part(&mut variant, file)?;
+                let left = baseline.by_name(file)?;
+                let right = variant.by_name(file)?;
                 let (left_drawings, right_drawings) =
-                    scan_pair(&left, &right, &original_styles, &original_styles, out)?;
+                    scan_stream_pair(left, right, &original_styles, &original_styles, out)?;
                 inspect_drawings(&mut baseline, file, &left_drawings, out)?;
                 inspect_drawings(&mut variant, file, &right_drawings, out)?;
                 Ok(())
@@ -723,6 +816,75 @@ pub(super) fn analyze(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Existing indicator fixtures exercise both implementations. The buffered
+    // implementation stays test-only as an independent compatibility oracle.
+    fn scan_pair(
+        left: &[u8], right: &[u8], left_styles: &[bool], right_styles: &[bool],
+        out: &mut SheetIndicators,
+    ) -> Result<(BTreeSet<String>, BTreeSet<String>)> {
+        let mut expected = out.clone();
+        let reference = scan_buffered_pair(left, right, left_styles, right_styles, &mut expected);
+        let actual = scan_stream_pair(left, right, left_styles, right_styles, out);
+        assert_eq!(actual.is_ok(), reference.is_ok(), "stream={actual:?}; buffered={reference:?}");
+        if let (Ok(actual), Ok(reference)) = (&actual, &reference) {
+            assert_eq!(actual, reference);
+            let mut normalized = out.clone();
+            normalized.merge();
+            expected.merge();
+            assert_eq!(normalized.rows, expected.rows);
+            assert_eq!(normalized.reasons, expected.reasons);
+            assert_eq!(normalized.full_capture_reason, expected.full_capture_reason);
+        }
+        actual
+    }
+
+    struct ShortReads<'a> { bytes: &'a [u8], maximum: usize }
+
+    impl Read for ShortReads<'_> {
+        fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+            let count = output.len().min(self.maximum).min(self.bytes.len());
+            output[..count].copy_from_slice(&self.bytes[..count]);
+            self.bytes = &self.bytes[count..];
+            Ok(count)
+        }
+    }
+
+    #[test]
+    fn streaming_preserves_xml_indicators_across_every_small_read_boundary() {
+        let left = br#"<?xml version="1.0"?><s:worksheet xmlns:s="urn:sheet" note="a>b"><!-- > -->
+            <s:sheetData><s:row r='1'><s:c r='A1'><s:is><s:t><![CDATA[<row r="2"> >]]></s:t></s:is></s:c></s:row>
+            <s:row r='10' s='1'/></s:sheetData><s:conditionalFormatting sqref='B20:B30'/></s:worksheet><!--end-->"#;
+        let right = String::from_utf8(left.to_vec()).unwrap().replace("r='10'", "r='11'");
+        let mut expected = SheetIndicators::default();
+        scan_buffered_pair(left, right.as_bytes(), &[false, true], &[false, true], &mut expected).unwrap();
+        expected.merge();
+        for maximum in 1..=31 {
+            let mut actual = SheetIndicators::default();
+            scan_stream_pair(ShortReads {bytes:left, maximum},
+                ShortReads {bytes:right.as_bytes(), maximum}, &[false, true], &[false, true], &mut actual).unwrap();
+            actual.merge();
+            assert_eq!(actual.rows, expected.rows, "read size {maximum}");
+            assert_eq!(actual.reasons, expected.reasons);
+            assert_eq!(actual.full_capture_reason, expected.full_capture_reason);
+        }
+    }
+
+    #[test]
+    fn malformed_streams_fail_instead_of_silently_omitting_content() {
+        for xml in [
+            b"<worksheet><sheetData><row r='1'><c/></row>".as_slice(),
+            b"<worksheet><sheetData><row r='1'></c></sheetData></worksheet>",
+            b"<worksheet><sheetData><row r='2'/><row r='1'/></sheetData></worksheet>",
+            b"<!DOCTYPE worksheet><worksheet/>",
+            b"<worksheet><sheetData></worksheet>",
+            b"<worksheet></worksheet><worksheet></worksheet>",
+            b"\xff\xfe<\0w\0o\0r\0k\0s\0h\0e\0e\0t\0>\0",
+        ] {
+            let mut out = SheetIndicators::default();
+            assert!(scan_stream_pair(xml, xml, &[false], &[false], &mut out).is_err(), "{xml:?}");
+        }
+    }
 
     #[test]
     fn additions_deletions_and_changes_keep_original_rows() {
@@ -931,8 +1093,9 @@ mod tests {
             .split(',')
             .map(|n| n.parse().unwrap())
             .collect();
-        let variants: Vec<_> = ["default", "maximum-cleaning", "too-aggressive-cleaning"]
-            .iter()
+        let profiles = std::env::var("EXCEL_SHRINK_ANALYSIS_PROFILES")
+            .unwrap_or_else(|_| "default,maximum-cleaning,too-aggressive-cleaning".into());
+        let variants: Vec<_> = profiles.split(',')
             .map(|name| root.join(format!("{name}.xlsx")))
             .collect();
         let start = std::time::Instant::now();

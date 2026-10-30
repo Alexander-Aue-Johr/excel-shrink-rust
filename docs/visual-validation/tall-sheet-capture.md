@@ -46,9 +46,12 @@ intersecting any of these indicators across the original and profile variants:
 Deleted areas remain represented by the original geometry. Conditional-formatting
 targets are not clipped to populated cells. Unknown layout changes, unsupported
 objects or extensions, changed global styles/shared strings, missing analysis
-inputs, and failed recalculation cause conservative full capture. The XML
-indicator reader currently limits each decompressed part to 256 MiB; exceeding
-that limit also retains full capture rather than silently omitting evidence.
+inputs, and failed recalculation cause conservative full capture. Worksheet
+indicators are read directly from the decompression stream, one row or other
+worksheet child at a time. Total worksheet XML size is not limited to 256 MiB.
+A single element or accumulated geometry metadata exceeding 8 MiB retains the
+explicit full-capture fallback. Global parts such as styles and shared strings
+still have the existing 256 MiB limit.
 
 Unlike the earlier proposed blanket fallback, deleting a hidden or whitespace
 value does not by itself force every sheet in the workbook to be captured.
