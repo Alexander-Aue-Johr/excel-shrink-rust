@@ -1,4 +1,4 @@
-import { age, commandTimingSummary, duration, phaseLabel, progressSummary, retainedImageSummary, startupSummary, timestamp, workerRows } from './worker-monitor-model.js';
+import { age, captureProcessKey, commandTimingSummary, duration, phaseLabel, progressSummary, retainedImageSummary, startupSummary, timestamp, workerRows } from './worker-monitor-model.js';
 import { createSignalMonitor } from './signal-monitor.js';
 
 const element = (tag, className, text) => {
@@ -10,28 +10,43 @@ const element = (tag, className, text) => {
 const timeText = value => timestamp(value) == null ? 'Not observed' : new Date(timestamp(value)).toLocaleString('en-US');
 const sinceText = value => age(value) == null ? 'Not observed' : `${duration(age(value))} ago`;
 const message = event => typeof event === 'string' ? event : event?.message || event?.kind || event?.error || 'Not observed';
-function captureProgressRow(worker) {
+/** Create a retained process row; update changes its label and counts without replacing DOM nodes. */
+export function createCaptureProgressRow() {
   const row = element('div', 'wm-capture-row');
   const eyebrow = element('div', 'wm-capture-eyebrow');
-  eyebrow.append(element('strong', null, worker.workbook),
-    element('span', null, `${worker.profile} · Excel PID ${worker.pid}`));
+  const workbook = element('strong');
+  const identity = element('span');
+  eyebrow.append(workbook, identity);
   const track = element('div', 'wm-capture-track');
-  const completed = Number(worker.completed);
-  const total = Number(worker.total);
-  const measured = Number.isSafeInteger(total) && total > 0;
   track.setAttribute('role', 'progressbar');
-  track.setAttribute('aria-label', `${worker.workbook}: ${worker.sheet_name}`);
-  if (measured) {
-    track.setAttribute('aria-valuemin', '0');
-    track.setAttribute('aria-valuemax', String(total));
-    track.setAttribute('aria-valuenow', String(completed));
-  }
   const fill = element('div', 'wm-capture-fill');
-  fill.style.width = `${measured ? Math.min(100, completed / total * 100) : 0}%`;
-  const label = element('span', 'wm-capture-label', `${worker.sheet_name} · ${measured ? `${completed} / ${total} captures` : 'Counting captures'}`);
+  const label = element('span', 'wm-capture-label');
   track.append(fill, label);
   row.append(eyebrow, track);
-  return row;
+  return {
+    element: row,
+    update(worker) {
+      workbook.textContent = worker.workbook;
+      identity.textContent = `${worker.profile} · Excel PID ${worker.pid}`;
+      const completed = Number(worker.completed);
+      const total = Number(worker.total);
+      const measured = Number.isSafeInteger(total) && total > 0
+        && Number.isSafeInteger(completed) && completed >= 0;
+      const sheet = worker.sheet_name || phaseLabel(worker.state || 'opening');
+      const pass = worker.passes > 1 ? ` · pass ${worker.pass}/${worker.passes}` : '';
+      label.textContent = `${sheet} · ${measured ? `${completed} / ${total} ${worker.unit || 'captures'}` : 'Waiting for sheet progress'}${pass}`;
+      track.setAttribute('aria-label', `${worker.workbook}: ${sheet}`);
+      track.setAttribute('aria-valuetext', label.textContent);
+      if (measured) {
+        track.setAttribute('aria-valuemin', '0');
+        track.setAttribute('aria-valuemax', String(total));
+        track.setAttribute('aria-valuenow', String(completed));
+      } else {
+        for (const name of ['aria-valuemin', 'aria-valuemax', 'aria-valuenow']) track.removeAttribute(name);
+      }
+      fill.style.width = `${measured ? Math.min(100, completed / total * 100) : 0}%`;
+    }
+  };
 }
 const observedPhase = row => row.alive === false && !['closed', 'finished', 'complete', 'completed'].includes(row.state)
   ? `Process exited · last ${phaseLabel(row.state)}` : phaseLabel(row.state);
@@ -58,6 +73,7 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
   let queue, snapshot, selected, offset = 0, timer, request, generation = 0;
   const groupViews = new Map();
   const signalViews = new Map();
+  const captureViews = new Map();
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let detailSignal, detailChrome;
 
@@ -424,7 +440,21 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     sweepBar.max = 100;
     sweepBar.value = sweepProgress ? (sweepProgress.total ? 100 * sweepProgress.completed / sweepProgress.total : 100) : 0;
     phases.append(sweep, sweepBar);
-    for (const worker of queue.capture_workers || []) phases.append(captureProgressRow(worker));
+    const activeCaptureKeys = new Set();
+    for (const worker of queue.capture_workers || []) {
+      const key = captureProcessKey(worker);
+      activeCaptureKeys.add(key);
+      let view = captureViews.get(key);
+      if (!view) {
+        view = createCaptureProgressRow();
+        captureViews.set(key, view);
+      }
+      view.update(worker);
+      phases.append(view.element);
+    }
+    for (const key of captureViews.keys()) {
+      if (!activeCaptureKeys.has(key)) captureViews.delete(key);
+    }
     phases.append(element('p', 'wm-progress-note', `${summary.preparationPerMinute}/min · ${summary.preparationPerHour}/h · ${summary.preparationEta}${active}`));
     if (summary.visualScopeFrozen) {
       const comparison = element('div', 'wm-phase-row');

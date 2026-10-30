@@ -195,7 +195,7 @@ async fn capture_opening_demand(root: &Path, queue: &Value) -> Value {
     if let (Some(work), Some(groups)) = (work, queue["groups"].as_array()) {
         for group in groups {
             if group["active"] != true
-                || group["status"] != "preparing"
+                || !matches!(group["status"].as_str(), Some("preparing" | "hash_sweeping"))
                 || group["run_id"] != queue["run_id"]
             {
                 continue;
@@ -252,7 +252,10 @@ async fn capture_workers(root: &Path, queue: &Value) -> Vec<Value> {
         let Some(id) = group["id"].as_str().filter(|id| safe_id(id).is_ok()) else {
             continue;
         };
-        let session = if group["status"] == "preparing" {
+        let session = if matches!(
+            group["status"].as_str(),
+            Some("preparing" | "hash_sweeping")
+        ) {
             root.parent().map(|output| {
                 output
                     .join(".work")
@@ -275,22 +278,29 @@ async fn capture_workers(root: &Path, queue: &Value) -> Vec<Value> {
             continue;
         };
         for (profile, client) in clients {
-            let progress = &client["monitor"]["pane_resources"]["capture_progress"];
-            if !matches!(
-                client["monitor"]["state"].as_str(),
-                Some("capturing" | "providing_images")
-            )
-                || client["active_command"] != progress["command_id"]
-                || progress["sheet_name"].as_str().is_none()
-                || progress["completed"].as_u64().is_none()
-                || client["pid"].as_u64().is_none()
+            if client["pid"].as_u64().is_none()
+                || client["process_alive"] == false
+                || client["closed"] == true
             {
                 continue;
             }
-            workers.push(json!({"workbook":group["workbook"],"profile":profile,
-                "pid":client["pid"],"sheet_name":progress["sheet_name"],
+            let resources = &client["monitor"]["pane_resources"];
+            let sweep = &resources["sweep_progress"];
+            let current = &resources["capture_progress"];
+            let (progress, unit) = if sweep.is_object() {
+                (sweep, "sheet passes")
+            } else if current.is_object() && client["active_command"] == current["command_id"] {
+                (current, "captures")
+            } else {
+                (&Value::Null, "sheet passes")
+            };
+            workers.push(json!({"group_id":id,"attempt_id":group["attempt_id"],
+                "workbook":group["workbook"],"profile":profile,"pid":client["pid"],
+                "process_started_unix_ms":client["process_started_unix_ms"],
+                "state":client["monitor"]["state"],"sheet_name":progress["sheet_name"],
                 "sheet_index":progress["sheet_index"],"completed":progress["completed"],
-                "total":progress["total"],"updated_unix_ms":progress["updated_unix_ms"]}));
+                "total":progress["total"],"unit":unit,"pass":progress["pass"],
+                "passes":progress["passes"],"updated_unix_ms":progress["updated_unix_ms"]}));
         }
     }
     workers
@@ -1448,7 +1458,7 @@ mod tests {
         let opening = capture_opening_demand(&root, &queue).await;
         assert_eq!(opening["waiting_workbooks"], 1);
         assert_eq!(opening["opening_workbooks"], 1);
-        assert!(capture_workers(&root, &queue).await.is_empty());
+        assert_eq!(capture_workers(&root, &queue).await.len(), 1);
 
         std::fs::write(
             session.join("metrics.json"),
@@ -1460,6 +1470,35 @@ mod tests {
         assert_eq!(workers[0]["completed"], 3);
         assert_eq!(workers[0]["total"], 7);
 
+        // A new command and a sheet transition must not erase process progress.
+        let mut sweeping = queue.clone();
+        sweeping["groups"][0]["status"] = json!("hash_sweeping");
+        let mut metrics = json!({"attempt_id":"current","clients":{"original":{
+            "pid":42,"process_started_unix_ms":100,"active_command":"recalc",
+            "monitor":{"state":"waiting_for_job","pane_resources":{
+                "sweep_progress":{"command_id":"capture-1","sheet_name":"Second",
+                    "completed":1,"total":6,"pass":1,"passes":2}}}}}});
+        std::fs::write(session.join("metrics.json"), serde_json::to_vec(&metrics)?)?;
+        let waiting_workers = capture_workers(&root, &sweeping).await;
+        assert_eq!(waiting_workers.len(), 1);
+        assert_eq!(waiting_workers[0]["completed"], 1);
+        assert_eq!(waiting_workers[0]["total"], 6);
+        assert_eq!(waiting_workers[0]["sheet_name"], "Second");
+        assert_eq!(waiting_workers[0]["unit"], "sheet passes");
+        let progress = &mut metrics["clients"]["original"]["monitor"]["pane_resources"]["sweep_progress"];
+        progress["sheet_name"] = json!("Third");
+        progress["completed"] = json!(5);
+        progress["pass"] = json!(2);
+        std::fs::write(session.join("metrics.json"), serde_json::to_vec(&metrics)?)?;
+        let next_sheet = capture_workers(&root, &sweeping).await;
+        assert_eq!(next_sheet.len(), 1);
+        assert_eq!(next_sheet[0]["pid"], waiting_workers[0]["pid"]);
+        assert_eq!(next_sheet[0]["attempt_id"], waiting_workers[0]["attempt_id"]);
+        assert_eq!(next_sheet[0]["completed"], 5);
+        assert_eq!(next_sheet[0]["sheet_name"], "Third");
+        metrics["clients"]["original"]["closed"] = json!(true);
+        std::fs::write(session.join("metrics.json"), serde_json::to_vec(&metrics)?)?;
+        assert!(capture_workers(&root, &sweeping).await.is_empty());
         std::fs::write(
             session.join("metrics.json"),
             br#"{"attempt_id":"old","clients":{}}"#,

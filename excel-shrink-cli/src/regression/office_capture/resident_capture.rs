@@ -65,6 +65,7 @@ pub(in crate::regression) struct ResidentCapture {
     initial_aligned: bool,
     sweep_mode: bool,
     screening_mode: bool,
+    screening_pass: usize,
     comparisons: BTreeMap<(String, String, String), Value>,
     snapshots: BTreeMap<String, Snapshot>,
     compared_originals: BTreeMap<String, Snapshot>,
@@ -359,6 +360,7 @@ impl ResidentCapture {
         for (client, command) in calculations {
             self.wait(&client, &command)?;
         }
+        self.screening_pass = 2;
         self.capture_full_sweep(&clients)?;
         let second_original = self.snapshot("original")?;
         let second_variant = self.snapshot(profile)?;
@@ -640,6 +642,7 @@ impl ResidentCapture {
             sweep_mode: screening
                 || std::env::var("EXCEL_SHRINK_CAPTURE_SWEEP").as_deref() == Ok("1"),
             screening_mode: screening,
+            screening_pass: 1,
             comparisons: BTreeMap::new(),
             snapshots: BTreeMap::new(),
             compared_originals: BTreeMap::new(),
@@ -691,6 +694,10 @@ impl ResidentCapture {
         );
         self.sequence += 1;
         let id = format!("{:06}", self.sequence);
+        if self.screening_mode && body["kind"] == "capture" {
+            body["progress_pass"] = json!(self.screening_pass);
+            body["progress_passes"] = json!(2);
+        }
         body["id"] = json!(id);
         body["queued_unix_ms"] = json!(chrono::Utc::now().timestamp_millis());
         crate::regression::archive::work_state::event(

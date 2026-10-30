@@ -17,7 +17,12 @@ Preparation has two corpus-wide phases. First, every selected workbook is
 converted if necessary, shrunk, and saved in its reusable ZIP bundle. Only after
 that queue drains do hash sweeps open Original and the selected output, capture
 every tile, run Excel Full recalculation in both workbooks, and capture again.
-The Observatory shows separate shrink and hash-sweep progress bars.
+The Observatory shows separate shrink and hash-sweep progress bars. Beneath them,
+each live Excel process has one retained progress row. It counts completed sheets
+across both hash passes (for five sheets, 0 through 10 sheet passes), labels the
+current sheet and pass inside the bar, and stays visible between commands. A sheet
+transition updates that existing row instead of adding a per-sheet bar. Processes
+that are still opening have an indeterminate row until their sweep extent is known.
 
 `prepare_processes` controls simultaneous shrink jobs; `shrink_threads` sets
 Rayon threads per shrink job. `sweep_processes` independently controls concurrent

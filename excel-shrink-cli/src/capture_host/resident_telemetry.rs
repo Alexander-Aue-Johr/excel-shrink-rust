@@ -81,6 +81,15 @@ impl WorkerTelemetry {
             }
             sample["capture_progress"] = progress;
         }
+        if let Some(progress) = sweep_progress(&source["sweep_progress"]) {
+            let previous = &self.pane_resources["sweep_progress"];
+            if progress["completed"] != previous["completed"]
+                || progress["sheet_index"] != previous["sheet_index"]
+            {
+                self.last_progress = Some(now_iso());
+            }
+            sample["sweep_progress"] = progress;
+        }
         self.pane_resources = sample;
     }
 
@@ -266,6 +275,41 @@ fn capture_progress(source: &Value) -> Option<Value> {
         "updated_unix_ms":source["updated_unix_ms"]}))
 }
 
+/// Validate workbook-wide sheet counts independently of per-command tile counts.
+fn sweep_progress(source: &Value) -> Option<Value> {
+    let command = source["command_id"].as_str()?;
+    let sheet = source["sheet_name"].as_str()?;
+    let index = source["sheet_index"].as_u64()?;
+    let completed = source["completed"].as_u64()?;
+    let total = source["total"].as_u64()?;
+    let pass = source["pass"].as_u64()?;
+    let passes = source["passes"].as_u64()?;
+    if command.is_empty()
+        || command.len() > 128
+        || sheet.is_empty()
+        || sheet.len() > 256
+        || index == 0
+        || total == 0
+        || total > u32::MAX as u64
+        || completed > total
+        || !matches!(passes, 1 | 2)
+        || pass == 0
+        || pass > passes
+        || total % passes != 0
+    {
+        return None;
+    }
+    let sheets = total / passes;
+    if completed < (pass - 1) * sheets || completed > pass * sheets {
+        return None;
+    }
+    Some(
+        json!({"command_id":command,"sheet_index":index,"sheet_name":sheet,
+        "completed":completed,"total":total,"pass":pass,"passes":passes,
+        "updated_unix_ms":source["updated_unix_ms"]}),
+    )
+}
+
 fn command_timing(source: &Value) -> Option<Value> {
     let command = source["command_id"].as_str()?;
     let kind = source["kind"].as_str()?;
@@ -372,6 +416,42 @@ fn pick(source: &Value, names: &[&str]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sweep_sheet_counts_survive_between_commands_and_reject_impossible_totals() {
+        let mut telemetry = WorkerTelemetry::new();
+        let mut progress = json!({"command_id":"capture-1","sheet_name":"First",
+            "sheet_index":1,"completed":1,"total":6,"pass":1,"passes":2});
+        telemetry.sample_pane(&json!({"sweep_progress":progress}));
+        assert_eq!(
+            telemetry.snapshot()["pane_resources"]["sweep_progress"]["completed"],
+            1
+        );
+        telemetry.transition("waiting_for_job", None, "recalculating");
+        assert_eq!(
+            telemetry.snapshot()["pane_resources"]["sweep_progress"]["completed"],
+            1
+        );
+        progress["command_id"] = json!("capture-2");
+        progress["pass"] = json!(2);
+        progress["completed"] = json!(4);
+        progress["sheet_name"] = json!("Second");
+        telemetry.sample_pane(&json!({"sweep_progress":progress}));
+        assert_eq!(
+            telemetry.snapshot()["pane_resources"]["sweep_progress"]["completed"],
+            4
+        );
+        assert_eq!(
+            telemetry.snapshot()["pane_resources"]["sweep_progress"]["total"],
+            6
+        );
+        progress["completed"] = json!(7);
+        assert!(sweep_progress(&progress).is_none());
+        progress["completed"] = json!(2);
+        assert!(sweep_progress(&progress).is_none());
+        progress["passes"] = json!(0);
+        assert!(sweep_progress(&progress).is_none());
+    }
 
     #[test]
     fn capture_sheet_progress_advances_only_after_a_capture() {

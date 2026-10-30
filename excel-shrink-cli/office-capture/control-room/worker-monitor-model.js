@@ -211,3 +211,9 @@ export function progressSummary(progress) {
     } : null,
   };
 }
+
+/** Identity of one Excel process; sheet and command transitions keep the same row. */
+export function captureProcessKey(worker) {
+  return [worker.group_id, worker.attempt_id, worker.profile, worker.pid,
+    worker.process_started_unix_ms].map(value => value ?? '').join(':');
+}

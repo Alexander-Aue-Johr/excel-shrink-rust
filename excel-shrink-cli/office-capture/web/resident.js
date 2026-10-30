@@ -24,6 +24,21 @@
     return geometry.tiles(end, null, requested, {planOnly, allowGaps: requested !== undefined});
   }
 
+  /**
+   * Count completed sheets in the entire process sweep, including both hash passes.
+   * completedSheets is the count within this command; sheet supplies the current label.
+   */
+  function sheetSweepProgress(command, completedSheets, sheet) {
+    const pass = command.progress_pass ?? 1;
+    const passes = command.progress_passes ?? 1;
+    const sheetCount = command.sheets.length;
+    return {
+      command_id: command.id, sheet_name: sheet.name, sheet_index: sheet.index,
+      completed: (pass - 1) * sheetCount + completedSheets,
+      total: passes * sheetCount, pass, passes, updated_unix_ms: Date.now()
+    };
+  }
+
   function createWorker(helpers, transport, expectedWorkbook) {
     const {office, bounds, checkedWorksheet, rowHeights, hideGridlines, verifyDrawingBounds} = helpers;
     const captures = new Map();
@@ -39,6 +54,7 @@
     let timings;
     let lastCommandTiming;
     let captureProgress = null;
+    let sweepProgress = null;
 
     async function measure(field, action) {
       const started = performance.now();
@@ -66,6 +82,7 @@
       };
       if (lastCommandTiming) sample.last_command_timing = {...lastCommandTiming};
       if (captureProgress) sample.capture_progress = {...captureProgress};
+      if (sweepProgress) sample.sweep_progress = {...sweepProgress};
       // Chromium may expose approximate JS heap figures. They do not include
       // decoded/native images; launcher process snapshots cover that separately.
       if (performance.memory) {
@@ -185,6 +202,7 @@
       const retained = new Map();
       for (const sheet of command.sheets) {
         if (command.kind === 'capture') {
+          sweepProgress = sheetSweepProgress(command, result.sheets.length, sheet);
           captureProgress = {command_id: command.id, kind: command.kind,
             sheet_index: sheet.index, sheet_name: sheet.name, completed: 0, total: null,
             updated_unix_ms: Date.now()};
@@ -251,6 +269,9 @@
           }
           if (command.kind !== 'plan') helpers.phase(`Hashing ${sheet.name}: tile ${index + 1}/${tiles.length}`);
           // No encoded or decoded images are retained while waiting for peers.
+        }
+        if (command.kind === 'capture') {
+          sweepProgress = sheetSweepProgress(command, result.sheets.length, sheet);
         }
       }
       captures.set(command.id, retained);
@@ -671,7 +692,7 @@
     }
   }
 
-  const api = {run, createWorker, encoded, selectedTiles};
+  const api = {run, createWorker, encoded, selectedTiles, sheetSweepProgress};
   root.ResidentCapture = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 }(typeof window !== 'undefined' ? window : globalThis));

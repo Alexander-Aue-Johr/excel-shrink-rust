@@ -1297,6 +1297,25 @@ mod tests {
         assert_eq!(record["preparation_hash_screen"]["profile"], "default");
         assert_eq!(artifact_cache::hash_file(job.bundle.as_ref().unwrap())?, before_sweep);
         assert!(sweep_cached(job.bundle.as_ref().unwrap(), Some("default"))?);
+        let metrics: Value = serde_json::from_slice(&fs::read(
+            job.work.join("preparation-capture/metrics.json"),
+        )?)?;
+        let sheet_passes = 2 * record["preparation_hash_screen"]["sheets"].as_array().unwrap().len();
+        // Launcher metrics are periodic and may lag the final command at exit.
+        // The acknowledged responses contain the exact final pane measurements.
+        for client in metrics["clients"].as_object().context("missing Excel clients")?.keys() {
+            let responses = job.work.join("preparation-capture/responses").join(client);
+            let mut counts = Vec::new();
+            for response in fs::read_dir(responses)? {
+                let response: Value = serde_json::from_slice(&fs::read(response?.path())?)?;
+                let progress = &response["pane_resources"]["sweep_progress"];
+                if progress["total"] == sheet_passes {
+                    counts.push(progress["completed"].as_u64().unwrap());
+                }
+            }
+            assert!(counts.contains(&(sheet_passes as u64 / 2)));
+            assert!(counts.contains(&(sheet_passes as u64)));
+        }
         assert!(!job.work.join("maximum-cleaning").exists());
         assert!(!job.work.join("too-aggressive-cleaning").exists());
         let bundle = job.bundle.as_ref().unwrap();
