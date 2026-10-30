@@ -116,6 +116,8 @@ def prepare_worker_copy():
         raise RuntimeError('Diagnosis command insertion point changed')
     source = source.replace(branch, "    if (command.operation === 'probe_range_image') {\n"
                             "      return probeRangeImage(command, office);\n    }\n" + branch)
+    source = source.replace(branch, "    if (command.operation === 'hash_sweep') {\n"
+                            "      return probeHashSweep(command, office);\n    }\n" + branch)
     target.write_text(source, encoding='utf-8')
 
 
