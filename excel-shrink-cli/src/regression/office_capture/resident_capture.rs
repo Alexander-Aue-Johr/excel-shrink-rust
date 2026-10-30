@@ -345,6 +345,8 @@ impl ResidentCapture {
         self.align_initial_clients()?;
         let first_original = self.snapshot("original")?;
         let first_variant = self.snapshot(profile)?;
+        let first_timings =
+            self.screening_capture_timings(&first_original, &first_variant, profile)?;
         let clients: BTreeSet<_> = self.aliases.values().cloned().collect();
         // A second screenshot without calculation would miss formulas whose
         // display changes only when Excel recalculates the already open file.
@@ -358,13 +360,22 @@ impl ResidentCapture {
             )?;
             calculations.push((client.clone(), command));
         }
+        let mut recalculate_timings = serde_json::Map::new();
         for (client, command) in calculations {
-            self.wait(&client, &command)?;
+            let result = self.wait(&client, &command)?;
+            let logical = self
+                .aliases
+                .iter()
+                .find(|(_, physical)| *physical == &client)
+                .map_or(client.as_str(), |(name, _)| name.as_str());
+            recalculate_timings.insert(logical.to_owned(), result["timings"].clone());
         }
         self.screening_pass = 2;
         self.capture_selected_sweep(&clients)?;
         let second_original = self.snapshot("original")?;
         let second_variant = self.snapshot(profile)?;
+        let second_timings =
+            self.screening_capture_timings(&second_original, &second_variant, profile)?;
         let mut first = screen_sheet_hashes(&first_original, &first_variant)?;
         let mut second = screen_sheet_hashes(&second_original, &second_variant)?;
         for sheet in first.iter_mut().chain(second.iter_mut()) {
@@ -391,7 +402,37 @@ impl ResidentCapture {
             "stable": stable,
             "changed_sheets": changed_sheets,
             "global_sha256": artifact_cache::sha256(&serde_json::to_vec(&json!({"first":first,"second":second}))?),
+            "diagnostic_timings": {"first":first_timings,"recalculate":recalculate_timings,
+                "second":second_timings},
         }))
+    }
+
+    /// Read worker measurements separately from hashes so timing cannot affect stability.
+    fn screening_capture_timings(
+        &self,
+        original: &Snapshot,
+        variant: &Snapshot,
+        profile: &str,
+    ) -> Result<Value> {
+        let mut captures = serde_json::Map::new();
+        for (logical, snapshot) in [("original", original), (profile, variant)] {
+            let client = self.client(logical)?;
+            let path = self
+                .directory
+                .join("responses")
+                .join(client)
+                .join(format!("{}.json", snapshot.command));
+            let response: Value = serde_json::from_slice(
+                &fs::read(&path)
+                    .with_context(|| format!("read capture timings from {}", path.display()))?,
+            )?;
+            captures.insert(logical.to_owned(), json!({
+                "command":snapshot.command,
+                "elapsed_ms":response["elapsed_ms"],
+                "sheets":response["sheet_timings"],
+            }));
+        }
+        Ok(Value::Object(captures))
     }
 
     pub(in crate::regression) fn start(

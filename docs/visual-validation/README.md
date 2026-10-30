@@ -40,6 +40,16 @@ remain eligible for capture; they never establish equality. Failed sweeps retain
 the preparation and diagnostic error and fall back to selected-profile visual
 comparison rather than losing the shrinking work.
 
+Each new sidecar also contains `screen.diagnostic_timings`: `first` and `second`
+separate Original and the selected profile, with per-sheet planning, capture,
+image-finalization, hash and elapsed times. `recalculate` records the command
+times between passes. `startup` measures Excel launch through add-in readiness,
+not `Workbooks.Open` alone; `coordinator.wait_ms` is cumulative time waiting for
+events and can overlap worker activity. These diagnostics do not enter the
+stability decision or global capture hash. Older sidecars have no timing section.
+`hash_ms` is included in `finish_image_ms`, and the per-sheet elapsed time
+includes setup and planning; these fields must not be summed.
+
 Only stable hash differences select sheets for later pixel comparison. A missing
 or unstable manifest selects all sheets of the chosen profile. Hash equality is
 reported as `screened-equal`; it is not a complete visual or cell-value check.

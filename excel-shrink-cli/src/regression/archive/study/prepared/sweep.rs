@@ -109,7 +109,19 @@ fn capture(job: &MemberJob, record: &mut Value) -> Result<()> {
     let captured = session.screen_twice(profile);
     let finished = session.finish();
     let mut screen = captured?;
-    finished?;
+    let metrics = finished?;
+    let mut startup = serde_json::Map::new();
+    for logical in ["original", profile] {
+        let physical = metrics["capture_client_aliases"][logical]
+            .as_str().unwrap_or(logical);
+        let client = &metrics["clients"][physical];
+        startup.insert(logical.to_owned(), json!({
+            "method":client["startup_measurement_method"],
+            "seconds":client["startup_seconds"],
+        }));
+    }
+    screen["diagnostic_timings"]["startup"] = Value::Object(startup);
+    screen["diagnostic_timings"]["coordinator"] = metrics["pipeline_timings"].clone();
     screen["original_file_sha256"] = json!(artifact_cache::hash_file(&original)?);
     screen["variant_file_sha256"] = json!(artifact_cache::hash_file(&variant)?);
     ensure!(

@@ -204,10 +204,14 @@
         throw new Error('Incomplete resident capture command');
       }
       await verifyWorkbook();
-      const result = {heights: [], sheets: [], tiles: [], planning_timings: []};
+      const result = {heights: [], sheets: [], tiles: [], planning_timings: [], sheet_timings: []};
       if (captures.has(command.id)) throw new Error('Capture command was already executed');
       const retained = new Map();
       for (const sheet of command.sheets) {
+        const sheetStartedAt = performance.now();
+        const captureBefore = timings?.capture_ms ?? 0;
+        const finishBefore = timings?.finish_image_ms ?? 0;
+        const hashBefore = timings?.hash_ms ?? 0;
         if (command.kind === 'capture') {
           sweepProgress = sheetSweepProgress(command, result.sheets.length, sheet);
           captureProgress = {command_id: command.id, kind: command.kind,
@@ -293,6 +297,11 @@
         if (command.kind === 'capture') {
           sweepProgress = sheetSweepProgress(command, result.sheets.length, sheet);
         }
+        result.sheet_timings.push({...result.planning_timings.at(-1),
+          selected_tiles: tiles.length, elapsed_ms: performance.now() - sheetStartedAt,
+          capture_ms: (timings?.capture_ms ?? 0) - captureBefore,
+          finish_image_ms: (timings?.finish_image_ms ?? 0) - finishBefore,
+          hash_ms: (timings?.hash_ms ?? 0) - hashBefore});
       }
       captures.set(command.id, retained);
       helpers.progress(command.sheets.length, command.sheets.length);
