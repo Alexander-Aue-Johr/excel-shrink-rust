@@ -92,7 +92,8 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
       }
     },
     bounds: sheet => ({bottom: sheet.bottom_row, right: 1}),
-    async checkedWorksheet() {}, async hideGridlines() {}, async verifyDrawingBounds() {},
+    async checkedWorksheet() {}, async hideGridlines() {},
+    async verifyDrawingBounds() {return hooks.drawingBounds || [];},
     async rowHeights(sheet) {heightSheets.push(sheet); return {sheet_index: sheet.index, runs: [[0, 10, 1]]};},
     phase() {}, progress() {}
   };
@@ -109,6 +110,14 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
     get peakOfficeActive() {return peakOfficeActive;},
     get geometriesCreated() {return geometriesCreated;}};
 }
+
+test('planning returns measured drawing rectangles without capturing images', async () => {
+  const drawingBounds = [{name: 'TextBox 16', top: 45, height: 21, rotation: 0, visible: true}];
+  const f = fixture('fixture.xlsx', {drawingBounds});
+  const result = await f.worker.execute({id: 'drawing-plan', kind: 'plan', sheets: [f.sheet]});
+  assert.deepEqual(result.sheets[0].drawing_bounds, drawingBounds);
+  assert.equal(f.captures.length, 0);
+});
 
 test('initial resident capture uploads only hashes and preserves full height coverage', async () => {
   const f = fixture();

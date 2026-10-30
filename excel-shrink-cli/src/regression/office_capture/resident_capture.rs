@@ -78,6 +78,7 @@ pub(in crate::regression) struct ResidentCapture {
     live: Option<live::LiveCapture>,
     variants: BTreeMap<String, PathBuf>,
     capture_coverage: BTreeMap<usize, Value>,
+    drawing_bounds: BTreeMap<String, Value>,
 }
 
 fn publish(path: &Path, value: &Value) -> Result<()> {
@@ -661,6 +662,7 @@ impl ResidentCapture {
                 .map(|(name, path)| ((*name).to_owned(), path.clone()))
                 .collect(),
             capture_coverage: BTreeMap::new(),
+            drawing_bounds: BTreeMap::new(),
         })
     }
 
@@ -826,6 +828,18 @@ impl ResidentCapture {
         let client = self.client(logical)?.to_owned();
         if let Some(command) = self.pending.remove(&client) {
             let result = self.wait(&client, &command)?;
+            let drawing_bounds = json!(result["sheets"].as_array().into_iter().flatten()
+                .map(|sheet| json!({"sheet_index":sheet["sheet_index"],
+                    "drawing_bounds":sheet["drawing_bounds"]})).collect::<Vec<_>>());
+            if self.capture_coverage.values().any(|coverage|
+                coverage["omitted_tiles"].as_u64().unwrap_or(0) > 0)
+            {
+                if let Some(previous) = self.drawing_bounds.get(&client) {
+                    ensure!(previous == &drawing_bounds,
+                        "Drawing bounds changed after capture selection; omitted ranges require a full-capture retry");
+                }
+            }
+            self.drawing_bounds.insert(client.clone(), drawing_bounds);
             let mut snapshot: Snapshot = serde_json::from_value(result)?;
             snapshot.command = command;
             validate_snapshot(&snapshot, &self.configs[&client])?;

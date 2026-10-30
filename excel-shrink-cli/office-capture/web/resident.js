@@ -238,11 +238,12 @@
           error.code = 'IMAGE_BUDGET';
           throw error;
         }
-        await verifyDrawingBounds(sheet, geometry, end);
+        const drawingBounds = await verifyDrawingBounds(sheet, geometry, end);
         const state = {sheet, probe, right, end, geometry_key: `${command.id}:${sheet.index}`,
           megapixels: command.tile_megapixels ?? 32};
         rememberGeometry(state.geometry_key, geometry);
         result.sheets.push({sheet_index: sheet.index, sheet_name: sheet.name,
+          drawing_bounds: drawingBounds,
           capture_right_column: end, tile_rows: tiles.map(tile => [tile.core.r0, tile.core.r1])});
         for (let index = 0; index < tiles.length; index++) {
           const tile = tiles[index];

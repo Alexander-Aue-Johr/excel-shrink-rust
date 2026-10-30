@@ -15,15 +15,44 @@ use crate::regression::worksheet_stream;
 const MAX_ROWS: u32 = 1_048_576;
 const MAX_XML_BYTES: u64 = 256 * 1024 * 1024;
 
+#[derive(Debug, Clone)]
+struct OneCellDrawing {
+    name: String,
+}
+
 #[derive(Debug, Default, Clone)]
 pub(super) struct SheetIndicators {
     /// Zero-based, half-open rows; never clipped to populated cells.
     pub rows: Vec<[u32; 2]>,
     pub reasons: Vec<String>,
     pub full_capture_reason: Option<String>,
+    one_cell_drawings: Vec<OneCellDrawing>,
 }
 
 impl SheetIndicators {
+    pub(super) fn measured_drawing_rows(
+        &self,
+        heights: &crate::regression::row_heights::SheetHeights,
+        measured: &serde_json::Value,
+    ) -> Result<Vec<[u32; 2]>> {
+        let mut rows = Vec::new();
+        for anchor in &self.one_cell_drawings {
+            let matches: Vec<_> = measured.as_array().context("missing measured drawing bounds")?
+                .iter().filter(|shape| shape["name"] == anchor.name).collect();
+            ensure!(matches.len() == 1, "missing or ambiguous measured drawing {}", anchor.name);
+            let shape = matches[0];
+            let visible = shape["visible"].as_bool().context("missing drawing visibility")?;
+            if !visible { continue; }
+            ensure!(shape["rotation"].as_f64() == Some(0.0), "measured drawing is rotated");
+            let top = shape["top"].as_f64().context("missing drawing top")?;
+            let height = shape["height"].as_f64().context("missing drawing height")?;
+            ensure!(top.is_finite() && height.is_finite() && top >= 0.0 && height >= 0.0,
+                "invalid measured drawing bounds");
+            rows.push(measured_point_rows(top, top + height, heights)?);
+        }
+        Ok(rows)
+    }
+
     fn add(&mut self, rows: [u32; 2], reason: &str) {
         // Row cursors normally visit adjacent rows. Compact those immediately
         // instead of allocating a million entries for a uniformly styled sheet.
@@ -667,7 +696,7 @@ fn drawing_rows(bytes: &[u8], out: &mut SheetIndicators) -> Result<()> {
         if tag.kind == Kind::End || tag.local() == b"wsDr" {
             continue;
         }
-        if tag.local() != b"twoCellAnchor" {
+        if !matches!(tag.local(), b"twoCellAnchor" | b"oneCellAnchor") {
             out.full("drawing extent cannot be bounded by cell anchors");
             break;
         }
@@ -682,6 +711,13 @@ fn drawing_rows(bytes: &[u8], out: &mut SheetIndicators) -> Result<()> {
         .any(|s| memchr::memmem::find(anchor.raw, s).is_some())
         {
             out.full("drawing effects extend beyond known anchors");
+        }
+        if tag.local() == b"oneCellAnchor" {
+            match one_cell_drawing(anchor.body) {
+                Ok(anchor) => out.one_cell_drawings.push(anchor),
+                Err(error) => out.full(format!("one-cell drawing cannot be bounded: {error:#}")),
+            }
+            continue;
         }
         let mut markers = Reader::<64>::new(anchor.body)?;
         let mut endpoints = Vec::new();
@@ -717,6 +753,84 @@ fn drawing_rows(bytes: &[u8], out: &mut SheetIndicators) -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn one_cell_drawing(bytes: &[u8]) -> Result<OneCellDrawing> {
+    let mut reader = Reader::<128>::new(bytes)?;
+    let mut row = None;
+    let mut offset = None;
+    let mut height = None;
+    let mut name = None;
+    while let Some(tag) = reader.next()? {
+        if tag.kind == Kind::End { continue; }
+        if tag.depth == 0 && tag.local() == b"from" {
+            let marker = reader.element(tag)?;
+            let mut fields = Reader::<32>::new(marker.body)?;
+            while let Some(field) = fields.next()? {
+                if field.kind == Kind::End { continue; }
+                if field.local() == b"row" {
+                    ensure!(row.is_none(), "duplicate drawing row");
+                    row = Some(decimal(fields.element(field)?.body)?);
+                } else if field.local() == b"rowOff" {
+                    ensure!(offset.is_none(), "duplicate drawing row offset");
+                    offset = Some(u64::from(decimal(fields.element(field)?.body)?));
+                }
+            }
+        } else if tag.depth == 0 && tag.local() == b"ext" {
+            ensure!(height.is_none(), "duplicate drawing extent");
+            height = Some(u64::from(decimal(tag.attr(b"cy")?.context("missing drawing height")?)?));
+        } else if tag.local() == b"bodyPr" {
+            ensure!(tag.attr(b"vertOverflow")? == Some(b"clip")
+                && tag.attr(b"horzOverflow")? == Some(b"clip"),
+                "drawing text can overflow its rectangle");
+        } else if tag.local() == b"cNvPr" {
+            ensure!(name.is_none(), "ambiguous one-cell drawing name");
+            name = Some(decode(tag.attr(b"name")?.context("missing drawing name")?)?);
+        } else if tag.local() == b"effectRef" {
+            ensure!(tag.attr(b"idx")? == Some(b"0"), "drawing has theme effects");
+        } else if tag.local() == b"ln" {
+            ensure!(tag.attr(b"w")?.map(decimal).transpose()?.unwrap_or(0) <= 25_400,
+                "drawing outline extends beyond its rectangle");
+        }
+        ensure!(tag.attr(b"rot")?.is_none(), "drawing has rotation");
+    }
+    let start_row = row.context("missing drawing row")?;
+    let height = height.context("missing drawing extent")?;
+    ensure!(start_row < MAX_ROWS && height > 0, "invalid one-cell drawing bounds");
+    offset.context("missing drawing row offset")?
+        .checked_add(height).context("drawing extent overflow")?;
+    Ok(OneCellDrawing { name: name.context("missing drawing name")? })
+}
+
+fn measured_point_rows(
+    top: f64, bottom: f64,
+    heights: &crate::regression::row_heights::SheetHeights,
+) -> Result<[u32; 2]> {
+    let padded_top = (top - 2.0).max(0.0);
+    let padded_bottom = bottom + 2.0;
+    let mut point = 0.0;
+    let mut next_row = 1;
+    let mut first = None;
+    let mut last = None;
+    for run in &heights.runs {
+        ensure!(run.start_row == next_row && run.end_row >= run.start_row
+            && run.end_row <= MAX_ROWS && run.height.is_finite() && run.height >= 0.0,
+            "invalid measured row coverage for drawing");
+        let count = run.end_row - run.start_row + 1;
+        let end = point + f64::from(count) * run.height;
+        if run.height > 0.0 && end >= padded_top && point <= padded_bottom {
+            let start_offset = ((padded_top - point) / run.height).floor().max(0.0) as u32;
+            let end_offset = ((padded_bottom - point) / run.height).floor().max(0.0) as u32;
+            first.get_or_insert(run.start_row + start_offset.min(count - 1));
+            last = Some(run.start_row + end_offset.min(count - 1));
+        }
+        point = end;
+        next_row = run.end_row + 1;
+    }
+    ensure!(bottom <= point, "drawing extends beyond measured row coverage");
+    // Include an adjacent row on either side of the measured rectangle.
+    Ok([first.context("drawing has no visible measured rows")?.saturating_sub(2),
+        last.context("drawing has no measured bottom")?.saturating_add(1).min(MAX_ROWS)])
 }
 
 fn inspect_drawings(
@@ -1022,6 +1136,57 @@ mod tests {
         assert_eq!(out.rows, vec![[99, 122]]);
         drawing_rows(br#"<x:wsDr><x:oneCellAnchor/></x:wsDr>"#, &mut out).unwrap();
         assert!(out.full_capture_reason.is_some());
+    }
+
+    fn one_cell_textbox() -> &'static [u8] {
+        br#"<wsDr><oneCellAnchor><from><col>18</col><row>3</row><rowOff>0</rowOff></from>
+            <ext cx="722634" cy="264560"/><sp><nvSpPr><cNvPr name="TextBox 16"/></nvSpPr>
+            <txBody><bodyPr vertOverflow="clip" horzOverflow="clip"><spAutoFit/></bodyPr></txBody>
+            </sp></oneCellAnchor></wsDr>"#
+    }
+
+    #[test]
+    fn one_cell_textboxes_use_actual_bounds_including_autofit_and_hidden_rows() {
+        use crate::regression::row_heights::{HeightRun, SheetHeights};
+        let heights = SheetHeights {sheet_index:1, sheet_name:"Data".into(), runs:vec![
+            HeightRun {start_row:1,end_row:100,height:15.0},
+        ]};
+        let mut indicators = SheetIndicators::default();
+        drawing_rows(one_cell_textbox(), &mut indicators).unwrap();
+        assert!(indicators.full_capture_reason.is_none());
+        let shape = serde_json::json!([{"name":"TextBox 16","visible":true,
+            "top":45.0,"height":20.83,"rotation":0.0}]);
+        assert_eq!(indicators.measured_drawing_rows(&heights, &shape).unwrap(), vec![[1,6]]);
+        // Excel can resize an autofitting text box beyond the XML extent.
+        let taller = serde_json::json!([{"name":"TextBox 16","visible":true,
+            "top":45.0,"height":90.0,"rotation":0.0}]);
+        assert_eq!(indicators.measured_drawing_rows(&heights, &taller).unwrap(), vec![[1,11]]);
+        let hidden = SheetHeights {sheet_index:1, sheet_name:"Data".into(), runs:vec![
+            HeightRun {start_row:1,end_row:2,height:15.0},
+            HeightRun {start_row:3,end_row:1000,height:0.0},
+            HeightRun {start_row:1001,end_row:1100,height:15.0},
+        ]};
+        let shape = serde_json::json!([{"name":"TextBox 16","visible":true,
+            "top":30.0,"height":20.0,"rotation":0.0}]);
+        assert_eq!(indicators.measured_drawing_rows(&hidden, &shape).unwrap(), vec![[0,1003]]);
+        assert!(indicators.measured_drawing_rows(&heights, &serde_json::Value::Null).is_err());
+        let outside = serde_json::json!([{"name":"TextBox 16","visible":true,
+            "top":1490.0,"height":30.0,"rotation":0.0}]);
+        assert!(indicators.measured_drawing_rows(&heights, &outside).is_err());
+    }
+
+    #[test]
+    fn one_cell_text_overflow_and_effects_retain_full_capture() {
+        let xml = std::str::from_utf8(one_cell_textbox()).unwrap();
+        for unsafe_xml in [
+            xml.replace("vertOverflow=\"clip\"", "vertOverflow=\"overflow\""),
+            xml.replace("<sp>", "<sp rot=\"90\">"),
+            xml.replace("<sp>", "<sp><effectRef idx=\"1\"/>"),
+        ] {
+            let mut indicators = SheetIndicators::default();
+            drawing_rows(unsafe_xml.as_bytes(), &mut indicators).unwrap();
+            assert!(indicators.full_capture_reason.is_some());
+        }
     }
 
     #[test]

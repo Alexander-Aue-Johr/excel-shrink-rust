@@ -43,6 +43,15 @@ intersecting any of these indicators across the original and profile variants:
 - Strict cell-value differences found using saved recalculation copies.
 - Differences in the row heights actually measured by Excel.
 
+For one-cell anchors, XML identifies the object and checks for unbounded effects
+or text overflow. The existing Office.js shape-boundary check also returns its
+name and actual rectangle, including Excel's automatic text-box sizing. These
+point coordinates are mapped through each client's measured row heights; the
+union of the resulting bands is retained with a small safety margin. Missing or
+ambiguous measurements, rotation and bounds outside measured rows retain the
+full-capture fallback. A rectangle changing after selection invalidates the
+sampled comparison instead of silently accepting its old bounds.
+
 Deleted areas remain represented by the original geometry. Conditional-formatting
 targets are not clipped to populated cells. Unknown layout changes, unsupported
 objects or extensions, changed global styles/shared strings, missing analysis

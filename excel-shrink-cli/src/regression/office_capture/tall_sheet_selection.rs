@@ -384,6 +384,27 @@ impl ResidentCapture {
                             .push("measured Excel row heights changed".into());
                     }
                 }
+                for heights in &self.snapshots[client].heights {
+                    if let Some(indicator) = indicators.get_mut(&heights.sheet_index) {
+                        let measured = self.drawing_bounds.get(client)
+                            .and_then(Value::as_array)
+                            .and_then(|sheets| sheets.iter().find(|sheet| sheet["sheet_index"] == heights.sheet_index))
+                            .map(|sheet| &sheet["drawing_bounds"])
+                            .unwrap_or(&Value::Null);
+                        match indicator.measured_drawing_rows(heights, measured) {
+                            Ok(rows) => {
+                                if !rows.is_empty() {
+                                    indicator.rows.extend(rows);
+                                    indicator.reasons.push("one-cell drawings bounded by measured Excel row heights".into());
+                                }
+                            }
+                            Err(error) => {
+                                indicator.full_capture_reason.get_or_insert_with(||
+                                    format!("Drawing extent unavailable: {error:#}"));
+                            }
+                        }
+                    }
+                }
             }
         }
         let mut keep = BTreeSet::new();

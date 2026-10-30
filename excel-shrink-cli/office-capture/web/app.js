@@ -92,12 +92,13 @@
   }
 
   async function verifyDrawingBounds(sheet, geometry, end) {
-    if (!sheet.drawing_fallback_required) return;
+    if (!sheet.drawing_fallback_required) return [];
     const shapes = await office(async context => {
       const collection = context.workbook.worksheets.getItem(sheet.name).shapes;
-      collection.load('items/left,items/top,items/width,items/height,items/rotation,items/visible');
+      collection.load('items/name,items/left,items/top,items/width,items/height,items/rotation,items/visible');
       await context.sync();
       return collection.items.map(shape => ({
+        name: shape.name,
         left: Number(shape.left), top: Number(shape.top),
         width: Number(shape.width), height: Number(shape.height),
         rotation: Number(shape.rotation), visible: shape.visible
@@ -118,6 +119,7 @@
         throw new Error(`Drawing extends beyond the capture range on ${sheet.name}`);
       }
     }
+    return shapes;
   }
 
   async function checkedWorksheet(sheet) {
