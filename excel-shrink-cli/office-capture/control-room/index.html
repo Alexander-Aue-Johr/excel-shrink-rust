@@ -25,6 +25,7 @@
         <label for="sweepProcesses">SIMULTANEOUS HASH-SWEEP PROCESSES</label>
         <div class="control-line"><input id="sweepProcesses" type="range" min="1" max="128" step="1" value="1" aria-describedby="sweepProcessesStatus"><strong id="sweepProcessesValue">1</strong></div>
         <small id="sweepProcessesStatus" role="status">Controls simultaneous sweep jobs after shrinking. Each job opens the Excel instances it needs; there is no separate Excel instance limit.</small>
+        <small id="excelProcessDemand" role="status">Checking sweep opening demand.</small>
       </div>
     <div class="control">
       <label for="prepareProcesses">SIMULTANEOUS SHRINK PROCESSES</label>
