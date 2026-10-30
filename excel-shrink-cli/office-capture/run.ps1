@@ -14,7 +14,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'ExcelProcessSlots.ps1')
 $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
 
 Import-Module (Join-Path $PSScriptRoot 'CaptureSetup.psm1') -DisableNameChecking
@@ -39,8 +38,6 @@ $controlUrl = 'http://127.0.0.1:' + $port
 $hostProcess = $null
 $excelProcess = $null
 $comparisonProcess = $null
-$originalSlot = $null
-$comparisonSlot = $null
 $comparisonAddInId = $null
 $comparisonRegistration = $false
 $relay = $null
@@ -185,11 +182,6 @@ try {
     $registrationDone = $true
     $excelExecutable = Find-ExcelExecutable
     Write-ClassicObservation 'original' 'opening'
-    $captureSlots = @(Enter-ExcelProcessSlots 2)
-    if ($captureSlots.Count -gt 0) {
-        $originalSlot = $captureSlots[0]
-        $comparisonSlot = $captureSlots[1]
-    }
     $excelProcess = $captureDesktop.Start($excelExecutable, ('/x ' + (Quote-Argument $workbookCopy)), $ownedProcesses)
     Write-ClassicObservation 'original' 'waiting_for_addin' $excelProcess
 
@@ -282,12 +274,6 @@ try {
         # Keep the host alive through the exit observations. The ownership job
         # still catches every remaining child if individual shutdown fails.
         if ($null -ne $ownedProcesses) { $ownedProcesses.Dispose() }
-        if ($null -eq $excelProcess -or $excelProcess.HasExited) {
-            Exit-ExcelProcessSlot $originalSlot
-        }
-        if ($null -eq $comparisonProcess -or $comparisonProcess.HasExited) {
-            Exit-ExcelProcessSlot $comparisonSlot
-        }
         Stop-OwnedProcess $hostProcess
         if ($null -ne $captureDesktop) { $captureDesktop.Dispose() }
         if ($comparisonRegistration) { Restore-AddIn $comparisonAddInId $comparisonPrevious }

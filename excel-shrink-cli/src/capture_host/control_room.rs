@@ -1342,7 +1342,7 @@ fn logical_cores() -> usize {
 }
 
 fn defaults() -> Value {
-    json!({"target_groups": 1, "excel_process_limit": 0, "prepare_processes": 1, "sweep_processes": 1, "shrink_threads": logical_cores(),
+    json!({"target_groups": 1, "prepare_processes": 1, "sweep_processes": 1, "shrink_threads": logical_cores(),
         "paused": false, "open_timeout_seconds": 600, "system_reserve_mib": 0,
         "job_timeout_seconds": 300, "equal_preview_width": 512, "capture_tile_megapixels": 32,
         "capture_batch_tiles": 1, "capture_context_tiles": 0, "capture_transport": "live-images", "hide_excel": false,
@@ -1355,8 +1355,15 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
         .as_object()
         .context("Expected a JSON object of control changes.")?;
     let mut next = current.clone();
+    next.as_object_mut()
+        .context("Expected current controls object.")?
+        .remove("excel_process_limit");
     let known = defaults();
     for (key, value) in fields {
+        // Retired settings from saved runs and already-open browser tabs are ignored.
+        if key == "excel_process_limit" {
+            continue;
+        }
         ensure!(known.get(key).is_some(), "Unknown control '{key}'.");
         if matches!(key.as_str(), "paused" | "hide_excel") {
             ensure!(value.is_boolean(), "{key} must be a boolean.");
@@ -1373,7 +1380,6 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
             let valid = match key.as_str() {
                 "equal_preview_width" => matches!(integer, 0 | 128 | 256 | 512 | 1024),
                 "target_groups" => integer >= 0,
-                "excel_process_limit" => integer >= 0,
                 "sweep_processes" => integer > 0,
                 "prepare_processes" | "shrink_threads" => {
                     integer > 0 && (integer as usize) <= logical_cores()
@@ -1689,19 +1695,19 @@ mod tests {
     }
 
     #[test]
-    fn excel_process_limit_allows_unlimited_and_large_values() -> Result<()> {
-        let current = defaults();
-        assert_eq!(current["excel_process_limit"], 0);
-        for limit in [0, 1, 8, 32, 100] {
-            let next = merge_controls(&current, &json!({"excel_process_limit":limit}))?;
-            assert_eq!(next["excel_process_limit"], limit);
-        }
-        for limit in [-1] {
-            assert!(merge_controls(&current, &json!({"excel_process_limit":limit})).is_err());
-        }
+    fn retired_excel_limit_does_not_gate_or_reset_sweep_concurrency() -> Result<()> {
+        let mut legacy = defaults();
+        legacy["excel_process_limit"] = json!(1);
+        legacy["sweep_processes"] = json!(7);
+        let next = merge_controls(&legacy, &json!({"excel_process_limit":32,"sweep_processes":12}))?;
+        assert!(next.get("excel_process_limit").is_none());
+        assert_eq!(next["sweep_processes"], 12);
+        let reloaded = merge_controls(&defaults(), &legacy)?;
+        assert!(reloaded.get("excel_process_limit").is_none());
+        assert_eq!(reloaded["sweep_processes"], 7);
+        assert!(merge_controls(&defaults(), &json!({"sweep_processes":0})).is_err());
         Ok(())
     }
-
     #[test]
     fn crc_equal_sheet_threshold_is_a_live_control() -> Result<()> {
         let current = defaults();

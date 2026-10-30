@@ -1291,7 +1291,7 @@ function updateControlInputs() {
         ? `Confirmed: ${values[key]} · applies to newly started sweep sessions.`
         : `Confirmed: ${values[key]}${running} · applies to newly started shrink processes · maximum ${logicalCores} logical cores.`;
   }
-  for (const [id, key] of [['targetGroups', 'target_groups'], ['excelProcessLimit', 'excel_process_limit'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) {
+  for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
   }
   if (document.activeElement !== $('captureTransport') && !dirtyControls.has('captureTransport')) {
@@ -1328,14 +1328,14 @@ function updateControlInputs() {
   $('activeGroups').textContent = `${active} admitted · ${values.target_groups ?? '—'} capture + ${state.queue?.prefetch_groups ?? 0} preparing`;
   const demand = state.queue?.excel_opening_demand;
   $('excelProcessDemand').textContent = demand?.observed_sessions
-    ? `${demand.waiting_workbooks} capture workbooks waiting to open in ${demand.waiting_sessions} sessions · ${demand.opening_workbooks} opening now. Sweep groups: ${values.sweep_processes ?? 1}; comparison groups: ${values.target_groups ?? '—'}. Excel limit: ${Number(values.excel_process_limit) === 0 ? 'unlimited' : values.excel_process_limit}.`
+    ? `${demand.waiting_workbooks} capture workbooks waiting to open in ${demand.waiting_sessions} sessions · ${demand.opening_workbooks} opening now. Sweep groups: ${values.sweep_processes ?? 1}; comparison groups: ${values.target_groups ?? '—'}. No separate Excel instance limit.`
     : 'No preparation capture sessions waiting to open. Recalculation starts are not included in this count.';
 }
 async function sendControl(change) {
   if (controlBusy) return; controlBusy = true;
   controlUpdates.beginWrite();
   const wasCapturePaused = Boolean(state.controls.paused);
-  for (const id of ['sweepProcesses', 'prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyExcelProcessLimit', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = true;
+  for (const id of ['sweepProcesses', 'prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = true;
   if (change.system_reserve_mib != null) $('applyReserve').textContent = 'Setting…';
   try {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
@@ -1344,7 +1344,7 @@ async function sendControl(change) {
     for (const [id, key] of [['sweepProcesses', 'sweep_processes'], ['prepareProcesses', 'prepare_processes'], ['shrinkThreads', 'shrink_threads']]) {
       if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     }
-    for (const [id, key] of [['targetGroups', 'target_groups'], ['excelProcessLimit', 'excel_process_limit'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
+    for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     updateControlInputs();
     if (change.capture_transport === $('captureTransport').value) dirtyControls.delete('captureTransport');
     const text = change.target_groups === 0
@@ -1352,7 +1352,6 @@ async function sendControl(change) {
         ? 'preparation continues; visual comparison waits at the barrier.'
         : 'active comparisons finish, then the run pauses.'}${wasCapturePaused ? ' The capture pause was lifted to allow this.' : ''}`
       : change.target_groups != null ? `Group target ${state.controls.target_groups} confirmed.`
-      : change.excel_process_limit != null ? `Excel process limit ${state.controls.excel_process_limit} confirmed.`
       : change.sweep_processes != null ? `${state.controls.sweep_processes} simultaneous hash-sweep groups confirmed for future starts.`
       : change.prepare_processes != null ? `${state.controls.prepare_processes} simultaneous shrink processes confirmed for future starts.`
       : change.shrink_threads != null ? `${state.controls.shrink_threads} Rayon threads per shrink process confirmed for future starts.`
@@ -1376,7 +1375,7 @@ async function sendControl(change) {
     updateControlInputs();
     if ('hide_excel' in change) $('hideExcel').checked = Boolean(state.controls.hide_excel);
   }
-  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['sweepProcesses', 'prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyExcelProcessLimit', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
+  finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['sweepProcesses', 'prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
 }
 function selectGroup(id) {
   if (id === state.groupId) return;
@@ -1965,11 +1964,6 @@ function wireControls() {
   $('groupRange').addEventListener('change', event => sendControl({ target_groups: Number(event.target.value) }));
   $('applyTarget').addEventListener('click', () => { const value = Number($('targetGroups').value); if (!Number.isSafeInteger(value) || value < 0) return setNotice('Enter a whole number of groups, at least 0.', true); sendControl({ target_groups: value }); });
   $('targetGroups').addEventListener('keydown', event => { if (event.key === 'Enter') $('applyTarget').click(); });
-  $('applyExcelProcessLimit').addEventListener('click', () => {
-    const value = Number($('excelProcessLimit').value);
-    if (!Number.isSafeInteger(value) || value < 0 || value > 2147483647) return setNotice('Enter a nonnegative Excel process limit; 0 means unlimited.', true);
-    sendControl({ excel_process_limit: value });
-  });
   $('pauseJobs').addEventListener('click', () => sendControl({ paused: !state.controls.paused }));
   $('applyTimeouts').addEventListener('click', () => {
     const open = Number($('openTimeout').value), job = Number($('jobTimeout').value);

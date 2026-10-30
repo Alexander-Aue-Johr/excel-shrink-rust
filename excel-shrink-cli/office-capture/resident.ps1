@@ -595,7 +595,6 @@ function Open-ResidentClient($spec, $visibilityOverride = $null) {
         if ($reservedClientCount -lt $specs.Count -or $reservedClientCount -gt 16) {
             throw 'Invalid resident client reservation.'
         }
-        $script:captureSlots = @(Enter-ExcelProcessSlots $reservedClientCount)
     }
     $id = [string]$spec.client_id
     if ($id -notmatch '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$') { throw 'Invalid resident client id.' }
@@ -697,7 +696,6 @@ $hostProcess = $null
 $registrations = @{}
 $clients = @{}
 $captureGroupSlot = $null
-$captureSlots = @()
 $reservedClientCount = 0
 $batchLifetime = $null
 $batchOwner = $null
@@ -875,9 +873,6 @@ try {
         $metrics.cleanup_job_released_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
         $unconfirmedClients = @(Confirm-ResidentClientExit $clients $metrics.clients)
         if ($unconfirmedClients.Count -eq 0) {
-            foreach ($slot in $captureSlots) {
-                Exit-ExcelProcessSlot $slot
-            }
             $metrics.cleanup_completed_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
             Add-SessionEvent 'owned_cleanup_completed' '' $null
         } else {
@@ -907,7 +902,7 @@ try {
     if ($null -ne $captureDesktop) { $captureDesktop.Dispose() }
     if ($null -ne $batchOwner) { $batchOwner.Dispose() }
     if ($null -ne $liveOwner) { $liveOwner.Dispose() }
-    Exit-ExcelProcessSlot $captureGroupSlot
+    Exit-CaptureGroupSlot $captureGroupSlot
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         try { Remove-ArchiveStage $stage; break }
         catch { if ($attempt -eq 19) { $metrics.cleanup_warning = $_.Exception.Message } else { Start-Sleep -Milliseconds 250 } }

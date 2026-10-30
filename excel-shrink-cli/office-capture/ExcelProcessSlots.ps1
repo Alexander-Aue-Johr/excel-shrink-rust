@@ -1,11 +1,10 @@
-function Get-ExcelSlotLimit([string]$Setting, [int]$Default, [int]$Maximum) {
+function Get-CaptureGroupLimit([string]$Setting, [int]$Default, [int]$Maximum) {
     $controlPath = [IO.Path]::Combine($env:EXCEL_SHRINK_EXCEL_SLOT_ROOT, 'control.json')
     if (-not [IO.File]::Exists($controlPath)) { return $Default }
     try {
         $control = [IO.File]::ReadAllText($controlPath) | ConvertFrom-Json
         $property = $control.PSObject.Properties[$Setting]
         if ($null -ne $property -and $property.Value -ge 0 -and $property.Value -le $Maximum) {
-            if ($Setting -eq 'excel_process_limit' -and $property.Value -eq 0) { return 0 }
             return [Math]::Max(1, [int]$property.Value)
         }
     } catch [IO.IOException] {
@@ -14,7 +13,7 @@ function Get-ExcelSlotLimit([string]$Setting, [int]$Default, [int]$Maximum) {
     return $Default
 }
 
-function Enter-ExcelSlot([string]$Prefix, [string]$Setting, [int]$Default, [int]$Maximum, [int]$Count = 1) {
+function Enter-CaptureSlot([string]$Prefix, [string]$Setting, [int]$Default, [int]$Maximum, [int]$Count = 1) {
     if (-not $env:EXCEL_SHRINK_EXCEL_SLOT_ROOT) { return }
     if ($Count -lt 1 -or $Count -gt $Maximum) { throw "Invalid $Prefix slot count: $Count" }
 
@@ -35,18 +34,15 @@ function Enter-ExcelSlot([string]$Prefix, [string]$Setting, [int]$Default, [int]
             continue
         }
         try {
-            $limit = Get-ExcelSlotLimit $Setting $Default $Maximum
-            $unlimited = $Prefix -eq 'excel' -and $limit -eq 0
-            if ($unlimited) { $limit = [int]::MaxValue }
+            $limit = Get-CaptureGroupLimit $Setting $Default $Maximum
             $occupied = 0
             $available = New-Object 'System.Collections.Generic.List[string]'
-            $scanLimit = if ($unlimited) { $Count } else { $limit }
+            $scanLimit = $limit
             foreach ($existing in [IO.Directory]::GetFiles($root, "$Prefix-*.lock")) {
                 $suffix = [IO.Path]::GetFileNameWithoutExtension($existing).Substring($Prefix.Length + 1)
                 $slotIndex = 0
                 if ([int]::TryParse($suffix, [ref]$slotIndex)) {
-                    $extra = if ($unlimited) { $Count } else { 0 }
-                    $scanLimit = [Math]::Max($scanLimit, $slotIndex + 1 + $extra)
+                    $scanLimit = [Math]::Max($scanLimit, $slotIndex + 1)
                 }
             }
             for ($index = 0; $index -lt $scanLimit; $index++) {
@@ -85,26 +81,18 @@ function Enter-ExcelSlot([string]$Prefix, [string]$Setting, [int]$Default, [int]
     }
 }
 
-function Enter-ExcelProcessSlot {
-    return Enter-ExcelSlot 'excel' 'excel_process_limit' 0 ([int]::MaxValue) 1
-}
-
-function Enter-ExcelProcessSlots([int]$Count) {
-    return Enter-ExcelSlot 'excel' 'excel_process_limit' 0 ([int]::MaxValue) $Count
-}
-
 function Enter-CaptureGroupSlot {
     if ($env:EXCEL_SHRINK_PREPARATION_SWEEP -eq '1') {
-        return Enter-ExcelSlot 'sweep' 'sweep_processes' 1 ([int]::MaxValue) 1
+        return Enter-CaptureSlot 'sweep' 'sweep_processes' 1 ([int]::MaxValue) 1
     }
     $default = 1
     $configured = 0
     if ([int]::TryParse($env:EXCEL_SHRINK_CAPTURE_GROUP_LIMIT, [ref]$configured)) {
         $default = [Math]::Max(1, [Math]::Min(128, $configured))
     }
-    return Enter-ExcelSlot 'capture' 'target_groups' $default 128 1
+    return Enter-CaptureSlot 'capture' 'target_groups' $default 128 1
 }
 
-function Exit-ExcelProcessSlot($Slot) {
+function Exit-CaptureGroupSlot($Slot) {
     if ($null -ne $Slot) { $Slot.Dispose() }
 }

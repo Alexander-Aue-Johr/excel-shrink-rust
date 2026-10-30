@@ -24,7 +24,7 @@
       <div class="control">
         <label for="sweepProcesses">SIMULTANEOUS HASH-SWEEP PROCESSES</label>
         <div class="control-line"><input id="sweepProcesses" type="range" min="1" max="128" step="1" value="1" aria-describedby="sweepProcessesStatus"><strong id="sweepProcessesValue">1</strong></div>
-        <small id="sweepProcessesStatus" role="status">Starts after all shrinking finishes; each sweep opens Original and the selected variant.</small>
+        <small id="sweepProcessesStatus" role="status">Controls simultaneous sweep jobs after shrinking. Each job opens the Excel instances it needs; there is no separate Excel instance limit.</small>
       </div>
     <div class="control">
       <label for="prepareProcesses">SIMULTANEOUS SHRINK PROCESSES</label>
@@ -36,11 +36,7 @@
       <div class="control-line"><input id="shrinkThreads" type="range" min="1" max="1" step="1" value="1" aria-describedby="shrinkThreadsStatus"><strong id="shrinkThreadsValue">1</strong></div>
       <small id="shrinkThreadsStatus" role="status">Waiting for confirmed value.</small>
     </div>
-    <div class="control">
-      <label for="excelProcessLimit">EXCEL PROCESS LIMIT · 0 = UNLIMITED</label>
-      <div class="control-line"><input id="excelProcessLimit" type="number" min="0" step="1" value="0" aria-describedby="excelProcessDemand"><button id="applyExcelProcessLimit">Apply</button></div>
-      <small id="excelProcessDemand" role="status">Checking Excel opening demand.</small>
-    </div>
+
   </section>
   <section class="controls run-controls" aria-label="Active run controls">
     <div class="control">

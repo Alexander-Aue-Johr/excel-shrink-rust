@@ -27,9 +27,9 @@ that are still opening have an indeterminate row until their sweep extent is kno
 `prepare_processes` controls simultaneous shrink jobs; `shrink_threads` sets
 Rayon threads per shrink job. `sweep_processes` independently controls concurrent
 hash-sweep groups, each normally using two Excel instances. The comparison-group
-target does not gate sweeps. `excel_process_limit` defaults to `0` (unlimited);
-a positive value is an optional shared limit, without the former 32-slot ceiling.
-Existing saved positive limits are retained until explicitly changed.
+target does not gate sweeps. There is no separate limit on owned Excel instances.
+The sweep slider alone controls simultaneous sweep jobs; each job opens the Excel
+instances it needs. Retired `excel_process_limit` settings in saved runs are ignored.
 
 Sweeps save both passes, per-tile and per-sheet SHA-256 hashes, and a global hash
 in a `*.capture-hashes.json` sidecar beside the preparation ZIP. The sidecar is

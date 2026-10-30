@@ -5,7 +5,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'ExcelProcessSlots.ps1')
 
 function Write-RecalcProgress([string]$message) {
     # Rust polls this file while Excel is running; neither handle may exclude readers.
@@ -31,7 +30,6 @@ public static class ExcelShrinkRecalcWin32 {
 $excel = $null
 $workbook = $null
 $settingsBook = $null
-$excelSlot = $null
 
 $stage = Join-Path `
     ([System.IO.Path]::GetTempPath()) `
@@ -50,7 +48,6 @@ try {
     Copy-Item -LiteralPath $InputPath -Destination $localInput
 
     Write-RecalcProgress 'starting COM application'
-    $excelSlot = Enter-ExcelProcessSlot
     $excel = New-Object -ComObject Excel.Application
 
     $excelProcessId = [uint32]0
@@ -144,7 +141,6 @@ finally {
     }
 
     $ownedProcesses.Dispose()
-    Exit-ExcelProcessSlot $excelSlot
     Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 }
 
