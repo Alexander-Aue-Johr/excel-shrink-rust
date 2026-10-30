@@ -4,6 +4,19 @@ use super::*;
 use crate::regression::office_capture::ResidentCapture;
 use std::collections::{BTreeMap, BTreeSet};
 
+fn screened_sheet_summaries(evidence: &Value) -> Vec<Value> {
+    evidence["sheets"].as_array().into_iter().flatten()
+        .filter(|sheet| sheet["original_sha256"] == sheet["variant_sha256"])
+        .map(|sheet| json!({
+            "index":sheet["sheet_index"], "name":sheet["sheet_name"],
+            "status":if sheet["capture_coverage"]["omitted_tiles"].as_u64().unwrap_or(0) > 0 {
+                "sampled_same"
+            } else { "hash_screened_same" },
+            "capture_coverage":sheet["capture_coverage"],
+            "comparison_method":"stable PNG hashes; no pixel replay"
+        })).collect()
+}
+
 fn preparation_screen_sheets(
     record: &Value,
     profile: &str,
@@ -288,9 +301,10 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
         target["status"] = json!("hash-screened-equal");
         target["checks_complete"] = json!(false);
         target["image_comparison"] = json!("preparation hash screening only");
+        target["sheets"] = json!(screened_sheet_summaries(&evidence));
         target["preparation_hash_screen"] = evidence;
         record["status"] = json!("screened-equal");
-        record["visual_coverage"] = json!("stable preparation hashes; no visual comparison");
+        record["visual_coverage"] = json!("stable preparation hashes in selected ranges; see per-sheet coverage for omissions; no pixel replay");
         return write_record(&job.record, record);
     }
     let mut inputs = json!({"variants":{}});
@@ -338,7 +352,14 @@ pub(super) fn compare(job: &MemberJob, record: &mut Value) -> Result<()> {
             hash_screen && screen_sheets.is_some(),
         )?;
         if hash_screen && screen_sheets.is_some() {
+            let screened = screened_sheet_summaries(&record["preparation_hash_screen"]);
             let target = profile_mut(record, name)?;
+            let sheets = target["sheets"].as_array_mut().context("missing visual sheets")?;
+            for summary in screened {
+                if !sheets.iter().any(|sheet| sheet["index"] == summary["index"]) {
+                    sheets.push(summary);
+                }
+            }
             target["requested_sheets"] = json!("preparation hash mismatch sheets");
             target["coverage_scope"] = json!("sheets with differing stable preparation hashes");
         }
@@ -511,6 +532,21 @@ mod screen_tests {
         fs::write(&variant, b"changed")?;
         assert!(preparation_screen_sheets(&record, "default", &original, &variant)?.is_none());
         Ok(())
+    }
+
+    #[test]
+    fn hash_equal_sheet_summaries_preserve_omissions_without_claiming_pixel_checks() {
+        let summaries = screened_sheet_summaries(&json!({"sheets":[
+            {"sheet_index":1,"sheet_name":"CSV","original_sha256":"a","variant_sha256":"a",
+                "capture_coverage":{"omitted_tiles":9996,"captured_tiles":4}},
+            {"sheet_index":2,"original_sha256":"b","variant_sha256":"c"},
+            {"sheet_index":3,"original_sha256":"d","variant_sha256":"d"}
+        ]}));
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0]["status"], "sampled_same");
+        assert_eq!(summaries[0]["capture_coverage"]["omitted_tiles"], 9996);
+        assert_eq!(summaries[1]["status"], "hash_screened_same");
+        assert_eq!(summaries[0]["comparison_method"], "stable PNG hashes; no pixel replay");
     }
 }
 

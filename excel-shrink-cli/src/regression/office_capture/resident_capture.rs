@@ -334,7 +334,7 @@ fn screen_sheet_hashes(original: &Snapshot, variant: &Snapshot) -> Result<Vec<Va
 }
 
 impl ResidentCapture {
-    /// Capture every negotiated tile twice while both Excel workbooks remain open.
+    /// Capture selected negotiated tiles twice while both Excel workbooks remain open.
     /// The returned hashes are screening evidence, not a pixel comparison result.
     /// Captures both open workbooks twice, with a Full recalculation between sweeps.
     ///
@@ -361,11 +361,17 @@ impl ResidentCapture {
             self.wait(&client, &command)?;
         }
         self.screening_pass = 2;
-        self.capture_full_sweep(&clients)?;
+        self.capture_selected_sweep(&clients)?;
         let second_original = self.snapshot("original")?;
         let second_variant = self.snapshot(profile)?;
-        let first = screen_sheet_hashes(&first_original, &first_variant)?;
-        let second = screen_sheet_hashes(&second_original, &second_variant)?;
+        let mut first = screen_sheet_hashes(&first_original, &first_variant)?;
+        let mut second = screen_sheet_hashes(&second_original, &second_variant)?;
+        for sheet in first.iter_mut().chain(second.iter_mut()) {
+            let index = sheet["sheet_index"].as_u64().context("missing screening sheet index")?;
+            if let Some(coverage) = self.capture_coverage.get(&(index as usize)) {
+                sheet["capture_coverage"] = coverage.clone();
+            }
+        }
         let stable = first == second;
         let changed_sheets: Vec<_> = second
             .iter()
@@ -374,6 +380,7 @@ impl ResidentCapture {
             .collect();
         Ok(json!({
             "version": 1,
+            "capture_policy": "tall-sheet-v1",
             "profile": profile,
             "hash_algorithm": "SHA-256",
             "hash_domain": "ordered tile metadata, finalized PNG hashes and row heights",
@@ -534,11 +541,7 @@ impl ResidentCapture {
             &directory.join("capacity.json"),
             &json!({"reserved_clients": reserved_clients}),
         )?;
-        let live = if screening {
-            None
-        } else {
-            live::LiveCapture::from_environment(&directory, original, &aliases)?
-        };
+        let live = live::LiveCapture::from_environment(&directory, original, &aliases)?;
         tall_sheet_selection::prepare_recalc_inputs(
             original,
             variants,
@@ -915,12 +918,12 @@ impl ResidentCapture {
                 "resident tile partitions still differ"
             );
         }
+        self.select_tall_sheet_captures(&clients)?;
         if self.sweep_mode {
-            self.capture_full_sweep(&clients)?;
+            self.capture_selected_sweep(&clients)?;
             self.initial_aligned = true;
             return Ok(());
         }
-        self.select_tall_sheet_captures(&clients)?;
         if self.live.is_some() {
             self.capture_synchronized(&clients)?;
         } else {
@@ -1286,7 +1289,7 @@ impl ResidentCapture {
             }
         }
         result["capture_policy"] = json!(if self.sweep_mode {
-            "autonomous-full-sweep-v1"
+            "autonomous-selected-sweep-v1"
         } else {
             "tall-sheet-v1"
         });

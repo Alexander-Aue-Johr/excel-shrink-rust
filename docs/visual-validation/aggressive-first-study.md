@@ -89,9 +89,16 @@ start of a sweep. The current geometry is full-width row bands, not a 2D grid.
 
 The recaptured evidence must reproduce its offered digest and geometry. Drift
 is reported as unstable, not as evidence of a shrinking regression. Equal tiles
-have no stored preview unless requested by another evidence operation. Full
-sweeps bypass edge-only and deferred CRC sampling; hard capture limits still
-produce explicit incomplete checks.
+have no stored preview unless requested by another evidence operation. Hash
+sweeps use the existing tall-sheet selection policy: ordinary sheets are fully
+captured; unusually tall sheets retain edge samples and candidate bands from
+XML, formatting, drawings, saved recalculations and measured row heights.
+Unbounded indicators or unavailable analysis retain the full-capture fallback.
+Both hash passes use the same selected bands. Per-sheet coverage records omitted
+ranges explicitly; equal sampled hashes do not certify the omitted regions.
+The Observatory preserves omitted tiles, and reports retain coverage even for
+hash-equal sheets that require no pixel replay. Changing sampling settings
+invalidates sampled sweep caches, while historical full sweeps remain reusable.
 
 ## Display indicators
 

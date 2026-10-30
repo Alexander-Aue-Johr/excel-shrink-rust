@@ -107,19 +107,37 @@ fn mismatch_selection(original: &Snapshot, primary: &Value, distance: usize) -> 
     })
 }
 
+fn selected_sweep_configs(snapshot: &Snapshot, configs: &[Value]) -> Result<Vec<Value>> {
+    let mut configs = configs.to_vec();
+    for config in &mut configs {
+        let index = config["index"].as_u64().context("missing sheet index")? as usize;
+        let tiles: Vec<_> = snapshot.tiles.iter()
+            .filter(|tile| tile.sheet_index == index).collect();
+        let first = tiles.first().context("selected sheet has no captures")?;
+        config["tile_rows"] = json!(tiles.iter().map(|tile| tile.core_rows).collect::<Vec<_>>());
+        config["capture_end_column"] = json!(first.capture_right_column);
+    }
+    Ok(configs)
+}
+
 impl ResidentCapture {
-    pub(in crate::regression) fn capture_full_sweep(
+    pub(in crate::regression) fn capture_selected_sweep(
         &mut self,
         clients: &BTreeSet<String>,
     ) -> Result<()> {
         let distance = context_distance(self.live.as_ref())?;
         let reference = self.snapshot("original")?;
+        let sampled = self.capture_coverage.values()
+            .any(|coverage| coverage["omitted_tiles"].as_u64().unwrap_or(0) > 0);
         if let Some(live) = &mut self.live {
-            live.plan(&reference)?;
-            live.plan_peers(&self.snapshots, &self.aliases)?;
+            // Selection already published the full plan with explicit omitted bands.
+            if self.capture_coverage.is_empty() {
+                live.plan(&reference)?;
+                live.plan_peers(&self.snapshots, &self.aliases)?;
+            }
             live.state["status"] = json!("hashing");
-            live.state["capture_settings"]["full_sweep"] = json!(true);
-            live.state["capture_settings"]["sampling_applies"] = json!(false);
+            live.state["capture_settings"]["full_sweep"] = json!(!sampled);
+            live.state["capture_settings"]["sampling_applies"] = json!(sampled);
             live.state["capture_pipeline"] = json!({"mode":"autonomous-hash-sweep", "context_distance":distance,
                 "retained_images_per_client":0,"transport":"hash-sweep","hash_domain":"finalized PNG SHA-256","sweep_complete":false});
             live.save()?;
@@ -127,7 +145,8 @@ impl ResidentCapture {
         // Queue every peer before waiting: a fast client does not wait for other
         // Excel instances between tiles, and its result retains metadata only.
         for client in clients {
-            let configs = self.configs[client].clone();
+            let configs = selected_sweep_configs(&self.snapshots[client], &self.configs[client])?;
+            self.configs.insert(client.clone(), configs.clone());
             let command = self.issue(
                 client,
                 json!({"kind":"capture","sheets":configs,
@@ -514,6 +533,40 @@ impl ResidentCapture {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sparse_sweep_preserves_omitted_bands_on_both_passes() -> Result<()> {
+        let snapshot = Snapshot { command: "plan".into(), heights: vec![], tiles: vec![
+            tile(0, 1, [0, 100]), tile(9999, 1, [999900, 1000000]),
+        ] };
+        let configs = vec![json!({"index":1,"bottom_row":999999})];
+        let first = selected_sweep_configs(&snapshot, &configs)?;
+        assert_eq!(first[0]["tile_rows"], json!([[0,100],[999900,1000000]]));
+        assert_eq!(selected_sweep_configs(&snapshot, &first)?, first);
+        assert!(selected_sweep_configs(&snapshot, &[json!({"index":2})]).is_err());
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "opens an explicitly supplied original/default fixture in Excel"]
+    fn existing_tall_workbook_hash_sweep() -> Result<()> {
+        let root = PathBuf::from(std::env::var_os("EXCEL_SHRINK_SWEEP_FIXTURE")
+            .context("set EXCEL_SHRINK_SWEEP_FIXTURE")?);
+        let directory = artifact_cache::unique_path(&root, "capture")?;
+        let mut session = ResidentCapture::start_screening(&root.join("original.xlsx"),
+            "default", &root.join("default.xlsx"), &directory)?;
+        let result = session.screen_twice("default");
+        let finished = session.finish();
+        let result = result?;
+        finished?;
+        fs::write(root.join("screen.json"), serde_json::to_vec_pretty(&result)?)?;
+        let sheets = result["sheets"].as_array().context("missing sheets")?;
+        ensure!(sheets.iter().any(|sheet| sheet["capture_coverage"]["omitted_tiles"].as_u64().unwrap_or(0) > 0),
+            "fixture did not exercise tall-sheet omissions");
+        for sheet in sheets {
+            println!("{}: {}", sheet["sheet_name"], sheet["capture_coverage"]);
+        }
+        Ok(())
+    }
     fn tile(index: usize, sheet: usize, rows: [u32; 2]) -> Tile {
         Tile {
             sheet_index: sheet,

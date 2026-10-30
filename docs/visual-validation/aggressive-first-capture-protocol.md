@@ -9,7 +9,7 @@ keep their existing transport.
 1. Clients negotiate worksheet bounds and common full-width row bands. Worksheet
    geometry is read independently; tile numbers alone never establish identity.
 2. The coordinator sends one `capture` command to every initial client before
-   waiting for any result. Each client captures every negotiated sheet and tile,
+   waiting for any result. Each client captures the selected negotiated tiles,
    hashes its finalized PNG, releases the encoded image and continues locally.
    Responses retain geometry and SHA-256 metadata, not image buffers.
 3. After all responses arrive, differing PNG hashes or dimensions identify the
