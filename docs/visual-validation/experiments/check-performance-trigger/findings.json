@@ -38,5 +38,45 @@
     "2 cells were optimized to improve workbook performance."
   ],
   "other_webview2_pages_found": false,
-  "production_runner_modified_or_restarted": false
+  "production_runner_modified_or_restarted": false,
+  "private_desktop_window_message_runs": [
+    {
+      "excel_desktop": "es-capture-953bf18fb18d4dc380887b7da157cf44",
+      "probe_desktop": "es-capture-953bf18fb18d4dc380887b7da157cf44",
+      "input_desktop": "Default",
+      "input_desktop_unchanged": true,
+      "optimization": {
+        "method": "window_messages",
+        "button": "Optimize all",
+        "patterns": [],
+        "status": "completion_text_observed",
+        "excel_visible_at_action": true
+      },
+      "xml_evidence": {
+        "worksheet_xml_identical": false,
+        "z10000_before": true,
+        "z10000_after": false
+      },
+      "real_breakpoint_hit": true
+    },
+    {
+      "excel_desktop": "es-capture-ba86135dec674b3d821aa6f6a7cd126d",
+      "probe_desktop": "es-capture-ba86135dec674b3d821aa6f6a7cd126d",
+      "input_desktop": "Default",
+      "input_desktop_unchanged": true,
+      "optimization": {
+        "method": "window_messages",
+        "button": "Optimize all",
+        "patterns": [],
+        "status": "completion_text_observed",
+        "excel_visible_at_action": true
+      },
+      "xml_evidence": {
+        "worksheet_xml_identical": false,
+        "z10000_before": true,
+        "z10000_after": false
+      },
+      "real_breakpoint_hit": true
+    }
+  ]
 }
