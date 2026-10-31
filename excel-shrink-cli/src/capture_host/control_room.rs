@@ -294,13 +294,18 @@ async fn capture_workers(root: &Path, queue: &Value) -> Vec<Value> {
             } else {
                 (&Value::Null, "sheet passes")
             };
+            let current_matches = sweep.is_object()
+                && current["command_id"] == sweep["command_id"]
+                && current["sheet_index"] == sweep["sheet_index"];
             workers.push(json!({"group_id":id,"attempt_id":group["attempt_id"],
                 "workbook":group["workbook"],"profile":profile,"pid":client["pid"],
                 "process_started_unix_ms":client["process_started_unix_ms"],
                 "state":client["monitor"]["state"],"sheet_name":progress["sheet_name"],
                 "sheet_index":progress["sheet_index"],"completed":progress["completed"],
                 "total":progress["total"],"unit":unit,"pass":progress["pass"],
-                "passes":progress["passes"],"updated_unix_ms":progress["updated_unix_ms"]}));
+                "passes":progress["passes"],"updated_unix_ms":progress["updated_unix_ms"],
+                "captures_completed":if current_matches {current["completed"].clone()} else {Value::Null},
+                "captures_total":if current_matches {current["total"].clone()} else {Value::Null}}));
         }
     }
     workers
@@ -1385,7 +1390,7 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
                     integer > 0 && (integer as usize) <= logical_cores()
                 }
                 "capture_tile_megapixels" => (1..=64).contains(&integer),
-                "capture_batch_tiles" => (1..=16).contains(&integer),
+                "capture_batch_tiles" => (1..=1024).contains(&integer),
                 "capture_context_tiles" => (0..=16).contains(&integer),
                 "system_reserve_mib" => (0..=65536).contains(&integer),
                 _ => integer > 0,
@@ -1485,7 +1490,13 @@ mod tests {
                 "sweep_progress":{"command_id":"capture-1","sheet_name":"Second",
                     "completed":1,"total":6,"pass":1,"passes":2}}}}}});
         std::fs::write(session.join("metrics.json"), serde_json::to_vec(&metrics)?)?;
+        metrics["clients"]["original"]["monitor"]["pane_resources"]["capture_progress"] =
+            json!({"command_id":"capture-1","sheet_index":2,"completed":3,"total":8});
+        metrics["clients"]["original"]["monitor"]["pane_resources"]["sweep_progress"]["sheet_index"] = json!(2);
+        std::fs::write(session.join("metrics.json"), serde_json::to_vec(&metrics)?)?;
         let waiting_workers = capture_workers(&root, &sweeping).await;
+        assert_eq!(waiting_workers[0]["captures_completed"], 3);
+        assert_eq!(waiting_workers[0]["captures_total"], 8);
         assert_eq!(waiting_workers.len(), 1);
         assert_eq!(waiting_workers[0]["completed"], 1);
         assert_eq!(waiting_workers[0]["total"], 6);
@@ -1493,11 +1504,13 @@ mod tests {
         assert_eq!(waiting_workers[0]["unit"], "sheet passes");
         let progress = &mut metrics["clients"]["original"]["monitor"]["pane_resources"]["sweep_progress"];
         progress["sheet_name"] = json!("Third");
+        progress["sheet_index"] = json!(3);
         progress["completed"] = json!(5);
         progress["pass"] = json!(2);
         std::fs::write(session.join("metrics.json"), serde_json::to_vec(&metrics)?)?;
         let next_sheet = capture_workers(&root, &sweeping).await;
         assert_eq!(next_sheet.len(), 1);
+        assert!(next_sheet[0]["captures_total"].is_null());
         assert_eq!(next_sheet[0]["pid"], waiting_workers[0]["pid"]);
         assert_eq!(next_sheet[0]["attempt_id"], waiting_workers[0]["attempt_id"]);
         assert_eq!(next_sheet[0]["completed"], 5);

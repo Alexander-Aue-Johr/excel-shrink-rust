@@ -37,6 +37,27 @@ across both hash passes (for five sheets, 0 through 10 sheet passes), labels the
 current sheet and pass inside the bar, and stays visible between commands. A sheet
 transition updates that existing row instead of adding a per-sheet bar. Processes
 that are still opening have an indeterminate row until their sweep extent is known.
+The same row also shows completed/planned captures for the current sheet. Its
+capture count resets on sheet changes; sheet-pass progress remains cumulative.
+
+The Observatory's **Captures per sync** slider accepts 1–1024. It applies to newly
+opened workbook sessions, including autonomous hash sweeps. Sweeps queue at most
+64 megapixels of same-sheet images per `context.sync()`, hash each returned PNG,
+and release its bytes before the next batch. Small tiles can share a much larger
+batch than large tiles. The evidence-retention paths still cap batches at 16 images.
+`EXCEL_SHRINK_CAPTURE_BATCH_TILES` selects the same limit for standalone captures.
+
+Office image results are unavailable until `context.sync()` completes; a full
+workbook sweep with no synchronization cannot read or hash its images. HTTP
+heartbeats run independently every five seconds while Office is awaiting a sync.
+The capture count advances as returned images are finalized, not while Excel is
+still rendering a pending batch. Full recalculation remains a separate confirmed
+step between sweeps and waits for Excel's calculation state to become `Done`.
+Capture timing evidence includes `capture_syncs` and `max_capture_batch_tiles`.
+The ignored `default_only_preparation_excel_fixture` test can compare batch sizes
+1, 16, 1024 and 1 on the same prepared ZIP when
+`EXCEL_SHRINK_SWEEP_BATCH_BENCHMARK=1` is set; it verifies identical global hashes
+and an unchanged ZIP SHA-256 and writes `batch-benchmark.json` in its test output.
 
 `prepare_processes` controls simultaneous shrink jobs; `shrink_threads` sets
 Rayon threads per shrink job. `sweep_processes` independently controls concurrent

@@ -34,7 +34,12 @@ export function createCaptureProgressRow() {
         && Number.isSafeInteger(completed) && completed >= 0;
       const sheet = worker.sheet_name || phaseLabel(worker.state || 'opening');
       const pass = worker.passes > 1 ? ` · pass ${worker.pass}/${worker.passes}` : '';
-      label.textContent = `${sheet} · ${measured ? `${completed} / ${total} ${worker.unit || 'captures'}` : 'Waiting for sheet progress'}${pass}`;
+      const captureTotal = worker.captures_total;
+      const captureDone = worker.captures_completed;
+      const captures = Number.isSafeInteger(captureTotal) && captureTotal > 0
+        && Number.isSafeInteger(captureDone) && captureDone >= 0 && captureDone <= captureTotal
+        ? ` · ${captureDone} / ${captureTotal} captures` : '';
+      label.textContent = `${sheet} · ${measured ? `${completed} / ${total} ${worker.unit || 'captures'}` : 'Waiting for sheet progress'}${captures}${pass}`;
       track.setAttribute('aria-label', `${worker.workbook}: ${sheet}`);
       track.setAttribute('aria-valuetext', label.textContent);
       if (measured) {

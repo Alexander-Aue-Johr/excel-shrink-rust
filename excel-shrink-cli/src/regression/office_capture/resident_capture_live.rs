@@ -137,7 +137,7 @@ impl LiveCapture {
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .or_else(|| controls["capture_batch_tiles"].as_u64())
-            .filter(|value| (1..=16).contains(value))
+            .filter(|value| (1..=1024).contains(value))
             .unwrap_or(1);
         live.state["capture_settings"] = json!({
             "tile_megapixels":megapixels,"batch_tiles":batch_tiles,
@@ -218,11 +218,15 @@ impl LiveCapture {
             .unwrap_or(Value::Null);
         self.save()
     }
-    fn batch_tiles(&self) -> usize {
+    pub(super) fn sweep_batch_tiles(&self) -> usize {
         self.state["capture_settings"]["batch_tiles"]
             .as_u64()
-            .filter(|count| (1..=16).contains(count))
+            .filter(|count| (1..=1024).contains(count))
             .unwrap_or(1) as usize
+    }
+    fn batch_tiles(&self) -> usize {
+        // Evidence paths retain PNGs until the host decides which to keep.
+        self.sweep_batch_tiles().min(16)
     }
     fn preview_width(&self) -> u32 {
         self.controls()["equal_preview_width"]

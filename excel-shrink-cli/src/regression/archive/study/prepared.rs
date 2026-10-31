@@ -1312,6 +1312,25 @@ mod tests {
             job.work.join("preparation-capture/metrics.json"),
         )?)?;
         let sheet_passes = 2 * record["preparation_hash_screen"]["sheets"].as_array().unwrap().len();
+        if std::env::var_os("EXCEL_SHRINK_SWEEP_BATCH_BENCHMARK").is_some() {
+            let expected = record["preparation_hash_screen"]["global_sha256"].clone();
+            let mut measurements = Vec::new();
+            for (iteration, batch) in [1, 16, 1024, 1].into_iter().enumerate() {
+                job.work = root.join(format!("batch-{iteration}-{batch}"));
+                fs::create_dir_all(&job.work)?;
+                std::env::set_var("EXCEL_SHRINK_CAPTURE_BATCH_TILES", batch.to_string());
+                fs::remove_file(job.bundle.as_ref().unwrap().with_extension("capture-hashes.json"))?;
+                let started = Instant::now();
+                prepare(&job, &mut record, LogLevel::Warn)?;
+                assert!(record["hash_sweep_error"].is_null(), "{}", record["hash_sweep_error"]);
+                assert_eq!(record["preparation_hash_screen"]["global_sha256"], expected);
+                assert_eq!(artifact_cache::hash_file(job.bundle.as_ref().unwrap())?, before_sweep);
+                measurements.push(json!({"batch":batch,"elapsed_ms":started.elapsed().as_millis(),
+                    "timings":record["preparation_hash_screen"]["diagnostic_timings"]}));
+            }
+            fs::write(root.join("batch-benchmark.json"), serde_json::to_vec_pretty(&measurements)?)?;
+            println!("SWEEP_BATCH_BENCHMARK {}", json!({"output":root.join("batch-benchmark.json")}));
+        }
         // Launcher metrics are periodic and may lag the final command at exit.
         // The acknowledged responses contain the exact final pane measurements.
         for client in metrics["clients"].as_object().context("missing Excel clients")?.keys() {

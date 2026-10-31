@@ -707,3 +707,51 @@ test('autonomous sweep refuses a witness when later workbook rendering has chang
     error => error.code === 'CAPTURE_CHANGED');
   assert.equal(f.uploads.length, 0);
 });
+
+test('sweep batches reduce Office syncs without changing PNG hashes or retaining images', async () => {
+  const single = fixture(), batched = fixture();
+  const a = await single.worker.execute({id: 'a', kind: 'capture', sheets: [single.sheet]});
+  const b = await batched.worker.execute({id: 'b', kind: 'capture', batch_tiles: 1024, sheets: [batched.sheet]});
+  assert.deepEqual(b.tiles, a.tiles);
+  assert.deepEqual(single.captureBatches, [1, 1, 1, 1]);
+  assert.deepEqual(batched.captureBatches, [4]);
+  assert.equal(a.timings.capture_syncs, 4);
+  assert.equal(b.timings.capture_syncs, 1);
+  assert.equal(b.timings.max_capture_batch_tiles, 4);
+  assertReleased(batched.worker);
+});
+
+test('sweep pixel budget splits a large requested batch before allocating images', async () => {
+  const f = fixture('fixture.xlsx', {width: 10000000, pixelBudget: 64000000});
+  await f.worker.execute({id: 'bounded', kind: 'capture', batch_tiles: 1024, sheets: [f.sheet]});
+  assert.deepEqual(f.captureBatches, [2, 2]);
+  assertReleased(f.worker);
+});
+
+test('capture progress remains readable while Office is inside a batched sync', async () => {
+  const started = deferred(), release = deferred();
+  const f = fixture('fixture.xlsx', {async sync(ranges) {
+    if (ranges.length) { started.resolve(); await release.promise; }
+  }});
+  const task = f.worker.execute({id: 'live', kind: 'capture', batch_tiles: 1024, sheets: [f.sheet]});
+  await started.promise;
+  try {
+    const resources = f.worker.resources();
+    assert.equal(resources.capture_progress.total, 4);
+    assert.equal(resources.capture_progress.completed, 0);
+    assert.equal(resources.active_batch_tiles, 4);
+    assert.equal(resources.sweep_progress.completed, 0);
+  } finally { release.resolve(); }
+  await task;
+  assertReleased(f.worker);
+});
+
+test('sweep releases raw images when hashing fails partway through a batch', async () => {
+  let calls = 0;
+  const f = fixture('fixture.xlsx', {async crop(base64) {
+    if (++calls === 2) throw new Error('Decode failed');
+    return base64;
+  }});
+  await assert.rejects(f.worker.execute({id: 'failed', kind: 'capture', batch_tiles: 1024, sheets: [f.sheet]}), /Decode failed/);
+  assertReleased(f.worker);
+});

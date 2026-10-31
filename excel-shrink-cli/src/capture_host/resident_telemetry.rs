@@ -265,8 +265,8 @@ fn capture_progress(source: &Value) -> Option<Value> {
             "capture" | "images" | "capture_images" | "capture_hashes"
         )
         || index == 0
-        || total.is_some_and(|total| total > 4096 || completed > total)
-        || completed > 4096
+        || total.is_some_and(|total| total > 131072 || completed > total)
+        || completed > 131072
     {
         return None;
     }
@@ -350,6 +350,8 @@ fn command_timing(source: &Value) -> Option<Value> {
         "result_attempts",
         "peak_pending_encoded_bytes",
         "pipeline_overlap_count",
+        "capture_syncs",
+        "max_capture_batch_tiles",
     ] {
         if let Some(value) = source[key].as_u64() {
             timing[key] = json!(value);
@@ -416,6 +418,15 @@ fn pick(source: &Value, names: &[&str]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capture_counts_cover_large_sheet_plans_and_reject_impossible_counts() {
+        let mut value = json!({"command_id":"capture-1","kind":"capture",
+            "sheet_name":"Large","sheet_index":1,"completed":5000,"total":131072});
+        assert_eq!(capture_progress(&value).unwrap()["completed"], 5000);
+        value["completed"] = json!(131073);
+        assert!(capture_progress(&value).is_none());
+    }
 
     #[test]
     fn sweep_sheet_counts_survive_between_commands_and_reject_impossible_totals() {

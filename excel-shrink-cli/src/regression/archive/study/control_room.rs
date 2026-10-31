@@ -176,8 +176,8 @@ impl Controls {
             "capture size must be 1..64 MP"
         );
         ensure!(
-            (1..=16).contains(&value.capture_batch_tiles),
-            "capture batch must be 1..16 tiles"
+            (1..=1024).contains(&value.capture_batch_tiles),
+            "capture batch must be 1..1024 tiles"
         );
         ensure!(
             (1..=i32::MAX as u32).contains(&value.tall_sheet_threshold)
@@ -998,13 +998,15 @@ mod tests {
         assert!(!legacy.hide_excel);
         let mut experimental = value.clone();
         experimental["capture_tile_megapixels"] = json!(64);
+        experimental["capture_batch_tiles"] = json!(1024);
         write(&root.join("control.json"), &experimental)?;
         assert_eq!(Controls::read(&root)?.capture_tile_megapixels, 64);
+        assert_eq!(Controls::read(&root)?.capture_batch_tiles, 1024);
         for (key, bad) in [
             ("capture_tile_megapixels", 0),
             ("capture_tile_megapixels", 65),
             ("capture_batch_tiles", 0),
-            ("capture_batch_tiles", 17),
+            ("capture_batch_tiles", 1025),
             ("tall_sheet_threshold", 0),
             ("tall_sheet_threshold", i32::MAX as u32 + 1),
             ("tall_sheet_edge_tiles", 0),

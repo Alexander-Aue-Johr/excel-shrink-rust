@@ -435,6 +435,7 @@ impl ResidentCapture {
             captures.insert(logical.to_owned(), json!({
                 "command":snapshot.command,
                 "elapsed_ms":response["elapsed_ms"],
+                "timings":response["timings"],
                 "sheets":response["sheet_timings"],
             }));
         }
@@ -765,6 +766,14 @@ impl ResidentCapture {
         if self.screening_mode && body["kind"] == "capture" {
             body["progress_pass"] = json!(self.screening_pass);
             body["progress_passes"] = json!(2);
+        }
+        if body["kind"] == "capture" {
+            body["batch_tiles"] = json!(self.live.as_ref().map_or_else(
+                || std::env::var("EXCEL_SHRINK_CAPTURE_BATCH_TILES").ok()
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .filter(|value| (1..=1024).contains(value)).unwrap_or(1),
+                |live| live.sweep_batch_tiles(),
+            ));
         }
         body["id"] = json!(id);
         body["queued_unix_ms"] = json!(chrono::Utc::now().timestamp_millis());

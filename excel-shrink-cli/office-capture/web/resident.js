@@ -176,6 +176,66 @@
       return measure('finish_image_ms', () => finishImage(state, tile, base64, {hash, accountMemory}));
     }
 
+    /** Batch Office reads, then hash/release each image before requesting more. */
+    async function* sweepImages(state, tiles, limit, planOnly) {
+      const geometry = await geometryFor(state);
+      for (let first = 0; first < tiles.length;) {
+        let end = first, pixels = 0;
+        while (end < tiles.length && end - first < limit) {
+          const next = tiles[end].width * tiles[end].expectedHeight;
+          if (end > first && pixels + next > 64000000) break;
+          pixels += next;
+          end++;
+        }
+        const chunk = tiles.slice(first, end);
+        activeBatchTiles = chunk.length;
+        activeBatchPixels = pixels;
+        let base64s = [];
+        let remainingCharacters = 0;
+        try {
+          if (!planOnly) {
+            base64s = await measure('capture_ms', () => office(async context => {
+              const worksheet = context.workbook.worksheets.getItem(state.sheet.name);
+              const images = chunk.map(tile => worksheet.getRange(CaptureGeometry.address(tile.raw)).getImage());
+              await context.sync();
+              return images.map(image => image.value);
+            }));
+            timings.capture_syncs++;
+            timings.max_capture_batch_tiles = Math.max(timings.max_capture_batch_tiles, chunk.length);
+            remainingCharacters = base64s.reduce((sum, value) => sum + value.length, 0);
+            reserveImageBytes(remainingCharacters * 2);
+            pendingPngCharacters += remainingCharacters;
+          }
+          for (let local = 0; local < chunk.length; local++) {
+            const tile = chunk[local];
+            const image = planOnly
+              ? {width: geometry.imageWidth(state.end), height: tile.cropHeight, sha256: '0'.repeat(64)}
+              : await measure('finish_image_ms', () => finishImage(state, tile, base64s[local], {accountMemory: true}));
+            const characters = base64s[local]?.length ?? 0;
+            base64s[local] = null;
+            remainingCharacters -= characters;
+            pendingPngCharacters -= characters;
+            pendingEncodedBytes -= characters * 2;
+            try {
+              yield {index: first + local, image};
+            } finally {
+              if (image.bytes) {
+                pendingEncodedBytes -= image.bytes.byteLength;
+                image.bytes = null;
+              }
+            }
+          }
+        } finally {
+          base64s.fill(null);
+          pendingPngCharacters -= remainingCharacters;
+          pendingEncodedBytes -= remainingCharacters * 2;
+          activeBatchTiles = 0;
+          activeBatchPixels = 0;
+        }
+        first = end;
+      }
+    }
+
     async function verifyWorkbook() {
       if (!workbookVerified) {
         await office(async context => {
@@ -267,11 +327,12 @@
           right_margin: {requested_pixels: marginPixels, actual_pixels: actualMargin,
             limited_by_grid: end === 16383 && actualMargin < marginPixels},
           capture_right_column: end, tile_rows: tiles.map(tile => [tile.core.r0, tile.core.r1])});
-        for (let index = 0; index < tiles.length; index++) {
+        const batchTiles = command.batch_tiles ?? 1;
+        if (!Number.isInteger(batchTiles) || batchTiles < 1 || batchTiles > 1024) {
+          throw new Error('Sweep batch must contain 1 to 1024 captures');
+        }
+        for await (const {index, image} of sweepImages(state, tiles, batchTiles, command.kind === 'plan')) {
           const tile = tiles[index];
-          const image = command.kind === 'plan'
-            ? {width: geometry.imageWidth(end), height: tile.cropHeight, sha256: '0'.repeat(64)}
-            : await render(state, tile, true, true);
           const metadata = {sheet_index: sheet.index, sheet_name: sheet.name, tile_index: index,
             range: CaptureGeometry.address(tile.core), core_rows: [tile.core.r0, tile.core.r1],
             x: 0, y: geometry.pixelY[tile.core.r0],
@@ -285,11 +346,7 @@
             captureProgress.updated_unix_ms = Date.now();
           }
           retained.set(key(metadata), {...state, tile, metadata});
-          // The autonomous sweep retains only metadata across tiles and sheets.
-          if (image.bytes) {
-            pendingEncodedBytes -= image.bytes.byteLength;
-            image.bytes = null;
-          }
+          // sweepImages releases image bytes as soon as this iteration finishes.
           if (command.kind !== 'plan') helpers.phase(`Hashing ${sheet.name}: tile ${index + 1}/${tiles.length}`);
           // No encoded or decoded images are retained while waiting for peers.
         }
@@ -605,7 +662,7 @@
         const started = performance.now();
         peakPendingEncodedBytes = pendingEncodedBytes;
         pipelineOverlapCount = 0;
-        timings = {capture_ms: 0, finish_image_ms: 0, hash_ms: 0, upload_ms: 0};
+        timings = {capture_ms: 0, finish_image_ms: 0, hash_ms: 0, upload_ms: 0, capture_syncs: 0, max_capture_batch_tiles: 0};
         let result;
         try {
           if (command.kind === 'capture' || command.kind === 'plan') result = await capture(command);

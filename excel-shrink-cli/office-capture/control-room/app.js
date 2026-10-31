@@ -1294,6 +1294,7 @@ function updateControlInputs() {
   for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
   }
+  $('captureBatchValue').value = $('captureBatch').value;
   if (document.activeElement !== $('captureTransport') && !dirtyControls.has('captureTransport')) {
     $('captureTransport').value = values.capture_transport || 'live-images';
   }
@@ -1976,10 +1977,13 @@ function wireControls() {
     sendControl({ capture_transport: event.target.value });
   });
 
+  $('captureBatch').addEventListener('input', () => {
+    $('captureBatchValue').value = $('captureBatch').value;
+  });
   $('applyCapture').addEventListener('click', () => {
 
     const size = Number($('captureMegapixels').value), batch = Number($('captureBatch').value);
-    if (!Number.isInteger(size) || size < 1 || size > 64 || !Number.isInteger(batch) || batch < 1 || batch > 16) return setNotice('Target capture size: 1–64 MP. Batch: 1–16 jobs.', true);
+    if (!Number.isInteger(size) || size < 1 || size > 64 || !Number.isInteger(batch) || batch < 1 || batch > 1024) return setNotice('Target capture size: 1–64 MP. Batch: 1–1024 captures.', true);
     const context = Number($('captureContext').value);
     if (!Number.isInteger(context) || context < 0 || context > 16) return setNotice('Difference context must be 0 to 16 capture bands.', true);
     sendControl({ capture_tile_megapixels: size, capture_batch_tiles: batch, capture_context_tiles: context });
