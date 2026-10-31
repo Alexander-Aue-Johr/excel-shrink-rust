@@ -114,7 +114,6 @@
         }
         await geometry.read(state.end, heights.runs);
         await geometry.calibrate();
-        if (state.probe && geometry.fixedWidth !== null) throw new Error(`Cannot check fixed-width sheet ${state.sheet.name}`);
         await verifyDrawingBounds(state.sheet, geometry, state.end);
       }
       rememberGeometry(state.geometry_key, geometry);
@@ -127,7 +126,7 @@
     }
 
     async function finishImage(state, tile, base64, {hash = true, accountMemory = false} = {}) {
-      const {sheet, probe, right, end} = state;
+      const {sheet, end} = state;
       const geometry = await geometryFor(state);
       const dimensions = CaptureGeometry.pngSize(base64);
       if (dimensions.width * dimensions.height > (tile.pixelBudget ?? geometry.maxPixels)) {
@@ -138,10 +137,6 @@
       if (dimensions.width !== tile.width || dimensions.height !== tile.expectedHeight) {
         throw new Error(`Image dimensions changed on ${sheet.name}`);
       }
-      const overflow = probe
-        ? await CaptureOverflow.check(office, sheet.name, geometry, tile, right, base64)
-        : {rightEdge: false};
-      if (overflow.rightEdge) throw new Error(`Text reaches the unverified right edge on ${sheet.name}`);
       const final = await CaptureOverflow.crop(base64, 0, tile.cropY, geometry.imageWidth(end), tile.cropHeight);
       const size = CaptureGeometry.pngSize(final);
       if (size.width !== geometry.imageWidth(end) || size.height !== tile.cropHeight) {
@@ -229,24 +224,26 @@
         await hideGridlines(sheet);
         const geometry = new CaptureGeometry.SheetGeometry(office, sheet.name, bottom, right,
           command.tile_megapixels ?? 32);
-        const probe = sheet.horizontal_overflow_required && right < 16383;
-        const maximum = sheet.capture_right_column ?? (probe ? Math.min(16383, right + 256) : right);
-        if (!Number.isInteger(maximum) || maximum < right || maximum >= 16384 ||
-            (probe && maximum === right)) throw new Error('Invalid maximum capture boundary');
-        // Read enough geometry to negotiate a wider peer boundary, but capture
-        // only the verified local extent until the orchestrator requests more.
+        const marginPixels = sheet.right_margin_pixels ?? 1920;
+        const maximum = sheet.capture_right_column ?? 16383;
+        const negotiated = sheet.capture_end_column;
+        if (!Number.isInteger(maximum) || maximum < right || maximum >= 16384) {
+          throw new Error('Invalid maximum capture boundary');
+        }
+        // Narrow or hidden columns extend the measured window on demand.
+        const readEnd = Math.min(maximum, Math.max(right + 32, negotiated ?? right));
         const geometryAt = performance.now();
-        await geometry.read(maximum, heights.runs);
+        await geometry.read(readEnd, heights.runs);
         const geometryMs = performance.now() - geometryAt;
         const calibrationAt = performance.now();
         await geometry.calibrate();
+        const proposed = await geometry.rightMarginEnd(right, marginPixels);
         const calibrationMs = performance.now() - calibrationAt;
-        if (probe && geometry.fixedWidth !== null) throw new Error(`Cannot check fixed-width sheet ${sheet.name}`);
-        const proposed = probe ? CaptureGeometry.probeEnd(geometry, right) : right;
-        const end = sheet.capture_end_column ?? proposed;
+        const end = negotiated ?? proposed;
         if (!Number.isInteger(end) || end < proposed || end > maximum) {
-          throw new Error('Negotiated capture boundary is outside the verified extent');
+          throw new Error('Negotiated capture boundary is outside the fixed-margin extent');
         }
+        const actualMargin = geometry.imageWidth(end) - geometry.imageWidth(right);
         const tilesAt = performance.now();
         const tiles = selectedTiles(geometry, end, sheet.tile_rows, {planOnly: command.kind === 'plan'});
         result.planning_timings.push({sheet_index: sheet.index, sheet_name: sheet.name,
@@ -261,12 +258,14 @@
           throw error;
         }
         const drawingBounds = await verifyDrawingBounds(sheet, geometry, end);
-        const state = {sheet, probe, right, end, height_runs: heights.runs,
+        const state = {sheet, right, end, height_runs: heights.runs,
           geometry_key: `${command.id}:${sheet.index}`,
           megapixels: command.tile_megapixels ?? 32};
         rememberGeometry(state.geometry_key, geometry);
         result.sheets.push({sheet_index: sheet.index, sheet_name: sheet.name,
           drawing_bounds: drawingBounds,
+          right_margin: {requested_pixels: marginPixels, actual_pixels: actualMargin,
+            limited_by_grid: end === 16383 && actualMargin < marginPixels},
           capture_right_column: end, tile_rows: tiles.map(tile => [tile.core.r0, tile.core.r1])});
         for (let index = 0; index < tiles.length; index++) {
           const tile = tiles[index];
@@ -560,7 +559,7 @@
             await uploadTask;
             checkUpload();
             if (finalized.length) {
-              // Finish every Office operation (including overflow probes)
+              // Finish every Office operation
               // before starting the next chunk. Only uploads may overlap it.
               uploadPending = true;
               uploadTask = uploadChunk(chunk, finalized)

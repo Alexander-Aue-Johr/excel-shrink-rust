@@ -13,6 +13,20 @@ and `too-aggressive-cleaning` builds all three for possible targeted follow-up.
 Existing compatible bundles with additional variants remain reusable. A later
 request for a profile absent from a partial bundle requires new preparation.
 Comparisons unpack and audit only the variants required by the current mode.
+Resident captures use `fixed-right-margin-1920-v1`: every sheet extends at least
+1920 measured pixels beyond the common Original/variant content boundary, rounded
+up to whole columns. Hidden and narrow columns extend the measurement window as
+needed. The Excel grid edge can limit that margin; measured per-sheet margins are
+stored in the hash evidence. This mode performs no temporary overflow blocker
+writes and takes no blocked/restored comparison images. Content beyond the margin
+is not verified. Vertical tall-sheet selection remains in effect.
+
+Earlier hash strategies are incompatible and are swept again, including previously
+hash-equal results. Shrink ZIPs remain reusable; their files are not modified by
+this capture-policy change. Keep a backup of previous hash sidecars before resuming
+if their historical results need to be retained. The legacy classic capture path
+still has its original overflow checks; this experiment uses resident capture.
+
 Preparation has two corpus-wide phases. First, every selected workbook is
 converted if necessary, shrunk, and saved in its reusable ZIP bundle. Only after
 that queue drains do hash sweeps open Original and the selected output, capture

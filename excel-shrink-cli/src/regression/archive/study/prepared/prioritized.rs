@@ -24,7 +24,8 @@ fn preparation_screen_sheets(
     variant: &Path,
 ) -> Result<Option<BTreeSet<usize>>> {
     let screen = &record["preparation_hash_screen"];
-    if screen["version"] != 1
+    if screen["capture_policy"] != ResidentCapture::CAPTURE_POLICY
+        || screen["version"] != 1
         || screen["profile"] != profile
         || screen["stable"] != true
         || screen["original_file_sha256"] != artifact_cache::hash_file(original)?
@@ -502,7 +503,7 @@ mod screen_tests {
             "first":sheets,"second":sheets,
         }))?);
         let mut record = json!({"preparation_hash_screen":{
-            "version":1,"profile":"default","stable":true,
+            "version":1,"capture_policy":ResidentCapture::CAPTURE_POLICY,"profile":"default","stable":true,
             "original_file_sha256":artifact_cache::hash_file(&original)?,
             "variant_file_sha256":artifact_cache::hash_file(&variant)?,
             "first_sheets":sheets,"sheets":sheets,"global_sha256":global_sha256,

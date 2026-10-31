@@ -75,6 +75,7 @@ pub(super) fn needs_pass(record: &Value, comparison_pass: &str) -> bool {
             record["complete"] != true
                 || record["status"] == "skipped"
                 || record["comparison_hash_profile"] != record["last_hash_screen_profile"]
+                || record["last_hash_capture_policy"] != crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY
         }
         PRIMARY => !primary_terminal(record),
         SECONDARY => !full_complete(record),
@@ -86,8 +87,9 @@ pub(super) fn finish(record: &mut Value) {
     if pass(record) == HASH_SCREEN {
         if record["status"] != "skipped" {
             record["last_hash_screen_profile"] = record["comparison_hash_profile"].clone();
+            record["last_hash_capture_policy"] = json!(crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY);
             record["checks_complete"] = json!(false);
-            record["validation_scope"] = json!("selected profile and changed sheets only");
+            record["validation_scope"] = json!("selected profile and captured sheet regions with fixed 1920-pixel right margin; content beyond the margin is not verified");
         }
     } else if pass(record) == PRIMARY {
         let aggressive = record["results"].as_array().and_then(|profiles| {
@@ -207,6 +209,9 @@ mod tests {
         finish(&mut record);
         assert!(!needs_pass(&record, HASH_SCREEN));
         assert_eq!(record["checks_complete"], false);
+        record["last_hash_capture_policy"] = json!("tall-sheet-v1");
+        assert!(needs_pass(&record, HASH_SCREEN));
+        finish(&mut record);
         record["comparison_hash_profile"] = json!("maximum-cleaning");
         assert!(needs_pass(&record, HASH_SCREEN));
     }

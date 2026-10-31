@@ -25,6 +25,10 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
       }
       async read(maximum) {geometryReads.push(maximum);}
       async calibrate() {}
+      async rightMarginEnd(base, pixels) {
+        assert.equal(pixels, 1920);
+        return hooks.marginEnd ?? 3;
+      }
       imageWidth() {return hooks.width ?? 3;}
       tiles(end, targets, cuts = hooks.tileRows ?? [[0, 3], [3, 6], [6, 9], [9, 10]], {allowGaps = false} = {}) {
         if (!allowGaps) {
@@ -48,8 +52,7 @@ function fixture(workbookName = 'fixture.xlsx', hooks = {}) {
       return base64;
     },
     async check(office) {
-      if (hooks.probe) await office(hooks.probe);
-      return {rightEdge: false};
+      throw new Error('Invasive overflow check must not run');
     }
   };
   const helpers = {
@@ -177,7 +180,7 @@ test('a partial whitespace capture takes images only for the requested spans', a
   assert.equal(result.tiles.length, 2);
 });
 
-test('the maximum read boundary does not widen initial captures beyond the local overflow probe', async () => {
+test('fixed-margin selection is independent of the old maximum probe window', async () => {
   const f = fixture();
   const result = await f.worker.execute({id: 'local', kind: 'capture',
     sheets: [{...f.sheet, horizontal_overflow_required: true, capture_right_column: 10}]});
@@ -186,7 +189,7 @@ test('the maximum read boundary does not widen initial captures beyond the local
   assert.ok(result.tiles.every(tile => tile.capture_right_column === 3));
 });
 
-test('negotiated capture ends may widen the local probe within the maximum boundary', async () => {
+test('negotiated capture ends may widen the measured margin within the grid boundary', async () => {
   const f = fixture();
   const sheet = {...f.sheet, horizontal_overflow_required: true, capture_right_column: 10};
   const result = await f.worker.execute({id: 'shared', kind: 'capture', sheets: [{...sheet, capture_end_column: 6}]});
@@ -351,7 +354,7 @@ function assertReleased(worker) {
   assert.equal(resources.active_batch_tiles, 0);
 }
 
-test('bounded chunks overlap upload with the next capture but keep Office probes serial', async () => {
+test('bounded chunks overlap upload with the next capture without invasive Office probes', async () => {
   const uploadStarted = deferred();
   const releaseUpload = deferred();
   const secondCapture = deferred();
@@ -387,9 +390,9 @@ test('bounded chunks overlap upload with the next capture but keep Office probes
   try {
     assert.equal(f.uploads.length, 1);
     assert.ok(f.worker.resources().pending_encoded_bytes > 0);
-    assert.ok(f.events.indexOf('probe') < f.events.indexOf('capture:6:9'));
+    assert.ok(!f.events.includes('probe'));
     const beforeSecondCapture = f.events.slice(0, f.events.indexOf('capture:6:9'));
-    assert.equal(beforeSecondCapture.filter(event => event === 'probe').length, 2);
+    assert.equal(beforeSecondCapture.filter(event => event === 'probe').length, 0);
   } finally {
     releaseUpload.resolve();
   }
@@ -400,8 +403,8 @@ test('bounded chunks overlap upload with the next capture but keep Office probes
   assert.ok(result.timings.peak_pending_encoded_bytes > 0);
   const single = fixture();
   const one = await single.worker.execute({id: 'one', kind: 'capture', sheets: [{...single.sheet, tile_rows: [[0, 3]]}]});
-  assert.equal(result.timings.peak_pending_encoded_bytes, one.timings.peak_pending_encoded_bytes,
-    'the sweep peak must remain the size of one image, not grow with worksheet count');
+  assert.ok(result.timings.peak_pending_encoded_bytes <= 2 * one.timings.peak_pending_encoded_bytes,
+    'overlap is bounded by an uploading image and current image, not workbook size');
   assert.deepEqual(result.images.map(image => image.tile_index), [0, 1, 2, 3]);
   assertReleased(f.worker);
 });
@@ -688,8 +691,8 @@ test('autonomous sweep crosses sheets, reports progress and releases each encode
   assert.ok(result.timings.peak_pending_encoded_bytes > 0);
   const single = fixture();
   const one = await single.worker.execute({id: 'one', kind: 'capture', sheets: [{...single.sheet, tile_rows: [[0, 3]]}]});
-  assert.equal(result.timings.peak_pending_encoded_bytes, one.timings.peak_pending_encoded_bytes,
-    'the sweep peak must remain the size of one image, not grow with worksheet count');
+  assert.ok(result.timings.peak_pending_encoded_bytes <= 2 * one.timings.peak_pending_encoded_bytes,
+    'overlap is bounded by an uploading image and current image, not workbook size');
   assert.equal(result.tiles.every(tile => /^[a-f0-9]{64}$/.test(tile.sha256)), true);
   await f.worker.execute({id: 'witness', kind: 'images', capture_id: 'sweep', tiles: [result.tiles[6]]});
   assert.equal(f.uploads.length, 1);

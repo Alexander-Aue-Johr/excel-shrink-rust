@@ -79,6 +79,7 @@ pub(in crate::regression) struct ResidentCapture {
     variants: BTreeMap<String, PathBuf>,
     capture_coverage: BTreeMap<usize, Value>,
     drawing_bounds: BTreeMap<String, Value>,
+    capture_margins: BTreeMap<String, Value>,
 }
 
 fn publish(path: &Path, value: &Value) -> Result<()> {
@@ -335,6 +336,7 @@ fn screen_sheet_hashes(original: &Snapshot, variant: &Snapshot) -> Result<Vec<Va
 }
 
 impl ResidentCapture {
+    pub(in crate::regression) const CAPTURE_POLICY: &'static str = "fixed-right-margin-1920-v1";
     /// Capture selected negotiated tiles twice while both Excel workbooks remain open.
     /// The returned hashes are screening evidence, not a pixel comparison result.
     /// Captures both open workbooks twice, with a Full recalculation between sweeps.
@@ -392,7 +394,11 @@ impl ResidentCapture {
             .collect();
         Ok(json!({
             "version": 1,
-            "capture_policy": "tall-sheet-v1",
+            "capture_policy": Self::CAPTURE_POLICY,
+            "right_margin_pixels": 1920,
+            "overflow_check": "disabled",
+            "capture_limitation": "Content beyond the fixed right margin is not verified",
+            "capture_margins": self.capture_margins,
             "profile": profile,
             "hash_algorithm": "SHA-256",
             "hash_domain": "ordered tile metadata, finalized PNG hashes and row heights",
@@ -533,14 +539,29 @@ impl ResidentCapture {
                     target.capture_right_column.max(sheet.capture_right_column);
             }
         }
+        let mut content_columns = BTreeMap::<usize, u64>::new();
+        for plan in plans.values() {
+            for sheet in &plan.sheets {
+                for config in [&sheet.original_config, &sheet.shrunk_config] {
+                    let column = config["base_right_column"].as_u64()
+                        .context("missing worksheet content column")?;
+                    content_columns.entry(sheet.sheet_index)
+                        .and_modify(|current| *current = (*current).max(column))
+                        .or_insert(column);
+                }
+            }
+        }
         for plan in plans.values_mut() {
             for (sheet, bounds) in plan.sheets.iter_mut().zip(&union.sheets) {
                 sheet.bottom_row = bounds.bottom_row;
                 sheet.row_height_bottom_row = bounds.row_height_bottom_row;
-                sheet.capture_right_column = bounds.capture_right_column;
+                sheet.capture_right_column = MAX_CAPTURE_COLUMN;
                 for config in [&mut sheet.original_config, &mut sheet.shrunk_config] {
                     config["bottom_row"] = json!(bounds.bottom_row);
-                    config["capture_right_column"] = json!(bounds.capture_right_column);
+                    config["capture_right_column"] = json!(MAX_CAPTURE_COLUMN);
+                    config["base_right_column"] = json!(content_columns[&sheet.sheet_index]);
+                    config["right_margin_pixels"] = json!(1920);
+                    config["horizontal_overflow_required"] = json!(false);
                 }
             }
         }
@@ -704,6 +725,7 @@ impl ResidentCapture {
                 .collect(),
             capture_coverage: BTreeMap::new(),
             drawing_bounds: BTreeMap::new(),
+            capture_margins: BTreeMap::new(),
         })
     }
 
@@ -869,6 +891,18 @@ impl ResidentCapture {
         let client = self.client(logical)?.to_owned();
         if let Some(command) = self.pending.remove(&client) {
             let result = self.wait(&client, &command)?;
+            let margins: Vec<_> = result["sheets"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|sheet| json!({
+                    "sheet_index": sheet["sheet_index"],
+                    "sheet_name": sheet["sheet_name"],
+                    "right_margin": sheet["right_margin"],
+                    "capture_right_column": sheet["capture_right_column"],
+                }))
+                .collect();
+            self.capture_margins.insert(client.clone(), json!(margins));
             let drawing_bounds = json!(result["sheets"].as_array().into_iter().flatten()
                 .map(|sheet| json!({"sheet_index":sheet["sheet_index"],
                     "drawing_bounds":sheet["drawing_bounds"]})).collect::<Vec<_>>());
@@ -1343,11 +1377,10 @@ impl ResidentCapture {
                 }
             }
         }
-        result["capture_policy"] = json!(if self.sweep_mode {
-            "autonomous-selected-sweep-v1"
-        } else {
-            "tall-sheet-v1"
-        });
+        result["capture_policy"] = json!(Self::CAPTURE_POLICY);
+        result["right_margin_pixels"] = json!(1920);
+        result["overflow_check"] = json!("disabled");
+        result["capture_limitation"] = json!("Content beyond the fixed right margin is not verified");
         if self
             .capture_coverage
             .values()

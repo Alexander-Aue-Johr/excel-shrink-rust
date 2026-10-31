@@ -514,3 +514,42 @@ test('shared tile rows reject gaps, overlap and excessive image sizes', async ()
   assert.throws(() => result.tiles(15, null, [[0, 10001]]), /Invalid shared/);
   assert.throws(() => result.tiles(15, null, [[0, 10000]]), /exceeds the image budget/);
 });
+
+function marginGeometry(widthAt, base = 0, scale = 1) {
+  const geometry = new SheetGeometry(null, 'Sheet', 0, base);
+  geometry.columns = Array.from({length: base + 1}, (_, column) => widthAt(column));
+  geometry.x = [0];
+  for (const width of geometry.columns) geometry.x.push(geometry.x.at(-1) + width);
+  geometry.scaleX = scale;
+  geometry.fixedWidth = null;
+  geometry.readSizes = async (axis, start, count) => {
+    assert.equal(axis, 'columns');
+    return Array.from({length: count}, (_, offset) => widthAt(start + offset));
+  };
+  return geometry;
+}
+
+test('fixed margin reaches 1920 measured pixels without a 64-column cutoff', async () => {
+  const geometry = marginGeometry(column => column === 0 ? 60 : 1);
+  const end = await geometry.rightMarginEnd(0);
+  assert.equal(end, 1920);
+  assert.equal(geometry.imageWidth(end) - geometry.imageWidth(0), 1920);
+});
+
+test('fixed margin skips long hidden spans and rounds up to complete columns', async () => {
+  const hidden = marginGeometry(column => column === 0 ? 60 : column <= 800 ? 0 : 80);
+  assert.equal(await hidden.rightMarginEnd(0), 824);
+  const scaled = marginGeometry(() => 100, 0, 4 / 3);
+  const end = await scaled.rightMarginEnd(0);
+  assert.ok(scaled.imageWidth(end) - scaled.imageWidth(0) >= 1920);
+  assert.ok(scaled.imageWidth(end - 1) - scaled.imageWidth(0) < 1920);
+});
+
+test('fixed margin stops at XFD and rejects unmeasurable scaling', async () => {
+  const geometry = marginGeometry(() => 40, 16381);
+  assert.equal(await geometry.rightMarginEnd(16381), 16383);
+  assert.equal(geometry.imageWidth(16383) - geometry.imageWidth(16381), 80);
+  assert.equal(await geometry.rightMarginEnd(16383), 16383);
+  geometry.fixedWidth = 800;
+  await assert.rejects(geometry.rightMarginEnd(16381), /Cannot measure fixed right/);
+});

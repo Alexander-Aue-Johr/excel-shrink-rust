@@ -575,7 +575,8 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                         record["complete"] != true
                             || !has_preparation_for_screen(record, args.preparation_hash_profile.as_deref())
                             || (record["preparation_disposition"] == "needs_visual"
-                                && record["last_hash_screen_profile"] != profile)
+                                && (record["last_hash_screen_profile"] != profile
+                                    || record["last_hash_capture_policy"] != crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY))
                     })
                 }).collect()
             } else if args.aggressive_first {

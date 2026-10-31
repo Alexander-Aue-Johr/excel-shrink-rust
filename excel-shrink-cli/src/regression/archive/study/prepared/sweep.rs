@@ -18,12 +18,13 @@ pub(super) fn cached(bundle: &Path, profile: Option<&str>) -> Result<Option<Valu
         Some(value) => value,
         None => return Ok(None),
     };
-    if value["screen"]["profile"].as_str() != profile
+    if value["screen"]["capture_policy"] != crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY
+        || value["screen"]["profile"].as_str() != profile
         || value["bundle_sha256"] != artifact_cache::hash_file(bundle)?
     {
         return Ok(None);
     }
-    // Full historical sweeps remain valid. Sampled sweeps must match the
+    // Matching strategies are required even for full captures. Sampled sweeps must match the
     // current selection settings, otherwise a larger requested sample is lost.
     let controls = bundle.parent().and_then(Path::parent)
         .and_then(|root| fs::read(root.join("control-room/control.json")).ok())
@@ -145,7 +146,7 @@ mod tests {
         let bundle = root.join("prepared/bundle.zip");
         fs::write(&bundle, b"bundle")?;
         let cache = json!({"bundle_sha256":artifact_cache::hash_file(&bundle)?,
-            "screen":{"profile":"default","sheets":[{"capture_coverage":{
+            "screen":{"capture_policy":crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY,"profile":"default","sheets":[{"capture_coverage":{
                 "omitted_tiles":100,"threshold":40,"edge_tiles":2,"crc_equal_threshold_mib":256
             }}]}});
         fs::write(cache_path(&bundle), serde_json::to_vec(&cache)?)?;
@@ -164,10 +165,18 @@ mod tests {
         fs::create_dir_all(&root)?;
         let bundle = root.join("prepared.zip");
         fs::write(&bundle, b"original bundle")?;
-        let cache = json!({"version":1,"bundle_sha256":artifact_cache::hash_file(&bundle)?,
-            "screen":{"profile":"default"}});
+        let mut cache = json!({"version":1,"bundle_sha256":artifact_cache::hash_file(&bundle)?,
+            "screen":{"capture_policy":crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY,"profile":"default"}});
         fs::write(cache_path(&bundle), serde_json::to_vec(&cache)?)?;
         assert!(cached_exists(&bundle, Some("default"))?);
+        cache["screen"]["capture_policy"] = json!("tall-sheet-v1");
+        fs::write(cache_path(&bundle), serde_json::to_vec(&cache)?)?;
+        assert!(!cached_exists(&bundle, Some("default"))?);
+        cache["screen"].as_object_mut().unwrap().remove("capture_policy");
+        fs::write(cache_path(&bundle), serde_json::to_vec(&cache)?)?;
+        assert!(!cached_exists(&bundle, Some("default"))?);
+        cache["screen"]["capture_policy"] = json!(crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY);
+        fs::write(cache_path(&bundle), serde_json::to_vec(&cache)?)?;
         assert!(!cached_exists(&bundle, Some("maximum-cleaning"))?);
         fs::write(&bundle, b"replacement bundle")?;
         assert!(!cached_exists(&bundle, Some("default"))?);

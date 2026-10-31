@@ -31,6 +31,7 @@ impl State {
         let screen_completed = record["complete"] == true
             && record["comparison_hash_profile"].is_string()
             && record["comparison_hash_profile"] == record["last_hash_screen_profile"]
+            && record["last_hash_capture_policy"] == crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY
             && matches!(
                 record["status"].as_str(),
                 Some(

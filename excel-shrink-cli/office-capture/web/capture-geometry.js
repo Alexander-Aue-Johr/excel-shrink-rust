@@ -369,6 +369,28 @@
       }
     }
 
+    /** Extend measured columns until the right margin reaches pixels or the grid ends. */
+    async rightMarginEnd(baseColumn, pixels = 1920) {
+      if (!Number.isInteger(baseColumn) || baseColumn < 0 || baseColumn >= MAX_COLUMNS ||
+          !Number.isInteger(pixels) || pixels < 0) throw new Error('Invalid fixed right capture margin');
+      if (baseColumn === MAX_COLUMNS - 1) return baseColumn;
+      if (!Number.isFinite(this.scaleX) || this.scaleX <= 0 || this.fixedWidth !== null) {
+        throw new Error('Cannot measure fixed right capture margin with fixed-width image geometry');
+      }
+      const baseWidth = this.imageWidth(baseColumn);
+      let end = baseColumn;
+      while (end < MAX_COLUMNS - 1 && this.imageWidth(end) - baseWidth < pixels) {
+        if (end + 1 >= this.columns.length) {
+          const first = this.columns.length;
+          const count = Math.min(64, MAX_COLUMNS - first);
+          this.columns.push(...await this.readSizes('columns', first, count));
+          this.x = prefix(this.columns);
+        }
+        end++;
+      }
+      return end;
+    }
+
     imageWidth(endColumn) {
       if (this.fixedWidth !== null) {
         if (endColumn !== this.columns.length - 1) throw new Error('Fixed-width capture cannot crop columns');

@@ -1295,6 +1295,17 @@ mod tests {
         prepare(&job, &mut record, LogLevel::Warn)?;
         assert!(record["hash_sweep_error"].is_null(), "{}", record["hash_sweep_error"]);
         assert_eq!(record["preparation_hash_screen"]["profile"], "default");
+        assert_eq!(record["preparation_hash_screen"]["capture_policy"],
+            crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY);
+        for sheets in record["preparation_hash_screen"]["capture_margins"].as_object()
+            .context("missing measured capture margins")?.values() {
+            for sheet in sheets.as_array().context("missing sheet boundaries")? {
+                let margin = &sheet["right_margin"];
+                assert_eq!(margin["requested_pixels"], 1920);
+                assert!(margin["actual_pixels"].as_u64().unwrap_or(0) >= 1920
+                    || margin["limited_by_grid"] == true);
+            }
+        }
         assert_eq!(artifact_cache::hash_file(job.bundle.as_ref().unwrap())?, before_sweep);
         assert!(sweep_cached(job.bundle.as_ref().unwrap(), Some("default"))?);
         let metrics: Value = serde_json::from_slice(&fs::read(
