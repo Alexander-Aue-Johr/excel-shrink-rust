@@ -1,0 +1,158 @@
+{
+  "date": "2026-10-31",
+  "method": "Raw Office.js Range.getImage() on one Base62 rainbow worksheet; PNG SHA-256 measured in the add-in",
+  "runs": [
+    {
+      "rows": 160,
+      "columns": 2600,
+      "workbook_sha256": "5f3143200a64f6f847ca6d2458234766731b02cc24310727cbd2221d478c4e6d",
+      "cell_pixels": {
+        "width": 14,
+        "height": 10
+      },
+      "maximum_complete_columns": 2340,
+      "overwidth": {
+        "expected_width": 36401,
+        "expected_height": 1601,
+        "width": 32766,
+        "height": 1601,
+        "png_bytes": 15891093,
+        "capture_ms": 10971.2,
+        "complete": false
+      },
+      "maximum_complete": {
+        "width": 32761,
+        "height": 1601,
+        "png_bytes": 15890536,
+        "capture_ms": 10975.3,
+        "decode_ms": 112.6,
+        "hash_ms": 18.4,
+        "sha256": "7cd3c2f2649a88a5bd9873763f134b925f4e591a14ca1b901ad3300e39869405",
+        "bitmap_rgba_bytes": 209801444,
+        "png_bits_per_pixel": 2.424,
+        "peak_private_bytes": 415416320,
+        "peak_working_set_bytes": 510472192,
+        "complete": true,
+        "pixels": 52450361,
+        "png_windows_path": "C:\\Users\\aue-johr\\AppData\\Local\\Temp\\officejs-entropy-probe-1793456221875022300\\maximum-complete.png"
+      }
+    },
+    {
+      "rows": 320,
+      "columns": 2600,
+      "workbook_sha256": "91fc1cb459c2710683d970e48c82a5e341ebc6bd289c9d60707a7268dd0c1d55",
+      "cell_pixels": {
+        "width": 14,
+        "height": 10
+      },
+      "maximum_complete_columns": 2340,
+      "overwidth": {
+        "expected_width": 36401,
+        "expected_height": 3201,
+        "width": 32766,
+        "height": 3201,
+        "png_bytes": 32814465,
+        "capture_ms": 23918.3,
+        "complete": false
+      },
+      "maximum_complete": {
+        "width": 32761,
+        "height": 3201,
+        "png_bytes": 32812671,
+        "capture_ms": 23737.2,
+        "decode_ms": 224.8,
+        "hash_ms": 37.6,
+        "sha256": "e6f48444bd807f33e260a1b08a80ed082f8d9642c618bd66e6a689f6dc177975",
+        "bitmap_rgba_bytes": 419471844,
+        "png_bits_per_pixel": 2.503,
+        "peak_private_bytes": 682221568,
+        "peak_working_set_bytes": 770314240,
+        "complete": true,
+        "pixels": 104867961,
+        "png_windows_path": "C:\\Users\\aue-johr\\AppData\\Local\\Temp\\officejs-entropy-probe-1793456304399254100\\maximum-complete.png"
+      }
+    },
+    {
+      "rows": 640,
+      "columns": 2600,
+      "workbook_sha256": "21e05c848ee85a4fdbce2815d6e3edde6952a95a01d545fc42b82bc108b048f4",
+      "cell_pixels": {
+        "width": 14,
+        "height": 10
+      },
+      "maximum_complete_columns": 2340,
+      "overwidth": {
+        "expected_width": 36401,
+        "expected_height": 6401,
+        "width": 32766,
+        "height": 6401,
+        "png_bytes": 66053908,
+        "capture_ms": 52850.6,
+        "complete": false
+      },
+      "maximum_complete": {
+        "width": 32761,
+        "height": 6401,
+        "png_bytes": 66050382,
+        "capture_ms": 51736.2,
+        "decode_ms": 463.9,
+        "hash_ms": 83.3,
+        "sha256": "649380ec6424592ed5a79816b83fd8635dee3902f1bd0575e0458c539133c651",
+        "bitmap_rgba_bytes": 838812644,
+        "png_bits_per_pixel": 2.52,
+        "peak_private_bytes": 1210269696,
+        "peak_working_set_bytes": 1297661952,
+        "complete": true,
+        "pixels": 209703161,
+        "png_windows_path": "C:\\Users\\aue-johr\\AppData\\Local\\Temp\\officejs-entropy-probe-1793456618549578200\\maximum-complete.png"
+      }
+    }
+  ],
+  "square_area_probes": [
+    {
+      "columns": 2286,
+      "rows": 1600,
+      "workbook_sha256": "88d7d68c3300fdab9c48a40940d5873c64a8752043ceb69d3626be3e46ed2da2",
+      "workbook_bytes": 29243699,
+      "expected_width": 32005,
+      "expected_height": 16001,
+      "expected_pixels": 512112005,
+      "expected_rgba_bytes": 2048448020,
+      "complete": true,
+      "elapsed_seconds": 193.359,
+      "peak_private_bytes": 2696433664,
+      "peak_working_set_bytes": 2774114304,
+      "workbook_windows_path": "C:\\Users\\aue-johr\\AppData\\Local\\Temp\\officejs-entropy-probe-1793458205121528900\\base62-rainbow.xlsx",
+      "width": 32005,
+      "height": 16001,
+      "png_bytes": 157779622,
+      "capture_ms": 191997.8,
+      "decode_ms": 1118.1,
+      "hash_ms": 181.7,
+      "sha256": "71dc414594e64e83065fa350936e29961664b0c44b4313df6f517bc24b7ad12e",
+      "js_heap_used_bytes": 969755149,
+      "results_windows_path": "C:\\Users\\aue-johr\\AppData\\Local\\Temp\\officejs-entropy-probe-1793458205121528900\\results.json"
+    },
+    {
+      "columns": 2286,
+      "rows": 3200,
+      "workbook_sha256": "cf1a90d9ce8e5a9fd45ecc91e53cfe33e208fa385be0c0b1a9262f1a90a6ab3c",
+      "workbook_bytes": 58418020,
+      "expected_width": 32005,
+      "expected_height": 32001,
+      "expected_pixels": 1024192005,
+      "expected_rgba_bytes": 4096768020,
+      "complete": false,
+      "elapsed_seconds": 104.11,
+      "peak_private_bytes": 1392250880,
+      "peak_working_set_bytes": 1461080064,
+      "workbook_windows_path": "C:\\Users\\aue-johr\\AppData\\Local\\Temp\\officejs-entropy-probe-1793457972809761800\\base62-rainbow.xlsx",
+      "js_heap_used_bytes": 6700968,
+      "diagnostic_error": {
+        "code": "GeneralException",
+        "message": "Interner Fehler während der Verarbeitung der Anforderung."
+      },
+      "results_windows_path": "C:\\Users\\aue-johr\\AppData\\Local\\Temp\\officejs-entropy-probe-1793457972809761800\\results.json"
+    }
+  ]
+}
