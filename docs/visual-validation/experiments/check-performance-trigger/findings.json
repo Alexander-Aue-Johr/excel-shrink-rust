@@ -1,0 +1,42 @@
+{
+  "excel_version": "16.0.20527.20088",
+  "real_breakpoint_hit": true,
+  "officejs_objects_inspected": [
+    "Excel",
+    "Office",
+    "actions",
+    "application",
+    "context",
+    "document",
+    "range",
+    "ribbon",
+    "workbook",
+    "worksheet"
+  ],
+  "performance_api_found_on_inspected_objects": false,
+  "check_performance_command_id": "CheckPerformance",
+  "hidden_com_command_accepted": true,
+  "visible_accessibility": {
+    "msaa_action_returned": true,
+    "worksheet_xml_identical": true
+  },
+  "hidden_accessibility_error": "Exception calling \"Invoke\" with \"2\" argument(s): \"Error HRESULT E_FAIL has been returned from a call to a COM component.\"",
+  "visible_pointer_action": {
+    "method": "visible_pointer_input",
+    "button": "Optimize all",
+    "patterns": [],
+    "status": "completion_text_observed",
+    "excel_visible_at_action": true
+  },
+  "visible_pointer_xml_evidence": {
+    "worksheet_xml_identical": false,
+    "z10000_before": true,
+    "z10000_after": false
+  },
+  "completion_text": [
+    "Workbook optimized",
+    "2 cells were optimized to improve workbook performance."
+  ],
+  "other_webview2_pages_found": false,
+  "production_runner_modified_or_restarted": false
+}
