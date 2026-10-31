@@ -250,10 +250,13 @@ pub struct ColumnRangeMap {
     exact: HashMap<u32, ColumnDefinition>,
     intervals: Vec<ColumnDefinition>,
     interval_starts: Vec<u32>,
+    /// Identical fill across A:XFD, including exact overrides and uncovered columns.
+    uniform_fill_id: Option<u32>,
 }
 
 impl ColumnRangeMap {
     pub fn add(&mut self, col_def: ColumnDefinition) {
+        self.uniform_fill_id = None;
         if col_def.min == col_def.max {
             self.exact.insert(col_def.min, col_def);
         } else {
@@ -264,6 +267,48 @@ impl ColumnRangeMap {
     pub fn finalize(&mut self) {
         self.intervals.sort_by_key(|cd| cd.min);
         self.interval_starts = self.intervals.iter().map(|cd| cd.min).collect();
+        let fill = self.fill_at(1);
+        // No full-width visible-fill optimization is needed for the common
+        // unfilled/default-column case. Do not scan the remaining boundaries.
+        self.uniform_fill_id = if fill == 0 {
+            None
+        } else {
+            self.range_matches(1, 16_384, |col| self.fill_at(col) == fill)
+                .then_some(fill)
+        };
+    }
+
+    fn fill_at(&self, col: u32) -> u32 {
+        self.get(col)
+            .and_then(|c| c.cell_xf.as_ref())
+            .and_then(|xf| xf.fill_id)
+            .unwrap_or(0)
+    }
+
+    /// Only a full-width inherited fill can make a row fill redundant.
+    /// Borders remain anchors; matching fills do not imply matching borders.
+    #[inline]
+    pub(crate) fn style_has_tail_visual_effect(&self, style: &Xf) -> bool {
+        style.has_fill_or_border
+            && !(style.has_visible_fill
+                && !style.has_visible_border
+                && self.uniform_fill_id == style.fill_id)
+    }
+
+    pub(crate) fn row_style_has_tail_visual_effect(&self, style: &Xf, attributes: &[u8]) -> bool {
+        if self.style_has_tail_visual_effect(style) || !style.has_fill_or_border {
+            return style.has_fill_or_border;
+        }
+        // Only the newly redundant-fill case needs this bounded header check.
+        // Keep fixed heights, grouping and unfamiliar row metadata conservative.
+        crate::xml::attributes::Attributes::new(attributes).any(|attribute| {
+            attribute.map_or(true, |a| {
+                !matches!(
+                    a.name,
+                    b"r" | b"s" | b"customFormat" | b"ht" | b"spans" | b"x14ac:dyDescent"
+                )
+            })
+        })
     }
 
     #[inline]

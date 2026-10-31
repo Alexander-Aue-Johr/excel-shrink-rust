@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::models::{
-    CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, CleanupCause, VisibleContentBounds,
-    Xf,
+    CleanSheetMetrics, CleanSheetParameters, CleanedSheetData, CleanupCause, ColumnRangeMap,
+    VisibleContentBounds, Xf,
 };
 use crate::sheet::cols::merge_extraneous_columns_with_styles;
 use crate::sheet::drawings::find_worksheet_drawing_anchor_bounds;
@@ -26,6 +26,10 @@ use std::sync::OnceLock;
 
 static SHEET_PROTECTION_RE: OnceLock<Regex> = OnceLock::new();
 static CELL_RE: OnceLock<Regex> = OnceLock::new();
+
+#[cfg(test)]
+#[path = "tail_fill_regression_tests.rs"]
+mod tail_fill_regression_tests;
 
 pub fn build_clean_sheet_xml(
     preprocessed: PreprocessedSheetXml,
@@ -679,7 +683,7 @@ fn remove_trailing_layout_rows(
 
     while let Some(row) = contiguous_trailing_row(sheet_data, end) {
         if row_is_protected_tail_boundary(row.raw, None)
-            || !trailing_row_is_layout_only(row.raw, params)
+            || !trailing_row_is_layout_only(row.raw, params, &metrics.column_definitions)
         {
             break;
         }
@@ -700,8 +704,17 @@ fn cutoff_after_row_boundary(
     metrics: &mut CleanSheetMetrics,
 ) -> usize {
     let cutoff = cutoff_after_exact_row_reference(sheet_data, max_row)
-        .map(|end| extend_cutoff_to_visible_row_before_hidden_tail(sheet_data, end, params))
-        .unwrap_or_else(|| scan_cutoff_after_row_boundary(sheet_data, max_row, params));
+        .map(|end| {
+            extend_cutoff_to_visible_row_before_hidden_tail(
+                sheet_data,
+                end,
+                params,
+                &metrics.column_definitions,
+            )
+        })
+        .unwrap_or_else(|| {
+            scan_cutoff_after_row_boundary(sheet_data, max_row, params, &metrics.column_definitions)
+        });
 
     if tail_contains_content_cell(&sheet_data[cutoff..]) {
         metrics.tail_content_guard_triggered = true;
@@ -767,6 +780,7 @@ fn scan_cutoff_after_row_boundary(
     sheet_data: &[u8],
     max_row: u32,
     params: &CleanSheetParameters,
+    columns: &ColumnRangeMap,
 ) -> usize {
     let mut end = sheet_data.len();
 
@@ -792,7 +806,9 @@ fn scan_cutoff_after_row_boundary(
             } else {
                 row_end
             };
-            return extend_cutoff_to_visible_row_before_hidden_tail(sheet_data, cutoff, params);
+            return extend_cutoff_to_visible_row_before_hidden_tail(
+                sheet_data, cutoff, params, columns,
+            );
         }
 
         end = row_start;
@@ -821,12 +837,13 @@ fn extend_cutoff_to_visible_row_before_hidden_tail(
     sheet_data: &[u8],
     cutoff: usize,
     params: &CleanSheetParameters,
+    columns: &ColumnRangeMap,
 ) -> usize {
     let Some((layout_row, layout_row_end)) = next_row_after_cutoff(sheet_data, cutoff) else {
         return cutoff;
     };
 
-    if row_is_hidden(layout_row) || !trailing_row_is_layout_only(layout_row, params) {
+    if row_is_hidden(layout_row) || !trailing_row_is_layout_only(layout_row, params, columns) {
         return cutoff;
     }
 
@@ -980,19 +997,27 @@ fn find_row_end(data: &[u8], row_start: usize) -> Option<usize> {
     Some(content_start + closing_relative + b"</row>".len())
 }
 
-fn trailing_row_is_layout_only(row: &[u8], params: &CleanSheetParameters) -> bool {
-    !row_has_visible_cell_anchor(row, params)
-        && (row_is_hidden(row) || !row_has_visible_style(row, params))
+fn trailing_row_is_layout_only(
+    row: &[u8],
+    params: &CleanSheetParameters,
+    columns: &ColumnRangeMap,
+) -> bool {
+    !row_has_visible_cell_anchor(row, params, columns)
+        && (row_is_hidden(row) || !row_has_visible_style(row, params, columns))
 }
 
-fn row_has_visible_cell_anchor(row: &[u8], params: &CleanSheetParameters) -> bool {
+fn row_has_visible_cell_anchor(
+    row: &[u8],
+    params: &CleanSheetParameters,
+    columns: &ColumnRangeMap,
+) -> bool {
     let mut search_start = 0;
 
     while let Some(cell_tag) = next_cell_tag(row, search_start) {
         match cell_tag {
             ScannedCellTag::Anchoring => return true,
             ScannedCellTag::SelfClosing { attributes, end } => {
-                if self_closing_cell_is_anchor(attributes, params) {
+                if self_closing_cell_is_anchor(attributes, params, columns) {
                     return true;
                 }
                 search_start = end;
@@ -1035,13 +1060,19 @@ fn xml_name_is_delimited(xml: &[u8], after_name: usize) -> bool {
         .is_some_and(|byte| byte.is_ascii_whitespace() || matches!(byte, b'/' | b'>'))
 }
 
-fn self_closing_cell_is_anchor(attributes: &[u8], params: &CleanSheetParameters) -> bool {
+fn self_closing_cell_is_anchor(
+    attributes: &[u8],
+    params: &CleanSheetParameters,
+    columns: &ColumnRangeMap,
+) -> bool {
     match extract_style_id(attributes) {
         Some(style_id) => params
             .patterns
             .xfs_by_index
             .get(&style_id)
-            .map_or(true, |style| style_is_trailing_cell_anchor(style, params)),
+            .map_or(true, |style| {
+                style_is_trailing_cell_anchor(style, params, columns)
+            }),
         None => params.cleanup.keep_textless_default_font_representatives,
     }
 }
@@ -1056,26 +1087,33 @@ fn row_is_hidden(row: &[u8]) -> bool {
     find_bytes(row, b" hidden=\"1\"").is_some() || find_bytes(row, b" hidden=\"true\"").is_some()
 }
 
-fn row_has_visible_style(row: &[u8], params: &CleanSheetParameters) -> bool {
+fn row_has_visible_style(
+    row: &[u8],
+    params: &CleanSheetParameters,
+    columns: &ColumnRangeMap,
+) -> bool {
     let Some(style_id) = extract_style_id(row) else {
         return false;
     };
 
+    let Some(end) = find_byte_from(row, b'>', 0) else {
+        return true;
+    };
+    let attributes = &row[4..end - usize::from(row.get(end.wrapping_sub(1)) == Some(&b'/'))];
     params
         .patterns
         .xfs_by_index
         .get(&style_id)
-        .is_none_or(style_is_visible_anchor)
+        .is_none_or(|style| columns.row_style_has_tail_visual_effect(style, attributes))
 }
 
 #[inline]
-fn style_is_visible_anchor(style: &Xf) -> bool {
-    style.has_fill_or_border
-}
-
-#[inline]
-fn style_is_trailing_cell_anchor(style: &Xf, params: &CleanSheetParameters) -> bool {
-    style_is_visible_anchor(style)
+fn style_is_trailing_cell_anchor(
+    style: &Xf,
+    params: &CleanSheetParameters,
+    columns: &ColumnRangeMap,
+) -> bool {
+    columns.style_has_tail_visual_effect(style)
         || (style.has_apply_protection
             && params.cleanup.inactive_protection_cell_policy
                 == crate::models::InactiveProtectionCellPolicy::KeepAll)
@@ -1183,7 +1221,7 @@ mod tests {
     use zip::write::FileOptions;
     use zip::CompressionMethod;
 
-    fn default_params() -> CleanSheetParameters {
+    pub(super) fn default_params() -> CleanSheetParameters {
         CleanSheetParameters {
             xlsx_file_path: "test.xlsx".to_string(),
             zip_info_filename: "xl/worksheets/sheet1.xml".to_string(),
@@ -1254,7 +1292,7 @@ mod tests {
             .build_xf()
     }
 
-    fn preprocessed_with_sheet_data(
+    pub(super) fn preprocessed_with_sheet_data(
         sheet_data: &[u8],
         sheet_protection: Option<&[u8]>,
     ) -> PreprocessedSheetXml {

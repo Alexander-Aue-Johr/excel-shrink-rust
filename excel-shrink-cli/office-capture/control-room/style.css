@@ -1301,3 +1301,72 @@ body.presenting .experiment-controls,body.presenting .process-section { display:
   width: 100%;
   margin: 5px 0;
 }
+
+.targeted-comparison {
+  margin: 12px 0;
+  padding: 15px;
+  border: 1px solid #355466;
+  border-radius: 10px;
+  background: #112330;
+}
+.targeted-comparison[hidden] { display: none; }
+.targeted-lanes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.targeted-lane {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 3px 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #304b5b;
+  border-radius: 7px;
+  color: #b4cad6;
+}
+.targeted-lane strong { color: #e4f3f7; }
+.targeted-lane > span:last-child { grid-column: 2; font-size: 12px; }
+.targeted-lane progress { grid-column: 1 / -1; width: 100%; height: 7px; accent-color: #76dcc5; }
+.targeted-light {
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  background: #536676;
+  transition: background 2s, box-shadow 3s;
+}
+.targeted-light.xml {
+  background: #bc88ef;
+  box-shadow: 0 0 14px 5px #9e63df77;
+  animation: targeted-pulse 1.5s ease-in-out infinite alternate;
+}
+.targeted-light.opening, .targeted-light.capturing, .targeted-light.recalculating {
+  background: #69dcc2;
+  box-shadow: 0 0 14px 5px #50ccb077;
+  animation: targeted-pulse 1.5s ease-in-out infinite alternate;
+}
+.targeted-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.targeted-phases li {
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: #1a2d38;
+  color: #89a9b9;
+  font-size: 12px;
+}
+.targeted-phases li.done { background: #1e4b43; color: #b5e8d9; }
+.targeted-phases li.done::before { content: '✓ '; }
+.targeted-phases li.active { background: #284747; color: #dcf6ef; animation: targeted-pulse 1.5s ease-in-out infinite alternate; }
+.targeted-phases li.active::before { content: '◌ '; }
+.targeted-phases li.pending::before { content: '□ '; }
+@keyframes targeted-pulse { to { opacity: .55; box-shadow: 0 0 5px 1px #9e63df55; } }
+@media (prefers-reduced-motion: reduce) {
+  .targeted-light, .targeted-phases li.active { animation: none !important; }
+}

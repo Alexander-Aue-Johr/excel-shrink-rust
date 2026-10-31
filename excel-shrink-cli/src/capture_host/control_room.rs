@@ -638,6 +638,13 @@ async fn group(
     }
     merged["restart_commands"] =
         json!(recent_commands(&room.root.join("commands"), &id, &mut diagnostics).await?);
+    merged["targeted_comparison"] = read_snapshot(
+        &directory.join("targeted-comparison.json"),
+        &mut diagnostics,
+        SNAPSHOT_LIMIT,
+    )
+    .await
+    .unwrap_or(Value::Null);
     merged["client_reset_commands"] =
         json!(recent_commands(&directory.join("client-resets"), &id, &mut diagnostics).await?);
     let record_path = room

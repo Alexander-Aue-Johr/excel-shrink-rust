@@ -1,0 +1,52 @@
+{
+  "last_content_row": 1000000,
+  "removed_empty_cell": "XFD500000",
+  "empty_cells_before": 16384,
+  "empty_cells_after": 16383,
+  "xml_row_height_before_points": 53.25,
+  "xml_row_height_after_points": 53.25,
+  "xml_row_after_recalculate_and_save": "absent",
+  "effective_height_before_points": 53.25,
+  "effective_height_after_points": 15,
+  "changed_row_top_before_points": 7499985,
+  "changed_row_top_after_points": 7499985,
+  "next_row_top_before_points": 7500038.25,
+  "next_row_top_after_points": 7500000,
+  "last_top_before_points": 15000023.25,
+  "last_top_after_points": 14999985,
+  "first_displaced_row": 500001,
+  "binary_search_queries": 20,
+  "binary_search_ms": 230.4174,
+  "height_query_timing": {
+    "com_original": {
+      "open_ms": 416.0164,
+      "first_query_ms": 242.8089,
+      "median_warm_query_ms": 4.4726,
+      "p95_query_ms": 6.7358
+    },
+    "com_changed": {
+      "open_ms": 342.4814,
+      "first_query_ms": 6.0371,
+      "median_warm_query_ms": 4.5137,
+      "p95_query_ms": 6.3606
+    },
+    "office_js_original": {
+      "startup_seconds": 9.609,
+      "first_sync_ms": 3.4,
+      "median_warm_sync_ms": 1.7,
+      "p95_warm_sync_ms": 3.1,
+      "queries": 101,
+      "worker_execution_ms": 213.3,
+      "host_command_seconds": 2.015
+    },
+    "office_js_changed": {
+      "startup_seconds": 7.594,
+      "first_sync_ms": 3.9,
+      "median_warm_sync_ms": 3.1,
+      "p95_warm_sync_ms": 4.0,
+      "queries": 101,
+      "worker_execution_ms": 345.3,
+      "host_command_seconds": 2.031
+    }
+  }
+}
