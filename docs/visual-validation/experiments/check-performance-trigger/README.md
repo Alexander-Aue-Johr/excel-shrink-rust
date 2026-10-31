@@ -28,6 +28,33 @@ it is not a hard-coded screen coordinate.
 It tests hiding an already initialized panel, not startup on a private desktop.
 Do not combine it with `--click-optimize`.
 
+### Private desktop: no global pointer input
+
+The verified alternative keeps Excel visible on a private Windows desktop:
+
+```powershell
+powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File `
+  docs/visual-validation/experiments/check-performance-trigger/run-private-desktop.ps1 `
+  -Output .tmp/check-performance-private-demo -Mode Messages
+```
+
+The wrapper creates and owns the desktop and its process tree. The normal
+experiment runs there, but its isolated worker copy explicitly targets that
+desktop instead of relying on desktop inheritance. COM attachment also names
+that desktop. No production launcher is changed.
+
+`Messages` sends bounded WM_MOUSEMOVE/WM_LBUTTONDOWN/WM_LBUTTONUP messages to the
+window beneath the discovered button. It verifies the receiving PID and root
+window before sending. It does not use `mouse_event`, `SendInput`, `SetCursorPos`,
+or `SwitchDesktop`. You can continue using the input desktop during this test.
+`Accessibility` runs the earlier UIA/MSAA route on the private desktop instead.
+
+The native report records the Excel and probe desktop names; the wrapper writes
+`<output>.desktop.json` with the input desktop before/after. The wrapper imposes
+a 240-second deadline and closes only its owned process tree. An initial attempt
+without explicit desktop binding stalled at startup sampling and was stopped;
+it did not test optimization. The explicitly bound experiment reached the action.
+
 ## What is tested
 
 The entry point in `run.py` reads as the experiment procedure: prepare the
@@ -82,6 +109,7 @@ of this installation, not a promise about every Excel version.
 | MSAA default action, visible | Returned without error, but did not change the worksheet XML. Not a successful trigger. |
 | MSAA default action, hidden after panel initialization | Failed with HRESULT E_FAIL. No successful hidden optimization established. |
 | Visible pointer input on the discovered button | Success: pane reported "Workbook optimized" and "2 cells were optimized"; Z10000 was removed from saved worksheet XML. |
+| Window messages on a private desktop | Success: completion text observed and Z10000 removed. Excel and probe desktop matched; the input desktop remained Default. |
 
 The pane exposed native NetUI accessibility elements. The experiment's WebView2
 debugging endpoint listed only Excel Shrink Capture, not a separate performance
@@ -99,7 +127,9 @@ requires a separate, observed action. Never report command acceptance as
 optimization success. A production adapter needs bounded waits and explicit
 completion/error reporting.
 
-Hidden windows are not categorically incompatible with accessibility, but no
-working hidden Optimize all path has been established here. The verified pointer
-fallback requires visibility and must not be silently used on an unattended
-hidden corpus run. Private desktops and minimized windows require separate tests.
+An invisible Excel window (`Visible=false`) still has no verified optimization
+path here. A visible window on a non-input private desktop does: the window-message
+experiment succeeds without pointer input on the user's desktop. This has been
+tested on the small fixture, not yet on representative corpora or other Excel
+versions. Production integration is deliberately separate. Minimized windows
+remain untested.

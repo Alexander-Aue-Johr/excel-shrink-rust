@@ -4,12 +4,14 @@ param(
     [Parameter(Mandatory=$true)][string]$Output,
     [switch]$Optimize,
     [switch]$HiddenOptimize,
-    [switch]$ClickOptimize
+    [switch]$ClickOptimize,
+    [switch]$MessageOptimize
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -Path @((Join-Path $Worker 'CaptureProcesses.cs'), (Join-Path $Worker 'CaptureDesktop.cs'))
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+Add-Type -Path (Join-Path $PSScriptRoot 'DesktopIdentity.cs')
 Add-Type -Path (Join-Path $PSScriptRoot 'AccessibleAction.cs') -ReferencedAssemblies Accessibility
 
 function Get-Controls($Root) {
@@ -69,7 +71,7 @@ function Connect-OwnedExcel($SessionPath) {
             throw 'Isolated Excel process identity changed.'
         }
         $connection.Process = $process
-        $scope = [CaptureErrorChecking]::TryDisable($process)
+        $scope = [CaptureErrorChecking]::TryDisable($process, $env:EXCEL_SHRINK_EXPERIMENT_DESKTOP)
         $connection.Scope = $scope
         if ($null -eq $scope) { throw 'The isolated Excel instance has no accessible native window.' }
         # This experiment borrows the exact owned instance; no global GetActiveObject.
@@ -114,6 +116,9 @@ function Record-NativeCapabilities($Connection, $Report) {
     $Report.pid = $process.Id
     $Report.excel_version = $excel.Version
     $Report.excel_build = $excel.Build
+    $Report.excel_desktop = [DesktopIdentity]::WindowName([IntPtr]$excel.Hwnd)
+    $Report.input_desktop = [DesktopIdentity]::InputName()
+    $Report.probe_desktop = [DesktopIdentity]::CurrentName()
     $Report.com_candidates = @($excel | Get-Member | Where-Object Name -match 'Performance|Optimi|Cleanup' | Select-Object Name,MemberType,Definition)
     $Report.workbook_com_candidates = @($book | Get-Member | Where-Object Name -match 'Performance|Optimi|Cleanup' | Select-Object Name,MemberType,Definition)
     $commands = $excel.CommandBars
@@ -177,7 +182,7 @@ function Find-OptimizationTarget($Root, $Report) {
     return [pscustomobject]@{Button=$buttons[0].element; Name=$buttons[0].name; Pane=$panes[0].element}
 }
 
-function Invoke-OptimizationAction($Connection, $Target, $Report, [switch]$Hidden, [switch]$Click) {
+function Invoke-OptimizationAction($Connection, $Target, $Report, [switch]$Hidden, [switch]$Click, [switch]$Messages) {
     $excel = $Connection.Excel
     $process = $Connection.Process
     $button = $Target.Button
@@ -185,7 +190,13 @@ function Invoke-OptimizationAction($Connection, $Target, $Report, [switch]$Hidde
     if ($Hidden) { $excel.Visible = $false }
     $report.optimization.excel_visible_at_action = $excel.Visible
     $pattern = $null
-    if ($Click) {
+    if ($Messages) {
+        $rectangle = $button.Current.BoundingRectangle
+        [NativeWindow]::SendClick([IntPtr]$excel.Hwnd, $process.Id,
+            [int]($rectangle.X + $rectangle.Width / 2),
+            [int]($rectangle.Y + $rectangle.Height / 2))
+        $Report.optimization.method = 'window_messages'
+    } elseif ($Click) {
         if (-not $excel.Visible) { throw 'Pointer input requires visible Excel.' }
         $rectangle = $button.Current.BoundingRectangle
         [NativeWindow]::Click([IntPtr]$excel.Hwnd, $process.Id,
@@ -214,7 +225,7 @@ function Wait-OptimizationCompletion($Pane) {
     return @{status='invoked_completion_unverified'; controls=(Describe-Controls $after)}
 }
 
-function Test-WorkbookOptimization($Connection, $Report, $Directory, [switch]$Hidden, [switch]$Click) {
+function Test-WorkbookOptimization($Connection, $Report, $Directory, [switch]$Hidden, [switch]$Click, [switch]$Messages) {
     $target = Find-OptimizationTarget $Connection.Root $Report
     if ($null -eq $target) { return }
 
@@ -223,7 +234,7 @@ function Test-WorkbookOptimization($Connection, $Report, $Directory, [switch]$Hi
     $book.SaveCopyAs((Join-Path $Directory 'before-optimization.xlsx'))
     $Report.optimization = @{status='button_found'; button=$target.Name;
         patterns=@($target.Button.GetSupportedPatterns() | ForEach-Object ProgrammaticName)}
-    Invoke-OptimizationAction $Connection $target $Report -Hidden:$Hidden -Click:$Click
+    Invoke-OptimizationAction $Connection $target $Report -Hidden:$Hidden -Click:$Click -Messages:$Messages
     $Report.optimization.status = 'invoked_completion_unverified'
     $completion = Wait-OptimizationCompletion $target.Pane
     $Report.optimization.status = $completion.status
@@ -239,7 +250,7 @@ try {
     Record-NativeCapabilities $connection $report
     Test-PerformancePaneOpening $connection $report $directory
     if ($Optimize) {
-        Test-WorkbookOptimization $connection $report $directory -Hidden:$HiddenOptimize -Click:$ClickOptimize
+        Test-WorkbookOptimization $connection $report $directory -Hidden:$HiddenOptimize -Click:$ClickOptimize -Messages:$MessageOptimize
     }
 } catch { $report.error = $_.Exception.Message }
 finally {

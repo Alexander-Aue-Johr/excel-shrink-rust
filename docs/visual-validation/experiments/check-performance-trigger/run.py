@@ -63,6 +63,17 @@ def prepare_worker(directory):
         "    if (command.operation === 'probe_check_performance') {\n"
         "      return probeCheckPerformance(command, office);\n    }\n")
     path.write_text(source, encoding='utf-8')
+    desktop = os.environ.get('EXCEL_SHRINK_EXPERIMENT_DESKTOP')
+    if desktop:
+        # Bind the isolated launcher explicitly; do not rely on thread desktop inheritance.
+        if not desktop.startswith('es-capture-') or not desktop.replace('-', '').isalnum():
+            raise ValueError('Unexpected experiment desktop name')
+        launcher = worker / 'resident.ps1'
+        source = launcher.read_text(encoding='utf-8')
+        anchor = '        $desktopName = $null'
+        if source.count(anchor) != 1:
+            raise RuntimeError('The desktop selection extension point changed')
+        launcher.write_text(source.replace(anchor, f"        $desktopName = '{desktop}'"), encoding='utf-8')
     return worker
 
 
@@ -95,12 +106,15 @@ def parse_options():
     parser.add_argument('--optimize', action='store_true')
     parser.add_argument('--hidden-optimize', action='store_true')
     parser.add_argument('--click-optimize', action='store_true')
+    parser.add_argument('--message-optimize', action='store_true')
     args = parser.parse_args()
     if args.click_optimize and args.hidden_optimize:
         parser.error('--click-optimize requires visible Excel')
-    if (args.optimize or args.hidden_optimize or args.click_optimize) and not args.native:
+    if args.message_optimize and (args.click_optimize or args.hidden_optimize):
+        parser.error('--message-optimize cannot be combined with click or hidden optimization')
+    if (args.optimize or args.hidden_optimize or args.click_optimize or args.message_optimize) and not args.native:
         parser.error('Native action options require --native')
-    if (args.hidden_optimize or args.click_optimize) and not args.optimize:
+    if (args.hidden_optimize or args.click_optimize or args.message_optimize) and not args.optimize:
         parser.error('Optimization options require --optimize')
     return args
 
@@ -204,6 +218,8 @@ def probe_native_optimization(experiment, session, options):
         command.append('-HiddenOptimize')
     if options.click_optimize:
         command.append('-ClickOptimize')
+    if options.message_optimize:
+        command.append('-MessageOptimize')
     subprocess.run(command, stdout=session.stdout, stderr=session.stderr,
         timeout=90, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
     native = experiment.helper.read_json(experiment.directory / 'native.json') or {}
