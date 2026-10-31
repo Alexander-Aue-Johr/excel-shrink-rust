@@ -1,0 +1,173 @@
+{
+  "fixture": {
+    "sheets": 8,
+    "rows_per_sheet": 1000000,
+    "numeric_cells_per_sheet": 3000000,
+    "identical_sheet_crc_and_xml_size": true,
+    "all_zip_crcs_valid": true,
+    "xlsx_bytes": 199438289,
+    "sha256": "64e5dee49a83200f0a5b9ae7363ad6c65abf069c226073cd8784a93b116c805b"
+  },
+  "calibration_seconds": {
+    "one_sheet": 7.3306759999999995,
+    "seven_sheets": 23.6268708,
+    "eight_sheets": 25.595408799999998
+  },
+  "measurement": "native-process-start-to-verified-addin-ready",
+  "machine": {
+    "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+    "os": "Windows-11-10.0.26200-SP0",
+    "ram_bytes": 102066212864
+  },
+  "logical_cpus": 16,
+  "binary_sha256": "80642a6715295ee73b32682a73a5b5eeea9795fa4d534f94dd1b4b41220efb2a",
+  "resident_source_sha256": "c0cd2df4eb496d0ae57a8d72a459a407cb102e26f733965e76fcfc8293ee61f7",
+  "input_desktop_unchanged": true,
+  "summary": [
+    {
+      "arrangement": "sequential",
+      "median_pair_seconds": 49.745401,
+      "speedup_against_sequential": 1.0
+    },
+    {
+      "arrangement": "same_desktop",
+      "median_pair_seconds": 27.148983,
+      "speedup_against_sequential": 1.8323117665217883
+    },
+    {
+      "arrangement": "separate_desktops",
+      "median_pair_seconds": 28.2118015,
+      "speedup_against_sequential": 1.7632833904633847
+    }
+  ],
+  "trials": [
+    {
+      "repetition": 1,
+      "arrangement": "sequential",
+      "pair_seconds": 50.689026,
+      "individual_seconds": [
+        24.875982,
+        25.813044
+      ],
+      "launch_skew_seconds": null,
+      "process_creation_skew_ms": null,
+      "concurrent_cpu_active_seconds": null,
+      "launcher_startup_sampled": [
+        true,
+        true
+      ],
+      "peak_private_bytes": [
+        780779520,
+        774447104
+      ]
+    },
+    {
+      "repetition": 1,
+      "arrangement": "same_desktop",
+      "pair_seconds": 27.438055,
+      "individual_seconds": [
+        26.814055,
+        27.438055
+      ],
+      "launch_skew_seconds": 0.0,
+      "process_creation_skew_ms": 1,
+      "concurrent_cpu_active_seconds": 26.352293252944946,
+      "launcher_startup_sampled": [
+        true,
+        true
+      ],
+      "peak_private_bytes": [
+        779317248,
+        777969664
+      ]
+    },
+    {
+      "repetition": 1,
+      "arrangement": "separate_desktops",
+      "pair_seconds": 28.595437,
+      "individual_seconds": [
+        28.191437,
+        28.595437
+      ],
+      "launch_skew_seconds": 0.0,
+      "process_creation_skew_ms": 1,
+      "concurrent_cpu_active_seconds": 26.171912908554077,
+      "launcher_startup_sampled": [
+        true,
+        false
+      ],
+      "peak_private_bytes": [
+        772628480,
+        767770624
+      ]
+    },
+    {
+      "repetition": 2,
+      "arrangement": "separate_desktops",
+      "pair_seconds": 27.828166,
+      "individual_seconds": [
+        27.828166,
+        26.690166
+      ],
+      "launch_skew_seconds": 0.0,
+      "process_creation_skew_ms": 0,
+      "concurrent_cpu_active_seconds": 25.86407995223999,
+      "launcher_startup_sampled": [
+        true,
+        false
+      ],
+      "peak_private_bytes": [
+        768098304,
+        767209472
+      ]
+    },
+    {
+      "repetition": 2,
+      "arrangement": "same_desktop",
+      "pair_seconds": 26.859911,
+      "individual_seconds": [
+        26.453911,
+        26.859911
+      ],
+      "launch_skew_seconds": 0.0,
+      "process_creation_skew_ms": 0,
+      "concurrent_cpu_active_seconds": 25.343147039413452,
+      "launcher_startup_sampled": [
+        true,
+        true
+      ],
+      "peak_private_bytes": [
+        782028800,
+        772980736
+      ]
+    },
+    {
+      "repetition": 2,
+      "arrangement": "sequential",
+      "pair_seconds": 48.801776000000004,
+      "individual_seconds": [
+        24.502173,
+        24.299603
+      ],
+      "launch_skew_seconds": null,
+      "process_creation_skew_ms": null,
+      "concurrent_cpu_active_seconds": null,
+      "launcher_startup_sampled": [
+        true,
+        true
+      ],
+      "peak_private_bytes": [
+        784887808,
+        772280320
+      ]
+    }
+  ],
+  "production_runner_modified_or_stopped": false,
+  "limitations": [
+    "Two rounds on one machine with existing background work; not a final paper benchmark.",
+    "Endpoint is verified Office.js readiness, not direct instrumentation of all Excel parser phases.",
+    "Opening during active capture work was not tested.",
+    "Native startup sampling remained pending on the second desktop; readiness was measured independently."
+  ],
+  "all_recorded_experiment_excel_identities_exited": true
+}
