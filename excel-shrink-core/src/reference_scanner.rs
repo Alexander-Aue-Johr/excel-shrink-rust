@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 mod object_references;
+mod shared_formulas;
 
 static UNSAFE_FUNCTIONS: OnceLock<Regex> = OnceLock::new();
 static FORMULA_PATTERN: OnceLock<Regex> = OnceLock::new();
@@ -182,6 +183,11 @@ fn scan_flat_reference_attributes(
     }
 }
 
+/// Collects worksheet-scoped references before reference-sensitive cleanup.
+///
+/// Shared formulas protect the references reachable from every formula cell in
+/// their declared range. An unresolved formula returns [`ScanResult::Unsafe`],
+/// so callers must retain reference-sensitive cleanup candidates.
 pub fn scan_for_references_by_sheet(
     buffers: &[SheetScanBuffer<'_>],
     protected_refs: &mut ProtectedWorkbookRefs,
@@ -283,6 +289,14 @@ fn scan_sheet_formulas(
     sheet_name_to_file: &HashMap<Vec<u8>, String>,
     patterns: &SheetScanPatterns,
 ) -> Option<String> {
+    if let Some(reason) = shared_formulas::scan_shared_formula_references(
+        buffer,
+        protected_refs,
+        sheet_name_to_file,
+        patterns.reference_token,
+    ) {
+        return Some(reason);
+    }
     for captures in patterns.formula.captures_iter(buffer.xml) {
         let formula = captures.get(1).unwrap().as_bytes();
         if let Some(function) = reference_scan_blocker(formula, patterns.unsafe_function) {

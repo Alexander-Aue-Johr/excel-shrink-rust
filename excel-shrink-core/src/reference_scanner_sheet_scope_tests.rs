@@ -2,6 +2,160 @@ use super::*;
 use crate::models::{ProtectedWorkbookRefs, SheetScanBuffer};
 use std::collections::HashMap;
 
+/// Reduced regression from Destatis `verkehr-aktuell-xlsx-2080110.xlsx`,
+/// worksheet `1.1.5` (`sheet13.xml`). `D166` is the shared-formula anchor
+/// (`t="shared"`, `si="115"`, `ref="D166:J166"`) holding `D91/D64*100-100`;
+/// follower `E166` has the same `si` but no formula text. Excel shifts the
+/// relative references for `E166` to `E91/E64*100-100`. Default deleted `E64`
+/// from hidden row 64, causing `#DIV/0!` after recalculation and a visual
+/// difference.
+#[test]
+fn shared_formula_protects_shifted_hidden_inputs() {
+    let xml = br#"<worksheet><sheetData>
+        <row r="64" hidden="1"><c r="D64"><v>1869.695</v></c>
+            <c r="E64"><v>4232.35</v></c><c r="F64"><v>296.63</v></c></row>
+        <row r="166"><c r="D166"><f t="shared" ref="D166:J166" si="115">D91/D64*100-100</f></c>
+            <c r="E166"><f t="shared" si="115"/></c>
+            <c r="J166"><f t="shared" si="115"/></c></row>
+    </sheetData></worksheet>"#;
+    let mut protected = ProtectedWorkbookRefs::default();
+    let result = scan_for_references_by_sheet(
+        &[SheetScanBuffer {
+            sheet_file: "xl/worksheets/sheet13.xml",
+            sheet_name: "1.1.5",
+            xml,
+        }],
+        &mut protected,
+        None,
+        None,
+    );
+
+    assert!(matches!(result, ScanResult::Safe));
+    for col in 4..=10 {
+        assert!(protected.contains("xl/worksheets/sheet13.xml", col, 64));
+        assert!(protected.contains("xl/worksheets/sheet13.xml", col, 91));
+    }
+    assert!(!protected.contains("xl/worksheets/sheet13.xml", 3, 64));
+    assert!(!protected.contains("xl/worksheets/sheet13.xml", 11, 64));
+}
+
+#[test]
+fn shared_formula_preserves_absolute_axes_and_other_sheet_scope() {
+    let xml = br#"<worksheet><sheetData><row r="10">
+        <c r="B10"><f si="7" ref="B10:D12" t="shared">Inputs!$E5+Inputs!F$6+Inputs!$G$7</f></c>
+        <c r="D12"><f t="shared" si="7"/></c>
+    </row></sheetData></worksheet>"#;
+    let mut names = HashMap::new();
+    names.insert("Inputs".into(), "xl/worksheets/sheet2.xml".into());
+    let mut protected = ProtectedWorkbookRefs::default();
+    let result = scan_for_references_by_sheet(
+        &[SheetScanBuffer {
+            sheet_file: "xl/worksheets/sheet1.xml",
+            sheet_name: "Output",
+            xml,
+        }],
+        &mut protected,
+        Some(&names),
+        None,
+    );
+
+    assert!(matches!(result, ScanResult::Safe));
+    for row in 5..=7 {
+        assert!(protected.contains("xl/worksheets/sheet2.xml", 5, row));
+    }
+    for col in 6..=8 {
+        assert!(protected.contains("xl/worksheets/sheet2.xml", col, 6));
+    }
+    assert!(protected.contains("xl/worksheets/sheet2.xml", 7, 7));
+    assert!(!protected.contains("xl/worksheets/sheet1.xml", 5, 5));
+    assert!(!protected.contains("xl/worksheets/sheet2.xml", 5, 8));
+}
+
+#[test]
+fn shared_formula_resolves_xml_escaped_sheet_names() {
+    let xml = br#"<worksheet><c r="B10"><f t="shared" ref="B10:C10" si="2">&apos;Input&apos;&apos;s data&apos;!A1</f></c>
+        <c r="C10"><f t="shared" si="2"/></c></worksheet>"#;
+    let mut names = HashMap::new();
+    names.insert("Input's data".into(), "xl/worksheets/sheet2.xml".into());
+    let mut protected = ProtectedWorkbookRefs::default();
+    let result = scan_for_references_by_sheet(
+        &[SheetScanBuffer {
+            sheet_file: "xl/worksheets/sheet1.xml",
+            sheet_name: "Output",
+            xml,
+        }],
+        &mut protected,
+        Some(&names),
+        None,
+    );
+
+    assert!(matches!(result, ScanResult::Safe));
+    assert!(protected.contains("xl/worksheets/sheet2.xml", 1, 1));
+    assert!(protected.contains("xl/worksheets/sheet2.xml", 2, 1));
+    assert!(!protected.contains("xl/worksheets/sheet1.xml", 2, 1));
+}
+
+#[test]
+fn unresolved_shared_formula_prevents_reference_sensitive_cleanup() {
+    for xml in [
+        br#"<worksheet><c r="E166"><f t="shared" si="115"/></c></worksheet>"#.as_slice(),
+        br#"<worksheet><c r="D166"><f t="shared" si="115">D64</f></c></worksheet>"#,
+        br#"<worksheet><c r="XFD1"><f t="shared" si="115" ref="XFD1:XFD2">XFD1048576</f></c></worksheet>"#,
+    ] {
+        let mut protected = ProtectedWorkbookRefs::default();
+        let result = scan_for_references_by_sheet(
+            &[SheetScanBuffer { sheet_file: "xl/worksheets/sheet1.xml", sheet_name: "Sheet1", xml }],
+            &mut protected, None, None,
+        );
+        assert!(matches!(result, ScanResult::Unsafe(_)));
+    }
+}
+
+#[test]
+fn shared_followers_do_not_swallow_the_next_formula_anchor() {
+    let xml = br#"<worksheet><sheetData><row r="10">
+        <c r="A10"><f t="shared" ref="A10:B10" si="1">A1</f></c>
+        <c r="B10"><f t="shared" si="1"/></c>
+        <c r="C10"><f t="shared" ref="C10:D10" si="2">C2</f></c>
+        <c r="D10"><f t="shared" si="2"/></c>
+    </row></sheetData></worksheet>"#;
+    let mut protected = ProtectedWorkbookRefs::default();
+    let result = scan_for_references_by_sheet(
+        &[SheetScanBuffer {
+            sheet_file: "xl/worksheets/sheet1.xml",
+            sheet_name: "Sheet1",
+            xml,
+        }],
+        &mut protected,
+        None,
+        None,
+    );
+
+    assert!(matches!(result, ScanResult::Safe));
+    for (col, row) in [(1, 1), (2, 1), (3, 2), (4, 2)] {
+        assert!(protected.contains("xl/worksheets/sheet1.xml", col, row));
+    }
+}
+
+#[test]
+fn prefixed_shared_formula_without_cell_context_is_unsafe() {
+    let xml = br#"<x:worksheet><x:c r="B10"><x:f t="shared" ref="B10:C10" si="2">A1</x:f></x:c>
+        <x:c r="C10"><x:f t="shared" si="2"/></x:c></x:worksheet>"#;
+    let mut protected = ProtectedWorkbookRefs::default();
+    let result = scan_for_references_by_sheet(
+        &[SheetScanBuffer {
+            sheet_file: "xl/worksheets/sheet1.xml",
+            sheet_name: "Sheet1",
+            xml,
+        }],
+        &mut protected,
+        None,
+        None,
+    );
+
+    assert!(matches!(result, ScanResult::Unsafe(_)));
+}
+
 #[test]
 fn local_reference_on_same_sheet_keeps_candidate() {
     let sheet1_xml = br#"

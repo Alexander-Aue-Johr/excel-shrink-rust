@@ -582,6 +582,10 @@ These commands are particularly useful when investigating macro-generated code o
 
 ## Reproducing paper experiments
 
+The [reference-protection methodology](docs/methodology/reference-protection.md)
+connects the hidden-cell cleanup rule, shared-formula regression and focused
+tests to the implementation.
+
 A typical reproduction workflow is:
 
 ```bash
