@@ -30,6 +30,23 @@ Do not combine it with `--click-optimize`.
 
 ## What is tested
 
+The entry point in `run.py` reads as the experiment procedure: prepare the
+fixture, open the owned Excel session, inspect Office.js, probe native
+optimization, verify saved XML, and record WebView origins. The session context
+owns launcher/debugger cleanup and log handles, including failed startup.
+
+`probe-native.ps1` separates connection identity checks, capability discovery,
+pane opening, target discovery, action invocation, and completion observation.
+`NativeWindow.cs` contains the Windows window-image and pointer-input calls;
+`AccessibleAction.cs` contains the MSAA traversal. These are experiment helpers,
+not a new production automation layer.
+
+Failure-path checks can run without Excel:
+
+```powershell
+python docs/visual-validation/experiments/check-performance-trigger/test_session_cleanup.py
+```
+
 1. Copy the production worker scripts into the experiment output directory and
    inject one additional diagnosis operation into that copy.
 2. Open a small workbook with values in A1:A20 and a surplus formatted empty
