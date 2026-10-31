@@ -1,0 +1,232 @@
+{
+  "date": "2026-10-31",
+  "rows": 100000,
+  "base_capture_budget": 0,
+  "workbooks": {
+    "baseline": {
+      "windows_path": "C:\\Users\\aue-johr\\AppData\\Local\\Temp\\officejs-targeted-change-1793460327379713800\\baseline.xlsx",
+      "sha256": "6fd206b3366af22b7178f0beb9adf934f145220a3b7b03890349f58a9ed06fb4"
+    },
+    "variant": {
+      "windows_path": "C:\\Users\\aue-johr\\AppData\\Local\\Temp\\officejs-targeted-change-1793460327379713800\\variant.xlsx",
+      "sha256": "40cca1a208cbd530922290a7cc4e4e253c2218ae6253d981e9f97bfec052d544"
+    }
+  },
+  "raw_report_windows_path": "C:\\Users\\aue-johr\\AppData\\Local\\Temp\\officejs-targeted-change-1793460327379713800\\results.json",
+  "changes_before_recalc": [
+    {
+      "address": "A5",
+      "before": "5",
+      "after": "50000",
+      "kind": "value_or_style_changed"
+    },
+    {
+      "address": "A50000",
+      "before": "50000",
+      "after": null,
+      "kind": "removed"
+    }
+  ],
+  "changes_after_recalc": [
+    {
+      "address": "A5",
+      "before": "5",
+      "after": "50000",
+      "kind": "value_or_style_changed"
+    },
+    {
+      "address": "A50000",
+      "before": "50000",
+      "after": null,
+      "kind": "removed"
+    }
+  ],
+  "chart_data": {
+    "baseline": {
+      "source": "'RGB sweep'!$A$1:$A$16",
+      "cached_A5": "5"
+    },
+    "variant": {
+      "source": "'RGB sweep'!$A$1:$A$16",
+      "cached_A5": "50000"
+    }
+  },
+  "object_bounds": {
+    "excel": {
+      "chart": {
+        "name": "Rainbow values chart",
+        "top_left": "A5",
+        "bottom_right": "H20",
+        "left": 40,
+        "top": 60,
+        "width": 380,
+        "height": 230
+      },
+      "drawing": {
+        "name": "Static rectangle",
+        "top_left": "I6",
+        "bottom_right": "K13",
+        "left": 480,
+        "top": 80,
+        "width": 170,
+        "height": 100
+      }
+    },
+    "ooxml_anchors": {
+      "Rainbow values chart": {
+        "top_left": "A5",
+        "bottom_right": "H20"
+      },
+      "Static rectangle": {
+        "top_left": "I6",
+        "bottom_right": "K13"
+      }
+    },
+    "officejs_baseline": {
+      "charts": [
+        {
+          "height": 230,
+          "left": 40,
+          "name": "Rainbow values chart",
+          "top": 60,
+          "width": 380
+        }
+      ],
+      "shapes": [
+        {
+          "height": 230,
+          "left": 40,
+          "name": "Rainbow values chart",
+          "rotation": 0,
+          "top": 60,
+          "visible": true,
+          "width": 380
+        },
+        {
+          "height": 100,
+          "left": 480,
+          "name": "Static rectangle",
+          "rotation": 0,
+          "top": 80,
+          "visible": true,
+          "width": 170
+        }
+      ]
+    }
+  },
+  "timings_seconds": {
+    "excel_prepare": 4.891,
+    "mutation": 1.203,
+    "scan_before_recalc": 1.828,
+    "excel_recalculate_save": 4.234,
+    "scan_after_recalc": 1.75,
+    "baseline_resident_startup": 7.344,
+    "variant_resident_startup": 15.406
+  },
+  "captures": [
+    {
+      "key": "changed-value",
+      "sheet": "RGB sweep",
+      "range": "A4:B6",
+      "pixels": [
+        149,
+        61
+      ],
+      "same_sha256": false,
+      "baseline": {
+        "sha256": "0352ccee59b99b0a1c1effac7fbe83cbe486562208ac493fb16a52d27d585792",
+        "png_bytes": 786,
+        "capture_ms": 5.4,
+        "elapsed_seconds": 0.265,
+        "peak_working_set_bytes": 280621056,
+        "image": "images/baseline/changed-value.png"
+      },
+      "variant": {
+        "sha256": "14f0c2f4a061ac7b851ed1b22beac2ee912b2afb4f1cf28476ade3695d60de89",
+        "png_bytes": 880,
+        "capture_ms": 7.3,
+        "elapsed_seconds": 0.266,
+        "peak_working_set_bytes": 277594112,
+        "image": "images/variant/changed-value.png"
+      }
+    },
+    {
+      "key": "removed-cell",
+      "sheet": "RGB sweep",
+      "range": "A49999:B50001",
+      "pixels": [
+        149,
+        61
+      ],
+      "same_sha256": false,
+      "baseline": {
+        "sha256": "377e2ea29fef32412975f82458b9b871cf8ba08b6a43ca96e387a47efdd9a2cb",
+        "png_bytes": 1149,
+        "capture_ms": 16.9,
+        "elapsed_seconds": 0.25,
+        "peak_working_set_bytes": 280621056,
+        "image": "images/baseline/removed-cell.png"
+      },
+      "variant": {
+        "sha256": "451e00ddc21e0241538d2063af0a4427bb9e702cbff9211b0e1b68ce5947e51b",
+        "png_bytes": 1022,
+        "capture_ms": 24.1,
+        "elapsed_seconds": 0.265,
+        "peak_working_set_bytes": 277594112,
+        "image": "images/variant/removed-cell.png"
+      }
+    },
+    {
+      "key": "chart",
+      "sheet": "Objects",
+      "range": "A5:H20",
+      "pixels": [
+        641,
+        321
+      ],
+      "same_sha256": false,
+      "baseline": {
+        "sha256": "90d98dcaa7ec2d749e31b064ac6829ce9ad1d3a585eeba3a94210fa79bb05b83",
+        "png_bytes": 14176,
+        "capture_ms": 60.9,
+        "elapsed_seconds": 0.266,
+        "peak_working_set_bytes": 280621056,
+        "image": "images/baseline/chart.png"
+      },
+      "variant": {
+        "sha256": "f922bc3430ed76b44178594397a4a92ccc13459daa8a3d65fb4ebffefe9825f3",
+        "png_bytes": 14339,
+        "capture_ms": 57.2,
+        "elapsed_seconds": 0.266,
+        "peak_working_set_bytes": 277594112,
+        "image": "images/variant/chart.png"
+      }
+    },
+    {
+      "key": "drawing",
+      "sheet": "Objects",
+      "range": "I6:K13",
+      "pixels": [
+        241,
+        161
+      ],
+      "same_sha256": true,
+      "baseline": {
+        "sha256": "e1665d4c84e249663305f6e35e0ea6040400cdec36f99c2e4ef094fc979eff21",
+        "png_bytes": 2456,
+        "capture_ms": 10.4,
+        "elapsed_seconds": 0.25,
+        "peak_working_set_bytes": 281051136,
+        "image": "images/baseline/drawing.png"
+      },
+      "variant": {
+        "sha256": "e1665d4c84e249663305f6e35e0ea6040400cdec36f99c2e4ef094fc979eff21",
+        "png_bytes": 2456,
+        "capture_ms": 8,
+        "elapsed_seconds": 0.265,
+        "peak_working_set_bytes": 288006144,
+        "image": "images/variant/drawing.png"
+      }
+    }
+  ]
+}
