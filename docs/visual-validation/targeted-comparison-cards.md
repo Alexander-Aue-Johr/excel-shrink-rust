@@ -136,7 +136,7 @@ failure; failure reporting gives their exits a bounded confirmation interval.
 | Actual Observatory launch | HTTP test starts the private runner from a prepared bundle, checks real comparison results and verifies the bundle hash is unchanged. |
 | Bounded command wait | HTTP harness also runs a deliberately silent command host with a one-second deadline; it must finish as a reported failure. |
 
-The comparison still has scientific limits: at most 64 candidate regions; no
+The comparison still has scientific limits: no
 complete drawing/chart/style/layout dependency analysis and no general proof of
 reopened-after-save visual equivalence. Cell fingerprints are streamed through owned temporary files, with no worksheet
 MiB or cell-count cap. Remaining limits fail explicitly or stay recorded; none

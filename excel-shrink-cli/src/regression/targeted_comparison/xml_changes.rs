@@ -1,7 +1,7 @@
 //! Byte-based XML evidence for selection and conservative change attribution.
 use super::{
     cell_stream::{Cells, Writer},
-    Candidate, MAX_CANDIDATES,
+    Candidate,
 };
 use crate::regression::{
     office_plan::build_workbook_visual_plan,
@@ -156,20 +156,9 @@ impl Snapshot {
             let empty = Sheet::default();
             let left = self.sheets.get(name).unwrap_or(&empty);
             let right = after.sheets.get(name).unwrap_or(&empty);
-            let mut selected = BTreeSet::new();
             left.cells.changes(&right.cells, |change| {
                 let coordinate = change.coordinate();
                 let address = coordinate.address();
-                let capture = if change.visible() {
-                    address.clone()
-                } else {
-                    format!("A{}", coordinate.row)
-                };
-                selected.insert(capture);
-                ensure!(
-                    selected.len() <= MAX_CANDIDATES,
-                    "More than {MAX_CANDIDATES} candidate regions; no complete targeted result established"
-                );
                 changes.push(XmlChange {
                     sheet: name.clone(),
                     location: format!("cell:{address}"),

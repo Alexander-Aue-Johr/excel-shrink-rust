@@ -1,8 +1,8 @@
 //! Native optimization is a separate lane, with its own save baseline and evidence.
 use super::evidence::{compare_performance, Evidence, PerformanceFinding};
 use super::telemetry::{LaneId, Phase, StepStatus};
-use super::{discover_candidates, Candidate, Comparison, MAX_CANDIDATES};
-use anyhow::{ensure, Context, Result};
+use super::{discover_candidates, Candidate, Comparison};
+use anyhow::{Context, Result};
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -124,10 +124,6 @@ impl Comparison<'_> {
             .extend(self.performance.save_changes.iter().cloned());
         self.candidates
             .extend(self.performance.optimization_changes.iter().cloned());
-        ensure!(
-            self.candidates.len() <= MAX_CANDIDATES,
-            "More than {MAX_CANDIDATES} changed cells; aborting bounded comparison"
-        );
         self.report
             .check_performance_evidence
             .as_mut()

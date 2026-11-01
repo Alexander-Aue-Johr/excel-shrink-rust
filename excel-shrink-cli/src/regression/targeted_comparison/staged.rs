@@ -4,7 +4,7 @@ use super::{
     heights::{self, HeightCheck, HeightRun},
     telemetry::{LaneId, Lifecycle, Phase, StepStatus},
     xml_changes::{cell_candidates, Snapshot, Transition},
-    Candidate, Comparison, MAX_CANDIDATES,
+    Candidate, Comparison,
 };
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
@@ -145,7 +145,7 @@ impl Workflow<'_, '_> {
         let b = Snapshot::read(after)?;
         let changes = a.changes(&b)?;
         self.comparison.candidates.extend(cell_candidates(&changes));
-        self.check_candidate_limit()?;
+        self.publish_candidate_count()?;
         self.comparison.report.transitions.push(Transition {
             label: label.into(),
             before_file: before.into(),
@@ -155,11 +155,7 @@ impl Workflow<'_, '_> {
         Ok(())
     }
 
-    fn check_candidate_limit(&mut self) -> Result<()> {
-        ensure!(
-            self.comparison.candidates.len() <= MAX_CANDIDATES,
-            "More than {MAX_CANDIDATES} candidate regions; no complete targeted result established"
-        );
+    fn publish_candidate_count(&mut self) -> Result<()> {
         self.comparison.report.candidate_count = self.comparison.candidates.len();
         self.comparison
             .telemetry
@@ -250,7 +246,7 @@ impl Workflow<'_, '_> {
             );
             let changes = a.changes(&b)?;
             self.comparison.candidates.extend(cell_candidates(&changes));
-            self.check_candidate_limit()?;
+            self.publish_candidate_count()?;
             self.comparison.telemetry.update(|state| {
                 state.step(left, Phase::MeasureHeights, StepStatus::Running);
                 state.step(right, Phase::MeasureHeights, StepStatus::Running);
@@ -276,7 +272,7 @@ impl Workflow<'_, '_> {
                 let selected =
                     self.comparison.report.height_checks[index].compare(&before, &after)?;
                 self.comparison.candidates.extend(selected);
-                self.check_candidate_limit()?;
+                self.publish_candidate_count()?;
             }
             self.comparison.telemetry.update(|state| {
                 state.step(left, Phase::MeasureHeights, StepStatus::Done);

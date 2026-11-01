@@ -24,7 +24,6 @@ use std::{
     path::PathBuf,
 };
 use telemetry::{LaneId, Phase, StepStatus, Telemetry};
-const MAX_CANDIDATES: usize = 64;
 
 #[derive(Debug, Parser)]
 pub(crate) struct Args {
@@ -218,10 +217,6 @@ impl<'a> Comparison<'a> {
         self.candidates
             .extend(self.original_save_changes.iter().cloned());
         self.candidates.extend(changes.default);
-        ensure!(
-            self.candidates.len() <= MAX_CANDIDATES,
-            "More than {MAX_CANDIDATES} changed cells; aborting bounded comparison"
-        );
         Ok(())
     }
 

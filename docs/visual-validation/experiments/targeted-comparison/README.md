@@ -79,8 +79,7 @@ outcomes on failure. `failure.json` and final telemetry distinguish unsuccessful
 work from unconfirmed process exit. The Observatory's process samples remain
 labelled PID liveness, not fabricated Office.js heartbeats.
 
-The **64-candidate-region limit** remains. There is no worksheet-byte or
-cell-count rejection limit. Cells are merged from ordered disk streams instead
+There is no candidate-count, worksheet-byte or cell-count rejection limit. Cells are merged from ordered disk streams instead
 of an in-memory cell index; style/string context is hashed in chunks. Scratch
 files are released with their snapshots, including on failure. Memory still
 scales with layout metadata and actual differences. Drawing/chart/conditional-formatting and

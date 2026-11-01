@@ -1,7 +1,7 @@
-//! Bounded candidate discovery; unrelated workbook changes remain explicit limitations.
+//! Candidate discovery; unrelated workbook changes remain explicit limitations.
 use super::xml_changes::{cell_candidates, Snapshot};
-use super::{Candidate, WorkingPaths, MAX_CANDIDATES};
-use anyhow::{ensure, Result};
+use super::{Candidate, WorkingPaths};
+use anyhow::Result;
 use std::{collections::BTreeSet, path::Path};
 
 /// Ordinary save effects are distinct controls for Original and Default.
@@ -21,16 +21,10 @@ pub(super) fn find_changes_caused_by_save(
 }
 
 /// Maps changed cell XML to visible cell or row-geometry capture candidates.
-/// The fixed candidate cap prevents accidental whole-sheet screenshot work.
 pub(super) fn discover_candidates(left: &Path, right: &Path) -> Result<BTreeSet<Candidate>> {
     let before = Snapshot::read(left)?;
     let after = Snapshot::read(right)?;
-    let found = cell_candidates(&before.changes(&after)?);
-    ensure!(
-        found.len() <= MAX_CANDIDATES,
-        "More than {MAX_CANDIDATES} candidate regions"
-    );
-    Ok(found)
+    Ok(cell_candidates(&before.changes(&after)?))
 }
 
 #[cfg(test)]
@@ -99,6 +93,51 @@ mod tests {
             archive.write_all(xml.as_bytes())?;
         }
         archive.finish()?;
+        Ok(())
+    }
+
+    #[test]
+    fn more_than_64_candidates_are_retained() -> Result<()> {
+        let directory = artifact_cache::unique_path(&std::env::temp_dir(), "many-candidates")?;
+        fs::create_dir_all(&directory)?;
+        let left = directory.join("original.xlsx");
+        let right = directory.join("changed.xlsx");
+        for (path, value) in [(&left, 1), (&right, 2)] {
+            let mut archive = zip::ZipWriter::new(File::create(path)?);
+            for (name, xml) in [
+                (
+                    "xl/workbook.xml",
+                    r#"<workbook><sheets><sheet name="Data" r:id="one"/></sheets></workbook>"#,
+                ),
+                (
+                    "xl/_rels/workbook.xml.rels",
+                    r#"<Relationships><Relationship Id="one" Type="office/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#,
+                ),
+            ] {
+                archive.start_file(name, zip::write::FileOptions::default())?;
+                archive.write_all(xml.as_bytes())?;
+            }
+            archive.start_file(
+                "xl/worksheets/sheet1.xml",
+                zip::write::FileOptions::default(),
+            )?;
+            archive.write_all(b"<worksheet><sheetData>")?;
+            for row in 1..=1000 {
+                write!(
+                    archive,
+                    "<row r=\"{row}\"><c r=\"A{row}\"><v>{value}</v></c></row>"
+                )?;
+            }
+            archive.write_all(b"</sheetData></worksheet>")?;
+            archive.finish()?;
+        }
+        let found = discover_candidates(&left, &right)?;
+        assert_eq!(found.len(), 1000);
+        assert!(found.contains(&Candidate {
+            sheet: "Data".into(),
+            cell: "A1000".into()
+        }));
+        fs::remove_dir_all(directory)?;
         Ok(())
     }
 
