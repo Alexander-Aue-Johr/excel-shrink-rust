@@ -1,6 +1,7 @@
 //! Bounded image capture and comparison of the same regions across workbook states.
 use super::host::ExcelHost;
-use super::{publish, Args, Candidate, Finding, Report};
+use super::telemetry::{LaneId, Telemetry};
+use super::{Candidate, Finding};
 use anyhow::{ensure, Context, Result};
 use image::GenericImageView;
 use serde_json::{json, Value};
@@ -18,25 +19,27 @@ pub(super) struct Evidence {
 /// Saves a tiny picture and rendered geometry for every selected cell.
 pub(super) fn capture_candidates(
     excel: &mut ExcelHost,
-    lane: &str,
+    lane: LaneId,
     candidates: &BTreeSet<Candidate>,
-    args: &Args,
-    report: &mut Report,
-    stage: &str,
+    directory: &Path,
+    telemetry: &Telemetry,
 ) -> Result<BTreeMap<Candidate, Evidence>> {
-    let directory = args.output.join(stage);
-    fs::create_dir_all(&directory)?;
+    fs::create_dir_all(directory)?;
     let mut captured = BTreeMap::new();
     for (index, candidate) in candidates.iter().enumerate() {
         let range = padded_range(&candidate.cell)?;
         let path = directory.join(format!("{index:03}.png"));
+        telemetry.update(|state| {
+            state.lane(lane).current_sheet = Some(candidate.sheet.clone());
+            state.lane(lane).current_range = Some(range.clone());
+        })?;
         let geometry = excel.call(
-            json!({"kind":"measure", "lane":lane, "sheet":candidate.sheet, "range":candidate.cell}),
+            json!({"kind":"measure", "lane":lane.key(), "sheet":candidate.sheet, "range":candidate.cell}),
+            telemetry,
         )?;
-        excel.call(json!({"kind":"capture", "lane":lane, "sheet":candidate.sheet, "range":range, "output":path}))?;
+        excel.call(json!({"kind":"capture", "lane":lane.key(), "sheet":candidate.sheet, "range":range, "output":path}), telemetry)?;
         captured.insert(candidate.clone(), Evidence { path, geometry });
-        *report.capture_counts.entry(lane.to_owned()).or_default() += 1;
-        publish(args, report, &format!("capture:{lane}"), candidates)?;
+        telemetry.update(|state| state.lane(lane).captures_done += 1)?;
     }
     Ok(captured)
 }
@@ -88,10 +91,18 @@ pub(super) fn compare_evidence(
 ) -> Result<Vec<Finding>> {
     let mut findings = Vec::new();
     for candidate in candidates {
-        let o0 = &original_before[candidate];
-        let s0 = &shrink_before[candidate];
-        let s1 = &shrink_after[candidate];
-        let o1 = &original_after[candidate];
+        let o0 = original_before
+            .get(candidate)
+            .context("Missing original-before evidence")?;
+        let s0 = shrink_before
+            .get(candidate)
+            .context("Missing shrink-before evidence")?;
+        let s1 = shrink_after
+            .get(candidate)
+            .context("Missing shrink-after evidence")?;
+        let o1 = original_after
+            .get(candidate)
+            .context("Missing original-after evidence")?;
         findings.push(Finding {
             sheet: candidate.sheet.clone(),
             cell: candidate.cell.clone(),
@@ -125,6 +136,23 @@ fn images_differ(left: &Path, right: &Path) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn missing_partner_evidence_is_an_error() {
+        let candidates = BTreeSet::from([Candidate {
+            sheet: "Rows".into(),
+            cell: "A10".into(),
+        }]);
+        let empty = BTreeMap::new();
+        assert!(compare_evidence(
+            &candidates,
+            &empty,
+            &empty,
+            &empty,
+            &empty,
+            &BTreeSet::new()
+        )
+        .is_err());
+    }
     #[test]
     fn ranges_have_one_cell_margin_and_clip_at_edges() {
         assert_eq!(padded_range("A1").unwrap(), "A1:B2");

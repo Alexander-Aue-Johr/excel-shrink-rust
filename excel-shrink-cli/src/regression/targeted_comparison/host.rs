@@ -1,71 +1,133 @@
-//! Transport and ownership of the persistent Windows Excel host.
+//! Bounded command transport. The host owns a kill-on-close job for Excel.
+use super::telemetry::{LaneId, Lifecycle, Telemetry};
 use anyhow::{ensure, Context, Result};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
-    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    process::{Child, ChildStdin, Command, Stdio},
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
 };
 
 pub(super) struct ExcelHost {
     child: Child,
     input: BufWriter<ChildStdin>,
-    output: BufReader<ChildStdout>,
+    responses: mpsc::Receiver<Result<Value>>,
+    timeout: Duration,
 }
 
 impl ExcelHost {
-    /// Starts one command host; that host owns the persistent Excel instances.
-    pub(super) fn start(host_script: Option<&Path>) -> Result<Self> {
-        let workspace_script =
+    /// Start one host and read its event/response stream independently of Excel.
+    pub fn start(host_script: Option<&Path>, timeout: Duration) -> Result<Self> {
+        let repository_script =
             Path::new("excel-shrink-cli/office-capture/targeted-comparison-host.ps1");
         let package_script = Path::new("office-capture/targeted-comparison-host.ps1");
-        let default_script = if workspace_script.exists() {
-            workspace_script.to_path_buf()
+        let default_script = if repository_script.exists() {
+            repository_script.to_owned()
         } else if package_script.exists() {
-            package_script.to_path_buf()
+            package_script.to_owned()
         } else {
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("office-capture/targeted-comparison-host.ps1")
         };
-        let script = host_script.unwrap_or(&default_script);
         let mut child = Command::new("powershell.exe")
             .args(["-STA", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
-            .arg(script)
+            .arg(host_script.unwrap_or(&default_script))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .context("start persistent Excel host; Windows PowerShell is required")?;
+            .context("Start persistent Excel command host")?;
         let input = BufWriter::new(child.stdin.take().context("Excel host stdin")?);
-        let output = BufReader::new(child.stdout.take().context("Excel host stdout")?);
+        let output = child.stdout.take().context("Excel host stdout")?;
+        let (send, responses) = mpsc::sync_channel(16);
+        thread::spawn(move || {
+            for line in BufReader::new(output).lines() {
+                let message = line.context("Read Excel host response").and_then(|line| {
+                    serde_json::from_str(&line).context("Invalid Excel host JSON")
+                });
+                if send.send(message).is_err() {
+                    break;
+                }
+            }
+        });
         Ok(Self {
             child,
             input,
-            output,
+            responses,
+            timeout,
         })
     }
 
-    /// Sends one command and checks the corresponding host response.
-    pub(super) fn call(&mut self, command: Value) -> Result<Value> {
+    /// Deliver startup events immediately; apply one overall deadline per command.
+    pub fn call(&mut self, command: Value, telemetry: &Telemetry) -> Result<Value> {
+        let timeout = if command["kind"] == "close" {
+            self.timeout.min(Duration::from_secs(15))
+        } else {
+            self.timeout
+        };
         serde_json::to_writer(&mut self.input, &command)?;
         self.input.write_all(b"\n")?;
         self.input.flush()?;
-        let mut line = String::new();
-        ensure!(
-            self.output.read_line(&mut line)? > 0,
-            "Excel host exited without a response"
-        );
-        let response: Value = serde_json::from_str(&line).context("invalid Excel host response")?;
-        ensure!(response["ok"] == true, "Excel host: {}", response["error"]);
-        Ok(response["result"].clone())
+        let deadline = Instant::now() + timeout;
+        loop {
+            ensure!(
+                Instant::now() < deadline,
+                "Excel command {} exceeded its {} second deadline",
+                command["kind"],
+                timeout.as_secs()
+            );
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let response = match self.responses.recv_timeout(remaining) {
+                Ok(response) => response?,
+                Err(mpsc::RecvTimeoutError::Timeout) => anyhow::bail!(
+                    "Excel command {} did not reply within {} seconds",
+                    command["kind"],
+                    timeout.as_secs()
+                ),
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    anyhow::bail!("Excel host exited before replying to {}", command["kind"])
+                }
+            };
+            if response["event"] == "process_started" {
+                observe_started_process(&response, telemetry)?;
+                continue;
+            }
+            ensure!(response["ok"] == true, "Excel host: {}", response["error"]);
+            return Ok(response["result"].clone());
+        }
     }
 }
 
 impl Drop for ExcelHost {
     fn drop(&mut self) {
-        let _ = self.call(json!({"kind":"close", "lane":"SD"}));
-        let _ = self.call(json!({"kind":"close", "lane":"O"}));
+        // Normal close is an explicit phase. Error cleanup makes no COM calls.
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// Bind liveness sampling to the PID and birth time reported before opening.
+fn observe_started_process(event: &Value, telemetry: &Telemetry) -> Result<()> {
+    let id = match event["lane"].as_str() {
+        Some("O") => LaneId::O,
+        Some("SD") => LaneId::SD,
+        _ => anyhow::bail!("Unknown Excel process lane"),
+    };
+    let pid = event["pid"]
+        .as_u64()
+        .and_then(|pid| u32::try_from(pid).ok())
+        .filter(|pid| *pid > 0)
+        .context("Missing Excel PID")?;
+    let started = event["started_at"]
+        .as_i64()
+        .context("Missing Excel process creation time")?;
+    telemetry.update(|state| {
+        let lane = state.lane(id);
+        lane.pid = Some(pid);
+        lane.process_started_at = Some(started);
+        lane.lifecycle = Lifecycle::Opening;
+    })
 }

@@ -71,6 +71,8 @@ fn read_cells(path: &Path, sheet_file: &str) -> Result<BTreeMap<String, Vec<u8>>
     let file = File::open(path)?;
     let mut archive = ZipArchive::new(file)?;
     let sheet = archive.by_name(sheet_file)?;
+    ensure!(sheet.size() <= 64 * 1024 * 1024,
+        "Targeted comparison cannot index worksheet XML larger than 64 MiB; use the corpus comparison for this workbook");
     let mut stream = WorksheetStream::new(sheet);
     let mut fragment = Vec::new();
     let mut cells = BTreeMap::new();
@@ -95,6 +97,10 @@ fn read_cells(path: &Path, sheet_file: &str) -> Result<BTreeMap<String, Vec<u8>>
                     end
                 };
                 cells.insert(address, fragment[tag.start..end].to_vec());
+                ensure!(
+                    cells.len() <= 250_000,
+                    "Targeted comparison cell-index limit exceeded; no visual equality established"
+                );
             }
         }
     }
