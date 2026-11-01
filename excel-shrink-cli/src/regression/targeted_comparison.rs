@@ -2,6 +2,7 @@
 mod candidates;
 mod cell_stream;
 mod charts;
+mod conditional_formatting;
 mod check_performance;
 mod evidence;
 mod heights;
@@ -88,6 +89,7 @@ struct Report {
     check_performance_evidence: Option<check_performance::PerformanceEvidence>,
     transitions: Vec<xml_changes::Transition>,
     height_checks: Vec<heights::HeightCheck>,
+    conditional_formatting: Vec<conditional_formatting::Check>,
     comparisons: Vec<staged::VisualComparison>,
     candidate_count: usize,
     findings: Vec<Finding>,

@@ -198,6 +198,8 @@ mod tests {
         Snapshot {
             sheets: [("Rows".into(), sheet)].into(),
             context: "same styles".into(),
+            cf_context: "same CF context".into(),
+            sheet_names: Some(["rows".into()].into()),
         }
     }
 

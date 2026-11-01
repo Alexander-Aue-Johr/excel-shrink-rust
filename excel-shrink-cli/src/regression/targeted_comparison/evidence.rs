@@ -115,6 +115,16 @@ pub(super) fn capture_candidate(
 }
 
 fn padded_range(address: &str) -> Result<String> {
+    if let Some((start, end)) = address.split_once(':') {
+        let a =
+            super::conditional_formatting::cell_address(start).context("Invalid fallback start")?;
+        let b = super::conditional_formatting::cell_address(end).context("Invalid fallback end")?;
+        ensure!(
+            a.0 > 0 && a.1 > 0 && a.0 <= b.0 && a.1 <= b.1,
+            "Invalid fallback rectangle"
+        );
+        return Ok(address.into());
+    }
     let split = address
         .find(|c: char| c.is_ascii_digit())
         .context("invalid cell address")?;
@@ -277,5 +287,13 @@ mod tests {
         assert_eq!(padded_range("A1").unwrap(), "A1:B2");
         assert_eq!(padded_range("E64").unwrap(), "D63:F65");
         assert_eq!(padded_range("XFD1048576").unwrap(), "XFC1048575:XFD1048576");
+    }
+
+    #[test]
+    fn fallback_rectangles_keep_their_extent_and_reject_invalid_coordinates() {
+        assert_eq!(padded_range("A1:P128").unwrap(), "A1:P128");
+        for invalid in ["B2:A1", "A0:B2", "A1:XFE2", "A1:B1048577", "A:B"] {
+            assert!(padded_range(invalid).is_err(), "{invalid}");
+        }
     }
 }

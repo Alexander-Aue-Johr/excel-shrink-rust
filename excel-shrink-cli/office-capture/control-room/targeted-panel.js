@@ -143,6 +143,9 @@ function createComparisonCard() {
       if (comparison.report?.chart_comparisons != null) {
         explanation.textContent += ` Charts: ${comparison.report.chart_comparisons} comparisons · ${comparison.report.chart_differences} differences.`;
       }
+      if (comparison.report?.cf_excluded_decisions != null) {
+        explanation.textContent += ` CF decisions across state pairs: ${comparison.report.cf_excluded_decisions} excluded / ${comparison.report.cf_partial_decisions} partial / ${comparison.report.cf_capture_decisions} capture.`;
+      }
       error.textContent = comparison.error || '';
       error.hidden = !comparison.error;
       root.title = (comparison.report?.limitations || []).join('\n');

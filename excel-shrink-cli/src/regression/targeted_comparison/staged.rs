@@ -284,6 +284,22 @@ impl Workflow<'_, '_> {
             );
             let changes = a.changes(&b)?;
             self.comparison.candidates.extend(cell_candidates(&changes));
+            let decisions = super::conditional_formatting::select(
+                &a,
+                &b,
+                &changes,
+                &mut self.comparison.candidates,
+            )?;
+            self.comparison.report.conditional_formatting.push(
+                super::conditional_formatting::Check {
+                    left: left.key().into(),
+                    right: right.key().into(),
+                    decisions,
+                },
+            );
+            self.comparison
+                .telemetry
+                .update(|state| state.report = self.comparison.report.telemetry_summary())?;
             self.publish_candidate_count()?;
             self.comparison.telemetry.update(|state| {
                 state.step(left, Phase::MeasureHeights, StepStatus::Running);

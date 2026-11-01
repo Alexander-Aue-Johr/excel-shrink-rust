@@ -90,12 +90,15 @@ impl Comparison<'_> {
 
 impl Report {
     /// Project the saved findings into the existing Observatory summary schema.
-    fn telemetry_summary(&self) -> Value {
+    pub(super) fn telemetry_summary(&self) -> Value {
         json!({
             "status": self.status,
             "check_performance": self.check_performance,
             "check_performance_differences": self.check_performance_evidence.as_ref().and_then(|e| e.difference_count()),
             "limitations": self.limitations,
+            "cf_excluded_decisions": self.conditional_formatting.iter().flat_map(|check| &check.decisions).filter(|decision| decision.outcome == "excluded").count(),
+            "cf_partial_decisions": self.conditional_formatting.iter().flat_map(|check| &check.decisions).filter(|decision| decision.outcome == "partial").count(),
+            "cf_capture_decisions": self.conditional_formatting.iter().flat_map(|check| &check.decisions).filter(|decision| decision.outcome == "capture").count(),
             "chart_comparisons": self.comparisons.iter().map(|pair| pair.charts.len()).sum::<usize>(),
             "chart_differences": self.comparisons.iter().flat_map(|pair| &pair.charts)
                 .filter(|chart| chart.presence_differs || chart.pixels_differ || chart.geometry_differs).count(),
@@ -120,6 +123,7 @@ pub(super) fn new_report() -> Report {
         check_performance_evidence: None,
         transitions: Vec::new(),
         height_checks: Vec::new(),
+        conditional_formatting: Vec::new(),
         comparisons: Vec::new(),
         candidate_count: 0,
         findings: Vec::new(),
@@ -127,6 +131,7 @@ pub(super) fn new_report() -> Report {
         excel_pids: BTreeMap::new(),
         capture_counts: BTreeMap::new(),
         limitations: vec![
+            "CF decisions concern rule contributions within the recorded union of comparison extents. Literal cellIs exclusions require identical cell-XML fingerprints and visual context. Formula inputs remain captures; unknown or changed rules retain region captures. This is not a proof of whole-workbook visual equality.".into(),
             "Embedded charts and standalone chart sheets are compared as whole-chart exports in every retained state. Chart-sheet exports use a consistent viewport in the existing owned Excel process. Other drawings, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
             "Excel may recalculate during open even when manual calculation is requested.".into(),
             "Opening/saving and rebuild-copy reopening are retained as separate XML controls. Exact content/context matches identify overlaps conservatively; absence of a match does not establish exclusive causality.".into(),

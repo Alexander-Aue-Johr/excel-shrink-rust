@@ -10,17 +10,18 @@ use std::{
     io::Read,
 };
 
-#[derive(Default, Serialize)]
-pub(super) struct Rule {
+#[derive(Clone, Default, Serialize)]
+pub(in crate::regression) struct Rule {
     pub attributes: BTreeMap<String, String>,
     pub formulas: Vec<String>,
     pub child_elements: BTreeSet<String>,
     pub truncated_formula: bool,
+    pub formula_cdata: bool,
     pub classification: String,
 }
 
 #[derive(Default, Serialize)]
-pub(super) struct Block {
+pub(in crate::regression) struct Block {
     pub start: usize,
     pub end: usize,
     pub qualified_name: String,
@@ -75,7 +76,7 @@ fn literal(value: &str) -> bool {
 }
 
 /// Keep literal-threshold eligibility narrow: no expression evaluation or equality claim.
-fn classify(rule: &Rule) -> &'static str {
+pub(in crate::regression) fn classify(rule: &Rule) -> &'static str {
     if rule.truncated_formula {
         return "formula-summary-truncated";
     }
@@ -114,7 +115,7 @@ fn classify(rule: &Rule) -> &'static str {
 
 /// Parse all XML tags, including extension rules, without accumulating rows or cells.
 /// Partial blocks stay available to the caller if later malformed XML aborts the sheet.
-pub(super) fn scan(
+pub(in crate::regression) fn scan(
     input: impl Read,
     blocks: &mut Vec<Block>,
     rows_per_tile: u32,
@@ -125,6 +126,7 @@ pub(super) fn scan(
     let mut text_target: Option<(usize, bool)> = None;
     let mut text_bytes = Vec::new();
     streaming_xml::scan_with_offsets(input, |event| {
+        let cdata = matches!(&event, Event::Cdata(_));
         match event {
             Event::Tag(tag) => {
                 let local = tag.local();
@@ -235,6 +237,7 @@ pub(super) fn scan(
                         text_bytes.extend_from_slice(bytes);
                     } else {
                         let rule = block.rules.last_mut().unwrap();
+                        rule.formula_cdata |= cdata;
                         if text_bytes.len() + bytes.len() <= 8192 {
                             text_bytes.extend_from_slice(bytes);
                         } else {

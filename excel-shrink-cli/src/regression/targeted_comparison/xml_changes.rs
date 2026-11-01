@@ -1,6 +1,7 @@
 //! Byte-based XML evidence for selection and conservative change attribution.
 use super::{
     cell_stream::{Cells, Writer},
+    conditional_formatting::xml,
     Candidate,
 };
 use crate::regression::{
@@ -26,12 +27,18 @@ pub(super) struct Sheet {
     pub rows: Arc<BTreeMap<u32, BTreeMap<String, String>>>,
     pub columns: Vec<u8>,
     pub defaults: Vec<u8>,
+    pub conditional: Arc<xml::Catalogue>,
+    pub cf_layout: String,
+    pub bottom: u32,
+    pub right: u32,
 }
 
 #[derive(Clone)]
 pub(super) struct Snapshot {
     pub sheets: BTreeMap<String, Sheet>,
     pub context: String,
+    pub cf_context: String,
+    pub sheet_names: Option<BTreeSet<String>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -73,78 +80,28 @@ impl Snapshot {
     pub fn read(path: &Path) -> Result<Self> {
         let plan = build_workbook_visual_plan(path)?;
         let mut archive = ZipArchive::new(File::open(path)?)?;
-        let mut context = Sha256::new();
-        for part in ["xl/styles.xml", "xl/sharedStrings.xml"] {
-            if let Ok(mut entry) = archive.by_name(part) {
-                context.update(part.as_bytes());
-                let mut buffer = [0u8; 128 * 1024];
-                loop {
-                    let count = entry.read(&mut buffer)?;
-                    if count == 0 {
-                        break;
-                    }
-                    context.update(&buffer[..count]);
-                }
-            }
-        }
+        let mut workbook = Vec::new();
+        archive
+            .by_name("xl/workbook.xml")?
+            .read_to_end(&mut workbook)?;
+        let sheet_names = xml::sheet_names(&workbook)?;
+        let context = read_value_context(&mut archive)?;
+        let cf_context = read_conditional_context(&mut archive, &workbook, &context)?;
         let mut sheets = BTreeMap::new();
         for sheet in plan.sheets {
-            let mut model = Sheet::default();
-            let mut cells = Writer::new()?;
-            streaming_xml::scan(archive.by_name(&sheet.sheet_file)?, |event| {
-                if let Event::Tag(tag) = &event {
-                    if matches!(tag.kind, Kind::Start | Kind::Empty) {
-                        match tag.local() {
-                            b"row" => {
-                                let row: u32 =
-                                    std::str::from_utf8(tag.attr(b"r")?.unwrap_or(b"0"))?
-                                        .parse()?;
-                                ensure!(
-                                    (1..=1_048_576).contains(&row),
-                                    "Unsupported or invalid worksheet row index"
-                                );
-                                let mut attributes = BTreeMap::new();
-                                for attribute in Attributes::new(tag.attrs) {
-                                    let (key, value) = attribute?;
-                                    if [
-                                        b"ht".as_slice(),
-                                        b"customHeight",
-                                        b"hidden",
-                                        b"s",
-                                        b"customFormat",
-                                    ]
-                                    .contains(&key)
-                                    {
-                                        attributes.insert(
-                                            String::from_utf8(key.to_vec())?,
-                                            String::from_utf8(value.to_vec())?,
-                                        );
-                                    }
-                                }
-                                if !attributes.is_empty() {
-                                    Arc::make_mut(&mut model.rows).insert(row, attributes);
-                                }
-                            }
-                            b"col" => {
-                                model.columns.extend_from_slice(tag.name);
-                                model.columns.extend_from_slice(tag.attrs);
-                            }
-                            b"sheetFormatPr" => {
-                                model.defaults.extend_from_slice(tag.name);
-                                model.defaults.extend_from_slice(tag.attrs);
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                cells.event(&event)
-            })?;
-            model.cells = cells.finish()?;
+            let model = read_sheet(
+                &mut archive,
+                &sheet.sheet_file,
+                sheet.bottom_row + 1,
+                sheet.base_right_column + 1,
+            )?;
             sheets.insert(sheet.sheet, model);
         }
         Ok(Self {
             sheets,
-            context: format!("{:x}", context.finalize()),
+            context,
+            cf_context,
+            sheet_names,
         })
     }
 
@@ -263,6 +220,170 @@ impl Snapshot {
             && a.context_before == b.context_before
             && a.context_after == b.context_after
     }
+}
+
+/// Hash shared value/style dependencies without decoding their XML.
+fn read_value_context(archive: &mut ZipArchive<File>) -> Result<String> {
+    let mut context = Sha256::new();
+    for part in ["xl/styles.xml", "xl/sharedStrings.xml"] {
+        let mut entry = match archive.by_name(part) {
+            Ok(entry) => entry,
+            Err(zip::result::ZipError::FileNotFound) => continue,
+            Err(error) => return Err(error.into()),
+        };
+        context.update(part.as_bytes());
+        let mut buffer = [0u8; 128 * 1024];
+        loop {
+            let count = entry.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            context.update(&buffer[..count]);
+        }
+    }
+    Ok(format!("{:x}", context.finalize()))
+}
+
+/// Add theme, format override and workbook-property dependencies relevant to CF rendering.
+fn read_conditional_context(
+    archive: &mut ZipArchive<File>,
+    workbook: &[u8],
+    context: &str,
+) -> Result<String> {
+    let mut cf_context = Sha256::new();
+    cf_context.update(context.as_bytes());
+    let mut properties = crate::regression::xml_views::Reader::<128>::new(&workbook)?;
+    while let Some(tag) = properties.next()? {
+        if tag.local() == b"workbookPr" && tag.kind != Kind::End {
+            cf_context.update(tag.attrs);
+        }
+    }
+    let themes = xml::visual_parts(archive)?;
+    for part in themes {
+        cf_context.update(part.as_bytes());
+        let mut entry = archive.by_name(&part)?;
+        let mut buffer = [0u8; 128 * 1024];
+        loop {
+            let count = entry.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            cf_context.update(&buffer[..count]);
+        }
+    }
+    Ok(format!("{:x}", cf_context.finalize()))
+}
+
+/// Read one worksheet once for cells/layout; reopen only selected CF subtrees.
+fn read_sheet(
+    archive: &mut ZipArchive<File>,
+    part: &str,
+    bottom: u32,
+    right: u32,
+) -> Result<Sheet> {
+    let mut model = Sheet::default();
+    model.bottom = bottom;
+    model.right = right;
+    let mut cells = Writer::new()?;
+    let mut spans = Vec::new();
+    let mut cf_start = None;
+    let mut standard_namespace = false;
+    let mut direct_cf_children = true;
+    let mut data_depth = None;
+    let mut layout = Sha256::new();
+    streaming_xml::scan_with_offsets(archive.by_name(part)?, |event| {
+        if let Event::Tag(tag) = &event {
+            if tag.depth == 0 && tag.kind == Kind::Start {
+                standard_namespace = tag.attr(b"xmlns")?
+                    == Some(b"http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+            }
+            if tag.local() == b"sheetData" {
+                if tag.kind == Kind::Start {
+                    data_depth = Some(tag.depth);
+                } else {
+                    data_depth = None;
+                }
+            } else if data_depth.is_none() && tag.local() != b"dimension" {
+                layout.update(tag.name);
+                layout.update(tag.attrs);
+                layout.update([match tag.kind {
+                    Kind::Start => 1,
+                    Kind::Empty => 2,
+                    Kind::End => 3,
+                }]);
+            }
+            if tag.local() == b"conditionalFormatting" {
+                if cf_start.is_none() && matches!(tag.kind, Kind::Start | Kind::Empty) {
+                    direct_cf_children &= tag.depth == 1 && tag.name == b"conditionalFormatting";
+                }
+                if tag.kind == Kind::Start && cf_start.is_none() {
+                    cf_start = Some((tag.depth, tag.start));
+                }
+                if tag.kind == Kind::Empty && cf_start.is_none() {
+                    spans.push((tag.start, tag.end));
+                }
+                if tag.kind == Kind::End && cf_start.is_some_and(|(depth, _)| depth == tag.depth) {
+                    spans.push((cf_start.take().unwrap().1, tag.end));
+                }
+            }
+            if matches!(tag.kind, Kind::Start | Kind::Empty) {
+                match tag.local() {
+                    b"row" => {
+                        let row: u32 =
+                            std::str::from_utf8(tag.attr(b"r")?.unwrap_or(b"0"))?.parse()?;
+                        ensure!(
+                            (1..=1_048_576).contains(&row),
+                            "Unsupported or invalid worksheet row index"
+                        );
+                        let mut attributes = BTreeMap::new();
+                        for attribute in Attributes::new(tag.attrs) {
+                            let (key, value) = attribute?;
+                            if [
+                                b"ht".as_slice(),
+                                b"customHeight",
+                                b"hidden",
+                                b"s",
+                                b"customFormat",
+                            ]
+                            .contains(&key)
+                            {
+                                attributes.insert(
+                                    String::from_utf8(key.to_vec())?,
+                                    String::from_utf8(value.to_vec())?,
+                                );
+                            } else if key != b"r" && key != b"spans" {
+                                layout.update(row.to_le_bytes());
+                                layout.update(key);
+                                layout.update(value);
+                            }
+                        }
+                        if !attributes.is_empty() {
+                            Arc::make_mut(&mut model.rows).insert(row, attributes);
+                        }
+                    }
+                    b"col" => {
+                        model.columns.extend_from_slice(tag.name);
+                        model.columns.extend_from_slice(tag.attrs);
+                    }
+                    b"sheetFormatPr" => {
+                        model.defaults.extend_from_slice(tag.name);
+                        model.defaults.extend_from_slice(tag.attrs);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        cells.event(&event)
+    })?;
+    model.cells = cells.finish()?;
+    model.cf_layout = format!("{:x}", layout.finalize());
+    model.conditional = Arc::new(xml::catalogue(
+        archive,
+        part,
+        &spans,
+        standard_namespace && direct_cf_children,
+    )?);
+    Ok(model)
 }
 
 impl Sheet {

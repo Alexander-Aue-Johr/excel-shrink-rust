@@ -1,5 +1,5 @@
 //! Offline inventory: preserve evidence first, then rank conservative formatting fallbacks.
-mod scan;
+pub(in crate::regression) mod scan;
 #[cfg(test)]
 mod tests;
 
