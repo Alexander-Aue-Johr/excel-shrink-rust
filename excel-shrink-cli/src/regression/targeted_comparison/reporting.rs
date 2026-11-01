@@ -128,7 +128,7 @@ pub(super) fn new_report() -> Report {
             "At most 64 distinct candidate regions; larger cases fail explicitly.".into(),
             "Excel may recalculate during open even when manual calculation is requested.".into(),
             "Opening/saving and rebuild-copy reopening are retained as separate XML controls. Exact content/context matches identify overlaps conservatively; absence of a match does not establish exclusive causality.".into(),
-            "The bounded cell index rejects worksheet XML over 64 MiB or 250,000 cells; this command is not a replacement for the corpus runner.".into(),
+            "Worksheet cells are streamed into temporary fixed-size fingerprints without worksheet-byte or cell-count limits. Layout metadata and actual change evidence still require memory; this command is not a replacement for the corpus runner.".into(),
         ],
     }
 }

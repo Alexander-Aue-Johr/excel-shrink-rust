@@ -74,14 +74,10 @@ pub(super) fn selection(
         }
         return Ok((spans, skipped));
     }
-    for cell in left.cells.keys().chain(right.cells.keys()) {
-        if left.cells.get(cell) != right.cells.get(cell) {
-            let row = cell
-                .trim_start_matches(|c: char| c.is_ascii_alphabetic())
-                .parse()?;
-            wanted.insert(row);
-        }
-    }
+    left.cells.changes(&right.cells, |change| {
+        wanted.insert(change.coordinate().row);
+        Ok(())
+    })?;
     for row in left.rows.keys().chain(right.rows.keys()) {
         if left.rows.get(row) != right.rows.get(row) {
             wanted.insert(*row);
@@ -180,10 +176,9 @@ mod tests {
     #[test]
     fn fixed_height_requires_both_flag_and_retained_definition() {
         let mut sheet = super::super::xml_changes::Sheet::default();
-        sheet.rows.insert(8, [("ht".into(), "40".into())].into());
+        std::sync::Arc::make_mut(&mut sheet.rows).insert(8, [("ht".into(), "40".into())].into());
         assert!(sheet.fixed_height(8).is_none());
-        sheet
-            .rows
+        std::sync::Arc::make_mut(&mut sheet.rows)
             .get_mut(&8)
             .unwrap()
             .insert("customHeight".into(), "1".into());
@@ -192,7 +187,7 @@ mod tests {
 
     fn fixture() -> Snapshot {
         let mut sheet = super::super::xml_changes::Sheet::default();
-        sheet.rows.insert(
+        std::sync::Arc::make_mut(&mut sheet.rows).insert(
             8,
             [
                 ("ht".into(), "40".into()),
@@ -209,15 +204,11 @@ mod tests {
     #[test]
     fn unchanged_fixed_rows_are_excluded_but_deleted_rows_are_not() {
         let mut before = fixture();
-        before
-            .sheets
-            .get_mut("Rows")
-            .unwrap()
-            .cells
-            .insert("B8".into(), b"empty font cell".to_vec());
+        before.sheets.get_mut("Rows").unwrap().cells =
+            super::super::cell_stream::Cells::empty_font_cell();
         let mut after = fixture();
         assert_eq!(selection(&before, &after, "Rows").unwrap(), (vec![], 1));
-        after.sheets.get_mut("Rows").unwrap().rows.clear();
+        std::sync::Arc::make_mut(&mut after.sheets.get_mut("Rows").unwrap().rows).clear();
         assert_eq!(
             selection(&before, &after, "Rows").unwrap(),
             (vec![(8, 8)], 0)

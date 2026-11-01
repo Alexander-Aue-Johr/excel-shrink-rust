@@ -138,8 +138,8 @@ failure; failure reporting gives their exits a bounded confirmation interval.
 
 The comparison still has scientific limits: at most 64 candidate regions; no
 complete drawing/chart/style/layout dependency analysis and no general proof of
-reopened-after-save visual equivalence. The bounded in-memory index rejects XML over
-64 MiB or 250,000 cells. These limits fail explicitly or remain recorded; none
+reopened-after-save visual equivalence. Cell fingerprints are streamed through owned temporary files, with no worksheet
+MiB or cell-count cap. Remaining limits fail explicitly or stay recorded; none
 are represented as whole-workbook visual equality.
 
 ## WIP history split

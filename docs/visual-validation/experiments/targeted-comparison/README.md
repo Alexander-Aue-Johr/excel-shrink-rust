@@ -38,8 +38,9 @@ add-in; the open workbook keeps its add-in.
 
 ## Candidate and height selection
 
-`xml_changes.rs` reads bounded byte XML, retaining cells, relevant row attributes,
-columns and sheet defaults. Ordinary saves and rebuild-copy reopening have
+`xml_changes.rs` streams worksheet byte XML into fixed-size cell fingerprints
+on temporary disk files, retaining relevant row attributes, columns and sheet
+defaults. Cloned states share immutable fingerprint files and row metadata. Ordinary saves and rebuild-copy reopening have
 separate transitions. Full before/after content fingerprints plus style/string
 context identify exact overlaps with Original opening/saving changes. The report
 never infers equal changes from matching addresses alone. This is conservative
@@ -78,8 +79,11 @@ outcomes on failure. `failure.json` and final telemetry distinguish unsuccessful
 work from unconfirmed process exit. The Observatory's process samples remain
 labelled PID liveness, not fabricated Office.js heartbeats.
 
-The existing limits remain: at most **64 candidate regions**, **64 MiB worksheet
-XML**, and **250,000 cells per sheet**. Drawing/chart/conditional-formatting and
+The **64-candidate-region limit** remains. There is no worksheet-byte or
+cell-count rejection limit. Cells are merged from ordered disk streams instead
+of an in-memory cell index; style/string context is hashed in chunks. Scratch
+files are released with their snapshots, including on failure. Memory still
+scales with layout metadata and actual differences. Drawing/chart/conditional-formatting and
 all style/layout dependencies are not exhaustively selected. Matching selected
 images is not whole-workbook visual equality. Reopening a rebuild copy can have
 its own effects: these XML changes are retained separately and a visual

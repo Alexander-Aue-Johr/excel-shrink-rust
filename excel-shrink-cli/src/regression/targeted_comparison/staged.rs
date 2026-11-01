@@ -143,10 +143,8 @@ impl Workflow<'_, '_> {
     fn audit(&mut self, label: &str, before: &Path, after: &Path) -> Result<()> {
         let a = Snapshot::read(before)?;
         let b = Snapshot::read(after)?;
-        let changes = a.changes(&b);
-        self.comparison
-            .candidates
-            .extend(cell_candidates(&a, &b, &changes));
+        let changes = a.changes(&b)?;
+        self.comparison.candidates.extend(cell_candidates(&changes));
         self.check_candidate_limit()?;
         self.comparison.report.transitions.push(Transition {
             label: label.into(),
@@ -250,10 +248,8 @@ impl Workflow<'_, '_> {
                 a.sheets.keys().eq(b.sheets.keys()),
                 "Sheet set changed; targeted coverage is incomplete"
             );
-            let changes = a.changes(&b);
-            self.comparison
-                .candidates
-                .extend(cell_candidates(&a, &b, &changes));
+            let changes = a.changes(&b)?;
+            self.comparison.candidates.extend(cell_candidates(&changes));
             self.check_candidate_limit()?;
             self.comparison.telemetry.update(|state| {
                 state.step(left, Phase::MeasureHeights, StepStatus::Running);

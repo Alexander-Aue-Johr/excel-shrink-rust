@@ -1,17 +1,8 @@
 //! Bounded candidate discovery; unrelated workbook changes remain explicit limitations.
+use super::xml_changes::{cell_candidates, Snapshot};
 use super::{Candidate, WorkingPaths, MAX_CANDIDATES};
-use crate::regression::{
-    office_plan::build_workbook_visual_plan,
-    worksheet_stream::WorksheetStream,
-    xml_views::{Kind, Reader},
-};
-use anyhow::{bail, ensure, Result};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs::File,
-    path::Path,
-};
-use zip::ZipArchive;
+use anyhow::{ensure, Result};
+use std::{collections::BTreeSet, path::Path};
 
 /// Ordinary save effects are distinct controls for Original and Default.
 pub(super) struct SaveChanges {
@@ -32,102 +23,24 @@ pub(super) fn find_changes_caused_by_save(
 /// Maps changed cell XML to visible cell or row-geometry capture candidates.
 /// The fixed candidate cap prevents accidental whole-sheet screenshot work.
 pub(super) fn discover_candidates(left: &Path, right: &Path) -> Result<BTreeSet<Candidate>> {
-    let left_plan = build_workbook_visual_plan(left)?;
-    let right_plan = build_workbook_visual_plan(right)?;
-    let mut found = BTreeSet::new();
-    for left_sheet in &left_plan.sheets {
-        let Some(right_sheet) = right_plan
-            .sheets
-            .iter()
-            .find(|sheet| sheet.sheet == left_sheet.sheet)
-        else {
-            bail!("sheet removed: {}", left_sheet.sheet);
-        };
-        let left_cells = read_cells(left, &left_sheet.sheet_file)?;
-        let right_cells = read_cells(right, &right_sheet.sheet_file)?;
-        for cell in left_cells.keys().chain(right_cells.keys()) {
-            if left_cells.get(cell) != right_cells.get(cell) {
-                let changed_cell = if has_visible_content(left_cells.get(cell))
-                    || has_visible_content(right_cells.get(cell))
-                {
-                    cell.clone()
-                } else {
-                    // Empty styled cells can change row height. One geometry
-                    // probe per row is enough even when Excel removes 16k cells.
-                    let row =
-                        cell.trim_start_matches(|character: char| character.is_ascii_alphabetic());
-                    format!("A{row}")
-                };
-                found.insert(Candidate {
-                    sheet: left_sheet.sheet.clone(),
-                    cell: changed_cell,
-                });
-                ensure!(
-                    found.len() <= MAX_CANDIDATES,
-                    "more than {MAX_CANDIDATES} changed cells; aborting bounded experiment"
-                );
-            }
-        }
-    }
+    let before = Snapshot::read(left)?;
+    let after = Snapshot::read(right)?;
+    let found = cell_candidates(&before.changes(&after)?);
+    ensure!(
+        found.len() <= MAX_CANDIDATES,
+        "More than {MAX_CANDIDATES} candidate regions"
+    );
     Ok(found)
-}
-
-fn has_visible_content(cell: Option<&Vec<u8>>) -> bool {
-    cell.is_some_and(|bytes| {
-        [b"<v".as_slice(), b"<f", b"<is", b"<t"]
-            .iter()
-            .any(|marker| bytes.windows(marker.len()).any(|window| window == *marker))
-    })
-}
-
-/// Reads bounded worksheet fragments, then indexes cells for this WIP comparison.
-/// The map still scales with the cell count; a streaming merge is needed for
-/// large production sheets.
-pub(super) fn read_cells(path: &Path, sheet_file: &str) -> Result<BTreeMap<String, Vec<u8>>> {
-    let file = File::open(path)?;
-    let mut archive = ZipArchive::new(file)?;
-    let sheet = archive.by_name(sheet_file)?;
-    ensure!(sheet.size() <= 64 * 1024 * 1024,
-        "Targeted comparison cannot index worksheet XML larger than 64 MiB; use the corpus comparison for this workbook");
-    let mut stream = WorksheetStream::new(sheet);
-    let mut fragment = Vec::new();
-    let mut cells = BTreeMap::new();
-    while stream.next(&mut fragment)? {
-        let mut reader = Reader::<128>::new(&fragment)?;
-        while let Some(tag) = reader.next()? {
-            if tag.local() == b"c" && matches!(tag.kind, Kind::Start | Kind::Empty) {
-                let Some(reference) = tag.attr(b"r")? else {
-                    continue;
-                };
-                let address = String::from_utf8(reference.to_vec())?;
-                let end = if tag.kind == Kind::Empty {
-                    tag.end
-                } else {
-                    let mut end = tag.end;
-                    while let Some(child) = reader.next()? {
-                        end = child.end;
-                        if child.local() == b"c" && child.kind == Kind::End {
-                            break;
-                        }
-                    }
-                    end
-                };
-                cells.insert(address, fragment[tag.start..end].to_vec());
-                ensure!(
-                    cells.len() <= 250_000,
-                    "Targeted comparison cell-index limit exceeded; no visual equality established"
-                );
-            }
-        }
-    }
-    Ok(cells)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::regression::artifact_cache;
-    use std::{fs, io::Write};
+    use std::{
+        fs::{self, File},
+        io::Write,
+    };
 
     #[test]
     fn save_changes_compare_each_workbook_with_its_own_snapshot() -> Result<()> {
@@ -185,6 +98,100 @@ mod tests {
             archive.start_file(name, zip::write::FileOptions::default())?;
             archive.write_all(xml.as_bytes())?;
         }
+        archive.finish()?;
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "large streaming integration fixture; run explicitly"]
+    fn million_cells_over_old_xml_limit_select_only_the_last_change() -> Result<()> {
+        let directory = artifact_cache::unique_path(&std::env::temp_dir(), "million-cell-stream")?;
+        fs::create_dir_all(&directory)?;
+        let started = std::time::Instant::now();
+        let left = directory.join("original.xlsx");
+        let right = directory.join("changed.xlsx");
+        write_large_sheet(&left, false, false)?;
+        write_large_sheet(&right, true, false)?;
+        let mut archive = zip::ZipArchive::new(File::open(&left)?)?;
+        let size = archive.by_name("xl/worksheets/sheet1.xml")?.size();
+        assert!(size > 64 * 1024 * 1024);
+        drop(archive);
+        let found = discover_candidates(&left, &right)?;
+        assert_eq!(
+            found,
+            BTreeSet::from([Candidate {
+                sheet: "Data".into(),
+                cell: "A1048576".into()
+            }])
+        );
+        println!("1,048,576 cells, {size} XML bytes; one final-cell change; {:.2}s including fixture creation",started.elapsed().as_secs_f64());
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "wide-row streaming integration fixture; run explicitly"]
+    fn a_row_larger_than_the_old_fragment_buffer_is_streamed() -> Result<()> {
+        let directory = artifact_cache::unique_path(&std::env::temp_dir(), "wide-row-stream")?;
+        fs::create_dir_all(&directory)?;
+        let left = directory.join("original.xlsx");
+        let right = directory.join("same.xlsx");
+        write_large_sheet(&left, false, true)?;
+        fs::copy(&left, &right)?;
+        assert!(discover_candidates(&left, &right)?.is_empty());
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    /// Stream valid Excel-sized rows/cells directly into ZIP members without a giant fixture string.
+    fn write_large_sheet(path: &Path, changed: bool, wide: bool) -> Result<()> {
+        let mut archive = zip::ZipWriter::new(File::create(path)?);
+        let options = zip::write::FileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .compression_level(Some(1));
+        for (name, xml) in [
+            (
+                "xl/workbook.xml",
+                r#"<workbook><sheets><sheet name="Data" r:id="one"/></sheets></workbook>"#,
+            ),
+            (
+                "xl/_rels/workbook.xml.rels",
+                r#"<Relationships><Relationship Id="one" Type="office/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#,
+            ),
+        ] {
+            archive.start_file(name, options)?;
+            archive.write_all(xml.as_bytes())?;
+        }
+        archive.start_file("xl/worksheets/sheet1.xml", options)?;
+        archive.write_all(b"<worksheet><sheetData>")?;
+        if wide {
+            archive.write_all(b"<row r=\"1\">")?;
+            for column in 1..=8000 {
+                let cell = super::super::cell_stream::Cell {
+                    row: 1,
+                    column,
+                    digest: [0; 32],
+                    visible: true,
+                };
+                write!(
+                    archive,
+                    "<c r=\"{}\" t=\"inlineStr\"><is><t>",
+                    cell.address()
+                )?;
+                archive.write_all(&[b'x'; 2048])?;
+                archive.write_all(b"</t></is></c>")?;
+            }
+            archive.write_all(b"</row>")?;
+        } else {
+            for row in 1..=1_048_576u32 {
+                let value = if changed && row == 1_048_576 { 0 } else { row };
+                write!(
+                    archive,
+                    "<row r=\"{row}\" spans=\"1:1\"><c r=\"A{row}\" s=\"0\"><v>{value}</v></c></row>"
+                )?;
+            }
+        }
+        archive.write_all(b"</sheetData></worksheet>")?;
         archive.finish()?;
         Ok(())
     }

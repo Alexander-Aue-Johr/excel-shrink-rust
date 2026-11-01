@@ -1,9 +1,12 @@
 //! Byte-based XML evidence for selection and conservative change attribution.
-use super::{candidates::read_cells, Candidate};
+use super::{
+    cell_stream::{Cells, Writer},
+    Candidate, MAX_CANDIDATES,
+};
 use crate::regression::{
     office_plan::build_workbook_visual_plan,
-    worksheet_stream::WorksheetStream,
-    xml_views::{Attributes, Kind, Reader},
+    streaming_xml::{self, Event},
+    xml_views::{Attributes, Kind},
 };
 use anyhow::{ensure, Result};
 use serde::Serialize;
@@ -13,13 +16,14 @@ use std::{
     fs::File,
     io::Read,
     path::Path,
+    sync::Arc,
 };
 use zip::ZipArchive;
 
 #[derive(Clone, Default)]
 pub(super) struct Sheet {
-    pub cells: BTreeMap<String, Vec<u8>>,
-    pub rows: BTreeMap<u32, BTreeMap<String, String>>,
+    pub cells: Cells,
+    pub rows: Arc<BTreeMap<u32, BTreeMap<String, String>>>,
     pub columns: Vec<u8>,
     pub defaults: Vec<u8>,
 }
@@ -39,6 +43,8 @@ pub(super) struct XmlChange {
     pub context_before: String,
     pub context_after: String,
     pub also_in_original_open_save: bool,
+    #[serde(skip)]
+    visible_cell: bool,
 }
 
 #[derive(Serialize)]
@@ -49,80 +55,91 @@ pub(super) struct Transition {
     pub changes: Vec<XmlChange>,
 }
 
+fn cell_digest(cell: super::cell_stream::Cell) -> String {
+    use std::fmt::Write;
+    let mut result = String::with_capacity(64);
+    for byte in cell.digest {
+        write!(result, "{byte:02x}").expect("String write");
+    }
+    result
+}
+
 fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
 impl Snapshot {
-    /// Retain bounded cell XML and layout attributes, without constructing an XML DOM.
+    /// Stream cell fingerprints to owned scratch files; retain only layout metadata in memory.
     pub fn read(path: &Path) -> Result<Self> {
         let plan = build_workbook_visual_plan(path)?;
         let mut archive = ZipArchive::new(File::open(path)?)?;
         let mut context = Sha256::new();
         for part in ["xl/styles.xml", "xl/sharedStrings.xml"] {
             if let Ok(mut entry) = archive.by_name(part) {
-                ensure!(
-                    entry.size() <= 64 * 1024 * 1024,
-                    "XML context exceeds analysis limit"
-                );
-                let mut bytes = Vec::new();
-                entry.read_to_end(&mut bytes)?;
                 context.update(part.as_bytes());
-                context.update(bytes);
+                let mut buffer = [0u8; 128 * 1024];
+                loop {
+                    let count = entry.read(&mut buffer)?;
+                    if count == 0 {
+                        break;
+                    }
+                    context.update(&buffer[..count]);
+                }
             }
         }
         let mut sheets = BTreeMap::new();
         for sheet in plan.sheets {
-            let mut model = Sheet {
-                cells: read_cells(path, &sheet.sheet_file)?,
-                ..Sheet::default()
-            };
-            let mut stream = WorksheetStream::new(archive.by_name(&sheet.sheet_file)?);
-            let mut fragment = Vec::new();
-            while stream.next(&mut fragment)? {
-                let mut reader = Reader::<128>::new(&fragment)?;
-                while let Some(tag) = reader.next()? {
-                    if !matches!(tag.kind, Kind::Start | Kind::Empty) {
-                        continue;
-                    }
-                    match tag.local() {
-                        b"row" => {
-                            let mut attributes = BTreeMap::new();
-                            let row: u32 =
-                                std::str::from_utf8(tag.attr(b"r")?.unwrap_or(b"0"))?.parse()?;
-                            ensure!(
-                                (1..=1_048_576).contains(&row),
-                                "Unsupported or invalid worksheet row index"
-                            );
-                            for attribute in Attributes::new(tag.attrs) {
-                                let (key, value) = attribute?;
-                                if [
-                                    b"ht".as_slice(),
-                                    b"customHeight",
-                                    b"hidden",
-                                    b"s",
-                                    b"customFormat",
-                                ]
-                                .contains(&key)
-                                {
-                                    attributes.insert(
-                                        String::from_utf8(key.to_vec())?,
-                                        String::from_utf8(value.to_vec())?,
-                                    );
+            let mut model = Sheet::default();
+            let mut cells = Writer::new()?;
+            streaming_xml::scan(archive.by_name(&sheet.sheet_file)?, |event| {
+                if let Event::Tag(tag) = &event {
+                    if matches!(tag.kind, Kind::Start | Kind::Empty) {
+                        match tag.local() {
+                            b"row" => {
+                                let row: u32 =
+                                    std::str::from_utf8(tag.attr(b"r")?.unwrap_or(b"0"))?
+                                        .parse()?;
+                                ensure!(
+                                    (1..=1_048_576).contains(&row),
+                                    "Unsupported or invalid worksheet row index"
+                                );
+                                let mut attributes = BTreeMap::new();
+                                for attribute in Attributes::new(tag.attrs) {
+                                    let (key, value) = attribute?;
+                                    if [
+                                        b"ht".as_slice(),
+                                        b"customHeight",
+                                        b"hidden",
+                                        b"s",
+                                        b"customFormat",
+                                    ]
+                                    .contains(&key)
+                                    {
+                                        attributes.insert(
+                                            String::from_utf8(key.to_vec())?,
+                                            String::from_utf8(value.to_vec())?,
+                                        );
+                                    }
+                                }
+                                if !attributes.is_empty() {
+                                    Arc::make_mut(&mut model.rows).insert(row, attributes);
                                 }
                             }
-                            model.rows.insert(row, attributes);
+                            b"col" => {
+                                model.columns.extend_from_slice(tag.name);
+                                model.columns.extend_from_slice(tag.attrs);
+                            }
+                            b"sheetFormatPr" => {
+                                model.defaults.extend_from_slice(tag.name);
+                                model.defaults.extend_from_slice(tag.attrs);
+                            }
+                            _ => {}
                         }
-                        b"col" => model
-                            .columns
-                            .extend_from_slice(&fragment[tag.start..tag.end]),
-                        b"sheetFormatPr" => model
-                            .defaults
-                            .extend_from_slice(&fragment[tag.start..tag.end]),
-                        _ => {}
                     }
                 }
-            }
+                cells.event(&event)
+            })?;
+            model.cells = cells.finish()?;
             sheets.insert(sheet.sheet, model);
         }
         Ok(Self {
@@ -132,24 +149,47 @@ impl Snapshot {
     }
 
     /// Compare actual XML content, with style/string context, rather than addresses alone.
-    pub fn changes(&self, after: &Self) -> Vec<XmlChange> {
+    pub fn changes(&self, after: &Self) -> Result<Vec<XmlChange>> {
         let mut changes = Vec::new();
         let names: BTreeSet<_> = self.sheets.keys().chain(after.sheets.keys()).collect();
         for name in names {
             let empty = Sheet::default();
             let left = self.sheets.get(name).unwrap_or(&empty);
             let right = after.sheets.get(name).unwrap_or(&empty);
-            let cells: BTreeSet<_> = left.cells.keys().chain(right.cells.keys()).collect();
-            for cell in cells {
-                self.push_change(
-                    after,
-                    &mut changes,
-                    name,
-                    &format!("cell:{cell}"),
-                    left.cells.get(cell).map(Vec::as_slice),
-                    right.cells.get(cell).map(Vec::as_slice),
+            let mut selected = BTreeSet::new();
+            left.cells.changes(&right.cells, |change| {
+                let coordinate = change.coordinate();
+                let address = coordinate.address();
+                let capture = if change.visible() {
+                    address.clone()
+                } else {
+                    format!("A{}", coordinate.row)
+                };
+                selected.insert(capture);
+                ensure!(
+                    selected.len() <= MAX_CANDIDATES,
+                    "More than {MAX_CANDIDATES} candidate regions; no complete targeted result established"
                 );
-            }
+                changes.push(XmlChange {
+                    sheet: name.clone(),
+                    location: format!("cell:{address}"),
+                    before: change.before.map(cell_digest),
+                    after: change.after.map(cell_digest),
+                    context_before: if change.before.is_some() {
+                        self.context.clone()
+                    } else {
+                        "absent".into()
+                    },
+                    context_after: if change.after.is_some() {
+                        after.context.clone()
+                    } else {
+                        "absent".into()
+                    },
+                    also_in_original_open_save: false,
+                    visible_cell: change.visible(),
+                });
+                Ok(())
+            })?;
             let rows: BTreeSet<_> = left.rows.keys().chain(right.rows.keys()).collect();
             for row in rows {
                 let a = left
@@ -190,7 +230,7 @@ impl Snapshot {
                 Some(&right.defaults),
             );
         }
-        changes
+        Ok(changes)
     }
 
     fn push_change(
@@ -221,6 +261,7 @@ impl Snapshot {
                 "absent".into()
             },
             also_in_original_open_save: false,
+            visible_cell: false,
         });
     }
 
@@ -255,27 +296,12 @@ impl Sheet {
 }
 
 /// Content-bearing cells retain their own location; empty changes also select their row probe.
-pub(super) fn cell_candidates(
-    before: &Snapshot,
-    after: &Snapshot,
-    changes: &[XmlChange],
-) -> BTreeSet<Candidate> {
+pub(super) fn cell_candidates(changes: &[XmlChange]) -> BTreeSet<Candidate> {
     changes
         .iter()
         .filter_map(|change| {
             let cell = change.location.strip_prefix("cell:")?;
-            let visible = [before, after].iter().any(|snapshot| {
-                snapshot
-                    .sheets
-                    .get(&change.sheet)
-                    .and_then(|sheet| sheet.cells.get(cell))
-                    .is_some_and(|raw| {
-                        [b"<v".as_slice(), b"<f", b"<is"].iter().any(|pattern| {
-                            raw.windows(pattern.len()).any(|bytes| bytes == *pattern)
-                        })
-                    })
-            });
-            let address = if visible {
+            let address = if change.visible_cell {
                 cell.to_owned()
             } else {
                 format!(
@@ -304,6 +330,7 @@ mod tests {
             context_before: "styles".into(),
             context_after: "styles".into(),
             also_in_original_open_save: false,
+            visible_cell: false,
         };
         let mut b = a.clone();
         b.before = Some("different content".into());
