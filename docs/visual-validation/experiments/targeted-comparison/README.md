@@ -1,120 +1,107 @@
-# Targeted comparison
+# Targeted comparison workflow
 
-The comparison cards and their acceptance contract are documented in
-[Targeted comparison cards](../../targeted-comparison-cards.md). The Observatory
-can now explicitly start this bounded workflow on private copies. Scientific
-coverage limits below still apply.
+The Observatory's **Targeted recheck** starts this bounded comparison on private
+copies. It does not run or change the corpus queue. The same entry point is
+`excel-shrink-cli regression targeted-compare` through
+`office-capture/run-targeted-comparison.ps1`; a private desktop is required.
+`--skip-check-performance` explicitly omits CP. `--operation-timeout-seconds`
+bounds commands; closing remains capped at 15 seconds.
 
-`excel-shrink-cli regression targeted-compare` compares one original XLSX with one
-Default shrink XLSX, plus Excel Check Performance on a separate Original copy,
-without starting the corpus runner or Observatory. It copies both inputs, keeps
-each enabled copy open in its own Excel instance, and writes PNGs,
-`report.json`, and `telemetry.json` to a new output directory. No blanket sheet
-capture is made.
+## Retained states and ordering
 
-```powershell
-excel-shrink-cli.exe regression targeted-compare `
-  --original C:\path\original.xlsx `
-  --default C:\path\default.xlsx `
-  --output C:\path\new-output-directory `
-  --skip-check-performance `
-  --host-script C:\path\excel-shrink-cli\office-capture\targeted-comparison-host.ps1
-```
+Original (`O`), Default (`SD`) and the optimized Check Performance copy (`CP`)
+stay open without an explicit rebuild. Rebuilds use separate copies (`OR`,
+`SDR`, `CPR`), so newly discovered candidates can still be captured in every
+pre-state. There are at most six owned Excel instances, or four without CP.
+This is necessary evidence preservation, not duplicate timing measurements.
 
-The standalone example explicitly omits Check Performance. By default it is
-**enabled** and requires the private-desktop launcher (as used by the Observatory).
-The native adapter refuses the interactive Default desktop; it sends no global
-mouse or keyboard input. It requires a supported English Excel performance pane.
-Missing UI or unconfirmed completion fails with a bounded command deadline.
+1. Preserve raw inputs and normal opening/saving controls for Original and Default.
+2. Make CP from saved Original. Preserve CP's additional opening/saving control,
+   then its own before/after Optimize all XML. Require positive native completion.
+3. Select XML candidates, compare actual relevant heights, and capture direct
+   Original/Default/CP evidence before any explicit rebuild.
+4. Rebuild Default and CP copies. Compare XML before/after each rebuild/save,
+   discover new candidates, and capture missing regions in all retained states.
+5. Finish comparisons against Original-before. Only then open/rebuild Original's
+   copy. Search again and backfill every newly required partner image.
+6. Compare Original-before/after, both-rebuilt pairs, and each variant's own
+   before/after states. Retain every evidence image and verify all owned exits.
 
-`--observatory-group-dir` can point to an existing `groups/<id>` directory. The
-command then writes `targeted-comparison.json` there for the Observatory group
-view. This is an explicit option; the standalone command never starts a run.
+`staged.rs::Workflow::execute` is the domain-level reading order. `host.rs` owns
+bounded command transport; `TargetedResident.psm1` reuses the native resident
+launcher and command protocol. Captures, save, rebuild, geometry and row-height
+checks use **Office.js in those same live workbooks**, without clipboard capture.
+Only the verified native Check Performance trigger borrows the exact owned Excel
+application through COM. It never uses a global active-object lookup or global
+pointer input. Each exported saved copy removes only its verified injected
+add-in; the open workbook keeps its add-in.
 
-## Implemented path
+## Candidate and height selection
 
-1. Compare cell XML in matching worksheets. Empty styled-cell changes collapse
-   to one row geometry probe instead of thousands of screenshots.
-2. Open Original (`O`) and Shrink Default (`SD`), save both, and add cell changes
-   produced by the ordinary Excel save.
-3. Make a third copy (`CP`) from the normally saved Original. Open/save this copy
-   and record its additional ordinary-save changes separately. Invoke Check
-   Performance / Optimize all, require positive completion text, save, and compare
-   XML against the CP pre-optimization snapshot. Extend the shared candidate queue.
-4. Capture each candidate with one neighboring cell on every side. Read its
-   rendered position and size. Rebuild and capture SD and CP, then rebuild and capture O.
-5. Compare PNG pixels and preserve all images and geometry in the report. The
-   `also_changed_by_original_recalc` field identifies recalc drift in O.
+`xml_changes.rs` reads bounded byte XML, retaining cells, relevant row attributes,
+columns and sheet defaults. Ordinary saves and rebuild-copy reopening have
+separate transitions. Full before/after content fingerprints plus style/string
+context identify exact overlaps with Original opening/saving changes. The report
+never infers equal changes from matching addresses alone. This is conservative
+XML attribution, not exhaustive semantic equivalence across rewritten styles.
 
-The current code is an experiment, **not complete visual validation**. It
-stops after 64 changed-cell candidates. It does not yet discover chart, drawing,
-style, row, column, or all formula-dependent changes. It does not detect new
-candidate cells introduced only by recalculation. Empty-cell changes are
-mapped to column A in the same row; this catches row-height effects but does
-not prove every visible consequence. Reopening after save is not checked.
-The report records these limits; it must not be read as a clean comparison of the
-whole workbook. A completed native optimization does not certify visual equality.
-`check_performance_evidence` retains native completion text, immutable before/after
-optimization copies, separately attributed save/optimization candidates, and CP
-findings with image paths and geometry for all four control states. Default's
-existing findings stay separate. `partial-report.json` retains completed evidence
-when a later phase fails. A null CP findings/difference count means comparison
-was not performed; it does not mean zero differences.
+`heights.rs` excludes a row from automatic-height measurement only if it exists
+on both sides with equal explicit fixed height and unchanged hidden status.
+Deleted rows and changed definitions remain eligible. Column/default/context
+changes can select the full Excel height, including empty rows below content.
+The existing Office.js height scanner measures the remaining spans. Cached runs
+are reused only within the same immutable workbook state and exact span request.
+Coverage is validated before comparison; missing partner heights are an error.
 
-## Local integration check
+Every changed height run is reported over its full extent. Images are selected
+at its boundaries and the next row to expose displacement. **Those images are
+representatives, not a visual proof of every row in the run.** Cell candidates
+and padded image neighborhoods remain independently selected.
 
-On 2026-10-31 the standalone Windows executable compared the synthetic
-`baseline.xlsx` and `removed-empty-cell.xlsx` from the row-top experiment.
-It selected one candidate, `Rows!A500000`, and captured
-`A499999:B500001` in four states. The original and changed copy differed
-before recalculation and after rebuilding the changed copy; rebuilding the
-original did not change its captured region. The original row height was
-53.25 points in both captures. This verifies the basic control sequence and
-the collapse of 16,384 empty-cell removals to one row probe. It does not test
-Check Performance, drawings, or production corpus coverage.
+The height command has a 30-second in-add-in budget between batches and the
+outer command deadline. Budget exhaustion fails with incomplete coverage; it
+never certifies equality or silently starts a full-workbook capture.
 
-## Native Check Performance lane
+## Reports and limits
 
-The tested native trigger is now shared with the
-[trigger experiment](../check-performance-trigger/README.md). The orchestration
-lives in `targeted_comparison/check_performance.rs`; the platform adapter is
-`office-capture/CheckPerformance.psm1`. The top-level workflow explicitly invokes
-optimization, CP captures, CP rebuild and CP evidence comparison. It does not use
-Office.js to invoke Check Performance: no suitable public API was established.
+`report.json` preserves the existing Default/CP findings and adds:
 
-Even identical Original/Default XML does not skip CP. Its optimization can expose
-new candidates. All enabled lanes capture the resulting union. A missing CP
-image, unavailable command or unconfirmed optimization is an error, never an
-identical result. `--skip-check-performance` explicitly omits the lane; existing
-records marked unavailable remain historical records and are not upgraded.
+- `transitions`: actual source/saved files and content/context fingerprints,
+  with exact overlaps marked `also_in_original_open_save`.
+- `height_checks`: requested spans, excluded fixed rows, changed height runs and
+  explicit completeness.
+- `comparisons`: direct, variant-rebuilt-versus-Original-before, each state's own
+  rebuild-copy drift, and both-rebuilt pairs with PNG paths and geometry flags.
 
-Before using this for a corpus, replace the in-memory cell map with a bounded
-streaming comparison, add complete candidate discovery and report filters, and
-connect actual Office.js heartbeat/progress to the Observatory cards. The
-cards now distinguish actual phase/capture progress from externally measured
-PID-liveness samples. This experimental host still uses COM screenshots and
-does not emit Office.js add-in heartbeats. Full candidate discovery and the
-streaming cell comparison remain future scientific work.
+`partial-report.json` retains available comparisons during execution and partial
+outcomes on failure. `failure.json` and final telemetry distinguish unsuccessful
+work from unconfirmed process exit. The Observatory's process samples remain
+labelled PID liveness, not fabricated Office.js heartbeats.
 
-## Card and lifecycle verification
+The existing limits remain: at most **64 candidate regions**, **64 MiB worksheet
+XML**, and **250,000 cells per sheet**. Drawing/chart/conditional-formatting and
+all style/layout dependencies are not exhaustively selected. Matching selected
+images is not whole-workbook visual equality. Reopening a rebuild copy can have
+its own effects: these XML changes are retained separately and a visual
+before/after-copy comparison does not by itself prove exclusive recalculation
+causality. Opening can also recalculate when Excel requires it.
 
-`run-smoke.ps1 -Output <new-directory>` creates a tiny font-height counterexample
-and runs the actual comparison on an owned private desktop. Add `-FailCapture`
-to inject a capture error after real Excel startup and verify cleanup.
-`-CheckPerformance` uses identical inputs with redundant styled cells, requires a
-real Optimize all completion, checks `Z10000` was removed in saved XML, compares
-CP before/after rebuild against Original, and verifies all three process exits.
-`-FailOptimization` injects an unconfirmed optimization response after real Excel
-startup; the command must fail explicitly and close every owned Excel process.
-`-CleanWorkbook` verifies a positive "No optimization needed" outcome without
-attributing ordinary save changes to optimization.
+## Focused verification
 
-`test-panel.cjs <new-output-directory> <telemetry.json>` runs an isolated headless
-Edge with synthetic UI verification frames derived from that telemetry. It
-checks the real shaders, retained canvases, workflow matrix, history and
-fullscreen. It requires Node with built-in WebSocket support; the installed
-VS Code runtime can be used with `ELECTRON_RUN_AS_NODE=1`.
+`run-smoke.ps1 -Output <fresh-directory>` runs actual private Excel clients:
 
-`test-host.cjs <smoke-directory>` verifies the actual HTTP launch path using a
-`prepared/smoke.zip` fixture with Original/Default inputs. Its fixed test port is
-8879. It does not use or restart a production host.
+- `-CheckPerformance`: identical input pair, native optimization, new candidates,
+  six retained states, actual images and confirmed exits.
+- `-RecalcCandidate`: removes a source value while retaining a formula cache;
+  explicit workbook calculation settings keep the indirect change for rebuild.
+  The verifier requires the late formula candidate and all pre-state images.
+- `-SaveOverlap`: a cell removed by both Default and ordinary Original save must
+  be recognized as an exact overlap.
+- `-CleanWorkbook`: verifies positive "No optimization needed".
+- `-FailOptimization` / `-FailCapture`: deliberately fail after real startup,
+  retaining partial results and checking every owned process exits.
+
+The browser harness `test-panel.cjs` verifies real shaders, stable canvases, the
+dynamic state/phase matrix, history and fullscreen. `test-host.cjs` checks the
+actual HTTP launch and an explicitly bounded silent-host failure. Existing
+results are historical records; this workflow does not upgrade or overwrite them.

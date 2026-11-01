@@ -23,7 +23,7 @@ startTargeted.disabled = true;
 let targetedStarting = false;
 startTargeted.textContent = 'Targeted recheck · Default + Check Performance';
 startTargeted.title = 'Run the bounded targeted comparison on private copies. The corpus queue keeps running.';
-startTargeted.title += ' This manual COM recheck uses the shared Windows clipboard; changing it can make a capture fail safely.';
+startTargeted.title += ' Captures and row-height checks use Office.js in retained private workbook states.';
 document.querySelector('.heading-actions').append(startTargeted);
 startTargeted.addEventListener('click', async () => {
   if (!state.groupId || startTargeted.disabled) return;

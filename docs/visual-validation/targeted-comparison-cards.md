@@ -14,27 +14,14 @@ owned private desktop. It does not pause or change the corpus queue. No prepared
 workbook or earlier result is overwritten. A missing Default variant produces
 an explicit error.
 
-The public CLI entry remains:
+The CLI entry remains `regression targeted-compare`; the Observatory starts it
+through `office-capture/run-targeted-comparison.ps1` on an owned private desktop.
+The native resident launcher explicitly receives that desktop. Captures,
+measurements, saves and rebuilds use Office.js in the actual live workbooks.
+Only the Check Performance UI trigger borrows the exact owned application via COM.
 
-```powershell
-excel-shrink-cli.exe regression targeted-compare `
-  --original C:\inputs\original.xlsx --default C:\inputs\default.xlsx `
-  --output C:\results\new-directory `
-  --observatory-group-dir C:\study\control-room\groups\group-id `
-  --workbook-label "Workbook to inspect.xlsx" `
-  --operation-timeout-seconds 120 --skip-check-performance
-```
-
-The example explicitly omits CP and retains the existing visible-COM behavior.
-CP is enabled by default and requires the private-desktop launcher. The
-Observatory uses `office-capture/run-targeted-comparison.ps1` to run all three
-lanes privately. The host verifies the requested desktop before showing Excel.
-
-This experimental COM capture uses the Windows window station's shared
-clipboard. External clipboard activity or simultaneous COM rechecks can fail a
-capture. Sequence and owning PID are checked, so an unrelated image must never
-be accepted as evidence. The ordinary Office.js corpus path does not use this
-clipboard mechanism.
+The [workflow and report contract](experiments/targeted-comparison/README.md)
+describes the current sequence, limits and standalone launcher.
 
 ## Process cards and signals
 
@@ -53,7 +40,7 @@ clipboard mechanism.
   An explicitly labelled text fallback handles unavailable WebGL.
 - The existing heartbeat renderer is reused in heartbeat-only mode. The
   overview's full monitor retains its capture and phase tracks.
-- This COM host has no Office.js heartbeat stream. Its cards instead label real
+- The cards continue to label real
   **PID-liveness samples**, checked against process creation time. These are
   neither Excel responsiveness nor work progress. No heartbeat is inferred from
   a phase, capture count, or mere PID assignment.
@@ -65,8 +52,8 @@ new/removed cards affect the DOM.
 ## Progress and workflow diagram
 
 The candidate count measures regions selected from changed cell XML and
-ordinary-save changes. Each lane captures each region before and after its
-rebuild. A growing queue increases the denominator without discarding completed
+ordinary-save, height and rebuild changes. Each retained state captures each
+region once, including candidates discovered later. A growing queue increases the denominator without discarding completed
 work. Unknown totals remain indeterminate; a failed run never gets an artificial
 100% bar.
 
@@ -78,16 +65,17 @@ The diagram has arrow-shaped column headers and disabled status checkboxes for:
 4. Add save-only XML changes to the candidate queue.
 5. Run Optimize all on the CP copy and require positive completion.
 6. Discover optimization changes against the CP save baseline.
-7. Capture candidate regions before rebuilding.
-8. Full rebuild: Default, CP, then Original as an independent control.
-9. Capture those same regions after rebuilding.
-10. Compare pixels and rendered geometry.
-11. Close each owned Excel process and verify exit.
+7. Check actual automatic row heights, excluding retained equal fixed heights.
+8. Capture candidate regions before rebuilding.
+9. Full rebuild on independent copies: Default, CP, then Original last.
+10. Backfill late candidates in every retained state.
+11. Compare pixels and rendered geometry, including both-rebuilt pairs.
+12. Close each owned Excel process and verify exit.
 
-Rows distinguish Original, Default and Check Performance (or explicitly omitted CP). Completed, running,
+Rows distinguish three pre-states and their three rebuild copies (CP may be explicitly omitted). Completed, running,
 pending, skipped, failed and unavailable steps are distinct. Column/cell
 tooltips explain the purpose of the control. The view also spells out the
-three comparison pairs:
+comparison pairs, including:
 
 - Original-before ↔ Default-before: direct shrink effect.
 - Original-before ↔ Default-after: shrink result after rebuild.
@@ -143,14 +131,14 @@ failure; failure reporting gives their exits a bounded confirmation interval.
 | Honest activity and progress | Model tests cover opening/open/closed states, millisecond XML work, afterglow, stale snapshots, missing beats and growing queues. |
 | Checkbox flow | Browser checks the complete phase-by-lane matrix, including native optimization and its XML inspection. |
 | Completed history | Browser checks the initial limit, expansion and fullscreen scrolling. Host unit test keeps old active runs and late finishers. |
-| Real comparison | Private-desktop smoke test captures two candidates in four states; it detects the injected font-height difference and no original-recalc drift. |
-| Failure cleanup | Fault-injection smoke test fails during capture and requires a terminal failure with both Excel exits confirmed. |
+| Real comparison | Private-desktop tests capture all retained states and verify late formula candidates, native CP and exact ordinary-save overlap. |
+| Failure cleanup | Fault-injection smoke test fails during capture and requires a terminal failure with all owned Excel exits confirmed. |
 | Actual Observatory launch | HTTP test starts the private runner from a prepared bundle, checks real comparison results and verifies the bundle hash is unchanged. |
 | Bounded command wait | HTTP harness also runs a deliberately silent command host with a one-second deadline; it must finish as a reported failure. |
 
 The comparison still has scientific limits: at most 64 candidate regions; no
-complete drawing/chart/style/layout dependency analysis; no new candidates
-introduced only by a rebuild; no reopened-after-save check. The bounded in-memory index rejects worksheet XML over
+complete drawing/chart/style/layout dependency analysis and no general proof of
+reopened-after-save visual equivalence. The bounded in-memory index rejects XML over
 64 MiB or 250,000 cells. These limits fail explicitly or remain recorded; none
 are represented as whole-workbook visual equality.
 

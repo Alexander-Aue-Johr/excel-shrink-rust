@@ -123,7 +123,7 @@ function createComparisonCard() {
   const flow = createFlowDiagram();
   const controls = node('p', 'targeted-controls-explanation',
     'Before: Original ↔ Default. After Default rebuild: Original-before ↔ Default-after. '
-    + 'Drift control: Original-before ↔ Original-after. Check Performance uses a separate saved Original copy and the same Original controls. Save-only changes extend the shared candidate queue.');
+    + 'Drift control: Original-before ↔ Original-after. Pre-rebuild states stay open. Rebuilds use independent copies; Original is rebuilt last. Opening/saving and optimization XML controls are separate.');
   const legend = node('p', 'targeted-flow-legend', '☑ Done · ◩ Running · □ Pending · muted − Not performed / unavailable. Hover a column or checkbox for its purpose.');
   root.append(heading, explanation, error, lanes, flow.element, legend, controls);
   const laneViews = new Map();
@@ -136,7 +136,7 @@ function createComparisonCard() {
       outcome.textContent = comparison.status.replaceAll('_', ' ');
       const count = comparison.candidate_count;
       const selection = count == null ? 'Discovering candidate regions'
-        : `${count} candidate regions � before/after captures per workbook`;
+        : `${count} candidate regions · shared candidate regions per retained state`;
       const performanceEnabled = comparison.lanes.some(lane => lane.id === 'CP' && lane.lifecycle !== 'unavailable');
       const performanceStatus = comparison.report?.check_performance || (performanceEnabled ? 'enabled' : 'not run');
       explanation.textContent = `${selection}. Limited candidate coverage. Check Performance: ${performanceStatus.replaceAll('_', ' ')}.`;
@@ -156,7 +156,7 @@ function createComparisonCard() {
       if (finished && comparison.report?.before_differences != null) {
         outcome.textContent += ` · ${comparison.report.before_differences} before / ${comparison.report.after_differences} after differences · ${comparison.report.original_recalc_drift} original drift`;
         if (comparison.report.check_performance_differences != null) {
-          outcome.textContent += ` � ${comparison.report.check_performance_differences} Check Performance differences`;
+          outcome.textContent += ` · ${comparison.report.check_performance_differences} Check Performance differences`;
         }
       }
     },
