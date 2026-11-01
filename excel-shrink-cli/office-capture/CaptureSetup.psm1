@@ -108,7 +108,9 @@ function Register-AddIn([string]$id, [string]$manifestPath) {
     $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\Office\16.0\Wef\Developer', $true)
     if ($null -eq $key) { throw 'Cannot open Office developer add-in registry key.' }
     try {
-        $previous = if (@($key.GetValueNames()) -contains $id) { [string]$key.GetValue($id) } else { $null }
+        # Other capture sessions register concurrently. Read this known value
+        # directly instead of enumerating a registry key that is changing.
+        $previous = $key.GetValue($id, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
         $key.SetValue($id, $manifestPath, [Microsoft.Win32.RegistryValueKind]::String)
         return $previous
     } finally { $key.Dispose() }
