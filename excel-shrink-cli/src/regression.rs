@@ -37,6 +37,7 @@ mod diagnosis_report;
 mod archive;
 mod targeted_comparison;
 mod sheet_capture;
+mod cf_inventory;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -70,6 +71,8 @@ enum RegressionCommand {
     TargetedCompare(targeted_comparison::Args),
     /// Capture one complete sheet for manual inspection, outside the corpus queue.
     CaptureSheet(sheet_capture::Args),
+    /// Inventory conditional formatting and retain source XML evidence without opening Excel.
+    CfInventory(cf_inventory::Args),
     #[command(hide = true)]
     ArchiveWorker(archive::WorkerArgs),
 }
@@ -432,6 +435,7 @@ pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
         RegressionCommand::Study(args) => archive::run_study(args, console_log_level),
         RegressionCommand::TargetedCompare(args) => targeted_comparison::run(args),
         RegressionCommand::CaptureSheet(args) => sheet_capture::run(args),
+        RegressionCommand::CfInventory(args) => cf_inventory::run(args),
         RegressionCommand::ArchiveWorker(args) => archive::run_worker(args, console_log_level),
         RegressionCommand::Smoke(args) => run_suite_or_visual_profile_matrix(
             "smoke",
