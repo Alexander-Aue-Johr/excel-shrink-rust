@@ -127,7 +127,7 @@ pub(super) fn new_report() -> Report {
         excel_pids: BTreeMap::new(),
         capture_counts: BTreeMap::new(),
         limitations: vec![
-            "All live worksheet charts are compared as whole-chart exports in every retained state. Other drawings, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
+            "Embedded charts and standalone chart sheets are compared as whole-chart exports in every retained state. Chart-sheet exports use a consistent viewport in the existing owned Excel process. Other drawings, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
             "Excel may recalculate during open even when manual calculation is requested.".into(),
             "Opening/saving and rebuild-copy reopening are retained as separate XML controls. Exact content/context matches identify overlaps conservatively; absence of a match does not establish exclusive causality.".into(),
             "Worksheet cells are streamed into temporary fixed-size fingerprints without worksheet-byte or cell-count limits. Layout metadata and actual change evidence still require memory; this command is not a replacement for the corpus runner.".into(),

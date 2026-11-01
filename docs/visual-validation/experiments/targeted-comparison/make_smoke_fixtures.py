@@ -24,6 +24,14 @@ def create_chart_fixtures(directory):
             chart.title = 'Different title' if name == 'Changed' and lane == 'default' else name
             chart.add_data(Reference(sheet, min_col=1, min_row=1, max_row=3))
             sheet.add_chart(chart, f'D{1 + index * 16}')
+        for name in names:
+            chart = BarChart()
+            chart.title = 'Different title' if name == 'Changed' and lane == 'default' else name
+            chart.add_data(Reference(sheet, min_col=1, min_row=1, max_row=3))
+            chart_sheet = book.create_chartsheet(f'Sheet {name}')
+            chart_sheet.add_chart(chart)
+            if name == 'Stable':
+                chart_sheet.sheet_state = 'hidden'
         path = directory / f'{lane}.xlsx'
         book.save(path)
         with zipfile.ZipFile(path) as archive:

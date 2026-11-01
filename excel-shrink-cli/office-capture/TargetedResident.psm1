@@ -2,6 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $sessions = @{}
 $utf8 = [Text.UTF8Encoding]::new($false)
+Import-Module (Join-Path $PSScriptRoot 'TargetedChartSheets.psm1') -Force -DisableNameChecking
 
 function Write-TargetedJson {
     param([string]$Path, $Value)
@@ -85,6 +86,9 @@ function Invoke-TargetedJob {
     param($Command)
     $entry = $sessions[$Command.lane]
     if ($null -eq $entry) { throw 'Targeted workbook is not open.' }
+    if ($Command.kind -eq 'capture_chart' -and $Command.chart_kind -eq 'chart_sheet') {
+        return Export-TargetedChartSheet $entry $Command
+    }
     $entry.sequence++
     $id = 'targeted-' + $entry.sequence
     $request = @{id=$id; kind='diagnosis'; operation='targeted'; request=$Command}
@@ -95,6 +99,9 @@ function Invoke-TargetedJob {
         if ($null -ne $response) {
             if ($response.ok -ne $true -or $response.diagnostic_error) {
                 throw ($response | ConvertTo-Json -Depth 6 -Compress)
+            }
+            if ($Command.kind -eq 'charts') {
+                $response.charts = @($response.charts) + @(Get-TargetedChartSheets $entry)
             }
             if ($Command.kind -in @('save','recalculate')) {
                 Copy-Item -LiteralPath $entry.staged -Destination $entry.path -Force

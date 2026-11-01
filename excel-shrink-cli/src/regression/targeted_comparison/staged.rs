@@ -124,7 +124,6 @@ impl Workflow<'_, '_> {
     }
 
     fn register(&mut self, id: LaneId, path: PathBuf) -> Result<()> {
-        charts::validate_supported_sheets(&path)?;
         self.comparison
             .telemetry
             .update(|state| state.step(id, Phase::Discover, StepStatus::Running))?;

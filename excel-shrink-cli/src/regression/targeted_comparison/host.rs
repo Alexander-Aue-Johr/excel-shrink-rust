@@ -138,7 +138,7 @@ impl ExcelHost {
         Ok(())
     }
 
-    /// Enumerate live worksheet charts independently of XML change detection.
+    /// Enumerate embedded charts and same-resident chart sheets independently of XML changes.
     pub(super) fn charts(
         &mut self,
         lane: LaneId,
@@ -158,7 +158,7 @@ impl ExcelHost {
     ) -> Result<Value> {
         let response = self.call(
             json!({"kind":"capture_chart", "lane":lane.key(),
-            "sheet":chart.sheet, "chart":chart.name, "output":output}),
+            "sheet":chart.sheet, "chart":chart.name, "chart_kind":chart.kind, "output":output}),
             telemetry,
         )?;
         ensure!(response["geometry"].is_object(), "Missing chart geometry");

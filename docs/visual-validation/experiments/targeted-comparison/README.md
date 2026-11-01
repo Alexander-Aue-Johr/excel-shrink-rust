@@ -89,7 +89,7 @@ its own effects: these XML changes are retained separately and a visual
 before/after-copy comparison does not by itself prove exclusive recalculation
 causality. Opening can also recalculate when Excel requires it.
 
-Every live worksheet chart is exported independently of changed cell XML, once
+Every live embedded chart and standalone chart sheet is exported independently of changed cell XML, once
 for each retained state (O/SD/CP and their rebuild copies). Office.js
 `Chart.getImage()` exports the complete chart. The decoder identifies PNG/JPEG
 from the actual bytes, since the observed desktop export differs from the
@@ -99,8 +99,19 @@ removed or renamed charts produce presence differences, not successful equality.
 Inventory/export failures fail the comparison. Chart findings and image paths
 are retained in each comparison's `charts` array; the Observatory summary counts
 chart comparisons and differences separately from cell-region findings.
-Standalone chart sheets are not exposed by this worksheet Office.js API; their
-presence fails explicitly as incomplete coverage rather than silently omitting them.
+Standalone chart sheets use `TargetedChartSheets.psm1`: the existing PID-validated
+resident application is borrowed only for chart-sheet inventory/export. No extra
+Excel application or workbook is opened. Each export activates/refreshes the
+chart and uses a 1000 × 750 point window at a fixed origin, 100% zoom, disabled
+window-driven chart scaling and full-page chart sizing. Setting full-page sizing
+is necessary: equal window dimensions/zoom alone still produced differently
+sized exports of identical charts on this installation. The original page chart
+size is retained as geometry evidence. The previous window state, active sheet,
+chart visibility, zoom, scaling and page sizing are restored without saving.
+Hidden chart sheets are temporarily shown only for export. Empty exports are retried at most ten times,
+200 ms apart, and the normal Rust operation deadline bounds blocked COM calls.
+Images must decode successfully before evidence is accepted. The chart kind is
+retained in findings, so embedded charts and standalone sheets cannot collide.
 
 ## Focused verification
 

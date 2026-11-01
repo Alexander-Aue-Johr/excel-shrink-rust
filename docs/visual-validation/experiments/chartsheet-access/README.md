@@ -51,8 +51,13 @@ dimensions consistent across states, validate decoded image dimensions and rejec
 empty exports even when Excel returns true. Any readiness retries must remain
 bounded by the existing operation deadline. Do not move chart sheets into normal
 worksheets or save them merely to make Office.js access possible: that changes
-the state being validated. The production unsupported-chart-sheet guard remains
-in place; this experiment does not silently change corpus coverage.
+the state being validated.
+
+The follow-up integration now implements this fallback in
+`office-capture/TargetedChartSheets.psm1`, with chart-sheet kind tags in the
+shared chart comparison report. The main `targeted-comparison/run-smoke.ps1
+-Charts -CheckPerformance` fixture verifies embedded charts and standalone
+chart sheets across all six retained states.
 
 ## Primary sources
 

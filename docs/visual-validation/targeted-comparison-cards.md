@@ -136,9 +136,11 @@ failure; failure reporting gives their exits a bounded confirmation interval.
 | Actual Observatory launch | HTTP test starts the private runner from a prepared bundle, checks real comparison results and verifies the bundle hash is unchanged. |
 | Bounded command wait | HTTP harness also runs a deliberately silent command host with a one-second deadline; it must finish as a reported failure. |
 
-Whole worksheet charts are always compared in each retained state, including
+Whole embedded charts and standalone chart sheets are always compared in each retained state, including
 when worksheet XML is identical. The summary shows chart comparisons and
 differences; the report retains their image paths, geometry and presence findings.
+Standalone sheets use a COM export through the already running, PID-validated
+resident, with a consistent viewport and restoration of the previous view.
 
 The comparison still has scientific limits: no
 complete non-chart drawing/style/layout dependency analysis and no general proof of

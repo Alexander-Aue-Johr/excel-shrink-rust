@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::{self, File},
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -17,29 +17,32 @@ use std::{
 pub(super) struct Chart {
     pub sheet: String,
     pub name: String,
+    #[serde(default)]
+    pub kind: ChartKind,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ChartKind {
+    #[default]
+    Embedded,
+    ChartSheet,
 }
 
 pub(super) type Captures = BTreeMap<Chart, Evidence>;
-
-/// Office.js exposes worksheet charts, not standalone chart sheets; never silently omit them.
-pub(super) fn validate_supported_sheets(path: &Path) -> Result<()> {
-    let archive = zip::ZipArchive::new(File::open(path)?)?;
-    ensure!(
-        !archive.file_names().any(|name| name.starts_with("xl/chartsheets/") && name.ends_with(".xml")),
-        "Standalone chart sheets cannot be exported through the worksheet chart API; chart coverage is incomplete"
-    );
-    Ok(())
-}
 
 #[derive(Serialize)]
 pub(super) struct Finding {
     pub sheet: String,
     pub chart: String,
+    pub kind: ChartKind,
     pub presence_differs: bool,
     pub pixels_differ: bool,
     pub geometry_differs: bool,
     pub left_image: Option<PathBuf>,
     pub right_image: Option<PathBuf>,
+    pub left_geometry: Option<serde_json::Value>,
+    pub right_geometry: Option<serde_json::Value>,
 }
 
 /// Export every chart once per retained state; failed inventory/export is an error.
@@ -65,6 +68,13 @@ pub(super) fn capture(
         let name = format!("{:x}", Sha256::digest(serde_json::to_vec(&chart)?));
         let path = directory.join(format!("{name}.image"));
         let geometry = excel.capture_chart(lane, &chart, &path, telemetry)?;
+        let image = image::ImageReader::open(&path)?
+            .with_guessed_format()?
+            .decode()?;
+        ensure!(
+            image.width() > 0 && image.height() > 0,
+            "Empty chart export"
+        );
         captures.insert(chart, Evidence { path, geometry });
     }
     Ok(captures)
@@ -85,11 +95,14 @@ pub(super) fn compare(left: &Captures, right: &Captures) -> Result<Vec<Finding>>
             Ok(Finding {
                 sheet: chart.sheet.clone(),
                 chart: chart.name.clone(),
+                kind: chart.kind,
                 presence_differs: a.is_none() || b.is_none(),
                 pixels_differ,
                 geometry_differs,
                 left_image: a.map(|e| e.path.clone()),
                 right_image: b.map(|e| e.path.clone()),
+                left_geometry: a.map(|e| e.geometry.clone()),
+                right_geometry: b.map(|e| e.geometry.clone()),
             })
         })
         .collect()
@@ -106,16 +119,22 @@ mod tests {
             Chart {
                 sheet: "Data".into(),
                 name: "Chart 1".into(),
+                kind: ChartKind::Embedded,
             },
             Evidence {
                 path: "original.jpg".into(),
-                geometry: json!({}),
+                geometry: json!({"visibility": 0, "page_chart_size": 1}),
             },
         )]);
         let findings = compare(&left, &BTreeMap::new())?;
         assert_eq!(findings.len(), 1);
         assert!(findings[0].presence_differs);
         assert!(findings[0].right_image.is_none());
+        assert_eq!(
+            findings[0].left_geometry,
+            Some(json!({"visibility": 0, "page_chart_size": 1}))
+        );
+        assert!(findings[0].right_geometry.is_none());
         Ok(())
     }
 
@@ -125,6 +144,7 @@ mod tests {
             Chart {
                 sheet: "Data".into(),
                 name: "Chart 1".into(),
+                kind: ChartKind::Embedded,
             },
             Evidence {
                 path: "missing-chart-export.jpg".into(),
