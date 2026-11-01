@@ -21,7 +21,7 @@ const startTargeted = document.createElement('button');
 startTargeted.type = 'button';
 startTargeted.disabled = true;
 let targetedStarting = false;
-startTargeted.textContent = 'Targeted recheck · Original / Default';
+startTargeted.textContent = 'Targeted recheck · Default + Check Performance';
 startTargeted.title = 'Run the bounded targeted comparison on private copies. The corpus queue keeps running.';
 startTargeted.title += ' This manual COM recheck uses the shared Windows clipboard; changing it can make a capture fail safely.';
 document.querySelector('.heading-actions').append(startTargeted);
@@ -30,7 +30,7 @@ startTargeted.addEventListener('click', async () => {
   targetedStarting = true;
   startTargeted.disabled = true;
   try {
-    setNotice('Preparing Original / Default copies for a private targeted recheck…');
+    setNotice('Preparing Original, Default and Check Performance copies for a private targeted recheck…');
     const response = await fetch(`/api/groups/${encodeURIComponent(state.groupId)}/targeted-compare`, { method: 'POST' });
     const result = await response.json();
     if (!response.ok || result.ok === false) throw new Error(result.error || `HTTP ${response.status}`);

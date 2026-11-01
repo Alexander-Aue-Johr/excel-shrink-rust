@@ -22,6 +22,8 @@ pub(super) enum Phase {
     Open,
     Save,
     InspectSave,
+    Optimize,
+    InspectOptimization,
     CaptureBefore,
     Recalculate,
     CaptureAfter,
@@ -29,11 +31,13 @@ pub(super) enum Phase {
     Close,
 }
 
-const ALL_PHASES: [Phase; 9] = [
+const ALL_PHASES: [Phase; 11] = [
     Phase::Discover,
     Phase::Open,
     Phase::Save,
     Phase::InspectSave,
+    Phase::Optimize,
+    Phase::InspectOptimization,
     Phase::CaptureBefore,
     Phase::Recalculate,
     Phase::CaptureAfter,
@@ -46,13 +50,15 @@ impl Phase {
     fn columns() -> Value {
         json!([
             {"id":"discover", "label":"Find changes", "description":"Compare original and Default cell XML; empty style changes become row-geometry candidates."},
-            {"id":"open", "label":"Open Excel", "description":"Keep separate original and Default workbook copies open."},
+            {"id":"open", "label":"Open Excel", "description":"Keep each enabled workbook copy open in its own Excel process."},
             {"id":"save", "label":"Save copies", "description":"Observe ordinary Excel save effects before an explicit rebuild."},
             {"id":"inspect_save", "label":"Inspect saved XML", "description":"Add candidate cells also changed by ordinary Excel save."},
-            {"id":"capture_before", "label":"Capture before", "description":"Capture the same candidate regions in both open copies."},
-            {"id":"recalculate", "label":"Full rebuild", "description":"Rebuild Default first; rebuild original separately as the control for calculation drift."},
+            {"id":"optimize", "label":"Optimize all", "description":"Run native Check Performance on a separate saved Original copy; require positive completion."},
+            {"id":"inspect_optimization", "label":"Inspect optimization", "description":"Add XML changes from Check Performance, separately from ordinary save effects."},
+            {"id":"capture_before", "label":"Capture before", "description":"Capture the same candidate regions in all enabled open copies."},
+            {"id":"recalculate", "label":"Full rebuild", "description":"Rebuild Default and Check Performance; rebuild original separately as the control for calculation drift."},
             {"id":"capture_after", "label":"Capture after", "description":"Capture the same regions after each workbook rebuild."},
-            {"id":"compare", "label":"Compare evidence", "description":"Compare original-before with Default-before, Default-after and original-after; compare geometry too."},
+            {"id":"compare", "label":"Compare evidence", "description":"Compare original-before with Default-before, Default-after, Check Performance before/after and original-after; compare geometry too."},
             {"id":"close", "label":"Close Excel", "description":"Close owned copies and verify the exact Excel processes have exited."}
         ])
     }
@@ -152,7 +158,10 @@ impl Snapshot {
     pub fn step(&mut self, id: LaneId, phase: Phase, status: StepStatus) {
         let lane = self.lane(id);
         lane.steps.insert(phase, status);
-        if matches!(phase, Phase::Discover | Phase::InspectSave) {
+        if matches!(
+            phase,
+            Phase::Discover | Phase::InspectSave | Phase::InspectOptimization
+        ) {
             if status == StepStatus::Running {
                 lane.xml_started_at = Some(now());
                 lane.xml_finished_at = None;
@@ -166,7 +175,7 @@ impl Snapshot {
     pub fn candidates(&mut self, count: usize) {
         self.candidate_count = Some(count);
         for lane in &mut self.lanes {
-            if lane.id != LaneId::CP {
+            if lane.lifecycle != Lifecycle::Unavailable {
                 lane.captures_total = Some(count * 2);
             }
         }
@@ -224,7 +233,7 @@ impl Telemetry {
         .map(|(id, label)| Lane {
             id,
             label,
-            lifecycle: if id == LaneId::CP {
+            lifecycle: if id == LaneId::CP && args.skip_check_performance {
                 Lifecycle::Unavailable
             } else {
                 Lifecycle::NotStarted
@@ -242,8 +251,13 @@ impl Telemetry {
                 .map(|phase| {
                     (
                         phase,
-                        if id == LaneId::CP {
+                        if id == LaneId::CP && args.skip_check_performance {
                             StepStatus::Unavailable
+                        } else if (id != LaneId::CP
+                            && matches!(phase, Phase::Optimize | Phase::InspectOptimization))
+                            || (id == LaneId::CP && phase == Phase::Discover)
+                        {
+                            StepStatus::Skipped
                         } else {
                             StepStatus::Pending
                         },
@@ -406,6 +420,7 @@ mod tests {
             observatory_group_dir: Some(group.clone()),
             workbook_label: None,
             operation_timeout_seconds: 1,
+            skip_check_performance: true,
         };
         let telemetry = Telemetry::start(&args).unwrap();
         telemetry

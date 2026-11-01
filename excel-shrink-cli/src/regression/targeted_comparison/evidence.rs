@@ -4,6 +4,7 @@ use super::telemetry::{LaneId, Telemetry};
 use super::{Candidate, Finding};
 use anyhow::{ensure, Context, Result};
 use image::GenericImageView;
+use serde::Serialize;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -14,6 +15,85 @@ use std::{
 pub(super) struct Evidence {
     path: PathBuf,
     geometry: Value,
+}
+
+#[derive(Serialize)]
+pub(super) struct PerformanceFinding {
+    sheet: String,
+    cell: String,
+    range: String,
+    before_recalc_differs: bool,
+    after_recalc_differs: bool,
+    original_recalc_drift: bool,
+    ordinary_save_xml_changed: bool,
+    optimization_xml_changed: bool,
+    images: BTreeMap<&'static str, PathBuf>,
+    geometry: BTreeMap<&'static str, Value>,
+}
+
+impl PerformanceFinding {
+    pub(super) fn differs(&self) -> bool {
+        self.before_recalc_differs || self.after_recalc_differs
+    }
+}
+
+/// Compare the third lane against the same original controls, retaining full evidence.
+pub(super) fn compare_performance(
+    candidates: &BTreeSet<Candidate>,
+    original_before: &BTreeMap<Candidate, Evidence>,
+    performance_before: &BTreeMap<Candidate, Evidence>,
+    performance_after: &BTreeMap<Candidate, Evidence>,
+    original_after: &BTreeMap<Candidate, Evidence>,
+    save_changes: &BTreeSet<Candidate>,
+    optimization_changes: &BTreeSet<Candidate>,
+) -> Result<Vec<PerformanceFinding>> {
+    candidates
+        .iter()
+        .map(|candidate| {
+            let states = [
+                ("original_before", original_before.get(candidate)),
+                ("performance_before", performance_before.get(candidate)),
+                ("performance_after", performance_after.get(candidate)),
+                ("original_after", original_after.get(candidate)),
+            ];
+            let evidence: BTreeMap<_, _> = states
+                .into_iter()
+                .map(|(name, evidence)| {
+                    evidence
+                        .with_context(|| {
+                            format!(
+                                "Missing {name} evidence for {}!{}",
+                                candidate.sheet, candidate.cell
+                            )
+                        })
+                        .map(|evidence| (name, evidence))
+                })
+                .collect::<Result<_>>()?;
+            let original = evidence["original_before"];
+            let differs = |other: &Evidence| -> Result<bool> {
+                Ok(images_differ(&original.path, &other.path)?
+                    || original.geometry != other.geometry)
+            };
+            Ok(PerformanceFinding {
+                sheet: candidate.sheet.clone(),
+                cell: candidate.cell.clone(),
+                range: padded_range(&candidate.cell)?,
+                before_recalc_differs: differs(evidence["performance_before"])?,
+                after_recalc_differs: differs(evidence["performance_after"])?,
+                original_recalc_drift: differs(evidence["original_after"])?,
+                ordinary_save_xml_changed: save_changes.contains(candidate),
+                optimization_xml_changed: optimization_changes.contains(candidate),
+                images: evidence
+                    .iter()
+                    .map(|(&name, e)| (name, e.path.clone()))
+                    .collect(),
+                geometry: evidence
+                    .iter()
+                    .map(|(&name, e)| (name, e.geometry.clone()))
+                    .collect(),
+            })
+        })
+        .collect()
 }
 
 /// Saves a tiny picture and rendered geometry for every selected cell.
@@ -162,6 +242,37 @@ mod tests {
         )
         .is_err());
     }
+    #[test]
+    fn missing_performance_partner_is_not_identical() {
+        let candidate = Candidate {
+            sheet: "Rows".into(),
+            cell: "A10".into(),
+        };
+        let candidates = BTreeSet::from([candidate.clone()]);
+        let original = BTreeMap::from([(
+            candidate,
+            Evidence {
+                path: "unused.png".into(),
+                geometry: Value::Null,
+            },
+        )]);
+        let empty = BTreeMap::new();
+        let error = compare_performance(
+            &candidates,
+            &original,
+            &empty,
+            &empty,
+            &original,
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        )
+        .err()
+        .unwrap();
+        assert!(error
+            .to_string()
+            .contains("Missing performance_before evidence"));
+    }
+
     #[test]
     fn ranges_have_one_cell_margin_and_clip_at_edges() {
         assert_eq!(padded_range("A1").unwrap(), "A1:B2");

@@ -36,7 +36,7 @@ async function main() {
     assert.equal(started.ok, true, JSON.stringify(started));
     request = started.request_id;
     let result;
-    for (let attempt = 0; attempt < 100; attempt++) {
+    for (let attempt = 0; attempt < 300; attempt++) {
       const snapshots = await (await fetch(base + '/api/targeted-comparisons')).json();
       result = snapshots.comparisons.find(item => !previous.comparisons.some(old => old.run_id === item.run_id));
       if (result?.finished_at) break;
@@ -55,7 +55,7 @@ async function main() {
     const timeout = spawnSync(path.join(repository, 'target/debug/excel-shrink-cli.exe'), [
       'regression', 'targeted-compare', '--original', path.join(root, 'inputs/original.xlsx'),
       '--default', path.join(root, 'inputs/default.xlsx'), '--output', timeoutOutput,
-      '--host-script', silentHost, '--operation-timeout-seconds', '1',
+      '--skip-check-performance', '--host-script', silentHost, '--operation-timeout-seconds', '1',
     ], { windowsHide: true, timeout: 10000 });
     assert.notEqual(timeout.status, 0);
     assert.ok(Date.now() - requestedAt < 10000, 'A silent command host has a bounded deadline.');

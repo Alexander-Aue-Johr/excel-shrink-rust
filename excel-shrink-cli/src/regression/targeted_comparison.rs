@@ -1,5 +1,6 @@
 //! Targeted comparison workflow; the called phases own XML, Excel, and evidence details.
 mod candidates;
+mod check_performance;
 mod evidence;
 mod host;
 mod reporting;
@@ -44,6 +45,9 @@ pub(crate) struct Args {
     /// Maximum duration of one Excel command; closing is additionally capped at 15 seconds.
     #[arg(long, default_value_t = 120, value_parser = clap::value_parser!(u64).range(1..))]
     operation_timeout_seconds: u64,
+    /// Omit the native Check Performance lane (otherwise requires a private desktop).
+    #[arg(long)]
+    skip_check_performance: bool,
 }
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize)]
@@ -77,6 +81,7 @@ struct Finding {
 struct Report {
     status: String,
     check_performance: &'static str,
+    check_performance_evidence: Option<check_performance::PerformanceEvidence>,
     candidate_count: usize,
     findings: Vec<Finding>,
     limitations: Vec<String>,
@@ -107,6 +112,7 @@ struct Comparison<'a> {
     original_save_changes: BTreeSet<Candidate>,
     captures: Captures,
     excel: Option<ExcelHost>,
+    performance: check_performance::PerformanceState,
 }
 
 /// Run the same workflow from the CLI or an explicitly selected Observatory group.
@@ -132,32 +138,52 @@ pub(crate) fn run(args: Args) -> Result<()> {
 impl<'a> Comparison<'a> {
     /// Establish isolated working copies and telemetry before expensive operations.
     fn prepare(args: &'a Args) -> Result<Self> {
+        if !args.skip_check_performance {
+            ensure!(std::env::var("EXCEL_SHRINK_EXPECTED_DESKTOP")
+                .is_ok_and(|desktop| !desktop.is_empty() && !desktop.eq_ignore_ascii_case("Default")),
+                "Check Performance requires the private-desktop launcher; use --skip-check-performance to omit it");
+        }
         let paths = WorkingPaths::prepare(args)?;
         let telemetry = Telemetry::start(args)?;
         Ok(Self {
             args,
             paths,
-            report: new_report(),
+            report: {
+                let mut report = new_report();
+                if !args.skip_check_performance {
+                    report.check_performance = "pending";
+                }
+                report
+            },
             telemetry,
             candidates: BTreeSet::new(),
             original_save_changes: BTreeSet::new(),
             captures: Captures::default(),
             excel: None,
+            performance: check_performance::PerformanceState::default(),
         })
     }
 
     /// Each call is one domain phase; transport, persistence, and pixel work stay below it.
     fn execute(&mut self) -> Result<()> {
         self.inspect_initial_xml()?;
-        if self.candidates.is_empty() {
+        if self.candidates.is_empty() && self.args.skip_check_performance {
             return self.complete_without_captures();
         }
         self.open_workbooks()?;
         self.inspect_save_effects()?;
+        self.optimize_performance_copy()?;
+        if self.candidates.is_empty() {
+            self.close_workbooks()?;
+            return self.complete_without_captures();
+        }
         self.capture_initial_states()?;
+        self.capture_performance_before()?;
         self.rebuild_default_and_capture()?;
+        self.rebuild_performance_and_capture()?;
         self.rebuild_original_and_capture()?;
         self.compare_captured_evidence()?;
+        self.compare_performance_evidence()?;
         self.close_workbooks()?;
         self.complete()
     }
@@ -294,8 +320,11 @@ impl<'a> Comparison<'a> {
             .update(|state| state.pair_step(Phase::Compare, StepStatus::Done))
     }
 
-    /// Close Default before Original, then release their command host.
+    /// Close the optimized partners before Original, then release their command host.
     fn close_workbooks(&mut self) -> Result<()> {
+        if !self.args.skip_check_performance {
+            self.close_workbook(LaneId::CP)?;
+        }
         for id in [LaneId::SD, LaneId::O] {
             self.close_workbook(id)?;
         }

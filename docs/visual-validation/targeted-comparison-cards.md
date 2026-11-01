@@ -2,8 +2,9 @@
 
 This view belongs to the bounded Original/Default targeted comparison, not the
 ordinary corpus capture scheduler. It keeps that distinction visible. Check
-Performance remains unavailable in this workflow; its separate trigger
-experiment does not constitute integration here.
+Performance is enabled as a third lane on a separate saved Original copy, using
+the verified private-desktop native trigger. The CLI can explicitly omit it with
+`--skip-check-performance`.
 
 ## Starting a comparison
 
@@ -21,12 +22,13 @@ excel-shrink-cli.exe regression targeted-compare `
   --output C:\results\new-directory `
   --observatory-group-dir C:\study\control-room\groups\group-id `
   --workbook-label "Workbook to inspect.xlsx" `
-  --operation-timeout-seconds 120
+  --operation-timeout-seconds 120 --skip-check-performance
 ```
 
-Direct CLI calls retain the existing visible-COM behavior. The Observatory uses
-`office-capture/run-targeted-comparison.ps1` to run that same command privately.
-The host verifies the requested private desktop before showing Excel.
+The example explicitly omits CP and retains the existing visible-COM behavior.
+CP is enabled by default and requires the private-desktop launcher. The
+Observatory uses `office-capture/run-targeted-comparison.ps1` to run all three
+lanes privately. The host verifies the requested desktop before showing Excel.
 
 This experimental COM capture uses the Windows window station's shared
 clipboard. External clipboard activity or simultaneous COM rechecks can fail a
@@ -37,7 +39,7 @@ clipboard mechanism.
 ## Process cards and signals
 
 - One small card per available workbook lane, with its real PID, current
-  worksheet/range and capture progress. Unavailable CP has no pretend process
+  worksheet/range and capture progress. Explicitly omitted CP has no pretend process
   card; its unperformed steps remain visible in the diagram.
 - The Excel-style flat workbook/X icon is neon green. It pulses only while
   opening, stays illuminated while the workbook is open, and fades after
@@ -74,13 +76,15 @@ The diagram has arrow-shaped column headers and disabled status checkboxes for:
 2. Open the workbook copies.
 3. Save the open copies normally.
 4. Add save-only XML changes to the candidate queue.
-5. Capture candidate regions before rebuilding.
-6. Full rebuild: Default, then original as an independent control.
-7. Capture those same regions after rebuilding.
-8. Compare pixels and rendered geometry.
-9. Close each owned Excel process and verify exit.
+5. Run Optimize all on the CP copy and require positive completion.
+6. Discover optimization changes against the CP save baseline.
+7. Capture candidate regions before rebuilding.
+8. Full rebuild: Default, CP, then Original as an independent control.
+9. Capture those same regions after rebuilding.
+10. Compare pixels and rendered geometry.
+11. Close each owned Excel process and verify exit.
 
-Rows distinguish Original, Default and unavailable CP. Completed, running,
+Rows distinguish Original, Default and Check Performance (or explicitly omitted CP). Completed, running,
 pending, skipped, failed and unavailable steps are distinct. Column/cell
 tooltips explain the purpose of the control. The view also spells out the
 three comparison pairs:
@@ -137,7 +141,7 @@ failure; failure reporting gives their exits a bounded confirmation interval.
 | Stable canvases | Browser test preserves element identity across telemetry updates and completed-card relocation. |
 | Heartbeat only | Browser checks absence of capture/progress legend tracks in these cards. |
 | Honest activity and progress | Model tests cover opening/open/closed states, millisecond XML work, afterglow, stale snapshots, missing beats and growing queues. |
-| Checkbox flow | Browser checks the complete nine-phase, three-lane matrix. |
+| Checkbox flow | Browser checks the complete phase-by-lane matrix, including native optimization and its XML inspection. |
 | Completed history | Browser checks the initial limit, expansion and fullscreen scrolling. Host unit test keeps old active runs and late finishers. |
 | Real comparison | Private-desktop smoke test captures two candidates in four states; it detects the injected font-height difference and no original-recalc drift. |
 | Failure cleanup | Fault-injection smoke test fails during capture and requires a terminal failure with both Excel exits confirmed. |
@@ -146,8 +150,7 @@ failure; failure reporting gives their exits a bounded confirmation interval.
 
 The comparison still has scientific limits: at most 64 candidate regions; no
 complete drawing/chart/style/layout dependency analysis; no new candidates
-introduced only by a rebuild; no reopened-after-save check; and no integrated
-Check Performance lane. The bounded in-memory index rejects worksheet XML over
+introduced only by a rebuild; no reopened-after-save check. The bounded in-memory index rejects worksheet XML over
 64 MiB or 250,000 cells. These limits fail explicitly or remain recorded; none
 are represented as whole-workbook visual equality.
 

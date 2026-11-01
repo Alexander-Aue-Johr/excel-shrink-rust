@@ -1,12 +1,19 @@
-param([Parameter(Mandatory=$true)][string]$Output, [switch]$FailCapture)
+param([Parameter(Mandatory=$true)][string]$Output, [switch]$FailCapture, [switch]$CheckPerformance, [switch]$FailOptimization, [switch]$CleanWorkbook)
 $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../..'))
 $capture = Join-Path $repository 'excel-shrink-cli/office-capture'
 $directory = [IO.Path]::GetFullPath($Output)
 if (Test-Path -LiteralPath $directory) { throw 'Use a new smoke-test directory.' }
 $null = New-Item -ItemType Directory -Path $directory
-& python (Join-Path $PSScriptRoot 'make_smoke_fixtures.py') (Join-Path $directory 'inputs')
+$fixtureArguments = @()
+if ($CheckPerformance -or $FailOptimization -or $CleanWorkbook) { $fixtureArguments += '--check-performance' }
+if ($CleanWorkbook) { $fixtureArguments += '--clean-workbook' }
+& python (Join-Path $PSScriptRoot 'make_smoke_fixtures.py') (Join-Path $directory 'inputs') @fixtureArguments
 if ($LASTEXITCODE -ne 0) { throw 'Fixture creation failed.' }
+$sourceHashes = @{}
+foreach ($name in @('original', 'default')) {
+    $sourceHashes[$name] = (Get-FileHash (Join-Path $directory "inputs/$name.xlsx") -Algorithm SHA256).Hash
+}
 $group = Join-Path $directory 'control/groups/smoke'
 $null = New-Item -ItemType Directory -Path $group -Force
 Add-Type -Path @((Join-Path $capture 'CaptureProcesses.cs'), (Join-Path $capture 'CaptureDesktop.cs'))
@@ -15,10 +22,17 @@ $owned = New-Object CaptureProcesses
 $process = $null
 $previousDesktop = $env:EXCEL_SHRINK_EXPECTED_DESKTOP
 $hostScript = Join-Path $capture 'targeted-comparison-host.ps1'
-if ($FailCapture) {
+if ($FailCapture -or $FailOptimization) {
     # Fault injection stays in a disposable host copy, after real Excel startup.
     $source = [IO.File]::ReadAllText($hostScript)
-    $source = $source.Replace('$session.workbook.Activate()', 'throw "Injected capture failure"')
+    if ($FailCapture) {
+        $source = $source.Replace('$session.workbook.Activate()', 'throw "Injected capture failure"')
+    }
+    if ($FailOptimization) {
+        $source = $source.Replace('return Invoke-WorkbookPerformanceOptimization $sessions[$Command.lane] $Command.timeout_seconds', 'return @{status="invoked_completion_unverified"}')
+    }
+    $module = (Join-Path $capture 'CheckPerformance.psm1').Replace("'", "''")
+    $source = $source.Replace("(Join-Path `$PSScriptRoot 'CheckPerformance.psm1')", "'$module'")
     $helper = (Join-Path $capture 'CaptureProcesses.cs').Replace("'", "''")
     $source = $source.Replace("(Join-Path `$PSScriptRoot 'CaptureProcesses.cs')", "'$helper'")
     $hostScript = Join-Path $directory 'failing-host.ps1'
@@ -28,17 +42,36 @@ try {
     $env:EXCEL_SHRINK_EXPECTED_DESKTOP = $desktop.Name
     $arguments = 'regression targeted-compare --original "{0}" --default "{1}" --output "{2}" --observatory-group-dir "{3}" --host-script "{4}" --operation-timeout-seconds 30' -f `
         (Join-Path $directory 'inputs/original.xlsx'), (Join-Path $directory 'inputs/default.xlsx'), (Join-Path $directory 'result'), $group, $hostScript
+    if (-not ($CheckPerformance -or $FailOptimization -or $CleanWorkbook)) { $arguments += ' --skip-check-performance' }
     $process = $desktop.Start((Join-Path $repository 'target/debug/excel-shrink-cli.exe'), $arguments, $owned)
     $deadline = [DateTime]::UtcNow.AddSeconds(150)
     while (-not $process.WaitForExit(500)) {
         if ([DateTime]::UtcNow -gt $deadline) { throw 'Smoke test exceeded 150 seconds.' }
     }
     $telemetry = Get-Content -LiteralPath (Join-Path $directory 'result/telemetry.json') -Raw | ConvertFrom-Json
-    if ($FailCapture) {
+    if ($FailCapture -or $FailOptimization) {
         if ($process.ExitCode -eq 0 -or $telemetry.status -ne 'failed' -or $null -eq $telemetry.finished_at) {
             throw 'The injected failure did not produce a terminal failure snapshot.'
         }
     } elseif ($process.ExitCode -ne 0) { throw "Smoke test failed; inspect $directory/result/failure.json." }
+    foreach ($name in @('original', 'default')) {
+        if ((Get-FileHash (Join-Path $directory "inputs/$name.xlsx") -Algorithm SHA256).Hash -ne $sourceHashes[$name]) {
+            throw "Source input was modified: $name"
+        }
+    }
+    if ($CleanWorkbook -and -not ($FailCapture -or $FailOptimization)) {
+        $report = Get-Content (Join-Path $directory 'result/report.json') -Raw | ConvertFrom-Json
+        if ($report.check_performance -ne 'no_optimization_needed') { throw 'Clean workbook was not recognized.' }
+        if ($report.check_performance_evidence.optimization_changes.Count -ne 0) { throw 'Unexpected optimization changes.' }
+    } elseif ($CheckPerformance -and -not ($FailCapture -or $FailOptimization)) {
+        & python (Join-Path $PSScriptRoot 'verify_performance_smoke.py') (Join-Path $directory 'result')
+        if ($LASTEXITCODE -ne 0) { throw 'Check Performance evidence verification failed.' }
+    }
+    if ($FailOptimization) {
+        $failure = Get-Content (Join-Path $directory 'result/failure.json') -Raw | ConvertFrom-Json
+        if ($failure.error -notlike '*no confirmed outcome*') { throw 'Unexpected failure reason.' }
+        if ($telemetry.lanes[2].steps.optimize -ne 'failed') { throw 'Optimization failure was not recorded.' }
+    }
     foreach ($lane in $telemetry.lanes) {
         if ($lane.pid -and ($lane.lifecycle -ne 'closed' -or $lane.process_alive -ne $false)) { throw "Owned Excel exit was not confirmed: $($lane.id)" }
     }

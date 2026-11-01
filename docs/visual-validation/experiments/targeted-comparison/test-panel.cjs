@@ -20,7 +20,7 @@ const sample = (id, finished) => {
   value.finished_at = finished ? now - 20000 : null;
   value.revision = 100;
   value.verification_fixture = true;
-  for (const lane of value.lanes) if (lane.id !== 'CP') {
+  for (const lane of value.lanes) if (lane.lifecycle !== 'unavailable') {
     lane.lifecycle = finished ? 'closed' : lane.id === 'O' ? 'opening' : 'open';
     lane.process_alive = !finished;
     lane.process_heartbeat_at = now - 500;
@@ -129,7 +129,7 @@ async function main() {
     await sleep(600);
     assert.equal(await evaluate('document.querySelectorAll(".targeted-active .targeted-workbook").length'), 1);
     assert.equal(await evaluate('[...document.querySelectorAll(".targeted-completed .targeted-workbook")].filter(node => !node.hidden).length'), 3);
-    assert.equal(await evaluate('document.querySelectorAll(".targeted-active .targeted-flow input").length'), 27);
+    assert.equal(await evaluate('document.querySelectorAll(".targeted-active .targeted-flow input").length'), source.columns.length * source.lanes.length);
     assert.equal(await evaluate('document.querySelectorAll(".targeted-active .signal-capture, .targeted-active .signal-progress").length'), 0);
     assert.equal(await evaluate('[...document.querySelectorAll(".targeted-active .targeted-icon")].every(node => node.dataset.renderer === "webgl2")'), true);
     assert.ok(await evaluate('window.webglContexts <= 2'), 'All icons and heartbeat traces share at most two WebGL contexts.');

@@ -42,6 +42,22 @@ impl ExcelHost {
         Ok(())
     }
 
+    /// Require a positive native completion response, not merely an opened pane.
+    pub(super) fn optimize_workbook(&mut self, telemetry: &Telemetry) -> Result<Value> {
+        let result = self.call(
+            json!({"kind":"optimize", "lane":"CP", "timeout_seconds":self.timeout.as_secs()}),
+            telemetry,
+        )?;
+        ensure!(
+            matches!(
+                result["status"].as_str(),
+                Some("optimization_confirmed" | "no_optimization_needed")
+            ),
+            "Check Performance returned no confirmed outcome: {result}"
+        );
+        Ok(result)
+    }
+
     /// Request the same full rebuild used by the existing comparison protocol.
     pub(super) fn recalculate_workbook(
         &mut self,
@@ -188,6 +204,7 @@ fn observe_started_process(event: &Value, telemetry: &Telemetry) -> Result<()> {
     let id = match event["lane"].as_str() {
         Some("O") => LaneId::O,
         Some("SD") => LaneId::SD,
+        Some("CP") => LaneId::CP,
         _ => anyhow::bail!("Unknown Excel process lane"),
     };
     let pid = event["pid"]

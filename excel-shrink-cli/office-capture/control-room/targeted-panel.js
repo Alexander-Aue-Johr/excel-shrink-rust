@@ -40,7 +40,7 @@ function createLaneCard() {
       const work = captureProgress(lane);
       if (work.known) { progress.max = Math.max(1, work.total); progress.value = work.done; }
       else progress.removeAttribute('value');
-      progressText.textContent = lane.lifecycle === 'unavailable' ? 'Check Performance is not integrated into this workflow.' : work.text;
+      progressText.textContent = lane.lifecycle === 'unavailable' ? 'Check Performance was not run.' : work.text;
       progress.hidden = lane.lifecycle === 'unavailable';
       signals.element.hidden = lane.lifecycle === 'unavailable';
       source.hidden = lane.lifecycle === 'unavailable';
@@ -123,7 +123,7 @@ function createComparisonCard() {
   const flow = createFlowDiagram();
   const controls = node('p', 'targeted-controls-explanation',
     'Before: Original ↔ Default. After Default rebuild: Original-before ↔ Default-after. '
-    + 'Drift control: Original-before ↔ Original-after. Save-only changes extend the same candidate queue.');
+    + 'Drift control: Original-before ↔ Original-after. Check Performance uses a separate saved Original copy and the same Original controls. Save-only changes extend the shared candidate queue.');
   const legend = node('p', 'targeted-flow-legend', '☑ Done · ◩ Running · □ Pending · muted − Not performed / unavailable. Hover a column or checkbox for its purpose.');
   root.append(heading, explanation, error, lanes, flow.element, legend, controls);
   const laneViews = new Map();
@@ -135,7 +135,11 @@ function createComparisonCard() {
       root.dataset.finished = String(finished);
       outcome.textContent = comparison.status.replaceAll('_', ' ');
       const count = comparison.candidate_count;
-      explanation.textContent = `${count == null ? 'Discovering candidate regions' : `${count} candidate regions · before/after captures per workbook`}. Limited coverage; Check Performance is unavailable.`;
+      const selection = count == null ? 'Discovering candidate regions'
+        : `${count} candidate regions � before/after captures per workbook`;
+      const performanceEnabled = comparison.lanes.some(lane => lane.id === 'CP' && lane.lifecycle !== 'unavailable');
+      const performanceStatus = comparison.report?.check_performance || (performanceEnabled ? 'enabled' : 'not run');
+      explanation.textContent = `${selection}. Limited candidate coverage. Check Performance: ${performanceStatus.replaceAll('_', ' ')}.`;
       error.textContent = comparison.error || '';
       error.hidden = !comparison.error;
       root.title = (comparison.report?.limitations || []).join('\n');
@@ -151,6 +155,9 @@ function createComparisonCard() {
       flow.update(comparison);
       if (finished && comparison.report?.before_differences != null) {
         outcome.textContent += ` · ${comparison.report.before_differences} before / ${comparison.report.after_differences} after differences · ${comparison.report.original_recalc_drift} original drift`;
+        if (comparison.report.check_performance_differences != null) {
+          outcome.textContent += ` � ${comparison.report.check_performance_differences} Check Performance differences`;
+        }
       }
     },
     destroy() { for (const view of laneViews.values()) view.destroy(); root.remove(); },

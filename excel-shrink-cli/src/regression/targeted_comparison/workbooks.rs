@@ -1,4 +1,4 @@
-//! Working copies and explicit lifecycle operations for the two Excel sessions.
+//! Working copies and explicit lifecycle operations for the Excel sessions.
 use super::host::ExcelHost;
 use super::telemetry::{LaneId, Lifecycle, Phase, StepStatus};
 use super::{Args, Comparison, WorkingPaths};
@@ -39,7 +39,7 @@ impl WorkingPaths {
 }
 
 impl Comparison<'_> {
-    /// Start the command host once for both workbook lifecycles.
+    /// Start the command host once for all workbook lifecycles.
     pub(super) fn start_excel_host(&mut self) -> Result<()> {
         self.excel = Some(ExcelHost::start(
             self.args.host_script.as_deref(),
@@ -53,7 +53,11 @@ impl Comparison<'_> {
         let path = match id {
             LaneId::O => &self.paths.original,
             LaneId::SD => &self.paths.default,
-            LaneId::CP => anyhow::bail!("Check Performance has no workbook session"),
+            LaneId::CP => self
+                .performance
+                .path
+                .as_ref()
+                .context("Check Performance copy missing")?,
         };
         self.telemetry.update(|state| {
             state.step(id, Phase::Open, StepStatus::Running);

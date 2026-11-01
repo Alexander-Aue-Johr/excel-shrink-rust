@@ -5,8 +5,8 @@ from pathlib import Path
 import zipfile
 
 
-def create_fixtures(directory):
-    """Write two new XLSX files differing only by one empty large-font cell."""
+def create_fixtures(directory, check_performance=False, clean_workbook=False):
+    """Write a font-height control, CP redundant-format fixture, or clean control."""
     directory.mkdir(parents=True, exist_ok=False)
     namespace = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
     parts = {
@@ -38,10 +38,17 @@ def create_fixtures(directory):
           <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
         </styleSheet>''',
     }
+    redundant = '<row r="10000"><c r="Z10000" s="1"/></row>' if check_performance else ''
     for name, sentinel in [('original', '<row r="10"><c r="A10" s="1"/></row>'), ('default', '')]:
+        if check_performance:
+            # Identical inputs must still run CP: its optimization finds new candidates.
+            sentinel = '<row r="10"><c r="A10" s="1"/></row>'
+        columns = '<cols><col min="1" max="2" width="18" style="2" customWidth="1"/></cols>'
+        if clean_workbook:
+            sentinel = redundant = columns = ''
         sheet = f'''<worksheet xmlns="{namespace}"><dimension ref="A1:B11"/><sheetFormatPr defaultRowHeight="15"/>
-          <cols><col min="1" max="2" width="18" style="2" customWidth="1"/></cols>
-          <sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Font-height control</t></is></c></row>{sentinel}</sheetData></worksheet>'''
+          {columns}
+          <sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Font-height control</t></is></c></row>{sentinel}{redundant}</sheetData></worksheet>'''
         with zipfile.ZipFile(directory / f'{name}.xlsx', 'w', zipfile.ZIP_DEFLATED) as archive:
             for part, xml in {**parts, 'xl/worksheets/sheet1.xml': sheet}.items():
                 archive.writestr(part, xml.encode('utf-8'))
@@ -50,4 +57,7 @@ def create_fixtures(directory):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directory', type=Path)
-    create_fixtures(parser.parse_args().directory)
+    parser.add_argument('--check-performance', action='store_true')
+    parser.add_argument('--clean-workbook', action='store_true')
+    args = parser.parse_args()
+    create_fixtures(args.directory, args.check_performance, args.clean_workbook)

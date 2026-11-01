@@ -1,5 +1,5 @@
 //! Persist scientific outcomes separately from compact display telemetry.
-use super::telemetry::{LaneId, Lifecycle, Phase, StepStatus};
+use super::telemetry::{Lifecycle, StepStatus};
 use super::{Comparison, Report};
 use crate::native_process::process_alive;
 use anyhow::Result;
@@ -11,18 +11,11 @@ impl Comparison<'_> {
     pub(super) fn complete_without_captures(&mut self) -> Result<()> {
         self.report.status = "no_cell_candidates_with_limitations".into();
         self.telemetry.update(|state| {
-            for id in [LaneId::O, LaneId::SD] {
-                for phase in [
-                    Phase::Open,
-                    Phase::Save,
-                    Phase::InspectSave,
-                    Phase::CaptureBefore,
-                    Phase::Recalculate,
-                    Phase::CaptureAfter,
-                    Phase::Compare,
-                    Phase::Close,
-                ] {
-                    state.step(id, phase, StepStatus::Skipped);
+            for lane in &mut state.lanes {
+                for status in lane.steps.values_mut() {
+                    if *status == StepStatus::Pending {
+                        *status = StepStatus::Skipped;
+                    }
                 }
             }
         })?;
@@ -52,6 +45,16 @@ impl Comparison<'_> {
     pub(super) fn record_failure(&mut self, error: &anyhow::Error) -> Result<()> {
         self.release_excel_and_wait_for_exit()?;
         self.report.status = "failed".into();
+        self.report.check_performance = match self.report.check_performance {
+            "pending" => "not_run",
+            "running" => "failed_unconfirmed",
+            outcome => outcome,
+        };
+        self.report.candidate_count = self.candidates.len();
+        fs::write(
+            self.args.output.join("partial-report.json"),
+            serde_json::to_vec_pretty(&self.report)?,
+        )?;
         let message = format!("{error:#}");
         fs::write(
             self.args.output.join("failure.json"),
@@ -95,6 +98,7 @@ impl Comparison<'_> {
             .into();
             state.finished_at = (!unconfirmed).then(|| chrono::Utc::now().timestamp_millis());
             state.error = Some(message);
+            state.report = self.report.telemetry_summary();
         })
     }
 }
@@ -104,6 +108,8 @@ impl Report {
     fn telemetry_summary(&self) -> Value {
         json!({
             "status": self.status,
+            "check_performance": self.check_performance,
+            "check_performance_differences": self.check_performance_evidence.as_ref().and_then(|e| e.difference_count()),
             "limitations": self.limitations,
             "before_differences": self.findings.iter()
                 .filter(|finding| finding.before_recalc_differs || finding.before_recalc_geometry_differs)
@@ -122,7 +128,8 @@ impl Report {
 pub(super) fn new_report() -> Report {
     Report {
         status: "running".into(),
-        check_performance: "unavailable_not_tested",
+        check_performance: "not_requested",
+        check_performance_evidence: None,
         candidate_count: 0,
         findings: Vec::new(),
         phases: Vec::new(),
@@ -133,7 +140,6 @@ pub(super) fn new_report() -> Report {
             "At most 64 distinct candidate regions; larger cases fail explicitly.".into(),
             "Excel may recalculate during open even when manual calculation is requested.".into(),
             "Save-only XML changes are included; changes introduced only by rebuilding and saved-versus-reopened rendering are not checked.".into(),
-            "Check Performance is unavailable in this comparison workflow.".into(),
             "The bounded cell index rejects worksheet XML over 64 MiB or 250,000 cells; this command is not a replacement for the corpus runner.".into(),
         ],
     }
