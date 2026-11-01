@@ -202,10 +202,11 @@ fn descriptors(zip: &mut ZipArchive<File>) -> Result<BTreeMap<usize, (String, St
             .iter()
             .find(|rel| rel.id == id && !rel.external)
             .context("sheet target missing")?;
-        ensure!(
-            rel.kind.ends_with("/worksheet"),
-            "non-worksheet workbook member"
-        );
+        // Match the worksheet capture planner: chart sheets are not worksheet
+        // XML. Keep their workbook index occupied so later indexes stay valid.
+        if !rel.kind.ends_with("/worksheet") {
+            continue;
+        }
         result.insert(index, (name, resolve("xl/workbook.xml", &rel.target)?));
     }
     Ok(result)
@@ -1080,6 +1081,30 @@ pub(super) fn analyze(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chart_sheets_do_not_block_other_worksheet_analysis_or_shift_indexes() -> Result<()> {
+        use crate::regression::artifact_cache;
+        use std::fs;
+        use std::io::Write;
+        let directory = artifact_cache::unique_path(&std::env::temp_dir(), "mixed-sheet-index")?;
+        fs::create_dir_all(&directory)?;
+        let path = directory.join("mixed.xlsx");
+        let mut zip = zip::ZipWriter::new(File::create(&path)?);
+        for (name, text) in [
+            ("xl/workbook.xml", r#"<workbook><sheets><sheet name="Data" r:id="one"/><sheet name="Chart" r:id="two"/><sheet name="More" r:id="three"/></sheets></workbook>"#),
+            ("xl/_rels/workbook.xml.rels", r#"<Relationships><Relationship Id="one" Type="x/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="two" Type="x/chartsheet" Target="chartsheets/sheet1.xml"/><Relationship Id="three" Type="x/worksheet" Target="worksheets/sheet2.xml"/></Relationships>"#),
+        ] {
+            zip.start_file(name, zip::write::FileOptions::default())?;
+            zip.write_all(text.as_bytes())?;
+        }
+        zip.finish()?;
+        let paths = sheet_paths(&path)?;
+        assert_eq!(paths.keys().copied().collect::<Vec<_>>(), vec![1, 3]);
+        assert_eq!(paths[&3], "xl/worksheets/sheet2.xml");
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
 
     #[test]
     fn literal_cell_is_rules_do_not_select_unchanged_conditional_ranges() {
