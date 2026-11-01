@@ -475,6 +475,9 @@ fn keeps_empty_cell_when_apply_font_resets_column_font_to_default() {
     assert_eq!(metrics.tail_anchor_max_row, None);
 }
 
+/// June 2026 regression: keep the font override locally, but do not anchor the
+/// tail merely because the column shares its fill. The paired Enron regressions
+/// in tail_fill_regression_tests cover subsequent content versus an empty tail.
 #[test]
 fn keeps_empty_cell_when_apply_font_differs_from_column_font_without_column_apply_font() {
     let column_style = font_and_apply_fill_style(5);
@@ -498,7 +501,7 @@ fn keeps_empty_cell_when_apply_font_differs_from_column_font_without_column_appl
     assert_eq!(cleaned.as_ref(), cell_xml);
     assert_eq!(metrics.kept_cell_states.len(), 1);
     assert_eq!(metrics.deleted_cell_count, 0);
-    assert_eq!(metrics.tail_anchor_max_row, Some(3));
+    assert_eq!(metrics.tail_anchor_max_row, None);
 }
 
 #[test]

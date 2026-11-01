@@ -1118,7 +1118,9 @@ fn parse_cell_from_parts<'a, 'r>(raw: &'a [u8], attr: &'a [u8]) -> Option<Parsed
 }
 
 fn record_visible_row_bounds(row: &RowView<'_, '_>, metrics: &mut CleanSheetMetrics) {
-    if !row.style.is_some_and(|style| style.has_fill_or_border) {
+    if !row.style.is_some_and(|style| {
+        metrics.column_definitions.row_style_has_tail_visual_effect(style, row.raw_attributes)
+    }) {
         return;
     }
     if let Some(number) = row.number {

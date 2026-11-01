@@ -560,13 +560,9 @@ fn kept_cell_is_tail_anchor(
         return true;
     }
 
-    let column_style = cell
-        .column(metrics)
-        .and_then(|column| column.cell_xf.as_ref());
-    if column_style.is_some_and(|style| style.has_fill_or_border) {
-        return true;
-    }
-
+    // Column formatting survives without this cell. Only an effective cell
+    // override below can justify anchoring the tail; font-only representatives
+    // remain locally preserved when later content still needs their row height.
     let has_visible_style_anchor =
         cell_style.is_some_and(|style| cell_has_effective_visual_style(style, cell, metrics));
     if has_visible_style_anchor {
