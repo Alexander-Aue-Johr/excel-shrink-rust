@@ -109,6 +109,31 @@ pub(super) fn copy_workbook(
     Ok(path)
 }
 
+/// Extract a consistent Original/Default pair from one immutable archive handle.
+pub(super) fn copy_comparison_pair(
+    root: &Path,
+    id: &str,
+    destination: &Path,
+) -> Result<(PathBuf, PathBuf)> {
+    let file = fs::File::open(bundle_path(root, id)?)
+        .context("No prepared workbook bundle for this group")?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    fs::create_dir_all(destination)?;
+    let mut paths = Vec::new();
+    for profile in ["original", "default"] {
+        let member = stored_member(&mut archive, profile)?
+            .context("Original or Default workbook is unavailable")?;
+        let path = destination.join(format!("{profile}.xlsx"));
+        let mut output = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)?;
+        std::io::copy(&mut archive.by_name(&member)?, &mut output)?;
+        paths.push(path);
+    }
+    Ok((paths.remove(0), paths.remove(0)))
+}
+
 pub(super) fn open_copy(root: &Path, id: &str, profile: &str) -> Result<PathBuf> {
     let directory = std::env::temp_dir()
         .join("excel-shrink-inspection")

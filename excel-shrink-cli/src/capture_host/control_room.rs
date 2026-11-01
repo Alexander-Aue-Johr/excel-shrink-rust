@@ -6,6 +6,7 @@ mod inspection;
 mod platform;
 mod snapshots;
 mod workbook_index;
+mod targeted;
 
 use super::{now_iso, now_ms, read_json, serve, with_web, write_json, ApiError, HttpResult};
 use anyhow::{ensure, Context, Result};
@@ -26,6 +27,7 @@ use tower_http::services::ServeFile;
 
 struct Room {
     root: PathBuf,
+    web: PathBuf,
     port: u16,
     version: String,
     started: String,
@@ -60,6 +62,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
     }
     let room = Arc::new(Room {
         root,
+        web: web.clone(),
         port,
         version: settings["host_version"]
             .as_str()
@@ -74,7 +77,9 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         .route("/api/state", get(state))
         .route("/api/workbooks", get(workbooks))
         .route("/api/workers", get(workers))
+        .route("/api/targeted-comparisons", get(targeted::comparisons))
         .route("/api/groups/{id}", get(group))
+        .route("/api/groups/{id}/targeted-compare", post(targeted::start))
         .route("/api/run/stop", post(stop))
         .route("/api/run/terminate", post(terminate))
         .route("/api/control", post(control))
@@ -1564,6 +1569,7 @@ mod tests {
         std::fs::write(&path, serde_json::to_vec(&controls)?)?;
         let room = Room {
             root: root.clone(),
+            web: PathBuf::new(),
             port: 0,
             version: "test".into(),
             started: "test".into(),
@@ -1618,6 +1624,7 @@ mod tests {
         bundle.finish()?;
         let room = Arc::new(Room {
             root,
+            web: PathBuf::new(),
             port: 0,
             version: "test".into(),
             started: "test".into(),
