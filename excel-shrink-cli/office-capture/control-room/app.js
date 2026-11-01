@@ -8,8 +8,14 @@ import { createSignalMonitor } from './signal-monitor.js';
 import { findCaptureTile, profileForClient, latestTileForProfile } from './capture-navigation-model.js';
 import { createControlUpdates } from './control-state.js';
 import { createTargetedPanel } from './targeted-panel.js';
+import { createManualCaptureControls } from './manual-capture.js';
 
 const $ = id => document.getElementById(id);
+const manualCaptures = createManualCaptureControls(document.querySelector('.heading-actions'), {
+  current: () => state.groupId,
+  selectGroup,
+  notice: (...args) => setNotice(...args),
+});
 const targetedPanel = createTargetedPanel($('targetedComparison'));
 const startTargeted = document.createElement('button');
 startTargeted.type = 'button';
@@ -1463,6 +1469,7 @@ function applyCaptureJump() {
   }
 }
 function acceptGroup(raw) {
+  manualCaptures.update(raw);
   data = normalizeGroup(raw); entries = data.sheets.flatMap(sheet => sheet.tiles);
   targetedPanel.update(data.targeted_comparison);
   $('workbook').textContent = groupName(data); $('workbook').title = String(data.workbook || '');
@@ -1572,7 +1579,8 @@ async function poll() {
     }
     renderGroups();
     if (state.groupId) {
-      const detail = await fetch(`/api/groups/${encodeURIComponent(state.groupId)}`, { cache: 'no-store' });
+      const endpoint = String(state.groupId).startsWith('manual-') ? 'manual-captures' : 'groups';
+      const detail = await fetch(`/api/${endpoint}/${encodeURIComponent(state.groupId)}`, { cache: 'no-store' });
       if (!detail.ok) throw new Error(`Group details unavailable (${detail.status}).`);
       const raw = await detail.json(); if (generation !== pollGeneration) return; acceptGroup(raw);
     }

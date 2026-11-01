@@ -36,6 +36,7 @@ mod visual_diagnosis;
 mod diagnosis_report;
 mod archive;
 mod targeted_comparison;
+mod sheet_capture;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -67,6 +68,8 @@ enum RegressionCommand {
     Study(archive::StudyArgs),
     /// Compare changed worksheet regions with persistent Excel sessions.
     TargetedCompare(targeted_comparison::Args),
+    /// Capture one complete sheet for manual inspection, outside the corpus queue.
+    CaptureSheet(sheet_capture::Args),
     #[command(hide = true)]
     ArchiveWorker(archive::WorkerArgs),
 }
@@ -428,6 +431,7 @@ pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
         RegressionCommand::Archive(args) => archive::run(args, console_log_level),
         RegressionCommand::Study(args) => archive::run_study(args, console_log_level),
         RegressionCommand::TargetedCompare(args) => targeted_comparison::run(args),
+        RegressionCommand::CaptureSheet(args) => sheet_capture::run(args),
         RegressionCommand::ArchiveWorker(args) => archive::run_worker(args, console_log_level),
         RegressionCommand::Smoke(args) => run_suite_or_visual_profile_matrix(
             "smoke",

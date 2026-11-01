@@ -14,6 +14,12 @@ const image = pixelClass => ({ url: '/data/image.png', pixel_class: pixelClass }
 const normalize = images => normalizeGroup({ profiles, sheets: [{ id: 'sheet', tiles: [{ id: 'tile', width: 800, height: 200, images }] }] }).sheets[0].tiles[0];
 
 export function runTests() {
+  const analyzed = groupOutcome({ status: 'screened-equal', analysis_summary: {
+    raw_differences: false, changed_after_recalculation: true,
+  } });
+  assert(analyzed.title === 'Analyzed ranges identical', 'Analysis equality is scoped to analyzed ranges.');
+  assert(analyzed.detail.includes('Omitted ranges remain unchecked'), 'Analysis discloses omitted coverage.');
+  assert(analyzed.detail.includes('separate recalculated evidence'), 'Recalculation drift remains distinct.');
   assert(tileEvidenceDescription({ address: 'A1:FT1', capture_budget_fallback: 'single-visible-row',
     capture_pixels: 6398529 }).includes('6.4 MP'), 'Oversized indivisible rows explain their bounded actual image size.');
   const skipped = groupOutcome({ status: 'skipped', outcome_error: 'Excel opening timed out after 600 s' });
@@ -193,7 +199,7 @@ export function runTests() {
   assert(rawTall.sheets[0].tiles[3].y === 99800 && rawTall.sheets[0].tiles.length === 4, 'Display compaction never mutates host evidence.');
   const noOmission = normalizeGroup({ sheets: [{ height: 100000, tiles: [{ id: 'pending', width: 800, height: 100000 }] }] }).sheets[0];
   assert(noOmission.height === 100000 && noOmission.tiles.length === 1, 'A large pending capture is never treated as an omission.');
-  return { passed: 88 + viewportTests.passed + workerTests.passed + signalTests.passed
+  return { passed: 91 + viewportTests.passed + workerTests.passed + signalTests.passed
     + captureStripTests.checks + captureNavigationTests.checks + controlTests.passed + targetedTests };
 }
 

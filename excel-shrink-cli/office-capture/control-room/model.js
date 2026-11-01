@@ -19,6 +19,15 @@ export function groupOutcome(group) {
     return { kind: 'warning', title: 'Skipped',
       detail: reason || 'The runner did not provide a skip reason. No visual result is established.' };
   }
+  if (group?.analysis_summary && ['screened-equal', 'differences'].includes(status)) {
+    const changed = group.analysis_summary.raw_differences;
+    const recalculated = group.analysis_summary.changed_after_recalculation;
+    return {
+      kind: changed ? 'different' : 'equal',
+      title: changed ? 'Differences in analyzed ranges' : 'Analyzed ranges identical',
+      detail: `Original input state. Omitted ranges remain unchecked; no automatic full-sheet follow-up.${recalculated ? ' Captures changed after recalculation; separate recalculated evidence is retained in the report.' : ''}`,
+    };
+  }
   if (status === 'crc-identical') {
     return { kind: 'warning', title: 'Archive unchanged after shrink',
       detail: 'Length and CRC-32 matched the shrink input. The original archive was reused; no visual comparison was performed.' };

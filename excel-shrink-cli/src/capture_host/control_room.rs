@@ -7,6 +7,7 @@ mod platform;
 mod snapshots;
 mod workbook_index;
 mod targeted;
+mod manual_capture;
 
 use super::{now_iso, now_ms, read_json, serve, with_web, write_json, ApiError, HttpResult};
 use anyhow::{ensure, Context, Result};
@@ -33,6 +34,7 @@ struct Room {
     started: String,
     initial_controls: Value,
     control_gate: Mutex<()>,
+    manual_capture: Mutex<Option<std::process::Child>>,
 }
 
 pub(super) async fn run(settings_path: &Path) -> Result<()> {
@@ -71,6 +73,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         started: now_iso(),
         initial_controls: initial,
         control_gate: Mutex::new(()),
+        manual_capture: Mutex::new(None),
     });
     let routes = Router::new()
         .route("/health", get(health))
@@ -80,6 +83,8 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         .route("/api/targeted-comparisons", get(targeted::comparisons))
         .route("/api/groups/{id}", get(group))
         .route("/api/groups/{id}/targeted-compare", post(targeted::start))
+        .route("/api/groups/{id}/capture-sheet", post(manual_capture::start))
+        .route("/api/manual-captures/{id}", get(manual_capture::state))
         .route("/api/run/stop", post(stop))
         .route("/api/run/terminate", post(terminate))
         .route("/api/control", post(control))
@@ -650,6 +655,9 @@ async fn group(
     )
     .await
     .unwrap_or(Value::Null);
+    merged["manual_captures"] = read_snapshot(
+        &directory.join("manual-captures.json"), &mut diagnostics, SNAPSHOT_LIMIT,
+    ).await.unwrap_or(json!([]));
     merged["client_reset_commands"] =
         json!(recent_commands(&directory.join("client-resets"), &id, &mut diagnostics).await?);
     let record_path = room
@@ -683,6 +691,7 @@ async fn group(
         merged["cleanup_pending"] = record["cleanup_pending"].clone();
     }
     merged["priority_validation"] = record["priority_validation"].clone();
+    merged["analysis_summary"] = record["analysis_summary"].clone();
     merged["visual_diagnoses"] = json!(record["results"].as_array().into_iter().flatten()
         .filter(|profile| profile["visual_diagnosis"].is_object())
         .map(|profile| json!({"profile":profile["profile"],"diagnosis":profile["visual_diagnosis"]}))
@@ -724,6 +733,7 @@ fn attach_outcome(group: &mut Value, record: &Value, attempt: Option<&str>) {
                     | "paused-for-later"
                     | "differences"
                     | "screened"
+                    | "screened-equal"
                     | "screening-differences"
                     | "screening-failed"
             )
@@ -1575,6 +1585,7 @@ mod tests {
             started: "test".into(),
             initial_controls: defaults(),
             control_gate: Mutex::new(()),
+            manual_capture: Mutex::new(None),
         };
         let queue = json!({"running":true,"runner_alive":true,
             "runner_pid":42,"runner_started_unix_ms":100});
@@ -1630,6 +1641,7 @@ mod tests {
             started: "test".into(),
             initial_controls: defaults(),
             control_gate: Mutex::new(()),
+            manual_capture: Mutex::new(None),
         });
         let response = download_variant(State(room), RoutePath(("book".into(), "default".into())))
             .await
