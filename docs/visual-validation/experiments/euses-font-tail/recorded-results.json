@@ -1,0 +1,598 @@
+{
+  "date": "2026-11-01",
+  "source_commit": "3efd3a5",
+  "cli_sha256": "a189d6ed042078dc3d96415be1c3157f4333f2a61407b38daacd668520d085f9",
+  "sizes": [
+    {
+      "case": "134_document.xls--9d5bfa5d",
+      "control_bytes": 16375,
+      "default_bytes": 14408,
+      "maximum_bytes": 14402,
+      "control_cells": 339,
+      "default_cells": 332,
+      "maximum_cells": 331,
+      "default_payload_equal": true,
+      "maximum_payload_equal": true
+    },
+    {
+      "case": "budget.xls--b0fabddc",
+      "control_bytes": 101653,
+      "default_bytes": 16981,
+      "maximum_bytes": 16960,
+      "control_cells": 1078,
+      "default_cells": 1067,
+      "maximum_cells": 1059,
+      "default_payload_equal": true,
+      "maximum_payload_equal": true
+    },
+    {
+      "case": "Business_Issues.xls--924729cc",
+      "control_bytes": 656250,
+      "default_bytes": 18177,
+      "maximum_bytes": 18177,
+      "control_cells": 213671,
+      "default_cells": 197,
+      "maximum_cells": 197,
+      "default_payload_equal": false,
+      "maximum_payload_equal": false
+    },
+    {
+      "case": "CCCLocalQtrlyReport.xls--895118ee",
+      "control_bytes": 340861,
+      "default_bytes": 25337,
+      "maximum_bytes": 24869,
+      "control_cells": 107212,
+      "default_cells": 1118,
+      "maximum_cells": 994,
+      "default_payload_equal": true,
+      "maximum_payload_equal": false
+    },
+    {
+      "case": "CERTLocalQtrlyReport.xls--8e832bf6",
+      "control_bytes": 344514,
+      "default_bytes": 26403,
+      "maximum_bytes": 25226,
+      "control_cells": 107757,
+      "default_cells": 1375,
+      "maximum_cells": 1101,
+      "default_payload_equal": true,
+      "maximum_payload_equal": false
+    },
+    {
+      "case": "DatabaseSeptember.xls--b095de90",
+      "control_bytes": 307381,
+      "default_bytes": 18003,
+      "maximum_bytes": 16099,
+      "control_cells": 109247,
+      "default_cells": 1506,
+      "maximum_cells": 953,
+      "default_payload_equal": true,
+      "maximum_payload_equal": true
+    },
+    {
+      "case": "Electricity_2520Meters_25_A866E.xls--99680b36",
+      "control_bytes": 1111079,
+      "default_bytes": 249567,
+      "maximum_bytes": 73639,
+      "control_cells": 369925,
+      "default_cells": 69554,
+      "maximum_cells": 3186,
+      "default_payload_equal": true,
+      "maximum_payload_equal": true
+    },
+    {
+      "case": "FrequentAccounts.xls--96fda3b7",
+      "control_bytes": 625520,
+      "default_bytes": 17350,
+      "maximum_bytes": 16609,
+      "control_cells": 170681,
+      "default_cells": 716,
+      "maximum_cells": 517,
+      "default_payload_equal": true,
+      "maximum_payload_equal": true
+    },
+    {
+      "case": "imp_emp_fin_bo_report_A8C19.xls--23d7c3ac",
+      "control_bytes": 602365,
+      "default_bytes": 17790,
+      "maximum_bytes": 17789,
+      "control_cells": 130984,
+      "default_cells": 198,
+      "maximum_cells": 193,
+      "default_payload_equal": true,
+      "maximum_payload_equal": true
+    },
+    {
+      "case": "Spreadsheet.xls--b7ce8704",
+      "control_bytes": 591782,
+      "default_bytes": 38051,
+      "maximum_bytes": 36507,
+      "control_cells": 205499,
+      "default_cells": 2062,
+      "maximum_cells": 1631,
+      "default_payload_equal": true,
+      "maximum_payload_equal": true
+    },
+    {
+      "case": "Training_list_2003-2004.xls--e5656295",
+      "control_bytes": 363781,
+      "default_bytes": 12448,
+      "maximum_bytes": 12448,
+      "control_cells": 65808,
+      "default_cells": 435,
+      "maximum_cells": 435,
+      "default_payload_equal": true,
+      "maximum_payload_equal": true
+    },
+    {
+      "case": "Well_Being_and_Job_Outcomes.xls--b5ef9062",
+      "control_bytes": 269952,
+      "default_bytes": 23490,
+      "maximum_bytes": 23346,
+      "control_cells": 91848,
+      "default_cells": 403,
+      "maximum_cells": 368,
+      "default_payload_equal": true,
+      "maximum_payload_equal": true
+    }
+  ],
+  "comparisons": [
+    {
+      "before": "real-control",
+      "after": "real-default",
+      "image_results": {
+        "A1:F52": true,
+        "A45:F62": true,
+        "A995:F1008": true,
+        "A65440:F65450": true
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      },
+      "tail_after": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      }
+    },
+    {
+      "before": "real-control",
+      "after": "real-maximum",
+      "image_results": {
+        "A1:F52": true,
+        "A45:F62": true,
+        "A995:F1008": true,
+        "A65440:F65450": true
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      },
+      "tail_after": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      }
+    },
+    {
+      "before": "single-control",
+      "after": "single-default",
+      "image_results": {
+        "A45:F62": true,
+        "A995:F1008": false,
+        "A65440:F65450": true
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [
+        "A1000",
+        "A65445",
+        "A65446"
+      ],
+      "tail_before": {
+        "height": 833785.5,
+        "top": 4053.75,
+        "uniform_row_height": null
+      },
+      "tail_after": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      }
+    },
+    {
+      "before": "all-control",
+      "after": "all-default",
+      "image_results": {
+        "A45:F62": false,
+        "A995:F1008": false,
+        "A65440:F65450": false
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [
+        "A53",
+        "A54",
+        "A1000",
+        "A65445",
+        "A65446"
+      ],
+      "tail_before": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      },
+      "tail_after": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      }
+    },
+    {
+      "before": "below-control",
+      "after": "below-default",
+      "image_results": {
+        "A45:F62": true,
+        "A995:F1008": true,
+        "A65440:F65450": true
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      },
+      "tail_after": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      }
+    },
+    {
+      "before": "one-sentinel-control",
+      "after": "one-sentinel-default",
+      "image_results": {
+        "A45:F62": true,
+        "A995:F1008": true,
+        "A65440:F65450": true
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      },
+      "tail_after": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      }
+    },
+    {
+      "before": "no-sentinel-control",
+      "after": "no-sentinel-default",
+      "image_results": {
+        "A45:F62": true,
+        "A995:F1008": true,
+        "A65440:F65450": true
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      },
+      "tail_after": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      }
+    },
+    {
+      "before": "fixed-control",
+      "after": "fixed-default",
+      "image_results": {
+        "A45:F62": false,
+        "A995:F1008": false,
+        "A65440:F65450": false
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [
+        "A53",
+        "A54",
+        "A1000",
+        "A65445",
+        "A65446"
+      ],
+      "tail_before": {
+        "height": 2611632.9375,
+        "top": 4053.75,
+        "uniform_row_height": 40
+      },
+      "tail_after": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      }
+    },
+    {
+      "before": "hidden-control",
+      "after": "hidden-default",
+      "image_results": {
+        "A45:F62": false,
+        "A995:F1008": false,
+        "A65440:F65450": false
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [
+        "A53",
+        "A54",
+        "A1000",
+        "A65445",
+        "A65446"
+      ],
+      "tail_before": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      },
+      "tail_after": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      }
+    },
+    {
+      "before": "blue-control",
+      "after": "blue-default",
+      "image_results": {
+        "A45:F62": true,
+        "A995:F1008": true,
+        "A65440:F65450": true
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      },
+      "tail_after": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      }
+    },
+    {
+      "before": "below-control",
+      "after": "one-sentinel-control",
+      "image_results": {
+        "A45:F62": true,
+        "A995:F1008": true,
+        "A65440:F65450": true
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      },
+      "tail_after": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      }
+    },
+    {
+      "before": "below-control",
+      "after": "no-sentinel-control",
+      "image_results": {
+        "A45:F62": false,
+        "A995:F1008": false,
+        "A65440:F65450": false
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [
+        "A53",
+        "A54",
+        "A1000",
+        "A65445",
+        "A65446"
+      ],
+      "tail_before": {
+        "height": 2452237.5,
+        "top": 4053.75,
+        "uniform_row_height": 37.5
+      },
+      "tail_after": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      }
+    },
+    {
+      "before": "height-only-control",
+      "after": "height-only-default",
+      "image_results": {
+        "A45:F62": false,
+        "A995:F1008": false,
+        "A65440:F65450": false
+      },
+      "rows_checked": 6,
+      "rows_with_changed_geometry": [
+        "A53",
+        "A54",
+        "A1000",
+        "A65445",
+        "A65446"
+      ],
+      "tail_before": {
+        "height": 2611632.9375,
+        "top": 4053.75,
+        "uniform_row_height": 40
+      },
+      "tail_after": {
+        "height": 833760.75,
+        "top": 4053.75,
+        "uniform_row_height": 12.75
+      }
+    },
+    {
+      "before": "electricity-9-default",
+      "after": "electricity-9-sentinel",
+      "image_results": {
+        "A1:P30": true,
+        "A50:P80": true,
+        "V120:AK145": true,
+        "AZ130:BO150": true,
+        "A360:P384": true
+      },
+      "rows_checked": 384,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 4894.5,
+        "top": 0,
+        "uniform_row_height": null
+      },
+      "tail_after": {
+        "height": 4894.5,
+        "top": 0,
+        "uniform_row_height": null
+      }
+    },
+    {
+      "before": "electricity-10-default",
+      "after": "electricity-10-sentinel",
+      "image_results": {
+        "A1:P30": true,
+        "A50:P80": true,
+        "V120:AK145": true,
+        "AZ130:BO150": true,
+        "A247:P271": true
+      },
+      "rows_checked": 271,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 3053.25,
+        "top": 0,
+        "uniform_row_height": null
+      },
+      "tail_after": {
+        "height": 3053.25,
+        "top": 0,
+        "uniform_row_height": null
+      }
+    },
+    {
+      "before": "electricity-9-control",
+      "after": "electricity-9-default",
+      "image_results": {
+        "A1:P30": true,
+        "A50:P80": true,
+        "V120:AK145": true,
+        "AZ130:BO150": true,
+        "A360:P384": true
+      },
+      "rows_checked": 384,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 4894.5,
+        "top": 0,
+        "uniform_row_height": null
+      },
+      "tail_after": {
+        "height": 4894.5,
+        "top": 0,
+        "uniform_row_height": null
+      }
+    },
+    {
+      "before": "electricity-9-control",
+      "after": "electricity-9-sentinel",
+      "image_results": {
+        "A1:P30": true,
+        "A50:P80": true,
+        "V120:AK145": true,
+        "AZ130:BO150": true,
+        "A360:P384": true
+      },
+      "rows_checked": 384,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 4894.5,
+        "top": 0,
+        "uniform_row_height": null
+      },
+      "tail_after": {
+        "height": 4894.5,
+        "top": 0,
+        "uniform_row_height": null
+      }
+    },
+    {
+      "before": "electricity-10-control",
+      "after": "electricity-10-default",
+      "image_results": {
+        "A1:P30": true,
+        "A50:P80": true,
+        "V120:AK145": true,
+        "AZ130:BO150": true,
+        "A247:P271": true
+      },
+      "rows_checked": 271,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 3053.25,
+        "top": 0,
+        "uniform_row_height": null
+      },
+      "tail_after": {
+        "height": 3053.25,
+        "top": 0,
+        "uniform_row_height": null
+      }
+    },
+    {
+      "before": "electricity-10-control",
+      "after": "electricity-10-sentinel",
+      "image_results": {
+        "A1:P30": true,
+        "A50:P80": true,
+        "V120:AK145": true,
+        "AZ130:BO150": true,
+        "A247:P271": true
+      },
+      "rows_checked": 271,
+      "rows_with_changed_geometry": [],
+      "tail_before": {
+        "height": 3053.25,
+        "top": 0,
+        "uniform_row_height": null
+      },
+      "tail_after": {
+        "height": 3053.25,
+        "top": 0,
+        "uniform_row_height": null
+      }
+    }
+  ],
+  "sentinel_package_check": {
+    "default_bytes": 249567,
+    "repacked_default_bytes": 216898,
+    "sentinel_bytes": 86647,
+    "changed_parts": [
+      "xl/worksheets/sheet9.xml",
+      "xl/worksheets/sheet10.xml"
+    ],
+    "nonempty_cells_unchanged": true
+  }
+}
