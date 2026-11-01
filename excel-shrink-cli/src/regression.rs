@@ -35,6 +35,7 @@ mod visual_validation;
 mod visual_diagnosis;
 mod diagnosis_report;
 mod archive;
+mod targeted_comparison;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -64,6 +65,8 @@ enum RegressionCommand {
     Archive(archive::ArchiveArgs),
     /// Prepare named corpora, then compare three cleanup levels with targeted worksheets.
     Study(archive::StudyArgs),
+    /// Compare changed worksheet regions with persistent Excel sessions.
+    TargetedCompare(targeted_comparison::Args),
     #[command(hide = true)]
     ArchiveWorker(archive::WorkerArgs),
 }
@@ -424,6 +427,7 @@ pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
     match cli.command {
         RegressionCommand::Archive(args) => archive::run(args, console_log_level),
         RegressionCommand::Study(args) => archive::run_study(args, console_log_level),
+        RegressionCommand::TargetedCompare(args) => targeted_comparison::run(args),
         RegressionCommand::ArchiveWorker(args) => archive::run_worker(args, console_log_level),
         RegressionCommand::Smoke(args) => run_suite_or_visual_profile_matrix(
             "smoke",
