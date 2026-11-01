@@ -38,16 +38,16 @@ Only a disposable copy of the production worker receives instrumentation:
 
 - Explicitly select the requested private desktop.
 - Publish a prepared marker after workbook staging and add-in registration.
-- Wait for a shared UTC target, set two seconds ahead only after both launchers
+- Wait for a shared UTC target, set two seconds ahead only after all launchers
   are prepared. Launchers independently start Excel when that time arrives.
 - Record the actual request time, PID, desktop, and scheduled time.
 
 Inherited corpus admission settings are cleared from experiment children. There
 is no experiment-side global opening lock. Separate trials have unique staging,
-add-in registrations, servers, and WebView2 profiles. We retain both Excel
-instances until both become ready, then close both owned sessions.
+add-in registrations, servers, and WebView2 profiles. We retain all Excel
+instances until all become ready, then close their owned sessions.
 
-At most two experiment Excel instances run together. Available physical memory
+By default, at most two experiment Excel instances run together. Available physical memory
 is checked throughout startup; falling below an 8 GiB reserve aborts and cleans
 up the experiment. Startup and barrier waits are bounded. The production runner
 is outside this job and is not terminated by experiment cleanup.
@@ -61,6 +61,38 @@ The three arrangements are measured twice:
 The second round reverses that arrangement order. Staging copies warm the
 filesystem cache in every arrangement. Existing background work, including the
 production corpus, remains a source of timing variation.
+
+### Four simultaneous versus four sequential openings
+
+`-Workbooks 4` compares four sequential openings with four simultaneous openings
+on a shared private desktop, in two reversed-order rounds. The same memory reserve
+and the same verified Office.js readiness endpoint apply. The separate-desktop
+arrangement is only part of the two-workbook experiment.
+
+```powershell
+powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File `
+  docs/visual-validation/experiments/parallel-workbook-open/run.ps1 `
+  -Output .tmp/parallel-open-four -Workbooks 4 `
+  -Fixture .tmp/parallel-workbook-open-20261101/fixtures/8-sheets.xlsx
+```
+
+New outputs use `batch_seconds`; the report can still read the older
+`pair_seconds` files. All simultaneous launchers reach the staging barrier before
+receiving a common start time. CPU overlap now requires progress from every
+still-pending process, including all four in the four-workbook trial.
+
+The four-workbook measurements on the same eight-sheet fixture were:
+
+| Arrangement | Round 1 | Round 2 | Median batch time |
+| --- | ---: | ---: | ---: |
+| Four sequential openings | 109.225 s | 127.551 s | 118.388 s |
+| Four simultaneous openings, shared private desktop | 43.344 s | 40.083 s | 41.714 s |
+
+This is approximately 2.84× faster by the medians. All four pending Excel
+processes made simultaneous CPU progress for 31.5–36.3 seconds. No Office.js
+capture or diagnosis jobs were issued. The spread between the sequential rounds
+is retained rather than hidden by the summary. `findings-four.json` preserves the
+measurements; the local visual report is `.tmp/parallel-workbook-open-four/report.html`.
 
 ## Measurement and evidence
 
@@ -78,15 +110,15 @@ kept as diagnostic evidence, not counted as a failed or slow workbook opening.
 The corrected experiment repeats all arrangements against the same fixture and
 uses verified Office.js events consistently for every trial.
 
-Parallel pair time runs from the earlier actual launch request to the later
-readiness timestamp. Sequential pair time sums the two corresponding opening
+Parallel batch time runs from the earliest actual launch request to the latest
+readiness timestamp. Sequential batch time sums the individual opening
 intervals; setup, two-second gates, and teardown gaps are excluded in both cases.
 Launch skew is reported rather than assuming that the UTC target guarantees
 perfect simultaneity.
 
 Every 250 ms, record Excel CPU time, private memory, readiness, and system free
-RAM. CPU overlap counts only intervals where both exact sampled PIDs remain
-pending and both increase CPU time by at least 20 ms. This supports a timing
+RAM. CPU overlap counts only intervals where all exact sampled PIDs remain
+pending and all increase CPU time by at least 20 ms. This supports a timing
 finding; it is not direct observation of Excel's internal loading phases.
 
 Outputs include:

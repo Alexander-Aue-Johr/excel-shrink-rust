@@ -1,0 +1,246 @@
+{
+  "workbooks_per_trial": 4,
+  "fixture": {
+    "sheets": 8,
+    "rows_per_sheet": 1000000,
+    "columns": 3
+  },
+  "measurement": "native-process-start-to-verified-addin-ready",
+  "machine": {
+    "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+    "os": "Windows-11-10.0.26200-SP0",
+    "ram_bytes": 102066212864
+  },
+  "binary_sha256": "80642a6715295ee73b32682a73a5b5eeea9795fa4d534f94dd1b4b41220efb2a",
+  "summary": [
+    {
+      "arrangement": "sequential",
+      "median_batch_seconds": 118.38799449999999,
+      "speedup_against_sequential": 1.0
+    },
+    {
+      "arrangement": "same_desktop",
+      "median_batch_seconds": 41.713625,
+      "speedup_against_sequential": 2.8381133142947896
+    }
+  ],
+  "trials": [
+    {
+      "repetition": 1,
+      "arrangement": "sequential",
+      "batch_seconds": 109.22472,
+      "clients": [
+        {
+          "target_start_at": "2026-10-31T23:50:49.937792+00:00",
+          "pid": 63776,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:50:49.9387579Z",
+          "ready_at": "2026-10-31T23:51:16.096Z",
+          "startup_seconds": 26.157243,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 774078464,
+          "process_started_unix_ms": 1793490649945
+        },
+        {
+          "target_start_at": "2026-10-31T23:51:44.725342+00:00",
+          "pid": 3444,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:51:44.7339781Z",
+          "ready_at": "2026-10-31T23:52:10.719Z",
+          "startup_seconds": 25.985022,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 792170496,
+          "process_started_unix_ms": 1793490704740
+        },
+        {
+          "target_start_at": "2026-10-31T23:52:44.817136+00:00",
+          "pid": 66832,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:52:44.8267532Z",
+          "ready_at": "2026-10-31T23:53:13.813Z",
+          "startup_seconds": 28.986247,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 772890624,
+          "process_started_unix_ms": 1793490764834
+        },
+        {
+          "target_start_at": "2026-10-31T23:53:50.508586+00:00",
+          "pid": 30540,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:53:50.5117926Z",
+          "ready_at": "2026-10-31T23:54:18.608Z",
+          "startup_seconds": 28.096208,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 755314688,
+          "process_started_unix_ms": 1793490830520
+        }
+      ],
+      "launch_skew_seconds": null
+    },
+    {
+      "repetition": 1,
+      "arrangement": "same_desktop",
+      "clients": [
+        {
+          "target_start_at": "2026-10-31T23:54:56.410926+00:00",
+          "pid": 72564,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:54:56.4180271Z",
+          "ready_at": "2026-10-31T23:55:38.685Z",
+          "startup_seconds": 42.266973,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 769908736,
+          "process_started_unix_ms": 1793490896426
+        },
+        {
+          "target_start_at": "2026-10-31T23:54:56.410926+00:00",
+          "pid": 72836,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:54:56.4180271Z",
+          "ready_at": "2026-10-31T23:55:37.887Z",
+          "startup_seconds": 41.468973,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 761581568,
+          "process_started_unix_ms": 1793490896426
+        },
+        {
+          "target_start_at": "2026-10-31T23:54:56.410926+00:00",
+          "pid": 42700,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:54:56.4180271Z",
+          "ready_at": "2026-10-31T23:55:39.762Z",
+          "startup_seconds": 43.343973,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 772853760,
+          "process_started_unix_ms": 1793490896426
+        },
+        {
+          "target_start_at": "2026-10-31T23:54:56.410926+00:00",
+          "pid": 32240,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:54:56.4180271Z",
+          "ready_at": "2026-10-31T23:55:37.016Z",
+          "startup_seconds": 40.597973,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 771674112,
+          "process_started_unix_ms": 1793490896426
+        }
+      ],
+      "launch_skew_seconds": 0.0,
+      "batch_seconds": 43.343973,
+      "minimum_available_bytes": 48994185216,
+      "concurrent_cpu_active_seconds": 36.337039947509766,
+      "process_creation_skew_ms": 0
+    },
+    {
+      "repetition": 2,
+      "arrangement": "same_desktop",
+      "clients": [
+        {
+          "target_start_at": "2026-10-31T23:56:19.674651+00:00",
+          "pid": 64048,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:56:19.6817236Z",
+          "ready_at": "2026-10-31T23:56:59.765Z",
+          "startup_seconds": 40.083277,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 753999872,
+          "process_started_unix_ms": 1793490979689
+        },
+        {
+          "target_start_at": "2026-10-31T23:56:19.674651+00:00",
+          "pid": 18176,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:56:19.6817236Z",
+          "ready_at": "2026-10-31T23:56:59.356Z",
+          "startup_seconds": 39.674277,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 772788224,
+          "process_started_unix_ms": 1793490979689
+        },
+        {
+          "target_start_at": "2026-10-31T23:56:19.674651+00:00",
+          "pid": 60052,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:56:19.6817236Z",
+          "ready_at": "2026-10-31T23:56:57.714Z",
+          "startup_seconds": 38.032277,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 768196608,
+          "process_started_unix_ms": 1793490979689
+        },
+        {
+          "target_start_at": "2026-10-31T23:56:19.674651+00:00",
+          "pid": 71484,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:56:19.6817236Z",
+          "ready_at": "2026-10-31T23:56:57.639Z",
+          "startup_seconds": 37.957277,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 765673472,
+          "process_started_unix_ms": 1793490979689
+        }
+      ],
+      "launch_skew_seconds": 0.0,
+      "batch_seconds": 40.083277,
+      "minimum_available_bytes": 51089072128,
+      "concurrent_cpu_active_seconds": 31.51280975341797,
+      "process_creation_skew_ms": 0
+    },
+    {
+      "repetition": 2,
+      "arrangement": "sequential",
+      "batch_seconds": 127.55126899999999,
+      "clients": [
+        {
+          "target_start_at": "2026-10-31T23:57:33.003761+00:00",
+          "pid": 7968,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:57:33.0070194Z",
+          "ready_at": "2026-10-31T23:58:04.853Z",
+          "startup_seconds": 31.845981,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 758497280,
+          "process_started_unix_ms": 1793491053013
+        },
+        {
+          "target_start_at": "2026-10-31T23:58:40.515568+00:00",
+          "pid": 59852,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:58:40.5216163Z",
+          "ready_at": "2026-10-31T23:59:12.881Z",
+          "startup_seconds": 32.359384,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 769556480,
+          "process_started_unix_ms": 1793491120527
+        },
+        {
+          "target_start_at": "2026-10-31T23:59:47.674675+00:00",
+          "pid": 59304,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-10-31T23:59:47.6760487Z",
+          "ready_at": "2026-11-01T00:00:18.677Z",
+          "startup_seconds": 31.000952,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 770379776,
+          "process_started_unix_ms": 1793491187683
+        },
+        {
+          "target_start_at": "2026-11-01T00:00:53.142693+00:00",
+          "pid": 67732,
+          "desktop": "es-capture-6ef783b617a141cc950fa93b85b3925f",
+          "requested_at": "2026-11-01T00:00:53.1580488Z",
+          "ready_at": "2026-11-01T00:01:25.503Z",
+          "startup_seconds": 32.344952,
+          "launcher_startup_sampled": true,
+          "peak_private_bytes": 773918720,
+          "process_started_unix_ms": 1793491253166
+        }
+      ],
+      "launch_skew_seconds": null
+    }
+  ],
+  "input_desktop_unchanged": true,
+  "officejs_commands_issued": 0,
+  "production_runner_modified_or_stopped": false
+}
