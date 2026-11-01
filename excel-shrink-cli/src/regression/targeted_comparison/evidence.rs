@@ -1,0 +1,134 @@
+//! Bounded image capture and comparison of the same regions across workbook states.
+use super::host::ExcelHost;
+use super::{publish, Args, Candidate, Finding, Report};
+use anyhow::{ensure, Context, Result};
+use image::GenericImageView;
+use serde_json::{json, Value};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::{Path, PathBuf},
+};
+
+pub(super) struct Evidence {
+    path: PathBuf,
+    geometry: Value,
+}
+
+/// Saves a tiny picture and rendered geometry for every selected cell.
+pub(super) fn capture_candidates(
+    excel: &mut ExcelHost,
+    lane: &str,
+    candidates: &BTreeSet<Candidate>,
+    args: &Args,
+    report: &mut Report,
+    stage: &str,
+) -> Result<BTreeMap<Candidate, Evidence>> {
+    let directory = args.output.join(stage);
+    fs::create_dir_all(&directory)?;
+    let mut captured = BTreeMap::new();
+    for (index, candidate) in candidates.iter().enumerate() {
+        let range = padded_range(&candidate.cell)?;
+        let path = directory.join(format!("{index:03}.png"));
+        let geometry = excel.call(
+            json!({"kind":"measure", "lane":lane, "sheet":candidate.sheet, "range":candidate.cell}),
+        )?;
+        excel.call(json!({"kind":"capture", "lane":lane, "sheet":candidate.sheet, "range":range, "output":path}))?;
+        captured.insert(candidate.clone(), Evidence { path, geometry });
+        *report.capture_counts.entry(lane.to_owned()).or_default() += 1;
+        publish(args, report, &format!("capture:{lane}"), candidates)?;
+    }
+    Ok(captured)
+}
+
+fn padded_range(address: &str) -> Result<String> {
+    let split = address
+        .find(|c: char| c.is_ascii_digit())
+        .context("invalid cell address")?;
+    let (letters, digits) = address.split_at(split);
+    let row: u32 = digits.parse()?;
+    let column = letters
+        .bytes()
+        .try_fold(0u32, |value, digit| {
+            value
+                .checked_mul(26)?
+                .checked_add(u32::from(digit.to_ascii_uppercase().checked_sub(b'A')? + 1))
+        })
+        .context("invalid column")?;
+    ensure!(
+        row > 0 && column > 0 && row <= 1_048_576 && column <= 16_384,
+        "cell out of Excel bounds"
+    );
+    Ok(format!(
+        "{}{}:{}{}",
+        column_name(column.saturating_sub(1).max(1)),
+        row.saturating_sub(1).max(1),
+        column_name((column + 1).min(16_384)),
+        (row + 1).min(1_048_576)
+    ))
+}
+
+fn column_name(mut column: u32) -> String {
+    let mut result = String::new();
+    while column > 0 {
+        column -= 1;
+        result.insert(0, (b'A' + (column % 26) as u8) as char);
+        column /= 26;
+    }
+    result
+}
+
+pub(super) fn compare_evidence(
+    candidates: &BTreeSet<Candidate>,
+    original_before: &BTreeMap<Candidate, Evidence>,
+    shrink_before: &BTreeMap<Candidate, Evidence>,
+    shrink_after: &BTreeMap<Candidate, Evidence>,
+    original_after: &BTreeMap<Candidate, Evidence>,
+    original_save_changes: &BTreeSet<Candidate>,
+) -> Result<Vec<Finding>> {
+    let mut findings = Vec::new();
+    for candidate in candidates {
+        let o0 = &original_before[candidate];
+        let s0 = &shrink_before[candidate];
+        let s1 = &shrink_after[candidate];
+        let o1 = &original_after[candidate];
+        findings.push(Finding {
+            sheet: candidate.sheet.clone(),
+            cell: candidate.cell.clone(),
+            range: padded_range(&candidate.cell)?,
+            before_recalc_differs: images_differ(&o0.path, &s0.path)?,
+            after_shrink_recalc_differs: images_differ(&o0.path, &s1.path)?,
+            also_changed_by_original_recalc: images_differ(&o0.path, &o1.path)?
+                || o0.geometry != o1.geometry,
+            before_recalc_geometry_differs: o0.geometry != s0.geometry,
+            after_shrink_recalc_geometry_differs: o0.geometry != s1.geometry,
+            original_save_xml_changed: original_save_changes.contains(candidate),
+            original_before_png: o0.path.clone(),
+            shrink_before_png: s0.path.clone(),
+            shrink_recalc_png: s1.path.clone(),
+            original_recalc_png: o1.path.clone(),
+            original_open_geometry: o0.geometry.clone(),
+            shrink_open_geometry: s0.geometry.clone(),
+            shrink_recalc_geometry: s1.geometry.clone(),
+            original_recalc_geometry: o1.geometry.clone(),
+        });
+    }
+    Ok(findings)
+}
+
+fn images_differ(left: &Path, right: &Path) -> Result<bool> {
+    let left = image::open(left)?;
+    let right = image::open(right)?;
+    Ok(left.dimensions() != right.dimensions() || left.to_rgba8() != right.to_rgba8())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ranges_have_one_cell_margin_and_clip_at_edges() {
+        assert_eq!(padded_range("A1").unwrap(), "A1:B2");
+        assert_eq!(padded_range("E64").unwrap(), "D63:F65");
+        assert_eq!(padded_range("XFD1048576").unwrap(), "XFC1048575:XFD1048576");
+    }
+}
