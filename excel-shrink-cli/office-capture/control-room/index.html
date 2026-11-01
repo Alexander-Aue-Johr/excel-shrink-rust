@@ -109,6 +109,11 @@
     <main>
       <div class="workbook-heading"><div><div class="eyebrow" id="groupEyebrow">LIVE STUDIO</div><h2 id="workbook">Waiting for the first group.</h2><p id="groupStatus">Actual capture jobs appear here.</p></div><div class="heading-actions"><button id="startDeferredScan" hidden>Start deferred full scan</button><button id="restartGroup">Requeue group</button><button id="resetCamera">All sheets</button></div></div>
       <p id="deferredResume" class="deferred-resume" hidden></p>
+      <section id="targetedComparison" class="targeted-comparison" hidden aria-label="Targeted comparison">
+        <div class="section-head"><h2>Targeted comparison</h2><span id="targetedSummary"></span></div>
+        <div id="targetedLanes" class="targeted-lanes"></div>
+        <ol id="targetedPhases" class="targeted-phases"></ol>
+      </section>
       <section id="groupOutcome" class="group-outcome" hidden aria-label="Workbook result">
         <strong id="groupOutcomeTitle"></strong><span id="groupOutcomeReason"></span>
       </section>

@@ -1384,6 +1384,7 @@ function selectGroup(id) {
   state.groupId = id; state.sheetId = null; state.focus = 'overview'; lastFocusKey = ''; state.view = { mode: 'sheet', x: 0, y: 0, width: 1800, height: 1800 * AREA_H / AREA_W }; latestCapture = null; previousImages.clear(); flashes.clear();
   followedProfile = null; lastFollowedKey = null;
   data = null; entries = []; lastSignature = ''; sheetSignature = ''; clearDetails(); ++sceneGeneration;
+  renderTargetedComparison(null);
   boards.splice(0).forEach(disposeObject); sourceTiles.length = 0; hitTargets.length = 0; sheetCards.clear();
   for (const card of processCards.values()) card.signals.destroy();
   processCards.clear(); $('processes').replaceChildren();
@@ -1440,6 +1441,7 @@ function applyCaptureJump() {
 }
 function acceptGroup(raw) {
   data = normalizeGroup(raw); entries = data.sheets.flatMap(sheet => sheet.tiles);
+  renderTargetedComparison(data.targeted_comparison);
   $('workbook').textContent = groupName(data); $('workbook').title = String(data.workbook || '');
   $('groupEyebrow').textContent = [data.corpus, data.capture_mode === 'classic' || data.status === 'retrying_classic' ? 'LAST RESIDENT CAPTURES · CLASSIC CROSS-CHECK' : 'LIVE STUDIO'].filter(Boolean).join(' · ');
   if (!data.sheets.some(sheet => sheet.id === state.sheetId)) state.sheetId = data.sheets[0]?.id ?? null;
@@ -1470,6 +1472,43 @@ function acceptGroup(raw) {
   clampView(); updateSheets(); renderScene(); updateDiagnosticUi();
   applyCaptureJump();
   if (state.pendingDifference) { state.pendingDifference = false; nextDifference(); }
+}
+function renderTargetedComparison(comparison) {
+  const section = $('targetedComparison');
+  section.hidden = !comparison;
+  if (!comparison) return;
+  $('targetedSummary').textContent = `${comparison.candidate_count ?? 0} changed cells · ${comparison.report?.status || 'running'}`;
+  $('targetedLanes').replaceChildren(...(comparison.lanes || []).map(lane => {
+    const card = document.createElement('div');
+    card.className = 'targeted-lane';
+    const light = document.createElement('span');
+    light.className = `targeted-light ${lane.status}`;
+    light.setAttribute('aria-hidden', 'true');
+    const title = document.createElement('strong');
+    title.textContent = lane.label;
+    const status = document.createElement('span');
+    status.textContent = [lane.status, lane.pid ? `PID ${lane.pid}` : null].filter(Boolean).join(' · ');
+    const progress = document.createElement('progress');
+    progress.max = Math.max(1, Number(lane.captures_total || 0));
+    progress.value = Number(lane.captures_done || 0);
+    progress.title = `${progress.value} of ${lane.captures_total || 0} captures in this phase`;
+    card.append(light, title, status, progress);
+    return card;
+  }));
+  const phases = [
+    'initial XML compared', 'original and shrink opened',
+    'Excel save effects inspected', 'initial regions captured',
+    'shrink rebuilt and captured', 'original rebuilt and captured',
+    'images and rendered geometry compared',
+  ];
+  const completed = new Set(comparison.phases || []);
+  const active = completed.size;
+  $('targetedPhases').replaceChildren(...phases.map((phase, index) => {
+    const item = document.createElement('li');
+    item.textContent = phase;
+    item.className = completed.has(phase) ? 'done' : index === active && comparison.activity !== 'failed' ? 'active' : 'pending';
+    return item;
+  }));
 }
 async function poll() {
   const generation = pollGeneration;
