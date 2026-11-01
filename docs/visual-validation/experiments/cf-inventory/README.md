@@ -1,5 +1,8 @@
 # Offline conditional-formatting inventory
 
+The first complete Data.gov run and its concrete fallback findings are recorded
+in [datagov-20261101.md](datagov-20261101.md).
+
 Run without Excel, shrinking, recalculation or changing corpus results:
 
 ```powershell
