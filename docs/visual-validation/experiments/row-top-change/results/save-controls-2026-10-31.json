@@ -1,0 +1,62 @@
+{
+  "stale_formula": {
+    "formula": "A2*2",
+    "saved_cache_before_open": -999,
+    "expected_calculated_value": 4,
+    "opened_value_by_mode": {
+      "manual": -999,
+      "automatic_without_full_calc_on_load": -999,
+      "automatic_with_full_calc_on_load": 4
+    },
+    "manual_value_after_save_copy_as": -999,
+    "manual_value_after_save": -999,
+    "manual_value_after_full_rebuild": 4
+  },
+  "empty_font_cell_removed": {
+    "input_xml_row_height_points": 53.25,
+    "input_excel_effective_row_height_points": 15,
+    "after_save_copy_as_xml_row": "absent",
+    "after_save_xml_row": "absent",
+    "after_save_live_row_height_points": 15,
+    "reopened_save_copy_as_row_height_points": 15,
+    "reopened_save_row_height_points": 15,
+    "image_control": {
+      "range": "A499999:B500001",
+      "visible_text_in_A500001": "Below removed row",
+      "before_after_save_and_reopened_png_equal": true,
+      "png_dimensions": [161, 61],
+      "png_sha256": "c3fa4ea33ce57f517164d998089ec86709dd81ba1f98175dac653868bf28ef42"
+    }
+  },
+  "read_saved_file_while_excel_open": {
+    "copy_succeeded_after_save_returned": true,
+    "copied_zip_valid": true,
+    "copied_bytes_equal_to_saved_file": true,
+    "tested_workbook": "removed-empty-cell.xlsx"
+  },
+  "real_destatis": {
+    "seeschifffahrt_monat": {
+      "save_versus_save_copy_as_changed_parts": ["xl/workbook.xml"]
+    },
+    "foerderprogramme": {
+      "save_versus_save_copy_as_changed_parts": [
+        "xl/workbook.xml",
+        "xl/worksheets/sheet2.xml",
+        "xl/worksheets/sheet4.xml",
+        "xl/embeddings/Microsoft_Word_97_-_2003_Document.doc"
+      ],
+      "save_copy_as_xml_row_heights_points": {
+        "Inhalt_row_3": 13.9,
+        "Allgemeines_row_3": 17.45
+      },
+      "save_xml_row_heights_points": {
+        "Inhalt_row_3": 15,
+        "Allgemeines_row_3": 18
+      },
+      "effective_row_heights_points_before_and_after_save_and_reopen": {
+        "Inhalt_row_3": 15,
+        "Allgemeines_row_3": 18
+      }
+    }
+  }
+}
