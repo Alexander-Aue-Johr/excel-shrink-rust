@@ -249,7 +249,7 @@
 
   async function run() {
     if (residentClient) {
-      for (const source of ['/resident-connection.js', '/resident-diagnosis.js', '/resident.js']) {
+      for (const source of ['/resident-connection.js', '/targeted-diagnosis.js', '/resident-diagnosis.js', '/resident.js']) {
         await new Promise((resolve, reject) => {
           const script = document.createElement('script');
           script.src = source;

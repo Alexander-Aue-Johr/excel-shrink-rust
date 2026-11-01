@@ -132,6 +132,7 @@
 
   async function execute(command, {office}) {
     if (!command || typeof command.operation !== 'string') throw new Error('Missing diagnosis operation');
+    if (command.operation === 'targeted') return root.TargetedDiagnosis.run(command.request, office);
     if (command.operation === 'read_cells') {
       return {operation: command.operation, cells: await readCells(command.cells, office)};
     }

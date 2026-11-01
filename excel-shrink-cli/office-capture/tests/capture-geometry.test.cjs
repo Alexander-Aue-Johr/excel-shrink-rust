@@ -441,6 +441,13 @@ test('the row-height gate resolves pending layout without taking images', async 
   assert.deepEqual(runs, [{start_row: 1, end_row: 100, height: 12}]);
 });
 
+test('height checks preserve absolute row coordinates when excluding fixed-height spans', async () => {
+  const {readHeightRuns} = require('../web/capture-geometry.js');
+  const runs = await readHeightRuns(deferredLayoutModel(), 'Sheet', 99, 50);
+  assert.deepEqual(runs, [{start_row: 51, end_row: 100, height: 12}]);
+  await assert.rejects(readHeightRuns(deferredLayoutModel(), 'Sheet', 99, 100), /Invalid first row/);
+});
+
 test('a long hidden tail stays covered by one visible image', async () => {
   const rows = [...new Array(94).fill(12.75), ...new Array(65530 - 94).fill(0)];
   const result = await geometry(officeModel({rows}), 65529, 1);

@@ -644,6 +644,11 @@ function Open-ResidentClient($spec, $visibilityOverride = $null) {
         if ($hideClient) {
             if ($null -eq $script:captureDesktop) { $script:captureDesktop = New-Object CaptureDesktop }
             $desktopName = $captureDesktop.Name
+        } elseif ($env:EXCEL_SHRINK_EXPECTED_DESKTOP) {
+            # Targeted launchers own this desktop. Specify it explicitly: a helper
+            # started through PowerShell must not redirect Excel to Default.
+            if ($env:EXCEL_SHRINK_EXPECTED_DESKTOP -eq 'Default') { throw 'Expected a private capture desktop.' }
+            $desktopName = $env:EXCEL_SHRINK_EXPECTED_DESKTOP
         }
         # Browser processes may be shared within a desktop, but a visible reset
         # must not attach to a browser running on this group's private desktop.

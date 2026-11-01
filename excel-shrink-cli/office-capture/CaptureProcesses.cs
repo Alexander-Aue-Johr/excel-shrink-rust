@@ -99,6 +99,16 @@ public sealed class CaptureErrorChecking : IDisposable
 
     public int ProcessId { get { return process.Id; } }
     public bool PreviousBackgroundChecking { get { return previousBackgroundChecking; } }
+
+    /// <summary>
+    /// Return the application belonging to this validated owned process.
+    /// The caller releases the returned COM reference; no global ROT lookup is used.
+    /// </summary>
+    public object GetOwnedApplication()
+    {
+        if (options == null) throw new ObjectDisposedException("CaptureErrorChecking");
+        return Property(options, "Application");
+    }
     public bool IsDisabled
     {
         get

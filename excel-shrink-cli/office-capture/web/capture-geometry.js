@@ -121,12 +121,15 @@
     return value - extent > roundoff;
   }
 
-  async function readHeightRuns(office, sheet, bottomRow) {
+  async function readHeightRuns(office, sheet, bottomRow, startRow = 0) {
     if (!Number.isInteger(bottomRow) || bottomRow < 0 || bottomRow >= MAX_ROWS) {
       throw new Error(`Invalid row boundary for ${sheet}`);
     }
+    if (!Number.isInteger(startRow) || startRow < 0 || startRow > bottomRow) {
+      throw new Error(`Invalid first row for ${sheet}`);
+    }
     const pending = [];
-    for (let start = 0; start <= bottomRow; start += 8192) {
+    for (let start = startRow; start <= bottomRow; start += 8192) {
       pending.push({start, end: Math.min(bottomRow + 1, start + 8192)});
     }
     const measured = [];
@@ -179,7 +182,7 @@
         previous.end_row = item.end_row;
       } else runs.push(item);
     }
-    if (!runs.length || runs[0].start_row !== 1 || runs[runs.length - 1].end_row !== bottomRow + 1 ||
+    if (!runs.length || runs[0].start_row !== startRow + 1 || runs[runs.length - 1].end_row !== bottomRow + 1 ||
         runs.some((run, index) => index && runs[index - 1].end_row + 1 !== run.start_row)) {
       throw new Error(`Row height coverage is incomplete for ${sheet}`);
     }
