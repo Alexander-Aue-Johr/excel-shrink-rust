@@ -2,23 +2,23 @@
 mod candidates;
 mod evidence;
 mod host;
+mod reporting;
 mod telemetry;
+mod workbooks;
 
-use crate::native_process::process_alive;
 use anyhow::{ensure, Context, Result};
-use candidates::discover_candidates;
+use candidates::{discover_candidates, find_changes_caused_by_save, SaveChanges};
 use clap::Parser;
 use evidence::{capture_candidates, compare_evidence, Evidence};
 use host::ExcelHost;
+use reporting::new_report;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
     path::PathBuf,
-    time::Duration,
 };
-use telemetry::{LaneId, Lifecycle, Phase, StepStatus, Telemetry};
+use telemetry::{LaneId, Phase, StepStatus, Telemetry};
 const MAX_CANDIDATES: usize = 64;
 
 #[derive(Debug, Parser)]
@@ -132,22 +132,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
 impl<'a> Comparison<'a> {
     /// Establish isolated working copies and telemetry before expensive operations.
     fn prepare(args: &'a Args) -> Result<Self> {
-        ensure!(
-            !args.output.exists(),
-            "Output directory already exists: {}",
-            args.output.display()
-        );
-        ensure!(
-            args.original.is_file() && args.default.is_file(),
-            "Both XLSX inputs must exist"
-        );
-        fs::create_dir_all(&args.output)?;
-        let paths = WorkingPaths {
-            original: args.output.join("original.xlsx"),
-            default: args.output.join("default.xlsx"),
-        };
-        fs::copy(&args.original, &paths.original).context("Copy original")?;
-        fs::copy(&args.default, &paths.default).context("Copy shrink result")?;
+        let paths = WorkingPaths::prepare(args)?;
         let telemetry = Telemetry::start(args)?;
         Ok(Self {
             args,
@@ -191,28 +176,9 @@ impl<'a> Comparison<'a> {
 
     /// Open the two copies sequentially and preserve their independent lifecycles.
     fn open_workbooks(&mut self) -> Result<()> {
-        self.excel = Some(ExcelHost::start(
-            self.args.host_script.as_deref(),
-            Duration::from_secs(self.args.operation_timeout_seconds),
-        )?);
-        for (id, path) in [
-            (LaneId::O, &self.paths.original),
-            (LaneId::SD, &self.paths.default),
-        ] {
-            self.telemetry.update(|state| {
-                state.step(id, Phase::Open, StepStatus::Running);
-                state.lane(id).lifecycle = Lifecycle::Opening;
-            })?;
-            let pid = self
-                .excel
-                .as_mut()
-                .context("Excel host not started")?
-                .open_workbook(id, path, &self.telemetry)?;
-            self.report.excel_pids.insert(id.key().into(), pid);
-            self.telemetry.update(|state| {
-                state.lane(id).lifecycle = Lifecycle::Open;
-                state.step(id, Phase::Open, StepStatus::Done);
-            })?;
+        self.start_excel_host()?;
+        for id in [LaneId::O, LaneId::SD] {
+            self.open_workbook(id)?;
         }
         self.report.phases.push("original and shrink opened".into());
         Ok(())
@@ -220,31 +186,14 @@ impl<'a> Comparison<'a> {
 
     /// Separate ordinary save effects from the later explicit rebuild controls.
     fn inspect_save_effects(&mut self) -> Result<()> {
-        let before_original = self.paths.original.with_extension("before-save.xlsx");
-        let before_default = self.paths.default.with_extension("before-save.xlsx");
-        fs::copy(&self.paths.original, &before_original)?;
-        fs::copy(&self.paths.default, &before_default)?;
-        for id in [LaneId::O, LaneId::SD] {
-            self.telemetry
-                .update(|state| state.step(id, Phase::Save, StepStatus::Running))?;
-            self.excel
-                .as_mut()
-                .context("Excel host not started")?
-                .save_workbook(id, &self.telemetry)?;
-            self.telemetry
-                .update(|state| state.step(id, Phase::Save, StepStatus::Done))?;
-        }
+        let before_save = self.paths.preserve_before_save()?;
+        self.save_workbooks()?;
         self.telemetry
             .update(|state| state.pair_step(Phase::InspectSave, StepStatus::Running))?;
-        self.original_save_changes = discover_candidates(&before_original, &self.paths.original)?;
-        self.candidates
-            .extend(self.original_save_changes.iter().cloned());
-        self.candidates
-            .extend(discover_candidates(&before_default, &self.paths.default)?);
-        ensure!(
-            self.candidates.len() <= MAX_CANDIDATES,
-            "More than {MAX_CANDIDATES} changed cells; aborting bounded comparison"
-        );
+
+        let save_changes = find_changes_caused_by_save(&before_save, &self.paths)?;
+        self.include_save_changes(save_changes)?;
+
         self.report
             .phases
             .push("Excel save effects inspected".into());
@@ -252,6 +201,19 @@ impl<'a> Comparison<'a> {
             state.candidates(self.candidates.len());
             state.pair_step(Phase::InspectSave, StepStatus::Done);
         })
+    }
+
+    /// Keep Original's save drift separate while extending the capture selection.
+    fn include_save_changes(&mut self, changes: SaveChanges) -> Result<()> {
+        self.original_save_changes = changes.original;
+        self.candidates
+            .extend(self.original_save_changes.iter().cloned());
+        self.candidates.extend(changes.default);
+        ensure!(
+            self.candidates.len() <= MAX_CANDIDATES,
+            "More than {MAX_CANDIDATES} changed cells; aborting bounded comparison"
+        );
+        Ok(())
     }
 
     /// Retain both pre-rebuild states for the direct shrink comparison.
@@ -284,18 +246,6 @@ impl<'a> Comparison<'a> {
             .phases
             .push("original rebuilt and captured".into());
         Ok(())
-    }
-
-    /// Publish one rebuild's actual start and successful completion.
-    fn rebuild(&mut self, id: LaneId) -> Result<()> {
-        self.telemetry
-            .update(|state| state.step(id, Phase::Recalculate, StepStatus::Running))?;
-        self.excel
-            .as_mut()
-            .context("Excel host not started")?
-            .recalculate_workbook(id, &self.telemetry)?;
-        self.telemetry
-            .update(|state| state.step(id, Phase::Recalculate, StepStatus::Done))
     }
 
     /// Capture one lane/state and advance counters only after evidence was written.
@@ -344,138 +294,12 @@ impl<'a> Comparison<'a> {
             .update(|state| state.pair_step(Phase::Compare, StepStatus::Done))
     }
 
-    /// Confirm each owned Excel exit before classifying the workbook as finished.
+    /// Close Default before Original, then release their command host.
     fn close_workbooks(&mut self) -> Result<()> {
         for id in [LaneId::SD, LaneId::O] {
-            self.telemetry.update(|state| {
-                state.lane(id).lifecycle = Lifecycle::Closing;
-                state.step(id, Phase::Close, StepStatus::Running);
-            })?;
-            self.excel
-                .as_mut()
-                .context("Excel host not started")?
-                .close_workbook(id, &self.telemetry)?;
-            self.telemetry.update(|state| {
-                let lane = state.lane(id);
-                lane.lifecycle = Lifecycle::Closed;
-                lane.process_alive = Some(false);
-                lane.closed_at = Some(chrono::Utc::now().timestamp_millis());
-                state.step(id, Phase::Close, StepStatus::Done);
-            })?;
+            self.close_workbook(id)?;
         }
         self.excel.take();
         Ok(())
     }
-
-    /// Keep no-candidate selection distinct from a successful whole-workbook proof.
-    fn complete_without_captures(&mut self) -> Result<()> {
-        self.report.status = "no_cell_candidates_with_limitations".into();
-        self.telemetry.update(|state| {
-            for id in [LaneId::O, LaneId::SD] {
-                for phase in [
-                    Phase::Open,
-                    Phase::Save,
-                    Phase::InspectSave,
-                    Phase::CaptureBefore,
-                    Phase::Recalculate,
-                    Phase::CaptureAfter,
-                    Phase::Compare,
-                    Phase::Close,
-                ] {
-                    state.step(id, phase, StepStatus::Skipped);
-                }
-            }
-        })?;
-        self.write_completion()
-    }
-
-    /// Persist the scientific result separately from compact display telemetry.
-    fn complete(&mut self) -> Result<()> {
-        self.report.status = "completed_with_limitations".into();
-        self.write_completion()
-    }
-
-    /// Retain explicit limitations and report only comparisons actually performed.
-    fn write_completion(&self) -> Result<()> {
-        fs::write(
-            self.args.output.join("report.json"),
-            serde_json::to_vec_pretty(&self.report)?,
-        )?;
-        self.telemetry.update(|state| {
-            state.status = self.report.status.clone();
-            state.finished_at = Some(chrono::Utc::now().timestamp_millis());
-            state.report = json!({"status":self.report.status, "limitations":self.report.limitations,
-                "before_differences":self.report.findings.iter().filter(|f| f.before_recalc_differs || f.before_recalc_geometry_differs).count(),
-                "after_differences":self.report.findings.iter().filter(|f| f.after_shrink_recalc_differs || f.after_shrink_recalc_geometry_differs).count(),
-                "original_recalc_drift":self.report.findings.iter().filter(|f| f.also_changed_by_original_recalc).count()});
-        })
-    }
-
-    /// Kill the owned host job on failure and preserve partial evidence honestly.
-    fn record_failure(&mut self, error: &anyhow::Error) -> Result<()> {
-        self.excel.take();
-        let identities = self.telemetry.owned_processes()?;
-        let deadline = std::time::Instant::now() + Duration::from_secs(3);
-        while identities
-            .iter()
-            .any(|(pid, started)| process_alive(i64::from(*pid), *started) != Some(false))
-            && std::time::Instant::now() < deadline
-        {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        self.report.status = "failed".into();
-        let message = format!("{error:#}");
-        fs::write(
-            self.args.output.join("failure.json"),
-            serde_json::to_vec_pretty(&json!({"status":"failed", "error":message}))?,
-        )?;
-        self.telemetry.update(|state| {
-            let mut unconfirmed = false;
-            for lane in &mut state.lanes {
-                if lane.xml_started_at.is_some() && lane.xml_finished_at.is_none() {
-                    lane.xml_finished_at = Some(chrono::Utc::now().timestamp_millis());
-                }
-                for step in lane.steps.values_mut() {
-                    if *step == StepStatus::Running {
-                        *step = StepStatus::Failed;
-                    }
-                }
-                if let (Some(pid), Some(started)) = (lane.pid, lane.process_started_at) {
-                    lane.process_alive = process_alive(i64::from(pid), started);
-                    if lane.process_alive == Some(false) {
-                        lane.lifecycle = Lifecycle::Closed;
-                        lane.closed_at
-                            .get_or_insert(chrono::Utc::now().timestamp_millis());
-                    } else {
-                        unconfirmed = true;
-                        lane.lifecycle = Lifecycle::Failed;
-                    }
-                } else if lane.lifecycle != Lifecycle::Unavailable {
-                    lane.lifecycle = Lifecycle::NotStarted;
-                }
-            }
-            state.status = if unconfirmed {
-                "cleanup_unconfirmed"
-            } else {
-                "failed"
-            }
-            .into();
-            state.finished_at = (!unconfirmed).then(|| chrono::Utc::now().timestamp_millis());
-            state.error = Some(message);
-        })
-    }
-}
-
-/// Scientific coverage limits apply independently of the display or process health.
-fn new_report() -> Report {
-    Report { status: "running".into(), check_performance: "unavailable_not_tested", candidate_count: 0,
-        findings: Vec::new(), phases: Vec::new(), excel_pids: BTreeMap::new(), capture_counts: BTreeMap::new(),
-        limitations: vec![
-            "Only changed cell XML is selected; drawing, chart, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
-            "At most 64 distinct candidate regions; larger cases fail explicitly.".into(),
-            "Excel may recalculate during open even when manual calculation is requested.".into(),
-            "Save-only XML changes are included; changes introduced only by rebuilding and saved-versus-reopened rendering are not checked.".into(),
-            "Check Performance is unavailable in this comparison workflow.".into(),
-            "The bounded cell index rejects worksheet XML over 64 MiB or 250,000 cells; this command is not a replacement for the corpus runner.".into(),
-        ] }
 }

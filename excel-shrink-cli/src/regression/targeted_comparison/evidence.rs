@@ -27,18 +27,30 @@ pub(super) fn capture_candidates(
     fs::create_dir_all(directory)?;
     let mut captured = BTreeMap::new();
     for (index, candidate) in candidates.iter().enumerate() {
-        let range = padded_range(&candidate.cell)?;
         let path = directory.join(format!("{index:03}.png"));
-        telemetry.update(|state| {
-            state.lane(lane).current_sheet = Some(candidate.sheet.clone());
-            state.lane(lane).current_range = Some(range.clone());
-        })?;
-        let geometry = excel.measure_range(lane, &candidate.sheet, &candidate.cell, telemetry)?;
-        excel.capture_range(lane, &candidate.sheet, &range, &path, telemetry)?;
-        captured.insert(candidate.clone(), Evidence { path, geometry });
+        let evidence = capture_candidate(excel, lane, candidate, path, telemetry)?;
+        captured.insert(candidate.clone(), evidence);
         telemetry.update(|state| state.lane(lane).captures_done += 1)?;
     }
     Ok(captured)
+}
+
+/// Measure the candidate cell and capture its padded visual neighborhood.
+fn capture_candidate(
+    excel: &mut ExcelHost,
+    lane: LaneId,
+    candidate: &Candidate,
+    path: PathBuf,
+    telemetry: &Telemetry,
+) -> Result<Evidence> {
+    let range = padded_range(&candidate.cell)?;
+    telemetry.update(|state| {
+        state.lane(lane).current_sheet = Some(candidate.sheet.clone());
+        state.lane(lane).current_range = Some(range.clone());
+    })?;
+    let geometry = excel.measure_range(lane, &candidate.sheet, &candidate.cell, telemetry)?;
+    excel.capture_range(lane, &candidate.sheet, &range, &path, telemetry)?;
+    Ok(Evidence { path, geometry })
 }
 
 fn padded_range(address: &str) -> Result<String> {

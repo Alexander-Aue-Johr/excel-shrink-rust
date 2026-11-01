@@ -1,5 +1,5 @@
 //! Bounded candidate discovery; unrelated workbook changes remain explicit limitations.
-use super::{Candidate, MAX_CANDIDATES};
+use super::{Candidate, WorkingPaths, MAX_CANDIDATES};
 use crate::regression::{
     office_plan::build_workbook_visual_plan,
     worksheet_stream::WorksheetStream,
@@ -12,6 +12,22 @@ use std::{
     path::Path,
 };
 use zip::ZipArchive;
+
+/// Ordinary save effects are distinct controls for Original and Default.
+pub(super) struct SaveChanges {
+    pub(super) original: BTreeSet<Candidate>,
+    pub(super) default: BTreeSet<Candidate>,
+}
+
+/// Compare each working copy with its own pre-save snapshot, not with its partner.
+pub(super) fn find_changes_caused_by_save(
+    before: &WorkingPaths,
+    after: &WorkingPaths,
+) -> Result<SaveChanges> {
+    let original = discover_candidates(&before.original, &after.original)?;
+    let default = discover_candidates(&before.default, &after.default)?;
+    Ok(SaveChanges { original, default })
+}
 
 /// Maps changed cell XML to visible cell or row-geometry capture candidates.
 /// The fixed candidate cap prevents accidental whole-sheet screenshot work.
@@ -105,4 +121,71 @@ fn read_cells(path: &Path, sheet_file: &str) -> Result<BTreeMap<String, Vec<u8>>
         }
     }
     Ok(cells)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::regression::artifact_cache;
+    use std::{fs, io::Write};
+
+    #[test]
+    fn save_changes_compare_each_workbook_with_its_own_snapshot() -> Result<()> {
+        let directory = artifact_cache::unique_path(&std::env::temp_dir(), "save-effects")?;
+        fs::create_dir_all(&directory)?;
+        let before = WorkingPaths {
+            original: directory.join("original-before.xlsx"),
+            default: directory.join("default-before.xlsx"),
+        };
+        let after = WorkingPaths {
+            original: directory.join("original-after.xlsx"),
+            default: directory.join("default-after.xlsx"),
+        };
+        write_cells(&before.original, [1, 2])?;
+        write_cells(&before.default, [100, 200])?;
+        write_cells(&after.original, [3, 2])?;
+        write_cells(&after.default, [100, 300])?;
+
+        let changes = find_changes_caused_by_save(&before, &after)?;
+        assert_eq!(
+            changes.original,
+            BTreeSet::from([Candidate {
+                sheet: "Data".into(),
+                cell: "A1".into(),
+            }])
+        );
+        assert_eq!(
+            changes.default,
+            BTreeSet::from([Candidate {
+                sheet: "Data".into(),
+                cell: "B1".into(),
+            }])
+        );
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    fn write_cells(path: &Path, values: [u32; 2]) -> Result<()> {
+        let sheet = format!(
+            r#"<worksheet><sheetData><row r="1"><c r="A1"><v>{}</v></c><c r="B1"><v>{}</v></c></row></sheetData></worksheet>"#,
+            values[0], values[1],
+        );
+        let mut archive = zip::ZipWriter::new(File::create(path)?);
+        for (name, xml) in [
+            (
+                "xl/workbook.xml",
+                r#"<workbook><sheets><sheet name="Data" r:id="one"/></sheets></workbook>"#,
+            ),
+            (
+                "xl/_rels/workbook.xml.rels",
+                r#"<Relationships><Relationship Id="one" Type="office/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#,
+            ),
+            ("xl/worksheets/sheet1.xml", sheet.as_str()),
+        ] {
+            archive.start_file(name, zip::write::FileOptions::default())?;
+            archive.write_all(xml.as_bytes())?;
+        }
+        archive.finish()?;
+        Ok(())
+    }
 }
