@@ -36,6 +36,9 @@ pub(super) struct Scanner {
     names: Vec<Vec<u8>>,
     depth: usize,
     roots: usize,
+    source_offsets: bool,
+    bytes_received: usize,
+    tag_start: usize,
 }
 
 impl Scanner {
@@ -47,6 +50,9 @@ impl Scanner {
             names: Vec::new(),
             depth: 0,
             roots: 0,
+            source_offsets: false,
+            bytes_received: 0,
+            tag_start: 0,
         }
     }
 
@@ -59,6 +65,10 @@ impl Scanner {
             memchr3(0, 0xff, 0xfe, bytes).is_none(),
             "UTF-16/NUL or invalid UTF-8 bytes in streaming XML"
         );
+        let chunk_start = self.bytes_received;
+        let chunk_length = bytes.len();
+        self.bytes_received = self.bytes_received.checked_add(chunk_length)
+            .ok_or_else(|| anyhow::anyhow!("XML byte offset overflow"))?;
         while !bytes.is_empty() {
             match self.state {
                 State::Text => {
@@ -68,6 +78,7 @@ impl Scanner {
                     }
                     bytes = &bytes[end..];
                     if !bytes.is_empty() {
+                        self.tag_start = chunk_start + chunk_length - bytes.len();
                         self.append(b"<")?;
                         self.state = State::Open;
                         bytes = &bytes[1..];
@@ -207,7 +218,8 @@ impl Scanner {
                 self.depth += 1;
             }
         }
-        emit(Event::Tag(Tag { name, attrs, start: 0, end: bytes.len(), depth, kind }))
+        let start = if self.source_offsets { self.tag_start } else { 0 };
+        emit(Event::Tag(Tag { name, attrs, start, end: start + bytes.len(), depth, kind }))
     }
 
     pub(super) fn finish(&self) -> Result<()> {
@@ -285,10 +297,28 @@ pub(super) fn read_chunk(input: &mut impl Read, buffer: &mut [u8]) -> io::Result
 }
 
 pub(super) fn scan(
+    input: impl Read,
+    emit: impl FnMut(Event<'_>) -> Result<()>,
+) -> Result<()> {
+    scan_internal(input, false, emit)
+}
+
+/// Emit absolute uncompressed tag offsets so selected raw subtrees can be retained verbatim.
+/// The ordinary scanner keeps its existing temporary-tag offsets.
+pub(super) fn scan_with_offsets(
+    input: impl Read,
+    emit: impl FnMut(Event<'_>) -> Result<()>,
+) -> Result<()> {
+    scan_internal(input, true, emit)
+}
+
+fn scan_internal(
     mut input: impl Read,
+    source_offsets: bool,
     mut emit: impl FnMut(Event<'_>) -> Result<()>,
 ) -> Result<()> {
     let mut scanner = Scanner::new();
+    scanner.source_offsets = source_offsets;
     let mut buffer = [0u8; READ_BYTES];
     loop {
         let count = read_chunk(&mut input, &mut buffer)?;

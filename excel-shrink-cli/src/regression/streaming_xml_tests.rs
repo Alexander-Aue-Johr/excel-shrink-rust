@@ -140,3 +140,28 @@ fn sibling_names_reuse_stack_storage() -> Result<()> {
     assert!(scanner.names.iter().map(Vec::capacity).sum::<usize>() < 1024);
     Ok(())
 }
+#[test]
+fn absolute_offsets_preserve_raw_nodes_across_every_chunk_boundary() -> anyhow::Result<()> {
+    let xml = br#"<?xml version="1.0"?><worksheet><!-- prefix --><conditionalFormatting sqref='A1:A9'><!-- keep --><cfRule><formula><![CDATA[1>0]]></formula></cfRule></conditionalFormatting></worksheet>"#;
+    for chunk_size in 1..=xml.len() {
+        let mut scanner = super::Scanner::new();
+        scanner.source_offsets = true;
+        let mut span = None;
+        for chunk in xml.chunks(chunk_size) {
+            scanner.feed(chunk, |event| {
+                if let super::Event::Tag(tag) = event {
+                    assert_eq!(&xml[tag.start..tag.start + 1], b"<");
+                    if tag.local() == b"conditionalFormatting" {
+                        if tag.kind == super::Kind::Start { span = Some((tag.start, 0)); }
+                        if tag.kind == super::Kind::End { span.as_mut().unwrap().1 = tag.end; }
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        scanner.finish()?;
+        let (start, end) = span.unwrap();
+        assert_eq!(&xml[start..end], br#"<conditionalFormatting sqref='A1:A9'><!-- keep --><cfRule><formula><![CDATA[1>0]]></formula></cfRule></conditionalFormatting>"#);
+    }
+    Ok(())
+}
