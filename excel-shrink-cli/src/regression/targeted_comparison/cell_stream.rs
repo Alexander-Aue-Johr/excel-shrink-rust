@@ -9,7 +9,7 @@ use std::{
     sync::Arc,
 };
 
-const RECORD_BYTES: usize = 39;
+const RECORD_BYTES: usize = 40;
 
 #[derive(Clone, Default)]
 pub(super) struct Cells(Option<Arc<Records>>);
@@ -17,6 +17,7 @@ pub(super) struct Cells(Option<Arc<Records>>);
 struct Records {
     path: PathBuf,
     digest: [u8; 32],
+    has_formulas: bool,
 }
 
 impl Drop for Records {
@@ -33,6 +34,7 @@ pub(super) struct Cell {
     pub column: u16,
     pub digest: [u8; 32],
     pub visible: bool,
+    pub has_formula: bool,
 }
 impl Cell {
     fn key(&self) -> (u32, u16) {
@@ -72,6 +74,7 @@ pub(super) struct Writer {
     current: Option<(Cell, Sha256)>,
     last: Option<(u32, u16)>,
     digest: Sha256,
+    has_formulas: bool,
 }
 
 impl Writer {
@@ -89,6 +92,7 @@ impl Writer {
             current: None,
             last: None,
             digest: Sha256::new(),
+            has_formulas: false,
         })
     }
 
@@ -125,6 +129,7 @@ impl Writer {
                             column: column as u16,
                             digest: [0; 32],
                             visible: false,
+                            has_formula: false,
                         },
                         Sha256::new(),
                     ));
@@ -143,6 +148,7 @@ impl Writer {
                     hash.update(tag.attrs);
                     hash.update([0]);
                     cell.visible |= matches!(tag.local(), b"v" | b"f" | b"is" | b"t");
+                    cell.has_formula |= tag.local() == b"f";
                 }
                 if tag.local() == b"c" && matches!(tag.kind, Kind::End | Kind::Empty) {
                     self.finish_cell()?;
@@ -169,11 +175,13 @@ impl Writer {
     }
 
     fn write_cell(&mut self, cell: Cell) -> Result<()> {
+        self.has_formulas |= cell.has_formula;
         let mut record = [0u8; RECORD_BYTES];
         record[..4].copy_from_slice(&cell.row.to_le_bytes());
         record[4..6].copy_from_slice(&cell.column.to_le_bytes());
         record[6] = u8::from(cell.visible);
-        record[7..].copy_from_slice(&cell.digest);
+        record[7] = u8::from(cell.has_formula);
+        record[8..].copy_from_slice(&cell.digest);
         self.output
             .as_mut()
             .context("Cell writer closed")?
@@ -189,6 +197,7 @@ impl Writer {
         let records = Records {
             path: self.path.clone(),
             digest: self.digest.clone().finalize().into(),
+            has_formulas: self.has_formulas,
         };
         self.complete = true;
         Ok(Cells(Some(Arc::new(records))))
@@ -217,11 +226,29 @@ fn next_cell(reader: &mut Option<BufReader<File>>) -> Result<Option<Cell>> {
         row: u32::from_le_bytes(record[..4].try_into().unwrap()),
         column: u16::from_le_bytes(record[4..6].try_into().unwrap()),
         visible: record[6] != 0,
-        digest: record[7..].try_into().unwrap(),
+        has_formula: record[7] != 0,
+        digest: record[8..].try_into().unwrap(),
     }))
 }
 
 impl Cells {
+    /// Formula XML/cache equality alone cannot establish nonvolatile conditional-format inputs.
+    pub fn formula_cells(&self, mut emit: impl FnMut(Cell) -> Result<()>) -> Result<()> {
+        if !self.0.as_ref().is_some_and(|records| records.has_formulas) {
+            return Ok(());
+        }
+        let mut reader = self
+            .0
+            .as_ref()
+            .map(|records| File::open(&records.path).map(BufReader::new))
+            .transpose()?;
+        while let Some(cell) = next_cell(&mut reader)? {
+            if cell.has_formula {
+                emit(cell)?;
+            }
+        }
+        Ok(())
+    }
     /// Merge two immutable disk streams in numeric grid order; emit only actual differences.
     pub fn changes(
         &self,
@@ -294,6 +321,7 @@ impl Cells {
                 column: 2,
                 digest: [1; 32],
                 visible: false,
+                has_formula: false,
             })
             .unwrap();
         writer.finish().unwrap()

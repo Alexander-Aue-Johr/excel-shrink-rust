@@ -211,6 +211,7 @@ mod tests {
                     column,
                     digest: [0; 32],
                     visible: true,
+                    has_formula: false,
                 };
                 write!(
                     archive,
