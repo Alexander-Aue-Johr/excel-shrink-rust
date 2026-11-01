@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-01",
+  "fixture": "Generated two-cell font-height control; not a corpus benchmark",
+  "native_comparison": {
+    "status": "completed_with_limitations",
+    "candidates": 2,
+    "captures": 8,
+    "changed_cell": "A10",
+    "original_height_points": 39,
+    "default_height_points": 15,
+    "before_rebuild_differs": true,
+    "after_rebuild_differs": true,
+    "original_recalc_drift": false
+  },
+  "injected_capture_failure": {
+    "status": "failed",
+    "finished_recorded": true,
+    "all_owned_excel_exits_confirmed": true
+  },
+  "http_launch": {
+    "passed": true,
+    "prepared_bundle_unchanged": true,
+    "command_timeout_verified": true
+  },
+  "browser": {
+    "passed": true,
+    "checked": [
+      "real WebGL shader compilation",
+      "shared contexts",
+      "stable heartbeat canvases",
+      "heartbeat-only graph",
+      "workflow checkboxes",
+      "completed-card relocation",
+      "bounded recent history",
+      "expand history",
+      "fullscreen scrolling",
+      "no JavaScript exceptions"
+    ]
+  }
+}

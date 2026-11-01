@@ -1,5 +1,10 @@
 # Targeted comparison WIP
 
+The comparison cards and their acceptance contract are documented in
+[Targeted comparison cards](../../targeted-comparison-cards.md). The Observatory
+can now explicitly start this bounded workflow on private copies. Scientific
+coverage limits below still apply.
+
 `excel-shrink-cli regression targeted-compare` compares one original XLSX with one
 Default shrink XLSX without starting the corpus runner or Observatory. It copies
 both inputs, keeps each copy open in a private Excel instance, and writes PNGs,
@@ -66,5 +71,23 @@ procedure readable and keep this WIP commit as the integration base.
 Before using this for a corpus, replace the in-memory cell map with a bounded
 streaming comparison, add complete candidate discovery and report filters, and
 connect actual Office.js heartbeat/progress to the Observatory cards. The
-current cards display phase telemetry but no add-in heartbeat because this
-experimental host uses COM screenshots.
+cards now distinguish actual phase/capture progress from externally measured
+PID-liveness samples. This experimental host still uses COM screenshots and
+does not emit Office.js add-in heartbeats. Full candidate discovery and the
+streaming cell comparison remain future scientific work.
+
+## Card and lifecycle verification
+
+`run-smoke.ps1 -Output <new-directory>` creates a tiny font-height counterexample
+and runs the actual comparison on an owned private desktop. Add `-FailCapture`
+to inject a capture error after real Excel startup and verify cleanup.
+
+`test-panel.cjs <new-output-directory> <telemetry.json>` runs an isolated headless
+Edge with synthetic UI verification frames derived from that telemetry. It
+checks the real shaders, retained canvases, workflow matrix, history and
+fullscreen. It requires Node with built-in WebSocket support; the installed
+VS Code runtime can be used with `ELECTRON_RUN_AS_NODE=1`.
+
+`test-host.cjs <smoke-directory>` verifies the actual HTTP launch path using a
+`prepared/smoke.zip` fixture with Original/Default inputs. Its fixed test port is
+8879. It does not use or restart a production host.
