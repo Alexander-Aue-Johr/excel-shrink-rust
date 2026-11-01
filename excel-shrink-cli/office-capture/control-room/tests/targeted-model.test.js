@@ -1,0 +1,37 @@
+import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, iconActivity } from '../targeted-model.js';
+
+export function runTests() {
+  let passed = 0;
+  const assert = (condition, message) => { if (!condition) throw new Error(message); passed++; };
+  const ended = { run_id: 'one', status: 'completed_with_limitations', finished_at: 2000,
+    lanes: [{ id: 'O', pid: 12, lifecycle: 'closed', process_alive: false }, { id: 'CP', lifecycle: 'unavailable' }] };
+  assert(comparisonFinished(ended), 'Unavailable CP does not pretend to be a live process.');
+  assert(!comparisonFinished({ ...ended, lanes: [{ pid: 12, lifecycle: 'open', process_alive: true }] }),
+    'A completed report cannot move a still-open Excel process into completed history.');
+  assert(!comparisonFinished({ ...ended, finished_at: null }), 'An unconfirmed completion stays active.');
+  const opening = iconActivity({ lifecycle: 'opening' }, 'excel', 1000);
+  assert(opening.pulse && opening.level === 1, 'Excel pulses specifically while opening.');
+  const open = iconActivity({ lifecycle: 'open' }, 'excel', 1000);
+  assert(!open.pulse && open.level === 1, 'Open Excel stays steadily illuminated.');
+  const closed = { lifecycle: 'closed', closed_at: 1000 };
+  assert(iconActivity(closed, 'excel', 1000).level === 1, 'Confirmed exit begins a smooth afterglow.');
+  const faded = iconActivity(closed, 'excel', 3200).level;
+  assert(faded > 0.3 && faded < 0.4, 'Afterglow depends on real elapsed event time.');
+  assert(iconActivity({ ...closed }, 'excel', 5400).level < faded, 'Repeated snapshots cannot restart the fade.');
+  const fastXml = { xml_started_at: 1000, xml_finished_at: 1001 };
+  assert(iconActivity(fastXml, 'xml', 2000).level > 0.5, 'A one-millisecond XML operation remains visible after a poll.');
+  assert(iconActivity({}, 'xml', 2000).level === 0, 'Missing XML events never create activity.');
+  assert(iconActivity({ xml_started_at: 3000 }, 'xml', 2000).level === 0, 'Future timestamps do not invent current XML activity.');
+  assert(!captureProgress({ captures_done: 0 }).known, 'Unknown queue size remains indeterminate.');
+  assert(!captureProgress({ captures_done: 6, captures_total: 5 }).known, 'Invalid counts never become a completed bar.');
+  assert(captureProgress({ captures_done: 2, captures_total: 8 }).remaining === 6, 'A growing candidate queue preserves completed work.');
+  assert(captureProgress({ captures_done: 0, captures_total: 0 }).known, 'Zero-candidate selection is explicit.');
+  const current = { run_id: 'one', revision: 5, lanes: [] };
+  assert(acceptComparison(current, { ...current, revision: 4 }) === current, 'Late replies cannot reverse the lifecycle.');
+  const row = heartbeatRow(ended, { id: 'O', pid: 12, process_started_at: 50, process_alive: true });
+  assert(row.heartbeatCount === undefined && row.heartbeat == null, 'A PID without a real probe never becomes a heartbeat.');
+  assert(row.heartbeatSource.includes('not Excel responsiveness'), 'Process liveness is labelled separately from responsiveness.');
+  return passed;
+}
+
+export const result = runTests();

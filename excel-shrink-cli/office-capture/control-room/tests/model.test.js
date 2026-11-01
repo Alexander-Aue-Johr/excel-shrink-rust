@@ -5,6 +5,7 @@ import { result as signalTests } from './signal-model.test.js';
 import { result as captureStripTests } from './capture-strip-model.test.js';
 import { result as captureNavigationTests } from './capture-navigation-model.test.js';
 import { result as controlTests } from './control-state.test.js';
+import { result as targetedTests } from './targeted-model.test.js';
 
 function assert(condition, message) { if (!condition) throw new Error(message); }
 function equal(actual, expected, message) { assert(JSON.stringify(actual) === JSON.stringify(expected), `${message}: ${JSON.stringify(actual)}`); }
@@ -193,7 +194,7 @@ export function runTests() {
   const noOmission = normalizeGroup({ sheets: [{ height: 100000, tiles: [{ id: 'pending', width: 800, height: 100000 }] }] }).sheets[0];
   assert(noOmission.height === 100000 && noOmission.tiles.length === 1, 'A large pending capture is never treated as an omission.');
   return { passed: 88 + viewportTests.passed + workerTests.passed + signalTests.passed
-    + captureStripTests.checks + captureNavigationTests.checks + controlTests.passed };
+    + captureStripTests.checks + captureNavigationTests.checks + controlTests.passed + targetedTests };
 }
 
 export const result = runTests();

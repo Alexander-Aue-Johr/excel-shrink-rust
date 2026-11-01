@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./signal-monitor.css">
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
+  <link rel="stylesheet" href="targeted-panel.css">
 </head>
 <body>
   <header class="masthead"><div><div class="eyebrow">EXCEL SHRINK / VISUAL REGRESSION</div><h1>See the comparison unfold.</h1></div><div class="connection"><i id="connectionLight"></i><span id="connectionText">Connecting</span><span class="pill" id="memory">RAM —</span></div></header>
@@ -109,11 +110,7 @@
     <main>
       <div class="workbook-heading"><div><div class="eyebrow" id="groupEyebrow">LIVE STUDIO</div><h2 id="workbook">Waiting for the first group.</h2><p id="groupStatus">Actual capture jobs appear here.</p></div><div class="heading-actions"><button id="startDeferredScan" hidden>Start deferred full scan</button><button id="restartGroup">Requeue group</button><button id="resetCamera">All sheets</button></div></div>
       <p id="deferredResume" class="deferred-resume" hidden></p>
-      <section id="targetedComparison" class="targeted-comparison" hidden aria-label="Targeted comparison">
-        <div class="section-head"><h2>Targeted comparison</h2><span id="targetedSummary"></span></div>
-        <div id="targetedLanes" class="targeted-lanes"></div>
-        <ol id="targetedPhases" class="targeted-phases"></ol>
-      </section>
+      <section id="targetedComparison" hidden aria-label="Targeted comparisons"></section>
       <section id="groupOutcome" class="group-outcome" hidden aria-label="Workbook result">
         <strong id="groupOutcomeTitle"></strong><span id="groupOutcomeReason"></span>
       </section>

@@ -7,8 +7,32 @@ import { workerRows } from './worker-monitor-model.js';
 import { createSignalMonitor } from './signal-monitor.js';
 import { findCaptureTile, profileForClient, latestTileForProfile } from './capture-navigation-model.js';
 import { createControlUpdates } from './control-state.js';
+import { createTargetedPanel } from './targeted-panel.js';
 
 const $ = id => document.getElementById(id);
+const targetedPanel = createTargetedPanel($('targetedComparison'));
+const startTargeted = document.createElement('button');
+startTargeted.type = 'button';
+startTargeted.disabled = true;
+let targetedStarting = false;
+startTargeted.textContent = 'Targeted recheck · Original / Default';
+startTargeted.title = 'Run the bounded targeted comparison on private copies. The corpus queue keeps running.';
+startTargeted.title += ' This manual COM recheck uses the shared Windows clipboard; changing it can make a capture fail safely.';
+document.querySelector('.heading-actions').append(startTargeted);
+startTargeted.addEventListener('click', async () => {
+  if (!state.groupId || startTargeted.disabled) return;
+  targetedStarting = true;
+  startTargeted.disabled = true;
+  try {
+    setNotice('Preparing Original / Default copies for a private targeted recheck…');
+    const response = await fetch(`/api/groups/${encodeURIComponent(state.groupId)}/targeted-compare`, { method: 'POST' });
+    const result = await response.json();
+    if (!response.ok || result.ok === false) throw new Error(result.error || `HTTP ${response.status}`);
+    setNotice(`Private targeted comparison requested · ${result.request_id}. Its cards appear when the worker starts.`);
+    targetedPanel.refresh();
+  } catch (error) { setNotice(`Targeted recheck could not start: ${error.message}`, true); }
+  finally { targetedStarting = false; startTargeted.disabled = !targetedPanel.supported || !state.groupId; }
+});
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const C = { waiting: 0x3c566b, received: 0x79dce8, equal: 0x75edc0, 'hash-equal': 0x98badf, different: 0xff7a91, omitted: 0xa5a3bb };
 const CARD_W = 16, CARD_H = 9, BOARD_W = 3.67, BOARD_H = 7.75, BOARD_STEP = 3.87;
@@ -1384,7 +1408,6 @@ function selectGroup(id) {
   state.groupId = id; state.sheetId = null; state.focus = 'overview'; lastFocusKey = ''; state.view = { mode: 'sheet', x: 0, y: 0, width: 1800, height: 1800 * AREA_H / AREA_W }; latestCapture = null; previousImages.clear(); flashes.clear();
   followedProfile = null; lastFollowedKey = null;
   data = null; entries = []; lastSignature = ''; sheetSignature = ''; clearDetails(); ++sceneGeneration;
-  renderTargetedComparison(null);
   boards.splice(0).forEach(disposeObject); sourceTiles.length = 0; hitTargets.length = 0; sheetCards.clear();
   for (const card of processCards.values()) card.signals.destroy();
   processCards.clear(); $('processes').replaceChildren();
@@ -1441,7 +1464,7 @@ function applyCaptureJump() {
 }
 function acceptGroup(raw) {
   data = normalizeGroup(raw); entries = data.sheets.flatMap(sheet => sheet.tiles);
-  renderTargetedComparison(data.targeted_comparison);
+  targetedPanel.update(data.targeted_comparison);
   $('workbook').textContent = groupName(data); $('workbook').title = String(data.workbook || '');
   $('groupEyebrow').textContent = [data.corpus, data.capture_mode === 'classic' || data.status === 'retrying_classic' ? 'LAST RESIDENT CAPTURES · CLASSIC CROSS-CHECK' : 'LIVE STUDIO'].filter(Boolean).join(' · ');
   if (!data.sheets.some(sheet => sheet.id === state.sheetId)) state.sheetId = data.sheets[0]?.id ?? null;
@@ -1472,43 +1495,6 @@ function acceptGroup(raw) {
   clampView(); updateSheets(); renderScene(); updateDiagnosticUi();
   applyCaptureJump();
   if (state.pendingDifference) { state.pendingDifference = false; nextDifference(); }
-}
-function renderTargetedComparison(comparison) {
-  const section = $('targetedComparison');
-  section.hidden = !comparison;
-  if (!comparison) return;
-  $('targetedSummary').textContent = `${comparison.candidate_count ?? 0} changed cells · ${comparison.report?.status || 'running'}`;
-  $('targetedLanes').replaceChildren(...(comparison.lanes || []).map(lane => {
-    const card = document.createElement('div');
-    card.className = 'targeted-lane';
-    const light = document.createElement('span');
-    light.className = `targeted-light ${lane.status}`;
-    light.setAttribute('aria-hidden', 'true');
-    const title = document.createElement('strong');
-    title.textContent = lane.label;
-    const status = document.createElement('span');
-    status.textContent = [lane.status, lane.pid ? `PID ${lane.pid}` : null].filter(Boolean).join(' · ');
-    const progress = document.createElement('progress');
-    progress.max = Math.max(1, Number(lane.captures_total || 0));
-    progress.value = Number(lane.captures_done || 0);
-    progress.title = `${progress.value} of ${lane.captures_total || 0} captures in this phase`;
-    card.append(light, title, status, progress);
-    return card;
-  }));
-  const phases = [
-    'initial XML compared', 'original and shrink opened',
-    'Excel save effects inspected', 'initial regions captured',
-    'shrink rebuilt and captured', 'original rebuilt and captured',
-    'images and rendered geometry compared',
-  ];
-  const completed = new Set(comparison.phases || []);
-  const active = completed.size;
-  $('targetedPhases').replaceChildren(...phases.map((phase, index) => {
-    const item = document.createElement('li');
-    item.textContent = phase;
-    item.className = completed.has(phase) ? 'done' : index === active && comparison.activity !== 'failed' ? 'active' : 'pending';
-    return item;
-  }));
 }
 async function poll() {
   const generation = pollGeneration;
@@ -1551,6 +1537,9 @@ async function poll() {
     state.queue = queue; state.connected = true; state.error = null;
     maybeRefreshWorkbookIndex();
     workerMonitor?.update(queue);
+    targetedPanel.refresh().then(() => {
+      startTargeted.disabled = targetedStarting || !state.groupId || !targetedPanel.supported || !state.connected;
+    });
     const runnerActive = queue.running === true && queue.runner_alive === true;
     $('stopRun').disabled = !runnerActive || queue.stop_requested === true || queue.terminate_requested === true;
     $('stopRun').textContent = queue.stop_requested && queue.running ? 'Finishing...' : 'Finish active workbooks';

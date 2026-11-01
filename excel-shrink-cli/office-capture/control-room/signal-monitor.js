@@ -174,8 +174,10 @@ function drawStates(ctx, snapshot, now, windowMs, left, width, y) {
   }
 }
 
-export function createSignalMonitor({ compact = false, onCaptureNavigate = null } = {}) {
+/** Reuse the event-driven heartbeat trace alone when captures/stages have their own UI. */
+export function createSignalMonitor({ compact = false, onCaptureNavigate = null, heartbeatOnly = false } = {}) {
   const root = element('span', `signal-monitor${compact ? ' signal-compact' : ''}`);
+  root.classList.toggle('signal-heartbeat-only', heartbeatOnly);
   const heading = element('span', 'signal-heading');
   const state = element('span', 'signal-state', 'Waiting for telemetry');
   const interval = element('span', 'signal-window', '30 s');
@@ -204,6 +206,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
   glyphSelect.value = settings.glyphSize;
   glyphSelect.addEventListener('change', () => updateSettings('glyphSize', glyphSelect.value));
   glyphLabel.append(glyphSelect);
+  glyphLabel.hidden = heartbeatOnly;
   const fullscreen = element('button', 'signal-fullscreen', 'Full screen');
   fullscreen.type = 'button';
   fullscreen.setAttribute('aria-label', 'Fullscreen signal');
@@ -224,6 +227,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
     ['progress', 'Steps', counterSteps],
   ];
   for (const [cls, label, counter] of counters) {
+    if (heartbeatOnly && cls !== 'heartbeat') continue;
     const key = element('span', `signal-key signal-${cls}`);
     key.append(element('i', ''), document.createTextNode(label + ' '), counter);
     legend.append(key);
@@ -266,7 +270,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
     if (!destroyed) view.draw();
   });
   resize.observe(root);
-  const spatial = createCaptureSpatialView({ compact, onCaptureNavigate: onCaptureNavigate
+  const spatial = heartbeatOnly ? null : createCaptureSpatialView({ compact, onCaptureNavigate: onCaptureNavigate
     ? payload => { if (row) onCaptureNavigate({ row, ...payload }); } : null });
   const follow = onCaptureNavigate ? element('button', 'signal-follow', '↗ Follow captures') : null;
   if (follow) {
@@ -308,16 +312,19 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
         : 'Select the capture timeline to view current images in the Atelier.';
     });
   }
-  root.append(heading, canvas, legend, displayNote, spatial.element);
+  root.append(heading, canvas, legend, displayNote);
+  if (spatial) root.append(spatial.element);
   const view={element:root,visible:false,live:false,
     refreshSettings() {
       windowSelect.value = String(settings.windowSeconds);
       glyphSelect.value = settings.glyphSize;
-      root.title = `A ${settings.windowSeconds}-second timeline of observed events. Each ECG-shaped pulse represents an observed add-in heartbeat. Miniatures show received captures; the bottom track shows reported phases and completed steps. Quiet signals alone do not diagnose a failure.`;
+      root.title = heartbeatOnly
+        ? 'Observed heartbeat timestamps only. The source is labelled on the card; PID liveness is not Excel responsiveness or work progress.'
+        : `A ${settings.windowSeconds}-second timeline of observed events. Each ECG-shaped pulse represents an observed add-in heartbeat. Miniatures show received captures; the bottom track shows reported phases and completed steps. Quiet signals alone do not diagnose a failure.`;
       view.draw();
     },
-    get captureExpanded(){return spatial.element.open;},
-    set captureExpanded(value){spatial.element.open=Boolean(value);},
+    get captureExpanded(){return spatial?.element.open ?? false;},
+    set captureExpanded(value){if (spatial) spatial.element.open=Boolean(value);},
     update(next,options={}){
       if(!next)return;
       const same=row?.id===next.id;
@@ -334,9 +341,9 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       view.live=connected&&!stale&&liveSource&&row.active!==false&&row.alive!==false;
       if(view.live){frozenAt=null;frozenSnapshot=null;}
       else{frozenAt??=receivedAt??now;frozenSnapshot??=lastSnapshot;}
-      spatial.element.hidden = row.kind === 'Rust / Host';
+      if (spatial) spatial.element.hidden = row.kind === 'Rust / Host';
       const spatialSnapshot = view.live ? lastSnapshot : frozenSnapshot;
-      spatial.update(spatialSnapshot?.captureHistory || spatialSnapshot?.captureEvents || [], view.live ? now : frozenAt);
+      spatial?.update(spatialSnapshot?.captureHistory || spatialSnapshot?.captureEvents || [], view.live ? now : frozenAt);
       view.draw();schedule();
     },
     draw(){
@@ -361,7 +368,9 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       const heartbeatCount = snapshot.points.heartbeat.filter(inWindow).length;
       const captureCount = snapshot.captureEvents.filter(event => inWindow(event.at)).length;
       const stepCount = snapshot.points.progress.filter(inWindow).length;
-      const label = `${status}. ${heartbeatCount} observed heartbeats; ${heartbeatAge}. ${captureCount} capture events and ${stepCount} completed steps in ${settings.windowSeconds} seconds. Unreported channels remain unknown.`;
+      const label = heartbeatOnly
+        ? `${row.heartbeatSource || 'Add-in heartbeat'}. ${heartbeatCount} observed heartbeats; ${heartbeatAge}.`
+        : `${status}. ${heartbeatCount} observed heartbeats; ${heartbeatAge}. ${captureCount} capture events and ${stepCount} completed steps in ${settings.windowSeconds} seconds. Unreported channels remain unknown.`;
       if (root.getAttribute('aria-label') !== label) root.setAttribute('aria-label', label);
       if (follow) {
         const disabled = row.kind === 'Rust / Host' || !row.groupId;
@@ -386,7 +395,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       ctx.fillRect(0, 0, width, height);
       const left = expanded ? 48 : 34;
       const graphWidth = Math.max(1, width - left - 7);
-      const traceHeight = expanded ? height * .58 : small ? 44 : 56;
+      const traceHeight = heartbeatOnly ? height - 28 : expanded ? height * .58 : small ? 44 : 56;
       const heartY = 4 + traceHeight * .57;
       const capY = expanded ? height * .79 : small ? 83 : 103;
       const stateY = height - (expanded ? 30 : 20);
@@ -411,6 +420,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
       for (const [text, y, color] of [
         ['HB', heartY, '#75edc0'], ['CAP', capY, '#79dce8'], ['STATE', stateY, '#9bb3c2'],
       ]) {
+        if (heartbeatOnly && text !== 'HB') continue;
         ctx.fillStyle = color;
         ctx.font = `${expanded ? 11 : 8}px Consolas, monospace`;
         ctx.fillText(text, 2, y + 3);
@@ -424,8 +434,10 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null 
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      hitBoxes = drawCaptures(ctx, snapshot.captureEvents, now, windowMs, left, graphWidth, capY, small, settings.glyphSize);
-      drawStates(ctx, snapshot, now, windowMs, left, graphWidth, stateY);
+      if (!heartbeatOnly) {
+        hitBoxes = drawCaptures(ctx, snapshot.captureEvents, now, windowMs, left, graphWidth, capY, small, settings.glyphSize);
+        drawStates(ctx, snapshot, now, windowMs, left, graphWidth, stateY);
+      }
       ctx.font = `${expanded ? 11 : 8}px Segoe UI, sans-serif`;
       ctx.fillStyle = '#99bda9';
       ctx.textAlign = 'left';
