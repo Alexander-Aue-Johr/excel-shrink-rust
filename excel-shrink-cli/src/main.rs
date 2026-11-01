@@ -9,6 +9,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 mod batch_report;
 mod capture_host;
 mod console_writer;
+mod native_process;
 mod pipeline;
 mod profiling;
 mod regression;
