@@ -1,0 +1,492 @@
+{
+  "date": "2026-11-01",
+  "commit": "3c71430b04379cdc472014438e3e8ec60cd52fdd",
+  "excel_version": "16.0.20527.20088",
+  "fixture": "Seven paired cases, 14 worksheets, 32 logical rows each",
+  "input_sha256": "a0179e2f16f40a6c0f0bab88b88520c3ca21c6d1769148d26acb0aab076d37e1",
+  "startup_seconds": 4.27,
+  "measurements": [
+    {
+      "action": "read",
+      "elapsed_ms": 34.89999997615814,
+      "rows": [
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 144.75,
+          "sheet": "fixed-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 144.75,
+          "sheet": "fixed-cell-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 318,
+          "sheet": "fixed-column-before",
+          "top": 278.25
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 318,
+          "sheet": "fixed-column-after",
+          "top": 278.25
+        },
+        {
+          "format_row_height": 39,
+          "height": 39,
+          "hidden": false,
+          "next_top": 144,
+          "sheet": "automatic-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "automatic-cell-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 39,
+          "height": 39,
+          "hidden": false,
+          "next_top": 312,
+          "sheet": "automatic-column-before",
+          "top": 273
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "automatic-column-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 39,
+          "height": 39,
+          "hidden": false,
+          "next_top": 144,
+          "sheet": "stale-ht-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "stale-ht-cell-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 144.75,
+          "sheet": "fixed-row-deleted-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "fixed-row-deleted-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 0,
+          "height": 0,
+          "hidden": true,
+          "next_top": 105,
+          "sheet": "fixed-hidden-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 0,
+          "height": 0,
+          "hidden": true,
+          "next_top": 105,
+          "sheet": "fixed-hidden-cell-after",
+          "top": 105
+        }
+      ]
+    },
+    {
+      "action": "save",
+      "elapsed_ms": 102.5,
+      "rows": [
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 144.75,
+          "sheet": "fixed-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 144.75,
+          "sheet": "fixed-cell-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 318,
+          "sheet": "fixed-column-before",
+          "top": 278.25
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 318,
+          "sheet": "fixed-column-after",
+          "top": 278.25
+        },
+        {
+          "format_row_height": 39,
+          "height": 39,
+          "hidden": false,
+          "next_top": 144,
+          "sheet": "automatic-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "automatic-cell-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 39,
+          "height": 39,
+          "hidden": false,
+          "next_top": 312,
+          "sheet": "automatic-column-before",
+          "top": 273
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "automatic-column-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 39,
+          "height": 39,
+          "hidden": false,
+          "next_top": 144,
+          "sheet": "stale-ht-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "stale-ht-cell-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 144.75,
+          "sheet": "fixed-row-deleted-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "fixed-row-deleted-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 0,
+          "height": 0,
+          "hidden": true,
+          "next_top": 105,
+          "sheet": "fixed-hidden-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 0,
+          "height": 0,
+          "hidden": true,
+          "next_top": 105,
+          "sheet": "fixed-hidden-cell-after",
+          "top": 105
+        }
+      ]
+    },
+    {
+      "action": "rebuild_save",
+      "elapsed_ms": 100,
+      "rows": [
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 144.75,
+          "sheet": "fixed-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 144.75,
+          "sheet": "fixed-cell-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 318,
+          "sheet": "fixed-column-before",
+          "top": 278.25
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 318,
+          "sheet": "fixed-column-after",
+          "top": 278.25
+        },
+        {
+          "format_row_height": 39,
+          "height": 39,
+          "hidden": false,
+          "next_top": 144,
+          "sheet": "automatic-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "automatic-cell-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 39,
+          "height": 39,
+          "hidden": false,
+          "next_top": 312,
+          "sheet": "automatic-column-before",
+          "top": 273
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "automatic-column-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 39,
+          "height": 39,
+          "hidden": false,
+          "next_top": 144,
+          "sheet": "stale-ht-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "stale-ht-cell-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 40,
+          "height": 39.9375,
+          "hidden": false,
+          "next_top": 144.75,
+          "sheet": "fixed-row-deleted-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 15,
+          "height": 15,
+          "hidden": false,
+          "next_top": 120,
+          "sheet": "fixed-row-deleted-after",
+          "top": 105
+        },
+        {
+          "format_row_height": 0,
+          "height": 0,
+          "hidden": true,
+          "next_top": 105,
+          "sheet": "fixed-hidden-cell-before",
+          "top": 105
+        },
+        {
+          "format_row_height": 0,
+          "height": 0,
+          "hidden": true,
+          "next_top": 105,
+          "sheet": "fixed-hidden-cell-after",
+          "top": 105
+        }
+      ]
+    }
+  ],
+  "saved_fixed_row_attributes": {
+    "input.xlsx": [
+      {
+        "sheet_index": 1,
+        "ht": "40",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 2,
+        "ht": "40",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 3,
+        "ht": "40",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 4,
+        "ht": "40",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 13,
+        "ht": "40",
+        "customHeight": "1",
+        "hidden": "1"
+      },
+      {
+        "sheet_index": 14,
+        "ht": "40",
+        "customHeight": "1",
+        "hidden": "1"
+      }
+    ],
+    "save.xlsx": [
+      {
+        "sheet_index": 1,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 2,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 3,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 4,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 13,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "1"
+      },
+      {
+        "sheet_index": 14,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "1"
+      }
+    ],
+    "rebuild_save.xlsx": [
+      {
+        "sheet_index": 1,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 2,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 3,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 4,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "0"
+      },
+      {
+        "sheet_index": 13,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "1"
+      },
+      {
+        "sheet_index": 14,
+        "ht": "39.950000000000003",
+        "customHeight": "1",
+        "hidden": "1"
+      }
+    ]
+  },
+  "excel_exit_confirmed": true,
+  "peak_excel_private_bytes": 229429248,
+  "verification_repeat": {
+    "passed": true,
+    "startup_seconds": 5.779,
+    "measurement_ms": {
+      "read": 28.100000023841854,
+      "save": 76.19999998807907,
+      "rebuild_save": 74.60000002384186
+    },
+    "excel_exit_confirmed": true
+  }
+}
