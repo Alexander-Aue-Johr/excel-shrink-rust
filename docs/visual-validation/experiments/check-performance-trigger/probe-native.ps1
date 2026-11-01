@@ -133,7 +133,7 @@ function Record-NativeCapabilities($Connection, $Report) {
 
 function Save-PanelImage($Connection, $Report, $Directory) {
     Add-Type -AssemblyName System.Drawing
-    Add-Type -Path (Join-Path $PSScriptRoot 'NativeWindow.cs')
+    Add-Type -Path (Join-Path $Worker 'NativeWindow.cs')
     $root = $Connection.Root
     $excel = $Connection.Excel
     $bounds = $root.Current.BoundingRectangle

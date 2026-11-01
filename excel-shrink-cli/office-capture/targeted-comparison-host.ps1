@@ -24,6 +24,8 @@ public static class ExcelProcessId {
 }
 '@
 
+Import-Module (Join-Path $PSScriptRoot 'CheckPerformance.psm1') -Force
+
 $sessions = @{}
 $ownedExcel = New-Object CaptureProcesses
 
@@ -177,6 +179,7 @@ function Invoke-Command {
     switch ($Command.kind) {
         'open' { return Open-Workbook $Command.lane $Command.path }
         'save' { return Save-Workbook $Command.lane }
+        'optimize' { return Invoke-WorkbookPerformanceOptimization $sessions[$Command.lane] $Command.timeout_seconds }
         'recalculate' { return Recalculate-Workbook $Command.lane }
         'capture' { return Capture-Region $Command.lane $Command.sheet $Command.range $Command.output }
         'measure' { return Measure-Region $Command.lane $Command.sheet $Command.range }

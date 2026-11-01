@@ -64,7 +64,7 @@ owns launcher/debugger cleanup and log handles, including failed startup.
 
 `probe-native.ps1` separates connection identity checks, capability discovery,
 pane opening, target discovery, action invocation, and completion observation.
-`NativeWindow.cs` contains the Windows window-image and pointer-input calls;
+`excel-shrink-cli/office-capture/NativeWindow.cs` (shared with the targeted comparison) contains the Windows window-image and pointer-input calls;
 `AccessibleAction.cs` contains the MSAA traversal. These are experiment helpers,
 not a new production automation layer.
 
