@@ -1,0 +1,240 @@
+{
+  "date": "2026-11-01",
+  "commit": "c697950b89b88630fbd09d8c9520a34b318da97b",
+  "windows": "Windows-11-10.0.26200-SP0",
+  "excel_version": "16.0.20527.20088",
+  "rows_per_sheet": 1048576,
+  "binary_sha256": "5c697309a49a5605c0fd14f213e530a8d9ea384d4e2ee48f344d2bbd144452a2",
+  "geometry_sha256": "3dee5af24967f9de6a438b7ae217b258b8b0f0b1aa08b6e007b2c08dc939bb5c",
+  "probe_sha256": "42ed50ae34892c9b456577d0b6065ea01939cbb4e452159cfd0528251d09f30d",
+  "measurement_budget_seconds": 30,
+  "production_scanner_modified": false,
+  "results": [
+    {
+      "case": "uniform",
+      "startup_seconds": 7.528,
+      "peak_excel_private_bytes": 266862592,
+      "excel_exit_confirmed": true,
+      "measurements": [
+        {
+          "complete": true,
+          "elapsed_ms": 668.5,
+          "host_wall_seconds": 2.506,
+          "requested_ranges": 128,
+          "batches": 2,
+          "run_count": 1,
+          "sample_runs": [
+            {
+              "end_row": 1048576,
+              "height": 15,
+              "start_row": 1
+            }
+          ],
+          "total_height": 15728640
+        },
+        {
+          "complete": true,
+          "elapsed_ms": 58.60000002384186,
+          "host_wall_seconds": 0.251,
+          "requested_ranges": 128,
+          "batches": 2,
+          "run_count": 1,
+          "sample_runs": [
+            {
+              "end_row": 1048576,
+              "height": 15,
+              "start_row": 1
+            }
+          ],
+          "total_height": 15728640
+        }
+      ]
+    },
+    {
+      "case": "outliers",
+      "startup_seconds": 6.775,
+      "peak_excel_private_bytes": 272576512,
+      "excel_exit_confirmed": true,
+      "measurements": [
+        {
+          "complete": true,
+          "elapsed_ms": 410.39999997615814,
+          "host_wall_seconds": 2.255,
+          "requested_ranges": 206,
+          "batches": 15,
+          "run_count": 6,
+          "sample_runs": [
+            {
+              "end_row": 8191,
+              "height": 15,
+              "start_row": 1
+            },
+            {
+              "end_row": 8192,
+              "height": 0,
+              "start_row": 8192
+            },
+            {
+              "end_row": 524287,
+              "height": 15,
+              "start_row": 8193
+            },
+            {
+              "end_row": 524288,
+              "height": 30,
+              "start_row": 524288
+            },
+            {
+              "end_row": 1048575,
+              "height": 15,
+              "start_row": 524289
+            },
+            {
+              "end_row": 1048576,
+              "height": 30,
+              "start_row": 1048576
+            }
+          ],
+          "total_height": 15728655
+        },
+        {
+          "complete": true,
+          "elapsed_ms": 399.199999988079,
+          "host_wall_seconds": 0.501,
+          "requested_ranges": 206,
+          "batches": 15,
+          "run_count": 6,
+          "sample_runs": [
+            {
+              "end_row": 8191,
+              "height": 15,
+              "start_row": 1
+            },
+            {
+              "end_row": 8192,
+              "height": 0,
+              "start_row": 8192
+            },
+            {
+              "end_row": 524287,
+              "height": 15,
+              "start_row": 8193
+            },
+            {
+              "end_row": 524288,
+              "height": 30,
+              "start_row": 524288
+            },
+            {
+              "end_row": 1048575,
+              "height": 15,
+              "start_row": 524289
+            },
+            {
+              "end_row": 1048576,
+              "height": 30,
+              "start_row": 1048576
+            }
+          ],
+          "total_height": 15728655
+        }
+      ]
+    },
+    {
+      "case": "alternating",
+      "startup_seconds": 6.775,
+      "peak_excel_private_bytes": 274440192,
+      "excel_exit_confirmed": true,
+      "measurements": [
+        {
+          "complete": false,
+          "elapsed_ms": 30028.80000001192,
+          "host_wall_seconds": 32.064,
+          "requested_ranges": 74432,
+          "batches": 1163,
+          "error": "Experiment measurement deadline exceeded"
+        }
+      ]
+    },
+    {
+      "case": "column-font",
+      "startup_seconds": 6.526,
+      "peak_excel_private_bytes": 273641472,
+      "excel_exit_confirmed": true,
+      "measurements": [
+        {
+          "complete": true,
+          "elapsed_ms": 72,
+          "host_wall_seconds": 1.754,
+          "requested_ranges": 128,
+          "batches": 2,
+          "run_count": 1,
+          "sample_runs": [
+            {
+              "end_row": 1048576,
+              "height": 39,
+              "start_row": 1
+            }
+          ],
+          "total_height": 40894464
+        },
+        {
+          "complete": true,
+          "elapsed_ms": 109.19999998807909,
+          "host_wall_seconds": 0.251,
+          "requested_ranges": 128,
+          "batches": 2,
+          "run_count": 1,
+          "sample_runs": [
+            {
+              "end_row": 1048576,
+              "height": 39,
+              "start_row": 1
+            }
+          ],
+          "total_height": 40894464
+        }
+      ]
+    },
+    {
+      "case": "column-font-removed",
+      "startup_seconds": 6.776,
+      "peak_excel_private_bytes": 271228928,
+      "excel_exit_confirmed": true,
+      "measurements": [
+        {
+          "complete": true,
+          "elapsed_ms": 676.6000000238419,
+          "host_wall_seconds": 2.505,
+          "requested_ranges": 128,
+          "batches": 2,
+          "run_count": 1,
+          "sample_runs": [
+            {
+              "end_row": 1048576,
+              "height": 15,
+              "start_row": 1
+            }
+          ],
+          "total_height": 15728640
+        },
+        {
+          "complete": true,
+          "elapsed_ms": 75.5,
+          "host_wall_seconds": 0.251,
+          "requested_ranges": 128,
+          "batches": 2,
+          "run_count": 1,
+          "sample_runs": [
+            {
+              "end_row": 1048576,
+              "height": 15,
+              "start_row": 1
+            }
+          ],
+          "total_height": 15728640
+        }
+      ]
+    }
+  ]
+}
