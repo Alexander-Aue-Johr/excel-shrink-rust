@@ -4,7 +4,7 @@ use super::telemetry::{LaneId, Telemetry};
 use super::{Candidate, Finding};
 use anyhow::{ensure, Context, Result};
 use image::GenericImageView;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -33,11 +33,8 @@ pub(super) fn capture_candidates(
             state.lane(lane).current_sheet = Some(candidate.sheet.clone());
             state.lane(lane).current_range = Some(range.clone());
         })?;
-        let geometry = excel.call(
-            json!({"kind":"measure", "lane":lane.key(), "sheet":candidate.sheet, "range":candidate.cell}),
-            telemetry,
-        )?;
-        excel.call(json!({"kind":"capture", "lane":lane.key(), "sheet":candidate.sheet, "range":range, "output":path}), telemetry)?;
+        let geometry = excel.measure_range(lane, &candidate.sheet, &candidate.cell, telemetry)?;
+        excel.capture_range(lane, &candidate.sheet, &range, &path, telemetry)?;
         captured.insert(candidate.clone(), Evidence { path, geometry });
         telemetry.update(|state| state.lane(lane).captures_done += 1)?;
     }

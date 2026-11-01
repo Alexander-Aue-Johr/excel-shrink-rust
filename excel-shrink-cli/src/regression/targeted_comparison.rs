@@ -203,18 +203,11 @@ impl<'a> Comparison<'a> {
                 state.step(id, Phase::Open, StepStatus::Running);
                 state.lane(id).lifecycle = Lifecycle::Opening;
             })?;
-            let result = self
+            let pid = self
                 .excel
                 .as_mut()
                 .context("Excel host not started")?
-                .call(
-                    json!({"kind":"open", "lane":id.key(), "path":path}),
-                    &self.telemetry,
-                )?;
-            let pid = result["pid"]
-                .as_u64()
-                .and_then(|pid| u32::try_from(pid).ok())
-                .context("Excel host returned no PID")?;
+                .open_workbook(id, path, &self.telemetry)?;
             self.report.excel_pids.insert(id.key().into(), pid);
             self.telemetry.update(|state| {
                 state.lane(id).lifecycle = Lifecycle::Open;
@@ -237,7 +230,7 @@ impl<'a> Comparison<'a> {
             self.excel
                 .as_mut()
                 .context("Excel host not started")?
-                .call(json!({"kind":"save", "lane":id.key()}), &self.telemetry)?;
+                .save_workbook(id, &self.telemetry)?;
             self.telemetry
                 .update(|state| state.step(id, Phase::Save, StepStatus::Done))?;
         }
@@ -300,10 +293,7 @@ impl<'a> Comparison<'a> {
         self.excel
             .as_mut()
             .context("Excel host not started")?
-            .call(
-                json!({"kind":"recalculate", "lane":id.key()}),
-                &self.telemetry,
-            )?;
+            .recalculate_workbook(id, &self.telemetry)?;
         self.telemetry
             .update(|state| state.step(id, Phase::Recalculate, StepStatus::Done))
     }
@@ -361,16 +351,10 @@ impl<'a> Comparison<'a> {
                 state.lane(id).lifecycle = Lifecycle::Closing;
                 state.step(id, Phase::Close, StepStatus::Running);
             })?;
-            let result = self
-                .excel
+            self.excel
                 .as_mut()
                 .context("Excel host not started")?
-                .call(json!({"kind":"close", "lane":id.key()}), &self.telemetry)?;
-            ensure!(
-                result["closed"] == true,
-                "Excel exit was not confirmed: {}",
-                id.key()
-            );
+                .close_workbook(id, &self.telemetry)?;
             self.telemetry.update(|state| {
                 let lane = state.lane(id);
                 lane.lifecycle = Lifecycle::Closed;

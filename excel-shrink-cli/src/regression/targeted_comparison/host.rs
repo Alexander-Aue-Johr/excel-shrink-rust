@@ -1,7 +1,7 @@
 //! Bounded command transport. The host owns a kill-on-close job for Excel.
 use super::telemetry::{LaneId, Lifecycle, Telemetry};
 use anyhow::{ensure, Context, Result};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
@@ -19,6 +19,80 @@ pub(super) struct ExcelHost {
 }
 
 impl ExcelHost {
+    /// Open one workbook and return the PID confirmed by the command response.
+    pub(super) fn open_workbook(
+        &mut self,
+        lane: LaneId,
+        path: &Path,
+        telemetry: &Telemetry,
+    ) -> Result<u32> {
+        let result = self.call(
+            json!({"kind":"open", "lane":lane.key(), "path":path}),
+            telemetry,
+        )?;
+        result["pid"]
+            .as_u64()
+            .and_then(|pid| u32::try_from(pid).ok())
+            .context("Excel host returned no PID")
+    }
+
+    /// Save the open working copy without adding a recalculation command.
+    pub(super) fn save_workbook(&mut self, lane: LaneId, telemetry: &Telemetry) -> Result<()> {
+        self.call(json!({"kind":"save", "lane":lane.key()}), telemetry)?;
+        Ok(())
+    }
+
+    /// Request the same full rebuild used by the existing comparison protocol.
+    pub(super) fn recalculate_workbook(
+        &mut self,
+        lane: LaneId,
+        telemetry: &Telemetry,
+    ) -> Result<()> {
+        self.call(json!({"kind":"recalculate", "lane":lane.key()}), telemetry)?;
+        Ok(())
+    }
+
+    /// Require confirmed Excel exit before a normal close can complete.
+    pub(super) fn close_workbook(&mut self, lane: LaneId, telemetry: &Telemetry) -> Result<()> {
+        let result = self.call(json!({"kind":"close", "lane":lane.key()}), telemetry)?;
+        ensure!(
+            result["closed"] == true,
+            "Excel exit was not confirmed: {}",
+            lane.key()
+        );
+        Ok(())
+    }
+
+    /// Retain the host's measured geometry without reinterpreting its fields.
+    pub(super) fn measure_range(
+        &mut self,
+        lane: LaneId,
+        sheet: &str,
+        range: &str,
+        telemetry: &Telemetry,
+    ) -> Result<Value> {
+        self.call(
+            json!({"kind":"measure", "lane":lane.key(), "sheet":sheet, "range":range}),
+            telemetry,
+        )
+    }
+
+    /// Capture one requested rectangle into its evidence file.
+    pub(super) fn capture_range(
+        &mut self,
+        lane: LaneId,
+        sheet: &str,
+        range: &str,
+        output: &Path,
+        telemetry: &Telemetry,
+    ) -> Result<()> {
+        self.call(
+            json!({"kind":"capture", "lane":lane.key(), "sheet":sheet, "range":range, "output":output}),
+            telemetry,
+        )?;
+        Ok(())
+    }
+
     /// Start one host and read its event/response stream independently of Excel.
     pub fn start(host_script: Option<&Path>, timeout: Duration) -> Result<Self> {
         let repository_script =
@@ -62,7 +136,7 @@ impl ExcelHost {
     }
 
     /// Deliver startup events immediately; apply one overall deadline per command.
-    pub fn call(&mut self, command: Value, telemetry: &Telemetry) -> Result<Value> {
+    fn call(&mut self, command: Value, telemetry: &Telemetry) -> Result<Value> {
         let timeout = if command["kind"] == "close" {
             self.timeout.min(Duration::from_secs(15))
         } else {
