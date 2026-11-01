@@ -2,15 +2,18 @@
 mod candidates;
 mod check_performance;
 mod evidence;
+mod heights;
 mod host;
 mod reporting;
+mod staged;
 mod telemetry;
 mod workbooks;
+mod xml_changes;
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{ensure, Result};
 use candidates::{discover_candidates, find_changes_caused_by_save, SaveChanges};
 use clap::Parser;
-use evidence::{capture_candidates, compare_evidence, Evidence};
+use evidence::{compare_evidence, Evidence};
 use host::ExcelHost;
 use reporting::new_report;
 use serde::Serialize;
@@ -82,6 +85,9 @@ struct Report {
     status: String,
     check_performance: &'static str,
     check_performance_evidence: Option<check_performance::PerformanceEvidence>,
+    transitions: Vec<xml_changes::Transition>,
+    height_checks: Vec<heights::HeightCheck>,
+    comparisons: Vec<staged::VisualComparison>,
     candidate_count: usize,
     findings: Vec<Finding>,
     limitations: Vec<String>,
@@ -126,7 +132,7 @@ struct Comparison<'a> {
 /// explicit instead of certifying an unconfirmed process exit or comparison.
 pub(crate) fn run(args: Args) -> Result<()> {
     let mut comparison = Comparison::prepare(&args)?;
-    if let Err(error) = comparison.execute() {
+    if let Err(error) = comparison.execute_staged_comparison() {
         if let Err(report_error) = comparison.record_failure(&error) {
             return Err(error.context(format!("Failure reporting also failed: {report_error:#}")));
         }
@@ -162,30 +168,6 @@ impl<'a> Comparison<'a> {
             excel: None,
             performance: check_performance::PerformanceState::default(),
         })
-    }
-
-    /// Each call is one domain phase; transport, persistence, and pixel work stay below it.
-    fn execute(&mut self) -> Result<()> {
-        self.inspect_initial_xml()?;
-        if self.candidates.is_empty() && self.args.skip_check_performance {
-            return self.complete_without_captures();
-        }
-        self.open_workbooks()?;
-        self.inspect_save_effects()?;
-        self.optimize_performance_copy()?;
-        if self.candidates.is_empty() {
-            self.close_workbooks()?;
-            return self.complete_without_captures();
-        }
-        self.capture_initial_states()?;
-        self.capture_performance_before()?;
-        self.rebuild_default_and_capture()?;
-        self.rebuild_performance_and_capture()?;
-        self.rebuild_original_and_capture()?;
-        self.compare_captured_evidence()?;
-        self.compare_performance_evidence()?;
-        self.close_workbooks()?;
-        self.complete()
     }
 
     /// Discover bounded candidates without interpreting absent screenshots as equality.
@@ -242,64 +224,6 @@ impl<'a> Comparison<'a> {
         Ok(())
     }
 
-    /// Retain both pre-rebuild states for the direct shrink comparison.
-    fn capture_initial_states(&mut self) -> Result<()> {
-        self.captures.original_before =
-            self.capture(LaneId::O, Phase::CaptureBefore, "original-before")?;
-        self.captures.shrink_before =
-            self.capture(LaneId::SD, Phase::CaptureBefore, "shrink-before")?;
-        self.report.phases.push("initial regions captured".into());
-        Ok(())
-    }
-
-    /// Rebuild Default while retaining the original-before control.
-    fn rebuild_default_and_capture(&mut self) -> Result<()> {
-        self.rebuild(LaneId::SD)?;
-        self.captures.shrink_after =
-            self.capture(LaneId::SD, Phase::CaptureAfter, "shrink-recalc")?;
-        self.report
-            .phases
-            .push("shrink rebuilt and captured".into());
-        Ok(())
-    }
-
-    /// Rebuild original separately so ordinary calculation drift can be labelled.
-    fn rebuild_original_and_capture(&mut self) -> Result<()> {
-        self.rebuild(LaneId::O)?;
-        self.captures.original_after =
-            self.capture(LaneId::O, Phase::CaptureAfter, "original-recalc")?;
-        self.report
-            .phases
-            .push("original rebuilt and captured".into());
-        Ok(())
-    }
-
-    /// Capture one lane/state and advance counters only after evidence was written.
-    fn capture(
-        &mut self,
-        id: LaneId,
-        phase: Phase,
-        directory: &str,
-    ) -> Result<BTreeMap<Candidate, Evidence>> {
-        self.telemetry
-            .update(|state| state.step(id, phase, StepStatus::Running))?;
-        let images = capture_candidates(
-            self.excel.as_mut().context("Excel host not started")?,
-            id,
-            &self.candidates,
-            &self.args.output.join(directory),
-            &self.telemetry,
-        )?;
-        *self
-            .report
-            .capture_counts
-            .entry(id.key().into())
-            .or_default() += images.len();
-        self.telemetry
-            .update(|state| state.step(id, phase, StepStatus::Done))?;
-        Ok(images)
-    }
-
     /// Compare all four required evidence sets; missing evidence is an error.
     fn compare_captured_evidence(&mut self) -> Result<()> {
         self.telemetry
@@ -318,17 +242,5 @@ impl<'a> Comparison<'a> {
             .push("images and rendered geometry compared".into());
         self.telemetry
             .update(|state| state.pair_step(Phase::Compare, StepStatus::Done))
-    }
-
-    /// Close the optimized partners before Original, then release their command host.
-    fn close_workbooks(&mut self) -> Result<()> {
-        if !self.args.skip_check_performance {
-            self.close_workbook(LaneId::CP)?;
-        }
-        for id in [LaneId::SD, LaneId::O] {
-            self.close_workbook(id)?;
-        }
-        self.excel.take();
-        Ok(())
     }
 }

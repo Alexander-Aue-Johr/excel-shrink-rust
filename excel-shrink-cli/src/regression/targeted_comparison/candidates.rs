@@ -83,7 +83,7 @@ fn has_visible_content(cell: Option<&Vec<u8>>) -> bool {
 /// Reads bounded worksheet fragments, then indexes cells for this WIP comparison.
 /// The map still scales with the cell count; a streaming merge is needed for
 /// large production sheets.
-fn read_cells(path: &Path, sheet_file: &str) -> Result<BTreeMap<String, Vec<u8>>> {
+pub(super) fn read_cells(path: &Path, sheet_file: &str) -> Result<BTreeMap<String, Vec<u8>>> {
     let file = File::open(path)?;
     let mut archive = ZipArchive::new(file)?;
     let sheet = archive.by_name(sheet_file)?;

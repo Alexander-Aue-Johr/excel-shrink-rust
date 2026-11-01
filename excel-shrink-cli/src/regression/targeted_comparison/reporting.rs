@@ -7,21 +7,6 @@ use serde_json::{json, Value};
 use std::{collections::BTreeMap, fs};
 
 impl Comparison<'_> {
-    /// Keep no-candidate selection distinct from a successful whole-workbook proof.
-    pub(super) fn complete_without_captures(&mut self) -> Result<()> {
-        self.report.status = "no_cell_candidates_with_limitations".into();
-        self.telemetry.update(|state| {
-            for lane in &mut state.lanes {
-                for status in lane.steps.values_mut() {
-                    if *status == StepStatus::Pending {
-                        *status = StepStatus::Skipped;
-                    }
-                }
-            }
-        })?;
-        self.write_completion()
-    }
-
     /// Persist the scientific result separately from compact display telemetry.
     pub(super) fn complete(&mut self) -> Result<()> {
         self.report.status = "completed_with_limitations".into();
@@ -130,6 +115,9 @@ pub(super) fn new_report() -> Report {
         status: "running".into(),
         check_performance: "not_requested",
         check_performance_evidence: None,
+        transitions: Vec::new(),
+        height_checks: Vec::new(),
+        comparisons: Vec::new(),
         candidate_count: 0,
         findings: Vec::new(),
         phases: Vec::new(),
@@ -139,7 +127,7 @@ pub(super) fn new_report() -> Report {
             "Only changed cell XML is selected; drawing, chart, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
             "At most 64 distinct candidate regions; larger cases fail explicitly.".into(),
             "Excel may recalculate during open even when manual calculation is requested.".into(),
-            "Save-only XML changes are included; changes introduced only by rebuilding and saved-versus-reopened rendering are not checked.".into(),
+            "Opening/saving and rebuild-copy reopening are retained as separate XML controls. Exact content/context matches identify overlaps conservatively; absence of a match does not establish exclusive causality.".into(),
             "The bounded cell index rejects worksheet XML over 64 MiB or 250,000 cells; this command is not a replacement for the corpus runner.".into(),
         ],
     }

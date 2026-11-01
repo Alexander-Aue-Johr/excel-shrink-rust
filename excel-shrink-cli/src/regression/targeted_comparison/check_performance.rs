@@ -16,8 +16,8 @@ pub(super) struct PerformanceState {
     pub(super) path: Option<PathBuf>,
     save_changes: BTreeSet<Candidate>,
     optimization_changes: BTreeSet<Candidate>,
-    before: BTreeMap<Candidate, Evidence>,
-    after: BTreeMap<Candidate, Evidence>,
+    pub(super) before: BTreeMap<Candidate, Evidence>,
+    pub(super) after: BTreeMap<Candidate, Evidence>,
 }
 
 #[derive(Serialize)]
@@ -138,25 +138,6 @@ impl Comparison<'_> {
             .push("Check Performance optimized and saved XML inspected".into());
         self.telemetry
             .update(|state| state.candidates(self.candidates.len()))
-    }
-
-    /// Capture the optimized copy before its explicit rebuild.
-    pub(super) fn capture_performance_before(&mut self) -> Result<()> {
-        if !self.args.skip_check_performance {
-            self.performance.before =
-                self.capture(LaneId::CP, Phase::CaptureBefore, "performance-before")?;
-        }
-        Ok(())
-    }
-
-    /// Rebuild this lane independently from Default and the original drift control.
-    pub(super) fn rebuild_performance_and_capture(&mut self) -> Result<()> {
-        if !self.args.skip_check_performance {
-            self.rebuild(LaneId::CP)?;
-            self.performance.after =
-                self.capture(LaneId::CP, Phase::CaptureAfter, "performance-recalc")?;
-        }
-        Ok(())
     }
 
     /// Missing CP images remain an error, never an implicit identical result.

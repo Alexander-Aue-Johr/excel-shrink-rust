@@ -8,13 +8,13 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
     path::{Path, PathBuf},
 };
 
+#[derive(Clone)]
 pub(super) struct Evidence {
-    path: PathBuf,
-    geometry: Value,
+    pub(super) path: PathBuf,
+    pub(super) geometry: Value,
 }
 
 #[derive(Serialize)]
@@ -96,27 +96,8 @@ pub(super) fn compare_performance(
         .collect()
 }
 
-/// Saves a tiny picture and rendered geometry for every selected cell.
-pub(super) fn capture_candidates(
-    excel: &mut ExcelHost,
-    lane: LaneId,
-    candidates: &BTreeSet<Candidate>,
-    directory: &Path,
-    telemetry: &Telemetry,
-) -> Result<BTreeMap<Candidate, Evidence>> {
-    fs::create_dir_all(directory)?;
-    let mut captured = BTreeMap::new();
-    for (index, candidate) in candidates.iter().enumerate() {
-        let path = directory.join(format!("{index:03}.png"));
-        let evidence = capture_candidate(excel, lane, candidate, path, telemetry)?;
-        captured.insert(candidate.clone(), evidence);
-        telemetry.update(|state| state.lane(lane).captures_done += 1)?;
-    }
-    Ok(captured)
-}
-
 /// Measure the candidate cell and capture its padded visual neighborhood.
-fn capture_candidate(
+pub(super) fn capture_candidate(
     excel: &mut ExcelHost,
     lane: LaneId,
     candidate: &Candidate,
@@ -216,7 +197,7 @@ pub(super) fn compare_evidence(
     Ok(findings)
 }
 
-fn images_differ(left: &Path, right: &Path) -> Result<bool> {
+pub(super) fn images_differ(left: &Path, right: &Path) -> Result<bool> {
     let left = image::open(left)?;
     let right = image::open(right)?;
     Ok(left.dimensions() != right.dimensions() || left.to_rgba8() != right.to_rgba8())

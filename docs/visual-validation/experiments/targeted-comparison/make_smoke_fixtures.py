@@ -5,7 +5,7 @@ from pathlib import Path
 import zipfile
 
 
-def create_fixtures(directory, check_performance=False, clean_workbook=False):
+def create_fixtures(directory, check_performance=False, clean_workbook=False, recalc_candidate=False, save_overlap=False):
     """Write a font-height control, CP redundant-format fixture, or clean control."""
     directory.mkdir(parents=True, exist_ok=False)
     namespace = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
@@ -49,6 +49,20 @@ def create_fixtures(directory, check_performance=False, clean_workbook=False):
         sheet = f'''<worksheet xmlns="{namespace}"><dimension ref="A1:B11"/><sheetFormatPr defaultRowHeight="15"/>
           {columns}
           <sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Font-height control</t></is></c></row>{sentinel}{redundant}</sheetData></worksheet>'''
+        if recalc_candidate:
+            # Match the earlier opening-control experiment: an obsolete calcId
+            # would force recalculation on open and defeat this late-candidate test.
+            parts['xl/workbook.xml'] = parts['xl/workbook.xml'].replace(
+                '<calcPr calcMode="manual"/>',
+                '<calcPr calcId="191029" calcMode="manual" calcOnSave="0" fullCalcOnLoad="0" forceFullCalc="0"/>')
+            source = '<row r="2"><c r="A2"><v>2</v></c></row>' if name == 'original' else ''
+            sheet = f'''<worksheet xmlns="{namespace}"><dimension ref="A1:Z20"/><sheetFormatPr defaultRowHeight="15"/>
+              <sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Recalc control</t></is></c></row>{source}
+              <row r="20"><c r="Z20"><f>A2*2</f><v>4</v></c></row></sheetData></worksheet>'''
+        if save_overlap:
+            removable = '<row r="10"><c r="A10"/></row>' if name == 'original' else ''
+            sheet = f'''<worksheet xmlns="{namespace}"><dimension ref="A1:A10"/><sheetFormatPr defaultRowHeight="15"/>
+              <sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Save overlap</t></is></c></row>{removable}</sheetData></worksheet>'''
         with zipfile.ZipFile(directory / f'{name}.xlsx', 'w', zipfile.ZIP_DEFLATED) as archive:
             for part, xml in {**parts, 'xl/worksheets/sheet1.xml': sheet}.items():
                 archive.writestr(part, xml.encode('utf-8'))
@@ -59,5 +73,7 @@ if __name__ == '__main__':
     parser.add_argument('directory', type=Path)
     parser.add_argument('--check-performance', action='store_true')
     parser.add_argument('--clean-workbook', action='store_true')
+    parser.add_argument('--recalc-candidate', action='store_true')
+    parser.add_argument('--save-overlap', action='store_true')
     args = parser.parse_args()
-    create_fixtures(args.directory, args.check_performance, args.clean_workbook)
+    create_fixtures(args.directory, args.check_performance, args.clean_workbook, args.recalc_candidate, args.save_overlap)

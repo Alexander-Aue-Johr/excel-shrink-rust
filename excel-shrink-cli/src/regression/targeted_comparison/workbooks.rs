@@ -53,6 +53,9 @@ impl Comparison<'_> {
         let path = match id {
             LaneId::O => &self.paths.original,
             LaneId::SD => &self.paths.default,
+            LaneId::OR | LaneId::SDR | LaneId::CPR => {
+                anyhow::bail!("Rebuilt copies use staged workflow opening")
+            }
             LaneId::CP => self
                 .performance
                 .path

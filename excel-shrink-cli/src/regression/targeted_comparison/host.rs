@@ -26,8 +26,15 @@ impl ExcelHost {
         path: &Path,
         telemetry: &Telemetry,
     ) -> Result<u32> {
+        let plan = crate::regression::office_plan::build_workbook_visual_plan(path)?;
+        let sheets: Vec<_> = plan.sheets.iter().map(|sheet| json!({
+            "index":sheet.sheet_index, "name":sheet.sheet, "bottom_row":sheet.bottom_row,
+            "base_right_column":sheet.base_right_column, "right_column":sheet.base_right_column,
+            "horizontal_overflow_required":false, "drawing_fallback_required":false,
+        })).collect();
         let result = self.call(
-            json!({"kind":"open", "lane":lane.key(), "path":path}),
+            json!({"kind":"open", "lane":lane.key(), "path":path, "sheets":sheets,
+                "host_executable":std::env::current_exe()?}),
             telemetry,
         )?;
         result["pid"]
@@ -79,7 +86,28 @@ impl ExcelHost {
         Ok(())
     }
 
-    /// Retain the host's measured geometry without reinterpreting its fields.
+    /// Measure verified height runs in the same Office.js workbook used for captures.
+    pub(super) fn height_runs(
+        &mut self,
+        lane: LaneId,
+        sheet: &str,
+        spans: &[(u32, u32)],
+        telemetry: &Telemetry,
+    ) -> Result<Value> {
+        let spans: Vec<_> = spans
+            .iter()
+            .map(|&(start, end)| json!({"start":start,"end":end}))
+            .collect();
+        let result = self.call(
+            json!({"kind":"heights", "lane":lane.key(), "sheet":sheet,
+            "spans":spans, "budget_ms":self.timeout.as_millis().min(30000)}),
+            telemetry,
+        )?;
+        ensure!(result["complete"] == true, "Height coverage is incomplete");
+        Ok(result)
+    }
+
+    /// Keep transport timings and resource samples out of geometry equality checks.
     pub(super) fn measure_range(
         &mut self,
         lane: LaneId,
@@ -87,10 +115,11 @@ impl ExcelHost {
         range: &str,
         telemetry: &Telemetry,
     ) -> Result<Value> {
-        self.call(
+        let response = self.call(
             json!({"kind":"measure", "lane":lane.key(), "sheet":sheet, "range":range}),
             telemetry,
-        )
+        )?;
+        measured_geometry(&response)
     }
 
     /// Capture one requested rectangle into its evidence file.
@@ -205,6 +234,9 @@ fn observe_started_process(event: &Value, telemetry: &Telemetry) -> Result<()> {
         Some("O") => LaneId::O,
         Some("SD") => LaneId::SD,
         Some("CP") => LaneId::CP,
+        Some("OR") => LaneId::OR,
+        Some("SDR") => LaneId::SDR,
+        Some("CPR") => LaneId::CPR,
         _ => anyhow::bail!("Unknown Excel process lane"),
     };
     let pid = event["pid"]
@@ -221,4 +253,32 @@ fn observe_started_process(event: &Value, telemetry: &Telemetry) -> Result<()> {
         lane.process_started_at = Some(started);
         lane.lifecycle = Lifecycle::Opening;
     })
+}
+
+/// Transport timings and resource samples are not workbook geometry.
+fn measured_geometry(response: &Value) -> Result<Value> {
+    let mut geometry = serde_json::Map::new();
+    for key in ["top", "left", "width", "height"] {
+        let value = response[key]
+            .as_f64()
+            .filter(|value| value.is_finite())
+            .with_context(|| format!("Missing or invalid measured {key}"))?;
+        geometry.insert(key.into(), json!(value));
+    }
+    Ok(Value::Object(geometry))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn protocol_telemetry_is_not_a_geometry_difference() {
+        let a = json!({"top":0,"left":0,"width":90,"height":15,"elapsed_ms":1});
+        let b = json!({"top":0,"left":0,"width":90,"height":15,"elapsed_ms":100});
+        assert_eq!(
+            measured_geometry(&a).unwrap(),
+            measured_geometry(&b).unwrap()
+        );
+        assert!(measured_geometry(&json!({"top":0})).is_err());
+    }
 }

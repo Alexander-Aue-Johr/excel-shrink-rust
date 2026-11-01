@@ -36,7 +36,7 @@ def verify(directory):
     for lane in telemetry['lanes']:
         assert lane['pid'] and lane['lifecycle'] == 'closed'
         assert lane['process_alive'] is False
-        assert lane['captures_done'] == lane['captures_total'] == report['candidate_count'] * 2
+        assert lane['captures_done'] == lane['captures_total'] == report['candidate_count']
     for finding in evidence['findings']:
         assert len(finding['images']) == 4
         assert all(Path(path).is_file() for path in finding['images'].values())

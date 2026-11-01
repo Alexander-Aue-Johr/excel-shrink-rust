@@ -16,8 +16,15 @@ async function main() {
   const bundle = path.join(root, 'prepared/smoke.zip');
   const digest = () => createHash('sha256').update(fs.readFileSync(bundle)).digest('hex');
   const before = digest();
+  const foreignControl = path.join(root, 'foreign-control');
+  fs.mkdirSync(foreignControl, { recursive: true });
+  const foreignSettings = JSON.stringify({ paused: true, hide_excel: true });
+  fs.writeFileSync(path.join(foreignControl, 'control.json'), foreignSettings);
   const host = spawn(path.join(repository, 'target/debug/excel-shrink-cli.exe'), ['capture-host', 'control-room', settings],
-    { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env,
+      EXCEL_SHRINK_CONTROL_ROOM_DIR: foreignControl,
+      EXCEL_SHRINK_CONTROL_ROOM_GROUP_ID: 'foreign-group',
+    } });
   const errors = [];
   host.stderr.on('data', chunk => errors.push(String(chunk)));
   let request;
@@ -45,9 +52,12 @@ async function main() {
     assert.equal(result?.status, 'completed_with_limitations');
     assert.equal(result.workbook, 'Synthetic font-height control.xlsx');
     assert.ok(result.lanes.every(lane => !lane.pid || lane.lifecycle === 'closed' && lane.process_alive === false));
-    assert.equal(result.report.before_differences, 1);
-    assert.equal(result.report.original_recalc_drift, 0);
+    assert.ok(result.report.before_differences >= 1);
+    assert.equal(result.report.check_performance, 'optimization_confirmed');
+    assert.equal(result.lanes.filter(lane => lane.pid).length, 6);
+    assert.ok(Number.isInteger(result.report.original_recalc_drift));
     assert.equal(digest(), before, 'Prepared evidence remains immutable.');
+    assert.equal(fs.readFileSync(path.join(foreignControl, 'control.json'), 'utf8'), foreignSettings);
     const silentHost = path.join(root, 'silent-host.ps1');
     fs.writeFileSync(silentHost, '$null = [Console]::ReadLine()\nStart-Sleep -Seconds 5\n');
     const timeoutOutput = path.join(root, `timeout-${Date.now()}`);

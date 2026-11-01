@@ -24,6 +24,7 @@ pub(super) enum Phase {
     InspectSave,
     Optimize,
     InspectOptimization,
+    MeasureHeights,
     CaptureBefore,
     Recalculate,
     CaptureAfter,
@@ -31,13 +32,14 @@ pub(super) enum Phase {
     Close,
 }
 
-const ALL_PHASES: [Phase; 11] = [
+const ALL_PHASES: [Phase; 12] = [
     Phase::Discover,
     Phase::Open,
     Phase::Save,
     Phase::InspectSave,
     Phase::Optimize,
     Phase::InspectOptimization,
+    Phase::MeasureHeights,
     Phase::CaptureBefore,
     Phase::Recalculate,
     Phase::CaptureAfter,
@@ -55,6 +57,7 @@ impl Phase {
             {"id":"inspect_save", "label":"Inspect saved XML", "description":"Add candidate cells also changed by ordinary Excel save."},
             {"id":"optimize", "label":"Optimize all", "description":"Run native Check Performance on a separate saved Original copy; require positive completion."},
             {"id":"inspect_optimization", "label":"Inspect optimization", "description":"Add XML changes from Check Performance, separately from ordinary save effects."},
+            {"id":"measure_heights", "label":"Check row heights", "description":"Office.js checks automatic-height spans; retained identical fixed heights are excluded."},
             {"id":"capture_before", "label":"Capture before", "description":"Capture the same candidate regions in all enabled open copies."},
             {"id":"recalculate", "label":"Full rebuild", "description":"Rebuild Default and Check Performance; rebuild original separately as the control for calculation drift."},
             {"id":"capture_after", "label":"Capture after", "description":"Capture the same regions after each workbook rebuild."},
@@ -64,11 +67,14 @@ impl Phase {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 pub(super) enum LaneId {
     O,
     SD,
     CP,
+    OR,
+    SDR,
+    CPR,
 }
 
 impl LaneId {
@@ -77,6 +83,9 @@ impl LaneId {
             Self::O => "O",
             Self::SD => "SD",
             Self::CP => "CP",
+            Self::OR => "OR",
+            Self::SDR => "SDR",
+            Self::CPR => "CPR",
         }
     }
 }
@@ -176,7 +185,7 @@ impl Snapshot {
         self.candidate_count = Some(count);
         for lane in &mut self.lanes {
             if lane.lifecycle != Lifecycle::Unavailable {
-                lane.captures_total = Some(count * 2);
+                lane.captures_total = Some(count);
             }
         }
     }
@@ -228,12 +237,15 @@ impl Telemetry {
             (LaneId::O, "Original"),
             (LaneId::SD, "Shrink Default"),
             (LaneId::CP, "Check Performance"),
+            (LaneId::OR, "Original (rebuilt copy)"),
+            (LaneId::SDR, "Default (rebuilt copy)"),
+            (LaneId::CPR, "Check Performance (rebuilt copy)"),
         ]
         .into_iter()
         .map(|(id, label)| Lane {
             id,
             label,
-            lifecycle: if id == LaneId::CP && args.skip_check_performance {
+            lifecycle: if matches!(id, LaneId::CP | LaneId::CPR) && args.skip_check_performance {
                 Lifecycle::Unavailable
             } else {
                 Lifecycle::NotStarted
@@ -251,11 +263,14 @@ impl Telemetry {
                 .map(|phase| {
                     (
                         phase,
-                        if id == LaneId::CP && args.skip_check_performance {
+                        if matches!(id, LaneId::CP | LaneId::CPR) && args.skip_check_performance {
                             StepStatus::Unavailable
                         } else if (id != LaneId::CP
                             && matches!(phase, Phase::Optimize | Phase::InspectOptimization))
-                            || (id == LaneId::CP && phase == Phase::Discover)
+                            || (matches!(id, LaneId::O | LaneId::SD | LaneId::CP)
+                                && matches!(phase, Phase::Recalculate | Phase::CaptureAfter))
+                            || (matches!(id, LaneId::OR | LaneId::SDR | LaneId::CPR)
+                                && phase == Phase::CaptureBefore)
                         {
                             StepStatus::Skipped
                         } else {
@@ -440,7 +455,7 @@ mod tests {
             lane["xml_finished_at"].as_i64().unwrap() >= lane["xml_started_at"].as_i64().unwrap()
         );
         assert_eq!(lane["captures_done"], 1);
-        assert_eq!(lane["captures_total"], 10);
+        assert_eq!(lane["captures_total"], 5);
         assert!(lane["process_heartbeat_at"].is_null());
         assert_eq!(snapshot["lanes"][2]["steps"]["open"], "unavailable");
         assert_eq!(
