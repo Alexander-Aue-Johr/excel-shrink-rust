@@ -1,6 +1,7 @@
 //! Targeted comparison workflow; the called phases own XML, Excel, and evidence details.
 mod candidates;
 mod cell_stream;
+mod charts;
 mod check_performance;
 mod evidence;
 mod heights;

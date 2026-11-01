@@ -197,15 +197,33 @@ pub(super) fn compare_evidence(
     Ok(findings)
 }
 
+/// Compare decoded pixels; Office chart exports do not consistently match the documented format.
 pub(super) fn images_differ(left: &Path, right: &Path) -> Result<bool> {
-    let left = image::open(left)?;
-    let right = image::open(right)?;
+    let left = image::ImageReader::open(left)?
+        .with_guessed_format()?
+        .decode()?;
+    let right = image::ImageReader::open(right)?
+        .with_guessed_format()?
+        .decode()?;
     Ok(left.dimensions() != right.dimensions() || left.to_rgba8() != right.to_rgba8())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn image_format_comes_from_bytes_instead_of_the_export_filename() -> Result<()> {
+        let directory = crate::regression::artifact_cache::unique_path(
+            &std::env::temp_dir(),
+            "chart-image-format",
+        )?;
+        std::fs::create_dir_all(&directory)?;
+        let path = directory.join("chart.image");
+        image::RgbImage::new(2, 2).save_with_format(&path, image::ImageFormat::Png)?;
+        assert!(!images_differ(&path, &path)?);
+        std::fs::remove_dir_all(directory)?;
+        Ok(())
+    }
     #[test]
     fn missing_partner_evidence_is_an_error() {
         let candidates = BTreeSet::from([Candidate {

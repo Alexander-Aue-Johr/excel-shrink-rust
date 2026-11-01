@@ -82,12 +82,25 @@ labelled PID liveness, not fabricated Office.js heartbeats.
 There is no candidate-count, worksheet-byte or cell-count rejection limit. Cells are merged from ordered disk streams instead
 of an in-memory cell index; style/string context is hashed in chunks. Scratch
 files are released with their snapshots, including on failure. Memory still
-scales with layout metadata and actual differences. Drawing/chart/conditional-formatting and
+scales with layout metadata and actual differences. Other drawings, conditional formatting and
 all style/layout dependencies are not exhaustively selected. Matching selected
 images is not whole-workbook visual equality. Reopening a rebuild copy can have
 its own effects: these XML changes are retained separately and a visual
 before/after-copy comparison does not by itself prove exclusive recalculation
 causality. Opening can also recalculate when Excel requires it.
+
+Every live worksheet chart is exported independently of changed cell XML, once
+for each retained state (O/SD/CP and their rebuild copies). Office.js
+`Chart.getImage()` exports the complete chart. The decoder identifies PNG/JPEG
+from the actual bytes, since the observed desktop export differs from the
+documented JPEG format. The report compares decoded
+pixels and placement/size. Charts are paired by worksheet and chart name. Added,
+removed or renamed charts produce presence differences, not successful equality.
+Inventory/export failures fail the comparison. Chart findings and image paths
+are retained in each comparison's `charts` array; the Observatory summary counts
+chart comparisons and differences separately from cell-region findings.
+Standalone chart sheets are not exposed by this worksheet Office.js API; their
+presence fails explicitly as incomplete coverage rather than silently omitting them.
 
 ## Focused verification
 
@@ -101,6 +114,9 @@ causality. Opening can also recalculate when Excel requires it.
 - `-SaveOverlap`: a cell removed by both Default and ordinary Original save must
   be recognized as an exact overlap.
 - `-CleanWorkbook`: verifies positive "No optimization needed".
+- `-Charts`: identical worksheet XML with stable, changed, added and removed
+  charts; verifies unconditional exports and comparisons across retained states.
+  Fixture generation uses `openpyxl`.
 - `-FailOptimization` / `-FailCapture`: deliberately fail after real startup,
   retaining partial results and checking every owned process exits.
 

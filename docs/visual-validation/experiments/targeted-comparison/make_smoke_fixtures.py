@@ -3,6 +3,40 @@
 import argparse
 from pathlib import Path
 import zipfile
+import xml.etree.ElementTree as ET
+
+
+def create_chart_fixtures(directory):
+    """Keep all worksheet cells identical while changing only chart objects."""
+    from openpyxl import Workbook
+    from openpyxl.chart import BarChart, Reference
+
+    directory.mkdir(parents=True, exist_ok=False)
+    for lane in ('original', 'default'):
+        book = Workbook()
+        sheet = book.active
+        sheet.title = 'Charts'
+        for value in (1, 3, 2):
+            sheet.append([value])
+        names = ['Stable', 'Changed', 'Removed' if lane == 'original' else 'Added']
+        for index, name in enumerate(names):
+            chart = BarChart()
+            chart.title = 'Different title' if name == 'Changed' and lane == 'default' else name
+            chart.add_data(Reference(sheet, min_col=1, min_row=1, max_row=3))
+            sheet.add_chart(chart, f'D{1 + index * 16}')
+        path = directory / f'{lane}.xlsx'
+        book.save(path)
+        with zipfile.ZipFile(path) as archive:
+            parts = {name: archive.read(name) for name in archive.namelist()}
+        drawing = ET.fromstring(parts['xl/drawings/drawing1.xml'])
+        properties = drawing.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}cNvPr')
+        assert len(properties) == len(names)
+        for element, name in zip(properties, names):
+            element.set('name', name)
+        parts['xl/drawings/drawing1.xml'] = ET.tostring(drawing)
+        with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as archive:
+            for name, content in parts.items():
+                archive.writestr(name, content)
 
 
 def create_fixtures(directory, check_performance=False, clean_workbook=False, recalc_candidate=False, save_overlap=False):
@@ -75,5 +109,9 @@ if __name__ == '__main__':
     parser.add_argument('--clean-workbook', action='store_true')
     parser.add_argument('--recalc-candidate', action='store_true')
     parser.add_argument('--save-overlap', action='store_true')
+    parser.add_argument('--charts', action='store_true')
     args = parser.parse_args()
-    create_fixtures(args.directory, args.check_performance, args.clean_workbook, args.recalc_candidate, args.save_overlap)
+    if args.charts:
+        create_chart_fixtures(args.directory)
+    else:
+        create_fixtures(args.directory, args.check_performance, args.clean_workbook, args.recalc_candidate, args.save_overlap)

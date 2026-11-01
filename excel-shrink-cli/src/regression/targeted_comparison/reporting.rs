@@ -96,6 +96,9 @@ impl Report {
             "check_performance": self.check_performance,
             "check_performance_differences": self.check_performance_evidence.as_ref().and_then(|e| e.difference_count()),
             "limitations": self.limitations,
+            "chart_comparisons": self.comparisons.iter().map(|pair| pair.charts.len()).sum::<usize>(),
+            "chart_differences": self.comparisons.iter().flat_map(|pair| &pair.charts)
+                .filter(|chart| chart.presence_differs || chart.pixels_differ || chart.geometry_differs).count(),
             "before_differences": self.findings.iter()
                 .filter(|finding| finding.before_recalc_differs || finding.before_recalc_geometry_differs)
                 .count(),
@@ -124,7 +127,7 @@ pub(super) fn new_report() -> Report {
         excel_pids: BTreeMap::new(),
         capture_counts: BTreeMap::new(),
         limitations: vec![
-            "Only changed cell XML is selected; drawing, chart, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
+            "All live worksheet charts are compared as whole-chart exports in every retained state. Other drawings, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
             "Excel may recalculate during open even when manual calculation is requested.".into(),
             "Opening/saving and rebuild-copy reopening are retained as separate XML controls. Exact content/context matches identify overlaps conservatively; absence of a match does not establish exclusive causality.".into(),
             "Worksheet cells are streamed into temporary fixed-size fingerprints without worksheet-byte or cell-count limits. Layout metadata and actual change evidence still require memory; this command is not a replacement for the corpus runner.".into(),

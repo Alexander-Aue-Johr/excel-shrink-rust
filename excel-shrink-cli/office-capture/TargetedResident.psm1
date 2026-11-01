@@ -100,9 +100,9 @@ function Invoke-TargetedJob {
                 Copy-Item -LiteralPath $entry.staged -Destination $entry.path -Force
                 Remove-TargetedTaskpane $entry
             }
-            if ($Command.kind -eq 'capture') {
+            if ($Command.kind -in @('capture', 'capture_chart')) {
                 [IO.File]::WriteAllBytes($Command.output, [Convert]::FromBase64String($response.image_base64))
-                return @{path=$Command.output}
+                return @{path=$Command.output; geometry=$response.geometry}
             }
             return $response
         }

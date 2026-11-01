@@ -138,6 +138,33 @@ impl ExcelHost {
         Ok(())
     }
 
+    /// Enumerate live worksheet charts independently of XML change detection.
+    pub(super) fn charts(
+        &mut self,
+        lane: LaneId,
+        telemetry: &Telemetry,
+    ) -> Result<Vec<super::charts::Chart>> {
+        let response = self.call(json!({"kind":"charts", "lane":lane.key()}), telemetry)?;
+        serde_json::from_value(response["charts"].clone()).context("Invalid chart inventory")
+    }
+
+    /// Export the whole chart and its placement, without a worksheet-sized capture.
+    pub(super) fn capture_chart(
+        &mut self,
+        lane: LaneId,
+        chart: &super::charts::Chart,
+        output: &Path,
+        telemetry: &Telemetry,
+    ) -> Result<Value> {
+        let response = self.call(
+            json!({"kind":"capture_chart", "lane":lane.key(),
+            "sheet":chart.sheet, "chart":chart.name, "output":output}),
+            telemetry,
+        )?;
+        ensure!(response["geometry"].is_object(), "Missing chart geometry");
+        Ok(response["geometry"].clone())
+    }
+
     /// Start one host and read its event/response stream independently of Excel.
     pub fn start(host_script: Option<&Path>, timeout: Duration) -> Result<Self> {
         let repository_script =

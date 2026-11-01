@@ -140,6 +140,9 @@ function createComparisonCard() {
       const performanceEnabled = comparison.lanes.some(lane => lane.id === 'CP' && lane.lifecycle !== 'unavailable');
       const performanceStatus = comparison.report?.check_performance || (performanceEnabled ? 'enabled' : 'not run');
       explanation.textContent = `${selection}. Limited candidate coverage. Check Performance: ${performanceStatus.replaceAll('_', ' ')}.`;
+      if (comparison.report?.chart_comparisons != null) {
+        explanation.textContent += ` Charts: ${comparison.report.chart_comparisons} comparisons · ${comparison.report.chart_differences} differences.`;
+      }
       error.textContent = comparison.error || '';
       error.hidden = !comparison.error;
       root.title = (comparison.report?.limitations || []).join('\n');

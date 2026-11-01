@@ -40,6 +40,28 @@
         await context.sync();
         return {saved: true};
       }
+      if (command.kind === 'charts') {
+        const sheets = context.workbook.worksheets;
+        sheets.load('items/name');
+        await context.sync();
+        for (const sheet of sheets.items) sheet.charts.load('items/name');
+        await context.sync();
+        const charts = sheets.items.flatMap(sheet => sheet.charts.items.map(chart => ({
+          sheet: sheet.name,
+          name: chart.name,
+        })));
+        return {charts};
+      }
+      if (command.kind === 'capture_chart') {
+        const chart = context.workbook.worksheets.getItem(command.sheet).charts.getItem(command.chart);
+        chart.load('top,left,width,height');
+        const image = chart.getImage();
+        await context.sync();
+        return {
+          image_base64: image.value,
+          geometry: {top: chart.top, left: chart.left, width: chart.width, height: chart.height}
+        };
+      }
       const range = context.workbook.worksheets.getItem(command.sheet).getRange(command.range);
       if (command.kind === 'capture') {
         const image = range.getImage();

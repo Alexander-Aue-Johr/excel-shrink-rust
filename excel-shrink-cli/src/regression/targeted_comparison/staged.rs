@@ -1,5 +1,6 @@
 //! Preserve live pre-rebuild states until every late candidate has matching evidence.
 use super::{
+    charts,
     evidence::{capture_candidate, images_differ, Evidence},
     heights::{self, HeightCheck, HeightRun},
     telemetry::{LaneId, Lifecycle, Phase, StepStatus},
@@ -19,6 +20,7 @@ struct WorkbookState {
     path: PathBuf,
     xml: Snapshot,
     captures: BTreeMap<Candidate, Evidence>,
+    charts: charts::Captures,
     heights: BTreeMap<(String, Vec<(u32, u32)>), Vec<HeightRun>>,
 }
 
@@ -38,6 +40,7 @@ pub(super) struct VisualComparison {
     left: LaneId,
     right: LaneId,
     findings: Vec<VisualFinding>,
+    pub charts: Vec<charts::Finding>,
 }
 
 struct Workflow<'a, 'b> {
@@ -121,6 +124,7 @@ impl Workflow<'_, '_> {
     }
 
     fn register(&mut self, id: LaneId, path: PathBuf) -> Result<()> {
+        charts::validate_supported_sheets(&path)?;
         self.comparison
             .telemetry
             .update(|state| state.step(id, Phase::Discover, StepStatus::Running))?;
@@ -128,16 +132,51 @@ impl Workflow<'_, '_> {
         self.comparison
             .telemetry
             .update(|state| state.step(id, Phase::Discover, StepStatus::Done))?;
+        let charts = self.capture_charts(id)?;
         self.states.insert(
             id,
             WorkbookState {
                 path,
                 xml,
                 captures: BTreeMap::new(),
+                charts,
                 heights: BTreeMap::new(),
             },
         );
         Ok(())
+    }
+
+    /// Capture every chart while this state's pre-rebuild workbook is still retained.
+    fn capture_charts(&mut self, id: LaneId) -> Result<charts::Captures> {
+        let phase = if matches!(id, LaneId::O | LaneId::SD | LaneId::CP) {
+            Phase::CaptureBefore
+        } else {
+            Phase::CaptureAfter
+        };
+        self.comparison
+            .telemetry
+            .update(|state| state.step(id, phase, StepStatus::Running))?;
+        let captures = charts::capture(
+            self.comparison
+                .excel
+                .as_mut()
+                .context("Excel host missing")?,
+            id,
+            &self
+                .comparison
+                .args
+                .output
+                .join(format!("charts-{}", id.key())),
+            &self.comparison.telemetry,
+        )?;
+        self.comparison
+            .report
+            .capture_counts
+            .insert(format!("{}:charts", id.key()), captures.len());
+        self.comparison
+            .telemetry
+            .update(|state| state.step(id, phase, StepStatus::Done))?;
+        Ok(captures)
     }
 
     fn audit(&mut self, label: &str, before: &Path, after: &Path) -> Result<()> {
@@ -422,6 +461,7 @@ impl Workflow<'_, '_> {
                 left,
                 right,
                 findings,
+                charts: charts::compare(&self.states[&left].charts, &self.states[&right].charts)?,
             });
             self.comparison.telemetry.update(|state| {
                 state.step(left, Phase::Compare, StepStatus::Done);

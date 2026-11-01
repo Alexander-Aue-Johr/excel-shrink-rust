@@ -6,7 +6,8 @@ param(
     [switch]$CleanWorkbook,
     [switch]$RecalcCandidate,
     [switch]$SaveOverlap,
-    [switch]$FailLateCapture
+    [switch]$FailLateCapture,
+    [switch]$Charts
 )
 $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../..'))
@@ -19,6 +20,7 @@ if ($CheckPerformance -or $FailOptimization -or $CleanWorkbook) { $fixtureArgume
 if ($CleanWorkbook) { $fixtureArguments += '--clean-workbook' }
 if ($RecalcCandidate) { $fixtureArguments += '--recalc-candidate' }
 if ($SaveOverlap) { $fixtureArguments += '--save-overlap' }
+if ($Charts) { $fixtureArguments += '--charts' }
 & python (Join-Path $PSScriptRoot 'make_smoke_fixtures.py') (Join-Path $directory 'inputs') @fixtureArguments
 if ($LASTEXITCODE -ne 0) { throw 'Fixture creation failed.' }
 $sourceHashes = @{}
@@ -65,6 +67,10 @@ try {
         if ([DateTime]::UtcNow -gt $deadline) { throw 'Smoke test exceeded 150 seconds.' }
     }
     $telemetry = Get-Content -LiteralPath (Join-Path $directory 'result/telemetry.json') -Raw | ConvertFrom-Json
+    if ($Charts -and $process.ExitCode -eq 0) {
+        & python (Join-Path $PSScriptRoot 'verify_charts.py') (Join-Path $directory 'result')
+        if ($LASTEXITCODE -ne 0) { throw 'Chart evidence verification failed.' }
+    }
     if ($FailCapture -or $FailOptimization -or $FailLateCapture) {
         if ($process.ExitCode -eq 0 -or $telemetry.status -ne 'failed' -or $null -eq $telemetry.finished_at) {
             throw 'The injected failure did not produce a terminal failure snapshot.'
@@ -79,7 +85,7 @@ try {
         $report = Get-Content (Join-Path $directory 'result/report.json') -Raw | ConvertFrom-Json
         if ($report.check_performance -ne 'no_optimization_needed') { throw 'Clean workbook was not recognized.' }
         if ($report.check_performance_evidence.optimization_changes.Count -ne 0) { throw 'Unexpected optimization changes.' }
-    } elseif ($CheckPerformance -and -not ($FailCapture -or $FailOptimization -or $FailLateCapture)) {
+    } elseif ($CheckPerformance -and -not $Charts -and -not ($FailCapture -or $FailOptimization -or $FailLateCapture)) {
         & python (Join-Path $PSScriptRoot 'verify_performance_smoke.py') (Join-Path $directory 'result')
         if ($LASTEXITCODE -ne 0) { throw 'Check Performance evidence verification failed.' }
     }

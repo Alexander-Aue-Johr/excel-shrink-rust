@@ -136,8 +136,12 @@ failure; failure reporting gives their exits a bounded confirmation interval.
 | Actual Observatory launch | HTTP test starts the private runner from a prepared bundle, checks real comparison results and verifies the bundle hash is unchanged. |
 | Bounded command wait | HTTP harness also runs a deliberately silent command host with a one-second deadline; it must finish as a reported failure. |
 
+Whole worksheet charts are always compared in each retained state, including
+when worksheet XML is identical. The summary shows chart comparisons and
+differences; the report retains their image paths, geometry and presence findings.
+
 The comparison still has scientific limits: no
-complete drawing/chart/style/layout dependency analysis and no general proof of
+complete non-chart drawing/style/layout dependency analysis and no general proof of
 reopened-after-save visual equivalence. Cell fingerprints are streamed through owned temporary files, with no worksheet
 MiB or cell-count cap. Remaining limits fail explicitly or stay recorded; none
 are represented as whole-workbook visual equality.
