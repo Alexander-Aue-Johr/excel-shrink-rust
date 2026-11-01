@@ -1,0 +1,49 @@
+"""Require correct CF selection and actual Excel pixels for positive/negative controls."""
+import json
+import sys
+from collections import Counter
+from pathlib import Path
+
+
+def verify(root: Path, mode: str) -> None:
+    report = json.loads((root / 'report.json').read_text(encoding='utf-8'))
+    check = next(item for item in report['conditional_formatting'] if item['left'] == 'O' and item['right'] == 'SD')
+    decisions = check['decisions']
+    assert decisions, 'No CF decisions were recorded'
+    direct = next(item for item in report['comparisons'] if item['label'] == 'direct Default')
+    different = any(item['pixels_differ'] or item['geometry_differs'] for item in direct['findings'])
+    if direct['findings']:
+        from PIL import Image
+        sample = next((item for item in direct['findings'] if ':' in item['cell']), direct['findings'][0])
+        colors = []
+        for key in ('left_png', 'right_png'):
+            with Image.open(sample[key]) as image:
+                colors.append(Counter(image.convert('RGB').getdata()))
+        if mode in ('constant', 'constant-string', 'styles', 'dummy-present'):
+            assert colors[0][(255, 0, 0)] > 100, 'Positive CF control did not render its red fill'
+        if mode == 'styles':
+            assert colors[1][(0, 0, 255)] > 100, 'Changed differential format did not render blue'
+        if mode == 'dummy-added':
+            assert colors[1][(255, 0, 0)] > 100, 'New target did not enable its CF fill'
+    if mode == 'dummy-missing':
+        assert all(item['outcome'] == 'excluded' for item in decisions), decisions
+        assert all(item['reason'] == 'fixed-dummy-targets-absent-in-both-states' for item in decisions), decisions
+        assert not different
+    elif mode in ('constant', 'constant-string'):
+        assert any(item['outcome'] == 'partial' for item in decisions), decisions
+        assert not any(item['outcome'] == 'capture' for item in decisions), decisions
+        assert different, 'A changed local input must remain visibly compared'
+    else:
+        assert any(item['outcome'] == 'capture' for item in decisions), decisions
+        assert direct['findings'], 'Fallback produced no captures'
+        if mode == 'dummy-inert':
+            assert not different, 'A missing-target CF rule unexpectedly changed Excel rendering'
+        else:
+            assert different, 'The positive control lost its visual difference'
+    if report['check_performance'] != 'not_requested':
+        assert any(item['left'] == 'O' and item['right'] == 'CP' for item in report['conditional_formatting'])
+    print(f'{mode}: CF decisions and native Excel pixels verified.')
+
+
+if __name__ == '__main__':
+    verify(Path(sys.argv[1]), sys.argv[2])

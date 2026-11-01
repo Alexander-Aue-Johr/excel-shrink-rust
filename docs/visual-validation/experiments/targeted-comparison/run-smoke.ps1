@@ -7,7 +7,9 @@ param(
     [switch]$RecalcCandidate,
     [switch]$SaveOverlap,
     [switch]$FailLateCapture,
-    [switch]$Charts
+    [switch]$Charts,
+    [ValidateSet('constant','constant-string','styles','dummy-missing','dummy-inert','dummy-present','dummy-added')]
+    [string]$ConditionalFormatting
 )
 $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../..'))
@@ -21,6 +23,7 @@ if ($CleanWorkbook) { $fixtureArguments += '--clean-workbook' }
 if ($RecalcCandidate) { $fixtureArguments += '--recalc-candidate' }
 if ($SaveOverlap) { $fixtureArguments += '--save-overlap' }
 if ($Charts) { $fixtureArguments += '--charts' }
+if ($ConditionalFormatting) { $fixtureArguments += @('--conditional-formatting', $ConditionalFormatting) }
 & python (Join-Path $PSScriptRoot 'make_smoke_fixtures.py') (Join-Path $directory 'inputs') @fixtureArguments
 if ($LASTEXITCODE -ne 0) { throw 'Fixture creation failed.' }
 $sourceHashes = @{}
@@ -85,9 +88,13 @@ try {
         $report = Get-Content (Join-Path $directory 'result/report.json') -Raw | ConvertFrom-Json
         if ($report.check_performance -ne 'no_optimization_needed') { throw 'Clean workbook was not recognized.' }
         if ($report.check_performance_evidence.optimization_changes.Count -ne 0) { throw 'Unexpected optimization changes.' }
-    } elseif ($CheckPerformance -and -not $Charts -and -not ($FailCapture -or $FailOptimization -or $FailLateCapture)) {
+    } elseif ($CheckPerformance -and -not $Charts -and -not $ConditionalFormatting -and -not ($FailCapture -or $FailOptimization -or $FailLateCapture)) {
         & python (Join-Path $PSScriptRoot 'verify_performance_smoke.py') (Join-Path $directory 'result')
         if ($LASTEXITCODE -ne 0) { throw 'Check Performance evidence verification failed.' }
+    }
+    if ($ConditionalFormatting -and $process.ExitCode -eq 0) {
+        & python (Join-Path $PSScriptRoot 'verify_cf.py') (Join-Path $directory 'result') $ConditionalFormatting
+        if ($LASTEXITCODE -ne 0) { throw 'Conditional-formatting evidence verification failed.' }
     }
     if ($RecalcCandidate -and -not ($FailCapture -or $FailOptimization -or $FailLateCapture)) {
         & python (Join-Path $PSScriptRoot 'verify_recalc_candidate.py') (Join-Path $directory 'result')

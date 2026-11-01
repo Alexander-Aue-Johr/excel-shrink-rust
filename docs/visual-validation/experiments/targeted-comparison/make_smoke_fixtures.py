@@ -118,8 +118,12 @@ if __name__ == '__main__':
     parser.add_argument('--recalc-candidate', action='store_true')
     parser.add_argument('--save-overlap', action='store_true')
     parser.add_argument('--charts', action='store_true')
+    parser.add_argument('--conditional-formatting', choices=['constant', 'constant-string', 'styles', 'dummy-missing', 'dummy-inert', 'dummy-present', 'dummy-added'])
     args = parser.parse_args()
-    if args.charts:
+    if args.conditional_formatting:
+        from cf_fixtures import create
+        create(args.directory, args.conditional_formatting)
+    elif args.charts:
         create_chart_fixtures(args.directory)
     else:
         create_fixtures(args.directory, args.check_performance, args.clean_workbook, args.recalc_candidate, args.save_overlap)
