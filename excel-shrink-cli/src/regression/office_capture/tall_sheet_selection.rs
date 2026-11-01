@@ -136,6 +136,12 @@ pub(super) fn prepare_recalc_inputs(
     plan: &PairedPlan,
     live: Option<&live::LiveCapture>,
 ) -> Result<()> {
+    if fs::read(directory.join("recalc-inputs.json")).ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .is_some_and(|hints| hints["manual_full_sheet_capture"] == true)
+    {
+        return Ok(());
+    }
     let threshold = setting(
         live,
         "tall_sheet_threshold",
@@ -273,6 +279,12 @@ impl ResidentCapture {
     }
 
     pub(super) fn select_tall_sheet_captures(&mut self, clients: &BTreeSet<String>) -> Result<()> {
+        if fs::read(self.directory.join("recalc-inputs.json")).ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+            .is_some_and(|hints| hints["manual_full_sheet_capture"] == true)
+        {
+            return Ok(());
+        }
         let threshold = setting(
             self.live.as_ref(),
             "tall_sheet_threshold",

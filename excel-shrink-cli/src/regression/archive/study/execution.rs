@@ -264,7 +264,8 @@ pub(super) fn run_record(
     }
     result[format!("{phase}_elapsed_seconds")] = json!(started.elapsed().as_secs_f64());
     result["complete"] =
-        json!(diagnosis_only || mode == JobMode::Compare || result["status"] == "skipped");
+        json!(diagnosis_only || mode == JobMode::Compare || result["status"] == "skipped"
+            || result["preparation_hash_screen"]["analysis_complete"] == true);
     if mode == JobMode::Compare {
         strategy::finish(&mut result);
     }

@@ -101,10 +101,13 @@ fn run_phase(
                     continue;
                 }
                 sweep_total += 1;
-                if prepared::sweep_cached(
-                    &bundle_path(output, &id),
-                    args.preparation_hash_profile.as_deref(),
-                )? {
+                if records[position]["complete"] == true
+                    && records[position]["preparation_hash_screen"]["analysis_complete"] == true
+                    && prepared::sweep_cached(
+                        &bundle_path(output, &id),
+                        args.preparation_hash_profile.as_deref(),
+                    )?
+                {
                     continue;
                 }
             }
@@ -455,21 +458,23 @@ pub(super) fn run_all(
     log_level: LogLevel,
     limited: bool,
 ) -> Result<()> {
-    run_phase(
-        sources,
-        selected_by_source,
-        args,
-        manifest_hash,
-        producer,
-        output,
-        records,
-        corpora,
-        limits,
-        run,
-        log_level,
-        limited,
-        false,
-    )?;
+    if !args.compare_only {
+        run_phase(
+            sources,
+            selected_by_source,
+            args,
+            manifest_hash,
+            producer,
+            output,
+            records,
+            corpora,
+            limits,
+            run,
+            log_level,
+            limited,
+            false,
+        )?;
+    }
     if args.preparation_hash_profile.is_some() {
         run_phase(
             sources,

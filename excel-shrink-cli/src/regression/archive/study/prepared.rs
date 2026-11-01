@@ -1232,7 +1232,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_hash_sweep_preserves_preparation_for_visual_fallback() -> Result<()> {
+    fn failed_hash_sweep_preserves_preparation_without_visual_fallback() -> Result<()> {
         let root = super::super::tests::test_directory("failed-preparation-sweep")?;
         let mut job = provenance_job(&root);
         fs::create_dir_all(&job.work)?;
@@ -1244,8 +1244,8 @@ mod tests {
         let mut record = json!({"prepared":true});
         prepare(&job, &mut record, LogLevel::Warn)?;
         assert_eq!(record["prepared"], true);
-        assert_eq!(record["status"], "prepared");
-        assert_eq!(record["complete"], false);
+        assert_eq!(record["status"], "skipped");
+        assert_eq!(record["complete"], true);
         assert!(record["hash_sweep_error"].is_string());
         assert!(record["preparation_hash_screen"].is_null());
         assert_eq!(fs::read(bundle)?, before);

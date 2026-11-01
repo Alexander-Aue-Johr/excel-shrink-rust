@@ -336,19 +336,23 @@ fn screen_sheet_hashes(original: &Snapshot, variant: &Snapshot) -> Result<Vec<Va
 }
 
 impl ResidentCapture {
-    pub(in crate::regression) const CAPTURE_POLICY: &'static str = "fixed-right-margin-1920-v1";
-    /// Capture selected negotiated tiles twice while both Excel workbooks remain open.
-    /// The returned hashes are screening evidence, not a pixel comparison result.
-    /// Captures both open workbooks twice, with a Full recalculation between sweeps.
+    pub(in crate::regression) const CAPTURE_POLICY: &'static str = "selected-range-analysis-v2";
+    /// Analyze selected ranges in one session, retaining verified mismatch pixels.
     ///
-    /// Returns stable tile and sheet hashes for the selected profile. An unstable
-    /// sweep cannot be treated as equal during preparation screening.
+    /// Raw-input and post-recalculation results remain separate. Stability describes
+    /// their relationship; neither result claims coverage of omitted ranges.
     pub(in crate::regression) fn screen_twice(&mut self, profile: &str) -> Result<Value> {
         self.align_initial_clients()?;
         let first_original = self.snapshot("original")?;
         let first_variant = self.snapshot(profile)?;
         let first_timings =
             self.screening_capture_timings(&first_original, &first_variant, profile)?;
+        // Retain raw-input differences before recalculation invalidates these
+        // captures. This is the analysis result, not a later full-sheet replay.
+        let raw_directory = self.directory.join("analysis/raw");
+        let raw_visual = self.compare(profile, &raw_directory)?;
+        self.publish_targeted_images(&first_original)?;
+        let raw_live = self.live.as_ref().map(|live| live.snapshot_state());
         let clients: BTreeSet<_> = self.aliases.values().cloned().collect();
         // A second screenshot without calculation would miss formulas whose
         // display changes only when Excel recalculates the already open file.
@@ -378,6 +382,13 @@ impl ResidentCapture {
         let second_variant = self.snapshot(profile)?;
         let second_timings =
             self.screening_capture_timings(&second_original, &second_variant, profile)?;
+        let recalculated_directory = self.directory.join("analysis/recalculated");
+        let recalculated_visual = self.compare(profile, &recalculated_directory)?;
+        if let (Some(live), Some(raw)) = (&mut self.live, raw_live) {
+            // Keep the dashboard on the original input state. Recalculation is
+            // separate evidence and must not silently replace its images.
+            live.restore_analysis(raw, &recalculated_visual)?;
+        }
         let mut first = screen_sheet_hashes(&first_original, &first_variant)?;
         let mut second = screen_sheet_hashes(&second_original, &second_variant)?;
         for sheet in first.iter_mut().chain(second.iter_mut()) {
@@ -394,6 +405,9 @@ impl ResidentCapture {
             .collect();
         Ok(json!({
             "version": 1,
+            "analysis_complete": true,
+            "raw_visual": raw_visual,
+            "recalculated_visual": recalculated_visual,
             "capture_policy": Self::CAPTURE_POLICY,
             "right_margin_pixels": 1920,
             "overflow_check": "disabled",
@@ -486,6 +500,42 @@ impl ResidentCapture {
             None,
             0,
         )
+    }
+
+    /// Open just the requested worksheet; manual inspection disables sampling.
+    pub(in crate::regression) fn start_sheet_inspection(
+        original: &Path,
+        variant: &Path,
+        sheet: usize,
+        directory: &Path,
+    ) -> Result<Self> {
+        fs::create_dir_all(directory)?;
+        publish(
+            &directory.join("recalc-inputs.json"),
+            &json!({"manual_full_sheet_capture":true,"variants":{}}),
+        )?;
+        Self::start_inner(
+            original,
+            &[("default", variant.to_owned())],
+            directory,
+            true,
+            Some(&BTreeSet::from([sheet])),
+            0,
+        )
+    }
+
+    /// Upload every requested inspection tile, including equal tiles.
+    pub(in crate::regression) fn capture_inspection_images(&mut self) -> Result<()> {
+        self.align_initial_clients()?;
+        let clients: BTreeSet<_> = self.aliases.values().cloned().collect();
+        for client in clients {
+            let mut snapshot = self.snapshot(&client)?;
+            self.capture_target_images(&client, &mut snapshot)?;
+            self.snapshots.insert(client, snapshot);
+        }
+        let reference = self.snapshot("original")?;
+        self.publish_targeted_images(&reference)?;
+        Ok(())
     }
 
     fn start_inner(

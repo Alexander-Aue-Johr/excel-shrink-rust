@@ -18,7 +18,8 @@ pub(super) fn cached(bundle: &Path, profile: Option<&str>) -> Result<Option<Valu
         Some(value) => value,
         None => return Ok(None),
     };
-    if value["screen"]["capture_policy"] != crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY
+    if value["screen"]["analysis_complete"] != true
+        || value["screen"]["capture_policy"] != crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY
         || value["screen"]["profile"].as_str() != profile
         || value["bundle_sha256"] != artifact_cache::hash_file(bundle)?
     {
@@ -60,7 +61,7 @@ pub(in super::super) fn cached_exists(bundle: &Path, profile: Option<&str>) -> R
 }
 
 /// Capture a prepared pair twice, preserving its bundle even if Excel fails.
-/// Failed sweeps fall back to the normal selected-profile visual comparison.
+/// A failed analysis remains unresolved; it never schedules a legacy full comparison.
 pub(super) fn run(job: &MemberJob, record: &mut Value) -> Result<()> {
     record
         .as_object_mut()
@@ -71,7 +72,7 @@ pub(super) fn run(job: &MemberJob, record: &mut Value) -> Result<()> {
         work_state::event(
             "hash_sweeping",
             "hash_sweep_failed",
-            "Hash sweep failed; shrink bundle retained for visual fallback",
+            "Analysis failed; shrink bundle retained for manual investigation",
             false,
             None,
             json!({"error":record["hash_sweep_error"]}),
@@ -79,9 +80,43 @@ pub(super) fn run(job: &MemberJob, record: &mut Value) -> Result<()> {
         record["preparation_hash_screen"] = Value::Null;
     }
     record["prepared"] = json!(true);
-    record["status"] = json!("prepared");
-    record["complete"] = json!(false);
+    finalize_analysis(record)?;
     write_record(&job.record, record)
+}
+
+/// Publish the analysis verdict without claiming coverage of omitted ranges.
+fn finalize_analysis(record: &mut Value) -> Result<()> {
+    record["comparison_pass"] = json!(strategy::HASH_SCREEN);
+    record["comparison_hash_profile"] = record["preparation_hash_screen"]["profile"].clone();
+    record["capture_mode"] = json!("resident-analysis");
+    record["complete"] = json!(true);
+    record["checks_complete"] = json!(false);
+    if record["hash_sweep_error"].is_string() {
+        record["status"] = json!("skipped");
+        record["error"] = record["hash_sweep_error"].clone();
+        return Ok(());
+    }
+    let screen = record["preparation_hash_screen"].clone();
+    ensure!(screen["analysis_complete"] == true, "Incomplete range analysis");
+    let name = screen["profile"].as_str().context("Missing analysis profile")?;
+    let visual = &screen["raw_visual"];
+    for (key, value) in visual.as_object().context("Missing raw visual result")? {
+        profile_mut(record, name)?[key] = value.clone();
+    }
+    let changed = visual["sheets"].as_array().into_iter().flatten()
+        .any(|sheet| sheet["status"] == "changed");
+    record["analysis_summary"] = json!({
+        "scope":"selected ranges only; omitted ranges remain unchecked",
+        "raw_differences":changed,
+        "changed_after_recalculation":screen["stable"] == false,
+        "recalculated_differences":screen["recalculated_visual"]["sheets"]
+            .as_array().into_iter().flatten().any(|sheet| sheet["status"] == "changed"),
+    });
+    record["status"] = json!(if changed { "differences" } else { "screened-equal" });
+    record["visual_coverage"] = json!("selected analysis ranges only; no automatic full-sheet follow-up");
+    record["whitespace_diagnosis"] = json!({"status":"not_investigated"});
+    strategy::finish(record);
+    Ok(())
 }
 
 fn capture(job: &MemberJob, record: &mut Value) -> Result<()> {
@@ -138,6 +173,41 @@ fn capture(job: &MemberJob, record: &mut Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn analysis_failure_is_terminal_and_never_claims_equal() -> Result<()> {
+        let mut record = json!({"hash_sweep_error":"Office response timed out","results":[]});
+        finalize_analysis(&mut record)?;
+        assert_eq!(record["status"], "skipped");
+        assert_eq!(record["complete"], true);
+        assert_eq!(record["checks_complete"], false);
+        assert_eq!(record["error"], "Office response timed out");
+        Ok(())
+    }
+
+    #[test]
+    fn raw_and_recalculated_results_remain_separate_even_when_unstable() -> Result<()> {
+        for (raw_status, expected) in [("changed", "differences"), ("same", "screened-equal")] {
+            let mut record = json!({"results":[{"profile":"default","source_bytes":500}],
+                "preparation_hash_screen":{"analysis_complete":true,"profile":"default","stable":false,
+                    "raw_visual":{"sheets":[{"status":raw_status}],"capture_policy":"test"},
+                    "recalculated_visual":{"sheets":[{"status":"changed"}]}}});
+            finalize_analysis(&mut record)?;
+            assert_eq!(record["status"], expected);
+            assert_eq!(record["complete"], true);
+            assert_eq!(record["results"][0]["source_bytes"], 500);
+            assert_eq!(record["results"][0]["sheets"][0]["status"], raw_status);
+            assert_eq!(record["preparation_hash_screen"]["stable"], false);
+            assert_eq!(record["preparation_hash_screen"]["recalculated_visual"]["sheets"][0]["status"], "changed");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn incomplete_analysis_is_rejected() {
+        let mut record = json!({});
+        assert!(finalize_analysis(&mut record).is_err());
+    }
     #[test]
     fn sampled_cache_is_invalidated_when_selection_settings_change() -> Result<()> {
         let root = artifact_cache::unique_path(&std::env::temp_dir(), "sampled-sweep-cache")?;
@@ -146,7 +216,7 @@ mod tests {
         let bundle = root.join("prepared/bundle.zip");
         fs::write(&bundle, b"bundle")?;
         let cache = json!({"bundle_sha256":artifact_cache::hash_file(&bundle)?,
-            "screen":{"capture_policy":crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY,"profile":"default","sheets":[{"capture_coverage":{
+            "screen":{"analysis_complete":true,"capture_policy":crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY,"profile":"default","sheets":[{"capture_coverage":{
                 "omitted_tiles":100,"threshold":40,"edge_tiles":2,"crc_equal_threshold_mib":256
             }}]}});
         fs::write(cache_path(&bundle), serde_json::to_vec(&cache)?)?;
@@ -166,7 +236,7 @@ mod tests {
         let bundle = root.join("prepared.zip");
         fs::write(&bundle, b"original bundle")?;
         let mut cache = json!({"version":1,"bundle_sha256":artifact_cache::hash_file(&bundle)?,
-            "screen":{"capture_policy":crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY,"profile":"default"}});
+            "screen":{"analysis_complete":true,"capture_policy":crate::regression::office_capture::ResidentCapture::CAPTURE_POLICY,"profile":"default"}});
         fs::write(cache_path(&bundle), serde_json::to_vec(&cache)?)?;
         assert!(cached_exists(&bundle, Some("default"))?);
         cache["screen"]["capture_policy"] = json!("tall-sheet-v1");

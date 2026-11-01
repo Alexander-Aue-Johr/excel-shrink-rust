@@ -201,8 +201,8 @@ impl ResidentCapture {
             live.state["capture_pipeline"]["replay_verified"] = json!(false);
             live.save()?;
         }
-        // Preparation persists only the checksums. Evidence replay belongs to
-        // the later pixel comparison of sheets selected by those checksums.
+        // The analysis caller retrieves mismatch evidence before recalculation.
+        // Do not request a second copy here or schedule a later sheet replay.
         if self.screening_mode {
             return Ok(());
         }
@@ -414,11 +414,11 @@ impl ResidentCapture {
         Ok(result)
     }
 
-    fn publish_targeted_images(&mut self, reference: &Snapshot) -> Result<()> {
+    pub(in crate::regression::office_capture::resident_capture) fn publish_targeted_images(&mut self, reference: &Snapshot) -> Result<()> {
         if self.live.is_none() {
             return Ok(());
         }
-        for tile in &reference.tiles {
+        for (position, tile) in reference.tiles.iter().enumerate() {
             let mut images = BTreeMap::new();
             for physical in self.aliases.values().collect::<BTreeSet<_>>() {
                 let Some(snapshot) = self.snapshots.get(physical) else {
@@ -446,6 +446,10 @@ impl ResidentCapture {
                 );
                 images.insert(physical.clone(), (peer.clone(), path.clone(), pixels));
             }
+            if images.is_empty() {
+                self.publish_hash_equal(tile, position)?;
+                continue;
+            }
             let aliases: BTreeMap<_, _> = self
                 .aliases
                 .iter()
@@ -468,7 +472,7 @@ impl ResidentCapture {
                     }
                 }
                 target["comparison_scope"] =
-                    json!("primary full sweep; secondary profiles on selected regions");
+                    json!("selected analysis ranges; omitted ranges are not checked");
             }
             live.save()?;
         }
@@ -533,6 +537,28 @@ impl ResidentCapture {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "opens an explicitly supplied original/default fixture in Excel"]
+    fn selected_analysis_retains_raw_and_recalculated_evidence_in_one_session() -> Result<()> {
+        let root = PathBuf::from(std::env::var_os("EXCEL_SHRINK_ANALYSIS_FIXTURE")
+            .context("set EXCEL_SHRINK_ANALYSIS_FIXTURE")?);
+        let directory = artifact_cache::unique_path(&root, "analysis")?;
+        let mut session = ResidentCapture::start_screening(&root.join("original.xlsx"),
+            "default", &root.join("default.xlsx"), &directory)?;
+        let result = session.screen_twice("default");
+        let finished = session.finish();
+        let result = result?;
+        let metrics = finished?;
+        ensure!(result["analysis_complete"] == true, "analysis did not finish");
+        for key in ["raw_visual", "recalculated_visual"] {
+            ensure!(result[key]["sheets"].as_array().is_some_and(|sheets| sheets.iter()
+                .any(|sheet| sheet["status"] == "changed")), "fixture difference missing in {key}");
+        }
+        fs::write(root.join("analysis-result.json"), serde_json::to_vec_pretty(&result)?)?;
+        fs::write(root.join("analysis-metrics.json"), serde_json::to_vec_pretty(&metrics)?)?;
+        Ok(())
+    }
     #[test]
     fn sparse_sweep_preserves_omitted_bands_on_both_passes() -> Result<()> {
         let snapshot = Snapshot { command: "plan".into(), heights: vec![], tiles: vec![

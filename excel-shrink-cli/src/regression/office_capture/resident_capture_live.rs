@@ -72,6 +72,19 @@ pub(super) struct LiveCapture {
 }
 
 impl LiveCapture {
+    /// Preserve the raw-input display while recalculation gathers separate evidence.
+    pub(super) fn snapshot_state(&self) -> Value {
+        self.state.clone()
+    }
+
+    /// Restore raw capture metadata without replacing its retained images.
+    pub(super) fn restore_analysis(&mut self, raw: Value, recalculated: &Value) -> Result<()> {
+        self.state = raw;
+        self.state["analysis_complete"] = json!(true);
+        self.state["recalculated_visual"] = recalculated.clone();
+        self.save()
+    }
+
     pub(super) fn from_environment(
         session: &Path,
         original: &Path,

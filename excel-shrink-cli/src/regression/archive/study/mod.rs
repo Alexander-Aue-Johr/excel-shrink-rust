@@ -83,7 +83,7 @@ pub(in crate::regression) struct StudyArgs {
     /// Screen the selection with the aggressive profile before full follow-up.
     #[arg(long, requires = "resident_capture", conflicts_with_all = ["prepare_only", "diagnose_whitespace_only", "full_scan_deferred"])]
     aggressive_first: bool,
-    /// Capture twice during preparation and screen this profile before visual follow-up.
+    /// Analyze selected capture ranges twice and retain differences without a full visual follow-up.
     #[arg(long, value_parser = ["default", "maximum-cleaning", "too-aggressive-cleaning"],
         requires = "resident_capture",
         conflicts_with_all = ["aggressive_first", "full_scan_deferred", "diagnose_whitespace_only"])]
@@ -672,7 +672,10 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         .filter(|id| !limited || current_work.contains(id) || completed_ids.contains(id.as_str()))
         .collect();
     progress::set_selection(&output, &selected_ids);
-    if !args.compare_only && !args.diagnose_whitespace_only {
+    if args.preparation_hash_profile.is_some() {
+        progress::set_comparison_pass(&output, strategy::HASH_SCREEN);
+    }
+    if (!args.compare_only || args.preparation_hash_profile.is_some()) && !args.diagnose_whitespace_only {
         preparation::run_all(
             &sources,
             &selected_by_source,
@@ -691,7 +694,11 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
     let mut visual_scope_frozen = false;
     // Screening spans the complete selection before any full secondary pass.
     let comparison_passes: &[&str] = if args.preparation_hash_profile.is_some() {
-        &[strategy::HASH_SCREEN]
+        // The sweep itself persists the verdict and mismatch images. Never
+        // reopen failed or changed sheets through the legacy visual pipeline.
+        progress::set_comparison_pass(&output, strategy::HASH_SCREEN);
+        progress::freeze_visual_scope(&output);
+        &[]
     } else if args.aggressive_first {
         &[strategy::PRIMARY, strategy::SECONDARY]
     } else {
