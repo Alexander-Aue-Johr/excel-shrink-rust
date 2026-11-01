@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Output,
     [ValidateRange(10,120)][int]$TargetSeconds = 45,
     [ValidateRange(1,4)][int]$Repetitions = 2,
-    [string]$Fixture
+    [string]$Fixture,
+    [ValidateSet(2,4)][int]$Workbooks = 2
 )
 $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../..'))
@@ -22,6 +23,7 @@ try {
     $arguments = '"{0}" --output "{1}" --desktop-one {2} --desktop-two {3} --target-seconds {4} --repetitions {5}' -f `
         (Join-Path $PSScriptRoot 'run.py'), $outputPath, $first.Name, $second.Name, $TargetSeconds, $Repetitions
     if ($Fixture) { $arguments += ' --fixture "{0}"' -f [IO.Path]::GetFullPath($Fixture) }
+    $arguments += ' --workbooks {0}' -f $Workbooks
     $process = $first.Start($python, $arguments, $owned)
     $deadline = [DateTime]::UtcNow.AddMinutes(30)
     $previous = ''

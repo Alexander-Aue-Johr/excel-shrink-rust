@@ -206,7 +206,7 @@ def measure_openings(directory, worker, fixture, desktops):
         starts = [datetime.fromisoformat(client['requested_at'].replace('Z', '+00:00')) for client in clients]
         ends = [datetime.fromisoformat(client['ready_at'].replace('Z', '+00:00')) for client in clients]
         report = {'clients': clients, 'launch_skew_seconds': (max(starts) - min(starts)).total_seconds(),
-                  'pair_seconds': (max(ends) - min(starts)).total_seconds(),
+                  'batch_seconds': (max(ends) - min(starts)).total_seconds(),
                   'minimum_available_bytes': min(sample['available_bytes'] for sample in samples)}
         publish(directory / 'samples.json', samples)
         publish(directory / 'result.json', report)
@@ -233,22 +233,25 @@ def calibrate_fixture(directory, worker, desktop, target_seconds):
         sheet_count = min(8, max(sheet_count + 1, math.ceil(sheet_count * target_seconds / max(seconds, 1))))
 
 
-def compare_desktop_arrangements(directory, worker, fixture, desktops, repetitions):
+def compare_desktop_arrangements(directory, worker, fixture, desktops, repetitions, workbooks):
     """Reverse arrangement order on alternating rounds to expose ordering effects."""
     reports = []
-    arrangements = ['sequential', 'same_desktop', 'separate_desktops']
+    arrangements = ['sequential', 'same_desktop']
+    if workbooks == 2:
+        arrangements.append('separate_desktops')
     for repetition in range(1, repetitions + 1):
         order = arrangements if repetition % 2 else list(reversed(arrangements))
         for arrangement in order:
             progress(directory, 'Measuring startup', repetition=repetition, arrangement=arrangement)
             trial = directory / f'round-{repetition}-{arrangement}'
             if arrangement == 'sequential':
-                first = measure_openings(trial / 'first', worker, fixture, [desktops[0]])
-                second = measure_openings(trial / 'second', worker, fixture, [desktops[0]])
-                report = {'pair_seconds': first['pair_seconds'] + second['pair_seconds'],
-                          'clients': first['clients'] + second['clients'], 'launch_skew_seconds': None}
+                openings = [measure_openings(trial / f'opening-{index}', worker, fixture, [desktops[0]])
+                            for index in range(1, workbooks + 1)]
+                report = {'batch_seconds': sum(opening['batch_seconds'] for opening in openings),
+                          'clients': [client for opening in openings for client in opening['clients']],
+                          'launch_skew_seconds': None}
             else:
-                targets = [desktops[0], desktops[0]] if arrangement == 'same_desktop' else desktops
+                targets = [desktops[0]] * workbooks if arrangement == 'same_desktop' else desktops
                 report = measure_openings(trial, worker, fixture, targets)
             reports.append({'repetition': repetition, 'arrangement': arrangement, **report})
             publish(directory / 'measurements.json', reports)
@@ -277,9 +280,10 @@ def main():
     parser.add_argument('--target-seconds', type=float, default=45)
     parser.add_argument('--repetitions', type=int, default=2)
     parser.add_argument('--fixture', type=Path)
+    parser.add_argument('--workbooks', type=int, choices=[2, 4], default=2)
     options = parser.parse_args()
     if not 1 <= options.repetitions <= 4 or not 10 <= options.target_seconds <= 120:
-        parser.error('Use 1–4 repetitions and a 10–120 second sizing target')
+        parser.error('Use 1-4 repetitions and a 10-120 second sizing target')
     desktops = [options.desktop_one, options.desktop_two]
     if len(set(desktops)) != 2 or any(not name.startswith('es-capture-')
                                     or not name.replace('-', '').isalnum() for name in desktops):
@@ -295,11 +299,11 @@ def main():
         else:
             fixture, sheets, seconds = calibrate_fixture(directory, worker, options.desktop_one, options.target_seconds)
         report = {'fixture': str(fixture), 'rows_per_sheet': ROWS, 'columns': 3, 'sheets': sheets,
-                  'calibration_seconds': seconds, 'measurement': 'native-process-start-to-verified-addin-ready',
+                  'calibration_seconds': seconds, 'workbooks_per_trial': options.workbooks, 'measurement': 'native-process-start-to-verified-addin-ready',
                   'cpu_count': os.cpu_count(), 'initial_available_bytes': available_memory()}
         publish(directory / 'fixture.json', report)
         results = compare_desktop_arrangements(directory, worker, fixture,
-            [options.desktop_one, options.desktop_two], options.repetitions)
+            [options.desktop_one, options.desktop_two], options.repetitions, options.workbooks)
         report['machine'] = machine_info()
         report['binary_sha256'] = hashlib.sha256((ROOT / 'target/release/excel-shrink-cli.exe').read_bytes()).hexdigest()
         report['resident_source_sha256'] = hashlib.sha256((worker / 'resident.ps1').read_bytes()).hexdigest()
