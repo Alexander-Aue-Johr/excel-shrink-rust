@@ -24,6 +24,7 @@ use zip::ZipArchive;
 #[derive(Clone, Default)]
 pub(super) struct Sheet {
     pub value_namespace_supported: bool,
+    pub rebuild_blockers: BTreeSet<String>,
     pub cells: Cells,
     pub rows: Arc<BTreeMap<u32, BTreeMap<String, String>>>,
     pub columns: Vec<u8>,
@@ -359,6 +360,11 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     let mut layout = Sha256::new();
     streaming_xml::scan_with_offsets(archive.by_name(part)?, |event| {
         if let Event::Tag(tag) = &event {
+            if let Some(reason) = super::execution_plan::worksheet_blocker(*tag) {
+                if !model.rebuild_blockers.contains(reason) {
+                    model.rebuild_blockers.insert(reason.into());
+                }
+            }
             // Cell-local namespace scopes cannot escape sheetData into a later CF block.
             let declaration = if data_depth.is_none() || tag.local() == b"sheetData" {
                 tag.attr(b"xmlns")?
