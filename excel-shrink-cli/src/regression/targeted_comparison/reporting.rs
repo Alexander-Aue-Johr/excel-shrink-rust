@@ -10,6 +10,7 @@ impl Comparison<'_> {
     /// Persist the scientific result separately from compact display telemetry.
     pub(super) fn complete(&mut self) -> Result<()> {
         self.report.status = "completed_with_limitations".into();
+        self.report.image_comparison_statistics = self.image_comparisons.statistics();
         self.write_completion()
     }
 
@@ -119,6 +120,7 @@ impl Report {
 pub(super) fn new_report() -> Report {
     Report {
         capture_policy: super::CAPTURE_POLICY,
+        image_comparison_statistics: Default::default(),
         status: "running".into(),
         check_performance: "not_requested",
         check_performance_evidence: None,

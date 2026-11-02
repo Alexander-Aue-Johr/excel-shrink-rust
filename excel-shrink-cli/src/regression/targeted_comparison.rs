@@ -6,6 +6,7 @@ mod charts;
 mod conditional_formatting;
 mod check_performance;
 mod evidence;
+mod image_comparison;
 mod heights;
 mod host;
 mod reporting;
@@ -91,6 +92,7 @@ struct Finding {
 #[derive(Serialize)]
 struct Report {
     capture_policy: &'static str,
+    image_comparison_statistics: image_comparison::Statistics,
     status: String,
     check_performance: &'static str,
     check_performance_evidence: Option<check_performance::PerformanceEvidence>,
@@ -130,6 +132,7 @@ struct Comparison<'a> {
     captures: Captures,
     excel: Option<ExcelHost>,
     performance: check_performance::PerformanceState,
+    image_comparisons: image_comparison::ImageComparisons,
 }
 
 /// Run the same workflow from the CLI or an explicitly selected Observatory group.
@@ -178,6 +181,7 @@ impl<'a> Comparison<'a> {
             captures: Captures::default(),
             excel: None,
             performance: check_performance::PerformanceState::default(),
+            image_comparisons: image_comparison::ImageComparisons::default(),
         })
     }
 
@@ -242,6 +246,7 @@ impl<'a> Comparison<'a> {
             &self.captures.shrink_after,
             &self.captures.original_after,
             &self.original_save_changes,
+            &mut self.image_comparisons,
         )?;
         self.report.candidate_count = self.candidates.len();
         self.report

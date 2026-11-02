@@ -1,7 +1,7 @@
 //! Preserve live pre-rebuild states until every late candidate has matching evidence.
 use super::{
     charts,
-    evidence::{capture_candidate, images_differ, Evidence},
+    evidence::{capture_candidate, Evidence},
     heights::{self, HeightCheck, HeightRun},
     telemetry::{LaneId, Lifecycle, Phase, StepStatus},
     xml_changes::{cell_candidates, Snapshot, Transition},
@@ -175,10 +175,10 @@ impl Workflow<'_, '_> {
                 .join(format!("charts-{}", id.key())),
             &self.comparison.telemetry,
         )?;
-        self.comparison
-            .report
-            .capture_counts
-            .insert(format!("{}:charts", id.key()), charts::image_count(&captures));
+        self.comparison.report.capture_counts.insert(
+            format!("{}:charts", id.key()),
+            charts::image_count(&captures),
+        );
         self.comparison
             .telemetry
             .update(|state| state.step(id, phase, StepStatus::Done))?;
@@ -479,7 +479,7 @@ impl Workflow<'_, '_> {
                 findings.push(VisualFinding {
                     sheet: candidate.sheet.clone(),
                     cell: candidate.cell.clone(),
-                    pixels_differ: images_differ(&a.path, &b.path)?,
+                    pixels_differ: self.comparison.image_comparisons.differ(&a.path, &b.path)?,
                     geometry_differs: a.geometry != b.geometry,
                     left_png: a.path.clone(),
                     right_png: b.path.clone(),
@@ -490,7 +490,11 @@ impl Workflow<'_, '_> {
                 left,
                 right,
                 findings,
-                charts: charts::compare(&self.states[&left].charts, &self.states[&right].charts)?,
+                charts: charts::compare(
+                    &self.states[&left].charts,
+                    &self.states[&right].charts,
+                    &mut self.comparison.image_comparisons,
+                )?,
             });
             self.comparison.telemetry.update(|state| {
                 state.step(left, Phase::Compare, StepStatus::Done);

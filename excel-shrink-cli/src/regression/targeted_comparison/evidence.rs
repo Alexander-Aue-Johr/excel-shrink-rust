@@ -1,9 +1,9 @@
 //! Bounded image capture and comparison of the same regions across workbook states.
 use super::host::ExcelHost;
+use super::image_comparison::ImageComparisons;
 use super::telemetry::{LaneId, Telemetry};
 use super::{Candidate, Finding};
 use anyhow::{ensure, Context, Result};
-use image::GenericImageView;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -46,6 +46,7 @@ pub(super) fn compare_performance(
     original_after: &BTreeMap<Candidate, Evidence>,
     save_changes: &BTreeSet<Candidate>,
     optimization_changes: &BTreeSet<Candidate>,
+    comparisons: &mut ImageComparisons,
 ) -> Result<Vec<PerformanceFinding>> {
     candidates
         .iter()
@@ -70,8 +71,8 @@ pub(super) fn compare_performance(
                 })
                 .collect::<Result<_>>()?;
             let original = evidence["original_before"];
-            let differs = |other: &Evidence| -> Result<bool> {
-                Ok(images_differ(&original.path, &other.path)?
+            let mut differs = |other: &Evidence| -> Result<bool> {
+                Ok(comparisons.differ(&original.path, &other.path)?
                     || original.geometry != other.geometry)
             };
             Ok(PerformanceFinding {
@@ -167,6 +168,7 @@ pub(super) fn compare_evidence(
     shrink_after: &BTreeMap<Candidate, Evidence>,
     original_after: &BTreeMap<Candidate, Evidence>,
     original_save_changes: &BTreeSet<Candidate>,
+    comparisons: &mut ImageComparisons,
 ) -> Result<Vec<Finding>> {
     let mut findings = Vec::new();
     for candidate in candidates {
@@ -186,9 +188,9 @@ pub(super) fn compare_evidence(
             sheet: candidate.sheet.clone(),
             cell: candidate.cell.clone(),
             range: padded_range(&candidate.cell)?,
-            before_recalc_differs: images_differ(&o0.path, &s0.path)?,
-            after_shrink_recalc_differs: images_differ(&o0.path, &s1.path)?,
-            also_changed_by_original_recalc: images_differ(&o0.path, &o1.path)?
+            before_recalc_differs: comparisons.differ(&o0.path, &s0.path)?,
+            after_shrink_recalc_differs: comparisons.differ(&o0.path, &s1.path)?,
+            also_changed_by_original_recalc: comparisons.differ(&o0.path, &o1.path)?
                 || o0.geometry != o1.geometry,
             before_recalc_geometry_differs: o0.geometry != s0.geometry,
             after_shrink_recalc_geometry_differs: o0.geometry != s1.geometry,
@@ -208,13 +210,7 @@ pub(super) fn compare_evidence(
 
 /// Compare decoded pixels; Office chart exports do not consistently match the documented format.
 pub(super) fn images_differ(left: &Path, right: &Path) -> Result<bool> {
-    let left = image::ImageReader::open(left)?
-        .with_guessed_format()?
-        .decode()?;
-    let right = image::ImageReader::open(right)?
-        .with_guessed_format()?
-        .decode()?;
-    Ok(left.dimensions() != right.dimensions() || left.to_rgba8() != right.to_rgba8())
+    ImageComparisons::default().differ(left, right)
 }
 
 #[cfg(test)]
@@ -246,7 +242,8 @@ mod tests {
             &empty,
             &empty,
             &empty,
-            &BTreeSet::new()
+            &BTreeSet::new(),
+            &mut ImageComparisons::default(),
         )
         .is_err());
     }
@@ -273,6 +270,7 @@ mod tests {
             &original,
             &BTreeSet::new(),
             &BTreeSet::new(),
+            &mut ImageComparisons::default(),
         )
         .err()
         .unwrap();

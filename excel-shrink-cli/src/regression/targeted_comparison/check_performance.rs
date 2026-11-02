@@ -151,6 +151,7 @@ impl Comparison<'_> {
             &self.captures.original_after,
             &self.performance.save_changes,
             &self.performance.optimization_changes,
+            &mut self.image_comparisons,
         )?;
         self.report
             .check_performance_evidence

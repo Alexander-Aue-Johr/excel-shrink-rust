@@ -1,7 +1,7 @@
 //! Whole-chart evidence is unconditional and independent of changed worksheet cells.
 use super::{
-    evidence::images_differ,
     host::ExcelHost,
+    image_comparison::ImageComparisons,
     telemetry::{LaneId, Telemetry},
 };
 use anyhow::{ensure, Result};
@@ -148,7 +148,11 @@ pub(super) fn image_count(captures: &Captures) -> usize {
 }
 
 /// Compare the union: an added/deleted chart is a difference, never identical evidence.
-pub(super) fn compare(left: &Captures, right: &Captures) -> Result<Vec<Finding>> {
+pub(super) fn compare(
+    left: &Captures,
+    right: &Captures,
+    comparisons: &mut ImageComparisons,
+) -> Result<Vec<Finding>> {
     let charts: BTreeSet<_> = left.keys().chain(right.keys()).collect();
     charts
         .into_iter()
@@ -159,7 +163,7 @@ pub(super) fn compare(left: &Captures, right: &Captures) -> Result<Vec<Finding>>
             {
                 (Some(a), Some(b)) => {
                     let pixels = match (a.path(), b.path()) {
-                        (Some(left), Some(right)) => Some(images_differ(left, right)?),
+                        (Some(left), Some(right)) => Some(comparisons.differ(left, right)?),
                         _ => None,
                     };
                     (
@@ -209,7 +213,7 @@ mod tests {
                 image: ChartImage::Rendered("original.jpg".into()),
             },
         )]);
-        let findings = compare(&left, &BTreeMap::new())?;
+        let findings = compare(&left, &BTreeMap::new(), &mut ImageComparisons::default())?;
         assert_eq!(findings.len(), 1);
         assert!(findings[0].presence_differs);
         assert!(findings[0].right_image.is_none());
@@ -234,7 +238,7 @@ mod tests {
                 image: ChartImage::Rendered("missing-chart-export.jpg".into()),
             },
         )]);
-        assert!(compare(&captures, &captures).is_err());
+        assert!(compare(&captures, &captures, &mut ImageComparisons::default()).is_err());
     }
 
     #[test]
@@ -259,13 +263,13 @@ mod tests {
                 image: ChartImage::ZeroArea,
             },
         )]);
-        let findings = compare(&before, &after)?;
+        let findings = compare(&before, &after, &mut ImageComparisons::default())?;
         assert!(findings[0].geometry_differs && findings[0].rendering_differs);
         assert!(!findings[0].pixels_compared);
         assert_eq!(findings[0].right_rendering, Some("zero-area-chart"));
         assert!(findings[0].right_image.is_none());
         assert_eq!(image_count(&after), 0);
-        let same = compare(&after, &after)?;
+        let same = compare(&after, &after, &mut ImageComparisons::default())?;
         assert!(
             !same[0].pixels_compared && !same[0].geometry_differs && !same[0].rendering_differs
         );
