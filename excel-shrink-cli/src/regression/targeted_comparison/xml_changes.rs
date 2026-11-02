@@ -62,6 +62,7 @@ pub(super) struct Transition {
     pub before_file: std::path::PathBuf,
     pub after_file: std::path::PathBuf,
     pub changes: Vec<XmlChange>,
+    pub skipped_outside_content_cell_changes: BTreeMap<String, usize>,
 }
 
 fn cell_digest(cell: super::cell_stream::Cell) -> String {
@@ -110,7 +111,31 @@ impl Snapshot {
     }
 
     /// Compare actual XML content, with style/string context, rather than addresses alone.
+    #[cfg(test)]
     pub fn changes(&self, after: &Self) -> Result<Vec<XmlChange>> {
+        self.compare(after, None)
+    }
+
+    /// Count exterior formatting-only changes without materializing millions of unused candidates.
+    pub fn content_changes(
+        &self,
+        after: &Self,
+    ) -> Result<(Vec<XmlChange>, BTreeMap<String, usize>)> {
+        let mut skipped = BTreeMap::new();
+        let changes = self.compare(after, Some(&mut skipped))?;
+        Ok((changes, skipped))
+    }
+
+    fn compare(
+        &self,
+        after: &Self,
+        mut skipped: Option<&mut BTreeMap<String, usize>>,
+    ) -> Result<Vec<XmlChange>> {
+        let mut content = super::content_bounds::ContentBounds::default();
+        if skipped.is_some() {
+            content.include(self);
+            content.include(after);
+        }
         let mut changes = Vec::new();
         let names: BTreeSet<_> = self.sheets.keys().chain(after.sheets.keys()).collect();
         for name in names {
@@ -119,6 +144,18 @@ impl Snapshot {
             let right = after.sheets.get(name).unwrap_or(&empty);
             left.cells.changes(&right.cells, |change| {
                 let coordinate = change.coordinate();
+                if let Some(counts) = skipped.as_deref_mut() {
+                    if !change.visible()
+                        && !content.intersects_cell(
+                            name,
+                            coordinate.row,
+                            u32::from(coordinate.column),
+                        )
+                    {
+                        *counts.entry(name.clone()).or_default() += 1;
+                        return Ok(());
+                    }
+                }
                 let address = coordinate.address();
                 changes.push(XmlChange {
                     sheet: name.clone(),
@@ -216,13 +253,20 @@ impl Snapshot {
     }
 
     /// An exact matching transition is evidence of overlap, never proof of exclusive causality.
+    #[cfg(test)]
     pub fn same_change(a: &XmlChange, b: &XmlChange) -> bool {
-        a.sheet == b.sheet
-            && a.location == b.location
-            && a.before == b.before
-            && a.after == b.after
-            && a.context_before == b.context_before
-            && a.context_after == b.context_after
+        Self::change_key(a) == Self::change_key(b)
+    }
+
+    pub fn change_key(change: &XmlChange) -> (&str, &str, Option<&str>, Option<&str>, &str, &str) {
+        (
+            &change.sheet,
+            &change.location,
+            change.before.as_deref(),
+            change.after.as_deref(),
+            &change.context_before,
+            &change.context_after,
+        )
     }
 }
 
@@ -535,12 +579,50 @@ pub(super) fn cell_candidates(changes: &[XmlChange]) -> BTreeSet<Candidate> {
 mod tests {
     use super::*;
     #[test]
+    fn exterior_blank_changes_are_counted_but_deleted_real_values_are_retained() -> Result<()> {
+        fn snapshot(xml: &[u8]) -> Result<Snapshot> {
+            let mut writer = Writer::new()?;
+            streaming_xml::scan(xml, |event| writer.event(&event))?;
+            Ok(Snapshot {
+                sheets: BTreeMap::from([(
+                    "Data".into(),
+                    Sheet {
+                        cells: writer.finish()?,
+                        ..Sheet::default()
+                    },
+                )]),
+                context: "same".into(),
+                cf_context: "same".into(),
+                sheet_names: None,
+                defined_names: None,
+            })
+        }
+        let mut xml =
+            String::from("<sheetData><row><c r=\"C1\"><v>1</v></c><c r=\"F10\"><v>2</v></c>");
+        for row in 20..100_020 {
+            xml.push_str(&format!("<c r=\"A{row}\" s=\"1\"/>"));
+        }
+        xml.push_str("</row></sheetData>");
+        let before = snapshot(xml.as_bytes())?;
+        let after = snapshot(br#"<sheetData><row><c r="C1"><v>1</v></c></row></sheetData>"#)?;
+        let (changes, skipped) = before.content_changes(&after)?;
+        assert_eq!(skipped["Data"], 100_000);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].location, "cell:F10");
+        assert_eq!(before.changes(&after)?.len(), 100_001);
+        Ok(())
+    }
+
+    #[test]
     fn metadata_audit_and_cell_scan_produce_the_same_conditional_catalogue() -> Result<()> {
         use std::io::Write;
         let path = std::env::temp_dir().join(format!("cf-audit-{}.xlsx", uuid::Uuid::new_v4()));
         let file = File::create(&path)?;
         let mut zip = zip::ZipWriter::new(file);
-        zip.start_file("xl/worksheets/sheet.xml", zip::write::FileOptions::default())?;
+        zip.start_file(
+            "xl/worksheets/sheet.xml",
+            zip::write::FileOptions::default(),
+        )?;
         zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData><conditionalFormatting sqref="A1:A10"><cfRule type="cellIs" operator="greaterThan" priority="1"><formula>5</formula></cfRule></conditionalFormatting></worksheet>"#)?;
         zip.finish()?;
         let mut archive = ZipArchive::new(File::open(&path)?)?;

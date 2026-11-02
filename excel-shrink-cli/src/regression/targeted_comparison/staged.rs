@@ -190,7 +190,7 @@ impl Workflow<'_, '_> {
         let b = Snapshot::read(after)?;
         self.content_bounds.include(&a);
         self.content_bounds.include(&b);
-        let changes = a.changes(&b)?;
+        let (changes, skipped_outside_content_cell_changes) = a.content_changes(&b)?;
         self.requested_candidates.extend(cell_candidates(&changes));
         self.publish_candidate_count()?;
         self.comparison.report.transitions.push(Transition {
@@ -198,6 +198,7 @@ impl Workflow<'_, '_> {
             before_file: before.into(),
             after_file: after.into(),
             changes,
+            skipped_outside_content_cell_changes,
         });
         Ok(())
     }
@@ -291,7 +292,7 @@ impl Workflow<'_, '_> {
                 a.sheets.keys().eq(b.sheets.keys()),
                 "Sheet set changed; targeted coverage is incomplete"
             );
-            let changes = a.changes(&b)?;
+            let (changes, _) = a.content_changes(&b)?;
             self.requested_candidates.extend(cell_candidates(&changes));
             let decisions = super::conditional_formatting::select(
                 &a,
@@ -540,11 +541,11 @@ impl Workflow<'_, '_> {
             .find(|t| t.label == "original opening/saving control")
             .map(|t| t.changes.clone())
             .unwrap_or_default();
+        let original_keys: BTreeSet<_> = original.iter().map(Snapshot::change_key).collect();
         for transition in &mut self.comparison.report.transitions {
             for change in &mut transition.changes {
-                change.also_in_original_open_save = original
-                    .iter()
-                    .any(|other| Snapshot::same_change(change, other));
+                change.also_in_original_open_save =
+                    original_keys.contains(&Snapshot::change_key(change));
             }
         }
     }

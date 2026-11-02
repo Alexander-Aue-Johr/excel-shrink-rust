@@ -101,6 +101,20 @@ pub(super) struct Coverage {
 pub(super) struct ContentBounds(BTreeMap<String, Rectangle>);
 
 impl ContentBounds {
+    /// Account for both the candidate's neighborhood and the content margin before allocating a change.
+    pub fn intersects_cell(&self, sheet: &str, row: u32, column: u32) -> bool {
+        self.0.get(sheet).is_some_and(|bounds| {
+            Rectangle {
+                top: row,
+                bottom: row,
+                left: column,
+                right: column,
+            }
+            .padded()
+            .intersection(bounds.padded())
+            .is_some()
+        })
+    }
     /// Include raw originals as well as saved/rebuilt variants: deleted real data stays covered.
     pub fn include(&mut self, snapshot: &Snapshot) {
         for (name, sheet) in &snapshot.sheets {

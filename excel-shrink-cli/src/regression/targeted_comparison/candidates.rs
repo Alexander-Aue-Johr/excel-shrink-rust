@@ -24,7 +24,7 @@ pub(super) fn find_changes_caused_by_save(
 pub(super) fn discover_candidates(left: &Path, right: &Path) -> Result<BTreeSet<Candidate>> {
     let before = Snapshot::read(left)?;
     let after = Snapshot::read(right)?;
-    Ok(cell_candidates(&before.changes(&after)?))
+    Ok(cell_candidates(&before.content_changes(&after)?.0))
 }
 
 #[cfg(test)]

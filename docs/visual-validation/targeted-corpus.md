@@ -11,6 +11,9 @@ Deleted real values therefore remain eligible. Deleted blank tails do not cause
 hundreds of thousands of captures. `report.json.content_coverage` records each
 sheet's envelope, requested count, skipped count, clipped count and unique
 selected regions. Skips mean **outside the chosen coverage**, not visually equal.
+Exterior empty-cell XML changes are counted before allocating candidate objects;
+each transition records `skipped_outside_content_cell_changes` per sheet. These
+counts are per transition, so they must not be summed as unique workbook cells.
 Charts are exported separately, including chart sheets, even outside cell bounds.
 Late rebuild candidates are backfilled in the retained pre-rebuild workbooks.
 

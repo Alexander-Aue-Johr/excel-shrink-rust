@@ -17,7 +17,7 @@ def worksheet_cells(path):
 
 
 def verify(directory):
-    """Require XML removal, CP-only differences, all captures and actual process exits."""
+    """Require XML removal, auditable exterior skips, in-content controls and actual exits."""
     report = json.loads((directory / 'report.json').read_text())
     telemetry = json.loads((directory / 'telemetry.json').read_text())
     evidence = report['check_performance_evidence']
@@ -25,9 +25,10 @@ def verify(directory):
     assert evidence['native_result']['method'] == 'window_messages'
     assert 'Z10000' in worksheet_cells(evidence['before_optimization'])
     assert 'Z10000' not in worksheet_cells(evidence['after_optimization'])
-    assert evidence['optimization_changes']
-    assert any(f['optimization_xml_changed'] and f['before_recalc_differs']
-               for f in evidence['findings'])
+    optimization = next(item for item in report['transitions']
+                        if item['label'] == 'Check Performance optimization')
+    assert optimization['skipped_outside_content_cell_changes']['Rows'] >= 1
+    assert not evidence['optimization_changes'], 'The removed formatting-only tail must not be captured.'
     assert not any(f['original_recalc_drift'] for f in evidence['findings'])
     # Both supplied inputs are identical; only CP is allowed to introduce differences.
     assert not any(f['before_recalc_differs'] or f['after_shrink_recalc_differs']
