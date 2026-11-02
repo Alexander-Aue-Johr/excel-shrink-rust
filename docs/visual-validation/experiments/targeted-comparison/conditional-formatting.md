@@ -320,3 +320,16 @@ Count and percentage variants, mixed blocks, outside inputs and deleted inputs
 are covered by focused tests. Native controls `top-bottom` and
 `top-bottom-unchanged` passed, including visible indirect changes in unchanged
 ranked cells. Other candidate reasons remain independent. Owned Excel copies closed.
+
+## Physical row-parity expressions
+
+The exact expression forms `MOD(ROW(),2)=0` and `MOD(ROW(),2)=1` are input-independent
+at fixed worksheet coordinates. Token-level matching permits ordinary whitespace
+and case variations without joining identifiers or accepting extra dependencies.
+ROW(cell), variable divisors and appended functions retain fallback. Catalogue,
+application-range and formatting/layout guards remain in force; ordinary changed
+cells and geometry differences still have their own capture selection.
+Unit tests include mixed dependencies and malformed/suffixed formulas. Native
+controls `row-parity` and `row-parity-shift` passed: value edits retain band pixels
+outside the edited row while still capturing the value change; changing parity
+captures and reveals the changed bands. Owned Excel processes closed.

@@ -192,7 +192,7 @@ fn mixed_blocks_union_known_dependencies_and_keep_unknown_members_conservative()
     let bar = "<cfRule type=\"dataBar\" priority=\"2\"><dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FF638EC6\"/></dataBar></cfRule>";
     let top = "<cfRule type=\"top10\" priority=\"2\" rank=\"2\"/>";
     for group in [duplicate, scale, bar, top] {
-        let block = format!("<conditionalFormatting sqref=\"B2:D5\">{expression}{group}{dummy}<cfRule type=\"expression\" priority=\"4\"><formula>#REF!</formula></cfRule></conditionalFormatting>");
+        let block = format!("<conditionalFormatting sqref=\"B2:D5\">{expression}{group}{dummy}<cfRule type=\"expression\" priority=\"4\"><formula>#REF!</formula></cfRule><cfRule type=\"expression\" priority=\"5\"><formula>MOD(ROW(),2)=0</formula></cfRule></conditionalFormatting>");
         write_book(&a, values, &block, "", "", "")?;
         fs::copy(&a, &b)?;
         assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
@@ -700,6 +700,59 @@ fn pivot_flags_do_not_turn_constant_thresholds_into_an_unchanged_input_proof() -
             "pivot-formatting-dependencies-not-modeled"
         );
         assert!(candidates.iter().any(|candidate| candidate.cell == "A1:B5"));
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn row_parity_has_no_value_dependency_but_retains_geometry_and_rule_guards() -> Result<()> {
+    let root =
+        crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-row-parity")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let values =
+        "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"5\"><c r=\"B5\"><v>3</v></c></row>";
+    let template = "<conditionalFormatting sqref=\"A1:B5\"><cfRule type=\"expression\" priority=\"1\"><formula>FORMULA</formula></cfRule></conditionalFormatting>";
+    for formula in [
+        "MOD(ROW(),2)=0",
+        "MOD(ROW(),2)=1",
+        "= mOd ( rOw ( ) , 2 ) = 1",
+    ] {
+        let block = template.replace("FORMULA", formula);
+        write_book(&a, values, &block, "", "", "")?;
+        write_book(&b, &values.replace("<v>1", "<v>9"), &block, "", "", "")?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+        write_book(&b, values, &block, "", "", "<dxfs/>")?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+        write_book(
+            &b,
+            values,
+            &template.replace("FORMULA", "MOD(ROW(),2)=0+1"),
+            "",
+            "",
+            "",
+        )?;
+        assert!(check(&a, &b)?.0.iter().all(|d| d.outcome == "capture"));
+    }
+    for formula in [
+        "M OD(ROW(),2)=0",
+        "MOD(ROW(A1),2)=0",
+        "MOD(ROW(),A1)=0",
+        "MOD(ROW(),2)=0+NOW()",
+        "MOD(ROW(),20)=0",
+    ] {
+        write_book(
+            &a,
+            values,
+            &template.replace("FORMULA", formula),
+            "",
+            "",
+            "",
+        )?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
     }
     fs::remove_dir_all(root)?;
     Ok(())

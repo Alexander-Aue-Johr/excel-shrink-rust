@@ -61,6 +61,15 @@ def verify(root: Path, mode: str) -> None:
         }[mode]
         finding = next(item for item in direct['findings'] if item['cell'] == expected)
         assert finding['pixels_differ'], 'Dependent target did not change in native Excel'
+    elif mode == 'row-parity':
+        assert all(item['outcome'] == 'excluded' for item in decisions), decisions
+        finding = next(item for item in direct['findings'] if item['cell'] == 'A3')
+        assert finding['pixels_differ'], 'The changed cell was lost when excluding CF'
+        from PIL import Image, ImageChops
+        with Image.open(finding['left_png']) as left, Image.open(finding['right_png']) as right:
+            for y0, y1 in [(0, left.height // 3), (left.height * 2 // 3, left.height)]:
+                region = (0, y0, left.width, y1)
+                assert not ImageChops.difference(left.convert('RGB').crop(region), right.convert('RGB').crop(region)).getbbox(), 'Row bands changed outside the edited row'
     elif mode in ('data-bar-unchanged', 'name-missing', 'top-bottom-unchanged'):
         assert all(item['outcome'] == 'excluded' for item in decisions), decisions
         assert not different

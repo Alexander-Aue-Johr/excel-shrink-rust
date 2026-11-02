@@ -83,6 +83,15 @@ def create(directory: Path, mode: str) -> None:
             sheet.conditional_formatting.add(area, rule)
             if mode in ('ref-mixed', 'ref-mixed-group'):
                 sheet.conditional_formatting.add(area, ColorScaleRule(start_type='min', start_color='FFFF0000', end_type='max', end_color='FF00FF00'))
+        elif mode in ('row-parity', 'row-parity-shift'):
+            for column, parity in [('A', 0), ('B', 1)]:
+                if mode == 'row-parity-shift' and lane == 'default':
+                    parity = 1 - parity
+                sheet.conditional_formatting.add(
+                    f'{column}1:{column}5', Rule(type='expression', formula=[f'MOD(ROW(),2)={parity}'], dxf=DifferentialStyle(fill=fill)),
+                )
+                if mode == 'row-parity' and lane == 'default':
+                    sheet[f'{column}3'] = 9
         elif mode in ('top-bottom', 'top-bottom-unchanged'):
             for column, bottom, percent in [('A', False, False), ('B', True, False), ('C', False, True), ('D', True, True)]:
                 for row in range(1, 6):

@@ -40,6 +40,9 @@ pub(super) fn proof(rule: &Rule, before: &Snapshot, after: &Snapshot) -> Option<
     {
         return None;
     }
+    if row_parity(formula) {
+        return Some("fixed-physical-row-parity");
+    }
     let constant_error = formula.eq_ignore_ascii_case("#REF!")
         || formula.split_once('=').is_some_and(|(left, right)| {
             left.trim().eq_ignore_ascii_case("#REF!") && right.trim() == "1"
@@ -55,4 +58,17 @@ pub(super) fn proof(rule: &Rule, before: &Snapshot, after: &Snapshot) -> Option<
     };
     (!left.contains("isblank") && !right.contains("isblank"))
         .then_some("bare-isblank-name-absent-in-both-states")
+}
+
+/// Match tokens separately so whitespace cannot join names or hide an extra dependency.
+fn row_parity(formula: &str) -> bool {
+    let upper = formula.to_ascii_uppercase();
+    let mut rest = upper.as_str();
+    for token in ["MOD", "(", "ROW", "(", ")", ",", "2", ")", "="] {
+        let Some(next) = rest.trim_start().strip_prefix(token) else {
+            return false;
+        };
+        rest = next;
+    }
+    matches!(rest.trim(), "0" | "1")
 }
