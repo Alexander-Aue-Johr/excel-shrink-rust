@@ -77,6 +77,17 @@ recorded; omitted states are not reported as visually compared. Existing complet
 version-two targeted results remain reusable with the same Check Performance
 setting. No new command-line arguments are needed; resume the same output root.
 
+Check Performance generation is now cached separately from the shrinker and
+comparison results. Corpus runs automatically retain it under
+`.tmp/regression-cache/check-performance-v1`, outside disposable work. Set
+`EXCEL_SHRINK_CHECK_PERFORMANCE_CACHE_DIR` to choose a different persistent disk.
+No new CLI flags are required. Valid CP and rebuilt CP files retain their native
+confirmation and historical launcher measurements. Changed Original/saved values,
+Excel installation or generation recipe invalidate reuse. Cached artifacts still
+undergo the current XML/capture comparison; they do not reuse a visual verdict.
+Existing completed reports remain reusable and are not rerun merely to seed this
+cache. Old working files already discarded cannot be reconstructed retrospectively.
+
 The internal grid described above selects coverage. Current builds merge adjacent
 tiles without changing their union, then measure all live states and partition
 only for visible image budgets (`capture_partition: visible-geometry-v1`). They

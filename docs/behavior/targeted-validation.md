@@ -126,7 +126,8 @@ did not change its input, not that two independent Excel renderings were compare
 
 Check Performance is independent: when requested, CP must still be opened from
 saved O and produce a positive native `optimization_confirmed` or
-`no_optimization_needed` outcome. Default identity cannot disable it. O-versus-CP
+`no_optimization_needed` outcome, or restore a verified independent generation
+from the persistent cache described below. Default identity cannot disable it. O-versus-CP
 and every required pair among other observed states remain mandatory.
 
 Before creating each rebuild copy, analyze its own saved parent state. Do not
@@ -160,6 +161,74 @@ missing required actual pairs and a missing independent native CP outcome.
 Summary counters for unperformed rebuilt comparisons are null, not zero. The
 legacy four-state projection is populated only when all its required states were
 actually observed. `comparisons` and `state_decisions` are authoritative.
+
+### Persistent Check Performance artifacts
+
+`check-performance-artifacts-v1` caches generation artifacts, not visual verdicts.
+Corpus workers use `.tmp/regression-cache/check-performance-v1` in the repository,
+outside disposable worker caches and individual run directories. Override it with
+`EXCEL_SHRINK_CHECK_PERFORMANCE_CACHE_DIR`. Standalone targeted comparisons use
+the same subdirectory of the ordinary regression-cache root unless overridden.
+
+The key binds exact raw Original SHA-256, the current saved Original's package
+fingerprint, Excel executable SHA-256/version, machine/user, cultures, OS version,
+controlled calculation/window mode, and a generation-recipe fingerprint. The
+recipe hashes the native host scripts/helpers and Office.js sources, not the
+shrinker executable or Default output. Changes to Rust generation semantics must
+bump the generation policy. A shrinker-only update can therefore reuse CP.
+
+The saved-package fingerprint streams actual uncompressed member contents and
+retains their names. ZIP compression/order/timestamps do not count. All worksheet
+XML, formula caches, styles, strings, charts, drawings and unknown parts count.
+Only `docProps/core.xml`, `docProps/app.xml`, and narrowly recognized static
+workbook absolute-path/revision tags are normalized. Unknown metadata is retained.
+Changed saved Original contents, including volatile or externally updated values,
+cause a cache miss rather than reusing an incompatible generation.
+
+An entry retains the saved Original generation control, CP before optimization,
+CP after optimization/before rebuild, and, when generated, the before/after full
+rebuild copies. Rebuild reuse additionally requires the current CP parent's
+package fingerprint to match the recorded rebuild parent. Otherwise rebuild CP
+normally. A valid pre-rebuild entry does not imply a rebuild artifact exists.
+Historical rebuild reuse also requires recognized deterministic dependencies.
+Ordinary references/arithmetic and an explicit set of pure built-ins are supported.
+Volatile calls (`NOW`, `TODAY`, `RAND`, etc.), external/structured references,
+names, unknown functions/features, iterative calculation and unsupported package
+parts retain a fresh rebuild. Optimized pre-rebuild CP reuse is independent of
+this restriction. The skipped-rebuild guard remains a separate decision.
+
+Native confirmation must be positive. Retain file sizes/SHA-256, creation time,
+producer executable SHA-256, environment, and compact existing-launcher
+measurements for CP and any cached rebuild. Preserve readiness/startup method,
+startup time, memory samples and observed peaks; null means unavailable. Peaks
+are observed through the stated sample, not promised full-lifetime maxima.
+Later samples before closing update the generation's observations. No extra
+Excel open is introduced to measure them.
+
+Files are immutable cache-owned blobs; Excel opens verified copies in the attempt
+directory. Publish only after copies are flushed and validated, with one atomic
+manifest replacement. Concurrent writers can select different complete generations
+but cannot interleave their files. Partial manifests, missing artifacts,
+unsupported identities, checksum failures and unsafe object paths do not become
+hits. Report cache failures explicitly and perform fresh native generation when
+lookup is unusable. A failure during restore fails that attempt rather than
+claiming valid evidence. Unreferenced blobs from interrupted publication confer
+no authority; cache cleanup must preserve blobs referenced by live manifests.
+
+The cache can be published after successful optimization/rebuild even if later
+capture fails. It does not mark the workbook comparison complete. On a hit,
+restore native confirmation and generation controls, open/save owned copies,
+and discover candidates again. Record current-versus-generation and cached-copy
+opening/save controls. Compare all required observed pairs, charts and geometry
+under the current strategy. Current reopen differences remain capture candidates.
+
+Reports and Observatory distinguish `generated`, `hit` and unavailable cache
+states. `check_performance_cache.historical` preserves original measurements and
+their provenance; `current_open_measurements` contains new cache-copy opening
+observations. Historical values are never silently presented as fresh measurements.
+Cached rebuilds use observed method `cached-rebuild`, with the recalculation step
+explicitly skipped, not falsely marked as newly executed. A consumer requires the
+cache policy, key, artifact checksums and matching positive native confirmation.
 
 ## V5. XML snapshots, contexts and transitions
 
@@ -389,6 +458,7 @@ Paths below are relative to `excel-shrink-cli/src/regression/` unless noted.
 | --- | --- |
 | V2-V4 | `targeted_comparison/staged.rs`, `workbooks.rs`, `check_performance.rs` |
 | Conditional state selection | `targeted_comparison/execution_plan.rs`, `static_workbook_metadata.rs`; consumer: `archive/study/prepared/targeted/execution_contract.rs` |
+| Check Performance reuse | `targeted_comparison/performance_cache.rs`, `performance_reuse.rs`; native provenance: `office-capture/TargetedPerformanceCache.psm1` |
 | V5 | `targeted_comparison/xml_changes.rs`, `cell_stream.rs`, `snapshot_cache.rs`, `change_evidence.rs` |
 | V6 | `targeted_comparison/candidates.rs`, `content_bounds.rs`, `evidence.rs` |
 | V7 | `targeted_comparison/conditional_formatting/`, `cf_inventory/` |
