@@ -122,6 +122,7 @@ if __name__ == '__main__':
         'constant', 'constant-string', 'styles', 'dummy-missing', 'dummy-inert',
         'dummy-present', 'dummy-added', 'duplicate', 'color-scale', 'data-bar', 'data-bar-unchanged',
         'name-missing', 'name-inert', 'name-defined',
+        'error-ref-inert', 'error-ref-compare-inert', 'error-ref-visible',
         'ref-relative', 'ref-column', 'ref-row', 'ref-fixed', 'ref-disjoint',
         'ref-search', 'ref-multiple', 'ref-cell-is',
         'ref-range', 'ref-range-fixed', 'ref-range-growing',

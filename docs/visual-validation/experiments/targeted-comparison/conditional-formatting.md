@@ -251,8 +251,40 @@ visible red-fill difference and keeps captures. All owned Excel processes closed
 Unit controls also distinguish bare `isblank` from the reference-bearing
 `ISBLANK(A1)`, and cover local/hidden names, added names and uncertain catalogues.
 
-Maps containing Excel tables keep the bare-name fallback, since table identifiers
+Workbooks containing Excel tables keep the bare-name fallback, since table identifiers
 can also resolve in formulas. The guard checks normal table parts and declared
 custom table locations; missing/uncertain package metadata also keeps the fallback.
 Both PCC sources were checked and contain no table parts. This is intentionally
 more conservative than implementing a table-name resolver.
+
+## Constant reference-error expressions
+
+Only the complete expression forms `#REF!` and `#REF!=1` are newly recognized as
+input-independent error expressions. Optional leading `=` and surrounding
+whitespace are accepted; XML entities are decoded once. Additional cell references,
+operators or functions remain unsupported. There is no formula evaluator and no
+attempt to repair broken references. The proof does not apply to cellIs operands,
+chart expressions or formula-valued color-scale/data-bar thresholds.
+
+Unchanged catalogue fingerprints, namespace support, application ranges, formatting
+context and relevant layout remain required. A changed rule or context keeps its
+capture fallback. Ordinary changed cells still remain separate capture candidates;
+mixed blocks retain their other dependencies. Error proofs do not depend on a
+complete name catalogue, since the two literal errors contain no name reference.
+
+The native controls `error-ref-inert`, `error-ref-compare-inert` and
+`error-ref-visible` passed on a private desktop. Both error forms match a removed
+rule; replacing the error by a valid true expression produces the expected red
+fill. Additional stacked controls prove that an error with stopIfTrue does not
+suppress a subsequent valid blue-fill rule. Owned Excel processes were confirmed
+closed. Unit tests reject expressions such as `#REF!+A1`, `Other!#REF!`,
+`ISERROR(#REF!)` and `#REF!=1+NOW()` and retain style/catalogue change guards.
+
+The repeated Data.gov static eligibility audit completed with zero errors:
+**832 -> 203 structural fallbacks**, with 10 newly supported missing-isblank blocks
+and 619 constant-error blocks. Source-clipped candidate rectangles decreased from
+**1,698 to 558**. These are static estimates, not measured runtime speedups or a
+claim that every supported region was visually compared. The later table guard
+was checked against the two actual PCC sources; they are the only bare-isblank
+sources in the inventory and remain unambiguous. Full results are in
+`../cf-inventory/name-errors-20261102.json`. The production corpus remains stopped.

@@ -191,7 +191,7 @@ fn mixed_blocks_union_known_dependencies_and_keep_unknown_members_conservative()
     let dummy = "<cfRule type=\"cellIs\" operator=\"notEqual\" priority=\"3\"><formula>INDIRECT(&quot;Dummy_for_Comparison1!&quot;&amp;ADDRESS(ROW(),COLUMN()))</formula></cfRule>";
     let bar = "<cfRule type=\"dataBar\" priority=\"2\"><dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FF638EC6\"/></dataBar></cfRule>";
     for group in [duplicate, scale, bar] {
-        let block = format!("<conditionalFormatting sqref=\"B2:D5\">{expression}{group}{dummy}</conditionalFormatting>");
+        let block = format!("<conditionalFormatting sqref=\"B2:D5\">{expression}{group}{dummy}<cfRule type=\"expression\" priority=\"4\"><formula>#REF!</formula></cfRule></conditionalFormatting>");
         write_book(&a, values, &block, "", "", "")?;
         fs::copy(&a, &b)?;
         assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
@@ -558,6 +558,59 @@ fn defined_name_catalogue_includes_local_hidden_names_and_rejects_uncertain_enco
     for name in ["i&#115;blank", "_x0069_sblank", "näme"] {
         assert!(xml::defined_names(format!("<workbook><definedNames><definedName name='{name}'>TRUE</definedName></definedNames></workbook>").as_bytes())?.is_none());
     }
+    Ok(())
+}
+
+#[test]
+fn constant_ref_errors_have_no_value_dependency_but_keep_rule_and_context_guards() -> Result<()> {
+    let root =
+        crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-ref-error")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let values =
+        "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"5\"><c r=\"B5\"><v>3</v></c></row>";
+    let template = "<conditionalFormatting sqref=\"A1:B5\"><cfRule type=\"expression\" priority=\"1\" stopIfTrue=\"1\"><formula>FORMULA</formula></cfRule></conditionalFormatting>";
+    for formula in ["#REF!", "#REF!=1", "= #REF! = 1", "#REF!&#61;1"] {
+        let block = template.replace("FORMULA", formula);
+        write_book(&a, values, &block, "", "", "")?;
+        write_book(&b, &values.replace("<v>1", "<v>9"), &block, "", "", "")?;
+        let mut before = Snapshot::read(&a)?;
+        let mut after = Snapshot::read(&b)?;
+        before.defined_names = None;
+        after.defined_names = None;
+        let decisions = select(
+            &before,
+            &after,
+            &before.changes(&after)?,
+            &mut BTreeSet::new(),
+        )?;
+        assert_eq!(decisions[0].outcome, "excluded");
+        write_book(&b, values, &block, "", "", "<dxfs/>")?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+        write_book(&b, values, &template.replace("FORMULA", "1"), "", "", "")?;
+        assert!(check(&a, &b)?.0.iter().all(|d| d.outcome == "capture"));
+    }
+    for formula in [
+        "#REF!+A1",
+        "#REF!=A1",
+        "Other!#REF!",
+        "#REF!A1",
+        "ISERROR(#REF!)",
+        "#REF!=1+NOW()",
+    ] {
+        write_book(
+            &a,
+            values,
+            &template.replace("FORMULA", formula),
+            "",
+            "",
+            "",
+        )?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture", "{formula}");
+    }
+    fs::remove_dir_all(root)?;
     Ok(())
 }
 

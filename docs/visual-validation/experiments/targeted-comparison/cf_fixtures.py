@@ -87,6 +87,20 @@ def create(directory: Path, mode: str) -> None:
             sheet.conditional_formatting.add('A1:B5', Rule(type='duplicateValues', dxf=DifferentialStyle(fill=fill)))
             sheet['A1'] = 2
             sheet['A3'] = 2 if lane == 'original' else 3
+        elif mode.startswith('error-ref-'):
+            formula = '#REF!=1' if mode == 'error-ref-compare-inert' else '#REF!'
+            if mode == 'error-ref-visible' and lane == 'default':
+                formula = '1'
+            if not (mode.endswith('-inert') and lane == 'default'):
+                sheet.conditional_formatting.add(
+                    'A1:B5', Rule(type='expression', formula=[formula], stopIfTrue=True, dxf=DifferentialStyle(fill=fill)),
+                )
+            if mode.endswith('-inert'):
+                # A failing stopIfTrue rule must not suppress a later, valid rule.
+                blue = PatternFill('solid', fgColor='FF0000FF', bgColor='FF0000FF')
+                sheet.conditional_formatting.add(
+                    'A1:B5', Rule(type='expression', formula=['1'], dxf=DifferentialStyle(fill=blue)),
+                )
         elif mode.startswith('name-'):
             if mode == 'name-defined':
                 from openpyxl.workbook.defined_name import DefinedName

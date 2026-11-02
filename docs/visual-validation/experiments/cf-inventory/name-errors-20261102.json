@@ -1,0 +1,168 @@
+{
+  "date": "2026-11-02",
+  "total_blocks": 20935,
+  "baseline_fallbacks": 832,
+  "remaining_fallbacks": 203,
+  "newly_supported_bare_isblank_blocks": 10,
+  "newly_supported_constant_ref_error_blocks": 619,
+  "errors": 0,
+  "supported": {
+    "combined": 52,
+    "dummy": 17,
+    "input-independent": 629,
+    "literal": 12182,
+    "references": 4916,
+    "whole-area": 2936
+  },
+  "remaining_reasons": {
+    "application-range-not-resolved": 3,
+    "namespace-or-extension": 14,
+    "unsupported-rule-or-namespace-content": 30,
+    "unsupported-rule-semantics": 156
+  },
+  "remaining_families": [
+    {
+      "family": "aboveAverage+cellIs",
+      "blocks": 4
+    },
+    {
+      "family": "cellIs",
+      "blocks": 25
+    },
+    {
+      "family": "cellIs+colorScale",
+      "blocks": 1
+    },
+    {
+      "family": "cellIs+containsErrors+containsText+duplicateValues+uniqueValues",
+      "blocks": 2
+    },
+    {
+      "family": "cellIs+containsText+duplicateValues+uniqueValues",
+      "blocks": 14
+    },
+    {
+      "family": "colorScale",
+      "blocks": 3
+    },
+    {
+      "family": "colorScale+iconSet",
+      "blocks": 6
+    },
+    {
+      "family": "containsText",
+      "blocks": 5
+    },
+    {
+      "family": "expression",
+      "blocks": 107
+    },
+    {
+      "family": "iconSet",
+      "blocks": 20
+    },
+    {
+      "family": "top10",
+      "blocks": 16
+    }
+  ],
+  "baseline_source_rectangles": 1698,
+  "remaining_source_rectangles": 558.0,
+  "cost_scope": "Static fallback rectangles clipped to original source visual extents; exact duplicate rectangles removed. Not measured capture time or full pairwise pipeline job count.",
+  "largest_remaining_footprints": [
+    {
+      "blocks": 2,
+      "by_sheet": {
+        "Pivot": 88
+      },
+      "candidate_rectangles": 88,
+      "planned_blocks": 2,
+      "source_id": 3920,
+      "workbook": "Pensacola Mid Bay Bugs Master_11.2023_8f62a87f24e2.xlsx"
+    },
+    {
+      "blocks": 5,
+      "by_sheet": {
+        "Priority-2 Foods - Baseline": 18,
+        "Sentinel Foods - Baseline": 44
+      },
+      "candidate_rectangles": 62,
+      "planned_blocks": 5,
+      "source_id": 8447,
+      "workbook": "sodium-monitoring-dataset-72256__339f60e0-599f-4a9e-82b2-2af6d26d61b2_a23c87f032bb.xlsx"
+    },
+    {
+      "blocks": 29,
+      "by_sheet": {
+        "Sheet1": 53
+      },
+      "candidate_rectangles": 53,
+      "planned_blocks": 29,
+      "source_id": 4675,
+      "workbook": "SupTable3-RawCLintData_e0bc213d6138.xlsx"
+    },
+    {
+      "blocks": 9,
+      "by_sheet": {
+        "fibers per tissue": 21,
+        "table for paper": 23
+      },
+      "candidate_rectangles": 44,
+      "planned_blocks": 9,
+      "source_id": 2456,
+      "workbook": "Figure 4 three month exp lung fiber data Gavett 2016 PFT_73f1cde76dfa.xlsx"
+    },
+    {
+      "blocks": 1,
+      "by_sheet": {
+        "S3. County CFs": 26
+      },
+      "candidate_rectangles": 26,
+      "planned_blocks": 1,
+      "source_id": 4815,
+      "workbook": "TRACI Spatial Eutrophication Characterization Factors_2020-10_651f08ce6ab3.xlsx"
+    },
+    {
+      "blocks": 17,
+      "by_sheet": {
+        "Table S12": 20,
+        "Table S8": 1
+      },
+      "candidate_rectangles": 21,
+      "planned_blocks": 17,
+      "source_id": 4712,
+      "workbook": "Supplemental Tables 2024-06-06-STICS_b1c3459db70a.xlsx"
+    },
+    {
+      "blocks": 1,
+      "by_sheet": {
+        "summary": 17
+      },
+      "candidate_rectangles": 17,
+      "planned_blocks": 1,
+      "source_id": 5011,
+      "workbook": "Test 2_a7071339a500.xlsx"
+    },
+    {
+      "blocks": 2,
+      "by_sheet": {
+        "summary": 17
+      },
+      "candidate_rectangles": 17,
+      "planned_blocks": 2,
+      "source_id": 5013,
+      "workbook": "Test 3_29184f6a65d6.xlsx"
+    }
+  ],
+  "native_controls": [
+    "name-inert",
+    "name-missing",
+    "name-defined",
+    "error-ref-inert",
+    "error-ref-compare-inert",
+    "error-ref-visible",
+    "error-ref-inert-stacked",
+    "error-ref-compare-inert-stacked"
+  ],
+  "name_catalogue_guard": "Both bare-isblank sources 8036/8037 have no tables; final package-aware guard additionally checked on these two retained sources"
+}

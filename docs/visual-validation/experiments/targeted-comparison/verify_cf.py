@@ -23,6 +23,11 @@ def verify(root: Path, mode: str) -> None:
             assert colors[0][(255, 0, 0)] > 100, 'Positive CF control did not render its red fill'
         if mode == 'styles':
             assert colors[1][(0, 0, 255)] > 100, 'Changed differential format did not render blue'
+        if mode == 'error-ref-visible':
+            assert colors[0][(255, 0, 0)] == 0, 'Constant error unexpectedly applied its fill'
+            assert colors[1][(255, 0, 0)] > 100, 'The valid expression did not apply its fill'
+        if mode in ('error-ref-inert', 'error-ref-compare-inert'):
+            assert all(colorset[(0, 0, 255)] > 100 for colorset in colors), 'An error rule suppressed the later valid rule'
         if mode == 'dummy-added':
             assert colors[1][(255, 0, 0)] > 100, 'New target did not enable its CF fill'
         if mode in ('duplicate', 'color-scale', 'data-bar'):
@@ -64,7 +69,7 @@ def verify(root: Path, mode: str) -> None:
     else:
         assert any(item['outcome'] == 'capture' for item in decisions), decisions
         assert direct['findings'], 'Fallback produced no captures'
-        if mode in ('dummy-inert', 'name-inert'):
+        if mode in ('dummy-inert', 'name-inert', 'error-ref-inert', 'error-ref-compare-inert'):
             assert not different, 'A missing-target CF rule unexpectedly changed Excel rendering'
         else:
             assert different, 'The positive control lost its visual difference'
