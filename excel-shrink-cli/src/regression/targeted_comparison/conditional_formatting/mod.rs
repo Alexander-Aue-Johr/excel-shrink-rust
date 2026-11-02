@@ -85,7 +85,7 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
         .all(|rule| input_independent::proof(rule, before, after).is_some())
     {
         return if before.cf_context == after.cf_context {
-            Proof::InputIndependent("unchanged-input-independent-expressions")
+            Proof::InputIndependent("unchanged-input-independent-rules")
         } else {
             Proof::Fallback("format-string-theme-or-workbook-context-changed")
         };

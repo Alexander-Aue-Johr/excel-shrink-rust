@@ -614,6 +614,110 @@ fn constant_ref_errors_have_no_value_dependency_but_keep_rule_and_context_guards
     Ok(())
 }
 
+#[test]
+fn cell_is_ref_error_operands_preserve_operator_and_context_guards() -> Result<()> {
+    let root =
+        crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-cell-is-error")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let values =
+        "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"5\"><c r=\"B5\"><v>3</v></c></row>";
+    let template = "<conditionalFormatting sqref=\"A1:B5\"><cfRule type=\"cellIs\" operator=\"OPERATOR\" priority=\"1\" stopIfTrue=\"1\"><formula>#REF!</formula></cfRule></conditionalFormatting>";
+    for operator in [
+        "equal",
+        "notEqual",
+        "lessThan",
+        "lessThanOrEqual",
+        "greaterThan",
+        "greaterThanOrEqual",
+    ] {
+        let block = template.replace("OPERATOR", operator);
+        write_book(&a, values, &block, "", "", "")?;
+        write_book(&b, &values.replace("<v>1", "<v>9"), &block, "", "", "")?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+        write_book(&b, values, &block, "", "", "<dxfs/>")?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+        write_book(&b, values, &block.replace("#REF!", "0"), "", "", "")?;
+        assert!(check(&a, &b)?.0.iter().all(|d| d.outcome == "capture"));
+    }
+    for operand in [
+        "Other!#REF!",
+        "'[other.xlsx]Sheet'!#REF!",
+        "#REF!+A1",
+        "#REF!=1",
+    ] {
+        let block = template
+            .replace("OPERATOR", "equal")
+            .replace("#REF!", operand);
+        write_book(&a, values, &block, "", "", "")?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    }
+    for operator in ["between", "notBetween", "unknown"] {
+        let block = template
+            .replace("OPERATOR", operator)
+            .replace("</formula>", "</formula><formula>0</formula>");
+        write_book(&a, values, &block, "", "", "")?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "Requires CF_INVENTORY with retained Data.gov rule metadata; no Excel"]
+fn retained_cell_is_errors_are_supported_but_the_external_reference_is_not() -> Result<()> {
+    use std::io::{BufRead, BufReader};
+    let root = std::path::PathBuf::from(std::env::var("CF_INVENTORY")?);
+    let snapshot = Snapshot {
+        sheets: BTreeMap::new(),
+        context: String::new(),
+        cf_context: String::new(),
+        sheet_names: None,
+        defined_names: None,
+    };
+    let (mut errors, mut external) = (0, 0);
+    for line in BufReader::new(File::open(root.join("sheets.jsonl"))?).lines() {
+        let sheet: serde_json::Value = serde_json::from_str(&line?)?;
+        let id = sheet["source_id"].as_u64().unwrap();
+        if ![1024, 2090, 4712, 4851, 1030].contains(&id) {
+            continue;
+        }
+        for raw in sheet["blocks"].as_array().unwrap() {
+            let mut blocks = Vec::new();
+            crate::regression::cf_inventory::scan::scan(
+                raw["raw_xml"].as_str().unwrap().as_bytes(),
+                &mut blocks,
+                256,
+                32,
+            )?;
+            for block in blocks {
+                if block.rules.iter().all(|rule| {
+                    rule.attributes.get("type").map(String::as_str) == Some("cellIs")
+                        && rule.formulas == ["#REF!"]
+                }) {
+                    assert!(matches!(
+                        proof(&block, &snapshot, &snapshot),
+                        Proof::InputIndependent(_)
+                    ));
+                    errors += 1;
+                }
+                if id == 1030 {
+                    for rule in &block.rules {
+                        assert!(input_independent::proof(rule, &snapshot, &snapshot).is_none());
+                        external += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(errors, 16);
+    assert_eq!(external, 1);
+    Ok(())
+}
+
 /// Exercise retained local corpus evidence without making it a repository fixture.
 #[test]
 #[ignore = "requires CF_ORIGINAL and CF_SHRUNK paths to local corpus copies"]

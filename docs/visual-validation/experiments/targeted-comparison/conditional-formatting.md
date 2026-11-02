@@ -263,8 +263,9 @@ Only the complete expression forms `#REF!` and `#REF!=1` are newly recognized as
 input-independent error expressions. Optional leading `=` and surrounding
 whitespace are accepted; XML entities are decoded once. Additional cell references,
 operators or functions remain unsupported. There is no formula evaluator and no
-attempt to repair broken references. The proof does not apply to cellIs operands,
-chart expressions or formula-valued color-scale/data-bar thresholds.
+attempt to repair broken references. Selected cellIs operands are covered by the
+separate extension below; chart expressions and formula-valued color-scale/data-bar
+thresholds remain outside this proof.
 
 Unchanged catalogue fingerprints, namespace support, application ranges, formatting
 context and relevant layout remain required. A changed rule or context keeps its
@@ -288,3 +289,22 @@ claim that every supported region was visually compared. The later table guard
 was checked against the two actual PCC sources; they are the only bare-isblank
 sources in the inventory and remain unambiguous. Full results are in
 `../cf-inventory/name-errors-20261102.json`. The production corpus remains stopped.
+
+## cellIs comparisons against a literal #REF! operand
+
+The six single-operand comparison operators (equal, notEqual, lessThan,
+lessThanOrEqual, greaterThan and greaterThanOrEqual) now recognize an exact
+`#REF!` operand as input-independent. The comparison produces an error rather
+than enabling its format. The complete rule catalogue, formatting context and
+layout guards remain required. Ordinary changed-cell captures remain independent.
+Between/notBetween, arbitrary operand expressions, unknown settings and qualified
+external references retain their existing fallbacks.
+
+Unit tests cover all six operators, changed inputs, changed styles/rules and
+rejected external/compound operands. The opt-in retained-source check exercises
+all 16 actual Data.gov cases and verifies that the one external workbook reference
+is still unsupported. Native controls `cell-is-ref-inert` and `cell-is-ref-visible`
+passed on a private desktop: all six operators were exercised with numeric and
+text cells, stopIfTrue and a subsequent blue-fill rule. Removing the error rules
+leaves the same pixels; replacing the error operands with valid constants produces
+red fills. All owned Excel processes closed. This is not a new full corpus run.
