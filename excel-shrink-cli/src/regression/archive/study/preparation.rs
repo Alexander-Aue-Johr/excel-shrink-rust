@@ -136,6 +136,9 @@ fn run_phase(
         }
     }
     let mut sweep_completed = sweep_total.saturating_sub(pending.len());
+    if !hash_sweep {
+        progress::queue_preparations(output, &pending.iter().map(|job| job.id.clone()).collect::<Vec<_>>());
+    }
     let mut sweep_failed = 0;
     if hash_sweep {
         progress::hash_sweep(output, sweep_total, sweep_completed, sweep_failed);

@@ -54,7 +54,9 @@ impl State {
             skipped: record["complete"] == true && record["status"] == "skipped",
             deferred: record["complete"] == true && record["status"] == "paused-for-later",
             prepared: record["prepared"] == true || completed,
-            preparation_terminal: record["preparation_disposition"].is_string(),
+            preparation_terminal: record["preparation_disposition"].is_string()
+                && (record["preparation_stage"] == "hash_sweep"
+                    || !matches!(record["status"].as_str(), Some("shrinking" | "preparing"))),
             visual_eligible: record["preparation_disposition"] == "needs_visual",
             diagnosis_failed: record["whitespace_diagnosis"]["status"] == "failed",
         }
@@ -156,6 +158,15 @@ struct Attempt {
 }
 
 impl Tracker {
+    /// Count all scheduled shrink retries as pending before the first one starts.
+    fn queue_preparations(&mut self, ids: &[String]) {
+        for id in ids {
+            if let Some(row) = self.rows.get_mut(id) {
+                *row = State::default();
+            }
+        }
+    }
+
     fn start_attempt(&mut self, record: &Value) -> Attempt {
         self.attempts.started += 1;
         Attempt {
@@ -535,6 +546,10 @@ pub(super) fn tick(output: &Path) {
 pub(super) fn observe(output: &Path, record: &Value) {
     update(output, |tracker| tracker.observe(record));
 }
+
+pub(super) fn queue_preparations(output: &Path, ids: &[String]) {
+    update(output, |tracker| tracker.queue_preparations(ids));
+}
 pub(super) fn set_selection(output: &Path, selected: &HashSet<String>) {
     update(output, |tracker| {
         tracker.rows.retain(|id, _| selected.contains(id));
@@ -633,6 +648,26 @@ impl Drop for ActiveJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shrink_retries_are_pending_together_instead_of_repeatedly_undoing_completion() {
+        let mut tracker = tracker();
+        for row in tracker.rows.values_mut() { row.preparation_terminal = true; }
+        tracker.queue_preparations(&["0".into(), "1".into()]);
+        assert_eq!(tracker.snapshot(100)["counts"]["preparation_remaining"], 2);
+        tracker.observe(&json!({"identity":"0","status":"shrinking",
+            "preparation_disposition":"unsupported_namespace"}));
+        assert_eq!(tracker.snapshot(200)["counts"]["preparation_remaining"], 2);
+        tracker.observe(&json!({"identity":"0","complete":true,"status":"skipped",
+            "preparation_disposition":"unsupported_namespace"}));
+        assert_eq!(tracker.snapshot(300)["counts"]["preparation_remaining"], 1);
+        tracker.observe(&json!({"identity":"1","status":"shrinking",
+            "preparation_disposition":"unsupported_namespace"}));
+        assert_eq!(tracker.snapshot(400)["counts"]["preparation_remaining"], 1);
+        tracker.observe(&json!({"identity":"1","status":"prepared","prepared":true,
+            "preparation_disposition":"needs_visual"}));
+        assert_eq!(tracker.snapshot(500)["counts"]["preparation_remaining"], 0);
+    }
+
     #[test]
     fn hash_sweep_progress_has_its_own_denominator_and_ignores_comparison_target() {
         let mut tracker = tracker();

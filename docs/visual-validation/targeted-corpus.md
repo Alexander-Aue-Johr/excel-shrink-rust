@@ -148,3 +148,18 @@ Final Check Performance change lists contain selected capture regions, marked by
 remain explicit; every original change coordinate stays in its transition audit.
 Generated report JSON is compact; progress telemetry and maintained source remain
 formatted for human reading.
+
+## Restart only comparisons
+
+A fresh comparison must retain validated preparation results: source fingerprint,
+producer attribution, shrink identity, bundles, and reviewed terminal namespace
+exclusions. An excluded file intentionally has no shrink bundle. Resetting every
+non-prepared record to `pending` would schedule these exclusions as new shrink
+attempts. Clear visual verdicts only, after checking source/producer compatibility.
+Ordinary resume keeps `skipped` records excluded unless `--retry-skipped` is chosen.
+
+When a new executable is compatible with existing shrink output, include each
+reviewed preparation producer in `--reuse-prepared-from`; a UI/runner-only change
+does not make an older producer's output new. Do not approve unknown producers or
+changed shrink settings just to avoid work. Scheduled re-preparations are counted
+as pending together, rather than repeatedly decrementing a nearly finished total.
