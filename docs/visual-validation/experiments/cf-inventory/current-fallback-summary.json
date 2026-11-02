@@ -1,0 +1,347 @@
+{
+  "date": "2026-11-02",
+  "total_cf_blocks": 20935,
+  "structural_fallback_blocks": 1092,
+  "fallback_workbooks": 74,
+  "fallback_sheets_including_hidden": 215,
+  "errors": 0,
+  "supported": {
+    "combined": 52,
+    "dummy": 17,
+    "literal": 12182,
+    "references": 4916,
+    "whole-area": 2676
+  },
+  "reasons": {
+    "application-range-not-resolved": 3,
+    "namespace-or-extension": 260,
+    "unsupported-rule-or-namespace-content": 44,
+    "unsupported-rule-semantics": 785
+  },
+  "families": [
+    {
+      "family": "aboveAverage+cellIs",
+      "blocks": 4,
+      "unclipped_tile_proxy": 51.0
+    },
+    {
+      "family": "cellIs",
+      "blocks": 25,
+      "unclipped_tile_proxy": 29.0
+    },
+    {
+      "family": "cellIs+colorScale",
+      "blocks": 1,
+      "unclipped_tile_proxy": 1.0
+    },
+    {
+      "family": "cellIs+containsErrors+containsText+duplicateValues+uniqueValues",
+      "blocks": 2,
+      "unclipped_tile_proxy": 2.0
+    },
+    {
+      "family": "cellIs+containsText+duplicateValues+uniqueValues",
+      "blocks": 14,
+      "unclipped_tile_proxy": 14.0
+    },
+    {
+      "family": "colorScale",
+      "blocks": 3,
+      "unclipped_tile_proxy": 0.0
+    },
+    {
+      "family": "colorScale+dataBar",
+      "blocks": 4,
+      "unclipped_tile_proxy": 8202.0
+    },
+    {
+      "family": "colorScale+iconSet",
+      "blocks": 6,
+      "unclipped_tile_proxy": 6.0
+    },
+    {
+      "family": "containsText",
+      "blocks": 5,
+      "unclipped_tile_proxy": 11.0
+    },
+    {
+      "family": "dataBar",
+      "blocks": 256,
+      "unclipped_tile_proxy": 9946.0
+    },
+    {
+      "family": "expression",
+      "blocks": 736,
+      "unclipped_tile_proxy": 9466.0
+    },
+    {
+      "family": "iconSet",
+      "blocks": 20,
+      "unclipped_tile_proxy": 27.0
+    },
+    {
+      "family": "top10",
+      "blocks": 16,
+      "unclipped_tile_proxy": 192.0
+    }
+  ],
+  "source_plan_blocks": 1090.0,
+  "outside_source_visual_plan": 2,
+  "source_clipped_candidate_rectangles": 2549.0,
+  "cost_scope": "Static fallback rectangles clipped to original source visual extents; exact duplicate rectangles removed. Not measured capture time or full pairwise pipeline job count.",
+  "largest_source_footprints": [
+    {
+      "blocks": 12,
+      "by_sheet": {
+        "S4. Walktrap_Enrichment": 404,
+        "S8. BIGCLAM_Enrichment": 296
+      },
+      "candidate_rectangles": 700,
+      "planned_blocks": 12,
+      "source_id": 54,
+      "workbook": "1-s2.0-S0048969725011027-mmc2_58c946664718.xlsx"
+    },
+    {
+      "blocks": 9,
+      "by_sheet": {
+        "Data": 314
+      },
+      "candidate_rectangles": 314,
+      "planned_blocks": 9,
+      "source_id": 8037,
+      "workbook": "pcc_utilization_pivot_2018_75f08a61bac7.xlsx"
+    },
+    {
+      "blocks": 9,
+      "by_sheet": {
+        "Data": 313
+      },
+      "candidate_rectangles": 313,
+      "planned_blocks": 9,
+      "source_id": 8036,
+      "workbook": "pcc_utilization_pivot_2017_d6d443ab7354.xlsx"
+    },
+    {
+      "blocks": 271,
+      "by_sheet": {
+        "24CN": 2,
+        "25AN": 2,
+        "2BB": 2,
+        "43CLN": 2,
+        "5ClEt": 2,
+        "8HQ": 3,
+        "ABH": 2,
+        "AT": 2,
+        "BBA": 2,
+        "BCY": 3,
+        "BEZ": 7,
+        "BHMB": 2,
+        "BRO": 1,
+        "BZOL": 5,
+        "CDS": 9,
+        "CLAN": 2,
+        "CNA": 2,
+        "CRB": 2,
+        "DAA": 2,
+        "DBM": 2,
+        "DDA": 3,
+        "DHAA": 2,
+        "DL": 1,
+        "DMO": 2,
+        "DPD": 2,
+        "DPM": 3,
+        "DSA": 2,
+        "DSF": 2,
+        "DTS": 5,
+        "DiPrP": 2,
+        "ECD": 2,
+        "ECDA": 2,
+        "EDAB": 2,
+        "EHX": 2,
+        "EPG": 2,
+        "FSS": 2,
+        "GAGL": 2,
+        "GNL": 2,
+        "HOI": 5,
+        "IBA": 2,
+        "IPHA": 2,
+        "MDP": 3,
+        "MFD": 3,
+        "MMB": 2,
+        "NAFT": 2,
+        "NCD": 2,
+        "NEMB": 2,
+        "OBS": 6,
+        "ObGP": 2,
+        "PAA": 2,
+        "PABA": 2,
+        "PAS": 2,
+        "PCP": 5,
+        "PFBA": 3,
+        "PHOS": 3,
+        "POB": 3,
+        "PPA": 4,
+        "SBA": 2,
+        "TAM": 2,
+        "TBB": 5,
+        "TBROH": 5,
+        "TDAP": 5,
+        "TNS": 5,
+        "pMBA": 2,
+        "pMxBA": 2
+      },
+      "candidate_rectangles": 179,
+      "planned_blocks": 271,
+      "source_id": 5094,
+      "workbook": "Trout_ER_Antagonism_Data_50069aa02b34.xlsx"
+    },
+    {
+      "blocks": 132,
+      "by_sheet": {
+        "Crude Oil-M": 15,
+        "Crude Oil-Q": 12,
+        "Diesel-M": 13,
+        "Diesel-Q": 12,
+        "Electricity-M": 13,
+        "Electricity-Q": 12,
+        "Gasoline-M": 13,
+        "Gasoline-Q": 12,
+        "Heat Oil-M": 13,
+        "Heat Oil-Q": 12,
+        "Natural Gas-M": 12,
+        "Natural Gas-Q": 11
+      },
+      "candidate_rectangles": 150,
+      "planned_blocks": 132,
+      "source_id": 8259,
+      "workbook": "real_prices_1b186fd7a7e1.xlsx"
+    },
+    {
+      "blocks": 132,
+      "by_sheet": {
+        "Crude Oil-M": 15,
+        "Crude Oil-Q": 12,
+        "Diesel-M": 13,
+        "Diesel-Q": 12,
+        "Electricity-M": 13,
+        "Electricity-Q": 12,
+        "Gasoline-M": 13,
+        "Gasoline-Q": 12,
+        "Heat Oil-M": 13,
+        "Heat Oil-Q": 12,
+        "Natural Gas-M": 12,
+        "Natural Gas-Q": 11
+      },
+      "candidate_rectangles": 150,
+      "planned_blocks": 132,
+      "source_id": 8260,
+      "workbook": "real_prices_3ef815db19c7.xlsx"
+    },
+    {
+      "blocks": 2,
+      "by_sheet": {
+        "Pivot": 88
+      },
+      "candidate_rectangles": 88,
+      "planned_blocks": 2,
+      "source_id": 3920,
+      "workbook": "Pensacola Mid Bay Bugs Master_11.2023_8f62a87f24e2.xlsx"
+    },
+    {
+      "blocks": 5,
+      "by_sheet": {
+        "Priority-2 Foods - Baseline": 18,
+        "Sentinel Foods - Baseline": 44
+      },
+      "candidate_rectangles": 62,
+      "planned_blocks": 5,
+      "source_id": 8447,
+      "workbook": "sodium-monitoring-dataset-72256__339f60e0-599f-4a9e-82b2-2af6d26d61b2_a23c87f032bb.xlsx"
+    },
+    {
+      "blocks": 29,
+      "by_sheet": {
+        "Sheet1": 53
+      },
+      "candidate_rectangles": 53,
+      "planned_blocks": 29,
+      "source_id": 4675,
+      "workbook": "SupTable3-RawCLintData_e0bc213d6138.xlsx"
+    },
+    {
+      "blocks": 9,
+      "by_sheet": {
+        "fibers per tissue": 21,
+        "table for paper": 23
+      },
+      "candidate_rectangles": 44,
+      "planned_blocks": 9,
+      "source_id": 2456,
+      "workbook": "Figure 4 three month exp lung fiber data Gavett 2016 PFT_73f1cde76dfa.xlsx"
+    },
+    {
+      "blocks": 61,
+      "by_sheet": {
+        "Data": 41
+      },
+      "candidate_rectangles": 41,
+      "planned_blocks": 61,
+      "source_id": 8948,
+      "workbook": "usretechnicalpotential_43abd8305346.xlsx"
+    },
+    {
+      "blocks": 5,
+      "by_sheet": {
+        "MECS 2.1": 4,
+        "MECS 3.1": 2,
+        "Source_BEAu": 26,
+        "Source_EPA": 1
+      },
+      "candidate_rectangles": 33,
+      "planned_blocks": 5,
+      "source_id": 3688,
+      "workbook": "NationalGHGIndustryAttributionModel_286374a9557e.xlsx"
+    },
+    {
+      "blocks": 1,
+      "by_sheet": {
+        "S3. County CFs": 26
+      },
+      "candidate_rectangles": 26,
+      "planned_blocks": 1,
+      "source_id": 4815,
+      "workbook": "TRACI Spatial Eutrophication Characterization Factors_2020-10_651f08ce6ab3.xlsx"
+    },
+    {
+      "blocks": 136,
+      "by_sheet": {
+        "Sheet1": 17,
+        "Tables": 8
+      },
+      "candidate_rectangles": 25,
+      "planned_blocks": 136,
+      "source_id": 1567,
+      "workbook": "Cox_Figures for Land Use Paper_31a0a8fe38a9.xlsx"
+    },
+    {
+      "blocks": 17,
+      "by_sheet": {
+        "Table S12": 20,
+        "Table S8": 1
+      },
+      "candidate_rectangles": 21,
+      "planned_blocks": 17,
+      "source_id": 4712,
+      "workbook": "Supplemental Tables 2024-06-06-STICS_b1c3459db70a.xlsx"
+    }
+  ],
+  "exclusion_check": {
+    "preserved": 0,
+    "failed": 0,
+    "skipped": 493,
+    "processed": 0,
+    "reason": "Skipped XLSX with unsupported XML namespaces: xl/workbook.xml",
+    "reports": 493,
+    "excluded_cf_blocks": 0
+  }
+}

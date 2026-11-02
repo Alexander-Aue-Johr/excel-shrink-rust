@@ -90,7 +90,7 @@ impl Snapshot {
         let cf_context = read_conditional_context(&mut archive, &workbook, &context)?;
         let mut sheets = BTreeMap::new();
         for sheet in plan.sheets {
-            let model = read_sheet(
+            let model = read_sheet::<true>(
                 &mut archive,
                 &sheet.sheet_file,
                 sheet.bottom_row + 1,
@@ -276,7 +276,7 @@ fn read_conditional_context(
 }
 
 /// Read one worksheet once for cells/layout; reopen only selected CF subtrees.
-fn read_sheet(
+fn read_sheet<const INCLUDE_CELLS: bool>(
     archive: &mut ZipArchive<File>,
     part: &str,
     bottom: u32,
@@ -285,7 +285,11 @@ fn read_sheet(
     let mut model = Sheet::default();
     model.bottom = bottom;
     model.right = right;
-    let mut cells = Writer::new()?;
+    let mut cells = if INCLUDE_CELLS {
+        Some(Writer::new()?)
+    } else {
+        None
+    };
     let mut spans = Vec::new();
     let mut cf_start = None;
     let mut standard_namespace = false;
@@ -405,7 +409,7 @@ fn read_sheet(
                     });
                 }
             }
-            if matches!(tag.kind, Kind::Start | Kind::Empty) {
+            if INCLUDE_CELLS && matches!(tag.kind, Kind::Start | Kind::Empty) {
                 match tag.local() {
                     b"row" => {
                         let row: u32 =
@@ -462,12 +466,26 @@ fn read_sheet(
                 xm_namespace = xm;
             }
         }
-        cells.event(&event)
+        match &mut cells {
+            Some(cells) => cells.event(&event),
+            None => Ok(()),
+        }
     })?;
-    model.cells = cells.finish()?;
+    if let Some(cells) = cells {
+        model.cells = cells.finish()?;
+    }
     model.cf_layout = format!("{:x}", layout.finalize());
     model.conditional = Arc::new(xml::catalogue(archive, part, &spans)?);
     Ok(model)
+}
+
+/// Audit CF eligibility through the production namespace scanner without indexing worksheet cells.
+#[cfg(test)]
+pub(super) fn conditional_catalogue_for_audit(
+    archive: &mut ZipArchive<File>,
+    part: &str,
+) -> Result<Arc<xml::Catalogue>> {
+    Ok(read_sheet::<false>(archive, part, 0, 0)?.conditional)
 }
 
 impl Sheet {
@@ -514,6 +532,31 @@ pub(super) fn cell_candidates(changes: &[XmlChange]) -> BTreeSet<Candidate> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn metadata_audit_and_cell_scan_produce_the_same_conditional_catalogue() -> Result<()> {
+        use std::io::Write;
+        let path = std::env::temp_dir().join(format!("cf-audit-{}.xlsx", uuid::Uuid::new_v4()));
+        let file = File::create(&path)?;
+        let mut zip = zip::ZipWriter::new(file);
+        zip.start_file("xl/worksheets/sheet.xml", zip::write::FileOptions::default())?;
+        zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData><conditionalFormatting sqref="A1:A10"><cfRule type="cellIs" operator="greaterThan" priority="1"><formula>5</formula></cfRule></conditionalFormatting></worksheet>"#)?;
+        zip.finish()?;
+        let mut archive = ZipArchive::new(File::open(&path)?)?;
+        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1)?;
+        let audit = conditional_catalogue_for_audit(&mut archive, "xl/worksheets/sheet.xml")?;
+        assert_eq!(audit.fingerprints, full.conditional.fingerprints);
+        assert_eq!(
+            audit.namespace_supported,
+            full.conditional.namespace_supported
+        );
+        assert_eq!(
+            serde_json::to_value(&audit.blocks)?,
+            serde_json::to_value(&full.conditional.blocks)?
+        );
+        drop(archive);
+        std::fs::remove_file(path)?;
+        Ok(())
+    }
     #[test]
     fn equal_addresses_are_not_equal_changes() {
         let a = XmlChange {

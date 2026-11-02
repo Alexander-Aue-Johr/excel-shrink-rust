@@ -5,6 +5,8 @@ mod ranges;
 mod references;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod inventory_audit;
 pub(super) mod xml;
 
 use super::{

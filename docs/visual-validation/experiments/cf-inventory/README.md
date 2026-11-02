@@ -1,5 +1,8 @@
 # Offline conditional-formatting inventory
 
+The current selector's remaining fallbacks and source-clipped cost ranking are
+recorded in [current-fallbacks-20261102.md](current-fallbacks-20261102.md).
+
 The first complete Data.gov run and its concrete fallback findings are recorded
 in [datagov-20261101.md](datagov-20261101.md).
 
