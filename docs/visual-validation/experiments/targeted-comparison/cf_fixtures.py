@@ -4,7 +4,7 @@ from pathlib import Path
 
 def create(directory: Path, mode: str) -> None:
     from openpyxl import Workbook
-    from openpyxl.formatting.rule import CellIsRule, ColorScaleRule, Rule
+    from openpyxl.formatting.rule import CellIsRule, ColorScaleRule, DataBarRule, Rule
     from openpyxl.styles.differential import DifferentialStyle
     from openpyxl.styles import PatternFill
 
@@ -87,6 +87,14 @@ def create(directory: Path, mode: str) -> None:
             sheet.conditional_formatting.add('A1:B5', Rule(type='duplicateValues', dxf=DifferentialStyle(fill=fill)))
             sheet['A1'] = 2
             sheet['A3'] = 2 if lane == 'original' else 3
+        elif mode in ('data-bar', 'data-bar-unchanged'):
+            for row in range(1, 6):
+                sheet.cell(row, 1, row)
+            sheet.conditional_formatting.add(
+                'A1:B5', DataBarRule(start_type='min', end_type='max', color='FF638EC6'),
+            )
+            if mode == 'data-bar' and lane == 'default':
+                sheet['A3'] = 10
         elif mode == 'color-scale':
             for row in range(1, 6):
                 sheet.cell(row, 1, row)

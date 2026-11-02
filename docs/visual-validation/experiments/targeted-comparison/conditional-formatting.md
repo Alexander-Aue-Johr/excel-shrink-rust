@@ -94,7 +94,8 @@ adapter supports that representation inside a known x14 conditionalFormattings
 container, with validated x14/xm namespace bindings. It accepts expression formulas
 and whitelisted static inline DXF formatting only; original subtree fingerprints
 still cover the formula, IDs and complete inline format bytes. Unknown extension
-nodes, data bars and other x14 rule types keep their fallback. The adapter does not
+nodes and other x14 rule types keep their fallback. Data bars have the separate
+whole-area dependency support described below. The adapter does not
 make general extension rules eligible.
 
 Native controls `ref-relative`, `ref-column`, `ref-row`, `ref-fixed` and
@@ -190,3 +191,39 @@ retained missing-Dummy evidence after actual shrinking. It was exercised on inve
 source `08288.xlsx` (the Data.gov primary-school model): all four CF blocks retained
 the missing-target proof. This was an XML selection test, not a full native visual
 comparison of that model. Corpus files and generated evidence stay uncommitted.
+
+## Data bars
+
+Standard `dataBar` rules now use the same whole-application-area input proof as
+color scales and duplicate-value rules. Rule fingerprints, input cell XML,
+formatting context and relevant layout must be unchanged to exclude the CF area.
+Any changed/deleted input or uncertain formula input captures the dependent area;
+the selector never predicts whether the resulting bar would look different.
+Mixed blocks union their known dependencies through the existing selection path.
+
+Standard thresholds support min/max and finite numeric, percentage or percentile
+constants. Formula thresholds, unknown settings or children remain fallbacks.
+Known x14 data bars with autoMin/autoMax or min/max support fixed appearance
+settings, negative colours and axis settings. Other x14 thresholds remain
+conservative, including numeric values encoded as formula children.
+
+Legacy/x14 pairs must have one unambiguous matching ID and the same application
+range within the worksheet. Missing companions, duplicate IDs, mismatched ranges,
+foreign namespace bindings and unsupported companions retain capture fallbacks.
+No input workbook is rewritten: normalization adapts only the selection model;
+raw fingerprints still include every setting, colour, ID and range.
+
+Focused tests cover unchanged/changed/deleted/outside inputs, formula caches,
+numeric thresholds, mixed rules, changed styles/rules, missing/duplicate/mismatched
+links, unknown settings, namespace failures and formula thresholds.
+The private-desktop native controls `data-bar` and `data-bar-unchanged` passed.
+The positive control changes a maximum and verifies different bar pixels in other,
+unchanged cells; the negative control excludes the CF dependency. Other pipeline
+candidate reasons remain independent and can still produce captures.
+
+The repeated Data.gov eligibility audit (2026-11-02, 107.42 s, zero errors) moved
+all 256 pure-data-bar blocks and four mixed bar/scale blocks onto supported
+whole-area proofs: structural fallbacks decreased from 1,092 to **832** out of
+20,935 blocks. This is eligibility, not a claim of unchanged inputs or a runtime
+speedup. See `../cf-inventory/data-bars-20261102.json` for measured counts and
+source-based fallback footprints.

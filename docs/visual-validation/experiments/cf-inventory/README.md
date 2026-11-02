@@ -2,6 +2,8 @@
 
 The current selector's remaining fallbacks and source-clipped cost ranking are
 recorded in [current-fallbacks-20261102.md](current-fallbacks-20261102.md).
+The subsequent data-bar implementation reduces structural fallbacks from 1,092
+to 832; its updated measurements are in [data-bars-20261102.json](data-bars-20261102.json).
 
 The first complete Data.gov run and its concrete fallback findings are recorded
 in [datagov-20261101.md](datagov-20261101.md).

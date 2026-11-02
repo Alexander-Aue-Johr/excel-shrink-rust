@@ -1,0 +1,245 @@
+{
+  "date": "2026-11-02",
+  "baseline_structural_fallbacks": 1092,
+  "structural_fallbacks": 832,
+  "total_blocks": 20935,
+  "newly_supported_blocks": 260,
+  "pure_data_bar_blocks": 256,
+  "mixed_bar_scale_blocks": 4,
+  "errors": 0,
+  "reasons": {
+    "application-range-not-resolved": 3,
+    "namespace-or-extension": 14,
+    "unsupported-rule-or-namespace-content": 30,
+    "unsupported-rule-semantics": 785
+  },
+  "supported": {
+    "combined": 52,
+    "dummy": 17,
+    "literal": 12182,
+    "references": 4916,
+    "whole-area": 2936
+  },
+  "remaining_families": [
+    {
+      "family": "aboveAverage+cellIs",
+      "blocks": 4
+    },
+    {
+      "family": "cellIs",
+      "blocks": 25
+    },
+    {
+      "family": "cellIs+colorScale",
+      "blocks": 1
+    },
+    {
+      "family": "cellIs+containsErrors+containsText+duplicateValues+uniqueValues",
+      "blocks": 2
+    },
+    {
+      "family": "cellIs+containsText+duplicateValues+uniqueValues",
+      "blocks": 14
+    },
+    {
+      "family": "colorScale",
+      "blocks": 3
+    },
+    {
+      "family": "colorScale+iconSet",
+      "blocks": 6
+    },
+    {
+      "family": "containsText",
+      "blocks": 5
+    },
+    {
+      "family": "expression",
+      "blocks": 736
+    },
+    {
+      "family": "iconSet",
+      "blocks": 20
+    },
+    {
+      "family": "top10",
+      "blocks": 16
+    }
+  ],
+  "cost_scope": "Static fallback rectangles clipped to original source visual extents; exact duplicate rectangles removed. Not measured capture time or full pairwise pipeline job count.",
+  "source_clipped_candidate_rectangles": 1698.0,
+  "largest_source_footprints": [
+    {
+      "blocks": 5,
+      "by_sheet": {
+        "Data": 299
+      },
+      "candidate_rectangles": 299,
+      "planned_blocks": 5,
+      "source_id": 8037,
+      "workbook": "pcc_utilization_pivot_2018_75f08a61bac7.xlsx"
+    },
+    {
+      "blocks": 5,
+      "by_sheet": {
+        "Data": 298
+      },
+      "candidate_rectangles": 298,
+      "planned_blocks": 5,
+      "source_id": 8036,
+      "workbook": "pcc_utilization_pivot_2017_d6d443ab7354.xlsx"
+    },
+    {
+      "blocks": 271,
+      "by_sheet": {
+        "24CN": 2,
+        "25AN": 2,
+        "2BB": 2,
+        "43CLN": 2,
+        "5ClEt": 2,
+        "8HQ": 3,
+        "ABH": 2,
+        "AT": 2,
+        "BBA": 2,
+        "BCY": 3,
+        "BEZ": 7,
+        "BHMB": 2,
+        "BRO": 1,
+        "BZOL": 5,
+        "CDS": 9,
+        "CLAN": 2,
+        "CNA": 2,
+        "CRB": 2,
+        "DAA": 2,
+        "DBM": 2,
+        "DDA": 3,
+        "DHAA": 2,
+        "DL": 1,
+        "DMO": 2,
+        "DPD": 2,
+        "DPM": 3,
+        "DSA": 2,
+        "DSF": 2,
+        "DTS": 5,
+        "DiPrP": 2,
+        "ECD": 2,
+        "ECDA": 2,
+        "EDAB": 2,
+        "EHX": 2,
+        "EPG": 2,
+        "FSS": 2,
+        "GAGL": 2,
+        "GNL": 2,
+        "HOI": 5,
+        "IBA": 2,
+        "IPHA": 2,
+        "MDP": 3,
+        "MFD": 3,
+        "MMB": 2,
+        "NAFT": 2,
+        "NCD": 2,
+        "NEMB": 2,
+        "OBS": 6,
+        "ObGP": 2,
+        "PAA": 2,
+        "PABA": 2,
+        "PAS": 2,
+        "PCP": 5,
+        "PFBA": 3,
+        "PHOS": 3,
+        "POB": 3,
+        "PPA": 4,
+        "SBA": 2,
+        "TAM": 2,
+        "TBB": 5,
+        "TBROH": 5,
+        "TDAP": 5,
+        "TNS": 5,
+        "pMBA": 2,
+        "pMxBA": 2
+      },
+      "candidate_rectangles": 179,
+      "planned_blocks": 271,
+      "source_id": 5094,
+      "workbook": "Trout_ER_Antagonism_Data_50069aa02b34.xlsx"
+    },
+    {
+      "blocks": 132,
+      "by_sheet": {
+        "Crude Oil-M": 15,
+        "Crude Oil-Q": 12,
+        "Diesel-M": 13,
+        "Diesel-Q": 12,
+        "Electricity-M": 13,
+        "Electricity-Q": 12,
+        "Gasoline-M": 13,
+        "Gasoline-Q": 12,
+        "Heat Oil-M": 13,
+        "Heat Oil-Q": 12,
+        "Natural Gas-M": 12,
+        "Natural Gas-Q": 11
+      },
+      "candidate_rectangles": 150,
+      "planned_blocks": 132,
+      "source_id": 8259,
+      "workbook": "real_prices_1b186fd7a7e1.xlsx"
+    },
+    {
+      "blocks": 132,
+      "by_sheet": {
+        "Crude Oil-M": 15,
+        "Crude Oil-Q": 12,
+        "Diesel-M": 13,
+        "Diesel-Q": 12,
+        "Electricity-M": 13,
+        "Electricity-Q": 12,
+        "Gasoline-M": 13,
+        "Gasoline-Q": 12,
+        "Heat Oil-M": 13,
+        "Heat Oil-Q": 12,
+        "Natural Gas-M": 12,
+        "Natural Gas-Q": 11
+      },
+      "candidate_rectangles": 150,
+      "planned_blocks": 132,
+      "source_id": 8260,
+      "workbook": "real_prices_3ef815db19c7.xlsx"
+    },
+    {
+      "blocks": 2,
+      "by_sheet": {
+        "Pivot": 88
+      },
+      "candidate_rectangles": 88,
+      "planned_blocks": 2,
+      "source_id": 3920,
+      "workbook": "Pensacola Mid Bay Bugs Master_11.2023_8f62a87f24e2.xlsx"
+    },
+    {
+      "blocks": 5,
+      "by_sheet": {
+        "Priority-2 Foods - Baseline": 18,
+        "Sentinel Foods - Baseline": 44
+      },
+      "candidate_rectangles": 62,
+      "planned_blocks": 5,
+      "source_id": 8447,
+      "workbook": "sodium-monitoring-dataset-72256__339f60e0-599f-4a9e-82b2-2af6d26d61b2_a23c87f032bb.xlsx"
+    },
+    {
+      "blocks": 29,
+      "by_sheet": {
+        "Sheet1": 53
+      },
+      "candidate_rectangles": 53,
+      "planned_blocks": 29,
+      "source_id": 4675,
+      "workbook": "SupTable3-RawCLintData_e0bc213d6138.xlsx"
+    }
+  ],
+  "native_controls": {
+    "owned_excel_processes": "confirmed closed",
+    "unchanged_inputs": "passed; CF excluded, other candidate reasons independent",
+    "changed_maximum": "passed; unchanged cells changed their bar pixels"
+  }
+}

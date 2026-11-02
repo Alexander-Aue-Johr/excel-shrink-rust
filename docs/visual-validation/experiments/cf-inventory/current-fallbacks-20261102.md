@@ -1,5 +1,9 @@
 # Current CF fallback audit — 2026-11-02
 
+This snapshot precedes data-bar support. The subsequent measurement in
+[data-bars-20261102.json](data-bars-20261102.json) records 832 remaining structural
+fallbacks and 1,698 source-clipped candidate rectangles.
+
 The offline audit reuses the production worksheet namespace scanner, x14 adapter
 and rule classifier. It scans only the 1,721 retained CF-bearing sheets from the
 Data.gov inventory. It omits the disk cell index and row-layout collection, so

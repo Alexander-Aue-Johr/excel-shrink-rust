@@ -25,7 +25,7 @@ def verify(root: Path, mode: str) -> None:
             assert colors[1][(0, 0, 255)] > 100, 'Changed differential format did not render blue'
         if mode == 'dummy-added':
             assert colors[1][(255, 0, 0)] > 100, 'New target did not enable its CF fill'
-        if mode in ('duplicate', 'color-scale'):
+        if mode in ('duplicate', 'color-scale', 'data-bar'):
             from PIL import ImageChops
             with Image.open(sample['left_png']) as left, Image.open(sample['right_png']) as right:
                 assert left.size == right.size
@@ -50,6 +50,9 @@ def verify(root: Path, mode: str) -> None:
         }[mode]
         finding = next(item for item in direct['findings'] if item['cell'] == expected)
         assert finding['pixels_differ'], 'Dependent target did not change in native Excel'
+    elif mode == 'data-bar-unchanged':
+        assert all(item['outcome'] == 'excluded' for item in decisions), decisions
+        assert not different
     elif mode == 'dummy-missing':
         assert all(item['outcome'] == 'excluded' for item in decisions), decisions
         assert all(item['reason'] == 'fixed-dummy-targets-absent-in-both-states' for item in decisions), decisions
