@@ -3169,11 +3169,13 @@ fn namespace_passthrough_part<R: Read + Seek>(
     }
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
-        // CopyOriginal parts stay byte-for-byte intact. Parts later parsed for
-        // cleanup are checked when they are loaded instead of in this sweep.
+        // Shared strings remain an eligibility input even when whitespace
+        // cleanup is disabled and their body is copied without being parsed.
+        // Inspect only the root header; unrelated CopyOriginal parts stay untouched.
         if entry.name() != "xl/workbook.xml"
-            && classify_archive_entry(entry.name(), cli, &selected_sheets)
-                != ArchiveEntryKind::CopyOriginal
+            && (entry.name() == "xl/sharedStrings.xml"
+                || classify_archive_entry(entry.name(), cli, &selected_sheets)
+                    != ArchiveEntryKind::CopyOriginal)
             && requires_namespace_root_passthrough(&mut entry)?
         {
             return Ok(Some(entry.name().to_owned()));
