@@ -33,6 +33,7 @@ try {
             $result = switch ($command.kind) {
                 'open' { Open-TargetedWorkbook $command $ownedExcel }
                 'close' { Close-TargetedWorkbook $command.lane }
+                'capture_batch' { Invoke-TargetedCaptureBatch $command }
                 'optimize' { Optimize-TargetedWorkbook $command }
                 default { Invoke-TargetedJob $command }
             }

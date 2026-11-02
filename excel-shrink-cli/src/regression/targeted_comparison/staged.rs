@@ -1,7 +1,7 @@
 //! Preserve live pre-rebuild states until every late candidate has matching evidence.
 use super::{
     charts,
-    evidence::{capture_candidate, Evidence},
+    evidence::Evidence,
     heights::{self, HeightCheck, HeightRun},
     telemetry::{LaneId, Lifecycle, Phase, StepStatus},
     xml_changes::{cell_candidates, Snapshot, Transition},
@@ -11,9 +11,10 @@ use anyhow::{ensure, Context, Result};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
     path::{Path, PathBuf},
+    time::Instant,
 };
 
 struct WorkbookState {
@@ -80,9 +81,9 @@ impl Workflow<'_, '_> {
         self.rebuild_variant_copies()?;
         self.publish_available_comparisons("variants rebuilt; Original still unchanged")?;
         self.rebuild_copy(LaneId::O, LaneId::OR)?;
+        self.close_states()?;
         self.publish_available_comparisons("Original rebuilt last")?;
         self.project_legacy_findings()?;
-        self.close_states()?;
         self.comparison.complete()
     }
 
@@ -404,54 +405,110 @@ impl Workflow<'_, '_> {
         self.comparison.candidates = selected;
         self.comparison.report.content_coverage = coverage;
         self.publish_candidate_count()?;
-        for (&id, workbook) in &mut self.states {
-            let directory = self
-                .comparison
-                .args
-                .output
-                .join(format!("evidence-{}", id.key()));
-            fs::create_dir_all(&directory)?;
-            let phase = if matches!(id, LaneId::O | LaneId::SD | LaneId::CP) {
-                Phase::CaptureBefore
-            } else {
-                Phase::CaptureAfter
-            };
-            self.comparison
-                .telemetry
-                .update(|state| state.step(id, phase, StepStatus::Running))?;
-            for candidate in &self.comparison.candidates {
-                if workbook.captures.contains_key(candidate) {
-                    continue;
-                }
-                let name = format!(
-                    "{:x}",
-                    Sha256::digest(format!("{}\0{}", candidate.sheet, candidate.cell).as_bytes())
-                );
-                let evidence = capture_candidate(
-                    self.comparison
-                        .excel
-                        .as_mut()
-                        .context("Excel host missing")?,
+        let started = Instant::now();
+        let mut pending: BTreeMap<_, VecDeque<_>> = self
+            .states
+            .iter()
+            .map(|(&id, workbook)| {
+                (
                     id,
-                    candidate,
-                    directory.join(format!("{name}.png")),
-                    &self.comparison.telemetry,
-                )?;
-                workbook.captures.insert(candidate.clone(), evidence);
-                *self
-                    .comparison
-                    .report
-                    .capture_counts
-                    .entry(id.key().into())
-                    .or_default() += 1;
+                    self.comparison
+                        .candidates
+                        .iter()
+                        .filter(|candidate| !workbook.captures.contains_key(*candidate))
+                        .cloned()
+                        .collect(),
+                )
+            })
+            .collect();
+        for &id in self.states.keys() {
+            fs::create_dir_all(
                 self.comparison
-                    .telemetry
-                    .update(|state| state.lane(id).captures_done += 1)?;
-            }
+                    .args
+                    .output
+                    .join(format!("evidence-{}", id.key())),
+            )?;
             self.comparison
                 .telemetry
-                .update(|state| state.step(id, phase, StepStatus::Done))?;
+                .update(|state| state.step(id, capture_phase(id), StepStatus::Running))?;
         }
+        loop {
+            let jobs: Vec<_> = pending
+                .iter()
+                .filter_map(|(&id, queue)| {
+                    queue.front().map(|candidate| {
+                        let name = format!(
+                            "{:x}",
+                            Sha256::digest(
+                                format!("{}\0{}", candidate.sheet, candidate.cell).as_bytes()
+                            )
+                        );
+                        (
+                            id,
+                            candidate.clone(),
+                            self.comparison
+                                .args
+                                .output
+                                .join(format!("evidence-{}/{name}.png", id.key())),
+                        )
+                    })
+                })
+                .collect();
+            if jobs.is_empty() {
+                break;
+            }
+            let batch_size = if self.comparison.args.serial_captures {
+                1
+            } else {
+                jobs.len()
+            };
+            for batch in jobs.chunks(batch_size) {
+                self.comparison.telemetry.progress(|state| {
+                    for (id, candidate, _) in batch {
+                        state.lane(*id).current_sheet = Some(candidate.sheet.clone());
+                        state.lane(*id).current_range = Some(candidate.cell.clone());
+                    }
+                })?;
+                let geometry = self
+                    .comparison
+                    .excel
+                    .as_mut()
+                    .context("Excel host missing")?
+                    .capture_ranges(batch, &self.comparison.telemetry)?;
+                for ((id, candidate, path), geometry) in batch.iter().zip(geometry) {
+                    self.states.get_mut(id).unwrap().captures.insert(
+                        candidate.clone(),
+                        Evidence {
+                            path: path.clone(),
+                            geometry,
+                        },
+                    );
+                    pending.get_mut(id).unwrap().pop_front();
+                    *self
+                        .comparison
+                        .report
+                        .capture_counts
+                        .entry(id.key().into())
+                        .or_default() += 1;
+                }
+                self.comparison.telemetry.progress(|state| {
+                    for (id, _, _) in batch {
+                        state.lane(*id).captures_done += 1;
+                    }
+                })?;
+            }
+        }
+        for &id in self.states.keys() {
+            self.comparison
+                .telemetry
+                .update(|state| state.step(id, capture_phase(id), StepStatus::Done))?;
+        }
+        *self
+            .comparison
+            .report
+            .timings_ms
+            .entry("capture_selection_and_transport".into())
+            .or_default() += started.elapsed().as_millis() as u64;
         Ok(())
     }
 
@@ -478,6 +535,7 @@ impl Workflow<'_, '_> {
     }
 
     fn publish_available_comparisons(&mut self, phase: &str) -> Result<()> {
+        let started = Instant::now();
         let mut comparisons = Vec::new();
         for (label, left, right) in self.pairs() {
             let mut findings = Vec::new();
@@ -515,6 +573,12 @@ impl Workflow<'_, '_> {
                 state.step(right, Phase::Compare, StepStatus::Done);
             })?;
         }
+        *self
+            .comparison
+            .report
+            .timings_ms
+            .entry("image_comparisons".into())
+            .or_default() += started.elapsed().as_millis() as u64;
         self.comparison.report.comparisons = comparisons;
         self.comparison.report.phases.push(phase.into());
         fs::write(
@@ -571,4 +635,13 @@ impl Workflow<'_, '_> {
 /// Match exact transition evidence without retaining millions of duplicated strings.
 fn change_key(change: &super::xml_changes::XmlChange) -> Result<[u8; 32]> {
     Ok(Sha256::digest(serde_json::to_vec(&Snapshot::change_key(change))?).into())
+}
+
+/// Rebuilt copies never count as pre-rebuild capture work.
+fn capture_phase(id: LaneId) -> Phase {
+    if matches!(id, LaneId::O | LaneId::SD | LaneId::CP) {
+        Phase::CaptureBefore
+    } else {
+        Phase::CaptureAfter
+    }
 }

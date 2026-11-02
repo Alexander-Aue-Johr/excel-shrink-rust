@@ -9,6 +9,7 @@ param(
     [switch]$FailLateCapture,
     [switch]$Charts,
     [switch]$CollapsedChart,
+    [switch]$SerialCaptures,
     [ValidateSet(
         'constant', 'constant-string', 'styles', 'dummy-missing', 'dummy-inert',
         'dummy-present', 'dummy-added', 'duplicate', 'color-scale', 'data-bar', 'data-bar-unchanged',
@@ -58,9 +59,11 @@ if ($FailCapture -or $FailOptimization -or $FailLateCapture) {
     # Fault injection stays in a disposable host copy, after real Excel startup.
     $source = [IO.File]::ReadAllText($hostScript)
     if ($FailCapture) {
+        $source = $source.Replace("'capture_batch' { Invoke-TargetedCaptureBatch `$command }", "'capture_batch' { throw 'Injected capture failure' }")
         $source = $source.Replace('default { Invoke-TargetedJob $command }', 'default { if ($command.kind -eq "capture") { throw "Injected capture failure" }; Invoke-TargetedJob $command }')
     }
     if ($FailLateCapture) {
+        $source = $source.Replace("'capture_batch' { Invoke-TargetedCaptureBatch `$command }", "'capture_batch' { if (@(`$command.jobs | Where-Object lane -eq 'OR').Count -gt 0) { throw 'Injected late capture failure' }; Invoke-TargetedCaptureBatch `$command }")
         $source = $source.Replace('default { Invoke-TargetedJob $command }', 'default { if ($command.kind -eq "capture" -and $command.lane -eq "OR") { throw "Injected late capture failure" }; Invoke-TargetedJob $command }')
     }
     if ($FailOptimization) {
@@ -76,10 +79,12 @@ if ($FailCapture -or $FailOptimization -or $FailLateCapture) {
     [IO.File]::WriteAllText($hostScript, $source, [Text.UTF8Encoding]::new($false))
 }
 try {
+    if ($SerialCaptures) { $captureArguments = ' --serial-captures' } else { $captureArguments = '' }
     $env:EXCEL_SHRINK_EXPECTED_DESKTOP = $desktop.Name
     $arguments = 'regression targeted-compare --original "{0}" --default "{1}" --output "{2}" --observatory-group-dir "{3}" --host-script "{4}" --operation-timeout-seconds 30' -f `
         (Join-Path $directory 'inputs/original.xlsx'), (Join-Path $directory 'inputs/default.xlsx'), (Join-Path $directory 'result'), $group, $hostScript
     if (-not ($CheckPerformance -or $FailOptimization -or $CleanWorkbook)) { $arguments += ' --skip-check-performance' }
+    $arguments += $captureArguments
     $process = $desktop.Start((Join-Path $repository 'target/debug/excel-shrink-cli.exe'), $arguments, $owned)
     $deadline = [DateTime]::UtcNow.AddSeconds(150)
     while (-not $process.WaitForExit(500)) {

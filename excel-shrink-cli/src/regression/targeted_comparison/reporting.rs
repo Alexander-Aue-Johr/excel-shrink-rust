@@ -120,6 +120,7 @@ impl Report {
 pub(super) fn new_report() -> Report {
     Report {
         capture_policy: super::CAPTURE_POLICY,
+        timings_ms: BTreeMap::new(),
         image_comparison_statistics: Default::default(),
         status: "running".into(),
         check_performance: "not_requested",

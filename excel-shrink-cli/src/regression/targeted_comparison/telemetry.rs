@@ -12,7 +12,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Condvar, Mutex},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize)]
@@ -196,6 +196,7 @@ struct Shared {
     snapshot: Snapshot,
     paths: Vec<PathBuf>,
     stop: bool,
+    last_published: Instant,
 }
 
 /// One publisher serializes phase changes and an independent PID-liveness sampler.
@@ -316,6 +317,7 @@ impl Telemetry {
                 snapshot,
                 paths,
                 stop: false,
+                last_published: Instant::now(),
             }),
             Condvar::new(),
         ));
@@ -344,6 +346,20 @@ impl Telemetry {
         update(&mut state.snapshot);
         write_snapshot(&mut state)?;
         self.shared.1.notify_one();
+        Ok(())
+    }
+
+    /// Coalesce hot capture counters; phase transitions still publish immediately.
+    pub fn progress(&self, update: impl FnOnce(&mut Snapshot)) -> Result<()> {
+        let mut state = self
+            .shared
+            .0
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Telemetry lock poisoned"))?;
+        update(&mut state.snapshot);
+        if state.last_published.elapsed() >= Duration::from_millis(250) {
+            write_snapshot(&mut state)?;
+        }
         Ok(())
     }
 }
@@ -395,7 +411,9 @@ fn write_snapshot(state: &mut Shared) -> Result<()> {
     crate::regression::artifact_cache::atomic_write(
         &state.paths[0],
         &serde_json::to_vec_pretty(&state.snapshot)?,
-    )
+    )?;
+    state.last_published = Instant::now();
+    Ok(())
 }
 
 /// Heartbeats here are actual PID-and-creation-time observations, not progress.
@@ -452,6 +470,7 @@ mod tests {
             workbook_label: None,
             operation_timeout_seconds: 1,
             skip_check_performance: true,
+            serial_captures: false,
         };
         let telemetry = Telemetry::start(&args)?;
         let mirror = group.join("targeted-comparison.json");
@@ -510,6 +529,7 @@ mod tests {
             workbook_label: None,
             operation_timeout_seconds: 1,
             skip_check_performance: true,
+            serial_captures: false,
         };
         let telemetry = Telemetry::start(&args).unwrap();
         telemetry

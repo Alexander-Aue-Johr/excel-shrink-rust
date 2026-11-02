@@ -1,6 +1,7 @@
 # Transport to the existing native launcher and Office.js command protocol.
 $ErrorActionPreference = 'Stop'
 $sessions = @{}
+$script:responseWatcher = $null
 $utf8 = [Text.UTF8Encoding]::new($false)
 Import-Module (Join-Path $PSScriptRoot 'TargetedChartSheets.psm1') -Force -DisableNameChecking
 
@@ -82,9 +83,97 @@ function Open-TargetedWorkbook {
     throw "Targeted resident exited during opening; inspect $root/stderr.log"
 }
 
+function Start-TargetedJob {
+    <# .SYNOPSIS
+    Publishes one command without waiting for its client, retaining its response identity.
+    #>
+    param($Command, [int]$Index)
+    $entry = $sessions[$Command.lane]
+    if ($null -eq $entry) { throw 'Targeted workbook is not open.' }
+    $entry.sequence++
+    $id = 'targeted-' + $entry.sequence
+    Write-TargetedJson (Join-Path $entry.session "commands/one/$id.json") @{
+        id=$id; kind='diagnosis'; operation='targeted'; request=$Command
+    }
+    return @{command=$Command; entry=$entry; index=$Index; response=(Join-Path $entry.session "responses/one/$id.json")}
+}
+
+function Resolve-TargetedResponse {
+    <# .SYNOPSIS
+    Validates a completed response and adopts only the image owned by this session.
+    #>
+    param($Job, $Response)
+    $command = $Job.command
+    $entry = $Job.entry
+    if ($Response.ok -ne $true -or $Response.diagnostic_error) {
+        throw ($Response | ConvertTo-Json -Depth 6 -Compress)
+    }
+    if ($command.kind -eq 'charts') {
+        $Response.charts = @($Response.charts) + @(Get-TargetedChartSheets $entry)
+    }
+    if ($command.kind -in @('save','recalculate')) {
+        Copy-Item -LiteralPath $entry.staged -Destination $entry.path -Force
+        Remove-TargetedTaskpane $entry
+    }
+    if ($command.kind -in @('capture','capture_chart')) {
+        if ($Response.non_rendering -eq $true) {
+            return @{non_rendering=$true; reason=$Response.reason; geometry=$Response.geometry}
+        }
+        $image = [IO.Path]::GetFullPath([string]$Response.image_path)
+        $ownedImages = [IO.Path]::GetFullPath((Join-Path $entry.session 'diagnosis-images/one'))
+        if (-not $image.StartsWith($ownedImages + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Image receipt is outside this resident session.'
+        }
+        Move-Item -LiteralPath $image -Destination $command.output -ErrorAction Stop
+        return @{path=$command.output; geometry=$Response.geometry}
+    }
+    return $Response
+}
+
+function Invoke-TargetedJobs {
+    <# .SYNOPSIS
+    Dispatches distinct lanes together and collects responses in request order.
+    File notifications wake the waiter; bounded rescans also cover missed notifications.
+    #>
+    param([object[]]$Commands)
+    if ($Commands.Count -lt 1 -or $Commands.Count -gt 6) { throw 'Invalid targeted batch size.' }
+    $lanes = New-Object 'Collections.Generic.HashSet[string]'
+    foreach ($command in $Commands) {
+        if (-not $lanes.Add([string]$command.lane)) { throw 'A batch may contain only one job per Excel lane.' }
+        if (-not $sessions.ContainsKey($command.lane)) { throw 'Targeted workbook is not open.' }
+    }
+    $root = [IO.Path]::GetDirectoryName($sessions[$Commands[0].lane].path)
+    if ($null -eq $script:responseWatcher) {
+        $script:responseWatcher = New-Object IO.FileSystemWatcher $root, 'targeted-*.json'
+        $script:responseWatcher.IncludeSubdirectories = $true
+        $script:responseWatcher.EnableRaisingEvents = $true
+    } elseif ($script:responseWatcher.Path -ne $root) {
+        throw 'A batch cannot span different comparison directories.'
+    }
+    $pending = New-Object 'Collections.Generic.List[object]'
+    $results = New-Object object[] $Commands.Count
+    for ($index = 0; $index -lt $Commands.Count; $index++) {
+        $pending.Add((Start-TargetedJob $Commands[$index] $index))
+    }
+    while ($pending.Count -gt 0) {
+        for ($index = $pending.Count - 1; $index -ge 0; $index--) {
+            $job = $pending[$index]
+            if ($job.entry.launcher.HasExited) { throw 'Targeted resident exited without a response.' }
+            $response = Read-TargetedJson $job.response
+            if ($null -eq $response) { continue }
+            $results[$job.index] = Resolve-TargetedResponse $job $response
+            $pending.RemoveAt($index)
+        }
+        if ($pending.Count -gt 0) {
+            $null = $script:responseWatcher.WaitForChanged([IO.WatcherChangeTypes]::All, 100)
+        }
+    }
+    return $results
+}
+
 function Invoke-TargetedJob {
     <# .SYNOPSIS
-    Delivers one diagnosis to the owned resident and returns its actual response.
+    Uses the same response protocol for single commands and native chart-sheet exports.
     #>
     param($Command)
     $entry = $sessions[$Command.lane]
@@ -92,41 +181,19 @@ function Invoke-TargetedJob {
     if ($Command.kind -eq 'capture_chart' -and $Command.chart_kind -eq 'chart_sheet') {
         return Export-TargetedChartSheet $entry $Command
     }
-    $entry.sequence++
-    $id = 'targeted-' + $entry.sequence
-    $request = @{id=$id; kind='diagnosis'; operation='targeted'; request=$Command}
-    Write-TargetedJson (Join-Path $entry.session "commands/one/$id.json") $request
-    $responsePath = Join-Path $entry.session "responses/one/$id.json"
-    while (-not $entry.launcher.HasExited) {
-        $response = Read-TargetedJson $responsePath
-        if ($null -ne $response) {
-            if ($response.ok -ne $true -or $response.diagnostic_error) {
-                throw ($response | ConvertTo-Json -Depth 6 -Compress)
-            }
-            if ($Command.kind -eq 'charts') {
-                $response.charts = @($response.charts) + @(Get-TargetedChartSheets $entry)
-            }
-            if ($Command.kind -in @('save','recalculate')) {
-                Copy-Item -LiteralPath $entry.staged -Destination $entry.path -Force
-                Remove-TargetedTaskpane $entry
-            }
-            if ($Command.kind -in @('capture', 'capture_chart')) {
-                if ($response.non_rendering -eq $true) {
-                    return @{non_rendering=$true; reason=$response.reason; geometry=$response.geometry}
-                }
-                $image = [IO.Path]::GetFullPath([string]$response.image_path)
-                $ownedImages = [IO.Path]::GetFullPath((Join-Path $entry.session 'diagnosis-images/one'))
-                if (-not $image.StartsWith($ownedImages + '\', [StringComparison]::OrdinalIgnoreCase)) {
-                    throw 'Image receipt is outside this resident session.'
-                }
-                Move-Item -LiteralPath $image -Destination $Command.output -ErrorAction Stop
-                return @{path=$Command.output; geometry=$response.geometry}
-            }
-            return $response
-        }
-        Start-Sleep -Milliseconds 25
+    $results = @(Invoke-TargetedJobs @($Command))
+    return $results[0]
+}
+
+function Invoke-TargetedCaptureBatch {
+    <# .SYNOPSIS
+    Allows only cell captures in a parallel batch; mutations remain explicit ordered phases.
+    #>
+    param($Command)
+    foreach ($job in $Command.jobs) {
+        if ($job.kind -ne 'capture') { throw 'A capture batch may not mutate workbooks.' }
     }
-    throw 'Targeted resident exited without a response.'
+    return @{images=@(Invoke-TargetedJobs $Command.jobs)}
 }
 
 function Remove-TargetedTaskpane {
@@ -214,7 +281,11 @@ function Close-TargetedWorkbook {
     $entry.launcher.WaitForExit()
     if ($null -ne $entry.process -and -not $entry.process.WaitForExit(1000)) { throw 'Targeted Excel exit unconfirmed.' }
     $null = $sessions.Remove($Lane)
+    if ($sessions.Count -eq 0 -and $null -ne $script:responseWatcher) {
+        $script:responseWatcher.Dispose()
+        $script:responseWatcher = $null
+    }
     return @{closed=$true}
 }
 
-Export-ModuleMember -Function Open-TargetedWorkbook, Invoke-TargetedJob, Optimize-TargetedWorkbook, Close-TargetedWorkbook
+Export-ModuleMember -Function Open-TargetedWorkbook, Invoke-TargetedJob, Invoke-TargetedCaptureBatch, Optimize-TargetedWorkbook, Close-TargetedWorkbook

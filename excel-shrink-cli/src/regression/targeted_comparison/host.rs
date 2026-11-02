@@ -123,6 +123,28 @@ impl ExcelHost {
         measured_geometry(&response["geometry"])
     }
 
+    /// Submit one outstanding capture per open lane and require every corresponding result.
+    pub(super) fn capture_ranges(
+        &mut self,
+        jobs: &[(LaneId, super::Candidate, std::path::PathBuf)],
+        telemetry: &Telemetry,
+    ) -> Result<Vec<Value>> {
+        let response = self.call(json!({"kind":"capture_batch","jobs":jobs.iter().map(|(lane,candidate,output)|
+            json!({"kind":"capture","lane":lane.key(),"sheet":candidate.sheet,"range":candidate.cell,"output":output}))
+            .collect::<Vec<_>>()}), telemetry)?;
+        let images = response["images"]
+            .as_array()
+            .context("Missing capture batch responses")?;
+        ensure!(
+            images.len() == jobs.len(),
+            "Capture batch response count differs from its requests"
+        );
+        images
+            .iter()
+            .map(|image| measured_geometry(&image["geometry"]))
+            .collect()
+    }
+
     /// Enumerate embedded charts and same-resident chart sheets independently of XML changes.
     pub(super) fn charts(
         &mut self,
@@ -235,6 +257,11 @@ impl ExcelHost {
 
 /// PowerShell's filesystem provider cannot resolve Rust's canonical verbatim drive paths.
 fn normalize_windows_paths(command: &mut Value) -> Result<()> {
+    if let Some(jobs) = command.get_mut("jobs").and_then(Value::as_array_mut) {
+        for job in jobs {
+            normalize_windows_paths(job)?;
+        }
+    }
     for field in ["path", "output", "host_executable"] {
         if let Some(path) = command[field].as_str() {
             command[field] = json!(crate::regression::excel_automation::power_shell_path(

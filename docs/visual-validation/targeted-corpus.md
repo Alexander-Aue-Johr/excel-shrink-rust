@@ -117,3 +117,21 @@ The native bridge moves the owned uploaded image to its evidence path; it no lon
 decodes or retains a second Base64 copy. Chart exports may be PNG or JPEG even when
 Office documents a PNG, so the host checks the actual format. Failed uploads and
 missing receipts remain failures; zero-area charts retain their explicit state.
+
+Cell capture batches now submit one request per available Excel state concurrently.
+Each lane still has at most one outstanding request. The native bridge uses file
+notifications with bounded rescans rather than a fixed sleep after every capture.
+Late candidates are still backfilled in all retained states. Once final discovery
+is complete, Excel is closed before disk-only comparison and reporting.
+
+For a direct A/B diagnostic, add `--serial-captures` to `regression targeted-compare`.
+The corpus runner uses parallel capture by default; existing commands need no
+changes. `timings_ms` separates capture selection/transport from staged image
+comparison, and `image_comparison_statistics` records actual decoding/reuse.
+Capture counters are coalesced to 250 ms; phase transitions publish immediately.
+
+Hash-only client retention is deliberately not the default: the Original's
+immutable pixels may be needed only after later rebuilds reveal new differences.
+Discarding them early would require unsafe recapture, while retaining all of them
+in WebView memory would grow with sheet size. Binary uploads, host fingerprints,
+and post-comparison equal-image reduction keep that evidence on disk safely.

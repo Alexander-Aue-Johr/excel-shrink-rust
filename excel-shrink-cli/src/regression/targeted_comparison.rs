@@ -61,6 +61,9 @@ pub(crate) struct Args {
     /// Omit the native Check Performance lane (otherwise requires a private desktop).
     #[arg(long)]
     skip_check_performance: bool,
+    /// Run capture requests serially for diagnostics instead of across open Excel states.
+    #[arg(long)]
+    serial_captures: bool,
 }
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize)]
@@ -108,6 +111,7 @@ struct Report {
     phases: Vec<String>,
     excel_pids: BTreeMap<String, u32>,
     capture_counts: BTreeMap<String, usize>,
+    timings_ms: BTreeMap<String, u64>,
 }
 
 struct WorkingPaths {
