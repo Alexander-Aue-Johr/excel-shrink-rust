@@ -114,7 +114,7 @@ pub(super) fn capture_candidate(
     Ok(Evidence { path, geometry })
 }
 
-fn padded_range(address: &str) -> Result<String> {
+pub(super) fn padded_range(address: &str) -> Result<String> {
     if let Some((start, end)) = address.split_once(':') {
         let a =
             super::conditional_formatting::cell_address(start).context("Invalid fallback start")?;

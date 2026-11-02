@@ -4,6 +4,13 @@ import json
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import zipfile
+from openpyxl.utils.cell import range_boundaries
+
+
+def covers_formula(finding):
+    """Candidate labels now describe the actual clipped capture rectangle."""
+    left, top, right, bottom = range_boundaries(finding['cell'])
+    return left <= 26 <= right and top <= 20 <= bottom
 
 
 def verify(directory):
@@ -20,10 +27,10 @@ def verify(directory):
         ('Default rebuilt versus Original before rebuild', True),
         ('both rebuilt Default', True),
     ):
-        finding = next(item for item in comparisons[label]['findings'] if item['cell'] == 'Z20')
+        finding = next(item for item in comparisons[label]['findings'] if covers_formula(item))
         assert finding['pixels_differ'] is expected, (label, finding)
         assert Path(finding['left_png']).is_file() and Path(finding['right_png']).is_file()
-    original_control = next(item for item in comparisons['Original own rebuild']['findings'] if item['cell'] == 'Z20')
+    original_control = next(item for item in comparisons['Original own rebuild']['findings'] if covers_formula(item))
     assert original_control['geometry_differs'] is False
     # Exact pixels may drift between Excel instances even with unchanged values.
     # Keep that control visible; verify the value independently in the saved XML.

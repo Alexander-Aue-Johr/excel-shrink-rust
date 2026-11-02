@@ -47,6 +47,8 @@ struct Workflow<'a, 'b> {
     comparison: &'a mut Comparison<'b>,
     states: BTreeMap<LaneId, WorkbookState>,
     inspected: BTreeSet<(LaneId, LaneId)>,
+    requested_candidates: BTreeSet<Candidate>,
+    content_bounds: super::content_bounds::ContentBounds,
 }
 
 impl Comparison<'_> {
@@ -56,6 +58,8 @@ impl Comparison<'_> {
             comparison: self,
             states: BTreeMap::new(),
             inspected: BTreeSet::new(),
+            requested_candidates: BTreeSet::new(),
+            content_bounds: super::content_bounds::ContentBounds::default(),
         }
         .execute()
     }
@@ -66,6 +70,8 @@ impl Workflow<'_, '_> {
     fn execute(&mut self) -> Result<()> {
         self.open_and_save_controls()?;
         self.optimize_and_register_states()?;
+        self.requested_candidates
+            .extend(std::mem::take(&mut self.comparison.candidates));
         self.inspect_available_pairs()?;
         self.capture_missing_regions()?;
         self.publish_available_comparisons("before rebuild")?;
@@ -128,6 +134,7 @@ impl Workflow<'_, '_> {
             .telemetry
             .update(|state| state.step(id, Phase::Discover, StepStatus::Running))?;
         let xml = Snapshot::read(&path)?;
+        self.content_bounds.include(&xml);
         self.comparison
             .telemetry
             .update(|state| state.step(id, Phase::Discover, StepStatus::Done))?;
@@ -181,8 +188,10 @@ impl Workflow<'_, '_> {
     fn audit(&mut self, label: &str, before: &Path, after: &Path) -> Result<()> {
         let a = Snapshot::read(before)?;
         let b = Snapshot::read(after)?;
+        self.content_bounds.include(&a);
+        self.content_bounds.include(&b);
         let changes = a.changes(&b)?;
-        self.comparison.candidates.extend(cell_candidates(&changes));
+        self.requested_candidates.extend(cell_candidates(&changes));
         self.publish_candidate_count()?;
         self.comparison.report.transitions.push(Transition {
             label: label.into(),
@@ -283,12 +292,12 @@ impl Workflow<'_, '_> {
                 "Sheet set changed; targeted coverage is incomplete"
             );
             let changes = a.changes(&b)?;
-            self.comparison.candidates.extend(cell_candidates(&changes));
+            self.requested_candidates.extend(cell_candidates(&changes));
             let decisions = super::conditional_formatting::select(
                 &a,
                 &b,
                 &changes,
-                &mut self.comparison.candidates,
+                &mut self.requested_candidates,
             )?;
             self.comparison.report.conditional_formatting.push(
                 super::conditional_formatting::Check {
@@ -325,7 +334,7 @@ impl Workflow<'_, '_> {
                 let after = self.read_heights(right, sheet, &spans)?;
                 let selected =
                     self.comparison.report.height_checks[index].compare(&before, &after)?;
-                self.comparison.candidates.extend(selected);
+                self.requested_candidates.extend(selected);
                 self.publish_candidate_count()?;
             }
             self.comparison.telemetry.update(|state| {
@@ -376,6 +385,10 @@ impl Workflow<'_, '_> {
 
     /// Stable candidate-derived filenames prevent late insertions from overwriting earlier images.
     fn capture_missing_regions(&mut self) -> Result<()> {
+        let (selected, coverage) = self.content_bounds.select(&self.requested_candidates)?;
+        self.comparison.candidates = selected;
+        self.comparison.report.content_coverage = coverage;
+        self.publish_candidate_count()?;
         for (&id, workbook) in &mut self.states {
             let directory = self
                 .comparison
@@ -493,6 +506,18 @@ impl Workflow<'_, '_> {
     }
 
     fn project_legacy_findings(&mut self) -> Result<()> {
+        self.comparison.original_save_changes = self
+            .content_bounds
+            .select(&self.comparison.original_save_changes)?
+            .0;
+        self.comparison.performance.save_changes = self
+            .content_bounds
+            .select(&self.comparison.performance.save_changes)?
+            .0;
+        self.comparison.performance.optimization_changes = self
+            .content_bounds
+            .select(&self.comparison.performance.optimization_changes)?
+            .0;
         self.comparison.captures.original_before = self.states[&LaneId::O].captures.clone();
         self.comparison.captures.shrink_before = self.states[&LaneId::SD].captures.clone();
         self.comparison.captures.shrink_after = self.states[&LaneId::SDR].captures.clone();

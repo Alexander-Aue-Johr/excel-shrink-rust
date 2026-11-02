@@ -18,6 +18,7 @@ struct Records {
     path: PathBuf,
     digest: [u8; 32],
     has_formulas: bool,
+    content_bounds: Option<super::content_bounds::Rectangle>,
 }
 
 impl Drop for Records {
@@ -75,6 +76,7 @@ pub(super) struct Writer {
     last: Option<(u32, u16)>,
     digest: Sha256,
     has_formulas: bool,
+    content_bounds: Option<super::content_bounds::Rectangle>,
 }
 
 impl Writer {
@@ -93,6 +95,7 @@ impl Writer {
             last: None,
             digest: Sha256::new(),
             has_formulas: false,
+            content_bounds: None,
         })
     }
 
@@ -176,6 +179,13 @@ impl Writer {
 
     fn write_cell(&mut self, cell: Cell) -> Result<()> {
         self.has_formulas |= cell.has_formula;
+        if cell.visible {
+            super::content_bounds::include(
+                &mut self.content_bounds,
+                cell.row,
+                u32::from(cell.column),
+            );
+        }
         let mut record = [0u8; RECORD_BYTES];
         record[..4].copy_from_slice(&cell.row.to_le_bytes());
         record[4..6].copy_from_slice(&cell.column.to_le_bytes());
@@ -198,6 +208,7 @@ impl Writer {
             path: self.path.clone(),
             digest: self.digest.clone().finalize().into(),
             has_formulas: self.has_formulas,
+            content_bounds: self.content_bounds,
         };
         self.complete = true;
         Ok(Cells(Some(Arc::new(records))))
@@ -232,6 +243,9 @@ fn next_cell(reader: &mut Option<BufReader<File>>) -> Result<Option<Cell>> {
 }
 
 impl Cells {
+    pub fn content_bounds(&self) -> Option<super::content_bounds::Rectangle> {
+        self.0.as_ref().and_then(|records| records.content_bounds)
+    }
     /// Formula XML/cache equality alone cannot establish nonvolatile conditional-format inputs.
     pub fn formula_cells(&self, mut emit: impl FnMut(Cell) -> Result<()>) -> Result<()> {
         if !self.0.as_ref().is_some_and(|records| records.has_formulas) {
@@ -337,6 +351,17 @@ mod tests {
         let mut writer = Writer::new()?;
         streaming_xml::scan(xml, |event| writer.event(&event))?;
         writer.finish()
+    }
+
+    #[test]
+    fn content_bounds_ignore_styles_but_preserve_deleted_values_and_formulas() -> Result<()> {
+        let original = cells(br#"<row><c r="C5"><v>1</v></c><c r="F10"><f>IF(TRUE,\"\",0)</f></c><c r="XFD100000" s="1"/></row>"#)?;
+        let shrunk = cells(br#"<row><c r="C5"><v>1</v></c></row>"#)?;
+        assert_ne!(original.content_bounds(), shrunk.content_bounds());
+        let bounds = original.content_bounds().unwrap();
+        let expected = cells(br#"<row><c r="C5"><v>1</v></c><c r="F10"><v>2</v></c></row>"#)?;
+        assert_eq!(Some(bounds), expected.content_bounds());
+        Ok(())
     }
 
     #[test]

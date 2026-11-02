@@ -14,8 +14,8 @@ use std::{
 #[derive(Default)]
 pub(super) struct PerformanceState {
     pub(super) path: Option<PathBuf>,
-    save_changes: BTreeSet<Candidate>,
-    optimization_changes: BTreeSet<Candidate>,
+    pub(super) save_changes: BTreeSet<Candidate>,
+    pub(super) optimization_changes: BTreeSet<Candidate>,
     pub(super) before: BTreeMap<Candidate, Evidence>,
     pub(super) after: BTreeMap<Candidate, Evidence>,
 }

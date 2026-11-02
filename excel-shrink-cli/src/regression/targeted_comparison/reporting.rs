@@ -126,11 +126,13 @@ pub(super) fn new_report() -> Report {
         conditional_formatting: Vec::new(),
         comparisons: Vec::new(),
         candidate_count: 0,
+        content_coverage: Vec::new(),
         findings: Vec::new(),
         phases: Vec::new(),
         excel_pids: BTreeMap::new(),
         capture_counts: BTreeMap::new(),
         limitations: vec![
+            "Cell capture regions are intersected with the union of content-bearing cell bounds across raw, saved and rebuilt inputs, plus one row/column of margin. Formatting-only exterior regions are intentionally skipped, not visually confirmed identical; content_coverage records selection counts and bounds. Chart exports are independent of this policy.".into(),
             "CF decisions concern rule contributions within the recorded union of comparison extents. Literal cellIs exclusions require identical cell-XML fingerprints and visual context. Formula inputs remain captures; unknown or changed rules retain region captures. This is not a proof of whole-workbook visual equality.".into(),
             "Embedded charts and standalone chart sheets are compared as whole-chart exports in every retained state. Chart-sheet exports use a consistent viewport in the existing owned Excel process. Other drawings, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
             "Excel may recalculate during open even when manual calculation is requested.".into(),

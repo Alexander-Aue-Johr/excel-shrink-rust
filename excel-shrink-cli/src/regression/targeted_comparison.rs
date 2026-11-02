@@ -1,5 +1,6 @@
 //! Targeted comparison workflow; the called phases own XML, Excel, and evidence details.
 mod candidates;
+mod content_bounds;
 mod cell_stream;
 mod charts;
 mod conditional_formatting;
@@ -93,6 +94,7 @@ struct Report {
     conditional_formatting: Vec<conditional_formatting::Check>,
     comparisons: Vec<staged::VisualComparison>,
     candidate_count: usize,
+    content_coverage: Vec<content_bounds::Coverage>,
     findings: Vec<Finding>,
     limitations: Vec<String>,
     phases: Vec<String>,

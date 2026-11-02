@@ -517,23 +517,15 @@ impl Sheet {
     }
 }
 
-/// Content-bearing cells retain their own location; empty changes also select their row probe.
+/// Preserve actual coordinates, including empty formatting changes within the content envelope.
 pub(super) fn cell_candidates(changes: &[XmlChange]) -> BTreeSet<Candidate> {
     changes
         .iter()
         .filter_map(|change| {
             let cell = change.location.strip_prefix("cell:")?;
-            let address = if change.visible_cell {
-                cell.to_owned()
-            } else {
-                format!(
-                    "A{}",
-                    cell.trim_start_matches(|c: char| c.is_ascii_alphabetic())
-                )
-            };
             Some(Candidate {
                 sheet: change.sheet.clone(),
-                cell: address,
+                cell: cell.to_owned(),
             })
         })
         .collect()
