@@ -32,6 +32,7 @@ try {
             $command = $line | ConvertFrom-Json
             $result = switch ($command.kind) {
                 'open' { Open-TargetedWorkbook $command $ownedExcel }
+                'open_batch' { Open-TargetedWorkbooks $command $ownedExcel }
                 'close' { Close-TargetedWorkbook $command.lane }
                 'capture_batch' { Invoke-TargetedCaptureBatch $command }
                 'optimize' { Optimize-TargetedWorkbook $command }

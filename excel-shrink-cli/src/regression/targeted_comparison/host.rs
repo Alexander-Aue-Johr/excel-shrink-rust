@@ -26,21 +26,41 @@ impl ExcelHost {
         path: &Path,
         telemetry: &Telemetry,
     ) -> Result<u32> {
+        let command = self.open_command(lane, path)?;
+        let result = self.call(command, telemetry)?;
+        confirmed_pid(&result)
+    }
+
+    /// Launch independent inputs before awaiting either add-in's readiness.
+    pub(super) fn open_workbooks(
+        &mut self,
+        jobs: &[(LaneId, std::path::PathBuf)],
+        telemetry: &Telemetry,
+    ) -> Result<Vec<u32>> {
+        let commands = jobs
+            .iter()
+            .map(|(lane, path)| self.open_command(*lane, path))
+            .collect::<Result<Vec<_>>>()?;
+        let response = self.call(json!({"kind":"open_batch", "jobs":commands}), telemetry)?;
+        let results = response["results"]
+            .as_array()
+            .context("Missing opening results")?;
+        ensure!(results.len() == jobs.len(), "Incomplete opening batch");
+        results.iter().map(confirmed_pid).collect()
+    }
+
+    /// Keep single and parallel starts on the same workbook planning path.
+    fn open_command(&self, lane: LaneId, path: &Path) -> Result<Value> {
         let plan = crate::regression::office_plan::build_workbook_visual_plan(path)?;
         let sheets: Vec<_> = plan.sheets.iter().map(|sheet| json!({
             "index":sheet.sheet_index, "name":sheet.sheet, "bottom_row":sheet.bottom_row,
             "base_right_column":sheet.base_right_column, "right_column":sheet.base_right_column,
             "horizontal_overflow_required":false, "drawing_fallback_required":false,
         })).collect();
-        let result = self.call(
+        Ok(
             json!({"kind":"open", "lane":lane.key(), "path":path, "sheets":sheets,
                 "host_executable":std::env::current_exe()?, "timeout_seconds":self.timeout.as_secs()}),
-            telemetry,
-        )?;
-        result["pid"]
-            .as_u64()
-            .and_then(|pid| u32::try_from(pid).ok())
-            .context("Excel host returned no PID")
+        )
     }
 
     /// Save the open working copy without adding a recalculation command.
@@ -344,4 +364,12 @@ mod tests {
         );
         assert!(measured_geometry(&json!({"top":0})).is_err());
     }
+}
+
+/// Require a real process identity for every successful opening response.
+fn confirmed_pid(result: &Value) -> Result<u32> {
+    result["pid"]
+        .as_u64()
+        .and_then(|pid| u32::try_from(pid).ok())
+        .context("Excel host returned no PID")
 }

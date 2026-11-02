@@ -48,6 +48,33 @@ impl Comparison<'_> {
         Ok(())
     }
 
+    /// Submit both independent inputs before waiting for either readiness response.
+    pub(super) fn open_input_workbooks(&mut self) -> Result<()> {
+        let jobs = [
+            (LaneId::O, self.paths.original.clone()),
+            (LaneId::SD, self.paths.default.clone()),
+        ];
+        self.telemetry.update(|state| {
+            for (id, _) in &jobs {
+                state.step(*id, Phase::Open, StepStatus::Running);
+                state.lane(*id).lifecycle = Lifecycle::Opening;
+            }
+        })?;
+        let pids = self
+            .excel
+            .as_mut()
+            .context("Excel host not started")?
+            .open_workbooks(&jobs, &self.telemetry)?;
+        for ((id, _), pid) in jobs.iter().zip(pids) {
+            self.report.excel_pids.insert(id.key().into(), pid);
+            self.telemetry.update(|state| {
+                state.lane(*id).lifecycle = Lifecycle::Open;
+                state.step(*id, Phase::Open, StepStatus::Done);
+            })?;
+        }
+        Ok(())
+    }
+
     /// Publish opening, record the confirmed PID, and publish readiness in order.
     pub(super) fn open_workbook(&mut self, id: LaneId) -> Result<()> {
         let path = match id {

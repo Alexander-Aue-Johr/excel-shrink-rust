@@ -22,7 +22,7 @@ function Read-TargetedJson {
     return $null
 }
 
-function Open-TargetedWorkbook {
+function Start-TargetedWorkbook {
     <# .SYNOPSIS
     Starts one native Excel/add-in client; all measurements use this same workbook.
     #>
@@ -65,6 +65,16 @@ function Open-TargetedWorkbook {
     $Owned.Add($launcher)
     $entry = @{launcher=$launcher; session=$session; path=$Command.path; process=$null; sequence=0}
     $sessions[$Command.lane] = $entry
+    return $entry
+}
+
+function Wait-TargetedWorkbook {
+    <# .SYNOPSIS
+    Confirms readiness after the native launcher has already started.
+    #>
+    param($Command, $entry)
+    $launcher = $entry.launcher
+    $session = $entry.session
     while (-not $launcher.HasExited) {
         $metrics = Read-TargetedJson (Join-Path $session 'metrics.json')
         if ($null -ne $metrics -and $metrics.clients.one.pid -and $null -eq $entry.process) {
@@ -80,7 +90,38 @@ function Open-TargetedWorkbook {
         }
         Start-Sleep -Milliseconds 100
     }
-    throw "Targeted resident exited during opening; inspect $root/stderr.log"
+    throw "Targeted resident exited during opening; inspect $session/../stderr.log"
+}
+
+function Open-TargetedWorkbook {
+    <# .SYNOPSIS
+    Opens one dependent copy using the shared launch/readiness protocol.
+    #>
+    param($Command, $Owned)
+    $entry = Start-TargetedWorkbook $Command $Owned
+    return Wait-TargetedWorkbook $Command $entry
+}
+
+function Open-TargetedWorkbooks {
+    <# .SYNOPSIS
+    Starts independent copies before waiting for any add-in to become ready.
+    #>
+    param($Command, $Owned)
+    $lanes = New-Object 'Collections.Generic.HashSet[string]'
+    foreach ($item in $Command.jobs) {
+        if (-not $lanes.Add([string]$item.lane) -or $sessions.ContainsKey($item.lane)) {
+            throw 'Opening requires distinct, unopened lanes.'
+        }
+    }
+    $pending = @()
+    foreach ($item in $Command.jobs) {
+        $pending += @{command=$item; entry=(Start-TargetedWorkbook $item $Owned)}
+    }
+    $results = @()
+    foreach ($item in $pending) {
+        $results += Wait-TargetedWorkbook $item.command $item.entry
+    }
+    return @{results=$results}
 }
 
 function Start-TargetedJob {
@@ -288,4 +329,4 @@ function Close-TargetedWorkbook {
     return @{closed=$true}
 }
 
-Export-ModuleMember -Function Open-TargetedWorkbook, Invoke-TargetedJob, Invoke-TargetedCaptureBatch, Optimize-TargetedWorkbook, Close-TargetedWorkbook
+Export-ModuleMember -Function Open-TargetedWorkbooks, Open-TargetedWorkbook, Invoke-TargetedJob, Invoke-TargetedCaptureBatch, Optimize-TargetedWorkbook, Close-TargetedWorkbook

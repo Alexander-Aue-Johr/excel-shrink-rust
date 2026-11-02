@@ -30,7 +30,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
 };
-use telemetry::{LaneId, Phase, StepStatus, Telemetry};
+use telemetry::{Phase, StepStatus, Telemetry};
 
 pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v2";
 pub(super) const CAPTURE_ROWS: u32 = 128;
@@ -206,12 +206,10 @@ impl<'a> Comparison<'a> {
         })
     }
 
-    /// Open the two copies sequentially and preserve their independent lifecycles.
+    /// Launch independent inputs together, retaining separate lifecycle evidence.
     fn open_workbooks(&mut self) -> Result<()> {
         self.start_excel_host()?;
-        for id in [LaneId::O, LaneId::SD] {
-            self.open_workbook(id)?;
-        }
+        self.open_input_workbooks()?;
         self.report.phases.push("original and shrink opened".into());
         Ok(())
     }
