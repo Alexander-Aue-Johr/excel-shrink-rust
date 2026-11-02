@@ -49,7 +49,7 @@ float xml(vec2 p) {
 void main() {
   float distance = max(0.0, symbol == 0 ? excel(uv) : xml(uv));
   float core = 1.0 - smoothstep(0.0, 0.023, distance);
-  float glow = exp(-distance * 24.0) * 0.45 + exp(-distance * 7.5) * 0.15;
+  float glow = exp(-distance * 15.0) * 0.6 + exp(-distance * 4.5) * 0.28;
   vec3 neon = symbol == 0 ? vec3(0.12, 1.0, 0.48) : vec3(0.73, 0.34, 1.0);
   float alpha = clamp(core * 0.12 + intensity * (core * 0.88 + glow), 0.0, 1.0);
   // Straight RGB is intentional: Canvas compositing applies alpha once. Fading

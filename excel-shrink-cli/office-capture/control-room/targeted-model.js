@@ -17,7 +17,7 @@ export function iconActivity(lane, kind, now = Date.now()) {
 }
 
 function decay(ended, now) {
-  return Number.isFinite(ended) && ended <= now ? Math.exp(-(now - ended) / 2200) : 0;
+  return Number.isFinite(ended) && ended <= now ? Math.exp(-(now - ended) / 6500) : 0;
 }
 
 /** Unknown and invalid capture totals stay indeterminate rather than becoming 100%. */
@@ -50,3 +50,4 @@ export function acceptComparison(current, incoming) {
   if (current && (incoming.revision ?? 0) < (current.revision ?? 0)) return current;
   return incoming;
 }
+

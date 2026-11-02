@@ -15,9 +15,9 @@ export function runTests() {
   assert(!open.pulse && open.level === 1, 'Open Excel stays steadily illuminated.');
   const closed = { lifecycle: 'closed', closed_at: 1000 };
   assert(iconActivity(closed, 'excel', 1000).level === 1, 'Confirmed exit begins a smooth afterglow.');
-  const faded = iconActivity(closed, 'excel', 3200).level;
+  const faded = iconActivity(closed, 'excel', 7500).level;
   assert(faded > 0.3 && faded < 0.4, 'Afterglow depends on real elapsed event time.');
-  assert(iconActivity({ ...closed }, 'excel', 5400).level < faded, 'Repeated snapshots cannot restart the fade.');
+  assert(iconActivity({ ...closed }, 'excel', 14000).level < faded, 'Repeated snapshots cannot restart the fade.');
   const fastXml = { xml_started_at: 1000, xml_finished_at: 1001 };
   assert(iconActivity(fastXml, 'xml', 2000).level > 0.5, 'A one-millisecond XML operation remains visible after a poll.');
   assert(iconActivity({}, 'xml', 2000).level === 0, 'Missing XML events never create activity.');
