@@ -69,7 +69,7 @@ impl Rectangle {
 
     /// Use the existing CF capture grid; many changed cells in one tile need one image.
     fn capture_tiles(self) -> impl Iterator<Item = Self> {
-        use super::conditional_formatting::{CAPTURE_COLUMNS, CAPTURE_ROWS};
+        use super::{CAPTURE_COLUMNS, CAPTURE_ROWS};
         let first_row = ((self.top - 1) / CAPTURE_ROWS) * CAPTURE_ROWS + 1;
         let first_column = ((self.left - 1) / CAPTURE_COLUMNS) * CAPTURE_COLUMNS + 1;
         (first_row..=self.bottom)

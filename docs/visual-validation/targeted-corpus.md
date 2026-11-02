@@ -84,3 +84,11 @@ verified transfer. Machine/run attribution remains separate for preparation and
 comparison. Completed temporary XLSX states are removed to bound disk use; raw
 Original/Default remain recoverable from preparation bundles. Native smoke tests
 retain their states for inspection.
+
+All verdicts use original-resolution images. After the complete comparison,
+confirmed-equal cell tiles use the existing `equal_preview_width` setting (default
+512 pixels; 0 retains full resolution). Different tiles and their eight captured
+neighbors retain full resolution. Charts retain full resolution. Byte-identical
+images share one retained file. The JSON records original image dimensions and
+SHA-256 separately from retained preview dimensions. Reports are published before
+superseded images are removed; reducing evidence never changes comparison verdicts.

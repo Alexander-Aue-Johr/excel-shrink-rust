@@ -30,6 +30,8 @@ use std::{
 use telemetry::{LaneId, Phase, StepStatus, Telemetry};
 
 pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v2";
+pub(super) const CAPTURE_ROWS: u32 = 128;
+pub(super) const CAPTURE_COLUMNS: u32 = 16;
 
 #[derive(Debug, Parser)]
 pub(crate) struct Args {

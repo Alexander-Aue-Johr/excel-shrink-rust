@@ -19,7 +19,6 @@ use crate::regression::cf_inventory::scan::{Block, Rule};
 use anyhow::{Context, Result};
 pub(super) use ranges::cell as cell_address;
 pub(super) use ranges::Rect;
-pub(super) use ranges::{CAPTURE_COLUMNS, CAPTURE_ROWS};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 

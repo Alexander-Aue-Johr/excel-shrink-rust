@@ -1,8 +1,7 @@
 //! Finite worksheet rectangles and capture-grid intersections; never expand cells in memory.
 use serde::Serialize;
 
-pub(in crate::regression::targeted_comparison) const CAPTURE_ROWS: u32 = 128;
-pub(in crate::regression::targeted_comparison) const CAPTURE_COLUMNS: u32 = 16;
+use super::super::{CAPTURE_COLUMNS, CAPTURE_ROWS};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub(in crate::regression::targeted_comparison) struct Rect {
