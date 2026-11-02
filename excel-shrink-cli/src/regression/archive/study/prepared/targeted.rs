@@ -2,6 +2,7 @@
 use super::*;
 use std::collections::BTreeSet;
 use std::process::{Command, Stdio};
+mod contract;
 mod retention;
 
 const POLICY: &str = crate::regression::targeted_comparison::CAPTURE_POLICY;
@@ -98,29 +99,7 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
         report["status"] == "completed_with_limitations",
         "Targeted report is incomplete"
     );
-    let changed = report["comparisons"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .any(|comparison| {
-            comparison["findings"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .any(|finding| {
-                    finding["pixels_differ"] == true || finding["geometry_differs"] == true
-                })
-                || comparison["charts"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .any(|finding| {
-                        finding["pixels_differ"] == true
-                            || finding["geometry_differs"] == true
-                            || finding["presence_differs"] == true
-                            || finding["rendering_differs"] == true
-                    })
-        });
+    let changed = contract::has_differences(&report, skip)?;
     record["targeted_comparison"]["status"] = report["status"].clone();
     record["targeted_comparison"]["candidate_count"] = report["candidate_count"].clone();
     record["targeted_comparison"]["content_coverage"] = report["content_coverage"].clone();
@@ -222,6 +201,11 @@ fn publish_portable_evidence(
                         .extension()
                         .is_some_and(|extension| extension == "png")
                     {
+                        ensure!(
+                            image.is_file(),
+                            "Missing retained image {}",
+                            image.display()
+                        );
                         images.insert(text.clone());
                     }
                     if text.ends_with(".jsonl.gz") {
@@ -301,6 +285,19 @@ mod tests {
         record["targeted_check_performance_required"] = json!(false);
         assert!(finalize_nonvisual_preparation(&mut record));
         assert_eq!(record["status"], "crc-identical");
+    }
+    #[test]
+    fn missing_retained_chart_image_prevents_portable_success() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "missing-targeted-chart")?;
+        let directory = root.join("evidence/attempt");
+        fs::create_dir_all(&directory)?;
+        let report =
+            json!({"comparisons":[{"charts":[{"left_image":directory.join("missing.png")}]}]});
+        let mut record = json!({});
+        assert!(publish_portable_evidence(&directory, &root, report, &mut record).is_err());
+        assert!(record["targeted_comparison"]["targeted_report_file"].is_null());
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
     #[test]
     fn resume_requires_the_current_policy_and_requested_lanes() {
