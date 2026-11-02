@@ -6,6 +6,13 @@ pipeline, including save and rebuild controls. It does not run a second full-she
 
 ## Constant `cellIs` rules
 
+Namespace eligibility is retained per CF subtree, not per sheet. An unchanged
+extension block keeps its own capture fallback without disabling a standard sibling.
+The worksheet scan tracks default-namespace scopes, direct-child placement and
+foreign/prefixed descendants. Eligibility changes invalidate the catalogue match
+even when the raw CF bytes are identical. Changed rule catalogues still retain the
+existing conservative old/new-area fallback.
+
 Unchanged supported literal rules depend on local cell inputs. The selector compares
 the complete raw rule catalogue, styles, shared strings, themes, workbook properties
 and worksheet layout context before excluding their unchanged inputs. It reuses the

@@ -288,14 +288,32 @@ fn read_sheet(
     let mut spans = Vec::new();
     let mut cf_start = None;
     let mut standard_namespace = false;
-    let mut direct_cf_children = true;
+    let mut namespace_scopes = Vec::new();
     let mut data_depth = None;
     let mut layout = Sha256::new();
     streaming_xml::scan_with_offsets(archive.by_name(part)?, |event| {
         if let Event::Tag(tag) = &event {
-            if tag.depth == 0 && tag.kind == Kind::Start {
-                standard_namespace = tag.attr(b"xmlns")?
-                    == Some(b"http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+            // Cell-local namespace scopes cannot escape sheetData into a later CF block.
+            let declaration = if data_depth.is_none() || tag.local() == b"sheetData" {
+                tag.attr(b"xmlns")?
+            } else {
+                None
+            };
+            let tag_namespace = declaration
+                .map(|namespace| {
+                    namespace == b"http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                })
+                .unwrap_or(standard_namespace);
+            if tag.kind == Kind::Start && declaration.is_some() {
+                namespace_scopes.push((tag.depth, standard_namespace));
+                standard_namespace = tag_namespace;
+            }
+            if matches!(tag.kind, Kind::Start | Kind::Empty)
+                && (!tag_namespace || tag.name.contains(&b':'))
+            {
+                if let Some((_, _, eligible)) = &mut cf_start {
+                    *eligible = false;
+                }
             }
             if tag.local() == b"sheetData" {
                 if tag.kind == Kind::Start {
@@ -313,17 +331,26 @@ fn read_sheet(
                 }]);
             }
             if tag.local() == b"conditionalFormatting" {
-                if cf_start.is_none() && matches!(tag.kind, Kind::Start | Kind::Empty) {
-                    direct_cf_children &= tag.depth == 1 && tag.name == b"conditionalFormatting";
-                }
+                let eligible =
+                    tag.depth == 1 && tag.name == b"conditionalFormatting" && tag_namespace;
                 if tag.kind == Kind::Start && cf_start.is_none() {
-                    cf_start = Some((tag.depth, tag.start));
+                    cf_start = Some((tag.depth, tag.start, eligible));
                 }
                 if tag.kind == Kind::Empty && cf_start.is_none() {
-                    spans.push((tag.start, tag.end));
+                    spans.push(xml::Span {
+                        start: tag.start,
+                        end: tag.end,
+                        standard_namespace: eligible,
+                    });
                 }
-                if tag.kind == Kind::End && cf_start.is_some_and(|(depth, _)| depth == tag.depth) {
-                    spans.push((cf_start.take().unwrap().1, tag.end));
+                if tag.kind == Kind::End && cf_start.is_some_and(|(depth, _, _)| depth == tag.depth)
+                {
+                    let (_, start, eligible) = cf_start.take().unwrap();
+                    spans.push(xml::Span {
+                        start,
+                        end: tag.end,
+                        standard_namespace: eligible,
+                    });
                 }
             }
             if matches!(tag.kind, Kind::Start | Kind::Empty) {
@@ -372,17 +399,19 @@ fn read_sheet(
                     _ => {}
                 }
             }
+            if tag.kind == Kind::End
+                && namespace_scopes
+                    .last()
+                    .is_some_and(|(depth, _)| *depth == tag.depth)
+            {
+                standard_namespace = namespace_scopes.pop().unwrap().1;
+            }
         }
         cells.event(&event)
     })?;
     model.cells = cells.finish()?;
     model.cf_layout = format!("{:x}", layout.finalize());
-    model.conditional = Arc::new(xml::catalogue(
-        archive,
-        part,
-        &spans,
-        standard_namespace && direct_cf_children,
-    )?);
+    model.conditional = Arc::new(xml::catalogue(archive, part, &spans)?);
     Ok(model)
 }
 

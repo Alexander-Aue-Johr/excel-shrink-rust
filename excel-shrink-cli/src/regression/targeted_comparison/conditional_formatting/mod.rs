@@ -363,7 +363,8 @@ pub(super) fn select(
             bottom: a.bottom.max(b.bottom),
             right: a.right.max(b.right),
         };
-        let identical = a.conditional.fingerprints == b.conditional.fingerprints;
+        let identical = a.conditional.fingerprints == b.conditional.fingerprints
+            && a.conditional.standard_namespaces == b.conditional.standard_namespaces;
         let catalogues = if identical {
             vec![("both", &a.conditional)]
         } else {
@@ -374,7 +375,7 @@ pub(super) fn select(
                 let areas = ranges::areas(&block.sqref);
                 let mut mode = if !identical {
                     Proof::Fallback("rule-catalogue-changed")
-                } else if !catalogue.standard_namespace {
+                } else if !catalogue.standard_namespaces[index] {
                     Proof::Fallback("worksheet-default-namespace-not-supported")
                 } else if areas.is_none() {
                     Proof::Fallback("application-range-not-resolved")

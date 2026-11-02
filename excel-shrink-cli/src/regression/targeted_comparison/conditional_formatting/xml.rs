@@ -16,6 +16,12 @@ use zip::ZipArchive;
 pub(in crate::regression::targeted_comparison) struct Catalogue {
     pub blocks: Vec<Block>,
     pub fingerprints: Vec<[u8; 32]>,
+    pub standard_namespaces: Vec<bool>,
+}
+
+pub(in crate::regression::targeted_comparison) struct Span {
+    pub start: usize,
+    pub end: usize,
     pub standard_namespace: bool,
 }
 
@@ -35,19 +41,16 @@ impl<R: Read> Read for HashingReader<R> {
 pub(in crate::regression::targeted_comparison) fn catalogue(
     archive: &mut ZipArchive<File>,
     part: &str,
-    spans: &[(usize, usize)],
-    standard_namespace: bool,
+    spans: &[Span],
 ) -> Result<Catalogue> {
-    let mut result = Catalogue {
-        standard_namespace,
-        ..Catalogue::default()
-    };
+    let mut result = Catalogue::default();
     if spans.is_empty() {
         return Ok(result);
     }
     let mut entry = archive.by_name(part)?;
     let mut position = 0;
-    for &(start, end) in spans {
+    for span in spans {
+        let (start, end) = (span.start, span.end);
         ensure!(
             start >= position && end >= start,
             "Invalid CF subtree offsets"
@@ -68,6 +71,7 @@ pub(in crate::regression::targeted_comparison) fn catalogue(
             "CF subtree did not yield exactly one block"
         );
         result.blocks.push(blocks.remove(0));
+        result.standard_namespaces.push(span.standard_namespace);
         result.fingerprints.push(input.hash.finalize().into());
         position = end;
     }

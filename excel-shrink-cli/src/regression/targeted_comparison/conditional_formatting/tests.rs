@@ -8,6 +8,55 @@ use std::{
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 #[test]
+fn namespace_uncertainty_is_local_to_its_cf_block_and_scopes_are_restored() -> Result<()> {
+    let root =
+        crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-namespaces")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let extension = "<extLst><ext xmlns=\"foreign\"><x14:conditionalFormatting xmlns:x14=\"foreign\" sqref=\"A1\"><x14:cfRule type=\"expression\"><x14:formula>A1</x14:formula></x14:cfRule></x14:conditionalFormatting></ext></extLst>";
+    let values = "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row>";
+    for rules in [
+        format!("{}{extension}", literal_rule()),
+        format!("{extension}{}", literal_rule()),
+    ] {
+        write_book(&a, values, &rules, "", "", "")?;
+        fs::copy(&a, &b)?;
+        let (decisions, _) = check(&a, &b)?;
+        assert_eq!(
+            decisions.iter().filter(|d| d.outcome == "excluded").count(),
+            1
+        );
+        assert_eq!(
+            decisions.iter().filter(|d| d.outcome == "capture").count(),
+            1
+        );
+    }
+    let foreign_child = literal_rule().replace("<cfRule ", "<cfRule xmlns=\"foreign\" ");
+    write_book(&a, values, &foreign_child, "", "", "")?;
+    fs::copy(&a, &b)?;
+    assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    // Changing only the inherited namespace must invalidate identical raw CF bytes.
+    write_book(&a, values, &literal_rule(), "", "", "")?;
+    write_book(&b, values, &literal_rule(), "", "", "")?;
+    let file = fs::OpenOptions::new().read(true).write(true).open(&b)?;
+    let mut zip = zip::ZipWriter::new_append(file)?;
+    zip.start_file(
+        "xl/worksheets/sheet1.xml",
+        zip::write::FileOptions::default(),
+    )?;
+    write!(
+        zip,
+        "<worksheet xmlns=\"foreign\"><sheetData>{values}</sheetData>{}</worksheet>",
+        literal_rule()
+    )?;
+    zip.finish()?;
+    assert!(check(&a, &b)?.0.iter().all(|d| d.outcome == "capture"));
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn mixed_blocks_union_known_dependencies_and_keep_unknown_members_conservative() -> Result<()> {
     let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-mixed")?;
     fs::create_dir_all(&root)?;
