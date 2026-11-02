@@ -17,6 +17,8 @@ pub(in crate::regression) struct Rule {
     pub child_elements: BTreeSet<String>,
     pub truncated_formula: bool,
     pub formula_cdata: bool,
+    /// Raw IDs linking legacy data bars to their x14 representation in the same worksheet.
+    pub extension_ids: Vec<String>,
     pub thresholds: Vec<BTreeMap<String, String>>,
     pub classification: String,
 }
@@ -34,6 +36,13 @@ pub(in crate::regression) struct Block {
     pub tile_proxy_upper_bound: Option<u64>,
     pub raw_xml: Option<String>,
     pub raw_file: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TextTarget {
+    Formula,
+    ApplicationRange,
+    ExtensionId,
 }
 
 fn attributes(bytes: &[u8]) -> Result<BTreeMap<String, String>> {
@@ -124,7 +133,7 @@ pub(in crate::regression) fn scan(
 ) -> Result<()> {
     let mut block_depth = None;
     let mut rule_depth = None;
-    let mut text_target: Option<(usize, bool)> = None;
+    let mut text_target: Option<(usize, TextTarget)> = None;
     let mut text_bytes = Vec::new();
     streaming_xml::scan_with_offsets(input, |event| {
         let cdata = matches!(&event, Event::Cdata(_));
@@ -177,26 +186,32 @@ pub(in crate::regression) fn scan(
                         && rule_depth.is_some()
                     {
                         block.rules.last_mut().unwrap().formulas.push(String::new());
-                        text_target = Some((tag.depth, false));
+                        text_target = Some((tag.depth, TextTarget::Formula));
                         text_bytes.clear();
                     }
                     if tag.kind == Kind::Start && local == b"sqref" {
-                        text_target = Some((tag.depth, true));
+                        text_target = Some((tag.depth, TextTarget::ApplicationRange));
+                        text_bytes.clear();
+                    }
+                    if tag.kind == Kind::Start && tag.name == b"x14:id" && rule_depth.is_some() {
+                        text_target = Some((tag.depth, TextTarget::ExtensionId));
                         text_bytes.clear();
                     }
                     if tag.kind == Kind::End
                         && text_target.is_some_and(|(depth, _)| depth == tag.depth)
                     {
                         let bytes = std::mem::take(&mut text_bytes);
-                        let truncated = !text_target.unwrap().1
+                        let truncated = text_target.unwrap().1 == TextTarget::Formula
                             && block.rules.last().unwrap().truncated_formula;
                         let text = if truncated {
                             String::from_utf8_lossy(&bytes).into_owned()
                         } else {
                             String::from_utf8(bytes)?
                         };
-                        if text_target.unwrap().1 {
+                        if text_target.unwrap().1 == TextTarget::ApplicationRange {
                             block.sqref = text;
+                        } else if text_target.unwrap().1 == TextTarget::ExtensionId {
+                            block.rules.last_mut().unwrap().extension_ids.push(text);
                         } else {
                             *block.rules.last_mut().unwrap().formulas.last_mut().unwrap() = text;
                         }
@@ -240,9 +255,9 @@ pub(in crate::regression) fn scan(
                 }
             }
             Event::Text(bytes) | Event::Cdata(bytes) => {
-                if let Some((_, range)) = text_target {
+                if let Some((_, target)) = text_target {
                     let block = blocks.last_mut().unwrap();
-                    if range {
+                    if target != TextTarget::Formula {
                         text_bytes.extend_from_slice(bytes);
                     } else {
                         let rule = block.rules.last_mut().unwrap();

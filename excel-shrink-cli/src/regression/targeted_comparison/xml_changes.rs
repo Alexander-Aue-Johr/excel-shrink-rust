@@ -346,11 +346,18 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                 if let Some((_, _, eligible, extension)) = &mut cf_start {
                     let known_prefix = *extension
                         && ((tag.name.starts_with(b"x14:") && tag_x14)
-                            || (tag.name.starts_with(b"xm:") && tag_xm));
+                            || (tag.name.starts_with(b"xm:") && tag_xm))
+                        || (!*extension && tag.name == b"x14:id" && tag_x14);
                     if !tag_namespace || (tag.name.contains(&b':') && !known_prefix) {
                         *eligible = false;
                     }
                     if *extension && !xml::static_format_attributes(*tag)? {
+                        *eligible = false;
+                    }
+                    if !*extension
+                        && matches!(tag.name, b"dataBar" | b"extLst" | b"ext" | b"x14:id")
+                        && !super::conditional_formatting::data_bars::static_attributes(*tag)?
+                    {
                         *eligible = false;
                     }
                 }
@@ -394,7 +401,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                         start: tag.start,
                         end: tag.end,
                         namespace_supported: eligible,
-                        x14_expression: extension,
+                        x14_extension: extension,
                     });
                 }
                 if tag.kind == Kind::End
@@ -405,7 +412,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                         start,
                         end: tag.end,
                         namespace_supported: eligible,
-                        x14_expression: extension,
+                        x14_extension: extension,
                     });
                 }
             }

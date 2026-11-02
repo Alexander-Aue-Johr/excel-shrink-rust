@@ -23,7 +23,7 @@ pub(in crate::regression::targeted_comparison) struct Span {
     pub start: usize,
     pub end: usize,
     pub namespace_supported: bool,
-    pub x14_expression: bool,
+    pub x14_extension: bool,
 }
 
 struct HashingReader<R> {
@@ -31,11 +31,14 @@ struct HashingReader<R> {
     hash: Sha256,
 }
 
-/// Unprefixed descendants of an x14 expression may contain only static DXF attributes.
+/// Accept known static x14 bar settings and static inline differential formatting.
 pub(in crate::regression::targeted_comparison) fn static_format_attributes(
     tag: Tag<'_>,
 ) -> Result<bool> {
     if matches!(tag.name, b"x14:cfRule" | b"x14:conditionalFormatting") {
+        return Ok(true);
+    }
+    if tag.name.starts_with(b"x14:") && super::data_bars::static_attributes(tag)? {
         return Ok(true);
     }
     for attribute in Attributes::new(tag.attrs) {
@@ -99,6 +102,7 @@ pub(in crate::regression::targeted_comparison) fn catalogue(
     }
     let mut entry = archive.by_name(part)?;
     let mut position = 0;
+    let mut data_bar_links = super::data_bars::Links::default();
     for span in spans {
         let (start, end) = (span.start, span.end);
         ensure!(
@@ -121,13 +125,17 @@ pub(in crate::regression::targeted_comparison) fn catalogue(
             "CF subtree did not yield exactly one block"
         );
         let mut block = blocks.remove(0);
-        let supported = span.namespace_supported
-            && (!span.x14_expression || normalize_x14_expression(&mut block));
+        let links_complete = data_bar_links.record(&block, result.blocks.len());
+        let supported = links_complete && span.namespace_supported
+            && (!span.x14_extension
+                || normalize_x14_expression(&mut block)
+                || super::data_bars::normalize_x14(&mut block));
         result.blocks.push(block);
         result.namespace_supported.push(supported);
         result.fingerprints.push(input.hash.finalize().into());
         position = end;
     }
+    data_bar_links.constrain(&mut result.namespace_supported);
     Ok(result)
 }
 

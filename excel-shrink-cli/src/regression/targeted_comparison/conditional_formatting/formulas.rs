@@ -13,6 +13,13 @@ pub(super) fn whole_area_rule(rule: &crate::regression::cf_inventory::scan::Rule
     }
     match rule.attributes.get("type").map(String::as_str) {
         Some("duplicateValues") => rule.child_elements.is_empty(),
+        Some("dataBar") => {
+            rule.child_elements.contains("dataBar")
+                && rule.child_elements.iter().all(|name| {
+                    ["dataBar", "cfvo", "color", "extLst", "ext", "x14:id"].contains(&name.as_str())
+                })
+                && super::data_bars::local_thresholds(rule)
+        }
         Some("colorScale") => {
             !rule.thresholds.is_empty()
                 && rule

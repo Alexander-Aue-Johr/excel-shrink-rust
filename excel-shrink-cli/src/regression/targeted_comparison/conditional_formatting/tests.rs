@@ -189,7 +189,8 @@ fn mixed_blocks_union_known_dependencies_and_keep_unknown_members_conservative()
     let duplicate = "<cfRule type=\"duplicateValues\" priority=\"2\"/>";
     let scale = "<cfRule type=\"colorScale\" priority=\"2\"><colorScale><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FFFF0000\"/><color rgb=\"FF00FF00\"/></colorScale></cfRule>";
     let dummy = "<cfRule type=\"cellIs\" operator=\"notEqual\" priority=\"3\"><formula>INDIRECT(&quot;Dummy_for_Comparison1!&quot;&amp;ADDRESS(ROW(),COLUMN()))</formula></cfRule>";
-    for group in [duplicate, scale] {
+    let bar = "<cfRule type=\"dataBar\" priority=\"2\"><dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FF638EC6\"/></dataBar></cfRule>";
+    for group in [duplicate, scale, bar] {
         let block = format!("<conditionalFormatting sqref=\"B2:D5\">{expression}{group}{dummy}</conditionalFormatting>");
         write_book(&a, values, &block, "", "", "")?;
         fs::copy(&a, &b)?;
@@ -318,7 +319,11 @@ fn whole_area_rules_exclude_equal_inputs_but_capture_every_dependent_cell() -> R
     let b = root.join("b.xlsx");
     let duplicate = "<cfRule type=\"duplicateValues\" priority=\"1\"/>";
     let scale = "<cfRule type=\"colorScale\" priority=\"1\"><colorScale><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FFFF0000\"/><color rgb=\"FF00FF00\"/></colorScale></cfRule>";
-    for rule in [duplicate, scale] {
+    let bar = "<cfRule type=\"dataBar\" priority=\"1\"><dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FF638EC6\"/></dataBar></cfRule>";
+    let fixed_bar = bar
+        .replace("type=\"min\"", "type=\"num\" val=\"0\"")
+        .replace("type=\"max\"", "type=\"percentile\" val=\"90\"");
+    for rule in [duplicate, scale, bar, fixed_bar.as_str()] {
         let block =
             format!("<conditionalFormatting sqref=\"A1:B5\">{rule}</conditionalFormatting>");
         let values = concat!(
@@ -345,12 +350,88 @@ fn whole_area_rules_exclude_equal_inputs_but_capture_every_dependent_cell() -> R
         fs::copy(&a, &b)?;
         assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
         // A formula threshold cannot be treated as a local value-set dependency.
-        if rule == scale {
+        if rule == scale || rule == bar {
             let dependent = block.replace("type=\"min\"", "type=\"formula\" val=\"Other!A1\"");
             write_book(&a, values, &dependent, "", "", "")?;
             fs::copy(&a, &b)?;
             assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
         }
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn linked_and_x14_data_bars_keep_whole_area_dependencies() -> Result<()> {
+    let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-bars")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let standard = concat!(
+        "<conditionalFormatting sqref=\"A1:B5\"><cfRule type=\"dataBar\" priority=\"1\">",
+        "<dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FF638EC6\"/></dataBar>",
+        "<extLst><ext uri=\"{B025F937-C7B1-47D3-B67F-A62EFF666E3E}\" xmlns:x14=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\">",
+        "<x14:id>stable-id</x14:id></ext></extLst></cfRule></conditionalFormatting>"
+    );
+    let extension = concat!(
+        "<extLst><ext xmlns:x14=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\">",
+        "<x14:conditionalFormattings><x14:conditionalFormatting xmlns:xm=\"http://schemas.microsoft.com/office/excel/2006/main\">",
+        "<x14:cfRule type=\"dataBar\" id=\"stable-id\"><x14:dataBar minLength=\"0\" maxLength=\"100\" gradient=\"0\">",
+        "<x14:cfvo type=\"autoMin\"/><x14:cfvo type=\"autoMax\"/>",
+        "<x14:negativeFillColor rgb=\"FFFF0000\"/><x14:axisColor rgb=\"FF000000\"/>",
+        "</x14:dataBar></x14:cfRule><xm:sqref>A1:B5</xm:sqref>",
+        "</x14:conditionalFormatting></x14:conditionalFormattings></ext></extLst>"
+    );
+    let values =
+        "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"5\"><c r=\"B5\"><v>3</v></c></row>";
+    let paired = format!("{standard}{extension}");
+    let mixed = paired.replace("</cfRule></conditionalFormatting>", "</cfRule><cfRule type=\"colorScale\" priority=\"2\"><colorScale><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FFFF0000\"/><color rgb=\"FF00FF00\"/></colorScale></cfRule></conditionalFormatting>");
+    for block in [paired.clone(), mixed] {
+        write_book(&a, values, &block, "", "", "")?;
+        fs::copy(&a, &b)?;
+        assert!(check(&a, &b)?.0.iter().all(|d| d.outcome == "excluded"));
+        write_book(&b, &values.replace("<v>3", "<v>9"), &block, "", "", "")?;
+        let (decisions, candidates) = check(&a, &b)?;
+        assert!(decisions.iter().all(|d| d.outcome == "capture"));
+        assert!(candidates.iter().any(|c| c.cell == "A1:B5"));
+        write_book(
+            &b,
+            values,
+            &block
+                .replace("FF638EC6", "FF123456")
+                .replace("FFFF0000", "FF00FF00"),
+            "",
+            "",
+            "",
+        )?;
+        assert!(check(&a, &b)?.0.iter().all(|d| d.outcome == "capture"));
+        write_book(&b, values, &block, "", "", "<dxfs/>")?;
+        assert!(check(&a, &b)?.0.iter().all(|d| d.outcome == "capture"));
+    }
+    for unknown in [
+        standard.to_owned(),
+        extension.to_owned(),
+        paired.replace("<xm:sqref>A1:B5", "<xm:sqref>A1:C5"),
+        paired.replace("<x14:id>stable-id", "<x14:id>missing-id"),
+        format!("{standard}{paired}"),
+        standard.replace(
+            "{B025F937-C7B1-47D3-B67F-A62EFF666E3E}",
+            "unknown-extension",
+        ),
+        standard.replace("<dataBar>", "<dataBar unknown=\"1\">"),
+        extension.replace("gradient=\"0\"", "unknown=\"1\""),
+        extension.replace(
+            "type=\"autoMin\"/>",
+            "type=\"formula\"><xm:f>Other!A1</xm:f></x14:cfvo>",
+        ),
+        extension.replace(
+            "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main",
+            "foreign",
+        ),
+    ] {
+        write_book(&a, values, &unknown, "", "", "")?;
+        fs::copy(&a, &b)?;
+        assert!(check(&a, &b)?.0.iter().all(|d| d.outcome == "capture"));
     }
     fs::remove_dir_all(root)?;
     Ok(())

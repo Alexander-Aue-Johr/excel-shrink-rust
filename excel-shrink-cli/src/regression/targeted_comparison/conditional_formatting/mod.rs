@@ -1,5 +1,6 @@
 //! CF selection proves only supported local contributions; every unresolved area remains a capture.
 mod expression;
+pub(super) mod data_bars;
 mod formulas;
 mod ranges;
 mod references;
@@ -62,7 +63,9 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
     if block.qualified_name != "conditionalFormatting"
         || block.attributes.keys().any(|key| key != "sqref")
         || block.child_elements.iter().any(|name| {
-            !["cfRule", "formula", "colorScale", "cfvo", "color"].contains(&name.as_str())
+            ![
+                "cfRule", "formula", "colorScale", "cfvo", "color", "dataBar", "extLst", "ext", "x14:id",
+            ].contains(&name.as_str())
         })
         || block.rules.is_empty()
     {
