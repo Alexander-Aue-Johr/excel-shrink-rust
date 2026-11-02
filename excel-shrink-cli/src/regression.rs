@@ -38,6 +38,7 @@ mod archive;
 mod targeted_comparison;
 mod sheet_capture;
 mod cf_inventory;
+mod prefix_inventory;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -73,6 +74,10 @@ enum RegressionCommand {
     CaptureSheet(sheet_capture::Args),
     /// Inventory conditional formatting and retain source XML evidence without opening Excel.
     CfInventory(cf_inventory::Args),
+    /// Inventory actual prefixes on worksheet data elements without opening Excel.
+    PrefixInventory(prefix_inventory::Args),
+    /// Create a namespace-normalized experimental copy and verify its expanded XML evidence.
+    PrefixNormalize(prefix_inventory::normalize::Args),
     #[command(hide = true)]
     ArchiveWorker(archive::WorkerArgs),
 }
@@ -436,6 +441,8 @@ pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
         RegressionCommand::TargetedCompare(args) => targeted_comparison::run(args),
         RegressionCommand::CaptureSheet(args) => sheet_capture::run(args),
         RegressionCommand::CfInventory(args) => cf_inventory::run(args),
+        RegressionCommand::PrefixInventory(args) => prefix_inventory::run(args),
+        RegressionCommand::PrefixNormalize(args) => prefix_inventory::normalize::run(args),
         RegressionCommand::ArchiveWorker(args) => archive::run_worker(args, console_log_level),
         RegressionCommand::Smoke(args) => run_suite_or_visual_profile_matrix(
             "smoke",
