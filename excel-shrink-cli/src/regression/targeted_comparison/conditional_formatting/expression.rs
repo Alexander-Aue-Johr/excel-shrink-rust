@@ -163,15 +163,60 @@ impl Parser<'_> {
         let name = std::str::from_utf8(&self.bytes[start..self.position]).ok()?;
         if !self.take(b'(') {
             if !["TRUE", "FALSE"].contains(&name.to_ascii_uppercase().as_str()) {
-                self.references.push(parse(name)?);
+                if self.take(b':') {
+                    self.whitespace();
+                    let start = self.position;
+                    while self
+                        .bytes
+                        .get(self.position)
+                        .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'$')
+                    {
+                        self.position += 1;
+                    }
+                    let end = std::str::from_utf8(&self.bytes[start..self.position]).ok()?;
+                    self.references.push(parse(&format!("{name}:{end}"))?);
+                } else {
+                    self.references.push(parse(name)?);
+                }
             }
             return Some(());
         }
         // Only functions whose inputs are explicit arguments, not addresses or ambient state.
         if ![
-            "LEN", "TRIM", "ISERROR", "ISERR", "ISBLANK", "ISTEXT", "ISNUMBER", "SEARCH", "FIND",
-            "LEFT", "RIGHT", "MID", "AND", "OR", "NOT", "IF", "IFERROR", "MOD", "ABS", "ROUND",
-            "INT", "LOWER", "UPPER", "EXACT", "CODE",
+            "LEN",
+            "TRIM",
+            "ISERROR",
+            "ISERR",
+            "ISBLANK",
+            "ISTEXT",
+            "ISNUMBER",
+            "SEARCH",
+            "FIND",
+            "LEFT",
+            "RIGHT",
+            "MID",
+            "AND",
+            "OR",
+            "NOT",
+            "IF",
+            "IFERROR",
+            "MOD",
+            "ABS",
+            "ROUND",
+            "INT",
+            "LOWER",
+            "UPPER",
+            "EXACT",
+            "CODE",
+            "SUM",
+            "MIN",
+            "MAX",
+            "AVERAGE",
+            "COUNT",
+            "COUNTA",
+            "COUNTBLANK",
+            "COUNTIF",
+            "COUNTIFS",
         ]
         .contains(&name.to_ascii_uppercase().as_str())
         {
@@ -194,6 +239,7 @@ mod tests {
             ("NOT(ISERROR(SEARCH(\"ERROR\",F3)))", 1),
             ("IF(A26>89.49%,\"A999\",IF($B$2<1E-3,\"a\"\"b\",\"c\"))", 2),
             ("AND(A1<>0,B$2+$C3>=4)", 3),
+            ("COUNTIF($A$1:A10,A1)>1", 2),
         ] {
             assert_eq!(dependencies(formula).unwrap().len(), count, "{formula}");
         }
@@ -201,7 +247,8 @@ mod tests {
             "INDIRECT(\"A1\")",
             "OFFSET(A1,1,0)",
             "Other!A1",
-            "SUM(A1:B3)",
+            "SUM(A:A)",
+            "SUMIF(A1:A10,1,B1)",
             "Table1[Value]",
             "NamedRange=A1",
             "NOW()+A1",

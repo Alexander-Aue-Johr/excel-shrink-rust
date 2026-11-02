@@ -12,7 +12,8 @@ param(
         'constant', 'constant-string', 'styles', 'dummy-missing', 'dummy-inert',
         'dummy-present', 'dummy-added', 'duplicate', 'color-scale',
         'ref-relative', 'ref-column', 'ref-row', 'ref-fixed', 'ref-disjoint',
-        'ref-search', 'ref-multiple', 'ref-cell-is'
+        'ref-search', 'ref-multiple', 'ref-cell-is',
+        'ref-range', 'ref-range-fixed', 'ref-range-growing'
     )]
     [string]$ConditionalFormatting
 )

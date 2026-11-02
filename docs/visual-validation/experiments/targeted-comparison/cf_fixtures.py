@@ -52,6 +52,12 @@ def create(directory: Path, mode: str) -> None:
             elif mode == 'ref-cell-is':
                 sheet['A1'] = 1
                 sheet['F1'] = 2 if lane == 'original' else 0
+            elif mode == 'ref-range':
+                formula = 'SUM(A1:A2)>1'
+            elif mode == 'ref-range-fixed':
+                formula = 'COUNTIF($A$1:$A$2,1)>1'
+            elif mode == 'ref-range-growing':
+                formula = 'SUM($A$1:A1)>0'
             if mode == 'ref-cell-is':
                 rule = CellIsRule(operator='greaterThan', formula=['$F$1'], fill=fill)
             else:

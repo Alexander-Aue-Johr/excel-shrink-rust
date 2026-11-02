@@ -43,17 +43,29 @@ Quoted strings (with doubled quote escapes) never supply cell dependencies.
 Arithmetic, comparisons, concatenation, percentages and numeric exponents are
 recognized without evaluating their results or operator precedence.
 
+Rectangular local ranges such as `A1:B10`, `$A$1:$B$10` and `$A$1:A1` are
+tracked as dependency rectangles. Mixed endpoint axes and reversed endpoint order
+are handled by inverting both possible endpoint orders. Changed inputs select all
+targets whose translated range contains them, without enumerating range cells.
+Whole-column/whole-row references, sheet qualifiers and range unions/intersections
+remain unsupported. Native controls `ref-range`, `ref-range-fixed` and
+`ref-range-growing` check sliding SUM, fixed COUNTIF and growing SUM dependencies.
+
 Supported functions are LEN, TRIM, ISERROR, ISERR, ISBLANK, ISTEXT, ISNUMBER,
 SEARCH, FIND, LEFT, RIGHT, MID, AND, OR, NOT, IF, IFERROR, MOD, ABS, ROUND, INT,
-LOWER, UPPER, EXACT and CODE. Their dependencies are their explicit arguments.
-INDIRECT, OFFSET, ambient/volatile functions, unknown functions, names, ranges,
+LOWER, UPPER, EXACT, CODE, SUM, MIN, MAX, AVERAGE, COUNT, COUNTA, COUNTBLANK,
+COUNTIF and COUNTIFS. Their dependencies are their explicit arguments.
+SUMIF/SUMIFS remain unsupported: in particular, SUMIF can extend a small sum-range
+argument to the size of its criteria range, beyond the explicitly written cells.
+See [Microsoft's SUMIF reference](https://support.microsoft.com/en-us/excel/functions/sumif-function).
+INDIRECT, OFFSET, ambient/volatile functions, unknown functions, names,
 sheet-qualified/structured references and unsupported tokens retain the full-area
 fallback. A formula nesting guard rejects excessive recursion into the same
 fallback; it does not limit sheet size or candidate count.
 
 The report adds `referenced_input_changes` and `referenced_formula_observations`.
 The latter counts appearances in both states, not distinct cells. Unknown formula
-syntax, sheet-qualified references, ranges and names remain full-area fallbacks.
+syntax, sheet-qualified references and names remain full-area fallbacks.
 
 Native controls `ref-relative`, `ref-column`, `ref-row`, `ref-fixed` and
 `ref-disjoint` verify dependent target pixels in Excel after changing a source

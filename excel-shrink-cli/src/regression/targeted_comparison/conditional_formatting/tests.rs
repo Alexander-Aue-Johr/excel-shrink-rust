@@ -37,7 +37,7 @@ fn simple_formulas_select_every_reference_and_reject_unknown_dependencies() -> R
         "Other!A1=1",
         "INDIRECT(&quot;A1&quot;)=1",
         "NamedRange=1",
-        "SUM(A1:B2)&gt;0",
+        "SUBTOTAL(109,A1:B2)&gt;0",
     ] {
         let unknown = block.replace(formula, unsupported);
         write_book(&a, values, &unknown, "", "", "")?;

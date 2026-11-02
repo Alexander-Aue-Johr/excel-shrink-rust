@@ -3,14 +3,28 @@ use super::{ranges, Rect};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Reference {
+    start: Address,
+    end: Address,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Address {
     row: u32,
     column: u32,
     fixed_row: bool,
     fixed_column: bool,
 }
 
-/// Parse one complete A1 reference; reject names, ranges and external references.
+/// Parse a local cell or rectangular range; endpoint dollar axes remain independent.
 pub(super) fn parse(text: &str) -> Option<Reference> {
+    let (start, end) = text.split_once(':').unwrap_or((text, text));
+    Some(Reference {
+        start: address(start)?,
+        end: address(end)?,
+    })
+}
+
+fn address(text: &str) -> Option<Address> {
     let bytes = text.as_bytes();
     let mut index = 0;
     let fixed_column = bytes.get(index) == Some(&b'$');
@@ -35,7 +49,7 @@ pub(super) fn parse(text: &str) -> Option<Reference> {
     if row == 0 || column == 0 {
         return None;
     }
-    Some(Reference {
+    Some(Address {
         row,
         column,
         fixed_row,
@@ -45,18 +59,39 @@ pub(super) fn parse(text: &str) -> Option<Reference> {
 
 fn inverse_axis(
     input: u32,
-    reference: u32,
-    fixed: bool,
+    start: (u32, bool),
+    end: (u32, bool),
     anchor: u32,
     low: u32,
     high: u32,
-) -> Option<(u32, u32)> {
-    if fixed {
-        return (input == reference).then_some((low, high));
+) -> Vec<(u32, u32)> {
+    let mut intervals = Vec::new();
+    // Mixed fixed/relative endpoints can cross as the target moves. Include both orders.
+    for (first, last) in [(start, end), (end, start)] {
+        let mut lower = i64::from(low);
+        let mut upper = i64::from(high);
+        if first.1 {
+            if input < first.0 {
+                continue;
+            }
+        } else {
+            upper = upper.min(i64::from(input) - i64::from(first.0) + i64::from(anchor));
+        }
+        if last.1 {
+            if input > last.0 {
+                continue;
+            }
+        } else {
+            lower = lower.max(i64::from(input) - i64::from(last.0) + i64::from(anchor));
+        }
+        if lower <= upper {
+            let interval = (lower as u32, upper as u32);
+            if !intervals.contains(&interval) {
+                intervals.push(interval);
+            }
+        }
     }
-    let target = i64::from(input) - i64::from(reference) + i64::from(anchor);
-    (target >= i64::from(low) && target <= i64::from(high))
-        .then_some((target as u32, target as u32))
+    intervals
 }
 
 impl Reference {
@@ -66,35 +101,35 @@ impl Reference {
         let mut result = Vec::new();
         for area in areas {
             for anchor in [areas[0], *area] {
-                let Some((top, bottom)) = inverse_axis(
+                let rows = inverse_axis(
                     input.0,
-                    self.row,
-                    self.fixed_row,
+                    (self.start.row, self.start.fixed_row),
+                    (self.end.row, self.end.fixed_row),
                     anchor.top,
                     area.top,
                     area.bottom,
-                ) else {
-                    continue;
-                };
-                let Some((left, right)) = inverse_axis(
+                );
+                let columns = inverse_axis(
                     input.1,
-                    self.column,
-                    self.fixed_column,
+                    (self.start.column, self.start.fixed_column),
+                    (self.end.column, self.end.fixed_column),
                     anchor.left,
                     area.left,
                     area.right,
-                ) else {
-                    continue;
-                };
-                if let Some(target) = (Rect {
-                    top,
-                    bottom,
-                    left,
-                    right,
-                })
-                .intersect(extent)
-                {
-                    result.push(target);
+                );
+                for &(top, bottom) in &rows {
+                    for &(left, right) in &columns {
+                        if let Some(target) = (Rect {
+                            top,
+                            bottom,
+                            left,
+                            right,
+                        })
+                        .intersect(extent)
+                        {
+                            result.push(target);
+                        }
+                    }
                 }
             }
         }
@@ -105,6 +140,60 @@ impl Reference {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn range_inversion_matches_forward_mapping_for_mixed_and_reversed_endpoints() {
+        let area = Rect {
+            top: 2,
+            left: 2,
+            bottom: 6,
+            right: 6,
+        };
+        for text in [
+            "A1:B2",
+            "$A$1:$B$3",
+            "$A1:B$4",
+            "A$5:$B2",
+            "B2:A1",
+            "$A$1:A1",
+        ] {
+            let reference = parse(text).unwrap();
+            for row in 1..=7 {
+                for column in 1..=7 {
+                    let targets = reference.targets((row, column), &[area], area);
+                    for target_row in area.top..=area.bottom {
+                        for target_column in area.left..=area.right {
+                            let forward = |address: Address| {
+                                let r = i64::from(address.row)
+                                    + if address.fixed_row {
+                                        0
+                                    } else {
+                                        i64::from(target_row) - i64::from(area.top)
+                                    };
+                                let c = i64::from(address.column)
+                                    + if address.fixed_column {
+                                        0
+                                    } else {
+                                        i64::from(target_column) - i64::from(area.left)
+                                    };
+                                (r, c)
+                            };
+                            let a = forward(reference.start);
+                            let b = forward(reference.end);
+                            let expected = (a.0.min(b.0)..=a.0.max(b.0)).contains(&i64::from(row))
+                                && (a.1.min(b.1)..=a.1.max(b.1)).contains(&i64::from(column));
+                            assert_eq!(
+                                targets
+                                    .iter()
+                                    .any(|r| r.contains(target_row, target_column)),
+                                expected,
+                                "{text}; input {row},{column}; target {target_row},{target_column}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
     #[test]
     fn inverse_mapping_respects_both_dollar_axes() {
         let area = Rect {
@@ -126,7 +215,14 @@ mod tests {
                 expected.map(str::to_owned)
             );
         }
-        for invalid in ["A0", "XFE1", "A1048577", "Other!A1", "A1:B2", "NamedRange"] {
+        for invalid in [
+            "A0",
+            "XFE1",
+            "A1048577",
+            "Other!A1",
+            "A1:B2:C3",
+            "NamedRange",
+        ] {
             assert!(parse(invalid).is_none());
         }
     }
