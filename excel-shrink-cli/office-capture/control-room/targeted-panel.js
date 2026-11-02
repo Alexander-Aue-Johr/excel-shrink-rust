@@ -11,6 +11,7 @@ const node = (tag, className, text) => {
 const labels = {
   not_started: 'Not started', opening: 'Opening workbook', open: 'Workbook open',
   closing: 'Closing workbook', closed: 'Excel closed', failed: 'Exit unconfirmed', unavailable: 'Not available',
+  skipped: 'Not required',
 };
 
 /** Create one lane card and retain its canvases throughout all telemetry updates. */
@@ -37,15 +38,16 @@ function createLaneCard() {
     update(comparison, lane, connected) {
       name.textContent = lane.label;
       state.textContent = [labels[lane.lifecycle] || lane.lifecycle, lane.pid ? `PID ${lane.pid}` : null].filter(Boolean).join(' · ');
-      current.textContent = [lane.current_sheet, lane.current_range].filter(Boolean).join(' · ');
+      current.textContent = [lane.decision_note, lane.current_sheet, lane.current_range].filter(Boolean).join(' · ');
       current.hidden = !current.textContent;
       const work = captureProgress(lane);
       if (work.known) { progress.max = Math.max(1, work.total); progress.value = work.done; }
       else progress.removeAttribute('value');
       progressText.textContent = lane.lifecycle === 'unavailable' ? 'Check Performance was not run.' : work.text;
-      progress.hidden = lane.lifecycle === 'unavailable';
-      signals.element.hidden = lane.lifecycle === 'unavailable';
-      source.hidden = lane.lifecycle === 'unavailable';
+      progress.hidden = ['unavailable', 'skipped'].includes(lane.lifecycle);
+      progressText.hidden = lane.lifecycle === 'skipped';
+      signals.element.hidden = ['unavailable', 'skipped'].includes(lane.lifecycle);
+      source.hidden = ['unavailable', 'skipped'].includes(lane.lifecycle);
       source.textContent = Number.isFinite(lane.addin_heartbeat_at)
         ? `Last Office.js heartbeat: ${Math.max(0, Math.floor((Date.now() - lane.addin_heartbeat_at) / 1000))} s ago. Heartbeats do not prove calculation progress.`
         : lane.lifecycle === 'opening' ? 'Waiting for first Office.js heartbeat while opening.'
@@ -114,7 +116,7 @@ function createFlowDiagram() {
         const item = cells.get(`${lane.id}/${column.id}`);
         const status = lane.steps?.[column.id] || (lane.lifecycle === 'unavailable' ? 'unavailable' : 'pending');
         item.cell.dataset.step = status;
-        item.cell.title = `${lane.label} · ${status}: ${item.description}`;
+        item.cell.title = `${lane.label} · ${status}: ${(status === 'skipped' && lane.decision_note) || item.description}`;
         item.check.checked = status === 'done';
         item.check.indeterminate = status === 'running' || status === 'skipped' || status === 'unavailable';
         item.check.setAttribute('aria-checked', status === 'done' ? 'true' : status === 'running' ? 'mixed' : 'false');
@@ -173,7 +175,16 @@ function createComparisonCard() {
       }
       flow.update(comparison);
       if (finished && comparison.report?.before_differences != null) {
-        outcome.textContent += ` · ${comparison.report.before_differences} before / ${comparison.report.after_differences} after differences · ${comparison.report.original_recalc_drift} original drift`;
+        const report = comparison.report;
+        outcome.textContent += report.input_identity?.status === 'identical'
+          ? ' · Default unchanged (identical input bytes)'
+          : ` · Default: ${report.before_differences} differences`;
+        outcome.textContent += report.after_differences == null
+          ? ' · Default rebuild not performed'
+          : ` · Rebuilt Default: ${report.after_differences} differences`;
+        outcome.textContent += report.original_recalc_drift == null
+          ? ' · Original rebuild not performed'
+          : ` · Original rebuild drift: ${report.original_recalc_drift}`;
         if (comparison.report.check_performance_differences != null) {
           outcome.textContent += ` · ${comparison.report.check_performance_differences} Check Performance differences`;
         }

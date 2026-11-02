@@ -30,6 +30,10 @@ export function runTests() {
   assert(!captureProgress({ captures_done: 6, captures_total: 5 }).known, 'Invalid counts never become a completed bar.');
   assert(captureProgress({ captures_done: 2, captures_total: 8 }).remaining === 6, 'A growing candidate queue preserves completed work.');
   assert(captureProgress({ captures_done: 0, captures_total: 0 }).known, 'Zero-candidate selection is explicit.');
+  assert(captureProgress({ captures_done: 0, captures_total: 0, capture_selection_complete: true })
+    .text === 'No capture candidates found', 'Completed empty selection has an explicit reason.');
+  assert(captureProgress({ lifecycle: 'skipped', decision_note: 'Default unchanged — identical input bytes' })
+    .text.includes('identical input'), 'Skipped states retain the proof explanation instead of a fake progress counter.');
   assert(captureProgress({ captures_done: 3, captures_total: 3, skipped_zero_area_regions: 2 })
     .text.includes('2 skipped: no visible area'), 'Non-rendering observations are not presented as captured images.');
   const current = { run_id: 'one', revision: 5, lanes: [] };

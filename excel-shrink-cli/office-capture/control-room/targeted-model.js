@@ -25,10 +25,19 @@ function decay(ended, now) {
 
 /** Unknown and invalid capture totals stay indeterminate rather than becoming 100%. */
 export function captureProgress(lane) {
+  if (lane.lifecycle === 'skipped') {
+    return { known: true, total: 0, done: 0, remaining: 0, text: lane.decision_note || 'State omitted with recorded proof' };
+  }
+  if (lane.capture_selection_complete === false) {
+    return { known: false, text: 'Checking XML and capture requirements' };
+  }
   const total = lane.captures_total;
   const done = lane.captures_done;
   if (!Number.isSafeInteger(total) || total < 0 || !Number.isSafeInteger(done) || done < 0 || done > total) {
     return { known: false, text: 'Candidate discovery in progress' };
+  }
+  if (total === 0 && lane.capture_selection_complete) {
+    return { known: true, total, done, remaining: 0, text: 'No capture candidates found' };
   }
   const skipped = lane.skipped_zero_area_regions || 0;
   const skipText = skipped ? ` · ${skipped} skipped: no visible area` : '';
