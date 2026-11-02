@@ -87,6 +87,14 @@ def create(directory: Path, mode: str) -> None:
             sheet.conditional_formatting.add('A1:B5', Rule(type='duplicateValues', dxf=DifferentialStyle(fill=fill)))
             sheet['A1'] = 2
             sheet['A3'] = 2 if lane == 'original' else 3
+        elif mode.startswith('name-'):
+            if mode == 'name-defined':
+                from openpyxl.workbook.defined_name import DefinedName
+                book.defined_names.add(DefinedName('isblank', attr_text='TRUE' if lane == 'original' else 'FALSE'))
+            if not (mode == 'name-inert' and lane == 'default'):
+                sheet.conditional_formatting.add(
+                    'A1:B5', Rule(type='expression', formula=['isblank'], dxf=DifferentialStyle(fill=fill)),
+                )
         elif mode in ('data-bar', 'data-bar-unchanged'):
             for row in range(1, 6):
                 sheet.cell(row, 1, row)

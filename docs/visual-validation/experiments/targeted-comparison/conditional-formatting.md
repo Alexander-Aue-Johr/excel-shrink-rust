@@ -227,3 +227,32 @@ whole-area proofs: structural fallbacks decreased from 1,092 to **832** out of
 20,935 blocks. This is eligibility, not a claim of unchanged inputs or a runtime
 speedup. See `../cf-inventory/data-bars-20261102.json` for measured counts and
 source-based fallback footprints.
+
+## Bare `isblank` in the PCC workbooks
+
+Both PCC 2017/2018 workbooks contain five expression rules with the bare token
+`isblank` and two with the quoted string `"isblank"`. The string literals already
+have no external reference dependency. The bare token is a defined-name lookup,
+not an implicit call to `ISBLANK(cell)`. Neither source defines that name.
+
+The new input-independent proof applies only when the bare token's workbook- and
+sheet-scoped name is provably absent in both states. Hidden/local names are
+included; uncertain entity or `_xHHHH_` encodings keep the fallback. Excel's
+ordinary `_xlnm` built-in names do not make the catalogue uncertain. Existing or
+newly added names retain captures; general name resolution is not implemented.
+Rule fingerprints, formatting context and relevant layout must still match.
+Changed cell values are handled by the independent ordinary candidate selector.
+Mixed blocks retain every other supported dependency.
+
+Private-desktop controls `name-inert`, `name-missing` and `name-defined` passed:
+removing the undefined-name rule produces identical pixels; leaving it unchanged
+permits CF exclusion; defining the name as TRUE versus FALSE produces the expected
+visible red-fill difference and keeps captures. All owned Excel processes closed.
+Unit controls also distinguish bare `isblank` from the reference-bearing
+`ISBLANK(A1)`, and cover local/hidden names, added names and uncertain catalogues.
+
+Maps containing Excel tables keep the bare-name fallback, since table identifiers
+can also resolve in formulas. The guard checks normal table parts and declared
+custom table locations; missing/uncertain package metadata also keeps the fallback.
+Both PCC sources were checked and contain no table parts. This is intentionally
+more conservative than implementing a table-name resolver.

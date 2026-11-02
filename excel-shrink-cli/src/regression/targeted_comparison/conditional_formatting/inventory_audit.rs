@@ -76,6 +76,7 @@ fn audit_inventory_with_current_selector() -> Result<()> {
     let output = PathBuf::from(std::env::var("CF_AUDIT_OUTPUT")?);
     ensure!(!output.exists(), "Use a new audit output");
     let mut names = BTreeMap::new();
+    let mut defined_names = BTreeMap::new();
     let mut fallback = Vec::new();
     let mut supported: BTreeMap<&str, usize> = BTreeMap::new();
     let mut errors = Vec::new();
@@ -98,6 +99,7 @@ fn audit_inventory_with_current_selector() -> Result<()> {
                 .by_name("xl/workbook.xml")?
                 .read_to_end(&mut bytes)?;
             names.insert(id, xml::sheet_names(&bytes)?);
+            defined_names.insert(id, xml::defined_names_in_package(&mut archive, &bytes)?);
         }
         let catalogue =
             match super::super::xml_changes::conditional_catalogue_for_audit(&mut archive, part) {
@@ -112,6 +114,7 @@ fn audit_inventory_with_current_selector() -> Result<()> {
             context: String::new(),
             cf_context: String::new(),
             sheet_names: names[&id].clone(),
+            defined_names: defined_names[&id].clone(),
         };
         for (index, block) in catalogue.blocks.iter().enumerate() {
             total += 1;
@@ -131,6 +134,7 @@ fn audit_inventory_with_current_selector() -> Result<()> {
                         Proof::ReferencedInputs(_) => "references",
                         Proof::CombinedInputs(_) => "combined",
                         Proof::MissingDummyTargets => "dummy",
+                        Proof::InputIndependent(_) => "input-independent",
                         Proof::Fallback(_) => unreachable!(),
                     };
                     *supported.entry(kind).or_default() += 1;

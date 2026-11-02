@@ -200,6 +200,7 @@ mod tests {
             context: "same styles".into(),
             cf_context: "same CF context".into(),
             sheet_names: Some(["rows".into()].into()),
+            defined_names: None,
         }
     }
 

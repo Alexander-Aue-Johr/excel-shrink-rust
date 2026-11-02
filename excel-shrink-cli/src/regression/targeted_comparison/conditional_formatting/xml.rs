@@ -126,7 +126,8 @@ pub(in crate::regression::targeted_comparison) fn catalogue(
         );
         let mut block = blocks.remove(0);
         let links_complete = data_bar_links.record(&block, result.blocks.len());
-        let supported = links_complete && span.namespace_supported
+        let supported = links_complete
+            && span.namespace_supported
             && (!span.x14_extension
                 || normalize_x14_expression(&mut block)
                 || super::data_bars::normalize_x14(&mut block));
@@ -234,6 +235,124 @@ pub(in crate::regression::targeted_comparison) fn sheet_names(
         names.insert(name);
     }
     Ok(Some(names))
+}
+
+/// Include workbook- and sheet-scoped names; uncertain encodings cannot prove a name absent.
+pub(in crate::regression::targeted_comparison) fn defined_names(
+    bytes: &[u8],
+) -> Result<Option<BTreeSet<String>>> {
+    let mut names = BTreeSet::new();
+    let mut reader = Reader::<128>::new(bytes)?;
+    while let Some(tag) = reader.next()? {
+        if tag.local() != b"definedName" || tag.kind == Kind::End {
+            continue;
+        }
+        let Some(name) = tag.attr(b"name")? else {
+            return Ok(None);
+        };
+        let name = std::str::from_utf8(name)?.to_ascii_lowercase();
+        let encoded = name.as_bytes().windows(7).any(|window| {
+            window.starts_with(b"_x")
+                && window[2..6].iter().all(u8::is_ascii_hexdigit)
+                && window[6] == b'_'
+        });
+        if !name.is_ascii() || name.contains('&') || encoded {
+            return Ok(None);
+        }
+        names.insert(name);
+    }
+    Ok(Some(names))
+}
+
+/// Tables provide another bare-name source. Keep them conservative rather than resolving table names.
+pub(in crate::regression::targeted_comparison) fn defined_names_in_package(
+    archive: &mut ZipArchive<File>,
+    workbook: &[u8],
+) -> Result<Option<BTreeSet<String>>> {
+    let Some(names) = defined_names(workbook)? else {
+        return Ok(None);
+    };
+    if archive
+        .file_names()
+        .any(|name| name.starts_with("xl/tables/"))
+    {
+        return Ok(None);
+    }
+    let mut types = match archive.by_name("[Content_Types].xml") {
+        Ok(entry) => entry,
+        Err(zip::result::ZipError::FileNotFound) => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let mut bytes = Vec::new();
+    types.read_to_end(&mut bytes)?;
+    let mut reader = Reader::<128>::new(&bytes)?;
+    while let Some(tag) = reader.next()? {
+        if let Some(kind) = tag.attr(b"ContentType")? {
+            if kind.contains(&b'&') || kind.to_ascii_lowercase().ends_with(b".table+xml") {
+                return Ok(None);
+            }
+        }
+    }
+    Ok(Some(names))
+}
+
+#[cfg(test)]
+mod name_package_tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    #[ignore = "Requires CF_INVENTORY with retained PCC sources 8036/8037; reads metadata only"]
+    fn retained_pcc_sources_prove_isblank_absent_without_table_ambiguity() -> Result<()> {
+        let root = std::path::PathBuf::from(std::env::var("CF_INVENTORY")?);
+        for id in [8036, 8037] {
+            let mut archive =
+                ZipArchive::new(File::open(root.join(format!("sources/{id:05}.xlsx")))?)?;
+            let mut workbook = Vec::new();
+            archive
+                .by_name("xl/workbook.xml")?
+                .read_to_end(&mut workbook)?;
+            let names = defined_names_in_package(&mut archive, &workbook)?
+                .expect("Unambiguous name catalogue");
+            assert!(!names.contains("isblank"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn tables_and_missing_package_metadata_cannot_prove_a_name_absent() -> Result<()> {
+        for mode in [
+            "ordinary",
+            "standard-table",
+            "custom-table",
+            "missing-types",
+        ] {
+            let path = std::env::temp_dir().join(format!("cf-names-{}.xlsx", uuid::Uuid::new_v4()));
+            let mut output = zip::ZipWriter::new(File::create(&path)?);
+            if mode != "missing-types" {
+                output.start_file("[Content_Types].xml", zip::write::FileOptions::default())?;
+                let types = if mode == "custom-table" {
+                    "<Types><Override PartName='/custom/named.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml'/></Types>"
+                } else {
+                    "<Types/>"
+                };
+                output.write_all(types.as_bytes())?;
+            }
+            if mode == "standard-table" {
+                output.start_file("xl/tables/table1.xml", zip::write::FileOptions::default())?;
+                output.write_all(b"<table name='isblank'/>")?;
+            }
+            output.finish()?;
+            let mut archive = ZipArchive::new(File::open(&path)?)?;
+            assert_eq!(
+                defined_names_in_package(&mut archive, b"<workbook/>")?.is_some(),
+                mode == "ordinary"
+            );
+            drop(archive);
+            std::fs::remove_file(path)?;
+        }
+        Ok(())
+    }
 }
 
 /// Include nonstandard part locations and theme overrides declared by the package.

@@ -40,6 +40,7 @@ pub(super) struct Snapshot {
     pub context: String,
     pub cf_context: String,
     pub sheet_names: Option<BTreeSet<String>>,
+    pub defined_names: Option<BTreeSet<String>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -86,6 +87,7 @@ impl Snapshot {
             .by_name("xl/workbook.xml")?
             .read_to_end(&mut workbook)?;
         let sheet_names = xml::sheet_names(&workbook)?;
+        let defined_names = xml::defined_names_in_package(&mut archive, &workbook)?;
         let context = read_value_context(&mut archive)?;
         let cf_context = read_conditional_context(&mut archive, &workbook, &context)?;
         let mut sheets = BTreeMap::new();
@@ -103,6 +105,7 @@ impl Snapshot {
             context,
             cf_context,
             sheet_names,
+            defined_names,
         })
     }
 

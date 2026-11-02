@@ -458,6 +458,7 @@ fn write_book(
         "<worksheet xmlns=\"{NS}\">{layout}<sheetData>{values}</sheetData>{rule}</worksheet>"
     );
     for (name, body) in [
+        ("[Content_Types].xml", "<Types/>"),
         ("xl/workbook.xml", workbook.as_str()),
         ("xl/_rels/workbook.xml.rels", relationships),
         ("xl/styles.xml", styles.as_str()),
@@ -481,6 +482,83 @@ fn check(left: &Path, right: &Path) -> Result<(Vec<Decision>, BTreeSet<Candidate
     let mut candidates = BTreeSet::new();
     let decisions = select(&a, &b, &changes, &mut candidates)?;
     Ok((decisions, candidates))
+}
+
+#[test]
+fn bare_isblank_requires_proven_name_absence_in_both_states() -> Result<()> {
+    let root =
+        crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-missing-name")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let values =
+        "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"5\"><c r=\"B5\"><v>3</v></c></row>";
+    let block = "<conditionalFormatting sqref=\"A1:B5\"><cfRule type=\"expression\" dxfId=\"0\" priority=\"1\" stopIfTrue=\"1\"><formula>isblank</formula></cfRule></conditionalFormatting>";
+    write_book(&a, values, block, "", "", "")?;
+    write_book(&b, &values.replace("<v>1", "<v>2"), block, "", "", "")?;
+    assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+    let before = Snapshot::read(&a)?;
+    let after = Snapshot::read(&b)?;
+    for (left, right) in [
+        (Some(["isblank".into()].into()), Some(BTreeSet::new())),
+        (Some(BTreeSet::new()), Some(["isblank".into()].into())),
+        (None, Some(BTreeSet::new())),
+        (Some(BTreeSet::new()), None),
+    ] {
+        let mut before = before.clone();
+        let mut after = after.clone();
+        before.defined_names = left;
+        after.defined_names = right;
+        let decisions = select(
+            &before,
+            &after,
+            &before.changes(&after)?,
+            &mut BTreeSet::new(),
+        )?;
+        assert_eq!(decisions[0].outcome, "capture");
+    }
+    let function = block.replace("<formula>isblank", "<formula>ISBLANK(A1)");
+    write_book(&a, values, &function, "", "", "")?;
+    write_book(&b, &values.replace("<v>1", "<v>2"), &function, "", "", "")?;
+    assert_ne!(check(&a, &b)?.0[0].outcome, "excluded");
+    for unknown in [
+        "UnknownName",
+        "Other!isblank",
+        "INDIRECT(&quot;isblank&quot;)",
+    ] {
+        write_book(
+            &a,
+            values,
+            &block.replace("<formula>isblank", &format!("<formula>{unknown}")),
+            "",
+            "",
+            "",
+        )?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    }
+    for changed in [
+        block.replace("dxfId=\"0\"", "dxfId=\"1\""),
+        block.replace("A1:B5", "A1:B4"),
+    ] {
+        write_book(&a, values, block, "", "", "")?;
+        write_book(&b, values, &changed, "", "", "")?;
+        assert!(check(&a, &b)?.0.iter().all(|d| d.outcome == "capture"));
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn defined_name_catalogue_includes_local_hidden_names_and_rejects_uncertain_encodings() -> Result<()>
+{
+    assert!(xml::defined_names(br#"<workbook><definedNames><definedName name="_xlnm.Print_Area">Data!A1:B5</definedName></definedNames></workbook>"#)?.is_some());
+    let names = xml::defined_names(br#"<workbook><definedNames><definedName name="ISBLANK" localSheetId="2" hidden="1">TRUE</definedName></definedNames></workbook>"#)?.unwrap();
+    assert!(names.contains("isblank"));
+    for name in ["i&#115;blank", "_x0069_sblank", "näme"] {
+        assert!(xml::defined_names(format!("<workbook><definedNames><definedName name='{name}'>TRUE</definedName></definedNames></workbook>").as_bytes())?.is_none());
+    }
+    Ok(())
 }
 
 /// Exercise retained local corpus evidence without making it a repository fixture.

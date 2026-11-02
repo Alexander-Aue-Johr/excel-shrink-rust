@@ -2,6 +2,7 @@
 mod expression;
 pub(super) mod data_bars;
 mod formulas;
+mod input_independent;
 mod ranges;
 mod references;
 #[cfg(test)]
@@ -51,6 +52,7 @@ enum Proof {
     ReferencedInputs(Vec<references::Reference>),
     CombinedInputs(CombinedInputs),
     MissingDummyTargets,
+    InputIndependent(&'static str),
     Fallback(&'static str),
 }
 
@@ -80,6 +82,17 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
     if block
         .rules
         .iter()
+        .all(|rule| input_independent::proof(rule, before, after).is_some())
+    {
+        return if before.cf_context == after.cf_context {
+            Proof::InputIndependent("unchanged-input-independent-expressions")
+        } else {
+            Proof::Fallback("format-string-theme-or-workbook-context-changed")
+        };
+    }
+    if block
+        .rules
+        .iter()
         .all(|rule| formulas::literal_rule(rule) || formulas::whole_area_rule(rule))
     {
         return if before.cf_context == after.cf_context {
@@ -88,7 +101,7 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
             Proof::Fallback("format-string-theme-or-workbook-context-changed")
         };
     }
-    if let Some(inputs) = reference_inputs(block) {
+    if let Some(inputs) = reference_inputs(block, before, after) {
         return if before.cf_context == after.cf_context {
             Proof::ReferencedInputs(inputs)
         } else {
@@ -144,7 +157,9 @@ fn combined_inputs(block: &Block, before: &Snapshot, after: &Snapshot) -> Option
     };
     let mut active_rules = 0;
     for rule in &block.rules {
-        if formulas::literal_rule(rule) {
+        if input_independent::proof(rule, before, after).is_some() {
+            continue;
+        } else if formulas::literal_rule(rule) {
             active_rules += 1;
         } else if formulas::whole_area_rule(rule) {
             plan.whole_area = true;
@@ -160,10 +175,14 @@ fn combined_inputs(block: &Block, before: &Snapshot, after: &Snapshot) -> Option
 }
 
 /// Every rule must have a known dependency footprint; one unknown rule keeps the block conservative.
-fn reference_inputs(block: &Block) -> Option<Vec<references::Reference>> {
+fn reference_inputs(
+    block: &Block,
+    before: &Snapshot,
+    after: &Snapshot,
+) -> Option<Vec<references::Reference>> {
     let mut inputs = Vec::new();
     for rule in &block.rules {
-        if formulas::literal_rule(rule) {
+        if formulas::literal_rule(rule) || input_independent::proof(rule, before, after).is_some() {
             continue;
         }
         inputs.extend(rule_references(rule)?);
@@ -274,7 +293,8 @@ fn select_references(
         decision.outcome = "partial".into();
     }
     decision.reason =
-        "worksheet-reference-dependencies; changed or uncertain inputs select dependent targets".into();
+        "worksheet-reference-dependencies; changed or uncertain inputs select dependent targets"
+            .into();
     Ok(())
 }
 
@@ -406,6 +426,7 @@ pub(super) fn select(
                         | Proof::WholeAreaInputs
                         | Proof::ReferencedInputs(_)
                         | Proof::CombinedInputs(_)
+                        | Proof::InputIndependent(_)
                 ) && a.cf_layout != b.cf_layout
                 {
                     mode = Proof::Fallback("worksheet-layout-context-changed");
@@ -494,6 +515,10 @@ pub(super) fn select(
                     Proof::MissingDummyTargets => {
                         decision.outcome = "excluded".into();
                         decision.reason = "fixed-dummy-targets-absent-in-both-states".into();
+                    }
+                    Proof::InputIndependent(reason) => {
+                        decision.outcome = "excluded".into();
+                        decision.reason = reason.into();
                     }
                     Proof::LocalInputs => select_local_inputs(
                         &mut decision,

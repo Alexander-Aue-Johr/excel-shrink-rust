@@ -19,7 +19,7 @@ def verify(root: Path, mode: str) -> None:
         for key in ('left_png', 'right_png'):
             with Image.open(sample[key]) as image:
                 colors.append(Counter(image.convert('RGB').getdata()))
-        if mode in ('constant', 'constant-string', 'styles', 'dummy-present'):
+        if mode in ('constant', 'constant-string', 'styles', 'dummy-present', 'name-defined'):
             assert colors[0][(255, 0, 0)] > 100, 'Positive CF control did not render its red fill'
         if mode == 'styles':
             assert colors[1][(0, 0, 255)] > 100, 'Changed differential format did not render blue'
@@ -50,7 +50,7 @@ def verify(root: Path, mode: str) -> None:
         }[mode]
         finding = next(item for item in direct['findings'] if item['cell'] == expected)
         assert finding['pixels_differ'], 'Dependent target did not change in native Excel'
-    elif mode == 'data-bar-unchanged':
+    elif mode in ('data-bar-unchanged', 'name-missing'):
         assert all(item['outcome'] == 'excluded' for item in decisions), decisions
         assert not different
     elif mode == 'dummy-missing':
@@ -64,7 +64,7 @@ def verify(root: Path, mode: str) -> None:
     else:
         assert any(item['outcome'] == 'capture' for item in decisions), decisions
         assert direct['findings'], 'Fallback produced no captures'
-        if mode == 'dummy-inert':
+        if mode in ('dummy-inert', 'name-inert'):
             assert not different, 'A missing-target CF rule unexpectedly changed Excel rendering'
         else:
             assert different, 'The positive control lost its visual difference'
