@@ -9,6 +9,7 @@ mod check_performance;
 mod evidence;
 mod execution_plan;
 mod performance_cache;
+mod performance_dependencies;
 mod image_comparison;
 mod change_evidence;
 mod snapshot_cache;
