@@ -199,6 +199,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn row_height_candidates_reach_content_starting_far_from_column_a() -> Result<()> {
+        let bounds = ContentBounds(BTreeMap::from([(
+            "Data".into(),
+            Rectangle::parse("T10:W20")?,
+        )]));
+        let requested = BTreeSet::from([Candidate {
+            sheet: "Data".into(),
+            cell: "A12:XFD12".into(),
+        }]);
+        let (selected, coverage) = bounds.select(&requested)?;
+        assert_eq!(
+            selected,
+            BTreeSet::from([Candidate {
+                sheet: "Data".into(),
+                cell: "S9:X21".into()
+            }])
+        );
+        assert_eq!(coverage[0].skipped_outside_content, 0);
+        Ok(())
+    }
+
+    #[test]
     fn dense_changes_share_tiles_without_dropping_grid_boundary_neighbors() -> Result<()> {
         let bounds = ContentBounds(BTreeMap::from([(
             "Data".into(),

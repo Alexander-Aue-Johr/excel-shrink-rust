@@ -150,7 +150,8 @@ impl HeightCheck {
                 for row in [start, end, (end + 1).min(1_048_576)] {
                     candidates.insert(Candidate {
                         sheet: self.sheet.clone(),
-                        cell: format!("A{row}"),
+                        // Row geometry affects content in every column, including sheets starting far from A.
+                        cell: format!("A{row}:XFD{row}"),
                     });
                 }
             }
