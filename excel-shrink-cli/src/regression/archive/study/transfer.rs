@@ -499,7 +499,14 @@ fn evidence_paths(value: &Value, paths: &mut BTreeSet<String>) -> Result<()> {
     match value {
         Value::Object(map) => {
             for (key, value) in map {
-                if key.ends_with("_image") {
+                if key == "targeted_report_file" {
+                    if let Some(path) = value.as_str() {
+                        relative(path)?;
+                        ensure!(path.starts_with("evidence/") && path.ends_with("/portable-report.json"),
+                            "targeted report must be relative evidence JSON");
+                        paths.insert(path.to_owned());
+                    }
+                } else if key.ends_with("_image") {
                     if let Some(path) = value.as_str() {
                         relative(path)?;
                         ensure!(
@@ -696,6 +703,27 @@ mod tests {
         let imported: Value = serde_json::from_slice(&fs::read(record_path(&target, identity))?)?;
         assert_eq!(imported, record);
         assert!(!super::super::verified_unchanged(&imported));
+        fs::remove_dir_all(source)?;
+        fs::remove_dir_all(target)?;
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_reports_and_images_roundtrip_with_their_record() -> Result<()> {
+        let (source, mut record, expected) = fixture("targeted-transfer-source")?;
+        let target = super::super::tests::test_directory("targeted-transfer-target")?;
+        fs::create_dir_all(source.join("evidence/targeted"))?;
+        fs::write(source.join("evidence/targeted/portable-report.json"), b"{\"status\":\"completed_with_limitations\"}")?;
+        record["targeted_comparison"] = json!({
+            "targeted_report_file":"evidence/targeted/portable-report.json",
+            "evidence_images":[{"capture_image":"evidence/file/shrunk.png"}]
+        });
+        write_record(&record_path(&source, record["identity"].as_str().unwrap()), &record)?;
+        let package = source.join("targeted-results.zip");
+        export_package(&source, &package)?;
+        import_package(&target, &package, &expected)?;
+        assert_eq!(fs::read(target.join("evidence/targeted/portable-report.json"))?, b"{\"status\":\"completed_with_limitations\"}");
+        assert_eq!(fs::read(target.join("evidence/file/shrunk.png"))?, b"changed image");
         fs::remove_dir_all(source)?;
         fs::remove_dir_all(target)?;
         Ok(())

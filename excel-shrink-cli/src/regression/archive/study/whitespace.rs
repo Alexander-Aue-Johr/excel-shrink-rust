@@ -5,7 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(super) const VERSION: u64 = 1;
 
 pub(super) fn needed(record: &Value) -> bool {
-    record["complete"] == true
+    !record["targeted_comparison"].is_object()
+        && record["complete"] == true
         && record["status"] == "differences"
         && (record["whitespace_diagnosis"]["version"] != VERSION
             || record["whitespace_diagnosis"]["status"] == "running")

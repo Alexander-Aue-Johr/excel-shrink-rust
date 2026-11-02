@@ -11,7 +11,9 @@ param(
     [Parameter(Mandatory=$true)][string]$Original,
     [Parameter(Mandatory=$true)][string]$Default,
     [Parameter(Mandatory=$true)][string]$Output,
-    [Parameter(Mandatory=$true)][string]$ObservatoryGroup
+    [Parameter(Mandatory=$true)][string]$ObservatoryGroup,
+    [switch]$SkipCheckPerformance,
+    [ValidateRange(1, 86400)][int]$OperationTimeoutSeconds = 120
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -Path @((Join-Path $PSScriptRoot 'CaptureProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureDesktop.cs'))
@@ -22,6 +24,8 @@ try {
     $env:EXCEL_SHRINK_EXPECTED_DESKTOP = $desktop.Name
     $arguments = 'regression targeted-compare --original "{0}" --default "{1}" --output "{2}" --observatory-group-dir "{3}" --host-script "{4}"' -f `
         $Original, $Default, $Output, $ObservatoryGroup, (Join-Path $PSScriptRoot 'targeted-comparison-host.ps1')
+    $arguments += ' --operation-timeout-seconds ' + $OperationTimeoutSeconds
+    if ($SkipCheckPerformance) { $arguments += ' --skip-check-performance' }
     $process = $desktop.Start($Binary, $arguments, $owned)
     while (-not $process.WaitForExit(500)) { }
     if ($process.ExitCode -ne 0) { throw "Targeted comparison failed; inspect $Output/failure.json." }

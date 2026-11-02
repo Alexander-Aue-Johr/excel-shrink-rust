@@ -89,6 +89,8 @@ function Get-DefaultStudySettings {
         partition = 0
         order = 'size-desc'
         hide_excel = $false
+        targeted_comparison = $true
+        targeted_skip_check_performance = $false
         worker_memory_mib = $(if ($small) { 2048 } else { 4096 })
         excel_memory_mib = $(if ($small) { 2048 } else { 4096 })
         resident_memory_mib = $(if ($small) { 4096 } else { 16384 })
@@ -111,7 +113,7 @@ function Import-StudyConfiguration {
         if ((Get-Value $saved 'version') -ne 1) { throw 'Unsupported corpus launcher configuration version.' }
         # New control defaults do not change corpus IDs, archive locations or
         # prior results. Old machine configurations acquire only these defaults.
-        foreach ($setting in @{ tall_sheet_threshold=40; tall_sheet_edge_tiles=2; system_reserve_mib=0 }.GetEnumerator()) {
+        foreach ($setting in @{ tall_sheet_threshold=40; tall_sheet_edge_tiles=2; system_reserve_mib=0; targeted_comparison=$true; targeted_skip_check_performance=$false }.GetEnumerator()) {
             if ($null -eq (Get-Value $saved.settings $setting.Key)) {
                 $saved.settings | Add-Member -NotePropertyName $setting.Key -NotePropertyValue $setting.Value -Force
             }
@@ -287,10 +289,15 @@ function New-StudyLaunchPlan {
         '--run-corpus',$settings.corpus,'--machine-label',$settings.machine_label,'--resident-capture','--control-room','--control-room-port',[string]$settings.control_room_port,
         '--comparison-workers',[string]$settings.comparison_groups,'--order',$settings.order,'--startup-timeout-seconds',[string]$settings.open_timeout_seconds,'--workbook-timeout-seconds',[string]$settings.job_timeout_seconds)
     if ([int]$settings.partition -gt 0) { $argsList += @('--size-part',"$($settings.partition)/$($settings.partitions)") }
-    if (Get-Value $settings 'full_scan_deferred' $false) { $argsList += @('--compare-only', '--full-scan-deferred') }
-    if (Get-Value $settings 'aggressive_first' $false) { $argsList += '--aggressive-first' }
-    $screenProfile = Get-Value $settings 'preparation_hash_profile' $null
-    if ($screenProfile) { $argsList += @('--preparation-hash-profile', [string]$screenProfile) }
+    if (Get-Value $settings 'targeted_comparison' $true) {
+        $argsList += '--targeted-comparison'
+        if (Get-Value $settings 'targeted_skip_check_performance' $false) { $argsList += '--targeted-skip-check-performance' }
+    } else {
+        if (Get-Value $settings 'full_scan_deferred' $false) { $argsList += @('--compare-only', '--full-scan-deferred') }
+        if (Get-Value $settings 'aggressive_first' $false) { $argsList += '--aggressive-first' }
+        $screenProfile = Get-Value $settings 'preparation_hash_profile' $null
+        if ($screenProfile) { $argsList += @('--preparation-hash-profile', [string]$screenProfile) }
+    }
     if ($settings.hide_excel) { $argsList += '--hide-excel' }
     foreach ($hash in @($settings.reuse_prepared_from | Select-Object -Unique)) { $argsList += @('--reuse-prepared-from',$hash) }
     if ($settings.import_report) { $argsList += @('--import-report',(Resolve-StudyPath $Repo $settings.import_report)) }

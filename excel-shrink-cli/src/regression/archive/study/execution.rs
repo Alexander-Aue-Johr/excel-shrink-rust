@@ -149,6 +149,8 @@ pub(super) fn run_record(
             json!({"run_id":run["run_id"],"machine_id":run["machine_id"],
             "machine_manifest":run["machine_manifest"],
             "preparation_hash_profile":run["options"]["preparation_hash_profile"],
+            "targeted_comparison":run["options"]["targeted_comparison"],
+            "targeted_skip_check_performance":run["options"]["targeted_skip_check_performance"],
             "preparation_stage":run["options"]["preparation_stage"]}),
         ),
     };
@@ -381,6 +383,11 @@ fn retain_visual_evidence(
     key: &str,
     diagnosis_only: bool,
 ) {
+    // The staged workflow writes directly into this study's durable evidence tree.
+    // Its portable references must not be interpreted as disposable worker paths.
+    if result["targeted_comparison"].is_object() {
+        return;
+    }
     let mut evidence = output.join("evidence").join(key);
     if let Some(attempt) = result["control_room_attempt"]["id"].as_str() {
         // Hash untrusted/imported record fields before using them as a path.

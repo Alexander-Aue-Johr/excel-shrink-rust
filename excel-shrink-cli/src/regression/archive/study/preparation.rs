@@ -61,7 +61,7 @@ fn run_phase(
                     producer,
                     &source.fingerprint,
                     &args.reuse_prepared_from,
-                    args.preparation_hash_profile.as_deref(),
+                    args.preparation_profile(),
                 )
             {
                 records[position]["preparation_accepted_by"] = json!(producer);
@@ -84,7 +84,7 @@ fn run_phase(
                     producer,
                     &source.fingerprint,
                     &args.reuse_prepared_from,
-                    args.preparation_hash_profile.as_deref(),
+                    args.preparation_profile(),
                 )
             {
                 reused += 1;

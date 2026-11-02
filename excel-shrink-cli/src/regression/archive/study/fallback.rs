@@ -12,7 +12,7 @@ pub(super) fn after_batch(
     run: &Value,
     log_level: LogLevel,
 ) -> Result<()> {
-    if run["options"]["resident_capture"] != true {
+    if run["options"]["resident_capture"] != true || run["options"]["targeted_comparison"] == true {
         return Ok(());
     }
     let mut classic = run.clone();

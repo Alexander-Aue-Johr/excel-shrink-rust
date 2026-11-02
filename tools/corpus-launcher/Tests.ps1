@@ -60,6 +60,8 @@ foreach($path in $before.Keys){Assert ((Get-FileHash -LiteralPath $path -Algorit
 Assert ((@(Get-ChildItem -LiteralPath $root -File -Recurse)).Count -eq $before.Count) 'Read-only planning wrote files.'
 Assert (-not [IO.File]::Exists($configPath)) 'Preview saved configuration unexpectedly.'
 Assert ($plan.Arguments -notcontains '--aggressive-first') 'A legacy configuration unexpectedly enabled aggressive-first screening.'
+Assert ($plan.Arguments -contains '--targeted-comparison') 'The launcher did not select the staged targeted comparison by default.'
+$config.settings | Add-Member -NotePropertyName targeted_comparison -NotePropertyValue $false -Force
 $config.settings | Add-Member -NotePropertyName aggressive_first -NotePropertyValue $true -Force
 $screeningPlan=New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/screening')
 Assert (@($screeningPlan.Arguments | Where-Object {$_ -eq '--aggressive-first'}).Count -eq 1) 'Aggressive-first must be represented by exactly one runner switch.'

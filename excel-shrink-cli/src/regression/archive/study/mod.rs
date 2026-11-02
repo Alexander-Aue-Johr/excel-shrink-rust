@@ -80,6 +80,12 @@ pub(in crate::regression) struct StudyArgs {
     /// Keep original and shrink variants open for visual comparisons.
     #[arg(long)]
     resident_capture: bool,
+    /// Compare Default and Check Performance through the staged XML-selected workflow.
+    #[arg(long, requires = "resident_capture", conflicts_with_all = ["aggressive_first", "preparation_hash_profile", "full_scan_deferred", "diagnose_whitespace_only", "adaptive_concurrency"])]
+    targeted_comparison: bool,
+    /// Omit Check Performance from the targeted workflow; compare Default only.
+    #[arg(long, requires = "targeted_comparison")]
+    targeted_skip_check_performance: bool,
     /// Screen the selection with the aggressive profile before full follow-up.
     #[arg(long, requires = "resident_capture", conflicts_with_all = ["prepare_only", "diagnose_whitespace_only", "full_scan_deferred"])]
     aggressive_first: bool,
@@ -138,6 +144,9 @@ pub(in crate::regression) struct StudyArgs {
 }
 
 impl StudyArgs {
+    fn preparation_profile(&self) -> Option<&str> {
+        if self.targeted_comparison { Some("default") } else { self.preparation_hash_profile.as_deref() }
+    }
     fn should_retry_skipped(&self) -> bool {
         self.retry_skipped && !self.no_retry_skipped
     }
@@ -522,6 +531,8 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             "prepare_only":args.prepare_only,"compare_only":args.compare_only,
             "full_scan_deferred":args.full_scan_deferred,
             "resident_capture":args.resident_capture,"comparison_workers":args.comparison_workers,
+            "targeted_comparison":args.targeted_comparison,
+            "targeted_skip_check_performance":args.targeted_skip_check_performance,
             "hide_excel":args.hide_excel,
             "control_room":args.control_room,"control_room_port":args.control_room_port,
             "adaptive_concurrency":args.adaptive_concurrency,"order":args.order,
@@ -530,7 +541,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             "workbook_timeout_seconds":args.workbook_timeout_seconds,
             "startup_timeout_seconds":args.startup_timeout_seconds,"max_workbook_bytes":args.max_workbook_bytes,
             "limit":args.limit,"reuse_prepared_from":args.reuse_prepared_from,"aggressive_first":args.aggressive_first,
-            "preparation_hash_profile":args.preparation_hash_profile,
+            "preparation_hash_profile":args.preparation_profile(),
             "worker_memory_estimate_mib":std::env::var("EXCEL_SHRINK_WORKER_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
             "excel_memory_estimate_mib":std::env::var("EXCEL_SHRINK_EXCEL_MEMORY_MIB").unwrap_or_else(|_|"4096".into()),
             "resident_memory_estimate_mib":std::env::var("EXCEL_SHRINK_RESIDENT_MEMORY_MIB").unwrap_or_else(|_|"16384".into())
@@ -565,7 +576,15 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             if args.diagnose_whitespace_only {
                 return Vec::new();
             }
-            let mut pending = if let Some(profile) = args.preparation_hash_profile.as_deref() {
+            let mut pending = if args.targeted_comparison {
+                selection::ordered_members(source, args.order).into_iter().filter(|(index, name)| {
+                    let id = identity(source, *index, name);
+                    records.iter().find(|record| record["identity"] == id).is_none_or(|record| {
+                        !prepared::targeted::complete(record, args.targeted_skip_check_performance)
+                            && (record["status"] != "skipped" || args.should_retry_skipped())
+                    })
+                }).collect()
+            } else if let Some(profile) = args.preparation_hash_profile.as_deref() {
                 selection::ordered_members(source, args.order).into_iter().filter(|(index, name)| {
                     let id = identity(source, *index, name);
                     records.iter().find(|record| record["identity"] == id).is_none_or(|record| {
@@ -606,7 +625,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                     args.should_retry_skipped(),
                 )
             };
-            if args.preparation_hash_profile.is_none()
+            if !args.targeted_comparison && args.preparation_hash_profile.is_none()
                 && !args.aggressive_first
                 && !args.full_scan_deferred {
                 let queued: HashSet<_> = pending.iter().map(|(index, _)| *index).collect();
@@ -762,7 +781,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         let members = selection::ordered_members(source, args.order);
         // Completed differences get their missing causal diagnosis before new work.
         // The primary measurements and comparisons are never reset for this pass.
-        if !args.prepare_only && !args.compare_only && !args.aggressive_first
+        if !args.targeted_comparison && !args.prepare_only && !args.compare_only && !args.aggressive_first
             && args.preparation_hash_profile.is_none() {
             let backfill: Vec<_> = members
                 .iter()
@@ -851,7 +870,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                     &producer,
                     &source.fingerprint,
                     &args.reuse_prepared_from,
-                    args.preparation_hash_profile.as_deref(),
+                    args.preparation_profile(),
                 ) {
                     if args.compare_only && records[pos]["status"] != "skipped" {
                         eprintln!("[study] Not prepared with this build: {name}");
@@ -891,6 +910,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
     }
     }
     if args.control_room
+        && !args.targeted_comparison
         && args.resident_capture
         && !args.aggressive_first
         && args.preparation_hash_profile.is_none()

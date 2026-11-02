@@ -25,3 +25,41 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/visual-validation/e
 ```
 
 Use a new output directory for each native smoke test.
+
+## Corpus commands
+
+The WPF launcher now selects this strategy by default, including when loading an
+older machine configuration. Legacy screening flags in those configurations are
+ignored while `settings.targeted_comparison` is true. Shrinking prepares Default
+only. Check Performance is generated on demand from the saved Original control.
+No legacy full visual pass follows the targeted comparison.
+
+```powershell
+cargo build --release -p excel-shrink-cli
+.\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/targeted-study --run-corpus Data.gov --resident-capture --targeted-comparison --control-room --comparison-workers 4 --order size-asc
+```
+
+Use your machine's existing request/configuration paths; keep its archive binding
+and corpus IDs. Add `--targeted-skip-check-performance` for Original/Default only.
+`--size-part 1/4` through `4/4` and `--order size-desc` retain their existing meaning.
+Do not combine targeted mode with `--preparation-hash-profile`, `--aggressive-first`
+or `--full-scan-deferred`. The workflow uses four retained states without Check
+Performance and six with it, so concurrent groups multiply that process count.
+
+Resume the **same output root and arguments** to reuse completed targeted results.
+Old visual/hash results are not accepted as completion of this policy. A completed
+targeted result remains explicitly limited coverage (`checks_complete: false`).
+Namespace and proven nonvisual preparation exclusions keep their existing reasons.
+
+Existing prepared bundles can be reused with `--reuse-prepared-from <full executable
+SHA-256>` after reviewing shrink compatibility. Keep the associated records and
+source catalogs; copying a ZIP alone is insufficient. Use `--compare-only` when
+all required preparations are already present. Never reuse old comparison verdicts
+as benchmark results. The local slowest-100 corpus and its baseline remain outside Git.
+
+Durable evidence contains `portable-report.json`, cell PNGs and converted chart PNGs.
+These follow records through the existing `--export-results` / `--import-results`
+verified transfer. Machine/run attribution remains separate for preparation and
+comparison. Completed temporary XLSX states are removed to bound disk use; raw
+Original/Default remain recoverable from preparation bundles. Native smoke tests
+retain their states for inspection.
