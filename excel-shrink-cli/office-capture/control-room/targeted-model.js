@@ -30,8 +30,10 @@ export function captureProgress(lane) {
   if (!Number.isSafeInteger(total) || total < 0 || !Number.isSafeInteger(done) || done < 0 || done > total) {
     return { known: false, text: 'Candidate discovery in progress' };
   }
+  const skipped = lane.skipped_zero_area_regions || 0;
+  const skipText = skipped ? ` · ${skipped} skipped: no visible area` : '';
   return { known: true, total, done, remaining: total - done,
-    text: `${done} / ${total} captures · ${total - done} remaining` };
+    text: `${done} / ${total} regions · ${total - done} remaining${skipText}` };
 }
 
 /** Only Office.js messages received by the resident host drive the heart trace. */

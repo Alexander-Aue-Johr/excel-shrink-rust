@@ -13,8 +13,39 @@ use std::{
 
 #[derive(Clone)]
 pub(super) struct Evidence {
-    pub(super) path: PathBuf,
+    pub(super) path: Option<PathBuf>,
     pub(super) geometry: Value,
+}
+
+impl Evidence {
+    /// No image is legitimate only for a measured zero-area region, never a missing response.
+    pub fn validate(&self) -> Result<()> {
+        let geometry: super::capture_layout::Geometry =
+            serde_json::from_value(self.geometry.clone())?;
+        let geometry = geometry.validate()?;
+        ensure!(
+            self.path.is_none() == geometry.empty(),
+            "Image presence disagrees with measured geometry"
+        );
+        Ok(())
+    }
+
+    pub fn pixels_differ(&self, other: &Self, comparisons: &mut ImageComparisons) -> Result<bool> {
+        self.validate()?;
+        other.validate()?;
+        match (&self.path, &other.path) {
+            (Some(left), Some(right)) => comparisons.differ(left, right),
+            _ => Ok(false), // The separate rendering/geometry verdict records visibility transitions.
+        }
+    }
+
+    pub fn rendering(&self) -> &'static str {
+        if self.path.is_some() {
+            "captured"
+        } else {
+            "zero-area-range"
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -27,7 +58,7 @@ pub(super) struct PerformanceFinding {
     original_recalc_drift: bool,
     ordinary_save_xml_changed: bool,
     optimization_xml_changed: bool,
-    images: BTreeMap<&'static str, PathBuf>,
+    images: BTreeMap<&'static str, Option<PathBuf>>,
     geometry: BTreeMap<&'static str, Value>,
 }
 
@@ -72,7 +103,7 @@ pub(super) fn compare_performance(
                 .collect::<Result<_>>()?;
             let original = evidence["original_before"];
             let mut differs = |other: &Evidence| -> Result<bool> {
-                Ok(comparisons.differ(&original.path, &other.path)?
+                Ok(original.pixels_differ(other, comparisons)?
                     || original.geometry != other.geometry)
             };
             Ok(PerformanceFinding {
@@ -97,7 +128,7 @@ pub(super) fn compare_performance(
         .collect()
 }
 
-/// Capture the padded candidate and its geometry in the same Office.js synchronization.
+/// Observe the padded candidate, omitting the image only for verified zero-area geometry.
 pub(super) fn capture_candidate(
     excel: &mut ExcelHost,
     lane: LaneId,
@@ -111,7 +142,11 @@ pub(super) fn capture_candidate(
         state.lane(lane).current_range = Some(range.clone());
     })?;
     let geometry = excel.capture_range(lane, &candidate.sheet, &range, &path, telemetry)?;
-    Ok(Evidence { path, geometry })
+    let measured: super::capture_layout::Geometry = serde_json::from_value(geometry.clone())?;
+    Ok(Evidence {
+        path: (!measured.validate()?.empty()).then_some(path),
+        geometry,
+    })
 }
 
 pub(super) fn padded_range(address: &str) -> Result<String> {
@@ -188,9 +223,9 @@ pub(super) fn compare_evidence(
             sheet: candidate.sheet.clone(),
             cell: candidate.cell.clone(),
             range: padded_range(&candidate.cell)?,
-            before_recalc_differs: comparisons.differ(&o0.path, &s0.path)?,
-            after_shrink_recalc_differs: comparisons.differ(&o0.path, &s1.path)?,
-            also_changed_by_original_recalc: comparisons.differ(&o0.path, &o1.path)?
+            before_recalc_differs: o0.pixels_differ(s0, comparisons)?,
+            after_shrink_recalc_differs: o0.pixels_differ(s1, comparisons)?,
+            also_changed_by_original_recalc: o0.pixels_differ(o1, comparisons)?
                 || o0.geometry != o1.geometry,
             before_recalc_geometry_differs: o0.geometry != s0.geometry,
             after_shrink_recalc_geometry_differs: o0.geometry != s1.geometry,
@@ -209,6 +244,7 @@ pub(super) fn compare_evidence(
 }
 
 /// Compare decoded pixels; Office chart exports do not consistently match the documented format.
+#[cfg(test)]
 pub(super) fn images_differ(left: &Path, right: &Path) -> Result<bool> {
     ImageComparisons::default().differ(left, right)
 }
@@ -257,7 +293,7 @@ mod tests {
         let original = BTreeMap::from([(
             candidate,
             Evidence {
-                path: "unused.png".into(),
+                path: Some("unused.png".into()),
                 geometry: Value::Null,
             },
         )]);

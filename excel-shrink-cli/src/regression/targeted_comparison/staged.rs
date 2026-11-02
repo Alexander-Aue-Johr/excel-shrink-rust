@@ -1,5 +1,6 @@
 //! Preserve live pre-rebuild states until every late candidate has matching evidence.
 use super::{
+    capture_layout::{self, Geometry},
     charts,
     evidence::Evidence,
     heights::{self, HeightCheck, HeightRun},
@@ -21,6 +22,7 @@ struct WorkbookState {
     path: PathBuf,
     xml: Snapshot,
     captures: BTreeMap<Candidate, Evidence>,
+    geometries: BTreeMap<Candidate, Geometry>,
     charts: charts::Captures,
     heights: BTreeMap<(String, Vec<(u32, u32)>), Vec<HeightRun>>,
 }
@@ -31,8 +33,14 @@ pub(super) struct VisualFinding {
     cell: String,
     pixels_differ: bool,
     geometry_differs: bool,
-    left_png: PathBuf,
-    right_png: PathBuf,
+    pixels_compared: bool,
+    rendering_differs: bool,
+    left_rendering: &'static str,
+    right_rendering: &'static str,
+    left_geometry: serde_json::Value,
+    right_geometry: serde_json::Value,
+    left_png: Option<PathBuf>,
+    right_png: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -149,6 +157,7 @@ impl Workflow<'_, '_> {
                 path,
                 xml,
                 captures: BTreeMap::new(),
+                geometries: BTreeMap::new(),
                 charts,
                 heights: BTreeMap::new(),
             },
@@ -404,10 +413,7 @@ impl Workflow<'_, '_> {
     /// Stable candidate-derived filenames prevent late insertions from overwriting earlier images.
     fn capture_missing_regions(&mut self) -> Result<()> {
         let started = Instant::now();
-        let (selected, coverage) = self.content_bounds.select(&self.requested_candidates)?;
-        self.comparison.candidates = selected;
-        self.comparison.report.content_coverage = coverage;
-        self.publish_candidate_count()?;
+        self.prepare_capture_partition()?;
         let mut pending: BTreeMap<_, VecDeque<_>> = self
             .states
             .iter()
@@ -481,7 +487,15 @@ impl Workflow<'_, '_> {
                     self.states.get_mut(id).unwrap().captures.insert(
                         candidate.clone(),
                         Evidence {
-                            path: path.clone(),
+                            path: if serde_json::from_value::<Geometry>(geometry.clone())?.validate()?.empty() {
+                                None
+                            } else {
+                                let (width, height) = image::image_dimensions(path)?;
+                                ensure!(width <= capture_layout::MAX_EDGE && height <= capture_layout::MAX_EDGE
+                                    && u64::from(width) * u64::from(height) <= capture_layout::MAX_PIXELS,
+                                    "Export exceeds the measured image budget; no equality verdict was produced");
+                                Some(path.clone())
+                            },
                             geometry,
                         },
                     );
@@ -512,6 +526,95 @@ impl Workflow<'_, '_> {
             .entry("capture_selection_and_transport".into())
             .or_default() += started.elapsed().as_millis() as u64;
         Ok(())
+    }
+
+    /// Preserve selected coverage, measure its visible partition, and record non-rendering leaves.
+    fn prepare_capture_partition(&mut self) -> Result<()> {
+        let (selected, coverage) = self.content_bounds.select(&self.requested_candidates)?;
+        let plan = capture_layout::plan(&selected, |candidate| self.measure_candidate(candidate))?;
+        self.comparison.candidates = plan.keys().cloned().collect();
+        let mut coverage = coverage;
+        super::content_bounds::record_partition(&mut coverage, &self.comparison.candidates);
+        self.comparison.report.content_coverage = coverage;
+        for (candidate, states) in &plan {
+            for (&id, &geometry) in states {
+                if geometry.empty() {
+                    self.states.get_mut(&id).unwrap().captures.insert(
+                        candidate.clone(),
+                        Evidence {
+                            path: None,
+                            geometry: serde_json::to_value(geometry)?,
+                        },
+                    );
+                }
+            }
+        }
+        self.comparison.telemetry.update(|state| {
+            for (&id, workbook) in &self.states {
+                state.lane(id).skipped_zero_area_regions = self
+                    .comparison
+                    .candidates
+                    .iter()
+                    .filter(|candidate| {
+                        workbook
+                            .captures
+                            .get(*candidate)
+                            .is_some_and(|e| e.path.is_none())
+                    })
+                    .count();
+                state.lane(id).captures_done = self
+                    .comparison
+                    .candidates
+                    .iter()
+                    .filter(|candidate| workbook.captures.contains_key(*candidate))
+                    .count();
+            }
+        })?;
+        self.publish_candidate_count()?;
+        Ok(())
+    }
+
+    /// Cache immutable state geometry; later states must supply their own measurements.
+    fn measure_candidate(&mut self, candidate: &Candidate) -> Result<BTreeMap<LaneId, Geometry>> {
+        let missing: Vec<_> = self
+            .states
+            .iter()
+            .filter(|(_, state)| !state.geometries.contains_key(candidate))
+            .map(|(&id, _)| id)
+            .collect();
+        if !missing.is_empty() {
+            self.comparison.telemetry.progress(|state| {
+                for &id in &missing {
+                    state.lane(id).current_sheet = Some(candidate.sheet.clone());
+                    state.lane(id).current_range = Some(format!("measure {}", candidate.cell));
+                }
+            })?;
+            let measured = self
+                .comparison
+                .excel
+                .as_mut()
+                .context("Excel host missing")?
+                .measure_ranges(&missing, candidate, &self.comparison.telemetry)?;
+            for (&id, geometry) in missing.iter().zip(measured) {
+                self.states
+                    .get_mut(&id)
+                    .unwrap()
+                    .geometries
+                    .insert(candidate.clone(), geometry);
+            }
+        }
+        self.states
+            .iter()
+            .map(|(&id, state)| {
+                Ok((
+                    id,
+                    *state
+                        .geometries
+                        .get(candidate)
+                        .context("Missing measured capture geometry")?,
+                ))
+            })
+            .collect()
     }
 
     fn pairs(&self) -> Vec<(&'static str, LaneId, LaneId)> {
@@ -553,7 +656,13 @@ impl Workflow<'_, '_> {
                 findings.push(VisualFinding {
                     sheet: candidate.sheet.clone(),
                     cell: candidate.cell.clone(),
-                    pixels_differ: self.comparison.image_comparisons.differ(&a.path, &b.path)?,
+                    pixels_differ: a.pixels_differ(b, &mut self.comparison.image_comparisons)?,
+                    pixels_compared: a.path.is_some() && b.path.is_some(),
+                    rendering_differs: a.path.is_some() != b.path.is_some(),
+                    left_rendering: a.rendering(),
+                    right_rendering: b.rendering(),
+                    left_geometry: a.geometry.clone(),
+                    right_geometry: b.geometry.clone(),
                     geometry_differs: a.geometry != b.geometry,
                     left_png: a.path.clone(),
                     right_png: b.path.clone(),
@@ -591,18 +700,12 @@ impl Workflow<'_, '_> {
     }
 
     fn project_legacy_findings(&mut self) -> Result<()> {
-        self.comparison.original_save_changes = self
-            .content_bounds
-            .select(&self.comparison.original_save_changes)?
-            .0;
-        self.comparison.performance.save_changes = self
-            .content_bounds
-            .select(&self.comparison.performance.save_changes)?
-            .0;
-        self.comparison.performance.optimization_changes = self
-            .content_bounds
-            .select(&self.comparison.performance.optimization_changes)?
-            .0;
+        self.comparison.original_save_changes =
+            self.project_changes(&self.comparison.original_save_changes)?;
+        self.comparison.performance.save_changes =
+            self.project_changes(&self.comparison.performance.save_changes)?;
+        self.comparison.performance.optimization_changes =
+            self.project_changes(&self.comparison.performance.optimization_changes)?;
         self.comparison.captures.original_before = self.states[&LaneId::O].captures.clone();
         self.comparison.captures.shrink_before = self.states[&LaneId::SD].captures.clone();
         self.comparison.captures.shrink_after = self.states[&LaneId::SDR].captures.clone();
@@ -614,6 +717,30 @@ impl Workflow<'_, '_> {
             self.comparison.compare_performance_evidence()?;
         }
         Ok(())
+    }
+
+    /// Attribution uses overlap with the final partition, not equality with old grid addresses.
+    fn project_changes(&self, changes: &BTreeSet<Candidate>) -> Result<BTreeSet<Candidate>> {
+        use super::content_bounds::Rectangle;
+        let selected = self.content_bounds.select(changes)?.0;
+        let rectangles = selected
+            .iter()
+            .map(|c| Ok((&c.sheet, Rectangle::parse(&c.cell)?)))
+            .collect::<Result<Vec<_>>>()?;
+        let mut result = BTreeSet::new();
+        for candidate in &self.comparison.candidates {
+            let a = Rectangle::parse(&candidate.cell)?;
+            if rectangles.iter().any(|(sheet, b)| {
+                **sheet == candidate.sheet
+                    && a.top <= b.bottom
+                    && b.top <= a.bottom
+                    && a.left <= b.right
+                    && b.left <= a.right
+            }) {
+                result.insert(candidate.clone());
+            }
+        }
+        Ok(result)
     }
 
     fn close_states(&mut self) -> Result<()> {

@@ -70,11 +70,20 @@
       const range = context.workbook.worksheets.getItem(command.sheet).getRange(command.range);
       if (command.kind === 'capture') {
         range.load('top,left,width,height');
+        await context.sync();
+        const geometry = {top: range.top, left: range.left, width: range.width, height: range.height};
+        if (![geometry.top, geometry.left, geometry.width, geometry.height]
+          .every(value => Number.isFinite(value) && value >= 0)) {
+          throw new Error('Invalid measured capture geometry');
+        }
+        if (range.width === 0 || range.height === 0) {
+          return {non_rendering: true, reason: 'zero-area-range', geometry};
+        }
         const image = range.getImage();
         await context.sync();
         return {
           image_base64: image.value,
-          geometry: {top: range.top, left: range.left, width: range.width, height: range.height}
+          geometry
         };
       }
       if (command.kind === 'measure') {

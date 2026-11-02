@@ -127,7 +127,7 @@ impl ExcelHost {
         Ok(result)
     }
 
-    /// Capture pixels and geometry in one Office.js synchronization.
+    /// Capture after the Office.js visible-area preflight; return the observed geometry.
     pub(super) fn capture_range(
         &mut self,
         lane: LaneId,
@@ -141,6 +141,33 @@ impl ExcelHost {
             telemetry,
         )?;
         measured_geometry(&response["geometry"])
+    }
+
+    /// Measure the same proposed rectangle in every live state without rendering it.
+    pub(super) fn measure_ranges(
+        &mut self,
+        lanes: &[LaneId],
+        candidate: &super::Candidate,
+        telemetry: &Telemetry,
+    ) -> Result<Vec<super::capture_layout::Geometry>> {
+        let response = self.call(json!({"kind":"capture_batch","jobs":lanes.iter().map(|lane|
+            json!({"kind":"measure","lane":lane.key(),"sheet":candidate.sheet,"range":candidate.cell}))
+            .collect::<Vec<_>>()}), telemetry)?;
+        let results = response["images"]
+            .as_array()
+            .context("Missing geometry responses")?;
+        ensure!(
+            results.len() == lanes.len(),
+            "Incomplete geometry response coverage"
+        );
+        results
+            .iter()
+            .map(|result| {
+                let geometry: super::capture_layout::Geometry =
+                    serde_json::from_value(result.clone())?;
+                geometry.validate()
+            })
+            .collect()
     }
 
     /// Submit one outstanding capture per open lane and require every corresponding result.

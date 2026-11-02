@@ -19,6 +19,9 @@ pub(super) fn apply(
     );
     let mut regions = BTreeMap::<Tile, BTreeSet<PathBuf>>::new();
     let mut protected = BTreeSet::new();
+    if report["capture_partition"] == "visible-geometry-v1" {
+        protect_adaptive_neighbors(report, &mut protected)?;
+    }
     for pair in report["comparisons"]
         .as_array()
         .context("Missing comparisons for evidence retention")?
@@ -42,6 +45,14 @@ pub(super) fn apply(
             }
             let paths = regions.entry(tile).or_default();
             for key in ["left_png", "right_png"] {
+                if finding[key].is_null() && report["capture_partition"] == "visible-geometry-v1" {
+                    let side = if key == "left_png" { "left" } else { "right" };
+                    ensure!(
+                        finding[format!("{side}_rendering")] == "zero-area-range",
+                        "Missing image without a zero-area observation"
+                    );
+                    continue;
+                }
                 let path = PathBuf::from(
                     finding[key]
                         .as_str()
@@ -113,11 +124,79 @@ pub(super) fn apply(
     replace_alias_paths(report, &aliases);
     report["evidence_retention"] = json!({"comparison_resolution":"original",
         "equal_preview_width":preview_width,"full_resolution_context_tiles":1,
+        "context_policy":if report["capture_partition"] == "visible-geometry-v1" {"adjacent-cell-rectangles"} else {"grid-neighbors"},
         "deduplicated_images":deduplicated,"files":files});
     Ok(original_paths
         .difference(&retained_paths)
         .cloned()
         .collect())
+}
+
+/// Adaptive images can span many former tiles. Preserve neighbors at their
+/// actual cell boundaries, including the far edge of a large differing region.
+fn protect_adaptive_neighbors(report: &Value, protected: &mut BTreeSet<Tile>) -> Result<()> {
+    let mut regions = BTreeMap::new();
+    let mut differences = BTreeSet::new();
+    for pair in report["comparisons"]
+        .as_array()
+        .context("Missing comparisons")?
+    {
+        for finding in pair["findings"].as_array().context("Missing findings")? {
+            let key = (
+                finding["sheet"].as_str().context("Missing sheet")?,
+                finding["cell"].as_str().context("Missing range")?,
+            );
+            regions.insert(key, finding);
+            if finding["pixels_differ"] == true
+                || finding["geometry_differs"] == true
+                || finding["rendering_differs"] == true
+            {
+                differences.insert(key);
+            }
+        }
+    }
+    for (&key, finding) in &regions {
+        let a = rectangle(key.1)?;
+        for other in &differences {
+            if key.0 != other.0 {
+                continue;
+            }
+            let b = rectangle(other.1)?;
+            if a.0 <= b.2 + 1 && b.0 <= a.2 + 1 && a.1 <= b.3 + 1 && b.1 <= a.3 + 1 {
+                protected.insert(tile(finding)?);
+                break;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn rectangle(range: &str) -> Result<(u32, u32, u32, u32)> {
+    fn coordinate(address: &str) -> Result<(u32, u32)> {
+        let split = address
+            .find(|c: char| c.is_ascii_digit())
+            .context("Invalid capture address")?;
+        let row: u32 = address[split..].parse()?;
+        let column = address[..split]
+            .bytes()
+            .try_fold(0u32, |value, byte| {
+                byte.is_ascii_uppercase().then_some(())?;
+                value
+                    .checked_mul(26)?
+                    .checked_add(u32::from(byte - b'A') + 1)
+            })
+            .context("Invalid capture column")?;
+        ensure!(
+            (1..=1_048_576).contains(&row) && (1..=16_384).contains(&column),
+            "Capture outside Excel grid"
+        );
+        Ok((row, column))
+    }
+    let (start, end) = range.split_once(':').unwrap_or((range, range));
+    let a = coordinate(start)?;
+    let b = coordinate(end)?;
+    ensure!(a.0 <= b.0 && a.1 <= b.1, "Reversed capture range");
+    Ok((a.0, a.1, b.0, b.1))
 }
 
 /// Call only after both completed reports reference the durable retained files.
@@ -188,6 +267,20 @@ fn tile(finding: &Value) -> Result<Tile> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn adaptive_context_includes_neighbors_at_the_far_edge_of_large_regions() -> Result<()> {
+        let report = json!({"comparisons":[{"findings":[
+            {"sheet":"Data","cell":"A1:P10000","pixels_differ":true},
+            {"sheet":"Data","cell":"A10001:P20000","pixels_differ":false},
+            {"sheet":"Data","cell":"A20002:P20100","pixels_differ":false}
+        ]}]});
+        let mut protected = BTreeSet::new();
+        protect_adaptive_neighbors(&report, &mut protected)?;
+        assert!(protected.contains(&tile(&report["comparisons"][0]["findings"][1])?));
+        assert!(!protected.contains(&tile(&report["comparisons"][0]["findings"][2])?));
+        Ok(())
+    }
 
     fn fixture(ranges: &[(&str, bool)]) -> Result<(PathBuf, Value)> {
         let directory = artifact_cache::unique_path(&std::env::temp_dir(), "targeted-retention")?;

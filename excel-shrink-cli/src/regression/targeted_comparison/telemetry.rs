@@ -128,6 +128,7 @@ pub(super) struct Lane {
     pub closed_at: Option<i64>,
     pub steps: BTreeMap<Phase, StepStatus>,
     pub captures_done: usize,
+    pub skipped_zero_area_regions: usize,
     pub captures_total: Option<usize>,
     pub current_sheet: Option<String>,
     pub current_range: Option<String>,
@@ -282,6 +283,7 @@ impl Telemetry {
                 })
                 .collect(),
             captures_done: 0,
+            skipped_zero_area_regions: 0,
             captures_total: None,
             current_sheet: None,
             current_range: None,

@@ -30,6 +30,8 @@ export function runTests() {
   assert(!captureProgress({ captures_done: 6, captures_total: 5 }).known, 'Invalid counts never become a completed bar.');
   assert(captureProgress({ captures_done: 2, captures_total: 8 }).remaining === 6, 'A growing candidate queue preserves completed work.');
   assert(captureProgress({ captures_done: 0, captures_total: 0 }).known, 'Zero-candidate selection is explicit.');
+  assert(captureProgress({ captures_done: 3, captures_total: 3, skipped_zero_area_regions: 2 })
+    .text.includes('2 skipped: no visible area'), 'Non-rendering observations are not presented as captured images.');
   const current = { run_id: 'one', revision: 5, lanes: [] };
   assert(acceptComparison(current, { ...current, revision: 4 }) === current, 'Late replies cannot reverse the lifecycle.');
   const row = heartbeatRow(ended, { id: 'O', pid: 12, process_started_at: 50, process_alive: true });

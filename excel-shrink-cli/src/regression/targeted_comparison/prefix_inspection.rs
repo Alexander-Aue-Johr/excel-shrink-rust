@@ -132,8 +132,8 @@ fn inspect(comparison: &mut Comparison<'_>, source: &std::path::Path) -> Result<
             )?);
         }
         findings.push(json!({"sheet":candidate.sheet,"range":candidate.cell,
-            "shrink_differs":evidence::images_differ(&captures[0].path,&captures[1].path)?,
-            "normalization_differs":evidence::images_differ(&captures[0].path,&captures[2].path)?}));
+            "shrink_differs":captures[0].pixels_differ(&captures[1], &mut comparison.image_comparisons)?,
+            "normalization_differs":captures[0].pixels_differ(&captures[2], &mut comparison.image_comparisons)?}));
         fs::write(
             comparison.args.output.join("visual-samples.json"),
             serde_json::to_vec_pretty(&findings)?,

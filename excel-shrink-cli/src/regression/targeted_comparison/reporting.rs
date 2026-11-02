@@ -150,6 +150,7 @@ pub(super) fn new_report() -> Report {
     Report {
         workbook_bytes: BTreeMap::new(),
         capture_policy: super::CAPTURE_POLICY,
+        capture_partition: "visible-geometry-v1",
         timings_ms: BTreeMap::new(),
         image_comparison_statistics: Default::default(),
         xml_snapshot_statistics: Default::default(),
@@ -168,6 +169,7 @@ pub(super) fn new_report() -> Report {
         capture_counts: BTreeMap::new(),
         limitations: vec![
             "Cell capture regions are intersected with the union of content-bearing cell bounds across raw, saved and rebuilt inputs, plus one row/column of margin. Formatting-only exterior regions are intentionally skipped, not visually confirmed identical; content_coverage records selection counts and bounds. Chart exports are independent of this policy.".into(),
+            "Capture partition visible-geometry-v1 merges adjacent internal grid tiles without changing their union. It measures every live state and splits only for image budgets (30,000 pixels per edge, 32 million pixels total), estimating conservatively at two pixels per point plus a rounding margin. Actual exports are checked too. Zero-area ranges retain geometry and explicit non-rendering observations without images or pixel equality claims. Later states can repartition and backfill earlier retained workbooks.".into(),
             "CF decisions concern rule contributions within the recorded union of comparison extents. Literal cellIs exclusions require identical cell-XML fingerprints and visual context. Formula inputs remain captures; unknown or changed rules retain region captures. This is not a proof of whole-workbook visual equality.".into(),
             "Embedded charts and standalone chart sheets are compared as whole-chart exports in every retained state. Chart-sheet exports use a consistent viewport in the existing owned Excel process. Other drawings, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
             "Charts with measured zero width or height retain geometry and an explicit zero-area-chart observation without a pixel verdict. A transition between visible and zero-area states is a rendering/geometry difference.".into(),

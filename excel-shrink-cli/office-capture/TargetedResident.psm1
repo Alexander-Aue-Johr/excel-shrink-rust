@@ -228,11 +228,11 @@ function Invoke-TargetedJob {
 
 function Invoke-TargetedCaptureBatch {
     <# .SYNOPSIS
-    Allows only cell captures in a parallel batch; mutations remain explicit ordered phases.
+    Dispatches geometry reads and cell captures together; mutations remain explicit ordered phases.
     #>
     param($Command)
     foreach ($job in $Command.jobs) {
-        if ($job.kind -ne 'capture') { throw 'A capture batch may not mutate workbooks.' }
+        if ($job.kind -notin @('capture','measure')) { throw 'A capture batch may not mutate workbooks.' }
     }
     return @{images=@(Invoke-TargetedJobs $Command.jobs)}
 }
