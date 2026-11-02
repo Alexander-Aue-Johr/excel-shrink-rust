@@ -8,6 +8,7 @@ param(
     [switch]$SaveOverlap,
     [switch]$FailLateCapture,
     [switch]$Charts,
+    [switch]$CollapsedChart,
     [ValidateSet(
         'constant', 'constant-string', 'styles', 'dummy-missing', 'dummy-inert',
         'dummy-present', 'dummy-added', 'duplicate', 'color-scale', 'data-bar', 'data-bar-unchanged',
@@ -25,6 +26,7 @@ param(
     [string]$ConditionalFormatting
 )
 $ErrorActionPreference = 'Stop'
+if ($CollapsedChart -and -not $Charts) { throw 'Collapsed-chart verification requires -Charts.' }
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../..'))
 $capture = Join-Path $repository 'excel-shrink-cli/office-capture'
 $directory = [IO.Path]::GetFullPath($Output)
@@ -36,6 +38,7 @@ if ($CleanWorkbook) { $fixtureArguments += '--clean-workbook' }
 if ($RecalcCandidate) { $fixtureArguments += '--recalc-candidate' }
 if ($SaveOverlap) { $fixtureArguments += '--save-overlap' }
 if ($Charts) { $fixtureArguments += '--charts' }
+if ($CollapsedChart) { $fixtureArguments += '--collapsed-chart' }
 if ($ConditionalFormatting) { $fixtureArguments += @('--conditional-formatting', $ConditionalFormatting) }
 & python (Join-Path $PSScriptRoot 'make_smoke_fixtures.py') (Join-Path $directory 'inputs') @fixtureArguments
 if ($LASTEXITCODE -ne 0) { throw 'Fixture creation failed.' }
@@ -84,7 +87,9 @@ try {
     }
     $telemetry = Get-Content -LiteralPath (Join-Path $directory 'result/telemetry.json') -Raw | ConvertFrom-Json
     if ($Charts -and $process.ExitCode -eq 0) {
-        & python (Join-Path $PSScriptRoot 'verify_charts.py') (Join-Path $directory 'result')
+        $chartArguments = @((Join-Path $directory 'result'))
+        if ($CollapsedChart) { $chartArguments += '--collapsed-chart' }
+        & python (Join-Path $PSScriptRoot 'verify_charts.py') @chartArguments
         if ($LASTEXITCODE -ne 0) { throw 'Chart evidence verification failed.' }
     }
     if ($FailCapture -or $FailOptimization -or $FailLateCapture) {

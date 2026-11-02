@@ -107,22 +107,7 @@ impl ExcelHost {
         Ok(result)
     }
 
-    /// Keep transport timings and resource samples out of geometry equality checks.
-    pub(super) fn measure_range(
-        &mut self,
-        lane: LaneId,
-        sheet: &str,
-        range: &str,
-        telemetry: &Telemetry,
-    ) -> Result<Value> {
-        let response = self.call(
-            json!({"kind":"measure", "lane":lane.key(), "sheet":sheet, "range":range}),
-            telemetry,
-        )?;
-        measured_geometry(&response)
-    }
-
-    /// Capture one requested rectangle into its evidence file.
+    /// Capture pixels and geometry in one Office.js synchronization.
     pub(super) fn capture_range(
         &mut self,
         lane: LaneId,
@@ -130,12 +115,12 @@ impl ExcelHost {
         range: &str,
         output: &Path,
         telemetry: &Telemetry,
-    ) -> Result<()> {
-        self.call(
+    ) -> Result<Value> {
+        let response = self.call(
             json!({"kind":"capture", "lane":lane.key(), "sheet":sheet, "range":range, "output":output}),
             telemetry,
         )?;
-        Ok(())
+        measured_geometry(&response["geometry"])
     }
 
     /// Enumerate embedded charts and same-resident chart sheets independently of XML changes.
@@ -162,7 +147,7 @@ impl ExcelHost {
             telemetry,
         )?;
         ensure!(response["geometry"].is_object(), "Missing chart geometry");
-        Ok(response["geometry"].clone())
+        Ok(response)
     }
 
     /// Start one host and read its event/response stream independently of Excel.
@@ -252,7 +237,9 @@ impl ExcelHost {
 fn normalize_windows_paths(command: &mut Value) -> Result<()> {
     for field in ["path", "output", "host_executable"] {
         if let Some(path) = command[field].as_str() {
-            command[field] = json!(crate::regression::excel_automation::power_shell_path(Path::new(path))?);
+            command[field] = json!(crate::regression::excel_automation::power_shell_path(
+                Path::new(path)
+            )?);
         }
     }
     Ok(())

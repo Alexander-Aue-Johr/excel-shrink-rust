@@ -96,7 +96,7 @@ pub(super) fn compare_performance(
         .collect()
 }
 
-/// Measure the candidate cell and capture its padded visual neighborhood.
+/// Capture the padded candidate and its geometry in the same Office.js synchronization.
 pub(super) fn capture_candidate(
     excel: &mut ExcelHost,
     lane: LaneId,
@@ -109,8 +109,7 @@ pub(super) fn capture_candidate(
         state.lane(lane).current_sheet = Some(candidate.sheet.clone());
         state.lane(lane).current_range = Some(range.clone());
     })?;
-    let geometry = excel.measure_range(lane, &candidate.sheet, &candidate.cell, telemetry)?;
-    excel.capture_range(lane, &candidate.sheet, &range, &path, telemetry)?;
+    let geometry = excel.capture_range(lane, &candidate.sheet, &range, &path, telemetry)?;
     Ok(Evidence { path, geometry })
 }
 

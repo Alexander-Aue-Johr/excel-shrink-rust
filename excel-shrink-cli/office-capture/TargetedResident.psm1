@@ -111,6 +111,9 @@ function Invoke-TargetedJob {
                 Remove-TargetedTaskpane $entry
             }
             if ($Command.kind -in @('capture', 'capture_chart')) {
+                if ($response.non_rendering -eq $true) {
+                    return @{non_rendering=$true; reason=$response.reason; geometry=$response.geometry}
+                }
                 [IO.File]::WriteAllBytes($Command.output, [Convert]::FromBase64String($response.image_base64))
                 return @{path=$Command.output; geometry=$response.geometry}
             }

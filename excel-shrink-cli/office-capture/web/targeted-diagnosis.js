@@ -55,18 +55,27 @@
       if (command.kind === 'capture_chart') {
         const chart = context.workbook.worksheets.getItem(command.sheet).charts.getItem(command.chart);
         chart.load('top,left,width,height');
+        await context.sync();
+        const geometry = {top: chart.top, left: chart.left, width: chart.width, height: chart.height};
+        if (chart.width === 0 || chart.height === 0) {
+          return {non_rendering: true, reason: 'zero-area-chart', geometry};
+        }
         const image = chart.getImage();
         await context.sync();
         return {
           image_base64: image.value,
-          geometry: {top: chart.top, left: chart.left, width: chart.width, height: chart.height}
+          geometry
         };
       }
       const range = context.workbook.worksheets.getItem(command.sheet).getRange(command.range);
       if (command.kind === 'capture') {
+        range.load('top,left,width,height');
         const image = range.getImage();
         await context.sync();
-        return {image_base64: image.value};
+        return {
+          image_base64: image.value,
+          geometry: {top: range.top, left: range.left, width: range.width, height: range.height}
+        };
       }
       if (command.kind === 'measure') {
         range.load('top,left,width,height');

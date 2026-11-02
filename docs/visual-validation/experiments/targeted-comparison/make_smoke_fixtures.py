@@ -6,7 +6,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 
-def create_chart_fixtures(directory):
+def create_chart_fixtures(directory, collapsed_chart=False):
     """Keep all worksheet cells identical while changing only chart objects."""
     from openpyxl import Workbook
     from openpyxl.chart import BarChart, Reference
@@ -41,6 +41,9 @@ def create_chart_fixtures(directory):
         assert len(properties) == len(names)
         for element, name in zip(properties, names):
             element.set('name', name)
+        if collapsed_chart and lane == 'default':
+            # A stored zero-height drawing reproduces Excel's failed getImage export.
+            drawing[0].find('{*}ext').set('cy', '0')
         parts['xl/drawings/drawing1.xml'] = ET.tostring(drawing)
         with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as archive:
             for name, content in parts.items():
@@ -118,6 +121,7 @@ if __name__ == '__main__':
     parser.add_argument('--recalc-candidate', action='store_true')
     parser.add_argument('--save-overlap', action='store_true')
     parser.add_argument('--charts', action='store_true')
+    parser.add_argument('--collapsed-chart', action='store_true')
     parser.add_argument('--conditional-formatting', choices=[
         'constant', 'constant-string', 'styles', 'dummy-missing', 'dummy-inert',
         'dummy-present', 'dummy-added', 'duplicate', 'color-scale', 'data-bar', 'data-bar-unchanged',
@@ -138,6 +142,6 @@ if __name__ == '__main__':
         from cf_fixtures import create
         create(args.directory, args.conditional_formatting)
     elif args.charts:
-        create_chart_fixtures(args.directory)
+        create_chart_fixtures(args.directory, args.collapsed_chart)
     else:
         create_fixtures(args.directory, args.check_performance, args.clean_workbook, args.recalc_candidate, args.save_overlap)

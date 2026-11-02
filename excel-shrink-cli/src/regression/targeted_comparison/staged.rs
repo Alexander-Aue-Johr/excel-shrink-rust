@@ -178,7 +178,7 @@ impl Workflow<'_, '_> {
         self.comparison
             .report
             .capture_counts
-            .insert(format!("{}:charts", id.key()), captures.len());
+            .insert(format!("{}:charts", id.key()), charts::image_count(&captures));
         self.comparison
             .telemetry
             .update(|state| state.step(id, phase, StepStatus::Done))?;

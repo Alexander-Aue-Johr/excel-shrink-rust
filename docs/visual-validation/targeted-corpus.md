@@ -23,6 +23,11 @@ counts are per transition, so they must not be summed as unique workbook cells.
 Charts are exported separately, including chart sheets, even outside cell bounds.
 Late rebuild candidates are backfilled in the retained pre-rebuild workbooks.
 
+Charts with a measured zero width or height have no renderable image. They retain
+their geometry and `zero-area-chart` state; `pixels_compared` is false. Collapsing
+from a visible chart to zero area is a rendering/geometry difference, not an image
+export failure or a successful pixel comparison.
+
 The one-cell margin is a coverage policy, not a proof that arbitrary text overflow
 or formatting outside content cannot change. Reports retain this limitation.
 
@@ -45,7 +50,7 @@ No legacy full visual pass follows the targeted comparison.
 
 ```powershell
 cargo build --release -p excel-shrink-cli
-.\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/targeted-study --run-corpus Data.gov --resident-capture --targeted-comparison --control-room --comparison-workers 4 --order size-asc
+.\target\release\excel-shrink-cli.exe regression study --request-file .tmp/distributed-study-request.json --output-root .tmp/regression/targeted-study --run-corpus Data.gov --resident-capture --targeted-comparison --control-room --comparison-workers 4 --order size-asc --startup-timeout-seconds 600 --workbook-timeout-seconds 7200
 ```
 
 Use your machine's existing request/configuration paths; keep its archive binding
@@ -54,6 +59,11 @@ and corpus IDs. Add `--targeted-skip-check-performance` for Original/Default onl
 Do not combine targeted mode with `--preparation-hash-profile`, `--aggressive-first`
 or `--full-scan-deferred`. The workflow uses four retained states without Check
 Performance and six with it, so concurrent groups multiply that process count.
+The example allows two hours for the complete multi-state workflow; individual
+Excel operations remain bounded and closing is capped at 15 seconds. Existing
+WPF timeout settings remain authoritative. Use a sufficiently long workbook
+deadline for the slowest-100 benchmark rather than interpreting valid ongoing
+capture work as a stalled Excel command.
 
 Resume the **same output root and arguments** to reuse completed targeted results.
 Old visual/hash results are not accepted as completion of this policy. A completed

@@ -6,7 +6,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 
-def verify(directory: Path) -> None:
+def verify(directory: Path, collapsed_chart=False) -> None:
     report = json.loads((directory / 'report.json').read_text(encoding='utf-8'))
     initial = next(item for item in report['transitions'] if item['label'] == 'default input versus original input')
     assert not initial['changes'], 'Chart selection must not depend on changed worksheet XML'
@@ -20,7 +20,14 @@ def verify(directory: Path) -> None:
         common = [item for item in selected if not item['presence_differs']]
         assert len(common) == 2
         assert sum(item['pixels_differ'] for item in common) == 1, common
-        assert not any(item['geometry_differs'] for item in common), common
+        if collapsed_chart and kind == 'embedded':
+            collapsed = next(item for item in common if item['chart'] == 'Stable')
+            assert collapsed['geometry_differs'] and collapsed['rendering_differs'], collapsed
+            assert not collapsed['pixels_compared'], collapsed
+            assert collapsed['right_rendering'] == 'zero-area-chart', collapsed
+            assert collapsed['right_image'] is None, collapsed
+        else:
+            assert not any(item['geometry_differs'] for item in common), common
     if report['check_performance'] != 'not_requested':
         labels = {pair['label'] for pair in report['comparisons']}
         assert 'direct Check Performance' in labels
@@ -41,4 +48,4 @@ def verify(directory: Path) -> None:
 
 
 if __name__ == '__main__':
-    verify(Path(sys.argv[1]))
+    verify(Path(sys.argv[1]), '--collapsed-chart' in sys.argv[2:])

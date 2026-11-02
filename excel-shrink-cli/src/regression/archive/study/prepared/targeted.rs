@@ -117,6 +117,7 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
                         finding["pixels_differ"] == true
                             || finding["geometry_differs"] == true
                             || finding["presence_differs"] == true
+                            || finding["rendering_differs"] == true
                     })
         });
     record["targeted_comparison"]["status"] = report["status"].clone();
