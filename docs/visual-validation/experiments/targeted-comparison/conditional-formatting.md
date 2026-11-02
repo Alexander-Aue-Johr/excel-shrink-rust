@@ -259,8 +259,8 @@ more conservative than implementing a table-name resolver.
 
 ## Constant reference-error expressions
 
-Only the complete expression forms `#REF!` and `#REF!=1` are newly recognized as
-input-independent error expressions. Optional leading `=` and surrounding
+The initial support covered complete expression forms `#REF!` and `#REF!=1` as
+input-independent error expressions. Further forms are documented below. Optional leading `=` and surrounding
 whitespace are accepted; XML entities are decoded once. Additional cell references,
 operators or functions remain unsupported. There is no formula evaluator and no
 attempt to repair broken references. Selected cellIs operands are covered by the
@@ -333,3 +333,31 @@ Unit tests include mixed dependencies and malformed/suffixed formulas. Native
 controls `row-parity` and `row-parity-shift` passed: value edits retain band pixels
 outside the edited row while still capturing the value change; changing parity
 captures and reveals the changed bands. Owned Excel processes closed.
+
+## Additional fixed error expressions and text operands
+
+`ISTEXT(#REF!)` is recognized as a constant false test. The literal `#DIV/0!` and
+`#REF!` equality comparisons with complete Excel string literals are recognized
+as constant errors. A doubled quote is the only quote escape accepted inside a
+text literal. Concatenation, appended functions, additional references, incomplete
+quotes and other operators stay conservative. This is a small recognition set,
+not formula evaluation. Recognition uses ASCII token whitespace; non-ASCII name
+characters cannot be silently removed to construct a supported function name.
+Catalogue, application range, namespace, formatting/context and layout guards
+remain unchanged. Mixed blocks keep their other dependencies and changed cells
+remain separate capture candidates.
+
+Native `static-error-inert` and `static-error-visible` controls passed with all
+four concrete forms (ISTEXT, division error, Valid and Cancelled text operands).
+Error/false rules match their removal, do not suppress a subsequent blue rule
+under stopIfTrue, and a true-expression replacement renders the expected red fill.
+All owned Excel processes closed. Unit controls include escaped/empty strings and
+hidden concatenation/reference suffixes; 29 focused CF tests passed.
+
+The refreshed Data.gov eligibility audit completed in 107.96 seconds with zero
+errors: **187 -> 91 structural CF fallbacks**, and **542 -> 276 source-clipped
+candidate rectangles**. These are static selection estimates, not runtime gains
+or visually validated workbooks. Two ranking rules in Pensacola remain because
+they are pivot-bound; the existing pivot and external-reference guards remain.
+See `../cf-inventory/ranking-parity-errors-20261102.json` for the complete summary.
+The production corpus remains stopped.

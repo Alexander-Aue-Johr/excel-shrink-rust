@@ -126,6 +126,7 @@ if __name__ == '__main__':
         'cell-is-ref-inert', 'cell-is-ref-visible',
         'top-bottom', 'top-bottom-unchanged',
         'row-parity', 'row-parity-shift',
+        'static-error-inert', 'static-error-visible',
         'ref-relative', 'ref-column', 'ref-row', 'ref-fixed', 'ref-disjoint',
         'ref-search', 'ref-multiple', 'ref-cell-is',
         'ref-range', 'ref-range-fixed', 'ref-range-growing',

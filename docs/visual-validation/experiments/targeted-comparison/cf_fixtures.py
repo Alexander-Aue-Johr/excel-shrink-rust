@@ -105,6 +105,15 @@ def create(directory: Path, mode: str) -> None:
             sheet.conditional_formatting.add('A1:B5', Rule(type='duplicateValues', dxf=DifferentialStyle(fill=fill)))
             sheet['A1'] = 2
             sheet['A3'] = 2 if lane == 'original' else 3
+        elif mode in ('static-error-inert', 'static-error-visible'):
+            for row, expression in enumerate(('ISTEXT(#REF!)', '#DIV/0!', '#REF!="Valid"', '#REF!="Cancelled"'), 1):
+                if not (mode == 'static-error-inert' and lane == 'default'):
+                    expression = '1' if mode == 'static-error-visible' and lane == 'default' else expression
+                    sheet.conditional_formatting.add(
+                        f'A{row}:B{row}', Rule(type='expression', formula=[expression], stopIfTrue=True, dxf=DifferentialStyle(fill=fill)),
+                    )
+            blue = PatternFill('solid', fgColor='FF0000FF', bgColor='FF0000FF')
+            sheet.conditional_formatting.add('A1:B5', Rule(type='expression', formula=['1'], dxf=DifferentialStyle(fill=blue)))
         elif mode.startswith('cell-is-ref-'):
             operators = ('equal', 'notEqual', 'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual')
             for row, (operator, value) in enumerate(zip(operators, (0, -1, -1, 0, 1, 1)), 1):

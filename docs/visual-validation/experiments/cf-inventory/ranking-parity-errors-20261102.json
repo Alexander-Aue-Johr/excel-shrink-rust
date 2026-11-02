@@ -1,0 +1,165 @@
+{
+  "date": "2026-11-02",
+  "total_blocks": 20935,
+  "baseline_fallbacks": 187,
+  "remaining_fallbacks": 91,
+  "errors": 0,
+  "reasons": {
+    "application-range-not-resolved": 3,
+    "namespace-or-extension": 14,
+    "pivot-formatting-dependencies-not-modeled": 12,
+    "unsupported-rule-or-namespace-content": 18,
+    "unsupported-rule-semantics": 44
+  },
+  "supported": {
+    "combined": 52,
+    "dummy": 17,
+    "input-independent": 727,
+    "literal": 12182,
+    "references": 4916,
+    "whole-area": 2950
+  },
+  "remaining_families": [
+    {
+      "family": "aboveAverage+cellIs",
+      "blocks": 4
+    },
+    {
+      "family": "cellIs",
+      "blocks": 9
+    },
+    {
+      "family": "cellIs+colorScale",
+      "blocks": 1
+    },
+    {
+      "family": "cellIs+containsErrors+containsText+duplicateValues+uniqueValues",
+      "blocks": 2
+    },
+    {
+      "family": "cellIs+containsText+duplicateValues+uniqueValues",
+      "blocks": 14
+    },
+    {
+      "family": "colorScale",
+      "blocks": 3
+    },
+    {
+      "family": "colorScale+iconSet",
+      "blocks": 6
+    },
+    {
+      "family": "containsText",
+      "blocks": 5
+    },
+    {
+      "family": "expression",
+      "blocks": 25
+    },
+    {
+      "family": "iconSet",
+      "blocks": 20
+    },
+    {
+      "family": "top10",
+      "blocks": 2
+    }
+  ],
+  "baseline_source_rectangles": 542,
+  "remaining_source_rectangles": 276.0,
+  "cost_scope": "Static fallback rectangles clipped to original source visual extents; exact duplicate rectangles removed. Not measured capture time or full pairwise pipeline job count.",
+  "largest_remaining_footprints": [
+    {
+      "blocks": 2,
+      "by_sheet": {
+        "Pivot": 88
+      },
+      "candidate_rectangles": 88,
+      "planned_blocks": 2,
+      "source_id": 3920,
+      "workbook": "Pensacola Mid Bay Bugs Master_11.2023_8f62a87f24e2.xlsx"
+    },
+    {
+      "blocks": 1,
+      "by_sheet": {
+        "summary": 17
+      },
+      "candidate_rectangles": 17,
+      "planned_blocks": 1,
+      "source_id": 5011,
+      "workbook": "Test 2_a7071339a500.xlsx"
+    },
+    {
+      "blocks": 2,
+      "by_sheet": {
+        "summary": 17
+      },
+      "candidate_rectangles": 17,
+      "planned_blocks": 2,
+      "source_id": 5013,
+      "workbook": "Test 3_29184f6a65d6.xlsx"
+    },
+    {
+      "blocks": 1,
+      "by_sheet": {
+        "summary": 17
+      },
+      "candidate_rectangles": 17,
+      "planned_blocks": 1,
+      "source_id": 5014,
+      "workbook": "Test 4_d60a9e01b1bf.xlsx"
+    },
+    {
+      "blocks": 6,
+      "by_sheet": {
+        "Main": 14,
+        "OriginalNametoUSEEIOname": 3
+      },
+      "candidate_rectangles": 17,
+      "planned_blocks": 6,
+      "source_id": 5141,
+      "workbook": "USEEIOv1.1_ElementaryFlowsLCIAFactors_1e213442679a.xlsx"
+    },
+    {
+      "blocks": 16,
+      "by_sheet": {
+        "Sheet1": 16
+      },
+      "candidate_rectangles": 16,
+      "planned_blocks": 16,
+      "source_id": 8579,
+      "workbook": "state-county-fy24-uipa-logs-upload_9cb45454625f.xlsx"
+    },
+    {
+      "blocks": 7,
+      "by_sheet": {
+        "90th%": 4,
+        "Pb90-10y": 8,
+        "WQ": 3
+      },
+      "candidate_rectangles": 15,
+      "planned_blocks": 7,
+      "source_id": 3950,
+      "workbook": "PipeScaleMineralogy_R5_RARE_180515_cd1b9d7372a2.xlsx"
+    },
+    {
+      "blocks": 1,
+      "by_sheet": {
+        "AllElemFlows&CFs": 14
+      },
+      "candidate_rectangles": 14,
+      "planned_blocks": 1,
+      "source_id": 5140,
+      "workbook": "USEEIO_ElementaryFlows_LCIAFactors_1acceebeeabd.xlsx"
+    }
+  ],
+  "native_controls": [
+    "top-bottom",
+    "top-bottom-unchanged",
+    "row-parity",
+    "row-parity-shift",
+    "static-error-inert",
+    "static-error-visible"
+  ],
+  "note": "The remaining two top10 blocks in Pensacola are pivot-bound and deliberately keep their existing capture fallback. No corpus visual run was started."
+}

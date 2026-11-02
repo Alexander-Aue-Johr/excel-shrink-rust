@@ -586,7 +586,18 @@ fn constant_ref_errors_have_no_value_dependency_but_keep_rule_and_context_guards
     let values =
         "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"5\"><c r=\"B5\"><v>3</v></c></row>";
     let template = "<conditionalFormatting sqref=\"A1:B5\"><cfRule type=\"expression\" priority=\"1\" stopIfTrue=\"1\"><formula>FORMULA</formula></cfRule></conditionalFormatting>";
-    for formula in ["#REF!", "#REF!=1", "= #REF! = 1", "#REF!&#61;1"] {
+    for formula in [
+        "#REF!",
+        "#REF!=1",
+        "= #REF! = 1",
+        "#REF!&#61;1",
+        "ISTEXT(#REF!)",
+        "#DIV/0!",
+        "#REF!=&quot;Valid&quot;",
+        "#REF!=\"Cancelled\"",
+        "#REF!=\"a\"\"b\"",
+        "#REF!=\"\"",
+    ] {
         let block = template.replace("FORMULA", formula);
         write_book(&a, values, &block, "", "", "")?;
         write_book(&b, &values.replace("<v>1", "<v>9"), &block, "", "", "")?;
@@ -613,6 +624,11 @@ fn constant_ref_errors_have_no_value_dependency_but_keep_rule_and_context_guards
         "#REF!A1",
         "ISERROR(#REF!)",
         "#REF!=1+NOW()",
+        "#DIV/0!+A1",
+        "ISTEXT(#REF!)+A1",
+        "#REF!=\"Valid\"&amp;A1",
+        "#REF!=\"Valid\"&amp;\"Other\"",
+        "#REF!=\"unterminated",
     ] {
         write_book(
             &a,
@@ -738,6 +754,8 @@ fn row_parity_has_no_value_dependency_but_retains_geometry_and_rule_guards() -> 
     }
     for formula in [
         "M OD(ROW(),2)=0",
+        "MOD\u{00a0}(ROW(),2)=0",
+        "\u{00a0}MOD(ROW(),2)=0",
         "MOD(ROW(A1),2)=0",
         "MOD(ROW(),A1)=0",
         "MOD(ROW(),2)=0+NOW()",

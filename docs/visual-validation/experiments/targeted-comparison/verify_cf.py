@@ -23,10 +23,10 @@ def verify(root: Path, mode: str) -> None:
             assert colors[0][(255, 0, 0)] > 100, 'Positive CF control did not render its red fill'
         if mode == 'styles':
             assert colors[1][(0, 0, 255)] > 100, 'Changed differential format did not render blue'
-        if mode in ('error-ref-visible', 'cell-is-ref-visible'):
+        if mode in ('error-ref-visible', 'cell-is-ref-visible', 'static-error-visible'):
             assert colors[0][(255, 0, 0)] == 0, 'Constant error unexpectedly applied its fill'
             assert colors[1][(255, 0, 0)] > 100, 'The valid expression did not apply its fill'
-        if mode in ('error-ref-inert', 'error-ref-compare-inert', 'cell-is-ref-inert'):
+        if mode in ('error-ref-inert', 'error-ref-compare-inert', 'cell-is-ref-inert', 'static-error-inert'):
             assert all(colorset[(0, 0, 255)] > 100 for colorset in colors), 'An error rule suppressed the later valid rule'
         if mode == 'top-bottom':
             from PIL import ImageChops
@@ -84,7 +84,7 @@ def verify(root: Path, mode: str) -> None:
     else:
         assert any(item['outcome'] == 'capture' for item in decisions), decisions
         assert direct['findings'], 'Fallback produced no captures'
-        if mode in ('dummy-inert', 'name-inert', 'error-ref-inert', 'error-ref-compare-inert', 'cell-is-ref-inert'):
+        if mode in ('dummy-inert', 'name-inert', 'error-ref-inert', 'error-ref-compare-inert', 'cell-is-ref-inert', 'static-error-inert'):
             assert not different, 'A missing-target CF rule unexpectedly changed Excel rendering'
         else:
             assert different, 'The positive control lost its visual difference'

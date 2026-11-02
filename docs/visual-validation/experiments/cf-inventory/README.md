@@ -8,6 +8,8 @@ The following narrow missing-name and constant-error proofs reduce that to 203;
 see [name-errors-20261102.json](name-errors-20261102.json).
 The remaining eight pivot-tagged cellIs blocks were investigated separately:
 [pivot-cell-is-20261102.md](pivot-cell-is-20261102.md).
+Ranking, row-parity and additional constant-error support subsequently reduce
+the remaining count to 91: [ranking-parity-errors-20261102.json](ranking-parity-errors-20261102.json).
 
 The first complete Data.gov run and its concrete fallback findings are recorded
 in [datagov-20261101.md](datagov-20261101.md).
