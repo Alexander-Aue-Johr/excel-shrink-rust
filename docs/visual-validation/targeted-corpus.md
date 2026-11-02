@@ -110,3 +110,10 @@ RGBA8 pixels. Missing or invalid images cannot establish equality. Only small
 fingerprints are cached, not full decoded images.
 
 Existing start commands remain valid; these optimizations require no new flags.
+
+Targeted screenshots use authenticated binary HTTP uploads to the existing Rust
+resident host. Only an image receipt and geometry enter the command-response JSON.
+The native bridge moves the owned uploaded image to its evidence path; it no longer
+decodes or retains a second Base64 copy. Chart exports may be PNG or JPEG even when
+Office documents a PNG, so the host checks the actual format. Failed uploads and
+missing receipts remain failures; zero-area charts retain their explicit state.

@@ -114,7 +114,12 @@ function Invoke-TargetedJob {
                 if ($response.non_rendering -eq $true) {
                     return @{non_rendering=$true; reason=$response.reason; geometry=$response.geometry}
                 }
-                [IO.File]::WriteAllBytes($Command.output, [Convert]::FromBase64String($response.image_base64))
+                $image = [IO.Path]::GetFullPath([string]$response.image_path)
+                $ownedImages = [IO.Path]::GetFullPath((Join-Path $entry.session 'diagnosis-images/one'))
+                if (-not $image.StartsWith($ownedImages + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                    throw 'Image receipt is outside this resident session.'
+                }
+                Move-Item -LiteralPath $image -Destination $Command.output -ErrorAction Stop
                 return @{path=$Command.output; geometry=$response.geometry}
             }
             return $response

@@ -25,6 +25,8 @@ mod telemetry;
 use telemetry::WorkerTelemetry;
 #[path = "resident_events.rs"]
 mod events;
+#[path = "resident_diagnosis_image.rs"]
+mod diagnosis_image;
 
 const MAX_IMAGE_BYTES: usize = 512 * 1024 * 1024;
 const STARTUP_QUIET_PERIOD: Duration = Duration::from_secs(2);
@@ -176,6 +178,7 @@ pub async fn run(settings_path: &Path) -> anyhow::Result<()> {
         .route("/launcher/startup-sampled/{id}", post(startup_sampled))
         .route("/launcher/reset/{id}", post(reset))
         .route("/image/{id}/{command}/{sheet}/{tile}", post(image))
+        .route("/diagnosis-image/{id}/{command}", post(diagnosis_image::upload))
         .route("/result/{id}/{command}", post(result))
         .with_state(host);
     serve(with_web(router, &web, MAX_IMAGE_BYTES), port as u16).await

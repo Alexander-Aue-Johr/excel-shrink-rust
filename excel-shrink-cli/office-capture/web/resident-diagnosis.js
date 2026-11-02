@@ -130,9 +130,20 @@
     return heights.length;
   }
 
-  async function execute(command, {office}) {
+  async function execute(command, {office, transport}) {
     if (!command || typeof command.operation !== 'string') throw new Error('Missing diagnosis operation');
-    if (command.operation === 'targeted') return root.TargetedDiagnosis.run(command.request, office);
+    if (command.operation === 'targeted') {
+      const result = await root.TargetedDiagnosis.run(command.request, office);
+      if (typeof result.image_base64 === 'string') {
+        if (!transport?.diagnosisImage) throw new Error('Binary diagnosis image transport is unavailable');
+        const {bytes} = await root.ResidentCapture.encoded(result.image_base64, false);
+        delete result.image_base64;
+        const receipt = await transport.diagnosisImage(command.id, bytes);
+        if (typeof receipt.image_path !== 'string' || !receipt.image_path) throw new Error('Missing binary image receipt');
+        Object.assign(result, receipt);
+      }
+      return result;
+    }
     if (command.operation === 'read_cells') {
       return {operation: command.operation, cells: await readCells(command.cells, office)};
     }
