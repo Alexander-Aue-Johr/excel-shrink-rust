@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 #[derive(Clone)]
@@ -60,12 +60,6 @@ pub(super) struct PerformanceFinding {
     optimization_xml_changed: bool,
     images: BTreeMap<&'static str, Option<PathBuf>>,
     geometry: BTreeMap<&'static str, Value>,
-}
-
-impl PerformanceFinding {
-    pub(super) fn differs(&self) -> bool {
-        self.before_recalc_differs || self.after_recalc_differs
-    }
 }
 
 /// Compare the third lane against the same original controls, retaining full evidence.
@@ -245,7 +239,7 @@ pub(super) fn compare_evidence(
 
 /// Compare decoded pixels; Office chart exports do not consistently match the documented format.
 #[cfg(test)]
-pub(super) fn images_differ(left: &Path, right: &Path) -> Result<bool> {
+pub(super) fn images_differ(left: &std::path::Path, right: &std::path::Path) -> Result<bool> {
     ImageComparisons::default().differ(left, right)
 }
 

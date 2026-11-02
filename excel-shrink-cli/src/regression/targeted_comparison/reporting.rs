@@ -101,7 +101,7 @@ impl Comparison<'_> {
                         unconfirmed = true;
                         lane.lifecycle = Lifecycle::Failed;
                     }
-                } else if lane.lifecycle != Lifecycle::Unavailable {
+                } else if !matches!(lane.lifecycle, Lifecycle::Unavailable | Lifecycle::Skipped) {
                     lane.lifecycle = Lifecycle::NotStarted;
                 }
             }
@@ -121,10 +121,18 @@ impl Comparison<'_> {
 impl Report {
     /// Project the saved findings into the existing Observatory summary schema.
     pub(super) fn telemetry_summary(&self) -> Value {
+        use super::telemetry::LaneId;
+        let count = |left, right| {
+            self.comparisons
+                .iter()
+                .find_map(|pair| pair.region_differences(left, right))
+        };
         json!({
             "status": self.status,
+            "input_identity":self.input_identity,
+            "state_decisions":self.state_decisions,
             "check_performance": self.check_performance,
-            "check_performance_differences": self.check_performance_evidence.as_ref().and_then(|e| e.difference_count()),
+            "check_performance_differences": count(LaneId::O, LaneId::CP),
             "limitations": self.limitations,
             "cf_excluded_decisions": self.conditional_formatting.iter().flat_map(|check| &check.decisions).filter(|decision| decision.outcome == "excluded").count(),
             "cf_partial_decisions": self.conditional_formatting.iter().flat_map(|check| &check.decisions).filter(|decision| decision.outcome == "partial").count(),
@@ -132,15 +140,9 @@ impl Report {
             "chart_comparisons": self.comparisons.iter().map(|pair| pair.charts.len()).sum::<usize>(),
             "chart_differences": self.comparisons.iter().flat_map(|pair| &pair.charts)
                 .filter(|chart| chart.presence_differs || chart.pixels_differ || chart.geometry_differs).count(),
-            "before_differences": self.findings.iter()
-                .filter(|finding| finding.before_recalc_differs || finding.before_recalc_geometry_differs)
-                .count(),
-            "after_differences": self.findings.iter()
-                .filter(|finding| finding.after_shrink_recalc_differs || finding.after_shrink_recalc_geometry_differs)
-                .count(),
-            "original_recalc_drift": self.findings.iter()
-                .filter(|finding| finding.also_changed_by_original_recalc)
-                .count(),
+            "before_differences": count(LaneId::O, LaneId::SD).or_else(|| self.input_identity.identical().then_some(0)),
+            "after_differences": count(LaneId::O, LaneId::SDR),
+            "original_recalc_drift": count(LaneId::O, LaneId::OR),
         })
     }
 }
@@ -151,6 +153,9 @@ pub(super) fn new_report() -> Report {
         workbook_bytes: BTreeMap::new(),
         capture_policy: super::CAPTURE_POLICY,
         capture_partition: "visible-geometry-v1",
+        input_identity: Default::default(),
+        state_decisions: BTreeMap::new(),
+        rebuild_checks: BTreeMap::new(),
         timings_ms: BTreeMap::new(),
         image_comparison_statistics: Default::default(),
         xml_snapshot_statistics: Default::default(),
@@ -175,6 +180,7 @@ pub(super) fn new_report() -> Report {
             "Charts with measured zero width or height retain geometry and an explicit zero-area-chart observation without a pixel verdict. A transition between visible and zero-area states is a rendering/geometry difference.".into(),
             "Excel may recalculate during open even when manual calculation is requested.".into(),
             "Opening/saving and rebuild-copy reopening are retained as separate XML controls. Exact content/context matches identify overlaps conservatively; absence of a match does not establish exclusive causality.".into(),
+            "Version-three execution omits Default only after exact raw input byte equality. Rebuild states are omitted only by the recorded conservative static-workbook guard. Omitted states have no screenshots or post-rebuild equality claim; their absence is explained by state_decisions and rebuild_checks. This does not prove that reopening or saving could never affect rendering. Check Performance remains independent.".into(),
             "Worksheet cells are streamed into temporary fixed-size fingerprints without worksheet-byte or cell-count limits. Exterior empty-cell changes are counted before candidate allocation. Layout metadata and retained change evidence still require memory.".into(),
         ],
     }

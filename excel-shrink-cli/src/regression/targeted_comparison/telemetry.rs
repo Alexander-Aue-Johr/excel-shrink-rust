@@ -52,16 +52,16 @@ impl Phase {
     fn columns() -> Value {
         json!([
             {"id":"discover", "label":"Find changes", "description":"Compare original and Default cell XML; empty style changes become row-geometry candidates."},
-            {"id":"open", "label":"Open Excel", "description":"Keep each enabled workbook copy open in its own Excel process."},
+            {"id":"open", "label":"Open Excel", "description":"Open only required states; byte-identical Default inputs need no separate Excel process."},
             {"id":"save", "label":"Save copies", "description":"Observe ordinary Excel save effects before an explicit rebuild."},
             {"id":"inspect_save", "label":"Inspect saved XML", "description":"Add candidate cells also changed by ordinary Excel save."},
             {"id":"optimize", "label":"Optimize all", "description":"Run native Check Performance on a separate saved Original copy; require positive completion."},
             {"id":"inspect_optimization", "label":"Inspect optimization", "description":"Add XML changes from Check Performance, separately from ordinary save effects."},
             {"id":"measure_heights", "label":"Check row heights", "description":"Office.js checks automatic-height spans; retained identical fixed heights are excluded."},
             {"id":"capture_before", "label":"Capture before", "description":"Capture the same candidate regions in all enabled open copies."},
-            {"id":"recalculate", "label":"Full rebuild", "description":"Rebuild Default and Check Performance; rebuild original separately as the control for calculation drift."},
+            {"id":"recalculate", "label":"Full rebuild", "description":"Rebuild only when calculation dependencies require it; unsupported features keep the rebuild path."},
             {"id":"capture_after", "label":"Capture after", "description":"Capture the same regions after each workbook rebuild."},
-            {"id":"compare", "label":"Compare evidence", "description":"Compare original-before with Default-before, Default-after, Check Performance before/after and original-after; compare geometry too."},
+            {"id":"compare", "label":"Compare evidence", "description":"Compare observed states and geometry; explicit identity and dependency proofs explain omitted states."},
             {"id":"close", "label":"Close Excel", "description":"Close owned copies and verify the exact Excel processes have exited."}
         ])
     }
@@ -100,6 +100,7 @@ pub(super) enum Lifecycle {
     Closed,
     Failed,
     Unavailable,
+    Skipped,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -130,6 +131,8 @@ pub(super) struct Lane {
     pub captures_done: usize,
     pub skipped_zero_area_regions: usize,
     pub captures_total: Option<usize>,
+    pub decision_note: Option<String>,
+    pub capture_selection_complete: bool,
     pub current_sheet: Option<String>,
     pub current_range: Option<String>,
 }
@@ -186,7 +189,7 @@ impl Snapshot {
     pub fn candidates(&mut self, count: usize) {
         self.candidate_count = Some(count);
         for lane in &mut self.lanes {
-            if lane.lifecycle != Lifecycle::Unavailable {
+            if !matches!(lane.lifecycle, Lifecycle::Unavailable | Lifecycle::Skipped) {
                 lane.captures_total = Some(count);
             }
         }
@@ -285,6 +288,8 @@ impl Telemetry {
             captures_done: 0,
             skipped_zero_area_regions: 0,
             captures_total: None,
+            decision_note: None,
+            capture_selection_complete: false,
             current_sheet: None,
             current_range: None,
         })

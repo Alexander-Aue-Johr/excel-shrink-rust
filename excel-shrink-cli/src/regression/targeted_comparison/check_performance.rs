@@ -33,14 +33,6 @@ pub(super) struct PerformanceEvidence {
     findings: Option<Vec<PerformanceFinding>>,
 }
 
-impl PerformanceEvidence {
-    pub(super) fn difference_count(&self) -> Option<usize> {
-        self.findings
-            .as_ref()
-            .map(|findings| findings.iter().filter(|finding| finding.differs()).count())
-    }
-}
-
 impl Comparison<'_> {
     /// Establish a saved baseline before invoking the native optimization action.
     pub(super) fn optimize_performance_copy(&mut self) -> Result<()> {

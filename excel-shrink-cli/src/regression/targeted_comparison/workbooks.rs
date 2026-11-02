@@ -49,11 +49,11 @@ impl Comparison<'_> {
     }
 
     /// Submit both independent inputs before waiting for either readiness response.
-    pub(super) fn open_input_workbooks(&mut self) -> Result<()> {
-        let jobs = [
-            (LaneId::O, self.paths.original.clone()),
-            (LaneId::SD, self.paths.default.clone()),
-        ];
+    pub(super) fn open_input_workbooks(&mut self, include_default: bool) -> Result<()> {
+        let mut jobs = vec![(LaneId::O, self.paths.original.clone())];
+        if include_default {
+            jobs.push((LaneId::SD, self.paths.default.clone()));
+        }
         self.telemetry.update(|state| {
             for (id, _) in &jobs {
                 state.step(*id, Phase::Open, StepStatus::Running);
@@ -107,8 +107,11 @@ impl Comparison<'_> {
     }
 
     /// Save Original before Default, preserving the existing event ordering.
-    pub(super) fn save_workbooks(&mut self) -> Result<()> {
-        for id in [LaneId::O, LaneId::SD] {
+    pub(super) fn save_workbooks(&mut self, include_default: bool) -> Result<()> {
+        for id in [LaneId::O, LaneId::SD]
+            .into_iter()
+            .filter(|id| *id == LaneId::O || include_default)
+        {
             self.telemetry
                 .update(|state| state.step(id, Phase::Save, StepStatus::Running))?;
             self.excel

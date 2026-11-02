@@ -33,9 +33,9 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
 };
-use telemetry::{Phase, StepStatus, Telemetry};
+use telemetry::{LaneId, Phase, StepStatus, Telemetry};
 
-pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v2";
+pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v3";
 pub(super) const CAPTURE_ROWS: u32 = 128;
 pub(super) const CAPTURE_COLUMNS: u32 = 16;
 
@@ -102,6 +102,9 @@ struct Report {
     workbook_bytes: BTreeMap<String, u64>,
     capture_policy: &'static str,
     capture_partition: &'static str,
+    input_identity: execution_plan::InputIdentity,
+    state_decisions: BTreeMap<LaneId, execution_plan::StateDecision>,
+    rebuild_checks: BTreeMap<LaneId, execution_plan::RebuildCheck>,
     image_comparison_statistics: image_comparison::Statistics,
     xml_snapshot_statistics: snapshot_cache::Statistics,
     status: String,
@@ -177,12 +180,14 @@ impl<'a> Comparison<'a> {
                 "Check Performance requires the private-desktop launcher; use --skip-check-performance to omit it");
         }
         let paths = WorkingPaths::prepare(args)?;
+        let input_identity = execution_plan::InputIdentity::check(&paths.original, &paths.default)?;
         let telemetry = Telemetry::start(args)?;
         Ok(Self {
             args,
             paths,
             report: {
                 let mut report = new_report();
+                report.input_identity = input_identity;
                 if !args.skip_check_performance {
                     report.check_performance = "pending";
                 }
@@ -203,8 +208,22 @@ impl<'a> Comparison<'a> {
     fn inspect_initial_xml(&mut self) -> Result<()> {
         self.telemetry
             .update(|state| state.pair_step(Phase::Discover, StepStatus::Running))?;
-        self.candidates = discover_candidates(&self.paths.original, &self.paths.default, &mut self.snapshots)?;
-        self.report.phases.push("initial XML compared".into());
+        self.candidates = if self.report.input_identity.identical() {
+            BTreeSet::new()
+        } else {
+            discover_candidates(
+                &self.paths.original,
+                &self.paths.default,
+                &mut self.snapshots,
+            )?
+        };
+        self.report
+            .phases
+            .push(if self.report.input_identity.identical() {
+                "raw input byte identity confirmed".into()
+            } else {
+                "initial XML compared".into()
+            });
         self.telemetry.update(|state| {
             state.candidates(self.candidates.len());
             state.pair_step(Phase::Discover, StepStatus::Done);
@@ -212,21 +231,32 @@ impl<'a> Comparison<'a> {
     }
 
     /// Launch independent inputs together, retaining separate lifecycle evidence.
-    fn open_workbooks(&mut self) -> Result<()> {
+    fn open_workbooks(&mut self, include_default: bool) -> Result<()> {
         self.start_excel_host()?;
-        self.open_input_workbooks()?;
-        self.report.phases.push("original and shrink opened".into());
+        self.open_input_workbooks(include_default)?;
+        self.report.phases.push(if include_default {
+            "Original and Default opened".into()
+        } else {
+            "Original opened; identical Default omitted".into()
+        });
         Ok(())
     }
 
     /// Separate ordinary save effects from the later explicit rebuild controls.
-    fn inspect_save_effects(&mut self) -> Result<()> {
+    fn inspect_save_effects(&mut self, include_default: bool) -> Result<()> {
         let before_save = self.paths.preserve_before_save()?;
-        self.save_workbooks()?;
-        self.telemetry
-            .update(|state| state.pair_step(Phase::InspectSave, StepStatus::Running))?;
+        self.save_workbooks(include_default)?;
+        self.telemetry.update(|state| {
+            for id in [LaneId::O, LaneId::SD]
+                .into_iter()
+                .filter(|id| *id == LaneId::O || include_default)
+            {
+                state.step(id, Phase::InspectSave, StepStatus::Running);
+            }
+        })?;
 
-        let save_changes = find_changes_caused_by_save(&before_save, &self.paths, &mut self.snapshots)?;
+        let save_changes =
+            find_changes_caused_by_save(&before_save, &self.paths, &mut self.snapshots)?;
         self.include_save_changes(save_changes)?;
 
         self.report
@@ -234,7 +264,12 @@ impl<'a> Comparison<'a> {
             .push("Excel save effects inspected".into());
         self.telemetry.update(|state| {
             state.candidates(self.candidates.len());
-            state.pair_step(Phase::InspectSave, StepStatus::Done);
+            for id in [LaneId::O, LaneId::SD]
+                .into_iter()
+                .filter(|id| *id == LaneId::O || include_default)
+            {
+                state.step(id, Phase::InspectSave, StepStatus::Done);
+            }
         })
     }
 

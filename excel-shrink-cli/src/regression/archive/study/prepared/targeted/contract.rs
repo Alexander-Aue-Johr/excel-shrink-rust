@@ -25,6 +25,9 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
     if !skip_performance {
         expected.extend([("O", "CP"), ("O", "CPR"), ("CP", "CPR"), ("OR", "CPR")]);
     }
+    if report["capture_policy"] == "targeted-content-grid-v3" {
+        expected = super::execution_contract::expected_pairs(report, skip_performance)?;
+    }
     ensure!(
         pairs.len() == expected.len(),
         "Incomplete comparison pair coverage"

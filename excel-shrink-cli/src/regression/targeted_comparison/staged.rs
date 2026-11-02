@@ -3,6 +3,7 @@ use super::{
     capture_layout::{self, Geometry},
     charts,
     evidence::Evidence,
+    execution_plan::{self, StateDecision},
     heights::{self, HeightCheck, HeightRun},
     telemetry::{LaneId, Lifecycle, Phase, StepStatus},
     xml_changes::{cell_candidates, Snapshot, Transition},
@@ -52,6 +53,20 @@ pub(super) struct VisualComparison {
     pub charts: Vec<charts::Finding>,
 }
 
+impl VisualComparison {
+    /// Summary counters refer only to an actually observed pair, never omitted states.
+    pub(super) fn region_differences(&self, left: LaneId, right: LaneId) -> Option<usize> {
+        (self.left == left && self.right == right).then(|| {
+            self.findings
+                .iter()
+                .filter(|finding| {
+                    finding.pixels_differ || finding.geometry_differs || finding.rendering_differs
+                })
+                .count()
+        })
+    }
+}
+
 struct Workflow<'a, 'b> {
     comparison: &'a mut Comparison<'b>,
     states: BTreeMap<LaneId, WorkbookState>,
@@ -87,33 +102,80 @@ impl Workflow<'_, '_> {
         self.capture_missing_regions()?;
         self.publish_available_comparisons("before rebuild")?;
         self.rebuild_variant_copies()?;
-        self.publish_available_comparisons("variants rebuilt; Original still unchanged")?;
+        self.publish_available_comparisons(
+            "variant rebuild decisions complete; Original pre-state retained",
+        )?;
         self.prepare_rebuild_copy(LaneId::O, LaneId::OR)?;
         self.inspect_available_pairs()?;
         self.capture_missing_regions()?;
         self.close_states()?;
-        self.publish_available_comparisons("Original rebuilt last")?;
+        self.publish_available_comparisons(
+            "Original rebuild decision complete; observed comparisons finalized",
+        )?;
         self.project_legacy_findings()?;
         self.comparison.complete()
     }
 
     fn open_and_save_controls(&mut self) -> Result<()> {
         self.comparison.inspect_initial_xml()?;
-        self.comparison.open_workbooks()?;
-        self.comparison.inspect_save_effects()?;
+        let include_default = !self.comparison.report.input_identity.identical();
+        if !include_default {
+            self.skip_state(
+                LaneId::SD,
+                StateDecision::SkippedIdenticalInput { source: LaneId::O },
+                "Default unchanged — identical input bytes",
+            )?;
+            self.skip_state(
+                LaneId::SDR,
+                StateDecision::SkippedIdenticalInput { source: LaneId::O },
+                "Default rebuild omitted — identical input bytes",
+            )?;
+        }
+        if self.comparison.args.skip_check_performance {
+            self.comparison
+                .report
+                .state_decisions
+                .insert(LaneId::CP, StateDecision::Disabled);
+            self.comparison
+                .report
+                .state_decisions
+                .insert(LaneId::CPR, StateDecision::Disabled);
+        }
+        self.comparison.open_workbooks(include_default)?;
+        self.comparison.inspect_save_effects(include_default)?;
         let raw_original = self.comparison.args.original.clone();
         let raw_default = self.comparison.args.default.clone();
         let original = self.comparison.paths.original.clone();
         let default = self.comparison.paths.default.clone();
         self.audit("original opening/saving control", &raw_original, &original)?;
-        self.audit(
-            "default input versus original input",
-            &raw_original,
-            &raw_default,
-        )?;
-        self.audit("default opening/saving control", &raw_default, &default)?;
+        if include_default {
+            self.audit(
+                "default input versus original input",
+                &raw_original,
+                &raw_default,
+            )?;
+            self.audit("default opening/saving control", &raw_default, &default)?;
+        }
         self.register(LaneId::O, original)?;
-        self.register(LaneId::SD, default)
+        if include_default {
+            self.register(LaneId::SD, default)?;
+        }
+        Ok(())
+    }
+
+    /// A skipped state has no Excel process and no invented screenshots or rebuild results.
+    fn skip_state(&mut self, id: LaneId, decision: StateDecision, note: &str) -> Result<()> {
+        self.comparison.report.state_decisions.insert(id, decision);
+        self.comparison.telemetry.update(|state| {
+            let lane = state.lane(id);
+            lane.lifecycle = Lifecycle::Skipped;
+            lane.decision_note = Some(note.into());
+            lane.captures_total = Some(0);
+            lane.capture_selection_complete = true;
+            for step in lane.steps.values_mut() {
+                *step = StepStatus::Skipped;
+            }
+        })
     }
 
     fn optimize_and_register_states(&mut self) -> Result<()> {
@@ -151,6 +213,16 @@ impl Workflow<'_, '_> {
             .telemetry
             .update(|state| state.step(id, Phase::Discover, StepStatus::Done))?;
         let charts = self.capture_charts(id)?;
+        self.comparison.report.state_decisions.insert(
+            id,
+            StateDecision::Observed {
+                method: if matches!(id, LaneId::OR | LaneId::SDR | LaneId::CPR) {
+                    "explicit-rebuild"
+                } else {
+                    "open-save"
+                },
+            },
+        );
         self.states.insert(
             id,
             WorkbookState {
@@ -199,6 +271,11 @@ impl Workflow<'_, '_> {
     }
 
     fn audit(&mut self, label: &str, before: &Path, after: &Path) -> Result<()> {
+        self.comparison.telemetry.update(|state| {
+            for &id in self.states.keys() {
+                state.lane(id).capture_selection_complete = false;
+            }
+        })?;
         let a = self.comparison.snapshots.read(before)?;
         let b = self.comparison.snapshots.read(after)?;
         self.content_bounds.include(&a);
@@ -237,7 +314,9 @@ impl Workflow<'_, '_> {
     }
 
     fn rebuild_variant_copies(&mut self) -> Result<()> {
-        self.prepare_rebuild_copy(LaneId::SD, LaneId::SDR)?;
+        if self.states.contains_key(&LaneId::SD) {
+            self.prepare_rebuild_copy(LaneId::SD, LaneId::SDR)?;
+        }
         if !self.comparison.args.skip_check_performance {
             self.prepare_rebuild_copy(LaneId::CP, LaneId::CPR)?;
         }
@@ -249,6 +328,20 @@ impl Workflow<'_, '_> {
     /// Rebuild an independent copy so every original pre-state remains available for late captures.
     fn prepare_rebuild_copy(&mut self, parent: LaneId, id: LaneId) -> Result<()> {
         let source = self.states[&parent].path.clone();
+        let check = execution_plan::check_rebuild(&source, &self.states[&parent].xml)?;
+        let skip = check.eligible_to_skip;
+        self.comparison.report.rebuild_checks.insert(id, check);
+        if skip {
+            return self.skip_state(
+                id,
+                StateDecision::SkippedNoRebuild { source: parent },
+                "Rebuild not required — no calculation dependencies",
+            );
+        }
+        self.comparison.telemetry.update(|state| {
+            state.lane(id).decision_note =
+                Some("Rebuild required — calculation dependencies or unsupported features".into());
+        })?;
         let path = self
             .comparison
             .args
@@ -551,6 +644,7 @@ impl Workflow<'_, '_> {
         }
         self.comparison.telemetry.update(|state| {
             for (&id, workbook) in &self.states {
+                state.lane(id).capture_selection_complete = true;
                 state.lane(id).skipped_zero_area_regions = self
                     .comparison
                     .candidates
@@ -706,12 +800,22 @@ impl Workflow<'_, '_> {
             self.project_changes(&self.comparison.performance.save_changes)?;
         self.comparison.performance.optimization_changes =
             self.project_changes(&self.comparison.performance.optimization_changes)?;
-        self.comparison.captures.original_before = self.states[&LaneId::O].captures.clone();
-        self.comparison.captures.shrink_before = self.states[&LaneId::SD].captures.clone();
-        self.comparison.captures.shrink_after = self.states[&LaneId::SDR].captures.clone();
-        self.comparison.captures.original_after = self.states[&LaneId::OR].captures.clone();
-        self.comparison.compare_captured_evidence()?;
-        if !self.comparison.args.skip_check_performance {
+        if [LaneId::O, LaneId::SD, LaneId::SDR, LaneId::OR]
+            .iter()
+            .all(|id| self.states.contains_key(id))
+        {
+            self.comparison.captures.original_before = self.states[&LaneId::O].captures.clone();
+            self.comparison.captures.shrink_before = self.states[&LaneId::SD].captures.clone();
+            self.comparison.captures.shrink_after = self.states[&LaneId::SDR].captures.clone();
+            self.comparison.captures.original_after = self.states[&LaneId::OR].captures.clone();
+            self.comparison.compare_captured_evidence()?;
+        }
+        if [LaneId::O, LaneId::CP, LaneId::CPR, LaneId::OR]
+            .iter()
+            .all(|id| self.states.contains_key(id))
+        {
+            self.comparison.captures.original_before = self.states[&LaneId::O].captures.clone();
+            self.comparison.captures.original_after = self.states[&LaneId::OR].captures.clone();
             self.comparison.performance.before = self.states[&LaneId::CP].captures.clone();
             self.comparison.performance.after = self.states[&LaneId::CPR].captures.clone();
             self.comparison.compare_performance_evidence()?;

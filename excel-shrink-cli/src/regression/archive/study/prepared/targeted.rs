@@ -3,6 +3,7 @@ use super::*;
 use std::collections::BTreeSet;
 use std::process::{Command, Stdio};
 mod contract;
+mod execution_contract;
 mod retention;
 
 const POLICY: &str = crate::regression::targeted_comparison::CAPTURE_POLICY;
@@ -13,7 +14,10 @@ pub(in crate::regression::archive::study) fn complete(
     skip_performance: bool,
 ) -> bool {
     record["complete"] == true
-        && record["targeted_comparison"]["policy"] == POLICY
+        && matches!(
+            record["targeted_comparison"]["policy"].as_str(),
+            Some("targeted-content-grid-v2" | "targeted-content-grid-v3")
+        )
         && record["targeted_comparison"]["skip_check_performance"] == skip_performance
         && record["targeted_comparison"]["status"] == "completed_with_limitations"
 }
@@ -99,9 +103,16 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
         report["status"] == "completed_with_limitations",
         "Targeted report is incomplete"
     );
+    ensure!(
+        report["capture_policy"] == POLICY,
+        "Unexpected producer capture policy"
+    );
     let changed = contract::has_differences(&report, skip)?;
     record["targeted_comparison"]["status"] = report["status"].clone();
     record["targeted_comparison"]["candidate_count"] = report["candidate_count"].clone();
+    record["targeted_comparison"]["state_decisions"] = report["state_decisions"].clone();
+    record["targeted_comparison"]["input_identity"] = report["input_identity"].clone();
+    record["targeted_comparison"]["rebuild_checks"] = report["rebuild_checks"].clone();
     record["targeted_comparison"]["content_coverage"] = report["content_coverage"].clone();
     record["targeted_comparison"]["report"] = json!(directory.join("report.json"));
     let preview_width = record["control_room_attempt"]["settings"]["equal_preview_width"]
@@ -135,6 +146,14 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
     for profile in record["results"].as_array_mut().into_iter().flatten() {
         profile["checks_complete"] = json!(false);
         profile["image_comparison"] = json!("targeted");
+        if profile["profile"] == "default" {
+            profile["comparison_basis"] =
+                json!(if report["input_identity"]["status"] == "identical" {
+                    "input_byte_identity"
+                } else {
+                    "observed_selected_regions"
+                });
+        }
     }
     record.as_object_mut().unwrap().remove("error");
     write_record(&job.record, record)?;
@@ -300,12 +319,17 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn resume_requires_the_current_policy_and_requested_lanes() {
+    fn resume_accepts_previous_full_observations_but_requires_the_requested_performance_lane() {
         let mut record = json!({"complete":true,"status":"unchanged"});
         assert!(!complete(&record, false));
         record["targeted_comparison"] = json!({"policy":POLICY,"status":"completed_with_limitations","skip_check_performance":false});
         assert!(complete(&record, false));
         assert!(!complete(&record, true));
+        record["targeted_comparison"]["policy"] = json!("targeted-content-grid-v2");
+        assert!(complete(&record, false));
+        record["targeted_comparison"]["policy"] = json!("unknown-future-policy");
+        assert!(!complete(&record, false));
+        record["targeted_comparison"]["policy"] = json!(POLICY);
         record["targeted_comparison"]["status"] = json!("failed");
         assert!(!complete(&record, false));
     }
