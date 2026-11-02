@@ -25,6 +25,14 @@ def verify(root: Path, mode: str) -> None:
             assert colors[1][(0, 0, 255)] > 100, 'Changed differential format did not render blue'
         if mode == 'dummy-added':
             assert colors[1][(255, 0, 0)] > 100, 'New target did not enable its CF fill'
+        if mode in ('duplicate', 'color-scale'):
+            from PIL import ImageChops
+            with Image.open(sample['left_png']) as left, Image.open(sample['right_png']) as right:
+                assert left.size == right.size
+                # The changed value is in row 3; rows 1-2 must show an indirect CF change.
+                region = (0, 0, left.width, left.height * 2 // 5)
+                diff = ImageChops.difference(left.convert('RGB').crop(region), right.convert('RGB').crop(region))
+                assert diff.getbbox(), 'Dependent unchanged cells were not visibly affected'
     if mode == 'dummy-missing':
         assert all(item['outcome'] == 'excluded' for item in decisions), decisions
         assert all(item['reason'] == 'fixed-dummy-targets-absent-in-both-states' for item in decisions), decisions

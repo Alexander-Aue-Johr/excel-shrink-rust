@@ -4,7 +4,8 @@ from pathlib import Path
 
 def create(directory: Path, mode: str) -> None:
     from openpyxl import Workbook
-    from openpyxl.formatting.rule import CellIsRule
+    from openpyxl.formatting.rule import CellIsRule, ColorScaleRule, Rule
+    from openpyxl.styles.differential import DifferentialStyle
     from openpyxl.styles import PatternFill
 
     directory.mkdir(parents=True, exist_ok=False)
@@ -28,7 +29,17 @@ def create(directory: Path, mode: str) -> None:
             sheet['A1'] = '" "'
             sheet['B1'] = 'other'
             sheet['A3'] = '" "' if lane == 'original' else 'other'
-        if not (mode == 'dummy-inert' and lane == 'default'):
+        if mode == 'duplicate':
+            sheet.conditional_formatting.add('A1:B5', Rule(type='duplicateValues', dxf=DifferentialStyle(fill=fill)))
+            sheet['A1'] = 2
+            sheet['A3'] = 2 if lane == 'original' else 3
+        elif mode == 'color-scale':
+            for row in range(1, 6):
+                sheet.cell(row, 1, row)
+            sheet.conditional_formatting.add('A1:B5', ColorScaleRule(start_type='min', start_color='FFFF0000', end_type='max', end_color='FF00FF00'))
+            if lane == 'default':
+                sheet['A3'] = 10
+        elif not (mode == 'dummy-inert' and lane == 'default'):
             sheet.conditional_formatting.add('A1:B5', CellIsRule(operator=operator, formula=[formula], fill=fill))
         if mode == 'constant' and lane == 'default':
             sheet['A3'] = -1

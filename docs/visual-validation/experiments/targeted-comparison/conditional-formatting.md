@@ -22,6 +22,22 @@ Only recognized numeric or quoted-string literals and supported `cellIs` operato
 qualify. References, expressions, unknown content, uncertain namespaces and truncated
 formula summaries cannot establish this proof.
 
+## Whole-area dependencies: duplicates and color scales
+
+Unchanged `duplicateValues` rules and standard color scales can exclude their
+application area only when all its cell XML inputs and the visual context match.
+Color scales support fixed numeric, minimum/maximum, percent and percentile
+thresholds. Formula thresholds and unknown threshold types remain full-area
+fallbacks; no formula evaluator or general reference resolver is introduced.
+
+Any changed or deleted input, or any uncertain formula-bearing input, captures
+the entire dependent application area within the comparison extent. The selector
+does not calculate whether the changed input would actually alter the formatting.
+Changes outside the application area do not trigger this dependency. Mixed blocks
+containing supported literal rules use the same conservative whole-area decision.
+Report reasons distinguish unchanged whole-area inputs from changed/uncertain
+dependencies. Existing row-layout and context guards remain in force.
+
 ## Fixed missing-Dummy template
 
 The only supported INDIRECT exception is a `cellIs` / `notEqual` rule containing:
@@ -66,7 +82,8 @@ fragment size; neither a cell-count nor an XML-size cap is introduced.
 
 `run-smoke.ps1 -ConditionalFormatting <mode> -Output <fresh-directory>` runs native
 Excel controls on a private desktop. Modes are `constant`, `constant-string`,
-`styles`, `dummy-missing`, `dummy-inert`, `dummy-present` and `dummy-added`.
+`styles`, `dummy-missing`, `dummy-inert`, `dummy-present`, `dummy-added`, `duplicate`
+and `color-scale`.
 The verifier checks selection decisions, actual pixel differences, red/blue
 differential fills, and owned-process closure. Add `-CheckPerformance` to exercise
 the six-state pipeline. `dummy-inert` removes the missing-target rule in the partner:

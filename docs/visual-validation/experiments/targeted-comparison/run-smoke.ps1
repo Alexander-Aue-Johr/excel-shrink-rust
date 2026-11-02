@@ -8,7 +8,7 @@ param(
     [switch]$SaveOverlap,
     [switch]$FailLateCapture,
     [switch]$Charts,
-    [ValidateSet('constant','constant-string','styles','dummy-missing','dummy-inert','dummy-present','dummy-added')]
+    [ValidateSet('constant','constant-string','styles','dummy-missing','dummy-inert','dummy-present','dummy-added','duplicate','color-scale')]
     [string]$ConditionalFormatting
 )
 $ErrorActionPreference = 'Stop'

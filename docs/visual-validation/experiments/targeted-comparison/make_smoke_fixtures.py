@@ -118,7 +118,10 @@ if __name__ == '__main__':
     parser.add_argument('--recalc-candidate', action='store_true')
     parser.add_argument('--save-overlap', action='store_true')
     parser.add_argument('--charts', action='store_true')
-    parser.add_argument('--conditional-formatting', choices=['constant', 'constant-string', 'styles', 'dummy-missing', 'dummy-inert', 'dummy-present', 'dummy-added'])
+    parser.add_argument('--conditional-formatting', choices=[
+        'constant', 'constant-string', 'styles', 'dummy-missing', 'dummy-inert',
+        'dummy-present', 'dummy-added', 'duplicate', 'color-scale',
+    ])
     args = parser.parse_args()
     if args.conditional_formatting:
         from cf_fixtures import create
