@@ -75,6 +75,21 @@ SEARCH/ISERROR, multiple dependencies and a foreign-cell `cellIs` operand.
 
 ## Whole-area dependencies: duplicates and color scales
 
+Mixed blocks combine the already supported local, whole-area, explicit-reference
+and missing-Dummy procedures. Every rule must be understood. Their dependency
+footprints are unioned, without evaluating rule outcomes, priorities or stopIfTrue.
+Those rule attributes must still match in the complete raw catalogue.
+
+A changed/uncertain whole-area input selects the entire application area. If only
+an external-to-area local reference changes, its dependent targets are selected;
+an unchanged whole-area rule does not widen that selection. Missing-Dummy members
+contribute no footprint only when their absence proof succeeds in both states.
+One unknown member retains the full block fallback.
+
+Native controls `ref-mixed` and `ref-mixed-group` distinguish reference-driven
+partial selection from whole-area input changes, including Check Performance.
+Report reasons starting with `combined-` identify these decisions.
+
 Unchanged `duplicateValues` rules and standard color scales can exclude their
 application area only when all its cell XML inputs and the visual context match.
 Color scales support fixed numeric, minimum/maximum, percent and percentile

@@ -11,7 +11,7 @@ use super::{
     xml_changes::{Sheet, Snapshot, XmlChange},
     Candidate,
 };
-use crate::regression::cf_inventory::scan::Block;
+use crate::regression::cf_inventory::scan::{Block, Rule};
 use anyhow::Result;
 pub(super) use ranges::cell as cell_address;
 pub(super) use ranges::Rect;
@@ -46,8 +46,14 @@ enum Proof {
     LocalInputs,
     WholeAreaInputs,
     ReferencedInputs(Vec<references::Reference>),
+    CombinedInputs(CombinedInputs),
     MissingDummyTargets,
     Fallback(&'static str),
+}
+
+struct CombinedInputs {
+    whole_area: bool,
+    references: Vec<references::Reference>,
 }
 
 fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
@@ -84,30 +90,68 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
             Proof::Fallback("format-string-theme-or-workbook-context-changed")
         };
     }
+    if let Some(inputs) = combined_inputs(block, before, after) {
+        return if before.cf_context == after.cf_context {
+            Proof::CombinedInputs(inputs)
+        } else {
+            Proof::Fallback("format-string-theme-or-workbook-context-changed")
+        };
+    }
     for rule in &block.rules {
-        if rule.truncated_formula
-            || rule.formula_cdata
-            || rule.attributes.get("type").map(String::as_str) != Some("cellIs")
-            || rule.attributes.get("operator").map(String::as_str) != Some("notEqual")
-            || rule.attributes.keys().any(|key| {
-                !["type", "operator", "dxfId", "priority", "stopIfTrue"].contains(&key.as_str())
-            })
-            || rule.child_elements.iter().any(|name| name != "formula")
-            || rule.formulas.len() != 1
-        {
-            return Proof::Fallback("unsupported-rule-semantics");
-        }
-        let Some(target) = formulas::dummy_target(&rule.formulas[0]) else {
-            return Proof::Fallback("indirect-template-not-recognized");
-        };
-        let (Some(a), Some(b)) = (&before.sheet_names, &after.sheet_names) else {
-            return Proof::Fallback("sheet-name-absence-not-proven");
-        };
-        if a.contains(&target) || b.contains(&target) {
-            return Proof::Fallback("dummy-target-exists");
+        if let Some(reason) = dummy_target_error(rule, before, after) {
+            return Proof::Fallback(reason);
         }
     }
     Proof::MissingDummyTargets
+}
+
+/// Missing-target rules contribute no visual dependency; any uncertainty keeps their fallback.
+fn dummy_target_error(rule: &Rule, before: &Snapshot, after: &Snapshot) -> Option<&'static str> {
+    if rule.truncated_formula
+        || rule.formula_cdata
+        || rule.attributes.get("type").map(String::as_str) != Some("cellIs")
+        || rule.attributes.get("operator").map(String::as_str) != Some("notEqual")
+        || rule.attributes.keys().any(|key| {
+            !["type", "operator", "dxfId", "priority", "stopIfTrue"].contains(&key.as_str())
+        })
+        || rule.child_elements.iter().any(|name| name != "formula")
+        || rule.formulas.len() != 1
+    {
+        return Some("unsupported-rule-semantics");
+    }
+    let Some(target) = formulas::dummy_target(&rule.formulas[0]) else {
+        return Some("indirect-template-not-recognized");
+    };
+    let (Some(a), Some(b)) = (&before.sheet_names, &after.sheet_names) else {
+        return Some("sheet-name-absence-not-proven");
+    };
+    if a.contains(&target) || b.contains(&target) {
+        return Some("dummy-target-exists");
+    }
+    None
+}
+
+/// Union every understood rule's dependencies; one unknown member invalidates the whole plan.
+fn combined_inputs(block: &Block, before: &Snapshot, after: &Snapshot) -> Option<CombinedInputs> {
+    let mut plan = CombinedInputs {
+        whole_area: false,
+        references: Vec::new(),
+    };
+    let mut active_rules = 0;
+    for rule in &block.rules {
+        if formulas::literal_rule(rule) {
+            active_rules += 1;
+        } else if formulas::whole_area_rule(rule) {
+            plan.whole_area = true;
+            active_rules += 1;
+        } else if let Some(inputs) = rule_references(rule) {
+            plan.references.extend(inputs);
+            active_rules += 1;
+        } else if dummy_target_error(rule, before, after).is_some() {
+            return None;
+        }
+    }
+    (active_rules > 0).then_some(plan)
 }
 
 /// Every rule must have a known dependency footprint; one unknown rule keeps the block conservative.
@@ -117,45 +161,52 @@ fn reference_inputs(block: &Block) -> Option<Vec<references::Reference>> {
         if formulas::literal_rule(rule) {
             continue;
         }
-        if rule.truncated_formula
-            || rule.formula_cdata
-            || !matches!(
-                rule.attributes.get("type").map(String::as_str),
-                Some(
-                    "containsBlanks"
-                        | "notContainsBlanks"
-                        | "containsErrors"
-                        | "notContainsErrors"
-                        | "containsText"
-                        | "notContainsText"
-                        | "beginsWith"
-                        | "endsWith"
-                        | "expression"
-                        | "cellIs"
-                )
-            )
-            || rule.attributes.keys().any(|key| {
-                ![
-                    "type",
-                    "dxfId",
-                    "priority",
-                    "stopIfTrue",
-                    "operator",
-                    "text",
-                ]
-                .contains(&key.as_str())
-            })
-            || rule.child_elements.iter().any(|name| name != "formula")
-            || rule.formulas.is_empty()
-        {
-            return None;
-        }
-        for raw in &rule.formulas {
-            let formula = formulas::decode_entities(raw)?;
-            inputs.extend(expression::dependencies(&formula)?);
-        }
+        inputs.extend(rule_references(rule)?);
     }
     (!inputs.is_empty()).then_some(inputs)
+}
+
+/// Extract explicit scalar/range dependencies only from understood rule types and content.
+fn rule_references(rule: &Rule) -> Option<Vec<references::Reference>> {
+    let mut inputs = Vec::new();
+    if rule.truncated_formula
+        || rule.formula_cdata
+        || !matches!(
+            rule.attributes.get("type").map(String::as_str),
+            Some(
+                "containsBlanks"
+                    | "notContainsBlanks"
+                    | "containsErrors"
+                    | "notContainsErrors"
+                    | "containsText"
+                    | "notContainsText"
+                    | "beginsWith"
+                    | "endsWith"
+                    | "expression"
+                    | "cellIs"
+            )
+        )
+        || rule.attributes.keys().any(|key| {
+            ![
+                "type",
+                "dxfId",
+                "priority",
+                "stopIfTrue",
+                "operator",
+                "text",
+            ]
+            .contains(&key.as_str())
+        })
+        || rule.child_elements.iter().any(|name| name != "formula")
+        || rule.formulas.is_empty()
+    {
+        return None;
+    }
+    for raw in &rule.formulas {
+        let formula = formulas::decode_entities(raw)?;
+        inputs.extend(expression::dependencies(&formula)?);
+    }
+    Some(inputs)
 }
 
 /// Changes and uncertain formula inputs select all dependent targets, without rule evaluation.
@@ -332,7 +383,10 @@ pub(super) fn select(
                 };
                 if matches!(
                     mode,
-                    Proof::LocalInputs | Proof::WholeAreaInputs | Proof::ReferencedInputs(_)
+                    Proof::LocalInputs
+                        | Proof::WholeAreaInputs
+                        | Proof::ReferencedInputs(_)
+                        | Proof::CombinedInputs(_)
                 ) && a.cf_layout != b.cf_layout
                 {
                     mode = Proof::Fallback("worksheet-layout-context-changed");
@@ -352,6 +406,34 @@ pub(super) fn select(
                     comparison_extent: extent,
                 };
                 match mode {
+                    Proof::CombinedInputs(plan) => {
+                        let areas = areas.as_deref().unwrap();
+                        select_references(
+                            &mut decision,
+                            &plan.references,
+                            areas,
+                            a,
+                            b,
+                            changes,
+                            candidates,
+                        )?;
+                        if plan.whole_area
+                            && (decision.changed_inputs > 0
+                                || decision.formula_input_observations > 0)
+                        {
+                            decision.outcome = "capture".into();
+                            decision.reason =
+                                "combined-whole-area-input-changed-or-uncertain".into();
+                            fallback(name, areas, extent, candidates);
+                        } else {
+                            decision.reason = if decision.outcome == "excluded" {
+                                "combined-supported-inputs-unchanged"
+                            } else {
+                                "combined-reference-or-layout-dependency"
+                            }
+                            .into();
+                        }
+                    }
                     Proof::ReferencedInputs(inputs) => select_references(
                         &mut decision,
                         &inputs,

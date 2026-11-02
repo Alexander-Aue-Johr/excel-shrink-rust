@@ -58,11 +58,18 @@ def create(directory: Path, mode: str) -> None:
                 formula = 'COUNTIF($A$1:$A$2,1)>1'
             elif mode == 'ref-range-growing':
                 formula = 'SUM($A$1:A1)>0'
+            elif mode == 'ref-mixed':
+                formula = 'SUM($A$1:$A$2)>1'
+            elif mode == 'ref-mixed-group':
+                sheet['A1'] = 1
+                sheet['B3'] = 1 if lane == 'original' else 10
             if mode == 'ref-cell-is':
                 rule = CellIsRule(operator='greaterThan', formula=['$F$1'], fill=fill)
             else:
                 rule = Rule(type='expression', formula=[formula], dxf=DifferentialStyle(fill=fill))
             sheet.conditional_formatting.add(area, rule)
+            if mode in ('ref-mixed', 'ref-mixed-group'):
+                sheet.conditional_formatting.add(area, ColorScaleRule(start_type='min', start_color='FFFF0000', end_type='max', end_color='FF00FF00'))
         elif mode == 'duplicate':
             sheet.conditional_formatting.add('A1:B5', Rule(type='duplicateValues', dxf=DifferentialStyle(fill=fill)))
             sheet['A1'] = 2

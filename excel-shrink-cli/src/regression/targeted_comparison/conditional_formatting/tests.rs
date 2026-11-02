@@ -8,6 +8,56 @@ use std::{
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 #[test]
+fn mixed_blocks_union_known_dependencies_and_keep_unknown_members_conservative() -> Result<()> {
+    let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-mixed")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let values = concat!(
+        "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row>",
+        "<row r=\"3\"><c r=\"B3\"><v>1</v></c></row>",
+        "<row r=\"5\"><c r=\"D5\"><v>2</v></c></row>"
+    );
+    let expression =
+        "<cfRule type=\"expression\" priority=\"1\"><formula>LEN(TRIM(A1))=0</formula></cfRule>";
+    let duplicate = "<cfRule type=\"duplicateValues\" priority=\"2\"/>";
+    let scale = "<cfRule type=\"colorScale\" priority=\"2\"><colorScale><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FFFF0000\"/><color rgb=\"FF00FF00\"/></colorScale></cfRule>";
+    let dummy = "<cfRule type=\"cellIs\" operator=\"notEqual\" priority=\"3\"><formula>INDIRECT(&quot;Dummy_for_Comparison1!&quot;&amp;ADDRESS(ROW(),COLUMN()))</formula></cfRule>";
+    for group in [duplicate, scale] {
+        let block = format!("<conditionalFormatting sqref=\"B2:D5\">{expression}{group}{dummy}</conditionalFormatting>");
+        write_book(&a, values, &block, "", "", "")?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+        write_book(&b, &values.replacen("<v>1", "<v>3", 1), &block, "", "", "")?;
+        let (decisions, candidates) = check(&a, &b)?;
+        assert_eq!(decisions[0].outcome, "partial");
+        assert!(candidates.iter().any(|candidate| candidate.cell == "B2:B2"));
+        assert!(!candidates.iter().any(|candidate| candidate.cell == "B2:D5"));
+        write_book(
+            &b,
+            &values.replace("r=\"B3\"><v>1", "r=\"B3\"><v>3"),
+            &block,
+            "",
+            "",
+            "",
+        )?;
+        let (decisions, candidates) = check(&a, &b)?;
+        assert_eq!(decisions[0].outcome, "capture");
+        assert!(candidates.iter().any(|candidate| candidate.cell == "B2:D5"));
+        let names = "<sheet name=\"Dummy_for_Comparison1\" state=\"hidden\" r:id=\"unused\"/>";
+        write_book(&a, values, &block, names, "", "")?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+        let unknown = block.replace("LEN(TRIM(A1))=0", "INDIRECT(&quot;A1&quot;)=0");
+        write_book(&a, values, &unknown, "", "", "")?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn simple_formulas_select_every_reference_and_reject_unknown_dependencies() -> Result<()> {
     let root =
         crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-expression")?;
