@@ -147,6 +147,7 @@ pub(super) struct Snapshot {
     pub columns: Value,
     pub report: Value,
     pub error: Option<String>,
+    pub publication_errors: Vec<String>,
 }
 
 impl Snapshot {
@@ -308,6 +309,7 @@ impl Telemetry {
             columns: Phase::columns(),
             report: json!({}),
             error: None,
+            publication_errors: Vec::new(),
         };
         let shared = Arc::new((
             Mutex::new(Shared {
@@ -366,8 +368,9 @@ fn now() -> i64 {
 fn write_snapshot(state: &mut Shared) -> Result<()> {
     state.snapshot.updated_at = now();
     state.snapshot.revision += 1;
+    state.snapshot.publication_errors.clear();
     let bytes = serde_json::to_vec_pretty(&state.snapshot)?;
-    for path in &state.paths {
+    for path in state.paths.iter().skip(1) {
         // Concurrent manual rechecks may share the legacy group snapshot, but
         // must never rename or overwrite one another's temporary publication.
         let name = path.file_name().unwrap_or_default().to_string_lossy();
@@ -375,10 +378,24 @@ fn write_snapshot(state: &mut Shared) -> Result<()> {
             ".{name}.{}.{}.tmp",
             state.snapshot.run_id, state.snapshot.revision
         ));
-        fs::write(&temporary, &bytes)?;
-        fs::rename(&temporary, path).with_context(|| format!("Publish {}", path.display()))?;
+        let publication = fs::write(&temporary, &bytes).and_then(|()| fs::rename(&temporary, path));
+        if let Err(error) = publication {
+            // Dashboard readers may briefly omit FILE_SHARE_DELETE. Keep their
+            // last complete snapshot and retry on the next update/heartbeat.
+            // This optional mirror must not cancel captured research evidence.
+            let _ = fs::remove_file(&temporary);
+            state
+                .snapshot
+                .publication_errors
+                .push(format!("Publish {}: {error}", path.display()));
+        }
     }
-    Ok(())
+    // Local evidence remains authoritative and includes mirror publication
+    // failures. Its bounded atomic replacement already retries Windows locks.
+    crate::regression::artifact_cache::atomic_write(
+        &state.paths[0],
+        &serde_json::to_vec_pretty(&state.snapshot)?,
+    )
 }
 
 /// Heartbeats here are actual PID-and-creation-time observations, not progress.
@@ -416,6 +433,63 @@ fn sample_processes(shared: Arc<(Mutex<Shared>, Condvar)>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn locked_dashboard_does_not_abort_work_and_recovers_without_losing_progress() -> Result<()> {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root = std::env::temp_dir().join(format!("locked-telemetry-{}", uuid::Uuid::new_v4()));
+        let output = root.join("result");
+        let group = root.join("control/groups/one");
+        fs::create_dir_all(&output)?;
+        fs::create_dir_all(&group)?;
+        let args = Args {
+            original: root.join("original.xlsx"),
+            default: root.join("default.xlsx"),
+            output: output.clone(),
+            host_script: None,
+            observatory_group_dir: Some(group.clone()),
+            workbook_label: None,
+            operation_timeout_seconds: 1,
+            skip_check_performance: true,
+        };
+        let telemetry = Telemetry::start(&args)?;
+        let mirror = group.join("targeted-comparison.json");
+        let previous = fs::read(&mirror)?;
+        let reader = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&mirror)?;
+        telemetry.update(|state| state.lane(LaneId::O).captures_done = 7)?;
+        assert_eq!(
+            fs::read(&mirror)?,
+            previous,
+            "Keep the last complete dashboard snapshot"
+        );
+        let local: Value = serde_json::from_slice(&fs::read(output.join("telemetry.json"))?)?;
+        assert_eq!(local["lanes"][0]["captures_done"], 7);
+        assert_eq!(local["publication_errors"].as_array().unwrap().len(), 1);
+        assert!(
+            local["error"].is_null(),
+            "A mirror lock is not a comparison failure"
+        );
+        assert!(!fs::read_dir(&group)?.any(|entry| entry
+            .unwrap()
+            .path()
+            .extension()
+            .is_some_and(|ext| ext == "tmp")));
+        drop(reader);
+        telemetry.update(|state| state.lane(LaneId::O).captures_done = 8)?;
+        let recovered: Value = serde_json::from_slice(&fs::read(&mirror)?)?;
+        assert_eq!(recovered["lanes"][0]["captures_done"], 8);
+        assert!(recovered["publication_errors"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        drop(telemetry);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn quick_xml_work_and_candidate_growth_are_persisted_without_fake_beats() {
