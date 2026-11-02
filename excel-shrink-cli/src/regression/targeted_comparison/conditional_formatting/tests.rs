@@ -7,6 +7,52 @@ use std::{
 
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
+#[test]
+fn whole_area_rules_exclude_equal_inputs_but_capture_every_dependent_cell() -> Result<()> {
+    let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-group")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let duplicate = "<cfRule type=\"duplicateValues\" priority=\"1\"/>";
+    let scale = "<cfRule type=\"colorScale\" priority=\"1\"><colorScale><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FFFF0000\"/><color rgb=\"FF00FF00\"/></colorScale></cfRule>";
+    for rule in [duplicate, scale] {
+        let block =
+            format!("<conditionalFormatting sqref=\"A1:B5\">{rule}</conditionalFormatting>");
+        let values = concat!(
+            "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row>",
+            "<row r=\"5\"><c r=\"B5\"><v>3</v></c></row>"
+        );
+        write_book(&a, values, &block, "", "", "")?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+        // Even a change that preserves the rule's result must trigger the full area.
+        write_book(&b, &values.replace("<v>1", "<v>2"), &block, "", "", "")?;
+        let (decisions, candidates) = check(&a, &b)?;
+        assert_eq!(decisions[0].outcome, "capture");
+        assert!(candidates.iter().any(|candidate| candidate.cell == "A1:B5"));
+        let outside = format!("{values}<row r=\"6\"><c r=\"C6\"><v>9</v></c></row>");
+        write_book(&b, &outside, &block, "", "", "")?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+        let deleted = values.replace("<c r=\"A1\"><v>1</v></c>", "");
+        write_book(&b, &deleted, &block, "", "", "")?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+        // Unchanged formula caches do not establish unchanged live inputs.
+        let formula = values.replace("<v>1", "<f>NOW()</f><v>1");
+        write_book(&a, &formula, &block, "", "", "")?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+        // A formula threshold cannot be treated as a local value-set dependency.
+        if rule == scale {
+            let dependent = block.replace("type=\"min\"", "type=\"formula\" val=\"Other!A1\"");
+            write_book(&a, values, &dependent, "", "", "")?;
+            fs::copy(&a, &b)?;
+            assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+        }
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
 fn write_book(
     path: &Path,
     values: &str,

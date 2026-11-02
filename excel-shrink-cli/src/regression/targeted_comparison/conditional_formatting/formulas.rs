@@ -1,5 +1,45 @@
 //! Deliberately narrow formula recognition; unknown encodings/grammar never prove equality.
 
+/// These rules depend on the complete application-area value set, not an evaluated result.
+pub(super) fn whole_area_rule(rule: &crate::regression::cf_inventory::scan::Rule) -> bool {
+    if rule.truncated_formula
+        || !rule.formulas.is_empty()
+        || rule
+            .attributes
+            .keys()
+            .any(|key| !["type", "dxfId", "priority", "stopIfTrue"].contains(&key.as_str()))
+    {
+        return false;
+    }
+    match rule.attributes.get("type").map(String::as_str) {
+        Some("duplicateValues") => rule.child_elements.is_empty(),
+        Some("colorScale") => {
+            !rule.thresholds.is_empty()
+                && rule
+                    .child_elements
+                    .iter()
+                    .all(|name| ["colorScale", "cfvo", "color"].contains(&name.as_str()))
+                && rule.thresholds.iter().all(|threshold| {
+                    if threshold
+                        .keys()
+                        .any(|key| !["type", "val", "gte"].contains(&key.as_str()))
+                    {
+                        return false;
+                    }
+                    match threshold.get("type").map(String::as_str) {
+                        Some("min" | "max") => true,
+                        Some("num" | "percent" | "percentile") => threshold
+                            .get("val")
+                            .and_then(|value| value.parse::<f64>().ok())
+                            .is_some_and(f64::is_finite),
+                        _ => false,
+                    }
+                })
+        }
+        _ => false,
+    }
+}
+
 /// Decode XML text once before literal classification; CDATA is already literal text.
 pub(super) fn literal_rule(rule: &crate::regression::cf_inventory::scan::Rule) -> bool {
     let mut normalized = rule.clone();

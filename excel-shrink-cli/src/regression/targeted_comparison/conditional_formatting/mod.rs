@@ -40,6 +40,7 @@ pub(super) struct Check {
 
 enum Proof {
     LocalInputs,
+    WholeAreaInputs,
     MissingDummyTargets,
     Fallback(&'static str),
 }
@@ -47,10 +48,9 @@ enum Proof {
 fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
     if block.qualified_name != "conditionalFormatting"
         || block.attributes.keys().any(|key| key != "sqref")
-        || block
-            .child_elements
-            .iter()
-            .any(|name| !["cfRule", "formula"].contains(&name.as_str()))
+        || block.child_elements.iter().any(|name| {
+            !["cfRule", "formula", "colorScale", "cfvo", "color"].contains(&name.as_str())
+        })
         || block.rules.is_empty()
     {
         return Proof::Fallback("unsupported-rule-or-namespace-content");
@@ -60,6 +60,17 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
             return Proof::LocalInputs;
         }
         return Proof::Fallback("format-string-theme-or-workbook-context-changed");
+    }
+    if block
+        .rules
+        .iter()
+        .all(|rule| formulas::literal_rule(rule) || formulas::whole_area_rule(rule))
+    {
+        return if before.cf_context == after.cf_context {
+            Proof::WholeAreaInputs
+        } else {
+            Proof::Fallback("format-string-theme-or-workbook-context-changed")
+        };
     }
     for rule in &block.rules {
         if rule.truncated_formula
@@ -208,7 +219,9 @@ pub(super) fn select(
                 } else {
                     proof(block, before, after)
                 };
-                if matches!(mode, Proof::LocalInputs) && a.cf_layout != b.cf_layout {
+                if matches!(mode, Proof::LocalInputs | Proof::WholeAreaInputs)
+                    && a.cf_layout != b.cf_layout
+                {
                     mode = Proof::Fallback("worksheet-layout-context-changed");
                 }
                 let mut decision = Decision {
@@ -224,6 +237,19 @@ pub(super) fn select(
                     comparison_extent: extent,
                 };
                 match mode {
+                    Proof::WholeAreaInputs => {
+                        let areas = areas.as_deref().unwrap();
+                        select_local_inputs(&mut decision, areas, a, b, changes, candidates)?;
+                        if decision.changed_inputs > 0 || decision.formula_input_observations > 0 {
+                            decision.outcome = "capture".into();
+                            decision.reason =
+                                "whole-area-dependency-changed-or-formula-input-uncertain".into();
+                            fallback(name, areas, extent, candidates);
+                        } else {
+                            decision.reason =
+                                "whole-area-XML-inputs-unchanged; no rule evaluation".into();
+                        }
+                    }
                     Proof::MissingDummyTargets => {
                         decision.outcome = "excluded".into();
                         decision.reason = "fixed-dummy-targets-absent-in-both-states".into();

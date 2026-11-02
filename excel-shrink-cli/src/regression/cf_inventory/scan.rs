@@ -17,6 +17,7 @@ pub(in crate::regression) struct Rule {
     pub child_elements: BTreeSet<String>,
     pub truncated_formula: bool,
     pub formula_cdata: bool,
+    pub thresholds: Vec<BTreeMap<String, String>>,
     pub classification: String,
 }
 
@@ -162,6 +163,14 @@ pub(in crate::regression) fn scan(
                             .unwrap()
                             .child_elements
                             .insert(String::from_utf8(tag.name.to_vec())?);
+                    }
+                    if opening && local == b"cfvo" && rule_depth.is_some() {
+                        block
+                            .rules
+                            .last_mut()
+                            .unwrap()
+                            .thresholds
+                            .push(attributes(tag.attrs)?);
                     }
                     if tag.kind == Kind::Start
                         && matches!(local, b"formula" | b"f")
