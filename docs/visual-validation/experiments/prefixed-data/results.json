@@ -1,0 +1,62 @@
+{
+  "date": "2026-11-02",
+  "inventory": {
+    "completed": 9117,
+    "errors": 0,
+    "inspected_bytes": 147208175886,
+    "matched_workbooks": 493,
+    "seconds": 651.2629822,
+    "sheets": 47032,
+    "status": "completed",
+    "total": 9117
+  },
+  "trials": {
+    "matched_in_inventory_snapshot": 493,
+    "trials": 493,
+    "completed": 493,
+    "errors": 0,
+    "byte_identical_after_shrink": 310,
+    "with_xml_changes": 183,
+    "positive_size_savings": 2,
+    "changed_expanded_xml": 151
+  },
+  "positive_cases": [
+    {
+      "source_id": "05916",
+      "workbook": "blm-or-water-quality-and-quantity-stream-grab-sample-sample-publication-point-hub-b739e__717da732-9e91-4465-acb4-c36a7e00b109_29cde54ee569.xlsx",
+      "source_sha256": "29cde54ee569cc2219312c7222764c3b7ad8460cc5030827528e16b23bc8f389",
+      "normalized_bytes": 4049434,
+      "shrunk_bytes": 3789647,
+      "savings_bytes": 259787,
+      "cell_audit": {
+        "unchanged_cells": 583853,
+        "removed_empty_unstyled_cells": 268016,
+        "other_changes": 0,
+        "examples": []
+      },
+      "sampled_regions": 25,
+      "normalization_pixel_differences": 0,
+      "shrink_pixel_differences": 0,
+      "visual_coverage": "Stratified samples, not full visual validation"
+    },
+    {
+      "source_id": "05803",
+      "workbook": "blm-nm-region-cadnsdi-survey-points-for-ks-3894c__8b885d6e-59cd-4193-9cdc-e39fb3427ec0_b7926611f2d5.xlsx",
+      "source_sha256": "b7926611f2d55347f9d74387adbdffd1a58bc90c383059245878f8612ffcca20",
+      "normalized_bytes": 20793070,
+      "shrunk_bytes": 20783201,
+      "savings_bytes": 9869,
+      "cell_audit": {
+        "unchanged_cells": 4580967,
+        "removed_empty_unstyled_cells": 1219443,
+        "other_changes": 0,
+        "examples": []
+      },
+      "sampled_regions": 17,
+      "normalization_pixel_differences": 0,
+      "shrink_pixel_differences": 0,
+      "visual_coverage": "Stratified samples, not full visual validation"
+    }
+  ],
+  "production_policy_changed": false
+}

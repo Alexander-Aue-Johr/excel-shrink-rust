@@ -12,6 +12,7 @@ mod staged;
 mod telemetry;
 mod workbooks;
 mod xml_changes;
+pub(super) mod prefix_inspection;
 
 use anyhow::{ensure, Result};
 use candidates::{discover_candidates, find_changes_caused_by_save, SaveChanges};

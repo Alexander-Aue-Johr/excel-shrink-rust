@@ -78,6 +78,8 @@ enum RegressionCommand {
     PrefixInventory(prefix_inventory::Args),
     /// Create a namespace-normalized experimental copy and verify its expanded XML evidence.
     PrefixNormalize(prefix_inventory::normalize::Args),
+    /// Audit saving prefix cases and capture explicitly sampled neighborhoods.
+    PrefixInspect(targeted_comparison::prefix_inspection::InspectArgs),
     #[command(hide = true)]
     ArchiveWorker(archive::WorkerArgs),
 }
@@ -443,6 +445,7 @@ pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
         RegressionCommand::CfInventory(args) => cf_inventory::run(args),
         RegressionCommand::PrefixInventory(args) => prefix_inventory::run(args),
         RegressionCommand::PrefixNormalize(args) => prefix_inventory::normalize::run(args),
+        RegressionCommand::PrefixInspect(args) => targeted_comparison::prefix_inspection::run(args),
         RegressionCommand::ArchiveWorker(args) => archive::run_worker(args, console_log_level),
         RegressionCommand::Smoke(args) => run_suite_or_visual_profile_matrix(
             "smoke",
