@@ -118,6 +118,7 @@ impl Report {
 /// Scientific coverage limits apply independently of the display or process health.
 pub(super) fn new_report() -> Report {
     Report {
+        capture_policy: super::CAPTURE_POLICY,
         status: "running".into(),
         check_performance: "not_requested",
         check_performance_evidence: None,

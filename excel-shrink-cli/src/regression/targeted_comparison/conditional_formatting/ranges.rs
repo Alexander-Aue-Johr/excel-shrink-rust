@@ -1,6 +1,9 @@
 //! Finite worksheet rectangles and capture-grid intersections; never expand cells in memory.
 use serde::Serialize;
 
+pub(in crate::regression::targeted_comparison) const CAPTURE_ROWS: u32 = 128;
+pub(in crate::regression::targeted_comparison) const CAPTURE_COLUMNS: u32 = 16;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub(in crate::regression::targeted_comparison) struct Rect {
     pub top: u32,
@@ -89,13 +92,17 @@ impl Rect {
 
     /// Partition the finite comparison extent; the image API still enforces its own geometry limits.
     pub fn tiles(self) -> impl Iterator<Item = Self> {
-        (self.top..=self.bottom).step_by(128).flat_map(move |top| {
-            (self.left..=self.right).step_by(16).map(move |left| Self {
-                top,
-                left,
-                bottom: (top + 127).min(self.bottom),
-                right: (left + 15).min(self.right),
+        (self.top..=self.bottom)
+            .step_by(CAPTURE_ROWS as usize)
+            .flat_map(move |top| {
+                (self.left..=self.right)
+                    .step_by(CAPTURE_COLUMNS as usize)
+                    .map(move |left| Self {
+                        top,
+                        left,
+                        bottom: (top + CAPTURE_ROWS - 1).min(self.bottom),
+                        right: (left + CAPTURE_COLUMNS - 1).min(self.right),
+                    })
             })
-        })
     }
 }

@@ -66,6 +66,25 @@ impl Rectangle {
             self.bottom
         )
     }
+
+    /// Use the existing CF capture grid; many changed cells in one tile need one image.
+    fn capture_tiles(self) -> impl Iterator<Item = Self> {
+        use super::conditional_formatting::{CAPTURE_COLUMNS, CAPTURE_ROWS};
+        let first_row = ((self.top - 1) / CAPTURE_ROWS) * CAPTURE_ROWS + 1;
+        let first_column = ((self.left - 1) / CAPTURE_COLUMNS) * CAPTURE_COLUMNS + 1;
+        (first_row..=self.bottom)
+            .step_by(CAPTURE_ROWS as usize)
+            .flat_map(move |top| {
+                (first_column..=self.right)
+                    .step_by(CAPTURE_COLUMNS as usize)
+                    .map(move |left| Self {
+                        top,
+                        left,
+                        bottom: (top + CAPTURE_ROWS - 1).min(1_048_576),
+                        right: (left + CAPTURE_COLUMNS - 1).min(16_384),
+                    })
+            })
+    }
 }
 
 pub(super) fn include(bounds: &mut Option<Rectangle>, row: u32, column: u32) {
@@ -159,11 +178,16 @@ impl ContentBounds {
                 continue;
             };
             entry.clipped_to_content += usize::from(region != clipped);
-            if selected.insert(Candidate {
-                sheet: candidate.sheet.clone(),
-                cell: clipped.address(),
-            }) {
-                entry.selected_capture_regions += 1;
+            for tile in clipped.capture_tiles() {
+                let tile = tile
+                    .intersection(bounds.expect("clipped region has content bounds"))
+                    .expect("tile overlaps content");
+                if selected.insert(Candidate {
+                    sheet: candidate.sheet.clone(),
+                    cell: tile.address(),
+                }) {
+                    entry.selected_capture_regions += 1;
+                }
             }
         }
         Ok((selected, coverage.into_values().collect()))
@@ -173,6 +197,40 @@ impl ContentBounds {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dense_changes_share_tiles_without_dropping_grid_boundary_neighbors() -> Result<()> {
+        let bounds = ContentBounds(BTreeMap::from([(
+            "Data".into(),
+            Rectangle::parse("A1:Z1000")?,
+        )]));
+        let requested = BTreeSet::from([Candidate {
+            sheet: "Data".into(),
+            cell: "P128".into(),
+        }]);
+        let (selected, _) = bounds.select(&requested)?;
+        assert_eq!(
+            selected
+                .iter()
+                .map(|candidate| candidate.cell.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["A1:P128", "A129:P256", "Q1:AA128", "Q129:AA256"])
+        );
+        let requested = (1..=1000)
+            .flat_map(|row| {
+                (b'A'..=b'J').map(move |column| Candidate {
+                    sheet: "Data".into(),
+                    cell: format!("{}{row}", column as char),
+                })
+            })
+            .collect();
+        let (selected, _) = bounds.select(&requested)?;
+        assert_eq!(selected.len(), 8);
+        assert!(selected
+            .iter()
+            .all(|candidate| Rectangle::parse(&candidate.cell).unwrap().bottom <= 1001));
+        Ok(())
+    }
 
     #[test]
     fn deleted_blank_tail_does_not_expand_captures() -> Result<()> {
@@ -187,7 +245,7 @@ mod tests {
             })
             .collect();
         let (selected, coverage) = bounds.select(&requested)?;
-        assert_eq!(selected.len(), 12);
+        assert_eq!(selected.len(), 1);
         assert_eq!(coverage[0].skipped_outside_content, 99_998);
         assert!(selected
             .iter()

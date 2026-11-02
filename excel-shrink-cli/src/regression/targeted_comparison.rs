@@ -29,6 +29,8 @@ use std::{
 };
 use telemetry::{LaneId, Phase, StepStatus, Telemetry};
 
+pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v2";
+
 #[derive(Debug, Parser)]
 pub(crate) struct Args {
     /// Untouched source XLSX; the command works on a copy.
@@ -86,6 +88,7 @@ struct Finding {
 
 #[derive(Serialize)]
 struct Report {
+    capture_policy: &'static str,
     status: String,
     check_performance: &'static str,
     check_performance_evidence: Option<check_performance::PerformanceEvidence>,

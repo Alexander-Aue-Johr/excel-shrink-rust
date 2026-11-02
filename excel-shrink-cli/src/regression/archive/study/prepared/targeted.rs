@@ -3,7 +3,7 @@ use super::*;
 use std::collections::BTreeSet;
 use std::process::{Command, Stdio};
 
-const POLICY: &str = "targeted-content-envelope-v1";
+const POLICY: &str = crate::regression::targeted_comparison::CAPTURE_POLICY;
 
 /// A targeted result completes this selection policy, never a whole-sheet visual certificate.
 pub(in crate::regression::archive::study) fn complete(
@@ -229,6 +229,16 @@ fn publish_portable_evidence(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn identical_default_does_not_skip_a_requested_performance_lane() {
+        let mut record = json!({"results":[{"profile":"default"}],
+            "shrink_identity":{"default":{"workbook_original_archive_reused":true}},
+            "targeted_check_performance_required":true});
+        assert!(!finalize_nonvisual_preparation(&mut record));
+        record["targeted_check_performance_required"] = json!(false);
+        assert!(finalize_nonvisual_preparation(&mut record));
+        assert_eq!(record["status"], "crc-identical");
+    }
     #[test]
     fn resume_requires_the_current_policy_and_requested_lanes() {
         let mut record = json!({"complete":true,"status":"unchanged"});

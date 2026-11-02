@@ -51,6 +51,8 @@ pub(super) fn clear_startup_measurements(record: &mut Value) {
 /// Convert the source when needed and shrink only profiles selected by the run.
 /// Hash sweeps run separately after every shrink bundle is saved.
 pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) -> Result<()> {
+    record["targeted_check_performance_required"] = json!(job.run_manifest.as_ref().is_some_and(|run|
+        run["targeted_comparison"] == true && run["targeted_skip_check_performance"] != true));
     if job.run_manifest.as_ref()
         .is_some_and(|run| run["preparation_stage"] == "hash_sweep")
     {
@@ -942,6 +944,10 @@ fn mark_crc_identical(profile: &mut Value) {
 /// Finish a preparation whose published outputs contain no worksheet cleanup.
 /// This is a terminal shrink outcome, not a visual identity certificate.
 pub(super) fn finalize_nonvisual_preparation(record: &mut Value) -> bool {
+    // Default's identity says nothing about what Excel's optimizer might remove.
+    if record["targeted_check_performance_required"] == true {
+        return false;
+    }
     let names = available_profiles(record);
     if names.is_empty() || !names.iter().all(|name| profile_archive_reused(record, name) || profile_workbook_only(record, name)) {
         return false;

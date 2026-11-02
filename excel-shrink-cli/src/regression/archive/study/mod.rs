@@ -286,6 +286,9 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
     fs::create_dir_all(output.join("records"))?;
     let mut records = load_records_with_progress(&output, |done, total| startup.update("loading_records", "", done, Some(total)))?;
     for record in &mut records {
+        if !args.report_only && !args.selection_only {
+            record["targeted_check_performance_required"] = json!(args.targeted_comparison && !args.targeted_skip_check_performance);
+        }
         if record["complete"] != true {
             // A process from the previous invocation is no longer running.
             record["status"] = json!(if record["prepared"] == true {

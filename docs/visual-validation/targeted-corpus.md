@@ -7,6 +7,12 @@ Performance and rebuilt copies. Formulas and stored strings count as content;
 formatting-only cells do not extend it. This is a bounding rectangle, not a
 claim that every cell inside it contains data.
 
+Changed cells and candidate rectangles select a common 128-row × 16-column grid,
+reusing the conditional-formatting grid size. Each tile is captured once per state
+and clipped to the content envelope. Neighboring tiles remain separate. This
+avoids one screenshot per changed cell without limiting candidate or tile counts.
+`capture_policy: targeted-content-grid-v2` records this coverage policy explicitly.
+
 Deleted real values therefore remain eligible. Deleted blank tails do not cause
 hundreds of thousands of captures. `report.json.content_coverage` records each
 sheet's envelope, requested count, skipped count, clipped count and unique
@@ -52,7 +58,9 @@ Performance and six with it, so concurrent groups multiply that process count.
 Resume the **same output root and arguments** to reuse completed targeted results.
 Old visual/hash results are not accepted as completion of this policy. A completed
 targeted result remains explicitly limited coverage (`checks_complete: false`).
-Namespace and proven nonvisual preparation exclusions keep their existing reasons.
+Namespace exclusions keep their existing reasons. When Check Performance is
+requested, an unchanged Default does not skip that independent optimizer lane.
+Proven nonvisual Default-only exclusions remain available when CP is omitted.
 
 Existing prepared bundles can be reused with `--reuse-prepared-from <full executable
 SHA-256>` after reviewing shrink compatibility. Keep the associated records and
