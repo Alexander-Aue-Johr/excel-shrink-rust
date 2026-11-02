@@ -1,5 +1,6 @@
 """Verify unconditional chart coverage with identical worksheet XML inputs."""
 import json
+from report_audit import load_report
 import sys
 from pathlib import Path
 import zipfile
@@ -7,7 +8,7 @@ import xml.etree.ElementTree as ET
 
 
 def verify(directory: Path, collapsed_chart=False) -> None:
-    report = json.loads((directory / 'report.json').read_text(encoding='utf-8'))
+    report = load_report(directory)
     initial = next(item for item in report['transitions'] if item['label'] == 'default input versus original input')
     assert not initial['changes'], 'Chart selection must not depend on changed worksheet XML'
     direct = next(pair for pair in report['comparisons'] if pair['label'] == 'direct Default')

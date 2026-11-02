@@ -7,6 +7,7 @@ mod conditional_formatting;
 mod check_performance;
 mod evidence;
 mod image_comparison;
+mod change_evidence;
 mod heights;
 mod host;
 mod reporting;

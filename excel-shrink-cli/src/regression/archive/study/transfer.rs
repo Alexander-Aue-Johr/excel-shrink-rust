@@ -506,6 +506,13 @@ fn evidence_paths(value: &Value, paths: &mut BTreeSet<String>) -> Result<()> {
                             "targeted report must be relative evidence JSON");
                         paths.insert(path.to_owned());
                     }
+                } else if key == "targeted_audit_file" {
+                    if let Some(path) = value.as_str() {
+                        relative(path)?;
+                        ensure!(path.starts_with("evidence/") && path.ends_with(".jsonl.gz"),
+                            "targeted audit must be relative compressed evidence");
+                        paths.insert(path.to_owned());
+                    }
                 } else if key.ends_with("_image") {
                     if let Some(path) = value.as_str() {
                         relative(path)?;
@@ -714,9 +721,11 @@ mod tests {
         let target = super::super::tests::test_directory("targeted-transfer-target")?;
         fs::create_dir_all(source.join("evidence/targeted"))?;
         fs::write(source.join("evidence/targeted/portable-report.json"), b"{\"status\":\"completed_with_limitations\"}")?;
+        fs::write(source.join("evidence/targeted/changes.jsonl.gz"), b"verified compressed audit")?;
         record["targeted_comparison"] = json!({
             "targeted_report_file":"evidence/targeted/portable-report.json",
-            "evidence_images":[{"capture_image":"evidence/file/shrunk.png"}]
+            "evidence_images":[{"capture_image":"evidence/file/shrunk.png"}],
+            "audit_files":[{"targeted_audit_file":"evidence/targeted/changes.jsonl.gz"}]
         });
         write_record(&record_path(&source, record["identity"].as_str().unwrap()), &record)?;
         let package = source.join("targeted-results.zip");
@@ -724,6 +733,7 @@ mod tests {
         import_package(&target, &package, &expected)?;
         assert_eq!(fs::read(target.join("evidence/targeted/portable-report.json"))?, b"{\"status\":\"completed_with_limitations\"}");
         assert_eq!(fs::read(target.join("evidence/file/shrunk.png"))?, b"changed image");
+        assert_eq!(fs::read(target.join("evidence/targeted/changes.jsonl.gz"))?, b"verified compressed audit");
         fs::remove_dir_all(source)?;
         fs::remove_dir_all(target)?;
         Ok(())

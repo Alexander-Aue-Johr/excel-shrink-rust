@@ -471,6 +471,7 @@ dependencies = [
  "clap",
  "crc32fast",
  "excel-shrink-core",
+ "flate2",
  "futures-util",
  "image",
  "libc",

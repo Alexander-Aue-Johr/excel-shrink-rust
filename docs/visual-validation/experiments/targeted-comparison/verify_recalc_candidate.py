@@ -1,6 +1,7 @@
 """Verify that an indirect formula change is captured before losing Original's pre-state."""
 import argparse
 import json
+from report_audit import load_report
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import zipfile
@@ -14,7 +15,7 @@ def covers_formula(finding):
 
 
 def verify(directory):
-    report = json.loads((directory / 'report.json').read_text())
+    report = load_report(directory)
     transitions = {item['label']: item for item in report['transitions']}
     for label in ('default input versus original input', 'original opening/saving control',
                   'default opening/saving control', 'SD rebuild-copy opening/saving control'):

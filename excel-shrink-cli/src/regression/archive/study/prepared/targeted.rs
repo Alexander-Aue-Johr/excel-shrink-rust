@@ -177,16 +177,21 @@ fn publish_portable_evidence(
     mut report: Value,
     record: &mut Value,
 ) -> Result<()> {
-    fn normalize(value: &mut Value, root: &Path, images: &mut BTreeSet<String>) -> Result<()> {
+    fn normalize(
+        value: &mut Value,
+        root: &Path,
+        images: &mut BTreeSet<String>,
+        audits: &mut BTreeSet<String>,
+    ) -> Result<()> {
         match value {
             Value::Object(fields) => {
                 for child in fields.values_mut() {
-                    normalize(child, root, images)?;
+                    normalize(child, root, images, audits)?;
                 }
             }
             Value::Array(values) => {
                 for child in values {
-                    normalize(child, root, images)?;
+                    normalize(child, root, images, audits)?;
                 }
             }
             Value::String(text) => {
@@ -217,6 +222,14 @@ fn publish_portable_evidence(
                     {
                         images.insert(text.clone());
                     }
+                    if text.ends_with(".jsonl.gz") {
+                        ensure!(
+                            image.is_file(),
+                            "Missing XML change audit {}",
+                            image.display()
+                        );
+                        audits.insert(text.clone());
+                    }
                 }
             }
             _ => {}
@@ -224,7 +237,8 @@ fn publish_portable_evidence(
         Ok(())
     }
     let mut images = BTreeSet::new();
-    normalize(&mut report, root, &mut images)?;
+    let mut audits = BTreeSet::new();
+    normalize(&mut report, root, &mut images, &mut audits)?;
     let path = directory.join("portable-report.json");
     artifact_cache::atomic_write(&path, &serde_json::to_vec_pretty(&report)?)?;
     record["targeted_comparison"]["targeted_report_file"] = json!(path
@@ -234,6 +248,10 @@ fn publish_portable_evidence(
     record["targeted_comparison"]["evidence_images"] = json!(images
         .into_iter()
         .map(|path| json!({"capture_image":path}))
+        .collect::<Vec<_>>());
+    record["targeted_comparison"]["audit_files"] = json!(audits
+        .into_iter()
+        .map(|path| json!({"targeted_audit_file":path}))
         .collect::<Vec<_>>());
     Ok(())
 }

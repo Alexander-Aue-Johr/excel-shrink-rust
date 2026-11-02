@@ -92,3 +92,21 @@ neighbors retain full resolution. Charts retain full resolution. Byte-identical
 images share one retained file. The JSON records original image dimensions and
 SHA-256 separately from retained preview dimensions. Reports are published before
 superseded images are removed; reducing evidence never changes comparison verdicts.
+
+## Compact XML audit evidence
+
+Transitions contain `change_count` and `changes_file`, rather than millions of
+inline change objects. Each `xml-changes/NN.jsonl.gz` stores the complete audit
+once. The first JSON line declares schema 1, column names, and shared context
+strings; subsequent lines are arrays in that column order. The two context
+columns index the header's context table. Opening/save overlap remains explicit
+per change. No changes are sampled or discarded. Audit files follow the portable
+report through verified result export/import.
+
+The comparison validates immutable image contents once and records
+`image_comparison_statistics`. Encoded duplicates reuse validated evidence;
+different encodings are compared using dimensions and SHA-256 of normalized
+RGBA8 pixels. Missing or invalid images cannot establish equality. Only small
+fingerprints are cached, not full decoded images.
+
+Existing start commands remain valid; these optimizations require no new flags.

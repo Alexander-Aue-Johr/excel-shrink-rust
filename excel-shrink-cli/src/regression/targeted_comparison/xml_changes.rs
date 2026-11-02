@@ -61,7 +61,8 @@ pub(super) struct Transition {
     pub label: String,
     pub before_file: std::path::PathBuf,
     pub after_file: std::path::PathBuf,
-    pub changes: Vec<XmlChange>,
+    pub change_count: usize,
+    pub changes_file: std::path::PathBuf,
     pub skipped_outside_content_cell_changes: BTreeMap<String, usize>,
 }
 
@@ -657,5 +658,51 @@ mod tests {
         b.before = Some("different content".into());
         assert!(!Snapshot::same_change(&a, &b));
         assert!(Snapshot::same_change(&a, &a));
+    }
+
+    #[test]
+    fn large_change_audit_roundtrips_without_growing_the_main_report() -> Result<()> {
+        use std::io::{BufRead, BufReader};
+        let directory =
+            crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "change-audit")?;
+        let changes: Vec<_> = (1..=100_000)
+            .map(|row| XmlChange {
+                sheet: "Rows".into(),
+                location: format!("cell:A{row}"),
+                before: Some("a".repeat(64)),
+                after: None,
+                context_before: "b".repeat(64),
+                context_after: "c".repeat(64),
+                also_in_original_open_save: row % 2 == 0,
+                visible_cell: true,
+            })
+            .collect();
+        let path = super::super::change_evidence::write(&directory, 0, &changes)?;
+        let mut lines =
+            BufReader::new(flate2::read::GzDecoder::new(std::fs::File::open(&path)?)).lines();
+        let header: serde_json::Value = serde_json::from_str(&lines.next().unwrap()?)?;
+        assert_eq!(header["contexts"].as_array().unwrap().len(), 2);
+        let mut count = 0;
+        for line in lines {
+            let row: serde_json::Value = serde_json::from_str(&line?)?;
+            count += 1;
+            assert_eq!(row[1], format!("cell:A{count}"));
+            assert_eq!(row[2], "a".repeat(64));
+            assert!(row[3].is_null());
+            assert_eq!(row[6], count % 2 == 0);
+        }
+        assert_eq!(count, changes.len());
+        let transition = Transition {
+            label: "test".into(),
+            before_file: "a.xlsx".into(),
+            after_file: "b.xlsx".into(),
+            change_count: count,
+            changes_file: path.clone(),
+            skipped_outside_content_cell_changes: BTreeMap::new(),
+        };
+        assert!(serde_json::to_vec(&transition)?.len() < 1024);
+        assert!(std::fs::metadata(path)?.len() < 1_000_000);
+        std::fs::remove_dir_all(directory)?;
+        Ok(())
     }
 }

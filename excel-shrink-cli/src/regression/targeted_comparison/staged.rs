@@ -49,6 +49,7 @@ struct Workflow<'a, 'b> {
     inspected: BTreeSet<(LaneId, LaneId)>,
     requested_candidates: BTreeSet<Candidate>,
     content_bounds: super::content_bounds::ContentBounds,
+    original_save_keys: BTreeSet<[u8; 32]>,
 }
 
 impl Comparison<'_> {
@@ -60,6 +61,7 @@ impl Comparison<'_> {
             inspected: BTreeSet::new(),
             requested_candidates: BTreeSet::new(),
             content_bounds: super::content_bounds::ContentBounds::default(),
+            original_save_keys: BTreeSet::new(),
         }
         .execute()
     }
@@ -80,7 +82,6 @@ impl Workflow<'_, '_> {
         self.rebuild_copy(LaneId::O, LaneId::OR)?;
         self.publish_available_comparisons("Original rebuilt last")?;
         self.project_legacy_findings()?;
-        self.annotate_overlapping_changes();
         self.close_states()?;
         self.comparison.complete()
     }
@@ -93,12 +94,12 @@ impl Workflow<'_, '_> {
         let raw_default = self.comparison.args.default.clone();
         let original = self.comparison.paths.original.clone();
         let default = self.comparison.paths.default.clone();
+        self.audit("original opening/saving control", &raw_original, &original)?;
         self.audit(
             "default input versus original input",
             &raw_original,
             &raw_default,
         )?;
-        self.audit("original opening/saving control", &raw_original, &original)?;
         self.audit("default opening/saving control", &raw_default, &default)?;
         self.register(LaneId::O, original)?;
         self.register(LaneId::SD, default)
@@ -190,14 +191,27 @@ impl Workflow<'_, '_> {
         let b = Snapshot::read(after)?;
         self.content_bounds.include(&a);
         self.content_bounds.include(&b);
-        let (changes, skipped_outside_content_cell_changes) = a.content_changes(&b)?;
+        let (mut changes, skipped_outside_content_cell_changes) = a.content_changes(&b)?;
         self.requested_candidates.extend(cell_candidates(&changes));
         self.publish_candidate_count()?;
+        if label == "original opening/saving control" {
+            self.original_save_keys = changes.iter().map(change_key).collect::<Result<_>>()?;
+        }
+        for change in &mut changes {
+            change.also_in_original_open_save =
+                self.original_save_keys.contains(&change_key(change)?);
+        }
+        let changes_file = super::change_evidence::write(
+            &self.comparison.args.output,
+            self.comparison.report.transitions.len(),
+            &changes,
+        )?;
         self.comparison.report.transitions.push(Transition {
             label: label.into(),
             before_file: before.into(),
             after_file: after.into(),
-            changes,
+            change_count: changes.len(),
+            changes_file,
             skipped_outside_content_cell_changes,
         });
         Ok(())
@@ -536,24 +550,6 @@ impl Workflow<'_, '_> {
         Ok(())
     }
 
-    fn annotate_overlapping_changes(&mut self) {
-        let original = self
-            .comparison
-            .report
-            .transitions
-            .iter()
-            .find(|t| t.label == "original opening/saving control")
-            .map(|t| t.changes.clone())
-            .unwrap_or_default();
-        let original_keys: BTreeSet<_> = original.iter().map(Snapshot::change_key).collect();
-        for transition in &mut self.comparison.report.transitions {
-            for change in &mut transition.changes {
-                change.also_in_original_open_save =
-                    original_keys.contains(&Snapshot::change_key(change));
-            }
-        }
-    }
-
     fn close_states(&mut self) -> Result<()> {
         for id in self.states.keys().copied().rev().collect::<Vec<_>>() {
             self.comparison.close_workbook(id)?;
@@ -570,4 +566,9 @@ impl Workflow<'_, '_> {
         })?;
         Ok(())
     }
+}
+
+/// Match exact transition evidence without retaining millions of duplicated strings.
+fn change_key(change: &super::xml_changes::XmlChange) -> Result<[u8; 32]> {
+    Ok(Sha256::digest(serde_json::to_vec(&Snapshot::change_key(change))?).into())
 }
