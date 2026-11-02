@@ -13,6 +13,10 @@ use std::{
 
 #[derive(Default)]
 pub(super) struct PerformanceState {
+    pub(super) cache: Option<super::performance_cache::Cache>,
+    pub(super) cache_hit: bool,
+    pub(super) cached_rebuild: bool,
+    pub(super) measurements: BTreeMap<String, Value>,
     pub(super) path: Option<PathBuf>,
     pub(super) save_changes: BTreeSet<Candidate>,
     pub(super) optimization_changes: BTreeSet<Candidate>,
@@ -22,7 +26,7 @@ pub(super) struct PerformanceState {
 
 #[derive(Serialize)]
 pub(super) struct PerformanceEvidence {
-    native_result: Value,
+    pub(super) native_result: Value,
     before_optimization: PathBuf,
     after_optimization: PathBuf,
     ordinary_save_changes: BTreeSet<Candidate>,
@@ -39,6 +43,10 @@ impl Comparison<'_> {
         if self.args.skip_check_performance {
             return Ok(());
         }
+        self.prepare_performance_cache()?;
+        if self.restore_performance_cache()? {
+            return self.include_performance_changes();
+        }
         let path = self.args.output.join("check-performance.xlsx");
         fs::copy(&self.paths.original, &path)
             .context("Copy saved Original for Check Performance")?;
@@ -46,7 +54,45 @@ impl Comparison<'_> {
         self.open_workbook(LaneId::CP)?;
         self.save_performance_baseline(&path)?;
         self.run_performance_optimization(&path)?;
+        self.remember_performance_artifacts(None);
         self.include_performance_changes()
+    }
+
+    /// Rebuild XML selection from restored controls, never from cached visual verdicts.
+    pub(super) fn adopt_cached_performance_evidence(&mut self, native_result: Value) -> Result<()> {
+        let before = self
+            .args
+            .output
+            .join("check-performance.before-optimization.xlsx");
+        let after = self
+            .args
+            .output
+            .join("check-performance.after-optimization.xlsx");
+        let original = self
+            .args
+            .output
+            .join("check-performance.cached-original.xlsx");
+        self.performance.save_changes =
+            discover_candidates(&original, &before, &mut self.snapshots)?;
+        self.performance.optimization_changes =
+            discover_candidates(&before, &after, &mut self.snapshots)?;
+        self.report.check_performance = if native_result["status"] == "optimization_confirmed" {
+            "optimization_confirmed"
+        } else {
+            "no_optimization_needed"
+        };
+        self.report.check_performance_evidence = Some(PerformanceEvidence {
+            native_result,
+            before_optimization: before,
+            after_optimization: after,
+            ordinary_save_changes: self.performance.save_changes.clone(),
+            optimization_changes: self.performance.optimization_changes.clone(),
+            raw_ordinary_save_candidate_count: self.performance.save_changes.len(),
+            raw_optimization_candidate_count: self.performance.optimization_changes.len(),
+            change_coordinates: "xml_candidates",
+            findings: None,
+        });
+        Ok(())
     }
 
     /// Attribute opening and ordinary saving separately from Optimize all.
@@ -134,9 +180,11 @@ impl Comparison<'_> {
             .as_mut()
             .context("Missing optimization evidence")?
             .optimization_changes = self.performance.optimization_changes.clone();
-        self.report
-            .phases
-            .push("Check Performance optimized and saved XML inspected".into());
+        self.report.phases.push(if self.performance.cache_hit {
+            "Cached Check Performance generation restored; saved XML inspected".into()
+        } else {
+            "Check Performance optimized and saved XML inspected".into()
+        });
         self.telemetry
             .update(|state| state.candidates(self.candidates.len()))
     }

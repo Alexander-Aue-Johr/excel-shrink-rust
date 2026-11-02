@@ -19,6 +19,15 @@ pub(super) struct ExcelHost {
 }
 
 impl ExcelHost {
+    /// Inspect the installation and recipe without another Excel instance.
+    pub(super) fn cache_environment(&mut self, telemetry: &Telemetry) -> Result<Value> {
+        self.call(json!({"kind":"cache_environment"}), telemetry)
+    }
+
+    /// Read existing launcher observations with their original measurement scope.
+    pub(super) fn measurements(&mut self, lane: LaneId, telemetry: &Telemetry) -> Result<Value> {
+        self.call(json!({"kind":"measurements", "lane":lane.key()}), telemetry)
+    }
     /// Open one workbook and return the PID confirmed by the command response.
     pub(super) fn open_workbook(
         &mut self,

@@ -25,12 +25,14 @@ public static class ExcelProcessId {
 Import-Module (Join-Path $PSScriptRoot 'CheckPerformance.psm1') -Force
 
 Import-Module (Join-Path $PSScriptRoot 'TargetedResident.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'TargetedPerformanceCache.psm1') -Force -DisableNameChecking
 $ownedExcel = New-Object CaptureProcesses
 try {
     while ($null -ne ($line = [Console]::ReadLine())) {
         try {
             $command = $line | ConvertFrom-Json
             $result = switch ($command.kind) {
+                'cache_environment' { Get-TargetedCacheEnvironment }
                 'open' { Open-TargetedWorkbook $command $ownedExcel }
                 'open_batch' { Open-TargetedWorkbooks $command $ownedExcel }
                 'close' { Close-TargetedWorkbook $command.lane }

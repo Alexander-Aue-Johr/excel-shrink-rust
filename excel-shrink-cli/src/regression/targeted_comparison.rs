@@ -10,6 +10,7 @@ mod evidence;
 mod execution_plan;
 mod performance_cache;
 mod performance_dependencies;
+mod performance_reuse;
 mod image_comparison;
 mod change_evidence;
 mod snapshot_cache;
@@ -111,6 +112,7 @@ struct Report {
     xml_snapshot_statistics: snapshot_cache::Statistics,
     status: String,
     check_performance: &'static str,
+    check_performance_cache: Value,
     check_performance_evidence: Option<check_performance::PerformanceEvidence>,
     transitions: Vec<xml_changes::Transition>,
     height_checks: Vec<heights::HeightCheck>,

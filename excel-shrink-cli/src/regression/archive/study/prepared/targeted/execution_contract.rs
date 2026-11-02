@@ -18,6 +18,27 @@ pub(super) fn expected_pairs(
                 && report["check_performance_evidence"]["native_result"]["status"] == outcome,
             "Check Performance has no independently confirmed native outcome"
         );
+        let cache = &report["check_performance_cache"];
+        if cache["status"] == "hit" {
+            ensure!(
+                cache["policy"] == "check-performance-artifacts-v1"
+                    && valid_hash(&cache["key"])
+                    && cache["historical"]["native_result"]
+                        == report["check_performance_evidence"]["native_result"]
+                    && cache["measurements_are_historical"] == true,
+                "Cached Check Performance lacks generation provenance"
+            );
+            for name in [
+                "original_saved",
+                "before_optimization",
+                "after_optimization",
+            ] {
+                ensure!(
+                    valid_hash(&cache["historical"]["artifacts"][name]["sha256"]),
+                    "Cached Check Performance lacks an artifact checksum"
+                );
+            }
+        }
     }
     let identity = &report["input_identity"];
     let identical = identity["status"] == "identical";
@@ -110,7 +131,15 @@ pub(super) fn expected_pairs(
                 } else {
                     ensure!(
                         decision["status"] == "observed"
-                            && decision["method"] == "explicit-rebuild"
+                            && (decision["method"] == "explicit-rebuild"
+                                || id == "CPR"
+                                    && decision["method"] == "cached-rebuild"
+                                    && report["check_performance_cache"]["rebuild_reused"] == true
+                                    && report["check_performance_cache"]["status"] == "hit"
+                                    && valid_hash(
+                                        &report["check_performance_cache"]["historical"]
+                                            ["artifacts"]["after_rebuild"]["sha256"]
+                                    ))
                             && !eligible
                             && !blockers.is_empty(),
                         "Missing required rebuild observation"
@@ -193,6 +222,37 @@ mod tests {
         let mut broken = report.clone();
         broken["check_performance_evidence"]["native_result"]["status"] = json!("pending");
         assert!(expected_pairs(&broken, false).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn cached_rebuild_requires_independent_generation_provenance() -> Result<()> {
+        let mut report = reduced();
+        report["state_decisions"]["CPR"] = json!({"status":"observed","method":"cached-rebuild"});
+        report["rebuild_checks"]["CPR"]["eligible_to_skip"] = json!(false);
+        report["rebuild_checks"]["CPR"]["blockers"] = json!(["formula"]);
+        report["check_performance_cache"] = json!({
+            "status":"hit", "policy":"check-performance-artifacts-v1",
+            "key":"c".repeat(64), "rebuild_reused":true,
+            "measurements_are_historical":true,
+            "historical":{"native_result":{"status":"no_optimization_needed"}}
+        });
+        for name in [
+            "original_saved",
+            "before_optimization",
+            "after_optimization",
+            "after_rebuild",
+        ] {
+            report["check_performance_cache"]["historical"]["artifacts"][name] =
+                json!({"sha256":"d".repeat(64)});
+        }
+        assert_eq!(expected_pairs(&report, false)?.len(), 3);
+        report["check_performance_cache"]["rebuild_reused"] = json!(false);
+        assert!(expected_pairs(&report, false).is_err());
+        report["check_performance_cache"]["rebuild_reused"] = json!(true);
+        report["check_performance_cache"]["historical"]["native_result"]["status"] =
+            json!("pending");
+        assert!(expected_pairs(&report, false).is_err());
         Ok(())
     }
 }

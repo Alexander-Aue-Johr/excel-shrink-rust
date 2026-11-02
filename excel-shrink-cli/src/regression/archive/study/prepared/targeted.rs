@@ -86,6 +86,14 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
         .arg("-OperationTimeoutSeconds")
         .arg(std::env::var("EXCEL_SHRINK_CAPTURE_STARTUP_SECONDS").unwrap_or_else(|_| "120".into()))
         .env("EXCEL_SHRINK_TARGETED_WORKBOOK_LABEL", &job.name)
+        // The generic worker cache is disposable. CP artifacts must survive it
+        // and remain reusable across output roots and shrinker builds.
+        .env(
+            "EXCEL_SHRINK_CHECK_PERFORMANCE_CACHE_DIR",
+            std::env::var_os("EXCEL_SHRINK_CHECK_PERFORMANCE_CACHE_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| repo_root().join(".tmp/regression-cache/check-performance-v1")),
+        )
         .stdin(Stdio::null());
     if skip {
         command.arg("-SkipCheckPerformance");
@@ -113,6 +121,8 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
     record["targeted_comparison"]["state_decisions"] = report["state_decisions"].clone();
     record["targeted_comparison"]["input_identity"] = report["input_identity"].clone();
     record["targeted_comparison"]["rebuild_checks"] = report["rebuild_checks"].clone();
+    record["targeted_comparison"]["check_performance_cache"] =
+        report["check_performance_cache"].clone();
     record["targeted_comparison"]["content_coverage"] = report["content_coverage"].clone();
     record["targeted_comparison"]["report"] = json!(directory.join("report.json"));
     let preview_width = record["control_room_attempt"]["settings"]["equal_preview_width"]

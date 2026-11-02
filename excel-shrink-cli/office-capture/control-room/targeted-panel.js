@@ -188,6 +188,14 @@ function createComparisonCard() {
         if (comparison.report.check_performance_differences != null) {
           outcome.textContent += ` · ${comparison.report.check_performance_differences} Check Performance differences`;
         }
+        if (comparison.report.check_performance_cache?.status === 'hit') {
+          outcome.textContent += ' · Check Performance from cache (historical generation measurements)';
+        } else if (comparison.report.check_performance_cache?.status === 'generated') {
+          outcome.textContent += ' · Check Performance artifacts cached';
+        }
+        if (comparison.report.check_performance_cache?.warning) {
+          outcome.textContent += ' · Cache warning (see report)';
+        }
       }
     },
     destroy() { for (const view of laneViews.values()) view.destroy(); root.remove(); },

@@ -4,6 +4,7 @@ $sessions = @{}
 $script:responseWatcher = $null
 $utf8 = [Text.UTF8Encoding]::new($false)
 Import-Module (Join-Path $PSScriptRoot 'TargetedChartSheets.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'TargetedPerformanceCache.psm1') -DisableNameChecking
 
 function Write-TargetedJson {
     param([string]$Path, $Value)
@@ -219,6 +220,9 @@ function Invoke-TargetedJob {
     param($Command)
     $entry = $sessions[$Command.lane]
     if ($null -eq $entry) { throw 'Targeted workbook is not open.' }
+    if ($Command.kind -eq 'measurements') {
+        return Get-TargetedWorkbookMeasurements -Session $entry.session
+    }
     if ($Command.kind -eq 'capture_chart' -and $Command.chart_kind -eq 'chart_sheet') {
         return Export-TargetedChartSheet $entry $Command
     }

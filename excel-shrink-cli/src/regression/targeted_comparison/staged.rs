@@ -185,6 +185,27 @@ impl Workflow<'_, '_> {
             let original = self.comparison.paths.original.clone();
             let before = output.join("check-performance.before-optimization.xlsx");
             let after = output.join("check-performance.after-optimization.xlsx");
+            if self.comparison.performance.cache_hit {
+                self.audit(
+                    "current Original versus cached generation control",
+                    &original,
+                    &self
+                        .comparison
+                        .args
+                        .output
+                        .join("check-performance.cached-original.xlsx"),
+                )?;
+                self.audit(
+                    "cached Check Performance reopening/saving control",
+                    &after,
+                    &self
+                        .comparison
+                        .performance
+                        .path
+                        .clone()
+                        .context("Missing CP path")?,
+                )?;
+            }
             self.audit(
                 "Check Performance copy opening/saving control",
                 &original,
@@ -216,7 +237,9 @@ impl Workflow<'_, '_> {
         self.comparison.report.state_decisions.insert(
             id,
             StateDecision::Observed {
-                method: if matches!(id, LaneId::OR | LaneId::SDR | LaneId::CPR) {
+                method: if id == LaneId::CPR && self.comparison.performance.cached_rebuild {
+                    "cached-rebuild"
+                } else if matches!(id, LaneId::OR | LaneId::SDR | LaneId::CPR) {
                     "explicit-rebuild"
                 } else {
                     "open-save"
@@ -347,8 +370,18 @@ impl Workflow<'_, '_> {
             .args
             .output
             .join(format!("{}-rebuilt.xlsx", id.key()));
-        fs::copy(&source, &path)?;
+        let before = path.with_extension("before-rebuild.xlsx");
+        let cached = id == LaneId::CPR
+            && self
+                .comparison
+                .restore_performance_rebuild(&source, &before, &path)?;
+        if !cached {
+            fs::copy(&source, &path)?;
+        }
         self.comparison.telemetry.update(|state| {
+            if cached {
+                state.lane(id).decision_note = Some("Rebuild from cache — historical generation; current opening measured separately".into());
+            }
             state.lane(id).lifecycle = Lifecycle::Opening;
             state.step(id, Phase::Open, StepStatus::Running);
         })?;
@@ -372,8 +405,9 @@ impl Workflow<'_, '_> {
             .as_mut()
             .unwrap()
             .save_workbook(id, &self.comparison.telemetry)?;
-        let before = path.with_extension("before-rebuild.xlsx");
-        fs::copy(&path, &before)?;
+        if !cached {
+            fs::copy(&path, &before)?;
+        }
         self.comparison
             .telemetry
             .update(|state| state.step(id, Phase::Save, StepStatus::Done))?;
@@ -385,16 +419,44 @@ impl Workflow<'_, '_> {
         self.comparison
             .telemetry
             .update(|state| state.step(id, Phase::InspectSave, StepStatus::Done))?;
-        self.comparison.rebuild(id)?;
-        self.audit(
-            &format!("{} explicit rebuild and save", parent.key()),
-            &before,
-            &path,
-        )?;
+        if cached {
+            self.comparison.telemetry.update(|state| {
+                state.step(id, Phase::Recalculate, StepStatus::Skipped);
+            })?;
+            self.audit(
+                "cached rebuild reopening/saving control",
+                &path.with_extension("cached-after-rebuild.xlsx"),
+                &path,
+            )?;
+        } else {
+            self.comparison.rebuild(id)?;
+            if id == LaneId::CPR {
+                self.comparison
+                    .remember_performance_artifacts(Some((&source, &before, &path)));
+            }
+        }
+        if cached {
+            self.audit(
+                "cached CP explicit rebuild and save",
+                &before,
+                &path.with_extension("cached-after-rebuild.xlsx"),
+            )?;
+        } else {
+            self.audit(
+                &format!("{} explicit rebuild and save", parent.key()),
+                &before,
+                &path,
+            )?;
+        }
         self.register(id, path)?;
         self.comparison.report.phases.push(format!(
-            "{} rebuilt on retained copy; ready for shared candidate capture",
-            parent.key()
+            "{} {}; ready for shared candidate capture",
+            parent.key(),
+            if cached {
+                "rebuilt generation restored from cache"
+            } else {
+                "rebuilt on retained copy"
+            }
         ));
         Ok(())
     }
@@ -849,6 +911,7 @@ impl Workflow<'_, '_> {
 
     fn close_states(&mut self) -> Result<()> {
         for id in self.states.keys().copied().rev().collect::<Vec<_>>() {
+            self.comparison.retain_performance_measurements(id);
             self.comparison.close_workbook(id)?;
         }
         self.comparison.excel.take();
