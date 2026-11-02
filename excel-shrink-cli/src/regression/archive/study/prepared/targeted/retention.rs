@@ -78,14 +78,13 @@ pub(super) fn apply(
                     deduplicated += 1;
                     (first.clone(), *original, *retained)
                 } else {
-                    let pixels = image::open(&path)?;
-                    let original = (pixels.width(), pixels.height());
-                    let (retained_path, retained) = if width > 0 && pixels.width() > width {
-                        let height = ((u64::from(pixels.height()) * u64::from(width))
-                            / u64::from(pixels.width()))
+                    let original = image::image_dimensions(&path)?;
+                    let (retained_path, retained) = if width > 0 && original.0 > width {
+                        let height = ((u64::from(original.1) * u64::from(width))
+                            / u64::from(original.0))
                         .max(1) as u32;
                         let preview = previews.join(format!("{original_sha256}-{width}.png"));
-                        pixels
+                        image::open(&path)?
                             .resize_exact(width, height, image::imageops::FilterType::Triangle)
                             .save_with_format(&preview, image::ImageFormat::Png)?;
                         (preview, (width, height))

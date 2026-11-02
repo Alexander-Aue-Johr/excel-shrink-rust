@@ -203,10 +203,12 @@ fn publish_portable_evidence(
                         .is_some_and(|extension| extension == "image")
                     {
                         image.set_extension("png");
-                        image::ImageReader::open(&path)?
-                            .with_guessed_format()?
-                            .decode()?
-                            .save(&image)?;
+                        if !image.is_file() {
+                            image::ImageReader::open(&path)?
+                                .with_guessed_format()?
+                                .decode()?
+                                .save(&image)?;
+                        }
                     }
                     *text = if image != path {
                         image
