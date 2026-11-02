@@ -33,7 +33,14 @@ def verify(root: Path, mode: str) -> None:
                 region = (0, 0, left.width, left.height * 2 // 5)
                 diff = ImageChops.difference(left.convert('RGB').crop(region), right.convert('RGB').crop(region))
                 assert diff.getbbox(), 'Dependent unchanged cells were not visibly affected'
-    if mode == 'dummy-missing':
+    if mode.startswith('ref-'):
+        assert any(item['outcome'] == 'partial' for item in decisions), decisions
+        assert not any(item['outcome'] == 'capture' for item in decisions), decisions
+        assert different, 'Changed reference did not produce visual evidence'
+        expected = {'ref-relative': 'B2:B2', 'ref-column': 'B2:D2', 'ref-row': 'B2:B5', 'ref-fixed': 'B2:D5', 'ref-disjoint': 'B2:B2'}[mode]
+        finding = next(item for item in direct['findings'] if item['cell'] == expected)
+        assert finding['pixels_differ'], 'Dependent target did not change in native Excel'
+    elif mode == 'dummy-missing':
         assert all(item['outcome'] == 'excluded' for item in decisions), decisions
         assert all(item['reason'] == 'fixed-dummy-targets-absent-in-both-states' for item in decisions), decisions
         assert not different

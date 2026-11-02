@@ -86,7 +86,7 @@ pub(super) fn dummy_target(raw: &str) -> Option<String> {
     (target.len() <= 31).then_some(target)
 }
 
-fn decode_entities(raw: &str) -> Option<String> {
+pub(super) fn decode_entities(raw: &str) -> Option<String> {
     let mut result = String::new();
     let mut remaining = raw;
     while let Some(index) = remaining.find('&') {

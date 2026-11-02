@@ -22,6 +22,28 @@ Only recognized numeric or quoted-string literals and supported `cellIs` operato
 qualify. References, expressions, unknown content, uncertain namespaces and truncated
 formula summaries cannot establish this proof.
 
+## Local reference dependencies
+
+`LEN(TRIM(A1))=0` supports relative, absolute and mixed A1 references. The selector
+inverts each changed input into dependent target rectangles; it never evaluates
+LEN, TRIM or the comparison. Deleted inputs and formula-bearing inputs with equal
+caches are included. Existing local-input, row-layout and visual-context guards
+also remain in force.
+
+The first sqref area supplies a shared relative anchor. For disjoint areas the
+selector additionally includes per-area anchors conservatively, potentially
+capturing extra cells. Absolute axes can select an entire target row, column or
+area. Selection uses rectangle arithmetic, without enumerating every target cell.
+As with other CF captures, targets are clipped to the recorded comparison extent.
+
+The report adds `referenced_input_changes` and `referenced_formula_observations`.
+The latter counts appearances in both states, not distinct cells. Unknown formula
+syntax, sheet-qualified references, ranges and names remain full-area fallbacks.
+
+Native controls `ref-relative`, `ref-column`, `ref-row`, `ref-fixed` and
+`ref-disjoint` verify dependent target pixels in Excel after changing a source
+outside the target area.
+
 ## Whole-area dependencies: duplicates and color scales
 
 Unchanged `duplicateValues` rules and standard color scales can exclude their

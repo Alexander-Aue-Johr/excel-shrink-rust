@@ -1,6 +1,7 @@
 //! CF selection proves only supported local contributions; every unresolved area remains a capture.
 mod formulas;
 mod ranges;
+mod references;
 #[cfg(test)]
 mod tests;
 pub(super) mod xml;
@@ -25,6 +26,8 @@ pub(super) struct Decision {
     pub outcome: String,
     pub reason: String,
     pub changed_inputs: usize,
+    pub referenced_input_changes: usize,
+    pub referenced_formula_observations: usize,
     /// Formula appearances across both states, not a deduplicated cell count.
     pub formula_input_observations: usize,
     pub layout_rows: usize,
@@ -41,6 +44,7 @@ pub(super) struct Check {
 enum Proof {
     LocalInputs,
     WholeAreaInputs,
+    ReferencedInputs(Vec<references::Reference>),
     MissingDummyTargets,
     Fallback(&'static str),
 }
@@ -72,6 +76,13 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
             Proof::Fallback("format-string-theme-or-workbook-context-changed")
         };
     }
+    if let Some(inputs) = reference_inputs(block) {
+        return if before.cf_context == after.cf_context {
+            Proof::ReferencedInputs(inputs)
+        } else {
+            Proof::Fallback("format-string-theme-or-workbook-context-changed")
+        };
+    }
     for rule in &block.rules {
         if rule.truncated_formula
             || rule.formula_cdata
@@ -96,6 +107,86 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
         }
     }
     Proof::MissingDummyTargets
+}
+
+/// Every rule must have a known dependency footprint; one unknown rule keeps the block conservative.
+fn reference_inputs(block: &Block) -> Option<Vec<references::Reference>> {
+    let mut inputs = Vec::new();
+    for rule in &block.rules {
+        if formulas::literal_rule(rule) {
+            continue;
+        }
+        if rule.truncated_formula
+            || rule.formula_cdata
+            || !matches!(
+                rule.attributes.get("type").map(String::as_str),
+                Some("containsBlanks" | "expression")
+            )
+            || rule
+                .attributes
+                .keys()
+                .any(|key| !["type", "dxfId", "priority", "stopIfTrue"].contains(&key.as_str()))
+            || rule.child_elements.iter().any(|name| name != "formula")
+            || rule.formulas.len() != 1
+        {
+            return None;
+        }
+        inputs.extend(references::len_trim(&formulas::decode_entities(
+            &rule.formulas[0],
+        )?)?);
+    }
+    (!inputs.is_empty()).then_some(inputs)
+}
+
+/// Changes and uncertain formula inputs select all dependent targets, without rule evaluation.
+fn select_references(
+    decision: &mut Decision,
+    inputs: &[references::Reference],
+    areas: &[Rect],
+    a: &Sheet,
+    b: &Sheet,
+    changes: &[XmlChange],
+    candidates: &mut BTreeSet<Candidate>,
+) -> Result<()> {
+    select_local_inputs(decision, areas, a, b, changes, candidates)?;
+    let mut select = |input| {
+        let mut affected = false;
+        for reference in inputs {
+            let targets = reference.targets(input, areas, decision.comparison_extent);
+            affected |= !targets.is_empty();
+            fallback(
+                &decision.sheet,
+                &targets,
+                decision.comparison_extent,
+                candidates,
+            );
+        }
+        affected
+    };
+    let mut changed = 0;
+    for change in changes
+        .iter()
+        .filter(|change| change.sheet == decision.sheet)
+    {
+        if let Some(input) = change.location.strip_prefix("cell:").and_then(ranges::cell) {
+            changed += usize::from(select(input));
+        }
+    }
+    let mut uncertain = 0;
+    for cells in [&a.cells, &b.cells] {
+        cells.formula_cells(|cell| {
+            uncertain += usize::from(select((cell.row, u32::from(cell.column))));
+            Ok(())
+        })?;
+    }
+    decision.referenced_input_changes = changed;
+    decision.referenced_formula_observations = uncertain;
+    if changed > 0 || uncertain > 0 {
+        decision.outcome = "partial".into();
+    }
+    decision.reason =
+        "local-reference-dependencies; changed or uncertain inputs select dependent targets".into();
+    Ok(())
 }
 
 fn fallback(sheet: &str, areas: &[Rect], extent: Rect, candidates: &mut BTreeSet<Candidate>) {
@@ -219,8 +310,10 @@ pub(super) fn select(
                 } else {
                     proof(block, before, after)
                 };
-                if matches!(mode, Proof::LocalInputs | Proof::WholeAreaInputs)
-                    && a.cf_layout != b.cf_layout
+                if matches!(
+                    mode,
+                    Proof::LocalInputs | Proof::WholeAreaInputs | Proof::ReferencedInputs(_)
+                ) && a.cf_layout != b.cf_layout
                 {
                     mode = Proof::Fallback("worksheet-layout-context-changed");
                 }
@@ -232,11 +325,22 @@ pub(super) fn select(
                     outcome: String::new(),
                     reason: String::new(),
                     changed_inputs: 0,
+                    referenced_input_changes: 0,
+                    referenced_formula_observations: 0,
                     formula_input_observations: 0,
                     layout_rows: 0,
                     comparison_extent: extent,
                 };
                 match mode {
+                    Proof::ReferencedInputs(inputs) => select_references(
+                        &mut decision,
+                        &inputs,
+                        areas.as_deref().unwrap(),
+                        a,
+                        b,
+                        changes,
+                        candidates,
+                    )?,
                     Proof::WholeAreaInputs => {
                         let areas = areas.as_deref().unwrap();
                         select_local_inputs(&mut decision, areas, a, b, changes, candidates)?;

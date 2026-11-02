@@ -29,7 +29,19 @@ def create(directory: Path, mode: str) -> None:
             sheet['A1'] = '" "'
             sheet['B1'] = 'other'
             sheet['A3'] = '" "' if lane == 'original' else 'other'
-        if mode == 'duplicate':
+        if mode.startswith('ref-'):
+            reference = {'ref-relative': 'A1', 'ref-column': '$A1', 'ref-row': 'A$1', 'ref-fixed': '$A$1', 'ref-disjoint': 'A1'}[mode]
+            sheet['A1'] = None if lane == 'original' else 1
+            for row in range(2, 6):
+                for column in range(2, 5):
+                    sheet.cell(row, column, 1)
+            area = 'B2:D5'
+            if mode == 'ref-disjoint':
+                area = 'B2:C3 F5:G6'
+                sheet['G6'] = 1
+            rule = Rule(type='expression', formula=[f'LEN(TRIM({reference}))=0'], dxf=DifferentialStyle(fill=fill))
+            sheet.conditional_formatting.add(area, rule)
+        elif mode == 'duplicate':
             sheet.conditional_formatting.add('A1:B5', Rule(type='duplicateValues', dxf=DifferentialStyle(fill=fill)))
             sheet['A1'] = 2
             sheet['A3'] = 2 if lane == 'original' else 3

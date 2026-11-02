@@ -8,6 +8,52 @@ use std::{
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 #[test]
+fn len_trim_dependencies_capture_targets_outside_the_changed_input() -> Result<()> {
+    let root =
+        crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-references")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    for (reference, target) in [
+        ("A1", "B2:B2"),
+        ("$A1", "B2:D2"),
+        ("A$1", "B2:B5"),
+        ("$A$1", "B2:D5"),
+    ] {
+        let block = format!("<conditionalFormatting sqref=\"B2:D5\"><cfRule type=\"expression\" priority=\"1\"><formula>LEN(TRIM({reference}))=0</formula></cfRule></conditionalFormatting>");
+        let before = "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"5\"><c r=\"D5\"><v>1</v></c></row>";
+        write_book(&a, before, &block, "", "", "")?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+        write_book(&b, &before.replacen("<v>1", "<v>2", 1), &block, "", "", "")?;
+        let (decisions, candidates) = check(&a, &b)?;
+        assert_eq!(decisions[0].outcome, "partial");
+        assert_eq!(decisions[0].referenced_input_changes, 1);
+        assert!(
+            candidates.iter().any(|c| c.cell == target),
+            "{reference}: {candidates:?}"
+        );
+        write_book(
+            &b,
+            &before.replace("<c r=\"A1\"><v>1</v></c>", ""),
+            &block,
+            "",
+            "",
+            "",
+        )?;
+        assert!(check(&a, &b)?.1.iter().any(|c| c.cell == target));
+        let formula = before.replacen("<v>1", "<f>NOW()</f><v>1", 1);
+        write_book(&a, &formula, &block, "", "", "")?;
+        fs::copy(&a, &b)?;
+        let (decisions, candidates) = check(&a, &b)?;
+        assert_eq!(decisions[0].referenced_formula_observations, 2);
+        assert!(candidates.iter().any(|c| c.cell == target));
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn whole_area_rules_exclude_equal_inputs_but_capture_every_dependent_cell() -> Result<()> {
     let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-group")?;
     fs::create_dir_all(&root)?;
