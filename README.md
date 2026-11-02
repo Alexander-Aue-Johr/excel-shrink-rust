@@ -7,6 +7,9 @@ The repository is organised as a Rust Cargo workspace with two crates:
 * `excel-shrink-core`: library code for cleaning XLSX-internal XML data
 * `excel-shrink-cli`: command-line program for running Excel Shrink on one file or a directory of files
 
+For preservation rules, profiles, targeted visual validation, result semantics
+and known limits, see the [behavior and reimplementation specification](docs/behavior/README.md).
+
 ## Repository structure
 
 ```text
