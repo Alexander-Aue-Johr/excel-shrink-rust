@@ -637,3 +637,17 @@ fn preparation_hash_profile_selects_one_resident_screening_mode() -> Result<()> 
     ]).is_err());
     Ok(())
 }
+#[test]
+fn namespace_exclusion_stays_terminal_without_claiming_visual_identity() {
+    let mut record = json!({"status":"skipped","prepared":false,
+        "namespace_exclusion":{"code":"UNSUPPORTED_XML_ROOT","part":"xl/workbook.xml"},
+        "error":"Unsupported XML namespace in xl/workbook.xml; visual comparison omitted."});
+    assert!(classify_preparation(&mut record));
+    assert_eq!(record["preparation_disposition"], "unsupported_namespace");
+    assert_eq!(record["complete"], true);
+    assert!(!fully_visually_identical(&record));
+    let classified = record.clone();
+    assert!(!classify_preparation(&mut record));
+    assert_eq!(record, classified);
+    assert!(record["error"].as_str().unwrap().contains("xl/workbook.xml"));
+}

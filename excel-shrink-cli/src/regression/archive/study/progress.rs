@@ -802,6 +802,25 @@ mod tests {
     }
 
     #[test]
+    fn repeated_namespace_exclusions_count_once_and_never_as_visual_work() {
+        let mut t = tracker();
+        let excluded = json!({"identity":"0","complete":true,"status":"skipped",
+            "preparation_disposition":"unsupported_namespace",
+            "namespace_exclusion":{"code":"UNSUPPORTED_XML_ROOT","part":"xl/workbook.xml"}});
+        t.observe(&excluded);
+        t.observe(&excluded);
+        let preparing = t.snapshot(0);
+        assert_eq!(preparing["counts"]["preparation_terminal"], 1);
+        assert_eq!(preparing["counts"]["skipped"], 1);
+        assert_eq!(preparing["rates"]["new_completions"], 0);
+        t.visual_scope_frozen = true;
+        let visual = t.snapshot(0);
+        assert_eq!(visual["counts"]["visual_total"], 0);
+        assert_eq!(visual["counts"]["visual_excluded"], 1);
+        assert_eq!(visual["counts"]["visual_completed"], 0);
+    }
+
+    #[test]
     fn skipped_retries_are_activity_without_new_validated_workbooks() {
         let mut t = visual_tracker();
         let skipped = json!({"identity":"0","name":"Retry.xlsx","complete":true,
