@@ -13,6 +13,7 @@ param(
     [Parameter(Mandatory=$true)][string]$Output,
     [Parameter(Mandatory=$true)][string]$ObservatoryGroup,
     [switch]$SkipCheckPerformance,
+    [switch]$SerialCaptures,
     [ValidateRange(1, 86400)][int]$OperationTimeoutSeconds = 120
 )
 $ErrorActionPreference = 'Stop'
@@ -26,6 +27,7 @@ try {
         $Original, $Default, $Output, $ObservatoryGroup, (Join-Path $PSScriptRoot 'targeted-comparison-host.ps1')
     $arguments += ' --operation-timeout-seconds ' + $OperationTimeoutSeconds
     if ($SkipCheckPerformance) { $arguments += ' --skip-check-performance' }
+    if ($SerialCaptures) { $arguments += ' --serial-captures' }
     $process = $desktop.Start($Binary, $arguments, $owned)
     while (-not $process.WaitForExit(500)) { }
     if ($process.ExitCode -ne 0) { throw "Targeted comparison failed; inspect $Output/failure.json." }
