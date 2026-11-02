@@ -239,6 +239,9 @@ fn reviewed_build_reuse_still_requires_matching_source_and_profiles() -> Result<
         .unwrap()
         .retain(|profile| profile["profile"] == "default");
     assert!(has_required_shrink_evidence(&default_only));
+    let targeted = StudyArgs::try_parse_from(["study", "--resident-capture", "--targeted-comparison"])?;
+    assert!(has_preparation_for_screen(&default_only, targeted.preparation_profile()),
+        "A completed Default-only targeted run must not be requeued for missing unused profiles");
     assert!(reusable_preparation(
         &default_only,
         &bundle,

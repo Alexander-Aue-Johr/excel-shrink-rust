@@ -171,6 +171,50 @@ pub(super) fn ordered_members(source: &Source, order: ProcessingOrder) -> Vec<(u
     members
 }
 
+/// Validate an explicit subset against the original catalog without changing workbook identities.
+pub(super) fn read_workbook_list(
+    path: Option<&Path>,
+    sources: &[Source],
+) -> Result<Option<std::collections::BTreeMap<String, usize>>> {
+    let Some(path) = path else { return Ok(None) };
+    let identities: Vec<String> = serde_json::from_slice(&fs::read(path)?)?;
+    let available: HashSet<_> = sources
+        .iter()
+        .flat_map(|source| {
+            source
+                .members
+                .iter()
+                .filter(|(index, _)| source.selection.contains(*index))
+                .map(|(index, name)| identity(source, *index, name))
+        })
+        .collect();
+    ensure!(!identities.is_empty(), "Workbook list is empty");
+    let mut ranks = std::collections::BTreeMap::new();
+    for (rank, id) in identities.into_iter().enumerate() {
+        ensure!(
+            available.contains(&id),
+            "Workbook list identity is outside the selected corpus/partition: {id}"
+        );
+        ensure!(
+            ranks.insert(id.clone(), rank).is_none(),
+            "Duplicate workbook identity: {id}"
+        );
+    }
+    Ok(Some(ranks))
+}
+
+/// Restrict only pending work; completed records and the original archive remain untouched.
+pub(super) fn select_workbooks(
+    source: &Source,
+    pending: &mut Vec<(usize, String)>,
+    ranks: &std::collections::BTreeMap<String, usize>,
+) -> bool {
+    let before = pending.len();
+    pending.retain(|(index, name)| ranks.contains_key(&identity(source, *index, name)));
+    pending.sort_by_key(|(index, name)| ranks[&identity(source, *index, name)]);
+    pending.len() != before
+}
+
 pub(super) fn pending_members(
     source: &Source,
     records: &[Value],
@@ -236,6 +280,55 @@ pub(super) fn complete(corpora: &[Value], records: &[Value]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workbook_subset_preserves_catalog_identity_and_cannot_reintroduce_completed_work(
+    ) -> Result<()> {
+        let root = super::super::tests::test_directory("workbook-subset")?;
+        let path = root.join("selection.json");
+        let source = Source {
+            id: "example".into(),
+            name: "Example".into(),
+            path: PathBuf::from("unused.zip"),
+            members: vec![
+                (0, "a.xlsx".into()),
+                (1, "b.xlsx".into()),
+                (2, "c.xlsx".into()),
+            ],
+            fingerprint: "catalog".into(),
+            selection: Plan::new(
+                (0..3)
+                    .map(|i| CatalogMember {
+                        archive_index: i,
+                        member_name: format!("{}.xlsx", ['a', 'b', 'c'][i]),
+                        bytes: Some(10),
+                        crc32: Some(0),
+                    })
+                    .collect(),
+                None,
+            )?,
+        };
+        fs::write(
+            &path,
+            serde_json::to_vec(&["example:2:c.xlsx", "example:0:a.xlsx", "example:1:b.xlsx"])?,
+        )?;
+        let sources = [source];
+        let ranks = read_workbook_list(Some(&path), &sources)?.unwrap();
+        // The resume filter already removed completed a.xlsx. Listing it must not add it back.
+        let mut pending = vec![(1, "b.xlsx".into()), (2, "c.xlsx".into())];
+        select_workbooks(&sources[0], &mut pending, &ranks);
+        assert_eq!(pending, [(2, "c.xlsx".into()), (1, "b.xlsx".into())]);
+        fs::write(&path, b"[\"example:2:c.xlsx\",\"example:2:c.xlsx\"]")?;
+        assert!(read_workbook_list(Some(&path), &sources).is_err());
+        fs::write(&path, b"[\"other:2:c.xlsx\"]")?;
+        assert!(read_workbook_list(Some(&path), &sources).is_err());
+        fs::write(&path, b"[]")?;
+        assert!(read_workbook_list(Some(&path), &sources).is_err());
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+
 
     fn catalog() -> Vec<CatalogMember> {
         (0..19)

@@ -163,3 +163,25 @@ reviewed preparation producer in `--reuse-prepared-from`; a UI/runner-only chang
 does not make an older producer's output new. Do not approve unknown producers or
 changed shrink settings just to avoid work. Scheduled re-preparations are counted
 as pending together, rather than repeatedly decrementing a nearly finished total.
+
+### Prioritize selected workbooks without creating another corpus
+
+`--workbook-list PATH` reads a JSON array of full workbook identities from the
+existing records (`identity`, not the shortened record filename). Only pending
+listed workbooks are processed, in list order. Unknown identities, identities
+outside the selected partition, duplicates and empty lists are rejected. The
+list and its order are retained in the selection manifest.
+
+Add these arguments to the existing targeted study command while keeping the
+same request, original archive and output directory:
+
+```text
+--workbook-list .tmp/priority-workbooks.json --compare-only --no-retry-skipped
+```
+
+Stop the existing runner at group boundaries first. `--compare-only` reuses the
+prepared ZIPs; it does not shrink again. Completed results stay in the same
+report. To resume the entire corpus afterwards, remove `--workbook-list` and any
+`--limit`. Successful targeted comparisons with the same policy and Check
+Performance setting stay complete. A failed comparison is not a successful
+result; `--no-retry-skipped` leaves it for explicit investigation.

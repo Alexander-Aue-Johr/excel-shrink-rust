@@ -39,6 +39,9 @@ pub(in crate::regression) struct StudyArgs {
     /// Write an additional copy of the deterministic full selection manifest.
     #[arg(long, value_name = "PATH")]
     selection_manifest: Option<PathBuf>,
+    /// Compare only workbook identities in this JSON array, in the listed order.
+    #[arg(long, value_name = "JSON")]
+    workbook_list: Option<PathBuf>,
     /// Write catalogs and selection manifests without shrinking or starting Excel.
     #[arg(long, conflicts_with_all = ["report_only", "prepare_only", "compare_only", "diagnose_whitespace_only"])]
     selection_only: bool,
@@ -480,7 +483,9 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             }
         }
     }
+    let workbook_list = selection::read_workbook_list(args.workbook_list.as_deref(), &sources)?;
     let manifest = json!({"version":1,"algorithm":"uncompressed-bytes-name-index-v1", "processing_order":args.order,
+        "workbook_list":workbook_list,
         "corpora":corpus_info, "sources":sources.iter().map(|s| json!({
             "corpus_id":s.id,"corpus_name":s.name,"source_fingerprint":s.fingerprint,
             "selection":s.selection
@@ -663,12 +668,15 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                                 matches!(record["status"].as_str(),
                                     Some("unchanged" | "differences" | "paused-for-later"
                                         | "crc-identical" | "workbook-only"))
-                                    && !has_preparation_for_screen(record, args.preparation_hash_profile.as_deref())
+                                    && !has_preparation_for_screen(record, args.preparation_profile())
                             })
                     }));
             }
             if args.aggressive_first && args.order == selection::ProcessingOrder::Priority {
                 pending.sort_by_key(|(index, name)| member_priority(&records, &identity(source, *index, name)));
+            }
+            if let Some(list) = &workbook_list {
+                limited |= selection::select_workbooks(source, &mut pending, list);
             }
             let count = args
                 .limit
