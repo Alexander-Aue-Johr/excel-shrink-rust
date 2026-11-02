@@ -4,20 +4,23 @@ $sessions = @{}
 $script:responseWatcher = $null
 $utf8 = [Text.UTF8Encoding]::new($false)
 Import-Module (Join-Path $PSScriptRoot 'TargetedChartSheets.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'WindowsLongPaths.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedPerformanceCache.psm1') -DisableNameChecking
 
 function Write-TargetedJson {
     param([string]$Path, $Value)
-    $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path))
-    $pending = $Path + '.pending'
+    $nativePath = ConvertTo-WindowsLongPath $Path
+    $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($nativePath))
+    $pending = ConvertTo-WindowsLongPath ($Path + '.pending')
     [IO.File]::WriteAllText($pending, ($Value | ConvertTo-Json -Depth 12 -Compress), $utf8)
-    Move-Item -LiteralPath $pending -Destination $Path -Force
+    Move-Item -LiteralPath $pending -Destination $nativePath -Force
 }
 
 function Read-TargetedJson {
     param([string]$Path)
-    if ([IO.File]::Exists($Path)) {
-        try { return [IO.File]::ReadAllText($Path) | ConvertFrom-Json }
+    $nativePath = ConvertTo-WindowsLongPath $Path
+    if ([IO.File]::Exists($nativePath)) {
+        try { return [IO.File]::ReadAllText($nativePath) | ConvertFrom-Json }
         catch [IO.IOException] { return $null } # Publisher may briefly hold or replace the snapshot.
     }
     return $null
