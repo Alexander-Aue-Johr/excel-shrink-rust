@@ -9,10 +9,38 @@ use std::{collections::BTreeMap, fs};
 impl Comparison<'_> {
     /// Persist the scientific result separately from compact display telemetry.
     pub(super) fn complete(&mut self) -> Result<()> {
+        self.record_workbook_sizes()?;
         self.report.status = "completed_with_limitations".into();
         self.report.image_comparison_statistics = self.image_comparisons.statistics();
         self.report.xml_snapshot_statistics = self.snapshots.statistics();
         self.write_completion()
+    }
+
+    /// Retain file sizes before the archive worker removes disposable Excel states.
+    fn record_workbook_sizes(&mut self) -> Result<()> {
+        for (label, path) in [
+            ("input_original", &self.args.original),
+            ("input_default", &self.args.default),
+        ] {
+            self.report
+                .workbook_bytes
+                .insert(label.into(), fs::metadata(path)?.len());
+        }
+        for entry in fs::read_dir(&self.args.output)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "xlsx")
+                && entry.file_type()?.is_file()
+            {
+                self.report.workbook_bytes.insert(
+                    entry.file_name().to_string_lossy().into_owned(),
+                    entry.metadata()?.len(),
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Retain explicit limitations and report only comparisons actually performed.
@@ -120,6 +148,7 @@ impl Report {
 /// Scientific coverage limits apply independently of the display or process health.
 pub(super) fn new_report() -> Report {
     Report {
+        workbook_bytes: BTreeMap::new(),
         capture_policy: super::CAPTURE_POLICY,
         timings_ms: BTreeMap::new(),
         image_comparison_statistics: Default::default(),

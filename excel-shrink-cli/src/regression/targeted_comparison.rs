@@ -96,6 +96,7 @@ struct Finding {
 
 #[derive(Serialize)]
 struct Report {
+    workbook_bytes: BTreeMap<String, u64>,
     capture_policy: &'static str,
     image_comparison_statistics: image_comparison::Statistics,
     xml_snapshot_statistics: snapshot_cache::Statistics,
