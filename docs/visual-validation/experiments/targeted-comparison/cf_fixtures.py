@@ -30,7 +30,9 @@ def create(directory: Path, mode: str) -> None:
             sheet['B1'] = 'other'
             sheet['A3'] = '" "' if lane == 'original' else 'other'
         if mode.startswith('ref-'):
-            reference = {'ref-relative': 'A1', 'ref-column': '$A1', 'ref-row': 'A$1', 'ref-fixed': '$A$1', 'ref-disjoint': 'A1'}[mode]
+            reference = {
+                'ref-column': '$A1', 'ref-row': 'A$1', 'ref-fixed': '$A$1',
+            }.get(mode, 'A1')
             sheet['A1'] = None if lane == 'original' else 1
             for row in range(2, 6):
                 for column in range(2, 5):
@@ -39,7 +41,21 @@ def create(directory: Path, mode: str) -> None:
             if mode == 'ref-disjoint':
                 area = 'B2:C3 F5:G6'
                 sheet['G6'] = 1
-            rule = Rule(type='expression', formula=[f'LEN(TRIM({reference}))=0'], dxf=DifferentialStyle(fill=fill))
+            formula = f'LEN(TRIM({reference}))=0'
+            if mode == 'ref-search':
+                sheet['A1'] = 2 if lane == 'original' else 1
+                formula = 'NOT(ISERROR(SEARCH("1",A1)))'
+            elif mode == 'ref-multiple':
+                sheet['A1'] = 1
+                sheet['F1'] = 0 if lane == 'original' else 1
+                formula = 'AND(A1=1,$F$1=1)'
+            elif mode == 'ref-cell-is':
+                sheet['A1'] = 1
+                sheet['F1'] = 2 if lane == 'original' else 0
+            if mode == 'ref-cell-is':
+                rule = CellIsRule(operator='greaterThan', formula=['$F$1'], fill=fill)
+            else:
+                rule = Rule(type='expression', formula=[formula], dxf=DifferentialStyle(fill=fill))
             sheet.conditional_formatting.add(area, rule)
         elif mode == 'duplicate':
             sheet.conditional_formatting.add('A1:B5', Rule(type='duplicateValues', dxf=DifferentialStyle(fill=fill)))

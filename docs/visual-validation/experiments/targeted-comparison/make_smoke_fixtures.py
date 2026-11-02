@@ -122,6 +122,7 @@ if __name__ == '__main__':
         'constant', 'constant-string', 'styles', 'dummy-missing', 'dummy-inert',
         'dummy-present', 'dummy-added', 'duplicate', 'color-scale',
         'ref-relative', 'ref-column', 'ref-row', 'ref-fixed', 'ref-disjoint',
+        'ref-search', 'ref-multiple', 'ref-cell-is',
     ])
     args = parser.parse_args()
     if args.conditional_formatting:

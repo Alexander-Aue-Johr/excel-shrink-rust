@@ -1,4 +1,5 @@
 //! CF selection proves only supported local contributions; every unresolved area remains a capture.
+mod expression;
 mod formulas;
 mod ranges;
 mod references;
@@ -120,20 +121,39 @@ fn reference_inputs(block: &Block) -> Option<Vec<references::Reference>> {
             || rule.formula_cdata
             || !matches!(
                 rule.attributes.get("type").map(String::as_str),
-                Some("containsBlanks" | "expression")
+                Some(
+                    "containsBlanks"
+                        | "notContainsBlanks"
+                        | "containsErrors"
+                        | "notContainsErrors"
+                        | "containsText"
+                        | "notContainsText"
+                        | "beginsWith"
+                        | "endsWith"
+                        | "expression"
+                        | "cellIs"
+                )
             )
-            || rule
-                .attributes
-                .keys()
-                .any(|key| !["type", "dxfId", "priority", "stopIfTrue"].contains(&key.as_str()))
+            || rule.attributes.keys().any(|key| {
+                ![
+                    "type",
+                    "dxfId",
+                    "priority",
+                    "stopIfTrue",
+                    "operator",
+                    "text",
+                ]
+                .contains(&key.as_str())
+            })
             || rule.child_elements.iter().any(|name| name != "formula")
-            || rule.formulas.len() != 1
+            || rule.formulas.is_empty()
         {
             return None;
         }
-        inputs.extend(references::len_trim(&formulas::decode_entities(
-            &rule.formulas[0],
-        )?)?);
+        for raw in &rule.formulas {
+            let formula = formulas::decode_entities(raw)?;
+            inputs.extend(expression::dependencies(&formula)?);
+        }
     }
     (!inputs.is_empty()).then_some(inputs)
 }

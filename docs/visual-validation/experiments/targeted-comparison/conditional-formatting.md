@@ -36,6 +36,21 @@ capturing extra cells. Absolute axes can select an entire target row, column or
 area. Selection uses rectangle arithmetic, without enumerating every target cell.
 As with other CF captures, targets are clipped to the recorded comparison extent.
 
+The same reference mapping supports simple scalar formulas in expression, text,
+blank/error and `cellIs` rules. A byte parser consumes the complete formula and
+collects every explicit local A1 reference, including references in all IF branches.
+Quoted strings (with doubled quote escapes) never supply cell dependencies.
+Arithmetic, comparisons, concatenation, percentages and numeric exponents are
+recognized without evaluating their results or operator precedence.
+
+Supported functions are LEN, TRIM, ISERROR, ISERR, ISBLANK, ISTEXT, ISNUMBER,
+SEARCH, FIND, LEFT, RIGHT, MID, AND, OR, NOT, IF, IFERROR, MOD, ABS, ROUND, INT,
+LOWER, UPPER, EXACT and CODE. Their dependencies are their explicit arguments.
+INDIRECT, OFFSET, ambient/volatile functions, unknown functions, names, ranges,
+sheet-qualified/structured references and unsupported tokens retain the full-area
+fallback. A formula nesting guard rejects excessive recursion into the same
+fallback; it does not limit sheet size or candidate count.
+
 The report adds `referenced_input_changes` and `referenced_formula_observations`.
 The latter counts appearances in both states, not distinct cells. Unknown formula
 syntax, sheet-qualified references, ranges and names remain full-area fallbacks.
@@ -43,6 +58,8 @@ syntax, sheet-qualified references, ranges and names remain full-area fallbacks.
 Native controls `ref-relative`, `ref-column`, `ref-row`, `ref-fixed` and
 `ref-disjoint` verify dependent target pixels in Excel after changing a source
 outside the target area.
+Additional controls `ref-search`, `ref-multiple` and `ref-cell-is` check nested
+SEARCH/ISERROR, multiple dependencies and a foreign-cell `cellIs` operand.
 
 ## Whole-area dependencies: duplicates and color scales
 

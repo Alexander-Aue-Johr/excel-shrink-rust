@@ -43,20 +43,6 @@ pub(super) fn parse(text: &str) -> Option<Reference> {
     })
 }
 
-/// Recognize the first supported template exactly, allowing ordinary formula whitespace.
-pub(super) fn len_trim(formula: &str) -> Option<Vec<Reference>> {
-    let compact: String = formula
-        .chars()
-        .filter(|c| !c.is_ascii_whitespace())
-        .collect();
-    let upper = compact
-        .strip_prefix('=')
-        .unwrap_or(&compact)
-        .to_ascii_uppercase();
-    let reference = upper.strip_prefix("LEN(TRIM(")?.strip_suffix("))=0")?;
-    Some(vec![parse(reference)?])
-}
-
 fn inverse_axis(
     input: u32,
     reference: u32,
@@ -143,5 +129,24 @@ mod tests {
         for invalid in ["A0", "XFE1", "A1048577", "Other!A1", "A1:B2", "NamedRange"] {
             assert!(parse(invalid).is_none());
         }
+    }
+
+    #[test]
+    fn million_row_targets_remain_rectangles_and_clip_at_the_grid_boundary() {
+        let area = Rect {
+            top: 2,
+            left: 1,
+            bottom: 1_048_576,
+            right: 1,
+        };
+        let last = parse("A1").unwrap().targets((1_048_575, 1), &[area], area);
+        assert_eq!(last[0].address(), "A1048576:A1048576");
+        assert!(parse("A1")
+            .unwrap()
+            .targets((1_048_576, 1), &[area], area)
+            .is_empty());
+        let all = parse("$A$1").unwrap().targets((1, 1), &[area], area);
+        assert!(all.len() <= 2);
+        assert_eq!(all[0], area);
     }
 }
