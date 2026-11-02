@@ -667,6 +667,30 @@ fn cell_is_ref_error_operands_preserve_operator_and_context_guards() -> Result<(
 }
 
 #[test]
+fn pivot_flags_do_not_turn_constant_thresholds_into_an_unchanged_input_proof() -> Result<()> {
+    let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-pivot")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let values =
+        "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"5\"><c r=\"B5\"><v>3</v></c></row>";
+    for pivot in ["1", "true", "0", "unknown"] {
+        let block = format!("<conditionalFormatting pivot=\"{pivot}\" sqref=\"A1:B5\"><cfRule type=\"cellIs\" operator=\"greaterThan\" priority=\"1\"><formula>0</formula></cfRule></conditionalFormatting>");
+        write_book(&a, values, &block, "", "", "")?;
+        fs::copy(&a, &b)?;
+        let (decisions, candidates) = check(&a, &b)?;
+        assert_eq!(decisions[0].outcome, "capture");
+        assert_eq!(
+            decisions[0].reason,
+            "pivot-formatting-dependencies-not-modeled"
+        );
+        assert!(candidates.iter().any(|candidate| candidate.cell == "A1:B5"));
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 #[ignore = "Requires CF_INVENTORY with retained Data.gov rule metadata; no Excel"]
 fn retained_cell_is_errors_are_supported_but_the_external_reference_is_not() -> Result<()> {
     use std::io::{BufRead, BufReader};

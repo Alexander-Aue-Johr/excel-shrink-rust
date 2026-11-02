@@ -62,6 +62,9 @@ struct CombinedInputs {
 }
 
 fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
+    if block.attributes.contains_key("pivot") {
+        return Proof::Fallback("pivot-formatting-dependencies-not-modeled");
+    }
     if block.qualified_name != "conditionalFormatting"
         || block.attributes.keys().any(|key| key != "sqref")
         || block.child_elements.iter().any(|name| {
