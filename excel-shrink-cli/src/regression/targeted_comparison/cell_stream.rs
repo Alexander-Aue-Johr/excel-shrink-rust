@@ -81,8 +81,13 @@ pub(super) struct Writer {
 
 impl Writer {
     pub fn new() -> Result<Self> {
-        let path =
-            std::env::temp_dir().join(format!("excel-shrink-cells-{}.bin", uuid::Uuid::new_v4()));
+        Self::new_in(&std::env::temp_dir())
+    }
+
+    /// Keep retained workbook fingerprints on their attempt's volume, not the system disk.
+    pub fn new_in(directory: &std::path::Path) -> Result<Self> {
+        std::fs::create_dir_all(directory)?;
+        let path = directory.join(format!("excel-shrink-cells-{}.bin", uuid::Uuid::new_v4()));
         let output = OpenOptions::new()
             .write(true)
             .create_new(true)

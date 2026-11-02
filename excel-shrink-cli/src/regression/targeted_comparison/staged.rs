@@ -137,7 +137,7 @@ impl Workflow<'_, '_> {
         self.comparison
             .telemetry
             .update(|state| state.step(id, Phase::Discover, StepStatus::Running))?;
-        let xml = Snapshot::read(&path)?;
+        let xml = self.comparison.snapshots.read(&path)?;
         self.content_bounds.include(&xml);
         self.comparison
             .telemetry
@@ -190,8 +190,8 @@ impl Workflow<'_, '_> {
     }
 
     fn audit(&mut self, label: &str, before: &Path, after: &Path) -> Result<()> {
-        let a = Snapshot::read(before)?;
-        let b = Snapshot::read(after)?;
+        let a = self.comparison.snapshots.read(before)?;
+        let b = self.comparison.snapshots.read(after)?;
         self.content_bounds.include(&a);
         self.content_bounds.include(&b);
         let (mut changes, skipped_outside_content_cell_changes) = a.content_changes(&b)?;

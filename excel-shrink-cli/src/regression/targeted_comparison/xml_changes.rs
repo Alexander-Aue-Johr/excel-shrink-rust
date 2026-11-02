@@ -82,6 +82,11 @@ fn hash(bytes: &[u8]) -> String {
 impl Snapshot {
     /// Stream cell fingerprints to owned scratch files; retain only layout metadata in memory.
     pub fn read(path: &Path) -> Result<Self> {
+        Self::read_with_scratch(path, &std::env::temp_dir())
+    }
+
+    /// Select scratch ownership explicitly for retained analyses in corpus attempts.
+    pub fn read_with_scratch(path: &Path, scratch: &Path) -> Result<Self> {
         let plan = build_workbook_visual_plan(path)?;
         let mut archive = ZipArchive::new(File::open(path)?)?;
         let mut workbook = Vec::new();
@@ -99,6 +104,7 @@ impl Snapshot {
                 &sheet.sheet_file,
                 sheet.bottom_row + 1,
                 sheet.base_right_column + 1,
+                Some(scratch),
             )?;
             sheets.insert(sheet.sheet, model);
         }
@@ -329,12 +335,16 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     part: &str,
     bottom: u32,
     right: u32,
+    scratch: Option<&Path>,
 ) -> Result<Sheet> {
     let mut model = Sheet::default();
     model.bottom = bottom;
     model.right = right;
     let mut cells = if INCLUDE_CELLS {
-        Some(Writer::new()?)
+        Some(match scratch {
+            Some(path) => Writer::new_in(path)?,
+            None => Writer::new()?,
+        })
     } else {
         None
     };
@@ -540,7 +550,7 @@ pub(super) fn conditional_catalogue_for_audit(
     archive: &mut ZipArchive<File>,
     part: &str,
 ) -> Result<Arc<xml::Catalogue>> {
-    Ok(read_sheet::<false>(archive, part, 0, 0)?.conditional)
+    Ok(read_sheet::<false>(archive, part, 0, 0, None)?.conditional)
 }
 
 impl Sheet {
@@ -627,7 +637,7 @@ mod tests {
         zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData><conditionalFormatting sqref="A1:A10"><cfRule type="cellIs" operator="greaterThan" priority="1"><formula>5</formula></cfRule></conditionalFormatting></worksheet>"#)?;
         zip.finish()?;
         let mut archive = ZipArchive::new(File::open(&path)?)?;
-        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1)?;
+        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1, None)?;
         let audit = conditional_catalogue_for_audit(&mut archive, "xl/worksheets/sheet.xml")?;
         assert_eq!(audit.fingerprints, full.conditional.fingerprints);
         assert_eq!(

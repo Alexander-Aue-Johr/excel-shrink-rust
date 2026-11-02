@@ -8,6 +8,7 @@ mod check_performance;
 mod evidence;
 mod image_comparison;
 mod change_evidence;
+mod snapshot_cache;
 mod heights;
 mod host;
 mod reporting;
@@ -97,6 +98,7 @@ struct Finding {
 struct Report {
     capture_policy: &'static str,
     image_comparison_statistics: image_comparison::Statistics,
+    xml_snapshot_statistics: snapshot_cache::Statistics,
     status: String,
     check_performance: &'static str,
     check_performance_evidence: Option<check_performance::PerformanceEvidence>,
@@ -138,6 +140,7 @@ struct Comparison<'a> {
     excel: Option<ExcelHost>,
     performance: check_performance::PerformanceState,
     image_comparisons: image_comparison::ImageComparisons,
+    snapshots: snapshot_cache::Snapshots,
 }
 
 /// Run the same workflow from the CLI or an explicitly selected Observatory group.
@@ -187,6 +190,7 @@ impl<'a> Comparison<'a> {
             excel: None,
             performance: check_performance::PerformanceState::default(),
             image_comparisons: image_comparison::ImageComparisons::default(),
+            snapshots: snapshot_cache::Snapshots::new(args.output.join("xml-scratch")),
         })
     }
 
@@ -194,7 +198,7 @@ impl<'a> Comparison<'a> {
     fn inspect_initial_xml(&mut self) -> Result<()> {
         self.telemetry
             .update(|state| state.pair_step(Phase::Discover, StepStatus::Running))?;
-        self.candidates = discover_candidates(&self.paths.original, &self.paths.default)?;
+        self.candidates = discover_candidates(&self.paths.original, &self.paths.default, &mut self.snapshots)?;
         self.report.phases.push("initial XML compared".into());
         self.telemetry.update(|state| {
             state.candidates(self.candidates.len());
@@ -219,7 +223,7 @@ impl<'a> Comparison<'a> {
         self.telemetry
             .update(|state| state.pair_step(Phase::InspectSave, StepStatus::Running))?;
 
-        let save_changes = find_changes_caused_by_save(&before_save, &self.paths)?;
+        let save_changes = find_changes_caused_by_save(&before_save, &self.paths, &mut self.snapshots)?;
         self.include_save_changes(save_changes)?;
 
         self.report

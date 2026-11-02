@@ -66,7 +66,8 @@ impl Comparison<'_> {
             state.step(LaneId::CP, Phase::Save, StepStatus::Done);
             state.step(LaneId::CP, Phase::InspectSave, StepStatus::Running);
         })?;
-        self.performance.save_changes = discover_candidates(&self.paths.original, path)?;
+        self.performance.save_changes =
+            discover_candidates(&self.paths.original, path, &mut self.snapshots)?;
         self.telemetry
             .update(|state| state.step(LaneId::CP, Phase::InspectSave, StepStatus::Done))
     }
@@ -113,7 +114,8 @@ impl Comparison<'_> {
             state.step(LaneId::CP, Phase::Optimize, StepStatus::Done);
             state.step(LaneId::CP, Phase::InspectOptimization, StepStatus::Running);
         })?;
-        self.performance.optimization_changes = discover_candidates(&before, &after)?;
+        self.performance.optimization_changes =
+            discover_candidates(&before, &after, &mut self.snapshots)?;
         self.telemetry
             .update(|state| state.step(LaneId::CP, Phase::InspectOptimization, StepStatus::Done))
     }

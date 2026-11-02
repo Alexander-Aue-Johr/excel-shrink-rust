@@ -11,6 +11,7 @@ impl Comparison<'_> {
     pub(super) fn complete(&mut self) -> Result<()> {
         self.report.status = "completed_with_limitations".into();
         self.report.image_comparison_statistics = self.image_comparisons.statistics();
+        self.report.xml_snapshot_statistics = self.snapshots.statistics();
         self.write_completion()
     }
 
@@ -122,6 +123,7 @@ pub(super) fn new_report() -> Report {
         capture_policy: super::CAPTURE_POLICY,
         timings_ms: BTreeMap::new(),
         image_comparison_statistics: Default::default(),
+        xml_snapshot_statistics: Default::default(),
         status: "running".into(),
         check_performance: "not_requested",
         check_performance_evidence: None,

@@ -1,5 +1,6 @@
 //! Candidate discovery; unrelated workbook changes remain explicit limitations.
-use super::xml_changes::{cell_candidates, Snapshot};
+use super::snapshot_cache::Snapshots;
+use super::xml_changes::cell_candidates;
 use super::{Candidate, WorkingPaths};
 use anyhow::Result;
 use std::{collections::BTreeSet, path::Path};
@@ -14,16 +15,21 @@ pub(super) struct SaveChanges {
 pub(super) fn find_changes_caused_by_save(
     before: &WorkingPaths,
     after: &WorkingPaths,
+    snapshots: &mut Snapshots,
 ) -> Result<SaveChanges> {
-    let original = discover_candidates(&before.original, &after.original)?;
-    let default = discover_candidates(&before.default, &after.default)?;
+    let original = discover_candidates(&before.original, &after.original, snapshots)?;
+    let default = discover_candidates(&before.default, &after.default, snapshots)?;
     Ok(SaveChanges { original, default })
 }
 
 /// Maps changed cell XML to visible cell or row-geometry capture candidates.
-pub(super) fn discover_candidates(left: &Path, right: &Path) -> Result<BTreeSet<Candidate>> {
-    let before = Snapshot::read(left)?;
-    let after = Snapshot::read(right)?;
+pub(super) fn discover_candidates(
+    left: &Path,
+    right: &Path,
+    snapshots: &mut Snapshots,
+) -> Result<BTreeSet<Candidate>> {
+    let before = snapshots.read(left)?;
+    let after = snapshots.read(right)?;
     Ok(cell_candidates(&before.content_changes(&after)?.0))
 }
 
@@ -53,7 +59,11 @@ mod tests {
         write_cells(&after.original, [3, 2])?;
         write_cells(&after.default, [100, 300])?;
 
-        let changes = find_changes_caused_by_save(&before, &after)?;
+        let changes = find_changes_caused_by_save(
+            &before,
+            &after,
+            &mut Snapshots::new(directory.join("scratch")),
+        )?;
         assert_eq!(
             changes.original,
             BTreeSet::from([Candidate {
@@ -68,6 +78,39 @@ mod tests {
                 cell: "B1".into(),
             }])
         );
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn snapshot_cache_reuses_copies_but_reanalyses_a_saved_path_and_releases_scratch() -> Result<()>
+    {
+        let directory = artifact_cache::unique_path(&std::env::temp_dir(), "snapshot-reuse")?;
+        fs::create_dir_all(&directory)?;
+        let original = directory.join("original.xlsx");
+        let copy = directory.join("copy.xlsx");
+        let scratch = directory.join("scratch");
+        write_cells(&original, [1, 2])?;
+        fs::copy(&original, &copy)?;
+        {
+            let mut cache = Snapshots::new(scratch.clone());
+            let before = cache.read(&original)?;
+            assert!(before.content_changes(&cache.read(&copy)?)?.0.is_empty());
+            write_cells(&original, [3, 2])?;
+            let after = cache.read(&original)?;
+            assert_eq!(
+                cell_candidates(&before.content_changes(&after)?.0),
+                BTreeSet::from([Candidate {
+                    sheet: "Data".into(),
+                    cell: "A1".into()
+                }])
+            );
+            assert_eq!(cache.statistics().parsed_versions, 2);
+            assert_eq!(cache.statistics().reused_versions, 1);
+            assert!(fs::read_dir(&scratch)?.count() > 0);
+        }
+        assert_eq!(fs::read_dir(&scratch)?.count(), 0);
+        assert!(original.is_file() && copy.is_file());
         fs::remove_dir_all(directory)?;
         Ok(())
     }
@@ -131,7 +174,11 @@ mod tests {
             archive.write_all(b"</sheetData></worksheet>")?;
             archive.finish()?;
         }
-        let found = discover_candidates(&left, &right)?;
+        let found = discover_candidates(
+            &left,
+            &right,
+            &mut Snapshots::new(directory.join("scratch")),
+        )?;
         assert_eq!(found.len(), 1000);
         assert!(found.contains(&Candidate {
             sheet: "Data".into(),
@@ -155,7 +202,11 @@ mod tests {
         let size = archive.by_name("xl/worksheets/sheet1.xml")?.size();
         assert!(size > 64 * 1024 * 1024);
         drop(archive);
-        let found = discover_candidates(&left, &right)?;
+        let found = discover_candidates(
+            &left,
+            &right,
+            &mut Snapshots::new(directory.join("scratch")),
+        )?;
         assert_eq!(
             found,
             BTreeSet::from([Candidate {
@@ -177,7 +228,12 @@ mod tests {
         let right = directory.join("same.xlsx");
         write_large_sheet(&left, false, true)?;
         fs::copy(&left, &right)?;
-        assert!(discover_candidates(&left, &right)?.is_empty());
+        assert!(discover_candidates(
+            &left,
+            &right,
+            &mut Snapshots::new(directory.join("scratch"))
+        )?
+        .is_empty());
         fs::remove_dir_all(directory)?;
         Ok(())
     }

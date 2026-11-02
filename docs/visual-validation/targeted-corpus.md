@@ -135,3 +135,10 @@ immutable pixels may be needed only after later rebuilds reveal new differences.
 Discarding them early would require unsafe recapture, while retaining all of them
 in WebView memory would grow with sheet size. Binary uploads, host fingerprints,
 and post-comparison equal-image reduction keep that evidence on disk safely.
+
+XML snapshots are reused only for identical complete archive SHA-256 values.
+Saving or rebuilding a path changes the key and forces a new analysis. Reports
+record `xml_snapshot_statistics`; cell streams for retained snapshots live in
+the attempt's `xml-scratch` directory and are removed when their final owner exits.
+This avoids repeated decompression/parsing without caching mutable filenames or
+accumulating large fingerprint files on the Windows system volume.
