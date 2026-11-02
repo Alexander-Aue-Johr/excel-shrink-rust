@@ -46,6 +46,7 @@ def verify(root: Path, mode: str) -> None:
             'ref-multiple': 'B2:D5', 'ref-cell-is': 'B2:D5',
             'ref-range': 'B2:B2', 'ref-range-fixed': 'B2:D5', 'ref-range-growing': 'B2:D5',
             'ref-mixed': 'B2:D5', 'ref-mixed-group': 'B2:D5',
+            'ref-cross-relative': 'B2:B2', 'ref-cross-quoted': 'B2:D5', 'ref-cross-range': 'B2:D5',
         }[mode]
         finding = next(item for item in direct['findings'] if item['cell'] == expected)
         assert finding['pixels_differ'], 'Dependent target did not change in native Excel'

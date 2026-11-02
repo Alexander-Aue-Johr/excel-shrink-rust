@@ -23,6 +23,7 @@ use zip::ZipArchive;
 
 #[derive(Clone, Default)]
 pub(super) struct Sheet {
+    pub value_namespace_supported: bool,
     pub cells: Cells,
     pub rows: Arc<BTreeMap<u32, BTreeMap<String, String>>>,
     pub columns: Vec<u8>,
@@ -288,6 +289,9 @@ fn read_sheet(
     let mut spans = Vec::new();
     let mut cf_start = None;
     let mut standard_namespace = false;
+    let mut x14_namespace = false;
+    let mut xm_namespace = false;
+    let mut x14_container = None;
     let mut namespace_scopes = Vec::new();
     let mut data_depth = None;
     let mut layout = Sha256::new();
@@ -304,15 +308,55 @@ fn read_sheet(
                     namespace == b"http://schemas.openxmlformats.org/spreadsheetml/2006/main"
                 })
                 .unwrap_or(standard_namespace);
-            if tag.kind == Kind::Start && declaration.is_some() {
-                namespace_scopes.push((tag.depth, standard_namespace));
-                standard_namespace = tag_namespace;
-            }
-            if matches!(tag.kind, Kind::Start | Kind::Empty)
-                && (!tag_namespace || tag.name.contains(&b':'))
+            let (x14_declaration, xm_declaration) =
+                if data_depth.is_none() || tag.local() == b"sheetData" {
+                    (tag.attr(b"xmlns:x14")?, tag.attr(b"xmlns:xm")?)
+                } else {
+                    (None, None)
+                };
+            let tag_x14 = x14_declaration
+                .map(|ns| ns == b"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main")
+                .unwrap_or(x14_namespace);
+            let tag_xm = xm_declaration
+                .map(|ns| ns == b"http://schemas.microsoft.com/office/excel/2006/main")
+                .unwrap_or(xm_namespace);
+            if tag.depth == 0 && tag.kind == Kind::Start {
+                model.value_namespace_supported = tag_namespace && tag.name == b"worksheet";
+            } else if matches!(tag.kind, Kind::Start | Kind::Empty)
+                && (data_depth.is_some() || tag.local() == b"sheetData")
+                && (!tag_namespace
+                    || tag.name.contains(&b':')
+                    || memchr::memmem::find(tag.attrs, b"xmlns").is_some())
             {
-                if let Some((_, _, eligible)) = &mut cf_start {
-                    *eligible = false;
+                model.value_namespace_supported = false;
+            }
+            if tag.kind == Kind::Start
+                && (declaration.is_some() || x14_declaration.is_some() || xm_declaration.is_some())
+            {
+                namespace_scopes.push((tag.depth, standard_namespace, x14_namespace, xm_namespace));
+                standard_namespace = tag_namespace;
+                x14_namespace = tag_x14;
+                xm_namespace = tag_xm;
+            }
+            if matches!(tag.kind, Kind::Start | Kind::Empty) {
+                if let Some((_, _, eligible, extension)) = &mut cf_start {
+                    let known_prefix = *extension
+                        && ((tag.name.starts_with(b"x14:") && tag_x14)
+                            || (tag.name.starts_with(b"xm:") && tag_xm));
+                    if !tag_namespace || (tag.name.contains(&b':') && !known_prefix) {
+                        *eligible = false;
+                    }
+                    if *extension && !xml::static_format_attributes(*tag)? {
+                        *eligible = false;
+                    }
+                }
+            }
+            if tag.name == b"x14:conditionalFormattings" {
+                if tag.kind == Kind::Start && tag_x14 && tag_namespace {
+                    x14_container = Some(tag.depth);
+                }
+                if tag.kind == Kind::End {
+                    x14_container = None;
                 }
             }
             if tag.local() == b"sheetData" {
@@ -333,23 +377,31 @@ fn read_sheet(
             if tag.local() == b"conditionalFormatting" {
                 let eligible =
                     tag.depth == 1 && tag.name == b"conditionalFormatting" && tag_namespace;
+                let extension = tag.name == b"x14:conditionalFormatting"
+                    && tag_namespace
+                    && tag_x14
+                    && tag_xm
+                    && x14_container.is_some_and(|depth| depth + 1 == tag.depth);
                 if tag.kind == Kind::Start && cf_start.is_none() {
-                    cf_start = Some((tag.depth, tag.start, eligible));
+                    cf_start = Some((tag.depth, tag.start, eligible || extension, extension));
                 }
                 if tag.kind == Kind::Empty && cf_start.is_none() {
                     spans.push(xml::Span {
                         start: tag.start,
                         end: tag.end,
-                        standard_namespace: eligible,
+                        namespace_supported: eligible,
+                        x14_expression: extension,
                     });
                 }
-                if tag.kind == Kind::End && cf_start.is_some_and(|(depth, _, _)| depth == tag.depth)
+                if tag.kind == Kind::End
+                    && cf_start.is_some_and(|(depth, _, _, _)| depth == tag.depth)
                 {
-                    let (_, start, eligible) = cf_start.take().unwrap();
+                    let (_, start, eligible, extension) = cf_start.take().unwrap();
                     spans.push(xml::Span {
                         start,
                         end: tag.end,
-                        standard_namespace: eligible,
+                        namespace_supported: eligible,
+                        x14_expression: extension,
                     });
                 }
             }
@@ -402,9 +454,12 @@ fn read_sheet(
             if tag.kind == Kind::End
                 && namespace_scopes
                     .last()
-                    .is_some_and(|(depth, _)| *depth == tag.depth)
+                    .is_some_and(|(depth, _, _, _)| *depth == tag.depth)
             {
-                standard_namespace = namespace_scopes.pop().unwrap().1;
+                let (_, main, x14, xm) = namespace_scopes.pop().unwrap();
+                standard_namespace = main;
+                x14_namespace = x14;
+                xm_namespace = xm;
             }
         }
         cells.event(&event)

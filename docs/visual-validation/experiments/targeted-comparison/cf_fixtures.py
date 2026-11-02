@@ -63,6 +63,19 @@ def create(directory: Path, mode: str) -> None:
             elif mode == 'ref-mixed-group':
                 sheet['A1'] = 1
                 sheet['B3'] = 1 if lane == 'original' else 10
+            elif mode.startswith('ref-cross-'):
+                sheet['A1'] = 1
+                name = "O'Brien data" if mode == 'ref-cross-quoted' else 'Other'
+                source = book.create_sheet(name)
+                source['A1'] = 0 if lane == 'original' else 1
+                source['A2'] = 1
+                qualifier = "'O''Brien data'" if mode == 'ref-cross-quoted' else 'Other'
+                if mode == 'ref-cross-range':
+                    formula = f'SUM({qualifier}!$A$1:$A$2)>1'
+                elif mode == 'ref-cross-quoted':
+                    formula = f'{qualifier}!$A$1=1'
+                else:
+                    formula = f'{qualifier}!A1=1'
             if mode == 'ref-cell-is':
                 rule = CellIsRule(operator='greaterThan', formula=['$F$1'], fill=fill)
             else:

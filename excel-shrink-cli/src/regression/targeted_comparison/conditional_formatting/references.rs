@@ -1,8 +1,9 @@
-//! Invert local A1 dependencies without evaluating conditional-formatting formulas.
+//! Invert same-workbook A1 dependencies without evaluating conditional-formatting formulas.
 use super::{ranges, Rect};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(super) struct Reference {
+    pub sheet: Option<String>,
     start: Address,
     end: Address,
 }
@@ -19,6 +20,7 @@ struct Address {
 pub(super) fn parse(text: &str) -> Option<Reference> {
     let (start, end) = text.split_once(':').unwrap_or((text, text));
     Some(Reference {
+        sheet: None,
         start: address(start)?,
         end: address(end)?,
     })
@@ -95,9 +97,44 @@ fn inverse_axis(
 }
 
 impl Reference {
+    /// Resolve a unique visible worksheet; missing, ambiguous or unavailable sheets are not proofs.
+    pub(super) fn source<'a>(
+        &self,
+        snapshot: &'a super::Snapshot,
+        local: &str,
+    ) -> Option<(&'a str, &'a super::Sheet)> {
+        if let Some(sheet) = &self.sheet {
+            let mut matches = snapshot
+                .sheets
+                .iter()
+                .filter(|(name, _)| name.eq_ignore_ascii_case(sheet));
+            let (name, value) = matches.next()?;
+            (matches.next().is_none() && value.value_namespace_supported)
+                .then_some((name.as_str(), value))
+        } else {
+            snapshot
+                .sheets
+                .get_key_value(local)
+                .filter(|(_, value)| value.value_namespace_supported)
+                .map(|(name, value)| (name.as_str(), value))
+        }
+    }
+    /// Accept literal same-workbook ASCII names; dynamic, external and 3-D names stay unknown.
+    pub(super) fn qualified(mut self, sheet: &str) -> Option<Self> {
+        if sheet.is_empty()
+            || sheet.len() > 31
+            || !sheet.is_ascii()
+            || sheet.bytes().any(|b| b"[]:!\\/?*".contains(&b))
+            || sheet.to_ascii_lowercase().contains("_x")
+        {
+            return None;
+        }
+        self.sheet = Some(sheet.to_owned());
+        Some(self)
+    }
     /// Return dependent target rectangles, never enumerate an entire worksheet grid.
     /// For disjoint sqref areas include both shared and per-area anchors conservatively.
-    pub(super) fn targets(self, input: (u32, u32), areas: &[Rect], extent: Rect) -> Vec<Rect> {
+    pub(super) fn targets(&self, input: (u32, u32), areas: &[Rect], extent: Rect) -> Vec<Rect> {
         let mut result = Vec::new();
         for area in areas {
             for anchor in [areas[0], *area] {

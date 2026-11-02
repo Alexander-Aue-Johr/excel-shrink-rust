@@ -8,6 +8,123 @@ use std::{
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 #[test]
+fn x14_expression_adapter_requires_known_namespaces_and_static_format_content() -> Result<()> {
+    let root =
+        crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-x14-expression")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let rule = concat!(
+        "<extLst><ext xmlns:x14=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\">",
+        "<x14:conditionalFormattings><x14:conditionalFormatting xmlns:xm=\"http://schemas.microsoft.com/office/excel/2006/main\">",
+        "<x14:cfRule type=\"expression\" priority=\"1\" id=\"stable-id\"><xm:f>A1=1</xm:f>",
+        "<x14:dxf><fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFF0000\"/></patternFill></fill></x14:dxf>",
+        "</x14:cfRule><xm:sqref>B2:D5</xm:sqref></x14:conditionalFormatting></x14:conditionalFormattings></ext></extLst>"
+    );
+    let values =
+        "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"5\"><c r=\"D5\"><v>1</v></c></row>";
+    write_book(&a, values, rule, "", "", "")?;
+    fs::copy(&a, &b)?;
+    assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+    write_book(&b, &values.replacen("<v>1", "<v>2", 1), rule, "", "", "")?;
+    assert!(check(&a, &b)?.1.iter().any(|c| c.cell == "B2:B2"));
+    for unknown in [
+        rule.replace("2009/9/main", "unknown"),
+        rule.replace("excel/2006/main", "excel/unknown"),
+        rule.replace("<fill>", "<fill><x14:unknown/>"),
+        rule.replace("<fill>", "<fill unexpected=\"1\">"),
+        rule.replace("<xm:f>", "<xm:f unexpected=\"1\">"),
+        rule.replace("type=\"expression\"", "type=\"dataBar\""),
+    ] {
+        write_book(&a, values, &unknown, "", "", "")?;
+        fs::copy(&a, &b)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    }
+    write_book(&a, values, rule, "", "", "")?;
+    write_book(
+        &b,
+        values,
+        &rule.replace("FFFF0000", "FF0000FF"),
+        "",
+        "",
+        "",
+    )?;
+    assert!(check(&a, &b)?.0.iter().all(|d| d.outcome == "capture"));
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn cross_sheet_changes_and_uncertain_formulas_select_the_target_sheet() -> Result<()> {
+    let root =
+        crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-cross-sheet")?;
+    fs::create_dir_all(&root)?;
+    let target = root.join("target.xlsx");
+    let source = root.join("source.xlsx");
+    for (formula, expected) in [
+        ("other!A1=1", "B2:B2"),
+        ("'O''Brien data'!$A$1=1", "B2:D5"),
+        ("SUM(Other!$A$1:$A$2)&gt;0", "B2:D5"),
+    ] {
+        let block = format!("<conditionalFormatting sqref=\"B2:D5\"><cfRule type=\"expression\" priority=\"1\"><formula>{formula}</formula></cfRule></conditionalFormatting>");
+        write_book(
+            &target,
+            "<row r=\"5\"><c r=\"D5\"><v>1</v></c></row>",
+            &block,
+            "",
+            "",
+            "",
+        )?;
+        let values = "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row>";
+        write_book(&source, values, "", "", "", "")?;
+        let mut a = Snapshot::read(&target)?;
+        let name = if formula.contains("Brien") {
+            "O'Brien data"
+        } else {
+            "Other"
+        };
+        let source_sheet = Snapshot::read(&source)?.sheets.remove("Data").unwrap();
+        a.sheets.insert(name.into(), source_sheet);
+        let mut b = a.clone();
+        let mut selected = BTreeSet::new();
+        assert_eq!(
+            select(&a, &b, &a.changes(&b)?, &mut selected)?[0].outcome,
+            "excluded"
+        );
+        for changed in [
+            values.replace("<v>1", "<v>2"),
+            values.replace("<v>1", "<f>NOW()</f><v>1"),
+        ] {
+            write_book(&source, &changed, "", "", "", "")?;
+            b.sheets.insert(
+                name.into(),
+                Snapshot::read(&source)?.sheets.remove("Data").unwrap(),
+            );
+            selected.clear();
+            let decisions = select(&a, &b, &a.changes(&b)?, &mut selected)?;
+            assert_eq!(decisions[0].outcome, "partial");
+            assert!(selected
+                .iter()
+                .any(|c| c.sheet == "Data" && c.cell == expected));
+        }
+        b.sheets.get_mut(name).unwrap().value_namespace_supported = false;
+        selected.clear();
+        assert_eq!(
+            select(&a, &b, &a.changes(&b)?, &mut selected)?[0].outcome,
+            "capture"
+        );
+        b.sheets.remove(name);
+        selected.clear();
+        assert_eq!(
+            select(&a, &b, &a.changes(&b)?, &mut selected)?[0].outcome,
+            "capture"
+        );
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn namespace_uncertainty_is_local_to_its_cf_block_and_scopes_are_restored() -> Result<()> {
     let root =
         crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-namespaces")?;

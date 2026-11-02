@@ -1,7 +1,7 @@
 //! Retain CF fingerprints and complete structured rules without building a worksheet DOM.
 use crate::regression::{
     cf_inventory::scan::{self, Block},
-    xml_views::{Kind, Reader},
+    xml_views::{Attributes, Kind, Reader, Tag},
 };
 use anyhow::{ensure, Result};
 use sha2::{Digest, Sha256};
@@ -16,18 +16,68 @@ use zip::ZipArchive;
 pub(in crate::regression::targeted_comparison) struct Catalogue {
     pub blocks: Vec<Block>,
     pub fingerprints: Vec<[u8; 32]>,
-    pub standard_namespaces: Vec<bool>,
+    pub namespace_supported: Vec<bool>,
 }
 
 pub(in crate::regression::targeted_comparison) struct Span {
     pub start: usize,
     pub end: usize,
-    pub standard_namespace: bool,
+    pub namespace_supported: bool,
+    pub x14_expression: bool,
 }
 
 struct HashingReader<R> {
     input: R,
     hash: Sha256,
+}
+
+/// Unprefixed descendants of an x14 expression may contain only static DXF attributes.
+pub(in crate::regression::targeted_comparison) fn static_format_attributes(
+    tag: Tag<'_>,
+) -> Result<bool> {
+    if matches!(tag.name, b"x14:cfRule" | b"x14:conditionalFormatting") {
+        return Ok(true);
+    }
+    for attribute in Attributes::new(tag.attrs) {
+        let (name, _) = attribute?;
+        if tag.name.contains(&b':') {
+            if ![b"xmlns".as_slice(), b"xmlns:x14", b"xmlns:xm"].contains(&name) {
+                return Ok(false);
+            }
+            continue;
+        }
+        if ![
+            b"val".as_slice(),
+            b"rgb",
+            b"theme",
+            b"indexed",
+            b"auto",
+            b"tint",
+            b"patternType",
+            b"numFmtId",
+            b"formatCode",
+            b"horizontal",
+            b"vertical",
+            b"textRotation",
+            b"wrapText",
+            b"shrinkToFit",
+            b"indent",
+            b"relativeIndent",
+            b"justifyLastLine",
+            b"readingOrder",
+            b"style",
+            b"diagonalUp",
+            b"diagonalDown",
+            b"outline",
+            b"locked",
+            b"hidden",
+        ]
+        .contains(&name)
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 impl<R: Read> Read for HashingReader<R> {
     fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
@@ -70,12 +120,89 @@ pub(in crate::regression::targeted_comparison) fn catalogue(
             blocks.len() == 1,
             "CF subtree did not yield exactly one block"
         );
-        result.blocks.push(blocks.remove(0));
-        result.standard_namespaces.push(span.standard_namespace);
+        let mut block = blocks.remove(0);
+        let supported = span.namespace_supported
+            && (!span.x14_expression || normalize_x14_expression(&mut block));
+        result.blocks.push(block);
+        result.namespace_supported.push(supported);
         result.fingerprints.push(input.hash.finalize().into());
         position = end;
     }
     Ok(result)
+}
+
+/// Adapt only x14 expression rules with static inline formatting to the existing dependency model.
+/// Original bytes, including formatting and IDs, remain covered by the catalogue fingerprint.
+fn normalize_x14_expression(block: &mut Block) -> bool {
+    const FORMAT_TAGS: &[&str] = &[
+        "fill",
+        "patternFill",
+        "fgColor",
+        "bgColor",
+        "font",
+        "name",
+        "charset",
+        "family",
+        "b",
+        "i",
+        "strike",
+        "outline",
+        "shadow",
+        "condense",
+        "extend",
+        "color",
+        "sz",
+        "u",
+        "vertAlign",
+        "scheme",
+        "numFmt",
+        "alignment",
+        "border",
+        "left",
+        "right",
+        "top",
+        "bottom",
+        "diagonal",
+        "vertical",
+        "horizontal",
+        "start",
+        "end",
+        "protection",
+    ];
+    if block.qualified_name != "x14:conditionalFormatting"
+        || block.sqref.is_empty()
+        || block
+            .attributes
+            .keys()
+            .any(|key| !["xmlns:xm", "xmlns:x14"].contains(&key.as_str()))
+        || block.rules.is_empty()
+        || block.child_elements.iter().any(|name| {
+            !["x14:cfRule", "xm:f", "xm:sqref", "x14:dxf"].contains(&name.as_str())
+                && !FORMAT_TAGS.contains(&name.as_str())
+        })
+        || block.rules.iter().any(|rule| {
+            rule.attributes.get("type").map(String::as_str) != Some("expression")
+                || rule.attributes.keys().any(|key| {
+                    !["type", "priority", "id", "stopIfTrue", "dxfId"].contains(&key.as_str())
+                })
+                || rule.formulas.len() != 1
+                || rule.child_elements.iter().any(|name| {
+                    !["xm:f", "x14:dxf"].contains(&name.as_str())
+                        && !FORMAT_TAGS.contains(&name.as_str())
+                })
+        })
+    {
+        return false;
+    }
+    block.qualified_name = "conditionalFormatting".into();
+    block.attributes.clear();
+    block.attributes.insert("sqref".into(), block.sqref.clone());
+    block.child_elements = BTreeSet::from(["cfRule".into(), "formula".into()]);
+    for rule in &mut block.rules {
+        rule.attributes.remove("id");
+        rule.child_elements = BTreeSet::from(["formula".into()]);
+    }
+    true
 }
 
 /// Absence is provable only when all sheet names are unambiguous ASCII literals.

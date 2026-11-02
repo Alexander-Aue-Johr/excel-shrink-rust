@@ -12,11 +12,11 @@ use super::{
     Candidate,
 };
 use crate::regression::cf_inventory::scan::{Block, Rule};
-use anyhow::Result;
+use anyhow::{Context, Result};
 pub(super) use ranges::cell as cell_address;
 pub(super) use ranges::Rect;
 use serde::Serialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Serialize)]
 pub(super) struct Decision {
@@ -214,41 +214,54 @@ fn select_references(
     decision: &mut Decision,
     inputs: &[references::Reference],
     areas: &[Rect],
-    a: &Sheet,
-    b: &Sheet,
+    before: &Snapshot,
+    after: &Snapshot,
     changes: &[XmlChange],
     candidates: &mut BTreeSet<Candidate>,
 ) -> Result<()> {
-    select_local_inputs(decision, areas, a, b, changes, candidates)?;
-    let mut select = |input| {
-        let mut affected = false;
-        for reference in inputs {
-            let targets = reference.targets(input, areas, decision.comparison_extent);
-            affected |= !targets.is_empty();
-            fallback(
-                &decision.sheet,
-                &targets,
-                decision.comparison_extent,
-                candidates,
-            );
-        }
-        affected
-    };
-    let mut changed = 0;
-    for change in changes
-        .iter()
-        .filter(|change| change.sheet == decision.sheet)
-    {
-        if let Some(input) = change.location.strip_prefix("cell:").and_then(ranges::cell) {
-            changed += usize::from(select(input));
-        }
+    select_local_inputs(
+        decision,
+        areas,
+        &before.sheets[&decision.sheet],
+        &after.sheets[&decision.sheet],
+        changes,
+        candidates,
+    )?;
+    let mut sources: BTreeMap<&str, Vec<&references::Reference>> = BTreeMap::new();
+    for reference in inputs {
+        let (source, _) = reference
+            .source(before, &decision.sheet)
+            .context("CF source not resolved")?;
+        sources.entry(source).or_default().push(reference);
     }
+    let mut changed = 0;
     let mut uncertain = 0;
-    for cells in [&a.cells, &b.cells] {
-        cells.formula_cells(|cell| {
-            uncertain += usize::from(select((cell.row, u32::from(cell.column))));
-            Ok(())
-        })?;
+    for (source, inputs) in sources {
+        let mut select = |input| {
+            let mut affected = false;
+            for reference in &inputs {
+                let targets = reference.targets(input, areas, decision.comparison_extent);
+                affected |= !targets.is_empty();
+                fallback(
+                    &decision.sheet,
+                    &targets,
+                    decision.comparison_extent,
+                    candidates,
+                );
+            }
+            affected
+        };
+        for change in changes.iter().filter(|change| change.sheet == source) {
+            if let Some(input) = change.location.strip_prefix("cell:").and_then(ranges::cell) {
+                changed += usize::from(select(input));
+            }
+        }
+        for cells in [&before.sheets[source].cells, &after.sheets[source].cells] {
+            cells.formula_cells(|cell| {
+                uncertain += usize::from(select((cell.row, u32::from(cell.column))));
+                Ok(())
+            })?;
+        }
     }
     decision.referenced_input_changes = changed;
     decision.referenced_formula_observations = uncertain;
@@ -256,7 +269,7 @@ fn select_references(
         decision.outcome = "partial".into();
     }
     decision.reason =
-        "local-reference-dependencies; changed or uncertain inputs select dependent targets".into();
+        "worksheet-reference-dependencies; changed or uncertain inputs select dependent targets".into();
     Ok(())
 }
 
@@ -364,7 +377,7 @@ pub(super) fn select(
             right: a.right.max(b.right),
         };
         let identical = a.conditional.fingerprints == b.conditional.fingerprints
-            && a.conditional.standard_namespaces == b.conditional.standard_namespaces;
+            && a.conditional.namespace_supported == b.conditional.namespace_supported;
         let catalogues = if identical {
             vec![("both", &a.conditional)]
         } else {
@@ -375,7 +388,7 @@ pub(super) fn select(
                 let areas = ranges::areas(&block.sqref);
                 let mut mode = if !identical {
                     Proof::Fallback("rule-catalogue-changed")
-                } else if !catalogue.standard_namespaces[index] {
+                } else if !catalogue.namespace_supported[index] {
                     Proof::Fallback("worksheet-default-namespace-not-supported")
                 } else if areas.is_none() {
                     Proof::Fallback("application-range-not-resolved")
@@ -391,6 +404,22 @@ pub(super) fn select(
                 ) && a.cf_layout != b.cf_layout
                 {
                     mode = Proof::Fallback("worksheet-layout-context-changed");
+                }
+                let references = match &mode {
+                    Proof::ReferencedInputs(inputs) => inputs.as_slice(),
+                    Proof::CombinedInputs(plan) => plan.references.as_slice(),
+                    _ => &[],
+                };
+                if references.iter().any(|reference| {
+                    match (
+                        reference.source(before, name),
+                        reference.source(after, name),
+                    ) {
+                        (Some((a, _)), Some((b, _))) => a != b,
+                        _ => true,
+                    }
+                }) {
+                    mode = Proof::Fallback("referenced-worksheet-not-resolved-in-both-states");
                 }
                 let mut decision = Decision {
                     sheet: name.clone(),
@@ -413,8 +442,8 @@ pub(super) fn select(
                             &mut decision,
                             &plan.references,
                             areas,
-                            a,
-                            b,
+                            before,
+                            after,
                             changes,
                             candidates,
                         )?;
@@ -439,8 +468,8 @@ pub(super) fn select(
                         &mut decision,
                         &inputs,
                         areas.as_deref().unwrap(),
-                        a,
-                        b,
+                        before,
+                        after,
                         changes,
                         candidates,
                     )?,

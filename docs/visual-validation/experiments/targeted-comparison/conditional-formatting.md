@@ -54,7 +54,7 @@ Rectangular local ranges such as `A1:B10`, `$A$1:$B$10` and `$A$1:A1` are
 tracked as dependency rectangles. Mixed endpoint axes and reversed endpoint order
 are handled by inverting both possible endpoint orders. Changed inputs select all
 targets whose translated range contains them, without enumerating range cells.
-Whole-column/whole-row references, sheet qualifiers and range unions/intersections
+Whole-column/whole-row references and range unions/intersections
 remain unsupported. Native controls `ref-range`, `ref-range-fixed` and
 `ref-range-growing` check sliding SUM, fixed COUNTIF and growing SUM dependencies.
 
@@ -66,13 +66,36 @@ SUMIF/SUMIFS remain unsupported: in particular, SUMIF can extend a small sum-ran
 argument to the size of its criteria range, beyond the explicitly written cells.
 See [Microsoft's SUMIF reference](https://support.microsoft.com/en-us/excel/functions/sumif-function).
 INDIRECT, OFFSET, ambient/volatile functions, unknown functions, names,
-sheet-qualified/structured references and unsupported tokens retain the full-area
+structured/external references and unsupported tokens retain the full-area
 fallback. A formula nesting guard rejects excessive recursion into the same
 fallback; it does not limit sheet size or candidate count.
 
 The report adds `referenced_input_changes` and `referenced_formula_observations`.
 The latter counts appearances in both states, not distinct cells. Unknown formula
-syntax, sheet-qualified references and names remain full-area fallbacks.
+syntax and names remain full-area fallbacks.
+
+Simple same-workbook qualifiers are supported for cells and rectangular ranges:
+`Other!A1`, `'Start here when entering data'!$D$19` and
+`'O''Brien data'!$A$1:$A$2`. Literal ASCII sheet names resolve uniquely and
+case-insensitively in both snapshots. Each source worksheet is checked once for
+changed inputs and uncertain formula cells; resulting captures belong to the target
+worksheet. No referenced formula is evaluated.
+
+Missing, ambiguous, renamed, hidden/unavailable and unsupported-namespace source
+worksheets retain the application-area fallback. Encoded `_x` names, non-ASCII
+qualifiers, external workbooks, 3-D references and repeated endpoint qualifiers
+remain unsupported. The source sheet must already be present in the visual snapshot;
+this change does not load extra worksheets or change hidden-sheet handling.
+Native controls `ref-cross-relative`, `ref-cross-quoted` and `ref-cross-range`
+verify relative coordinates, escaped apostrophes and foreign-sheet range inputs.
+
+Excel promotes these cross-sheet rules to x14 expressions when saving. A narrow
+adapter supports that representation inside a known x14 conditionalFormattings
+container, with validated x14/xm namespace bindings. It accepts expression formulas
+and whitelisted static inline DXF formatting only; original subtree fingerprints
+still cover the formula, IDs and complete inline format bytes. Unknown extension
+nodes, data bars and other x14 rule types keep their fallback. The adapter does not
+make general extension rules eligible.
 
 Native controls `ref-relative`, `ref-column`, `ref-row`, `ref-fixed` and
 `ref-disjoint` verify dependent target pixels in Excel after changing a source
