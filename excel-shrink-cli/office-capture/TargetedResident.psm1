@@ -38,14 +38,17 @@ function Open-TargetedWorkbook {
     Write-TargetedJson (Join-Path $session 'clients/one.json') @{
         client_id='one'; source_path=$Command.path; workbook='one.xlsx'; sheets=$Command.sheets
     }
-    $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -SessionPath "{1}" -HostExecutable "{2}" -StartupTimeoutSeconds 120 -CaptureTimeoutSeconds 120 -Visible' -f `
-        (Join-Path $PSScriptRoot 'resident.ps1'), $session, $Command.host_executable
+    $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -SessionPath "{1}" -HostExecutable "{2}" -StartupTimeoutSeconds {3} -CaptureTimeoutSeconds {3} -Visible' -f `
+        (Join-Path $PSScriptRoot 'resident.ps1'), $session, $Command.host_executable, $Command.timeout_seconds
     # A manual recheck must not inherit a paused corpus or its visibility settings.
     $environment = @{
         EXCEL_SHRINK_CONTROL_ROOM_DIR=$control
         EXCEL_SHRINK_CONTROL_ROOM_GROUP_ID=('targeted-' + $Command.lane)
         EXCEL_SHRINK_CONTROL_ROOM_ATTEMPT_ID=[Guid]::NewGuid().ToString('N')
         EXCEL_SHRINK_CONTROL_ROOM_OWNER_PID=[string]$PID
+        # This launcher already owns a private desktop. An inherited hide flag
+        # would create a second desktop, outside the native adapter's scope.
+        EXCEL_SHRINK_HIDE_EXCEL='0'
     }
     $previous = @{}
     try {

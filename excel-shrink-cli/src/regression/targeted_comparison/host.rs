@@ -34,7 +34,7 @@ impl ExcelHost {
         })).collect();
         let result = self.call(
             json!({"kind":"open", "lane":lane.key(), "path":path, "sheets":sheets,
-                "host_executable":std::env::current_exe()?}),
+                "host_executable":std::env::current_exe()?, "timeout_seconds":self.timeout.as_secs()}),
             telemetry,
         )?;
         result["pid"]
