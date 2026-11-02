@@ -105,19 +105,13 @@ fn find_defined_names_content(workbook_xml: &[u8]) -> Option<Range<usize>> {
 }
 
 fn collect_defined_names(content: &[u8]) -> Result<KnownDefinedNames> {
-    let pattern = Regex::new(
-        r#"(?s)<definedName\b[^>]*?name="([^"]*?)"(?:[^>]*?localSheetId="([^"]*?)")?[^>]*?>"#,
-    )?;
+    let pattern = Regex::new(r"(?s)<definedName\b([^>]*[^>/])>")?;
     let mut known = KnownDefinedNames::default();
 
     for captures in pattern.captures_iter(content) {
-        let name = captures
-            .get(1)
-            .map_or(b"".as_slice(), |item| item.as_bytes());
-        let sheet_id = captures
-            .get(2)
-            .map_or_else(Vec::new, |item| item.as_bytes().to_vec());
-        known.record(name, sheet_id);
+        if let Some(defined_name) = defined_name_from_captures(&captures) {
+            known.record(&defined_name.name, defined_name.local_sheet_id);
+        }
     }
 
     Ok(known)
@@ -145,9 +139,7 @@ fn remove_duplicate_defined_names<'a>(
     duplicates: &HashSet<DefinedName>,
     stats: &mut CleanupStats,
 ) -> Result<Cow<'a, [u8]>> {
-    let pattern = Regex::new(
-        r#"(?s)<definedName\b[^>]*?name="([^"]*?)"(?:[^>]*?localSheetId="([^"]*?)")?[^>]*?>.*?</definedName>"#,
-    )?;
+    let pattern = Regex::new(r"(?s)<definedName\b([^>]*[^>/])>.*?</definedName>")?;
     let cleaned = pattern.replace_all(content, |captures: &Captures| {
         replace_defined_name_match(captures, duplicates, stats)
     });
@@ -159,8 +151,10 @@ fn replace_defined_name_match(
     duplicates: &HashSet<DefinedName>,
     stats: &mut CleanupStats,
 ) -> Vec<u8> {
-    let defined_name = defined_name_from_captures(captures);
     let complete_match = captures.get(0).unwrap().as_bytes();
+    let Some(defined_name) = defined_name_from_captures(captures) else {
+        return complete_match.to_vec();
+    };
 
     if !duplicates.contains(&defined_name) {
         return complete_match.to_vec();
@@ -177,15 +171,27 @@ fn replace_defined_name_match(
     Vec::new()
 }
 
-fn defined_name_from_captures(captures: &Captures<'_>) -> DefinedName {
-    DefinedName {
-        name: captures
-            .get(1)
-            .map_or_else(Vec::new, |item| item.as_bytes().to_vec()),
-        local_sheet_id: captures
-            .get(2)
-            .map_or_else(Vec::new, |item| item.as_bytes().to_vec()),
+/// XML attribute order and quote choice must not change a defined name's scope.
+fn defined_name_from_captures(captures: &Captures<'_>) -> Option<DefinedName> {
+    let mut name = None;
+    let mut local_sheet_id = Vec::new();
+    let mut scope_seen = false;
+    for attribute in crate::xml::attributes::Attributes::new(captures.get(1)?.as_bytes()) {
+        let attribute = attribute.ok()?;
+        match attribute.name {
+            b"name" if name.is_none() => name = Some(attribute.value.to_vec()),
+            b"localSheetId" if !scope_seen => {
+                local_sheet_id = attribute.value.to_vec();
+                scope_seen = true;
+            }
+            b"name" | b"localSheetId" => return None,
+            _ => {}
+        }
     }
+    Some(DefinedName {
+        name: name?,
+        local_sheet_id,
+    })
 }
 
 fn replace_defined_names_content(
@@ -198,4 +204,31 @@ fn replace_defined_names_content(
     output.extend_from_slice(cleaned_content);
     output.extend_from_slice(&workbook_xml[content_range.end..]);
     output
+}
+
+#[cfg(test)]
+mod scope_tests {
+    use super::*;
+
+    #[test]
+    fn aliases_on_different_sheets_are_not_duplicates_when_scope_precedes_name() -> Result<()> {
+        let xml = br#"<workbook><definedNames><definedName localSheetId="1" name="Print_Area">Second!$A$1</definedName><definedName localSheetId="0" name="_xlnm.Print_Area">First!$A$1</definedName></definedNames></workbook>"#;
+        assert_eq!(clean_workbook(xml)?, xml);
+        Ok(())
+    }
+
+    #[test]
+    fn equivalent_alias_scope_is_independent_of_attribute_order_and_quotes() -> Result<()> {
+        let xml = br#"<workbook><definedNames><definedName localSheetId='0' name='Print_Area'>First!$A$1</definedName><definedName name="_xlnm.Print_Area" localSheetId="0">First!$A$1</definedName></definedNames></workbook>"#;
+        let expected = br#"<workbook><definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">First!$A$1</definedName></definedNames></workbook>"#;
+        assert_eq!(clean_workbook(xml)?, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn a_self_closing_name_does_not_consume_a_following_element() -> Result<()> {
+        let xml = br#"<workbook><definedNames><definedName name="Print_Area" localSheetId="0"/><definedName name="Other">A1</definedName><definedName name="_xlnm.Print_Area" localSheetId="0">First!$A$1</definedName></definedNames></workbook>"#;
+        assert_eq!(clean_workbook(xml)?, xml);
+        Ok(())
+    }
 }
