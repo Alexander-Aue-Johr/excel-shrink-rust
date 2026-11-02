@@ -208,7 +208,8 @@ impl ExcelHost {
     }
 
     /// Deliver startup events immediately; apply one overall deadline per command.
-    fn call(&mut self, command: Value, telemetry: &Telemetry) -> Result<Value> {
+    fn call(&mut self, mut command: Value, telemetry: &Telemetry) -> Result<Value> {
+        normalize_windows_paths(&mut command)?;
         let timeout = if command["kind"] == "close" {
             self.timeout.min(Duration::from_secs(15))
         } else {
@@ -245,6 +246,16 @@ impl ExcelHost {
             return Ok(response["result"].clone());
         }
     }
+}
+
+/// PowerShell's filesystem provider cannot resolve Rust's canonical verbatim drive paths.
+fn normalize_windows_paths(command: &mut Value) -> Result<()> {
+    for field in ["path", "output", "host_executable"] {
+        if let Some(path) = command[field].as_str() {
+            command[field] = json!(crate::regression::excel_automation::power_shell_path(Path::new(path))?);
+        }
+    }
+    Ok(())
 }
 
 impl Drop for ExcelHost {
@@ -298,6 +309,17 @@ fn measured_geometry(response: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn canonical_paths_cross_the_powershell_boundary_without_verbatim_prefixes() -> Result<()> {
+        let mut command = json!({"kind":"capture","path":r"\\?\V:\study\original.xlsx",
+            "output":r"\\?\UNC\server\share\tile.png", "range":"A1:B2"});
+        normalize_windows_paths(&mut command)?;
+        assert_eq!(command["path"], r"V:\study\original.xlsx");
+        assert_eq!(command["output"], r"\\server\share\tile.png");
+        assert_eq!(command["range"], "A1:B2");
+        Ok(())
+    }
     #[test]
     fn protocol_telemetry_is_not_a_geometry_difference() {
         let a = json!({"top":0,"left":0,"width":90,"height":15,"elapsed_ms":1});
