@@ -19,7 +19,9 @@ public static class ArchiveProcesses
 
         // A recycled PID may now belong to a process we are allowed to inspect
         // but not terminate. Establish identity before requesting kill rights.
-        const uint query = 0x1000 | 0x00100000; // QUERY_LIMITED_INFORMATION | SYNCHRONIZE
+        // Protected processes can allow birth-time queries while denying wait
+        // access. A recycled PID must remain identifiable in that case too.
+        const uint query = 0x1000; // QUERY_LIMITED_INFORMATION
         using (var identity = OpenProcess(query, false, pid))
         {
             if (identity.IsInvalid)
@@ -34,7 +36,7 @@ public static class ArchiveProcesses
             try { actual = StartedTicks(identity.DangerousGetHandle()); }
             catch (Win32Exception) { if (HasExited(identity)) return "gone"; throw; }
             if (actual != expected) return "reused";
-            using (var process = OpenProcess(query | 0x0001, false, pid))
+            using (var process = OpenProcess(query | 0x00100000 | 0x0001, false, pid))
             {
                 if (process.IsInvalid)
                 {
@@ -67,10 +69,10 @@ public static class ArchiveProcesses
 
     static bool HasExited(SafeFileHandle process)
     {
-        uint status = WaitForSingleObject(process, 0);
-        if (status == 0) return true;
-        if (status == 258) return false;
-        throw Failure(Marshal.GetLastWin32Error(), "inspect process state", 0);
+        uint exitCode;
+        if (!GetExitCodeProcess(process, out exitCode))
+            throw Failure(Marshal.GetLastWin32Error(), "inspect process state", 0);
+        return exitCode != 259; // STILL_ACTIVE; owned launchers use exit codes 0/1.
     }
 
     static long StartedTicks(IntPtr process)
@@ -88,6 +90,8 @@ public static class ArchiveProcesses
     static extern bool GetProcessTimes(IntPtr process, out long created, out long exited, out long kernel, out long user);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool TerminateProcess(SafeFileHandle process, uint exitCode);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetExitCodeProcess(SafeFileHandle process, out uint exitCode);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern uint WaitForSingleObject(SafeFileHandle process, uint milliseconds);
 }

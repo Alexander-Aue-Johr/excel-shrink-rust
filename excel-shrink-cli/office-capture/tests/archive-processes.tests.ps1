@@ -26,6 +26,9 @@ public static class CleanupProcessFixture {
     public static void DenyTerminate(IntPtr process) {
         Deny(process, "D:(D;;0x0001;;;WD)(A;;GA;;;WD)");
     }
+    public static void DenyWait(IntPtr process) {
+        Deny(process, "D:(D;;0x100000;;;WD)(A;;GA;;;WD)");
+    }
     public static void DenyIdentity(IntPtr process) {
         Deny(process, "D:(D;;0x101001;;;WD)(A;;GA;;;WD)");
     }
@@ -48,6 +51,17 @@ public static class CleanupProcessFixture {
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateProcess(IntPtr process, uint code);
 }
 '@
+$fixture = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList '-NoProfile -Command Start-Sleep -Seconds 120' -WindowStyle Hidden -PassThru
+try {
+    $fixtureHandle = $fixture.Handle
+    [CleanupProcessFixture]::DenyWait($fixtureHandle)
+    Assert (([ArchiveProcesses]::StopIfOwned($fixture.Id, '1')) -eq 'reused') 'Birth-time verification unnecessarily requested synchronization rights.'
+    Assert (-not $fixture.HasExited) 'A replacement process with denied wait access was terminated.'
+} finally {
+    [CleanupProcessFixture]::Stop($fixtureHandle)
+    Assert ($fixture.WaitForExit(10000)) 'Fixture process did not terminate.'
+    $fixture.Dispose()
+}
 $fixture = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList '-NoProfile -Command Start-Sleep -Seconds 120' -WindowStyle Hidden -PassThru
 try {
     $fixtureHandle = $fixture.Handle

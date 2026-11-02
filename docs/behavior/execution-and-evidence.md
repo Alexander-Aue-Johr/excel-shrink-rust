@@ -105,6 +105,11 @@ if it belonged to the current live attempt. Lock acquisition is bounded, and an
 abandoned mutex can be acquired; exceptions release ownership.
 
 Cleanup must distinguish owned, already gone, reused and unverifiable identities.
+Birth-time inspection requests only limited query access, not synchronization or
+termination rights. Protected replacement processes may deny those stronger
+rights while still allowing creation-time verification. Query exit status through
+the identity handle; request wait/termination access only for a matching owner,
+and recheck creation time through that second handle before terminating it.
 An unverifiable potentially live owner prevents a false “all stopped” claim.
 Confirmed-exit receipts cannot authorize terminating a different process birth.
 Malformed ownership entries are not ignored as harmless empty results.
