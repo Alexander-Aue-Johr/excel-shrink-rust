@@ -35,12 +35,42 @@ function Assert-ArchiveRegistration([string]$path) {
     }
 }
 
+function Invoke-ArchiveRegistryLock([string]$path, [scriptblock]$action, [int]$timeoutMilliseconds = 10000) {
+    # Private desktops share the Windows session. A path-specific mutex protects
+    # this tiny journal operation, never workbook opening or Excel commands.
+    $canonical = [IO.Path]::GetFullPath($path)
+    if ($canonical.StartsWith('\\?\UNC\')) { $canonical = '\\' + $canonical.Substring(8) }
+    elseif ($canonical.StartsWith('\\?\')) { $canonical = $canonical.Substring(4) }
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $digest = $sha256.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical.ToUpperInvariant()))
+        $name = 'Local\ExcelShrinkArchiveOwners-' + [BitConverter]::ToString($digest).Replace('-', '')
+    } finally { $sha256.Dispose() }
+    $mutex = New-Object Threading.Mutex $false, $name
+    $held = $false
+    try {
+        try { $held = $mutex.WaitOne($timeoutMilliseconds) }
+        catch [Threading.AbandonedMutexException] { $held = $true }
+        if (-not $held) { throw "Timed out acquiring archive ownership journal lock: $path" }
+        & $action
+    } finally {
+        if ($held) { $mutex.ReleaseMutex() }
+        $mutex.Dispose()
+    }
+}
+
 function Register-ArchiveOwner([string]$path, $record) {
-    Assert-ArchiveRegistration $path
-    [IO.File]::AppendAllText($path, (($record | ConvertTo-Json -Compress) + "`n"))
-    # Pair with the parent's marker-before-stop ordering. A registration that
-    # raced its journal snapshot cannot proceed to create Excel afterwards.
-    Assert-ArchiveRegistration $path
+    Invoke-ArchiveRegistryLock $path {
+        Assert-ArchiveRegistration $path
+        [IO.File]::AppendAllText($path, (($record | ConvertTo-Json -Compress) + "`n"))
+        # The parent marks stopping before taking its locked snapshot. A racing
+        # registration cannot proceed to start Excel after cleanup has begun.
+        Assert-ArchiveRegistration $path
+    }
+}
+
+function Read-ArchiveOwners([string]$path) {
+    Invoke-ArchiveRegistryLock $path { [IO.File]::ReadAllLines($path) }
 }
 
 function Get-ArchiveStagePath([string]$stage) {
@@ -163,4 +193,4 @@ if (-not $Stop) {
 }
 
 $exitedOwners = Read-ArchiveExitedOwners ($RegistryPath + '.exited')
-Stop-ArchiveOwners ([IO.File]::ReadAllLines($RegistryPath)) $StopConfirmationPath $exitedOwners
+Stop-ArchiveOwners @(Read-ArchiveOwners $RegistryPath) $StopConfirmationPath $exitedOwners
