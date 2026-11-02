@@ -263,3 +263,15 @@ separate. Glow/afterglow conveys recent activity, not a new measurement.
 | E6-E7 | `src/regression/archive/study/prepared/targeted.rs`, `targeted/{contract,retention}.rs`, `src/regression/targeted_comparison/{reporting,change_evidence}.rs` |
 | E8 | `src/regression/archive/study/{transfer,provenance}.rs`; local backup scripts are deployment artifacts, not core requirements |
 | E9 | `src/capture_host/control_room/targeted.rs`, `office-capture/control-room/{targeted-model,process-icon-shader,targeted-panel}.js` |
+
+### Adaptive capture evidence compatibility
+
+`capture_partition: visible-geometry-v1` changes image partitioning, not the
+selected coverage union or the `targeted-content-grid-v2` coverage policy. Earlier
+completed grid results remain reusable with their original producer identity.
+New reports require explicit side geometry, rendering states and `pixels_compared`;
+a null image is legitimate only for verified zero-area geometry. Missing or
+positive-area image evidence still fails the completed-report contract. Adaptive
+retention preserves differing rectangles and their actual neighboring cell
+rectangles at full resolution, including neighbors at a large rectangle's far
+edge. Confirmed-equal other images can still become deduplicated previews.

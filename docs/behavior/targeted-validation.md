@@ -159,10 +159,28 @@ Performance therefore remains in the union. Add one row and one column of margin
 at each available edge, bounded by Excel's grid.
 
 Intersect candidate neighborhoods with that envelope and put them on the shared
-grid of **128 rows by 16 columns**. Deduplicate grid regions and clip boundary
-tiles to the envelope. The parameter is a logical cell grid, not an assertion
-that every image has a fixed pixel size. Cell neighborhoods also use the existing
+internal grid of **128 rows by 16 columns**. Deduplicate grid regions and clip
+boundary tiles to the envelope. This is only a candidate index. Under capture
+partition `visible-geometry-v1`, merge adjacent tiles horizontally, then vertically
+where their column extents match, preserving their exact union and its holes.
+Measure each merged rectangle through the existing Office.js workers in every
+live state before requesting an image. Cell neighborhoods still use the existing
 padding helper; overflow can extend farther than that fixed neighborhood.
+
+A measured zero-width or zero-height rectangle retains geometry and an explicit
+`zero-area-range` observation, with no PNG and no pixel comparison. If only one
+partner is visible, retain its image and report the rendering/geometry transition.
+Indirect formula, conditional-formatting and rebuild discovery is unaffected.
+
+Split only rectangles whose estimated visible image exceeds 30,000 pixels on
+an edge or 32 million pixels total. Estimate conservatively at two pixels per
+point plus rounding margin; this is a planning assumption, not an API promise.
+Actual export dimensions are checked too: an unsupported scale fails instead
+of certifying equality. Binary search finds a cell boundary near half the visible
+height/width in the oversized state. A single indivisible oversized cell fails
+explicitly. Every state uses the same cell partition. Later candidates or rebuild
+geometry can repartition; retained earlier states backfill all new leaves before
+final comparison. Geometry is cached only within one immutable lane/range.
 
 The envelope is a rectangle, not the exact set of nonempty cells: large internal
 empty areas can remain within it. Conversely, exterior formatting-only changes
@@ -170,7 +188,10 @@ are counted and omitted by deliberate policy. Entirely content-free sheets can
 have no cell captures. That is an exclusion, not pixel-confirmed equality.
 
 `content_coverage` records requested, exterior-skipped, clipped and selected
-region counts, with the envelope. Exterior empty-cell changes can be counted
+region counts, with the envelope. `selected_grid_tiles` records the internal
+index size; `selected_capture_regions` records the final adaptive partition.
+Per-lane `skipped_zero_area_regions` distinguishes non-rendering observations
+from rendered images. Exterior empty-cell changes can be counted
 before allocating per-cell candidate objects. The later grid conversion does
 not make earlier in-memory change accumulation free; see review finding R4.
 
