@@ -6,6 +6,10 @@ not a claim that every workbook is visually preserved or every source line has
 been independently verified. The legacy comparison system still exists; its
 behavior is deliberately distinguished from the current targeted workflow.
 
+Current targeted execution policy is `targeted-content-grid-v3`; its conditional
+state exclusions and version-two result reuse are documented below. The source
+review baseline above remains historical, not an attribution of newer behavior.
+
 ## Purpose and reading order
 
 This document set describes observable behavior, preservation decisions, failure

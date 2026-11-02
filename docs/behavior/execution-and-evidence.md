@@ -275,3 +275,26 @@ positive-area image evidence still fails the completed-report contract. Adaptive
 retention preserves differing rectangles and their actual neighboring cell
 rectangles at full resolution, including neighbors at a large rectangle's far
 edge. Confirmed-equal other images can still become deduplicated previews.
+
+### Version-three state selection and resume
+
+`targeted-content-grid-v3` adds explicit byte-identity and conservative no-rebuild
+exclusions. The actual pair set is derived from the six `state_decisions`, not
+assumed to contain five/nine comparisons. Every pair whose endpoints are observed
+remains required. Missing actual observations cannot be replaced by empty arrays.
+Independent native Check Performance confirmation remains mandatory when requested.
+
+Complete version-two results are still accepted when their Check Performance
+inclusion matches the request: they used the earlier full state sequence. They
+retain their original policy and producer identity. They are not rewritten or
+reopened just because the current runner can skip work. Unknown policy versions,
+failed/partial records and mismatched requested CP coverage remain ineligible.
+New records retain input-identity, state decisions and rebuild checks alongside
+the portable report. Reports contain no invented images for omitted states.
+
+The Observatory keeps omitted lane cards with an explicit reason and no process
+heartbeat/progress simulation. An empty completed candidate selection says
+`No capture candidates found`; discovery/planning remains indeterminate. Rebuild
+counters say not performed when omitted. File byte sizes describe their named
+artifacts: an unopened `default.xlsx` working copy is not an observed SD state;
+use `state_decisions` to interpret it and `input_default` for raw shrink size.

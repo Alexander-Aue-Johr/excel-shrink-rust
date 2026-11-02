@@ -57,8 +57,8 @@ Use your machine's existing request/configuration paths; keep its archive bindin
 and corpus IDs. Add `--targeted-skip-check-performance` for Original/Default only.
 `--size-part 1/4` through `4/4` and `--order size-desc` retain their existing meaning.
 Do not combine targeted mode with `--preparation-hash-profile`, `--aggressive-first`
-or `--full-scan-deferred`. The workflow uses four retained states without Check
-Performance and six with it, so concurrent groups multiply that process count.
+or `--full-scan-deferred`. The workflow uses up to four retained states without
+Check Performance and six with it, so concurrent groups multiply that process count.
 The example allows two hours for the complete multi-state workflow; individual
 Excel operations remain bounded and closing is capped at 15 seconds. Existing
 WPF timeout settings remain authoritative. Use a sufficiently long workbook
@@ -68,6 +68,20 @@ capture work as a stalled Excel command.
 Resume the **same output root and arguments** to reuse completed targeted results.
 Old visual/hash results are not accepted as completion of this policy. A completed
 targeted result remains explicitly limited coverage (`checks_complete: false`).
+
+Current builds write `capture_policy: targeted-content-grid-v3`. Default is omitted
+only when the raw input bytes are identical. Each rebuild copy is omitted only
+after its saved parent passes the conservative static-workbook guard. Check
+Performance still runs independently when enabled. Decisions and their proofs are
+recorded; omitted states are not reported as visually compared. Existing completed
+version-two targeted results remain reusable with the same Check Performance
+setting. No new command-line arguments are needed; resume the same output root.
+
+The internal grid described above selects coverage. Current builds merge adjacent
+tiles without changing their union, then measure all live states and partition
+only for visible image budgets (`capture_partition: visible-geometry-v1`). They
+no longer export each internal tile separately. See the
+[behavior specification](../behavior/targeted-validation.md) for current details.
 Namespace exclusions keep their existing reasons. When Check Performance is
 requested, an unchanged Default does not skip that independent optimizer lane.
 Proven nonvisual Default-only exclusions remain available when CP is omitted.

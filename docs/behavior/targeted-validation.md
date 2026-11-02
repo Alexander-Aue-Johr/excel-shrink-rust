@@ -1,6 +1,6 @@
 # Targeted visual validation behavior
 
-This describes `--targeted-comparison` under policy `targeted-content-grid-v2`,
+This describes `--targeted-comparison` under policy `targeted-content-grid-v3`,
 not the earlier full-sheet/hash-sweep workflow. See [execution and evidence](execution-and-evidence.md)
 for durable outcomes, retry rules and ownership.
 
@@ -26,7 +26,9 @@ presence does not make them additional stages of the targeted command.
 ## V2. Named workbook states
 
 Keep input archives immutable and stage disposable working copies. These are
-different scientific states, not alternative names for the same file:
+different scientific states, not alternative names for the same file. The table
+names possible states, not a requirement to instantiate them all: version three
+records observed, disabled and justified omitted states in `state_decisions`.
 
 | ID | Construction and meaning |
 | --- | --- |
@@ -40,7 +42,7 @@ different scientific states, not alternative names for the same file:
 | CPR | Independent copy of CP, opened/saved, explicitly rebuilt and saved |
 | OR | Independent copy of saved O, opened/saved, explicitly rebuilt and saved last |
 
-O, SD and CP remain open and unrebuilt while later candidates can still be found.
+The enabled, actually constructed O, SD and CP states remain open and unrebuilt while later candidates can still be found.
 The original O instance is never itself rebuilt in place. Rebuilding a separate
 OR copy last preserves the earlier comparison state and enables late backfill.
 
@@ -52,21 +54,23 @@ remain visible in claims made from these results.
 ## V3. Required phase order
 
 ```text
-Audit raw Original versus raw Default
-  -> open independent O and SD concurrently
-  -> ordinary-save controls; audit raw-versus-saved states
-  -> retain/register O and SD
-  -> create CP from saved O; establish CP-before; run Check Performance
-  -> audit/register CP
-  -> inspect available state pairs; select/capture/backfill regions and charts
+Compare the owned raw input bytes; retain byte-identity proof when equal
+  -> omit SD and SDR if Default is byte-identical; otherwise inspect input XML
+  -> open O and, if needed, independent SD concurrently
+  -> ordinary-save controls; audit only states actually opened/saved
+  -> retain/register actual states
+  -> independently create CP from saved O when Check Performance is requested
+  -> establish CP-before; run native Check Performance; audit/register CP
+  -> inspect observed pairs; select/capture/backfill regions and all charts
   -> publish direct comparisons
-  -> create and rebuild SDR, then CPR if enabled
-  -> inspect pairs and backfill; publish variant-rebuild comparisons
-  -> create and rebuild OR last
-  -> inspect pairs and backfill all still-live states
-  -> close states with confirmed process exit
-  -> finish disk-only comparisons and report
-  -> retain evidence, publish portable result, then discard disposable XLSX copies
+  -> check saved SD and CP separately for calculation dependencies
+  -> construct SDR/CPR only where the conservative guard requires a rebuild
+  -> inspect pairs and backfill; publish observed variant-rebuild comparisons
+  -> apply the same guard to O; construct OR last only when required
+  -> inspect observed pairs and backfill all still-live states
+  -> close actual states with confirmed process exit
+  -> finish disk-only comparisons and publish all execution decisions
+  -> retain evidence, publish portable result, discard disposable XLSX copies
 ```
 
 Only the independent initial O/SD launches are currently submitted together.
@@ -80,7 +84,9 @@ comparisons are provisional and can be regenerated when later evidence appears.
 
 ## V4. What is compared with what
 
-With Check Performance enabled, require all nine pairs:
+With Check Performance enabled, these are the nine possible pairs. Require each
+pair for which both states were actually observed; omitted states require the
+specific proofs below. Never fabricate an image/pixel verdict for an omitted state.
 
 | Pair | Purpose |
 | --- | --- |
@@ -95,8 +101,8 @@ With Check Performance enabled, require all nine pairs:
 | OR vs CPR | Both sides rebuilt: Original versus Check Performance |
 
 Without Check Performance, omit its four pairs and three CP-related states;
-the five Default/Original pairs remain. Compare the same final selected unique
-region set in every required pair. Added/deleted charts are compared by the
+the five possible Default/Original pairs remain, subject to recorded state
+exclusions. Compare the same final selected unique region set in every actual pair. Added/deleted charts are compared by the
 union of their inventories, not silently dropped by intersection.
 
 The legacy summary projection is not the authoritative source for all nine
@@ -108,6 +114,52 @@ combined extra opening/saving and optimization path, not a perfectly isolated
 visual effect of clicking Optimize all. Similarly, SD-versus-SDR includes copy
 reopening/saving as well as explicit rebuild; the XML controls help separate
 those transitions, but cannot establish exclusive pixel-level causality.
+
+### Input-identity and rebuild exclusion contract
+
+Before opening Excel, compare the owned Original and Default files byte for byte
+in bounded chunks. Matching size, ZIP CRC/length metadata, unchanged worksheet XML
+or friendly profile names do not establish this identity. Equal files retain
+`input_identity: {status: identical, bytes, sha256}`; otherwise the result is
+`different`. Only the identical proof omits SD and SDR. This certifies that Shrink
+did not change its input, not that two independent Excel renderings were compared.
+
+Check Performance is independent: when requested, CP must still be opened from
+saved O and produce a positive native `optimization_confirmed` or
+`no_optimization_needed` outcome. Default identity cannot disable it. O-versus-CP
+and every required pair among other observed states remain mandatory.
+
+Before creating each rebuild copy, analyze its own saved parent state. Do not
+reuse Original's eligibility for Default or CP. Record `rebuild_checks` with the
+parent's full source SHA-256, worksheet count, policy `static-workbook-rebuild-v1`,
+blockers and eligibility. Worksheet dependency facts come from the existing byte
+scan, not an additional decompression pass. A skip requires a complete ordinary
+worksheet inventory, supported namespaces, no worksheet formulas, and only
+recognized static workbook/package features.
+
+The initial guard deliberately retains rebuilds for conditional formatting,
+filters, tables, drawings/charts, defined names, external links/connections,
+pivots, macros, unknown extensions, unknown package parts, incomplete inventories
+or unverified metadata. It does not try to resolve those dependencies. It
+recognizes ordinary static display/property/theme/string/style parts, standard
+relationships and narrowly checked Excel save metadata: absolute-path alternate
+content, revision pointers and AutoRecover configuration. Their namespaces,
+subtree shape and allowed attributes are checked; other alternate content stays
+a blocker. Malformed/unrecognized metadata keeps the rebuild path with a reason.
+
+The exact statuses are `observed`, `skipped_identical_input`,
+`skipped_no_rebuild`, and `disabled`. A skipped rebuild retains its parent ID and
+matching guard certificate. It has no process, no screenshots, and no hypothetical
+post-rebuild equality verdict. This policy avoids calculation-only work when no
+supported calculation dependency exists; it does **not** prove that another
+opening/saving or rendering would never produce a difference. Direct observations
+and ordinary-save controls remain in the workflow.
+
+The report consumer rejects missing decisions, missing proof, unknown reasons,
+missing required actual pairs and a missing independent native CP outcome.
+Summary counters for unperformed rebuilt comparisons are null, not zero. The
+legacy four-state projection is populated only when all its required states were
+actually observed. `comparisons` and `state_decisions` are authoritative.
 
 ## V5. XML snapshots, contexts and transitions
 
@@ -336,6 +388,7 @@ Paths below are relative to `excel-shrink-cli/src/regression/` unless noted.
 | Rules | Implementation |
 | --- | --- |
 | V2-V4 | `targeted_comparison/staged.rs`, `workbooks.rs`, `check_performance.rs` |
+| Conditional state selection | `targeted_comparison/execution_plan.rs`, `static_workbook_metadata.rs`; consumer: `archive/study/prepared/targeted/execution_contract.rs` |
 | V5 | `targeted_comparison/xml_changes.rs`, `cell_stream.rs`, `snapshot_cache.rs`, `change_evidence.rs` |
 | V6 | `targeted_comparison/candidates.rs`, `content_bounds.rs`, `evidence.rs` |
 | V7 | `targeted_comparison/conditional_formatting/`, `cf_inventory/` |
