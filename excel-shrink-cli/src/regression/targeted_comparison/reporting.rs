@@ -19,7 +19,7 @@ impl Comparison<'_> {
     fn write_completion(&self) -> Result<()> {
         fs::write(
             self.args.output.join("report.json"),
-            serde_json::to_vec_pretty(&self.report)?,
+            serde_json::to_vec(&self.report)?,
         )?;
         self.telemetry.update(|state| {
             state.status = self.report.status.clone();
@@ -40,7 +40,7 @@ impl Comparison<'_> {
         self.report.candidate_count = self.candidates.len();
         fs::write(
             self.args.output.join("partial-report.json"),
-            serde_json::to_vec_pretty(&self.report)?,
+            serde_json::to_vec(&self.report)?,
         )?;
         let message = format!("{error:#}");
         fs::write(

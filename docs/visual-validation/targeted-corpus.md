@@ -142,3 +142,9 @@ record `xml_snapshot_statistics`; cell streams for retained snapshots live in
 the attempt's `xml-scratch` directory and are removed when their final owner exits.
 This avoids repeated decompression/parsing without caching mutable filenames or
 accumulating large fingerprint files on the Windows system volume.
+
+Final Check Performance change lists contain selected capture regions, marked by
+`change_coordinates: "content_clipped_capture_regions"`. Original candidate counts
+remain explicit; every original change coordinate stays in its transition audit.
+Generated report JSON is compact; progress telemetry and maintained source remain
+formatted for human reading.

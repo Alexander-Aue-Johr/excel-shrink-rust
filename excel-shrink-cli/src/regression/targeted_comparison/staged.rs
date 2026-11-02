@@ -403,11 +403,11 @@ impl Workflow<'_, '_> {
 
     /// Stable candidate-derived filenames prevent late insertions from overwriting earlier images.
     fn capture_missing_regions(&mut self) -> Result<()> {
+        let started = Instant::now();
         let (selected, coverage) = self.content_bounds.select(&self.requested_candidates)?;
         self.comparison.candidates = selected;
         self.comparison.report.content_coverage = coverage;
         self.publish_candidate_count()?;
-        let started = Instant::now();
         let mut pending: BTreeMap<_, VecDeque<_>> = self
             .states
             .iter()
@@ -585,7 +585,7 @@ impl Workflow<'_, '_> {
         self.comparison.report.phases.push(phase.into());
         fs::write(
             self.comparison.args.output.join("partial-report.json"),
-            serde_json::to_vec_pretty(&self.comparison.report)?,
+            serde_json::to_vec(&self.comparison.report)?,
         )?;
         Ok(())
     }

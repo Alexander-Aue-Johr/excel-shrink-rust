@@ -132,7 +132,7 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
     let obsolete_images = retention::apply(&mut report, &directory, preview_width)?;
     artifact_cache::atomic_write(
         &directory.join("report.json"),
-        &serde_json::to_vec_pretty(&report)?,
+        &serde_json::to_vec(&report)?,
     )?;
     publish_portable_evidence(&directory, &job.report_root, report.clone(), record)?;
     retention::discard_originals(&directory, &obsolete_images)?;
@@ -240,7 +240,7 @@ fn publish_portable_evidence(
     let mut audits = BTreeSet::new();
     normalize(&mut report, root, &mut images, &mut audits)?;
     let path = directory.join("portable-report.json");
-    artifact_cache::atomic_write(&path, &serde_json::to_vec_pretty(&report)?)?;
+    artifact_cache::atomic_write(&path, &serde_json::to_vec(&report)?)?;
     record["targeted_comparison"]["targeted_report_file"] = json!(path
         .strip_prefix(root)?
         .to_string_lossy()

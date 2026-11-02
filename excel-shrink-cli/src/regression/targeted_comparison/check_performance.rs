@@ -27,6 +27,9 @@ pub(super) struct PerformanceEvidence {
     after_optimization: PathBuf,
     ordinary_save_changes: BTreeSet<Candidate>,
     optimization_changes: BTreeSet<Candidate>,
+    raw_ordinary_save_candidate_count: usize,
+    raw_optimization_candidate_count: usize,
+    change_coordinates: &'static str,
     findings: Option<Vec<PerformanceFinding>>,
 }
 
@@ -108,6 +111,9 @@ impl Comparison<'_> {
             after_optimization: after.clone(),
             ordinary_save_changes: self.performance.save_changes.clone(),
             optimization_changes: BTreeSet::new(),
+            raw_ordinary_save_candidate_count: self.performance.save_changes.len(),
+            raw_optimization_candidate_count: 0,
+            change_coordinates: "xml_candidates",
             findings: None,
         });
         self.telemetry.update(|state| {
@@ -116,6 +122,11 @@ impl Comparison<'_> {
         })?;
         self.performance.optimization_changes =
             discover_candidates(&before, &after, &mut self.snapshots)?;
+        self.report
+            .check_performance_evidence
+            .as_mut()
+            .context("Missing optimization evidence")?
+            .raw_optimization_candidate_count = self.performance.optimization_changes.len();
         self.telemetry
             .update(|state| state.step(LaneId::CP, Phase::InspectOptimization, StepStatus::Done))
     }
@@ -155,11 +166,17 @@ impl Comparison<'_> {
             &self.performance.optimization_changes,
             &mut self.image_comparisons,
         )?;
-        self.report
+        let evidence = self
+            .report
             .check_performance_evidence
             .as_mut()
-            .context("Missing optimization evidence")?
-            .findings = Some(findings);
+            .context("Missing optimization evidence")?;
+        // Full coordinates remain in the compressed transition audit. Report
+        // only the selected capture regions instead of repeating every cell.
+        evidence.ordinary_save_changes = self.performance.save_changes.clone();
+        evidence.optimization_changes = self.performance.optimization_changes.clone();
+        evidence.change_coordinates = "content_clipped_capture_regions";
+        evidence.findings = Some(findings);
         self.telemetry
             .update(|state| state.step(LaneId::CP, Phase::Compare, StepStatus::Done))
     }
