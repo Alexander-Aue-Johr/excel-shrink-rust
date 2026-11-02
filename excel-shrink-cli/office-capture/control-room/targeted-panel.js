@@ -1,6 +1,6 @@
 import { createProcessIcon } from './process-icon-shader.js';
 import { createSignalMonitor } from './signal-monitor.js';
-import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow } from './targeted-model.js';
+import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, phaseComplete } from './targeted-model.js';
 
 const node = (tag, className, text) => {
   const element = document.createElement(tag);
@@ -65,6 +65,7 @@ function createFlowDiagram() {
   root.append(table);
   let signature = '';
   const cells = new Map();
+  const headers = new Map();
   return {
     element: root,
     update(comparison) {
@@ -73,11 +74,13 @@ function createFlowDiagram() {
       if (signature !== next) {
         signature = next;
         cells.clear();
+        headers.clear();
         const heading = node('tr', '');
         heading.append(node('th', '', 'Workbook'));
         for (const column of columns) {
           const item = node('th', 'targeted-arrow', column.label);
           item.scope = 'col'; item.title = column.description;
+          headers.set(column.id, item);
           heading.append(item);
         }
         head.replaceChildren(heading);
@@ -96,6 +99,9 @@ function createFlowDiagram() {
           }
           body.append(row);
         }
+      }
+      for (const column of columns) {
+        headers.get(column.id).dataset.complete = String(phaseComplete(comparison.lanes, column.id));
       }
       for (const lane of comparison.lanes) for (const column of columns) {
         const item = cells.get(`${lane.id}/${column.id}`);

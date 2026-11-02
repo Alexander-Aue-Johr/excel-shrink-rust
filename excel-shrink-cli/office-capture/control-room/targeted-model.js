@@ -51,3 +51,10 @@ export function acceptComparison(current, incoming) {
   return incoming;
 }
 
+/** A column is complete only when every applicable lane has completed it. */
+export function phaseComplete(lanes, phase) {
+  const statuses = lanes.filter(lane => lane.lifecycle !== 'unavailable')
+    .map(lane => lane.steps?.[phase] || 'pending')
+    .filter(status => status !== 'skipped' && status !== 'unavailable');
+  return statuses.length > 0 && statuses.every(status => status === 'done');
+}

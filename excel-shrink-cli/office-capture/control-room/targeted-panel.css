@@ -59,6 +59,16 @@
 .targeted-flow tr + tr { border-top: 1px solid #253b49; }
 .targeted-flow input { width: 17px; height: 17px; opacity: 1; accent-color: #64e8a6; }
 .targeted-flow td[data-step="running"] { background: #254e45; box-shadow: inset 0 -2px #6ff0b1; }
+.targeted-flow td[data-step="running"] { animation: targeted-phase-pulse 1.8s ease-in-out infinite; }
+.targeted-arrow[data-complete="true"] {
+  background: linear-gradient(90deg, #166b45, #23955e);
+  color: #e4ffed;
+  transition: background-color .3s ease;
+}
+@keyframes targeted-phase-pulse {
+  0%, 100% { background-color: #254e45; box-shadow: inset 0 -2px #6ff0b1; }
+  50% { background-color: #39795f; box-shadow: inset 0 -2px #a2ffcf, inset 0 0 18px #64e8a62b; }
+}
 .targeted-flow td[data-step="failed"] { background: #5b2c39; }
 .targeted-flow td[data-step="skipped"], .targeted-flow td[data-step="unavailable"] { opacity: .35; }
 .targeted-controls-explanation, .targeted-flow-legend { font-size: 12px; line-height: 1.6; color: #9dbbc8; }
@@ -84,4 +94,5 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .targeted-workbook { scroll-behavior: auto; }
+  .targeted-flow td[data-step="running"] { animation: none; }
 }

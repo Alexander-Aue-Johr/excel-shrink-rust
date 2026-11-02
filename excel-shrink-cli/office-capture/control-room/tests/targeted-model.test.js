@@ -1,8 +1,12 @@
-import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, iconActivity } from '../targeted-model.js';
+import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, iconActivity, phaseComplete } from '../targeted-model.js';
 
 export function runTests() {
   let passed = 0;
   const assert = (condition, message) => { if (!condition) throw new Error(message); passed++; };
+  assert(phaseComplete([{ steps: { open: 'done' } }, { steps: { open: 'skipped' } }], 'open'), 'Skipped lanes do not block completed phases.');
+  assert(!phaseComplete([{ steps: { open: 'done' } }, { steps: { open: 'running' } }], 'open'), 'Running lanes prevent completion.');
+  assert(!phaseComplete([{ steps: { open: 'skipped' } }], 'open'), 'An entirely skipped phase is not certified complete.');
+  assert(!phaseComplete([{ steps: { open: 'done' } }, {}], 'open'), 'Missing status must not imply completion.');
   const ended = { run_id: 'one', status: 'completed_with_limitations', finished_at: 2000,
     lanes: [{ id: 'O', pid: 12, lifecycle: 'closed', process_alive: false }, { id: 'CP', lifecycle: 'unavailable' }] };
   assert(comparisonFinished(ended), 'Unavailable CP does not pretend to be a live process.');
