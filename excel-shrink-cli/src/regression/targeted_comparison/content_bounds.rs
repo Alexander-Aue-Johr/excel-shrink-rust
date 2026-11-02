@@ -9,14 +9,14 @@ use std::collections::{BTreeMap, BTreeSet};
 /// One-based inclusive coordinates. Formatting-only cells do not extend this envelope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub(super) struct Rectangle {
-    top: u32,
-    left: u32,
-    bottom: u32,
-    right: u32,
+    pub(super) top: u32,
+    pub(super) left: u32,
+    pub(super) bottom: u32,
+    pub(super) right: u32,
 }
 
 impl Rectangle {
-    fn parse(address: &str) -> Result<Self> {
+    pub(super) fn parse(address: &str) -> Result<Self> {
         let (start, end) = address.split_once(':').unwrap_or((address, address));
         let (top, left) = cell_address(start).context("Invalid capture start")?;
         let (bottom, right) = cell_address(end).context("Invalid capture end")?;
@@ -48,7 +48,7 @@ impl Rectangle {
         (result.top <= result.bottom && result.left <= result.right).then_some(result)
     }
 
-    fn address(self) -> String {
+    pub(super) fn address(self) -> String {
         fn column(mut value: u32) -> String {
             let mut letters = String::new();
             while value > 0 {
@@ -114,6 +114,7 @@ pub(super) struct Coverage {
     skipped_outside_content: usize,
     clipped_to_content: usize,
     selected_capture_regions: usize,
+    selected_grid_tiles: usize,
 }
 
 #[derive(Default)]
@@ -170,6 +171,7 @@ impl ContentBounds {
                     skipped_outside_content: 0,
                     clipped_to_content: 0,
                     selected_capture_regions: 0,
+                    selected_grid_tiles: 0,
                 });
             entry.requested_candidates += 1;
             let region = Rectangle::parse(&padded_range(&candidate.cell)?)?;
@@ -187,10 +189,19 @@ impl ContentBounds {
                     cell: tile.address(),
                 }) {
                     entry.selected_capture_regions += 1;
+                    entry.selected_grid_tiles += 1;
                 }
             }
         }
         Ok((selected, coverage.into_values().collect()))
+    }
+}
+
+/// Keep internal grid accounting separate from the final image partition.
+pub(super) fn record_partition(coverage: &mut [Coverage], candidates: &BTreeSet<Candidate>) {
+    for sheet in coverage {
+        sheet.selected_capture_regions =
+            candidates.iter().filter(|c| c.sheet == sheet.sheet).count();
     }
 }
 
