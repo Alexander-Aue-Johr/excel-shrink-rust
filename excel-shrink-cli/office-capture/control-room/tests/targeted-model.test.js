@@ -34,7 +34,13 @@ export function runTests() {
   assert(acceptComparison(current, { ...current, revision: 4 }) === current, 'Late replies cannot reverse the lifecycle.');
   const row = heartbeatRow(ended, { id: 'O', pid: 12, process_started_at: 50, process_alive: true });
   assert(row.heartbeatCount === undefined && row.heartbeat == null, 'A PID without a real probe never becomes a heartbeat.');
-  assert(row.heartbeatSource.includes('not Excel responsiveness'), 'Process liveness is labelled separately from responsiveness.');
+  assert(row.heartbeatSource.includes('Office.js'), 'The heart trace identifies the actual add-in source.');
+  const probed = { id: 'O', pid: 12, process_alive: true, process_heartbeat_at: 5000, process_heartbeat_count: 50 };
+  assert(heartbeatRow(ended, probed).heartbeat == null, 'Native PID samples never generate an Office.js beat.');
+  const received = heartbeatRow(ended, { ...probed, addin_heartbeat_at: 4200, addin_heartbeat_count: 7 });
+  assert(received.heartbeat === 4200 && received.heartbeatCount === 7, 'Only received add-in timestamps and counts reach the heart trace.');
+  assert(iconActivity(probed, 'process').level === 1 && !iconActivity(probed, 'process').pulse, 'A live process lights its stationary cyan chip.');
+  assert(iconActivity({ ...probed, lifecycle: 'failed' }, 'excel').level === 0, 'A living process alone cannot light the workbook LED.');
   return passed;
 }
 

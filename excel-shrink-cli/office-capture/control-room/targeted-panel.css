@@ -32,7 +32,8 @@
 .targeted-outcome { font-size: 12px; color: #9cd8b9; }
 .targeted-lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 12px; }
 .targeted-lane { min-width: 0; padding: 12px; border: 1px solid #304958; border-radius: 10px; background: #0d1b27; }
-.targeted-lane-heading { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; }
+.targeted-lane-heading { display: grid; grid-template-columns: 64px minmax(0, 1fr) 48px 64px; align-items: center; }
+.targeted-lane-heading .targeted-icon[data-kind="process"] { width: 48px; height: 48px; }
 .targeted-lane-heading strong { color: #e1f5eb; font-size: 14px; }
 .targeted-icon { width: 64px; height: 64px; display: block; }
 .targeted-process-state { font-size: 12px; color: #a4c0cd; }

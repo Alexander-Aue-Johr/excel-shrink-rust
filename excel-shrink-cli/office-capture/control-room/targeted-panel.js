@@ -19,16 +19,18 @@ function createLaneCard() {
   const heading = node('div', 'targeted-lane-heading');
   const excel = createProcessIcon('excel');
   const xml = createProcessIcon('xml');
+  const process = createProcessIcon('process');
+  process.canvas.title = 'Windows process: exact PID and creation time confirmed alive. This does not prove Excel responds.';
   excel.canvas.title = 'Excel: pulse while opening, steady while open, afterglow after confirmed exit.';
   xml.canvas.title = 'XML: host analysis of this workbook, with timestamp-based afterglow after completion.';
   const name = node('strong', '');
-  heading.append(excel.canvas, name, xml.canvas);
+  heading.append(excel.canvas, name, process.canvas, xml.canvas);
   const state = node('p', 'targeted-process-state');
   const current = node('p', 'targeted-current');
   const progress = node('progress', 'targeted-progress');
   const progressText = node('p', 'targeted-progress-label');
   const signals = createSignalMonitor({ compact: true, heartbeatOnly: true });
-  const source = node('p', 'targeted-source', 'Process heartbeat: exact PID alive. This does not prove Excel is responsive or making progress.');
+  const source = node('p', 'targeted-source');
   root.append(heading, state, current, progress, progressText, signals.element, source);
   return {
     element: root,
@@ -44,11 +46,16 @@ function createLaneCard() {
       progress.hidden = lane.lifecycle === 'unavailable';
       signals.element.hidden = lane.lifecycle === 'unavailable';
       source.hidden = lane.lifecycle === 'unavailable';
+      source.textContent = Number.isFinite(lane.addin_heartbeat_at)
+        ? `Last Office.js heartbeat: ${Math.max(0, Math.floor((Date.now() - lane.addin_heartbeat_at) / 1000))} s ago. Heartbeats do not prove calculation progress.`
+        : lane.lifecycle === 'opening' ? 'Waiting for first Office.js heartbeat while opening.'
+          : 'Office.js heartbeat data unavailable for this card. The cyan chip indicates process liveness separately.';
       signals.update(heartbeatRow(comparison, lane), { connected, live: !comparisonFinished(comparison) });
       excel.update(lane);
       xml.update(lane);
+      process.update(lane);
     },
-    destroy() { excel.destroy(); xml.destroy(); signals.destroy(); root.remove(); },
+    destroy() { excel.destroy(); xml.destroy(); process.destroy(); signals.destroy(); root.remove(); },
   };
 }
 

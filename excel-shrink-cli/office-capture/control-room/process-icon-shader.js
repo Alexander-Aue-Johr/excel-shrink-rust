@@ -47,10 +47,27 @@ float xml(vec2 p) {
   return min(d, line(p, vec2(-0.07, -0.23), vec2(0.07, 0.23)) - 0.023);
 }
 void main() {
-  float distance = max(0.0, symbol == 0 ? excel(uv) : xml(uv));
+  float shape = symbol == 0 ? excel(uv) : xml(uv);
+  if (symbol == 2) {
+    shape = abs(box(uv, vec2(0.39))) - 0.018;
+    for (int pin = 0; pin < 3; pin++) {
+      float offset = -0.25 + float(pin) * 0.25;
+      shape = min(shape, line(uv, vec2(offset, 0.43), vec2(offset, 0.67)) - 0.02);
+      shape = min(shape, line(uv, vec2(offset, -0.43), vec2(offset, -0.67)) - 0.02);
+      shape = min(shape, line(uv, vec2(0.43, offset), vec2(0.67, offset)) - 0.02);
+      shape = min(shape, line(uv, vec2(-0.43, offset), vec2(-0.67, offset)) - 0.02);
+    }
+    // A stationary gear identifies the process without suggesting useful work.
+    float radius = length(uv);
+    float teeth = 0.21 + 0.035 * cos(atan(uv.y, uv.x) * 8.0);
+    shape = min(shape, abs(radius - teeth) - 0.02);
+    shape = min(shape, abs(radius - 0.075) - 0.018);
+  }
+  float distance = max(0.0, shape);
   float core = 1.0 - smoothstep(0.0, 0.023, distance);
   float glow = exp(-distance * 15.0) * 0.6 + exp(-distance * 4.5) * 0.28;
   vec3 neon = symbol == 0 ? vec3(0.12, 1.0, 0.48) : vec3(0.73, 0.34, 1.0);
+  if (symbol == 2) neon = vec3(0.15, 0.8, 1.0);
   float alpha = clamp(core * 0.12 + intensity * (core * 0.88 + glow), 0.0, 1.0);
   // Straight RGB is intentional: Canvas compositing applies alpha once. Fading
   // both RGB and alpha would square the falloff and hide the outer neon halo.
@@ -119,6 +136,7 @@ document.addEventListener('visibilitychange', () => {
 export function createProcessIcon(kind) {
   const canvas = document.createElement('canvas');
   canvas.className = 'targeted-icon';
+  canvas.dataset.kind = kind;
   canvas.width = canvas.height = 128;
   canvas.setAttribute('role', 'img');
   const ctx = canvas.getContext('2d');
@@ -127,7 +145,8 @@ export function createProcessIcon(kind) {
     canvas, visible: false, animating: false,
     update(next) {
       lane = next;
-      canvas.setAttribute('aria-label', `${kind === 'excel' ? 'Excel' : 'XML'} · ${lane.lifecycle}`);
+      const label = kind === 'process' ? 'Windows process' : kind === 'excel' ? 'Excel' : 'XML';
+      canvas.setAttribute('aria-label', `${label} · ${lane.lifecycle}`);
       icon.draw();
       schedule();
     },
@@ -141,7 +160,7 @@ export function createProcessIcon(kind) {
       try {
         const { gl, canvas: source, intensity: uniform, symbol } = sharedRenderer();
         gl.uniform1f(uniform, intensity);
-        gl.uniform1i(symbol, kind === 'excel' ? 0 : 1);
+        gl.uniform1i(symbol, kind === 'process' ? 2 : kind === 'excel' ? 0 : 1);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         ctx.drawImage(source, 0, 0);
         canvas.dataset.renderer = 'webgl2';
@@ -149,11 +168,11 @@ export function createProcessIcon(kind) {
         rendererError ||= error;
         canvas.dataset.renderer = 'fallback';
         canvas.title = `Shader unavailable: ${error.message}`;
-        ctx.fillStyle = kind === 'excel' ? '#42ffa0' : '#bf74ff';
+        ctx.fillStyle = kind === 'process' ? '#26ccff' : kind === 'excel' ? '#42ffa0' : '#bf74ff';
         ctx.globalAlpha = 0.15 + intensity * 0.85;
         ctx.font = 'bold 44px system-ui';
         ctx.textAlign = 'center';
-        ctx.fillText(kind === 'excel' ? 'X' : '</>', 64, 78);
+        ctx.fillText(kind === 'process' ? '⚙' : kind === 'excel' ? 'X' : '</>', 64, 78);
         ctx.globalAlpha = 1;
       }
     },

@@ -116,9 +116,119 @@ pub(super) async fn comparisons(State(room): State<Arc<Room>>) -> HttpResult<Jso
             comparisons.push(snapshot);
         }
     }
+    let mut comparisons = retain_recent(comparisons);
+    enrich_addin_heartbeats(&room, &mut comparisons, &mut diagnostics).await;
     Ok(Json(
-        json!({"comparisons":retain_recent(comparisons),"retained_limit":100,"diagnostics":diagnostics}),
+        json!({"comparisons":comparisons,"retained_limit":100,"diagnostics":diagnostics}),
     ))
+}
+
+/// Read existing launcher observations, never manufacture beats from a live PID.
+async fn enrich_addin_heartbeats(
+    room: &Room,
+    comparisons: &mut [Value],
+    diagnostics: &mut Vec<Value>,
+) {
+    let Some(study) = room.root.parent() else {
+        return;
+    };
+    let Some(queue) =
+        read_snapshot(&room.root.join("queue.json"), diagnostics, SNAPSHOT_LIMIT).await
+    else {
+        return;
+    };
+    for comparison in comparisons
+        .iter_mut()
+        .filter(|item| item["finished_at"].is_null())
+    {
+        let workbook = comparison["workbook"].clone();
+        let Some(groups) = queue["groups"].as_array() else {
+            continue;
+        };
+        for group in groups
+            .iter()
+            .filter(|group| group["active"] == true && group["workbook"] == workbook)
+        {
+            let Some(id) = group["id"].as_str().filter(|id| safe_id(id).is_ok()) else {
+                continue;
+            };
+            let Some(record) = read_snapshot(
+                &study.join(format!("records/{id}.json")),
+                diagnostics,
+                SNAPSHOT_LIMIT,
+            )
+            .await
+            else {
+                continue;
+            };
+            let Some(directory) = record["targeted_comparison"]["report_directory"].as_str() else {
+                continue;
+            };
+            let directory = PathBuf::from(directory);
+            // Working evidence is owned by this study; a stale record cannot bind
+            // another attempt's session to this card merely by matching its name.
+            if !directory.starts_with(study.join("evidence")) {
+                continue;
+            }
+            let Some(telemetry) = read_snapshot(
+                &directory.join("telemetry.json"),
+                diagnostics,
+                SNAPSHOT_LIMIT,
+            )
+            .await
+            else {
+                continue;
+            };
+            if telemetry["run_id"] != comparison["run_id"] {
+                continue;
+            }
+            let Some(lanes) = comparison["lanes"].as_array_mut() else {
+                continue;
+            };
+            for lane in lanes {
+                let Some(id) = lane["id"]
+                    .as_str()
+                    .filter(|id| ["O", "SD", "CP", "OR", "SDR", "CPR"].contains(id))
+                else {
+                    continue;
+                };
+                let path = directory.join(format!("resident-{id}/session/metrics.json"));
+                if !path.is_file() {
+                    continue;
+                }
+                if let Some(metrics) = read_snapshot(&path, diagnostics, SNAPSHOT_LIMIT).await {
+                    apply_addin_sample(lane, &metrics["clients"]["one"]);
+                }
+            }
+            break;
+        }
+    }
+}
+
+/// Bind real received counts and timestamps to the exact Excel process identity.
+fn apply_addin_sample(lane: &mut Value, client: &Value) {
+    if lane["pid"].as_u64().is_none()
+        || lane["process_started_at"].as_i64().is_none()
+        || lane["pid"] != client["pid"]
+        || lane["process_started_at"] != client["process_started_unix_ms"]
+    {
+        return;
+    }
+    lane["addin_ready"] = json!(client["ready_at"].is_string());
+    let Some(at) = client["last_heartbeat_at"]
+        .as_str()
+        .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
+    else {
+        return;
+    };
+    let Some(count) = client["heartbeat_count"]
+        .as_u64()
+        .filter(|count| *count > 0)
+    else {
+        return;
+    };
+    lane["addin_heartbeat_at"] = json!(at.timestamp_millis());
+    lane["addin_heartbeat_count"] = json!(count);
 }
 
 /// Keep all active work and the most recently finished records, independent of start order.
@@ -147,6 +257,35 @@ fn retain_recent(mut comparisons: Vec<Value>) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn addin_heartbeats_require_received_messages_from_the_exact_process() {
+        let mut lane = json!({"pid":12,"process_started_at":100,"process_heartbeat_count":99});
+        let client = json!({"pid":12,"process_started_unix_ms":100,"ready_at":"2026-11-02T12:00:00Z",
+            "last_heartbeat_at":"2026-11-02T12:00:02Z","heartbeat_count":7});
+        let mut other = client.clone();
+        let mut unknown_birth = lane.clone();
+        unknown_birth.as_object_mut().unwrap().remove("process_started_at");
+        other.as_object_mut().unwrap().remove("process_started_unix_ms");
+        apply_addin_sample(&mut unknown_birth, &other);
+        assert!(unknown_birth["addin_heartbeat_at"].is_null());
+        other = client.clone();
+        other["process_started_unix_ms"] = json!(101);
+        apply_addin_sample(&mut lane, &other);
+        assert!(lane["addin_heartbeat_at"].is_null());
+        let mut no_beat = client.clone();
+        no_beat["heartbeat_count"] = json!(0);
+        apply_addin_sample(&mut lane, &no_beat);
+        assert!(lane["addin_heartbeat_at"].is_null());
+        apply_addin_sample(&mut lane, &client);
+        assert_eq!(lane["addin_heartbeat_count"], 7);
+        assert_eq!(lane["addin_heartbeat_at"], 1793620802000i64);
+        apply_addin_sample(&mut lane, &client);
+        assert_eq!(
+            lane["addin_heartbeat_count"], 7,
+            "Repeated reads do not create beats"
+        );
+    }
 
     #[test]
     fn an_old_active_run_survives_a_full_completed_history() {
