@@ -80,7 +80,9 @@ impl Workflow<'_, '_> {
         self.publish_available_comparisons("before rebuild")?;
         self.rebuild_variant_copies()?;
         self.publish_available_comparisons("variants rebuilt; Original still unchanged")?;
-        self.rebuild_copy(LaneId::O, LaneId::OR)?;
+        self.prepare_rebuild_copy(LaneId::O, LaneId::OR)?;
+        self.inspect_available_pairs()?;
+        self.capture_missing_regions()?;
         self.close_states()?;
         self.publish_available_comparisons("Original rebuilt last")?;
         self.project_legacy_findings()?;
@@ -226,15 +228,17 @@ impl Workflow<'_, '_> {
     }
 
     fn rebuild_variant_copies(&mut self) -> Result<()> {
-        self.rebuild_copy(LaneId::SD, LaneId::SDR)?;
+        self.prepare_rebuild_copy(LaneId::SD, LaneId::SDR)?;
         if !self.comparison.args.skip_check_performance {
-            self.rebuild_copy(LaneId::CP, LaneId::CPR)?;
+            self.prepare_rebuild_copy(LaneId::CP, LaneId::CPR)?;
         }
+        self.inspect_available_pairs()?;
+        self.capture_missing_regions()?;
         Ok(())
     }
 
     /// Rebuild an independent copy so every original pre-state remains available for late captures.
-    fn rebuild_copy(&mut self, parent: LaneId, id: LaneId) -> Result<()> {
+    fn prepare_rebuild_copy(&mut self, parent: LaneId, id: LaneId) -> Result<()> {
         let source = self.states[&parent].path.clone();
         let path = self
             .comparison
@@ -286,10 +290,8 @@ impl Workflow<'_, '_> {
             &path,
         )?;
         self.register(id, path)?;
-        self.inspect_available_pairs()?;
-        self.capture_missing_regions()?;
         self.comparison.report.phases.push(format!(
-            "{} rebuilt on retained copy; late candidates captured in all available states",
+            "{} rebuilt on retained copy; ready for shared candidate capture",
             parent.key()
         ));
         Ok(())
