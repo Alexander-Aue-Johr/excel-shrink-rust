@@ -28,6 +28,12 @@ def verify(root: Path, mode: str) -> None:
             assert colors[1][(255, 0, 0)] > 100, 'The valid expression did not apply its fill'
         if mode in ('error-ref-inert', 'error-ref-compare-inert', 'cell-is-ref-inert'):
             assert all(colorset[(0, 0, 255)] > 100 for colorset in colors), 'An error rule suppressed the later valid rule'
+        if mode == 'top-bottom':
+            from PIL import ImageChops
+            assert all(colorset[(255, 0, 0)] > 100 for colorset in colors), 'Ranking fills did not render'
+            with Image.open(sample['left_png']) as left, Image.open(sample['right_png']) as right:
+                region = (0, left.height * 3 // 5, left.width, left.height)
+                assert ImageChops.difference(left.convert('RGB').crop(region), right.convert('RGB').crop(region)).getbbox(), 'Unchanged ranked cells did not change visually'
         if mode == 'dummy-added':
             assert colors[1][(255, 0, 0)] > 100, 'New target did not enable its CF fill'
         if mode in ('duplicate', 'color-scale', 'data-bar'):
@@ -55,7 +61,7 @@ def verify(root: Path, mode: str) -> None:
         }[mode]
         finding = next(item for item in direct['findings'] if item['cell'] == expected)
         assert finding['pixels_differ'], 'Dependent target did not change in native Excel'
-    elif mode in ('data-bar-unchanged', 'name-missing'):
+    elif mode in ('data-bar-unchanged', 'name-missing', 'top-bottom-unchanged'):
         assert all(item['outcome'] == 'excluded' for item in decisions), decisions
         assert not different
     elif mode == 'dummy-missing':

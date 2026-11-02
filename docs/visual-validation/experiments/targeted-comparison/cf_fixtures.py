@@ -83,6 +83,15 @@ def create(directory: Path, mode: str) -> None:
             sheet.conditional_formatting.add(area, rule)
             if mode in ('ref-mixed', 'ref-mixed-group'):
                 sheet.conditional_formatting.add(area, ColorScaleRule(start_type='min', start_color='FFFF0000', end_type='max', end_color='FF00FF00'))
+        elif mode in ('top-bottom', 'top-bottom-unchanged'):
+            for column, bottom, percent in [('A', False, False), ('B', True, False), ('C', False, True), ('D', True, True)]:
+                for row in range(1, 6):
+                    sheet[f'{column}{row}'] = row
+                sheet.conditional_formatting.add(
+                    f'{column}1:{column}5', Rule(type='top10', rank=20 if percent else 1, bottom=bottom, percent=percent, dxf=DifferentialStyle(fill=fill)),
+                )
+                if mode == 'top-bottom' and lane == 'default':
+                    sheet[f'{column}3'] = -10 if bottom else 10
         elif mode == 'duplicate':
             sheet.conditional_formatting.add('A1:B5', Rule(type='duplicateValues', dxf=DifferentialStyle(fill=fill)))
             sheet['A1'] = 2

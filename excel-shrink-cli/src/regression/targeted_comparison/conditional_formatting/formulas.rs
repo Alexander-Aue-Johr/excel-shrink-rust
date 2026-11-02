@@ -2,6 +2,33 @@
 
 /// These rules depend on the complete application-area value set, not an evaluated result.
 pub(super) fn whole_area_rule(rule: &crate::regression::cf_inventory::scan::Rule) -> bool {
+    if rule.attributes.get("type").map(String::as_str) == Some("top10") {
+        return !rule.truncated_formula
+            && rule.formulas.is_empty()
+            && rule.child_elements.is_empty()
+            && rule.attributes.keys().all(|key| {
+                [
+                    "type",
+                    "dxfId",
+                    "priority",
+                    "stopIfTrue",
+                    "rank",
+                    "bottom",
+                    "percent",
+                ]
+                .contains(&key.as_str())
+            })
+            && rule
+                .attributes
+                .get("rank")
+                .and_then(|rank| rank.parse::<u32>().ok())
+                .is_some_and(|rank| rank > 0)
+            && ["bottom", "percent"].iter().all(|key| {
+                rule.attributes
+                    .get(*key)
+                    .is_none_or(|value| ["0", "1", "false", "true"].contains(&value.as_str()))
+            });
+    }
     if rule.truncated_formula
         || !rule.formulas.is_empty()
         || rule
@@ -126,6 +153,28 @@ pub(super) fn decode_entities(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ranking_rules_reject_unknown_parameters_and_formula_payloads() {
+        use crate::regression::cf_inventory::scan::Rule;
+        let valid = Rule {
+            attributes: [("type".into(), "top10".into()), ("rank".into(), "2".into())].into(),
+            ..Rule::default()
+        };
+        for (key, value) in [
+            ("rank", "0"),
+            ("rank", "A1"),
+            ("bottom", "maybe"),
+            ("percent", "2"),
+            ("unknown", "1"),
+        ] {
+            let mut rule = valid.clone();
+            rule.attributes.insert(key.into(), value.into());
+            assert!(!whole_area_rule(&rule));
+        }
+        let mut formula = valid;
+        formula.formulas.push("Other!A1".into());
+        assert!(!whole_area_rule(&formula));
+    }
     #[test]
     fn only_the_fixed_same_coordinate_template_is_recognized() {
         assert_eq!(

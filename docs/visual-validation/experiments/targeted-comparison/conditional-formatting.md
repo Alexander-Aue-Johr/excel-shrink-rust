@@ -308,3 +308,15 @@ passed on a private desktop: all six operators were exercised with numeric and
 text cells, stopIfTrue and a subsequent blue-fill rule. Removing the error rules
 leaves the same pixels; replacing the error operands with valid constants produces
 red fills. All owned Excel processes closed. This is not a new full corpus run.
+
+## Top-/bottom-ranking rules
+
+Standard top10 rules with explicit positive integer rank, optional boolean bottom
+and percent settings, and no formula/extension payload now use the existing
+whole-area input proof. No ranking is evaluated. Equal rule/context and complete
+application-area inputs exclude the CF region; any changed/deleted or uncertain
+formula input selects the complete dependent area. Unknown settings remain fallback.
+Count and percentage variants, mixed blocks, outside inputs and deleted inputs
+are covered by focused tests. Native controls `top-bottom` and
+`top-bottom-unchanged` passed, including visible indirect changes in unchanged
+ranked cells. Other candidate reasons remain independent. Owned Excel copies closed.

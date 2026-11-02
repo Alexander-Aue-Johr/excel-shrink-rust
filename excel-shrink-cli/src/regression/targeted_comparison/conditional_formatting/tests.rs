@@ -190,7 +190,8 @@ fn mixed_blocks_union_known_dependencies_and_keep_unknown_members_conservative()
     let scale = "<cfRule type=\"colorScale\" priority=\"2\"><colorScale><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FFFF0000\"/><color rgb=\"FF00FF00\"/></colorScale></cfRule>";
     let dummy = "<cfRule type=\"cellIs\" operator=\"notEqual\" priority=\"3\"><formula>INDIRECT(&quot;Dummy_for_Comparison1!&quot;&amp;ADDRESS(ROW(),COLUMN()))</formula></cfRule>";
     let bar = "<cfRule type=\"dataBar\" priority=\"2\"><dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"FF638EC6\"/></dataBar></cfRule>";
-    for group in [duplicate, scale, bar] {
+    let top = "<cfRule type=\"top10\" priority=\"2\" rank=\"2\"/>";
+    for group in [duplicate, scale, bar, top] {
         let block = format!("<conditionalFormatting sqref=\"B2:D5\">{expression}{group}{dummy}<cfRule type=\"expression\" priority=\"4\"><formula>#REF!</formula></cfRule></conditionalFormatting>");
         write_book(&a, values, &block, "", "", "")?;
         fs::copy(&a, &b)?;
@@ -323,7 +324,21 @@ fn whole_area_rules_exclude_equal_inputs_but_capture_every_dependent_cell() -> R
     let fixed_bar = bar
         .replace("type=\"min\"", "type=\"num\" val=\"0\"")
         .replace("type=\"max\"", "type=\"percentile\" val=\"90\"");
-    for rule in [duplicate, scale, bar, fixed_bar.as_str()] {
+    let top = "<cfRule type=\"top10\" priority=\"1\" rank=\"1\"/>";
+    let bottom = "<cfRule type=\"top10\" priority=\"1\" rank=\"1\" bottom=\"1\"/>";
+    let percent = "<cfRule type=\"top10\" priority=\"1\" rank=\"20\" percent=\"1\"/>";
+    let bottom_percent =
+        "<cfRule type=\"top10\" priority=\"1\" rank=\"20\" percent=\"true\" bottom=\"true\"/>";
+    for rule in [
+        duplicate,
+        scale,
+        bar,
+        fixed_bar.as_str(),
+        top,
+        bottom,
+        percent,
+        bottom_percent,
+    ] {
         let block =
             format!("<conditionalFormatting sqref=\"A1:B5\">{rule}</conditionalFormatting>");
         let values = concat!(
