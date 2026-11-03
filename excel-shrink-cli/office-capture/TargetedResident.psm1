@@ -169,7 +169,8 @@ function Resolve-TargetedResponse {
         if (-not $image.StartsWith($ownedImages + '\', [StringComparison]::OrdinalIgnoreCase)) {
             throw 'Image receipt is outside this resident session.'
         }
-        Move-Item -LiteralPath $image -Destination $command.output -ErrorAction Stop
+        Move-Item -LiteralPath (ConvertTo-WindowsLongPath $image) `
+            -Destination (ConvertTo-WindowsLongPath ([string]$command.output)) -ErrorAction Stop
         return @{path=$command.output; geometry=$Response.geometry}
     }
     return $Response

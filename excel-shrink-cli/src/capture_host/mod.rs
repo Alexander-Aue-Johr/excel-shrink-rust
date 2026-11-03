@@ -12,7 +12,10 @@ use axum::{
     Json, Router,
 };
 use serde_json::{json, Value};
-use std::{ffi::OsString, path::Path};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 use tokio::io::AsyncWriteExt;
 use tower_http::services::ServeDir;
 
@@ -138,7 +141,7 @@ pub(super) fn now_iso() -> String {
 }
 
 pub(super) async fn read_json(path: &Path) -> Result<Value> {
-    let bytes = tokio::fs::read(path)
+    let bytes = tokio::fs::read(windows_io_path(path)?)
         .await
         .with_context(|| format!("read {}", path.display()))?;
     // Windows PowerShell 5.1 may write a UTF-8 BOM in a settings file.
@@ -170,13 +173,15 @@ async fn publish_bytes(
     durability: Durability,
 ) -> Result<()> {
     let parent = path.parent().context("Output path has no parent")?;
-    tokio::fs::create_dir_all(parent).await?;
+    tokio::fs::create_dir_all(windows_io_path(parent)?).await?;
     let pending = parent.join(format!(".{}.pending", uuid::Uuid::new_v4()));
+    let pending_io = windows_io_path(&pending)?;
+    let destination_io = windows_io_path(path)?;
     let result = async {
         let mut file = tokio::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&pending)
+            .open(&pending_io)
             .await?;
         file.write_all(bytes).await?;
         file.flush().await?;
@@ -185,17 +190,49 @@ async fn publish_bytes(
         }
         drop(file);
         if replace {
-            replace_snapshot(&pending, path).await?;
+            replace_snapshot(&pending_io, &destination_io).await?;
         } else {
-            publish_new(&pending, path)?;
+            publish_new(&pending_io, &destination_io)?;
         }
         Ok::<_, anyhow::Error>(())
     }
     .await;
     // Remove an unpublished temporary file on error. A completed rename has
     // already removed it; cleanup must not obscure the actual write error.
-    let _ = tokio::fs::remove_file(&pending).await;
+    let _ = tokio::fs::remove_file(&pending_io).await;
     result.with_context(|| format!("publish {}", path.display()))
+}
+
+/// Keep Windows file APIs on the same absolute path namespace when temporary
+/// receipt names cross MAX_PATH. Other platforms retain their native paths.
+fn windows_io_path(path: &Path) -> Result<PathBuf> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+        let absolute = std::path::absolute(path)?;
+        let wide: Vec<u16> = absolute.as_os_str().encode_wide().collect();
+        if wide.len() < 240
+            || wide.starts_with(&[92, 92, 63, 92])
+            || wide.starts_with(&[92, 92, 46, 92])
+        {
+            return Ok(absolute);
+        }
+        let extended = if wide.starts_with(&[92, 92]) {
+            let mut prefix = r"\\?\UNC\".encode_utf16().collect::<Vec<_>>();
+            prefix.extend_from_slice(&wide[2..]);
+            prefix
+        } else {
+            let mut prefix = r"\\?\".encode_utf16().collect::<Vec<_>>();
+            prefix.extend_from_slice(&wide);
+            prefix
+        };
+        Ok(PathBuf::from(OsString::from_wide(&extended)))
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(path.to_path_buf())
+    }
 }
 
 async fn replace_snapshot(pending: &Path, destination: &Path) -> std::io::Result<()> {
@@ -283,6 +320,33 @@ pub(super) async fn serve(router: Router, port: u16) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn long_windows_receipts_and_images_publish_atomically() -> Result<()> {
+        use std::os::windows::ffi::OsStrExt;
+
+        let root = std::env::temp_dir().join(format!("capture-host-{}", uuid::Uuid::new_v4()));
+        let short = root.join("x").join("dispatched/one/targeted-1.json");
+        let padding = 230usize.saturating_sub(short.as_os_str().encode_wide().count()) + 1;
+        let directory = root.join("x".repeat(padding));
+        let receipt = directory.join("dispatched/one/targeted-1.json");
+        assert!(receipt.as_os_str().encode_wide().count() >= 230);
+        // The receipt fits, but its .<UUID>.pending sibling reaches MAX_PATH.
+        write_json(&receipt, &json!({"dispatched":true}), false).await?;
+        assert_eq!(read_json(&receipt).await?, json!({"dispatched":true}));
+
+        let image = directory.join("diagnosis-images/one/targeted-4.image");
+        write_bytes(&image, b"image bytes", false).await?;
+        assert_eq!(
+            tokio::fs::read(windows_io_path(&image)?).await?,
+            b"image bytes"
+        );
+        write_json(&receipt, &json!({"dispatched":false}), true).await?;
+        assert_eq!(read_json(&receipt).await?, json!({"dispatched":false}));
+        tokio::fs::remove_dir_all(windows_io_path(&root)?).await?;
+        Ok(())
+    }
 
     #[tokio::test]
     async fn evidence_cannot_overwrite_a_previously_published_result() -> Result<()> {
