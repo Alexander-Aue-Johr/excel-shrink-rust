@@ -86,6 +86,16 @@ the runner returns to the folder and tries opening the file once more. A second
 explicit rejection is recorded as `skipped` with outcome
 `workbook_cannot_open`; Check Performance is not reported as successful.
 Use `--retry-skipped` to revisit it after the workbook or service changes.
+Excel can also show an **Open in Desktop App?** dialog saying the workbook is
+protected by Information Rights Management (IRM) and cannot be edited in a
+browser. The Review ribbon may already be visible behind this dialog. The
+runner recognizes the IRM message, records `skipped` with outcome
+`irm_browser_edit_unavailable`, and continues with the next workbook. It does
+not click **Open in Desktop App** or run Check Performance on that copy.
+This was observed with `auslaend-bevoelkerung-2010200217005.xlsx`; the
+browser restriction alone does not establish whether desktop Excel can edit
+the workbook. Use `--retry-skipped` only after its permissions or format have
+changed.
 
 On the first run with this version, existing `progress.json` data is imported
 into SQLite, including completed files and timing events. The importer leaves
@@ -95,12 +105,20 @@ against the SQLite database and removed after migration on 3 November 2026.
 
 Re-run the same command after an interruption. Completed and skipped files are
 not reopened.
-An interrupted or failed file is reopened and checked again: if the previous
-optimization reached OneDrive, Excel reports that no work is needed. The tool
-closes the previous attempt as interrupted before starting a new one. The tool
-tries each incomplete file at most once per invocation and stops after three
-consecutive failures so that a broken login or changed UI does not produce a
-long series of misleading failures. Use `--refresh-list` to scan for files
+If OneDrive redirects to its `Throttle.htm` page, the runner stops with a
+specific message. Completed files stay recorded; rerun the command after
+OneDrive permits requests again. The workbook being opened remains retryable.
+An unexpected error while processing one workbook records `skipped` with
+outcome `error_during_check` and the exception text in the SQLite attempt. The
+runner continues with the next workbook and exits nonzero after the batch so
+the errors are not mistaken for complete success. A skipped workbook may have
+been partly optimized before the error; inspect it before using
+`--retry-skipped`. If navigation back to the folder fails, the runner tries to
+restore the shared folder in the same tab. A persistent folder failure,
+missing authentication, or OneDrive throttling stops the run without marking
+the remaining workbooks as skipped. An interrupted file is reopened on the
+next run; the tool closes its previous attempt as interrupted before starting
+a new one. Use `--refresh-list` to scan for files
 uploaded after the initial discovery. OneDrive can upload new rows while
 scanning; refresh again after all uploads finish to pick up late arrivals.
 
@@ -118,8 +136,9 @@ python tools/check-performance-onedrive.py 'YOUR_LINK' --only-file 'example.xlsx
 number processed in this invocation; the remaining files are left pending.
 `--retry-skipped` rechecks previously unavailable files, including one that
 was repaired manually after an earlier run.
-The command exits unsuccessfully if a selected file fails. A timeout is never
-recorded as optimization success. This browser flow was tested with Edge and
+The command exits unsuccessfully if a file encounters an unexpected error or
+the folder cannot be recovered. A timeout is never recorded as optimization
+success. This browser flow was tested with Edge and
 Excel for the web on 3 November 2026; it depends on Microsoft's current UI.
 In that test, one workbook reached Excel's cloud-save confirmation in 38.5 s.
 The next invocation skipped that workbook without opening it. Its recorded
@@ -133,9 +152,10 @@ is an error, not an optimization in progress. The pane observer is covered by
 isolated Chromium tests in `test_pane.py`.
 
 The workbook status follows a small state machine:
-`pending → opening → checking → optimizing → saving → completed`, with `failed`
-from any unfinished stage. An already-clean workbook goes from `checking`
-directly to `completed`; a disabled Performance command goes to `skipped`.
+`pending → opening → checking → optimizing → saving → completed`. A workbook
+that cannot be checked goes to `skipped` from any unfinished stage; `failed`
+records a run-level interruption such as throttling. An already-clean workbook
+goes from `checking` directly to `completed`.
 The `optimizing` state begins only when Excel changes
 the button or reports completion. Existing progress files with the old
 `running` status remain resumable.

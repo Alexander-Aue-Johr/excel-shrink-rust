@@ -40,8 +40,8 @@ ALLOWED_TRANSITIONS = {
     JobState.OPENING: {JobState.CHECKING, JobState.SKIPPED, JobState.FAILED},
     JobState.CHECKING: {JobState.OPTIMIZING, JobState.SAVING, JobState.COMPLETED,
                         JobState.SKIPPED, JobState.FAILED},
-    JobState.OPTIMIZING: {JobState.SAVING, JobState.FAILED},
-    JobState.SAVING: {JobState.COMPLETED, JobState.FAILED},
+    JobState.OPTIMIZING: {JobState.SAVING, JobState.SKIPPED, JobState.FAILED},
+    JobState.SAVING: {JobState.COMPLETED, JobState.SKIPPED, JobState.FAILED},
     JobState.FAILED: {JobState.OPENING},
     JobState.COMPLETED: set(),
     JobState.SKIPPED: set(),
@@ -169,6 +169,13 @@ class ProgressStore:
             raise KeyError(name)
         return row[0]
 
+    def outcome(self, name: str) -> str | None:
+        """Read the reason recorded for a completed or skipped workbook."""
+        row = self.connection.execute("SELECT outcome FROM files WHERE name = ?", (name,)).fetchone()
+        if row is None:
+            raise KeyError(name)
+        return row[0]
+
     def names(self) -> list[str]:
         """Return the files already discovered for this OneDrive folder."""
         return [row[0] for row in self.connection.execute("SELECT name FROM files ORDER BY rowid")]
@@ -216,14 +223,16 @@ class ProgressStore:
             self.connection.execute(
                 "UPDATE attempts SET finished_at = ? WHERE id = ?", (utc_now(), attempt_id))
 
-    def skip(self, name: str, attempt_id: int, reason: str) -> None:
-        """Record a workbook that Excel cannot process without claiming success."""
+    def skip(self, name: str, attempt_id: int, reason: str,
+             error: str | None = None) -> None:
+        """Record an unverified workbook and retain the failure detail, if any."""
         with self.connection:
             status = validated_state(self.status(name), JobState.SKIPPED)
             self.connection.execute(
                 "UPDATE files SET status = ?, outcome = ? WHERE name = ?", (status, reason, name))
             self.connection.execute(
-                "UPDATE attempts SET finished_at = ? WHERE id = ?", (utc_now(), attempt_id))
+                "UPDATE attempts SET finished_at = ?, error = ? WHERE id = ?",
+                (utc_now(), error[:500] if error else None, attempt_id))
 
     def fail(self, name: str, attempt_id: int, error: str) -> None:
         """Keep an unsuccessful file retryable on the next invocation."""
@@ -412,8 +421,9 @@ async def sample_tab_memory(page, profile: Path, editor=None) -> dict:
             (int(metric["value"]) for metric in metrics["metrics"]
              if metric["name"] == "JSHeapUsedSize"), None)
         await session.detach()
-    except Exception:
-        pass
+    except Exception as error:
+        print(f"Folder listing failed ({type(error).__name__}: {error}); "
+              "reloading the shared folder once.", file=sys.stderr)
     return sample
 
 
@@ -492,10 +502,9 @@ async def wait_for_signed_in_folder(page, url: str, headed: bool):
 async def open_folder(page, url: str, headed: bool):
     """Load the folder and trigger sign-in when its top bar requests it."""
     await page.goto(url, wait_until="domcontentloaded", timeout=120_000)
+    await wait_for_folder_rows(page)
     if is_login_page(page):
         page = await wait_for_signed_in_folder(page, url, headed)
-    await page.locator('[data-automationid="field-LinkFilename"]').first.wait_for(
-        state="visible", timeout=60_000)
     sign_in = await visible_sign_in(page)
     if sign_in is not None:
         if not headed:
@@ -507,6 +516,22 @@ async def open_folder(page, url: str, headed: bool):
             await sign_in.click(timeout=10_000)
         page = await wait_for_signed_in_folder(page, url, headed)
     return page
+
+
+class OneDriveThrottled(Exception):
+    """OneDrive redirected the current tab to its request-throttling page."""
+
+
+async def wait_for_folder_rows(page) -> None:
+    """Wait for the folder listing, but stop promptly on OneDrive throttling."""
+    if is_login_page(page):
+        return
+    await page.wait_for_function(r"""() =>
+      /\/Throttle\.htm$/i.test(location.pathname) ||
+      !!document.querySelector('[data-automationid="field-LinkFilename"]')
+    """, timeout=60_000)
+    if page.url.lower().split("#", 1)[0].endswith("/throttle.htm"):
+        raise OneDriveThrottled("OneDrive throttled requests; restart the run later")
 
 
 def discard_restored_tabs(profile: Path) -> None:
@@ -618,12 +643,35 @@ async def open_workbook_in_current_tab(context, folder_page, name: str, row=None
     if row is None:
         row = await find_file_row(folder_page, name)
     await row.dblclick()
-    await folder_page.wait_for_url(re.compile(r"/Doc\.aspx", re.I), timeout=60_000)
+    await folder_page.wait_for_url(re.compile(r"/(?:Doc\.aspx|Throttle\.htm)", re.I),
+                                   wait_until="domcontentloaded", timeout=60_000)
+    if "/throttle.htm" in folder_page.url.lower():
+        raise OneDriveThrottled("OneDrive throttled requests; restart the run later")
     return folder_page
 
 
 class WorkbookCannotOpen(Exception):
     """Excel explicitly rejected a workbook before Check Performance could run."""
+
+
+class WorkbookEditRestricted(Exception):
+    """Excel for the web cannot edit this rights-managed workbook."""
+
+
+async def workbook_edit_restricted(page) -> bool:
+    """Recognize Excel's IRM dialog even when Review is visible behind it."""
+    for frame in page.frames:
+        message = frame.get_by_text(
+            re.compile(r"protected by Information Rights Management \(IRM\)", re.I))
+        if await message.is_visible():
+            return True
+    return False
+
+
+async def raise_if_irm_restricted(page) -> None:
+    """Fail when Excel explicitly requires desktop editing for an IRM workbook."""
+    if await workbook_edit_restricted(page):
+        raise WorkbookEditRestricted("Excel for the web cannot edit this IRM-protected workbook")
 
 
 async def workbook_open_error(page) -> bool:
@@ -649,6 +697,7 @@ async def find_editor(page):
             while True:
                 if await workbook_open_error(page):
                     raise WorkbookCannotOpen("Excel says the workbook cannot be opened")
+                await raise_if_irm_restricted(page)
                 if await sign_in.is_visible():
                     await sign_in.click(timeout=30_000)
                     await sign_in.wait_for(state="hidden", timeout=30_000)
@@ -661,7 +710,7 @@ async def find_editor(page):
                     raise TimeoutError("Excel did not expose the Review tab within 120 seconds")
                 await asyncio.sleep(0.25)
         except Exception as error:
-            if isinstance(error, WorkbookCannotOpen) and not ready.done():
+            if isinstance(error, (WorkbookCannotOpen, WorkbookEditRestricted)) and not ready.done():
                 ready.set_exception(error)
             return
 
@@ -700,6 +749,7 @@ async def select_review(page, editor) -> None:
     while time.monotonic() < deadline:
         if await workbook_open_error(page):
             raise WorkbookCannotOpen("Excel says the workbook cannot be opened")
+        await raise_if_irm_restricted(page)
         if await selected.count():
             return
         try:
@@ -727,6 +777,7 @@ async def remove_invalid_objects_for_editing(editor) -> bool:
 
 async def find_performance_pane(page, editor):
     """Open Performance, or return None when Excel keeps its ribbon group disabled."""
+    await raise_if_irm_restricted(page)
     command = editor.locator("#ShowOptimizeWorkbookTaskpane:visible").first
     await command.wait_for(state="visible", timeout=30_000)
     enabled_deadline = time.monotonic() + 10
@@ -737,6 +788,7 @@ async def find_performance_pane(page, editor):
     await command.click(timeout=15_000)
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
+        await raise_if_irm_restricted(page)
         for frame in page.frames:
             if "resources.office.net" not in frame.url:
                 continue
@@ -843,6 +895,7 @@ async def process_workbook(context, folder_page, profile: Path,
     page = None
     outcome = ""
     message = None
+    throttled = False
     try:
         page, editor = await open_editor_with_retry(
             context, folder_page, name, progress, attempt, row)
@@ -876,16 +929,27 @@ async def process_workbook(context, folder_page, profile: Path,
         outcome = "workbook_cannot_open"
         message = str(error)
         progress.skip(name, attempt.id, outcome)
+    except WorkbookEditRestricted as error:
+        outcome = "irm_browser_edit_unavailable"
+        message = str(error)
+        progress.skip(name, attempt.id, outcome)
+    except OneDriveThrottled as error:
+        message = str(error)
+        throttled = True
+        progress.fail(name, attempt.id, message)
+        raise
     except Exception as error:
         message = f"{type(error).__name__}: {error}"[:500]
-        progress.fail(name, attempt.id, message)
+        outcome = "error_during_check"
+        progress.skip(name, attempt.id, outcome, message)
     finally:
-        if not folder_page.is_closed() and folder_page.url != folder_url:
-            await folder_page.goto(folder_url, wait_until="domcontentloaded", timeout=120_000)
-            await folder_page.locator('[data-automationid="field-LinkFilename"]').first.wait_for(
-                state="visible", timeout=60_000)
-            await sort_oldest_first(folder_page)
-        display.finish(name, attempt, outcome, message)
+        try:
+            if not throttled and not folder_page.is_closed() and folder_page.url != folder_url:
+                await folder_page.goto(folder_url, wait_until="domcontentloaded", timeout=120_000)
+                await wait_for_folder_rows(folder_page)
+                await sort_oldest_first(folder_page)
+        finally:
+            display.finish(name, attempt, outcome, message)
 
 
 async def process_with_live_status(context, folder_page, profile: Path,
@@ -904,6 +968,29 @@ async def process_with_live_status(context, folder_page, profile: Path,
         if ticker is not None:
             ticker.cancel()
             await asyncio.gather(ticker, return_exceptions=True)
+
+
+async def recover_folder(context, folder_page, folder_url: str, headed: bool):
+    """Restore the shared folder in one tab after a per-workbook navigation error."""
+    if folder_page.is_closed():
+        folder_page = await context.new_page()
+        await folder_page.add_init_script(SINGLE_TAB_NAVIGATION)
+    folder_page = await open_folder(folder_page, folder_url, headed)
+    await sort_oldest_first(folder_page)
+    return folder_page
+
+
+async def next_workbook_with_recovery(context, folder_page, folder_url: str,
+                                      headed: bool, unfinished: set[str]):
+    """Retry a broken folder view once before treating it as a run-level failure."""
+    try:
+        next_file = await next_visible_unfinished(folder_page, unfinished)
+        if next_file is not None:
+            return folder_page, next_file
+    except Exception:
+        pass
+    folder_page = await recover_folder(context, folder_page, folder_url, headed)
+    return folder_page, await next_visible_unfinished(folder_page, unfinished)
 
 
 async def run_folder_check_performance(args) -> int:
@@ -945,7 +1032,6 @@ async def run_folder_check_performance(args) -> int:
                 unfinished = progress.unfinished_names(args.retry_skipped)
                 if args.only_file:
                     unfinished.intersection_update({args.only_file})
-                consecutive_failures = 0
                 attempted = 0
                 failed = False
                 display = ConsoleProgress(progress)
@@ -955,23 +1041,51 @@ async def run_folder_check_performance(args) -> int:
                             name = args.only_file
                             row = None
                         else:
-                            next_file = await next_visible_unfinished(folder_page, unfinished)
+                            try:
+                                folder_page, next_file = await next_workbook_with_recovery(
+                                    context, folder_page, args.folder_url, args.headed, unfinished)
+                            except Exception as error:
+                                print(f"Could not read the OneDrive folder: "
+                                      f"{type(error).__name__}: {error}", file=sys.stderr)
+                                failed = True
+                                break
                             if next_file is None:
                                 print(f"{len(unfinished)} known files were not found in the folder view.",
                                       file=sys.stderr)
+                                failed = True
                                 break
                             name, row = next_file
-                        await process_with_live_status(
-                            context, folder_page, profile, progress, display, name, row)
+                        try:
+                            await process_with_live_status(
+                                context, folder_page, profile, progress, display, name, row)
+                        except OneDriveThrottled as error:
+                            print(f"{name}: {error}. Completed files remain recorded; "
+                                  "rerun the same command.",
+                                  file=sys.stderr)
+                            failed = True
+                            break
+                        except Exception as error:
+                            print(f"{name}: folder navigation failed after this workbook: "
+                                  f"{type(error).__name__}: {error}", file=sys.stderr)
+                            if progress.status(name) not in {
+                                    JobState.COMPLETED.value, JobState.SKIPPED.value}:
+                                print("The workbook state is uncertain; stopping the run.",
+                                      file=sys.stderr)
+                                failed = True
+                                break
+                            try:
+                                folder_page = await recover_folder(
+                                    context, folder_page, args.folder_url, args.headed)
+                            except Exception as recovery_error:
+                                print(f"Could not restore the OneDrive folder: "
+                                      f"{type(recovery_error).__name__}: {recovery_error}",
+                                      file=sys.stderr)
+                                failed = True
+                                break
                         attempted += 1
                         unfinished.remove(name)
-                        failed = failed or progress.status(name) == JobState.FAILED.value
-                        consecutive_failures = (consecutive_failures + 1
-                                                if progress.status(name) == JobState.FAILED.value else 0)
-                        if consecutive_failures >= 3:
-                            display.close()
-                            print("Three consecutive files failed; stopping for inspection.", file=sys.stderr)
-                            break
+                        failed = failed or progress.status(name) == JobState.FAILED.value or (
+                            progress.outcome(name) == "error_during_check")
                 finally:
                     display.close()
                 processed, total = progress.counts()
@@ -1009,13 +1123,18 @@ def include_local_windows_packages() -> None:
 
 
 def run_check_performance(args: argparse.Namespace) -> int:
-    """Run the async browser workflow and explain a missing Playwright installation."""
+    """Run the browser workflow and report run-level failures without false success."""
     try:
         return asyncio.run(run_folder_check_performance(args))
     except ImportError as error:
         if error.name == "playwright":
-            raise SystemExit("Install Playwright first: python -m pip install playwright") from error
-        raise
+            print("Install Playwright first: python -m pip install playwright", file=sys.stderr)
+        else:
+            print(f"Check Performance stopped: ImportError: {error}", file=sys.stderr)
+        return 1
+    except Exception as error:
+        print(f"Check Performance stopped: {type(error).__name__}: {error}", file=sys.stderr)
+        return 1
 
 
 def main() -> int:

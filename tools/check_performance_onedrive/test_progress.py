@@ -6,13 +6,21 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 
 from tools.check_performance_onedrive import runner as FLOW
 from tools.check_performance_onedrive.runner import JobState, ProgressStore
 
 class ProgressStoreTests(unittest.TestCase):
+    def test_run_level_error_exits_without_traceback_or_success(self) -> None:
+        """A broken folder or browser stops cleanly instead of skipping the corpus."""
+        with (patch.object(FLOW, "run_folder_check_performance", new=lambda _args: None),
+              patch.object(FLOW.asyncio, "run", side_effect=RuntimeError("folder unavailable")),
+              patch.object(FLOW.sys, "stderr", io.StringIO()) as output):
+            self.assertEqual(FLOW.run_check_performance(None), 1)
+        self.assertIn("folder unavailable", output.getvalue())
+
     def test_interrupted_checking_attempt_restarts(self) -> None:
         """A stopped browser run resumes without an invalid state transition."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -52,6 +60,22 @@ class ProgressStoreTests(unittest.TestCase):
                 self.assertEqual(progress.skipped_count(), 1)
                 progress.start_attempt("unavailable.xlsx")
                 self.assertEqual(progress.status("unavailable.xlsx"), JobState.OPENING.value)
+
+    def test_error_after_optimization_is_skipped_with_diagnostic(self) -> None:
+        """A save-stage error must not claim success or vanish from the run log."""
+        with tempfile.TemporaryDirectory() as temporary:
+            with ProgressStore(Path(temporary), "folder-one") as progress:
+                progress.discover(["uncertain.xlsx"])
+                attempt = progress.start_attempt("uncertain.xlsx")
+                for state in (JobState.CHECKING, JobState.OPTIMIZING, JobState.SAVING):
+                    progress.transition("uncertain.xlsx", state)
+                progress.skip("uncertain.xlsx", attempt, "error_during_check", "Save timed out")
+                self.assertEqual(progress.status("uncertain.xlsx"), JobState.SKIPPED.value)
+                self.assertEqual(progress.outcome("uncertain.xlsx"), "error_during_check")
+                self.assertEqual(progress.connection.execute(
+                    "SELECT error FROM attempts WHERE id = ?", (attempt,)).fetchone()[0],
+                    "Save timed out")
+                self.assertNotIn("uncertain.xlsx", progress.unfinished_names())
 
     def test_json_progress_migrates_and_failed_files_resume(self) -> None:
         """The SQLite upgrade must retain completed work and old timed events."""
@@ -153,6 +177,21 @@ async def fake_scroll(page: FakePage, to_top: bool):
 
 
 class RowCursorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_folder_listing_failure_recovers_once(self) -> None:
+        """A transient list error must not abort the remaining workbooks."""
+        folder = object()
+        recovered = object()
+        with (patch.object(FLOW, "next_visible_unfinished", new_callable=AsyncMock,
+                           side_effect=[RuntimeError("stale view"), ("next.xlsx", "row")]) as next_file,
+              patch.object(FLOW, "recover_folder", new_callable=AsyncMock,
+                           return_value=recovered) as recover):
+            page, item = await FLOW.next_workbook_with_recovery(
+                None, folder, "https://1drv.ms/f/example", True, {"next.xlsx"})
+        self.assertIs(page, recovered)
+        self.assertEqual(item, ("next.xlsx", "row"))
+        self.assertEqual(next_file.await_count, 2)
+        recover.assert_awaited_once_with(None, folder, "https://1drv.ms/f/example", True)
+
     async def test_next_file_continues_from_current_position(self) -> None:
         """The common ordered case must not scan from the folder top again."""
         page = FakePage(position=2, target=3)

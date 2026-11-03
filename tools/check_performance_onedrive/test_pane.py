@@ -16,6 +16,26 @@ PANE_SCRIPT = Path(__file__).with_name("pane.js").read_text(encoding="utf-8")
 
 
 class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
+    async def test_irm_dialog_blocks_visible_review_tab(self) -> None:
+        """A visible ribbon behind Excel's IRM dialog must not start optimization."""
+        await self.page.set_content("<iframe></iframe>")
+        frame = self.page.frames[1]
+        await frame.set_content("""
+            <button id="Review">Review</button>
+            <div role="dialog">
+              <h2>Open in Desktop App?</h2>
+              <p>Sorry, Excel can't open this document for editing in a browser
+                 because it is protected by Information Rights Management (IRM).
+                 To edit this document, please open it in the desktop version of Excel.</p>
+              <button>Open in Desktop App</button>
+              <button>Cancel</button>
+            </div>
+        """)
+        with self.assertRaises(FLOW.WorkbookEditRestricted):
+            await FLOW.find_editor(self.page)
+        with self.assertRaises(FLOW.WorkbookEditRestricted):
+            await FLOW.select_review(self.page, frame)
+
     async def test_invalid_objects_banner_enables_editing(self) -> None:
         """The exact BusinessBar warning can be repaired before Performance opens."""
         await self.page.set_content("""
@@ -64,7 +84,7 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(FLOW, "time") as clock:
             clock.monotonic.side_effect = [0, 11]
-            self.assertIsNone(await FLOW.find_performance_pane(None, Editor()))
+            self.assertIsNone(await FLOW.find_performance_pane(self.page, Editor()))
 
     async def asyncSetUp(self) -> None:
         self.playwright = await async_playwright().start()
@@ -285,7 +305,7 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
               patch.object(FLOW, "visible_sign_in", new_callable=AsyncMock, return_value=None)):
             await FLOW.open_folder(page, "https://1drv.ms/f/example", headed=True)
         wait.assert_awaited_once_with(page, "https://1drv.ms/f/example", True)
-        page.locator.return_value.first.wait_for.assert_awaited_once()
+        page.locator.assert_not_called()
 
     async def test_public_folder_sign_in_navigates_in_same_tab(self) -> None:
         """Visible files do not imply edit access when the top bar says Sign in."""
@@ -321,6 +341,73 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
             None, self.page, "x.xlsx", self.page.locator("#file"))
         self.assertIs(result, self.page)
         self.assertEqual(len(self.page.context.pages), 1)
+
+    async def test_workbook_open_reports_onedrive_throttling(self) -> None:
+        """A throttle redirect must not look like a slow Excel workbook."""
+        async def route(request):
+            if request.request.url.endswith("/folder"):
+                await request.fulfill(
+                    status=200, content_type="text/html",
+                    body="<button id='file' ondblclick=\"location.href='/Throttle.htm'\">x.xlsx</button>")
+            else:
+                await request.fulfill(status=200, content_type="text/html", body="Throttled")
+
+        await self.page.route("https://example.test/**", route)
+        await self.page.goto("https://example.test/folder")
+        with self.assertRaises(FLOW.OneDriveThrottled):
+            await FLOW.open_workbook_in_current_tab(
+                None, self.page, "x.xlsx", self.page.locator("#file"))
+
+    async def test_folder_wait_reports_onedrive_throttling(self) -> None:
+        """Returning from a workbook must not wait for rows on a throttle page."""
+        await self.page.route("https://example.test/Throttle.htm", lambda route:
+                              route.fulfill(status=200, content_type="text/html", body="Throttled"))
+        await self.page.goto("https://example.test/Throttle.htm")
+        with self.assertRaises(FLOW.OneDriveThrottled):
+            await FLOW.wait_for_folder_rows(self.page)
+
+    async def test_irm_workbook_is_recorded_as_skipped(self) -> None:
+        """The desktop-only dialog must not count as a successful optimization."""
+        progress = MagicMock()
+        progress.status.return_value = FLOW.JobState.PENDING.value
+        progress.start_attempt.return_value = 7
+        display = MagicMock()
+        with patch.object(FLOW, "open_editor_with_retry", new_callable=AsyncMock,
+                          side_effect=FLOW.WorkbookEditRestricted("IRM")):
+            await FLOW.process_workbook(
+                None, self.page, Path("/tmp"), progress, display, "restricted.xlsx")
+        progress.skip.assert_called_once_with(
+            "restricted.xlsx", 7, "irm_browser_edit_unavailable")
+        progress.finish.assert_not_called()
+        display.finish.assert_called_once()
+
+    async def test_unexpected_workbook_error_is_skipped_and_next_file_can_run(self) -> None:
+        """A file-specific exception must be durable without aborting the batch."""
+        with tempfile.TemporaryDirectory() as temporary:
+            with FLOW.ProgressStore(Path(temporary), "folder-one") as progress:
+                progress.discover(["broken.xlsx", "next.xlsx"])
+                display = MagicMock()
+                with patch.object(FLOW, "open_editor_with_retry", new_callable=AsyncMock,
+                                  side_effect=RuntimeError("Excel did not respond")):
+                    await FLOW.process_workbook(
+                        None, self.page, Path(temporary), progress, display, "broken.xlsx")
+                self.assertEqual(progress.status("broken.xlsx"), FLOW.JobState.SKIPPED.value)
+                self.assertEqual(progress.outcome("broken.xlsx"), "error_during_check")
+                self.assertIn("next.xlsx", progress.unfinished_names())
+                self.assertIn("Excel did not respond", progress.connection.execute(
+                    "SELECT error FROM attempts WHERE file_name = 'broken.xlsx'").fetchone()[0])
+
+    async def test_folder_recovery_uses_shared_link_after_navigation_failure(self) -> None:
+        """The next workbook can use the same tab after one folder reload fails."""
+        with (patch.object(FLOW, "open_folder", new_callable=AsyncMock,
+                           return_value=self.page) as open_folder,
+              patch.object(FLOW, "sort_oldest_first", new_callable=AsyncMock) as sort):
+            recovered = await FLOW.recover_folder(
+                self.page.context, self.page, "https://1drv.ms/f/example", True)
+        self.assertIs(recovered, self.page)
+        open_folder.assert_awaited_once_with(
+            self.page, "https://1drv.ms/f/example", True)
+        sort.assert_awaited_once_with(self.page)
 
     async def test_target_blank_login_link_stays_in_one_tab(self) -> None:
         """An account link with a new-tab target navigates the current window."""
