@@ -305,3 +305,14 @@ from WSL instead.
 ## Recorded investigations
 
 - [Enron overnight run, 2–3 November 2026](investigations/enron-night-run-20261103.md): preparation completed, visual comparisons failed, and Windows became unresponsive.
+
+### Rebuild shrink outputs from preserved conversions
+
+Set `EXCEL_SHRINK_CONVERTED_BUNDLES_DIR` to an earlier run's `prepared` directory
+when rebuilding shrink variants from existing legacy-XLS conversions. Only the
+original converted XLSX is restored: bundle identity, raw source SHA-256 and
+converted-file SHA-256 must match. A mismatched or corrupt bundle fails explicitly;
+a missing bundle follows ordinary Excel conversion. The workbook record retains
+`conversion_reuse` provenance. Old shrink outputs are not approved by this setting.
+Keep the source bundles available for the preparation phase. This setting does not
+replace `--reuse-prepared-from`, which approves complete shrink preparations.

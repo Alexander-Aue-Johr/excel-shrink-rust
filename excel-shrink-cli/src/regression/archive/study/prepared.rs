@@ -2,6 +2,7 @@
 use super::*;
 use std::io::Write;
 mod package_audit;
+mod converted_reuse;
 mod namespace_exclusion;
 mod resident;
 mod prioritized;
@@ -71,6 +72,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     record.as_object_mut().unwrap().remove("namespace_exclusion");
     record.as_object_mut().unwrap().remove("profile_equivalence");
     record.as_object_mut().unwrap().remove("preparation_hash_screen");
+    record.as_object_mut().unwrap().remove("conversion_reuse");
     record["prepared"] = json!(false);
     record["results"] = json!([]);
     if let Some(run) = &job.run_manifest {
@@ -99,7 +101,23 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
     record["source_bytes"] = json!(fs::metadata(&extracted)?.len());
     record["source_format"] = json!(extracted.extension().and_then(|e| e.to_str()));
     record["source_sha256"] = json!(artifact_cache::hash_file(&extracted)?);
-    let source = if extracted
+    let restored = if extracted.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("xls")) {
+        std::env::var_os("EXCEL_SHRINK_CONVERTED_BUNDLES_DIR")
+            .map(|directory| -> Result<Option<Value>> {
+                let filename = job.bundle.as_ref().and_then(|path| path.file_name())
+                    .context("conversion reuse requires a bundle identity")?;
+                converted_reuse::restore(&PathBuf::from(directory).join(filename),
+                    &job.identity, record["source_sha256"].as_str().context("missing source hash")?,
+                    &job.work.join("converted.xlsx"))
+            }).transpose()?.flatten()
+    } else { None };
+    let source = if let Some(restored) = restored {
+        record["conversion"] = restored["conversion"].clone();
+        record["conversion_reuse"] = restored;
+        work_state::event("extracting", "conversion_reused", "Reused verified pre-shrink XLSX input",
+            true, None, json!({}));
+        job.work.join("converted.xlsx")
+    } else if extracted
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("xls"))
     {
