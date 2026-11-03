@@ -560,3 +560,51 @@ test('fixed margin stops at XFD and rejects unmeasurable scaling', async () => {
   geometry.fixedWidth = 800;
   await assert.rejects(geometry.rightMarginEnd(16381), /Cannot measure fixed right/);
 });
+
+test('disjoint height selections share Office syncs without losing their gaps', async () => {
+  const {readHeightSpans} = require('../web/capture-geometry.js');
+  const model = deferredLayoutModel();
+  let syncs = 0;
+  const office = action => model(context => action({...context, sync: async () => {syncs++;}}));
+  const spans = Array.from({length: 200}, (_, index) => ({start: 2 * index + 1, end: 2 * index + 1}));
+  const runs = await readHeightSpans(office, 'Sheet', spans);
+  assert.equal(syncs, 4);
+  assert.equal(runs.length, spans.length);
+  assert.deepEqual(runs.map(run => [run.start_row, run.end_row]), spans.map(span => [span.start, span.end]));
+  assert.ok(runs.every(run => run.height === 12));
+});
+
+test('adjacent requested height spans retain independently verifiable boundaries', async () => {
+  const {readHeightSpans} = require('../web/capture-geometry.js');
+  const model = deferredLayoutModel();
+  const spans = [{start: 1, end: 2}, {start: 3, end: 5}, {start: 8, end: 10}];
+  const together = await readHeightSpans(model, 'Sheet', spans);
+  const separately = [];
+  for (const span of spans) separately.push(...await readHeightSpans(model, 'Sheet', [span]));
+  assert.deepEqual(together, separately);
+  assert.deepEqual(together.map(run => [run.start_row, run.end_row]), [[1, 2], [3, 5], [8, 10]]);
+  await assert.rejects(readHeightSpans(model, 'Sheet', [{start: 0, end: 2}]), /Invalid row-height span/);
+  await assert.rejects(readHeightSpans(model, 'Sheet', [{start: 2, end: 5}, {start: 4, end: 8}]), /Invalid row-height span/);
+});
+test('batched height spans preserve mixed heights and hidden rows exactly', async () => {
+  const {readHeightSpans} = require('../web/capture-geometry.js');
+  const heights = [12, 12, 0, 15, 15, 90, 90, 18, 0, 0];
+  const office = action => action({sync: async () => {}, workbook: {worksheets: {getItem: () => ({
+    getRangeByIndexes(start, column, count) {
+      const values = heights.slice(start, start + count);
+      const same = values.every(value => value === values[0]);
+      return {load() {}, rowCount: count,
+        height: values.reduce((sum, value) => sum + value, 0),
+        rowHidden: same ? values[0] === 0 : null,
+        format: {load() {}, rowHeight: same ? values[0] : null}};
+    }
+  })}}});
+  const runs = await readHeightSpans(office, 'Sheet', [{start: 1, end: 5}, {start: 8, end: 10}]);
+  assert.deepEqual(runs, [
+    {start_row: 1, end_row: 2, height: 12},
+    {start_row: 3, end_row: 3, height: 0},
+    {start_row: 4, end_row: 5, height: 15},
+    {start_row: 8, end_row: 8, height: 18},
+    {start_row: 9, end_row: 10, height: 0}
+  ]);
+});
