@@ -14,6 +14,8 @@ The Save As control runs Optimize All independently from the same saved original
 
 `preparation.json`, `operations.json` and the attempt result record the inputs, outputs, timings and failures. Each host operation samples the owned Excel process before and after execution, including private bytes, working set, virtual bytes, CPU and handles. Observed process peaks are retained. Native heap size is unavailable through these process counters and is recorded as null.
 
+Each attempt has a separate temporary directory under the configured working root. After durable artifacts and failure diagnostics have been retained, cleanup removes both that attempt and its temporary files, including Office diagnostic logs. Shared temporary directories can accumulate substantial Office logs across otherwise completed attempts.
+
 ## Cache reuse
 
 Set `EXCEL_SHRINK_CONTROL_ARTIFACT_CACHE_DIR` to share saved/rebuilt controls with targeted validation. Check Performance uses the existing performance cache. Keys bind the original checksum, saved-parent package fingerprint, Excel environment and producer recipe. Restored files are checksum-verified. Historical measurements remain identified as historical.

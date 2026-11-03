@@ -66,10 +66,12 @@ def prepare_one(case, root, config, phase, operation_timeout):
     attempt.mkdir(parents=True)
     inputs = attempt / "inputs"
     inputs.mkdir()
+    temporary = Path(config["working_root"]) / "temp" / attempt.name
+    temporary.mkdir(parents=True)
     source = inputs / "original.xlsx"
     result = {"id": case["id"], "bundle": case["bundle"], "phase": phase,
               "attempt": str(attempt), "status": "failed"}
-    environment = dict(os.environ, TEMP=str(Path(config["working_root"]) / "temp"), TMP=str(Path(config["working_root"]) / "temp"),
+    environment = dict(os.environ, TEMP=str(temporary), TMP=str(temporary),
                        EXCEL_SHRINK_SYSTEM_RESERVE_MIB="2048",
                        EXCEL_SHRINK_PREPARATION_START_SLOTS="2",
                        EXCEL_SHRINK_CHECK_PERFORMANCE_CACHE_DIR=config["cp_cache"],
@@ -78,7 +80,7 @@ def prepare_one(case, root, config, phase, operation_timeout):
         if shutil.disk_usage(root).free < 20 * 1024**3:
             raise RuntimeError("Data drive reserve reached")
         if shutil.disk_usage(config["working_root"]).free < 6 * 1024**3:
-            raise RuntimeError("SSD scratch reserve reached")
+            raise RuntimeError("Temporary workspace reserve reached")
         copy_started = time.monotonic()
         with zipfile.ZipFile(case["bundle"]) as archive:
             with archive.open("original.xlsx") as incoming, source.open("wb") as outgoing:
@@ -171,10 +173,13 @@ def prepare_one(case, root, config, phase, operation_timeout):
     relative = attempt.resolve().relative_to(scratch)
     if len(relative.parts) != 3:
         raise ValueError("Unexpected scratch path")
-    try:
-        shutil.rmtree(attempt)
-    except OSError as error:
-        result["scratch_cleanup_warning"] = str(error)
+    if temporary.resolve().parent != (scratch / "temp").resolve():
+        raise ValueError("Unexpected temporary path")
+    for directory in (attempt, temporary):
+        try:
+            shutil.rmtree(directory)
+        except OSError as error:
+            result["scratch_cleanup_warning"] = str(error)
     return result
 
 
@@ -206,7 +211,10 @@ def run_batch(cases, root, config, phase, parallelism, timeout):
                 if exhausted:
                     break
                 write_json(root / "status.json", {"state":"waiting_for_resources", "phase":phase,
-                    "available_memory_bytes":available_memory(), "deadline":config["deadline"]})
+                    "available_memory_bytes":available_memory(), "deadline":config["deadline"],
+                    "free_workspace_bytes":shutil.disk_usage(config["working_root"]).free,
+                    "free_output_bytes":shutil.disk_usage(root).free,
+                    "updated_utc":dt.datetime.now(dt.timezone.utc).isoformat()})
                 time.sleep(2)
                 continue
             completed, _ = concurrent.futures.wait(active, timeout=10,
@@ -285,7 +293,8 @@ def main(root):
                 for point in ("before", "after"):
                     sample = operation.get(point) or {}
                     memory_samples.extend(sample if isinstance(sample, list) else [sample])
-    operation_timeout = min(600, max(180, int(max(operation_durations, default=60) * 3 + 30)))
+    operation_timeout = min(600, max(config.get("minimum_operation_timeout_seconds", 180),
+                                    int(max(operation_durations, default=60) * 3 + 30)))
     recommendation = {"parallelism": best["parallelism"], "operation_timeout_seconds": operation_timeout,
                       "workbook_timeout_seconds": config["workbook_timeout_seconds"],
                       "pilot_successes": best["prepared"], "pilot_attempts": best["attempted"],
@@ -298,6 +307,9 @@ def main(root):
                       "largest_owned_process_private_bytes": max((s.get("job_private_bytes") or 0
                           for s in memory_samples), default=0),
                       "estimated_hours_at_observed_success_rate": len(cases) / rate / 3600,
+                      "working_root":config["working_root"],
+                      "pilot_working_root":config.get("pilot_working_root", config["working_root"]),
+                      "throughput_estimate_requires_remeasurement":config.get("pilot_working_root", config["working_root"]) != config["working_root"],
                       "deadline": config["deadline"]}
     write_json(root / "recommendation.json", recommendation)
     # Successful pilot artifacts already satisfy the same preparation contract.
