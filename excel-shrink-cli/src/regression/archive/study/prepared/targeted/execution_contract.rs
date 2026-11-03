@@ -132,6 +132,14 @@ pub(super) fn expected_pairs(
                     ensure!(
                         decision["status"] == "observed"
                             && (decision["method"] == "explicit-rebuild"
+                                || (id == "OR" || id == "SDR")
+                                    && decision["method"] == "cached-rebuild"
+                                    && report["control_artifacts_cache"][id]["status"] == "hit"
+                                    && report["control_artifacts_cache"][id]["current_parent_sha256"] == check["source_sha256"]
+                                    && report["control_artifacts_cache"][id]["historical"]["identity"]["policy"] == "excel-control-artifacts-v1"
+                                    && report["control_artifacts_cache"][id]["historical"]["identity"]["lane"] == id
+                                    && valid_hash(&report["control_artifacts_cache"][id]["historical"]["artifacts"]["before_rebuild"]["sha256"])
+                                    && valid_hash(&report["control_artifacts_cache"][id]["historical"]["artifacts"]["after_rebuild"]["sha256"])
                                 || id == "CPR"
                                     && decision["method"] == "cached-rebuild"
                                     && report["check_performance_cache"]["rebuild_reused"] == true
@@ -222,6 +230,24 @@ mod tests {
         let mut broken = report.clone();
         broken["check_performance_evidence"]["native_result"]["status"] = json!("pending");
         assert!(expected_pairs(&broken, false).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn cached_original_rebuild_requires_bound_control_provenance() -> Result<()> {
+        let mut report = reduced();
+        report["state_decisions"]["OR"] = json!({"status":"observed","method":"cached-rebuild"});
+        report["rebuild_checks"]["OR"]["eligible_to_skip"] = json!(false);
+        report["rebuild_checks"]["OR"]["blockers"] = json!(["worksheet formula"]);
+        assert!(expected_pairs(&report, false).is_err());
+        report["control_artifacts_cache"]["OR"] = json!({"status":"hit",
+            "current_parent_sha256":"b".repeat(64),
+            "historical":{"identity":{"policy":"excel-control-artifacts-v1","lane":"OR"},
+                "artifacts":{"before_rebuild":{"sha256":"c".repeat(64)},
+                    "after_rebuild":{"sha256":"d".repeat(64)}}}});
+        assert!(expected_pairs(&report, false).is_ok());
+        report["control_artifacts_cache"]["OR"]["current_parent_sha256"] = json!("e".repeat(64));
+        assert!(expected_pairs(&report, false).is_err());
         Ok(())
     }
 

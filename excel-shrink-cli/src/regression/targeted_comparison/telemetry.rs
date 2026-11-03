@@ -478,6 +478,7 @@ mod tests {
             operation_timeout_seconds: 1,
             skip_check_performance: true,
             serial_captures: false,
+            prepare_artifacts_only: false,
         };
         let telemetry = Telemetry::start(&args)?;
         let mirror = group.join("targeted-comparison.json");
@@ -499,11 +500,16 @@ mod tests {
             local["error"].is_null(),
             "A mirror lock is not a comparison failure"
         );
-        assert!(!fs::read_dir(&group)?.any(|entry| entry
-            .unwrap()
-            .path()
-            .extension()
-            .is_some_and(|ext| ext == "tmp")));
+        {
+            // A notified heartbeat may publish concurrently with this assertion.
+            // Inspect cleanup between publications, under the writer's lock.
+            let _publication = telemetry.shared.0.lock().unwrap();
+            assert!(!fs::read_dir(&group)?.any(|entry| entry
+                .unwrap()
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "tmp")));
+        }
         drop(reader);
         telemetry.update(|state| state.lane(LaneId::O).captures_done = 8)?;
         let recovered: Value = serde_json::from_slice(&fs::read(&mirror)?)?;
@@ -537,6 +543,7 @@ mod tests {
             operation_timeout_seconds: 1,
             skip_check_performance: true,
             serial_captures: false,
+            prepare_artifacts_only: false,
         };
         let telemetry = Telemetry::start(&args).unwrap();
         telemetry

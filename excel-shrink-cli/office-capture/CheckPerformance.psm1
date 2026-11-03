@@ -34,7 +34,7 @@ function Get-PerformancePaneState {
     #>
     param($Root)
     $panes = @(Get-PerformanceControls $Root | Where-Object {
-        $_.class -eq 'MsoWorkPane' -and $_.name -eq 'Workbook Performance'
+        $_.class -eq 'MsoWorkPane' -and $_.name -match '^(Workbook Performance|Arbeitsmappenleistung|Leistung der Arbeitsmappe)$'
     })
     if ($panes.Count -ne 1) { return $null }
     $controls = @(Get-PerformanceControls $panes[0].element)
@@ -42,10 +42,25 @@ function Get-PerformancePaneState {
         $_.type -eq 'ControlType.Button' -and $_.enabled -and
         $_.name -match '^(Optimize all|Optimize All|Alle optimieren)$'
     })
+    # Sheet rows also expose an Optimize All action. The workbook action is
+    # above the sheet list. Collapse duplicate accessibility nodes at that point.
+    if ($buttons.Count -gt 1) {
+        $positions = @($buttons | ForEach-Object {
+            $bounds = $_.element.Current.BoundingRectangle
+            if ($bounds.Width -gt 0 -and $bounds.Height -gt 0) {
+                [pscustomobject]@{control=$_; top=$bounds.Top; left=$bounds.Left}
+            }
+        } | Sort-Object top, left)
+        if ($positions.Count -gt 0) {
+            $top = @($positions | Where-Object { $_.top -eq $positions[0].top })
+            $points = @($top | Select-Object -ExpandProperty left -Unique)
+            $buttons = if ($points.Count -eq 1) { @($top[0].control) } else { @() }
+        }
+    }
     # Completion is positive evidence; a missing button alone is never success.
-    $completion = @($controls | Where-Object { $_.name -eq 'Workbook optimized' })
+    $completion = @($controls | Where-Object { $_.name -match '^(Workbook optimized|Arbeitsmappe optimiert)$' })
     $noWork = @($controls | Where-Object {
-        $_.name -match '^(No optimization needed|No optimizations needed|Nothing to optimize)$'
+        $_.name -match '^(No optimization needed|No optimizations needed|Nothing to optimize|Keine Optimierung erforderlich|Keine Optimierungen erforderlich|Keine Optimierung notwendig)$'
     })
     return @{buttons=$buttons; completion=$completion; noWork=$noWork;
         text=@($controls | ForEach-Object name | Where-Object { $_ })}
@@ -60,6 +75,9 @@ function Invoke-WorkbookPerformanceOptimization {
     calls. Unknown pane states fail explicitly instead of certifying success.
     #>
     param($Session, [ValidateRange(1, 86400)][int]$TimeoutSeconds)
+    function Write-PerformanceTrace([string]$Text) {
+        if ($Session.trace_path) { [IO.File]::AppendAllText($Session.trace_path, ([DateTime]::UtcNow.ToString('o') + ' ' + $Text + "`n")) }
+    }
     if ($null -eq $Session) { throw 'Check Performance workbook is not open.' }
     $excel = $Session.excel
     $desktop = [ExcelProcessId]::DesktopName([IntPtr]$excel.Hwnd)
@@ -74,13 +92,21 @@ function Invoke-WorkbookPerformanceOptimization {
     }
     $Session.process.Refresh()
     if ($Session.process.HasExited) { throw 'Owned Check Performance Excel process exited.' }
+    Write-PerformanceTrace 'Activating owned workbook'
     $Session.workbook.Activate()
+    Write-PerformanceTrace 'Opening Check Performance'
     $excel.CommandBars.ExecuteMso('CheckPerformance')
+    Write-PerformanceTrace 'Check Performance command returned'
     $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]$excel.Hwnd)
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $clicked = $false
+    $observed = $false
     while ([DateTime]::UtcNow -lt $deadline) {
         $state = Get-PerformancePaneState $root
+        if (-not $observed) {
+            Write-PerformanceTrace ((Get-PerformanceControls $root | Where-Object { $_.class -eq 'MsoWorkPane' } | ForEach-Object name) -join ' | ')
+            if ($null -ne $state) { Write-PerformanceTrace ($state.text -join ' | '); $observed = $true }
+        }
         if ($null -ne $state) {
             if ($clicked -and $state.completion.Count -gt 0) {
                 return @{status='optimization_confirmed'; method='window_messages';

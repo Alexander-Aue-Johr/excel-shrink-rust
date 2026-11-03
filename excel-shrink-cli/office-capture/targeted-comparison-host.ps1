@@ -31,6 +31,8 @@ try {
     while ($null -ne ($line = [Console]::ReadLine())) {
         try {
             $command = $line | ConvertFrom-Json
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            $before = Get-TargetedOperationSample $command
             $result = switch ($command.kind) {
                 'cache_environment' { Get-TargetedCacheEnvironment }
                 'open' { Open-TargetedWorkbook $command $ownedExcel }
@@ -38,11 +40,22 @@ try {
                 'close' { Close-TargetedWorkbook $command.lane }
                 'capture_batch' { Invoke-TargetedCaptureBatch $command }
                 'optimize' { Optimize-TargetedWorkbook $command }
+                'save_as' { SaveAs-TargetedWorkbook $command }
                 default { Invoke-TargetedJob $command }
             }
-            [Console]::WriteLine((@{ok=$true; result=$result} | ConvertTo-Json -Depth 12 -Compress))
+            $after = Get-TargetedOperationSample $command
+            [Console]::WriteLine((@{ok=$true; result=$result; operation_measurements=@{
+                kind=$command.kind; lane=$command.lane; elapsed_seconds=$timer.Elapsed.TotalSeconds
+                path=$command.path; output=$command.output
+                before=$before; after=$after
+            }} | ConvertTo-Json -Depth 16 -Compress))
         } catch {
-            [Console]::WriteLine((@{ok=$false; error=$_.Exception.Message} | ConvertTo-Json -Compress))
+            $failure = $_.Exception.Message + ' ' + $_.ScriptStackTrace
+            [Console]::WriteLine((@{ok=$false; error=$failure; operation_measurements=@{
+                kind=$command.kind; lane=$command.lane; elapsed_seconds=$timer.Elapsed.TotalSeconds
+                path=$command.path; output=$command.output
+                before=$before; after=(Get-TargetedOperationSample $command); error=$failure
+            }} | ConvertTo-Json -Depth 16 -Compress))
         }
     }
 } finally {

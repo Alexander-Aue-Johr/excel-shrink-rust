@@ -58,6 +58,9 @@ impl Comparison<'_> {
 
     /// Kill the owned host job on failure and preserve partial evidence honestly.
     pub(super) fn record_failure(&mut self, error: &anyhow::Error) -> Result<()> {
+        if let Some(host) = &self.excel {
+            fs::write(self.args.output.join("operations.json"), serde_json::to_vec_pretty(&host.operation_measurements)?)?;
+        }
         self.release_excel_and_wait_for_exit()?;
         self.report.status = "failed".into();
         self.report.check_performance = match self.report.check_performance {
@@ -163,6 +166,7 @@ pub(super) fn new_report() -> Report {
         status: "running".into(),
         check_performance: "not_requested",
         check_performance_cache: Value::Null,
+        control_artifacts_cache: Value::Null,
         check_performance_evidence: None,
         transitions: Vec::new(),
         height_checks: Vec::new(),

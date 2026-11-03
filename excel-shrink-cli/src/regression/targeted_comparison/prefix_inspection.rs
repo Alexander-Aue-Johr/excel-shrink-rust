@@ -30,6 +30,7 @@ pub(crate) fn run(input: InspectArgs) -> Result<()> {
         operation_timeout_seconds: 120,
         skip_check_performance: true,
         serial_captures: false,
+        prepare_artifacts_only: false,
     };
     let mut comparison = Comparison::prepare(&args)?;
     let result = inspect(&mut comparison, &input.source);

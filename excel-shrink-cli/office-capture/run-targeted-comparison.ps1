@@ -14,6 +14,7 @@ param(
     [Parameter(Mandatory=$true)][string]$ObservatoryGroup,
     [switch]$SkipCheckPerformance,
     [switch]$SerialCaptures,
+    [switch]$PrepareArtifactsOnly,
     [ValidateRange(1, 86400)][int]$OperationTimeoutSeconds = 120
 )
 $ErrorActionPreference = 'Stop'
@@ -28,6 +29,7 @@ try {
     $arguments += ' --operation-timeout-seconds ' + $OperationTimeoutSeconds
     if ($SkipCheckPerformance) { $arguments += ' --skip-check-performance' }
     if ($SerialCaptures) { $arguments += ' --serial-captures' }
+    if ($PrepareArtifactsOnly) { $arguments += ' --prepare-artifacts-only' }
     $process = $desktop.Start($Binary, $arguments, $owned)
     while (-not $process.WaitForExit(500)) { }
     if ($process.ExitCode -ne 0) { throw "Targeted comparison failed; inspect $Output/failure.json." }

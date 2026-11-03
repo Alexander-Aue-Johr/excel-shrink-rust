@@ -27,7 +27,7 @@
         if (command.kind === 'recalculate') {
           context.workbook.application.calculate(Excel.CalculationType.fullRebuild);
           await context.sync();
-          const deadline = Date.now() + 120000;
+          const deadline = Date.now() + Math.max(120000, (command.timeout_seconds || 120) * 1000);
           while (true) {
             context.workbook.application.load('calculationState');
             await context.sync();

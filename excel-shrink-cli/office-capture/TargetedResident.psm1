@@ -26,6 +26,28 @@ function Read-TargetedJson {
     return $null
 }
 
+function Enter-TargetedStartupSlot {
+    # Cold Excel/WebView startup has a larger transient footprint than steady
+    # operation. Named mutexes release automatically if an owned worker dies.
+    param([int]$TimeoutSeconds)
+    if ($env:EXCEL_SHRINK_PREPARATION_START_SLOTS -ne '2') { return $null }
+    $gates = @(
+        [Threading.Mutex]::new($false, 'Local\ExcelShrink-Preparation-Startup-1'),
+        [Threading.Mutex]::new($false, 'Local\ExcelShrink-Preparation-Startup-2')
+    )
+    $selected = [Threading.WaitHandle]::WaitTimeout
+    try {
+        try { $selected = [Threading.WaitHandle]::WaitAny([Threading.WaitHandle[]]$gates, $TimeoutSeconds * 1000) }
+        catch [Threading.AbandonedMutexException] { $selected = $_.Exception.MutexIndex }
+        if ($selected -eq [Threading.WaitHandle]::WaitTimeout) { throw 'Excel startup slot timed out.' }
+        return $gates[$selected]
+    } finally {
+        for ($index = 0; $index -lt $gates.Count; $index++) {
+            if ($index -ne $selected) { $gates[$index].Dispose() }
+        }
+    }
+}
+
 function Start-TargetedWorkbook {
     <# .SYNOPSIS
     Starts one native Excel/add-in client; all measurements use this same workbook.
@@ -36,6 +58,7 @@ function Start-TargetedWorkbook {
         throw 'Targeted comparisons require their private-desktop launcher.'
     }
     $root = Join-Path ([IO.Path]::GetDirectoryName($Command.path)) ('resident-' + $Command.lane)
+    if ([IO.Directory]::Exists($root)) { $root += '-' + [Guid]::NewGuid().ToString('N') }
     $session = Join-Path $root 'session'
     $control = Join-Path $root 'control'
     Write-TargetedJson (Join-Path $control 'control.json') @{paused=$false; hide_excel=$false}
@@ -55,6 +78,7 @@ function Start-TargetedWorkbook {
         # would create a second desktop, outside the native adapter's scope.
         EXCEL_SHRINK_HIDE_EXCEL='0'
     }
+    $startupSlot = Enter-TargetedStartupSlot $Command.timeout_seconds
     $previous = @{}
     try {
         foreach ($key in $environment.Keys) {
@@ -63,11 +87,14 @@ function Start-TargetedWorkbook {
         }
         $launcher = Start-Process powershell.exe -ArgumentList $arguments -WindowStyle Hidden -PassThru `
             -RedirectStandardOutput (Join-Path $root 'stdout.log') -RedirectStandardError (Join-Path $root 'stderr.log')
+    } catch {
+        if ($null -ne $startupSlot) { $startupSlot.ReleaseMutex(); $startupSlot.Dispose() }
+        throw
     } finally {
         foreach ($key in $previous.Keys) { [Environment]::SetEnvironmentVariable($key, $previous[$key], 'Process') }
     }
     $Owned.Add($launcher)
-    $entry = @{launcher=$launcher; session=$session; path=$Command.path; process=$null; sequence=0}
+    $entry = @{launcher=$launcher; session=$session; path=$Command.path; process=$null; sequence=0; startup_slot=$startupSlot}
     $sessions[$Command.lane] = $entry
     return $entry
 }
@@ -79,22 +106,32 @@ function Wait-TargetedWorkbook {
     param($Command, $entry)
     $launcher = $entry.launcher
     $session = $entry.session
-    while (-not $launcher.HasExited) {
-        $metrics = Read-TargetedJson (Join-Path $session 'metrics.json')
-        if ($null -ne $metrics -and $metrics.clients.one.pid -and $null -eq $entry.process) {
-            $entry.process = [Diagnostics.Process]::GetProcessById($metrics.clients.one.pid)
-            $started = ([DateTimeOffset]$entry.process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
-            if ([Math]::Abs($started - $metrics.clients.one.process_started_unix_ms) -gt 2) { throw 'Excel PID identity changed.' }
-            [Console]::WriteLine((@{event='process_started'; lane=$Command.lane; pid=$entry.process.Id; started_at=$started} | ConvertTo-Json -Compress))
+    try {
+        while (-not $launcher.HasExited) {
+            $metrics = Read-TargetedJson (Join-Path $session 'metrics.json')
+            if ($null -ne $metrics -and $metrics.clients.one.pid -and $null -eq $entry.process) {
+                $entry.process = [Diagnostics.Process]::GetProcessById($metrics.clients.one.pid)
+                $started = ([DateTimeOffset]$entry.process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
+                if ([Math]::Abs($started - $metrics.clients.one.process_started_unix_ms) -gt 2) { throw 'Excel PID identity changed.' }
+                [Console]::WriteLine((@{event='process_started'; lane=$Command.lane; pid=$entry.process.Id; started_at=$started} | ConvertTo-Json -Compress))
+            }
+            if ($null -ne $metrics -and $metrics.primary_clients_ready) {
+                $configuration = Read-TargetedJson (Join-Path $session 'launcher.json')
+                $entry.staged = Join-Path $configuration.stage 'one.xlsx'
+                return @{pid=$entry.process.Id}
+            }
+            Start-Sleep -Milliseconds 100
         }
-        if ($null -ne $metrics -and $metrics.primary_clients_ready) {
-            $configuration = Read-TargetedJson (Join-Path $session 'launcher.json')
-            $entry.staged = Join-Path $configuration.stage 'one.xlsx'
-            return @{pid=$entry.process.Id}
+        $stderr = Join-Path ([IO.Path]::GetDirectoryName($session)) 'stderr.log'
+        $details = (Get-Content -LiteralPath $stderr -Tail 12 -ErrorAction SilentlyContinue) -join "`n"
+        throw "Targeted resident exited during opening; inspect $stderr. $details"
+    } finally {
+        if ($null -ne $entry.startup_slot) {
+            $entry.startup_slot.ReleaseMutex()
+            $entry.startup_slot.Dispose()
+            $entry.startup_slot = $null
         }
-        Start-Sleep -Milliseconds 100
     }
-    throw "Targeted resident exited during opening; inspect $session/../stderr.log"
 }
 
 function Open-TargetedWorkbook {
@@ -308,12 +345,69 @@ function Optimize-TargetedWorkbook {
         $excel = $scope.GetOwnedApplication()
         $book = $excel.ActiveWorkbook
         if ($book.FullName -ne $entry.staged) { throw 'Unexpected native Check Performance workbook.' }
-        return Invoke-WorkbookPerformanceOptimization @{excel=$excel; workbook=$book; process=$entry.process} $Command.timeout_seconds
+        return Invoke-WorkbookPerformanceOptimization @{excel=$excel; workbook=$book; process=$entry.process;
+            trace_path=(Join-Path $entry.session 'check-performance.trace.log')} $Command.timeout_seconds
     } finally {
         foreach ($reference in @($book, $excel)) {
             if ($null -ne $reference -and [Runtime.InteropServices.Marshal]::IsComObject($reference)) {
                 [void][Runtime.InteropServices.Marshal]::ReleaseComObject($reference)
             }
+        }
+        $scope.Dispose()
+    }
+}
+
+function Get-TargetedOperationSample {
+    param($Command)
+    if ($Command.kind -eq 'open_batch') {
+        return @($Command.jobs | ForEach-Object { Get-TargetedOperationSample $_ })
+    }
+    if (-not $Command.lane) { return @{state='host_operation'; kind=$Command.kind} }
+    $entry = $sessions[$Command.lane]
+    if ($null -eq $entry -or $null -eq $entry.process) { return @{state='not_started'; lane=$Command.lane} }
+    try {
+        $process = $entry.process
+        $process.Refresh()
+        $metrics = Read-TargetedJson (Join-Path $entry.session 'metrics.json')
+        return @{
+            state='observed'; sampled_utc=[DateTime]::UtcNow.ToString('o'); lane=$Command.lane
+            workbook_path=$entry.path
+            pid=$process.Id; process_started_utc=$process.StartTime.ToUniversalTime().ToString('o')
+            private_bytes=$process.PrivateMemorySize64; working_set_bytes=$process.WorkingSet64
+            peak_working_set_bytes=$process.PeakWorkingSet64; virtual_bytes=$process.VirtualMemorySize64
+            observed_peak_private_bytes=$metrics.clients.one.peak_private_bytes
+            peak_scope='resident observations through this sample'
+            paged_bytes=$process.PagedMemorySize64; peak_paged_bytes=$process.PeakPagedMemorySize64
+            paged_system_bytes=$process.PagedSystemMemorySize64; nonpaged_system_bytes=$process.NonpagedSystemMemorySize64
+            cpu_seconds=$process.TotalProcessorTime.TotalSeconds; handles=$process.HandleCount
+            heap_bytes=$null; heap_measurement='unavailable from process counters'
+            owned_process_resources=$metrics.owned_process_resources
+            job_private_bytes=$metrics.current_job_bytes; job_peak_private_bytes=$metrics.peak_job_bytes
+            job_private_working_set_bytes=$metrics.current_job_private_working_set_bytes
+        }
+    } catch { return @{state='unavailable'; lane=$Command.lane; error=$_.Exception.Message} }
+}
+
+function SaveAs-TargetedWorkbook {
+    param($Command)
+    $entry = $sessions[$Command.lane]
+    if ($null -eq $entry) { throw 'Save As requires an open owned workbook.' }
+    $scope = [CaptureErrorChecking]::TryDisable($entry.process, $env:EXCEL_SHRINK_EXPECTED_DESKTOP)
+    if ($null -eq $scope) { throw 'Owned Excel workbook is inaccessible.' }
+    $excel = $null; $book = $null
+    try {
+        $excel = $scope.GetOwnedApplication()
+        $book = $excel.ActiveWorkbook
+        if ($book.FullName -ne $entry.staged) { throw 'Unexpected Save As workbook.' }
+        $destination = Join-Path ([IO.Path]::GetDirectoryName($entry.staged)) 'one-save-as.xlsx'
+        $book.SaveAs($destination, 51, '', '', $false, $false)
+        $entry.staged = $destination
+        Copy-Item -LiteralPath $destination -Destination $Command.output
+        Remove-TargetedTaskpane @{path=$Command.output; staged=$entry.staged}
+        return @{saved=$true; method='Workbook.SaveAs'; format=51; output=$Command.output}
+    } finally {
+        foreach ($reference in @($book,$excel)) {
+            if ($null -ne $reference) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($reference) }
         }
         $scope.Dispose()
     }
@@ -337,4 +431,4 @@ function Close-TargetedWorkbook {
     return @{closed=$true}
 }
 
-Export-ModuleMember -Function Open-TargetedWorkbooks, Open-TargetedWorkbook, Invoke-TargetedJob, Invoke-TargetedCaptureBatch, Optimize-TargetedWorkbook, Close-TargetedWorkbook
+Export-ModuleMember -Function Open-TargetedWorkbooks, Open-TargetedWorkbook, Invoke-TargetedJob, Invoke-TargetedCaptureBatch, Optimize-TargetedWorkbook, Close-TargetedWorkbook, Get-TargetedOperationSample, SaveAs-TargetedWorkbook

@@ -237,7 +237,8 @@ impl Workflow<'_, '_> {
         self.comparison.report.state_decisions.insert(
             id,
             StateDecision::Observed {
-                method: if id == LaneId::CPR && self.comparison.performance.cached_rebuild {
+                method: if (id == LaneId::CPR && self.comparison.performance.cached_rebuild)
+                    || self.comparison.report.control_artifacts_cache[id.key()]["status"] == "hit" {
                     "cached-rebuild"
                 } else if matches!(id, LaneId::OR | LaneId::SDR | LaneId::CPR) {
                     "explicit-rebuild"
@@ -371,12 +372,15 @@ impl Workflow<'_, '_> {
             .output
             .join(format!("{}-rebuilt.xlsx", id.key()));
         let before = path.with_extension("before-rebuild.xlsx");
-        let cached = id == LaneId::CPR
-            && self
-                .comparison
-                .restore_performance_rebuild(&source, &before, &path)?;
+        let cached = if id == LaneId::CPR {
+            self.comparison.restore_performance_rebuild(&source, &before, &path)?
+        } else {
+            self.comparison.restore_control(id, &source, &before, &path)?
+        };
         if !cached {
             fs::copy(&source, &path)?;
+        } else if id != LaneId::CPR {
+            fs::copy(&path, path.with_extension("cached-after-rebuild.xlsx"))?;
         }
         self.comparison.telemetry.update(|state| {
             if cached {
@@ -433,11 +437,14 @@ impl Workflow<'_, '_> {
             if id == LaneId::CPR {
                 self.comparison
                     .remember_performance_artifacts(Some((&source, &before, &path)));
+            } else {
+                self.comparison.remember_control(id, &source,
+                    &[("before_rebuild", &before), ("after_rebuild", &path)])?;
             }
         }
         if cached {
             self.audit(
-                "cached CP explicit rebuild and save",
+                &format!("cached {} explicit rebuild and save", parent.key()),
                 &before,
                 &path.with_extension("cached-after-rebuild.xlsx"),
             )?;

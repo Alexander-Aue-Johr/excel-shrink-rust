@@ -230,6 +230,20 @@ Cached rebuilds use observed method `cached-rebuild`, with the recalculation ste
 explicitly skipped, not falsely marked as newly executed. A consumer requires the
 cache policy, key, artifact checksums and matching positive native confirmation.
 
+Artifact-only preparation may publish these controls before capture selection.
+Its `artifacts_prepared` result leaves visual validation pending. Ordinary-save
+and OR/SDR controls use the `excel-control-artifacts-v1` cache policy, with raw
+input checksum, saved-parent package fingerprint and native environment binding.
+Restoration verifies content checksums. Rebuild dependency restrictions also
+apply to these controls. Reopening a restored control still requires current
+opening/saving audits in a visual comparison.
+
+The optional Check Performance Save As controls retain the saved baseline,
+Optimize All plus Save As output, and the same-session full rebuild plus Save
+output. These supplement the independently reopened CPR control. Preparation
+records operation timings and process memory samples separately from visual
+evidence. See [Prepared Excel controls](../visual-validation/prepared-excel-artifacts.md).
+
 ## V5. XML snapshots, contexts and transitions
 
 Build workbook/sheet relationships and names, then stream worksheet XML into

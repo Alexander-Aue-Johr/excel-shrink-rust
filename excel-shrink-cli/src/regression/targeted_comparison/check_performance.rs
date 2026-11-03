@@ -72,10 +72,12 @@ impl Comparison<'_> {
             .args
             .output
             .join("check-performance.cached-original.xlsx");
-        self.performance.save_changes =
-            discover_candidates(&original, &before, &mut self.snapshots)?;
-        self.performance.optimization_changes =
-            discover_candidates(&before, &after, &mut self.snapshots)?;
+        if !self.args.prepare_artifacts_only {
+            self.performance.save_changes =
+                discover_candidates(&original, &before, &mut self.snapshots)?;
+            self.performance.optimization_changes =
+                discover_candidates(&before, &after, &mut self.snapshots)?;
+        }
         self.report.check_performance = if native_result["status"] == "optimization_confirmed" {
             "optimization_confirmed"
         } else {
@@ -107,8 +109,10 @@ impl Comparison<'_> {
             state.step(LaneId::CP, Phase::Save, StepStatus::Done);
             state.step(LaneId::CP, Phase::InspectSave, StepStatus::Running);
         })?;
-        self.performance.save_changes =
-            discover_candidates(&self.paths.original, path, &mut self.snapshots)?;
+        if !self.args.prepare_artifacts_only {
+            self.performance.save_changes =
+                discover_candidates(&self.paths.original, path, &mut self.snapshots)?;
+        }
         self.telemetry
             .update(|state| state.step(LaneId::CP, Phase::InspectSave, StepStatus::Done))
     }
@@ -158,8 +162,12 @@ impl Comparison<'_> {
             state.step(LaneId::CP, Phase::Optimize, StepStatus::Done);
             state.step(LaneId::CP, Phase::InspectOptimization, StepStatus::Running);
         })?;
-        self.performance.optimization_changes =
-            discover_candidates(&before, &after, &mut self.snapshots)?;
+        // Preparation retains controls without selecting visual capture regions.
+        // The validation consumer performs its own bounded XML inspection.
+        if !self.args.prepare_artifacts_only {
+            self.performance.optimization_changes =
+                discover_candidates(&before, &after, &mut self.snapshots)?;
+        }
         self.report
             .check_performance_evidence
             .as_mut()

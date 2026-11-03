@@ -21,6 +21,8 @@ mod staged;
 mod static_workbook_metadata;
 mod telemetry;
 mod workbooks;
+mod control_cache;
+mod preparation;
 mod xml_changes;
 pub(super) mod prefix_inspection;
 
@@ -71,6 +73,9 @@ pub(crate) struct Args {
     /// Run capture requests serially for diagnostics instead of across open Excel states.
     #[arg(long)]
     serial_captures: bool,
+    /// Generate reusable Excel controls and measurements without running visual comparisons.
+    #[arg(long)]
+    prepare_artifacts_only: bool,
 }
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize)]
@@ -113,6 +118,7 @@ struct Report {
     status: String,
     check_performance: &'static str,
     check_performance_cache: Value,
+    control_artifacts_cache: Value,
     check_performance_evidence: Option<check_performance::PerformanceEvidence>,
     transitions: Vec<xml_changes::Transition>,
     height_checks: Vec<heights::HeightCheck>,
@@ -166,7 +172,12 @@ struct Comparison<'a> {
 /// explicit instead of certifying an unconfirmed process exit or comparison.
 pub(crate) fn run(args: Args) -> Result<()> {
     let mut comparison = Comparison::prepare(&args)?;
-    if let Err(error) = comparison.execute_staged_comparison() {
+    let result = if args.prepare_artifacts_only {
+        comparison.prepare_artifacts()
+    } else {
+        comparison.execute_staged_comparison()
+    };
+    if let Err(error) = result {
         if let Err(report_error) = comparison.record_failure(&error) {
             return Err(error.context(format!("Failure reporting also failed: {report_error:#}")));
         }

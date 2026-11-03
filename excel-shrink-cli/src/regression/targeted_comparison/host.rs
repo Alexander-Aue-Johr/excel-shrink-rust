@@ -16,6 +16,7 @@ pub(super) struct ExcelHost {
     input: BufWriter<ChildStdin>,
     responses: mpsc::Receiver<Result<Value>>,
     timeout: Duration,
+    pub(super) operation_measurements: Vec<Value>,
 }
 
 impl ExcelHost {
@@ -78,6 +79,11 @@ impl ExcelHost {
         Ok(())
     }
 
+    pub(super) fn save_as_workbook(&mut self, lane: LaneId, output: &Path, telemetry: &Telemetry) -> Result<()> {
+        self.call(json!({"kind":"save_as", "lane":lane.key(), "output":output}), telemetry)?;
+        Ok(())
+    }
+
     /// Require a positive native completion response, not merely an opened pane.
     pub(super) fn optimize_workbook(&mut self, telemetry: &Telemetry) -> Result<Value> {
         let result = self.call(
@@ -100,7 +106,7 @@ impl ExcelHost {
         lane: LaneId,
         telemetry: &Telemetry,
     ) -> Result<()> {
-        self.call(json!({"kind":"recalculate", "lane":lane.key()}), telemetry)?;
+        self.call(json!({"kind":"recalculate", "lane":lane.key(), "timeout_seconds":self.timeout.as_secs()}), telemetry)?;
         Ok(())
     }
 
@@ -267,6 +273,7 @@ impl ExcelHost {
             input,
             responses,
             timeout,
+            operation_measurements: Vec::new(),
         })
     }
 
@@ -304,6 +311,9 @@ impl ExcelHost {
             if response["event"] == "process_started" {
                 observe_started_process(&response, telemetry)?;
                 continue;
+            }
+            if !response["operation_measurements"].is_null() {
+                self.operation_measurements.push(response["operation_measurements"].clone());
             }
             ensure!(response["ok"] == true, "Excel host: {}", response["error"]);
             return Ok(response["result"].clone());

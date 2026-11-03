@@ -1,5 +1,13 @@
 $ErrorActionPreference = 'Stop'
 
+function Get-TargetedSha256 {
+    param([string]$Path)
+    $stream = [IO.File]::OpenRead($Path)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+    finally { $sha.Dispose(); $stream.Dispose() }
+}
+
 function Get-TargetedCacheEnvironment {
     <# .SYNOPSIS
     Identifies Excel and the generation recipe without another Excel process.
@@ -10,7 +18,7 @@ function Get-TargetedCacheEnvironment {
     $files = @(Get-ChildItem -LiteralPath $PSScriptRoot -File | Where-Object Extension -in @('.ps1', '.psm1', '.cs'))
     $files += @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'web') -File -Recurse | Where-Object Extension -eq '.js')
     foreach ($file in ($files | Sort-Object FullName)) {
-        $recipe += $file.FullName.Substring($PSScriptRoot.Length) + ':' + (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+        $recipe += $file.FullName.Substring($PSScriptRoot.Length) + ':' + (Get-TargetedSha256 $file.FullName).ToUpperInvariant()
     }
     $sha = [Security.Cryptography.SHA256]::Create()
     try {
@@ -18,7 +26,7 @@ function Get-TargetedCacheEnvironment {
         $recipeHash = [BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant()
     } finally { $sha.Dispose() }
     return @{
-        excel_sha256=(Get-FileHash -LiteralPath $excel.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        excel_sha256=(Get-TargetedSha256 $excel.FullName)
         excel_version=$excel.VersionInfo.FileVersion
         excel_path=$excel.FullName
         machine=$env:COMPUTERNAME
@@ -39,7 +47,16 @@ function Get-TargetedWorkbookMeasurements {
     #>
     param([string]$Session)
     $path = Join-Path $Session 'metrics.json'
-    $metrics = [IO.File]::ReadAllText($path) | ConvertFrom-Json
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ($true) {
+        try {
+            $metrics = [IO.File]::ReadAllText($path) | ConvertFrom-Json
+            break
+        } catch [IO.IOException] {
+            if ([DateTime]::UtcNow -ge $deadline) { throw }
+            Start-Sleep -Milliseconds 25
+        }
+    }
     if ($null -eq $metrics.clients.one) { throw 'Workbook measurements are unavailable.' }
     $client = $metrics.clients.one
     $sample = @{
