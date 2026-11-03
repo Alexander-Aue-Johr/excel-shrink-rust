@@ -129,7 +129,7 @@ impl ExcelHost {
             .collect();
         let result = self.call(
             json!({"kind":"heights", "lane":lane.key(), "sheet":sheet,
-            "spans":spans, "budget_ms":self.timeout.as_millis().min(30000)}),
+            "spans":spans, "budget_ms":self.timeout.as_millis()}),
             telemetry,
         )?;
         ensure!(result["complete"] == true, "Height coverage is incomplete");
@@ -390,6 +390,31 @@ mod tests {
         assert_eq!(command["range"], "A1:B2");
         Ok(())
     }
+    #[cfg(windows)]
+    #[test]
+    fn height_measurement_uses_the_configured_command_budget() -> Result<()> {
+        use clap::Parser;
+        let root = std::env::temp_dir().join(format!("height-budget-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root)?;
+        let script = root.join("host.ps1");
+        std::fs::write(&script, r#"
+$command = [Console]::ReadLine() | ConvertFrom-Json
+@{ok=$true;result=@{complete=$true;received_budget_ms=$command.budget_ms}} | ConvertTo-Json -Compress
+"#)?;
+        let args = super::super::Args::try_parse_from([
+            "test", "--original", "unused.xlsx", "--default", "unused-default.xlsx",
+            "--output", root.to_str().context("test path encoding")?,
+        ])?;
+        let telemetry = Telemetry::start(&args)?;
+        let mut host = ExcelHost::start(Some(&script), Duration::from_secs(90))?;
+        let result = host.height_runs(LaneId::O, "Data", &[(1, 100)], &telemetry)?;
+        assert_eq!(result["received_budget_ms"], 90_000);
+        drop(host);
+        drop(telemetry);
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
     #[test]
     fn protocol_telemetry_is_not_a_geometry_difference() {
         let a = json!({"top":0,"left":0,"width":90,"height":15,"elapsed_ms":1});
