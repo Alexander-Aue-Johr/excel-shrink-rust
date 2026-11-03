@@ -1,0 +1,208 @@
+{
+  "machine": "THE_LIBRARY",
+  "external_long_path_fixes": [
+    "b462272",
+    "be0a8d2"
+  ],
+  "semantic_comparison": {
+    "value": [
+      {
+        "one": "one-cp-control-view",
+        "two": "two-small",
+        "matching": {
+          "findings": true,
+          "comparisons": true,
+          "content_coverage": true,
+          "capture_counts": true
+        }
+      },
+      {
+        "one": "one-large",
+        "two": "two-large",
+        "matching": {
+          "findings": true,
+          "comparisons": true,
+          "content_coverage": true,
+          "capture_counts": true
+        }
+      }
+    ],
+    "Count": 2
+  },
+  "code_commit": "84996bb8b7cd71977973bcee49f57e85367d9623",
+  "parser_fix": "31c08e5",
+  "corpus_resume": {
+    "selected": 10436,
+    "runner_pid": 28984,
+    "approved_old_preparation_binary": "dfdeda9e9426af063b7fa13cfa76c386e285e8fda1296679a6253a7f6fb01421",
+    "compare_only": true,
+    "maximum_groups_requested": 2,
+    "prepared": 10110,
+    "system_reserve_mib": 4096,
+    "run_id": "89669fea-66d8-4b2b-afc4-653dc5cebca0",
+    "partition": "2/2",
+    "check_performance_enabled": true,
+    "binary_sha256": "9c67b28cda1ee2871ca4399f5b85124253fad7fb2c535c4717a7a645e1e479a8",
+    "handoff_observation": {
+      "active_groups": 2,
+      "available_commit_headroom_gib": 20.99,
+      "completed_total": 5,
+      "compared_in_final_restart": 1,
+      "available_physical_gib": 14.88,
+      "failed_in_final_restart": 0
+    }
+  },
+  "date": "2026-11-03",
+  "converted_input_reuse": "9fc1821",
+  "limitations": [
+    "Two workbook inputs only; no corpus-wide speedup or long-term stability claim.",
+    "Windows WorkloadsSessionHost crashes remain in both one- and two-group test windows.",
+    "Overlapping two-group crash counts must not be summed.",
+    "All native tests use bounded targeted coverage, not full-sheet equivalence."
+  ],
+  "sampled_resources": {
+    "one_group": {
+      "minimum_commit_headroom_gib": 22.78,
+      "partial_time_window": true,
+      "peak_windows_workload_hosts": 10,
+      "minimum_available_gib": 14.7,
+      "peak_excel_processes": 6
+    },
+    "two_groups": {
+      "minimum_commit_headroom_gib": 18.65,
+      "peak_windows_workload_hosts": 12,
+      "minimum_available_gib": 12.28,
+      "peak_excel_processes": 9
+    }
+  },
+  "tests": {
+    "value": [
+      {
+        "cp": "optimization_confirmed",
+        "seconds": 47.351,
+        "workload_crashes": 1,
+        "images_read": 18,
+        "image_comparisons": 69,
+        "candidate_count": 3,
+        "started_utc": "2026-11-03T08:44:18.8880000+00:00",
+        "excel_crashes": 0,
+        "test": "one-cp-control-view",
+        "capture_counts": {
+          "CP": 3,
+          "CP:charts": 0,
+          "CPR": 3,
+          "CPR:charts": 0,
+          "O": 3,
+          "O:charts": 0,
+          "OR": 3,
+          "OR:charts": 0,
+          "SD": 3,
+          "SD:charts": 0,
+          "SDR": 3,
+          "SDR:charts": 0
+        },
+        "finished_utc": "2026-11-03T08:45:06.2390000+00:00",
+        "status": "completed_with_limitations"
+      },
+      {
+        "cp": "no_optimization_needed",
+        "seconds": 100.352,
+        "workload_crashes": 1,
+        "images_read": 72,
+        "image_comparisons": 276,
+        "candidate_count": 12,
+        "started_utc": "2026-11-03T08:46:20.9450000+00:00",
+        "excel_crashes": 0,
+        "test": "one-large",
+        "capture_counts": {
+          "CP": 12,
+          "CP:charts": 0,
+          "CPR": 12,
+          "CPR:charts": 0,
+          "O": 12,
+          "O:charts": 0,
+          "OR": 12,
+          "OR:charts": 0,
+          "SD": 12,
+          "SD:charts": 0,
+          "SDR": 12,
+          "SDR:charts": 0
+        },
+        "finished_utc": "2026-11-03T08:48:01.2970000+00:00",
+        "status": "completed_with_limitations"
+      },
+      {
+        "cp": "optimization_confirmed",
+        "seconds": 49.216,
+        "workload_crashes": 1,
+        "images_read": 18,
+        "image_comparisons": 69,
+        "candidate_count": 3,
+        "started_utc": "2026-11-03T08:49:28.1880000+00:00",
+        "excel_crashes": 0,
+        "test": "two-small",
+        "capture_counts": {
+          "CP": 3,
+          "CP:charts": 0,
+          "CPR": 3,
+          "CPR:charts": 0,
+          "O": 3,
+          "O:charts": 0,
+          "OR": 3,
+          "OR:charts": 0,
+          "SD": 3,
+          "SD:charts": 0,
+          "SDR": 3,
+          "SDR:charts": 0
+        },
+        "finished_utc": "2026-11-03T08:50:17.4040000+00:00",
+        "status": "completed_with_limitations"
+      },
+      {
+        "cp": "no_optimization_needed",
+        "seconds": 99.734,
+        "workload_crashes": 3,
+        "images_read": 72,
+        "image_comparisons": 276,
+        "candidate_count": 12,
+        "started_utc": "2026-11-03T08:49:28.1860000+00:00",
+        "excel_crashes": 0,
+        "test": "two-large",
+        "capture_counts": {
+          "CP": 12,
+          "CP:charts": 0,
+          "CPR": 12,
+          "CPR:charts": 0,
+          "O": 12,
+          "O:charts": 0,
+          "OR": 12,
+          "OR:charts": 0,
+          "SD": 12,
+          "SD:charts": 0,
+          "SDR": 12,
+          "SDR:charts": 0
+        },
+        "finished_utc": "2026-11-03T08:51:07.9200000+00:00",
+        "status": "completed_with_limitations"
+      }
+    ],
+    "Count": 4
+  },
+  "check_performance_fix": "6ecb27c",
+  "height_budget_fix": "95c592b",
+  "height_batching_fix": "84996bb",
+  "height_verification": {
+    "batched_default_seconds": 2.9682,
+    "batched_default_runs": 4462,
+    "two_group_failure_seconds": 30.0252,
+    "spans": 4462,
+    "case": "87c8ac003fd17e1f7abe",
+    "full_visual_comparison_completed_in_diagnostic": false,
+    "batched_original_runs": 4462,
+    "batched_original_seconds": 2.7457,
+    "diagnostic_stop_reason": "height checks verified; interrupted during progressing visible-range planning to avoid duplicate corpus work",
+    "sheet": "NG_01",
+    "one_group_failure_seconds": 30.0021,
+    "coverage_complete": true
+  }
+}
