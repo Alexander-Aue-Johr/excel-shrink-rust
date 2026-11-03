@@ -43,6 +43,35 @@ public static class NativeWindow
         IntPtr window, uint message, UIntPtr wParam, IntPtr lParam,
         uint flags, uint timeout, out UIntPtr result);
 
+    private delegate bool EnumerateWindow(IntPtr window, IntPtr parameter);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumChildWindows(IntPtr parent, EnumerateWindow callback, IntPtr parameter);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, System.Text.StringBuilder name, int maximum);
+
+    /// <summary>Find native child panes of the exact owned Excel window without walking worksheet accessibility cells.</summary>
+    public static IntPtr[] FindChildWindows(IntPtr owner, int pid, string className)
+    {
+        uint ownerPid;
+        GetWindowThreadProcessId(owner, out ownerPid);
+        if (owner == IntPtr.Zero || ownerPid != pid)
+            throw new InvalidOperationException("Pane lookup requires the owned Excel window.");
+        var windows = new System.Collections.Generic.List<IntPtr>();
+        EnumerateWindow callback = delegate(IntPtr window, IntPtr parameter)
+        {
+            uint actualPid;
+            GetWindowThreadProcessId(window, out actualPid);
+            var name = new System.Text.StringBuilder(256);
+            GetClassName(window, name, name.Capacity);
+            if (actualPid == pid && GetAncestor(window, RootAncestor) == owner && name.ToString() == className)
+                windows.Add(window);
+            return true;
+        };
+        EnumChildWindows(owner, callback, IntPtr.Zero);
+        return windows.ToArray();
+    }
     /// <summary>Send window messages to the owned button host without global input.</summary>
     public static void SendClick(IntPtr owner, int pid, int x, int y)
     {
