@@ -10,12 +10,7 @@
       }
       return office(action);
     };
-    const runs = [];
-    for (const span of command.spans) {
-      const selected = await CaptureGeometry.readHeightRuns(
-        measuredOffice, command.sheet, span.end - 1, span.start - 1);
-      runs.push(...selected);
-    }
+    const runs = await CaptureGeometry.readHeightSpans(measuredOffice, command.sheet, command.spans);
     return {runs, elapsed_ms: performance.now() - started, complete: true};
   }
 

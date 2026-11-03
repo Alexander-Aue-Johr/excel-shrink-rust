@@ -128,9 +128,22 @@
     if (!Number.isInteger(startRow) || startRow < 0 || startRow > bottomRow) {
       throw new Error(`Invalid first row for ${sheet}`);
     }
+    return readHeightSpans(office, sheet, [{start: startRow + 1, end: bottomRow + 1}]);
+  }
+
+  /** Measure ordered, nonoverlapping inclusive one-based spans in shared Office batches. */
+  async function readHeightSpans(office, sheet, spans) {
     const pending = [];
-    for (let start = startRow; start <= bottomRow; start += 8192) {
-      pending.push({start, end: Math.min(bottomRow + 1, start + 8192)});
+    for (let selection = 0; selection < spans.length; selection++) {
+      const span = spans[selection];
+      if (!Number.isInteger(span.start) || !Number.isInteger(span.end) ||
+          span.start < 1 || span.end < span.start || span.end > MAX_ROWS ||
+          (selection > 0 && span.start <= spans[selection - 1].end)) {
+        throw new Error(`Invalid row-height span for ${sheet}`);
+      }
+      for (let start = span.start - 1; start < span.end; start += 8192) {
+        pending.push({start, end: Math.min(span.end, start + 8192), selection});
+      }
     }
     const measured = [];
     let cursor = 0;
@@ -159,18 +172,19 @@
         if (item.rowCount !== count) throw new Error(`Row range changed while checking ${sheet}`);
         if (count === 1) {
           if (!visible || typeof hidden !== 'boolean') throw new Error(`Ambiguous row height at ${sheet}!${span.start + 1}`);
-          measured.push({start_row: span.start + 1, end_row: span.end,
+          measured.push({selection: span.selection, start_row: span.start + 1, end_row: span.end,
             height: hidden ? 0 : item.height});
           continue;
         }
         const expected = hidden === true ? 0 : Number(item.rowHeight) * count;
         if (visible && typeof hidden === 'boolean' && (hidden || uniform) &&
             Math.abs(item.height - expected) <= Math.max(.01, Math.abs(expected) * 1e-9)) {
-          measured.push({start_row: span.start + 1, end_row: span.end,
+          measured.push({selection: span.selection, start_row: span.start + 1, end_row: span.end,
             height: hidden ? 0 : item.rowHeight});
         } else {
           const middle = span.start + Math.floor(count / 2);
-          pending.push({start: span.start, end: middle}, {start: middle, end: span.end});
+          pending.push({start: span.start, end: middle, selection: span.selection},
+            {start: middle, end: span.end, selection: span.selection});
         }
       }
     }
@@ -178,15 +192,25 @@
     const runs = [];
     for (const item of measured) {
       const previous = runs[runs.length - 1];
-      if (previous && previous.end_row + 1 === item.start_row && previous.height === item.height) {
+      if (previous && previous.selection === item.selection &&
+          previous.end_row + 1 === item.start_row && previous.height === item.height) {
         previous.end_row = item.end_row;
       } else runs.push(item);
     }
-    if (!runs.length || runs[0].start_row !== startRow + 1 || runs[runs.length - 1].end_row !== bottomRow + 1 ||
-        runs.some((run, index) => index && runs[index - 1].end_row + 1 !== run.start_row)) {
-      throw new Error(`Row height coverage is incomplete for ${sheet}`);
+    let index = 0;
+    for (const span of spans) {
+      let next = span.start;
+      while (index < runs.length && runs[index].start_row <= span.end) {
+        const run = runs[index++];
+        if (run.start_row !== next || run.end_row > span.end) {
+          throw new Error(`Row height coverage is incomplete for ${sheet}`);
+        }
+        next = run.end_row + 1;
+      }
+      if (next !== span.end + 1) throw new Error(`Row height coverage is incomplete for ${sheet}`);
     }
-    return runs;
+    if (index !== runs.length) throw new Error(`Row height coverage is incomplete for ${sheet}`);
+    return runs.map(({selection, ...run}) => run);
   }
 
   class SheetGeometry {
@@ -539,7 +563,7 @@
     return end;
   }
 
-  const api = {SheetGeometry, readHeightRuns, address, pngSize, exceedsExtent, probeEnd, MAX_PIXELS, MAX_EDGE};
+  const api = {SheetGeometry, readHeightRuns, readHeightSpans, address, pngSize, exceedsExtent, probeEnd, MAX_PIXELS, MAX_EDGE};
   root.CaptureGeometry = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 }(typeof window !== 'undefined' ? window : globalThis));
