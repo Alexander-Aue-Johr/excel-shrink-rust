@@ -307,6 +307,7 @@ from WSL instead.
 - [Enron overnight run, 2–3 November 2026](investigations/enron-night-run-20261103.md): preparation completed, visual comparisons failed, and Windows became unresponsive.
 
 - [Controlled Enron restart, 3 November 2026](investigations/enron-controlled-resume-20261103.md): parser and localized Check Performance fixes, matched one-/two-group results, remaining Windows runtime failures.
+
 ### Rebuild shrink outputs from preserved conversions
 
 Set `EXCEL_SHRINK_CONVERTED_BUNDLES_DIR` to an earlier run's `prepared` directory

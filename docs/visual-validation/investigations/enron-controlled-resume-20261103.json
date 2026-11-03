@@ -4,31 +4,28 @@
     "b462272",
     "be0a8d2"
   ],
-  "semantic_comparison": {
-    "value": [
-      {
-        "one": "one-cp-control-view",
-        "two": "two-small",
-        "matching": {
-          "findings": true,
-          "comparisons": true,
-          "content_coverage": true,
-          "capture_counts": true
-        }
-      },
-      {
-        "one": "one-large",
-        "two": "two-large",
-        "matching": {
-          "findings": true,
-          "comparisons": true,
-          "content_coverage": true,
-          "capture_counts": true
-        }
+  "semantic_comparison": [
+    {
+      "one": "one-cp-control-view",
+      "two": "two-small",
+      "matching": {
+        "findings": true,
+        "comparisons": true,
+        "content_coverage": true,
+        "capture_counts": true
       }
-    ],
-    "Count": 2
-  },
+    },
+    {
+      "one": "one-large",
+      "two": "two-large",
+      "matching": {
+        "findings": true,
+        "comparisons": true,
+        "content_coverage": true,
+        "capture_counts": true
+      }
+    }
+  ],
   "code_commit": "84996bb8b7cd71977973bcee49f57e85367d9623",
   "parser_fix": "31c08e5",
   "corpus_resume": {
@@ -75,119 +72,116 @@
       "peak_excel_processes": 9
     }
   },
-  "tests": {
-    "value": [
-      {
-        "cp": "optimization_confirmed",
-        "seconds": 47.351,
-        "workload_crashes": 1,
-        "images_read": 18,
-        "image_comparisons": 69,
-        "candidate_count": 3,
-        "started_utc": "2026-11-03T08:44:18.8880000+00:00",
-        "excel_crashes": 0,
-        "test": "one-cp-control-view",
-        "capture_counts": {
-          "CP": 3,
-          "CP:charts": 0,
-          "CPR": 3,
-          "CPR:charts": 0,
-          "O": 3,
-          "O:charts": 0,
-          "OR": 3,
-          "OR:charts": 0,
-          "SD": 3,
-          "SD:charts": 0,
-          "SDR": 3,
-          "SDR:charts": 0
-        },
-        "finished_utc": "2026-11-03T08:45:06.2390000+00:00",
-        "status": "completed_with_limitations"
+  "tests": [
+    {
+      "cp": "optimization_confirmed",
+      "seconds": 47.351,
+      "workload_crashes": 1,
+      "images_read": 18,
+      "image_comparisons": 69,
+      "candidate_count": 3,
+      "started_utc": "2026-11-03T08:44:18.8880000+00:00",
+      "excel_crashes": 0,
+      "test": "one-cp-control-view",
+      "capture_counts": {
+        "CP": 3,
+        "CP:charts": 0,
+        "CPR": 3,
+        "CPR:charts": 0,
+        "O": 3,
+        "O:charts": 0,
+        "OR": 3,
+        "OR:charts": 0,
+        "SD": 3,
+        "SD:charts": 0,
+        "SDR": 3,
+        "SDR:charts": 0
       },
-      {
-        "cp": "no_optimization_needed",
-        "seconds": 100.352,
-        "workload_crashes": 1,
-        "images_read": 72,
-        "image_comparisons": 276,
-        "candidate_count": 12,
-        "started_utc": "2026-11-03T08:46:20.9450000+00:00",
-        "excel_crashes": 0,
-        "test": "one-large",
-        "capture_counts": {
-          "CP": 12,
-          "CP:charts": 0,
-          "CPR": 12,
-          "CPR:charts": 0,
-          "O": 12,
-          "O:charts": 0,
-          "OR": 12,
-          "OR:charts": 0,
-          "SD": 12,
-          "SD:charts": 0,
-          "SDR": 12,
-          "SDR:charts": 0
-        },
-        "finished_utc": "2026-11-03T08:48:01.2970000+00:00",
-        "status": "completed_with_limitations"
+      "finished_utc": "2026-11-03T08:45:06.2390000+00:00",
+      "status": "completed_with_limitations"
+    },
+    {
+      "cp": "no_optimization_needed",
+      "seconds": 100.352,
+      "workload_crashes": 1,
+      "images_read": 72,
+      "image_comparisons": 276,
+      "candidate_count": 12,
+      "started_utc": "2026-11-03T08:46:20.9450000+00:00",
+      "excel_crashes": 0,
+      "test": "one-large",
+      "capture_counts": {
+        "CP": 12,
+        "CP:charts": 0,
+        "CPR": 12,
+        "CPR:charts": 0,
+        "O": 12,
+        "O:charts": 0,
+        "OR": 12,
+        "OR:charts": 0,
+        "SD": 12,
+        "SD:charts": 0,
+        "SDR": 12,
+        "SDR:charts": 0
       },
-      {
-        "cp": "optimization_confirmed",
-        "seconds": 49.216,
-        "workload_crashes": 1,
-        "images_read": 18,
-        "image_comparisons": 69,
-        "candidate_count": 3,
-        "started_utc": "2026-11-03T08:49:28.1880000+00:00",
-        "excel_crashes": 0,
-        "test": "two-small",
-        "capture_counts": {
-          "CP": 3,
-          "CP:charts": 0,
-          "CPR": 3,
-          "CPR:charts": 0,
-          "O": 3,
-          "O:charts": 0,
-          "OR": 3,
-          "OR:charts": 0,
-          "SD": 3,
-          "SD:charts": 0,
-          "SDR": 3,
-          "SDR:charts": 0
-        },
-        "finished_utc": "2026-11-03T08:50:17.4040000+00:00",
-        "status": "completed_with_limitations"
+      "finished_utc": "2026-11-03T08:48:01.2970000+00:00",
+      "status": "completed_with_limitations"
+    },
+    {
+      "cp": "optimization_confirmed",
+      "seconds": 49.216,
+      "workload_crashes": 1,
+      "images_read": 18,
+      "image_comparisons": 69,
+      "candidate_count": 3,
+      "started_utc": "2026-11-03T08:49:28.1880000+00:00",
+      "excel_crashes": 0,
+      "test": "two-small",
+      "capture_counts": {
+        "CP": 3,
+        "CP:charts": 0,
+        "CPR": 3,
+        "CPR:charts": 0,
+        "O": 3,
+        "O:charts": 0,
+        "OR": 3,
+        "OR:charts": 0,
+        "SD": 3,
+        "SD:charts": 0,
+        "SDR": 3,
+        "SDR:charts": 0
       },
-      {
-        "cp": "no_optimization_needed",
-        "seconds": 99.734,
-        "workload_crashes": 3,
-        "images_read": 72,
-        "image_comparisons": 276,
-        "candidate_count": 12,
-        "started_utc": "2026-11-03T08:49:28.1860000+00:00",
-        "excel_crashes": 0,
-        "test": "two-large",
-        "capture_counts": {
-          "CP": 12,
-          "CP:charts": 0,
-          "CPR": 12,
-          "CPR:charts": 0,
-          "O": 12,
-          "O:charts": 0,
-          "OR": 12,
-          "OR:charts": 0,
-          "SD": 12,
-          "SD:charts": 0,
-          "SDR": 12,
-          "SDR:charts": 0
-        },
-        "finished_utc": "2026-11-03T08:51:07.9200000+00:00",
-        "status": "completed_with_limitations"
-      }
-    ],
-    "Count": 4
-  },
+      "finished_utc": "2026-11-03T08:50:17.4040000+00:00",
+      "status": "completed_with_limitations"
+    },
+    {
+      "cp": "no_optimization_needed",
+      "seconds": 99.734,
+      "workload_crashes": 3,
+      "images_read": 72,
+      "image_comparisons": 276,
+      "candidate_count": 12,
+      "started_utc": "2026-11-03T08:49:28.1860000+00:00",
+      "excel_crashes": 0,
+      "test": "two-large",
+      "capture_counts": {
+        "CP": 12,
+        "CP:charts": 0,
+        "CPR": 12,
+        "CPR:charts": 0,
+        "O": 12,
+        "O:charts": 0,
+        "OR": 12,
+        "OR:charts": 0,
+        "SD": 12,
+        "SD:charts": 0,
+        "SDR": 12,
+        "SDR:charts": 0
+      },
+      "finished_utc": "2026-11-03T08:51:07.9200000+00:00",
+      "status": "completed_with_limitations"
+    }
+  ],
   "check_performance_fix": "6ecb27c",
   "height_budget_fix": "95c592b",
   "height_batching_fix": "84996bb",
