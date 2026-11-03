@@ -18,6 +18,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $session 'clients') -PathType Contai
 }
 
 Import-Module (Join-Path $PSScriptRoot 'CaptureSetup.psm1') -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'WindowsLongPaths.psm1') -Force
 $tokens = $null
 $parseErrors = $null
 $archiveLauncher = Join-Path $PSScriptRoot '../src/regression/archive_processes.ps1'
@@ -73,7 +74,8 @@ function Confirm-ResidentClientExit($ownedClients, $clientMetrics, [int]$Timeout
 }
 
 function Write-ResidentJsonFile([string]$target, $value) {
-    $pending = $target + '.' + [Guid]::NewGuid().ToString('N') + '.pending'
+    $pending = ConvertTo-WindowsLongPath ($target + '.' + [Guid]::NewGuid().ToString('N') + '.pending')
+    $target = ConvertTo-WindowsLongPath $target
     [IO.File]::WriteAllText($pending, ($value | ConvertTo-Json -Depth 40), $utf8)
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         try {
@@ -392,18 +394,19 @@ function Wait-BatchRelease {
     if ($batchReleased) { return $batchReleaseReason }
     $ready = [string]$batchLifetime.ready_path
     [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($ready))
-    $pending = $ready + '.' + [Guid]::NewGuid().ToString('N') + '.pending'
+    $pending = ConvertTo-WindowsLongPath ($ready + '.' + [Guid]::NewGuid().ToString('N') + '.pending')
+    $readyForIo = ConvertTo-WindowsLongPath $ready
     [IO.File]::WriteAllText($pending, (@{ launcher_pid=$PID; status=$metrics.status; ready_at=[DateTime]::UtcNow.ToString('o'); opening_pause_millis=(Read-OtherGroupPauseMillis) } | ConvertTo-Json), $utf8)
-    [ResidentProcesses]::PublishOnce($pending, $ready)
+    [ResidentProcesses]::PublishOnce($pending, $readyForIo)
     Add-SessionEvent 'batch_wait_started' '' $null
     # Rust or another observer may already have published readiness. Preserve
     # its first timestamp and pause baseline; repeated waits cannot restart it.
-    $readyAge = [Math]::Max(0.0, ([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($ready)).TotalSeconds)
+    $readyAge = [Math]::Max(0.0, ([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($readyForIo)).TotalSeconds)
     $waitCounter = $null
     try {
-        $marker = Get-Item -LiteralPath $ready -ErrorAction Stop
+        $marker = Get-Item -LiteralPath $readyForIo -ErrorAction Stop
         if ($marker.Length -le 4096) {
-            $baseline = ([IO.File]::ReadAllText($ready, $utf8) | ConvertFrom-Json).opening_pause_millis
+            $baseline = ([IO.File]::ReadAllText($readyForIo, $utf8) | ConvertFrom-Json).opening_pause_millis
             $parsed = [UInt64]0
             if (($baseline -is [int] -or $baseline -is [long] -or $baseline -is [uint64]) -and
                 [UInt64]::TryParse([string]$baseline, [ref]$parsed)) { $waitCounter = $parsed }
