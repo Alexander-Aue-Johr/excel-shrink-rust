@@ -156,6 +156,7 @@ pub(super) fn new_report() -> Report {
     Report {
         workbook_bytes: BTreeMap::new(),
         capture_policy: super::CAPTURE_POLICY,
+        execution_strategy: "default-inplace-rebuild-v1",
         capture_partition: "visible-geometry-v1",
         input_identity: Default::default(),
         state_decisions: BTreeMap::new(),
@@ -179,14 +180,14 @@ pub(super) fn new_report() -> Report {
         excel_pids: BTreeMap::new(),
         capture_counts: BTreeMap::new(),
         limitations: vec![
+            "Strategy default-inplace-rebuild-v1 compares Original with SD before and after rebuilding the same SD instance. Original and optional Check Performance are not explicitly rebuilt. The SD pre-rebuild comparison retains its phase-specific region selection; regions first discovered after SD rebuild have no SD-before image or volatility/causal classification.".into(),
             "Cell capture regions are intersected with the union of content-bearing cell bounds across raw, saved and rebuilt inputs, plus one row/column of margin. Formatting-only exterior regions are intentionally skipped, not visually confirmed identical; content_coverage records selection counts and bounds. Chart exports are independent of this policy.".into(),
             "Capture partition visible-geometry-v1 merges adjacent internal grid tiles without changing their union. It measures every live state and splits only for image budgets (30,000 pixels per edge, 32 million pixels total), estimating conservatively at two pixels per point plus a rounding margin. Actual exports are checked too. Zero-area ranges retain geometry and explicit non-rendering observations without images or pixel equality claims. Later states can repartition and backfill earlier retained workbooks.".into(),
             "CF decisions concern rule contributions within the recorded union of comparison extents. Literal cellIs exclusions require identical cell-XML fingerprints and visual context. Formula inputs remain captures; unknown or changed rules retain region captures. This is not a proof of whole-workbook visual equality.".into(),
             "Embedded charts and standalone chart sheets are compared as whole-chart exports in every retained state. Chart-sheet exports use a consistent viewport in the existing owned Excel process. Other drawings, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
             "Charts with measured zero width or height retain geometry and an explicit zero-area-chart observation without a pixel verdict. A transition between visible and zero-area states is a rendering/geometry difference.".into(),
             "Excel may recalculate during open even when manual calculation is requested.".into(),
-            "Opening/saving and rebuild-copy reopening are retained as separate XML controls. Exact content/context matches identify overlaps conservatively; absence of a match does not establish exclusive causality.".into(),
-            "Version-three execution omits Default only after exact raw input byte equality. Rebuild states are omitted only by the recorded conservative static-workbook guard. Omitted states have no screenshots or post-rebuild equality claim; their absence is explained by state_decisions and rebuild_checks. This does not prove that reopening or saving could never affect rendering. Check Performance remains independent.".into(),
+            "Opening/saving and the in-place SD rebuild are retained as separate XML controls. Exact content/context matches identify overlaps conservatively; absence of a match does not establish exclusive causality.".into(),
             "Worksheet cells are streamed into temporary fixed-size fingerprints without worksheet-byte or cell-count limits. Exterior empty-cell changes are counted before candidate allocation. Layout metadata and retained change evidence still require memory.".into(),
         ],
     }

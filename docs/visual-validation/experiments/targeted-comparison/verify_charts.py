@@ -32,7 +32,7 @@ def verify(directory: Path, collapsed_chart=False) -> None:
     if report['check_performance'] != 'not_requested':
         labels = {pair['label'] for pair in report['comparisons']}
         assert 'direct Check Performance' in labels
-        assert 'Check Performance own rebuild' in labels
+        assert 'Check Performance own rebuild' not in labels
     for pair in report['comparisons']:
         assert pair['charts'], pair['label']
         assert any(item['kind'] == 'chart_sheet' for item in pair['charts']), pair['label']

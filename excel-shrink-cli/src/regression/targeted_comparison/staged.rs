@@ -1,9 +1,9 @@
-//! Preserve live pre-rebuild states until every late candidate has matching evidence.
+//! Compare live Original with Default before and after rebuilding the same Default instance.
 use super::{
     capture_layout::{self, Geometry},
     charts,
     evidence::Evidence,
-    execution_plan::{self, StateDecision},
+    execution_plan::StateDecision,
     heights::{self, HeightCheck, HeightRun},
     telemetry::{LaneId, Lifecycle, Phase, StepStatus},
     xml_changes::{cell_candidates, Snapshot, Transition},
@@ -50,6 +50,7 @@ pub(super) struct VisualComparison {
     left: LaneId,
     right: LaneId,
     findings: Vec<VisualFinding>,
+    selected_region_count: usize,
     pub charts: Vec<charts::Finding>,
 }
 
@@ -77,7 +78,7 @@ struct Workflow<'a, 'b> {
 }
 
 impl Comparison<'_> {
-    /// Complete direct and variant-rebuild comparisons before starting Original's rebuild copy.
+    /// Compare two SD phases without reopening SD or explicitly rebuilding Original.
     pub(super) fn execute_staged_comparison(&mut self) -> Result<()> {
         Workflow {
             comparison: self,
@@ -101,17 +102,21 @@ impl Workflow<'_, '_> {
         self.inspect_available_pairs()?;
         self.capture_missing_regions()?;
         self.publish_available_comparisons("before rebuild")?;
-        self.rebuild_variant_copies()?;
-        self.publish_available_comparisons(
-            "variant rebuild decisions complete; Original pre-state retained",
+        self.skip_state(
+            LaneId::OR,
+            StateDecision::Disabled,
+            "Original is retained without an explicit rebuild",
         )?;
-        self.prepare_rebuild_copy(LaneId::O, LaneId::OR)?;
+        self.skip_state(
+            LaneId::CPR,
+            StateDecision::Disabled,
+            "Check Performance rebuild is outside this screening strategy",
+        )?;
+        self.rebuild_default_in_place()?;
         self.inspect_available_pairs()?;
         self.capture_missing_regions()?;
         self.close_states()?;
-        self.publish_available_comparisons(
-            "Original rebuild decision complete; observed comparisons finalized",
-        )?;
+        self.publish_available_comparisons("SD rebuilt in place; Original not rebuilt")?;
         self.project_legacy_findings()?;
         self.comparison.complete()
     }
@@ -237,11 +242,8 @@ impl Workflow<'_, '_> {
         self.comparison.report.state_decisions.insert(
             id,
             StateDecision::Observed {
-                method: if (id == LaneId::CPR && self.comparison.performance.cached_rebuild)
-                    || self.comparison.report.control_artifacts_cache[id.key()]["status"] == "hit" {
-                    "cached-rebuild"
-                } else if matches!(id, LaneId::OR | LaneId::SDR | LaneId::CPR) {
-                    "explicit-rebuild"
+                method: if id == LaneId::SDR {
+                    "inplace-rebuild"
                 } else {
                     "open-save"
                 },
@@ -337,137 +339,44 @@ impl Workflow<'_, '_> {
             .update(|state| state.candidates(self.comparison.candidates.len()))
     }
 
-    fn rebuild_variant_copies(&mut self) -> Result<()> {
-        if self.states.contains_key(&LaneId::SD) {
-            self.prepare_rebuild_copy(LaneId::SD, LaneId::SDR)?;
-        }
-        if !self.comparison.args.skip_check_performance {
-            self.prepare_rebuild_copy(LaneId::CP, LaneId::CPR)?;
-        }
-        self.inspect_available_pairs()?;
-        self.capture_missing_regions()?;
-        Ok(())
-    }
-
-    /// Rebuild an independent copy so every original pre-state remains available for late captures.
-    fn prepare_rebuild_copy(&mut self, parent: LaneId, id: LaneId) -> Result<()> {
-        let source = self.states[&parent].path.clone();
-        let check = execution_plan::check_rebuild(&source, &self.states[&parent].xml)?;
-        let skip = check.eligible_to_skip;
-        self.comparison.report.rebuild_checks.insert(id, check);
-        if skip {
-            return self.skip_state(
-                id,
-                StateDecision::SkippedNoRebuild { source: parent },
-                "Rebuild not required — no calculation dependencies",
-            );
-        }
-        self.comparison.telemetry.update(|state| {
-            state.lane(id).decision_note =
-                Some("Rebuild required — calculation dependencies or unsupported features".into());
-        })?;
-        let path = self
-            .comparison
-            .args
-            .output
-            .join(format!("{}-rebuilt.xlsx", id.key()));
-        let before = path.with_extension("before-rebuild.xlsx");
-        let cached = if id == LaneId::CPR {
-            self.comparison.restore_performance_rebuild(&source, &before, &path)?
-        } else {
-            self.comparison.restore_control(id, &source, &before, &path)?
+    /// Preserve published SD evidence, then rebuild that same resident instance.
+    /// Late candidates use live Original, never an invented SD pre-state.
+    fn rebuild_default_in_place(&mut self) -> Result<()> {
+        let Some(previous) = self.states.remove(&LaneId::SD) else {
+            return Ok(());
         };
-        if !cached {
-            fs::copy(&source, &path)?;
-        } else if id != LaneId::CPR {
-            fs::copy(&path, path.with_extension("cached-after-rebuild.xlsx"))?;
-        }
-        self.comparison.telemetry.update(|state| {
-            if cached {
-                state.lane(id).decision_note = Some("Rebuild from cache — historical generation; current opening measured separately".into());
-            }
-            state.lane(id).lifecycle = Lifecycle::Opening;
-            state.step(id, Phase::Open, StepStatus::Running);
-        })?;
+        let path = self.comparison.args.output.join("SDR-rebuilt.xlsx");
         let pid = self
             .comparison
             .excel
             .as_mut()
             .context("Excel host missing")?
-            .open_workbook(id, &path, &self.comparison.telemetry)?;
-        self.comparison
-            .report
-            .excel_pids
-            .insert(id.key().into(), pid);
+            .move_default_to_rebuild(&path, &self.comparison.telemetry)?;
+        self.comparison.report.excel_pids.insert("SDR".into(), pid);
         self.comparison.telemetry.update(|state| {
-            state.lane(id).lifecycle = Lifecycle::Open;
-            state.step(id, Phase::Open, StepStatus::Done);
-            state.step(id, Phase::Save, StepStatus::Running);
+            state.lane(LaneId::SD).decision_note = Some(
+                "Same resident process transferred to SDR; pre-rebuild evidence frozen".into(),
+            );
+            let started = state.lane(LaneId::SD).process_started_at;
+            let lane = state.lane(LaneId::SDR);
+            lane.pid = Some(pid);
+            lane.process_started_at = started;
+            lane.process_alive = Some(true);
+            lane.steps.insert(Phase::Open, StepStatus::Skipped);
+            lane.lifecycle = Lifecycle::Open;
+            lane.decision_note =
+                Some("SD rebuilt in the same Excel instance; no additional opening".into());
         })?;
-        self.comparison
-            .excel
-            .as_mut()
-            .unwrap()
-            .save_workbook(id, &self.comparison.telemetry)?;
-        if !cached {
-            fs::copy(&path, &before)?;
-        }
-        self.comparison
-            .telemetry
-            .update(|state| state.step(id, Phase::Save, StepStatus::Done))?;
+        self.comparison.rebuild(LaneId::SDR)?;
         self.audit(
-            &format!("{} rebuild-copy opening/saving control", parent.key()),
-            &source,
-            &before,
+            "Default in-place explicit rebuild and save",
+            &previous.path,
+            &path,
         )?;
-        self.comparison
-            .telemetry
-            .update(|state| state.step(id, Phase::InspectSave, StepStatus::Done))?;
-        if cached {
-            self.comparison.telemetry.update(|state| {
-                state.step(id, Phase::Recalculate, StepStatus::Skipped);
-            })?;
-            self.audit(
-                "cached rebuild reopening/saving control",
-                &path.with_extension("cached-after-rebuild.xlsx"),
-                &path,
-            )?;
-        } else {
-            self.comparison.rebuild(id)?;
-            if id == LaneId::CPR {
-                self.comparison
-                    .remember_performance_artifacts(Some((&source, &before, &path)));
-            } else {
-                self.comparison.remember_control(id, &source,
-                    &[("before_rebuild", &before), ("after_rebuild", &path)])?;
-            }
-        }
-        if cached {
-            self.audit(
-                &format!("cached {} explicit rebuild and save", parent.key()),
-                &before,
-                &path.with_extension("cached-after-rebuild.xlsx"),
-            )?;
-        } else {
-            self.audit(
-                &format!("{} explicit rebuild and save", parent.key()),
-                &before,
-                &path,
-            )?;
-        }
-        self.register(id, path)?;
-        self.comparison.report.phases.push(format!(
-            "{} {}; ready for shared candidate capture",
-            parent.key(),
-            if cached {
-                "rebuilt generation restored from cache"
-            } else {
-                "rebuilt on retained copy"
-            }
-        ));
+        self.register(LaneId::SDR, path)?;
+
         Ok(())
     }
-
     fn inspect_available_pairs(&mut self) -> Result<()> {
         let pairs = self.pairs();
         for (_, left, right) in pairs {
@@ -835,6 +744,7 @@ impl Workflow<'_, '_> {
                 label: label.into(),
                 left,
                 right,
+                selected_region_count: findings.len(),
                 findings,
                 charts: charts::compare(
                     &self.states[&left].charts,
@@ -853,7 +763,15 @@ impl Workflow<'_, '_> {
             .timings_ms
             .entry("image_comparisons".into())
             .or_default() += started.elapsed().as_millis() as u64;
-        self.comparison.report.comparisons = comparisons;
+        // Preserve the frozen direct SD comparison with its own region selection.
+        // Post-rebuild candidates can grow or repartition after that state is gone.
+        for pair in comparisons {
+            self.comparison
+                .report
+                .comparisons
+                .retain(|old| !(old.left == pair.left && old.right == pair.right));
+            self.comparison.report.comparisons.push(pair);
+        }
         self.comparison.report.phases.push(phase.into());
         fs::write(
             self.comparison.args.output.join("partial-report.json"),
@@ -920,6 +838,21 @@ impl Workflow<'_, '_> {
         for id in self.states.keys().copied().rev().collect::<Vec<_>>() {
             self.comparison.retain_performance_measurements(id);
             self.comparison.close_workbook(id)?;
+        }
+        if self
+            .comparison
+            .report
+            .state_decisions
+            .contains_key(&LaneId::SDR)
+        {
+            self.comparison.telemetry.update(|state| {
+                if state.lane(LaneId::SDR).lifecycle == Lifecycle::Closed {
+                    let lane = state.lane(LaneId::SD);
+                    lane.lifecycle = Lifecycle::Closed;
+                    lane.process_alive = Some(false);
+                    lane.closed_at = Some(chrono::Utc::now().timestamp_millis());
+                }
+            })?;
         }
         self.comparison.excel.take();
         self.comparison.telemetry.update(|state| {

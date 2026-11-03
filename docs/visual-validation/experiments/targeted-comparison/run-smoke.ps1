@@ -63,8 +63,8 @@ if ($FailCapture -or $FailOptimization -or $FailLateCapture) {
         $source = $source.Replace('default { Invoke-TargetedJob $command }', 'default { if ($command.kind -eq "capture") { throw "Injected capture failure" }; Invoke-TargetedJob $command }')
     }
     if ($FailLateCapture) {
-        $source = $source.Replace("'capture_batch' { Invoke-TargetedCaptureBatch `$command }", "'capture_batch' { if (@(`$command.jobs | Where-Object lane -eq 'OR').Count -gt 0) { throw 'Injected late capture failure' }; Invoke-TargetedCaptureBatch `$command }")
-        $source = $source.Replace('default { Invoke-TargetedJob $command }', 'default { if ($command.kind -eq "capture" -and $command.lane -eq "OR") { throw "Injected late capture failure" }; Invoke-TargetedJob $command }')
+        $source = $source.Replace("'capture_batch' { Invoke-TargetedCaptureBatch `$command }", "'capture_batch' { if (@(`$command.jobs | Where-Object lane -eq 'SDR').Count -gt 0) { throw 'Injected late capture failure' }; Invoke-TargetedCaptureBatch `$command }")
+        $source = $source.Replace('default { Invoke-TargetedJob $command }', 'default { if ($command.kind -eq "capture" -and $command.lane -eq "SDR") { throw "Injected late capture failure" }; Invoke-TargetedJob $command }')
     }
     if ($FailOptimization) {
         $source = $source.Replace("'optimize' { Optimize-TargetedWorkbook `$command }", "'optimize' { @{status='invoked_completion_unverified'} }")
@@ -83,7 +83,7 @@ try {
     $env:EXCEL_SHRINK_EXPECTED_DESKTOP = $desktop.Name
     $arguments = 'regression targeted-compare --original "{0}" --default "{1}" --output "{2}" --observatory-group-dir "{3}" --host-script "{4}" --operation-timeout-seconds 30' -f `
         (Join-Path $directory 'inputs/original.xlsx'), (Join-Path $directory 'inputs/default.xlsx'), (Join-Path $directory 'result'), $group, $hostScript
-    if (-not ($CheckPerformance -or $FailOptimization -or $CleanWorkbook)) { $arguments += ' --skip-check-performance' }
+    if ($CheckPerformance -or $FailOptimization -or $CleanWorkbook) { $arguments += ' --check-performance' }
     $arguments += $captureArguments
     $process = $desktop.Start((Join-Path $repository 'target/debug/excel-shrink-cli.exe'), $arguments, $owned)
     $deadline = [DateTime]::UtcNow.AddSeconds(150)
@@ -132,8 +132,7 @@ try {
     if ($FailLateCapture) {
         $failure = Get-Content (Join-Path $directory 'result/failure.json') -Raw | ConvertFrom-Json
         if ($failure.error -notlike '*Injected late capture failure*') { throw 'Unexpected late-failure reason.' }
-        $expected = @($telemetry.lanes | Where-Object lifecycle -ne 'unavailable').Count
-        if (@($telemetry.lanes | Where-Object pid).Count -ne $expected) { throw 'The late failure did not exercise every enabled Excel state.' }
+        if (-not (@($telemetry.lanes | Where-Object { $_.id -eq 'SDR' -and $_.pid }).Count)) { throw 'The late failure did not exercise the in-place SD rebuild.' }
     }
     if ($FailOptimization) {
         $failure = Get-Content (Join-Path $directory 'result/failure.json') -Raw | ConvertFrom-Json

@@ -13,6 +13,7 @@ param(
     [Parameter(Mandatory=$true)][string]$Output,
     [Parameter(Mandatory=$true)][string]$ObservatoryGroup,
     [switch]$SkipCheckPerformance,
+    [switch]$CheckPerformance,
     [switch]$SerialCaptures,
     [switch]$PrepareArtifactsOnly,
     [ValidateRange(1, 86400)][int]$OperationTimeoutSeconds = 120
@@ -27,7 +28,8 @@ try {
     $arguments = 'regression targeted-compare --original "{0}" --default "{1}" --output "{2}" --observatory-group-dir "{3}" --host-script "{4}"' -f `
         $Original, $Default, $Output, $ObservatoryGroup, (Join-Path $PSScriptRoot 'targeted-comparison-host.ps1')
     $arguments += ' --operation-timeout-seconds ' + $OperationTimeoutSeconds
-    if ($SkipCheckPerformance) { $arguments += ' --skip-check-performance' }
+    if ($SkipCheckPerformance -and $CheckPerformance) { throw 'Choose CheckPerformance or SkipCheckPerformance.' }
+    if ($CheckPerformance) { $arguments += ' --check-performance' }
     if ($SerialCaptures) { $arguments += ' --serial-captures' }
     if ($PrepareArtifactsOnly) { $arguments += ' --prepare-artifacts-only' }
     $process = $desktop.Start($Binary, $arguments, $owned)

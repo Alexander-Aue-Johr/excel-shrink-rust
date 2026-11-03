@@ -90,7 +90,8 @@ function Get-DefaultStudySettings {
         order = 'size-desc'
         hide_excel = $false
         targeted_comparison = $true
-        targeted_skip_check_performance = $false
+        targeted_skip_check_performance = $true
+        targeted_check_performance = $false
         worker_memory_mib = $(if ($small) { 2048 } else { 4096 })
         excel_memory_mib = $(if ($small) { 2048 } else { 4096 })
         resident_memory_mib = $(if ($small) { 4096 } else { 16384 })
@@ -113,7 +114,7 @@ function Import-StudyConfiguration {
         if ((Get-Value $saved 'version') -ne 1) { throw 'Unsupported corpus launcher configuration version.' }
         # New control defaults do not change corpus IDs, archive locations or
         # prior results. Old machine configurations acquire only these defaults.
-        foreach ($setting in @{ tall_sheet_threshold=40; tall_sheet_edge_tiles=2; system_reserve_mib=0; targeted_comparison=$true; targeted_skip_check_performance=$false }.GetEnumerator()) {
+        foreach ($setting in @{ tall_sheet_threshold=40; tall_sheet_edge_tiles=2; system_reserve_mib=0; targeted_comparison=$true; targeted_skip_check_performance=$true; targeted_check_performance=$false }.GetEnumerator()) {
             if ($null -eq (Get-Value $saved.settings $setting.Key)) {
                 $saved.settings | Add-Member -NotePropertyName $setting.Key -NotePropertyValue $setting.Value -Force
             }
@@ -291,7 +292,11 @@ function New-StudyLaunchPlan {
     if ([int]$settings.partition -gt 0) { $argsList += @('--size-part',"$($settings.partition)/$($settings.partitions)") }
     if (Get-Value $settings 'targeted_comparison' $true) {
         $argsList += '--targeted-comparison'
-        if (Get-Value $settings 'targeted_skip_check_performance' $false) { $argsList += '--targeted-skip-check-performance' }
+        if (Get-Value $settings 'targeted_check_performance' $false) {
+            $argsList += '--targeted-check-performance'
+        } else {
+            $argsList += '--targeted-skip-check-performance'
+        }
     } else {
         if (Get-Value $settings 'full_scan_deferred' $false) { $argsList += @('--compare-only', '--full-scan-deferred') }
         if (Get-Value $settings 'aggressive_first' $false) { $argsList += '--aggressive-first' }

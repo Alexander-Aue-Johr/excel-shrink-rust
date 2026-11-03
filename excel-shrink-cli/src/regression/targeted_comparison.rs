@@ -67,9 +67,12 @@ pub(crate) struct Args {
     /// Maximum duration of one Excel command; closing is additionally capped at 15 seconds.
     #[arg(long, default_value_t = 120, value_parser = clap::value_parser!(u64).range(1..))]
     operation_timeout_seconds: u64,
-    /// Omit the native Check Performance lane (otherwise requires a private desktop).
+    /// Compatibility flag: omit native Check Performance, which is already off by default.
     #[arg(long)]
     skip_check_performance: bool,
+    /// Include native Check Performance; disabled by default.
+    #[arg(long, conflicts_with = "skip_check_performance")]
+    check_performance: bool,
     /// Run capture requests serially for diagnostics instead of across open Excel states.
     #[arg(long)]
     serial_captures: bool,
@@ -109,6 +112,7 @@ struct Finding {
 struct Report {
     workbook_bytes: BTreeMap<String, u64>,
     capture_policy: &'static str,
+    execution_strategy: &'static str,
     capture_partition: &'static str,
     input_identity: execution_plan::InputIdentity,
     state_decisions: BTreeMap<LaneId, execution_plan::StateDecision>,
@@ -170,7 +174,8 @@ struct Comparison<'a> {
 /// Rejects invalid inputs, exceeded discovery bounds, failed Excel commands,
 /// missing partner evidence, and publication errors. Cleanup failure stays
 /// explicit instead of certifying an unconfirmed process exit or comparison.
-pub(crate) fn run(args: Args) -> Result<()> {
+pub(crate) fn run(mut args: Args) -> Result<()> {
+    args.skip_check_performance = !args.check_performance;
     let mut comparison = Comparison::prepare(&args)?;
     let result = if args.prepare_artifacts_only {
         comparison.prepare_artifacts()
@@ -192,7 +197,7 @@ impl<'a> Comparison<'a> {
         if !args.skip_check_performance {
             ensure!(std::env::var("EXCEL_SHRINK_EXPECTED_DESKTOP")
                 .is_ok_and(|desktop| !desktop.is_empty() && !desktop.eq_ignore_ascii_case("Default")),
-                "Check Performance requires the private-desktop launcher; use --skip-check-performance to omit it");
+                "Check Performance requires the private-desktop launcher; omit --check-performance to disable it");
         }
         let paths = WorkingPaths::prepare(args)?;
         let input_identity = execution_plan::InputIdentity::check(&paths.original, &paths.default)?;

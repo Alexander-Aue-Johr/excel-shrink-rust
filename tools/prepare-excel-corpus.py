@@ -109,6 +109,8 @@ def prepare_one(case, root, config, phase, operation_timeout):
                    "-Default", str(default), "-Output", str(attempt / "artifacts"),
                    "-ObservatoryGroup", str(group), "-PrepareArtifactsOnly",
                    "-OperationTimeoutSeconds", str(operation_timeout)]
+        if config.get("check_performance", False):
+            command.append("-CheckPerformance")
         execute(command, attempt / "excel.log", config["workbook_timeout_seconds"], environment, attempt)
         preparation = json.loads((attempt / "artifacts/preparation.json").read_bytes())
         if preparation["status"] != "artifacts_prepared":

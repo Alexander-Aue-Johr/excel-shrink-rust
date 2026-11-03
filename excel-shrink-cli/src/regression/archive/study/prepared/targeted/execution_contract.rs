@@ -40,6 +40,9 @@ pub(super) fn expected_pairs(
             }
         }
     }
+    if report["execution_strategy"] == "default-inplace-rebuild-v1" {
+        return inplace_pairs(report, skip_performance);
+    }
     let identity = &report["input_identity"];
     let identical = identity["status"] == "identical";
     ensure!(
@@ -135,11 +138,23 @@ pub(super) fn expected_pairs(
                                 || (id == "OR" || id == "SDR")
                                     && decision["method"] == "cached-rebuild"
                                     && report["control_artifacts_cache"][id]["status"] == "hit"
-                                    && report["control_artifacts_cache"][id]["current_parent_sha256"] == check["source_sha256"]
-                                    && report["control_artifacts_cache"][id]["historical"]["identity"]["policy"] == "excel-control-artifacts-v1"
-                                    && report["control_artifacts_cache"][id]["historical"]["identity"]["lane"] == id
-                                    && valid_hash(&report["control_artifacts_cache"][id]["historical"]["artifacts"]["before_rebuild"]["sha256"])
-                                    && valid_hash(&report["control_artifacts_cache"][id]["historical"]["artifacts"]["after_rebuild"]["sha256"])
+                                    && report["control_artifacts_cache"][id]
+                                        ["current_parent_sha256"]
+                                        == check["source_sha256"]
+                                    && report["control_artifacts_cache"][id]["historical"]
+                                        ["identity"]["policy"]
+                                        == "excel-control-artifacts-v1"
+                                    && report["control_artifacts_cache"][id]["historical"]
+                                        ["identity"]["lane"]
+                                        == id
+                                    && valid_hash(
+                                        &report["control_artifacts_cache"][id]["historical"]
+                                            ["artifacts"]["before_rebuild"]["sha256"]
+                                    )
+                                    && valid_hash(
+                                        &report["control_artifacts_cache"][id]["historical"]
+                                            ["artifacts"]["after_rebuild"]["sha256"]
+                                    )
                                 || id == "CPR"
                                     && decision["method"] == "cached-rebuild"
                                     && report["check_performance_cache"]["rebuild_reused"] == true
@@ -173,6 +188,66 @@ pub(super) fn expected_pairs(
     .collect())
 }
 
+/// The frozen SD pre-state has phase-specific coverage; no SD-before/SD-after claim is made.
+fn inplace_pairs(
+    report: &Value,
+    skip_performance: bool,
+) -> Result<BTreeSet<(&'static str, &'static str)>> {
+    let decisions = &report["state_decisions"];
+    ensure!(
+        decisions.as_object().is_some_and(|d| d.len() == 6),
+        "Incomplete in-place decisions"
+    );
+    ensure!(
+        decisions["O"]["status"] == "observed" && decisions["O"]["method"] == "open-save",
+        "Missing retained Original observation"
+    );
+    ensure!(
+        decisions["OR"]["status"] == "disabled" && decisions["CPR"]["status"] == "disabled",
+        "Unexpected Original or CP rebuild in screening strategy"
+    );
+    let mut pairs = BTreeSet::new();
+    if decisions["SD"]["status"] == "skipped_identical_input" {
+        ensure!(
+            report["input_identity"]["status"] == "identical"
+                && valid_hash(&report["input_identity"]["sha256"])
+                && report["input_identity"]["bytes"].as_u64().is_some()
+                && decisions["SD"]["source"] == "O"
+                && decisions["SDR"]["status"] == "skipped_identical_input"
+                && decisions["SDR"]["source"] == "O",
+            "Unproven identical SD exclusion"
+        );
+    } else {
+        ensure!(
+            decisions["SD"]["status"] == "observed"
+                && decisions["SD"]["method"] == "open-save"
+                && decisions["SDR"]["status"] == "observed"
+                && decisions["SDR"]["method"] == "inplace-rebuild",
+            "Missing SD before/after observation"
+        );
+        let pid = report["excel_pids"]["SD"]
+            .as_u64()
+            .context("Missing SD process identity")?;
+        ensure!(
+            pid > 0 && report["excel_pids"]["SDR"].as_u64() == Some(pid),
+            "SD rebuild did not retain its original Excel process"
+        );
+        pairs.extend([("O", "SD"), ("O", "SDR")]);
+    }
+    if skip_performance {
+        ensure!(
+            decisions["CP"]["status"] == "disabled",
+            "Unexpected Check Performance state"
+        );
+    } else {
+        ensure!(
+            decisions["CP"]["status"] == "observed" && decisions["CP"]["method"] == "open-save",
+            "Missing optional Check Performance observation"
+        );
+        pairs.insert(("O", "CP"));
+    }
+    Ok(pairs)
+}
 fn valid_hash(value: &Value) -> bool {
     value
         .as_str()
@@ -184,6 +259,44 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn inplace_report() -> Value {
+        json!({
+            "execution_strategy":"default-inplace-rebuild-v1",
+            "input_identity":{"status":"different"},
+            "state_decisions":{
+                "O":{"status":"observed","method":"open-save"},
+                "SD":{"status":"observed","method":"open-save"},
+                "SDR":{"status":"observed","method":"inplace-rebuild"},
+                "OR":{"status":"disabled"},"CP":{"status":"disabled"},"CPR":{"status":"disabled"}
+            },
+            "excel_pids":{"O":10,"SD":20,"SDR":20}
+        })
+    }
+
+    #[test]
+    fn inplace_screen_requires_same_sd_process_and_no_original_rebuild() {
+        let mut report = inplace_report();
+        assert_eq!(
+            expected_pairs(&report, true).unwrap(),
+            BTreeSet::from([("O", "SD"), ("O", "SDR")])
+        );
+        report["excel_pids"]["SDR"] = json!(21);
+        assert!(expected_pairs(&report, true).is_err());
+        report["excel_pids"]["SDR"] = json!(20);
+        report["state_decisions"]["OR"]["status"] = json!("observed");
+        assert!(expected_pairs(&report, true).is_err());
+    }
+
+    #[test]
+    fn optional_performance_still_requires_positive_native_confirmation() {
+        let mut report = inplace_report();
+        report["state_decisions"]["CP"] = json!({"status":"observed","method":"open-save"});
+        assert!(expected_pairs(&report, false).is_err());
+        report["check_performance"] = json!("optimization_confirmed");
+        report["check_performance_evidence"] =
+            json!({"native_result":{"status":"optimization_confirmed"}});
+        assert_eq!(expected_pairs(&report, false).unwrap().len(), 3);
+    }
     fn reduced() -> Value {
         let mut report = json!({
             "check_performance": "no_optimization_needed",

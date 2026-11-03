@@ -9,6 +9,7 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
         report["status"] == "completed_with_limitations",
         "Targeted report is incomplete"
     );
+    let inplace = report["execution_strategy"] == "default-inplace-rebuild-v1";
     let count = report["candidate_count"]
         .as_u64()
         .context("Missing candidate count")?;
@@ -47,7 +48,14 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
             .as_array()
             .context("Missing region findings")?;
         ensure!(
-            findings.len() as u64 == count,
+            findings.len() as u64
+                == if inplace {
+                    pair["selected_region_count"]
+                        .as_u64()
+                        .context("Missing phase-specific region count")?
+                } else {
+                    count
+                },
             "Incomplete region coverage for {left}/{right}"
         );
         let mut regions = BTreeSet::new();
@@ -67,13 +75,15 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
                 }
             }
         }
-        if let Some(previous) = &region_set {
-            ensure!(
-                previous == &regions,
-                "Comparison pairs cover different regions"
-            );
-        } else {
-            region_set = Some(regions);
+        if !inplace {
+            if let Some(previous) = &region_set {
+                ensure!(
+                    previous == &regions,
+                    "Comparison pairs cover different regions"
+                );
+            } else {
+                region_set = Some(regions);
+            }
         }
         let charts = pair["charts"]
             .as_array()
@@ -208,6 +218,38 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn inplace_phases_allow_late_regions_but_reject_incomplete_phase_evidence() -> Result<()> {
+        let mut report = report();
+        report["capture_policy"] = json!("targeted-content-grid-v3");
+        report["execution_strategy"] = json!("default-inplace-rebuild-v1");
+        report["input_identity"] = json!({"status":"different"});
+        report["state_decisions"] = json!({
+            "O":{"status":"observed","method":"open-save"},
+            "SD":{"status":"observed","method":"open-save"},
+            "SDR":{"status":"observed","method":"inplace-rebuild"},
+            "OR":{"status":"disabled"},"CP":{"status":"disabled"},"CPR":{"status":"disabled"}
+        });
+        report["excel_pids"] = json!({"O":10,"SD":20,"SDR":20});
+        report["comparisons"].as_array_mut().unwrap().truncate(2);
+        report["comparisons"][0]["selected_region_count"] = json!(1);
+        report["comparisons"][1]["selected_region_count"] = json!(2);
+        let mut late = report["comparisons"][1]["findings"][0].clone();
+        late["cell"] = json!("C3:D4");
+        late["pixels_differ"] = json!(true);
+        report["comparisons"][1]["findings"]
+            .as_array_mut()
+            .unwrap()
+            .push(late);
+        report["candidate_count"] = json!(2);
+        assert!(has_differences(&report, true)?);
+        report["comparisons"][1]["findings"]
+            .as_array_mut()
+            .unwrap()
+            .pop();
+        assert!(has_differences(&report, true).is_err());
+        Ok(())
+    }
     fn report() -> Value {
         let pairs = [
             ("O", "SD"),

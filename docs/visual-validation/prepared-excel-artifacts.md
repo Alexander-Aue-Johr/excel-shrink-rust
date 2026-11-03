@@ -4,6 +4,10 @@
 
 The runner reads `config.json` and `cases.json` from its `--root` directory. It verifies the prepared original against its study record and generates Default with the pinned executable. Each attempt uses a private desktop and an owned Excel process group. Preparation keeps one workbook open per worker. Two shared startup slots bound cold Excel/WebView launches while ready workers continue independently. Windows releases the startup mutexes if a worker exits unexpectedly.
 
+Check Performance is off by default. Set `check_performance: true` in the
+preparation config to include its controls. Visual validation defaults to an
+in-place SD rebuild; this artifact-generation mode is a separate workflow.
+
 ## Artifacts
 
 The original and Default inputs are copied before Excel opens them. The saved controls use ordinary Save. Exact byte equality permits omitting the independent Default lane under the validation specification. Its copied input is then labelled `default.identical-input.unopened.xlsx`, with the omission recorded in `default_state`. Each rebuild control starts from a filesystem copy of its saved parent, opens and saves that copy, then performs `fullRebuild` and Save. The intermediate saved copy is retained.

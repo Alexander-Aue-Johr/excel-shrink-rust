@@ -29,6 +29,7 @@ pub(crate) fn run(input: InspectArgs) -> Result<()> {
         workbook_label: Some("Prefixed worksheet inspection".into()),
         operation_timeout_seconds: 120,
         skip_check_performance: true,
+            check_performance: false,
         serial_captures: false,
         prepare_artifacts_only: false,
     };

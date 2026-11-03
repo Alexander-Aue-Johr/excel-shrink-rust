@@ -61,6 +61,12 @@ Assert ((@(Get-ChildItem -LiteralPath $root -File -Recurse)).Count -eq $before.C
 Assert (-not [IO.File]::Exists($configPath)) 'Preview saved configuration unexpectedly.'
 Assert ($plan.Arguments -notcontains '--aggressive-first') 'A legacy configuration unexpectedly enabled aggressive-first screening.'
 Assert ($plan.Arguments -contains '--targeted-comparison') 'The launcher did not select the staged targeted comparison by default.'
+Assert ($plan.Arguments -contains '--targeted-skip-check-performance') 'Check Performance must be off by default.'
+$config.settings | Add-Member -NotePropertyName targeted_check_performance -NotePropertyValue $true -Force
+$performancePlan = New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/performance-opt-in')
+Assert ($performancePlan.Arguments -contains '--targeted-check-performance') 'Explicit CP opt-in was lost.'
+Assert ($performancePlan.Arguments -notcontains '--targeted-skip-check-performance') 'Conflicting CP flags were emitted.'
+$config.settings.targeted_check_performance = $false
 $config.settings | Add-Member -NotePropertyName targeted_comparison -NotePropertyValue $false -Force
 $config.settings | Add-Member -NotePropertyName aggressive_first -NotePropertyValue $true -Force
 $screeningPlan=New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/screening')

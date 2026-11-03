@@ -29,18 +29,17 @@ def verify(directory):
                         if item['label'] == 'Check Performance optimization')
     assert optimization['skipped_outside_content_cell_changes']['Rows'] >= 1
     assert not evidence['optimization_changes'], 'The removed formatting-only tail must not be captured.'
-    assert not any(f['original_recalc_drift'] for f in evidence['findings'])
-    # Both supplied inputs are identical; only CP is allowed to introduce differences.
-    assert not any(f['before_recalc_differs'] or f['after_shrink_recalc_differs']
-                   or f['before_recalc_geometry_differs'] or f['after_shrink_recalc_geometry_differs']
-                   for f in report['findings'])
+    assert report['state_decisions']['OR']['status'] == 'disabled'
+    assert report['state_decisions']['CPR']['status'] == 'disabled'
     for lane in telemetry['lanes']:
-        assert lane['pid'] and lane['lifecycle'] == 'closed'
-        assert lane['process_alive'] is False
-        assert lane['captures_done'] == lane['captures_total'] == report['candidate_count']
-    for finding in evidence['findings']:
-        assert len(finding['images']) == 4
-        assert all(Path(path).is_file() for path in finding['images'].values())
+        if lane['pid']:
+            assert lane['lifecycle'] == 'closed' and lane['process_alive'] is False
+    direct = next(pair for pair in report['comparisons'] if pair['right'] == 'CP')
+    for finding in direct['findings']:
+        for side in ('left', 'right'):
+            path = finding[f'{side}_png']
+            if path is not None:
+                assert Path(path).is_file()
     print('Real Check Performance XML removal, visual controls, evidence and cleanup verified.')
 
 

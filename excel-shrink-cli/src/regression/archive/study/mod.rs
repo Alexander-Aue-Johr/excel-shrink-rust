@@ -83,12 +83,15 @@ pub(in crate::regression) struct StudyArgs {
     /// Keep original and shrink variants open for visual comparisons.
     #[arg(long)]
     resident_capture: bool,
-    /// Compare Default and Check Performance through the staged XML-selected workflow.
+    /// Compare Original and Default before and after an in-place Default rebuild.
     #[arg(long, requires = "resident_capture", conflicts_with_all = ["aggressive_first", "preparation_hash_profile", "full_scan_deferred", "diagnose_whitespace_only", "adaptive_concurrency"])]
     targeted_comparison: bool,
     /// Omit Check Performance from the targeted workflow; compare Default only.
     #[arg(long, requires = "targeted_comparison")]
     targeted_skip_check_performance: bool,
+    /// Include native Check Performance in targeted comparisons (off by default).
+    #[arg(long, requires = "targeted_comparison", conflicts_with = "targeted_skip_check_performance")]
+    targeted_check_performance: bool,
     /// Screen the selection with the aggressive profile before full follow-up.
     #[arg(long, requires = "resident_capture", conflicts_with_all = ["prepare_only", "diagnose_whitespace_only", "full_scan_deferred"])]
     aggressive_first: bool,
@@ -195,7 +198,8 @@ fn has_deferred_full_scan(record: &Value) -> bool {
         })
 }
 
-pub(in crate::regression) fn run(args: StudyArgs, log_level: LogLevel) -> Result<()> {
+pub(in crate::regression) fn run(mut args: StudyArgs, log_level: LogLevel) -> Result<()> {
+    args.targeted_skip_check_performance = !args.targeted_check_performance;
     match run_inner(args, log_level) {
         Err(error) if error.is::<control_room::StopRequested>() => {
             eprintln!("[study] Run stopped. Results saved; the runner can now be updated.");

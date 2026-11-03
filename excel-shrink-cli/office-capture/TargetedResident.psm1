@@ -431,4 +431,25 @@ function Close-TargetedWorkbook {
     return @{closed=$true}
 }
 
-Export-ModuleMember -Function Open-TargetedWorkbooks, Open-TargetedWorkbook, Invoke-TargetedJob, Invoke-TargetedCaptureBatch, Optimize-TargetedWorkbook, Close-TargetedWorkbook, Get-TargetedOperationSample, SaveAs-TargetedWorkbook
+function Move-TargetedWorkbookLane {
+    <# .SYNOPSIS
+    Transfer the same resident process to its post-rebuild lane without reopening Excel.
+    The old output file remains an immutable pre-rebuild control.
+    #>
+    param($Command)
+    if ($Command.lane -ne 'SD' -or $Command.target_lane -ne 'SDR') {
+        throw 'Only the SD to SDR in-place transition is supported.'
+    }
+    $entry = $sessions[$Command.lane]
+    if ($null -eq $entry -or $sessions.ContainsKey($Command.target_lane)) {
+        throw 'In-place rebuild requires one open SD and no SDR session.'
+    }
+    $entry.process.Refresh()
+    if ($entry.process.HasExited) { throw 'Owned SD process exited before rebuild.' }
+    $entry.path = [string]$Command.output
+    $sessions[$Command.target_lane] = $entry
+    $null = $sessions.Remove($Command.lane)
+    return @{pid=$entry.process.Id; source_lane='SD'; target_lane='SDR'; reopened=$false}
+}
+
+Export-ModuleMember -Function Move-TargetedWorkbookLane, Open-TargetedWorkbooks, Open-TargetedWorkbook, Invoke-TargetedJob, Invoke-TargetedCaptureBatch, Optimize-TargetedWorkbook, Close-TargetedWorkbook, Get-TargetedOperationSample, SaveAs-TargetedWorkbook

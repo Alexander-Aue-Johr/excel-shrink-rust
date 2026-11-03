@@ -41,6 +41,7 @@ try {
                 'capture_batch' { Invoke-TargetedCaptureBatch $command }
                 'optimize' { Optimize-TargetedWorkbook $command }
                 'save_as' { SaveAs-TargetedWorkbook $command }
+                'move_lane' { Move-TargetedWorkbookLane $command }
                 default { Invoke-TargetedJob $command }
             }
             $after = Get-TargetedOperationSample $command

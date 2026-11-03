@@ -19,6 +19,7 @@ pub(in crate::regression::archive::study) fn complete(
             Some("targeted-content-grid-v2" | "targeted-content-grid-v3")
         )
         && record["targeted_comparison"]["skip_check_performance"] == skip_performance
+        && record["targeted_comparison"]["execution_strategy"] == "default-inplace-rebuild-v1"
         && record["targeted_comparison"]["status"] == "completed_with_limitations"
 }
 
@@ -50,7 +51,7 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
         .unwrap_or_else(|| job.work.join("targeted-group"));
     fs::create_dir_all(&group)?;
     record["targeted_comparison"] = json!({"policy":POLICY,"status":"running",
-        "skip_check_performance":skip,"report_directory":directory});
+        "skip_check_performance":skip,"execution_strategy":"default-inplace-rebuild-v1","report_directory":directory});
     record["checks_complete"] = json!(false);
     record["validation_scope"] = json!("XML-selected content regions and all charts; exterior formatting-only regions intentionally excluded");
     write_record(&job.record, record)?;
@@ -97,6 +98,8 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
         .stdin(Stdio::null());
     if skip {
         command.arg("-SkipCheckPerformance");
+    } else {
+        command.arg("-CheckPerformance");
     }
     let status = command
         .status()
@@ -329,12 +332,15 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn resume_accepts_previous_full_observations_but_requires_the_requested_performance_lane() {
+    fn resume_requires_matching_strategy_and_requested_performance_lane() {
         let mut record = json!({"complete":true,"status":"unchanged"});
         assert!(!complete(&record, false));
-        record["targeted_comparison"] = json!({"policy":POLICY,"status":"completed_with_limitations","skip_check_performance":false});
+        record["targeted_comparison"] = json!({"policy":POLICY,"status":"completed_with_limitations","skip_check_performance":false,"execution_strategy":"default-inplace-rebuild-v1"});
         assert!(complete(&record, false));
         assert!(!complete(&record, true));
+        let strategy = record["targeted_comparison"]["execution_strategy"].take();
+        assert!(!complete(&record, false));
+        record["targeted_comparison"]["execution_strategy"] = strategy;
         record["targeted_comparison"]["policy"] = json!("targeted-content-grid-v2");
         assert!(complete(&record, false));
         record["targeted_comparison"]["policy"] = json!("unknown-future-policy");

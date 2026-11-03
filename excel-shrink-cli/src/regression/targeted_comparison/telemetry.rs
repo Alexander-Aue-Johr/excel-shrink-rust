@@ -477,6 +477,7 @@ mod tests {
             workbook_label: None,
             operation_timeout_seconds: 1,
             skip_check_performance: true,
+            check_performance: false,
             serial_captures: false,
             prepare_artifacts_only: false,
         };
@@ -542,6 +543,7 @@ mod tests {
             workbook_label: None,
             operation_timeout_seconds: 1,
             skip_check_performance: true,
+            check_performance: false,
             serial_captures: false,
             prepare_artifacts_only: false,
         };

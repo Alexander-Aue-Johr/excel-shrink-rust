@@ -100,6 +100,24 @@ impl ExcelHost {
         Ok(result)
     }
 
+    /// Transfer ownership of the existing SD session; no workbook is opened here.
+    pub(super) fn move_default_to_rebuild(
+        &mut self,
+        output: &Path,
+        telemetry: &Telemetry,
+    ) -> Result<u32> {
+        let result = self.call(
+            json!({
+                "kind": "move_lane", "lane": "SD", "target_lane": "SDR", "output": output
+            }),
+            telemetry,
+        )?;
+        ensure!(
+            result["reopened"] == false,
+            "In-place transition reopened the workbook"
+        );
+        confirmed_pid(&result)
+    }
     /// Request the same full rebuild used by the existing comparison protocol.
     pub(super) fn recalculate_workbook(
         &mut self,
