@@ -357,6 +357,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     let mut x14_container = None;
     let mut namespace_scopes = Vec::new();
     let mut data_depth = None;
+    let mut columns_depth = None;
     let mut layout = Sha256::new();
     streaming_xml::scan_with_offsets(archive.by_name(part)?, |event| {
         if let Event::Tag(tag) = &event {
@@ -434,6 +435,9 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                     x14_container = None;
                 }
             }
+            if tag.name == b"cols" && tag_namespace && tag.depth == 1 {
+                columns_depth = (tag.kind == Kind::Start).then_some(tag.depth);
+            }
             if tag.local() == b"sheetData" {
                 if tag.kind == Kind::Start {
                     data_depth = Some(tag.depth);
@@ -482,7 +486,8 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
             }
             if INCLUDE_CELLS && matches!(tag.kind, Kind::Start | Kind::Empty) {
                 match tag.local() {
-                    b"row" => {
+                    b"row" if tag.name == b"row" && tag_namespace
+                        && data_depth.is_some_and(|depth| tag.depth == depth + 1) => {
                         let row: u32 =
                             std::str::from_utf8(tag.attr(b"r")?.unwrap_or(b"0"))?.parse()?;
                         ensure!(
@@ -515,11 +520,12 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                             Arc::make_mut(&mut model.rows).insert(row, attributes);
                         }
                     }
-                    b"col" => {
+                    b"col" if tag.name == b"col" && tag_namespace
+                        && columns_depth.is_some_and(|depth| tag.depth == depth + 1) => {
                         model.columns.extend_from_slice(tag.name);
                         model.columns.extend_from_slice(tag.attrs);
                     }
-                    b"sheetFormatPr" => {
+                    b"sheetFormatPr" if tag.name == b"sheetFormatPr" && tag_namespace && tag.depth == 1 => {
                         model.defaults.extend_from_slice(tag.name);
                         model.defaults.extend_from_slice(tag.attrs);
                     }
@@ -627,6 +633,26 @@ mod tests {
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].location, "cell:F10");
         assert_eq!(before.changes(&after)?.len(), 100_001);
+        Ok(())
+    }
+
+    #[test]
+    fn drawing_anchors_do_not_become_worksheet_rows_or_columns() -> Result<()> {
+        use std::io::Write;
+        let path = std::env::temp_dir().join(format!("drawing-row-{}.xlsx", uuid::Uuid::new_v4()));
+        let mut zip = zip::ZipWriter::new(File::create(&path)?);
+        zip.start_file("xl/worksheets/sheet.xml", zip::write::FileOptions::default())?;
+        zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="2" width="12"/></cols><sheetData><row r="1" ht="25" customHeight="1"><c r="A1"><v>7</v></c></row></sheetData><extLst><xdr:from><xdr:row>5</xdr:row><xdr:col>2</xdr:col></xdr:from><row r="0"/><col min="99" max="100"/><sheetFormatPr defaultRowHeight="99"/></extLst></worksheet>"#)?;
+        zip.finish()?;
+        let mut archive = ZipArchive::new(File::open(&path)?)?;
+        let sheet = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 2, None)?;
+        assert_eq!(sheet.rows.len(), 1);
+        assert_eq!(sheet.fixed_height(1), Some(("25", false)));
+        assert_eq!(String::from_utf8(sheet.columns.clone())?, "col min=\"1\" max=\"2\" width=\"12\"");
+        assert!(!String::from_utf8(sheet.defaults.clone())?.contains("99"));
+        assert!(sheet.value_namespace_supported);
+        drop(archive);
+        std::fs::remove_file(path)?;
         Ok(())
     }
 
