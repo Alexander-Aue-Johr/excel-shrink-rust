@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "timezone": "Europe/Berlin",
+  "base_commit": "b1999d670898ffd08346cbc7e2a20934b822b0f3",
+  "local_conversion_helper": true,
+  "binary_sha256": "dfdeda9e9426af063b7fa13cfa76c386e285e8fda1296679a6253a7f6fb01421",
+  "run_started": "2026-11-02T21:32:12+01:00",
+  "last_progress": "2026-11-03T08:49:58+01:00",
+  "reboot": "2026-11-03T08:50:23+01:00",
+  "scope": {
+    "partition": "2/2",
+    "selected": 10436,
+    "corpus": "Enron",
+    "order": "size-desc",
+    "original_total": 20872
+  },
+  "counts": {
+    "last_progress_failed": 479,
+    "prepared_pending": 9627,
+    "comparing_at_reboot": 3,
+    "preparation_unsuccessful": 326,
+    "image_comparisons": 0,
+    "comparison_failed": 480,
+    "targeted_attempts": 483,
+    "reports_inspected": 480,
+    "prepared": 10110,
+    "visual_completed": 0
+  },
+  "failure_causes": {
+    "ui_automation_unexpected_hresult": 2,
+    "open_batch_timeout_600_seconds": 15,
+    "invalid_worksheet_row_index": 258,
+    "optimize_timeout_600_seconds": 203,
+    "open_timeout_600_seconds": 2
+  },
+  "windows": {
+    "excel_crashes_local": [
+      "03:48:16",
+      "05:55:17",
+      "07:15:01",
+      "08:06:51",
+      "08:40:30"
+    ],
+    "workloads_last": "2026-11-03T08:48:07+01:00",
+    "excel_exception": "0xc0000005",
+    "workloads_module": "onnxruntime_vitisai_ep.dll",
+    "excel_module": "aitrx.dll",
+    "workloads_session_host_crashes": 272,
+    "workloads_exception": "0xc0000409",
+    "current_low_memory_diagnosis_found": false,
+    "workloads_first": "2026-11-03T03:34:46+01:00"
+  },
+  "session_memory": {
+    "system_commit_headroom_min_gib": [
+      1.35,
+      3.86
+    ],
+    "current_private_job_gib": [
+      0.44,
+      0.5
+    ],
+    "system_reserve_mib": 0,
+    "system_available_min_gib": [
+      3.84,
+      6.46
+    ]
+  },
+  "raw_evidence_sha256": {
+    "windows-application-events.json": "639a991219ca563f8312f053b80ba28e507ea324c16cdb1d307a888a414b480e",
+    "results-summary.json": "c9175e7c7b34071fa348c8eac7bb981fbd8fc904b6be32d4c37c734dbcd19bcf"
+  }
+}

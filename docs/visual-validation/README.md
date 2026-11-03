@@ -301,3 +301,7 @@ Use `-PrepareStandalone -SkipBuild` only when a suitable Windows executable
 has already been built. After pulling code changes, prepare without
 `-SkipBuild`. `-Build` on a standalone command does not rebuild; prepare again
 from WSL instead.
+
+## Recorded investigations
+
+- [Enron overnight run, 2–3 November 2026](investigations/enron-night-run-20261103.md): preparation completed, visual comparisons failed, and Windows became unresponsive.
