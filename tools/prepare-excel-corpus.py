@@ -96,12 +96,28 @@ def prepare_one(case, root, config, phase, operation_timeout):
         result.update(original_sha256=actual, source_member=record["member_name"],
                       prepared_source_sha256=record.get("source_sha256"))
         shrink_started = time.monotonic()
-        execute([config["binary"], str(source), str(inputs / "default"), "--rayon-threads", "2"],
-                attempt / "shrink.log", 300, environment, attempt)
         default = inputs / "default" / "original.xlsx"
+        result["default_source"] = config.get("default_source", "current_binary")
+        if result["default_source"] == "prepared":
+            default.parent.mkdir()
+            with zipfile.ZipFile(case["bundle"]) as archive:
+                with archive.open("default.xlsx") as incoming, default.open("wb") as outgoing:
+                    shutil.copyfileobj(incoming, outgoing, 1024 * 1024)
+            result["default_copy_seconds"] = time.monotonic() - shrink_started
+            result["default_producer_sha256"] = record.get("prepared_by")
+            result["historical_default_preparation"] = record.get("provenance", {}).get("preparation")
+            result["historical_default_shrink_seconds"] = next(
+                (row.get("shrink_seconds") for row in record.get("results", [])
+                 if row.get("profile") == "default"), None)
+        elif result["default_source"] == "current_binary":
+            execute([config["binary"], str(source), str(inputs / "default"), "--rayon-threads", "2"],
+                    attempt / "shrink.log", 300, environment, attempt)
+            result["shrink_seconds"] = time.monotonic() - shrink_started
+        else:
+            raise ValueError("Unknown Default source " + result["default_source"])
         if not default.is_file():
             raise RuntimeError("Default shrink output is missing")
-        result["shrink_seconds"] = time.monotonic() - shrink_started
+        result["default_sha256"] = checksum(default)
         group = attempt / "control/groups/one"
         group.mkdir(parents=True)
         command = ["powershell.exe", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File",
@@ -254,9 +270,9 @@ def main(root):
     cases = json.loads((root / "cases.json").read_bytes())
     pilot_file = root / "pilot.json"
     pilot = json.loads(pilot_file.read_bytes()) if pilot_file.exists() else {
-        "trials": [], "selection": "Eight bundle-size strata from 2nd through 99th percentile"}
+        "trials": [], "selection": "Eight bundle-size strata from 2nd percentile through maximum"}
     ordered = sorted(cases, key=lambda c: c["bundle_bytes"])
-    positions = [.02, .15, .35, .5, .7, .85, .95, .99]
+    positions = [.02, .15, .35, .5, .7, .85, .95, 1.0]
     sample = [ordered[min(len(ordered)-1, int(q * len(ordered)))] for q in positions]
     for workers in config.get("pilot_parallelism", [1, 2, 3, 4]):
         if any(t["parallelism"] == workers and t["attempted"] == len(sample) for t in pilot["trials"]):

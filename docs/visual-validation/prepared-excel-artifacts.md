@@ -2,7 +2,7 @@
 
 `tools/prepare-excel-corpus.py` prepares Excel controls before a visual-validation run. Preparation results have status `artifacts_prepared`. Visual comparison remains pending.
 
-The runner reads `config.json` and `cases.json` from its `--root` directory. It verifies the prepared original against its study record and generates Default with the pinned executable. Each attempt uses a private desktop and an owned Excel process group. Preparation keeps one workbook open per worker. Two shared startup slots bound cold Excel/WebView launches while ready workers continue independently. Windows releases the startup mutexes if a worker exits unexpectedly.
+The runner reads `config.json` and `cases.json` from its `--root` directory. It verifies the prepared original against its study record and generates Default with the pinned executable. Setting `default_source` to `prepared` reuses the bundled Default instead and records its producer checksum and historical shrink time. Each attempt uses a private desktop and an owned Excel process group. Preparation keeps one workbook open per worker. Two shared startup slots bound cold Excel/WebView launches while ready workers continue independently. Windows releases the startup mutexes if a worker exits unexpectedly.
 
 ## Artifacts
 
@@ -23,6 +23,8 @@ Set `EXCEL_SHRINK_CONTROL_ARTIFACT_CACHE_DIR` to share saved/rebuilt controls wi
 Rebuild reuse requires a dependency audit. Volatile or unknown dependencies require a fresh rebuild. The normal validation path still performs its opening and visual checks.
 
 ## Running and stopping
+
+`tools/analyze-prepared-sizes.py` inventories existing Original/Default pairs through the ZIP directories. Stored outer members are accessed as bounded file views. Worksheet XML payloads are neither read nor extracted. Its CSV files rank complete XLSX sizes and sheet-part sizes separately. The threshold lists identify workbooks qualifying by either total XLSX reduction or at least one sheet's XML reduction. Sheet identifiers are package part paths. Reusing prepared Default keeps the subsequent Excel comparison aligned with this screening baseline.
 
 Run `python tools/prepare-excel-corpus.py --root <run-directory>`. Keep the pinned executable and host sources unchanged during a run.
 

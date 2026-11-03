@@ -18,7 +18,7 @@ spec.loader.exec_module(prepare)
 
 
 class TemporaryWorkspaceTests(unittest.TestCase):
-    def check_attempt(self, native_failure):
+    def check_attempt(self, native_failure, prepared_default=False):
         with tempfile.TemporaryDirectory() as temporary_root:
             root = Path(temporary_root)
             working = root / "work"
@@ -26,18 +26,24 @@ class TemporaryWorkspaceTests(unittest.TestCase):
             records = root / "records"
             records.mkdir()
             original = b"workbook fixture"
+            prepared = b"prepared Default fixture"
             bundle = root / "input.zip"
             with zipfile.ZipFile(bundle, "w") as archive:
                 archive.writestr("original.xlsx", original)
+                archive.writestr("default.xlsx", prepared)
             case = {"id": "fixture", "bundle": str(bundle)}
             prepare.write_json(records / "fixture.json", {
                 "member_name": "fixture.xls",
+                "prepared_by": "f" * 64,
+                "results": [{"profile": "default", "shrink_seconds": .016}],
                 "baseline_sha256": hashlib.sha256(original).hexdigest()})
             config = {
                 "working_root": str(working), "records": str(records),
                 "binary": "fixture-shrinker", "launcher": "fixture-launcher",
                 "cp_cache": str(root / "cp"), "control_cache": str(root / "controls"),
                 "workbook_timeout_seconds": 1800}
+            if prepared_default:
+                config["default_source"] = "prepared"
 
             def execute(command, log, timeout, environment, cwd):
                 local_temp = Path(environment["TEMP"])
@@ -48,10 +54,14 @@ class TemporaryWorkspaceTests(unittest.TestCase):
                 (diagnostics / "Primary.log").write_bytes(b"Office diagnostic log")
                 log.write_text("Fixture command completed\n", encoding="utf8")
                 if command[0] == "fixture-shrinker":
+                    self.assertFalse(prepared_default)
                     output = Path(command[2])
                     output.mkdir()
                     shutil.copy2(command[1], output / "original.xlsx")
                     return
+                if prepared_default:
+                    default = Path(command[command.index("-Default") + 1])
+                    self.assertEqual(default.read_bytes(), prepared)
                 output = Path(command[command.index("-Output") + 1])
                 output.mkdir()
                 if native_failure:
@@ -67,6 +77,10 @@ class TemporaryWorkspaceTests(unittest.TestCase):
                     prepare.shutil, "disk_usage", return_value=SimpleNamespace(free=100 * 1024**3)):
                 result = prepare.prepare_one(case, root, config, "main", 300)
             self.assertEqual(result["status"], "failed" if native_failure else "prepared")
+            if prepared_default:
+                self.assertEqual(result["default_producer_sha256"], "f" * 64)
+                self.assertEqual(result["historical_default_shrink_seconds"], .016)
+                self.assertNotIn("shrink_seconds", result)
             self.assertEqual(list((working / "temp").iterdir()), [])
             self.assertFalse(Path(result["execution_directory"]).exists())
             retained = Path(result["attempt"])
@@ -84,6 +98,9 @@ class TemporaryWorkspaceTests(unittest.TestCase):
 
     def test_failure_cleans_office_logs_after_retaining_error(self):
         self.check_attempt(native_failure=True)
+
+    def test_prepared_default_is_reused_with_historical_provenance(self):
+        self.check_attempt(native_failure=False, prepared_default=True)
 
 
 if __name__ == "__main__":
