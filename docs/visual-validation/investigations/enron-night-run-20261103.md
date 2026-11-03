@@ -30,6 +30,92 @@ Excel Shrink damaged workbook content. It records the state investigated on
   2 November at 21:32:12; its final progress snapshot is from 3 November at
   08:49:58. Windows booted again at 08:50:23.
 
+## Run identity, invocation and duration
+
+| Identifier | Recorded value |
+| --- | --- |
+| Run ID | `c9d89584-85f3-4601-948f-f83c6b25dae9` |
+| Machine label / hostname | `THE_LIBRARY` |
+| Machine ID | `e0297e77534621d532d87c04518328e1d25f484db67239205d783751fa4b4ddc` |
+| Output directory, relative to the repository | `.tmp/regression/enron-upper-20261102` |
+| Launch receipt directory | `.tmp/enron-full-hash-screening/runs/20261102-203209` |
+| Original runner PID | `31424` (historical; PID alone is not a stable identity) |
+| Corpus ID | `219f5e4e42c4397a98d8e4e0cc2825e90ab3e622c4989ade93148363efb84bf5` |
+
+The run manifest is `metadata/runs/c9d89584-85f3-4601-948f-f83c6b25dae9.json`
+beneath that output directory. Its `machine_manifest` field identifies the exact
+machine snapshot; that repository-relative path is retained in the aggregate JSON.
+The source revision and executable hash above distinguish this locally built
+executable from an unmodified build of the same commit.
+
+The launch receipt's invocation, with absolute paths normalized to repository-
+relative paths, was:
+
+```powershell
+.\target\release\excel-shrink-cli.exe regression study `
+  --request-file .tmp/enron-full-hash-screening/runs/20261102-203209/request.json `
+  --output-root .tmp/regression/enron-upper-20261102 `
+  --download-root .tmp/archive-regression/downloads `
+  --run-corpus Enron --machine-label THE_LIBRARY `
+  --resident-capture --control-room --control-room-port 8771 `
+  --comparison-workers 4 --order size-desc `
+  --startup-timeout-seconds 600 --workbook-timeout-seconds 1800 `
+  --size-part 2/2 --targeted-comparison --hide-excel
+```
+
+The local starter also set `EXCEL_SHRINK_CONVERTED_BUNDLES_DIR` to
+`.tmp/regression/enron-full-20261030-backup-20261101-062355/prepared` and
+`EXCEL_SHRINK_SYSTEM_RESERVE_MIB=0`. The request JSON and these converted inputs
+are dependencies of that recorded invocation, not files included in this report.
+
+| Timing | Duration |
+| --- | ---: |
+| Process launch → last persisted progress | 11 h 17 min 46.561 s |
+| Runner-reported preparation active time | 1 h 23 min 42.162 s |
+| Runner-reported comparison active time | 9 h 53 min 52.047 s |
+| Runner-reported total active time | 11 h 17 min 34.209 s |
+| Process launch → Windows boot after restart | approximately 11 h 18 min 11 s |
+
+The process started at `2026-11-02T21:32:12.2674745+01:00`; the run manifest was
+created at `21:32:25.083+01:00`. The last progress timestamp was
+`2026-11-03T08:49:58.828+01:00`. Initialization and checkpoint timing explain why
+wall time and runner active time differ. These intervals do not establish
+continuous CPU use or the precise instant when Windows became unresponsive.
+
+## Machine specification and collection time
+
+The run's persisted machine manifest records the following historical snapshot:
+
+| Component | Recorded during the run |
+| --- | --- |
+| Manufacturer / model | Micro Computer (HK) Tech Limited / AI Series |
+| CPU | AMD Ryzen AI 9 HX 370 w/ Radeon 890M |
+| CPU topology | 12 physical cores, 24 logical processors |
+| Process architecture | x86-64 |
+| OS | Microsoft Windows 11 Pro, 64-bit, version `10.0.26300`, build `26300` |
+| RAM reported by the runner | 31,802,109,952 bytes, approximately 29.62 GiB OS-visible |
+| Excel | Click-to-Run, x64, version `16.0.20527.20112` |
+| Office product ID | `O365HomePremRetail` |
+
+Additional read-only inspection on **3 November 2026, after the reboot** found:
+
+| Component | Observed after reboot |
+| --- | --- |
+| Installed RAM | 32 GiB, two 16 GiB modules; WMI `ConfiguredClockSpeed=5600` |
+| Graphics | AMD Radeon(TM) 890M Graphics |
+| Graphics driver | `32.0.21030.2001` |
+| Windows display version / full build | `26H2` / `26300.9711` |
+| C drive physical disk | Samsung SSD 990 PRO 2TB, NVMe SSD, 2,000,398,934,016 bytes |
+| E drive physical disk, repository/results | KINGSTON OM8PGP41024Q-A0, NVMe SSD, 1,024,209,543,168 bytes |
+
+CPU, OS base build, Excel version and OS-visible RAM matched the historical
+manifest. Installed RAM, module configuration, graphics/driver details, disk
+models/mapping and Windows revision were not collected in that historical
+manifest; their post-reboot observation does not independently prove they were
+identical throughout the run. Installed RAM and OS-visible RAM are different
+measurements and must not be used interchangeably as the available job budget.
+No serial numbers, hardware UUIDs or personal account names are included.
+
 ## Persisted progress
 
 | Outcome | Workbooks |

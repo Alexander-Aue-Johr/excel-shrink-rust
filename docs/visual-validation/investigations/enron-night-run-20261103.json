@@ -7,6 +7,70 @@
   "run_started": "2026-11-02T21:32:12+01:00",
   "last_progress": "2026-11-03T08:49:58+01:00",
   "reboot": "2026-11-03T08:50:23+01:00",
+  "run": {
+    "id": "c9d89584-85f3-4601-948f-f83c6b25dae9",
+    "manifest": "metadata/runs/c9d89584-85f3-4601-948f-f83c6b25dae9.json",
+    "total_active_seconds": 40654.20913829957,
+    "manifest_created": "2026-11-02T21:32:25.083+01:00",
+    "last_progress": "2026-11-03T08:49:58.828+01:00",
+    "comparison_active_seconds": 35632.047099699885,
+    "corpus_id": "219f5e4e42c4397a98d8e4e0cc2825e90ab3e622c4989ade93148363efb84bf5",
+    "approximate_wall_seconds_to_reboot": 40691,
+    "preparation_active_seconds": 5022.162038600025,
+    "process_started": "2026-11-02T21:32:12.2674745+01:00",
+    "launch_receipt_directory": ".tmp/enron-full-hash-screening/runs/20261102-203209",
+    "wall_seconds_to_last_progress": 40666.5605255,
+    "runner_pid": 31424,
+    "output_directory": ".tmp/regression/enron-upper-20261102"
+  },
+  "machine": {
+    "label": "THE_LIBRARY",
+    "recorded_during_run": {
+      "office_product_id": "O365HomePremRetail",
+      "os_version": "10.0.26300",
+      "manufacturer": "Micro Computer (HK) Tech Limited",
+      "excel_version": "16.0.20527.20112",
+      "cpu": "AMD Ryzen AI 9 HX 370 w/ Radeon 890M",
+      "physical_cores": 12,
+      "os_visible_ram_bytes": 31802109952,
+      "architecture": "x86_64",
+      "model": "AI Series",
+      "excel_bitness": "x64",
+      "excel_installation": "ClickToRun",
+      "os_build": "26300",
+      "logical_processors": 24,
+      "os": "Microsoft Windows 11 Pro"
+    },
+    "id": "e0297e77534621d532d87c04518328e1d25f484db67239205d783751fa4b4ddc",
+    "manifest": "metadata/machines/e0297e77534621d532d87c04518328e1d25f484db67239205d783751fa4b4ddc-ebed6026ac465c1174f5c5052156f3c315ffec1073069e1228f00a791a61e156.json",
+    "observed_after_reboot": {
+      "installed_ram_bytes": 34359738368,
+      "windows_display_version": "26H2",
+      "ram_module_bytes": [
+        17179869184,
+        17179869184
+      ],
+      "gpu_driver_version": "32.0.21030.2001",
+      "ram_configured_clock_speed": 5600,
+      "windows_full_build": "26300.9711",
+      "storage": [
+        {
+          "size_bytes": 2000398934016,
+          "drive": "C",
+          "model": "Samsung SSD 990 PRO 2TB",
+          "type": "NVMe SSD"
+        },
+        {
+          "size_bytes": 1024209543168,
+          "drive": "E",
+          "model": "KINGSTON OM8PGP41024Q-A0",
+          "type": "NVMe SSD"
+        }
+      ],
+      "collection_date": "2026-11-03",
+      "gpu": "AMD Radeon(TM) 890M Graphics"
+    }
+  },
   "scope": {
     "partition": "2/2",
     "selected": 10436,
