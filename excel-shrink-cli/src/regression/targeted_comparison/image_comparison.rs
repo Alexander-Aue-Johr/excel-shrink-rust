@@ -23,6 +23,7 @@ pub(super) struct Statistics {
 struct Pixels {
     dimensions: (u32, u32),
     rgba_sha256: [u8; 32],
+    blank_edge_fingerprint: (u32, u32, [u8; 32]),
 }
 
 #[derive(Default)]
@@ -38,6 +39,14 @@ impl ImageComparisons {
     pub fn differ(&mut self, left: &Path, right: &Path) -> Result<bool> {
         self.statistics.comparisons += 1;
         Ok(self.fingerprint(left)? != self.fingerprint(right)?)
+    }
+
+    /// Compare top-left aligned pixels with white padding at the right/bottom only.
+    /// Callers must first establish unchanged content geometry; this is not general cropping.
+    pub fn differ_with_blank_edges(&mut self, left: &Path, right: &Path) -> Result<bool> {
+        self.statistics.comparisons += 1;
+        Ok(self.fingerprint(left)?.blank_edge_fingerprint
+            != self.fingerprint(right)?.blank_edge_fingerprint)
     }
 
     pub fn statistics(&self) -> Statistics {
@@ -63,9 +72,11 @@ impl ImageComparisons {
                 .with_context(|| format!("Decode captured image {}", path.display()))?;
             let dimensions = image.dimensions();
             anyhow::ensure!(dimensions.0 > 0 && dimensions.1 > 0, "Empty captured image");
+            let rgba = image.into_rgba8();
             let pixels = Pixels {
                 dimensions,
-                rgba_sha256: Sha256::digest(image.into_rgba8().as_raw()).into(),
+                rgba_sha256: Sha256::digest(rgba.as_raw()).into(),
+                blank_edge_fingerprint: blank_edge_fingerprint(&rgba),
             };
             self.statistics.decoded_images += 1;
             self.encoded.insert(encoded_sha256, pixels);
@@ -74,6 +85,39 @@ impl ImageComparisons {
         self.files.insert(path.to_path_buf(), pixels);
         Ok(pixels)
     }
+}
+
+/// Keep the origin fixed. Only opaque white or fully transparent pixels are blank;
+/// antialiasing, borders and overflow text remain evidence, including in the margin.
+fn blank_edge_fingerprint(image: &image::RgbaImage) -> (u32, u32, [u8; 32]) {
+    let mut width = 0;
+    let mut height = 0;
+    for (x, y, pixel) in image.enumerate_pixels() {
+        if pixel[3] != 0 && pixel.0 != [255, 255, 255, 255] {
+            width = width.max(x + 1);
+            height = height.max(y + 1);
+        }
+    }
+    let mut hash = Sha256::new();
+    for row in image
+        .as_raw()
+        .chunks_exact(image.width() as usize * 4)
+        .take(height as usize)
+    {
+        let row = &row[..width as usize * 4];
+        if row.chunks_exact(4).any(|pixel| pixel[3] == 0) {
+            let mut normalized = row.to_vec();
+            for pixel in normalized.chunks_exact_mut(4) {
+                if pixel[3] == 0 {
+                    pixel.copy_from_slice(&[255; 4]);
+                }
+            }
+            hash.update(normalized);
+        } else {
+            hash.update(row);
+        }
+    }
+    (width, height, hash.finalize().into())
 }
 
 #[cfg(test)]

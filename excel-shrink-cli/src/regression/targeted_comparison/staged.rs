@@ -34,6 +34,7 @@ pub(super) struct VisualFinding {
     cell: String,
     pixels_differ: bool,
     geometry_differs: bool,
+    blank_margin_ignored: bool,
     pixels_compared: bool,
     rendering_differs: bool,
     left_rendering: &'static str,
@@ -548,12 +549,18 @@ impl Workflow<'_, '_> {
                         state.lane(*id).current_range = Some(candidate.cell.clone());
                     }
                 })?;
+                let mut core_ranges = BTreeMap::new();
+                for (_, candidate, _) in batch {
+                    if let Some(range) = self.content_bounds.core_range(candidate)? {
+                        core_ranges.insert(candidate.clone(), range);
+                    }
+                }
                 let geometry = self
                     .comparison
                     .excel
                     .as_mut()
                     .context("Excel host missing")?
-                    .capture_ranges(batch, &self.comparison.telemetry)?;
+                    .capture_ranges(batch, &core_ranges, &self.comparison.telemetry)?;
                 for ((id, candidate, path), geometry) in batch.iter().zip(geometry) {
                     self.states.get_mut(id).unwrap().captures.insert(
                         candidate.clone(),
@@ -728,17 +735,20 @@ impl Workflow<'_, '_> {
                     .captures
                     .get(candidate)
                     .context("Missing right evidence")?;
+                let verdict =
+                    a.compare_content(b, &mut self.comparison.image_comparisons)?;
                 findings.push(VisualFinding {
                     sheet: candidate.sheet.clone(),
                     cell: candidate.cell.clone(),
-                    pixels_differ: a.pixels_differ(b, &mut self.comparison.image_comparisons)?,
+                    pixels_differ: verdict.pixels_differ,
+                    blank_margin_ignored: verdict.blank_margin_ignored,
                     pixels_compared: a.path.is_some() && b.path.is_some(),
                     rendering_differs: a.path.is_some() != b.path.is_some(),
                     left_rendering: a.rendering(),
                     right_rendering: b.rendering(),
                     left_geometry: a.geometry.clone(),
                     right_geometry: b.geometry.clone(),
-                    geometry_differs: a.geometry != b.geometry,
+                    geometry_differs: verdict.geometry_differs,
                     left_png: a.path.clone(),
                     right_png: b.path.clone(),
                 });

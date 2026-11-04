@@ -180,6 +180,7 @@ pub(super) fn new_report() -> Report {
         excel_pids: BTreeMap::new(),
         capture_counts: BTreeMap::new(),
         limitations: vec![
+            "Gridlines are disabled consistently. A trailing blank margin geometry change is ignored only when both captures have the same measured content core and all top-left-aligned nonblank pixels match. Raw geometry and images remain in the report; blank_margin_ignored records this decision. Explicit borders, overflow ink and changes to core geometry remain differences.".into(),
             "Row-height checks cover rows above and within the union of content envelopes, including one margin row. Formatting-only tails below that envelope are excluded, not certified equal; charts retain independent full-chart observations.".into(),
             "Strategy default-inplace-rebuild-v1 compares Original with SD before and after rebuilding the same SD instance. Original and optional Check Performance are not explicitly rebuilt. The SD pre-rebuild comparison retains its phase-specific region selection; regions first discovered after SD rebuild have no SD-before image or volatility/causal classification.".into(),
             "Cell capture regions are intersected with the union of content-bearing cell bounds across raw, saved and rebuilt inputs, plus one row/column of margin. Formatting-only exterior regions are intentionally skipped, not visually confirmed identical; content_coverage records selection counts and bounds. Chart exports are independent of this policy.".into(),

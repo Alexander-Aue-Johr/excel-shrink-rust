@@ -64,9 +64,17 @@
       }
       const range = context.workbook.worksheets.getItem(command.sheet).getRange(command.range);
       if (command.kind === 'capture') {
+        const worksheet = context.workbook.worksheets.getItem(command.sheet);
+        worksheet.showGridlines = false;
         range.load('top,left,width,height');
+        const core = command.comparison_core_range
+          ? worksheet.getRange(command.comparison_core_range) : null;
+        if (core) core.load('top,left,width,height');
         await context.sync();
         const geometry = {top: range.top, left: range.left, width: range.width, height: range.height};
+        if (core) geometry.comparison_core = {
+          top: core.top, left: core.left, width: core.width, height: core.height
+        };
         if (![geometry.top, geometry.left, geometry.width, geometry.height]
           .every(value => Number.isFinite(value) && value >= 0)) {
           throw new Error('Invalid measured capture geometry');

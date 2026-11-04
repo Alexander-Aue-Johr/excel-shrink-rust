@@ -26,7 +26,7 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
     if !skip_performance {
         expected.extend([("O", "CP"), ("O", "CPR"), ("CP", "CPR"), ("OR", "CPR")]);
     }
-    if report["capture_policy"] == "targeted-content-grid-v3" {
+    if matches!(report["capture_policy"].as_str(), Some("targeted-content-grid-v3" | "targeted-content-grid-v4")) {
         expected = super::execution_contract::expected_pairs(report, skip_performance)?;
     }
     ensure!(

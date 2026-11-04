@@ -15,10 +15,7 @@ pub(in crate::regression::archive::study) fn complete(
     skip_performance: bool,
 ) -> bool {
     record["complete"] == true
-        && matches!(
-            record["targeted_comparison"]["policy"].as_str(),
-            Some("targeted-content-grid-v2" | "targeted-content-grid-v3")
-        )
+        && record["targeted_comparison"]["policy"] == POLICY
         && matches!(
             record["targeted_comparison"]["skip_check_performance"].as_bool(),
             Some(previously_skipped) if skip_performance || !previously_skipped
@@ -370,7 +367,9 @@ mod tests {
         assert!(!complete(&record, false));
         record["targeted_comparison"]["execution_strategy"] = strategy;
         record["targeted_comparison"]["policy"] = json!("targeted-content-grid-v2");
-        assert!(complete(&record, false));
+        assert!(!complete(&record, false));
+        record["targeted_comparison"]["policy"] = json!("targeted-content-grid-v3");
+        assert!(!complete(&record, false));
         record["targeted_comparison"]["policy"] = json!("unknown-future-policy");
         assert!(!complete(&record, false));
         record["targeted_comparison"]["policy"] = json!(POLICY);

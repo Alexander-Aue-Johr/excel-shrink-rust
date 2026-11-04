@@ -1,4 +1,5 @@
 //! Bounded image capture and comparison of the same regions across workbook states.
+use super::capture_layout::Geometry;
 use super::host::ExcelHost;
 use super::image_comparison::ImageComparisons;
 use super::telemetry::{LaneId, Telemetry};
@@ -10,6 +11,13 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
 };
+
+#[derive(Debug, PartialEq)]
+pub(super) struct ContentVerdict {
+    pub pixels_differ: bool,
+    pub geometry_differs: bool,
+    pub blank_margin_ignored: bool,
+}
 
 #[derive(Clone)]
 pub(super) struct Evidence {
@@ -39,6 +47,35 @@ impl Evidence {
         }
     }
 
+    /// Ignore size changes only outside an unchanged measured content rectangle, and
+    /// only when the complete captures still match with blank trailing padding.
+    pub fn compare_content(
+        &self,
+        other: &Self,
+        comparisons: &mut ImageComparisons,
+    ) -> Result<ContentVerdict> {
+        let pixels_differ = self.pixels_differ(other, comparisons)?;
+        let left_geometry: Geometry = serde_json::from_value(self.geometry.clone())?;
+        let right_geometry: Geometry = serde_json::from_value(other.geometry.clone())?;
+        let geometry_differs = left_geometry != right_geometry;
+        if geometry_differs && matching_content_geometry(&self.geometry, &other.geometry) {
+            if let (Some(left), Some(right)) = (&self.path, &other.path) {
+                if !comparisons.differ_with_blank_edges(left, right)? {
+                    return Ok(ContentVerdict {
+                        pixels_differ: false,
+                        geometry_differs: false,
+                        blank_margin_ignored: true,
+                    });
+                }
+            }
+        }
+        Ok(ContentVerdict {
+            pixels_differ,
+            geometry_differs,
+            blank_margin_ignored: false,
+        })
+    }
+
     pub fn rendering(&self) -> &'static str {
         if self.path.is_some() {
             "captured"
@@ -46,6 +83,37 @@ impl Evidence {
             "zero-area-range"
         }
     }
+}
+
+/// A missing core measurement, moved content, or clipped core must stay a difference.
+fn matching_content_geometry(left: &Value, right: &Value) -> bool {
+    fn measured(value: &Value) -> Option<Geometry> {
+        serde_json::from_value::<Geometry>(value.clone())
+            .ok()?
+            .validate()
+            .ok()
+    }
+    let (Some(left), Some(right), Some(left_core), Some(right_core)) = (
+        measured(left),
+        measured(right),
+        measured(&left["comparison_core"]),
+        measured(&right["comparison_core"]),
+    ) else {
+        return false;
+    };
+    if left.top != right.top
+        || left.left != right.left
+        || left_core != right_core
+        || left_core.empty()
+    {
+        return false;
+    }
+    [left, right].into_iter().all(|full| {
+        left_core.left >= full.left
+            && left_core.top >= full.top
+            && left_core.left + left_core.width <= full.left + full.width
+            && left_core.top + left_core.height <= full.top + full.height
+    })
 }
 
 #[derive(Serialize)]
@@ -322,5 +390,89 @@ mod tests {
         for invalid in ["B2:A1", "A0:B2", "A1:XFE2", "A1:B1048577", "A:B"] {
             assert!(padded_range(invalid).is_err(), "{invalid}");
         }
+    }
+}
+
+#[cfg(test)]
+mod margin_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// The extra blank row/column in Enron Deals A1:I7 and Top 100 Exposures
+    /// may change size. Body geometry and overflow ink must remain observable.
+    #[test]
+    fn blank_margin_changes_require_unchanged_core_and_matching_all_ink() -> Result<()> {
+        let directory =
+            crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "blank-margin")?;
+        std::fs::create_dir_all(&directory)?;
+        let core = json!({"top":0,"left":0,"width":8,"height":8});
+        let mut comparisons = ImageComparisons::default();
+        let mut evidence = Vec::new();
+        for (index, (width, height)) in [(10, 10), (14, 10), (10, 14), (14, 14)]
+            .into_iter()
+            .enumerate()
+        {
+            let path = directory.join(format!("{index}.png"));
+            let mut image = image::RgbaImage::from_pixel(width, height, image::Rgba([255; 4]));
+            image.put_pixel(2, 3, image::Rgba([0, 0, 0, 255]));
+            image.save(&path)?;
+            evidence.push(Evidence {
+                path: Some(path),
+                geometry: json!({"top":0,"left":0,
+                "width":width,"height":height,"comparison_core":core}),
+            });
+        }
+        for other in &evidence[1..] {
+            assert_eq!(
+                evidence[0].compare_content(other, &mut comparisons)?,
+                ContentVerdict {
+                    pixels_differ: false,
+                    geometry_differs: false,
+                    blank_margin_ignored: true
+                }
+            );
+        }
+        let mut body = evidence[1].clone();
+        body.geometry["comparison_core"]["height"] = json!(7);
+        assert!(
+            evidence[0]
+                .compare_content(&body, &mut comparisons)?
+                .geometry_differs
+        );
+        let mut unknown = evidence[1].clone();
+        unknown
+            .geometry
+            .as_object_mut()
+            .unwrap()
+            .remove("comparison_core");
+        assert!(
+            evidence[0]
+                .compare_content(&unknown, &mut comparisons)?
+                .geometry_differs
+        );
+        let mut shifted = evidence[1].clone();
+        shifted.geometry["left"] = json!(1);
+        assert!(
+            evidence[0]
+                .compare_content(&shifted, &mut comparisons)?
+                .geometry_differs
+        );
+        // A fresh immutable image contains overflow ink in the extra column.
+        let path = directory.join("overflow.png");
+        let mut image = image::open(evidence[1].path.as_ref().unwrap())?.into_rgba8();
+        image.put_pixel(12, 3, image::Rgba([0, 0, 0, 255]));
+        image.save(&path)?;
+        let mut overflow = evidence[1].clone();
+        overflow.path = Some(path);
+        assert_eq!(
+            evidence[0].compare_content(&overflow, &mut comparisons)?,
+            ContentVerdict {
+                pixels_differ: true,
+                geometry_differs: true,
+                blank_margin_ignored: false
+            }
+        );
+        std::fs::remove_dir_all(directory)?;
+        Ok(())
     }
 }

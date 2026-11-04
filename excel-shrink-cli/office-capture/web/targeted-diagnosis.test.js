@@ -49,3 +49,18 @@ test('a zero-height cell range is observed without exporting an image', async ()
   assert.equal(result.geometry.height, 0);
   assert.equal(result.image_base64, undefined);
 });
+
+
+test('capture measures its unpadded core without extra synchronization and disables gridlines', async () => {
+  let synchronizations = 0;
+  const core = {top:0,left:0,width:280,height:380,load() {}};
+  const range = {top:0,left:0,width:300,height:400,load() {},
+    getImage() { assert.equal(worksheet.showGridlines,false); return {value:'png'}; }};
+  const worksheet = {showGridlines:true,getRange: address => address === 'A1:H6' ? core : range};
+  const context = {workbook:{worksheets:{getItem:()=>worksheet}},
+    sync:async()=>{synchronizations++;}};
+  const result = await globalThis.TargetedDiagnosis.run({kind:'capture',sheet:'Deals',
+    range:'A1:I7',comparison_core_range:'A1:H6'},action=>action(context));
+  assert.equal(synchronizations,2);
+  assert.deepEqual(result.geometry.comparison_core,{top:0,left:0,width:280,height:380});
+});

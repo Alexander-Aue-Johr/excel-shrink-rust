@@ -207,10 +207,11 @@ impl ExcelHost {
     pub(super) fn capture_ranges(
         &mut self,
         jobs: &[(LaneId, super::Candidate, std::path::PathBuf)],
+        core_ranges: &std::collections::BTreeMap<super::Candidate, String>,
         telemetry: &Telemetry,
     ) -> Result<Vec<Value>> {
         let response = self.call(json!({"kind":"capture_batch","jobs":jobs.iter().map(|(lane,candidate,output)|
-            json!({"kind":"capture","lane":lane.key(),"sheet":candidate.sheet,"range":candidate.cell,"output":output}))
+            json!({"kind":"capture","lane":lane.key(),"sheet":candidate.sheet,"range":candidate.cell,"output":output,"comparison_core_range":core_ranges.get(candidate)}))
             .collect::<Vec<_>>()}), telemetry)?;
         let images = response["images"]
             .as_array()
@@ -400,6 +401,12 @@ fn measured_geometry(response: &Value) -> Result<Value> {
             .filter(|value| value.is_finite())
             .with_context(|| format!("Missing or invalid measured {key}"))?;
         geometry.insert(key.into(), json!(value));
+    }
+    if response["comparison_core"].is_object() {
+        geometry.insert(
+            "comparison_core".into(),
+            measured_geometry(&response["comparison_core"])?,
+        );
     }
     Ok(Value::Object(geometry))
 }

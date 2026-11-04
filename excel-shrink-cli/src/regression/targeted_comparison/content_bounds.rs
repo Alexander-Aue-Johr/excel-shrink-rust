@@ -152,6 +152,16 @@ impl ContentBounds {
         }
     }
 
+    /// The unpadded content intersection anchors comparison of extra blank edge cells.
+    pub fn core_range(&self, candidate: &Candidate) -> Result<Option<String>> {
+        let rectangle = Rectangle::parse(&candidate.cell)?;
+        Ok(self
+            .0
+            .get(&candidate.sheet)
+            .and_then(|bounds| bounds.intersection(rectangle))
+            .map(Rectangle::address))
+    }
+
     /// Heights above visible content affect its position; rows below its padded envelope do not.
     pub fn last_relevant_row(&self, sheet: &str) -> u32 {
         self.0.get(sheet).map_or(0, |bounds| bounds.padded().bottom)
