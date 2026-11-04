@@ -94,7 +94,11 @@ fn project(
                 .is_some_and(|(run, attempt)| attempt >= run)
         })
         .collect();
-    current.sort_by_key(|snapshot| std::cmp::Reverse(snapshot["updated_at"].as_i64().unwrap_or(0)));
+    // Long-running attempts must remain visible even while newer groups complete.
+    current.sort_by_key(|snapshot| (
+        snapshot["status"] != "running",
+        std::cmp::Reverse(snapshot["updated_at"].as_i64().unwrap_or(0)),
+    ));
     let total = current.len();
     let groups: Vec<_> = current.into_iter().take(limit).map(|snapshot| {
         let operation = &snapshot["current_operation"];
@@ -143,7 +147,7 @@ mod tests {
         let snapshots = json!([
             {"started_at":99,"status":"running"},
             {"started_at":100,"updated_at":200,"status":"running", "lanes":[{"id":"O","pid":12,"process_alive":true}]},
-            {"started_at":101,"updated_at":199,"status":"completed_with_limitations"}
+            {"started_at":101,"updated_at":299,"status":"completed_with_limitations"}
         ]);
         let summary = project(&queue, &Value::Null, &snapshots, 1, 120, 200_000);
         assert_eq!(summary["comparisons_available"], 2);
