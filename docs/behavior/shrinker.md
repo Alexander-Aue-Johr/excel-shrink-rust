@@ -156,6 +156,20 @@ value is visible. Representatives can be tentative in fixed-height rows and
 removed if no kept row content actually needs them. Explicit merge cells and
 column-format exceptions are handled separately.
 
+A styleless empty font representative does not itself anchor a trailing region.
+It remains eligible for local height/baseline preservation before later content
+or another required anchor. If it masks an inherited visible row or column fill
+or border, it remains a visual anchor even at the end of a sheet. White fills
+receive the same protection as colored fills. Unknown explicit cell styles
+remain conservative anchors.
+
+Enron bundles `44ad86f1d9f249470fc6` and `a8bd950dff33454721b5`, sheet `NOV`,
+document the content-free case. Each retained 11,632 empty cells, including 518
+styleless representatives, after the no-fill override fix. Their inherited
+row formats contain fonts without visible fills or borders. These representatives
+must not block pruning. Removing such a content-free tail can also remove its
+empty-row heights; this policy does not preserve exterior blank-grid geometry.
+
 For dense bloat, the implementation can move an existing cell XF to the row's
 `s`/`customFormat` attributes and remove redundant cells. It does not allocate a
 new workbook style or change a value merely to make this transformation possible.

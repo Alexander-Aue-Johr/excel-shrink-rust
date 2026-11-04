@@ -549,15 +549,18 @@ fn kept_cell_is_tail_anchor(
         return true;
     }
 
-    if cell_style.is_none()
-        && cell.style_id.is_none()
-        && params.cleanup.keep_textless_default_font_representatives
-    {
+    if cell_style.is_none() && cell.style_id.is_some() {
         return true;
     }
 
-    if cell_style.is_none() && cell.style_id.is_some() {
-        return true;
+    if cell_style.is_none() {
+        // A default-font representative only protects layout before a later
+        // anchor. Clearing an inherited fill or border is itself visible.
+        let inherited = inherited_cell_styles(cell, metrics);
+        return [inherited.row, inherited.column]
+            .into_iter()
+            .flatten()
+            .any(|style| style.has_visible_fill || style.has_visible_border);
     }
 
     // Column formatting survives without this cell. Only an effective cell

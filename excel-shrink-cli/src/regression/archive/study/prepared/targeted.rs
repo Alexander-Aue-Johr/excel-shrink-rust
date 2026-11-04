@@ -19,7 +19,10 @@ pub(in crate::regression::archive::study) fn complete(
             record["targeted_comparison"]["policy"].as_str(),
             Some("targeted-content-grid-v2" | "targeted-content-grid-v3")
         )
-        && record["targeted_comparison"]["skip_check_performance"] == skip_performance
+        && matches!(
+            record["targeted_comparison"]["skip_check_performance"].as_bool(),
+            Some(previously_skipped) if skip_performance || !previously_skipped
+        )
         && record["targeted_comparison"]["execution_strategy"] == "default-inplace-rebuild-v1"
         && record["targeted_comparison"]["status"] == "completed_with_limitations"
 }
@@ -358,7 +361,11 @@ mod tests {
         assert!(!complete(&record, false));
         record["targeted_comparison"] = json!({"policy":POLICY,"status":"completed_with_limitations","skip_check_performance":false,"execution_strategy":"default-inplace-rebuild-v1"});
         assert!(complete(&record, false));
-        assert!(!complete(&record, true));
+        assert!(complete(&record, true));
+        record["targeted_comparison"]["skip_check_performance"] = json!(true);
+        assert!(complete(&record, true));
+        assert!(!complete(&record, false));
+        record["targeted_comparison"]["skip_check_performance"] = json!(false);
         let strategy = record["targeted_comparison"]["execution_strategy"].take();
         assert!(!complete(&record, false));
         record["targeted_comparison"]["execution_strategy"] = strategy;

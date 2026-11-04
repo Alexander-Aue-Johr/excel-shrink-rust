@@ -428,3 +428,16 @@ Paths below are relative to `excel-shrink-cli/src/regression/` unless noted.
 | V11 | `archive/study/prepared/targeted.rs`, `prepared/targeted/contract.rs` |
 
 Office-capture paths are relative to `excel-shrink-cli/`, not the regression folder.
+
+## Default-only screening and resume
+
+A Default-only run retains Original and Default, compares their selected regions,
+then rebuilds the same Default instance and compares it against the retained
+Original. The process cards retain the Default card while its label advances
+from Before rebuild to After rebuild. Omitted states remain in the workflow table.
+
+Completed results from the same execution strategy that additionally checked
+Check Performance satisfy a subsequent Default-only request. Their evidence and
+provenance remain intact. A Default-only result cannot satisfy a later request
+that includes Check Performance. Missing policy or execution metadata still
+prevents reuse.
