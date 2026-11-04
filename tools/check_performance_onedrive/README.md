@@ -94,13 +94,20 @@ Use `--retry-skipped` to revisit it after the workbook or service changes.
 Excel can also show an **Open in Desktop App?** dialog saying the workbook is
 protected by Information Rights Management (IRM) and cannot be edited in a
 browser. The Review ribbon may already be visible behind this dialog. The
-runner recognizes the IRM message, records `skipped` with outcome
+runner recognizes the English or German IRM message, records `skipped` with outcome
 `irm_browser_edit_unavailable`, and continues with the next workbook. It does
 not click **Open in Desktop App** or run Check Performance on that copy.
 This was observed with `auslaend-bevoelkerung-2010200217005.xlsx`; the
 browser restriction alone does not establish whether desktop Excel can edit
 the workbook. Use `--retry-skipped` only after its permissions or format have
 changed.
+
+A **WORKBOOK REPAIRED** banner (including its German translation) or a repair
+confirmation is recorded as `skipped` with outcome `workbook_repair_required`.
+The runner leaves the repair and editing buttons untouched. For both repair
+and IRM exclusions, the displayed notice is preserved in the attempt's `error`
+field in SQLite and printed in the run log. These exclusions do not trigger
+the generic retry or count as successful Check Performance results.
 
 On the first run with this version, existing `progress.json` data is imported
 into SQLite, including completed files and timing events. The importer leaves

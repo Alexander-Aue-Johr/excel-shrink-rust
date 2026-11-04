@@ -17,6 +17,64 @@ PANE_SCRIPT = Path(__file__).with_name("pane.js").read_text(encoding="utf-8")
 
 
 class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
+    async def test_temporary_repair_banner_skips_without_editing(self) -> None:
+        """The repaired Reading View is excluded before any editing action."""
+        for title, message in [
+            ("WORKBOOK REPAIRED", "We temporarily repaired this workbook so that you can open it in Reading View."),
+            ("ARBEITSMAPPE REPARIERT", "Wir haben diese Arbeitsmappe vorübergehend repariert, sodass Sie sie in der Leseansicht öffnen können."),
+        ]:
+            await self.page.set_content(f"""
+                <button id="Review">Review</button>
+                <div id="BusinessBar"><span>{title}</span><span>{message}</span>
+                  <button onclick="window.edited=true">Edit Workbook</button>
+                </div>
+            """)
+            with self.assertRaises(FLOW.WorkbookRepairRequired) as error:
+                await FLOW.find_editor(self.page)
+            self.assertIn(message, str(error.exception))
+            self.assertFalse(await self.page.evaluate("Boolean(window.edited)"))
+
+    async def test_german_irm_dialog_skips_before_review_is_ready(self) -> None:
+        """German IRM wording must be recognized over Excel's loading skeleton."""
+        await self.page.set_content("""
+            <div role="dialog"><h2>In Desktop-App öffnen?</h2>
+              <p>Excel kann dieses Dokument leider nicht zum Bearbeiten in einem Browser öffnen,
+              weil es durch die Verwaltung von Informationsrechten
+              (Information Rights Management, IRM) geschützt ist.</p>
+              <button onclick="window.desktopOpened=true">In Desktop-App öffnen</button>
+            </div>
+        """)
+        with self.assertRaises(FLOW.WorkbookEditRestricted) as error:
+            await asyncio.wait_for(FLOW.find_editor(self.page), timeout=2)
+        self.assertIn("Informationsrechten", str(error.exception))
+        self.assertFalse(await self.page.evaluate("Boolean(window.desktopOpened)"))
+
+    async def test_repair_confirmation_is_logged_without_accepting(self) -> None:
+        """An already-visible repair dialog is excluded like the repair banner."""
+        await self.page.set_content("""
+            <div role="dialog"><h2>Diese Arbeitsmappe reparieren?</h2>
+              <p>Diese Arbeitsmappe ist beschädigt.</p>
+              <button onclick="window.repaired=true">Reparieren</button>
+            </div>
+        """)
+        with self.assertRaises(FLOW.WorkbookRepairRequired):
+            await FLOW.find_editor(self.page)
+        self.assertFalse(await self.page.evaluate("Boolean(window.repaired)"))
+
+    async def test_repair_arriving_while_performance_is_disabled_is_excluded(self) -> None:
+        """A late notice ends readiness waiting with the specific skip reason."""
+        await self.page.set_content("""
+            <button id="ShowOptimizeWorkbookTaskpane" disabled>Performance</button>
+            <script>setTimeout(() => {
+              const bar = document.createElement('div');
+              bar.id = 'BusinessBar';
+              bar.innerHTML = '<span>WORKBOOK REPAIRED</span><span>Reading View</span>';
+              document.body.append(bar);
+            }, 100);</script>
+        """)
+        with self.assertRaises(FLOW.WorkbookRepairRequired):
+            await asyncio.wait_for(FLOW.find_performance_pane(self.page, self.page), timeout=2)
+
     async def test_browser_restart_replaces_playwright_driver(self) -> None:
         """A dead driver needs a new connection, not just another Chromium tab."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -410,7 +468,7 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
             await FLOW.process_workbook(
                 None, self.page, Path("/tmp"), progress, display, "restricted.xlsx")
         progress.skip.assert_called_once_with(
-            "restricted.xlsx", 7, "irm_browser_edit_unavailable")
+            "restricted.xlsx", 7, "irm_browser_edit_unavailable", "IRM")
         progress.finish.assert_not_called()
         display.finish.assert_called_once()
 

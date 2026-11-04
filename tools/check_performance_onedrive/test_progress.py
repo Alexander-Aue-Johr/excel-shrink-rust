@@ -178,6 +178,35 @@ async def fake_scroll(page: FakePage, to_top: bool):
 
 
 class RowCursorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_blocked_workbooks_preserve_notice_and_skip_optimization(self) -> None:
+        """Known browser restrictions finish once with their actual notice."""
+        cases = [
+            (FLOW.WorkbookRepairRequired, "workbook_repair_required"),
+            (FLOW.WorkbookEditRestricted, "irm_browser_edit_unavailable"),
+        ]
+        for exception, outcome in cases:
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as temporary:
+                with ProgressStore(Path(temporary), "folder") as progress:
+                    progress.discover(["blocked.xlsx"])
+                    folder = MagicMock()
+                    folder.url = "https://example.test/folder"
+                    folder.is_closed.return_value = True
+                    notice = "The actual Excel notice"
+                    with (patch.object(FLOW, "open_editor_with_retry", new_callable=AsyncMock,
+                                       side_effect=exception(notice)),
+                          patch.object(FLOW, "optimize", new_callable=AsyncMock) as optimize):
+                        await FLOW.process_workbook(
+                            None, folder, Path(temporary), progress, MagicMock(), "blocked.xlsx")
+                    self.assertEqual(progress.status("blocked.xlsx"), JobState.SKIPPED.value)
+                    row = progress.connection.execute(
+                        "SELECT outcome, error, finished_at FROM files JOIN attempts "
+                        "ON files.name = attempts.file_name").fetchone()
+                    self.assertEqual(tuple(row[:2]), (outcome, notice))
+                    self.assertIsNotNone(row[2])
+                    phases = progress.connection.execute("SELECT phase FROM events").fetchall()
+                    self.assertIn(outcome, [row[0] for row in phases])
+                    optimize.assert_not_awaited()
+
     async def test_dead_driver_does_not_mask_browser_restart(self) -> None:
         """BrowserContext.close may fail after the Playwright connection dies."""
         context = MagicMock()

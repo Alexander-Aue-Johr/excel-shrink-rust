@@ -697,20 +697,27 @@ class WorkbookEditRestricted(Exception):
     """Excel for the web cannot edit this rights-managed workbook."""
 
 
-async def workbook_edit_restricted(page) -> bool:
-    """Recognize Excel's IRM dialog even when Review is visible behind it."""
+class WorkbookRepairRequired(Exception):
+    """Excel offers only a repaired Reading View or asks to repair the file."""
+
+
+async def raise_if_workbook_blocked(page) -> None:
+    """Preserve the visible Excel notice before any editing or optimization."""
     for frame in page.frames:
-        message = frame.get_by_text(
-            re.compile(r"protected by Information Rights Management \(IRM\)", re.I))
-        if await message.is_visible():
-            return True
-    return False
-
-
-async def raise_if_irm_restricted(page) -> None:
-    """Fail when Excel explicitly requires desktop editing for an IRM workbook."""
-    if await workbook_edit_restricted(page):
-        raise WorkbookEditRestricted("Excel for the web cannot edit this IRM-protected workbook")
+        dialogs = frame.get_by_role("dialog")
+        irm = dialogs.filter(has_text=re.compile(
+            r"Information Rights Management\s*(?:\(|,)\s*IRM\)", re.I)).first
+        if await irm.is_visible():
+            raise WorkbookEditRestricted(await irm.inner_text())
+        bar = frame.locator("#BusinessBar")
+        repaired = bar.get_by_text(re.compile(
+            r"^(WORKBOOK REPAIRED|ARBEITSMAPPE REPARIERT)$", re.I)).first
+        if await repaired.is_visible():
+            raise WorkbookRepairRequired(await bar.inner_text())
+        repair_dialog = dialogs.filter(has_text=re.compile(
+            r"Repair this workbook\?|Diese Arbeitsmappe reparieren\?", re.I)).first
+        if await repair_dialog.is_visible():
+            raise WorkbookRepairRequired(await repair_dialog.inner_text())
 
 
 async def workbook_open_error(page) -> bool:
@@ -736,7 +743,7 @@ async def find_editor(page):
             while True:
                 if await workbook_open_error(page):
                     raise WorkbookCannotOpen("Excel says the workbook cannot be opened")
-                await raise_if_irm_restricted(page)
+                await raise_if_workbook_blocked(page)
                 if await sign_in.is_visible():
                     await sign_in.click(force=True, timeout=5_000)
                     await sign_in.wait_for(state="hidden", timeout=30_000)
@@ -788,7 +795,7 @@ async def select_review(page, editor) -> None:
     while time.monotonic() < deadline:
         if await workbook_open_error(page):
             raise WorkbookCannotOpen("Excel says the workbook cannot be opened")
-        await raise_if_irm_restricted(page)
+        await raise_if_workbook_blocked(page)
         if await selected.count():
             return
         try:
@@ -816,18 +823,25 @@ async def remove_invalid_objects_for_editing(editor) -> bool:
 
 async def find_performance_pane(page, editor):
     """Open Performance, or return None when Excel keeps its ribbon group disabled."""
-    await raise_if_irm_restricted(page)
+    from playwright.async_api import TimeoutError as PlaywrightTimeout
+    await raise_if_workbook_blocked(page)
     command = editor.locator("#ShowOptimizeWorkbookTaskpane:visible").first
     await command.wait_for(state="visible", timeout=30_000)
     enabled_deadline = time.monotonic() + 10
     while not await command.is_enabled():
+        await raise_if_workbook_blocked(page)
         if time.monotonic() >= enabled_deadline:
             return None
         await asyncio.sleep(0.5)
-    await command.click(timeout=15_000)
+    try:
+        await command.click(timeout=15_000)
+    except PlaywrightTimeout:
+        # A notice can arrive while Playwright waits for the ribbon to accept input.
+        await raise_if_workbook_blocked(page)
+        raise
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
-        await raise_if_irm_restricted(page)
+        await raise_if_workbook_blocked(page)
         for frame in page.frames:
             if "resources.office.net" not in frame.url:
                 continue
@@ -939,6 +953,7 @@ async def process_workbook(context, folder_page, profile: Path,
         page, editor = await open_editor_with_retry(
             context, folder_page, name, progress, attempt, row)
         record_phase(progress, attempt, name, "review_ready")
+        await raise_if_workbook_blocked(page)
         repaired = await remove_invalid_objects_for_editing(editor)
         if repaired:
             record_phase(progress, attempt, name, "invalid_objects_removed")
@@ -971,7 +986,13 @@ async def process_workbook(context, folder_page, profile: Path,
     except WorkbookEditRestricted as error:
         outcome = "irm_browser_edit_unavailable"
         message = str(error)
-        progress.skip(name, attempt.id, outcome)
+        record_phase(progress, attempt, name, outcome)
+        progress.skip(name, attempt.id, outcome, message)
+    except WorkbookRepairRequired as error:
+        outcome = "workbook_repair_required"
+        message = str(error)
+        record_phase(progress, attempt, name, outcome)
+        progress.skip(name, attempt.id, outcome, message)
     except OneDriveThrottled as error:
         message = str(error)
         throttled = True
