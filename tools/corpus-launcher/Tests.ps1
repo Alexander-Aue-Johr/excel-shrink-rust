@@ -56,6 +56,7 @@ Assert ((Arg-Value $plan '--output-root') -eq $output) 'Existing output director
 Assert ($plan.ExportResults.StartsWith((Join-Path $output 'exports'))) 'Result export was not retained.'
 Assert ($plan.Environment.EXCEL_SHRINK_TALL_SHEET_THRESHOLD -eq '40' -and $plan.Environment.EXCEL_SHRINK_TALL_SHEET_EDGE_TILES -eq '2') 'Tall-sheet settings do not reach the runner.'
 Assert ($plan.Environment.EXCEL_SHRINK_SYSTEM_RESERVE_MIB -eq '0') 'The default reserve did not reach the runner environment.'
+Assert ($plan.Environment.EXCEL_SHRINK_REPOSITORY_ROOT -eq [IO.Path]::GetFullPath($root)) 'Detached binaries must use the launch repository scripts.'
 foreach($path in $before.Keys){Assert ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $before[$path]) 'Migration rewrote an existing artifact.'}
 Assert ((@(Get-ChildItem -LiteralPath $root -File -Recurse)).Count -eq $before.Count) 'Read-only planning wrote files.'
 Assert (-not [IO.File]::Exists($configPath)) 'Preview saved configuration unexpectedly.'

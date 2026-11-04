@@ -318,6 +318,7 @@ function New-StudyLaunchPlan {
         $argsList += @('--export-results',$export)
     }
     $environment=[ordered]@{
+        EXCEL_SHRINK_REPOSITORY_ROOT=[IO.Path]::GetFullPath($Repo)
         EXCEL_SHRINK_WORKER_MEMORY_MIB=[string]$settings.worker_memory_mib
         EXCEL_SHRINK_EXCEL_MEMORY_MIB=[string]$settings.excel_memory_mib
         EXCEL_SHRINK_RESIDENT_MEMORY_MIB=[string]$settings.resident_memory_mib

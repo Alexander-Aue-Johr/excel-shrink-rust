@@ -3018,6 +3018,17 @@ fn load_suite(path: &Path) -> RegressionSuite {
 }
 
 fn repo_root() -> PathBuf {
+    // A detached binary may live below a different checkout. The launcher binds
+    // scripts and assets to the requested repository and all child processes inherit it.
+    if let Some(root) = std::env::var_os("EXCEL_SHRINK_REPOSITORY_ROOT") {
+        let root = PathBuf::from(root);
+        assert!(
+            root.join("Cargo.toml").is_file()
+                && root.join("excel-shrink-cli/office-capture").is_dir(),
+            "EXCEL_SHRINK_REPOSITORY_ROOT must name an existing capture repository"
+        );
+        return root;
+    }
     // A WSL cross-build is deployed into a Windows working copy. Its embedded
     // Linux manifest path cannot locate the Windows Office capture scripts.
     if let Ok(executable) = std::env::current_exe() {
