@@ -1,6 +1,6 @@
 //! Preserve the selected cell coverage; partition images by measured visible geometry.
 use super::{content_bounds::Rectangle, telemetry::LaneId, Candidate};
-use anyhow::{ensure, Context, Result};
+use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -94,8 +94,8 @@ pub(super) fn coalesce(selected: &BTreeSet<Candidate>) -> Result<BTreeSet<Candid
 }
 
 /// Use one cell partition for every live state, including later rebuild copies.
-/// Binary search bisects visible extent, so a long hidden span does not create
-/// thousands of zero-height capture jobs. Every leaf retains its geometry.
+/// Bisect cell coordinates and measure each child once. Every accepted leaf must fit
+/// the image budget in every state; zero-area leaves remain explicit.
 pub(super) fn plan(
     selected: &BTreeSet<Candidate>,
     mut measure: impl FnMut(&Candidate) -> Result<BTreeMap<LaneId, Geometry>>,
@@ -112,7 +112,7 @@ pub(super) fn plan(
             .iter()
             .filter(|(_, g)| !g.fits())
             .max_by(|(_, a), (_, b)| (a.width * a.height).total_cmp(&(b.width * b.height)));
-        let Some((&lane, &geometry)) = oversized else {
+        let Some((_, &geometry)) = oversized else {
             leaves.insert(candidate, geometries);
             continue;
         };
@@ -124,10 +124,10 @@ pub(super) fn plan(
         } else {
             geometry.height >= geometry.width
         };
-        let (start, end, extent) = if vertical {
-            (rect.top, rect.bottom, geometry.height)
+        let (start, end) = if vertical {
+            (rect.top, rect.bottom)
         } else {
-            (rect.left, rect.right, geometry.width)
+            (rect.left, rect.right)
         };
         ensure!(
             start < end,
@@ -135,32 +135,10 @@ pub(super) fn plan(
             candidate.sheet,
             candidate.cell
         );
-        let mut low = start;
-        let mut high = end - 1;
-        while low < high {
-            let middle = low + (high - low) / 2;
-            let mut prefix = rect;
-            if vertical {
-                prefix.bottom = middle;
-            } else {
-                prefix.right = middle;
-            }
-            let probe = Candidate {
-                sheet: candidate.sheet.clone(),
-                cell: prefix.address(),
-            };
-            let measured = measure(&probe)?;
-            let value = measured
-                .get(&lane)
-                .context("Missing split-probe state")?
-                .validate()?;
-            let length = if vertical { value.height } else { value.width };
-            if length < extent / 2.0 {
-                low = middle + 1;
-            } else {
-                high = middle;
-            }
-        }
+        // Native geometry round trips dominate large plans. Do not run a binary
+        // boundary search for every output image: a balanced split needs only
+        // the two child observations and preserves the exact selected cell union.
+        let low = start + (end - start) / 2;
         let mut first = rect;
         let mut second = rect;
         if vertical {
@@ -184,6 +162,7 @@ pub(super) fn plan(
 
 #[cfg(test)]
 mod tests {
+    use anyhow::Context;
     use super::*;
     fn candidate(cell: &str) -> Candidate {
         Candidate {
@@ -203,6 +182,38 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn tall_visible_plan_measures_each_tree_node_once() -> Result<()> {
+        let selected = [candidate("A1:P30000")].into();
+        let mut calls = 0;
+        let leaves = plan(&selected, |candidate| {
+            calls += 1;
+            let rect = Rectangle::parse(&candidate.cell)?;
+            Ok([(
+                LaneId::O,
+                Geometry {
+                    top: 0.,
+                    left: 0.,
+                    width: 1000.,
+                    height: f64::from(rect.bottom - rect.top + 1) * 15.,
+                },
+            )]
+            .into())
+        })?;
+        assert_eq!(calls, 2 * leaves.len() - 1);
+        assert!(leaves
+            .values()
+            .all(|states| states.values().all(|geometry| geometry.fits())));
+        let rows: u32 = leaves
+            .keys()
+            .map(|candidate| {
+                let rect = Rectangle::parse(&candidate.cell).unwrap();
+                rect.bottom - rect.top + 1
+            })
+            .sum();
+        assert_eq!(rows, 30000);
+        Ok(())
+    }
     #[test]
     fn hidden_million_row_extent_needs_one_geometry_observation() -> Result<()> {
         let selected = [candidate("A1:P1048576")].into();
@@ -286,7 +297,10 @@ mod tests {
             .map(|c| Rectangle::parse(&c.cell))
             .collect::<Result<Vec<_>>>()?;
         rectangles.sort_by_key(|r| r.top);
-        assert!(rectangles.len() > 1 && rectangles.len() < 10);
+                // A sparse visible suffix can add logarithmically many zero-area leaves;
+        // these retain coverage without generating image exports.
+        assert!(rectangles.len() > 1 && rectangles.len() < 32);
+        assert!(result.values().filter(|states| !states[&LaneId::SDR].empty()).count() <= 4);
         assert_eq!(rectangles[0].top, 1);
         assert_eq!(rectangles.last().unwrap().bottom, 1_000_000);
         for pair in rectangles.windows(2) {
