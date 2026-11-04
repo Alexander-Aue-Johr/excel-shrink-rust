@@ -16,6 +16,10 @@ public static class CaptureStub {
         if(String.IsNullOrEmpty(mode)){Thread.Sleep(60000);return;}
         string output=null;
         for(int i=0;i<args.Length-1;i++)if(args[i]=="--output")output=args[i+1];
+        // The stub targets legacy .NET defaults; Rust accepts native extended paths.
+        // Keep the wrapper's extended argument, but write to the equivalent normal path.
+        if(output.StartsWith(@"\\?\UNC\"))output=@"\\"+output.Substring(8);
+        else if(output.StartsWith(@"\\?\"))output=output.Substring(4);
         Directory.CreateDirectory(output);
         for(int i=1;i<=8;i++){
             string json="{\"status\":\"running\",\"error\":null,\"finished_at\":null,\"lanes\":[],\"updated_at\":"+i+
@@ -29,18 +33,20 @@ public static class CaptureStub {
 $peer=Start-Process $fake -WindowStyle Hidden -PassThru
 $results=@()
 try {
-    foreach($mode in @('heartbeat','capture')){
+    foreach($mode in @('heartbeat','capture','extended-capture')){
         $output=Join-Path $root $mode
-        $env:EXCEL_SHRINK_FAKE_CAPTURE_MODE=$mode
+        $env:EXCEL_SHRINK_FAKE_CAPTURE_MODE=if($mode -eq 'extended-capture'){'capture'}else{$mode}
+        $runtimeOutput=if($mode -eq 'extended-capture'){'\\?\'+$output}else{$output}
+        $runtimeGroup=if($mode -eq 'extended-capture'){'\\?\'+$root}else{$root}
         $env:EXCEL_SHRINK_FAKE_PID_FILE=Join-Path $root ($mode+'-pid.txt')
-        $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $repo 'excel-shrink-cli/office-capture/run-targeted-comparison.ps1'),'-Binary',$fake,'-Original','unused.xlsx','-Default','unused.xlsx','-Output',$output,'-ObservatoryGroup',$root,'-CaptureIdleTimeoutSeconds','1')
+        $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $repo 'excel-shrink-cli/office-capture/run-targeted-comparison.ps1'),'-Binary',$fake,'-Original','unused.xlsx','-Default','unused.xlsx','-Output',$runtimeOutput,'-ObservatoryGroup',$runtimeGroup,'-CaptureIdleTimeoutSeconds','1')
         $timer=[Diagnostics.Stopwatch]::StartNew()
         $wrapper=Start-Process powershell.exe -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $root ($mode+'.stdout')) -RedirectStandardError (Join-Path $root ($mode+'.stderr'))
         $null = $wrapper.Handle
         if(-not $wrapper.WaitForExit(20000)){Stop-Process -Id $wrapper.Id -Force;throw 'Idle watchdog did not return.'}
         $wrapper.Refresh()
         [IO.File]::WriteAllText((Join-Path $root ($mode+'-exit.json')),(@{exit=$wrapper.ExitCode;seconds=$timer.Elapsed.TotalSeconds;has_exited=$wrapper.HasExited}|ConvertTo-Json))
-        if($mode -eq 'capture'){
+        if($mode -ne 'heartbeat'){
             if($wrapper.ExitCode -ne 0 -or $timer.Elapsed.TotalSeconds -lt 2.5){throw 'Successful captures did not extend the attempt.'}
         } else {
             if($wrapper.ExitCode -eq 0){throw 'Heartbeats kept an idle attempt alive.'}

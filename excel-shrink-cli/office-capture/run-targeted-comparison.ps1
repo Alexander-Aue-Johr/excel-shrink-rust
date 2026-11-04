@@ -38,11 +38,11 @@ try {
     $lastCaptureSequence = 0L
     $process = $desktop.Start($Binary, $arguments, $owned)
     while (-not $process.WaitForExit(500)) {
-        $telemetryPath = Join-Path $Output 'telemetry.json'
-        if (Test-Path -LiteralPath $telemetryPath) {
+        $telemetryPath = [IO.Path]::Combine($Output, 'telemetry.json')
+        if ([IO.File]::Exists($telemetryPath)) {
             # A transient read or ordinary heartbeat must never extend the deadline.
             try {
-                $progress = Get-Content -LiteralPath $telemetryPath -Raw | ConvertFrom-Json
+                $progress = [IO.File]::ReadAllText($telemetryPath) | ConvertFrom-Json
                 $sequence = [long]$progress.capture_success_sequence
                 if ($sequence -gt $lastCaptureSequence) {
                     $lastCaptureSequence = $sequence
@@ -69,15 +69,16 @@ try {
                 $message = "No successful capture for $CaptureIdleTimeoutSeconds seconds; stopping this attempt."
                 [void][IO.Directory]::CreateDirectory($Output)
                 $failure = @{status='failed';error=$message;kind='capture_idle_timeout';timeout_seconds=$CaptureIdleTimeoutSeconds}
-                [IO.File]::WriteAllText((Join-Path $Output 'failure.json'),($failure|ConvertTo-Json))
-                $local = Join-Path $Output 'telemetry.json'
-                if (Test-Path -LiteralPath $local) {
-                    $state = Get-Content -LiteralPath $local -Raw | ConvertFrom-Json
+                [IO.File]::WriteAllText(([IO.Path]::Combine($Output, 'failure.json')),($failure|ConvertTo-Json))
+                $local = [IO.Path]::Combine($Output, 'telemetry.json')
+                if ([IO.File]::Exists($local)) {
+                    $state = [IO.File]::ReadAllText($local) | ConvertFrom-Json
                     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
                     $state.status = 'failed'
                     $state.error = $message
                     $state.finished_at = $now
                     $state.updated_at = $now
+                    $state | Add-Member -NotePropertyName revision -NotePropertyValue ([long]$state.revision + 1) -Force
                     foreach ($lane in $state.lanes) {
                         if ($lane.pid) {
                             $alive = $null -ne (Get-Process -Id $lane.pid -ErrorAction SilentlyContinue)
@@ -90,7 +91,12 @@ try {
                     }
                     $json = $state | ConvertTo-Json -Depth 20
                     [IO.File]::WriteAllText($local,$json)
-                    [IO.File]::WriteAllText((Join-Path $ObservatoryGroup 'targeted-comparison.json'),$json)
+                    [IO.File]::WriteAllText(([IO.Path]::Combine($ObservatoryGroup, 'targeted-comparison.json')),$json)
+                    if ($state.run_id) {
+                        $controlRoot = [IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName($ObservatoryGroup))
+                        $registry = [IO.Path]::Combine($controlRoot, 'targeted-comparisons', ($state.run_id + '.json'))
+                        if ([IO.File]::Exists($registry)) { [IO.File]::WriteAllText($registry,$json) }
+                    }
                 }
             } catch { Write-Warning "Could not publish timeout evidence: $($_.Exception.Message)" }
         }

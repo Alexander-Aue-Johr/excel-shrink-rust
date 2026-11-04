@@ -95,3 +95,18 @@ The corpus launcher persists this path as workbook_list.
 Visual success remains completed_with_limitations, not whole-workbook equality.
 Invalid inputs, capture-idle expiry and incomplete coverage remain failures.
 A later invocation can retry them.
+## Corpus-boundary regression found before unattended operation
+
+The first corpus launch (run 2157e844-4e45-46d4-9ad2-783597abd561, runner 24456)
+was paused and stopped after 42 early wrapper failures. Its canonical Windows
+paths had the extended prefix, which the new watchdog passed to PowerShell's
+Join-Path. Direct probes had used ordinary drive paths and missed that boundary.
+There were no successful visual comparisons in this failed launch.
+
+The watchdog now composes paths and reads receipts through native System.IO
+APIs. Tests include the actual extended-path argument form. A real Excel probe
+with extended Binary/Original/Default/Output/ObservatoryGroup paths completed
+with limitations and 84 successful-image receipts. Timeout publication also
+advances the telemetry revision and updates the retained registry mirror.
+All 42 failed launch attempts remain eligible for retry on the next invocation;
+prepared ZIPs and their contents were unchanged.
