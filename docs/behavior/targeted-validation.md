@@ -254,9 +254,9 @@ Changed cell locations, changed row metadata, column/default changes, conditiona
 dependencies and measured row-height changes feed candidate selection. Chart
 captures are independent of the cell-envelope policy.
 
-The implemented cell-content envelope (narrower than the required visual boundary
-above) is the bounding rectangle of content-bearing cells,
-unioned across raw, saved and rebuilt states. A value deleted by Shrink or Check
+The implemented envelope is the bounding rectangle of content-bearing cells and
+potentially visible fill/border/conditional-formatting extents, unioned across raw,
+saved and rebuilt states. A value deleted by Shrink or Check
 Performance therefore remains in the union. Add one row and one column of margin
 at each available edge, bounded by Excel's grid.
 
