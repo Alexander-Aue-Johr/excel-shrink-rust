@@ -113,6 +113,10 @@ class ProgressStore:
                     since_previous_seconds REAL NOT NULL,
                     memory_json TEXT
                 );
+                CREATE TABLE IF NOT EXISTS skipped_moves (
+                    file_name TEXT PRIMARY KEY REFERENCES files(name),
+                    confirmed_at TEXT NOT NULL
+                );
             """)
             existing = self.connection.execute(
                 "SELECT value FROM metadata WHERE key = 'folder_id'").fetchone()
@@ -160,6 +164,9 @@ class ProgressStore:
             self.connection.executemany(
                 "INSERT OR IGNORE INTO files (name, status, discovered_at) VALUES (?, ?, ?)",
                 ((name, JobState.PENDING.value, utc_now()) for name in names))
+            # A refreshed top-level listing can contain manually restored files.
+            self.connection.executemany(
+                "DELETE FROM skipped_moves WHERE file_name = ?", ((name,) for name in names))
         return [row[0] for row in self.connection.execute("SELECT name FROM files ORDER BY rowid")]
 
     def status(self, name: str) -> str:
@@ -193,6 +200,21 @@ class ProgressStore:
             status = validated_state(self.status(name), next_state)
             self.connection.execute("UPDATE files SET status = ? WHERE name = ?", (status, name))
 
+    def pending_skipped_moves(self) -> list[str]:
+        """Resume relocations independently of completed optimization attempts."""
+        return [row[0] for row in self.connection.execute("""
+            SELECT name FROM files WHERE status = 'skipped'
+            AND name NOT IN (SELECT file_name FROM skipped_moves) ORDER BY rowid
+        """)]
+
+    def confirm_skipped_move(self, name: str) -> None:
+        """Record only a relocation verified in the destination folder."""
+        if self.status(name) != JobState.SKIPPED.value:
+            raise ValueError(f"Cannot archive a workbook that is not skipped: {name}")
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR REPLACE INTO skipped_moves VALUES (?, ?)", (name, utc_now()))
+
     def start_attempt(self, name: str) -> int:
         """Restart unfinished work after a crash without retrying completed files."""
         with self.connection:
@@ -205,6 +227,7 @@ class ProgressStore:
             """, (utc_now(), "Interrupted before restart", name))
             self.connection.execute(
                 "UPDATE files SET status = ? WHERE name = ?", (JobState.OPENING.value, name))
+            self.connection.execute("DELETE FROM skipped_moves WHERE file_name = ?", (name,))
             cursor = self.connection.execute(
                 "INSERT INTO attempts (file_name, started_at) VALUES (?, ?)", (name, utc_now()))
         return cursor.lastrowid
@@ -672,7 +695,7 @@ async def next_visible_unfinished(page, unfinished: set[str]):
     return None
 
 
-async def find_file_row(page, name: str):
+async def find_file_row(page, name: str, missing_ok: bool = False):
     """Continue from the prior row; wrap once if OneDrive reordered the list."""
     for pass_number in range(2):
         bottom_observations = 0
@@ -688,7 +711,72 @@ async def find_file_row(page, name: str):
             await asyncio.sleep(0.25 if bottom_observations else 0.05)
         if pass_number == 0:
             await scroll_file_list(page, to_top=True)
+    if missing_ok:
+        return None
     raise RuntimeError(f"Workbook is no longer visible in the folder: {name}")
+
+
+async def move_skipped_workbook(page, name: str) -> None:
+    """Move one excluded workbook into the current folder's skipped directory."""
+    folder_url = page.url
+    row = page.get_by_text(name, exact=True).first
+    if not await row.count():
+        # A previous process may have moved the file before recording success.
+        await scroll_file_list(page, to_top=True)
+        skipped = page.locator(
+            '[role="gridcell"][data-automationid="field-LinkFilename"]'
+        ).get_by_text("skipped", exact=True)
+        try:
+            await skipped.dblclick(timeout=15_000)
+            await wait_for_folder_rows(page)
+            already_moved = await find_file_row(page, name, missing_ok=True)
+        finally:
+            await page.goto(folder_url, wait_until="domcontentloaded", timeout=120_000)
+            await wait_for_folder_rows(page)
+        if already_moved is not None:
+            return
+        row = await find_file_row(page, name)
+
+    await row.click(button="right", timeout=10_000)
+    await page.locator('[data-automationid="moveCommand"]').last.click(timeout=10_000)
+    picker = page.frame_locator('iframe[title="Verschieben nach"], iframe[title="Move to"]')
+    await picker.get_by_role("link", name="skipped", exact=True).dblclick(timeout=30_000)
+    # OneDrive's picker starts in the source folder. Opening its direct child
+    # keeps identically named directories in other corpus folders out of scope.
+    await picker.get_by_role(
+        "button", name=re.compile(r"^(Hierher verschieben|Move here)$", re.I)
+    ).click(timeout=15_000)
+    await page.locator('[role="alert"]').filter(
+        has_text=re.compile(r"nach skipped verschoben|moved to skipped", re.I)
+    ).last.wait_for(state="visible", timeout=60_000)
+    await row.wait_for(state="detached", timeout=30_000)
+
+
+async def archive_skipped_workbooks(page, progress: ProgressStore,
+                                    names: list[str]) -> None:
+    """Persist relocation success separately so interrupted moves can resume."""
+    for name in names:
+        await move_skipped_workbook(page, name)
+        progress.confirm_skipped_move(name)
+        print(f"{name}: moved to skipped.", flush=True)
+
+
+async def archive_skipped_with_recovery(playwright, context, page, args,
+                                        profile: Path, progress: ProgressStore,
+                                        names: list[str]):
+    """Retry relocation after browser recovery without changing workbook outcomes."""
+    for attempt in (1, 2):
+        pending = [name for name in progress.pending_skipped_moves() if name in names]
+        try:
+            await archive_skipped_workbooks(page, progress, pending)
+            return playwright, context, page
+        except Exception as error:
+            if attempt == 2:
+                raise RuntimeError("Could not move skipped workbooks; relocation remains pending") from error
+            print(f"Skipped-file move failed ({error}); restarting before retry.",
+                  file=sys.stderr, flush=True)
+            playwright, context, page = await restart_folder_browser(
+                playwright, context, args, profile)
 
 
 async def open_workbook_in_current_tab(context, folder_page, name: str, row=None):
@@ -1220,6 +1308,18 @@ async def run_folder_check_performance(args) -> int:
                 return 0
             if args.only_file and args.only_file not in names:
                 raise ValueError(f"Workbook is absent from the folder: {args.only_file}")
+            if args.retry_skipped:
+                moved = progress.connection.execute(
+                    "SELECT file_name FROM skipped_moves").fetchall()
+                if any(not args.only_file or row[0] == args.only_file for row in moved):
+                    raise ValueError("Move archived workbooks back from skipped and use "
+                                     "--refresh-list --retry-skipped to retry them")
+            else:
+                pending_moves = progress.pending_skipped_moves()
+                if args.only_file:
+                    pending_moves = [name for name in pending_moves if name == args.only_file]
+                playwright, context, folder_page = await archive_skipped_with_recovery(
+                    playwright, context, folder_page, args, profile, progress, pending_moves)
             unfinished = progress.unfinished_names(args.retry_skipped)
             if args.only_file:
                 unfinished.intersection_update({args.only_file})
@@ -1257,7 +1357,13 @@ async def run_folder_check_performance(args) -> int:
                             unfinished.discard(name)
                         playwright, context, folder_page = await restart_folder_browser(
                             playwright, context, args, profile)
+                        if progress.status(name) == JobState.SKIPPED.value:
+                            playwright, context, folder_page = await archive_skipped_with_recovery(
+                                playwright, context, folder_page, args, profile, progress, [name])
                         continue
+                    if progress.status(name) == JobState.SKIPPED.value:
+                        playwright, context, folder_page = await archive_skipped_with_recovery(
+                            playwright, context, folder_page, args, profile, progress, [name])
                     attempted += 1
                     unfinished.remove(name)
                     failed = failed or file_failed

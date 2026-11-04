@@ -117,6 +117,20 @@ against the SQLite database and removed after migration on 3 November 2026.
 
 Re-run the same command after an interruption. Completed and skipped files are
 not reopened.
+Skipped workbooks are moved into the existing `skipped` child folder after
+returning from Excel. The runner uses OneDrive's Move to picker and waits for
+the move confirmation and removal of the source row. SQLite records relocation
+separately from the skip reason. Pending moves, including older skipped files,
+resume on the next run. If a move was interrupted after OneDrive accepted it,
+the runner checks the destination before trying again. A relocation failure
+is retried once with a fresh browser, then stops the run with the move pending.
+
+Create `skipped` in each input folder before running. To retry an archived
+workbook, move it back to its input folder and use
+`--refresh-list --retry-skipped` (optionally with `--only-file`). The runner
+processes the top-level input folder and leaves the contents of `skipped`
+out of normal discovery.
+
 An unexpected workbook error records a failed attempt, closes the browser and
 Playwright driver, and retries that workbook once in a new browser window
 using the retained sign-in profile. If the second attempt fails, the file is
