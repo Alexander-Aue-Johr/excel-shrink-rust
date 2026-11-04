@@ -55,6 +55,11 @@ forms must not be described as generally normalized by the shrinker.
 
 ## S3. Profiles and switches
 
+Default is the production preservation target. Maximum and Too Aggressive are
+experimental test artifacts used to expose dependency and layout edge cases.
+Their current switches remain documented for reproducibility. The intended future
+product has one Default behavior; removal of experimental switches is future work.
+
 The CLI translates user flags into core switches. In particular, the core
 `CleanupSwitches::default()` is **not** the entire ordinary CLI policy: the CLI
 enables deferred hidden constant-tail cleanup unless explicitly disabled. Ordinary
@@ -124,6 +129,26 @@ Default leaves this optional deletion disabled. When enabled, it still requires
 the reference scan, relevant protection checks and local layout barriers. A
 whitespace cell may block text overflow; its removal is intentionally more
 aggressive than removing a structurally absent value.
+
+### S4.1.1. Possible future deterministic whitespace removal
+
+Default currently keeps the optional whitespace deletion disabled. A future narrow
+XML-only rule may remove a whitespace value only with a proof covering both value
+semantics and presentation. Existing reference/protection guards remain necessary.
+Conditional-format dependencies, formulas, names and object consumers also matter.
+
+For overflow, resolve effective alignment and style inheritance for every possible
+text source across the affected gap. Checking only the immediate left neighbor or
+a cached displayed value is insufficient for merged ranges, right-to-left/right-
+aligned text or formula results. Existing wrap/shrink settings are possible proof
+inputs, not standalone permission to delete a blocker. Row auto-height, font
+representatives, visible fill/border and inheritance-cancelling cells must also
+survive. Removing a string value and removing the whole styled cell are separate
+decisions. Unknown dependencies/layout retain the whitespace.
+
+No such Default proof rule is established by the current implementation review.
+Neither a general pixel tolerance nor simply enabling the experimental whitespace
+switch supplies that proof. Focused cases must establish any future admitted rule.
 
 ### S4.2. Protection
 
@@ -311,6 +336,44 @@ hidden formulas; translated shared references; a hidden-column font affecting an
 automatic row; default fill cancelling inherited fill; merge representatives;
 dense-row gap restoration; a drawing below the last data row; and defined names
 on different sheets with reordered attributes.
+
+## S10. Future Excel-assisted post-cleanup
+
+This is a proposed separate Excel add-in stage, outside the Rust shrinker. The
+XML-only Default pass first performs the large deterministic reduction, improving
+the cost of opening the workbook for later Excel-side work.
+
+A possible font-representative transaction would record effective row heights and
+baseline images in Excel, assign explicit custom heights, remove only redundant
+font representatives, then capture the affected presentation again. Excel supplies
+the effective heights; a guessed rendering model or saved `ht` alone is insufficient.
+The current appearance is the preservation target. Freezing automatic height also
+changes behavior under later user edits and needs an explicit opt-in contract.
+
+A possible whitespace transaction would retain baseline evidence, remove a proved
+unneeded whitespace value, and compare again. If it was an overflow blocker,
+trial a supported Excel formatting replacement and recheck the affected area,
+row geometry and dependent objects. The desired outcome is hidden overflow;
+CSS `overflow: hidden` is not an established Excel cell-style operation. Office.js
+exposes alignment, wrap, shrink-to-fit and row height, whose visual effects require
+validation. Reject/revert a trial with a meaningful difference or incomplete check.
+Known rendering variation follows the visual acceptance policy.
+
+The proposed stage may then request a full rebuild and save through Excel.
+Excel may also reduce unused shared strings/styles during saving; the amount of
+compaction must be observed rather than guaranteed. Independent rewriting,
+deduplication or renumbering of those tables is outside the core product scope.
+Native save/rebuild behavior is reused instead.
+
+Retain distinct identities and evidence for raw input, Rust output, ordinary Excel
+save, add-in edits and rebuild/save. This separates reductions and changes caused
+by each stage. A future add-in must preserve a rollback source and publish only
+a verified successful trial. Captures establish the observed presentation, while
+dependency checks still protect semantic uses of apparently blank values.
+
+Office.js API references for the proposed stage are [RangeFormat](https://learn.microsoft.com/en-us/javascript/api/excel/excel.rangeformat?view=office-js)
+and [Range.getImage](https://learn.microsoft.com/en-us/javascript/api/excel/excel.range?view=office-js#excel-excel-range-getimage-member(1)).
+These APIs establish available operations, not the equivalence of a trial edit.
 
 ## Source map
 
