@@ -168,6 +168,18 @@ impl Tracker {
         }
     }
 
+    /// Scheduled revalidation is pending even if an older report was terminal.
+    fn queue_targeted_comparisons(&mut self, ids: &[String]) {
+        for id in ids {
+            if let Some(row) = self.rows.get_mut(id) {
+                row.completed = false;
+                row.skipped = false;
+                row.deferred = false;
+            }
+            self.comparison.seen.remove(id);
+        }
+    }
+
     fn start_attempt(&mut self, record: &Value) -> Attempt {
         self.attempts.started += 1;
         Attempt {
@@ -552,6 +564,10 @@ pub(super) fn observe(output: &Path, record: &Value) {
 pub(super) fn queue_preparations(output: &Path, ids: &[String]) {
     update(output, |tracker| tracker.queue_preparations(ids));
 }
+
+pub(super) fn queue_targeted_comparisons(output: &Path, ids: &[String]) {
+    update(output, |tracker| tracker.queue_targeted_comparisons(ids));
+}
 pub(super) fn set_selection(output: &Path, selected: &HashSet<String>) {
     update(output, |tracker| {
         tracker.rows.retain(|id, _| selected.contains(id));
@@ -650,6 +666,26 @@ impl Drop for ActiveJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn queued_targeted_revalidation_removes_old_terminal_counts_but_keeps_preparation() {
+        let mut tracker = visual_tracker();
+        tracker.observe(&completed(0));
+        tracker.observe(&json!({"identity":"1","complete":true,"status":"skipped",
+            "prepared":true,"preparation_disposition":"needs_visual"}));
+        tracker.observe(&completed(2)); // Compatible reused work is outside the new queue.
+        tracker.comparison.recent.clear();
+        tracker.comparison.finished = 0;
+        tracker.queue_targeted_comparisons(&["0".into(), "1".into()]);
+        let snapshot = tracker.snapshot(100);
+        assert_eq!(snapshot["counts"]["visual_completed"], 1);
+        assert_eq!(snapshot["counts"]["skipped"], 0);
+        assert_eq!(snapshot["counts"]["visual_remaining"], tracker.rows.len() - 1);
+        assert!(tracker.rows["0"].prepared);
+        assert!(tracker.rows["1"].prepared);
+        tracker.observe(&completed(0));
+        assert_eq!(tracker.snapshot(200)["counts"]["visual_completed"], 2);
+        assert_eq!(tracker.comparison.finished, 1);
+    }
     #[test]
     fn shrink_retries_are_pending_together_instead_of_repeatedly_undoing_completion() {
         let mut tracker = tracker();

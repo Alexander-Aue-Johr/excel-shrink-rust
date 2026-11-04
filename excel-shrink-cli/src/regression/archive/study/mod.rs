@@ -918,6 +918,12 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             if args.largest_reduction_first {
                 reduction_order::sort(&mut comparisons, &records);
             }
+            if args.targeted_comparison {
+                progress::queue_targeted_comparisons(
+                    &output,
+                    &comparisons.iter().map(|job| job.id.clone()).collect::<Vec<_>>(),
+                );
+            }
             scheduler::compare(
                 source,
                 comparisons,
