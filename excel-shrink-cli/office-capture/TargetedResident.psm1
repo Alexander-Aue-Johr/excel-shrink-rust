@@ -511,19 +511,21 @@ function Move-TargetedWorkbookLane {
     The old output file remains an immutable pre-rebuild control.
     #>
     param($Command)
-    if ($Command.lane -ne 'SD' -or $Command.target_lane -ne 'SDR') {
-        throw 'Only the SD to SDR in-place transition is supported.'
+    $rebuildLanes = @{ O = 'OR'; SD = 'SDR'; CP = 'CPR' }
+    if (-not $rebuildLanes.ContainsKey([string]$Command.lane) -or
+        $rebuildLanes[[string]$Command.lane] -ne $Command.target_lane) {
+        throw 'Invalid resident workbook rebuild transition.'
     }
     $entry = $sessions[$Command.lane]
     if ($null -eq $entry -or $sessions.ContainsKey($Command.target_lane)) {
-        throw 'In-place rebuild requires one open SD and no SDR session.'
+        throw 'In-place rebuild requires one source session and an unused target lane.'
     }
     $entry.process.Refresh()
-    if ($entry.process.HasExited) { throw 'Owned SD process exited before rebuild.' }
+    if ($entry.process.HasExited) { throw 'Owned source process exited before rebuild.' }
     $entry.path = [string]$Command.output
     $sessions[$Command.target_lane] = $entry
     $null = $sessions.Remove($Command.lane)
-    return @{pid=$entry.process.Id; source_lane='SD'; target_lane='SDR'; reopened=$false}
+    return @{pid=$entry.process.Id; source_lane=$Command.lane; target_lane=$Command.target_lane; reopened=$false}
 }
 
 Export-ModuleMember -Function Move-TargetedWorkbookLane, Open-TargetedWorkbooks, Open-TargetedWorkbook, Invoke-TargetedJob, Invoke-TargetedCaptureBatch, Optimize-TargetedWorkbook, Close-TargetedWorkbook, Get-TargetedOperationSample, SaveAs-TargetedWorkbook

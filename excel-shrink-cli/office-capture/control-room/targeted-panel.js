@@ -137,8 +137,8 @@ function createComparisonCard() {
   const lanes = node('div', 'targeted-lanes');
   const flow = createFlowDiagram();
   const controls = node('p', 'targeted-controls-explanation',
-    'Original ↔ Default before rebuild, then Original ↔ Default after rebuilding the same Default process. '
-    + 'Original stays open throughout. Check Performance runs only when explicitly enabled. Omitted states appear in the workflow table.');
+    'Rebuild Original and Default in their existing Excel processes, then compare selected regions and all charts. '
+    + 'Optional Check Performance is rebuilt and compared against rebuilt Original. Pre-rebuild XML controls remain available for follow-up.');
   const legend = node('p', 'targeted-flow-legend', '☑ Done · ◩ Running · □ Pending · muted − Not performed / unavailable. Hover a column or checkbox for its purpose.');
   root.append(heading, explanation, error, lanes, flow.element, legend, controls);
   const laneViews = new Map();
@@ -178,7 +178,7 @@ function createComparisonCard() {
         const report = comparison.report;
         outcome.textContent += report.input_identity?.status === 'identical'
           ? ' · Default unchanged (identical input bytes)'
-          : ` · Default: ${report.before_differences} differences`;
+          : report.before_differences == null ? ' · Pre-rebuild images omitted' : ` · Default: ${report.before_differences} differences`;
         outcome.textContent += report.after_differences == null
           ? ' · Default rebuild not performed'
           : ` · Rebuilt Default: ${report.after_differences} differences`;

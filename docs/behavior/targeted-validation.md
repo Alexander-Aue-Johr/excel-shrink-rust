@@ -1,32 +1,37 @@
 # Targeted visual validation behavior
 
-The default strategy is `default-inplace-rebuild-v1`, with capture policy
-`targeted-content-grid-v3`. It compares Original with Default (SD), before and
-after explicitly rebuilding **the same SD instance**. Original is not explicitly
-rebuilt. Native Check Performance is optional and disabled by default.
+The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
+`targeted-content-grid-v6`. It compares rebuilt Original (OR) with rebuilt Default
+(SDR). Each workbook reuses its existing Excel process. Native Check Performance
+is optional; when requested its rebuilt state (CPR) is compared with OR.
 
 ## States and order
 
-1. Verify raw Original/Default input identity and inspect XML. Byte-identical
-   Default input may omit SD and SDR, with its SHA-256 identity proof retained.
-2. Open Original (O) and, when required, Default (SD), then ordinary-save both.
-   Keep O open without explicitly rebuilding it throughout the comparison.
-3. When explicitly requested, generate or restore Check Performance (CP) from
-   saved Original. CP has no explicit rebuild in this visual strategy.
-4. Select XML/layout-derived regions and charts. Capture and publish O versus
-   SD, plus O versus CP when enabled. Retain those images and comparison results.
-5. Transfer the existing SD resident session to the SDR reporting lane. Perform
-   fullRebuild and save in that same Excel process. There is no extra workbook
-   opening or independent rebuild copy. Keep the saved SD pre-state on disk as
-   an XML control, not as an open instance.
-6. Inspect SD's rebuild effects and O versus SDR. Capture selected regions in
-   live O and SDR, and compare O versus SDR. CP can supply late regions while
-   it remains open. Close all owned instances with confirmed process exit.
+1. Record exact input identities and inspect raw Original/Default XML. Identical
+   inputs may omit the independent Default process with their identity proof.
+2. Open Original and Default on owned private desktops with manual calculation
+   and forced opening/save recalculation disabled. Ordinary-save their working
+   copies and retain raw-to-saved XML controls.
+3. When requested, optimize an independent saved Original copy with Check
+   Performance. Retain its pre/post-optimization and ordinary-save XML controls.
+4. Transfer O to OR, SD to SDR and optional CP to CPR. Full-rebuild and save each
+   in the same resident process; retain the saved pre-state as an immutable file.
+5. Discover candidate regions from raw/save/rebuild changes and rebuilt-pair
+   dependencies and effective row heights. Retain the union of all input bounds.
+6. Capture selected regions and every chart in the rebuilt states. Compare OR/SDR
+   and optional OR/CPR. Close every owned instance with confirmed process exit.
 
-A normal differing-input comparison opens two Excel instances. Enabling CP adds
-one independent instance. The SD/SDR PIDs must match. OR and CPR are explicitly
-`disabled`; SDR is `observed` with method `inplace-rebuild`. SD always receives
-its rebuild when it is observed, including static workbooks.
+The minimum differing-input run uses two resident Excel processes. Check
+Performance adds one. Each source/target PID must match. Pre-rebuild images are
+omitted for throughput. XML controls expose transitions, while exclusive causal
+attribution, volatile-rendering diagnosis and pre-rebuild visual evidence require
+follow-up. Old reports retain their original execution strategy and coverage.
+Current resume requires the current capture policy and execution strategy.
+
+Original is explicitly rebuilt in this strategy. Both sides therefore receive
+Excel's full rebuild, including clearing stale-calculation visual indicators.
+A failure or timeout on either side prevents a completed comparison. Equal input
+bytes do not bypass an independently requested Check Performance comparison.
 
 ## Visual acceptance policy
 
@@ -65,29 +70,13 @@ for inspected code and the newer branch's partial blank-edge correction.
 
 ## Evidence and limitations
 
-The required pairs are O/SD and O/SDR, plus O/CP when requested. There is no
-SD/SDR, O/OR or both-rebuilt comparison, and no automatic volatility diagnosis.
+The required pairs are OR/SDR and optional OR/CPR, with explicit region, chart,
+geometry and same-process rebuild evidence. Selection does not certify the whole
+workbook. Raw and saved XML controls remain available for follow-up.
 
-The pre-rebuild O/SD comparison freezes its own selected regions before SD is
-mutated. New regions can first appear after the SD rebuild, and capture geometry
-can repartition. Each pair therefore retains `selected_region_count` and its
-actual findings; the SD-before comparison does not claim those late regions.
-Post-rebuild O/SDR coverage includes the late selection. The consumer rejects
-missing pairs, missing phase-specific findings, unconfirmed CP outcomes and
-an SDR process identity that differs from SD. It still accepts historical
-version-three reports through their historical execution contract.
-
-The outcome remains `completed_with_limitations`. Selected regions are clipped
-to content-bearing cell bounds with margin; formatting-only exterior regions
-are excluded. All inventoried charts are checked. Zero-area observations must
-be explicit and cannot manufacture pixel equality. Resource, calculation and
-transport failures remain failures. XML-selected coverage does not certify
-whole-workbook equality.
-
-Excel can calculate during opening even when manual calculation is requested.
-O versus SDR retains the effects of an SD rebuild against Original without an
-explicit rebuild. A difference is not automatically attributed to Shrink or to
-volatile formulas. Investigate those causes separately.
+Historical `default-inplace-rebuild-v1` compared O/SD and O/SDR without an Original
+rebuild. Its phase-specific evidence and limitations remain attached to those
+reports. Those reports cannot satisfy this paired-rebuild strategy.
 
 ## Capture inactivity and prepared-workbook priority
 

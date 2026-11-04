@@ -154,6 +154,8 @@ pub(super) struct Snapshot {
     pub report: Value,
     pub error: Option<String>,
     pub publication_errors: Vec<String>,
+    pub current_operation: Value,
+    pub last_successful_operation: Value,
 }
 
 impl Snapshot {
@@ -321,6 +323,8 @@ impl Telemetry {
             report: json!({}),
             error: None,
             publication_errors: Vec::new(),
+            current_operation: Value::Null,
+            last_successful_operation: Value::Null,
         };
         let shared = Arc::new((
             Mutex::new(Shared {

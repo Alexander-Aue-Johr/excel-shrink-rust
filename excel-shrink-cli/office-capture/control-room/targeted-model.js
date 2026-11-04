@@ -73,19 +73,21 @@ export function phaseComplete(lanes, phase) {
   return statuses.length > 0 && statuses.every(status => status === 'done');
 }
 
-/** Keep one card for Default as its resident process advances to the rebuilt state. */
+/** Keep each resident process card stable as it advances to its rebuilt state. */
 export function processCards(lanes) {
-  const rebuilt = lanes.find(lane => lane.id === 'SDR');
-  const initial = lanes.find(lane => lane.id === 'SD');
-  const transferred = rebuilt?.pid && rebuilt.pid === initial?.pid;
+  const rebuiltIds = { O: 'OR', SD: 'SDR', CP: 'CPR' };
+  const labels = { O: 'Original', SD: 'Default', CP: 'Check Performance' };
   return lanes.filter(lane => {
     if (['unavailable', 'skipped'].includes(lane.lifecycle)) return false;
-    if (transferred && lane.id === 'SDR') return false;
+    if (Object.values(rebuiltIds).includes(lane.id)) {
+      return lane.pid && !lanes.some(source => rebuiltIds[source.id] === lane.id && source.pid === lane.pid);
+    }
     return lane.pid || ['O', 'SD'].includes(lane.id);
   }).map(lane => {
-    if (lane.id !== 'SD') return lane;
-    return transferred
-      ? { ...rebuilt, id: 'SD', label: 'Default · After rebuild' }
-      : { ...lane, label: 'Default · Before rebuild' };
+    const rebuilt = lanes.find(candidate => candidate.id === rebuiltIds[lane.id]);
+    if (rebuilt?.pid && rebuilt.pid === lane.pid) {
+      return { ...rebuilt, id: lane.id, label: `${labels[lane.id]} · After rebuild` };
+    }
+    return rebuiltIds[lane.id] ? { ...lane, label: `${labels[lane.id]} · Before rebuild` } : lane;
   });
 }

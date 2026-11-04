@@ -40,6 +40,9 @@ pub(super) fn expected_pairs(
             }
         }
     }
+    if report["execution_strategy"] == "paired-inplace-rebuild-v1" {
+        return paired_rebuild_pairs(report, skip_performance);
+    }
     if report["execution_strategy"] == "default-inplace-rebuild-v1" {
         return inplace_pairs(report, skip_performance);
     }
@@ -248,6 +251,50 @@ fn inplace_pairs(
     }
     Ok(pairs)
 }
+/// Require both sides rebuilt in their original resident processes before accepting the fast screen.
+fn paired_rebuild_pairs(
+    report: &Value,
+    skip_performance: bool,
+) -> Result<BTreeSet<(&'static str, &'static str)>> {
+    let decisions = &report["state_decisions"];
+    ensure!(decisions.as_object().is_some_and(|d| d.len() == 6), "Incomplete paired rebuild decisions");
+    let mut pairs = BTreeSet::new();
+    require_resident_rebuild(report, "O", "OR")?;
+    if decisions["SD"]["status"] == "skipped_identical_input" {
+        ensure!(report["input_identity"]["status"] == "identical"
+            && valid_hash(&report["input_identity"]["sha256"])
+            && report["input_identity"]["bytes"].as_u64().is_some()
+            && decisions["SD"]["source"] == "O"
+            && decisions["SDR"]["status"] == "skipped_identical_input"
+            && decisions["SDR"]["source"] == "O", "Unproven identical Default omission");
+    } else {
+        require_resident_rebuild(report, "SD", "SDR")?;
+        pairs.insert(("OR", "SDR"));
+    }
+    if skip_performance {
+        ensure!(decisions["CP"]["status"] == "disabled"
+            && decisions["CPR"]["status"] == "disabled", "Unexpected Check Performance state");
+    } else {
+        require_resident_rebuild(report, "CP", "CPR")?;
+        pairs.insert(("OR", "CPR"));
+    }
+    Ok(pairs)
+}
+
+fn require_resident_rebuild(report: &Value, source: &str, target: &str) -> Result<()> {
+    let decisions = &report["state_decisions"];
+    ensure!(decisions[source]["status"] == "observed"
+        && decisions[source]["method"] == "open-save"
+        && decisions[target]["status"] == "observed"
+        && decisions[target]["method"] == "inplace-rebuild",
+        "Missing observed rebuild: {source}/{target}");
+    let pid = report["excel_pids"][source].as_u64().filter(|pid| *pid > 0)
+        .context("Missing resident process identity")?;
+    ensure!(report["excel_pids"][target].as_u64() == Some(pid),
+        "Rebuild process changed: {source}/{target}");
+    Ok(())
+}
+
 fn valid_hash(value: &Value) -> bool {
     value
         .as_str()
@@ -271,6 +318,28 @@ mod tests {
             },
             "excel_pids":{"O":10,"SD":20,"SDR":20}
         })
+    }
+
+    #[test]
+    fn paired_screen_requires_both_resident_rebuilds() -> Result<()> {
+        let mut report = inplace_report();
+        report["execution_strategy"] = json!("paired-inplace-rebuild-v1");
+        assert!(expected_pairs(&report, true).is_err());
+        report["state_decisions"]["OR"] = json!({"status":"observed","method":"inplace-rebuild"});
+        report["excel_pids"]["OR"] = json!(10);
+        assert_eq!(expected_pairs(&report, true)?, BTreeSet::from([("OR", "SDR")]));
+        report["excel_pids"]["OR"] = json!(11);
+        assert!(expected_pairs(&report, true).is_err());
+        report["excel_pids"]["OR"] = json!(10);
+        report["state_decisions"]["CP"] = json!({"status":"observed","method":"open-save"});
+        report["excel_pids"]["CP"] = json!(30);
+        report["check_performance"] = json!("optimization_confirmed");
+        report["check_performance_evidence"] = json!({"native_result":{"status":"optimization_confirmed"}});
+        assert!(expected_pairs(&report, false).is_err());
+        report["state_decisions"]["CPR"] = json!({"status":"observed","method":"inplace-rebuild"});
+        report["excel_pids"]["CPR"] = json!(30);
+        assert_eq!(expected_pairs(&report, false)?, BTreeSet::from([("OR", "SDR"), ("OR", "CPR")]));
+        Ok(())
     }
 
     #[test]

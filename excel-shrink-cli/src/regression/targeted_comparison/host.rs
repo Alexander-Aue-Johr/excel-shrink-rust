@@ -101,15 +101,17 @@ impl ExcelHost {
         Ok(result)
     }
 
-    /// Transfer ownership of the existing SD session; no workbook is opened here.
-    pub(super) fn move_default_to_rebuild(
+    /// Transfer an existing session to its rebuilt reporting state without reopening Excel.
+    pub(super) fn move_to_rebuild(
         &mut self,
+        source: LaneId,
+        target: LaneId,
         output: &Path,
         telemetry: &Telemetry,
     ) -> Result<u32> {
         let result = self.call(
             json!({
-                "kind": "move_lane", "lane": "SD", "target_lane": "SDR", "output": output
+                "kind": "move_lane", "lane": source.key(), "target_lane": target.key(), "output": output
             }),
             telemetry,
         )?;
@@ -305,6 +307,16 @@ impl ExcelHost {
         } else {
             self.timeout
         };
+        let started = chrono::Utc::now().timestamp_millis();
+        let operation = json!({
+            "id": uuid::Uuid::new_v4().to_string(),
+            "kind": command["kind"], "lane": command["lane"],
+            "sheet": command["sheet"], "range": command["range"],
+            "job_count": command["jobs"].as_array().map(Vec::len),
+            "started_at": started, "deadline_at": started + timeout.as_millis() as i64,
+            "state": "awaiting_host_reply"
+        });
+        telemetry.update(|state| state.current_operation = operation.clone())?;
         serde_json::to_writer(&mut self.input, &command)?;
         self.input.write_all(b"\n")?;
         self.input.flush()?;
@@ -336,6 +348,12 @@ impl ExcelHost {
                 self.operation_measurements.push(response["operation_measurements"].clone());
             }
             ensure!(response["ok"] == true, "Excel host: {}", response["error"]);
+            telemetry.update(|state| {
+                state.last_successful_operation = operation.clone();
+                state.last_successful_operation["state"] = json!("completed");
+                state.last_successful_operation["finished_at"] = json!(chrono::Utc::now().timestamp_millis());
+                state.current_operation = Value::Null;
+            })?;
             return Ok(response["result"].clone());
         }
     }

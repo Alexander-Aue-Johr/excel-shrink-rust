@@ -136,7 +136,7 @@ impl Report {
             "state_decisions":self.state_decisions,
             "check_performance": self.check_performance,
             "check_performance_cache": self.check_performance_cache,
-            "check_performance_differences": count(LaneId::O, LaneId::CP),
+            "check_performance_differences": count(LaneId::OR, LaneId::CPR),
             "limitations": self.limitations,
             "cf_excluded_decisions": self.conditional_formatting.iter().flat_map(|check| &check.decisions).filter(|decision| decision.outcome == "excluded").count(),
             "cf_partial_decisions": self.conditional_formatting.iter().flat_map(|check| &check.decisions).filter(|decision| decision.outcome == "partial").count(),
@@ -145,7 +145,7 @@ impl Report {
             "chart_differences": self.comparisons.iter().flat_map(|pair| &pair.charts)
                 .filter(|chart| chart.presence_differs || chart.pixels_differ || chart.geometry_differs).count(),
             "before_differences": count(LaneId::O, LaneId::SD).or_else(|| self.input_identity.identical().then_some(0)),
-            "after_differences": count(LaneId::O, LaneId::SDR),
+            "after_differences": count(LaneId::OR, LaneId::SDR),
             "original_recalc_drift": count(LaneId::O, LaneId::OR),
         })
     }
@@ -156,7 +156,7 @@ pub(super) fn new_report() -> Report {
     Report {
         workbook_bytes: BTreeMap::new(),
         capture_policy: super::CAPTURE_POLICY,
-        execution_strategy: "default-inplace-rebuild-v1",
+        execution_strategy: super::EXECUTION_STRATEGY,
         capture_partition: "visible-geometry-v1",
         input_identity: Default::default(),
         state_decisions: BTreeMap::new(),
@@ -182,13 +182,13 @@ pub(super) fn new_report() -> Report {
         limitations: vec![
             "Gridlines are disabled consistently. A trailing blank margin geometry change is ignored only when both captures have the same measured content core and all top-left-aligned nonblank pixels match. Raw geometry and images remain in the report; blank_margin_ignored records this decision. Explicit borders, overflow ink and changes to core geometry remain differences.".into(),
             "Row-height checks cover rows above and within the union of content envelopes, including one margin row. Formatting-only tails below that envelope are excluded, not certified equal; charts retain independent full-chart observations.".into(),
-            "Strategy default-inplace-rebuild-v1 compares Original with SD before and after rebuilding the same SD instance. Original and optional Check Performance are not explicitly rebuilt. The SD pre-rebuild comparison retains its phase-specific region selection; regions first discovered after SD rebuild have no SD-before image or volatility/causal classification.".into(),
+            "Strategy paired-inplace-rebuild-v1 compares rebuilt Original against rebuilt Default and optional rebuilt Check Performance. Each reuses its existing Excel process. Pre-rebuild captures are omitted for throughput; XML save/optimization/rebuild controls are retained. Volatility and exclusive causal attribution require follow-up.".into(),
             "Cell capture regions are intersected with the union of content-bearing cell bounds across raw, saved and rebuilt inputs, plus one row/column of margin. Formatting-only exterior regions are intentionally skipped, not visually confirmed identical; content_coverage records selection counts and bounds. Chart exports are independent of this policy.".into(),
             "Capture partition visible-geometry-v1 merges adjacent internal grid tiles without changing their union. It measures every live state and splits only for image budgets (30,000 pixels per edge, 32 million pixels total), estimating conservatively at two pixels per point plus a rounding margin. Actual exports are checked too. Zero-area ranges retain geometry and explicit non-rendering observations without images or pixel equality claims. Later states can repartition and backfill earlier retained workbooks.".into(),
             "CF decisions concern rule contributions within the recorded union of comparison extents. Literal cellIs exclusions require identical cell-XML fingerprints and visual context. Formula inputs remain captures; unknown or changed rules retain region captures. This is not a proof of whole-workbook visual equality.".into(),
             "Embedded charts and standalone chart sheets are compared as whole-chart exports in every retained state. Chart-sheet exports use a consistent viewport in the existing owned Excel process. Other drawings, style and worksheet geometry changes are not yet exhaustively discovered.".into(),
             "Charts with measured zero width or height retain geometry and an explicit zero-area-chart observation without a pixel verdict. A transition between visible and zero-area states is a rendering/geometry difference.".into(),
-            "Disposable targeted copies are staged with calcMode=manual, fullCalcOnLoad=0, forceFullCalc=0 and calcOnSave=0 before Excel opens them. Cached formula values are retained and only SD is explicitly rebuilt. Excel may still autonomously refresh content; observed save/rebuild transitions remain audited. Original inputs and prepared bundles are unchanged. This suppresses unintended open/save recalculation and changes the opening baseline relative to capture policy v4.".into(),
+            "Disposable targeted copies are staged with calcMode=manual, fullCalcOnLoad=0, forceFullCalc=0 and calcOnSave=0 before Excel opens them. Cached formula values are retained until each resident workbook is explicitly rebuilt. Excel may still autonomously refresh content; observed save/rebuild transitions remain audited. Original inputs and prepared bundles are unchanged. This suppresses unintended open/save recalculation and changes the opening baseline relative to capture policy v4.".into(),
             "Opening/saving and the in-place SD rebuild are retained as separate XML controls. Exact content/context matches identify overlaps conservatively; absence of a match does not establish exclusive causality.".into(),
             "Worksheet cells are streamed into temporary fixed-size fingerprints without worksheet-byte or cell-count limits. Exterior empty-cell changes are counted before candidate allocation. Layout metadata and retained change evidence still require memory.".into(),
         ],

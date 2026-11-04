@@ -63,6 +63,16 @@ export function runTests() {
     'Pending Default remains visible before its PID is known.');
   assert(processCards([...states, { id: 'CP', pid: 30, lifecycle: 'open' }]).length === 3,
     'An actual optional Check Performance process remains visible.');
+  const rebuiltOriginal = processCards([
+    { id: 'O', pid: 10, lifecycle: 'open' },
+    { id: 'OR', pid: 10, lifecycle: 'open' },
+    { id: 'SD', pid: 20, lifecycle: 'open' },
+    { id: 'SDR', pid: 20, lifecycle: 'open' },
+    { id: 'CP', pid: 30, lifecycle: 'open' },
+    { id: 'CPR', pid: 30, lifecycle: 'open' },
+  ]);
+  assert(rebuiltOriginal.length === 3 && rebuiltOriginal.every(card => card.label.includes('After rebuild')),
+    'Original, Default and optional CP each keep one card after their in-place rebuild.');
   return passed;
 }
 

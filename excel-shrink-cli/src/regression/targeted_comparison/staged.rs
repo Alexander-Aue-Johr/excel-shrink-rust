@@ -100,24 +100,13 @@ impl Workflow<'_, '_> {
         self.optimize_and_register_states()?;
         self.requested_candidates
             .extend(std::mem::take(&mut self.comparison.candidates));
+        self.rebuild_in_place(LaneId::O, LaneId::OR)?;
+        self.rebuild_in_place(LaneId::SD, LaneId::SDR)?;
+        self.rebuild_in_place(LaneId::CP, LaneId::CPR)?;
         self.inspect_available_pairs()?;
         self.capture_missing_regions()?;
-        self.publish_available_comparisons("before rebuild")?;
-        self.skip_state(
-            LaneId::OR,
-            StateDecision::Disabled,
-            "Original is retained without an explicit rebuild",
-        )?;
-        self.skip_state(
-            LaneId::CPR,
-            StateDecision::Disabled,
-            "Check Performance rebuild is outside this screening strategy",
-        )?;
-        self.rebuild_default_in_place()?;
-        self.inspect_available_pairs()?;
-        self.capture_missing_regions()?;
+        self.publish_available_comparisons("Original and variants rebuilt in their existing processes")?;
         self.close_states()?;
-        self.publish_available_comparisons("SD rebuilt in place; Original not rebuilt")?;
         self.project_legacy_findings()?;
         self.comparison.complete()
     }
@@ -239,11 +228,15 @@ impl Workflow<'_, '_> {
         self.comparison
             .telemetry
             .update(|state| state.step(id, Phase::Discover, StepStatus::Done))?;
-        let charts = self.capture_charts(id)?;
+        let charts = if matches!(id, LaneId::OR | LaneId::SDR | LaneId::CPR) {
+            self.capture_charts(id)?
+        } else {
+            charts::Captures::default()
+        };
         self.comparison.report.state_decisions.insert(
             id,
             StateDecision::Observed {
-                method: if id == LaneId::SDR {
+                method: if matches!(id, LaneId::OR | LaneId::SDR | LaneId::CPR) {
                     "inplace-rebuild"
                 } else {
                     "open-save"
@@ -340,42 +333,30 @@ impl Workflow<'_, '_> {
             .update(|state| state.candidates(self.comparison.candidates.len()))
     }
 
-    /// Preserve published SD evidence, then rebuild that same resident instance.
-    /// Late candidates use live Original, never an invented SD pre-state.
-    fn rebuild_default_in_place(&mut self) -> Result<()> {
-        let Some(previous) = self.states.remove(&LaneId::SD) else {
+    /// Rebuild one resident workbook, retaining its saved XML as the pre-state control.
+    fn rebuild_in_place(&mut self, source: LaneId, target: LaneId) -> Result<()> {
+        let Some(previous) = self.states.remove(&source) else {
             return Ok(());
         };
-        let path = self.comparison.args.output.join("SDR-rebuilt.xlsx");
-        let pid = self
-            .comparison
-            .excel
-            .as_mut()
-            .context("Excel host missing")?
-            .move_default_to_rebuild(&path, &self.comparison.telemetry)?;
-        self.comparison.report.excel_pids.insert("SDR".into(), pid);
+        let path = self.comparison.args.output.join(format!("{}-rebuilt.xlsx", target.key()));
+        let pid = self.comparison.excel.as_mut().context("Excel host missing")?
+            .move_to_rebuild(source, target, &path, &self.comparison.telemetry)?;
+        self.comparison.report.excel_pids.insert(target.key().into(), pid);
         self.comparison.telemetry.update(|state| {
-            state.lane(LaneId::SD).decision_note = Some(
-                "Same resident process transferred to SDR; pre-rebuild evidence frozen".into(),
-            );
-            let started = state.lane(LaneId::SD).process_started_at;
-            let lane = state.lane(LaneId::SDR);
+            let started = state.lane(source).process_started_at;
+            state.lane(source).decision_note = Some(format!(
+                "Same process transferred to {}; pre-state retained as XML only", target.key()));
+            let lane = state.lane(target);
             lane.pid = Some(pid);
             lane.process_started_at = started;
             lane.process_alive = Some(true);
             lane.steps.insert(Phase::Open, StepStatus::Skipped);
             lane.lifecycle = Lifecycle::Open;
-            lane.decision_note =
-                Some("SD rebuilt in the same Excel instance; no additional opening".into());
+            lane.decision_note = Some("Rebuilt in the existing Excel process".into());
         })?;
-        self.comparison.rebuild(LaneId::SDR)?;
-        self.audit(
-            "Default in-place explicit rebuild and save",
-            &previous.path,
-            &path,
-        )?;
-        self.register(LaneId::SDR, path)?;
-
+        self.comparison.rebuild(target)?;
+        self.audit(&format!("{} in-place rebuild and save", source.key()), &previous.path, &path)?;
+        self.register(target, path)?;
         Ok(())
     }
     fn inspect_available_pairs(&mut self) -> Result<()> {
@@ -852,21 +833,17 @@ impl Workflow<'_, '_> {
             self.comparison.retain_performance_measurements(id);
             self.comparison.close_workbook(id)?;
         }
-        if self
-            .comparison
-            .report
-            .state_decisions
-            .contains_key(&LaneId::SDR)
-        {
-            self.comparison.telemetry.update(|state| {
-                if state.lane(LaneId::SDR).lifecycle == Lifecycle::Closed {
-                    let lane = state.lane(LaneId::SD);
+        self.comparison.telemetry.update(|state| {
+            for (source, target) in [(LaneId::O, LaneId::OR), (LaneId::SD, LaneId::SDR), (LaneId::CP, LaneId::CPR)] {
+                if state.lane(target).lifecycle == Lifecycle::Closed {
+                    let closed_at = state.lane(target).closed_at;
+                    let lane = state.lane(source);
                     lane.lifecycle = Lifecycle::Closed;
                     lane.process_alive = Some(false);
-                    lane.closed_at = Some(chrono::Utc::now().timestamp_millis());
+                    lane.closed_at = closed_at;
                 }
-            })?;
-        }
+            }
+        })?;
         self.comparison.excel.take();
         self.comparison.telemetry.update(|state| {
             for lane in &mut state.lanes {
