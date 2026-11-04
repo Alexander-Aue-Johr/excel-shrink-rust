@@ -312,6 +312,20 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
             await FLOW.open_folder(page, "https://1drv.ms/f/example", headed=False)
         page.locator.assert_not_called()
 
+    async def test_folder_wait_follows_document_redirect(self) -> None:
+        """OneDrive can replace the share-link document before showing its rows."""
+        async def route(request):
+            if request.request.url.endswith("/share"):
+                body = "<script>setTimeout(() => location.href = '/folder', 30)</script>"
+            else:
+                body = '<div data-automationid="field-LinkFilename">book.xlsx</div>'
+            await request.fulfill(status=200, content_type="text/html", body=body)
+
+        await self.page.route("https://example.test/**", route)
+        await self.page.goto("https://example.test/share")
+        await asyncio.wait_for(FLOW.wait_for_folder_response(self.page), timeout=3)
+        self.assertTrue(self.page.url.endswith("/folder"))
+
     async def test_visible_folder_sign_in_waits_for_return(self) -> None:
         """A visible login redirect must resume the same folder workflow."""
         page = AsyncMock()
@@ -331,6 +345,7 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
         page.url = "https://1drv.ms/f/example"
         page.locator = MagicMock()
         page.locator.return_value.first.wait_for = AsyncMock()
+        page.locator.return_value.first.is_visible = AsyncMock(return_value=True)
         sign_in = AsyncMock()
         sign_in.get_attribute.return_value = "https://login.microsoftonline.com/authorize"
         with (patch.object(FLOW, "visible_sign_in", new_callable=AsyncMock,

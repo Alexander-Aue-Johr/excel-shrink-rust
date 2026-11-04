@@ -532,19 +532,36 @@ class OneDriveThrottled(Exception):
 
 
 async def wait_for_folder_response(page) -> None:
-    """Wait for files, sign-in, or throttling instead of assuming files appear first."""
-    if is_login_page(page):
-        return
-    await page.wait_for_function(r"""() =>
-      /\/Throttle\.htm$/i.test(location.pathname) ||
-      /^(login\.microsoftonline\.com|login\.live\.com)$/i.test(location.hostname) ||
-      !!document.querySelector('[data-automationid="field-LinkFilename"]') ||
-      [...document.querySelectorAll('button, a')].some(element =>
-        /^(Sign in|Anmelden)$/i.test(element.textContent.trim()) &&
-        element.getClientRects().length > 0)
-    """, timeout=60_000)
-    if page.url.lower().split("#", 1)[0].endswith("/throttle.htm"):
-        raise OneDriveThrottled("OneDrive throttled requests; restart the run later")
+    """Follow OneDrive redirects while waiting for files, sign-in, or throttling."""
+    from playwright.async_api import Error as PlaywrightError
+
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if is_login_page(page):
+            return
+        if page.url.lower().split("#", 1)[0].endswith("/throttle.htm"):
+            raise OneDriveThrottled("OneDrive throttled requests; restart the run later")
+        try:
+            if await page.locator('[data-automationid="field-LinkFilename"]').first.is_visible():
+                return
+            if await visible_sign_in(page) is not None:
+                return
+        except PlaywrightError:
+            if page.is_closed():
+                raise
+            # OneDrive replaces its first document after the share-link redirect.
+        await asyncio.sleep(0.25)
+    parts = urlsplit(page.url)
+    try:
+        title = await asyncio.wait_for(page.title(), timeout=2)
+        body = await asyncio.wait_for(page.locator("body").inner_text(), timeout=2)
+    except Exception:
+        title, body = "unavailable", "unavailable"
+    excerpt = re.sub(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}",
+                     "[redacted email]", body[:250], flags=re.I)
+    raise TimeoutError(
+        f"OneDrive folder did not show files or sign-in: "
+        f"{parts.hostname}{parts.path}; title={title!r}; text={excerpt!r}")
 
 
 async def wait_for_folder_rows(page) -> None:

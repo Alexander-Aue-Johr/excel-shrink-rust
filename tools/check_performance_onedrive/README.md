@@ -48,6 +48,11 @@ sign-in therefore has to be done once in the Linux browser. Headless WSL runs
 do not need a visible desktop; the initial `--headed` run needs WSLg or another
 graphical display.
 
+If WSLg does not show the browser window, run the visible first sign-in with
+Windows Python instead. Its profile is separate, so use Windows Python for the
+following unattended runs as well. A signed-out headless profile fails promptly
+with `Microsoft sign-in required` and does not mark any workbook as processed.
+
 On the first run, the script discovers XLSX files by scrolling OneDrive's list.
 Later runs reuse the known names from SQLite and skip that full discovery pass.
 It sorts the folder by modification time, oldest first, and opens the next
