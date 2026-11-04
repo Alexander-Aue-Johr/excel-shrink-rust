@@ -1,0 +1,815 @@
+{
+  "observed_utc": "2026-11-04T17:01:39.508517+00:00",
+  "machine": {
+    "computer": "THE_LIBRARY",
+    "processor": "AMD Ryzen AI 9 HX 370 w/ Radeon 890M",
+    "logical_processors": 24,
+    "installed_memory_bytes": 34359738368,
+    "os": {
+      "Caption": "Microsoft Windows 11 Pro",
+      "Version": "10.0.26300",
+      "BuildNumber": "26300"
+    },
+    "excel_version": "16.0.20527.20112"
+  },
+  "archived_run_id": "b5373dd3-c4ad-4072-9e0e-46181de5c444",
+  "archived_output": "enron-upper-20261104-shrink-51b0905",
+  "timeout_cases": 26,
+  "no_capture_cases": 18,
+  "later_rebuild_cases": 7,
+  "later_measurement_cases": 1,
+  "automatic_probe_deadline_seconds": 20,
+  "automatic_ready_variants": 26,
+  "manual_ready_variants": 52,
+  "opening_mode_sensitive_workbooks": 13,
+  "manual_opening_median_seconds": 7.44989195,
+  "manual_opening_max_seconds": 10.708139,
+  "native_modal_dialogs_observed_in_original_cases": 0,
+  "capture_policy": "targeted-content-grid-v5",
+  "final_binary": {
+    "executable": "E:\\Users\\johr\\Documents\\excel-shrink-rust\\.tmp\\hidden-tail-experiment\\target\\release\\deployments\\16c0486eb54dcd6cbb6a8e94d049a6585018789d643352f308a5410fb0577e66\\excel-shrink-cli.exe",
+    "sha256": "16c0486eb54dcd6cbb6a8e94d049a6585018789d643352f308a5410fb0577e66"
+  },
+  "cases": [
+    {
+      "case_id": "0d719bd3f61880b51e9f",
+      "workbook": "native_000%2F3.839048.CF1JLW0PYO0BHZZ2FYJTX0SU2M5J1SQVB.1.xls",
+      "archived_start_utc": "2026-11-04T12:47:05.560000+00:00",
+      "archived_capture_count": 16,
+      "worksheet_count": 7,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.8183912,
+          "pid": 32224
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.2700895999999995,
+          "pid": 65648
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 10.708139,
+          "pid": 46276
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.7338192999999995,
+          "pid": 38992
+        }
+      }
+    },
+    {
+      "case_id": "113bcf2f480cd6624518",
+      "workbook": "native_000%2F3.295893.IJU2ZQGILXMCNPHHGR0LDNNFUXZL0WBXB.2.xls",
+      "archived_start_utc": "2026-11-04T05:19:33.508000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 47,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.0733548
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.1542396
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.4233572,
+          "pid": 57952
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 8.0645771,
+          "pid": 50380
+        }
+      }
+    },
+    {
+      "case_id": "25ca7338593e4a3e01f7",
+      "workbook": "native_000%2F3.545852.CPB54EHCYTUAUDA15TAGN1WSU0WWMUKQB.1.xls",
+      "archived_start_utc": "2026-11-04T06:50:17.236000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 24,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.3147305
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.0487739
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.9921393,
+          "pid": 50012
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.4772485,
+          "pid": 35208
+        }
+      }
+    },
+    {
+      "case_id": "26c2bf58a5da240aeb60",
+      "workbook": "native_001%2F3.1197640.MEKRIAAHMPOA5UXBC40XNHXJGB0BS3GEB.1.xls",
+      "archived_start_utc": "2026-11-04T13:48:34.858000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 4,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.0977057,
+          "pid": 18384
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 5.8154485,
+          "pid": 28964
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.8804085,
+          "pid": 47688
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.274707299999999,
+          "pid": 38684
+        }
+      }
+    },
+    {
+      "case_id": "28676df777e697e57a37",
+      "workbook": "native_000%2F3.545839.PBHZJOCOOFIVCYQ1VPHPU3T5E3HYB1DRB.1.xls",
+      "archived_start_utc": "2026-11-04T07:05:30.949000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 30,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.0637608
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.0384221
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.4639896,
+          "pid": 70048
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.9242284,
+          "pid": 65280
+        }
+      }
+    },
+    {
+      "case_id": "2ba021a09fd6c145b1ad",
+      "workbook": "native_000%2F3.1176624.HYTZEQUENI32CSKOLL1V005E05AA4OSJB.6.xls",
+      "archived_start_utc": "2026-11-04T13:45:14.385000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 3,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.1142882
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.014249
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.6706696999999995,
+          "pid": 45452
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 8.2516146,
+          "pid": 63396
+        }
+      }
+    },
+    {
+      "case_id": "2c6c4e833f1a002b26be",
+      "workbook": "native_000%2F3.1180345.EBLEV4BZYMH13DR53IVOFLP50NOWTQYZA.3.xls",
+      "archived_start_utc": "2026-11-04T12:44:03.797000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 5,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.9436225,
+          "pid": 63848
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.4416937,
+          "pid": 21220
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.5444542,
+          "pid": 46880
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.7157268,
+          "pid": 57284
+        }
+      }
+    },
+    {
+      "case_id": "37931fce677349316b93",
+      "workbook": "native_000%2F3.419509.KT31TAAJJESHEXYIUXAAM4OQH0VKR1AUB.1.xls",
+      "archived_start_utc": "2026-11-04T03:57:07.818000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 18,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.114383399999998
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.0808295
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.9083701,
+          "pid": 70476
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.9109861,
+          "pid": 37392
+        }
+      }
+    },
+    {
+      "case_id": "38a4814fa96c2acf0704",
+      "workbook": "native_000%2F3.413604.KRPGFWZ45CIAKQTC4W1HI3TNAUK2D543B.1.xls",
+      "archived_start_utc": "2026-11-04T07:09:45.863000+00:00",
+      "archived_capture_count": 52,
+      "worksheet_count": 18,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 9.7613262,
+          "pid": 72212
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.5736468,
+          "pid": 42220
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.2898627,
+          "pid": 63496
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.0187561999999994,
+          "pid": 46396
+        }
+      }
+    },
+    {
+      "case_id": "3ace66312dc5039a01d7",
+      "workbook": "native_000%2F3.419419.GTJZVSATSLHGLYCYD3KOYBMHFTCTIJWRA.1.xls",
+      "archived_start_utc": "2026-11-04T05:34:29.304000+00:00",
+      "archived_capture_count": 40,
+      "worksheet_count": 12,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.984076,
+          "pid": 62180
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.4057246,
+          "pid": 66724
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 8.3152522,
+          "pid": 67576
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.858633299999999,
+          "pid": 69796
+        }
+      }
+    },
+    {
+      "case_id": "42fd5c3c2a7dd11d7bfd",
+      "workbook": "native_000%2F3.658578.P1GIH2EQ12PYESLI544NIBCHSH4E3WRMB.1.xls",
+      "archived_start_utc": "2026-11-04T11:06:07.648000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 2,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.1974635,
+          "pid": 68852
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.205806,
+          "pid": 47140
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.8824596,
+          "pid": 72324
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.4357942999999995,
+          "pid": 63752
+        }
+      }
+    },
+    {
+      "case_id": "474c536ad9045d86990b",
+      "workbook": "native_000%2F3.545850.DVX0XM3RMN3OFFHMZ4VF4O3NNSK5QRQDA.1.xls",
+      "archived_start_utc": "2026-11-04T06:52:30.646000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 25,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.5045566
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.051933599999998
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 8.4840957,
+          "pid": 17292
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 8.4698207,
+          "pid": 25860
+        }
+      }
+    },
+    {
+      "case_id": "663dc61b1da751e89e37",
+      "workbook": "native_000%2F3.264909.DZLPNGYSMBIZI1HBP0PNUH1HEMIVOOINB.1.xls",
+      "archived_start_utc": "2026-11-04T15:07:27.101000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 2,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 5.9752247,
+          "pid": 62268
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.1294717,
+          "pid": 38496
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.799677,
+          "pid": 16828
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.474953999999999,
+          "pid": 68336
+        }
+      }
+    },
+    {
+      "case_id": "69c1fcef1b648fdf2c41",
+      "workbook": "native_000%2F3.545846.HHCJFN35T0H1FH5JJFMVERB2K0YNOM1CB.1.xls",
+      "archived_start_utc": "2026-11-04T07:02:05.342000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 29,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.52726
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.3808799
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.9137808,
+          "pid": 66776
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.404485299999999,
+          "pid": 69188
+        }
+      }
+    },
+    {
+      "case_id": "6bdc49c87a7b08e378b0",
+      "workbook": "native_000%2F3.545842.CBHK0RIDI3FLZMYOMQ044VR0RR5FDSL2A.1.xls",
+      "archived_start_utc": "2026-11-04T07:02:40.326000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 29,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.411141
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.337041199999998
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.798863399999999,
+          "pid": 52256
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.3500498,
+          "pid": 63316
+        }
+      }
+    },
+    {
+      "case_id": "6fa8d2e059505ff0e3a2",
+      "workbook": "tracy_geaccone_000_1_1.pst.185.xls",
+      "archived_start_utc": "2026-11-04T13:28:20.173000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 4,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.1143298999999995,
+          "pid": 63320
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.1631209,
+          "pid": 30096
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.687558699999999,
+          "pid": 70448
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.872360199999999,
+          "pid": 41572
+        }
+      }
+    },
+    {
+      "case_id": "741076e90dc89eedef1b",
+      "workbook": "native_000%2F3.662464.PU1SOGSA0BMLH5IS3WS4JMSEHDXLKAIPA.2.xls",
+      "archived_start_utc": "2026-11-04T08:19:07.609000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 19,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.0667588
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.050584699999998
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 9.7915721,
+          "pid": 47492
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 10.317246599999999,
+          "pid": 32052
+        }
+      }
+    },
+    {
+      "case_id": "78575c0fed4748d4820e",
+      "workbook": "native_000%2F3.414009.KCNCM3A0KANOOVYPH2H024R4DQ5GA3O1A.5.xls",
+      "archived_start_utc": "2026-11-04T06:13:52.458000+00:00",
+      "archived_capture_count": 52,
+      "worksheet_count": 18,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.360668899999999,
+          "pid": 47184
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.4578055999999995,
+          "pid": 72264
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.918385499999999,
+          "pid": 9208
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.7695707999999994,
+          "pid": 37344
+        }
+      }
+    },
+    {
+      "case_id": "92e1a029256b49f7bc32",
+      "workbook": "native_000%2F3.545841.AMVX3NCBIESJ4G33PHPYC31IXVOPXAR3A.1.xls",
+      "archived_start_utc": "2026-11-04T07:00:08.496000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 27,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.4760383
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.251746
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.689197699999999,
+          "pid": 3308
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.4107221999999995,
+          "pid": 71836
+        }
+      }
+    },
+    {
+      "case_id": "c382472e06d750b9bdac",
+      "workbook": "native_000%2F3.545857.N5FOTRH2SD2CPAXYWPPZ0YKPLBKFYFW1A.1.xls",
+      "archived_start_utc": "2026-11-04T06:50:43.871000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 21,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.1732771
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.3276775
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.4137955,
+          "pid": 45976
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.0007700999999996,
+          "pid": 11568
+        }
+      }
+    },
+    {
+      "case_id": "c449b5eb3d384f08df8f",
+      "workbook": "native_000%2F3.662464.PU1SOGSA0BMLH5IS3WS4JMSEHDXLKAIPA.1.xls",
+      "archived_start_utc": "2026-11-04T08:06:09.320000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 17,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.2644955
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.2354444
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 9.4425671,
+          "pid": 40436
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 8.360189799999999,
+          "pid": 57808
+        }
+      }
+    },
+    {
+      "case_id": "c9f852fbe5f99aa36fda",
+      "workbook": "native_000%2F3.419016.LDI4X5AAGZK4DQDA5AQNMB21VZM1PKY4B.1.xls",
+      "archived_start_utc": "2026-11-04T05:04:33.526000+00:00",
+      "archived_capture_count": 0,
+      "worksheet_count": 32,
+      "automatic_opening": {
+        "O": {
+          "status": "not_ready_20s",
+          "elapsed": 20.0476815
+        },
+        "SD": {
+          "status": "not_ready_20s",
+          "elapsed": 20.0577971
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.8846102,
+          "pid": 5348
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.9249199,
+          "pid": 54504
+        }
+      }
+    },
+    {
+      "case_id": "deb20c199f615df37d8c",
+      "workbook": "native_000%2F3.414010.HFBJDWJBJHIUCV2W2DYOI1HZBDU3TXSEA.1.xls",
+      "archived_start_utc": "2026-11-04T06:07:32.320000+00:00",
+      "archived_capture_count": 52,
+      "worksheet_count": 18,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.7262040999999995,
+          "pid": 4012
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 7.3716089,
+          "pid": 38460
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 7.5007139,
+          "pid": 22912
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.9831942,
+          "pid": 40056
+        }
+      }
+    },
+    {
+      "case_id": "e5252f97a36adeb65efb",
+      "workbook": "native_000%2F3.215569.EJM0KXNTWTCZW4KE331M3DTJOBHSL12CB.1.xls",
+      "archived_start_utc": "2026-11-04T10:40:23.636000+00:00",
+      "archived_capture_count": 28,
+      "worksheet_count": 4,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 9.6606569,
+          "pid": 53636
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 8.7739408,
+          "pid": 44632
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 8.318935,
+          "pid": 46580
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 8.0306831,
+          "pid": 69032
+        }
+      }
+    },
+    {
+      "case_id": "e98ca618d30577e01db8",
+      "workbook": "native_000%2F3.418337.HFJCTR5ZNTWGEQ4GWALIPRILREEVE5SIA.1.xls",
+      "archived_start_utc": "2026-11-04T07:00:36.283000+00:00",
+      "archived_capture_count": 1036,
+      "worksheet_count": 7,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.8179716,
+          "pid": 53352
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.816603199999999,
+          "pid": 69040
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.8706857,
+          "pid": 4528
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.6211641,
+          "pid": 65964
+        }
+      }
+    },
+    {
+      "case_id": "ecbfec516febd21f27fc",
+      "workbook": "native_000%2F3.591803.CDOBN1P0LU44CGIQM0SQ0XDSD2Z5WDBEA.1.xls",
+      "archived_start_utc": "2026-11-04T07:22:46.454000+00:00",
+      "archived_capture_count": 20,
+      "worksheet_count": 10,
+      "automatic_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.9408145,
+          "pid": 51512
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.554142199999999,
+          "pid": 56108
+        }
+      },
+      "manual_opening": {
+        "O": {
+          "status": "ready",
+          "elapsed": 6.7630754,
+          "pid": 34352
+        },
+        "SD": {
+          "status": "ready",
+          "elapsed": 6.8360240999999995,
+          "pid": 71608
+        }
+      }
+    }
+  ]
+}
