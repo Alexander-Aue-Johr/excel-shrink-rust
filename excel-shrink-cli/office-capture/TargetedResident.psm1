@@ -99,6 +99,49 @@ function Start-TargetedWorkbook {
     return $entry
 }
 
+function Get-TargetedOpeningDialogKind {
+    <# .SYNOPSIS Identify only a positively recognized repair prompt; other dialogs remain unknown. #>
+    param([string[]]$Names)
+    if (@($Names | Where-Object { $_ -match 'We found a problem with some content|Wir haben ein Problem bei einigen Inhalten' }).Count) {
+        return 'repair_required'
+    }
+    return $null
+}
+
+function Test-TargetedOpeningRepair {
+    <# .SYNOPSIS Fail with evidence before a modal repair prompt becomes an add-in timeout. #>
+    param($Entry)
+    if ($null -eq $Entry.process) { return }
+    if (-not ('TargetedOpeningDialogs' -as [type])) {
+        Add-Type -Path (Join-Path $PSScriptRoot 'TargetedOpeningDialogs.cs')
+        Add-Type -AssemblyName UIAutomationClient
+        Add-Type -AssemblyName UIAutomationTypes
+    }
+    foreach ($handle in [TargetedOpeningDialogs]::Find($Entry.process.Id)) {
+        $root = [Windows.Automation.AutomationElement]::FromHandle($handle)
+        if ($null -eq $root -or $root.Current.ProcessId -ne $Entry.process.Id) { continue }
+        $queue = [Collections.Generic.Queue[Windows.Automation.AutomationElement]]::new()
+        $queue.Enqueue($root)
+        $names = [Collections.Generic.List[string]]::new()
+        $walker = [Windows.Automation.TreeWalker]::ControlViewWalker
+        $visited = 0
+        while ($queue.Count -gt 0 -and $visited -lt 64) {
+            $element = $queue.Dequeue()
+            $visited++
+            $names.Add($element.Current.Name)
+            $child = $walker.GetFirstChild($element)
+            while ($null -ne $child -and $queue.Count -lt 64) {
+                $queue.Enqueue($child)
+                $child = $walker.GetNextSibling($child)
+            }
+        }
+        if ((Get-TargetedOpeningDialogKind $names.ToArray()) -eq 'repair_required') {
+            $evidence = Join-Path $Entry.session 'opening-dialog.json'
+            Write-TargetedJson $evidence @{kind='repair_required';pid=$Entry.process.Id;names=$names.ToArray();repair_accepted=$false}
+            throw "Targeted Excel repair required before add-in startup; no automatic repair was applied. Inspect $evidence"
+        }
+    }
+}
 function Wait-TargetedWorkbook {
     <# .SYNOPSIS
     Confirms readiness after the native launcher has already started.
@@ -106,6 +149,7 @@ function Wait-TargetedWorkbook {
     param($Command, $entry)
     $launcher = $entry.launcher
     $session = $entry.session
+    $dialogCheck = [Diagnostics.Stopwatch]::StartNew()
     try {
         while (-not $launcher.HasExited) {
             $metrics = Read-TargetedJson (Join-Path $session 'metrics.json')
@@ -114,6 +158,10 @@ function Wait-TargetedWorkbook {
                 $started = ([DateTimeOffset]$entry.process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
                 if ([Math]::Abs($started - $metrics.clients.one.process_started_unix_ms) -gt 2) { throw 'Excel PID identity changed.' }
                 [Console]::WriteLine((@{event='process_started'; lane=$Command.lane; pid=$entry.process.Id; started_at=$started} | ConvertTo-Json -Compress))
+            }
+            if ($null -ne $entry.process -and $dialogCheck.Elapsed.TotalSeconds -ge 2) {
+                Test-TargetedOpeningRepair $entry
+                $dialogCheck.Restart()
             }
             if ($null -ne $metrics -and $metrics.primary_clients_ready) {
                 $configuration = Read-TargetedJson (Join-Path $session 'launcher.json')
