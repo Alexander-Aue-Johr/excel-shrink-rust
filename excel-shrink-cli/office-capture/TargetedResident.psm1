@@ -101,46 +101,60 @@ function Start-TargetedWorkbook {
 }
 
 function Get-TargetedOpeningDialogKind {
-    <# .SYNOPSIS Identify only a positively recognized repair prompt; other dialogs remain unknown. #>
-    param([string[]]$Names)
-    if (@($Names | Where-Object { $_ -match 'We found a problem with some content|Wir haben ein Problem bei einigen Inhalten' }).Count) {
-        return 'repair_required'
-    }
+    <# .SYNOPSIS Classify visible dialog text; worksheet protection or security bars are not dialogs. #>
+    param([string[]]$Names, [bool]$HasPasswordInput = $false)
+    $text = $Names -join " "
+    if ($HasPasswordInput -or $text -match 'password|kennwort|passwort') { return 'password_required' }
+    if ($text -match 'found a problem with some content|problem.*(?:einigen )?inhalten|unreadable content|unlesbare.*inhalte|repair.*workbook|arbeitsmappe.*repar') { return 'repair_required' }
+    if ($text -match 'locked for editing|f[u\u00fc]r die bearbeitung gesperrt|zur bearbeitung gesperrt|being used by another') { return 'file_locked' }
+    if ($text -match 'read.only|schreibgesch[u\u00fc]tzt|schreibschutz') { return 'read_only_prompt' }
+    if ($text -match 'contains links|update.*links|aktualisieren.*verkn[u\u00fc]pf|verkn[u\u00fc]pf.*aktualisieren') { return 'external_links_prompt' }
+    if ($text -match 'file format and extension|dateiformat.*dateierweiterung') { return 'format_mismatch' }
+    if ($text -match 'circular reference|zirkelbez[u\u00fc]g') { return 'circular_reference' }
+    if ($text -match 'cannot open|could not open|couldn.t open|kann.*nicht.*ge[o\u00f6]ffnet|datei.*besch[a\u00e4]digt') { return 'file_open_error' }
+    if ($text -match 'security warning|sicherheitswarnung|protected view|gesch[u\u00fc]tzte ansicht') { return 'security_prompt' }
+    if ($text -match 'not enough memory|out of memory|nicht gen[u\u00fc]gend.*speicher') { return 'resource_error' }
     return $null
 }
 
-function Test-TargetedOpeningRepair {
-    <# .SYNOPSIS Fail with evidence before a modal repair prompt becomes an add-in timeout. #>
-    param($Entry)
+function Test-TargetedWorkbookBlocker {
+    <# .SYNOPSIS Reject a proven blocking prompt before the capture-idle watchdog expires.
+    Reads only the owned Excel PID on its explicit private desktop. No buttons are clicked.
+    #>
+    param($Entry, [string]$Phase = 'opening')
     if ($null -eq $Entry.process) { return }
+    $Entry.process.Refresh()
+    if ($Entry.process.HasExited) { throw "Owned Excel exited during $Phase before completing its request." }
     if (-not ('TargetedOpeningDialogs' -as [type])) {
         Add-Type -Path (Join-Path $PSScriptRoot 'TargetedOpeningDialogs.cs')
-        Add-Type -AssemblyName UIAutomationClient
-        Add-Type -AssemblyName UIAutomationTypes
     }
-    foreach ($handle in [TargetedOpeningDialogs]::Find($Entry.process.Id)) {
-        $root = [Windows.Automation.AutomationElement]::FromHandle($handle)
-        if ($null -eq $root -or $root.Current.ProcessId -ne $Entry.process.Id) { continue }
-        $queue = [Collections.Generic.Queue[Windows.Automation.AutomationElement]]::new()
-        $queue.Enqueue($root)
-        $names = [Collections.Generic.List[string]]::new()
-        $walker = [Windows.Automation.TreeWalker]::ControlViewWalker
-        $visited = 0
-        while ($queue.Count -gt 0 -and $visited -lt 64) {
-            $element = $queue.Dequeue()
-            $visited++
-            $names.Add($element.Current.Name)
-            $child = $walker.GetFirstChild($element)
-            while ($null -ne $child -and $queue.Count -lt 64) {
-                $queue.Enqueue($child)
-                $child = $walker.GetNextSibling($child)
+    foreach ($dialog in [TargetedOpeningDialogs]::Inspect($Entry.process.Id, $env:EXCEL_SHRINK_EXPECTED_DESKTOP)) {
+        if ($dialog.HasProgressBar) { continue }
+        $kind = Get-TargetedOpeningDialogKind $dialog.Names $dialog.HasPasswordInput
+        if (-not $kind -and $dialog.IsModal -and $dialog.DecisionButtons -ge 2) {
+            $kind = 'modal_confirmation_required'
+        }
+        if (-not $kind) {
+            Write-TargetedJson (Join-Path $Entry.session 'unclassified-dialog.json') @{
+                phase=$Phase; pid=$Entry.process.Id; class_name=$dialog.ClassName; names=$dialog.Names
+                modal=$dialog.IsModal; decision_buttons=$dialog.DecisionButtons; observed_at=[DateTime]::UtcNow.ToString('o')
             }
+            continue
         }
-        if ((Get-TargetedOpeningDialogKind $names.ToArray()) -eq 'repair_required') {
-            $evidence = Join-Path $Entry.session 'opening-dialog.json'
-            Write-TargetedJson $evidence @{kind='repair_required';pid=$Entry.process.Id;names=$names.ToArray();repair_accepted=$false}
-            throw "Targeted Excel repair required before add-in startup; no automatic repair was applied. Inspect $evidence"
+        $evidence = Join-Path $Entry.session 'blocking-dialog.json'
+        Write-TargetedJson $evidence @{
+            kind=$kind; phase=$Phase; pid=$Entry.process.Id
+            process_started_unix_ms=([DateTimeOffset]$Entry.process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
+            class_name=$dialog.ClassName; handle=$dialog.Handle; names=$dialog.Names
+            modal=$dialog.IsModal; action='skip_without_accepting_prompt'; observed_at=[DateTime]::UtcNow.ToString('o')
         }
+        # Stop the exact owned Excel handle, then let the resident restore its
+        # temporary add-in registration. The owned job bounds a stuck cleanup.
+        Write-TargetedJson (Join-Path $Entry.session 'finish.json') @{complete=$true;reason=$kind}
+        $excelClosed = [CaptureProcesses]::Stop($Entry.process)
+        $closed = $Entry.launcher.WaitForExit(3000)
+        if (-not $closed) { $closed = [CaptureProcesses]::Stop($Entry.launcher) }
+        throw "Targeted Excel blocked [$kind] during ${Phase}; no prompt was accepted (Excel exit confirmed: $excelClosed; resident exit confirmed: $closed). Inspect $evidence"
     }
 }
 function Wait-TargetedWorkbook {
@@ -153,15 +167,21 @@ function Wait-TargetedWorkbook {
     $dialogCheck = [Diagnostics.Stopwatch]::StartNew()
     try {
         while (-not $launcher.HasExited) {
-            $metrics = Read-TargetedJson (Join-Path $session 'metrics.json')
-            if ($null -ne $metrics -and $metrics.clients.one.pid -and $null -eq $entry.process) {
-                $entry.process = [Diagnostics.Process]::GetProcessById($metrics.clients.one.pid)
-                $started = ([DateTimeOffset]$entry.process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
-                if ([Math]::Abs($started - $metrics.clients.one.process_started_unix_ms) -gt 2) { throw 'Excel PID identity changed.' }
-                [Console]::WriteLine((@{event='process_started'; lane=$Command.lane; pid=$entry.process.Id; started_at=$started} | ConvertTo-Json -Compress))
+            # Inspect every concurrently opening lane, not only the first waiter.
+            $metrics = $null
+            foreach ($lane in @($sessions.Keys)) {
+                $candidate = $sessions[$lane]
+                $sample = Read-TargetedJson (Join-Path $candidate.session 'metrics.json')
+                if ($null -ne $sample -and $sample.clients.one.pid -and $null -eq $candidate.process) {
+                    $candidate.process = [Diagnostics.Process]::GetProcessById($sample.clients.one.pid)
+                    $started = ([DateTimeOffset]$candidate.process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
+                    if ([Math]::Abs($started - $sample.clients.one.process_started_unix_ms) -gt 2) { throw 'Excel PID identity changed.' }
+                    [Console]::WriteLine((@{event='process_started'; lane=$lane; pid=$candidate.process.Id; started_at=$started} | ConvertTo-Json -Compress))
+                }
+                if ($lane -eq $Command.lane) { $metrics = $sample }
             }
-            if ($null -ne $entry.process -and $dialogCheck.Elapsed.TotalSeconds -ge 2) {
-                Test-TargetedOpeningRepair $entry
+            if ($dialogCheck.Elapsed.TotalSeconds -ge 1) {
+                foreach ($candidate in $sessions.Values) { Test-TargetedWorkbookBlocker $candidate }
                 $dialogCheck.Restart()
             }
             if ($null -ne $metrics -and $metrics.primary_clients_ready) {
@@ -287,6 +307,7 @@ function Invoke-TargetedJobs {
     for ($index = 0; $index -lt $Commands.Count; $index++) {
         $pending.Add((Start-TargetedJob $Commands[$index] $index))
     }
+    $dialogCheck = [Diagnostics.Stopwatch]::StartNew()
     while ($pending.Count -gt 0) {
         for ($index = $pending.Count - 1; $index -ge 0; $index--) {
             $job = $pending[$index]
@@ -295,6 +316,10 @@ function Invoke-TargetedJobs {
             if ($null -eq $response) { continue }
             $results[$job.index] = Resolve-TargetedResponse $job $response
             $pending.RemoveAt($index)
+        }
+        if ($pending.Count -gt 0 -and $dialogCheck.Elapsed.TotalSeconds -ge 1) {
+            foreach ($job in $pending) { Test-TargetedWorkbookBlocker $job.entry ([string]$job.command.kind) }
+            $dialogCheck.Restart()
         }
         if ($pending.Count -gt 0) {
             $null = $script:responseWatcher.WaitForChanged([IO.WatcherChangeTypes]::All, 100)
