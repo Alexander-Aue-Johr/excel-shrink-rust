@@ -67,6 +67,12 @@ fn project(
     stall: i64,
     now: i64,
 ) -> Value {
+    // Loading a resumed corpus can briefly leave the preceding run's progress file.
+    let progress = if progress["run_id"] == queue["run_id"] {
+        progress
+    } else {
+        &Value::Null
+    };
     let started = queue["runner_started_unix_ms"].as_i64();
     let mut counts = BTreeMap::<String, usize>::new();
     let mut active = Vec::new();
@@ -149,5 +155,11 @@ mod tests {
             "long_operation_requires_inspection"
         );
         assert_eq!(summary["comparisons"][0]["processes"][0]["alive"], true);
+        let stale = project(
+            &json!({"run_id":"new"}),
+            &json!({"run_id":"old","counts":{"completed":999}}),
+            &json!([]), 1, 120, 200_000,
+        );
+        assert!(stale["counts"].is_null());
     }
 }
