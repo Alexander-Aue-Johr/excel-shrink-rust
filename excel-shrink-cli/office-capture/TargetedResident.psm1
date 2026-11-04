@@ -106,6 +106,7 @@ function Get-TargetedOpeningDialogKind {
     $text = $Names -join " "
     if ($HasPasswordInput -or $text -match 'password|kennwort|passwort') { return 'password_required' }
     if ($text -match 'found a problem with some content|problem.*(?:einigen )?inhalten|unreadable content|unlesbare.*inhalte|repair.*workbook|arbeitsmappe.*repar') { return 'repair_required' }
+    if ($text -match 'compatibility checker|kompatibilit[a\u00e4]tspr[u\u00fc]fung') { return 'compatibility_confirmation_required' }
     if ($text -match 'locked for editing|f[u\u00fc]r die bearbeitung gesperrt|zur bearbeitung gesperrt|being used by another') { return 'file_locked' }
     if ($text -match 'read.only|schreibgesch[u\u00fc]tzt|schreibschutz') { return 'read_only_prompt' }
     if ($text -match 'contains links|update.*links|aktualisieren.*verkn[u\u00fc]pf|verkn[u\u00fc]pf.*aktualisieren') { return 'external_links_prompt' }

@@ -7,6 +7,8 @@ $module=Get-Module TargetedResident
     }
     $cases = @(
         @{text='Password required';kind='password_required'},
+        @{text='Microsoft Excel - Compatibility Checker';kind='compatibility_confirmation_required'},
+        @{text=('Kompatibilit'+[char]0x00e4+'tspr'+[char]0x00fc+'fung');kind='compatibility_confirmation_required'},
         @{text='File is locked for editing by another user';kind='file_locked'},
         @{text='Open read-only?';kind='read_only_prompt'},
         @{text=('Datei ist schreibgesch'+[char]0x00fc+'tzt');kind='read_only_prompt'},

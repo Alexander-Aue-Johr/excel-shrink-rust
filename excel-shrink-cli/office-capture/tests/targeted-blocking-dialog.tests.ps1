@@ -18,6 +18,7 @@ try {
     foreach($case in @(
         @{text='Password required to open this file';kind='password_required'},
         @{text='We found a problem with some content in one.xlsx.';kind='repair_required'},
+        @{text='Microsoft Excel - Compatibility Checker';kind='compatibility_confirmation_required'},
         @{text='Choose whether to continue';kind='modal_confirmation_required'}
     )) {
         $owned=New-Object CaptureProcesses
