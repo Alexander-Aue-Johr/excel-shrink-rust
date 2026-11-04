@@ -92,6 +92,67 @@ class EditorReadinessTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RenderingRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_retry_skipped_only_processes_current_top_level_files(self):
+        """Old skipped entries outside the folder must not block its cleanup."""
+        from argparse import Namespace
+        with tempfile.TemporaryDirectory() as temporary:
+            args = Namespace(folder_url="https://1drv.ms/f/test", output_root=Path(temporary),
+                             profile_dir=None, headed=True, refresh_list=False, list_only=False,
+                             only_file=None, retry_skipped=True, max_files=10)
+            identifier = FLOW.folder_id(args.folder_url)
+            directory = Path(temporary) / identifier
+            with ProgressStore(directory, identifier) as progress:
+                progress.discover(["retry.xlsx", "archived.xlsx", "absent.xlsx",
+                                   "pending.xlsx", "done.xlsx"])
+                for name in ("retry.xlsx", "archived.xlsx", "absent.xlsx"):
+                    attempt = progress.start_attempt(name)
+                    progress.skip(name, attempt, "error_after_retry")
+                progress.confirm_skipped_move("archived.xlsx")
+                attempt = progress.start_attempt("done.xlsx")
+                progress.transition("done.xlsx", JobState.CHECKING)
+                progress.finish("done.xlsx", attempt, "already_clean")
+            browser = (object(), object(), MagicMock())
+            selected = []
+
+            async def select_next(_context, page, _url, _headed, unfinished):
+                name = sorted(unfinished)[0]
+                return page, (name, None)
+
+            async def complete_workbook(*values):
+                progress, name = values[5], values[7]
+                selected.append(name)
+                attempt = progress.start_attempt(name)
+                progress.transition(name, JobState.CHECKING)
+                progress.finish(name, attempt, "already_clean")
+                return (*browser, False)
+
+            with (patch.object(FLOW, "restart_folder_browser", new=AsyncMock(return_value=browser)),
+                  patch.object(FLOW, "discover_workbooks", new=AsyncMock(
+                      return_value=["retry.xlsx", "pending.xlsx", "done.xlsx"])) as discover,
+                  patch.object(FLOW, "next_workbook_with_recovery", new=select_next),
+                  patch.object(FLOW, "process_selected_workbook", new=complete_workbook),
+                  patch.object(FLOW, "archive_skipped_with_recovery", new=AsyncMock()) as archive,
+                  patch.object(FLOW, "close_browser", new=AsyncMock()),
+                  patch.object(FLOW, "ConsoleProgress"), patch("builtins.print")):
+                self.assertEqual(await FLOW.run_folder_check_performance(args), 0)
+            discover.assert_awaited_once()
+            archive.assert_not_awaited()
+            self.assertCountEqual(selected, ["retry.xlsx", "pending.xlsx"])
+            with ProgressStore(directory, identifier) as progress:
+                self.assertEqual(progress.status("retry.xlsx"), "completed")
+                self.assertEqual(progress.status("archived.xlsx"), "skipped")
+                self.assertEqual(progress.status("absent.xlsx"), "skipped")
+                self.assertEqual(progress.moved_skipped_names(), {"archived.xlsx"})
+                self.assertEqual(progress.connection.execute(
+                    "SELECT COUNT(*) FROM attempts WHERE file_name = 'retry.xlsx'"
+                ).fetchone()[0], 2)
+
+    def test_retry_skipped_cli_names_share_folder_scope(self):
+        for option in ("--retry-skipped-in-folder", "--retry-skipped"):
+            with self.subTest(option=option), patch.object(
+                    FLOW.sys, "argv", ["runner", "https://1drv.ms/f/test", option]):
+                self.assertTrue(FLOW.parse_arguments().retry_skipped)
+
     async def test_rendering_failure_after_skip_moves_file_once(self):
         """A finished skip follows the common relocation path after folder recovery."""
         from argparse import Namespace

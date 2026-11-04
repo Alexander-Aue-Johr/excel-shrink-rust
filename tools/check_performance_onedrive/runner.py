@@ -1299,11 +1299,13 @@ async def process_selected_workbook(playwright, context, folder_page, args, prof
 async def load_workbook_inventory(page, progress: ProgressStore, args) -> list[str]:
     """Discover new uploads when requested, otherwise reuse the durable inventory."""
     names = progress.names()
-    if not names or args.refresh_list or args.list_only:
+    if not names or args.refresh_list or args.list_only or args.retry_skipped:
         discovered = await discover_workbooks(page)
         names = progress.discover(discovered)
         print(f"Found {len(discovered)} XLSX files; {len(names)} known across runs. "
               f"Progress: {progress.path}", flush=True)
+        if args.retry_skipped:
+            return discovered
     else:
         print(f"Reusing {len(names)} known XLSX files. Progress: {progress.path}", flush=True)
     return names
@@ -1324,18 +1326,14 @@ async def run_folder_check_performance(args) -> int:
                 return 0
             if args.only_file and args.only_file not in names:
                 raise ValueError(f"Workbook is absent from the folder: {args.only_file}")
-            if args.retry_skipped:
-                moved = progress.moved_skipped_names()
-                if moved and (not args.only_file or args.only_file in moved):
-                    raise ValueError("Move archived workbooks back from skipped and use "
-                                     "--refresh-list --retry-skipped to retry them")
-            else:
+            if not args.retry_skipped:
                 pending_moves = progress.pending_skipped_moves()
                 if args.only_file:
                     pending_moves = [name for name in pending_moves if name == args.only_file]
                 playwright, context, folder_page = await archive_skipped_with_recovery(
                     playwright, context, folder_page, args, profile, progress, pending_moves)
             unfinished = progress.unfinished_names(args.retry_skipped)
+            unfinished.intersection_update(names)
             if args.only_file:
                 unfinished.intersection_update({args.only_file})
             attempted = 0
@@ -1398,7 +1396,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--headed", action="store_true", help="Show the browser for the initial sign-in")
     parser.add_argument("--list-only", action="store_true", help="Discover files without optimizing")
     parser.add_argument("--refresh-list", action="store_true", help="Scan the full folder for new files")
-    parser.add_argument("--retry-skipped", action="store_true", help="Retry files previously marked unavailable")
+    parser.add_argument("--retry-skipped-in-folder", "--retry-skipped", dest="retry_skipped",
+                        action="store_true",
+                        help="Refresh the linked folder and retry skipped files still directly inside it")
     parser.add_argument("--only-file", help="Process or check one named workbook")
     parser.add_argument("--max-files", type=int, default=sys.maxsize, help="Process at most N files this run")
     args = parser.parse_args()

@@ -127,11 +127,17 @@ A same-named source outside the current viewport must still be moved. Name
 conflicts stay pending for review. A relocation failure
 is retried once with a fresh browser, then stops the run with the move pending.
 
-Create `skipped` in each input folder before running. To retry an archived
-workbook, move it back to its input folder and use
-`--refresh-list --retry-skipped` (optionally with `--only-file`). The runner
-processes the top-level input folder and leaves the contents of `skipped`
-out of normal discovery.
+Create `skipped` in each input folder before running. Use
+`--retry-skipped-in-folder` to retry SQLite-skipped workbooks still directly in
+the linked folder, alongside its other unfinished workbooks. This option scans
+the top-level file list once at startup and restricts the run to that list.
+Completed workbooks retain their results. Historical skipped entries absent from
+the folder, including files already moved into `skipped`, retain their history
+and are excluded from this run. Old pending moves are bypassed so these files
+can be checked again first. Files skipped again follow the normal move flow.
+`--retry-skipped` remains an alias. To retry an archived workbook, move it back
+to the input folder before using this option, optionally with `--only-file`.
+Subfolders are excluded from discovery.
 
 An unexpected workbook error records a failed attempt, closes the browser and
 Playwright driver, and retries that workbook once in a new browser window
