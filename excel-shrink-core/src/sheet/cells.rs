@@ -893,7 +893,9 @@ fn cell_applies_effective_default_fill_override(
     }
 
     match (inherited.row, inherited.column) {
-        (None, None) => true,
+        // Explicit "no fill" only masks a fill when one is inherited.
+        // Otherwise applyFill alone must not create a visual tail anchor.
+        (None, None) => false,
         (row, column) => {
             row.is_some_and(|style| style.apply_fill && style.has_visible_fill)
                 || column.is_some_and(|style| style.apply_fill && style.has_visible_fill)

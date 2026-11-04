@@ -820,7 +820,7 @@ fn keeps_empty_cell_when_default_border_override_clears_visible_row_border() {
 }
 
 #[test]
-fn keeps_empty_cell_when_style_applies_default_fill_override() {
+fn removes_empty_cell_when_default_fill_override_has_nothing_to_clear() {
     let params = params_with_styles(&[(44, font_and_apply_default_fill_style())]);
     let mut metrics = CleanSheetMetrics::default();
 
@@ -838,9 +838,9 @@ fn keeps_empty_cell_when_style_applies_default_fill_override() {
 
     let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
 
-    assert_eq!(cleaned.as_ref(), cell_xml);
-    assert_eq!(metrics.kept_cell_states.len(), 1);
-    assert_eq!(metrics.deleted_cell_count, 0);
+    assert!(cleaned.is_empty());
+    assert_eq!(metrics.kept_cell_states.len(), 0);
+    assert_eq!(metrics.deleted_cell_count, 1);
 }
 
 #[test]

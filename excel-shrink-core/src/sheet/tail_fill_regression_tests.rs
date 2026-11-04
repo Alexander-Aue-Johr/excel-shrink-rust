@@ -8,11 +8,12 @@ fn params(maximum: bool) -> CleanSheetParameters {
     let styles = br#"<styleSheet><fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><sz val="18"/><name val="Times New Roman"/></font></fonts>
         <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0070C0"/></patternFill></fill></fills>
         <borders count="2"><border/><border><bottom style="thin"/></border></borders>
-        <cellXfs count="5"><xf fontId="0" fillId="0" borderId="0"/>
+        <cellXfs count="6"><xf fontId="0" fillId="0" borderId="0"/>
         <xf fontId="0" fillId="2" borderId="0" applyFill="1"/>
         <xf fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"><alignment vertical="top" wrapText="1"/></xf>
         <xf fontId="1" fillId="3" borderId="0" applyFont="1" applyFill="1"/>
-        <xf fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/></cellXfs></styleSheet>"#;
+        <xf fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/>
+        <xf fontId="0" fillId="0" borderId="0" applyFill="1"/></cellXfs></styleSheet>"#;
     let mut params = tests::default_params();
     params.patterns =
         WorkbookSpecificPatterns::new(crate::styles::parse_xfs(styles).unwrap(), None);
@@ -35,6 +36,60 @@ fn clean(rows: &[u8], columns: &[u8], maximum: bool, splitting_disabled: bool) -
 }
 
 const WHITE_COLUMNS: &[u8] = br#"<col min="1" max="16384" style="1"/>"#;
+
+/// Reduced from Enron `3.395674.FFVA02E4NUID3ZH5TIILK5UPNDX4KVRQB.1.xls`
+/// (prepared bundle `44ad86f1d9f249470fc6`), sheet `AUGUST`. It has no
+/// values, formulas, fills, borders or drawing objects. Default retained 21,984
+/// empty cells, including 21,947 with applyFill="1" and fillId="0". With no
+/// inherited fill, these cells incorrectly anchored the tail through F2779.
+#[test]
+fn enron_august_no_fill_overrides_do_not_anchor_an_empty_sheet() {
+    let rows = br#"<row r="1" ht="18" customHeight="1"/><row r="8"><c r="A8" s="5"/></row><row r="2779"><c r="F2779" s="5"/></row>"#;
+    let columns = br#"<col min="1" max="8" width="10" customWidth="1"/>"#;
+    for maximum in [false, true] {
+        for disabled in [false, true] {
+            let result = clean(rows, columns, maximum, disabled);
+            let xml = String::from_utf8_lossy(&result.xml);
+            assert!(!xml.contains("<c "), "{xml}");
+            assert!(!xml.contains("<row "), "{xml}");
+            assert_eq!(result.metrics.tail_anchor_max_row, None);
+        }
+    }
+}
+
+/// The Enron no-inheritance case must not weaken masking. Explicit no-fill
+/// cells reveal gridlines through an inherited white or blue fill, whether
+/// supplied by a row, a column, or both. They remain visual tail anchors even
+/// when there is no content below them.
+#[test]
+fn no_fill_overrides_preserve_inherited_white_and_blue_fill_masks() {
+    for fill_style in [1, 3] {
+        for source in ["row", "column", "both"] {
+            let row_style = if source == "column" {
+                String::new()
+            } else {
+                format!(" s=\"{fill_style}\" customFormat=\"1\"")
+            };
+            let columns = if source == "row" {
+                String::new()
+            } else {
+                format!("<col min=\"1\" max=\"16384\" style=\"{fill_style}\"/>")
+            };
+            let rows = format!("<row r=\"2\"{row_style}><c r=\"A2\" s=\"5\"/></row>");
+            for maximum in [false, true] {
+                for disabled in [false, true] {
+                    let result = clean(rows.as_bytes(), columns.as_bytes(), maximum, disabled);
+                    let xml = String::from_utf8_lossy(&result.xml);
+                    assert!(
+                        xml.contains("<c r=\"A2\" s=\"5\"/>"),
+                        "{source} {fill_style}: {xml}"
+                    );
+                    assert_eq!(result.metrics.tail_anchor_max_row, Some(2));
+                }
+            }
+        }
+    }
+}
 
 /// With no content anchor at all, the reverse tail scan must use the same
 /// full-width redundancy decision as row metrics. Blue still remains visible.

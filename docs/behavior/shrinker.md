@@ -136,6 +136,17 @@ keeps relevant protection-only cells. For an unprotected sheet, the policy is:
 These switches concern unused protection formatting, not bypassing Excel sheet
 protection or deleting a value that is otherwise required.
 
+An empty cell with `applyFill="1"` and `fillId="0"` must remain when its
+no-fill override clears a visible inherited row or column fill. White is a
+visible fill too, because it suppresses gridlines. Such a cell remains a tail
+anchor even without content below it. When no fill is inherited, the same
+attributes alone neither justify keeping the cell nor make it a tail anchor.
+Other retention rules still apply.
+
+The regression fixture for Enron bundle `44ad86f1d9f249470fc6`, sheet `AUGUST`,
+documents this distinction. Its 21,947 no-fill overrides had nothing to clear
+but incorrectly anchored an otherwise content-free sheet through F2779.
+
 ## S5. Row representatives and row-style promotion
 
 Removing empty font cells can change Excel's automatic row height and text
