@@ -159,7 +159,7 @@ impl Default for CleanupSwitches {
             keep_textless_default_font_representatives: true,
             keep_textless_style_representatives: true,
             keep_textless_column_style_representatives: true,
-            inactive_protection_cell_policy: InactiveProtectionCellPolicy::Remove,
+            inactive_protection_cell_policy: InactiveProtectionCellPolicy::KeepInDataRange,
 
             empty_row_attribute_cleanup: true,
             sheetdata_range_tail_pruning: true,

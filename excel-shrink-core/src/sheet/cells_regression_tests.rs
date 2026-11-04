@@ -1003,6 +1003,8 @@ fn does_not_mark_candidate_when_cell_style_has_apply_protection_and_sheet_is_pro
 
     let mut params = params_with_styles(&[(7, protected_style)]);
 
+    params.cleanup.inactive_protection_cell_policy = InactiveProtectionCellPolicy::KeepAll;
+
     params.advanced_cleanup = Some(Arc::new(AdvancedCleanupConfig {
         remove_unreferenced_whitespace: false,
         remove_unreferenced_hidden_content: true,

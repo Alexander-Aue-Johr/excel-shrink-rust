@@ -1647,7 +1647,7 @@ r="A2"><v>42</v></c></row><row r="3"><c	r="A3"><f>1+1</f></c></row><row r="4"><c
     }
 
     #[test]
-    fn unprotected_sheet_default_removes_inactive_protection_cell_inside_visible_data_range() {
+    fn unprotected_sheet_default_keeps_inactive_protection_cell_inside_visible_data_range() {
         let params = params_with_styles(&[(7, apply_protection_only_style())]);
         let preprocessed = preprocessed_with_sheet_data(
             br#"<row r="1"><c r="B1" s="7"/></row><row r="2"><c r="C2"><v>1</v></c></row>"#,
@@ -1657,7 +1657,7 @@ r="A2"><v>42</v></c></row><row r="3"><c	r="A3"><f>1+1</f></c></row><row r="4"><c
         let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
         let xml = String::from_utf8_lossy(&cleaned.xml);
 
-        assert!(!xml.contains(r#"r="B1""#));
+        assert!(xml.contains(r#"r="B1""#));
         assert!(xml.contains(r#"<c r="C2"><v>1</v></c>"#));
     }
 
