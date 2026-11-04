@@ -152,6 +152,11 @@ impl ContentBounds {
         }
     }
 
+    /// Heights above visible content affect its position; rows below its padded envelope do not.
+    pub fn last_relevant_row(&self, sheet: &str) -> u32 {
+        self.0.get(sheet).map_or(0, |bounds| bounds.padded().bottom)
+    }
+
     /// Recompute after late discoveries; retained workbooks backfill newly eligible evidence.
     pub fn select(
         &self,

@@ -413,7 +413,7 @@ impl Workflow<'_, '_> {
                 state.step(right, Phase::MeasureHeights, StepStatus::Running);
             })?;
             for sheet in a.sheets.keys() {
-                let (spans, fixed) = heights::selection(&a, &b, sheet)?;
+                let (spans, fixed) = heights::selection(&a, &b, sheet, self.content_bounds.last_relevant_row(sheet))?;
                 if spans.is_empty() && fixed == 0 {
                     continue;
                 }

@@ -35,6 +35,7 @@ pub(super) fn selection(
     before: &Snapshot,
     after: &Snapshot,
     sheet: &str,
+    last_relevant_row: u32,
 ) -> Result<(Vec<(u32, u32)>, usize)> {
     let left = before
         .sheets
@@ -44,6 +45,10 @@ pub(super) fn selection(
         .sheets
         .get(sheet)
         .ok_or_else(|| anyhow::anyhow!("Missing partner sheet {sheet}"))?;
+    ensure!(
+        last_relevant_row <= 1_048_576,
+        "Invalid height-selection boundary"
+    );
     let global = left.columns != right.columns
         || left.defaults != right.defaults
         || before.context != after.context;
@@ -55,11 +60,13 @@ pub(super) fn selection(
         .chain(right.rows.keys())
         .copied()
         .filter(|&row| {
-            left.fixed_height(row).is_some() && left.fixed_height(row) == right.fixed_height(row)
+            row <= last_relevant_row
+                && left.fixed_height(row).is_some()
+                && left.fixed_height(row) == right.fixed_height(row)
         })
         .collect();
     if global {
-        // Column fonts can affect even empty rows below the populated region.
+        // Keep all rows above content, including empty rows that move later captures.
         let mut spans = Vec::new();
         let mut start = 1;
         for row in fixed {
@@ -69,8 +76,8 @@ pub(super) fn selection(
             start = row + 1;
             skipped += 1;
         }
-        if start <= 1_048_576 {
-            spans.push((start, 1_048_576));
+        if start <= last_relevant_row {
+            spans.push((start, last_relevant_row));
         }
         return Ok((spans, skipped));
     }
@@ -84,7 +91,7 @@ pub(super) fn selection(
         }
     }
     let mut spans: Vec<(u32, u32)> = Vec::new();
-    for row in wanted {
+    for row in wanted.into_iter().filter(|row| *row <= last_relevant_row) {
         if fixed.contains(&row) {
             skipped += 1;
             continue;
@@ -211,10 +218,13 @@ mod tests {
         before.sheets.get_mut("Rows").unwrap().cells =
             super::super::cell_stream::Cells::empty_font_cell();
         let mut after = fixture();
-        assert_eq!(selection(&before, &after, "Rows").unwrap(), (vec![], 1));
+        assert_eq!(
+            selection(&before, &after, "Rows", 1_048_576).unwrap(),
+            (vec![], 1)
+        );
         std::sync::Arc::make_mut(&mut after.sheets.get_mut("Rows").unwrap().rows).clear();
         assert_eq!(
-            selection(&before, &after, "Rows").unwrap(),
+            selection(&before, &after, "Rows", 1_048_576).unwrap(),
             (vec![(8, 8)], 0)
         );
     }
@@ -225,11 +235,26 @@ mod tests {
         let mut after = fixture();
         after.sheets.get_mut("Rows").unwrap().columns = b"changed column style".to_vec();
         assert_eq!(
-            selection(&before, &after, "Rows").unwrap(),
+            selection(&before, &after, "Rows", 1_048_576).unwrap(),
             (vec![(1, 7), (9, 1_048_576)], 1)
         );
     }
 
+    #[test]
+    fn column_changes_keep_rows_above_content_but_not_the_empty_tail() {
+        let before = fixture();
+        let mut after = fixture();
+        after.sheets.get_mut("Rows").unwrap().columns = b"changed column style".to_vec();
+        assert_eq!(
+            selection(&before, &after, "Rows", 20).unwrap(),
+            (vec![(1, 7), (9, 20)], 1)
+        );
+        assert_eq!(
+            selection(&before, &after, "Rows", 3).unwrap(),
+            (vec![(1, 3)], 0)
+        );
+        assert_eq!(selection(&before, &after, "Rows", 0).unwrap(), (vec![], 0));
+    }
     #[test]
     fn cancelling_height_changes_are_not_hidden_by_equal_totals() {
         let mut check = HeightCheck {
