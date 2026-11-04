@@ -38,9 +38,12 @@ do {
         $pending = Join-Path $output ('latest-' + $PID + '.pending')
         $snapshot | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $pending -Encoding UTF8
         Move-Item -LiteralPath $pending -Destination (Join-Path $output 'latest.json') -Force
-        $alerts = @($snapshot.comparisons | Where-Object { $_.attention -or $_.error })
+        $alerts = @($snapshot.comparisons | Where-Object {
+            $_.attention -or $_.error -or $_.result.after_differences -gt 0 -or
+                $_.result.chart_differences -gt 0 -or $_.result.check_performance_differences -gt 0
+        })
         foreach ($alert in $alerts) {
-            $key = "$($alert.comparison_id)/$($alert.current_operation.id)/$($alert.attention)/$($alert.error)"
+            $key = "$($alert.comparison_id)/$($alert.current_operation.id)/$($alert.attention)/$($alert.error)/$($alert.result.after_differences)/$($alert.result.chart_differences)/$($alert.result.check_performance_differences)"
             if (-not $seen.ContainsKey($key)) {
                 Write-WatchEvent @{ at=[DateTime]::UtcNow.ToString('o'); run_id=$run; kind='comparison_attention'; evidence=$alert }
                 $seen[$key] = $true

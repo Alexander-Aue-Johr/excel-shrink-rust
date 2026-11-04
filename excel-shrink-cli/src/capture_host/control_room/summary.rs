@@ -81,7 +81,9 @@ fn project(
             .entry(group["status"].as_str().unwrap_or("unknown").into())
             .or_default() += 1;
         if group["active"] == true {
-            active.push(json!({"group_id":group["id"],"workbook":group["workbook"],"attempt_id":group["attempt_id"]}));
+            active.push(json!({"group_id":group["id"],"workbook":group["workbook"],"attempt_id":group["attempt_id"],
+                "status":group["status"],"started_at":group["started_unix_ms"],
+                "elapsed_seconds":group["started_unix_ms"].as_i64().map(|start| (now-start).max(0)/1000)}));
         }
     }
     let mut current: Vec<_> = comparisons
@@ -126,6 +128,13 @@ fn project(
             } else if running && idle.is_some_and(|seconds| seconds >= stall) {
                 Some("long_operation_requires_inspection")
             } else { None },
+            "result": {
+                "after_differences":snapshot["report"]["after_differences"],
+                "chart_differences":snapshot["report"]["chart_differences"],
+                "check_performance_differences":snapshot["report"]["check_performance_differences"],
+                "chart_comparisons":snapshot["report"]["chart_comparisons"],
+                "check_performance":snapshot["report"]["check_performance"]
+            },
             "processes":processes.into_values().collect::<Vec<_>>(),"error":snapshot["error"]})
     }).collect();
     json!({"run_id":queue["run_id"],"runner_pid":queue["runner_pid"],"running":queue["running"],"phase":queue["phase"],
@@ -146,7 +155,7 @@ mod tests {
         let queue = json!({"runner_started_unix_ms":100,"groups":[{"active":true,"id":"a"},{"active":true,"id":"b"}]});
         let snapshots = json!([
             {"started_at":99,"status":"running"},
-            {"started_at":100,"updated_at":200,"status":"running", "lanes":[{"id":"O","pid":12,"process_alive":true}]},
+            {"started_at":100,"updated_at":200,"status":"running", "lanes":[{"id":"O","pid":12,"process_alive":true}],"report":{"after_differences":2}},
             {"started_at":101,"updated_at":299,"status":"completed_with_limitations"}
         ]);
         let summary = project(&queue, &Value::Null, &snapshots, 1, 120, 200_000);
@@ -159,6 +168,7 @@ mod tests {
             "long_operation_requires_inspection"
         );
         assert_eq!(summary["comparisons"][0]["processes"][0]["alive"], true);
+        assert_eq!(summary["comparisons"][0]["result"]["after_differences"], 2);
         let stale = project(
             &json!({"run_id":"new"}),
             &json!({"run_id":"old","counts":{"completed":999}}),
