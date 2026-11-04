@@ -17,6 +17,17 @@ PANE_SCRIPT = Path(__file__).with_name("pane.js").read_text(encoding="utf-8")
 
 
 class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
+    async def test_folder_selection_accepts_filename_cells_without_gridcell_role(self):
+        await self.page.set_content('''
+            <span data-automationid="field-LinkFilename">Name</span>
+            <span data-automationid="field-LinkFilename">optimized</span>
+            <span data-automationid="field-LinkFilename">pending.xlsx</span>
+        ''')
+        with patch.object(FLOW, "scroll_file_list", side_effect=AssertionError("unexpected scroll")):
+            name, row = await FLOW.next_visible_unfinished(self.page, {"pending.xlsx"})
+        self.assertEqual(name, "pending.xlsx")
+        self.assertEqual(await row.inner_text(), name)
+
     async def test_temporary_repair_banner_skips_without_editing(self) -> None:
         """The repaired Reading View is excluded before any editing action."""
         for title, message in [

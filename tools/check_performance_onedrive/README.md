@@ -139,6 +139,16 @@ can be checked again first. Files skipped again follow the normal move flow.
 to the input folder before using this option, optionally with `--only-file`.
 Subfolders are excluded from discovery.
 
+Add `--move-optimized` when the input folder has an `optimized` child folder.
+The runner first moves successful workbooks still in the top-level input folder,
+including results from earlier runs, then moves each newly completed workbook.
+Both `optimized` and `already_clean` outcomes count as successful. A workbook
+requiring a cloud save must reach its confirmed save before completion. Moves
+are confirmed in SQLite independently of the Check Performance result and resume
+after interruption. A fresh top-level inventory keeps files already inside
+`optimized` outside the run. This option can be combined with
+`--retry-skipped-in-folder` to recheck skipped files still in the input folder.
+
 An unexpected workbook error records a failed attempt, closes the browser and
 Playwright driver, and retries that workbook once in a new browser window
 using the retained sign-in profile. If the second attempt fails, the file is
