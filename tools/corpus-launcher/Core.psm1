@@ -305,6 +305,8 @@ function New-StudyLaunchPlan {
     }
     if ($settings.hide_excel) { $argsList += '--hide-excel' }
     foreach ($hash in @($settings.reuse_prepared_from | Select-Object -Unique)) { $argsList += @('--reuse-prepared-from',$hash) }
+    $workbookList = Get-Value $settings 'workbook_list' $null
+    if ($workbookList) { $argsList += @('--workbook-list',(Resolve-StudyPath $Repo $workbookList)) }
     if ($settings.import_report) { $argsList += @('--import-report',(Resolve-StudyPath $Repo $settings.import_report)) }
     foreach ($package in $ImportResults) { $argsList += @('--import-results',(Resolve-StudyPath $Repo $package)) }
     $export=$null
