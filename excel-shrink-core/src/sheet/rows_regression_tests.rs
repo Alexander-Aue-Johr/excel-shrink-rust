@@ -342,6 +342,22 @@ fn keeps_all_empty_cells_that_reset_custom_height_row_fill() {
 }
 
 #[test]
+fn keeps_one_font_sentinel_with_explicit_default_fill_and_border() {
+    let style = Xf::builder()
+        .font_id(Some(7))
+        .fill_id(Some(0))
+        .border_id(Some(0))
+        .apply_font(true)
+        .apply_fill(true)
+        .apply_border(true)
+        .build_xf();
+    let params = params_with_styles(&[(0, font_only_style()), (1, style)]);
+    let row = br#"<row r="16" s="0" customFormat="1"><c r="B16" s="1"/><c r="C16" s="1"/></row>"#;
+    let cleaned = replace_single_row(row, &params);
+    assert_eq!(cleaned, br#"<row r="16" s="0" customFormat="1"><c r="B16" s="1"/></row>"#);
+}
+
+#[test]
 fn keeps_empty_default_font_cell_in_auto_height_row_to_preserve_spacing() {
     let text_style = apply_font_and_fill_style(109, 5);
     let column_style = apply_font_and_fill_style(114, 5);

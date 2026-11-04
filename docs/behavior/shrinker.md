@@ -177,6 +177,12 @@ but incorrectly anchored an otherwise content-free sheet through F2779.
 
 ## S5. Row representatives and row-style promotion
 
+An empty cell with explicit default fill/border attributes can still supply a
+font-height representative. When those attributes do not mask inherited visible
+formatting, they must not disqualify its font from representative selection.
+Repeated cells of the same style remain removable. Existing fixed-height and
+trailing-layout pruning rules still apply.
+
 Removing empty font cells can change Excel's automatic row height and text
 baseline. Default therefore keeps appropriate representatives even where no
 value is visible. Representatives can be tentative in fixed-height rows and

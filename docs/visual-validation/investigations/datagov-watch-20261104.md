@@ -50,3 +50,25 @@ four groups while further opening failures are investigated.
 
 See also the [registration accumulation investigation](addin-registration-accumulation-20261104.md)
 and the [blank-margin contract investigation](blank-margin-contract-20261104.md).
+
+## Empty-row font regression
+
+`MML Accolades winners 2022 - for DOI_fd084c2d1bcf.xlsx` exposed a 27-point
+height loss after Default cleanup. The selected rebuilt images differed in
+662,040 overlapping pixels, with later content shifted vertically. Original
+worksheet XML was 28,220 bytes, the defective output 23,743 bytes.
+
+Empty font cells also explicitly applied default fill and border. The static
+style classification excluded them from font-representative selection, although
+these attributes masked no visible inherited formatting. Restoring one Calibri
+font cell in each of 13 emptied rows eliminated the selected pixel and geometry
+differences in a native rebuilt comparison.
+
+The fix selects representatives using effective fill/border appearance for
+font-applying styles, while preserving the existing protection policy. The cell
+cleanup path now honors that representative decision for these styles too.
+The automatically generated fixed output passed the same native comparison.
+Its worksheet XML is 25,486 bytes and its archive 18,203 bytes, versus 20,382
+original bytes and 17,913 bytes for the defective output. No whole-row retention
+was introduced. Core tests cover repeated-cell removal and the existing tail,
+protection and fixed-height behavior.

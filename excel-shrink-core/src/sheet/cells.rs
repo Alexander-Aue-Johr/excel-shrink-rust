@@ -416,7 +416,10 @@ fn clean_visible_styled_empty_cell<'a, 'r>(
         );
     }
 
-    if style_policy.keep_other || style_policy.keep_column_font_override {
+    if style_policy.keep_no_visible_style
+        || style_policy.keep_other
+        || style_policy.keep_column_font_override
+    {
         return keep_empty_cell_as_self_closing(cell, params, metrics, Some(style), false);
     }
 

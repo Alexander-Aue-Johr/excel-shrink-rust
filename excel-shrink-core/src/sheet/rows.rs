@@ -918,7 +918,7 @@ fn select_empty_style_representative(
             .is_some_and(|font| !state.has_kept_font_id(font));
     let keep_font_only = hidden_font_representative || (!hidden_auto_height && policy.keep_font_styles
         && !row_represents_font
-        && empty_cell_has_no_empty_cell_visible_style(cell, params, has_cell_content)
+        && empty_cell_can_supply_font_representative(cell, params, metrics, has_cell_content)
         && cell
             .style_id
             .is_some_and(|style_id| !state.kept_represented_style_ids.contains(&style_id)));
@@ -1076,9 +1076,12 @@ fn remove_tentative_representatives_from_metrics(
     }
 }
 
-fn empty_cell_has_no_empty_cell_visible_style(
+/// Explicit no-fill/no-border attributes still allow a cell to supply the font
+/// that determines an otherwise empty row's automatic height.
+fn empty_cell_can_supply_font_representative(
     cell: &ParsedCell<'_, '_>,
     params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
     has_cell_content: bool,
 ) -> bool {
     if has_cell_content {
@@ -1086,8 +1089,13 @@ fn empty_cell_has_no_empty_cell_visible_style(
     }
 
     cell.style_id
-        .and_then(|style_id| params.patterns.xfs_by_index.get(&style_id))
-        .is_some_and(|style| style.has_no_empty_cell_visible_style)
+        .and_then(|id| params.patterns.xfs_by_index.get(&id))
+        .is_some_and(|style| {
+            style.has_no_empty_cell_visible_style
+                || (style.apply_font
+                    && !style.has_apply_protection
+                    && !parsed_empty_cell_has_effective_fill_or_border(cell, params, metrics, false))
+        })
 }
 
 #[inline]
