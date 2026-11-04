@@ -3,8 +3,9 @@ use super::telemetry::{LaneId, Lifecycle, Telemetry};
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::{
+    collections::BTreeSet,
     io::{BufRead, BufReader, BufWriter, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::mpsc,
     thread,
@@ -16,6 +17,7 @@ pub(super) struct ExcelHost {
     input: BufWriter<ChildStdin>,
     responses: mpsc::Receiver<Result<Value>>,
     timeout: Duration,
+    residents: BTreeSet<PathBuf>,
     pub(super) operation_measurements: Vec<Value>,
 }
 
@@ -36,6 +38,7 @@ impl ExcelHost {
         path: &Path,
         telemetry: &Telemetry,
     ) -> Result<u32> {
+        self.remember_resident(lane, path)?;
         let command = self.open_command(lane, path)?;
         let result = self.call(command, telemetry)?;
         confirmed_pid(&result)
@@ -47,6 +50,9 @@ impl ExcelHost {
         jobs: &[(LaneId, std::path::PathBuf)],
         telemetry: &Telemetry,
     ) -> Result<Vec<u32>> {
+        for (lane, path) in jobs {
+            self.remember_resident(*lane, path)?;
+        }
         let commands = jobs
             .iter()
             .map(|(lane, path)| self.open_command(*lane, path))
@@ -74,14 +80,32 @@ impl ExcelHost {
         )
     }
 
+    /// Retain session locations before startup so failed opens can still request cleanup.
+    fn remember_resident(&mut self, lane: LaneId, path: &Path) -> Result<()> {
+        let root = path.parent().context("Workbook has no working directory")?;
+        self.residents.insert(
+            root.join(format!("resident-{}", lane.key()))
+                .join("session"),
+        );
+        Ok(())
+    }
+
     /// Save the open working copy without adding a recalculation command.
     pub(super) fn save_workbook(&mut self, lane: LaneId, telemetry: &Telemetry) -> Result<()> {
         self.call(json!({"kind":"save", "lane":lane.key()}), telemetry)?;
         Ok(())
     }
 
-    pub(super) fn save_as_workbook(&mut self, lane: LaneId, output: &Path, telemetry: &Telemetry) -> Result<()> {
-        self.call(json!({"kind":"save_as", "lane":lane.key(), "output":output}), telemetry)?;
+    pub(super) fn save_as_workbook(
+        &mut self,
+        lane: LaneId,
+        output: &Path,
+        telemetry: &Telemetry,
+    ) -> Result<()> {
+        self.call(
+            json!({"kind":"save_as", "lane":lane.key(), "output":output}),
+            telemetry,
+        )?;
         Ok(())
     }
 
@@ -296,6 +320,7 @@ impl ExcelHost {
             responses,
             timeout,
             operation_measurements: Vec::new(),
+            residents: BTreeSet::new(),
         })
     }
 
@@ -345,13 +370,15 @@ impl ExcelHost {
                 continue;
             }
             if !response["operation_measurements"].is_null() {
-                self.operation_measurements.push(response["operation_measurements"].clone());
+                self.operation_measurements
+                    .push(response["operation_measurements"].clone());
             }
             ensure!(response["ok"] == true, "Excel host: {}", response["error"]);
             telemetry.update(|state| {
                 state.last_successful_operation = operation.clone();
                 state.last_successful_operation["state"] = json!("completed");
-                state.last_successful_operation["finished_at"] = json!(chrono::Utc::now().timestamp_millis());
+                state.last_successful_operation["finished_at"] =
+                    json!(chrono::Utc::now().timestamp_millis());
                 state.current_operation = Value::Null;
             })?;
             return Ok(response["result"].clone());
@@ -378,7 +405,24 @@ fn normalize_windows_paths(command: &mut Value) -> Result<()> {
 
 impl Drop for ExcelHost {
     fn drop(&mut self) {
-        // Normal close is an explicit phase. Error cleanup makes no COM calls.
+        // Give resident launchers a bounded opportunity to restore add-in registrations.
+        // Forced host termination otherwise kills their jobs before their finally blocks run.
+        for session in &self.residents {
+            if session.is_dir() {
+                if let Err(error) = std::fs::write(session.join("finish.json"), b"{}") {
+                    tracing::warn!(path=%session.display(), %error, "Cannot request resident shutdown");
+                }
+            }
+        }
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while self
+            .residents
+            .iter()
+            .any(|session| session.is_dir() && !session.join("launcher-result.json").is_file())
+            && Instant::now() < deadline
+        {
+            thread::sleep(Duration::from_millis(50));
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -451,13 +495,21 @@ mod tests {
         let root = std::env::temp_dir().join(format!("height-budget-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root)?;
         let script = root.join("host.ps1");
-        std::fs::write(&script, r#"
+        std::fs::write(
+            &script,
+            r#"
 $command = [Console]::ReadLine() | ConvertFrom-Json
 @{ok=$true;result=@{complete=$true;received_budget_ms=$command.budget_ms}} | ConvertTo-Json -Compress
-"#)?;
+"#,
+        )?;
         let args = super::super::Args::try_parse_from([
-            "test", "--original", "unused.xlsx", "--default", "unused-default.xlsx",
-            "--output", root.to_str().context("test path encoding")?,
+            "test",
+            "--original",
+            "unused.xlsx",
+            "--default",
+            "unused-default.xlsx",
+            "--output",
+            root.to_str().context("test path encoding")?,
         ])?;
         let telemetry = Telemetry::start(&args)?;
         let mut host = ExcelHost::start(Some(&script), Duration::from_secs(90))?;
