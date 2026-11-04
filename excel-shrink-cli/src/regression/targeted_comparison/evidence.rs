@@ -86,7 +86,7 @@ impl Evidence {
 }
 
 /// A missing core measurement, moved content, or clipped core must stay a difference.
-fn matching_content_geometry(left: &Value, right: &Value) -> bool {
+pub(in crate::regression) fn matching_content_geometry(left: &Value, right: &Value) -> bool {
     fn measured(value: &Value) -> Option<Geometry> {
         serde_json::from_value::<Geometry>(value.clone())
             .ok()?

@@ -170,9 +170,22 @@ fn validate_rendering(finding: &Value) -> Result<bool> {
             "Unperformed pixel comparison has a pixel verdict"
         );
     }
+    let left = &finding["left_geometry"];
+    let right = &finding["right_geometry"];
+    let raw_geometry_differs = ["top", "left", "width", "height"]
+        .iter()
+        .any(|field| left[*field].as_f64() != right[*field].as_f64());
+    let ignored_margin = finding["blank_margin_ignored"] == true;
+    if ignored_margin {
+        ensure!(
+            raw_geometry_differs && captured[0] && captured[1]
+                && finding["pixels_differ"] == false
+                && crate::regression::targeted_comparison::matching_content_geometry(left, right),
+            "Blank-margin exclusion contradicts measured content evidence"
+        );
+    }
     ensure!(
-        finding["geometry_differs"].as_bool()
-            == Some(finding["left_geometry"] != finding["right_geometry"]),
+        finding["geometry_differs"].as_bool() == Some(raw_geometry_differs && !ignored_margin),
         "Geometry verdict contradicts measured evidence"
     );
     Ok(rendering_differs)
@@ -300,6 +313,35 @@ mod tests {
         f["geometry_differs"] = json!(true);
         f["rendering_differs"] = json!(true);
         assert!(has_differences(&report, true)?);
+        Ok(())
+    }
+
+    #[test]
+    fn blank_margin_exclusions_require_unchanged_measured_content() -> Result<()> {
+        let mut report = report();
+        report["capture_partition"] = json!("visible-geometry-v1");
+        for pair in report["comparisons"].as_array_mut().unwrap() {
+            let f = &mut pair["findings"][0];
+            let core = json!({"top":0,"left":0,"width":90,"height":15});
+            f["left_geometry"] = json!({"top":0,"left":0,"width":100,"height":30,"comparison_core":core});
+            f["right_geometry"] = json!({"top":0,"left":0,"width":100,"height":35,"comparison_core":core});
+            f["blank_margin_ignored"] = json!(true);
+            f["pixels_compared"] = json!(true);
+            f["rendering_differs"] = json!(false);
+            f["left_rendering"] = json!("captured");
+            f["right_rendering"] = json!("captured");
+        }
+        assert!(!has_differences(&report, true)?);
+        for field in ["top", "left", "width", "height"] {
+            let mut invalid = report.clone();
+            invalid["comparisons"][0]["findings"][0]["right_geometry"]["comparison_core"][field] = json!(7);
+            assert!(has_differences(&invalid, true).is_err());
+        }
+        let mut invalid = report.clone();
+        invalid["comparisons"][0]["findings"][0]["pixels_differ"] = json!(true);
+        assert!(has_differences(&invalid, true).is_err());
+        report["comparisons"][0]["findings"][0]["blank_margin_ignored"] = json!(false);
+        assert!(has_differences(&report, true).is_err());
         Ok(())
     }
 

@@ -30,6 +30,7 @@ mod xml_changes;
 use anyhow::{ensure, Result};
 use candidates::{discover_candidates, find_changes_caused_by_save, SaveChanges};
 use clap::Parser;
+pub(in crate::regression) use evidence::matching_content_geometry;
 use evidence::{compare_evidence, Evidence};
 use host::ExcelHost;
 use reporting::new_report;
