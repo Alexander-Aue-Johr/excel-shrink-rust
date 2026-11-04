@@ -62,3 +62,34 @@ KPI lists, Original and Default downloads, native fullscreen, a zero-pixel image
 gap and no uncaught JavaScript errors. This UI check does not regenerate images.
 A previous oversized whole-CLI test invocation was stopped; its local-corpus
 profiling tests are outside this change's focused verification.
+
+
+## Real Excel probe and new corpus invocation
+
+A private-desktop comparison of the freshly shrunk `Top 100 Exposures` workbook
+completed with policy v4: one capture each for O, SD and SDR; no pixel or geometry
+differences in either O/SD or O/SDR. Both sides supplied the new measured content
+core. All opened Excel lanes closed. This is one observed workbook, not evidence
+of corpus-wide identity. A browser check also verified one common fit scale,
+the 1:1 toggle and release of image elements on closing the atelier.
+
+The original corpus results were retained and copied to the main workspace's
+`.tmp/run-backups/enron-before-margin-ui-20261104-153322/results`:
+993,162 files copied, zero failures. Disposable `.work` and host executables were
+excluded. The fresh output is `.tmp/regression/enron-upper-20261104-margin-v4`.
+It selects the same larger Enron half, with 10,110 eligible converted inputs,
+24 shrink processes, one Rayon thread each and initially one comparison group.
+Only converted-original bundles are reused; all Default outputs are regenerated.
+Comparisons are ordered by the newly measured relative size reduction.
+
+The operational starter is `.tmp/start-enron-margin-v4.ps1` in the main workspace.
+Its immutable binary is deployed under the experiment worktree: repository
+lookup searches executable ancestors before the embedded manifest directory.
+Deploying under the older main checkout initially selected its old web/scripts;
+that invocation was stopped before comparisons and resumed with the correct
+worktree deployment. Its 500 freshly shrunk v4-build bundles remained valid.
+The resumed invocation started on 2026-11-04 at 16:05:45 UTC. Launch receipts,
+source hashes and the isolated probe are retained locally under `.tmp`.
+
+Active run ID: `1be995da-db87-47df-a289-dd45c8d27e45`. Source commit: `cfcfe1c4ec28c6e30d2c4d1f2e414e0b2facbe45`.
+Release SHA-256: `31caace71225b7a7b9b23e5c87270590f8725ce5a3bfbc210129e51f061a1b0b`.
