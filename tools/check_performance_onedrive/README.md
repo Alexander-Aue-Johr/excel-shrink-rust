@@ -127,6 +127,12 @@ the batch so those skips are not mistaken for complete success. A skipped
 workbook may have been partly optimized before the error; inspect it before
 using `--retry-skipped`.
 
+OneDrive's **Unknown rendering error** / **Unbekannter Renderingfehler** is a
+folder-level failure. The runner restarts the browser with the retained profile
+and SQLite progress. It retries unfinished work without consuming the workbook's
+two-attempt error budget; completed work remains completed. A detached frame
+during Excel navigation is ignored while the remaining live frames are checked.
+
 If OneDrive redirects to `Throttle.htm`, the folder view times out, or the
 browser connection closes, the runner starts a new Playwright driver and
 browser. Folder startup is

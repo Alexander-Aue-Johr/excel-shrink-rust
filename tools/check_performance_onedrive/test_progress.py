@@ -12,6 +12,139 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from tools.check_performance_onedrive import runner as FLOW
 from tools.check_performance_onedrive.runner import JobState, ProgressStore
 
+class PerformancePaneHostTests(unittest.IsolatedAsyncioTestCase):
+    async def test_performance_controls_are_found_in_both_editor_and_resource_frames(self):
+        """The pane can be embedded in Excel rather than resources.office.net."""
+        for host in ("https://excel.cloud.microsoft/editor", "https://resources.office.net/pane"):
+            frame = MagicMock()
+            frame.url = host
+            frame.get_by_role.return_value.count = AsyncMock(return_value=1)
+            page = MagicMock()
+            page.frames = [frame]
+            command = MagicMock()
+            command.wait_for = AsyncMock()
+            command.is_enabled = AsyncMock(return_value=True)
+            command.click = AsyncMock()
+            editor = MagicMock()
+            editor.locator.return_value.first = command
+            with (patch.object(FLOW, "raise_if_workbook_blocked", new=AsyncMock()),
+                  patch.object(FLOW.time, "monotonic", side_effect=[0, 0, 0, 121]),
+                  patch.object(FLOW.asyncio, "sleep", new=AsyncMock())):
+                self.assertIs(await FLOW.find_performance_pane(page, editor), frame)
+
+
+class EditorReadinessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_duplicate_review_controls_use_the_first_visible_match(self):
+        from playwright.async_api import Error
+        frame, review, sign_in = MagicMock(), MagicMock(), MagicMock()
+        review.is_visible = AsyncMock(side_effect=Error("strict mode violation"))
+        review.first.is_visible = AsyncMock(return_value=True)
+        sign_in.first.is_visible = AsyncMock(return_value=False)
+        frame.locator.side_effect = [review, sign_in]
+        page = MagicMock()
+        page.frames = [frame]
+        with (patch.object(FLOW, "workbook_open_error", new=AsyncMock(return_value=False)),
+              patch.object(FLOW, "raise_if_workbook_blocked", new=AsyncMock())):
+            self.assertIs(await FLOW.find_editor(page), frame)
+        review.first.is_visible.assert_awaited_once()
+        review.is_visible.assert_not_awaited()
+
+
+    async def test_detached_editor_does_not_reject_a_ready_live_editor(self):
+        from playwright.async_api import Error
+        old, live = MagicMock(), MagicMock()
+        old.is_detached.return_value = True
+        for frame in (old, live):
+            review, sign_in = MagicMock(), MagicMock()
+            review.first.is_visible = AsyncMock(
+                side_effect=Error("Frame was detached") if frame is old else None,
+                return_value=True)
+            sign_in.first.is_visible = AsyncMock(return_value=False)
+            frame.locator.side_effect = [review, sign_in]
+        page = MagicMock()
+        page.frames = [old, live]
+        with (patch.object(FLOW, "workbook_open_error", new=AsyncMock(return_value=False)),
+              patch.object(FLOW, "raise_if_workbook_blocked", new=AsyncMock())):
+            self.assertIs(await FLOW.find_editor(page), live)
+
+
+class RenderingRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_rendering_failure_is_detected_before_folder_timeout(self):
+        for text in ("Unbekannter Renderingfehler.", "Unknown rendering error."):
+            page = MagicMock()
+            page.url = "https://onedrive.live.com/my"
+            page.locator.return_value.first.is_visible = AsyncMock(return_value=False)
+            page.get_by_text.return_value.first.is_visible = AsyncMock(return_value=True)
+            with self.assertRaises(FLOW.OneDriveRenderingError):
+                await FLOW.wait_for_folder_response(page)
+            self.assertRegex(text, page.get_by_text.call_args.args[0])
+
+    async def test_rendering_restart_preserves_pending_workbook(self):
+        from argparse import Namespace
+        with tempfile.TemporaryDirectory() as temporary:
+            args = Namespace(folder_url="https://1drv.ms/f/test", output_root=Path(temporary),
+                             profile_dir=None, headed=True, refresh_list=False, list_only=False,
+                             only_file=None, retry_skipped=False, max_files=1)
+            browser = (object(), object(), MagicMock())
+            calls = 0
+            async def process(*values):
+                nonlocal calls
+                calls += 1
+                progress, name = values[5], values[7]
+                attempt = progress.start_attempt(name)
+                if calls == 1:
+                    progress.fail(name, attempt, "OneDrive rendering failed")
+                    raise FLOW.OneDriveRenderingError("OneDrive rendering failed")
+                progress.transition(name, JobState.CHECKING)
+                progress.finish(name, attempt, "already_clean")
+                return (*browser, False)
+            with (patch.object(FLOW, "restart_folder_browser", new=AsyncMock(return_value=browser)) as restart,
+                  patch.object(FLOW, "discover_workbooks", new=AsyncMock(return_value=["sample.xlsx"])),
+                  patch.object(FLOW, "next_workbook_with_recovery", new=AsyncMock(
+                      return_value=(browser[2], ("sample.xlsx", None)))),
+                  patch.object(FLOW, "process_selected_workbook", new=process),
+                  patch.object(FLOW, "close_browser", new=AsyncMock()),
+                  patch.object(FLOW, "ConsoleProgress"), patch("builtins.print")):
+                self.assertEqual(await FLOW.run_folder_check_performance(args), 0)
+            self.assertEqual(restart.await_count, 2)
+            with ProgressStore(Path(temporary) / FLOW.folder_id(args.folder_url),
+                               FLOW.folder_id(args.folder_url)) as progress:
+                self.assertEqual(progress.status("sample.xlsx"), JobState.COMPLETED.value)
+                self.assertEqual(progress.skipped_count(), 0)
+
+    async def test_detached_notice_frame_does_not_abort_live_frame_checks(self):
+        from playwright.async_api import Error
+        detached, live = MagicMock(), MagicMock()
+        detached.get_by_role.return_value.filter.return_value.first.is_visible = AsyncMock(
+            side_effect=Error("Frame was detached"))
+        detached.is_detached.return_value = True
+        live.get_by_role.return_value.filter.return_value.first.is_visible = AsyncMock(return_value=False)
+        live.locator.return_value.get_by_text.return_value.first.is_visible = AsyncMock(return_value=False)
+        page = MagicMock()
+        page.frames = [detached, live]
+        await FLOW.raise_if_workbook_blocked(page)
+        live.get_by_role.assert_called()
+        detached.is_detached.return_value = False
+        with self.assertRaises(Error):
+            await FLOW.raise_if_workbook_blocked(page)
+
+    async def test_modified_sort_confirmation_uses_the_same_locator(self):
+        page, header = MagicMock(), MagicMock()
+        header.wait_for = AsyncMock()
+        header.get_attribute = AsyncMock(return_value="none")
+        header.locator.return_value.click = AsyncMock()
+        menu = MagicMock()
+        menu.click = AsyncMock()
+        page.locator.side_effect = [header, menu]
+        expectation = MagicMock()
+        expectation.to_have_attribute = AsyncMock()
+        with patch("playwright.async_api.expect", return_value=expectation) as expect:
+            await FLOW.sort_oldest_first(page)
+        expect.assert_called_once_with(header)
+        expectation.to_have_attribute.assert_awaited_once_with("aria-sort", "ascending", timeout=30_000)
+        page.wait_for_function.assert_not_called()
+
+
 class ProgressStoreTests(unittest.TestCase):
     def test_run_level_error_exits_without_traceback_or_success(self) -> None:
         """A broken folder or browser stops cleanly instead of skipping the corpus."""
@@ -154,7 +287,7 @@ class FakePage:
         self.target = target
         self.resets = 0
 
-    def get_by_text(self, _name, exact: bool):
+    def get_by_text(self, _name, exact: bool = False):
         page = self
 
         class FakeRow:
@@ -164,6 +297,9 @@ class FakePage:
 
             async def count(self):
                 return int(page.position == page.target)
+
+            async def is_visible(self):
+                return False
 
         return FakeRow()
 

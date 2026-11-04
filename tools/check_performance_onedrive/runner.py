@@ -531,6 +531,17 @@ class OneDriveThrottled(Exception):
     """OneDrive redirected the current tab to its request-throttling page."""
 
 
+class OneDriveRenderingError(OneDriveThrottled):
+    """OneDrive failed to render its folder; workbook progress remains valid."""
+
+
+async def raise_if_folder_render_failed(page) -> None:
+    notice = page.get_by_text(re.compile(
+        r"Unbekannter Renderingfehler|Unknown rendering error", re.I)).first
+    if await notice.is_visible():
+        raise OneDriveRenderingError("OneDrive folder rendering failed; restart the browser")
+
+
 async def wait_for_folder_response(page) -> None:
     """Follow OneDrive redirects while waiting for files, sign-in, or throttling."""
     from playwright.async_api import Error as PlaywrightError
@@ -544,6 +555,7 @@ async def wait_for_folder_response(page) -> None:
         try:
             if await page.locator('[data-automationid="field-LinkFilename"]').first.is_visible():
                 return
+            await raise_if_folder_render_failed(page)
             if await visible_sign_in(page) is not None:
                 return
         except PlaywrightError:
@@ -607,9 +619,8 @@ async def sort_oldest_first(page) -> None:
     await header.locator('[role="button"]').click()
     await page.locator('[role="menuitemcheckbox"][data-automationid="sortAsc"]').click(
         timeout=10_000)
-    await page.wait_for_function("""() => document.querySelector(
-      '[role="columnheader"][data-automationid="field-Modified"]'
-    )?.getAttribute('aria-sort') === 'ascending'""", timeout=30_000)
+    from playwright.async_api import expect
+    await expect(header).to_have_attribute("aria-sort", "ascending", timeout=30_000)
 
 
 async def discover_workbooks(page) -> list[str]:
@@ -643,6 +654,8 @@ async def next_visible_unfinished(page, unfinished: set[str]):
         for _ in range(5_000):
             visible = await page.locator(
                 '[role="gridcell"][data-automationid="field-LinkFilename"]').all_text_contents()
+            if not visible:
+                await raise_if_folder_render_failed(page)
             for cell_text in visible:
                 name = cell_text.strip()
                 if name in unfinished:
@@ -667,6 +680,7 @@ async def find_file_row(page, name: str):
             row = page.get_by_text(name, exact=True).first
             if await row.count():
                 return row
+            await raise_if_folder_render_failed(page)
             position, bottom = await scroll_file_list(page, to_top=False)
             bottom_observations = bottom_observations + 1 if position >= bottom else 0
             if bottom_observations >= 8:
@@ -703,41 +717,55 @@ class WorkbookRepairRequired(Exception):
 
 async def raise_if_workbook_blocked(page) -> None:
     """Preserve the visible Excel notice before any editing or optimization."""
+    from playwright.async_api import Error as PlaywrightError
+
     for frame in page.frames:
-        dialogs = frame.get_by_role("dialog")
-        irm = dialogs.filter(has_text=re.compile(
-            r"Information Rights Management\s*(?:\(|,)\s*IRM\)", re.I)).first
-        if await irm.is_visible():
-            raise WorkbookEditRestricted(await irm.inner_text())
-        bar = frame.locator("#BusinessBar")
-        repaired = bar.get_by_text(re.compile(
-            r"^(WORKBOOK REPAIRED|ARBEITSMAPPE REPARIERT)$", re.I)).first
-        if await repaired.is_visible():
-            raise WorkbookRepairRequired(await bar.inner_text())
-        repair_dialog = dialogs.filter(has_text=re.compile(
-            r"Repair this workbook\?|Diese Arbeitsmappe reparieren\?", re.I)).first
-        if await repair_dialog.is_visible():
-            raise WorkbookRepairRequired(await repair_dialog.inner_text())
+        try:
+            dialogs = frame.get_by_role("dialog")
+            irm = dialogs.filter(has_text=re.compile(
+                r"Information Rights Management\s*(?:\(|,)\s*IRM\)", re.I)).first
+            if await irm.is_visible():
+                raise WorkbookEditRestricted(await irm.inner_text())
+            bar = frame.locator("#BusinessBar")
+            repaired = bar.get_by_text(re.compile(
+                r"^(WORKBOOK REPAIRED|ARBEITSMAPPE REPARIERT)$", re.I)).first
+            if await repaired.is_visible():
+                raise WorkbookRepairRequired(await bar.inner_text())
+            repair_dialog = dialogs.filter(has_text=re.compile(
+                r"Repair this workbook\?|Diese Arbeitsmappe reparieren\?", re.I)).first
+            if await repair_dialog.is_visible():
+                raise WorkbookRepairRequired(await repair_dialog.inner_text())
+        except PlaywrightError:
+            if not frame.is_detached():
+                raise
 
 
 async def workbook_open_error(page) -> bool:
     """Find Excel's fatal open dialog, including one layered over a visible ribbon."""
+    from playwright.async_api import Error as PlaywrightError
+
     for frame in page.frames:
-        message = frame.get_by_text("The workbook cannot be opened.", exact=True)
-        if await message.is_visible():
-            return True
+        try:
+            message = frame.get_by_text("The workbook cannot be opened.", exact=True)
+            if await message.is_visible():
+                return True
+        except PlaywrightError:
+            if not frame.is_detached():
+                raise
     return False
 
 
 async def find_editor(page):
     """Find Excel's Review tab and handle an explicit sign-in prompt if present."""
+    from playwright.async_api import Error as PlaywrightError
+
     ready = asyncio.get_running_loop().create_future()
     tasks = set()
     seen = set()
 
     async def inspect_frame(frame) -> None:
-        review = frame.locator("#Review:visible")
-        sign_in = frame.locator("#O365_MainLink_SigninLink:visible")
+        review = frame.locator("#Review:visible").first
+        sign_in = frame.locator("#O365_MainLink_SigninLink:visible").first
         try:
             deadline = time.monotonic() + 120
             while True:
@@ -756,6 +784,8 @@ async def find_editor(page):
                     raise TimeoutError("Excel did not expose the Review tab within 120 seconds")
                 await asyncio.sleep(0.25)
         except Exception as error:
+            if isinstance(error, PlaywrightError) and frame.is_detached():
+                return
             if not ready.done():
                 ready.set_exception(error)
             return
@@ -843,14 +873,23 @@ async def find_performance_pane(page, editor):
     while time.monotonic() < deadline:
         await raise_if_workbook_blocked(page)
         for frame in page.frames:
-            if "resources.office.net" not in frame.url:
-                continue
+            # Excel may host Performance in its editor frame or an Office
+            # resource frame. Match the pane's visible controls in either host.
             if (await frame.get_by_role("button", name=OPTIMIZE).count()
                     or await frame.get_by_text(ALREADY_CLEAN).count()
                     or await frame.get_by_role("button", name=CHECK_AGAIN).count()):
                 return frame
         await asyncio.sleep(0.5)
-    raise RuntimeError("Performance pane did not become ready")
+    diagnostics = []
+    for frame in page.frames:
+        try:
+            labels = await frame.get_by_role("button").all_text_contents()
+            relevant = [label.strip() for label in labels
+                        if re.search(r"optimi|performance|pr\u00fcf|check", label, re.I)]
+            diagnostics.append({"host": urlsplit(frame.url).hostname, "controls": relevant[:12]})
+        except Exception as error:
+            diagnostics.append({"host": urlsplit(frame.url).hostname, "error": type(error).__name__})
+    raise RuntimeError("Performance pane did not become ready; " + json.dumps(diagnostics))
 
 
 async def optimize(page, pane, progress: ProgressStore,
@@ -1105,6 +1144,8 @@ async def next_workbook_with_recovery(context, folder_page, folder_url: str,
         next_file = await next_visible_unfinished(folder_page, unfinished)
         if next_file is not None:
             return folder_page, next_file
+    except OneDriveRenderingError:
+        raise
     except Exception as error:
         print(f"Folder listing failed ({type(error).__name__}: {error}); "
               "reloading the shared folder once.", file=sys.stderr, flush=True)
@@ -1121,6 +1162,8 @@ async def process_selected_workbook(playwright, context, folder_page, args, prof
         try:
             await process_with_live_status(
                 context, folder_page, profile, progress, display, name, row)
+        except OneDriveRenderingError:
+            raise
         except Exception as error:
             print(f"{name}: browser or folder navigation failed: "
                   f"{type(error).__name__}: {error}", file=sys.stderr, flush=True)
@@ -1199,9 +1242,18 @@ async def run_folder_check_performance(args) -> int:
                             failed = True
                             break
                         name, row = next_file
-                    playwright, context, folder_page, file_failed = await process_selected_workbook(
-                        playwright, context, folder_page, args, profile,
-                        progress, display, name, row)
+                    try:
+                        playwright, context, folder_page, file_failed = await process_selected_workbook(
+                            playwright, context, folder_page, args, profile,
+                            progress, display, name, row)
+                    except OneDriveRenderingError as error:
+                        print(f"{error}; preserving progress and restarting.", file=sys.stderr, flush=True)
+                        if progress.status(name) in {JobState.COMPLETED.value, JobState.SKIPPED.value}:
+                            attempted += 1
+                            unfinished.discard(name)
+                        playwright, context, folder_page = await restart_folder_browser(
+                            playwright, context, args, profile)
+                        continue
                     attempted += 1
                     unfinished.remove(name)
                     failed = failed or file_failed
