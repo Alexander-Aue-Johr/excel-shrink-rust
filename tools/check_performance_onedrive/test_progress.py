@@ -33,6 +33,29 @@ class PerformancePaneHostTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIs(await FLOW.find_performance_pane(page, editor), frame)
 
 
+    async def test_detached_frame_does_not_hide_a_live_performance_pane(self):
+        from playwright.async_api import Error
+        old, live = MagicMock(), MagicMock()
+        old.get_by_role.return_value.count = AsyncMock(side_effect=Error("Frame was detached"))
+        old.is_detached.return_value = True
+        live.get_by_role.return_value.count = AsyncMock(return_value=1)
+        page = MagicMock()
+        page.frames = [old, live]
+        editor = MagicMock()
+        command = editor.locator.return_value.first
+        command.wait_for = AsyncMock()
+        command.is_enabled = AsyncMock(return_value=True)
+        command.click = AsyncMock()
+        with (patch.object(FLOW, "raise_if_workbook_blocked", new=AsyncMock()),
+              patch.object(FLOW.time, "monotonic", side_effect=[0, 0, 0, 121])):
+            self.assertIs(await FLOW.find_performance_pane(page, editor), live)
+        old.is_detached.return_value = False
+        with (patch.object(FLOW, "raise_if_workbook_blocked", new=AsyncMock()),
+              patch.object(FLOW.time, "monotonic", side_effect=[0, 0, 0, 121])):
+            with self.assertRaises(Error):
+                await FLOW.find_performance_pane(page, editor)
+
+
 class EditorReadinessTests(unittest.IsolatedAsyncioTestCase):
     async def test_duplicate_review_controls_use_the_first_visible_match(self):
         from playwright.async_api import Error

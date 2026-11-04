@@ -532,14 +532,14 @@ class OneDriveThrottled(Exception):
 
 
 class OneDriveRenderingError(OneDriveThrottled):
-    """OneDrive failed to render its folder; workbook progress remains valid."""
+    """OneDrive failed to render its folder. Workbook progress remains valid."""
 
 
 async def raise_if_folder_render_failed(page) -> None:
     notice = page.get_by_text(re.compile(
         r"Unbekannter Renderingfehler|Unknown rendering error", re.I)).first
     if await notice.is_visible():
-        raise OneDriveRenderingError("OneDrive folder rendering failed; restart the browser")
+        raise OneDriveRenderingError("OneDrive folder rendering failed. Restart the browser")
 
 
 async def wait_for_folder_response(page) -> None:
@@ -853,7 +853,7 @@ async def remove_invalid_objects_for_editing(editor) -> bool:
 
 async def find_performance_pane(page, editor):
     """Open Performance, or return None when Excel keeps its ribbon group disabled."""
-    from playwright.async_api import TimeoutError as PlaywrightTimeout
+    from playwright.async_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeout
     await raise_if_workbook_blocked(page)
     command = editor.locator("#ShowOptimizeWorkbookTaskpane:visible").first
     await command.wait_for(state="visible", timeout=30_000)
@@ -875,10 +875,14 @@ async def find_performance_pane(page, editor):
         for frame in page.frames:
             # Excel may host Performance in its editor frame or an Office
             # resource frame. Match the pane's visible controls in either host.
-            if (await frame.get_by_role("button", name=OPTIMIZE).count()
-                    or await frame.get_by_text(ALREADY_CLEAN).count()
-                    or await frame.get_by_role("button", name=CHECK_AGAIN).count()):
-                return frame
+            try:
+                if (await frame.get_by_role("button", name=OPTIMIZE).count()
+                        or await frame.get_by_text(ALREADY_CLEAN).count()
+                        or await frame.get_by_role("button", name=CHECK_AGAIN).count()):
+                    return frame
+            except PlaywrightError:
+                if not frame.is_detached():
+                    raise
         await asyncio.sleep(0.5)
     diagnostics = []
     for frame in page.frames:
@@ -1247,7 +1251,7 @@ async def run_folder_check_performance(args) -> int:
                             playwright, context, folder_page, args, profile,
                             progress, display, name, row)
                     except OneDriveRenderingError as error:
-                        print(f"{error}; preserving progress and restarting.", file=sys.stderr, flush=True)
+                        print(f"{error} Preserving progress and restarting.", file=sys.stderr, flush=True)
                         if progress.status(name) in {JobState.COMPLETED.value, JobState.SKIPPED.value}:
                             attempted += 1
                             unfinished.discard(name)
