@@ -8,12 +8,13 @@ fn params(maximum: bool) -> CleanSheetParameters {
     let styles = br#"<styleSheet><fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><sz val="18"/><name val="Times New Roman"/></font></fonts>
         <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0070C0"/></patternFill></fill></fills>
         <borders count="2"><border/><border><bottom style="thin"/></border></borders>
-        <cellXfs count="6"><xf fontId="0" fillId="0" borderId="0"/>
+        <cellXfs count="7"><xf fontId="0" fillId="0" borderId="0"/>
         <xf fontId="0" fillId="2" borderId="0" applyFill="1"/>
         <xf fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"><alignment vertical="top" wrapText="1"/></xf>
         <xf fontId="1" fillId="3" borderId="0" applyFont="1" applyFill="1"/>
         <xf fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/>
-        <xf fontId="0" fillId="0" borderId="0" applyFill="1"/></cellXfs></styleSheet>"#;
+        <xf fontId="0" fillId="0" borderId="0" applyFill="1"/>
+        <xf fontId="1" fillId="0" borderId="0" applyFont="1"/></cellXfs></styleSheet>"#;
     let mut params = tests::default_params();
     params.patterns =
         WorkbookSpecificPatterns::new(crate::styles::parse_xfs(styles).unwrap(), None);
@@ -36,6 +37,77 @@ fn clean(rows: &[u8], columns: &[u8], maximum: bool, splitting_disabled: bool) -
 }
 
 const WHITE_COLUMNS: &[u8] = br#"<col min="1" max="16384" style="1"/>"#;
+
+/// Enron `3.395674.FFVA02E4NUID3ZH5TIILK5UPNDX4KVRQB.1.xls`
+/// (`44ad86f1d9f249470fc6`), sheet `NOV`, retained 11,632 empty cells after
+/// the no-fill fix. Its 518 styleless font representatives included A1424.
+/// There are no values, formulas, visible fills/borders, merges or drawings.
+/// The companion `3.395598.OAJKML4IPCG5UEVVOYVMXXLBP1NRKURWA.1.xls`
+/// (`a8bd950dff33454721b5`) has the same tail. Font-only inherited row styles
+/// cannot justify preserving an empty sheet through its last representative.
+#[test]
+fn enron_nov_styleless_representatives_do_not_anchor_a_content_free_sheet() {
+    let rows = br#"<row r="1" ht="18" customHeight="1"/><row r="1424" s="6" customFormat="1"><c r="A1424"/><c r="B1424" s="5"/><c r="C1424" s="6"/></row>"#;
+    for maximum in [false, true] {
+        for disabled in [false, true] {
+            let result = clean(rows, b"", maximum, disabled);
+            let xml = String::from_utf8_lossy(&result.xml);
+            assert!(!xml.contains("<row "), "{xml}");
+            assert!(!xml.contains("<c "), "{xml}");
+            assert_eq!(result.metrics.tail_anchor_max_row, None);
+        }
+    }
+}
+
+/// A font representative before content remains locally preserved. Pruning
+/// must distinguish this row from the otherwise identical content-free tail.
+#[test]
+fn styleless_font_representative_before_content_is_preserved() {
+    let rows = br#"<row r="2" s="6" customFormat="1"><c r="A2"/></row><row r="3"><c r="A3"><v>1</v></c></row>"#;
+    for disabled in [false, true] {
+        let result = clean(rows, b"", false, disabled);
+        let xml = String::from_utf8_lossy(&result.xml);
+        assert!(xml.contains("<c r=\"A2\"/>"), "{xml}");
+        assert!(xml.contains("<c r=\"A3\"><v>1</v></c>"), "{xml}");
+        assert_eq!(result.metrics.tail_anchor_max_row, Some(3));
+    }
+}
+
+/// Styleless cells that clear inherited white/blue fills or borders are visual
+/// anchors, regardless of the font-representative switches. Exercise both the
+/// full pipeline and the fallback reverse scan without precomputed anchors.
+#[test]
+fn styleless_cells_masking_row_or_column_formats_remain_tail_anchors() {
+    for style in [1, 3, 4] {
+        for source in ["row", "column", "both"] {
+            let row_style = if source == "column" {
+                String::new()
+            } else {
+                format!(" s=\"{style}\" customFormat=\"1\"")
+            };
+            let columns = if source == "row" {
+                String::new()
+            } else {
+                format!("<col min=\"1\" max=\"16384\" style=\"{style}\"/>")
+            };
+            let rows = format!("<row r=\"2\"{row_style}><c r=\"A2\"/></row>");
+            for maximum in [false, true] {
+                for disabled in [false, true] {
+                    let result = clean(rows.as_bytes(), columns.as_bytes(), maximum, disabled);
+                    let xml = String::from_utf8_lossy(&result.xml);
+                    assert!(xml.contains("<c r=\"A2\"/>"), "{source} {style}: {xml}");
+                    assert_eq!(result.metrics.tail_anchor_max_row, Some(2));
+                }
+                let params = params(maximum);
+                let mut metrics = crate::models::CleanSheetMetrics::default();
+                metrics.column_definitions = process_cols_node(columns.as_bytes(), &params);
+                let trimmed =
+                    super::trim_trailing_layout_only_rows(rows.as_bytes(), &params, &mut metrics);
+                assert_eq!(trimmed, rows.as_bytes(), "{source} {style}");
+            }
+        }
+    }
+}
 
 /// Reduced from Enron `3.395674.FFVA02E4NUID3ZH5TIILK5UPNDX4KVRQB.1.xls`
 /// (prepared bundle `44ad86f1d9f249470fc6`), sheet `AUGUST`. It has no

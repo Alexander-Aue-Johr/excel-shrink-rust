@@ -1073,7 +1073,18 @@ fn self_closing_cell_is_anchor(
             .map_or(true, |style| {
                 style_is_trailing_cell_anchor(style, params, columns)
             }),
-        None => params.cleanup.keep_textless_default_font_representatives,
+        // Row fills/borders are checked by trailing_row_is_layout_only. A
+        // styleless cell can still mask a visible column format. Its font alone
+        // cannot anchor an otherwise empty tail, even when representatives stay
+        // enabled for rows before content. Malformed coordinates stay guarded.
+        None => extract_attribute_value(attributes, b"r=\"")
+            .and_then(parse_cell_reference)
+            .is_none_or(|(column, _)| {
+                columns
+                    .get(column)
+                    .and_then(|column| column.cell_xf.as_ref())
+                    .is_some_and(|style| style.has_visible_fill || style.has_visible_border)
+            }),
     }
 }
 
@@ -1876,7 +1887,9 @@ r="A2"><v>42</v></c></row><row r="3"><c	r="A3"><f>1+1</f></c></row><row r="4"><c
     }
 
     #[test]
-    fn trailing_self_closing_default_cell_keeps_tail_when_representatives_are_enabled() {
+    /// Default-font representatives protect layout before subsequent content;
+    /// enabling them must not turn an empty trailing cell into a content anchor.
+    fn trailing_self_closing_default_cell_is_pruned_when_representatives_are_enabled() {
         let params = default_params();
         let mut metrics = CleanSheetMetrics::default();
         let sheet_data =
@@ -1886,7 +1899,7 @@ r="A2"><v>42</v></c></row><row r="3"><c	r="A3"><f>1+1</f></c></row><row r="4"><c
         let cleaned = String::from_utf8_lossy(&cleaned);
 
         assert!(cleaned.contains(r#"r="1""#));
-        assert!(cleaned.contains(r#"r="999""#));
+        assert!(!cleaned.contains(r#"r="999""#));
     }
 
     #[test]
