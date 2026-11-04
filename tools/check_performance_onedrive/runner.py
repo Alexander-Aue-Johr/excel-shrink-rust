@@ -35,21 +35,18 @@ class JobState(StrEnum):
     FAILED = "failed"
 
 
+# OPENING also starts a new attempt after interruption or an explicit retry.
+# ProgressStore.start_attempt records that boundary and closes the old attempt.
 ALLOWED_TRANSITIONS = {
     JobState.PENDING: {JobState.OPENING},
     JobState.OPENING: {JobState.CHECKING, JobState.SKIPPED, JobState.FAILED},
-    JobState.CHECKING: {JobState.OPTIMIZING, JobState.SAVING, JobState.COMPLETED,
+    JobState.CHECKING: {JobState.OPENING, JobState.OPTIMIZING, JobState.SAVING, JobState.COMPLETED,
                         JobState.SKIPPED, JobState.FAILED},
-    JobState.OPTIMIZING: {JobState.SAVING, JobState.SKIPPED, JobState.FAILED},
-    JobState.SAVING: {JobState.COMPLETED, JobState.SKIPPED, JobState.FAILED},
+    JobState.OPTIMIZING: {JobState.OPENING, JobState.SAVING, JobState.SKIPPED, JobState.FAILED},
+    JobState.SAVING: {JobState.OPENING, JobState.COMPLETED, JobState.SKIPPED, JobState.FAILED},
     JobState.FAILED: {JobState.OPENING, JobState.SKIPPED},
     JobState.COMPLETED: set(),
-    JobState.SKIPPED: set(),
-}
-
-RESTARTABLE_STATES = {
-    JobState.PENDING, JobState.OPENING, JobState.CHECKING,
-    JobState.OPTIMIZING, JobState.SAVING, JobState.FAILED, JobState.SKIPPED,
+    JobState.SKIPPED: {JobState.OPENING},
 }
 
 
@@ -207,6 +204,11 @@ class ProgressStore:
             AND name NOT IN (SELECT file_name FROM skipped_moves) ORDER BY rowid
         """)]
 
+    def moved_skipped_names(self) -> set[str]:
+        """Return confirmed relocations that need restoring before a retry."""
+        return {row[0] for row in self.connection.execute(
+            "SELECT file_name FROM skipped_moves")}
+
     def confirm_skipped_move(self, name: str) -> None:
         """Record only a relocation verified in the destination folder."""
         if self.status(name) != JobState.SKIPPED.value:
@@ -216,17 +218,20 @@ class ProgressStore:
                 "INSERT OR REPLACE INTO skipped_moves VALUES (?, ?)", (name, utc_now()))
 
     def start_attempt(self, name: str) -> int:
-        """Restart unfinished work after a crash without retrying completed files."""
+        """Start an attempt using the OPENING edge in ALLOWED_TRANSITIONS.
+
+        Close an interrupted attempt and create its replacement atomically.
+        Like transition(), use validated_state() to reject invalid changes.
+        Completed workbooks raise ValueError before any history is changed.
+        """
         with self.connection:
-            current = JobState(self.status(name))
-            if current not in RESTARTABLE_STATES:
-                raise ValueError(f"Cannot restart Check Performance file in state {current}")
+            status = validated_state(self.status(name), JobState.OPENING)
             self.connection.execute("""
                 UPDATE attempts SET finished_at = ?, error = ?
                 WHERE file_name = ? AND finished_at IS NULL
             """, (utc_now(), "Interrupted before restart", name))
             self.connection.execute(
-                "UPDATE files SET status = ? WHERE name = ?", (JobState.OPENING.value, name))
+                "UPDATE files SET status = ? WHERE name = ?", (status, name))
             self.connection.execute("DELETE FROM skipped_moves WHERE file_name = ?", (name,))
             cursor = self.connection.execute(
                 "INSERT INTO attempts (file_name, started_at) VALUES (?, ?)", (name, utc_now()))
@@ -1291,6 +1296,19 @@ async def process_selected_workbook(playwright, context, folder_page, args, prof
     raise AssertionError("Both workbook attempts should have returned")
 
 
+async def load_workbook_inventory(page, progress: ProgressStore, args) -> list[str]:
+    """Discover new uploads when requested, otherwise reuse the durable inventory."""
+    names = progress.names()
+    if not names or args.refresh_list or args.list_only:
+        discovered = await discover_workbooks(page)
+        names = progress.discover(discovered)
+        print(f"Found {len(discovered)} XLSX files; {len(names)} known across runs. "
+              f"Progress: {progress.path}", flush=True)
+    else:
+        print(f"Reusing {len(names)} known XLSX files. Progress: {progress.path}", flush=True)
+    return names
+
+
 async def run_folder_check_performance(args) -> int:
     """Resume known files from the oldest visible row and record each outcome."""
     identifier = folder_id(args.folder_url)
@@ -1299,14 +1317,7 @@ async def run_folder_check_performance(args) -> int:
     playwright, context, folder_page = await restart_folder_browser(None, None, args, profile)
     try:
         with ProgressStore(directory, identifier) as progress:
-            if not progress.names() or args.refresh_list or args.list_only:
-                discovered = await discover_workbooks(folder_page)
-                names = progress.discover(discovered)
-                print(f"Found {len(discovered)} XLSX files; {len(names)} known across runs. "
-                      f"Progress: {progress.path}", flush=True)
-            else:
-                names = progress.names()
-                print(f"Reusing {len(names)} known XLSX files. Progress: {progress.path}", flush=True)
+            names = await load_workbook_inventory(folder_page, progress, args)
             if args.list_only:
                 for name in names:
                     print(name)
@@ -1314,9 +1325,8 @@ async def run_folder_check_performance(args) -> int:
             if args.only_file and args.only_file not in names:
                 raise ValueError(f"Workbook is absent from the folder: {args.only_file}")
             if args.retry_skipped:
-                moved = progress.connection.execute(
-                    "SELECT file_name FROM skipped_moves").fetchall()
-                if any(not args.only_file or row[0] == args.only_file for row in moved):
+                moved = progress.moved_skipped_names()
+                if moved and (not args.only_file or args.only_file in moved):
                     raise ValueError("Move archived workbooks back from skipped and use "
                                      "--refresh-list --retry-skipped to retry them")
             else:
@@ -1357,15 +1367,11 @@ async def run_folder_check_performance(args) -> int:
                             progress, display, name, row)
                     except OneDriveRenderingError as error:
                         print(f"{error} Preserving progress and restarting.", file=sys.stderr, flush=True)
-                        if progress.status(name) in {JobState.COMPLETED.value, JobState.SKIPPED.value}:
-                            attempted += 1
-                            unfinished.discard(name)
                         playwright, context, folder_page = await restart_folder_browser(
                             playwright, context, args, profile)
-                        if progress.status(name) == JobState.SKIPPED.value:
-                            playwright, context, folder_page = await archive_skipped_with_recovery(
-                                playwright, context, folder_page, args, profile, progress, [name])
-                        continue
+                        if progress.status(name) not in {JobState.COMPLETED.value, JobState.SKIPPED.value}:
+                            continue
+                        file_failed = False
                     if progress.status(name) == JobState.SKIPPED.value:
                         playwright, context, folder_page = await archive_skipped_with_recovery(
                             playwright, context, folder_page, args, profile, progress, [name])

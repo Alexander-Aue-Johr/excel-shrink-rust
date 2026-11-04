@@ -92,6 +92,35 @@ class EditorReadinessTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RenderingRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_rendering_failure_after_skip_moves_file_once(self):
+        """A finished skip follows the common relocation path after folder recovery."""
+        from argparse import Namespace
+        with tempfile.TemporaryDirectory() as temporary:
+            args = Namespace(folder_url="https://1drv.ms/f/test", output_root=Path(temporary),
+                             profile_dir=None, headed=True, refresh_list=False, list_only=False,
+                             only_file=None, retry_skipped=False, max_files=1)
+            browser = (object(), object(), MagicMock())
+
+            async def skip_then_render_error(*values):
+                progress, name = values[5], values[7]
+                attempt = progress.start_attempt(name)
+                progress.skip(name, attempt, "workbook_repair_required")
+                raise FLOW.OneDriveRenderingError("Folder rendering failed after skip")
+
+            with (patch.object(FLOW, "restart_folder_browser", new=AsyncMock(return_value=browser)),
+                  patch.object(FLOW, "discover_workbooks", new=AsyncMock(return_value=["sample.xlsx"])),
+                  patch.object(FLOW, "next_workbook_with_recovery", new=AsyncMock(
+                      return_value=(browser[2], ("sample.xlsx", None)))),
+                  patch.object(FLOW, "process_selected_workbook", new=skip_then_render_error),
+                  patch.object(FLOW, "archive_skipped_with_recovery", new=AsyncMock(
+                      return_value=browser)) as archive,
+                  patch.object(FLOW, "close_browser", new=AsyncMock()),
+                  patch.object(FLOW, "ConsoleProgress"), patch("builtins.print")):
+                self.assertEqual(await FLOW.run_folder_check_performance(args), 0)
+            self.assertEqual(archive.await_count, 2)
+            self.assertEqual(archive.await_args_list[0].args[-1], [])
+            self.assertEqual(archive.await_args_list[1].args[-1], ["sample.xlsx"])
+
     async def test_rendering_failure_is_detected_before_folder_timeout(self):
         for text in ("Unbekannter Renderingfehler.", "Unknown rendering error."):
             page = MagicMock()
@@ -169,6 +198,26 @@ class RenderingRecoveryTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ProgressStoreTests(unittest.TestCase):
+    def test_interrupted_optimization_and_save_restart_through_transition_table(self):
+        """Restarting either phase closes its attempt before returning to OPENING."""
+        for phase in (JobState.OPTIMIZING, JobState.SAVING):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as temporary:
+                with ProgressStore(Path(temporary), "folder") as progress:
+                    progress.discover(["interrupted.xlsx"])
+                    previous = progress.start_attempt("interrupted.xlsx")
+                    progress.transition("interrupted.xlsx", JobState.CHECKING)
+                    progress.transition("interrupted.xlsx", JobState.OPTIMIZING)
+                    if phase == JobState.SAVING:
+                        progress.transition("interrupted.xlsx", JobState.SAVING)
+                    self.assertEqual(FLOW.validated_state(phase, JobState.OPENING), "opening")
+                    current = progress.start_attempt("interrupted.xlsx")
+                    self.assertGreater(current, previous)
+                    self.assertEqual(progress.status("interrupted.xlsx"), "opening")
+                    old_attempt = progress.connection.execute(
+                        "SELECT finished_at, error FROM attempts WHERE id = ?", (previous,)).fetchone()
+                    self.assertIsNotNone(old_attempt[0])
+                    self.assertEqual(old_attempt[1], "Interrupted before restart")
+
     def test_run_level_error_exits_without_traceback_or_success(self) -> None:
         """A broken folder or browser stops cleanly instead of skipping the corpus."""
         with (patch.object(FLOW, "run_folder_check_performance", new=lambda _args: None),
