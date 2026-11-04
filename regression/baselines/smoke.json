@@ -126,17 +126,17 @@
     {
       "id": "unreferenced-hidden-content",
       "category": "Unreferenced Hidden Content",
-      "reason": "High-signal case for hidden content cells that are semantically dead but easy to over-preserve.",
+      "reason": "Long constant-zero hidden tails must shrink while isolated and heterogeneous hidden values survive.",
       "dominant_cleanup": [
         "UnreferencedHiddenContentCells"
       ],
-      "notes": "Do not relax without confirming removed hidden content is unsafe to keep.",
+      "notes": "Tabelle 3.4 has zero tails to XFD; preserve Tabelle 2.1.1!A65536=3 and Tabelle 3.3!M44:IT44. The former 0.91 threshold rewarded deleting these values; the conservative policy still exceeds 0.90.",
       "source_repository_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files",
       "source_file_url": "https://github.com/Alexander-Aue-Johr/original_destatis_xlsx_files/blob/main/wanderungen-2010120217005.xlsx",
       "relative_input": "wanderungen-2010120217005.xlsx",
       "download_url": "https://raw.githubusercontent.com/Alexander-Aue-Johr/original_destatis_xlsx_files/main/wanderungen-2010120217005.xlsx",
       "cached_file_name": "wanderungen-2010120217005.xlsx",
-      "min_reduction_ratio": 0.91
+      "min_reduction_ratio": 0.90
     },
     {
       "id": "hidden-empty-rows",

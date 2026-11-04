@@ -76,6 +76,7 @@ pub fn drop_sheet_metrics(metrics: crate::models::CleanSheetMetrics) {
             whitespace_candidates,
             hidden_candidates,
             candidates,
+            hidden_content_spans,
             cleanup_stats,
             sheet_protection_enabled,
             visible_content_bounds,

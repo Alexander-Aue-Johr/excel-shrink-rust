@@ -230,6 +230,16 @@ impl CleanupStats {
     }
 }
 
+/// A homogeneous hidden row suffix admitted before reference scanning.
+/// Only dense constant-integer tails of at least 4096 cells ending at XFD
+/// qualify. This is an explicit cleanup heuristic, not proof of irrelevance.
+#[derive(Debug, Clone, Copy)]
+pub struct HiddenContentSpan {
+    pub row: u32,
+    pub start_col: u32,
+    pub end_col: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct CleanupCandidate {
     pub col: u32,
@@ -455,6 +465,8 @@ pub struct CleanSheetMetrics {
     pub hidden_candidates: usize,
 
     pub candidates: Vec<CleanupCandidate>,
+    /// Compact admitted Hidden-content tails; ordinary hidden values stay intact.
+    pub hidden_content_spans: Vec<HiddenContentSpan>,
     pub cleanup_stats: CleanupStats,
     pub sheet_protection_enabled: bool,
     pub visible_content_bounds: VisibleContentBounds,
@@ -591,6 +603,15 @@ pub struct ProtectedWorkbookRefs {
 }
 
 impl ProtectedWorkbookRefs {
+    /// Whether any known reference intersects this inclusive row interval.
+    /// The caller retains the whole tail if even one member is referenced.
+    pub fn intersects_row(&self, sheet: &str, row: u32, start: u32, end: u32) -> bool {
+        self.by_sheet
+            .get(sheet)
+            .is_some_and(|r| r.intersects_row(row, start, end))
+            || self.global_or_unknown.intersects_row(row, start, end)
+    }
+
     #[inline]
     pub fn contains(&self, sheet: &str, col: u32, row: u32) -> bool {
         self.by_sheet
@@ -612,6 +633,24 @@ pub struct SheetScanBuffer<'a> {
 }
 
 impl ProtectedCellRefs {
+    fn intersects_row(&self, row: u32, start: u32, end: u32) -> bool {
+        if self.ranges.iter().any(|r| {
+            r.min_row <= row && row <= r.max_row && r.min_col <= end && start <= r.max_col
+        }) {
+            return true;
+        }
+        // Never do more individual lookups than the old per-cell path.
+        if self.cells.len() < (end - start + 1) as usize {
+            self.cells.iter().any(|&encoded| {
+                encoded as u32 == row
+                    && start <= (encoded >> 32) as u32
+                    && (encoded >> 32) as u32 <= end
+            })
+        } else {
+            (start..=end).any(|col| self.cells.contains(&encode_coord(col, row)))
+        }
+    }
+
     pub fn cell_ref_count(&self) -> usize {
         self.cells.len()
     }

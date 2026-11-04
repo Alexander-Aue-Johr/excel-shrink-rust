@@ -57,13 +57,14 @@ forms must not be described as generally normalized by the shrinker.
 
 The CLI translates user flags into core switches. In particular, the core
 `CleanupSwitches::default()` is **not** the entire ordinary CLI policy: the CLI
-enables deferred unreferenced hidden-content cleanup unless explicitly disabled.
+enables deferred hidden constant-tail cleanup unless explicitly disabled. Ordinary
+nonempty hidden tables are retained, including unreferenced values.
 
 | Profile | Keep default-font representatives | Keep other font/style representatives | Keep column overrides | Remove unreferenced whitespace | Remove unreferenced hidden content | Object/reference scan |
 | --- | --- | --- | --- | --- | --- | --- |
-| Default | yes | yes | yes | no | yes, subject to guards | extended |
-| Maximum cleaning | no | no | no | yes, subject to guards | yes, subject to guards | extended |
-| Too aggressive cleaning | no | no | no | yes, subject to guards | yes, subject to guards | cell-formula-only mode |
+| Default | yes | yes | yes | no | only admitted constant tails | extended |
+| Maximum cleaning | no | no | no | yes, subject to guards | only admitted constant tails | extended |
+| Too aggressive cleaning | no | no | no | yes, subject to guards | only admitted constant tails | cell-formula-only mode |
 
 Too aggressive is intentionally a stress profile; its weaker object dependency
 coverage must not be advertised as the same preservation guarantee as Default.
@@ -212,6 +213,20 @@ lookup is not a full rendering engine: missing/unreadable or unsupported drawing
 information is a remaining review concern, not a proof that no object exists.
 
 ## S7. Deferred reference-sensitive removal
+
+Hidden-content admission is deliberately narrower than “hidden and unreferenced”.
+During the initial row traversal, original cells are observed before style cleanup.
+Only a dense hidden suffix of at least 4096 equal signed-integer constants ending
+at XFD qualifies. Text, formulas, unsupported numeric forms, gaps, changed values,
+and missing cell-level eligibility retain the suffix. The threshold is a conservative
+heuristic, not a probability or a proof that a constant matrix was unintended.
+Only horizontal full-width tails qualify; short tails and vertical runs remain.
+
+Eligible Hidden tails become compact row spans. If any known reference intersects
+a span, the whole span survives. Nonqualifying Hidden candidates are dropped before
+the workbook reference scan. Whitespace retains its separate policy. The span list
+is merged in row-chunk order and reference-filtered before the existing XML rewrite;
+there is no extra full-sheet traversal or expansion into a coordinate hash table.
 
 First retain eligible hidden/whitespace content as candidates. Scan the relevant
 workbook parts, then remove only candidates outside the protected sets. This

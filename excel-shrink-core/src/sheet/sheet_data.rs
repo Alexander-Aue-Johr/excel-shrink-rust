@@ -630,6 +630,7 @@ fn merge_chunk_metrics(target: &mut CleanSheetMetrics, chunk: CleanSheetMetrics)
     target.whitespace_candidates += chunk.whitespace_candidates;
     target.hidden_candidates += chunk.hidden_candidates;
     target.candidates.extend(chunk.candidates);
+    target.hidden_content_spans.extend(chunk.hidden_content_spans);
 
     if let Some(col) = chunk.visible_content_bounds.max_col {
         target.visible_content_bounds.include_col(col);

@@ -14,7 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
-fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -> Cli {
+pub(super) fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<PathBuf>) -> Cli {
     Cli {
         trace_file: None,
         path: PathBuf::from("input.xlsx"),
@@ -1271,10 +1271,24 @@ fn pipeline_retains_hidden_chart_and_drawing_inputs() {
     std::fs::create_dir_all(&root).unwrap();
     let input = root.join("objects.xlsx");
     let mut writer = ZipWriter::new(File::create(&input).unwrap());
+    // A fully homogeneous hidden tail is otherwise eligible. Object sources
+    // must protect the whole run, even when most of its cells are unreferenced.
+    let mut source_sheet = String::from("<worksheet><sheetData><row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"2\" hidden=\"1\">");
+    for col in 1..=16384 {
+        let mut number = col;
+        let mut letters = String::new();
+        while number > 0 {
+            number -= 1;
+            letters.insert(0, (b'A' + (number % 26) as u8) as char);
+            number /= 26;
+        }
+        source_sheet.push_str(&format!("<c r=\"{letters}2\"><v>0</v></c>"));
+    }
+    source_sheet.push_str("</row><row r=\"3\"><c r=\"A3\"><v>2</v></c></row></sheetData><pivotTableParts><pivotTablePart r:id=\"rId2\"/></pivotTableParts></worksheet>");
     let entries: [(&str, &[u8]); 8] = [
         ("xl/workbook.xml", br#"<workbook><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>"#),
         ("xl/_rels/workbook.xml.rels", br#"<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>"#),
-        ("xl/worksheets/sheet1.xml", br#"<worksheet><dimension ref="A1:XFD1048576"/><sheetData><row r="1"><c r="A1"><v>1</v></c></row><row r="2" hidden="1"><c r="A2"><v>11</v></c><c r="B2"><v>12</v></c><c r="C2"><v>13</v></c><c r="D2"><v>14</v></c><c r="E2"><v>15</v></c><c r="F2"><v>16</v></c></row><row r="3"><c r="A3"><v>2</v></c></row></sheetData><pivotTableParts><pivotTablePart r:id="rId2"/></pivotTableParts></worksheet>"#),
+        ("xl/worksheets/sheet1.xml", source_sheet.as_bytes()),
         ("xl/charts/chart1.xml", br#"<c:chart><c:numRef><c:f>Data!$A$2:$B$2</c:f></c:numRef></c:chart>"#),
         ("xl/drawings/drawing1.xml", br#"<xdr:wsDr><xdr:sp textlink="Data!$C$2"/></xdr:wsDr>"#),
         ("xl/pivotCache/pivotCacheDefinition1.xml", br#"<pivotCacheDefinition><cacheSource><worksheetSource ref="D2:D2" sheet="Data"/></cacheSource></pivotCacheDefinition>"#),
@@ -1307,8 +1321,8 @@ fn pipeline_retains_hidden_chart_and_drawing_inputs() {
         );
     }
     assert!(
-        !sheet.contains(r#"r="E2""#),
-        "an unused hidden value should still be removed"
+        sheet.contains(r#"r="E2""#),
+        "a protected homogeneous run must also retain its unreferenced members"
     );
 
     cli.cell_formula_references_only = true;

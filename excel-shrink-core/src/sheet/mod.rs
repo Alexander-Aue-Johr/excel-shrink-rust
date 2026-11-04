@@ -1,4 +1,5 @@
 pub mod cells;
+mod hidden_content;
 pub mod cols;
 pub mod drawings;
 pub mod merge_cells;

@@ -141,6 +141,7 @@ struct RowCellCleanupState<'a> {
     // Most rows use one font; its ID needs no per-row hash table allocation.
     first_kept_font_id: Option<u32>,
     kept_font_ids: std::collections::HashSet<u32>,
+    hidden_tail: Option<super::hidden_content::HiddenTail>,
 }
 
 impl<'a> RowCellCleanupState<'a> {
@@ -157,6 +158,7 @@ impl<'a> RowCellCleanupState<'a> {
             kept_represented_style_ids: std::collections::HashSet::new(),
             first_kept_font_id: None,
             kept_font_ids: std::collections::HashSet::new(),
+            hidden_tail: None,
         }
     }
 
@@ -702,6 +704,14 @@ fn clean_cells<'a, const SAMPLED: bool>(
     }
 
     let mut state = RowCellCleanupState::new(metrics.kept_cell_states.len());
+    let candidate_start = metrics.candidates.len();
+    if !metrics.source_content_cell_count_complete
+        && (params.cleanup.unreferenced_hidden_content_cells
+            || params.advanced_cleanup.as_ref()
+                .is_some_and(|c| c.remove_unreferenced_hidden_content))
+    {
+        state.hidden_tail = Some(super::hidden_content::HiddenTail::default());
+    }
     let mut timings = CellTimings::<SAMPLED>::default();
     while let Some(cell_start_rel) = timings.measure(CellStage::Find, || {
         find_bytes(&row_content[state.position..], b"<c")
@@ -739,6 +749,11 @@ fn clean_cells<'a, const SAMPLED: bool>(
         });
     }
 
+    if let Some(tail) = state.hidden_tail.take() {
+        tail.finish(
+            metrics, candidate_start, digits_byte_string_to_integer(row.reference),
+        );
+    }
     let result = timings.measure(CellStage::AppendOutput, || state.finish(row_content));
     timings.report();
     result
@@ -816,6 +831,13 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
     let column = metrics.column_definitions.get(cell.col_num).cloned();
     cell.column = Some(column.as_ref());
     record_cell_visit(params, &cell);
+    if let Some(tail) = state.hidden_tail.as_mut() {
+        tail.observe(
+            &cell,
+            row.hidden || column.as_ref().is_some_and(|c| c.hidden),
+            has_cell_content,
+        );
+    }
     let representative = timings.measure(CellStage::SelectRepresentative, || {
         select_empty_style_representative(
             &cell,

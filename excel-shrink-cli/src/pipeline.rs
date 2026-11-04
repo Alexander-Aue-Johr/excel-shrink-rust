@@ -1574,6 +1574,7 @@ fn send_write_job(tx: &mpsc::Sender<QueuedWriteJob>, job: WriteJob, xlsx: &str) 
     true
 }
 
+#[cfg(test)]
 fn apply_deferred_candidate_cleanup(
     xml: Vec<u8>,
     candidates: &[CleanupCandidate],
@@ -1581,8 +1582,29 @@ fn apply_deferred_candidate_cleanup(
     sheet_file: &str,
     stats: &mut CleanupStats,
 ) -> (Vec<u8>, HashSet<u32>) {
+    apply_deferred_candidate_cleanup_with_spans(
+        xml, candidates, &[], protected_refs, sheet_file, stats,
+    )
+}
+
+fn apply_deferred_candidate_cleanup_with_spans(
+    xml: Vec<u8>,
+    candidates: &[CleanupCandidate],
+    hidden_spans: &[excel_shrink_core::models::HiddenContentSpan],
+    protected_refs: &ProtectedWorkbookRefs,
+    sheet_file: &str,
+    stats: &mut CleanupStats,
+) -> (Vec<u8>, HashSet<u32>) {
     let safe_refs = collect_safe_candidate_causes(candidates, protected_refs, sheet_file);
-    if safe_refs.is_empty() {
+    let mut admitted: Vec<_> = hidden_spans
+        .iter()
+        .copied()
+        .filter(|span| {
+            !protected_refs.intersects_row(sheet_file, span.row, span.start_col, span.end_col)
+        })
+        .collect();
+    admitted.sort_unstable_by_key(|span| (span.row, span.end_col));
+    if safe_refs.is_empty() && admitted.is_empty() {
         return (xml, HashSet::new());
     }
 
@@ -1608,7 +1630,9 @@ fn apply_deferred_candidate_cleanup(
         let cell_end = cell.end;
         let attributes = &xml[cell.attributes];
         let replacement =
-            candidate_cell_replacement(raw, attributes, &safe_refs, &mut affected_rows, stats);
+            candidate_cell_replacement(
+                raw, attributes, &safe_refs, &admitted, &mut affected_rows, stats,
+            );
 
         if let Some(replacement) = replacement {
             out.extend_from_slice(&replacement);
@@ -1745,11 +1769,20 @@ fn candidate_cell_replacement(
     raw: &[u8],
     attributes: &[u8],
     safe_refs: &HashMap<(u32, u32), CleanupCause>,
+    hidden_spans: &[excel_shrink_core::models::HiddenContentSpan],
     affected_rows: &mut HashSet<u32>,
     stats: &mut CleanupStats,
 ) -> Option<Vec<u8>> {
     let reference = extract_xml_attr_value(attributes, b"r").and_then(parse_cell_reference)?;
-    let cause = *safe_refs.get(&reference)?;
+    let cause = safe_refs.get(&reference).copied().or_else(|| {
+        let index = hidden_spans.partition_point(|s| (s.row, s.end_col) < (reference.1, reference.0));
+        hidden_spans
+            .get(index)
+            .filter(|s| {
+                s.row == reference.1 && s.start_col <= reference.0 && reference.0 <= s.end_col
+            })
+            .map(|_| CleanupCause::UnreferencedHiddenContentCells)
+    })?;
     affected_rows.insert(reference.1);
     Some(replacement_for_cleanup_cause(raw, attributes, cause, stats))
 }
@@ -2517,8 +2550,8 @@ fn deferred_reference_scan_selection(
             include_sheet.push(false);
             continue;
         };
-        has_candidates |= !metrics.candidates.is_empty();
-        include_sheet.push(metrics.has_hints || !metrics.candidates.is_empty());
+        has_candidates |= !metrics.candidates.is_empty() || !metrics.hidden_content_spans.is_empty();
+        include_sheet.push(metrics.has_hints || !metrics.candidates.is_empty() || !metrics.hidden_content_spans.is_empty());
     }
 
     has_candidates.then_some(include_sheet)
@@ -2649,7 +2682,7 @@ impl SheetFinalizer<'_> {
             &sheet.params.xlsx_file_path,
             &sheet.params.zip_info_filename,
         );
-        if !self.safe_to_clean || sheet.metrics.candidates.is_empty() {
+        if !self.safe_to_clean || (sheet.metrics.candidates.is_empty() && sheet.metrics.hidden_content_spans.is_empty()) {
             return;
         }
 
@@ -2681,9 +2714,10 @@ impl SheetFinalizer<'_> {
         } = sheet;
         let mut touched_rows = HashSet::new();
         let result = transform_sheet_data_range(xml, sheet_data_range.clone(), |sheet_data| {
-            let (cleaned, rows) = apply_deferred_candidate_cleanup(
+            let (cleaned, rows) = apply_deferred_candidate_cleanup_with_spans(
                 sheet_data.to_vec(),
                 &metrics.candidates,
+                &metrics.hidden_content_spans,
                 self.protected_refs,
                 &params.zip_info_filename,
                 &mut metrics.cleanup_stats,
@@ -3401,7 +3435,7 @@ fn process_file(
         let Ok(sheet) = &result else {
             return Some(result);
         };
-        if !sheet.metrics.candidates.is_empty() {
+        if !sheet.metrics.candidates.is_empty() || !sheet.metrics.hidden_content_spans.is_empty() {
             return Some(result);
         }
         // Without a complete name map retain the original all-buffer scan.
@@ -3737,3 +3771,7 @@ mod regression_tests;
 #[cfg(test)]
 #[path = "pipeline_namespace_tests.rs"]
 mod namespace_tests;
+
+#[cfg(test)]
+#[path = "pipeline_hidden_tail_tests.rs"]
+mod hidden_tail_tests;
