@@ -122,6 +122,8 @@ fn parse_xf(chunk: &[u8], visibility: &StyleVisibility<'_>) -> Xf {
     let apply_border = extract_bool(chunk, b"applyBorder");
     let apply_fill = extract_bool(chunk, b"applyFill");
     let apply_protection = extract_bool(chunk, b"applyProtection");
+    let centers_across_selection = find_next_tag(chunk, b"alignment", 0)
+        .is_some_and(|tag| extract_attr_value(tag.raw, b"horizontal") == Some(b"centerContinuous"));
     let has_visible_fill = visibility.fill_is_visible(fill_id);
     let has_visible_border = visibility.border_is_visible(border_id);
     let has_fill_or_border = has_visible_fill || has_visible_border;
@@ -141,6 +143,7 @@ fn parse_xf(chunk: &[u8], visibility: &StyleVisibility<'_>) -> Xf {
         .apply_font(apply_font)
         .apply_border(apply_border)
         .apply_fill(apply_fill)
+        .centers_across_selection(centers_across_selection)
         .has_visible_fill(has_visible_fill)
         .has_visible_border(has_visible_border)
         .has_fill_or_border(has_fill_or_border)

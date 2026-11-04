@@ -1662,6 +1662,30 @@ r="A2"><v>42</v></c></row><row r="3"><c	r="A3"><f>1+1</f></c></row><row r="4"><c
     }
 
     #[test]
+    fn centered_text_keeps_only_its_contiguous_alignment_span() {
+        let mut params = params_with_styles(&[(7, Xf {
+            centers_across_selection: true,
+            has_no_empty_cell_visible_style: true,
+            ..Default::default()
+        })]);
+        params.cleanup.keep_textless_default_font_representatives = false;
+        params.cleanup.keep_textless_style_representatives = false;
+        params.cleanup.keep_textless_column_style_representatives = false;
+        let preprocessed = preprocessed_with_sheet_data(
+            br#"<row r="2"><c r="D2" s="7"><v>1</v></c><c r="E2" s="7"/><c r="F2" s="7"/><c r="G2" s="7"/></row><row r="3"><c r="G3" s="7"/></row><row r="4"><c r="A4" s="7"><v>1</v></c><c r="C4" s="7"/></row><row r="5"><c r="A5"><v>1</v></c><c r="B5" s="7"/></row>"#,
+            None,
+        );
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        let xml = String::from_utf8_lossy(&cleaned.xml);
+        for address in ["D2", "E2", "F2", "G2"] {
+            assert!(xml.contains(&format!("r=\"{address}\"")), "lost {address}");
+        }
+        for address in ["G3", "C4", "B5"] {
+            assert!(!xml.contains(&format!("r=\"{address}\"")), "kept unanchored {address}");
+        }
+    }
+
+    #[test]
     fn keep_in_data_range_keeps_inactive_protection_cell_inside_visible_data_range_only() {
         let mut params = params_with_styles(&[(7, apply_protection_only_style())]);
         params.cleanup.inactive_protection_cell_policy =

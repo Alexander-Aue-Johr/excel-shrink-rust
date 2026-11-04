@@ -390,3 +390,17 @@ These APIs establish available operations, not the equivalence of a trial edit.
 | S8 | `workbook.rs`, `workbook::scope_tests`, core `tests.rs` |
 
 Core paths in the final five rows are relative to `excel-shrink-core/src/`.
+
+### Center across selection
+
+A contiguous source-cell span with `horizontal="centerContinuous"` is visually
+relevant when seeded by a value or formula. Its formatted blank cells extend the
+centering area. Default retains those cells and their alignment. A gap, another
+alignment, or a row change ends the span. Isolated formatting without content
+does not seed a span and remains removable through the existing rules.
+
+A native counterfactual on Data.gov `Fig 10_New 10-29-19_b3bff94c7378.xlsx`
+showed that restoring only the final G2 cell did not restore centering after F2
+had been removed. Restoring the contiguous D2:G2 span did. This differs from
+font-height representatives, where a compact representative can preserve the
+height without retaining every originally formatted cell.

@@ -16,6 +16,8 @@ pub struct Xf {
     pub apply_font: bool,
     pub apply_border: bool,
     pub apply_fill: bool,
+    /// Empty cells extend the centering span of a preceding value.
+    pub centers_across_selection: bool,
 
     pub has_visible_fill: bool,
     pub has_visible_border: bool,
@@ -447,6 +449,7 @@ impl VisibleContentBounds {
 
 #[derive(Debug, Clone, Default)]
 pub struct CleanSheetMetrics {
+    pub centered_text_span: CenteredTextSpan,
     pub column_definitions: ColumnRangeMap,
     pub kept_cell_states: Vec<CellAttributes>,
     /// Number of removed cells; individual deleted coordinates are not retained.
@@ -475,6 +478,27 @@ pub struct CleanSheetMetrics {
     pub tail_anchor_rows: BTreeMap<u32, usize>,
     pub tail_anchor_max_row: Option<u32>,
     pub has_hints: bool,
+}
+
+/// Tracks a contiguous source-cell alignment span, seeded only by actual content.
+#[derive(Debug, Clone, Default)]
+pub struct CenteredTextSpan {
+    end: Option<(u32, u32)>,
+}
+
+impl CenteredTextSpan {
+    /// Gaps, row changes and another alignment end the source span.
+    pub fn observe_cell(&mut self, row: u32, column: u32, centered: bool, has_content: bool) -> bool {
+        let continues = centered
+            && (has_content || column > 1 && self.end == Some((row, column - 1)));
+        self.end = continues.then_some((row, column));
+        continues
+    }
+
+    /// Identifies a retained alignment cell that also anchors the used extent.
+    pub fn ends_at(&self, row: u32, column: u32) -> bool {
+        self.end == Some((row, column))
+    }
 }
 
 impl CleanSheetMetrics {

@@ -179,6 +179,12 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a, 'r>(
 ) -> Cow<'a, [u8]> {
     let style = cell.style(params);
     let is_hidden = cell_is_hidden(cell, metrics);
+    let centered_span = metrics.centered_text_span.observe_cell(
+        digits_byte_string_to_integer(cell.row),
+        cell.col_num,
+        style.is_some_and(|style| style.centers_across_selection),
+        has_cell_content,
+    );
     record_visible_cell_bounds(cell, style, metrics, has_cell_content);
     let style_policy = EmptyCellStylePolicy {
         keep_no_visible_style: keep_no_empty_cell_visible_style_cell,
@@ -206,6 +212,12 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a, 'r>(
 
     if is_hidden {
         return clean_hidden_cell(cell, params, metrics, style, style_policy, has_cell_content);
+    }
+
+    // Every formatted blank in this span contributes to the centering extent.
+    // Keeping only its last cell leaves an unformatted gap and changes Excel's layout.
+    if !has_cell_content && centered_span {
+        return keep_empty_cell_as_self_closing(cell, params, metrics, style, false);
     }
 
     clean_visible_cell(cell, params, metrics, style, style_policy, has_cell_content)
@@ -548,6 +560,9 @@ fn kept_cell_is_tail_anchor(
     if has_cell_content {
         return true;
     }
+    if metrics.centered_text_span.ends_at(digits_byte_string_to_integer(cell.row), cell.col_num) {
+        return true;
+    }
 
     if cell_style.is_none() && cell.style_id.is_some() {
         return true;
@@ -757,6 +772,7 @@ fn record_visible_cell_bounds(
         .and_then(|column| column.cell_xf.as_ref());
 
     let is_visible = has_cell_content
+        || metrics.centered_text_span.ends_at(row_num, cell.col_num)
         || cell_style.is_some_and(|style| cell_has_effective_fill_or_border(style, cell, metrics))
         || column_style.is_some_and(|style| style.has_fill_or_border);
 

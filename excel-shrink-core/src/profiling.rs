@@ -65,6 +65,7 @@ pub fn drop_sheet_metrics(metrics: crate::models::CleanSheetMetrics) {
             };
         }
         fields!(
+            centered_text_span,
             column_definitions,
             kept_cell_states,
             deleted_cell_count,
