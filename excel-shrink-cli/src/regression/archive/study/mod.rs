@@ -12,6 +12,7 @@ use execution::process;
 mod prepared;
 mod provenance;
 mod scheduler;
+mod reduction_order;
 mod selection;
 mod storage_guard;
 mod strategy;
@@ -42,6 +43,9 @@ pub(in crate::regression) struct StudyArgs {
     /// Compare only workbook identities in this JSON array, in the listed order.
     #[arg(long, value_name = "JSON")]
     workbook_list: Option<PathBuf>,
+    /// Compare the strongest relative Default reductions first, after preparation.
+    #[arg(long)]
+    largest_reduction_first: bool,
     /// Write catalogs and selection manifests without shrinking or starting Excel.
     #[arg(long, conflicts_with_all = ["report_only", "prepare_only", "compare_only", "diagnose_whitespace_only"])]
     selection_only: bool,
@@ -548,6 +552,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             "hide_excel":args.hide_excel,
             "control_room":args.control_room,"control_room_port":args.control_room_port,
             "adaptive_concurrency":args.adaptive_concurrency,"order":args.order,
+            "largest_reduction_first":args.largest_reduction_first,
             "comparison_scheduling":if args.control_room { "manual-groups" } else if args.adaptive_concurrency { "adaptive-groups" } else { "fixed-batches" },
             "diagnose_whitespace_only":args.diagnose_whitespace_only,"retry_skipped":args.should_retry_skipped(),
             "workbook_timeout_seconds":args.workbook_timeout_seconds,
@@ -909,6 +914,9 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                     id,
                     position: pos,
                 });
+            }
+            if args.largest_reduction_first {
+                reduction_order::sort(&mut comparisons, &records);
             }
             scheduler::compare(
                 source,

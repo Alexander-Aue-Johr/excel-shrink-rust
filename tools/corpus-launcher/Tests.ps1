@@ -66,6 +66,10 @@ $config.settings | Add-Member -NotePropertyName workbook_list -NotePropertyValue
 $rankedPlan = New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/ranked')
 Assert ((Arg-Value $rankedPlan '--workbook-list') -eq (Join-Path $root '.tmp/strong reduction/workbook-list.json')) 'Workbook-list priority was not forwarded.'
 $config.settings.workbook_list = $null
+$config.settings | Add-Member -NotePropertyName largest_reduction_first -NotePropertyValue $true -Force
+$reductionPlan = New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root 'reduction-order')
+Assert ($reductionPlan.Arguments -contains '--largest-reduction-first') 'Relative reduction priority was not forwarded.'
+$config.settings.largest_reduction_first = $false
 $config.settings | Add-Member -NotePropertyName targeted_check_performance -NotePropertyValue $true -Force
 $performancePlan = New-StudyLaunchPlan $config $root 'target/release/excel-shrink-cli.exe' (Join-Path $root '.tmp/runs/performance-opt-in')
 Assert ($performancePlan.Arguments -contains '--targeted-check-performance') 'Explicit CP opt-in was lost.'

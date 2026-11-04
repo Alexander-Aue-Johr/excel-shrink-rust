@@ -303,6 +303,7 @@ function New-StudyLaunchPlan {
         $screenProfile = Get-Value $settings 'preparation_hash_profile' $null
         if ($screenProfile) { $argsList += @('--preparation-hash-profile', [string]$screenProfile) }
     }
+    if (Get-Value $settings 'largest_reduction_first' $false) { $argsList += '--largest-reduction-first' }
     if ($settings.hide_excel) { $argsList += '--hide-excel' }
     foreach ($hash in @($settings.reuse_prepared_from | Select-Object -Unique)) { $argsList += @('--reuse-prepared-from',$hash) }
     $workbookList = Get-Value $settings 'workbook_list' $null
