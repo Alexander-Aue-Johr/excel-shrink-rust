@@ -738,6 +738,10 @@ async def move_skipped_workbook(page, name: str) -> None:
         ).get_by_text("skipped", exact=True)
         try:
             await skipped.dblclick(timeout=15_000)
+            # The parent grid can remain visible during client-side navigation.
+            # Do not mistake those old rows for the destination's contents.
+            await page.wait_for_url(
+                lambda url: str(url) != folder_url, timeout=60_000)
             await wait_for_folder_rows(page)
             already_moved = await find_file_row(page, name, missing_ok=True)
         finally:

@@ -14,6 +14,7 @@ class SkippedMoveTests(unittest.IsolatedAsyncioTestCase):
         page = MagicMock()
         page.url = "https://onedrive.live.com/my?folder=parent"
         page.goto = AsyncMock()
+        page.wait_for_url = AsyncMock()
         with (patch.object(FLOW, "find_file_row", new=AsyncMock(
                 side_effect=[None, RuntimeError("Missing from skipped")])) as find,
               patch.object(FLOW, "scroll_file_list", new=AsyncMock()),
@@ -52,6 +53,7 @@ class SkippedMoveTests(unittest.IsolatedAsyncioTestCase):
         page = MagicMock()
         page.url = "https://onedrive.live.com/my?folder=parent"
         page.goto = AsyncMock()
+        page.wait_for_url = AsyncMock()
         page.locator.return_value.get_by_text.return_value.dblclick = AsyncMock()
         with (patch.object(FLOW, "find_file_row", new=AsyncMock(side_effect=[None, object()])) as find,
               patch.object(FLOW, "scroll_file_list", new=AsyncMock()),
@@ -59,6 +61,10 @@ class SkippedMoveTests(unittest.IsolatedAsyncioTestCase):
             await FLOW.move_skipped_workbook(page, "excluded.xlsx")
         self.assertEqual(find.await_count, 2)
         page.frame_locator.assert_not_called()
+        page.wait_for_url.assert_awaited_once()
+        destination_ready = page.wait_for_url.await_args.args[0]
+        self.assertFalse(destination_ready(page.url))
+        self.assertTrue(destination_ready(page.url + "&id=skipped"))
         page.goto.assert_awaited_once_with(page.url, wait_until="domcontentloaded", timeout=120_000)
 
     async def test_failed_move_remains_pending_after_reopen(self):
