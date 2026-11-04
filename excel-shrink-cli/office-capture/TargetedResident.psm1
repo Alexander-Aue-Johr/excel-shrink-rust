@@ -77,6 +77,7 @@ function Start-TargetedWorkbook {
         # This launcher already owns a private desktop. An inherited hide flag
         # would create a second desktop, outside the native adapter's scope.
         EXCEL_SHRINK_HIDE_EXCEL='0'
+        EXCEL_SHRINK_CAPTURE_MANUAL_CALCULATION=$(if ($Command.manual_calculation -eq $true) { '1' } else { '0' })
     }
     $startupSlot = Enter-TargetedStartupSlot $Command.timeout_seconds
     $previous = @{}

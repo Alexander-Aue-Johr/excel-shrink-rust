@@ -627,7 +627,7 @@ function Open-ResidentClient($spec, $visibilityOverride = $null) {
     Copy-Item -LiteralPath $source -Destination $book
     Add-AutoOpenTaskpane $book $guid $version
     for ($attempt = 0; $attempt -lt 12; $attempt++) {
-        try { Set-InitialWorksheet $book ([int]$spec.sheets[0].index) $true; break }
+        try { Set-InitialWorksheet $book ([int]$spec.sheets[0].index) $true ($env:EXCEL_SHRINK_CAPTURE_MANUAL_CALCULATION -eq '1'); break }
         catch { if ($attempt -eq 11) { throw }; Start-Sleep -Milliseconds 250 }
     }
     $registrations[$guid] = Register-AddIn $guid $manifestPath

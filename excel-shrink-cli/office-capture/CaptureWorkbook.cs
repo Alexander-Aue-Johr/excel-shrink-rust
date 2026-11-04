@@ -14,15 +14,45 @@ public static class CaptureWorkbook
 
     public static void HideErrorIndicators(string workbook)
     {
-        Prepare(workbook, null, true);
+        Prepare(workbook, null, true, false);
     }
 
     // Only the disposable capture copy may be passed here. Open-time measurement
     // and shrink inputs retain their original workbook/view state.
     public static void PrepareCapture(string workbook, int initialWorksheet, bool hideErrorIndicators)
     {
+        PrepareCapture(workbook, initialWorksheet, hideErrorIndicators, false);
+    }
+
+    /// <summary>Prepare a disposable comparison copy. Manual calculation suppresses the
+    /// implicit open/save recalculation; an explicit full rebuild remains a separate job.</summary>
+    public static void PrepareCapture(string workbook, int initialWorksheet, bool hideErrorIndicators, bool manualCalculation)
+    {
         if (initialWorksheet < 1) throw new ArgumentOutOfRangeException("initialWorksheet");
-        Prepare(workbook, initialWorksheet, hideErrorIndicators);
+        Prepare(workbook, initialWorksheet, hideErrorIndicators, manualCalculation);
+    }
+
+    /// <summary>Suppress implicit calculation without changing formulas, cached values or iteration settings.</summary>
+    private static void SetManualCalculation(XmlDocument workbook)
+    {
+        var root = workbook.DocumentElement;
+        var calculation = root["calcPr", root.NamespaceURI];
+        if (calculation == null)
+        {
+            calculation = workbook.CreateElement(root.Prefix, "calcPr", root.NamespaceURI);
+            var following = new HashSet<string>(StringComparer.Ordinal) {
+                "oleSize", "customWorkbookViews", "pivotCaches", "smartTagPr", "smartTagTypes",
+                "webPublishing", "fileRecoveryPr", "webPublishObjects", "extLst"
+            };
+            XmlNode next = null;
+            foreach (XmlNode child in root.ChildNodes)
+                if (child.NamespaceURI == root.NamespaceURI && following.Contains(child.LocalName)) { next = child; break; }
+            root.InsertBefore(calculation, next);
+        }
+        calculation.SetAttribute("calcMode", "manual");
+        calculation.SetAttribute("fullCalcOnLoad", "0");
+        calculation.SetAttribute("forceFullCalc", "0");
+        calculation.SetAttribute("calcOnSave", "0");
     }
 
     private sealed class InitialSelection
@@ -33,7 +63,7 @@ public static class CaptureWorkbook
         public int ViewCount;
     }
 
-    private static void Prepare(string workbook, int? initialWorksheet, bool hideErrorIndicators)
+    private static void Prepare(string workbook, int? initialWorksheet, bool hideErrorIndicators, bool manualCalculation)
     {
         var pending = workbook + ".prepared";
         try
@@ -44,6 +74,7 @@ public static class CaptureWorkbook
             {
                 var worksheets = WorksheetParts(source);
                 var selection = initialWorksheet.HasValue ? ReadInitialSelection(source, initialWorksheet.Value, worksheets) : null;
+                if (manualCalculation) SetManualCalculation(selection.Workbook);
                 foreach (var entry in source.Entries)
                 {
                     var copy = output.CreateEntry(entry.FullName, CompressionLevel.Fastest);

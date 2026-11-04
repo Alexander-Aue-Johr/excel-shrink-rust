@@ -98,10 +98,10 @@ function Add-AutoOpenTaskpane([string]$workbook, [string]$addInId, [string]$vers
     } finally { $archive.Dispose() }
 }
 
-function Set-InitialWorksheet([string]$workbook, [int]$index, [bool]$hideErrorIndicators = $false) {
+function Set-InitialWorksheet([string]$workbook, [int]$index, [bool]$hideErrorIndicators = $false, [bool]$manualCalculation = $false) {
     # These paths are the private document copies, never shrink inputs or outputs.
     # activeTab and tabSelected must agree in every workbook window.
-    [CaptureWorkbook]::PrepareCapture($workbook, $index, $hideErrorIndicators)
+    [CaptureWorkbook]::PrepareCapture($workbook, $index, $hideErrorIndicators, $manualCalculation)
 }
 
 function Register-AddIn([string]$id, [string]$manifestPath) {

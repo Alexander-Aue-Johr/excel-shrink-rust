@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const POLICY: &str = "excel-control-artifacts-v1";
+const POLICY: &str = "excel-control-artifacts-v2";
 
 pub(super) struct Store {
     directory: PathBuf,

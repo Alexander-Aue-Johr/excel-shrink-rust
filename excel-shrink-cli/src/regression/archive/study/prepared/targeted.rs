@@ -370,6 +370,8 @@ mod tests {
         assert!(!complete(&record, false));
         record["targeted_comparison"]["policy"] = json!("targeted-content-grid-v3");
         assert!(!complete(&record, false));
+        record["targeted_comparison"]["policy"] = json!("targeted-content-grid-v4");
+        assert!(!complete(&record, false));
         record["targeted_comparison"]["policy"] = json!("unknown-future-policy");
         assert!(!complete(&record, false));
         record["targeted_comparison"]["policy"] = json!(POLICY);

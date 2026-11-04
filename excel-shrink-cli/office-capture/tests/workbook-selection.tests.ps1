@@ -182,6 +182,35 @@ try {
         }
         Remove-Item -LiteralPath $source -Force
     }
+    # Original formulas/cached values must survive controlled manual startup.
+    # Enron 3.295893 (47 sheets) stalled in automatic open but became ready in <10 s manually.
+    foreach ($namespace in @('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'http://purl.oclc.org/ooxml/spreadsheetml/main')) {
+        foreach ($existing in @($false,$true)) {
+            $source = Join-Path $root ('manual-' + [Guid]::NewGuid().ToString('N') + '.xlsx')
+            $parts = Fixture $namespace 'x'
+            $calculation = if($existing){'<x:calcPr calcId="123" calcMode="auto" fullCalcOnLoad="1" forceFullCalc="1" calcOnSave="1" iterateCount="42"/>'}else{''}
+            $parts['xl/workbook.xml']=$parts['xl/workbook.xml'].Replace('</x:workbook>',($calculation+'<x:extLst/></x:workbook>'))
+            New-Workbook $source $parts
+            Set-InitialWorksheet $source 3 $false $true
+            $prepared=Read-Parts $source
+            $xml=Parse-Xml $prepared['xl/workbook.xml']
+            $node=$xml.DocumentElement['calcPr',$namespace]
+            Assert-Equal $node.GetAttribute('calcMode') 'manual' 'Open must not trigger automatic calculation'
+            foreach($attribute in @('fullCalcOnLoad','forceFullCalc','calcOnSave')){Assert-Equal $node.GetAttribute($attribute) '0' 'Implicit recalculation must be disabled'}
+            Assert-Equal $node.NextSibling.LocalName 'extLst' 'calcPr schema order must precede extLst'
+            if($existing){Assert-Equal $node.GetAttribute('iterateCount') '42' 'Unrelated calculation settings must survive'}
+            foreach($part in @('xl/worksheets/alpha.xml','xl/worksheets/custom-name.xml')) {
+                $before=Parse-Xml $parts[$part];$after=Parse-Xml $prepared[$part]
+                Assert-Equal ($after.SelectSingleNode('//*[local-name()="sheetData"]').OuterXml) ($before.SelectSingleNode('//*[local-name()="sheetData"]').OuterXml) 'Formulas and cached cell values must be preserved'
+            }
+            $before=Read-Parts $source
+            Set-InitialWorksheet $source 3 $false $true
+            $after=Read-Parts $source
+            Assert-Equal $after['xl/workbook.xml'] $before['xl/workbook.xml'] 'Manual preparation must be idempotent'
+            Remove-Item -LiteralPath $source -Force
+        }
+    }
+
     foreach ($failure in @('hidden', 'outside', 'missing-relationship', 'missing-part', 'invalid-view-id')) {
         $source = Join-Path $root ($failure + '.xlsx')
         $parts = Fixture 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' ''
