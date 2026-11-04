@@ -123,6 +123,26 @@ pub(super) async fn comparisons(State(room): State<Arc<Room>>) -> HttpResult<Jso
     ))
 }
 
+/// Load the durable portable report for this workbook, never a different live attempt.
+pub(super) async fn report(
+    State(room): State<Arc<Room>>,
+    RoutePath(id): RoutePath<String>,
+) -> HttpResult<Json<Value>> {
+    safe_id(&id)?;
+    let study = room.root.parent().context("Missing study directory.")?;
+    let mut diagnostics = Vec::new();
+    let record_path = confined_path(study, &format!("records/{id}.json"))?;
+    let record = read_snapshot(&record_path, &mut diagnostics, SNAPSHOT_LIMIT).await
+        .ok_or_else(|| ApiError::not_found("No durable result for this workbook."))?;
+    let relative = record["targeted_comparison"]["targeted_report_file"].as_str()
+        .filter(|path| path.starts_with("evidence/") && path.ends_with("/portable-report.json"))
+        .ok_or_else(|| ApiError::not_found("No completed targeted report is available yet."))?;
+    let path = confined_path(study, relative)?;
+    let report = read_snapshot(&path, &mut diagnostics, SNAPSHOT_LIMIT).await
+        .ok_or_else(|| ApiError::not_found("The retained targeted report could not be read."))?;
+    Ok(Json(report))
+}
+
 /// Read existing launcher observations, never manufacture beats from a live PID.
 async fn enrich_addin_heartbeats(
     room: &Room,

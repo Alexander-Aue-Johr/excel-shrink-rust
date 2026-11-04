@@ -131,6 +131,7 @@ struct Tracker {
     phase: String,
     comparison_pass: String,
     hash_sweep: Option<Value>,
+    targeted_comparison: bool,
     last: Instant,
     active_seconds: f64,
     target: usize,
@@ -412,7 +413,7 @@ impl Tracker {
         let rate = self.comparison.per_hour();
         json!({"version":2,"run_id":self.run_id,"scope":self.scope,"phase":phase,"paused":paused,
             "visual_scope_frozen":self.visual_scope_frozen,"active_preparation":active_preparation,
-            "hash_sweep":self.hash_sweep,
+            "hash_sweep":self.hash_sweep,"targeted_comparison":self.targeted_comparison,
             "updated_unix_ms":now_ms,
             "counts":{"total":total,"completed":completed,"skipped":skipped,"remaining":remaining,
                 "in_progress":self.active.len(),"prepared":prepared,
@@ -479,6 +480,7 @@ pub(super) fn initialize(
         attempts: AttemptActivity::default(),
         phase: "preparing".into(),
         hash_sweep: None,
+        targeted_comparison: run["options"]["targeted_comparison"] == true,
         comparison_pass: if run["options"]["preparation_hash_profile"].is_string() {
             strategy::HASH_SCREEN.into()
         } else if run["options"]["aggressive_first"] == true {
@@ -697,6 +699,7 @@ mod tests {
             phase: "comparing".into(),
             comparison_pass: "full".into(),
             hash_sweep: None,
+            targeted_comparison: false,
             last: Instant::now(),
             active_seconds: 0.0,
             target: 3,

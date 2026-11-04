@@ -83,6 +83,8 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         .route("/api/targeted-comparisons", get(targeted::comparisons))
         .route("/api/groups/{id}", get(group))
         .route("/api/groups/{id}/targeted-compare", post(targeted::start))
+        .route("/api/groups/{id}/targeted-report", get(targeted::report))
+        .route("/api/evidence/{*path}", get(evidence_asset))
         .route("/api/groups/{id}/capture-sheet", post(manual_capture::start))
         .route("/api/manual-captures/{id}", get(manual_capture::state))
         .route("/api/run/stop", post(stop))
@@ -1343,6 +1345,20 @@ async fn command(
         .await
         .ok_or_else(|| ApiError::not_found("Unknown command."))?;
     Ok(Json(value))
+}
+
+/// Retained targeted evidence lives beside control-room, under the study evidence tree.
+async fn evidence_asset(
+    State(room): State<Arc<Room>>,
+    RoutePath(relative): RoutePath<String>,
+    request: Request,
+) -> HttpResult<Response> {
+    let study = room.root.parent().context("Missing study directory.")?;
+    let path = confined_path(study, &format!("evidence/{relative}"))?;
+    if path.extension().and_then(|value| value.to_str()) != Some("png") || !path.is_file() {
+        return Err(ApiError::not_found("Unknown evidence image."));
+    }
+    Ok(ServeFile::new(path).try_call(request).await?.map(Body::new))
 }
 
 async fn asset(

@@ -9,6 +9,7 @@ import { findCaptureTile, profileForClient, latestTileForProfile } from './captu
 import { createControlUpdates } from './control-state.js';
 import { createTargetedPanel } from './targeted-panel.js';
 import { createManualCaptureControls } from './manual-capture.js';
+import { createAtelier } from './atelier.js';
 
 const $ = id => document.getElementById(id);
 const manualCaptures = createManualCaptureControls(document.querySelector('.heading-actions'), {
@@ -17,6 +18,15 @@ const manualCaptures = createManualCaptureControls(document.querySelector('.head
   notice: (...args) => setNotice(...args),
 });
 const targetedPanel = createTargetedPanel($('targetedComparison'));
+const atelier = createAtelier();
+const openAtelier = document.createElement('button');
+openAtelier.type = 'button';
+openAtelier.textContent = 'Open atelier';
+openAtelier.disabled = true;
+openAtelier.addEventListener('click', () => {
+  if (state.groupId) void atelier.open(String(state.groupId), $('workbook').textContent);
+});
+document.querySelector('.heading-actions').append(openAtelier);
 const startTargeted = document.createElement('button');
 startTargeted.type = 'button';
 startTargeted.disabled = true;
@@ -78,6 +88,7 @@ const WORKBOOK_FILTER_LABELS = {
   all: 'All selected workbooks',
   'needs-visual': 'Visual comparison needed',
   identical: 'Visually identical',
+  'checked-no-differences': 'Checked: no differences detected',
   differences: 'Differences found',
   'crc-unchanged': 'Unchanged by shrink',
   'workbook-only': 'Only workbook.xml cleanup',
@@ -1054,6 +1065,8 @@ function matchesGroupFilter(group, filter) {
   switch (filter) {
     case 'needs-visual':
       return group.preparation_disposition === 'needs_visual';
+    case 'checked-no-differences':
+      return group.checked_no_differences === true;
     case 'identical':
       return group.visually_identical === true;
     case 'differences':
@@ -1166,7 +1179,13 @@ function renderWorkbookKpis() {
     $('workbookKpis').replaceChildren();
     return;
   }
-  const buttons = Object.entries(WORKBOOK_FILTER_LABELS).map(([filter, label]) => {
+  const mainFilters = new Set(['all', 'needs-visual', 'checked-no-differences', 'differences']);
+  const buttons = Object.entries(WORKBOOK_FILTER_LABELS)
+    .filter(([filter]) => mainFilters.has(filter) || Number(counts[filter] || 0) > 0)
+    .filter(([filter]) => !state.queue?.progress?.targeted_comparison || ![
+      'identical', 'screened', 'secondary-pending', 'default-investigate'
+    ].includes(filter))
+    .map(([filter, label]) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'workbook-kpi';
@@ -1205,6 +1224,7 @@ function renderWorkbookResultList() {
     name.addEventListener('click', () => {
       panel.hidden = true;
       selectGroup(String(row.id));
+      if (row.differences_found) atelier.open(String(row.id), groupName(row));
     });
     const details = document.createElement('span');
     details.className = 'workbook-result-reason';
@@ -1293,7 +1313,10 @@ function renderGroups() {
     const done = Number(group.completed_tiles ?? group.tiles_compared ?? 0), total = Number(group.total_tiles ?? 0);
     fill.style.width = `${total > 0 ? Math.min(100, done / total * 100) : ['complete', 'completed', 'finished', 'unchanged', 'crc-identical', 'workbook-only', 'differences', 'skipped'].includes(group.status) ? 100 : 0}%`; progress.append(fill);
     const foot = document.createElement('span'); foot.className = 'group-foot'; foot.textContent = total ? `${done} / ${total} tiles` : group.corpus || 'Status from runner';
-    button.append(head, name, description, progress, foot); button.addEventListener('click', () => selectGroup(String(group.id))); return button;
+    button.append(head, name, description, progress, foot); button.addEventListener('click', () => {
+      selectGroup(String(group.id));
+      if (group.differences_found || group.status === 'differences') atelier.open(String(group.id), groupName(group));
+    }); return button;
   }));
 }
 function updateControlInputs() {
@@ -1409,6 +1432,7 @@ async function sendControl(change) {
   finally { controlUpdates.endWrite(); controlBusy = false; for (const id of ['sweepProcesses', 'prepareProcesses', 'shrinkThreads', 'applyTarget', 'applyReserve', 'disableReserve', 'pauseJobs', 'applyTimeouts', 'equalPreview', 'captureTransport', 'applyCapture', 'applyTallSheet', 'applyCrcEqualSheet', 'hideExcel']) $(id).disabled = false; $('applyReserve').textContent = 'Set'; updateControlInputs(); }
 }
 function selectGroup(id) {
+  openAtelier.disabled = !id;
   if (id === state.groupId) return;
   if (pendingCaptureJump?.groupId !== String(id)) pendingCaptureJump = null;
   state.groupId = id; state.sheetId = null; state.focus = 'overview'; lastFocusKey = ''; state.view = { mode: 'sheet', x: 0, y: 0, width: 1800, height: 1800 * AREA_H / AREA_W }; latestCapture = null; previousImages.clear(); flashes.clear();
@@ -1542,6 +1566,14 @@ async function poll() {
     controlUpdates.acceptRead(controlRevision, queue.controls || {});
     queue.controls = state.controls;
     state.queue = queue; state.connected = true; state.error = null;
+    const targetedMode = queue.progress?.targeted_comparison === true;
+    document.body.classList.toggle('targeted-mode', targetedMode);
+    for (const id of ['sweepProcesses', 'equalPreview']) {
+      $(id).closest('.control').hidden = targetedMode;
+    }
+    document.querySelector('.experiment-controls').hidden = targetedMode;
+    startTargeted.hidden = targetedMode;
+    $('resetCamera').hidden = targetedMode;
     maybeRefreshWorkbookIndex();
     workerMonitor?.update(queue);
     targetedPanel.refresh().then(() => {

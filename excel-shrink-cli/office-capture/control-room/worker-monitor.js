@@ -434,8 +434,12 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     const preparationBar = element('progress', 'wm-phase-bar');
     preparationBar.max = 100;
     preparationBar.value = 100 * (summary.preparationRatio ?? 0);
-    const active = summary.activePreparation.length
-      ? ` · Current: ${summary.activePreparation.join(', ')}` : '';
+    const activeFiles = element('ul', 'wm-preparing-files');
+    for (const name of summary.activePreparation) {
+      const file = element('li', 'wm-preparing-file', name.split(/[\\/]/).pop());
+      file.title = name;
+      activeFiles.append(file);
+    }
     phases.append(preparation, preparationBar);
     const sweep = element('div', 'wm-phase-row');
     const sweepProgress = summary.hashSweep;
@@ -444,7 +448,7 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     const sweepBar = element('progress', 'wm-phase-bar');
     sweepBar.max = 100;
     sweepBar.value = sweepProgress ? (sweepProgress.total ? 100 * sweepProgress.completed / sweepProgress.total : 100) : 0;
-    phases.append(sweep, sweepBar);
+    if (sweepProgress) phases.append(sweep, sweepBar);
     const activeCaptureKeys = new Set();
     for (const worker of queue.capture_workers || []) {
       const key = captureProcessKey(worker);
@@ -460,7 +464,8 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
     for (const key of captureViews.keys()) {
       if (!activeCaptureKeys.has(key)) captureViews.delete(key);
     }
-    phases.append(element('p', 'wm-progress-note', `${summary.preparationPerMinute}/min · ${summary.preparationPerHour}/h · ${summary.preparationEta}${active}`));
+    phases.append(element('p', 'wm-progress-note', `${summary.preparationPerMinute}/min · ${summary.preparationPerHour}/h · ${summary.preparationEta}`));
+    if (activeFiles.childElementCount) phases.append(activeFiles);
     if (summary.visualScopeFrozen) {
       const comparison = element('div', 'wm-phase-row');
       comparison.append(element('strong', null, 'Visual comparison'),

@@ -1,7 +1,7 @@
 //! A paged view of the study's durable preparation and comparison records.
 use serde_json::{json, Value};
 
-pub(super) const FILTERS: [&str; 23] = [
+pub(super) const FILTERS: [&str; 24] = [
     "all",
     "crc-unchanged",
     "workbook-only",
@@ -10,6 +10,7 @@ pub(super) const FILTERS: [&str; 23] = [
     "other-excluded",
     "needs-visual",
     "identical",
+    "checked-no-differences",
     "differences",
     "deferred",
     "recalc-drift",
@@ -53,6 +54,7 @@ fn matches_filter(row: &Value, filter: &str) -> bool {
         }
         "needs-visual" => row["preparation_disposition"] == "needs_visual",
         "identical" => row["visually_identical"] == true,
+        "checked-no-differences" => row["checked_no_differences"] == true,
         "differences" => row["differences_found"] == true,
         "deferred" => row["has_capture_deferred"] == true,
         "recalc-drift" => row["has_recalc_identity_changed"] == true,
@@ -127,6 +129,20 @@ pub(super) fn find<'a>(index: &'a Value, id: &str) -> Option<&'a Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checked_without_differences_is_an_explicit_completed_verdict() {
+        let index = json!({"workbooks":[
+            {"id":"checked","checked_no_differences":true,"visually_identical":false},
+            {"id":"skipped","status":"skipped"},
+            {"id":"pending","differences_found":false},
+            {"id":"excluded","preparation_disposition":"crc_unchanged"}
+        ]});
+        let result = page(&index, "checked-no-differences", "", 0, 100);
+        assert_eq!(result["total"], 1);
+        assert_eq!(result["workbooks"][0]["id"], "checked");
+        assert_eq!(result["counts"]["identical"], 0);
+    }
 
     #[test]
     fn diagnosis_and_screening_filters_do_not_claim_full_identity() {

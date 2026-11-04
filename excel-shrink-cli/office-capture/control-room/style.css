@@ -1301,3 +1301,26 @@ body.presenting .experiment-controls,body.presenting .process-section { display:
   width: 100%;
   margin: 5px 0;
 }
+
+/* Targeted reports use the evidence atelier rather than the legacy tile scene. */
+.targeted-mode .room,
+.targeted-mode .sheetbar,
+.targeted-mode .pan-controls,
+.targeted-mode .detail-tools,
+.targeted-mode .process-section { display: none; }
+.wm-preparing-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; list-style: none; }
+.wm-preparing-file { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 6px 10px; border: 1px solid #345264; border-radius: 6px; background: #122c3b; font-size: 12px; }
+.atelier { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 18px;
+  box-sizing: border-box; background: #0d1d29; color: #e6eef3; border: 0; }
+.atelier[open] { display: flex; flex-direction: column; gap: 12px; }
+.atelier-header, .atelier-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.atelier-header strong { flex: 1; overflow-wrap: anywhere; }
+.atelier-tools select { max-width: min(70vw, 900px); }
+.atelier-note { color: #adc2d0; margin: 0; }
+.atelier-images { overflow: auto; flex: 1; min-height: 0; background: #203341; }
+.atelier-pair { display: flex; gap: 0; align-items: flex-start; width: max-content; }
+.atelier-figure { margin: 0; flex: 0 0 auto; }
+.atelier-figure figcaption { padding: 8px; background: #152b3a; }
+.atelier-figure img { display: block; max-width: none; height: auto; background: white; }
+.atelier-empty { padding: 24px; }

@@ -1218,6 +1218,9 @@ fn write_workbook_index(output: &Path, records: &[Value]) -> Result<()> {
             "status":record["status"],"error":record["error"],
             "crc_equal_after_shrink":record["preparation_disposition"] == "crc_unchanged",
             "visually_identical":visually_identical,
+            "checked_no_differences":visually_identical || (record["complete"] == true
+                && record["status"] == "unchanged"
+                && record["targeted_comparison"]["status"] == "completed_with_limitations"),
             "differences_found":matches!(record["status"].as_str(), Some("differences" | "screening-differences")),
             "priority_validation":record["priority_validation"],
             "diagnosis_categories":strategy::diagnosis_categories(record),
@@ -1229,7 +1232,10 @@ fn write_workbook_index(output: &Path, records: &[Value]) -> Result<()> {
             "source_format":record["source_format"],
             "profile_equivalence":record["profile_equivalence"],
             "available_variants":{"original":available,"default":available,
-                "maximum-cleaning":available,"too-aggressive-cleaning":available}
+                "maximum-cleaning":available && record["results"].as_array().is_some_and(|rows|
+                    rows.iter().any(|row| row["profile"] == "maximum-cleaning")),
+                "too-aggressive-cleaning":available && record["results"].as_array().is_some_and(|rows|
+                    rows.iter().any(|row| row["profile"] == "too-aggressive-cleaning"))}
         }))
     }).collect();
     let index = json!({"version":1,"run_id":run_id,
