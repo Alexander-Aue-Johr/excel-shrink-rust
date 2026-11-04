@@ -263,9 +263,9 @@ fn reference_sensitive_candidate_cause(
     // Use the already parsed row/column metadata; no text/style decoding needed.
     if is_hidden
         && has_cell_content
-        && cell.row_view().is_none_or(|row| {
-            !row.hidden && !(row.has_height && row.has_custom_height)
-        })
+        && cell
+            .row_view()
+            .is_none_or(|row| !row.hidden && !(row.has_height && row.has_custom_height))
     {
         return None;
     }
@@ -868,7 +868,9 @@ pub(super) fn empty_cell_overrides_row_font(
 ) -> bool {
     !has_cell_content
         && params.cleanup.keep_textless_column_style_representatives
-        && cell.row_view().and_then(|row| row.style)
+        && cell
+            .row_view()
+            .and_then(|row| row.style)
             .filter(|row_style| row_style.apply_font)
             .zip(cell.style(params))
             .is_some_and(|(row_style, cell_style)| {
@@ -1005,6 +1007,16 @@ fn cell_has_relevant_protection_style(
     params: &CleanSheetParameters,
     metrics: &CleanSheetMetrics,
 ) -> bool {
+    // Default bounds protection-only cells to the original visual data extent.
+    // Values, formulas and visible formatting retain their independent guards.
+    if params.cleanup.inactive_protection_cell_policy
+        == InactiveProtectionCellPolicy::KeepInDataRange
+        && metrics
+            .visible_data_range_bounds
+            .cell_is_outside(cell.col_num, digits_byte_string_to_integer(cell.row))
+    {
+        return false;
+    }
     if !metrics.sheet_protection_enabled
         && !inactive_protection_policy_keeps_cell(cell, params, metrics)
     {

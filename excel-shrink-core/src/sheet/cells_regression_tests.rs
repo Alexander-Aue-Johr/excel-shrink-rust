@@ -1666,23 +1666,54 @@ fn hidden_column_content_preserves_automatic_row_height() {
             params.cleanup.unreferenced_whitespace_cells = true;
             let mut metrics = CleanSheetMetrics::default();
             metrics.column_definitions.add(ColumnDefinition {
-                min: 1, max: 1, cell_xf: None, hidden: true,
+                min: 1,
+                max: 1,
+                cell_xf: None,
+                hidden: true,
             });
             metrics.column_definitions.finalize();
             let row = RowView {
-                promoted_style_id: None, raw_attributes: b"", reference: b"3",
-                hidden: hidden_row, style: None, has_height: true,
-                has_custom_height: fixed_height, number: Some(3), spans: None,
+                promoted_style_id: None,
+                raw_attributes: b"",
+                reference: b"3",
+                hidden: hidden_row,
+                style: None,
+                has_height: true,
+                has_custom_height: fixed_height,
+                number: Some(3),
+                spans: None,
             };
             let raw = br#"<c r="A3" t="inlineStr"><is><t>Heading
 second line</t></is></c>"#;
             let cell = ParsedCell {
-                column: None, row_view: Some(&row),
+                column: None,
+                row_view: Some(&row),
                 ..parsed_a3_cell(raw, br#" r="A3" t="inlineStr""#, None)
             };
             let cleaned = replace_parsed_cell(&cell, &params, &mut metrics);
             assert_eq!(cleaned.as_ref(), raw);
-            assert_eq!(metrics.candidates.len(), usize::from(hidden_row || fixed_height));
+            assert_eq!(
+                metrics.candidates.len(),
+                usize::from(hidden_row || fixed_height)
+            );
         }
     }
+}
+
+/// Protection remains meaningful inside the visual extent, but does not anchor empty tails.
+#[test]
+fn data_range_policy_bounds_active_protection_without_retaining_empty_tail_cells() {
+    let mut params = params_with_styles(&[(7, apply_protection_style())]);
+    params.cleanup.inactive_protection_cell_policy = InactiveProtectionCellPolicy::KeepInDataRange;
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.sheet_protection_enabled = true;
+    metrics.visible_data_range_bounds.include_cell(1, 2);
+    let xml = br#"<c r="A3" s="7"/>"#;
+    let cell = parsed_a3_cell(xml, br#" r="A3" s="7""#, Some(7));
+    assert!(replace_parsed_cell(&cell, &params, &mut metrics).is_empty());
+    metrics.visible_data_range_bounds.include_cell(1, 3);
+    assert_eq!(
+        replace_parsed_cell(&cell, &params, &mut metrics).as_ref(),
+        xml
+    );
 }

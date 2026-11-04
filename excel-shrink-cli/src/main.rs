@@ -183,10 +183,11 @@ pub struct Cli {
     /// Policy for cells that are only relevant because of applyProtection/protection style
     /// while the worksheet has no active sheetProtection.
     ///
-    /// remove (default): remove inactive protection-only cells, including inside the visible data range.
-    /// keep-in-data-range: keep inactive protection-only cells only inside the actual visible data range.
+    /// remove: remove inactive protection-only cells, including inside the visible data range.
+    /// keep-in-data-range (default): retain protection-only cells inside the visual data range;
+    /// this also bounds protection-only cells on actively protected sheets.
     /// keep-all: keep all inactive protection-only cells, including outside the actual visible data range.
-    #[arg(long, value_enum, default_value_t = InactiveProtectionCellPolicyArg::Remove)]
+    #[arg(long, value_enum, default_value_t = InactiveProtectionCellPolicyArg::KeepInDataRange)]
     inactive_protection_cell_policy: InactiveProtectionCellPolicyArg,
 
     /// Console log level.
@@ -294,7 +295,9 @@ fn parse_rayon_threads(value: &str) -> Result<usize, String> {
         .map(|count| count.get())
         .unwrap_or(1);
     if !(1..=logical_cpus).contains(&threads) {
-        return Err(format!("Rayon threads must be between 1 and {logical_cpus}"));
+        return Err(format!(
+            "Rayon threads must be between 1 and {logical_cpus}"
+        ));
     }
     Ok(threads)
 }
@@ -526,14 +529,9 @@ mod tests {
 
     #[test]
     fn cli_bounds_rayon_threads_to_available_logical_cpus() {
-        let cli = Cli::try_parse_from([
-            "excel-shrink",
-            "input.xlsx",
-            "out",
-            "--rayon-threads",
-            "1",
-        ])
-        .unwrap();
+        let cli =
+            Cli::try_parse_from(["excel-shrink", "input.xlsx", "out", "--rayon-threads", "1"])
+                .unwrap();
         assert_eq!(cli.rayon_threads, Some(1));
 
         for invalid in [
@@ -648,12 +646,12 @@ mod tests {
     }
 
     #[test]
-    fn cli_defaults_inactive_protection_policy_to_remove() {
+    fn cli_defaults_protection_policy_to_visible_data_range() {
         let cli = Cli::parse_from(["excel-shrink", "input.xlsx", "out"]);
 
         assert_eq!(
             cli.inactive_protection_cell_policy,
-            InactiveProtectionCellPolicyArg::Remove
+            InactiveProtectionCellPolicyArg::KeepInDataRange
         );
     }
 

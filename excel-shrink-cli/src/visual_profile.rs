@@ -36,7 +36,7 @@ pub const PREDEFINED_VISUAL_PROFILES: [PredefinedVisualProfile; 9] = [
             remove_textless_default_font_representatives: false,
             remove_textless_style_representatives: false,
             remove_textless_column_style_representatives: false,
-            inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::Remove,
+            inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::KeepInDataRange,
             remove_unreferenced_whitespace_cells: false,
             keep_unreferenced_hidden_content_cells: false,
             cell_formula_references_only: false,
@@ -146,7 +146,7 @@ impl Default for VisualProfileConfig {
             remove_textless_default_font_representatives: false,
             remove_textless_style_representatives: false,
             remove_textless_column_style_representatives: false,
-            inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::Remove,
+            inactive_protection_cell_policy: InactiveProtectionCellPolicyArg::KeepInDataRange,
             remove_unreferenced_whitespace_cells: false,
             keep_unreferenced_hidden_content_cells: false,
             cell_formula_references_only: false,
@@ -252,13 +252,10 @@ impl VisualProfileConfig {
             self.remove_textless_column_style_representatives,
             REMOVE_TEXTLESS_COLUMN_STYLE_REPRESENTATIVES,
         );
-        match self.inactive_protection_cell_policy {
-            InactiveProtectionCellPolicyArg::Remove => {}
-            policy => {
-                args.push("--inactive-protection-cell-policy".to_string());
-                args.push(inactive_protection_cell_policy_name(policy).to_string());
-            }
-        }
+        args.push("--inactive-protection-cell-policy".to_string());
+        args.push(
+            inactive_protection_cell_policy_name(self.inactive_protection_cell_policy).to_string(),
+        );
         push_enabled_cli_flag(
             &mut args,
             self.remove_unreferenced_whitespace_cells,
@@ -498,7 +495,7 @@ fn visual_profile_from_config_with_hash(
         remove_whitespace,
         keep_hidden,
     ) {
-        (false, false, false, Remove, false, false) => VisualProfile::Default,
+        (false, false, false, KeepInDataRange, false, false) => VisualProfile::Default,
         (true, true, false, Remove, false, false) => {
             VisualProfile::RemoveBasicTextlessRepresentatives
         }
@@ -508,9 +505,6 @@ fn visual_profile_from_config_with_hash(
         }
         (false, false, false, Remove, false, true) => {
             VisualProfile::KeepUnreferencedHiddenContentCells
-        }
-        (false, false, false, KeepInDataRange, false, false) => {
-            VisualProfile::KeepInactiveProtectionCellsInDataRange
         }
         (false, false, false, KeepAll, false, false) => {
             VisualProfile::KeepAllInactiveProtectionCells
@@ -593,7 +587,7 @@ mod tests {
         assert_eq!(
             visual_profile_from_config(&config(false, false, false, KeepInDataRange, false, false))
                 .name(),
-            "keep-inactive-protection-cells-in-data-range"
+            "default"
         );
         assert_eq!(
             visual_profile_from_config(&config(false, false, false, KeepAll, false, false)).name(),
@@ -699,7 +693,13 @@ mod tests {
         for predefined in predefined_visual_profiles() {
             let resolved = ResolvedVisualProfile::from_config(predefined.config);
 
-            assert_eq!(resolved.profile_name(), predefined.name);
+            let expected = if predefined.name == "keep-inactive-protection-cells-in-data-range" {
+                "default" // Retained diagnostic alias now has the production Default configuration.
+            } else {
+                predefined.name
+            };
+            assert_eq!(resolved.profile_name(), expected);
+            assert_eq!(resolved.config, predefined.config);
             assert_eq!(resolved.profile_kind(), "predefined");
         }
     }
@@ -716,7 +716,13 @@ mod tests {
             let cli = Cli::parse_from(args);
             let resolved = ResolvedVisualProfile::from_cli(&cli);
 
-            assert_eq!(resolved.profile_name(), predefined.name);
+            let expected = if predefined.name == "keep-inactive-protection-cells-in-data-range" {
+                "default" // Retained diagnostic alias now has the production Default configuration.
+            } else {
+                predefined.name
+            };
+            assert_eq!(resolved.profile_name(), expected);
+            assert_eq!(resolved.config, predefined.config);
         }
     }
 }

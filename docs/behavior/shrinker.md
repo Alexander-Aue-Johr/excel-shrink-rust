@@ -152,8 +152,10 @@ switch supplies that proof. Focused cases must establish any future admitted rul
 
 ### S4.2. Protection
 
-Protection can be inherited from a cell, row or column XF. A protected sheet
-keeps relevant protection-only cells. For an unprotected sheet, the policy is:
+Protection can be inherited from a cell, row or column XF. Default uses
+`KeepInDataRange`, including on protected sheets. Protection-only cells outside
+the recorded visible data range do not prevent cleanup. Values, references and
+visible formatting retain their independent guards. Explicit policies are:
 
 - `Remove`: inactive protection alone does not justify keeping the cell.
 - `KeepInDataRange`: retain applicable cells inside the recorded visible range.
