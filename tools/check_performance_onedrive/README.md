@@ -122,7 +122,9 @@ returning from Excel. The runner uses OneDrive's Move to picker and waits for
 the move confirmation and removal of the source row. SQLite records relocation
 separately from the skip reason. Pending moves, including older skipped files,
 resume on the next run. If a move was interrupted after OneDrive accepted it,
-the runner checks the destination before trying again. A relocation failure
+the runner scans the source folder before accepting an existing destination.
+A same-named source outside the current viewport must still be moved. Name
+conflicts stay pending for review. A relocation failure
 is retried once with a fresh browser, then stops the run with the move pending.
 
 Create `skipped` in each input folder before running. To retry an archived

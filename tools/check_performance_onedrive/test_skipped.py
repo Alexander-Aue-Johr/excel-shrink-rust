@@ -13,17 +13,52 @@ class SkippedMoveTests(unittest.IsolatedAsyncioTestCase):
     async def test_destination_lookup_failure_preserves_parent_navigation(self):
         page = MagicMock()
         page.url = "https://onedrive.live.com/my?folder=parent"
-        page.get_by_text.return_value.first.count = AsyncMock(return_value=0)
         page.goto = AsyncMock()
         with (patch.object(FLOW, "find_file_row", new=AsyncMock(
-                side_effect=RuntimeError("Missing from skipped"))) as find,
+                side_effect=[None, RuntimeError("Missing from skipped")])) as find,
               patch.object(FLOW, "scroll_file_list", new=AsyncMock()),
               patch.object(FLOW, "wait_for_folder_rows", new=AsyncMock())):
             page.locator = MagicMock()
             page.locator.return_value.get_by_text.return_value.dblclick = AsyncMock()
             with self.assertRaisesRegex(RuntimeError, "Missing from skipped"):
                 await FLOW.move_skipped_workbook(page, "excluded.xlsx")
-        self.assertEqual(find.await_count, 1)
+        self.assertEqual(find.await_count, 2)
+        page.goto.assert_awaited_once_with(page.url, wait_until="domcontentloaded", timeout=120_000)
+
+    async def test_offscreen_source_with_same_named_destination_stays_pending(self):
+        """An older destination cannot stand in for a source outside the viewport."""
+        page = MagicMock()
+        page.get_by_text.return_value.first.count = AsyncMock(return_value=0)
+        source = MagicMock()
+        source.click = AsyncMock()
+        page.locator.return_value.last.click = AsyncMock()
+        picker = page.frame_locator.return_value
+        picker.get_by_role.return_value.dblclick = AsyncMock()
+        picker.get_by_role.return_value.click = AsyncMock(side_effect=RuntimeError("Name conflict"))
+        with tempfile.TemporaryDirectory() as temporary:
+            with FLOW.ProgressStore(Path(temporary), "folder") as progress:
+                progress.discover(["excluded.xlsx"])
+                attempt = progress.start_attempt("excluded.xlsx")
+                progress.skip("excluded.xlsx", attempt, "performance_unavailable")
+                with patch.object(FLOW, "find_file_row", new=AsyncMock(return_value=source)) as find:
+                    with self.assertRaisesRegex(RuntimeError, "Name conflict"):
+                        await FLOW.archive_skipped_workbooks(page, progress, ["excluded.xlsx"])
+                find.assert_awaited_once_with(page, "excluded.xlsx", missing_ok=True)
+                source.click.assert_awaited_once_with(button="right", timeout=10_000)
+                self.assertEqual(progress.pending_skipped_moves(), ["excluded.xlsx"])
+
+    async def test_recovery_requires_source_absence_and_destination_presence(self):
+        """A completed move can resume after the process missed the confirmation."""
+        page = MagicMock()
+        page.url = "https://onedrive.live.com/my?folder=parent"
+        page.goto = AsyncMock()
+        page.locator.return_value.get_by_text.return_value.dblclick = AsyncMock()
+        with (patch.object(FLOW, "find_file_row", new=AsyncMock(side_effect=[None, object()])) as find,
+              patch.object(FLOW, "scroll_file_list", new=AsyncMock()),
+              patch.object(FLOW, "wait_for_folder_rows", new=AsyncMock())):
+            await FLOW.move_skipped_workbook(page, "excluded.xlsx")
+        self.assertEqual(find.await_count, 2)
+        page.frame_locator.assert_not_called()
         page.goto.assert_awaited_once_with(page.url, wait_until="domcontentloaded", timeout=120_000)
 
     async def test_failed_move_remains_pending_after_reopen(self):
@@ -78,17 +113,38 @@ class SkippedMoveBrowserTests(unittest.IsolatedAsyncioTestCase):
             browser = await playwright.chromium.launch(headless=True)
             try:
                 page = await browser.new_page()
-                picker = """<button role="link" ondblclick="document.querySelector('#move').hidden=false">skipped</button>
-                  <button id="move" hidden onclick="parent.document.querySelector('#file').remove();
-                    parent.document.querySelector('#notice').textContent='1 Element nach skipped verschoben';
-                    parent.document.querySelector('iframe').remove()">Hierher verschieben</button>"""
+                picker = """
+                    <button role="link" id="skipped">skipped</button>
+                    <button id="move" hidden>Hierher verschieben</button>
+                    <script>
+                        document.querySelector('#skipped').ondblclick = () => {
+                            document.querySelector('#move').hidden = false;
+                        };
+                        document.querySelector('#move').onclick = () => {
+                            parent.document.querySelector('#file').remove();
+                            parent.document.querySelector('#notice').textContent =
+                                '1 Element nach skipped verschoben';
+                            parent.document.querySelector('iframe').remove();
+                        };
+                    </script>
+                """
                 await page.set_content(f"""
-                  <span id="file" onclick="window.workbookOpened=true"
-                    oncontextmenu="event.preventDefault(); document.querySelector('#command').hidden=false">excluded.xlsx</span>
-                  <button id="command" hidden data-automationid="moveCommand"
-                    onclick="document.querySelector('iframe').hidden=false">Verschieben nach</button>
+                  <span id="file">excluded.xlsx</span>
+                  <button id="command" hidden data-automationid="moveCommand">Verschieben nach</button>
                   <iframe hidden title="Verschieben nach" srcdoc="{html.escape(picker, quote=True)}"></iframe>
-                  <div id="notice" role="alert"></div>""")
+                  <div id="notice" role="alert"></div>
+                  <script>
+                      const file = document.querySelector('#file');
+                      file.onclick = () => {{ window.workbookOpened = true; }};
+                      file.oncontextmenu = (event) => {{
+                          event.preventDefault();
+                          document.querySelector('#command').hidden = false;
+                      }};
+                      document.querySelector('#command').onclick = () => {{
+                          document.querySelector('iframe').hidden = false;
+                      }};
+                  </script>
+                """)
                 await FLOW.move_skipped_workbook(page, "excluded.xlsx")
                 self.assertFalse(await page.evaluate("Boolean(window.workbookOpened)"))
                 self.assertEqual(await page.get_by_text("excluded.xlsx", exact=True).count(), 0)

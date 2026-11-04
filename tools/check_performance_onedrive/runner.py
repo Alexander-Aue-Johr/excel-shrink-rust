@@ -717,10 +717,15 @@ async def find_file_row(page, name: str, missing_ok: bool = False):
 
 
 async def move_skipped_workbook(page, name: str) -> None:
-    """Move one excluded workbook into the current folder's skipped directory."""
+    """Move an excluded workbook, confirming recovery only after a full source scan.
+
+    A same-named destination alone cannot prove that this source was moved.
+    If both exist, OneDrive's conflict remains unresolved and relocation stays
+    pending until the conflict is resolved.
+    """
     folder_url = page.url
-    row = page.get_by_text(name, exact=True).first
-    if not await row.count():
+    row = await find_file_row(page, name, missing_ok=True)
+    if row is None:
         # A previous process may have moved the file before recording success.
         await scroll_file_list(page, to_top=True)
         skipped = page.locator(
@@ -733,9 +738,9 @@ async def move_skipped_workbook(page, name: str) -> None:
         finally:
             await page.goto(folder_url, wait_until="domcontentloaded", timeout=120_000)
             await wait_for_folder_rows(page)
-        if already_moved is not None:
-            return
-        row = await find_file_row(page, name)
+        if already_moved is None:
+            raise RuntimeError(f"Skipped workbook is absent from source and destination: {name}")
+        return
 
     await row.click(button="right", timeout=10_000)
     await page.locator('[data-automationid="moveCommand"]').last.click(timeout=10_000)
