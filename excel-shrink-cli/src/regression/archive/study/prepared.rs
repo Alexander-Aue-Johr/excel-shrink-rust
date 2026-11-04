@@ -2,6 +2,7 @@
 use super::*;
 use std::io::Write;
 mod package_audit;
+mod converted_original;
 mod namespace_exclusion;
 mod resident;
 mod prioritized;
@@ -112,12 +113,19 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
             Some("Excel legacy conversion"),
             json!({}),
         );
-        let metrics = excel_automation::convert_legacy_workbook(
-            &extracted,
-            &converted,
-            &job.work.join("conversion"),
-        )?;
-        record["conversion"] = serde_json::to_value(metrics)?;
+        if let Some(directory) = std::env::var_os("EXCEL_SHRINK_CONVERTED_BUNDLES_DIR") {
+            let reused = converted_original::restore(
+                Path::new(&directory), &job.identity, record["source_sha256"].as_str().unwrap(),
+                &converted,
+            )?;
+            ensure!(reused, "configured converted-original cache has no matching workbook");
+            record["conversion"] = json!({"reused":true,"source":"converted_original_bundle"});
+        } else {
+            let metrics = excel_automation::convert_legacy_workbook(
+                &extracted, &converted, &job.work.join("conversion"),
+            )?;
+            record["conversion"] = serde_json::to_value(metrics)?;
+        }
         work_state::event(
             "converting",
             "conversion_complete",
