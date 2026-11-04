@@ -1,14 +1,14 @@
 //! CF selection proves only supported local contributions; every unresolved area remains a capture.
-mod expression;
 pub(super) mod data_bars;
+mod expression;
 mod formulas;
 mod input_independent;
+#[cfg(test)]
+mod inventory_audit;
 mod ranges;
 mod references;
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod inventory_audit;
 pub(super) mod xml;
 
 use super::{
@@ -17,6 +17,7 @@ use super::{
 };
 use crate::regression::cf_inventory::scan::{Block, Rule};
 use anyhow::{Context, Result};
+pub(super) use ranges::areas as application_areas;
 pub(super) use ranges::cell as cell_address;
 pub(super) use ranges::Rect;
 use serde::Serialize;
@@ -69,8 +70,17 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
         || block.attributes.keys().any(|key| key != "sqref")
         || block.child_elements.iter().any(|name| {
             ![
-                "cfRule", "formula", "colorScale", "cfvo", "color", "dataBar", "extLst", "ext", "x14:id",
-            ].contains(&name.as_str())
+                "cfRule",
+                "formula",
+                "colorScale",
+                "cfvo",
+                "color",
+                "dataBar",
+                "extLst",
+                "ext",
+                "x14:id",
+            ]
+            .contains(&name.as_str())
         })
         || block.rules.is_empty()
     {

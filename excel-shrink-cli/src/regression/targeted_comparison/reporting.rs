@@ -59,7 +59,10 @@ impl Comparison<'_> {
     /// Kill the owned host job on failure and preserve partial evidence honestly.
     pub(super) fn record_failure(&mut self, error: &anyhow::Error) -> Result<()> {
         if let Some(host) = &self.excel {
-            fs::write(self.args.output.join("operations.json"), serde_json::to_vec_pretty(&host.operation_measurements)?)?;
+            fs::write(
+                self.args.output.join("operations.json"),
+                serde_json::to_vec_pretty(&host.operation_measurements)?,
+            )?;
         }
         self.release_excel_and_wait_for_exit()?;
         self.report.status = "failed".into();
@@ -181,9 +184,9 @@ pub(super) fn new_report() -> Report {
         capture_counts: BTreeMap::new(),
         limitations: vec![
             "Gridlines are disabled consistently. A trailing blank margin geometry change is ignored only when both captures have the same measured content core and all top-left-aligned nonblank pixels match. Raw geometry and images remain in the report; blank_margin_ignored records this decision. Explicit borders, overflow ink and changes to core geometry remain differences.".into(),
-            "Row-height checks cover rows above and within the union of content envelopes, including one margin row. Formatting-only tails below that envelope are excluded, not certified equal; charts retain independent full-chart observations.".into(),
+            "Row-height checks cover rows above and within the union of content envelopes, including one margin row. Only tails outside content and potentially visible fill/border/conditional-formatting extents are excluded, not certified equal; charts retain independent full-chart observations.".into(),
             "Strategy paired-inplace-rebuild-v1 compares rebuilt Original against rebuilt Default and optional rebuilt Check Performance. Each reuses its existing Excel process. Pre-rebuild captures are omitted for throughput; XML save/optimization/rebuild controls are retained. Volatility and exclusive causal attribution require follow-up.".into(),
-            "Cell capture regions are intersected with the union of content-bearing cell bounds across raw, saved and rebuilt inputs, plus one row/column of margin. Formatting-only exterior regions are intentionally skipped, not visually confirmed identical; content_coverage records selection counts and bounds. Chart exports are independent of this policy.".into(),
+            "Cell capture regions are intersected with the union of content-bearing cells and potentially visible fill/border/conditional-formatting extents across raw, saved and rebuilt inputs, plus one row/column of margin. Exterior regions outside that envelope are intentionally skipped, not visually confirmed identical; content_coverage records selection counts and bounds. Chart exports are independent of this policy.".into(),
             "Capture partition visible-geometry-v1 merges adjacent internal grid tiles without changing their union. It measures every live state and splits only for image budgets (30,000 pixels per edge, 32 million pixels total), estimating conservatively at two pixels per point plus a rounding margin. Actual exports are checked too. Zero-area ranges retain geometry and explicit non-rendering observations without images or pixel equality claims. Later states can repartition and backfill earlier retained workbooks.".into(),
             "CF decisions concern rule contributions within the recorded union of comparison extents. Literal cellIs exclusions require identical cell-XML fingerprints and visual context. Formula inputs remain captures; unknown or changed rules retain region captures. This is not a proof of whole-workbook visual equality.".into(),
             "Embedded charts and standalone chart sheets are compared as whole-chart exports in every retained state. Chart-sheet exports use a consistent viewport in the existing owned Excel process. Other drawings, style and worksheet geometry changes are not yet exhaustively discovered.".into(),

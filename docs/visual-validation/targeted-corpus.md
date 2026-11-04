@@ -3,8 +3,9 @@
 Cell captures use the intersection of each candidate region and the content
 envelope, expanded by one row and one column. The envelope is the union of
 content-bearing cells in raw Original/Default, ordinary saved controls, Check
-Performance and rebuilt copies. Formulas and stored strings count as content;
-formatting-only cells do not extend it. This is a bounding rectangle, not a
+Performance and rebuilt copies. Formulas and stored strings count as content. Visible fill/border cells,
+formatted row/column extents and conditional-formatting application areas also
+extend the envelope. Font-only empty cells do not extend it. This is a bounding rectangle, not a
 claim that every cell inside it contains data.
 
 Changed cells and candidate rectangles select a common 128-row × 16-column grid,

@@ -1,30 +1,31 @@
 //! Targeted comparison workflow; the called phases own XML, Excel, and evidence details.
 mod candidates;
 mod capture_layout;
-mod content_bounds;
 mod cell_stream;
+mod change_evidence;
 mod charts;
-mod conditional_formatting;
 mod check_performance;
+mod conditional_formatting;
+mod content_bounds;
+mod control_cache;
 mod evidence;
 mod execution_plan;
+mod heights;
+mod host;
+mod image_comparison;
 mod performance_cache;
 mod performance_dependencies;
 mod performance_reuse;
-mod image_comparison;
-mod change_evidence;
-mod snapshot_cache;
-mod heights;
-mod host;
+pub(super) mod prefix_inspection;
+mod preparation;
 mod reporting;
+mod snapshot_cache;
 mod staged;
 mod static_workbook_metadata;
 mod telemetry;
+mod visual_bounds;
 mod workbooks;
-mod control_cache;
-mod preparation;
 mod xml_changes;
-pub(super) mod prefix_inspection;
 
 use anyhow::{ensure, Result};
 use candidates::{discover_candidates, find_changes_caused_by_save, SaveChanges};
@@ -40,7 +41,7 @@ use std::{
 };
 use telemetry::{LaneId, Phase, StepStatus, Telemetry};
 
-pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v6";
+pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v7";
 pub(super) const EXECUTION_STRATEGY: &str = "paired-inplace-rebuild-v1";
 pub(super) const CAPTURE_ROWS: u32 = 128;
 pub(super) const CAPTURE_COLUMNS: u32 = 16;

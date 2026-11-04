@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// One-based inclusive coordinates. Formatting-only cells do not extend this envelope.
+/// One-based inclusive coordinates for content and potentially visible formatting.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub(super) struct Rectangle {
     pub(super) top: u32,
@@ -138,7 +138,10 @@ impl ContentBounds {
     /// Include raw originals as well as saved/rebuilt variants: deleted real data stays covered.
     pub fn include(&mut self, snapshot: &Snapshot) {
         for (name, sheet) in &snapshot.sheets {
-            if let Some(bounds) = sheet.cells.content_bounds() {
+            for bounds in [sheet.cells.content_bounds(), sheet.visual_bounds]
+                .into_iter()
+                .flatten()
+            {
                 self.0
                     .entry(name.clone())
                     .and_modify(|previous| {

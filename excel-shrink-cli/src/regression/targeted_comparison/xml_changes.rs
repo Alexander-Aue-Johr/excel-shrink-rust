@@ -24,6 +24,7 @@ use zip::ZipArchive;
 #[derive(Clone, Default)]
 pub(super) struct Sheet {
     pub value_namespace_supported: bool,
+    pub visual_bounds: Option<super::content_bounds::Rectangle>,
     pub rebuild_blockers: BTreeSet<String>,
     pub cells: Cells,
     pub rows: Arc<BTreeMap<u32, BTreeMap<String, String>>>,
@@ -98,6 +99,15 @@ impl Snapshot {
         let defined_names = xml::defined_names_in_package(&mut archive, &workbook)?;
         let context = read_value_context(&mut archive)?;
         let cf_context = read_conditional_context(&mut archive, &workbook, &context)?;
+        let styles = match archive.by_name("xl/styles.xml") {
+            Ok(mut entry) => {
+                let mut bytes = Vec::new();
+                entry.read_to_end(&mut bytes)?;
+                excel_shrink_core::styles::parse_xfs(&bytes)?
+            }
+            Err(zip::result::ZipError::FileNotFound) => vec![Default::default()],
+            Err(error) => return Err(error.into()),
+        };
         let mut sheets = BTreeMap::new();
         for sheet in plan.sheets {
             let model = read_sheet::<true>(
@@ -106,6 +116,7 @@ impl Snapshot {
                 sheet.bottom_row + 1,
                 sheet.base_right_column + 1,
                 Some(scratch),
+                &styles,
             )?;
             sheets.insert(sheet.sheet, model);
         }
@@ -337,7 +348,9 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     bottom: u32,
     right: u32,
     scratch: Option<&Path>,
+    styles: &[excel_shrink_core::models::Xf],
 ) -> Result<Sheet> {
+    let mut visual = super::visual_bounds::VisualBounds::new(styles);
     let mut model = Sheet::default();
     model.bottom = bottom;
     model.right = right;
@@ -485,9 +498,17 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                 }
             }
             if INCLUDE_CELLS && matches!(tag.kind, Kind::Start | Kind::Empty) {
+                if (matches!(tag.local(), b"c" | b"row") && data_depth.is_some())
+                    || (tag.local() == b"col" && columns_depth.is_some())
+                {
+                    visual.observe(*tag)?;
+                }
                 match tag.local() {
-                    b"row" if tag.name == b"row" && tag_namespace
-                        && data_depth.is_some_and(|depth| tag.depth == depth + 1) => {
+                    b"row"
+                        if tag.name == b"row"
+                            && tag_namespace
+                            && data_depth.is_some_and(|depth| tag.depth == depth + 1) =>
+                    {
                         let row: u32 =
                             std::str::from_utf8(tag.attr(b"r")?.unwrap_or(b"0"))?.parse()?;
                         ensure!(
@@ -520,12 +541,17 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                             Arc::make_mut(&mut model.rows).insert(row, attributes);
                         }
                     }
-                    b"col" if tag.name == b"col" && tag_namespace
-                        && columns_depth.is_some_and(|depth| tag.depth == depth + 1) => {
+                    b"col"
+                        if tag.name == b"col"
+                            && tag_namespace
+                            && columns_depth.is_some_and(|depth| tag.depth == depth + 1) =>
+                    {
                         model.columns.extend_from_slice(tag.name);
                         model.columns.extend_from_slice(tag.attrs);
                     }
-                    b"sheetFormatPr" if tag.name == b"sheetFormatPr" && tag_namespace && tag.depth == 1 => {
+                    b"sheetFormatPr"
+                        if tag.name == b"sheetFormatPr" && tag_namespace && tag.depth == 1 =>
+                    {
                         model.defaults.extend_from_slice(tag.name);
                         model.defaults.extend_from_slice(tag.attrs);
                     }
@@ -553,6 +579,18 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     }
     model.cf_layout = format!("{:x}", layout.finalize());
     model.conditional = Arc::new(xml::catalogue(archive, part, &spans)?);
+    for block in &model.conditional.blocks {
+        if let Some(areas) = super::conditional_formatting::application_areas(&block.sqref) {
+            for area in areas {
+                visual.include_rectangle(area.top, area.left, area.bottom, area.right);
+            }
+        }
+    }
+    model.visual_bounds = visual.bounds;
+    if let Some(bounds) = model.visual_bounds {
+        model.bottom = model.bottom.max(bounds.bottom);
+        model.right = model.right.max(bounds.right);
+    }
     Ok(model)
 }
 
@@ -562,7 +600,7 @@ pub(super) fn conditional_catalogue_for_audit(
     archive: &mut ZipArchive<File>,
     part: &str,
 ) -> Result<Arc<xml::Catalogue>> {
-    Ok(read_sheet::<false>(archive, part, 0, 0, None)?.conditional)
+    Ok(read_sheet::<false>(archive, part, 0, 0, None, &[])?.conditional)
 }
 
 impl Sheet {
@@ -641,14 +679,20 @@ mod tests {
         use std::io::Write;
         let path = std::env::temp_dir().join(format!("drawing-row-{}.xlsx", uuid::Uuid::new_v4()));
         let mut zip = zip::ZipWriter::new(File::create(&path)?);
-        zip.start_file("xl/worksheets/sheet.xml", zip::write::FileOptions::default())?;
+        zip.start_file(
+            "xl/worksheets/sheet.xml",
+            zip::write::FileOptions::default(),
+        )?;
         zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="2" width="12"/></cols><sheetData><row r="1" ht="25" customHeight="1"><c r="A1"><v>7</v></c></row></sheetData><extLst><xdr:from><xdr:row>5</xdr:row><xdr:col>2</xdr:col></xdr:from><row r="0"/><col min="99" max="100"/><sheetFormatPr defaultRowHeight="99"/></extLst></worksheet>"#)?;
         zip.finish()?;
         let mut archive = ZipArchive::new(File::open(&path)?)?;
-        let sheet = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 2, None)?;
+        let sheet = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 2, None, &[])?;
         assert_eq!(sheet.rows.len(), 1);
         assert_eq!(sheet.fixed_height(1), Some(("25", false)));
-        assert_eq!(String::from_utf8(sheet.columns.clone())?, "col min=\"1\" max=\"2\" width=\"12\"");
+        assert_eq!(
+            String::from_utf8(sheet.columns.clone())?,
+            "col min=\"1\" max=\"2\" width=\"12\""
+        );
         assert!(!String::from_utf8(sheet.defaults.clone())?.contains("99"));
         assert!(sheet.value_namespace_supported);
         drop(archive);
@@ -669,7 +713,7 @@ mod tests {
         zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData><conditionalFormatting sqref="A1:A10"><cfRule type="cellIs" operator="greaterThan" priority="1"><formula>5</formula></cfRule></conditionalFormatting></worksheet>"#)?;
         zip.finish()?;
         let mut archive = ZipArchive::new(File::open(&path)?)?;
-        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1, None)?;
+        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1, None, &[])?;
         let audit = conditional_catalogue_for_audit(&mut archive, "xl/worksheets/sheet.xml")?;
         assert_eq!(audit.fingerprints, full.conditional.fingerprints);
         assert_eq!(
