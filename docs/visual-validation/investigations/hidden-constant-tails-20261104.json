@@ -1,0 +1,211 @@
+{
+  "baseline_commit": "2dac1d7",
+  "baseline_binary_sha256": "3ce760d792d79eb1798c77636a8d46e88353be83e1e5735f38a189396488774f",
+  "machine": {
+    "cpu": "AMD Ryzen AI 9 HX 370",
+    "logical_cpus": 24,
+    "installed_ram_gib": 32
+  },
+  "method": {
+    "rayon_threads": 1,
+    "writer_workers": 1,
+    "warmups_per_variant": 1,
+    "measured_runs_per_variant": 5,
+    "semantic_comparison_runs_per_variant": 9,
+    "live_validation_and_browser_remained_running": true,
+    "memory": "sampled peak process working set, not private commit",
+    "snapshot": "2026-11-04",
+    "measurement_note": "Measurements preceded formatting-only production source edits; the final formatted Release was rebuilt and the real Wanderungen smoke passed again."
+  },
+  "file_results": [
+    {
+      "file": "enron-control.xlsx",
+      "median_seconds": {
+        "baseline": 0.3924319999932777,
+        "experiment": 0.42369419999886304
+      },
+      "change_percent": 7.966271865220187,
+      "median_peak_rss_mib": {
+        "baseline": 46.59765625,
+        "experiment": 46.30078125
+      },
+      "output_bytes": {
+        "baseline": 25257,
+        "experiment": 25257
+      }
+    },
+    {
+      "file": "enron-exposures.xlsx",
+      "median_seconds": {
+        "baseline": 0.09782359999371693,
+        "experiment": 0.09839349999674596
+      },
+      "change_percent": 0.5825792580375744,
+      "median_peak_rss_mib": {
+        "baseline": 21.23046875,
+        "experiment": 21.28125
+      },
+      "output_bytes": {
+        "baseline": 19962,
+        "experiment": 20435
+      }
+    },
+    {
+      "file": "enron-hidden-columns.xlsx",
+      "median_seconds": {
+        "baseline": 0.2555183000076795,
+        "experiment": 0.15114259999245405
+      },
+      "change_percent": -40.84862024054187,
+      "median_peak_rss_mib": {
+        "baseline": 58.4296875,
+        "experiment": 45.109375
+      },
+      "output_bytes": {
+        "baseline": 137426,
+        "experiment": 1775366
+      }
+    },
+    {
+      "file": "enron-hidden-tables.xlsx",
+      "median_seconds": {
+        "baseline": 0.9282104000012623,
+        "experiment": 1.0337097000010544
+      },
+      "change_percent": 11.365882131858097,
+      "median_peak_rss_mib": {
+        "baseline": 75.8125,
+        "experiment": 65.61328125
+      },
+      "output_bytes": {
+        "baseline": 3705909,
+        "experiment": 4962687
+      }
+    },
+    {
+      "file": "enron-physical.xlsx",
+      "median_seconds": {
+        "baseline": 0.3304506999993464,
+        "experiment": 0.45580679998965934
+      },
+      "change_percent": 37.93488710738422,
+      "median_peak_rss_mib": {
+        "baseline": 50.34375,
+        "experiment": 45.90234375
+      },
+      "output_bytes": {
+        "baseline": 265823,
+        "experiment": 1983439
+      }
+    },
+    {
+      "file": "wanderungen.xlsx",
+      "median_seconds": {
+        "baseline": 2.1477133000007598,
+        "experiment": 2.0626176000077976
+      },
+      "change_percent": -3.9621536074173402,
+      "median_peak_rss_mib": {
+        "baseline": 203.51953125,
+        "experiment": 172.6171875
+      },
+      "output_bytes": {
+        "baseline": 1411553,
+        "experiment": 1575143
+      }
+    }
+  ],
+  "same_preservation_comparison": [
+    {
+      "file": "enron-control.xlsx",
+      "median_seconds": {
+        "baseline": 0.39226620001136325,
+        "baseline_keep": 0.3894923000043491,
+        "experiment": 0.3959921000059694
+      },
+      "experiment_vs_keep_percent": 1.6687878044181481,
+      "experiment_vs_original_percent": 0.9498396737976034
+    },
+    {
+      "file": "enron-hidden-tables.xlsx",
+      "median_seconds": {
+        "baseline": 0.8697140000003856,
+        "baseline_keep": 0.9844356999965385,
+        "experiment": 0.9530624000035459
+      },
+      "experiment_vs_keep_percent": -3.18693237080927,
+      "experiment_vs_original_percent": 9.58342627612334
+    },
+    {
+      "file": "enron-physical.xlsx",
+      "median_seconds": {
+        "baseline": 0.30931409999902826,
+        "baseline_keep": 0.4345465000078548,
+        "experiment": 0.44709689999581315
+      },
+      "experiment_vs_keep_percent": 2.888160412690355,
+      "experiment_vs_original_percent": 44.54462308611789
+    }
+  ],
+  "actual_content_validation": [
+    {
+      "file": "enron-control.xlsx",
+      "removed_hidden_contents": 0,
+      "removed_zero_values": 0,
+      "removed_other_values": 0,
+      "examples_nonzero": []
+    },
+    {
+      "file": "enron-exposures.xlsx",
+      "removed_hidden_contents": 0,
+      "removed_zero_values": 0,
+      "removed_other_values": 0,
+      "examples_nonzero": []
+    },
+    {
+      "file": "enron-hidden-columns.xlsx",
+      "removed_hidden_contents": 0,
+      "removed_zero_values": 0,
+      "removed_other_values": 0,
+      "examples_nonzero": []
+    },
+    {
+      "file": "enron-hidden-tables.xlsx",
+      "removed_hidden_contents": 0,
+      "removed_zero_values": 0,
+      "removed_other_values": 0,
+      "examples_nonzero": []
+    },
+    {
+      "file": "enron-physical.xlsx",
+      "removed_hidden_contents": 0,
+      "removed_zero_values": 0,
+      "removed_other_values": 0,
+      "examples_nonzero": []
+    },
+    {
+      "file": "wanderungen.xlsx",
+      "removed_hidden_contents": 376573,
+      "removed_zero_values": 376573,
+      "removed_other_values": 0,
+      "examples_nonzero": []
+    }
+  ],
+  "implementation_commit": "34fe205",
+  "final_validated_binary_sha256": "5501f2d36dbb9cc976fab5be0f9f6130447595c20eb6b275a2e79c21eb66e8c9",
+  "verification": {
+    "core_library": {
+      "passed": 241,
+      "ignored": 1
+    },
+    "pipeline_filter": {
+      "passed": 59,
+      "ignored": 2
+    },
+    "before_implementation": {
+      "preservation_tests_failed": 4,
+      "zero_tail_test_passed": 1
+    },
+    "real_wanderungen_smoke": "passed with documented 0.90 minimum"
+  }
+}
