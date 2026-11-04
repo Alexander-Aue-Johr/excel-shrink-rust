@@ -754,6 +754,8 @@ async def move_workbook_to_folder(page, name: str, destination: str) -> None:
     If both exist, OneDrive's conflict remains unresolved and relocation stays
     pending until the conflict is resolved.
     """
+    from playwright.async_api import TimeoutError as PlaywrightTimeout
+
     folder_url = page.url
     row = await find_file_row(page, name, missing_ok=True)
     if row is None:
@@ -786,9 +788,17 @@ async def move_workbook_to_folder(page, name: str, destination: str) -> None:
     await picker.get_by_role(
         "button", name=re.compile(r"^(Hierher verschieben|Move here)$", re.I)
     ).click(timeout=15_000)
-    await page.locator('[role="alert"]').filter(
-        has_text=re.compile(rf"nach {re.escape(destination)} verschoben|moved to {re.escape(destination)}", re.I)
-    ).last.wait_for(state="visible", timeout=60_000)
+    notice = page.locator('[role="alert"], [role="status"]').filter(
+        has_text=re.compile(
+            rf"\bmoved\b.*\b{re.escape(destination)}\b|\b{re.escape(destination)}\b.*\bverschoben\b", re.I)
+    ).last
+    try:
+        await notice.wait_for(state="visible", timeout=60_000)
+    except PlaywrightTimeout:
+        notifications = await page.locator('[role="alert"], [role="status"]').all_text_contents()
+        print(f"{name}: move confirmation unavailable; notices={notifications!r}",
+              file=sys.stderr, flush=True)
+        raise
     await row.wait_for(state="detached", timeout=30_000)
 
 

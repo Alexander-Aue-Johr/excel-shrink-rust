@@ -34,7 +34,7 @@ class OptimizedMoveTests(unittest.IsolatedAsyncioTestCase):
                       };
                       document.querySelector('#move').onclick = () => {
                         parent.document.querySelector('#file').remove();
-                        parent.document.querySelector('#notice').textContent = 'Moved to optimized';
+                        parent.document.querySelector('#notice').textContent = '1 file moved to "optimized"';
                         parent.document.querySelector('iframe').remove();
                       };
                     </script>
@@ -43,7 +43,7 @@ class OptimizedMoveTests(unittest.IsolatedAsyncioTestCase):
                     <span id="file" data-automationid="field-LinkFilename">done.xlsx</span>
                     <button id="command" hidden data-automationid="moveCommand">Move to</button>
                     <iframe hidden title="Move to" srcdoc="{html.escape(picker, quote=True)}"></iframe>
-                    <div id="notice" role="alert"></div>
+                    <div id="notice" role="status"></div>
                     <script>
                       document.querySelector('#file').oncontextmenu = event => {{
                         event.preventDefault();
@@ -56,7 +56,7 @@ class OptimizedMoveTests(unittest.IsolatedAsyncioTestCase):
                 ''')
                 await FLOW.move_workbook_to_folder(page, "done.xlsx", "optimized")
                 self.assertEqual(await page.get_by_text("done.xlsx", exact=True).count(), 0)
-                self.assertEqual(await page.get_by_role("alert").inner_text(), "Moved to optimized")
+                self.assertEqual(await page.get_by_role("status").inner_text(), '1 file moved to "optimized"')
             finally:
                 await browser.close()
 
