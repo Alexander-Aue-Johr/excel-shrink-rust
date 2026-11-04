@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 mod contract;
 mod execution_contract;
 mod retention;
+mod bounded_process;
 
 const POLICY: &str = crate::regression::targeted_comparison::CAPTURE_POLICY;
 
@@ -101,14 +102,34 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
     } else {
         command.arg("-CheckPerformance");
     }
-    let status = command
-        .status()
-        .context("Start targeted private-desktop comparison")?;
-    ensure!(
-        status.success(),
-        "Targeted comparison failed; inspect {}",
-        directory.display()
-    );
+    let idle_seconds = record["control_room_attempt"]["settings"]["job_timeout_seconds"]
+        .as_u64()
+        .or_else(|| job.run_manifest.as_ref().and_then(|run| run["workbook_timeout_seconds"].as_u64()))
+        .unwrap_or(120)
+        .clamp(1, 86400);
+    record["targeted_comparison"]["capture_idle_timeout_seconds"] = json!(idle_seconds);
+    write_record(&job.record, record)?;
+    command.arg("-CaptureIdleTimeoutSeconds").arg(idle_seconds.to_string());
+    let status = match bounded_process::run(
+        &mut command,
+        &directory.join("telemetry.json"),
+        std::time::Duration::from_secs(idle_seconds + 15),
+    ) {
+        Ok(status) => status,
+        Err(error) => {
+            fs::create_dir_all(&directory)?;
+            artifact_cache::atomic_write(&directory.join("failure.json"), &serde_json::to_vec(
+                &json!({"status":"failed","kind":"launcher_capture_idle_watchdog","error":format!("{error:#}")})
+            )?)?;
+            return Err(error);
+        }
+    };
+    if !status.success() {
+        let failure: Value = fs::read(directory.join("failure.json"))
+            .ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or(Value::Null);
+        let reason = failure["error"].as_str().unwrap_or("launcher exited without a failure receipt");
+        anyhow::bail!("Targeted comparison failed: {reason}; inspect {}", directory.display());
+    }
     let mut report: Value = serde_json::from_slice(&fs::read(directory.join("report.json"))?)?;
     ensure!(
         report["status"] == "completed_with_limitations",

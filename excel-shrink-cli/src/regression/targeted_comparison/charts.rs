@@ -134,6 +134,7 @@ fn export(
         image.width() > 0 && image.height() > 0,
         "Empty chart export"
     );
+    telemetry.update(|state| state.capture_success_sequence += 1)?;
     Ok(Capture {
         geometry,
         image: ChartImage::Rendered(path),

@@ -146,6 +146,8 @@ pub(super) struct Snapshot {
     pub updated_at: i64,
     pub finished_at: Option<i64>,
     pub revision: u64,
+    /// Monotonic count of successfully persisted nonempty capture images.
+    pub capture_success_sequence: u64,
     pub candidate_count: Option<usize>,
     pub lanes: Vec<Lane>,
     pub columns: Value,
@@ -312,6 +314,7 @@ impl Telemetry {
             updated_at: now(),
             finished_at: None,
             revision: 0,
+            capture_success_sequence: 0,
             candidate_count: None,
             lanes,
             columns: Phase::columns(),
