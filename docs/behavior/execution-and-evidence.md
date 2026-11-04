@@ -40,9 +40,11 @@ accepted/current producer and valid evidence for every requested shrink profile.
 An approved prior producer is an explicit compatibility decision, not automatic
 permission to reuse every old executable's outputs after arbitrary shrinker changes.
 
-The targeted completion predicate currently requires `complete=true`, matching
-capture-policy identity, matching Check Performance inclusion and producer status
-`completed_with_limitations`. It is metadata-based; it does not read and recompare
+The targeted completion predicate requires `complete=true`, a compatible recognized
+capture policy, the current execution strategy and producer status
+`completed_with_limitations`. Completed evidence including Check Performance also
+satisfies a Default-only request; a request for Check Performance requires that
+additional evidence. It is metadata-based; it does not read and recompare
 all retained images on every resume. Fresh report publication now validates its
 pair/region/verdict contract before classifying success. Auditing old artifacts
 is a distinct operation, not something a completion flag proves retrospectively.
@@ -65,8 +67,11 @@ identical Default preparation does not bypass requested Check Performance work.
 ## E3. Admission, pause, cancellation and timeouts
 
 `target_groups` controls concurrent workbook groups, not the number of Excel
-processes. A complete targeted group can retain six Excel instances. Reducing
-the target affects admission; already admitted groups are allowed to finish.
+processes. The current differing-input Default comparison uses two Excel instances
+and rebuilds Default in place. Explicit Check Performance adds one instance.
+Identical-input omissions can reduce that count. Historical six-state runs retain
+their own provenance. Reducing the target affects admission; already admitted
+groups are allowed to finish.
 Target zero drains work and then pauses. It must not kill an in-flight capture
 merely to meet the new target.
 

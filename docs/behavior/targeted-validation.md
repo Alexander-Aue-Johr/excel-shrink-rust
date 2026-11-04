@@ -28,6 +28,41 @@ one independent instance. The SD/SDR PIDs must match. OR and CPR are explicitly
 `disabled`; SDR is `observed` with method `inplace-rebuild`. SD always receives
 its rebuild when it is observed, including static workbooks.
 
+## Visual acceptance policy
+
+Owner clarification, 2026-11-04. The preservation target is the human-visible
+presentation within the relevant data/visual area. Rare color/brightness pixel
+variations that were imperceptible to human inspection have been observed,
+especially on drawings/charts. Identified cases are accepted rendering variation
+and excluded from Shrink's visual regression requirement. Flaky Excel rendering
+is the suspected explanation; that attribution remains a hypothesis.
+
+Retain the raw pixel/geometry observation and the reviewed acceptance reason.
+Exact pixel inequality alone does not establish a Shrink defect. No global numeric
+tolerance or allowed number of changed pixels has been specified. Tiny differences
+in actual text, chart points, lines or objects still require examination; an
+unexamined difference remains unresolved. Existing raw result flags do not yet
+implement a separate reviewed-acceptance classification.
+
+The required data/visual boundary includes values and formulas, plus empty cells
+with visible effective fill or borders, including inherited or conditional styles.
+White fill can be visible by suppressing gridlines. Use the union across relevant
+original/output states so removed values or visible formatting remain covered.
+Charts/drawings retain independent visual coverage.
+
+Below the last relevant row and to the right of the last relevant column,
+otherwise empty trailing rows/columns may change height/width. Such exterior
+geometry is allowed. A safety row/column around a capture is inspection context,
+not an extension of the preservation requirement. Changes confined there must not
+become product regression verdicts. Preserve actual overflow or objects extending
+into that context. Row/column changes above or left of relevant content can move
+it and remain significant.
+
+The existing content-envelope implementation described in V6 does not yet fully
+implement this boundary. It excludes pure fill/border cells and includes a margin.
+See [R7](review-findings.md#r7-owner-clarifications-and-remaining-visual-boundary-gap)
+for inspected code and the newer branch's partial blank-edge correction.
+
 ## Evidence and limitations
 
 The required pairs are O/SD and O/SDR, plus O/CP when requested. There is no
@@ -93,10 +128,11 @@ For a corpus, use `regression study --targeted-comparison --resident-capture`
 and the usual corpus/output arguments. CP requires `--targeted-check-performance`.
 The PowerShell launcher similarly accepts `-CheckPerformance`. The corpus launcher config uses `targeted_check_performance: true` for explicit opt-in.
 
-Corpus result receipts include the execution strategy. Resume requires that
-strategy and the requested CP setting, so historical six-state results are not
-silently labelled as observations from this strategy. Preparation ZIP reuse is
-independent of the visual execution strategy.
+Corpus result receipts include the execution strategy. Resume requires a compatible
+capture policy and that strategy. A completed comparison including CP also satisfies
+a Default-only request; the reverse requires new CP evidence. Historical six-state
+results retain their own strategy and are not relabelled as this strategy.
+Preparation ZIP reuse is independent of the visual execution strategy.
 
 The optional `--prepare-artifacts-only` command remains a separate generation
 path. It can prepare saved/rebuilt controls without rendering, and does not
@@ -229,7 +265,8 @@ Changed cell locations, changed row metadata, column/default changes, conditiona
 dependencies and measured row-height changes feed candidate selection. Chart
 captures are independent of the cell-envelope policy.
 
-The cell-content envelope is the bounding rectangle of content-bearing cells,
+The implemented cell-content envelope (narrower than the required visual boundary
+above) is the bounding rectangle of content-bearing cells,
 unioned across raw, saved and rebuilt states. A value deleted by Shrink or Check
 Performance therefore remains in the union. Add one row and one column of margin
 at each available edge, bounded by Excel's grid.
@@ -263,6 +300,9 @@ The envelope is a rectangle, not the exact set of nonempty cells: large internal
 empty areas can remain within it. Conversely, exterior formatting-only changes
 are counted and omitted by deliberate policy. Entirely content-free sheets can
 have no cell captures. That is an exclusion, not pixel-confirmed equality.
+This describes existing selection, not permission to ignore visible fill/border
+under the clarified requirement. Style resolution and the comparison boundary
+need to be brought into agreement with that requirement.
 
 `content_coverage` records requested, exterior-skipped, clipped and selected
 region counts, with the envelope. `selected_grid_tiles` records the internal

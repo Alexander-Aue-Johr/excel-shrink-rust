@@ -162,6 +162,43 @@ The retained original-resolution difference images, compressed XML audits,
 heights and separate pair labels are the evidence for further investigation.
 No ad-hoc pixel tolerance or automatic dismissal of these findings was added.
 
+## R7. Owner clarifications and remaining visual boundary gap
+
+Requirements clarified on 2026-11-04 distinguish human-visible preservation from
+rare accepted, imperceptible rendering variations and make Maximum/Too Aggressive
+diagnostic artifacts. S10 records an optional future Excel add-in, separate from
+the core. These are owner decisions, not claims of newly implemented features.
+
+Inspected local source is `5e0e688`; the additional branch inspected is
+`origin/experiment/hidden-constant-tails` at `45349c1`.
+`targeted_comparison/cell_stream.rs::Writer::event` classifies content by
+`v`/`f`/`is`/`t` markers. It does not resolve visible fills/borders for the envelope.
+`content_bounds.rs::ContentBounds::select` clips to that envelope plus one cell
+of margin. Therefore a styled-only sheet can be excluded and blank margin geometry
+can create findings, contrary to the clarified visual acceptance requirement.
+
+Commit `e960d6b` on the additional branch supplies measured core geometry and
+`blank_margin_ignored`. It tolerates different trailing blank padding only when
+core geometry matches and the anchored nonblank image evidence still agrees.
+Its blank-pixel rule is opaque white or fully transparent. It does not enlarge
+the envelope to include effective visible styles or implement perceptual-noise
+acceptance. That correction was inspected, not ported or executed in this review.
+
+The required implementation must resolve effective visible fill/border bounds,
+retain their union across states, distinguish exterior geometry from relevant
+geometry and keep chart/object coverage. Changing selection needs an explicit
+capture-policy version and appropriate result-reuse handling. Acceptance cases
+include a fill-only sheet, inherited fill cancellation, a border beyond the last
+value, conditional visible formatting, deleted visible content, overflow across
+the boundary, different blank trailing dimensions and a genuine internal height
+change. White fill must not be globally discarded as blank image padding.
+
+The current strict RGBA fingerprint records even a one-channel pixel difference.
+It has no separate reviewed-rendering-noise outcome. Future monitoring/reporting
+must distinguish raw differences, owner-accepted rendering variation, allowed
+exterior geometry and unresolved/product defects without erasing source evidence.
+The historical R6 observations remain raw findings until reviewed under that policy.
+
 ## Experiments supporting specific decisions
 
 | Evidence | What it supports; what it does not |

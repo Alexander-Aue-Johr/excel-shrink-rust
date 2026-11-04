@@ -10,6 +10,32 @@ Current targeted execution policy is `targeted-content-grid-v3`; its conditional
 state exclusions and version-two result reuse are documented below. The source
 review baseline above remains historical, not an attribution of newer behavior.
 
+## Product objective and acceptance
+
+Owner clarification, 2026-11-04. Default is the production preservation target.
+Remove unnecessary XLSX structures efficiently while preserving relevant data,
+formulas, dependencies and the human-visible workbook presentation. Smaller files
+and faster opening are benefits subject to that preservation requirement.
+Parallelism and chunk boundaries must not alter cleanup decisions.
+
+A raw pixel difference and a product regression are separate observations. Rare,
+human-imperceptible color/brightness variations observed on drawings and charts
+are accepted Excel rendering variation when identified as such. They fall outside
+the visual preservation requirement; their attribution to Excel is a working
+explanation, not established causality. See the acceptance policy in
+[targeted validation](targeted-validation.md#visual-acceptance-policy).
+
+The relevant data area includes cells with visible effective fill or borders,
+even without values. Empty trailing rows below that area and columns to its right
+may have different heights/widths. Validation must respect this boundary. The
+current implementation gaps are recorded in [R7](review-findings.md#r7-owner-clarifications-and-remaining-visual-boundary-gap).
+
+Maximum and Too Aggressive are diagnostic test artifacts for exposing edge cases.
+The intended product direction is a single Default behavior. Existing switches,
+tests and historical evidence still describe their actual implemented behavior.
+A possible later Excel add-in is a separate post-cleanup stage; its design is
+recorded in [S10](shrinker.md#s10-future-excel-assisted-post-cleanup).
+
 ## Purpose and reading order
 
 This document set describes observable behavior, preservation decisions, failure
@@ -62,7 +88,7 @@ selected cell ranges is possible and must disclose that coverage.
 | Rebuild | Explicit Excel full calculation rebuild followed by save |
 | Candidate | Reason/location for possible capture; not yet a screenshot or a difference |
 | Capture region | Selected grid rectangle after content-envelope clipping |
-| Difference | Explicit pixel, geometry, chart-presence or rendering-state difference |
+| Difference | Raw pixel, geometry, chart-presence or rendering-state observation; requires the acceptance policy before attribution as a Shrink defect |
 | Excluded/skipped | Work not certified by a successful comparison |
 | Terminal failure | Attempt ended unsuccessfully; it is not an equality result |
 | Process liveness | Windows confirms an exact PID/birth identity exists |
