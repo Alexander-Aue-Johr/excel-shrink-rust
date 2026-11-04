@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 from tools.check_performance_onedrive import runner as FLOW
@@ -61,17 +61,18 @@ class ProgressStoreTests(unittest.TestCase):
                 progress.start_attempt("unavailable.xlsx")
                 self.assertEqual(progress.status("unavailable.xlsx"), JobState.OPENING.value)
 
-    def test_error_after_optimization_is_skipped_with_diagnostic(self) -> None:
-        """A save-stage error must not claim success or vanish from the run log."""
+    def test_error_after_optimization_can_be_skipped_after_retry(self) -> None:
+        """Two failed save attempts must retain their errors without claiming success."""
         with tempfile.TemporaryDirectory() as temporary:
             with ProgressStore(Path(temporary), "folder-one") as progress:
                 progress.discover(["uncertain.xlsx"])
                 attempt = progress.start_attempt("uncertain.xlsx")
                 for state in (JobState.CHECKING, JobState.OPTIMIZING, JobState.SAVING):
                     progress.transition("uncertain.xlsx", state)
-                progress.skip("uncertain.xlsx", attempt, "error_during_check", "Save timed out")
+                progress.fail("uncertain.xlsx", attempt, "Save timed out")
+                progress.skip_failed("uncertain.xlsx", "error_after_retry")
                 self.assertEqual(progress.status("uncertain.xlsx"), JobState.SKIPPED.value)
-                self.assertEqual(progress.outcome("uncertain.xlsx"), "error_during_check")
+                self.assertEqual(progress.outcome("uncertain.xlsx"), "error_after_retry")
                 self.assertEqual(progress.connection.execute(
                     "SELECT error FROM attempts WHERE id = ?", (attempt,)).fetchone()[0],
                     "Save timed out")
@@ -177,6 +178,81 @@ async def fake_scroll(page: FakePage, to_top: bool):
 
 
 class RowCursorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_dead_driver_does_not_mask_browser_restart(self) -> None:
+        """BrowserContext.close may fail after the Playwright connection dies."""
+        context = MagicMock()
+        context.close = AsyncMock(side_effect=RuntimeError("Connection closed"))
+        playwright = MagicMock()
+        playwright.stop = AsyncMock()
+        with patch.object(FLOW.sys, "stderr", io.StringIO()) as output:
+            await FLOW.close_browser(playwright, context)
+        playwright.stop.assert_awaited_once()
+        self.assertIn("Connection closed", output.getvalue())
+
+    async def test_folder_timeout_restarts_browser(self) -> None:
+        """A folder timeout before file selection gets a new browser window."""
+        playwright, context, page = object(), object(), object()
+        with (patch.object(FLOW, "close_browser", new_callable=AsyncMock) as close,
+              patch.object(FLOW, "start_folder_browser", new_callable=AsyncMock,
+                           side_effect=[TimeoutError("folder stalled"),
+                                        (playwright, context, page)]) as start,
+              patch.object(FLOW.asyncio, "sleep", new_callable=AsyncMock) as sleep):
+            result = await FLOW.restart_folder_browser(None, None, object(), Path("/tmp"))
+        self.assertEqual(result, (playwright, context, page))
+        self.assertEqual(start.await_count, 2)
+        close.assert_awaited_once_with(None, None)
+        sleep.assert_awaited_once_with(5)
+
+    async def test_two_failed_attempts_skip_only_that_workbook(self) -> None:
+        """A fresh browser is tried once before moving to the next workbook."""
+        with tempfile.TemporaryDirectory() as temporary:
+            with ProgressStore(Path(temporary), "folder-one") as progress:
+                progress.discover(["broken.xlsx", "next.xlsx"])
+
+                async def fail_attempt(*_args):
+                    attempt = progress.start_attempt("broken.xlsx")
+                    progress.fail("broken.xlsx", attempt, "Excel did not respond")
+
+                playwright, context, page = object(), object(), object()
+                with (patch.object(FLOW, "process_with_live_status", side_effect=fail_attempt) as process,
+                      patch.object(FLOW, "restart_folder_browser", new_callable=AsyncMock,
+                                   return_value=(playwright, context, page)) as restart):
+                    _, _, _, failed = await FLOW.process_selected_workbook(
+                        playwright, context, page, object(), Path(temporary), progress,
+                        MagicMock(), "broken.xlsx", None)
+                self.assertTrue(failed)
+                self.assertEqual(process.await_count, 2)
+                self.assertEqual(restart.await_count, 2)
+                self.assertEqual(progress.outcome("broken.xlsx"), "error_after_retry")
+                self.assertEqual(progress.status("broken.xlsx"), JobState.SKIPPED.value)
+                self.assertIn("next.xlsx", progress.unfinished_names())
+
+    async def test_second_attempt_can_complete(self) -> None:
+        """A successful retry is recorded as completed, not skipped."""
+        with tempfile.TemporaryDirectory() as temporary:
+            with ProgressStore(Path(temporary), "folder-one") as progress:
+                progress.discover(["retry.xlsx"])
+
+                async def attempt_workbook(*_args):
+                    attempt = progress.start_attempt("retry.xlsx")
+                    if progress.connection.execute(
+                            "SELECT COUNT(*) FROM attempts WHERE file_name = 'retry.xlsx'").fetchone()[0] == 1:
+                        progress.fail("retry.xlsx", attempt, "Browser closed")
+                    else:
+                        progress.transition("retry.xlsx", JobState.CHECKING)
+                        progress.finish("retry.xlsx", attempt, "already_clean")
+
+                playwright, context, page = object(), object(), object()
+                with (patch.object(FLOW, "process_with_live_status", side_effect=attempt_workbook),
+                      patch.object(FLOW, "restart_folder_browser", new_callable=AsyncMock,
+                                   return_value=(playwright, context, page)) as restart):
+                    _, _, _, failed = await FLOW.process_selected_workbook(
+                        playwright, context, page, object(), Path(temporary), progress,
+                        MagicMock(), "retry.xlsx", None)
+                self.assertFalse(failed)
+                restart.assert_awaited_once()
+                self.assertEqual(progress.status("retry.xlsx"), JobState.COMPLETED.value)
+
     async def test_folder_listing_failure_recovers_once(self) -> None:
         """A transient list error must not abort the remaining workbooks."""
         folder = object()

@@ -105,20 +105,25 @@ against the SQLite database and removed after migration on 3 November 2026.
 
 Re-run the same command after an interruption. Completed and skipped files are
 not reopened.
-If OneDrive redirects to its `Throttle.htm` page, the runner stops with a
-specific message. Completed files stay recorded; rerun the command after
-OneDrive permits requests again. The workbook being opened remains retryable.
-An unexpected error while processing one workbook records `skipped` with
-outcome `error_during_check` and the exception text in the SQLite attempt. The
-runner continues with the next workbook and exits nonzero after the batch so
-the errors are not mistaken for complete success. A skipped workbook may have
-been partly optimized before the error; inspect it before using
-`--retry-skipped`. If navigation back to the folder fails, the runner tries to
-restore the shared folder in the same tab. A persistent folder failure,
-missing authentication, or OneDrive throttling stops the run without marking
-the remaining workbooks as skipped. An interrupted file is reopened on the
-next run; the tool closes its previous attempt as interrupted before starting
-a new one. Use `--refresh-list` to scan for files
+An unexpected workbook error records a failed attempt, closes the browser and
+Playwright driver, and retries that workbook once in a new browser window
+using the retained sign-in profile. If the second attempt fails, the file is
+marked `skipped` with outcome
+`error_after_retry`; both attempt errors remain in SQLite. The runner then
+opens a fresh browser and continues with the next file. It exits nonzero after
+the batch so those skips are not mistaken for complete success. A skipped
+workbook may have been partly optimized before the error; inspect it before
+using `--retry-skipped`.
+
+If OneDrive redirects to `Throttle.htm`, the folder view times out, or the
+browser connection closes, the runner starts a new Playwright driver and
+browser. Folder startup is
+retried up to nine times with increasing delays. A missing interactive sign-in
+or a folder that still cannot be opened stops the run without marking unrelated
+files as skipped. Browser cleanup errors are logged without replacing the
+original workbook error. An interrupted file is reopened on the next run; the
+tool closes its previous attempt as interrupted before starting a new one. Use
+`--refresh-list` to scan for files
 uploaded after the initial discovery. OneDrive can upload new rows while
 scanning; refresh again after all uploads finish to pick up late arrivals.
 
@@ -136,8 +141,8 @@ python tools/check-performance-onedrive.py 'YOUR_LINK' --only-file 'example.xlsx
 number processed in this invocation; the remaining files are left pending.
 `--retry-skipped` rechecks previously unavailable files, including one that
 was repaired manually after an earlier run.
-The command exits unsuccessfully if a file encounters an unexpected error or
-the folder cannot be recovered. A timeout is never recorded as optimization
+The command exits unsuccessfully if a file fails twice or the folder cannot be
+recovered. A timeout is never recorded as optimization
 success. This browser flow was tested with Edge and
 Excel for the web on 3 November 2026; it depends on Microsoft's current UI.
 In that test, one workbook reached Excel's cloud-save confirmation in 38.5 s.
@@ -154,7 +159,7 @@ isolated Chromium tests in `test_pane.py`.
 The workbook status follows a small state machine:
 `pending → opening → checking → optimizing → saving → completed`. A workbook
 that cannot be checked goes to `skipped` from any unfinished stage; `failed`
-records a run-level interruption such as throttling. An already-clean workbook
+records a retryable attempt after a workbook error or throttling. An already-clean workbook
 goes from `checking` directly to `completed`.
 The `optimizing` state begins only when Excel changes
 the button or reports completion. Existing progress files with the old

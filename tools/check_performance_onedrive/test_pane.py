@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,6 +17,23 @@ PANE_SCRIPT = Path(__file__).with_name("pane.js").read_text(encoding="utf-8")
 
 
 class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
+    async def test_browser_restart_replaces_playwright_driver(self) -> None:
+        """A dead driver needs a new connection, not just another Chromium tab."""
+        with tempfile.TemporaryDirectory() as temporary:
+            args = SimpleNamespace(browser_channel="chromium", headed=False,
+                                   folder_url="https://example.test/folder")
+            with (patch.object(FLOW, "open_folder", side_effect=lambda page, *_: page),
+                  patch.object(FLOW, "sort_oldest_first", new_callable=AsyncMock)):
+                first_driver, first_context, _ = await FLOW.restart_folder_browser(
+                    None, None, args, Path(temporary))
+                second_driver, second_context, _ = await FLOW.restart_folder_browser(
+                    first_driver, first_context, args, Path(temporary))
+                try:
+                    self.assertIsNot(first_driver, second_driver)
+                    self.assertIsNot(first_context, second_context)
+                finally:
+                    await FLOW.close_browser(second_driver, second_context)
+
     async def test_irm_dialog_blocks_visible_review_tab(self) -> None:
         """A visible ribbon behind Excel's IRM dialog must not start optimization."""
         await self.page.set_content("<iframe></iframe>")
@@ -305,7 +323,7 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
               patch.object(FLOW, "visible_sign_in", new_callable=AsyncMock, return_value=None)):
             await FLOW.open_folder(page, "https://1drv.ms/f/example", headed=True)
         wait.assert_awaited_once_with(page, "https://1drv.ms/f/example", True)
-        page.locator.assert_not_called()
+        page.locator.return_value.first.wait_for.assert_awaited_once()
 
     async def test_public_folder_sign_in_navigates_in_same_tab(self) -> None:
         """Visible files do not imply edit access when the top bar says Sign in."""
@@ -316,7 +334,7 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
         sign_in = AsyncMock()
         sign_in.get_attribute.return_value = "https://login.microsoftonline.com/authorize"
         with (patch.object(FLOW, "visible_sign_in", new_callable=AsyncMock,
-                           return_value=sign_in),
+                           side_effect=[sign_in, None]),
               patch.object(FLOW, "wait_for_signed_in_folder", new_callable=AsyncMock,
                            return_value=page) as wait):
             await FLOW.open_folder(page, page.url, headed=True)
@@ -381,8 +399,8 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
         progress.finish.assert_not_called()
         display.finish.assert_called_once()
 
-    async def test_unexpected_workbook_error_is_skipped_and_next_file_can_run(self) -> None:
-        """A file-specific exception must be durable without aborting the batch."""
+    async def test_unexpected_workbook_error_remains_retryable(self) -> None:
+        """A file-specific exception must be recorded before the fresh-browser retry."""
         with tempfile.TemporaryDirectory() as temporary:
             with FLOW.ProgressStore(Path(temporary), "folder-one") as progress:
                 progress.discover(["broken.xlsx", "next.xlsx"])
@@ -391,8 +409,8 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
                                   side_effect=RuntimeError("Excel did not respond")):
                     await FLOW.process_workbook(
                         None, self.page, Path(temporary), progress, display, "broken.xlsx")
-                self.assertEqual(progress.status("broken.xlsx"), FLOW.JobState.SKIPPED.value)
-                self.assertEqual(progress.outcome("broken.xlsx"), "error_during_check")
+                self.assertEqual(progress.status("broken.xlsx"), FLOW.JobState.FAILED.value)
+                self.assertIsNone(progress.outcome("broken.xlsx"))
                 self.assertIn("next.xlsx", progress.unfinished_names())
                 self.assertIn("Excel did not respond", progress.connection.execute(
                     "SELECT error FROM attempts WHERE file_name = 'broken.xlsx'").fetchone()[0])
@@ -419,7 +437,7 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
         await self.page.route("https://example.test/**", route)
         await self.page.add_init_script(FLOW.SINGLE_TAB_NAVIGATION)
         await self.page.goto("https://example.test/folder")
-        await self.page.locator("#login").click()
+        await self.page.locator("#login").click(force=True)
         await self.page.wait_for_url("https://example.test/login")
         self.assertEqual(len(self.page.context.pages), 1)
 
@@ -443,6 +461,13 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
         control = await FLOW.visible_sign_in(self.page)
         self.assertIsNotNone(control)
         self.assertEqual(await control.inner_text(), "Sign in")
+
+    async def test_folder_without_rows_reports_sign_in_prompt_immediately(self) -> None:
+        """A public folder sign-in control must not wait 60 seconds for file rows."""
+        await self.page.set_content('<header><button>Sign in</button></header>')
+        await asyncio.wait_for(FLOW.wait_for_folder_response(self.page), timeout=2)
+        with self.assertRaisesRegex(RuntimeError, "sign-in required"):
+            await asyncio.wait_for(FLOW.wait_for_folder_rows(self.page), timeout=2)
 
 
 
