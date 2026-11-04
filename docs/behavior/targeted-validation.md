@@ -1,7 +1,7 @@
 # Targeted visual validation behavior
 
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
-`targeted-content-grid-v6`. It compares rebuilt Original (OR) with rebuilt Default
+`targeted-content-grid-v7`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance
 is optional; when requested its rebuilt state (CPR) is compared with OR.
 
@@ -286,12 +286,12 @@ geometry can repartition; retained earlier states backfill all new leaves before
 final comparison. Geometry is cached only within one immutable lane/range.
 
 The envelope is a rectangle, not the exact set of nonempty cells: large internal
-empty areas can remain within it. Conversely, exterior formatting-only changes
-are counted and omitted by deliberate policy. Entirely content-free sheets can
-have no cell captures. That is an exclusion, not pixel-confirmed equality.
-This describes existing selection, not permission to ignore visible fill/border
-under the clarified requirement. Style resolution and the comparison boundary
-need to be brought into agreement with that requirement.
+empty areas can remain within it. Visible fill/border cells, inherited row/column
+formats and conditional-formatting application areas extend the envelope even
+without values. Unknown style indices conservatively extend it. Font-only empty
+cells do not. Changes outside this expanded envelope are counted as excluded,
+never pixel-confirmed equal. Worksheet styles are resolved once per snapshot,
+and the existing streaming worksheet pass accumulates the additional bounds.
 
 `content_coverage` records requested, exterior-skipped, clipped and selected
 region counts, with the envelope. `selected_grid_tiles` records the internal
@@ -354,7 +354,7 @@ can be excluded from automatic-height scanning. Changes to columns, defaults or
 shared style context check rows from the sheet start through the union of
 content-bearing envelopes plus one margin row, minus identical fixed rows.
 Empty rows above content are included because they affect capture positions.
-The formatting-only tail below that envelope is excluded, not certified equal;
+The tail outside content and potentially visible formatting is excluded, not certified equal;
 charts retain independent full-chart observations.
 
 Measure effective height runs through the same Office.js instances. Responses

@@ -25,3 +25,9 @@ The maintenance script inventories by default, refuses removal while Excel is
 running, verifies exact owned paths and IDs, backs up before removal, and compares
 the registry value again immediately before deletion. Other developer add-ins
 are outside its scope.
+
+A deliberate native failure test delayed the host's recalculation reply for 60
+seconds with a 25-second command deadline. The comparison failed with the expected
+operation-specific error. Both resident launchers published cancellation receipts,
+all owned Excel processes exited, and the developer registration count returned
+to 50. This verifies the bounded destructor path, not every possible machine crash.
