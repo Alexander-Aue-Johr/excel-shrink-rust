@@ -54,6 +54,35 @@ O versus SDR retains the effects of an SD rebuild against Original without an
 explicit rebuild. A difference is not automatically attributed to Shrink or to
 volatile formulas. Investigate those causes separately.
 
+## Capture inactivity and prepared-workbook priority
+
+In the targeted Control Room workflow, the job-timeout setting is a **capture
+inactivity interval**, not a total workbook wall-clock limit. Every successfully
+persisted, validated nonempty cell/chart image advances the monotonic
+`capture_success_sequence`. Both the private-desktop launcher and an independent
+parent watchdog reset their idle clocks only when this sequence advances.
+Heartbeats, phase changes, geometry requests, zero-area observations and lane
+counter resets do not extend the interval. Sustained captures may continue
+indefinitely. The parent allows 15 seconds of launcher cleanup grace.
+
+Before the first image, or during a later capture-free phase (including rebuild
+or comparison), the same idle interval applies. The recovery configuration uses
+120 seconds. This may exclude legitimate capture-free work taking longer than
+that; it is a timeout, never an equality or Shrink-defect verdict. The guard
+publishes failure evidence and releases the owned Excel job so other groups
+can continue. Individual command deadlines remain independent upper bounds.
+
+An owned native repair dialog is recognized by its English/German content
+prompt. It produces `opening-dialog.json` and a clear startup failure without
+accepting a repair or changing the source input. Unknown dialogs are not
+clicked automatically.
+
+`tools/order-prepared-by-reduction.ps1` creates an explicit `--workbook-list`
+and a CSV from ZIP-directory sizes. The score is `(Original XLSX - Default XLSX)
+/ Original XLSX`, descending; ties use saved bytes, then corpus identity. It
+reuses prepared outputs, does not shrink again and preserves original size-part
+membership. The corpus launcher accepts the resulting path as `workbook_list`.
+Regenerate the list when prepared outputs change.
 ## Commands and reuse
 
 `regression targeted-compare --original O.xlsx --default SD.xlsx --output result`
@@ -223,8 +252,9 @@ Split only rectangles whose estimated visible image exceeds 30,000 pixels on
 an edge or 32 million pixels total. Estimate conservatively at two pixels per
 point plus rounding margin; this is a planning assumption, not an API promise.
 Actual export dimensions are checked too: an unsupported scale fails instead
-of certifying equality. Binary search finds a cell boundary near half the visible
-height/width in the oversized state. A single indivisible oversized cell fails
+of certifying equality. Balanced cell-coordinate bisection measures each child
+once, rather than probing many potential split boundaries. Zero-area leaves
+remain explicit and generate no image. A single indivisible oversized cell fails
 explicitly. Every state uses the same cell partition. Later candidates or rebuild
 geometry can repartition; retained earlier states backfill all new leaves before
 final comparison. Geometry is cached only within one immutable lane/range.
@@ -292,8 +322,11 @@ measurements or proof that a rule was visually changed by a particular tool.
 Stored XML `ht` is not universally identical to Excel's effective row height.
 Select relevant spans from cell/row changes; unchanged explicitly fixed rows
 can be excluded from automatic-height scanning. Changes to columns, defaults or
-shared style context can require the entire automatic-height range up to
-1,048,576, minus identical fixed rows. This remains intentionally conservative.
+shared style context check rows from the sheet start through the union of
+content-bearing envelopes plus one margin row, minus identical fixed rows.
+Empty rows above content are included because they affect capture positions.
+The formatting-only tail below that envelope is excluded, not certified equal;
+charts retain independent full-chart observations.
 
 Measure effective height runs through the same Office.js instances. Responses
 must cover every requested span exactly, in order, without gaps/overlaps or
@@ -304,9 +337,10 @@ start/end and following row, across the content-bearing columns. This is boundar
 evidence for a reported height interval, **not a screenshot of every row inside
 the interval**. Exterior ranges can still be excluded by the content policy.
 
-Explicit rebuild uses Excel's calculation API and saves a separate working copy.
-The resulting XML changes select indirect formula-result candidates. Original's
-own rebuild provides a drift control. `NOW`, `RAND`, external links and other
+Explicit rebuild uses Excel's calculation API and saves the same SD instance.
+The resulting XML changes select indirect formula-result candidates. Original
+is not explicitly rebuilt in this screening strategy; no Original-rebuild drift
+control is claimed. `NOW`, `RAND`, external links and other
 environmental behavior prevent assuming every resulting difference is exclusively
 caused by Shrink. Rebuild and original-control observations do not restore a lost
 raw pre-opening display state.

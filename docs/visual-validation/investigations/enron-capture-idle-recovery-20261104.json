@@ -1,0 +1,34 @@
+{
+  "matches": [
+    {
+      "id": "08f7718c6c1f7e37e2e8",
+      "one_seconds": 8.643,
+      "two_seconds": 10.28,
+      "one_status": "failed",
+      "two_status": "failed",
+      "equivalent_verdicts": true
+    },
+    {
+      "id": "07adad92f7a5866ae2aa",
+      "one_seconds": 30.273,
+      "two_seconds": 32.159,
+      "one_status": "completed_with_limitations",
+      "two_status": "completed_with_limitations",
+      "equivalent_verdicts": true
+    },
+    {
+      "id": "0173e2e5e2edafd87b4c",
+      "one_seconds": 41.327,
+      "two_seconds": 46.017,
+      "one_status": "completed_with_limitations",
+      "two_status": "completed_with_limitations",
+      "equivalent_verdicts": true
+    }
+  ],
+  "application_crashes": {
+    "one": {
+      "WorkloadsSessionHost": 1
+    },
+    "two": {}
+  }
+}
