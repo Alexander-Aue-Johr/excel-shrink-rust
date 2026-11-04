@@ -42,7 +42,7 @@ use std::{
 };
 use telemetry::{LaneId, Phase, StepStatus, Telemetry};
 
-pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v7";
+pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v8";
 pub(super) const EXECUTION_STRATEGY: &str = "paired-inplace-rebuild-v1";
 pub(super) const CAPTURE_ROWS: u32 = 128;
 pub(super) const CAPTURE_COLUMNS: u32 = 16;

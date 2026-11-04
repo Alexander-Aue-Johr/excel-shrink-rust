@@ -497,8 +497,14 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                     });
                 }
             }
+            if INCLUDE_CELLS
+                && data_depth.is_some()
+                && matches!(tag.local(), b"c" | b"v" | b"f" | b"is")
+            {
+                visual.observe(*tag)?;
+            }
             if INCLUDE_CELLS && matches!(tag.kind, Kind::Start | Kind::Empty) {
-                if (matches!(tag.local(), b"c" | b"row") && data_depth.is_some())
+                if (tag.local() == b"row" && data_depth.is_some())
                     || (tag.local() == b"col" && columns_depth.is_some())
                 {
                     visual.observe(*tag)?;

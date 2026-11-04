@@ -1,7 +1,7 @@
 # Targeted visual validation behavior
 
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
-`targeted-content-grid-v7`. It compares rebuilt Original (OR) with rebuilt Default
+`targeted-content-grid-v8`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance
 is optional; when requested its rebuilt state (CPR) is compared with OR.
 
@@ -288,7 +288,8 @@ final comparison. Geometry is cached only within one immutable lane/range.
 The envelope is a rectangle, not the exact set of nonempty cells: large internal
 empty areas can remain within it. Visible fill/border cells, inherited row/column
 formats and conditional-formatting application areas extend the envelope even
-without values. Unknown style indices conservatively extend it. Font-only empty
+without values. Unknown style indices conservatively extend it. Contiguous center-across-selection
+spans seeded by a value/formula extend it through their formatted blank cells. Font-only empty
 cells do not. Changes outside this expanded envelope are counted as excluded,
 never pixel-confirmed equal. Worksheet styles are resolved once per snapshot,
 and the existing streaming worksheet pass accumulates the additional bounds.

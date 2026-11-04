@@ -5,14 +5,16 @@ envelope, expanded by one row and one column. The envelope is the union of
 content-bearing cells in raw Original/Default, ordinary saved controls, Check
 Performance and rebuilt copies. Formulas and stored strings count as content. Visible fill/border cells,
 formatted row/column extents and conditional-formatting application areas also
-extend the envelope. Font-only empty cells do not extend it. This is a bounding rectangle, not a
+extend the envelope. Center-across-selection spans seeded by content also extend
+it through their contiguous formatted blank cells. Font-only empty cells do not
+extend it. This is a bounding rectangle, not a
 claim that every cell inside it contains data.
 
-Changed cells and candidate rectangles select a common 128-row × 16-column grid,
-reusing the conditional-formatting grid size. Each tile is captured once per state
-and clipped to the content envelope. Neighboring tiles remain separate. This
-avoids one screenshot per changed cell without limiting candidate or tile counts.
-`capture_policy: targeted-content-grid-v2` records this coverage policy explicitly.
+Changed cells and candidate rectangles select a common 128-row × 16-column
+candidate grid. Selected areas are clipped to the envelope and merged without
+filling holes. Visible geometry determines further subdivision. Each selected
+region is captured once per rebuilt state, without candidate or tile-count limits.
+`capture_policy: targeted-content-grid-v8` records this coverage policy explicitly.
 
 Deleted real values therefore remain eligible. Deleted blank tails do not cause
 hundreds of thousands of captures. `report.json.content_coverage` records each
@@ -22,7 +24,7 @@ Exterior empty-cell XML changes are counted before allocating candidate objects;
 each transition records `skipped_outside_content_cell_changes` per sheet. These
 counts are per transition, so they must not be summed as unique workbook cells.
 Charts are exported separately, including chart sheets, even outside cell bounds.
-Late rebuild candidates are backfilled in the retained pre-rebuild workbooks.
+Raw, ordinary-save and rebuild XML controls feed the rebuilt-state captures.
 
 Charts with a measured zero width or height have no renderable image. They retain
 their geometry and `zero-area-chart` state; `pixels_compared` is false. Collapsing
