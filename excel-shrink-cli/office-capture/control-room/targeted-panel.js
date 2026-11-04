@@ -1,6 +1,6 @@
 import { createProcessIcon } from './process-icon-shader.js';
 import { createSignalMonitor } from './signal-monitor.js';
-import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, phaseComplete } from './targeted-model.js';
+import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, phaseComplete, processCards } from './targeted-model.js';
 
 const node = (tag, className, text) => {
   const element = document.createElement(tag);
@@ -137,8 +137,8 @@ function createComparisonCard() {
   const lanes = node('div', 'targeted-lanes');
   const flow = createFlowDiagram();
   const controls = node('p', 'targeted-controls-explanation',
-    'Before: Original ↔ Default. After Default rebuild: Original-before ↔ Default-after. '
-    + 'Drift control: Original-before ↔ Original-after. Pre-rebuild states stay open. Rebuilds use independent copies; Original is rebuilt last. Opening/saving and optimization XML controls are separate.');
+    'Original ↔ Default before rebuild, then Original ↔ Default after rebuilding the same Default process. '
+    + 'Original stays open throughout. Check Performance runs only when explicitly enabled. Omitted states appear in the workflow table.');
   const legend = node('p', 'targeted-flow-legend', '☑ Done · ◩ Running · □ Pending · muted − Not performed / unavailable. Hover a column or checkbox for its purpose.');
   root.append(heading, explanation, error, lanes, flow.element, legend, controls);
   const laneViews = new Map();
@@ -152,7 +152,7 @@ function createComparisonCard() {
       const count = comparison.candidate_count;
       const selection = count == null ? 'Discovering candidate regions'
         : `${count} candidate regions · shared candidate regions per retained state`;
-      const performanceEnabled = comparison.lanes.some(lane => lane.id === 'CP' && lane.lifecycle !== 'unavailable');
+      const performanceEnabled = comparison.lanes.some(lane => lane.id === 'CP' && !['unavailable', 'skipped'].includes(lane.lifecycle));
       const performanceStatus = comparison.report?.check_performance || (performanceEnabled ? 'enabled' : 'not run');
       explanation.textContent = `${selection}. Limited candidate coverage. Check Performance: ${performanceStatus.replaceAll('_', ' ')}.`;
       if (comparison.report?.chart_comparisons != null) {
@@ -164,7 +164,7 @@ function createComparisonCard() {
       error.textContent = comparison.error || '';
       error.hidden = !comparison.error;
       root.title = (comparison.report?.limitations || []).join('\n');
-      const processLanes = comparison.lanes.filter(lane => lane.lifecycle !== 'unavailable');
+      const processLanes = processCards(comparison.lanes);
       const ids = new Set(processLanes.map(lane => lane.id));
       for (const [id, view] of laneViews) if (!ids.has(id)) { view.destroy(); laneViews.delete(id); }
       for (const lane of processLanes) {

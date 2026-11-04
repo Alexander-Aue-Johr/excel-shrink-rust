@@ -72,3 +72,20 @@ export function phaseComplete(lanes, phase) {
     .filter(status => status !== 'skipped' && status !== 'unavailable');
   return statuses.length > 0 && statuses.every(status => status === 'done');
 }
+
+/** Keep one card for Default as its resident process advances to the rebuilt state. */
+export function processCards(lanes) {
+  const rebuilt = lanes.find(lane => lane.id === 'SDR');
+  const initial = lanes.find(lane => lane.id === 'SD');
+  const transferred = rebuilt?.pid && rebuilt.pid === initial?.pid;
+  return lanes.filter(lane => {
+    if (['unavailable', 'skipped'].includes(lane.lifecycle)) return false;
+    if (transferred && lane.id === 'SDR') return false;
+    return lane.pid || ['O', 'SD'].includes(lane.id);
+  }).map(lane => {
+    if (lane.id !== 'SD') return lane;
+    return transferred
+      ? { ...rebuilt, id: 'SD', label: 'Default · After rebuild' }
+      : { ...lane, label: 'Default · Before rebuild' };
+  });
+}

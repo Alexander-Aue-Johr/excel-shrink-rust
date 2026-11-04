@@ -1,4 +1,4 @@
-import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, iconActivity, phaseComplete } from '../targeted-model.js';
+import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, iconActivity, phaseComplete, processCards } from '../targeted-model.js';
 
 export function runTests() {
   let passed = 0;
@@ -47,6 +47,22 @@ export function runTests() {
   assert(received.heartbeat === 4200 && received.heartbeatCount === 7, 'Only received add-in timestamps and counts reach the heart trace.');
   assert(iconActivity(probed, 'process').level === 1 && !iconActivity(probed, 'process').pulse, 'A live process lights its stationary cyan chip.');
   assert(iconActivity({ ...probed, lifecycle: 'failed' }, 'excel').level === 0, 'A living process alone cannot light the workbook LED.');
+  const states = [
+    { id: 'O', pid: 10, lifecycle: 'open' },
+    { id: 'SD', pid: 20, lifecycle: 'closed' },
+    { id: 'SDR', pid: 20, lifecycle: 'open' },
+    { id: 'OR', lifecycle: 'not_started' },
+    { id: 'CP', lifecycle: 'unavailable' },
+    { id: 'CPR', lifecycle: 'skipped' },
+  ];
+  const cards = processCards(states);
+  assert(cards.length === 2, 'Two resident processes produce two cards.');
+  assert(cards[1].id === 'SD' && cards[1].pid === 20 && cards[1].label.includes('After rebuild'),
+    'Default retains its card identity when the same process advances to rebuild.');
+  assert(processCards([{ id: 'SD', lifecycle: 'opening' }])[0].label.includes('Before rebuild'),
+    'Pending Default remains visible before its PID is known.');
+  assert(processCards([...states, { id: 'CP', pid: 30, lifecycle: 'open' }]).length === 3,
+    'An actual optional Check Performance process remains visible.');
   return passed;
 }
 
