@@ -141,6 +141,9 @@ pub(super) struct Lane {
 pub(super) struct Snapshot {
     pub run_id: String,
     pub workbook: String,
+    pub execution_strategy: &'static str,
+    pub capture_policy: &'static str,
+    pub report_directory: PathBuf,
     pub status: String,
     pub started_at: i64,
     pub updated_at: i64,
@@ -300,6 +303,9 @@ impl Telemetry {
         .collect();
         let snapshot = Snapshot {
             run_id,
+            execution_strategy: super::EXECUTION_STRATEGY,
+            capture_policy: super::CAPTURE_POLICY,
+            report_directory: args.output.clone(),
             workbook: args
                 .workbook_label
                 .clone()

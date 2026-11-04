@@ -3,11 +3,12 @@
 
 mod activity;
 mod inspection;
+mod manual_capture;
 mod platform;
 mod snapshots;
-mod workbook_index;
+mod summary;
 mod targeted;
-mod manual_capture;
+mod workbook_index;
 
 use super::{now_iso, now_ms, read_json, serve, with_web, write_json, ApiError, HttpResult};
 use anyhow::{ensure, Context, Result};
@@ -78,6 +79,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
     let routes = Router::new()
         .route("/health", get(health))
         .route("/api/state", get(state))
+        .route("/api/summary", get(summary::get))
         .route("/api/workbooks", get(workbooks))
         .route("/api/workers", get(workers))
         .route("/api/targeted-comparisons", get(targeted::comparisons))
@@ -85,7 +87,10 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         .route("/api/groups/{id}/targeted-compare", post(targeted::start))
         .route("/api/groups/{id}/targeted-report", get(targeted::report))
         .route("/api/evidence/{*path}", get(evidence_asset))
-        .route("/api/groups/{id}/capture-sheet", post(manual_capture::start))
+        .route(
+            "/api/groups/{id}/capture-sheet",
+            post(manual_capture::start),
+        )
         .route("/api/manual-captures/{id}", get(manual_capture::state))
         .route("/api/run/stop", post(stop))
         .route("/api/run/terminate", post(terminate))
@@ -207,7 +212,10 @@ async fn capture_opening_demand(root: &Path, queue: &Value) -> Value {
     if let (Some(work), Some(groups)) = (work, queue["groups"].as_array()) {
         for group in groups {
             if group["active"] != true
-                || !matches!(group["status"].as_str(), Some("preparing" | "hash_sweeping"))
+                || !matches!(
+                    group["status"].as_str(),
+                    Some("preparing" | "hash_sweeping")
+                )
                 || group["run_id"] != queue["run_id"]
             {
                 continue;
@@ -503,9 +511,9 @@ async fn workers(
                                 | "workbook-only"
                                 | "paused-for-later"
                                 | "differences"
-                    | "screened"
-                    | "screening-differences"
-                    | "screening-failed"
+                                | "screened"
+                                | "screening-differences"
+                                | "screening-failed"
                                 | "skipped"
                                 | "failed"
                                 | "interrupted"
@@ -658,8 +666,12 @@ async fn group(
     .await
     .unwrap_or(Value::Null);
     merged["manual_captures"] = read_snapshot(
-        &directory.join("manual-captures.json"), &mut diagnostics, SNAPSHOT_LIMIT,
-    ).await.unwrap_or(json!([]));
+        &directory.join("manual-captures.json"),
+        &mut diagnostics,
+        SNAPSHOT_LIMIT,
+    )
+    .await
+    .unwrap_or(json!([]));
     merged["client_reset_commands"] =
         json!(recent_commands(&directory.join("client-resets"), &id, &mut diagnostics).await?);
     let record_path = room
@@ -694,9 +706,14 @@ async fn group(
     }
     merged["priority_validation"] = record["priority_validation"].clone();
     merged["analysis_summary"] = record["analysis_summary"].clone();
-    merged["visual_diagnoses"] = json!(record["results"].as_array().into_iter().flatten()
+    merged["visual_diagnoses"] = json!(record["results"]
+        .as_array()
+        .into_iter()
+        .flatten()
         .filter(|profile| profile["visual_diagnosis"].is_object())
-        .map(|profile| json!({"profile":profile["profile"],"diagnosis":profile["visual_diagnosis"]}))
+        .map(
+            |profile| json!({"profile":profile["profile"],"diagnosis":profile["visual_diagnosis"]})
+        )
         .collect::<Vec<_>>());
     attach_outcome(&mut merged, &record, displayed_attempt.as_deref());
     let inspection_root = room.root.clone();
@@ -972,7 +989,9 @@ async fn stop(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
     )
     .await;
     if active_stop_requested(&queue, terminate.as_ref()) {
-        return Err(ApiError::conflict("This runner is already stopping immediately."));
+        return Err(ApiError::conflict(
+            "This runner is already stopping immediately.",
+        ));
     }
     write_json(
         &room.root.join("stop-request.json"),
@@ -1530,7 +1549,8 @@ mod tests {
         std::fs::write(session.join("metrics.json"), serde_json::to_vec(&metrics)?)?;
         metrics["clients"]["original"]["monitor"]["pane_resources"]["capture_progress"] =
             json!({"command_id":"capture-1","sheet_index":2,"completed":3,"total":8});
-        metrics["clients"]["original"]["monitor"]["pane_resources"]["sweep_progress"]["sheet_index"] = json!(2);
+        metrics["clients"]["original"]["monitor"]["pane_resources"]["sweep_progress"]
+            ["sheet_index"] = json!(2);
         std::fs::write(session.join("metrics.json"), serde_json::to_vec(&metrics)?)?;
         let waiting_workers = capture_workers(&root, &sweeping).await;
         assert_eq!(waiting_workers[0]["captures_completed"], 3);
@@ -1540,7 +1560,8 @@ mod tests {
         assert_eq!(waiting_workers[0]["total"], 6);
         assert_eq!(waiting_workers[0]["sheet_name"], "Second");
         assert_eq!(waiting_workers[0]["unit"], "sheet passes");
-        let progress = &mut metrics["clients"]["original"]["monitor"]["pane_resources"]["sweep_progress"];
+        let progress =
+            &mut metrics["clients"]["original"]["monitor"]["pane_resources"]["sweep_progress"];
         progress["sheet_name"] = json!("Third");
         progress["sheet_index"] = json!(3);
         progress["completed"] = json!(5);
@@ -1550,7 +1571,10 @@ mod tests {
         assert_eq!(next_sheet.len(), 1);
         assert!(next_sheet[0]["captures_total"].is_null());
         assert_eq!(next_sheet[0]["pid"], waiting_workers[0]["pid"]);
-        assert_eq!(next_sheet[0]["attempt_id"], waiting_workers[0]["attempt_id"]);
+        assert_eq!(
+            next_sheet[0]["attempt_id"],
+            waiting_workers[0]["attempt_id"]
+        );
         assert_eq!(next_sheet[0]["completed"], 5);
         assert_eq!(next_sheet[0]["sheet_name"], "Third");
         metrics["clients"]["original"]["closed"] = json!(true);
@@ -1754,7 +1778,10 @@ mod tests {
         let mut legacy = defaults();
         legacy["excel_process_limit"] = json!(1);
         legacy["sweep_processes"] = json!(7);
-        let next = merge_controls(&legacy, &json!({"excel_process_limit":32,"sweep_processes":12}))?;
+        let next = merge_controls(
+            &legacy,
+            &json!({"excel_process_limit":32,"sweep_processes":12}),
+        )?;
         assert!(next.get("excel_process_limit").is_none());
         assert_eq!(next["sweep_processes"], 12);
         let reloaded = merge_controls(&defaults(), &legacy)?;
