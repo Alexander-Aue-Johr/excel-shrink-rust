@@ -7,6 +7,40 @@ static PIVOT_SOURCES: OnceLock<Regex> = OnceLock::new();
 static PIVOT_LOCATIONS: OnceLock<Regex> = OnceLock::new();
 
 impl PreparedReferenceScanner<'_> {
+    /// Collect the first cell of each explicit chart source reference.
+    /// Excel can derive a source-linked axis format from this cell even when
+    /// it contains no value. Retaining the entire source range is unnecessary.
+    /// Call this only for chart parts; ordinary formula inputs have no such
+    /// first-cell formatting dependency.
+    pub fn scan_chart_format_anchors(&self, xml: &[u8]) -> ProtectedWorkbookRefs {
+        let mut anchors = ProtectedWorkbookRefs::default();
+        let formulas = FORMULAS.get_or_init(|| {
+            Regex::new(r"(?is)<(?:[\w.-]+:)?(?:f|FmlaLink|FmlaRange)\b[^>]*>([^<]*)</").unwrap()
+        });
+        for captures in formulas.captures_iter(xml) {
+            let formula = decode_entities(captures.get(1).unwrap().as_bytes());
+            for token in formula_reference_pattern().find_iter(&formula) {
+                let (sheet, reference) = split_sheet_prefix_bytes(token.as_bytes());
+                let Some(sheet) =
+                    sheet.and_then(|name| resolve_sheet_name(name, &self.sheet_name_to_file))
+                else {
+                    continue;
+                };
+                let first = match parse_reference_token(reference) {
+                    Some(
+                        ParsedReferenceToken::Single(first) | ParsedReferenceToken::Range(first, _),
+                    ) => first,
+                    None => continue,
+                };
+                anchors.refs_for_sheet_mut(sheet).insert_cell(
+                    first.col.unwrap_or(1),
+                    first.row.unwrap_or(1),
+                );
+            }
+        }
+        anchors
+    }
+
     /// GETPIVOTDATA refers to the pivot anchor, but consumes values throughout
     /// its result area. Those cells can reside on a hidden worksheet.
     pub fn scan_pivot_result_references(
@@ -151,6 +185,34 @@ pub(super) fn decode_entities(value: &[u8]) -> Cow<'_, [u8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chart_format_anchors_keep_only_the_first_source_cell() {
+        let names = HashMap::from([("Pre-Retrofit".into(), "sheet1".into())]);
+        let scanner = PreparedReferenceScanner::new(&[], Some(&names), None);
+        let anchors = scanner.scan_chart_format_anchors(
+            br#"<c:numRef><c:f>'Pre-Retrofit'!$C$7:$C$18</c:f></c:numRef>"#,
+        );
+        assert!(anchors.contains("sheet1", 3, 7));
+        assert!(!anchors.contains("sheet1", 3, 8));
+        assert!(!anchors.contains("sheet1", 3, 18));
+        assert!(!anchors.contains("sheet2", 3, 7));
+        assert_eq!(anchors.by_sheet["sheet1"].cell_ref_count(), 1);
+        assert_eq!(anchors.by_sheet["sheet1"].range_ref_count(), 0);
+    }
+
+    #[test]
+    fn chart_format_anchors_decode_sheet_names_and_preserve_range_order() {
+        let names = HashMap::from([("O'Brien & Sons".into(), "sheet2".into())]);
+        let scanner = PreparedReferenceScanner::new(&[], Some(&names), None);
+        let anchors = scanner.scan_chart_format_anchors(
+            br#"<c:f>'O''Brien &amp; Sons'!$D$18:$D$7</c:f><c:f>Unknown!A1:A9</c:f>"#,
+        );
+        assert!(anchors.contains("sheet2", 4, 18));
+        assert!(!anchors.contains("sheet2", 4, 7));
+        assert_eq!(anchors.by_sheet.len(), 1);
+        assert_eq!(anchors.global_or_unknown.cell_ref_count(), 0);
+    }
 
     fn scan(xml: &[u8]) -> ProtectedWorkbookRefs {
         let names = HashMap::from([
