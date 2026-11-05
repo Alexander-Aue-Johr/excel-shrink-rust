@@ -149,6 +149,17 @@ after interruption. A fresh top-level inventory keeps files already inside
 `optimized` outside the run. This option can be combined with
 `--retry-skipped-in-folder` to recheck skipped files still in the input folder.
 
+If a complete search of a readable folder cannot find a workbook, the runner
+records it in SQLite's `missing_files` table and continues with the other files.
+Each observation stores the filename, UTC time, operation and diagnostic detail.
+Existing validation outcomes and confirmed moves remain available independently.
+Unresolved observations exclude the file from subsequent work and move queues.
+Rediscovering it in the top-level inventory sets `resolved_at`, preserving the
+history and making the file eligible again according to its validation status.
+Use `--refresh-list`, `--retry-skipped-in-folder` or `--move-optimized` for a fresh
+inventory. Folder rendering, authentication and navigation failures retain their
+normal recovery behavior and cannot establish a file's absence.
+
 An unexpected workbook error records a failed attempt, closes the browser and
 Playwright driver, and retries that workbook once in a new browser window
 using the retained sign-in profile. If the second attempt fails, the file is

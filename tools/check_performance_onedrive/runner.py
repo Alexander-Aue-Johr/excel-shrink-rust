@@ -118,6 +118,14 @@ class ProgressStore:
                     file_name TEXT PRIMARY KEY REFERENCES files(name),
                     confirmed_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS missing_files (
+                    id INTEGER PRIMARY KEY,
+                    file_name TEXT NOT NULL REFERENCES files(name),
+                    observed_at TEXT NOT NULL,
+                    operation TEXT NOT NULL,
+                    detail TEXT NOT NULL,
+                    resolved_at TEXT
+                );
             """)
             existing = self.connection.execute(
                 "SELECT value FROM metadata WHERE key = 'folder_id'").fetchone()
@@ -170,6 +178,9 @@ class ProgressStore:
                 "DELETE FROM skipped_moves WHERE file_name = ?", ((name,) for name in names))
             self.connection.executemany(
                 "DELETE FROM optimized_moves WHERE file_name = ?", ((name,) for name in names))
+            self.connection.executemany(
+                "UPDATE missing_files SET resolved_at = ? WHERE file_name = ? AND resolved_at IS NULL",
+                ((utc_now(), name) for name in names))
         return [row[0] for row in self.connection.execute("SELECT name FROM files ORDER BY rowid")]
 
     def status(self, name: str) -> str:
@@ -193,7 +204,9 @@ class ProgressStore:
     def unfinished_names(self, retry_skipped: bool = False) -> set[str]:
         """Select incomplete work and optionally retry previously unavailable files."""
         rows = self.connection.execute(
-            "SELECT name, status FROM files WHERE status != ?", (JobState.COMPLETED.value,))
+            """SELECT name, status FROM files WHERE status != ?
+               AND name NOT IN (SELECT file_name FROM missing_files WHERE resolved_at IS NULL)""",
+            (JobState.COMPLETED.value,))
         return {name for name, status in rows
                 if retry_skipped or status != JobState.SKIPPED.value}
 
@@ -207,7 +220,9 @@ class ProgressStore:
         """Resume relocations independently of completed optimization attempts."""
         return [row[0] for row in self.connection.execute("""
             SELECT name FROM files WHERE status = 'skipped'
-            AND name NOT IN (SELECT file_name FROM skipped_moves) ORDER BY rowid
+            AND name NOT IN (SELECT file_name FROM skipped_moves)
+            AND name NOT IN (SELECT file_name FROM missing_files WHERE resolved_at IS NULL)
+            ORDER BY rowid
         """)]
 
     def moved_skipped_names(self) -> set[str]:
@@ -228,6 +243,7 @@ class ProgressStore:
         return {row[0] for row in self.connection.execute("""
             SELECT name FROM files WHERE status = 'completed'
             AND name NOT IN (SELECT file_name FROM optimized_moves)
+            AND name NOT IN (SELECT file_name FROM missing_files WHERE resolved_at IS NULL)
         """)}
 
     def confirm_optimized_move(self, name: str) -> None:
@@ -237,6 +253,15 @@ class ProgressStore:
         with self.connection:
             self.connection.execute(
                 "INSERT OR REPLACE INTO optimized_moves VALUES (?, ?)", (name, utc_now()))
+
+    def record_missing_file(self, name: str, operation: str, detail: str) -> None:
+        """Keep absence observations separate from validation and move results."""
+        with self.connection:
+            self.connection.execute("""
+                INSERT INTO missing_files (file_name, observed_at, operation, detail)
+                VALUES (?, ?, ?, ?)
+            """, (name, utc_now(), operation, detail))
+        print(f"{name}: not found during {operation}; recorded in SQLite, continuing.", flush=True)
 
     def start_attempt(self, name: str) -> int:
         """Start an attempt using the OPENING edge in ALLOWED_TRANSITIONS.
@@ -721,6 +746,10 @@ async def next_visible_unfinished(page, unfinished: set[str]):
     return None
 
 
+class WorkbookNotFound(RuntimeError):
+    """A readable folder was searched completely without finding this file."""
+
+
 async def find_file_row(page, name: str, missing_ok: bool = False):
     """Continue from the prior row; wrap once if OneDrive reordered the list."""
     for pass_number in range(2):
@@ -737,9 +766,10 @@ async def find_file_row(page, name: str, missing_ok: bool = False):
             await asyncio.sleep(0.25 if bottom_observations else 0.05)
         if pass_number == 0:
             await scroll_file_list(page, to_top=True)
+    await wait_for_folder_rows(page)
     if missing_ok:
         return None
-    raise RuntimeError(f"Workbook is no longer visible in the folder: {name}")
+    raise WorkbookNotFound(f"Workbook is no longer visible in the folder: {name}")
 
 
 async def move_skipped_workbook(page, name: str) -> None:
@@ -773,7 +803,7 @@ async def move_workbook_to_folder(page, name: str, destination: str) -> None:
             await page.goto(folder_url, wait_until="domcontentloaded", timeout=120_000)
             await wait_for_folder_rows(page)
         if already_moved is None:
-            raise RuntimeError(f"Workbook is absent from source and {destination}: {name}")
+            raise WorkbookNotFound(f"Workbook is absent from source and {destination}: {name}")
         return
 
     await row.click(button="right", timeout=10_000)
@@ -803,7 +833,11 @@ async def archive_skipped_workbooks(page, progress: ProgressStore,
                                     names: list[str]) -> None:
     """Persist relocation success separately so interrupted moves can resume."""
     for name in names:
-        await move_skipped_workbook(page, name)
+        try:
+            await move_skipped_workbook(page, name)
+        except WorkbookNotFound as error:
+            progress.record_missing_file(name, "move_to_skipped", str(error))
+            continue
         progress.confirm_skipped_move(name)
         print(f"{name}: moved to skipped.", flush=True)
 
@@ -844,7 +878,12 @@ async def archive_optimized_with_recovery(playwright, context, page, args,
                 # A prior move may have succeeded before SQLite recorded it.
                 # The shared mover verifies source absence and destination presence.
                 name = next_file[0] if next_file is not None else sorted(pending)[0]
-                await move_workbook_to_folder(page, name, "optimized")
+                try:
+                    await move_workbook_to_folder(page, name, "optimized")
+                except WorkbookNotFound as error:
+                    progress.record_missing_file(name, "move_to_optimized", str(error))
+                    pending.remove(name)
+                    continue
                 progress.confirm_optimized_move(name)
                 pending.remove(name)
                 print(f"{name}: moved to optimized.", flush=True)
@@ -1189,6 +1228,10 @@ async def process_workbook(context, folder_page, profile: Path,
             record_phase(progress, attempt, name, "cloud_saved")
         record_phase(progress, attempt, name, "memory_sampled", await sample_tab_memory(page, profile, editor))
         progress.finish(name, attempt.id, outcome)
+    except WorkbookNotFound as error:
+        message = str(error)
+        progress.fail(name, attempt.id, message)
+        raise
     except WorkbookCannotOpen as error:
         outcome = "workbook_cannot_open"
         message = str(error)
@@ -1333,6 +1376,9 @@ async def process_selected_workbook(playwright, context, folder_page, args, prof
         try:
             await process_with_live_status(
                 context, folder_page, profile, progress, display, name, row)
+        except WorkbookNotFound as error:
+            progress.record_missing_file(name, "open_workbook", str(error))
+            return playwright, context, folder_page, False
         except OneDriveRenderingError:
             raise
         except Exception as error:
@@ -1396,6 +1442,10 @@ async def run_folder_check_performance(args) -> int:
                     print(name)
                 return 0
             if args.only_file and args.only_file not in names:
+                if args.only_file in progress.names():
+                    progress.record_missing_file(args.only_file, "select_workbook",
+                                                 "Workbook is absent from the current top-level inventory")
+                    return 0
                 raise ValueError(f"Workbook is absent from the folder: {args.only_file}")
             if move_optimized:
                 completed_in_folder = sorted(progress.pending_optimized_moves().intersection(names))
@@ -1432,10 +1482,19 @@ async def run_folder_check_performance(args) -> int:
                                 playwright, context, args, profile)
                             next_file = await next_visible_unfinished(folder_page, unfinished)
                         if next_file is None:
-                            print(f"{len(unfinished)} known files were not found in the folder view.",
-                                  file=sys.stderr)
-                            failed = True
-                            break
+                            folder_page = await recover_folder(
+                                context, folder_page, args.folder_url, args.headed)
+                            present = set(await discover_workbooks(folder_page))
+                            missing = unfinished - present
+                            for missing_name in sorted(missing):
+                                progress.record_missing_file(missing_name, "select_workbook",
+                                                             "Absent from refreshed top-level inventory")
+                            unfinished.difference_update(missing)
+                            if not unfinished:
+                                break
+                            next_file = await next_visible_unfinished(folder_page, unfinished)
+                            if next_file is None:
+                                raise RuntimeError("Folder inventory contains pending files, but row selection failed")
                         name, row = next_file
                     try:
                         playwright, context, folder_page, file_failed = await process_selected_workbook(
