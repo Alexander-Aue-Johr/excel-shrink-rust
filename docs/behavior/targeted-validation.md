@@ -704,10 +704,22 @@ base template after Shrink removed the single blank percent-formatted cell F360.
 The old global context selected 8,403,894 XML candidates, including an almost
 full-grid constant cellIs area. Resolving applied base formats and separating the
 constant-rule context reduced the rebuilt-pair selection to 25 candidates; two
-small duplicate-rule areas deliberately retained their complete-context fallback.
+small duplicate-rule areas retained their complete-context fallback in that replay.
 With transition audits and adaptive partitioning still enabled, the native replay
 completed in 51.500 seconds: eight image regions per rebuilt state, zero
 pixel/geometry/rendering differences, both Excel processes confirmed closed.
 Selection/transport took 6.320 seconds and comparison 0.958 seconds. Its previous
 attempt was still measuring geometry after more than 40 minutes with no image.
 No arbitrary region-count or worksheet-size exclusion was introduced.
+
+Whole-area input proofs now resolve applied cell formats before deciding whether
+their inputs changed. Removing an unused font or XF preserves the proof when
+the rule catalogue, shared format context, cell inputs and applied formats agree.
+A changed nonempty cell format is an uncertain input and selects the dependent
+area. Changed inherited row formats also select that area when affected rows
+contain value-bearing or explicitly typed inputs inside the rule's range.
+Changed formats in empty rows and changed row heights remain local layout
+candidates. Formula inputs retain their conservative
+whole-area dependency. This applies to the already recognized duplicate,
+scale, rank and data-bar rules. Mixed and input-independent rule proofs retain
+their full format-context check.

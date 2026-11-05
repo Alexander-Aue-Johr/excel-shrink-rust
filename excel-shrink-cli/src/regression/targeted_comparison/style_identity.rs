@@ -101,8 +101,8 @@ impl StyleIdentity {
         for identity in unique {
             result.context.extend_from_slice(&identity);
         }
-        // Constant cellIs and recognized value-reference proofs use this context.
-        // Other CF families retain the complete applied-format safeguard.
+        // Input-dependent proofs use this context plus their actual cell changes.
+        // Input-independent and mixed proofs retain the complete format catalogue.
         result.conditional_context.extend_from_slice(&shared);
         if let Some(default) = result.formats.first() {
             result.conditional_context.extend_from_slice(default);

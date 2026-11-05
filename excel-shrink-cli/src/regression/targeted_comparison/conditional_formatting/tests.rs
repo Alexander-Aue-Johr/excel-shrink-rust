@@ -70,11 +70,51 @@ fn constant_rules_ignore_unapplied_templates_but_keep_changed_inputs_and_formats
     write_book(&b, values, rule, "", "", &right_style.replace("fontId=\"0\"", "fontId=\"2\""))?;
     assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
 
-    // Other rule families retain their complete style-context safeguard.
+    // Whole-area rules also use the formats of their actual inputs.
     let aggregate = r#"<conditionalFormatting sqref="A1:B20"><cfRule type="duplicateValues" priority="1"/></conditionalFormatting>"#;
     write_book(&a, values, aggregate, "", "", left_style)?;
     write_book(&b, values, aggregate, "", "", right_style)?;
-    assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn aggregate_rules_keep_changed_applied_formats_and_inherited_row_formats() -> Result<()> {
+    let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-aggregate-formats")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let values = r#"<row r="1"><c r="A1" s="1"><v>7</v></c></row>"#;
+    let rule = r#"<conditionalFormatting sqref="A1:A1048576"><cfRule type="duplicateValues" dxfId="0" priority="1"/></conditionalFormatting>"#;
+    let styles = concat!(
+        r#"<fonts><font><sz val="11"/></font><font><sz val="12"/></font></fonts>"#,
+        r#"<cellXfs><xf fontId="0"/><xf fontId="1" numFmtId="1"/></cellXfs>"#,
+        r#"<dxfs><dxf><font><b/></font></dxf></dxfs>"#,
+    );
+    write_book(&a, values, rule, "", "", styles)?;
+    for changed in [
+        styles.replace("12", "20"),
+        styles.replace("numFmtId=\"1\"", "numFmtId=\"2\""),
+        styles.replace("11", "20"),
+        styles.replace("<b/>", "<i/>"),
+    ] {
+        write_book(&b, values, rule, "", "", &changed)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    }
+    for changed in [
+        values.replace(">7<", ">8<"),
+        values.replace("<v>7</v>", "<f>RAND()</f><v>7</v>"),
+        values.replace("<row r=\"1\">", "<row r=\"1\" s=\"1\" customFormat=\"1\">"),
+    ] {
+        write_book(&b, &changed, rule, "", "", styles)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    }
+    let blank_row = format!("{values}<row r=\"2\" s=\"1\" customFormat=\"1\"/>");
+    write_book(&b, &blank_row, rule, "", "", styles)?;
+    let (decisions, candidates) = check(&a, &b)?;
+    assert_eq!(decisions[0].outcome, "partial");
+    assert_eq!(candidates, [Candidate { sheet: "Data".into(), cell: "A2:A2".into() }].into());
     fs::remove_dir_all(root)?;
     Ok(())
 }

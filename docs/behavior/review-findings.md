@@ -348,6 +348,29 @@ these bundles; a private replay is not substituted into an old bundle with stale
 preparation metadata. The migration manifest is under
 `.tmp/validation-temp/backups/before-remaining-layout-20261105-194214/` on V:.
 
+### Whole-column duplicate rule with removed unused formats, 2026-11-05
+
+`permitsummaryissuedfebruary2014_65e8c5127739.xlsx` contains a duplicate-values
+rule for B1:B1048576. Its table ends at row 452. Saving the shrunk state removes
+one unused font and two XFs, and moves formatting from blank cells into 33 row
+headers. The complete format-catalogue guard selected the million-row rule.
+The old native attempt planned 2,176 image regions per rebuilt state.
+
+The input-dependent proof now checks the shared rendering context and the
+resolved formats of actual input cells. Changed inherited row formats trigger
+the whole-area dependency when those rows contain inputs inside the rule's
+application area. Empty-row formatting remains a local layout candidate.
+Targeted counterexamples cover changed values, uncertain formulas, applied fonts,
+number formats, differential formats and inherited row formats with input cells.
+
+Offline selection on the retained rebuilt pair fell from 9,994 to 1,835 grid
+candidates. With the complete production transition union, Excel replay selected
+two image regions per rebuilt state and reported zero differences. Selection
+and transport took 1.420 seconds, image comparison 0.113 seconds. Both owned
+Excel processes closed. The replay inputs and report are retained under
+`.tmp/validation-temp/permit-aggregate-proof/` on V:. These observations describe
+this case and retain the existing conservative coverage for changed inputs.
+
 ## Verification and repeatable review
 
 The core suite, focused targeted archive/retention tests and read-only retained-

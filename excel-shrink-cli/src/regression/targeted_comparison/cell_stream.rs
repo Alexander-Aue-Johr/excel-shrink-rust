@@ -277,6 +277,20 @@ impl Cells {
     pub fn content_bounds(&self) -> Option<super::content_bounds::Rectangle> {
         self.0.as_ref().and_then(|records| records.content_bounds)
     }
+    /// Search value-bearing or explicitly typed inputs without loading the cell index.
+    pub fn any_input(&self, mut matches: impl FnMut(Cell) -> bool) -> Result<bool> {
+        let mut reader = self
+            .0
+            .as_ref()
+            .map(|records| File::open(&records.path).map(BufReader::new))
+            .transpose()?;
+        while let Some(cell) = next_cell(&mut reader)? {
+            if (cell.visible || cell.has_formula || cell.has_non_numeric_type) && matches(cell) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
     /// Formula XML/cache equality alone cannot establish nonvolatile conditional-format inputs.
     pub fn formula_cells(&self, mut emit: impl FnMut(Cell) -> Result<()>) -> Result<()> {
         if !self.0.as_ref().is_some_and(|records| records.has_formulas) {

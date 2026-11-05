@@ -110,7 +110,9 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
         .iter()
         .all(|rule| formulas::literal_rule(rule) || formulas::whole_area_rule(rule))
     {
-        return if complete_context_unchanged {
+        // Actual cell-format changes count as uncertain inputs below. Unused
+        // formats cannot affect an aggregate rule over unchanged input cells.
+        return if before.cf_context == after.cf_context {
             Proof::WholeAreaInputs
         } else {
             Proof::Fallback("format-string-theme-or-workbook-context-changed")
@@ -405,6 +407,38 @@ fn select_local_inputs(
     Ok(())
 }
 
+/// Aggregate rules may compare formatted values inherited from their input rows.
+/// Row-height changes alone remain local layout candidates.
+fn inherited_row_formats_changed(a: &Sheet, b: &Sheet, areas: &[Rect]) -> Result<bool> {
+    let rows: BTreeSet<_> = a
+        .rows
+        .keys()
+        .chain(b.rows.keys())
+        .copied()
+        .filter(|row| {
+            areas.iter().any(|area| area.top <= *row && *row <= area.bottom)
+                && ["s", "customFormat"].iter().any(|key| {
+                    a.rows.get(row).and_then(|attributes| attributes.get(*key))
+                        != b.rows.get(row).and_then(|attributes| attributes.get(*key))
+                })
+        })
+        .collect();
+    if rows.is_empty() {
+        return Ok(false);
+    }
+    for cells in [&a.cells, &b.cells] {
+        if cells.any_input(|cell| {
+            rows.contains(&cell.row)
+                && areas
+                    .iter()
+                    .any(|area| area.contains(cell.row, u32::from(cell.column)))
+        })? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Compare complete rule catalogues before excluding any CF area; removed rules keep their old scope.
 pub(super) fn select(
     before: &Snapshot,
@@ -524,7 +558,10 @@ pub(super) fn select(
                     Proof::WholeAreaInputs => {
                         let areas = areas.as_deref().unwrap();
                         select_local_inputs(&mut decision, areas, a, b, changes, candidates)?;
-                        if decision.changed_inputs > 0 || decision.formula_input_observations > 0 {
+                        if decision.changed_inputs > 0
+                            || decision.formula_input_observations > 0
+                            || inherited_row_formats_changed(a, b, areas)?
+                        {
                             decision.outcome = "capture".into();
                             decision.reason =
                                 "whole-area-dependency-changed-or-formula-input-uncertain".into();
