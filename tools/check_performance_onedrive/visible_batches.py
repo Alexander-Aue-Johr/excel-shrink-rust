@@ -84,8 +84,6 @@ async def move_visible_batch(page, progress: flow.ProgressStore, names: list[str
     chosen = await selected_names(page)
     if len(chosen) != len(names) or set(chosen) != set(names):
         raise RuntimeError("OneDrive selected files outside the intended move batch")
-    if (await snapshot(page))["scroll_top"] != initial_view["scroll_top"]:
-        raise ViewportChanged("Selecting the group moved the list viewport")
     batch_id = progress.start_move_batch(names, destination)
     try:
         await page.locator('[data-automationid="moveCommand"]:visible').first.click(timeout=10_000)
@@ -93,7 +91,8 @@ async def move_visible_batch(page, progress: flow.ProgressStore, names: list[str
         await picker.get_by_role("link", name=destination, exact=True).dblclick(timeout=30_000)
         await picker.get_by_role("heading", name=destination, exact=True).wait_for(
             state="visible", timeout=30_000)
-        if set(await selected_names(page)) != set(names):
+        chosen = await selected_names(page)
+        if len(chosen) != len(names) or set(chosen) != set(names):
             raise RuntimeError("Move selection changed while opening the destination")
         await picker.get_by_role("button", name=re.compile(r"^(Move here|Hierher verschieben)$", re.I)).click(
             timeout=15_000)
@@ -126,9 +125,11 @@ async def move_with_recovery(browser, args, profile: Path, progress, names, dest
         try:
             await move_visible_batch(page, progress, batch, destination)
             return playwright, context, page
-        except ViewportChanged:
+        except ViewportChanged as error:
+            if attempt == 2:
+                raise RuntimeError(f"Visible move selection remained unstable: {error}") from error
+            print(f"Visible move selection changed ({error}); refreshing once.", file=sys.stderr, flush=True)
             page = await flow.recover_folder(context, page, args.folder_url, args.headed)
-            return playwright, context, page
         except Exception as error:
             if attempt == 2:
                 raise RuntimeError(f"Visible move to {destination} failed: {error}") from error

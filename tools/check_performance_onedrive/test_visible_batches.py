@@ -113,6 +113,19 @@ class VisibleRunTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(result[-1])
                 self.assertEqual(resolve.await_count, 2)
 
+    async def test_repeated_selection_changes_are_bounded_and_reported(self):
+        browser = (None, None, MagicMock())
+        args = Namespace(folder_url="https://1drv.ms/f/test", headed=True)
+        with (patch.object(visible, "snapshot", new=AsyncMock(return_value={"files": ["first.xlsx"]})),
+              patch.object(visible, "move_visible_batch", new=AsyncMock(
+                  side_effect=visible.ViewportChanged("source rows changed"))) as move,
+              patch.object(flow, "recover_folder", new=AsyncMock(return_value=browser[2])) as recover):
+            with self.assertRaisesRegex(RuntimeError, "selection remained unstable"):
+                await visible.move_with_recovery(browser, args, Path("profile"), None,
+                                                 ["first.xlsx"], "optimized")
+        self.assertEqual(move.await_count, 2)
+        recover.assert_awaited_once()
+
     async def test_max_files_flushes_the_checked_result_before_stopping(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = Namespace(folder_url="https://1drv.ms/f/test", output_root=Path(temporary),
@@ -273,6 +286,50 @@ class VisibleBrowserTests(unittest.IsolatedAsyncioTestCase):
                     "SELECT confirmed_at,error FROM move_batches").fetchone()
                 self.assertIsNone(confirmed)
                 self.assertTrue(error)
+
+    async def test_automatic_scroll_during_selection_still_moves_exact_batch(self):
+        await self.set_folder()
+        await self.page.evaluate('''() => {
+          const original = window.toggle;
+          window.toggle = row => {
+            original(row);
+            document.querySelector('.list').scrollTop += 1;
+          };
+          document.querySelector('[data-automationid="moveCommand"]').addEventListener('click', () => {
+            window.scrollBeforeMove = document.querySelector('.list').scrollTop;
+          });
+        }''')
+        with tempfile.TemporaryDirectory() as temporary:
+            with flow.ProgressStore(Path(temporary), "folder") as progress:
+                progress.discover(["first.xlsx", "second.xlsx"])
+                complete(progress, "first.xlsx")
+                complete(progress, "second.xlsx")
+                await visible.move_visible_batch(self.page, progress,
+                                                 ["first.xlsx", "second.xlsx"], "optimized")
+                self.assertGreater(await self.page.evaluate('window.scrollBeforeMove'), 0)
+                self.assertEqual(progress.pending_optimized_moves(), set())
+
+    async def test_changed_file_selection_still_aborts_after_automatic_scroll(self):
+        await self.set_folder()
+        await self.page.evaluate('''() => {
+          const original = window.toggle;
+          window.toggle = row => {
+            original(row);
+            document.querySelector('.list').scrollTop += 1;
+            if (row.dataset.selectionIndex === '1') {
+              document.querySelector('[data-selection-index="2"]').setAttribute('aria-selected','true');
+            }
+          };
+        }''')
+        with tempfile.TemporaryDirectory() as temporary:
+            with flow.ProgressStore(Path(temporary), "folder") as progress:
+                progress.discover(["first.xlsx", "second.xlsx", "unprocessed.xlsx"])
+                complete(progress, "first.xlsx")
+                complete(progress, "second.xlsx")
+                with self.assertRaisesRegex(RuntimeError, "outside the intended move batch"):
+                    await visible.move_visible_batch(self.page, progress,
+                                                     ["first.xlsx", "second.xlsx"], "optimized")
+                self.assertEqual(progress.connection.execute("SELECT COUNT(*) FROM move_batches").fetchone()[0], 0)
 
     async def test_preselected_folder_is_not_included_in_a_file_batch(self):
         await self.set_folder()
