@@ -1335,29 +1335,47 @@ async def recover_folder(context, folder_page, folder_url: str, headed: bool):
 
 async def close_browser(playwright, context) -> None:
     """Close browser and driver without hiding the workbook's actual error."""
+    from .browser_profile import owned_processes, release_owned_browser
+
+    profile = getattr(context, "_check_performance_profile", None)
+    processes = []
+    if isinstance(profile, Path):
+        try:
+            processes = owned_processes(profile)
+        except Exception as error:
+            print(f"Browser ownership check failed: {error}", file=sys.stderr)
+            profile = None
     if context is not None:
         try:
-            await context.close()
+            await asyncio.wait_for(context.close(), timeout=10)
         except Exception as error:
             print(f"Browser cleanup failed: {type(error).__name__}: {error}", file=sys.stderr)
     if playwright is not None:
         try:
-            await playwright.stop()
+            await asyncio.wait_for(playwright.stop(), timeout=10)
         except Exception as error:
             print(f"Playwright cleanup failed: {type(error).__name__}: {error}", file=sys.stderr)
+    if isinstance(profile, Path):
+        try:
+            await release_owned_browser(profile, processes)
+        except Exception as error:
+            print(f"Browser process cleanup failed: {error}", file=sys.stderr)
 
 
 async def start_folder_browser(args, profile: Path):
     """Open a fresh Playwright driver and browser with the retained sign-in profile."""
     from playwright.async_api import async_playwright
+    from .browser_profile import prepare_profile, record_browser
 
-    discard_restored_tabs(profile)
+    await prepare_profile(profile, discard_restored_tabs)
     playwright = await async_playwright().start()
     context = None
     try:
         context = await playwright.chromium.launch_persistent_context(
             profile, channel=args.browser_channel, headless=not args.headed,
             chromium_sandbox=True, viewport={"width": 1920, "height": 1080})
+        context._check_performance_profile = profile
+        await record_browser(context, profile)
         folder_page = context.pages[0] if context.pages else await context.new_page()
         for extra_page in context.pages:
             if extra_page is not folder_page:
@@ -1373,6 +1391,8 @@ async def start_folder_browser(args, profile: Path):
 
 async def restart_folder_browser(playwright, context, args, profile: Path):
     """Retry a broken browser with bounded backoff, preserving SQLite progress."""
+    from .browser_profile import BrowserProfileBusy
+
     await close_browser(playwright, context)
     delays = (0, 5, 15, 30, 60, 120, 300, 300, 300)
     for attempt, delay in enumerate(delays, 1):
@@ -1382,6 +1402,8 @@ async def restart_folder_browser(playwright, context, args, profile: Path):
             await asyncio.sleep(delay)
         try:
             return await start_folder_browser(args, profile)
+        except BrowserProfileBusy:
+            raise
         except RuntimeError as error:
             if "sign-in required" in str(error):
                 raise

@@ -8,7 +8,8 @@ Excel's **Saved/Gespeichert** indicator, and returns to the folder in the same
 tab. It does not upload or download workbooks.
 
 Use Windows Python from the repository root. Edge and Playwright are required;
-`psutil` adds browser RAM measurements. For example:
+`psutil` adds browser RAM measurements and verified recovery of leftover browser
+processes. For example:
 
 ```powershell
 python -m pip install playwright psutil
@@ -29,6 +30,15 @@ restart using `--headed`. To reuse a profile from the earlier web experiment, pa
 against the same browser profile at once. `--browser-channel chrome` or
 `--browser-channel chromium` can be used when Edge is unavailable; install the
 chosen Playwright browser first if needed.
+
+Browser ownership is recorded inside the isolated profile using the runner and
+browser process IDs, their creation times and the exact profile path. Closing a
+browser waits for its processes to exit. With `psutil`, a leftover owned browser
+can be terminated and released before its session files are cleaned up, including
+after a driver failure or an interrupted runner. An active runner or unrecorded
+browser using the same profile causes an immediate profile-busy error. Temporary
+session-file locks are retried for up to five seconds before that error is shown.
+The existing sign-in profile and SQLite progress are reused on restart.
 
 The tool can also run entirely in WSL: it uses Excel for the web and has no
 Excel COM dependency. Install Linux Playwright and Chromium in a WSL Python
