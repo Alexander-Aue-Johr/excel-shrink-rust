@@ -70,6 +70,8 @@ enum RegressionCommand {
     Study(archive::StudyArgs),
     /// Compare changed worksheet regions with persistent Excel sessions.
     TargetedCompare(targeted_comparison::Args),
+    /// Inspect XML-based capture selection without opening Excel.
+    InspectCandidates(targeted_comparison::selection_inspection::Args),
     /// Capture one complete sheet for manual inspection, outside the corpus queue.
     CaptureSheet(sheet_capture::Args),
     /// Inventory conditional formatting and retain source XML evidence without opening Excel.
@@ -441,6 +443,7 @@ pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
         RegressionCommand::Archive(args) => archive::run(args, console_log_level),
         RegressionCommand::Study(args) => archive::run_study(args, console_log_level),
         RegressionCommand::TargetedCompare(args) => targeted_comparison::run(args),
+        RegressionCommand::InspectCandidates(args) => targeted_comparison::selection_inspection::run(args),
         RegressionCommand::CaptureSheet(args) => sheet_capture::run(args),
         RegressionCommand::CfInventory(args) => cf_inventory::run(args),
         RegressionCommand::PrefixInventory(args) => prefix_inventory::run(args),

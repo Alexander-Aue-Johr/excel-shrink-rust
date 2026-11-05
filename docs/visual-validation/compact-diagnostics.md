@@ -26,3 +26,16 @@ scheduler slot is reported as `completed_host_waiting_for_scheduler` after the
 configured observation interval. Such entries remain prioritized in the bounded
 summary. A historical completed attempt does not trigger this observation for a
 newer replacement.
+
+## Inspect CF selection without Excel
+
+```powershell
+excel-shrink-cli.exe regression inspect-candidates --left before.xlsx --right after.xlsx --sample-limit 8
+```
+
+The command uses the live pipeline's XML snapshots and CF dependency selector.
+It reports reason counts, potential cell-input changes and the count of logical
+CF regions, with bounded decision/region examples. `--sample-limit` accepts 0–100.
+It leaves the input workbooks unchanged and releases its temporary fingerprints.
+It does not open Excel, measure effective heights, capture charts or issue a
+visual verdict. The reported logical regions precede live geometry partitioning.

@@ -19,6 +19,7 @@ mod performance_reuse;
 pub(super) mod prefix_inspection;
 mod preparation;
 mod reporting;
+pub(super) mod selection_inspection;
 mod snapshot_cache;
 mod staged;
 mod static_workbook_metadata;
