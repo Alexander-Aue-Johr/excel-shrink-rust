@@ -201,6 +201,33 @@ The historical R6 observations remain raw findings until reviewed under that pol
 
 ## Experiments supporting specific decisions
 
+### Referenced components: RN17B-RN30 Core, 2026-11-05
+
+`RN17B-RN30 Core_65edc172e0f9.xlsx` has containsBlanks rules extending to
+row 1,048,576. Saved Original has 80 fonts and five custom number formats;
+saved Default has 79 and four. The removed font was referenced only by empty
+cells. Revision GUIDs on named styles also previously disabled format resolution.
+Commit `7dd3949` resolves referenced components, recognizes revision metadata
+with its namespace guard, and keeps value-reference CF proofs independent of
+unused applied formats. Unknown properties/extensions remain conservative.
+
+The retained rebuilt-pair XML diagnostic dropped from 63,361 to 6,764 candidates
+(cell candidates 9,553 to 5,686). Of 28 CF decisions, four were excluded and
+24 retained partial coverage. A fresh native run, including its normal transition
+union, completed in 61.326 seconds with 18 regions per state. Capture selection
+and transport took 11.407 seconds; image comparisons took 2.833 seconds. Both
+owned Excel processes closed. These single-run times are engineering evidence,
+not a controlled throughput benchmark.
+
+Six regions still report pixel and geometry differences, involving blank-region
+layout on RareEarths, SingleAnalyteObservation, TraceElements, Volatiles and
+WRMajorElements. They remain findings for separate scope/row-height review;
+the faster completion does not establish visual equality. Raw reports survive at
+`.tmp/validation-temp/rn-core-components-proof/result/` on V:; before/after XML
+diagnostics are `rn-core-selection.log` and `rn-core-components-selection-v3.log`
+in the same temporary root. The focused targeted suite passed 104 tests, with
+ten explicit experiments ignored by that command.
+
 ### Unstyled fill mask: PnP Sector Boilers, 2026-11-05
 
 `PnP Sector Boilers Dataset_f6e5af66f1bb.xlsx`, `Fig 4 - SCR`, K6 is an
