@@ -79,7 +79,7 @@ function Export-TargetedChartSheet {
             $view = @{state=$window.WindowState; width=$window.Width; height=$window.Height;
                 left=$window.Left; top=$window.Top}
             $chartView = @{size_with_window=$chart.SizeWithWindow; zoom=$null}
-            $chart.SizeWithWindow = $false
+            $chart.SizeWithWindow = $true # Apply the requested viewport before exporting.
             $window.WindowState = -4143 # xlNormal: each state must use the same export viewport.
             $window.Left = 0
             $window.Top = 0

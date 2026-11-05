@@ -500,3 +500,7 @@ A numeric Office.js `RangeFormat.rowHeight` establishes uniformity; mixed height
 ### Exact image storage sharing
 
 Binary targeted uploads retain their command-specific paths and exact encoded bytes. Within each resident, byte-identical immutable uploads share a content-addressed blob through filesystem hard links. Pools are bucketed by 512 dispatched commands to bound link counts. Existing command retries and blobs are checked against the uploaded bytes before reuse. Unsupported links fall back to ordinary copies. Moving a command image into report evidence preserves its bytes and link; removing a pool entry does not invalidate retained evidence. This storage sharing changes neither candidate selection nor pixel comparison, and requires no special reader when results are copied to another machine.
+
+### Chart-sheet viewport normalization
+
+Standalone chart exports enable `SizeWithWindow` while applying the controlled 1000-by-750-point viewport and restore its previous value afterward. Freezing that property before resizing could retain a chart's initial window-dependent size. Native chart-area geometry remains recorded, so unequal exports remain differences.

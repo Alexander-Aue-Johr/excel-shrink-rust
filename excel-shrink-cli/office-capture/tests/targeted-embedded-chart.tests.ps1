@@ -3,7 +3,7 @@ $module = Import-Module (Join-Path $PSScriptRoot '../TargetedChartSheets.psm1') 
 & $module {
     function Invoke-OwnedChartOperation {
         param($Entry, [scriptblock]$Operation)
-        & $Operation $script:book $null
+        & $Operation $script:book $script:chartSheets
     }
     $active = [pscustomobject]@{activations=0}
     $active | Add-Member ScriptMethod Activate { $this.activations++ }
@@ -42,4 +42,33 @@ $module = Import-Module (Join-Path $PSScriptRoot '../TargetedChartSheets.psm1') 
     } finally {
         if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output }
     }
+    $window = [pscustomobject]@{WindowState=-4137; Width=800; Height=600; Left=10; Top=20; Zoom=75}
+    $windows = [pscustomobject]@{value=$window}
+    $windows | Add-Member ScriptMethod Item { param($Index) $this.value }
+    $standalone = [pscustomobject]@{Visible=0; SizeWithWindow=$false;
+        PageSetup=[pscustomobject]@{ChartSize=2}; ChartArea=[pscustomobject]@{Width=724.5; Height=442.5}}
+    $standalone | Add-Member ScriptMethod Activate { }
+    $standalone | Add-Member ScriptMethod Refresh { }
+    $standalone | Add-Member ScriptMethod Export {
+        param($Path, $Format, $Interactive)
+        if (-not $this.SizeWithWindow -or $script:book.Windows.value.Width -ne 1000 -or
+            $script:book.Windows.value.Height -ne 750) { throw 'Chart did not adopt the export viewport' }
+        [IO.File]::WriteAllBytes($Path, [byte[]](1,2,3))
+        return $true
+    }
+    $script:chartSheets = [pscustomobject]@{value=$standalone}
+    $script:chartSheets | Add-Member ScriptMethod Item { param($Name) $this.value }
+    $script:book | Add-Member NoteProperty Windows $windows
+    try {
+        $null = Export-TargetedChartSheet @{} @{chart='fatigue plot'; output=$output}
+        if ($standalone.SizeWithWindow -or $standalone.Visible -ne 0 -or
+            $window.Width -ne 800 -or $window.Height -ne 600 -or $window.Zoom -ne 75 -or
+            $window.WindowState -ne -4137 -or $standalone.PageSetup.ChartSize -ne 2) {
+            throw 'Chart export did not restore the previous view'
+        }
+        'Chart sheet adopts the export viewport and restores its previous view.'
+    } finally {
+        if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output }
+    }
+
 }
