@@ -197,8 +197,20 @@ async def run_visible_batches(args) -> int:
                         completed = [name for name in names if progress.status(name) == "completed"]
                         skipped = [name for name in names if progress.status(name) == "skipped" and
                                    (not args.retry_skipped or name in attempted)]
+                        retries = [name for name in names if args.retry_skipped and
+                                   progress.status(name) == "skipped" and name not in attempted]
+                        # Old skipped rows need a new result before relocation. Let
+                        # a larger retry group free the viewport before draining successes.
+                        if len(attempted) < args.max_files and len(retries) > max(len(completed), len(skipped)):
+                            cohort = retries
+                            phase = Phase.CHECK
+                            quiet_views = 0
+                            last_advance = None
+                            print(f"Rechecking larger visible group of {len(cohort)} skipped workbooks.", flush=True)
+                            continue
                         if completed or skipped:
-                            destination, batch = ("optimized", completed) if completed else ("skipped", skipped)
+                            destination, batch = (("optimized", completed) if len(completed) >= len(skipped)
+                                                  else ("skipped", skipped))
                             browser = await move_with_recovery(browser, args, profile, progress, batch, destination)
                             quiet_views = 0
                             last_advance = None

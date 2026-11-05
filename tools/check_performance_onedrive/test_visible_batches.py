@@ -18,7 +18,7 @@ def complete(progress, name):
 
 
 class VisibleRunTests(unittest.IsolatedAsyncioTestCase):
-    async def test_entry_drains_results_then_checks_cohort_then_bulk_moves_without_scanning(self):
+    async def test_entry_prioritizes_larger_retry_and_move_groups_without_scanning(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = Namespace(folder_url="https://1drv.ms/f/test", output_root=Path(temporary),
                              profile_dir=None, headed=True, refresh_list=False, list_only=False,
@@ -26,14 +26,17 @@ class VisibleRunTests(unittest.IsolatedAsyncioTestCase):
             identifier = flow.folder_id(args.folder_url)
             directory = args.output_root / identifier
             with flow.ProgressStore(directory, identifier) as progress:
-                progress.discover(["done.xlsx", "retry.xlsx", "pending.xlsx", "archived.xlsx"])
+                progress.discover(["done.xlsx", "retry.xlsx", "retry2.xlsx", "retry3.xlsx", "pending.xlsx", "archived.xlsx"])
                 complete(progress, "done.xlsx")
                 complete(progress, "archived.xlsx")
                 attempt = progress.start_attempt("retry.xlsx")
                 progress.skip("retry.xlsx", attempt, "error_after_retry")
+                for name in ["retry2.xlsx", "retry3.xlsx"]:
+                    attempt = progress.start_attempt(name)
+                    progress.skip(name, attempt, "error_after_retry")
             browser = (None, None, MagicMock())
             browser[2].locator.return_value.first.wait_for = AsyncMock()
-            files = ["done.xlsx", "retry.xlsx", "pending.xlsx"]
+            files = ["done.xlsx", "retry.xlsx", "retry2.xlsx", "retry3.xlsx", "pending.xlsx"]
             events = []
 
             async def view(_page):
@@ -73,9 +76,10 @@ class VisibleRunTests(unittest.IsolatedAsyncioTestCase):
                   patch.object(visible.asyncio, "sleep", new=AsyncMock())):
                 self.assertEqual(await flow.run_folder_check_performance(args), 0)
             self.assertEqual(events, [
-                ("move", "optimized", ["done.xlsx"]),
-                ("check", "retry.xlsx"), ("check", "pending.xlsx"),
-                ("move", "optimized", ["retry.xlsx"]),
+                ("check", "retry.xlsx"), ("check", "retry2.xlsx"), ("check", "retry3.xlsx"),
+                ("move", "optimized", ["done.xlsx", "retry.xlsx"]),
+                ("move", "skipped", ["retry2.xlsx", "retry3.xlsx"]),
+                ("check", "pending.xlsx"),
                 ("move", "skipped", ["pending.xlsx"]),
             ])
             self.assertGreater(sort.await_count, 1)
