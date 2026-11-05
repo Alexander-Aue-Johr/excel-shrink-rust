@@ -340,7 +340,7 @@ fn read_conditional_context(
     let mut properties = crate::regression::xml_views::Reader::<128>::new(&workbook)?;
     while let Some(tag) = properties.next()? {
         if tag.local() == b"workbookPr" && tag.kind != Kind::End {
-            cf_context.update(tag.attrs);
+            cf_context.update(workbook_property_identity(tag.attrs)?);
         }
     }
     let themes = xml::visual_parts(archive)?;
@@ -357,6 +357,23 @@ fn read_conditional_context(
         }
     }
     Ok(format!("{:x}", cf_context.finalize()))
+}
+
+/// The automatic earlier-version compatibility check cannot change CF rendering.
+/// Keep every other property, including date1904 and showObjects, in the proof.
+fn workbook_property_identity(attributes: &[u8]) -> Result<[u8; 32]> {
+    let mut hash = Sha256::new();
+    for attribute in crate::regression::xml_views::Attributes::new(attributes) {
+        let (key, value) = attribute?;
+        if key == b"checkCompatibility" {
+            continue;
+        }
+        hash.update((key.len() as u64).to_le_bytes());
+        hash.update(key);
+        hash.update((value.len() as u64).to_le_bytes());
+        hash.update(value);
+    }
+    Ok(hash.finalize().into())
 }
 
 /// Read one worksheet once for cells/layout; reopen only selected CF subtrees.
@@ -673,6 +690,25 @@ pub(super) fn cell_candidates(changes: &[XmlChange]) -> BTreeSet<Candidate> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compatibility_ui_setting_is_not_a_conditional_rendering_dependency() -> Result<()> {
+        let before = br#" date1904="0" checkCompatibility="1" showObjects="all""#;
+        let after = br#" date1904="0" checkCompatibility="0" showObjects="all""#;
+        assert_eq!(
+            workbook_property_identity(before)?,
+            workbook_property_identity(after)?
+        );
+        assert_ne!(
+            workbook_property_identity(before)?,
+            workbook_property_identity(br#" date1904="1" checkCompatibility="0" showObjects="all""#)?
+        );
+        assert_ne!(
+            workbook_property_identity(before)?,
+            workbook_property_identity(br#" date1904="0" checkCompatibility="0" showObjects="none""#)?
+        );
+        Ok(())
+    }
     #[test]
     fn exterior_blank_changes_are_counted_but_deleted_real_values_are_retained() -> Result<()> {
         fn snapshot(xml: &[u8]) -> Result<Snapshot> {

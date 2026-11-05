@@ -658,6 +658,10 @@ must still agree; changed or uncertain cell inputs remain capture candidates. Ot
 rule families retain the complete applied-format safeguard. Real column-layout or
 row-layout changes keep their existing conservative handling.
 
+The CF workbook-property context excludes only `checkCompatibility`, which
+controls an automatic compatibility-check dialog rather than rendering. Other
+properties, including `date1904` and `showObjects`, remain dependencies.
+
 Only internal comparison fingerprints are normalized. Original, Shrink and retained
 Excel-saved files are not rewritten by this analysis. Raw audit transitions remain
 available. The capture plan still includes the existing transition union; restricting
