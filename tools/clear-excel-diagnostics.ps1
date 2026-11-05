@@ -2,11 +2,11 @@ param(
     [int]$OwnerPid,
     [long]$OwnerStartedTicks,
     [string]$StatusPath,
+    [string]$Root = (Join-Path $env:LOCALAPPDATA 'Temp\Diagnostics\EXCEL'),
     [switch]$Once
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'ExcelDiagnostics.psm1') -Force
-$root = Join-Path $env:LOCALAPPDATA 'Temp\Diagnostics\EXCEL'
 if (-not $Once -and ($OwnerPid -le 0 -or $OwnerStartedTicks -le 0)) { throw 'Watch mode requires an owner process identity.' }
 while ($true) {
     if (-not $Once) {

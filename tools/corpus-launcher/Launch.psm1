@@ -109,9 +109,13 @@ function Start-StudyLaunch {
         try {
             $cleanupScript = Join-Path $Repo 'tools/clear-excel-diagnostics.ps1'
             $cleanupStatus = Join-Path $Plan.RunDirectory 'excel-diagnostics-cleanup.json'
+            # Match the TEMP inherited by Excel, including runs redirected off C:.
+            $excelTemp = if ($Plan.Environment.ContainsKey('TEMP')) { $Plan.Environment['TEMP'] } else { $env:TEMP }
+            $diagnosticRoot = Join-Path $excelTemp 'Diagnostics/EXCEL'
             $cleanupArguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',
                 $cleanupScript,'-OwnerPid',[string]$process.Id,'-OwnerStartedTicks',
-                [string]$process.StartTime.ToUniversalTime().Ticks,'-StatusPath',$cleanupStatus)
+                [string]$process.StartTime.ToUniversalTime().Ticks,'-StatusPath',$cleanupStatus,
+                '-Root',$diagnosticRoot)
             $cleanupCommandLine = ($cleanupArguments | ForEach-Object { ConvertTo-WindowsArgument ([string]$_) }) -join ' '
             $helper = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') -ArgumentList $cleanupCommandLine -WorkingDirectory $Repo -WindowStyle Hidden -PassThru
             $diagnosticCleanup = @{Pid=$helper.Id; StatusPath=$cleanupStatus; IntervalSeconds=30; MinimumAgeSeconds=60}
