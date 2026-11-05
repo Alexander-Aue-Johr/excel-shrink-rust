@@ -326,6 +326,28 @@ this evidence is not a general exemption for different-sized captures.
 | Row-height experiments under `docs/visual-validation/experiments/` | Saved `ht` and effective height can differ, and uniform height runs can be cheap while alternating runs are expensive. Do not replace exhaustive selected-span checks with a few samples. |
 | Namespace-header tests in `xml/namespaces/header.rs` | Bounded root scanning avoids a redundant full-body pass. Header eligibility is not proof of application origin or zero bloat. |
 
+### Targeted prepared-cache migration, 2026-11-05
+
+The completed conditional-layout inventory examined 8,622 prepared workbooks;
+the unstyled-mask inventory examined 8,623. The 44 bundles changed during the
+first inventory received a separate coverage check. A data-validation range
+initially reported as a conditional-layout risk was reviewed and excluded;
+the corresponding parser-scope regression test preserves that distinction.
+
+The union contained 189 potential cases, not 189 confirmed visual regressions.
+Private Default replays found 40 already updated outputs, 12 outputs with
+identical uncompressed package parts and 137 different outputs. Equality checked
+member names and SHA-256 of every uncompressed member, rejecting duplicate names.
+The 12 equivalent outputs retain their existing comparison evidence.
+
+After the runner drained, the 137 different prepared bundles and their records
+were backed up with verified hashes before invalidation. Old reports and PNGs
+remain available. Each reset record links its previous producer, report and
+backup through `artifact_invalidations`. The regular corpus runner regenerates
+these bundles; a private replay is not substituted into an old bundle with stale
+preparation metadata. The migration manifest is under
+`.tmp/validation-temp/backups/before-remaining-layout-20261105-194214/` on V:.
+
 ## Verification and repeatable review
 
 The core suite, focused targeted archive/retention tests and read-only retained-
