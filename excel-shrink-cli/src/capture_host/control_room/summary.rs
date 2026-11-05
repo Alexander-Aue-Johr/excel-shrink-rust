@@ -59,6 +59,18 @@ pub(super) async fn get(
     Ok(Json(result))
 }
 
+/// A completed host can still occupy a scheduler slot until its completion is consumed.
+fn awaiting_cleanup(queue: &Value, snapshot: &Value) -> bool {
+    queue["groups"].as_array().into_iter().flatten().any(|group| {
+        group["active"] == true
+            && group["status"] == "waiting_cleanup"
+            && group["workbook"] == snapshot["workbook"]
+            && group["started_unix_ms"].as_i64()
+                .zip(snapshot["started_at"].as_i64())
+                .is_some_and(|(group, comparison)| comparison >= group)
+    })
+}
+
 fn project(
     queue: &Value,
     progress: &Value,
@@ -98,7 +110,7 @@ fn project(
         .collect();
     // Long-running attempts must remain visible even while newer groups complete.
     current.sort_by_key(|snapshot| (
-        snapshot["status"] != "running",
+        snapshot["status"] != "running" && !awaiting_cleanup(queue, snapshot),
         std::cmp::Reverse(snapshot["updated_at"].as_i64().unwrap_or(0)),
     ));
     let total = current.len();
@@ -127,6 +139,8 @@ fn project(
                 Some("command_deadline_elapsed")
             } else if running && idle.is_some_and(|seconds| seconds >= stall) {
                 Some("long_operation_requires_inspection")
+            } else if awaiting_cleanup(queue, snapshot) && idle.is_some_and(|seconds| seconds >= stall) {
+                Some("completed_host_waiting_for_scheduler")
             } else { None },
             "result": {
                 "after_differences":snapshot["report"]["after_differences"],
@@ -149,6 +163,24 @@ fn project(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completed_hosts_still_occupying_current_scheduler_slots_require_attention() {
+        let mut queue = json!({"runner_started_unix_ms":1,"groups":[{
+            "active":true,"workbook":"book.xlsx","status":"waiting_cleanup","started_unix_ms":100
+        }]});
+        let snapshots = json!([{
+            "workbook":"book.xlsx","started_at":101,"updated_at":1000,
+            "status":"completed_with_limitations","last_successful_operation":{"finished_at":1000}
+        }]);
+        let summary = project(&queue, &Value::Null, &snapshots, 1, 120, 200_000);
+        assert_eq!(summary["comparisons"][0]["attention"], "completed_host_waiting_for_scheduler");
+        queue["groups"][0]["active"] = json!(false);
+        assert!(project(&queue, &Value::Null, &snapshots, 1, 120, 200_000)["comparisons"][0]["attention"].is_null());
+        queue["groups"][0]["active"] = json!(true);
+        queue["groups"][0]["started_unix_ms"] = json!(102);
+        assert!(!awaiting_cleanup(&queue, &snapshots[0]));
+    }
 
     #[test]
     fn summaries_are_bounded_exclude_old_attempts_and_separate_liveness_from_progress() {

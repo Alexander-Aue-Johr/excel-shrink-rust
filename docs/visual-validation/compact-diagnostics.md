@@ -20,3 +20,9 @@ It updates `latest.json`, records only changed attention/errors and rotates aler
 files at 16 MiB. `-Once` prints a single snapshot. The watcher consumes no model
 API calls. Diagnostic alerts require inspection of the associated operation and
 retained evidence before deciding to retry or change behavior.
+
+A host that has completed but still occupies a current `waiting_cleanup`
+scheduler slot is reported as `completed_host_waiting_for_scheduler` after the
+configured observation interval. Such entries remain prioritized in the bounded
+summary. A historical completed attempt does not trigger this observation for a
+newer replacement.
