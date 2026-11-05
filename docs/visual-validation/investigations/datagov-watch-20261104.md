@@ -344,3 +344,32 @@ The full run resumed as PID 64928 with the same corrected binary `d6b97f99...`;
 these cases must be prepared and compared again. Unaffected records, source
 inputs, raw reports and review evidence remain retained. The audit details
 remain in `validation-temp/legacy-font-audit-all.json`.
+
+
+### Observatory cleanup reconciliation
+
+The old Subk directory, Smoot and LTC attempts retain frozen
+`cleanup_unconfirmed` snapshots after their telemetry writers exit. Their
+recorded Excel PIDs no longer exist, and none occupies a current scheduler slot.
+A corrected host tested on port 18771 retires all three stale run IDs, with zero
+such active cards and no remaining unconfirmed cleanup in that registry response.
+Five focused host tests cover confirmed exit, live/unknown observations, missing
+creation time and preservation of running work; frontend syntax checking passes.
+The durable timeout errors are not rewritten as successful comparisons.
+
+Automatic approval review rejected replacing the server on 8771 with
+`blocked by policy` and no detailed reason. That replacement was not executed.
+The old host and runner remain alive; the corrected parallel view at
+`http://127.0.0.1:18771/` reads the same study and uses the same control requests.
+Only the Observatory host differs; the corpus/Excel processes were not restarted.
+
+The regenerated HGT comparison completes all 513 selected regions without
+visual differences. Its row-1 height regression is gone; the remaining row-78
+height observation is outside the compared content core. The regenerated food
+supplement also has no differences. The four other previously different legacy
+supplements now pass the exact RGBA white-exterior diagnostic; their common
+pixels match and every unshared exterior pixel is opaque white. Raw verdicts
+and images remain. An alpha audit of all 32 existing white/capture-boundary
+reviews checked 100 unique image files: every image is opaque, with no read
+errors, so the earlier RGB-based boundary proofs are not weakened by hidden
+alpha differences. The diagnostic helpers now check RGBA explicitly.
