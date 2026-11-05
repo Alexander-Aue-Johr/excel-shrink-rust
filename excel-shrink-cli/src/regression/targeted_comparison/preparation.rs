@@ -83,6 +83,12 @@ impl Comparison<'_> {
             }))?,
         )?;
         self.release_excel_and_wait_for_exit()?;
+        self.telemetry.update(|state| {
+            state.status = "artifacts_prepared".into();
+            state.finished_at = Some(chrono::Utc::now().timestamp_millis());
+            state.current_operation = serde_json::Value::Null;
+            state.report = json!({"visual_validation":"pending"});
+        })?;
         Ok(())
     }
 
