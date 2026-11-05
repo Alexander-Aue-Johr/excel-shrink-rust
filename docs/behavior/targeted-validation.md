@@ -674,3 +674,17 @@ For compact offline inspection of another retained pair, set `XML_DIAG_LEFT` and
 `cargo test -p excel-shrink-cli inspect_retained_state_selection -- --ignored --nocapture`.
 This reports candidate counts and bounded CF reasons without opening Excel or
 changing a corpus result. XML candidate counts precede adaptive image partitioning.
+
+The `National and Sub-national US Climate Assessment Social Science Incorporation.
+_49db76db53b7.xlsx` replay exposed a second case. Excel removed the unused Percent
+base template after Shrink removed the single blank percent-formatted cell F360.
+The old global context selected 8,403,894 XML candidates, including an almost
+full-grid constant cellIs area. Resolving applied base formats and separating the
+constant-rule context reduced the rebuilt-pair selection to 25 candidates; two
+small duplicate-rule areas deliberately retained their complete-context fallback.
+With transition audits and adaptive partitioning still enabled, the native replay
+completed in 51.500 seconds: eight image regions per rebuilt state, zero
+pixel/geometry/rendering differences, both Excel processes confirmed closed.
+Selection/transport took 6.320 seconds and comparison 0.958 seconds. Its previous
+attempt was still measuring geometry after more than 40 minutes with no image.
+No arbitrary region-count or worksheet-size exclusion was introduced.
