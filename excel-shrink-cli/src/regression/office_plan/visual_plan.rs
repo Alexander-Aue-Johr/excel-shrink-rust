@@ -1,7 +1,7 @@
 #[path = "streaming_sheet.rs"]
 mod streaming_sheet;
 
-use super::visual_xml::{decimal, decode_attr, Kind, Reader};
+use super::visual_xml::{decimal, decode_attr, decode_sheet_name, Kind, Reader};
 use anyhow::{ensure, Context, Result};
 use memchr::memmem;
 use serde::Serialize;
@@ -241,7 +241,7 @@ fn workbook_sheets<R: Read + std::io::Seek>(
         if !state.eq_ignore_ascii_case(b"visible") {
             continue;
         }
-        let name = decode_attr(tag.attr(b"name")?.context("sheet name missing")?)?;
+        let name = decode_sheet_name(tag.attr(b"name")?.context("sheet name missing")?)?;
         let rid = tag
             .attr(b"r:id")?
             .or(tag.attr(b"id")?)
@@ -894,7 +894,7 @@ mod tests {
         writer
             .write_all(
                 br#"<workbook xmlns:r="r"><sheets>
-            <sheet name="First" sheetId="4" r:id="rId1"/>
+            <sheet name="First_x0009_" sheetId="4" r:id="rId1"/>
             <sheet name="Hidden" sheetId="9" state="hidden" r:id="rId2"/>
             <sheet name=" Third" sheetId="20" r:id="rId3"/>
         </sheets></workbook>"#,
@@ -918,6 +918,7 @@ mod tests {
         assert_eq!(descriptors.len(), 2);
         assert_eq!(descriptors[0].index, 1);
         assert_eq!(descriptors[1].index, 3);
+        assert_eq!(descriptors[0].name, "First\t");
         assert_eq!(descriptors[1].name, " Third");
     }
 }

@@ -1,5 +1,5 @@
 //! Borrowed XML reader for workbook capture bounds.
-use anyhow::{bail, ensure, Result};
+use anyhow::{bail, ensure, Context, Result};
 use memchr::{memchr, memmem};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -330,4 +330,54 @@ pub(crate) fn decode_attr(bytes: &[u8]) -> Result<String> {
         pos = semi + 1;
     }
     Ok(out)
+}
+
+/// Decode the worksheet-name Xstring after XML entities, consuming each escape once.
+/// An escaped underscore protects a following literal `_xHHHH_` from a second decode.
+pub(crate) fn decode_sheet_name(bytes: &[u8]) -> Result<String> {
+    let value = decode_attr(bytes)?;
+    if !value.contains("_x") {
+        return Ok(value);
+    }
+    let mut units = Vec::with_capacity(value.len());
+    let mut remaining = value.as_str();
+    while !remaining.is_empty() {
+        let escape = remaining.as_bytes().get(..7).filter(|bytes| {
+            bytes.starts_with(b"_x")
+                && bytes[6] == b'_'
+                && bytes[2..6].iter().all(u8::is_ascii_hexdigit)
+        });
+        if let Some(escape) = escape {
+            units.push(u16::from_str_radix(std::str::from_utf8(&escape[2..6])?, 16)?);
+            remaining = &remaining[7..];
+        } else {
+            let character = remaining.chars().next().expect("nonempty worksheet name");
+            let mut buffer = [0; 2];
+            units.extend_from_slice(character.encode_utf16(&mut buffer));
+            remaining = &remaining[character.len_utf8()..];
+        }
+    }
+    String::from_utf16(&units).context("Invalid UTF-16 in worksheet name")
+}
+
+#[cfg(test)]
+mod sheet_name_tests {
+    use super::decode_sheet_name;
+
+    #[test]
+    fn decodes_entities_and_xstring_controls_once() {
+        assert_eq!(decode_sheet_name(b"A &amp; B_x0009_").unwrap(), "A & B\t");
+        assert_eq!(decode_sheet_name(b"A_x000A_B_x000D_C").unwrap(), "A\nB\rC");
+        assert_eq!(decode_sheet_name(b"A_x005F_x0009_").unwrap(), "A_x0009_");
+        for literal in ["A_xZZZZ_", "A_x123_", "A_x12345_", "A_X0009_"] {
+            assert_eq!(decode_sheet_name(literal.as_bytes()).unwrap(), literal);
+        }
+    }
+
+    #[test]
+    fn retains_unicode_and_checks_surrogate_pairs() {
+        assert_eq!(decode_sheet_name("Größe 🚀".as_bytes()).unwrap(), "Größe 🚀");
+        assert_eq!(decode_sheet_name(b"A_xD83D__xDE80_").unwrap(), "A🚀");
+        assert!(decode_sheet_name(b"A_xD83D_").is_err());
+    }
 }

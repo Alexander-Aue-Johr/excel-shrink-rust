@@ -207,3 +207,7 @@ The NWSS data dictionary's Change Log comparison has identical common pixels and
 BrazilSoybeanFigure3 initially differs at 96 chart raster pixels with matching geometry and unchanged worksheet formula/value payloads. A repeat through the production targeted-comparison endpoint has zero cell and chart differences. The raw initial finding is preserved with a review recording nonrepeatable raster variation; its precise cause remains unproven.
 
 The expanded browser-dispatch test exposed an accessibility failure when the reader was launched through ordinary PowerShell startup. Explicit native startup on the named private desktop fixes that failure. The complete private-desktop dispatch, accessible-label read and repeat throttling now pass, alongside the existing desktop-isolation and exact chart-warning tests.
+
+### Escaped worksheet name
+
+`De Facto Water Reuse Bioassay Manuscript Data_b40bf00a15f7.xlsx` failed its height command with `ItemNotFound` for `Fig 6 MDA-KBluc_x0009_`. A disposable Office.js experiment decoding the command's Xstring name completes twelve regions with zero differences. The workbook planner previously decoded XML entities alone. Its worksheet-name boundary now also decodes Xstrings once, preserving escaped literal underscores and joining UTF-16 surrogate pairs. Twenty-three planning tests pass, including escaped-name descriptor lookup, literal escapes and malformed surrogate rejection. The native production-build verification is performed separately from that initial diagnostic experiment.
