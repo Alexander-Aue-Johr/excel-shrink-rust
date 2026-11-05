@@ -571,3 +571,11 @@ It neither opens Excel nor exposes a live worker workbook for editing. Copies
 use the host's temporary directory (configured on V: for this validation run).
 The helper uses Windows PowerShell's installed clipboard support, without a
 separate .NET SDK requirement. A failed clipboard operation is shown explicitly.
+
+The atelier has separate previous/next controls for regions within the current
+file and differences across all files. Cross-file navigation loads the paginated
+differences index independently of the sidebar filter, rejects pages from a
+different run, and stops at either boundary. Moving backward into another file
+selects its last different region; moving forward selects its first. Enabling
+checked regions does not insert identical regions into the overall-differences
+navigation. No workbook is opened or recaptured by these controls.

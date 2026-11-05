@@ -2,6 +2,7 @@ import { atelierRegions } from './atelier-model.js';
 import { requestPixelDiagnostics } from './pixel-diagnostics.js';
 import { createPixelInspector } from './atelier-pixels.js';
 import { createClipboardButton } from './inspection-clipboard.js';
+import { adjacentDifference, loadDifferentWorkbooks } from './atelier-navigation.js';
 
 const node = (tag, text) => {
   const element = document.createElement(tag);
@@ -24,8 +25,10 @@ export function createAtelier() {
   header.append(title, clipboard, close);
   const toolbar = node('div');
   toolbar.className = 'atelier-tools';
-  const previous = node('button', 'Previous');
-  const next = node('button', 'Next');
+  const previous = node('button', 'Previous in file');
+  const next = node('button', 'Next in file');
+  const previousOverall = node('button', 'Previous difference · all files');
+  const nextOverall = node('button', 'Next difference · all files');
   const select = node('select');
   select.setAttribute('aria-label', 'Comparison region and phase');
   const size = node('button', 'Show 1:1');
@@ -33,7 +36,7 @@ export function createAtelier() {
   all.type = 'checkbox';
   const allLabel = node('label');
   allLabel.append(all, document.createTextNode(' Include checked regions without differences'));
-  toolbar.append(previous, select, next, size, allLabel);
+  toolbar.append(previous, select, next, previousOverall, nextOverall, size, allLabel);
   const note = node('p');
   note.className = 'atelier-note';
   const images = node('div');
@@ -47,6 +50,28 @@ export function createAtelier() {
   let request = null;
   let groupId = null;
   let renderGeneration = 0;
+  let differentWorkbooks = [];
+
+  function overallTarget(direction) {
+    const indices = regions.flatMap((region, index) => region.different ? [index] : []);
+    const next = direction > 0
+      ? indices.find(index => index > select.selectedIndex)
+      : indices.findLast(index => index < select.selectedIndex);
+    if (next != null) return { regionIndex: next };
+    return adjacentDifference(0, 0, differentWorkbooks, groupId, direction);
+  }
+
+  async function navigateOverall(direction) {
+    const target = overallTarget(direction);
+    if (!target) return;
+    if (target.workbook) {
+      const workbook = target.workbook;
+      await api.open(String(workbook.id), workbook.name || workbook.workbook || String(workbook.id), target.selectLast);
+    } else {
+      select.selectedIndex = target.regionIndex;
+      render();
+    }
+  }
 
   // Use one scale for both captures; independent fitting would invent row-height differences.
   function fitImages() {
@@ -67,6 +92,8 @@ export function createAtelier() {
     const region = regions[index];
     previous.disabled = index <= 0;
     next.disabled = index < 0 || index >= regions.length - 1;
+    previousOverall.disabled = !overallTarget(-1);
+    nextOverall.disabled = !overallTarget(1);
     if (!region) {
       note.textContent = report
         ? 'No differences detected in the selected regions. This is not a whole-workbook visual identity claim.'
@@ -137,6 +164,8 @@ export function createAtelier() {
   all.addEventListener('change', populate);
   previous.addEventListener('click', () => { select.selectedIndex--; render(); });
   next.addEventListener('click', () => { select.selectedIndex++; render(); });
+  previousOverall.addEventListener('click', () => void navigateOverall(-1));
+  nextOverall.addEventListener('click', () => void navigateOverall(1));
   size.addEventListener('click', () => {
     const fit = images.classList.toggle('fit');
     size.textContent = fit ? 'Show 1:1' : 'Fit images';
@@ -153,18 +182,30 @@ export function createAtelier() {
     regions = [];
     if (ownsFullscreen && document.fullscreenElement === document.documentElement) void document.exitFullscreen();
   });
-  return {
-    async open(id, workbook) {
+  const api = {
+    async open(id, workbook, selectLast = false) {
       const current = ++generation;
       groupId = id;
+      differentWorkbooks = [];
       clipboardNotice.textContent = '';
       request?.abort();
       request = new AbortController();
+      const signal = request.signal;
       report = null;
       all.checked = false;
       title.textContent = workbook;
       populate();
       if (!dialog.open) dialog.showModal();
+      void loadDifferentWorkbooks(signal).then(workbooks => {
+        if (current !== generation) return;
+        differentWorkbooks = workbooks;
+        previousOverall.disabled = !overallTarget(-1);
+        nextOverall.disabled = !overallTarget(1);
+      }).catch(error => {
+        if (current === generation && error.name !== 'AbortError') {
+          previousOverall.title = nextOverall.title = `Cross-file navigation unavailable: ${error.message}`;
+        }
+      });
       // Request in the click handler, before awaiting I/O, to retain user activation.
       if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
         ownsFullscreen = true;
@@ -179,6 +220,10 @@ export function createAtelier() {
         if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
         report = result;
         populate();
+        if (selectLast && regions.length) {
+          select.selectedIndex = regions.length - 1;
+          render();
+        }
       } catch (error) {
         if (current === generation && error.name !== 'AbortError') {
           note.textContent = `Cannot open retained comparison: ${error.message}`;
@@ -186,4 +231,5 @@ export function createAtelier() {
       }
     },
   };
+  return api;
 }
