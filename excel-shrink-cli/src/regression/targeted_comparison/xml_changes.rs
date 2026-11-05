@@ -110,8 +110,8 @@ impl Snapshot {
             Err(error) => return Err(error.into()),
         };
         let style_identity = super::style_identity::StyleIdentity::read(&style_bytes)?;
-        let context = read_value_context(&mut archive, &style_identity)?;
-        let cf_context = read_conditional_context(&mut archive, &workbook, &context)?;
+        let (context, conditional_values) = read_value_context(&mut archive, &style_identity)?;
+        let cf_context = read_conditional_context(&mut archive, &workbook, &conditional_values)?;
         let mut sheets = BTreeMap::new();
         for sheet in plan.sheets {
             let model = read_sheet::<true>(
@@ -300,8 +300,9 @@ impl Snapshot {
 fn read_value_context(
     archive: &mut ZipArchive<File>,
     styles: &super::style_identity::StyleIdentity,
-) -> Result<String> {
+) -> Result<(String, String)> {
     let mut context = Sha256::new();
+    let mut conditional = Sha256::new();
     for part in ["xl/styles.xml", "xl/sharedStrings.xml"] {
         let mut entry = match archive.by_name(part) {
             Ok(entry) => entry,
@@ -309,8 +310,10 @@ fn read_value_context(
             Err(error) => return Err(error.into()),
         };
         context.update(part.as_bytes());
+        conditional.update(part.as_bytes());
         if part == "xl/styles.xml" {
             context.update(&styles.context);
+            conditional.update(&styles.conditional_context);
             continue;
         }
         let mut buffer = [0u8; 128 * 1024];
@@ -320,9 +323,10 @@ fn read_value_context(
                 break;
             }
             context.update(&buffer[..count]);
+            conditional.update(&buffer[..count]);
         }
     }
-    Ok(format!("{:x}", context.finalize()))
+    Ok((format!("{:x}", context.finalize()), format!("{:x}", conditional.finalize())))
 }
 
 /// Add theme, format override and workbook-property dependencies relevant to CF rendering.

@@ -8,6 +8,47 @@ use std::{
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 #[test]
+fn constant_rules_ignore_unapplied_templates_but_keep_changed_inputs_and_formats() -> Result<()> {
+    let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-style-template")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let values = r#"<row r="1"><c r="A1" t="inlineStr"><is><t>Yes</t></is></c></row>"#;
+    let rule = r#"<conditionalFormatting sqref="A1:B20"><cfRule type="cellIs" operator="equal" dxfId="0" priority="1"><formula>"Yes"</formula></cfRule></conditionalFormatting>"#;
+    let left_style = concat!(
+        r#"<cellStyleXfs count="2"><xf fontId="0"/><xf fontId="1"/></cellStyleXfs>"#,
+        r#"<cellXfs count="2"><xf xfId="0"/><xf xfId="1"/></cellXfs>"#,
+        r#"<cellStyles count="2"><cellStyle name="Normal" xfId="0"/><cellStyle name="Percent" xfId="1"/></cellStyles>"#,
+        r#"<dxfs count="1"><dxf><font><b/></font></dxf></dxfs>"#,
+    );
+    let right_style = concat!(
+        r#"<cellStyleXfs count="1"><xf fontId="0"/></cellStyleXfs>"#,
+        r#"<cellXfs count="1"><xf xfId="0"/></cellXfs>"#,
+        r#"<cellStyles count="1"><cellStyle name="Normal" xfId="0"/></cellStyles>"#,
+        r#"<dxfs count="1"><dxf><font><b/></font></dxf></dxfs>"#,
+    );
+    write_book(&a, values, rule, "", "", left_style)?;
+    write_book(&b, values, rule, "", "", right_style)?;
+    assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+    write_book(&b, &values.replace("Yes", "No"), rule, "", "", right_style)?;
+    let (_, candidates) = check(&a, &b)?;
+    assert!(candidates.iter().any(|candidate| application_areas(&candidate.cell)
+        .is_some_and(|areas| areas.iter().any(|area| area.contains(1, 1)))));
+    write_book(&b, values, rule, "", "", &right_style.replace("<b/>", "<i/>"))?;
+    assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    write_book(&b, values, rule, "", "", &right_style.replace("fontId=\"0\"", "fontId=\"2\""))?;
+    assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+
+    // Other rule families retain their complete style-context safeguard.
+    let aggregate = r#"<conditionalFormatting sqref="A1:B20"><cfRule type="duplicateValues" priority="1"/></conditionalFormatting>"#;
+    write_book(&a, values, aggregate, "", "", left_style)?;
+    write_book(&b, values, aggregate, "", "", right_style)?;
+    assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn removing_untyped_blank_styles_does_not_change_duplicate_rule_inputs() -> Result<()> {
     let root =
         crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-blank-style")?;

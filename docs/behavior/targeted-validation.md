@@ -631,18 +631,26 @@ recalculation. This evidence is retained separately; raw pixel verdicts remain.
 
 ## Cell-format identity during XML selection
 
-Excel may reassign cellXfs indices while saving or rebuilding a workbook. Selection
-resolves explicit cell, row and column format indices to the complete referenced
-xf definition instead of comparing the numeric index. The stylesheet context uses
-the set of complete cellXfs definitions, retaining every other stylesheet byte.
-Repeated copies of an identical definition do not create a new format meaning.
+Excel may reassign cellXfs and cellStyleXfs indices while saving or rebuilding a
+workbook. Selection resolves explicit cell, row and column format indices to the
+complete referenced cell XF and its base XF. All formatting properties remain in
+the fingerprint. Cells without an explicit style also include the implicit default.
+Index-table counts, order and unused named-template labels are not applied visual
+properties. Unrelated named templates therefore cannot change every cell's identity.
 
-A format identity also includes the surrounding stylesheet dependencies: fonts,
-fills, borders, base styles, namespace declarations and other components. Changing
-those dependencies still changes the identity. This does not attempt to prove
-that differently serialized formats, reordered font tables or different properties
-render alike. Such cases remain conservative candidates. Invalid referenced format
-indices are explicit errors, not evidence of equality.
+Font, fill, border, number-format, differential-format and other shared stylesheet
+components remain conservative dependencies. Their index tables are not semantically
+remapped. Unknown XF attributes, nested extensions or style-table children retain
+the complete raw-style fallback. Invalid referenced format indices are explicit
+errors, not evidence of equality. This does not attempt to prove that differently
+serialized properties or reordered font tables render alike.
+
+Constant cellIs rules have a narrower rendering context: their unchanged literal
+comparison does not depend on unused cell-format templates. Their complete CF rule,
+differential formatting, shared strings, theme/workbook context and implicit default
+must still agree; changed or uncertain cell inputs remain capture candidates. Other
+rule families retain the complete style-context safeguard. Real column-layout or
+row-layout changes keep their existing conservative handling.
 
 Only internal comparison fingerprints are normalized. Original, Shrink and retained
 Excel-saved files are not rewritten by this analysis. Raw audit transitions remain

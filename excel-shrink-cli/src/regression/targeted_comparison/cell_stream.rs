@@ -175,7 +175,7 @@ impl Writer {
                     hash.update(tag.name);
                     hash.update([0]);
                     if tag.local() == b"c" && tag.kind != Kind::End {
-                        styles.hash_attributes(hash, tag.attrs, b"s")?;
+                        styles.hash_cell_attributes(hash, tag.attrs)?;
                     } else {
                         hash.update(tag.attrs);
                     }

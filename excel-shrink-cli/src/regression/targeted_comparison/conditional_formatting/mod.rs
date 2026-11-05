@@ -86,6 +86,8 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
     {
         return Proof::Fallback("unsupported-rule-or-namespace-content");
     }
+    let complete_context_unchanged = before.cf_context == after.cf_context
+        && before.context == after.context;
     if block.rules.iter().all(formulas::literal_rule) {
         if before.cf_context == after.cf_context {
             return Proof::LocalInputs;
@@ -97,7 +99,7 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
         .iter()
         .all(|rule| input_independent::proof(rule, before, after).is_some())
     {
-        return if before.cf_context == after.cf_context {
+        return if complete_context_unchanged {
             Proof::InputIndependent("unchanged-input-independent-rules")
         } else {
             Proof::Fallback("format-string-theme-or-workbook-context-changed")
@@ -108,21 +110,21 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
         .iter()
         .all(|rule| formulas::literal_rule(rule) || formulas::whole_area_rule(rule))
     {
-        return if before.cf_context == after.cf_context {
+        return if complete_context_unchanged {
             Proof::WholeAreaInputs
         } else {
             Proof::Fallback("format-string-theme-or-workbook-context-changed")
         };
     }
     if let Some(inputs) = reference_inputs(block, before, after) {
-        return if before.cf_context == after.cf_context {
+        return if complete_context_unchanged {
             Proof::ReferencedInputs(inputs)
         } else {
             Proof::Fallback("format-string-theme-or-workbook-context-changed")
         };
     }
     if let Some(inputs) = combined_inputs(block, before, after) {
-        return if before.cf_context == after.cf_context {
+        return if complete_context_unchanged {
             Proof::CombinedInputs(inputs)
         } else {
             Proof::Fallback("format-string-theme-or-workbook-context-changed")
