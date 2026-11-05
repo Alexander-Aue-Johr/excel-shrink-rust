@@ -90,6 +90,9 @@ impl WorkerTelemetry {
             }
             sample["sweep_progress"] = progress;
         }
+        if let Some(progress) = targeted_progress(&source["targeted_progress"]) {
+            sample["targeted_progress"] = progress;
+        }
         self.pane_resources = sample;
     }
 
@@ -247,6 +250,26 @@ impl WorkerTelemetry {
             "pane_resources": self.pane_resources,
         })
     }
+}
+
+/// Retain bounded operation stages without treating a repeated heartbeat as progress.
+fn targeted_progress(source: &Value) -> Option<Value> {
+    let command = source["command_id"].as_str()?;
+    let stage = source["stage"].as_str()?;
+    let updated = source["updated_unix_ms"].as_u64()?;
+    if command.is_empty()
+        || command.len() > 128
+        || !matches!(
+            stage,
+            "rebuild_dispatch"
+                | "rebuild_waiting_for_calculation"
+                | "saving_workbook"
+                | "workbook_saved"
+        )
+    {
+        return None;
+    }
+    Some(json!({"command_id":command,"stage":stage,"updated_unix_ms":updated}))
 }
 
 fn capture_progress(source: &Value) -> Option<Value> {
@@ -544,6 +567,23 @@ mod tests {
         assert!(command_timing(&json!({
             "command_id": "000001", "kind": "unexpected"
         }))
+        .is_none());
+    }
+    #[test]
+    fn rebuild_stages_survive_heartbeat_filtering_without_inventing_progress() {
+        let mut telemetry = WorkerTelemetry::new();
+        let before = telemetry.snapshot()["last_progress_at"].clone();
+        let progress =
+            json!({"command_id":"targeted-2", "stage":"saving_workbook", "updated_unix_ms":123});
+        telemetry.sample_pane(&json!({"targeted_progress":progress}));
+        assert_eq!(
+            telemetry.snapshot()["pane_resources"]["targeted_progress"],
+            progress
+        );
+        assert_eq!(telemetry.snapshot()["last_progress_at"], before);
+        assert!(targeted_progress(
+            &json!({"command_id":"x", "stage":"unknown", "updated_unix_ms":123})
+        )
         .is_none());
     }
 }
