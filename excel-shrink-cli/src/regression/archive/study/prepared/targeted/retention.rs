@@ -19,7 +19,7 @@ pub(super) fn apply(
     );
     let mut regions = BTreeMap::<Tile, BTreeSet<PathBuf>>::new();
     let mut protected = BTreeSet::new();
-    if report["capture_partition"] == "visible-geometry-v1" {
+    if super::contract::adaptive_partition(report) {
         protect_adaptive_neighbors(report, &mut protected)?;
     }
     for pair in report["comparisons"]
@@ -45,7 +45,7 @@ pub(super) fn apply(
             }
             let paths = regions.entry(tile).or_default();
             for key in ["left_png", "right_png"] {
-                if finding[key].is_null() && report["capture_partition"] == "visible-geometry-v1" {
+                if finding[key].is_null() && super::contract::adaptive_partition(report) {
                     let side = if key == "left_png" { "left" } else { "right" };
                     ensure!(
                         finding[format!("{side}_rendering")] == "zero-area-range",
@@ -124,7 +124,7 @@ pub(super) fn apply(
     replace_alias_paths(report, &aliases);
     report["evidence_retention"] = json!({"comparison_resolution":"original",
         "equal_preview_width":preview_width,"full_resolution_context_tiles":1,
-        "context_policy":if report["capture_partition"] == "visible-geometry-v1" {"adjacent-cell-rectangles"} else {"grid-neighbors"},
+        "context_policy":if super::contract::adaptive_partition(report) {"adjacent-cell-rectangles"} else {"grid-neighbors"},
         "deduplicated_images":deduplicated,"files":files});
     Ok(original_paths
         .difference(&retained_paths)
@@ -303,6 +303,34 @@ mod tests {
             directory,
             json!({"comparisons":[{"label":"direct Default","findings":findings}]}),
         ))
+    }
+
+    #[test]
+    fn proportional_partitions_retain_adaptive_neighbors() -> Result<()> {
+        let (directory, mut report) = fixture(&[
+            ("A1:P10000", true), ("A10001:P20000", false), ("A20002:P20100", false),
+        ])?;
+        report["capture_partition"] = json!("visible-geometry-v2");
+        apply(&mut report, &directory, 64)?;
+        assert_eq!(report["evidence_retention"]["context_policy"], "adjacent-cell-rectangles");
+        let neighbors: Vec<_> = report["evidence_retention"]["files"].as_array().unwrap().iter()
+            .filter(|file| file["grid_row"] == (10000 / CAPTURE_ROWS)).collect();
+        assert_eq!(neighbors.len(), 2);
+        assert!(neighbors.iter().all(|file| file["full_resolution_required"] == true));
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn proportional_zero_area_observations_need_no_image() -> Result<()> {
+        let directory = artifact_cache::unique_path(&std::env::temp_dir(), "zero-retention")?;
+        fs::create_dir_all(&directory)?;
+        let mut report = json!({"capture_partition":"visible-geometry-v2", "comparisons":[
+            {"findings":[{"sheet":"Data","cell":"A1:B2", "left_png":null, "right_png":null,
+                "left_rendering":"zero-area-range", "right_rendering":"zero-area-range"}]}]});
+        assert!(apply(&mut report, &directory, 64)?.is_empty());
+        fs::remove_dir_all(directory)?;
+        Ok(())
     }
 
     #[test]

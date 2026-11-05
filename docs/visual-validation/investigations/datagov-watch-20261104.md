@@ -189,3 +189,7 @@ The full proportional permit comparison read 4,352 PNGs (856,303,164 encoded byt
 ### Native cross-check of CFU Pending state
 
 An isolated probe joined the same owned private desktop and queried the existing Excel process, without opening another workbook. Native Excel reported CalculationState=2 (Pending), Calculation=Manual and Ready=true while Office.js was waiting for calculation completion. Thus the observed Pending state is not solely a stale JavaScript display. The exact cause remains unproven. Microsoft has documented a related volatile-chart Pending-state issue, with a reported fix in a 2025 build; that history is not evidence that this machine has the same defect. No completion rule was relaxed. Reference [OfficeDev issue 3319](https://github.com/OfficeDev/office-js/issues/3319).
+
+### Proportional partition consumers
+
+The completion contract and evidence-retention pass recognize both measured partition versions. Zero-area observations retain their explicit image-free contract, and differing adaptive ranges retain full-resolution context at actual cell-rectangle boundaries. Focused consumer tests cover v1/v2 blank-edge and zero-area validation, v2 adjacent ranges and v2 image-free retention. This closes a version-dispatch gap introduced with the proportional planner; underlying capture coverage and pixel verdicts are unchanged.

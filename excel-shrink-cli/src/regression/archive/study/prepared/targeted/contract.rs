@@ -3,6 +3,11 @@ use anyhow::{ensure, Context, Result};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
+/// Both measured-geometry planners retain the same coverage and rendering contract.
+pub(super) fn adaptive_partition(report: &Value) -> bool {
+    matches!(report["capture_partition"].as_str(), Some("visible-geometry-v1" | "visible-geometry-v2"))
+}
+
 /// Every requested pair must cover the same unique selected regions with explicit verdicts.
 pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<bool> {
     ensure!(
@@ -74,7 +79,7 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
             let range = finding["cell"].as_str().context("Missing finding range")?;
             ensure!(regions.insert((sheet, range)), "Duplicate region finding");
             changed |= difference_flags(finding, &["pixels_differ", "geometry_differs"])?;
-            if report["capture_partition"] == "visible-geometry-v1" {
+            if adaptive_partition(report) {
                 changed |= validate_rendering(finding)?;
             } else {
                 for field in ["left_png", "right_png"] {
@@ -303,7 +308,10 @@ mod tests {
             f["pixels_compared"] = json!(false);
             f["rendering_differs"] = json!(false);
         }
-        assert!(!has_differences(&report, true)?);
+        for partition in ["visible-geometry-v1", "visible-geometry-v2"] {
+            report["capture_partition"] = json!(partition);
+            assert!(!has_differences(&report, true)?);
+        }
         let mut invalid = report.clone();
         invalid["comparisons"][0]["findings"][0]["right_geometry"]["height"] = json!(10);
         assert!(has_differences(&invalid, true).is_err());
@@ -332,7 +340,10 @@ mod tests {
             f["left_rendering"] = json!("captured");
             f["right_rendering"] = json!("captured");
         }
-        assert!(!has_differences(&report, true)?);
+        for partition in ["visible-geometry-v1", "visible-geometry-v2"] {
+            report["capture_partition"] = json!(partition);
+            assert!(!has_differences(&report, true)?);
+        }
         for field in ["top", "left", "width", "height"] {
             let mut invalid = report.clone();
             invalid["comparisons"][0]["findings"][0]["right_geometry"]["comparison_core"][field] = json!(7);
