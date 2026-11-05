@@ -197,6 +197,18 @@ value is visible. Representatives can be tentative in fixed-height rows and
 removed if no kept row content actually needs them. Explicit merge cells and
 column-format exceptions are handled separately.
 
+Conditional formatting can make empty rows visibly relevant even when no
+ordinary cell XF has a fill or border. Its application ranges therefore protect
+row layout through their last row, including preceding rows whose heights position
+those ranges. This boundary affects range selection and trailing-row trimming;
+it does not protect all cell payloads in the conditional region. Fixed-height
+empty rows can survive as self-closing row headers while their font-only cells
+are still removed. Rows beyond the conditional boundary retain ordinary pruning.
+The metadata byte scanner handles ordinary sqref attributes and nested extension
+sqref text without rescanning worksheet cells. An unrecognized conditional scope
+conservatively protects existing row layout through Excel's final row; it does
+not synthesize rows or cells and does not evaluate conditional formulas.
+
 A styleless empty font representative does not itself anchor a trailing region.
 It remains eligible for local height/baseline preservation before later content
 or another required anchor. If it masks an inherited visible row or column fill

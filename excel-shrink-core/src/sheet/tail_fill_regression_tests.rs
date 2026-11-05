@@ -39,6 +39,24 @@ fn clean(rows: &[u8], columns: &[u8], maximum: bool, splitting_disabled: bool) -
 
 const WHITE_COLUMNS: &[u8] = br#"<col min="1" max="16384" style="1"/>"#;
 
+/// RN17B-RN30 Volatiles: empty custom-height rows position the end of a CF fill.
+/// Preserve their headers, not the discarded font-only cells or unrelated tail.
+#[test]
+fn conditional_regions_preserve_empty_row_heights_without_restoring_cells() {
+    let rows = br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="2" ht="17.25" customHeight="1"><c r="H2" s="6"/></row><row r="10" ht="20" customHeight="1"/><row r="60" ht="20" customHeight="1"/>"#;
+    for disabled in [false, true] {
+        let params = params(false);
+        let mut sheet = tests::preprocessed_with_sheet_data(rows, None);
+        sheet.until_worksheet_end_output_chunks = br#"</sheetData><conditionalFormatting sqref="A5:B44"><cfRule type="containsBlanks" dxfId="0" priority="1"><formula>LEN(TRIM(A5))=0</formula></cfRule></conditionalFormatting></worksheet>"#.to_vec();
+        let result = build_clean_sheet_xml(sheet, &params, disabled).unwrap();
+        let xml = String::from_utf8(result.xml).unwrap();
+        assert!(xml.contains(r#"<row r="2" ht="17.25" customHeight="1"/>"#), "{xml}");
+        assert!(xml.contains(r#"<row r="10" ht="20" customHeight="1"/>"#), "{xml}");
+        assert!(!xml.contains(r#"r="H2""#), "{xml}");
+        assert!(!xml.contains(r#"r="60""#), "{xml}");
+    }
+}
+
 /// Santavy Table Sup E has borderless, unfilled row headers after its final
 /// stored cell. Range selection must retain them before row cleaning runs.
 #[test]

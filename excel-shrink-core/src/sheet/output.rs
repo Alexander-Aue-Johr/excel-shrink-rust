@@ -55,8 +55,10 @@ pub fn build_clean_sheet_xml_with_progress(
     let mut preprocessed = preprocessed;
     let drawing_anchor_bounds = prepare_sheet_metrics(&mut preprocessed, params, progress);
     let initial_max_merge_row = get_max_merge_cells_row_index(&preprocessed.clean_sheet_metrics);
+    let conditional_row = super::conditional_layout::boundary(&preprocessed);
+    let layout_boundary = initial_max_merge_row.into_iter().chain(conditional_row).max();
     let preserve_through_row =
-        tail_boundary_row(&preprocessed.clean_sheet_metrics, initial_max_merge_row);
+        tail_boundary_row(&preprocessed.clean_sheet_metrics, layout_boundary);
 
     let mut final_sheet_data = clean_sheet_data(
         &preprocessed.sheet_data,
@@ -71,7 +73,7 @@ pub fn build_clean_sheet_xml_with_progress(
         final_sheet_data,
         params,
         &mut preprocessed.clean_sheet_metrics,
-        initial_max_merge_row,
+        layout_boundary,
         "trim_trailing_layout_only_rows",
         progress,
     );
@@ -91,7 +93,7 @@ pub fn build_clean_sheet_xml_with_progress(
         final_sheet_data,
         params,
         &mut preprocessed.clean_sheet_metrics,
-        bounds.max_merge_row,
+        bounds.max_merge_row.into_iter().chain(conditional_row).max(),
         "trim_trailing_layout_only_rows_after_bounds",
         progress,
     );
