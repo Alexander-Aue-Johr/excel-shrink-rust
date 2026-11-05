@@ -154,6 +154,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn data_validation_does_not_extend_conditional_layout() {
+        // Stove-use SI: validation reaches the final row; CF stops at 674.
+        let metadata = br#"<conditionalFormatting sqref="OM665:ACZ674 ACU335:ACZ664"><cfRule/></conditionalFormatting><extLst><ext><x14:dataValidations><x14:dataValidation><xm:sqref>G5:G329 M334 M665:M1048576</xm:sqref></x14:dataValidation></x14:dataValidations></ext></extLst>"#;
+        assert_eq!(metadata_boundary(metadata), Some(674));
+    }
+
+    #[test]
     fn metadata_scopes_cover_absolute_ranges_extensions_and_unknowns() {
         assert_eq!(metadata_boundary(br#"<conditionalFormatting sqref='$A$5:$C$44 J2:J20'><cfRule/></conditionalFormatting>"#), Some(44));
         assert_eq!(metadata_boundary(br#"<x14:conditionalFormatting><x14:cfRule/><xm:sqref>A2:B90</xm:sqref></x14:conditionalFormatting>"#), Some(90));
