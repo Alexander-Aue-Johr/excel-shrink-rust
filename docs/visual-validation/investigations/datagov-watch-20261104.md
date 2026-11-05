@@ -185,3 +185,7 @@ The full proportional permit comparison read 4,352 PNGs (856,303,164 encoded byt
 ### Fatigue chart-sheet viewport
 
 `1100san11frafat_46e0a2702649.xlsx` originally exported its standalone fatigue chart at different sizes despite unchanged chart parts. An Original/repacked-Original control matched. Enabling `SizeWithWindow` during viewport setup produced matching Original/Default geometry and pixels in an isolated test and again through the Observatory's normal targeted-comparison endpoint. Both reruns measured 724.5 by 442.5 points. The previous view is restored, with a focused fake-workbook test checking viewport adoption and restoration. A separate baseline-repeat shell launch was rejected by automatic tool review; no baseline repeat is claimed. The raw original finding remains retained alongside the successful normalized reruns.
+
+### Native cross-check of CFU Pending state
+
+An isolated probe joined the same owned private desktop and queried the existing Excel process, without opening another workbook. Native Excel reported CalculationState=2 (Pending), Calculation=Manual and Ready=true while Office.js was waiting for calculation completion. Thus the observed Pending state is not solely a stale JavaScript display. The exact cause remains unproven. Microsoft has documented a related volatile-chart Pending-state issue, with a reported fix in a 2025 build; that history is not evidence that this machine has the same defect. No completion rule was relaxed. Reference [OfficeDev issue 3319](https://github.com/OfficeDev/office-js/issues/3319).
