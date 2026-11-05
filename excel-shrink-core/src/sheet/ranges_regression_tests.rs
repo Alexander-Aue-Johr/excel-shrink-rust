@@ -46,7 +46,11 @@ fn does_not_treat_spans_as_style_attribute() {
     let sheet_data = br#"<row r="99" spans="1:8"/>"#;
 
     let pos = find_last_fill_or_border_or_protection_style_or_hidden_attribute(
-        sheet_data, &params, None, false,
+        sheet_data,
+        &params,
+        None,
+        false,
+        &ColumnRangeMap::default(),
     );
 
     assert_eq!(pos, None);
@@ -59,7 +63,11 @@ fn finds_real_row_style_attribute_after_cell_range() {
     let sheet_data = br#"<row r="99" s="8"/>"#;
 
     let pos = find_last_fill_or_border_or_protection_style_or_hidden_attribute(
-        sheet_data, &params, None, false,
+        sheet_data,
+        &params,
+        None,
+        false,
+        &ColumnRangeMap::default(),
     );
 
     assert!(pos.is_some());
@@ -81,13 +89,23 @@ fn preserve_through_row_extends_range_after_last_visible_row() {
     let params = params_with_relevant_style(8);
     let sheet_data = br#"<row r="110"><c r="I110"><v>27</v></c></row><row r="111" spans="1:9"/><row r="112" spans="1:9"/>"#;
 
-    let ranges_without_preserve =
-        retrieve_sheet_data_range_containing_cells(sheet_data, &params, false, None);
+    let ranges_without_preserve = retrieve_sheet_data_range_containing_cells(
+        sheet_data,
+        &params,
+        false,
+        None,
+        &ColumnRangeMap::default(),
+    );
     let rows_without_preserve = String::from_utf8_lossy(ranges_without_preserve.rows_range);
     assert!(!rows_without_preserve.contains(r#"r="111""#));
 
-    let ranges_with_preserve =
-        retrieve_sheet_data_range_containing_cells(sheet_data, &params, false, Some(111));
+    let ranges_with_preserve = retrieve_sheet_data_range_containing_cells(
+        sheet_data,
+        &params,
+        false,
+        Some(111),
+        &ColumnRangeMap::default(),
+    );
     let rows_with_preserve = String::from_utf8_lossy(ranges_with_preserve.rows_range);
 
     assert!(rows_with_preserve.contains(r#"r="111""#));

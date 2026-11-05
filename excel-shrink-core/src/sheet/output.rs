@@ -211,6 +211,7 @@ fn clean_pruned_sheet_data(
         params,
         metrics.sheet_protection_enabled,
         preserve_through_row,
+        &metrics.column_definitions,
     );
     if tail_contains_content_cell(&sheet_data[ranges.cells_range.len()..]) {
         metrics.tail_content_guard_triggered = true;
@@ -1366,7 +1367,7 @@ r="A2"><v>42</v></c></row><row r="3"><c	r="A3"><f>1+1</f></c></row><row r="4"><c
         let params = default_params();
         let sheet_data = b"<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"2\" hidden=\"1\"><c\nr=\"A2\"><v>42</v></c></row><row r=\"3\"/>";
         let ranges = crate::sheet::ranges::retrieve_sheet_data_range_containing_cells(
-            sheet_data, &params, false, None,
+            sheet_data, &params, false, None, &crate::models::ColumnRangeMap::default(),
         );
         assert!(ranges
             .rows_range

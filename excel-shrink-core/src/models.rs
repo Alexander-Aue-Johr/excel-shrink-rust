@@ -314,8 +314,14 @@ impl ColumnRangeMap {
                 && self.uniform_fill_id == style.fill_id)
     }
 
+    /// A borderless row header can suppress inherited column borders even when
+    /// it has no visible fill or border of its own.
+    pub(crate) fn row_style_masks_column_borders(&self, style: &Xf) -> bool {
+        style.applies_default_border_override() && self.has_visible_column_border
+    }
+
     pub(crate) fn row_style_has_tail_visual_effect(&self, style: &Xf, attributes: &[u8]) -> bool {
-        if style.applies_default_border_override() && self.has_visible_column_border {
+        if self.row_style_masks_column_borders(style) {
             return true;
         }
         if self.style_has_tail_visual_effect(style) || !style.has_fill_or_border {

@@ -8,13 +8,14 @@ fn params(maximum: bool) -> CleanSheetParameters {
     let styles = br#"<styleSheet><fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><sz val="18"/><name val="Times New Roman"/></font></fonts>
         <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0070C0"/></patternFill></fill></fills>
         <borders count="2"><border/><border><bottom style="thin"/></border></borders>
-        <cellXfs count="7"><xf fontId="0" fillId="0" borderId="0"/>
+        <cellXfs count="8"><xf fontId="0" fillId="0" borderId="0"/>
         <xf fontId="0" fillId="2" borderId="0" applyFill="1"/>
         <xf fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>
         <xf fontId="1" fillId="3" borderId="0" applyFont="1" applyFill="1"/>
         <xf fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/>
         <xf fontId="0" fillId="0" borderId="0" applyFill="1"/>
-        <xf fontId="1" fillId="0" borderId="0" applyFont="1"/></cellXfs></styleSheet>"#;
+        <xf fontId="1" fillId="0" borderId="0" applyFont="1"/>
+        <xf fontId="0" fillId="0" borderId="0" applyBorder="1"/></cellXfs></styleSheet>"#;
     let mut params = tests::default_params();
     params.patterns =
         WorkbookSpecificPatterns::new(crate::styles::parse_xfs(styles).unwrap(), None);
@@ -37,6 +38,27 @@ fn clean(rows: &[u8], columns: &[u8], maximum: bool, splitting_disabled: bool) -
 }
 
 const WHITE_COLUMNS: &[u8] = br#"<col min="1" max="16384" style="1"/>"#;
+
+/// Santavy Table Sup E has borderless, unfilled row headers after its final
+/// stored cell. Range selection must retain them before row cleaning runs.
+#[test]
+fn unfilled_borderless_headers_survive_initial_tail_range_selection() {
+    let rows = br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="2" s="7" customFormat="1"/>"#;
+    for maximum in [false, true] {
+        for disabled in [false, true] {
+            let result = clean(
+                rows,
+                br#"<col min="1" max="16384" style="4"/>"#,
+                maximum,
+                disabled,
+            );
+            assert!(String::from_utf8_lossy(&result.xml)
+                .contains(r#"<row r="2" s="7" customFormat="1"/>"#));
+            let unbordered = clean(rows, WHITE_COLUMNS, maximum, disabled);
+            assert!(!String::from_utf8_lossy(&unbordered.xml).contains(r#"r="2""#));
+        }
+    }
+}
 
 /// A redundant row fill must not hide its separate role of masking a column border.
 #[test]

@@ -21,6 +21,7 @@ pub fn retrieve_sheet_data_range_containing_cells<'a>(
     params: &CleanSheetParameters,
     sheet_protection_enabled: bool,
     preserve_through_row: Option<u32>,
+    columns: &ColumnRangeMap,
 ) -> VisibleSheetDataRanges<'a> {
     let last_cell_row_end = find_last_row_with_cell_end_pos(sheet_data);
     let last_visible_attribute = find_last_fill_or_border_or_protection_style_or_hidden_attribute(
@@ -28,6 +29,7 @@ pub fn retrieve_sheet_data_range_containing_cells<'a>(
         params,
         last_cell_row_end,
         sheet_protection_enabled,
+        columns,
     );
     let last_visible_row_end =
         find_last_visible_row_end_position(sheet_data, last_visible_attribute);
@@ -186,6 +188,7 @@ pub fn find_last_fill_or_border_or_protection_style_or_hidden_attribute(
     params: &CleanSheetParameters,
     last_row_with_cell_end_pos: Option<usize>,
     _sheet_protection_enabled: bool,
+    columns: &ColumnRangeMap,
 ) -> Option<usize> {
     let start = last_row_with_cell_end_pos.unwrap_or(0);
     let mut last_pos = last_row_with_cell_end_pos;
@@ -199,7 +202,7 @@ pub fn find_last_fill_or_border_or_protection_style_or_hidden_attribute(
         last_pos = Some(last_pos.map_or(absolute, |old| old.max(absolute)));
     }
 
-    if let Some(style_pos) = rfind_relevant_style_attribute(sheet_data, params, start) {
+    if let Some(style_pos) = rfind_relevant_style_attribute(sheet_data, params, start, columns) {
         last_pos = Some(last_pos.map_or(style_pos, |old| old.max(style_pos)));
     }
 
@@ -210,11 +213,21 @@ fn rfind_relevant_style_attribute(
     sheet_data: &[u8],
     params: &CleanSheetParameters,
     start: usize,
+    columns: &ColumnRangeMap,
 ) -> Option<usize> {
     let mut search_end = sheet_data.len();
 
     while let Some(attribute) = previous_style_attribute(sheet_data, start, search_end) {
-        if style_id_has_visible_fill_or_border(params, attribute.style_id) {
+        // No cells follow this boundary. A borderless row can still mask the
+        // column borders and must reach the normal row-retention decision.
+        if params
+            .patterns
+            .xfs_by_index
+            .get(&attribute.style_id)
+            .is_some_and(|style| {
+                style.has_fill_or_border || columns.row_style_masks_column_borders(style)
+            })
+        {
             return Some(attribute.position);
         }
         search_end = attribute.position;
@@ -253,15 +266,6 @@ fn previous_style_attribute(
     }
 
     None
-}
-
-#[inline]
-fn style_id_has_visible_fill_or_border(params: &CleanSheetParameters, style_id: u32) -> bool {
-    params
-        .patterns
-        .xfs_by_index
-        .get(&style_id)
-        .is_some_and(style_has_visible_fill_or_border)
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -373,3 +373,21 @@ and images remain. An alpha audit of all 32 existing white/capture-boundary
 reviews checked 100 unique image files: every image is opaque, with no read
 errors, so the earlier RGB-based boundary proofs are not weakened by hidden
 alpha differences. The diagnostic helpers now check RGBA explicitly.
+
+### Unfilled rows masking column borders
+
+Santavy `Table Sup E` (`c1c611c8d8eaeb71f8fe`) exposes another path through
+the row-mask issue. Original rows 47–73 use borderless XF 78 with `applyBorder=1`;
+several columns inherit visible borders from XF 32. The prepared Default and
+the current shrinker both stopped at row 46, revealing a grid in the original
+white region. The selected rebuilt comparison has identical capture geometry,
+so this is not a capture-size mismatch.
+
+The earlier mask guard covered row processing and final tail pruning. Initial
+range selection still recognized only styles with their own fill or border,
+discarding the empty masking rows before either guard could run. Range selection
+now consults effective column-border masking too. A focused fixture failed
+before this change and passes afterward, including the unbordered negative
+control and both split settings. All 255 active core tests pass (one ignored).
+An actual shrink of the workbook now retains its 73 row headers; native Excel
+counterchecking and selective cache migration follow separately.

@@ -186,6 +186,10 @@ trailing-layout pruning rules still apply.
 A row's explicit borderless format can suppress visible column borders even
 when its fill matches the full-width column background. Preserve such row
 headers through their original extent. No per-column cells need to be added.
+The initial split between cell-bearing rows and trailing row headers must also
+honor this masking effect. Otherwise a borderless, unfilled row can disappear
+before the normal row-retention check runs. Without visible column borders,
+these otherwise redundant tail headers remain removable.
 
 Removing empty font cells can change Excel's automatic row height and text
 baseline. Default therefore keeps appropriate representatives even where no
