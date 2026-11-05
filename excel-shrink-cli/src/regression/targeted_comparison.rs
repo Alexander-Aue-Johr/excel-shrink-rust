@@ -132,6 +132,7 @@ struct Report {
     height_checks: Vec<heights::HeightCheck>,
     conditional_formatting: Vec<conditional_formatting::Check>,
     comparisons: Vec<staged::VisualComparison>,
+    formula_diagnostics: Value,
     candidate_count: usize,
     content_coverage: Vec<content_bounds::Coverage>,
     findings: Vec<Finding>,

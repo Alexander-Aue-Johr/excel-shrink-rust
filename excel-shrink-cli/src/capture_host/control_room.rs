@@ -5,6 +5,7 @@ mod activity;
 mod inspection;
 mod manual_capture;
 mod pixel_diagnostics;
+mod formula_diagnostics;
 mod platform;
 mod snapshots;
 mod summary;
@@ -92,6 +93,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
             get(pixel_diagnostics::inspect),
         )
         .route("/api/evidence/{*path}", get(evidence_asset))
+        .route("/api/groups/{id}/formula-diagnostics", get(formula_diagnostics::inspect))
         .route(
             "/api/groups/{id}/capture-sheet",
             post(manual_capture::start),

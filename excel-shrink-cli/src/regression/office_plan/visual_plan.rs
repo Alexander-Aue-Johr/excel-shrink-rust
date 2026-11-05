@@ -205,6 +205,7 @@ fn resolve_part_target(source_part: &str, target: &str) -> Result<String> {
 
 fn workbook_sheets<R: Read + std::io::Seek>(
     zip: &mut ZipArchive<R>,
+    include_hidden: bool,
 ) -> Result<Vec<SheetDescriptor>> {
     let workbook = read_zip_entry(zip, "xl/workbook.xml")?;
     let relationships = read_zip_entry(zip, "xl/_rels/workbook.xml.rels")?;
@@ -238,7 +239,7 @@ fn workbook_sheets<R: Read + std::io::Seek>(
         }
         workbook_index += 1;
         let state = tag.attr(b"state")?.unwrap_or(b"visible");
-        if !state.eq_ignore_ascii_case(b"visible") {
+        if !include_hidden && !state.eq_ignore_ascii_case(b"visible") {
             continue;
         }
         let name = decode_sheet_name(tag.attr(b"name")?.context("sheet name missing")?)?;
@@ -259,6 +260,11 @@ fn workbook_sheets<R: Read + std::io::Seek>(
         }
     }
     Ok(sheets)
+}
+
+/// Formula dependencies can live on hidden sheets even though capture panels do not.
+pub(in crate::regression) fn formula_worksheet_parts<R: Read + std::io::Seek>(zip: &mut ZipArchive<R>) -> Result<Vec<(String, String)>> {
+    Ok(workbook_sheets(zip, true)?.into_iter().map(|sheet| (sheet.name, sheet.file)).collect())
 }
 
 pub(in crate::regression) fn parse_column_width(value: &[u8]) -> Result<f64> {
@@ -580,7 +586,7 @@ fn drawing_summary<R: Read + std::io::Seek>(
 pub(crate) fn build_workbook_visual_plan(path: &Path) -> Result<WorkbookVisualPlan> {
     let file = File::open(path).with_context(|| format!("open workbook {}", path.display()))?;
     let mut zip = ZipArchive::new(file).context("open XLSX as ZIP")?;
-    let descriptors = workbook_sheets(&mut zip)?;
+    let descriptors = workbook_sheets(&mut zip, false)?;
     let mut sheets = Vec::with_capacity(descriptors.len());
 
     for descriptor in descriptors {
@@ -914,7 +920,7 @@ mod tests {
             .unwrap();
         let buffer = writer.finish().unwrap();
         let mut archive = ZipArchive::new(Cursor::new(buffer.into_inner())).unwrap();
-        let descriptors = workbook_sheets(&mut archive).unwrap();
+        let descriptors = workbook_sheets(&mut archive, false).unwrap();
         assert_eq!(descriptors.len(), 2);
         assert_eq!(descriptors[0].index, 1);
         assert_eq!(descriptors[1].index, 3);

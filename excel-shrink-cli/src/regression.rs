@@ -37,6 +37,7 @@ mod visual_diagnosis;
 mod diagnosis_report;
 mod archive;
 mod targeted_comparison;
+pub(crate) mod formula_trace;
 mod sheet_capture;
 mod cf_inventory;
 mod prefix_inventory;

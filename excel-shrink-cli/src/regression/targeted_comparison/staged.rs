@@ -1,4 +1,6 @@
 //! Compare live Original with Default before and after rebuilding the same Default instance.
+#[path = "staged_formulas.rs"]
+mod formula_diagnostics;
 use super::{
     capture_layout::{self, Geometry},
     charts,
@@ -108,6 +110,7 @@ impl Workflow<'_, '_> {
         self.publish_available_comparisons("Original and variants rebuilt in their existing processes")?;
         self.close_states()?;
         self.project_legacy_findings()?;
+        self.record_formula_diagnostics();
         self.comparison.complete()
     }
 
