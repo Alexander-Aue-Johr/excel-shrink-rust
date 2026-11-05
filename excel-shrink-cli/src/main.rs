@@ -382,7 +382,10 @@ fn init_logging(
     file_log_level: Option<LogLevel>,
     trace_file: Option<&std::path::Path>,
 ) -> anyhow::Result<LoggingGuard> {
-    let log_dir = PathBuf::from("logs").join("runs");
+    let log_dir = std::env::var_os("EXCEL_SHRINK_LOG_DIR")
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("logs").join("runs"));
     std::fs::create_dir_all(&log_dir)?;
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

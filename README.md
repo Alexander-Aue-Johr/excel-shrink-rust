@@ -10,6 +10,9 @@ The repository is organised as a Rust Cargo workspace with two crates:
 For preservation rules, profiles, targeted visual validation, result semantics
 and known limits, see the [behavior and reimplementation specification](docs/behavior/README.md).
 
+Set `EXCEL_SHRINK_LOG_DIR` to choose the directory for per-process run logs.
+When unset or empty, logs use `logs/runs` relative to the working directory.
+
 ## Repository structure
 
 ```text
