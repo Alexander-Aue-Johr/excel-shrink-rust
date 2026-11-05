@@ -269,3 +269,28 @@ The full Data.gov run resumed as PID 60916 using binary SHA-256
 The remaining 8,566 prepared artifacts and unaffected completed results were
 retained. The long June permit workbook finished its 2,176 candidate regions
 without differences before shutdown; its work was not discarded.
+
+
+### Follow-up: old font cache and empty layout tails
+
+The regular regenerated Tweedly comparison now completes without differences,
+using producer `d6b97f99...` and report `targeted-05c3c138-41d9-4e01-abc2-0130483beeff`.
+
+`HGT_STORMS_Checklist_51444494b5ae.xlsx` still used producer `875ad278...`,
+which predates the font-sentinel fix. Its original row 1 has a 14-point font
+in empty C1, while the old variant removes C1. The current shrinker retains it.
+The earlier selective cache screen missed this inherited-border case: the
+explicit border is nonzero and matches the row border. A separate audit now
+runs the actual current shrinker on legacy bundles with potentially affected
+font/fill/border styles and compares their package entry CRC/length signatures.
+This is diagnostic work; changed artifacts require backed-up invalidation before
+reuse, and audit errors remain unresolved rather than treated as equal.
+
+`PARR transfer data_b3378b41a0c1.xlsx` has values through row 176, explicit cells
+through row 178, then an empty row 179 with `ht="15.75" thickTop="1"`. Trimming
+that tail changes its measured height to 15 points. Restoring only row 179 to a
+disposable current Default yields zero differences in all three selected native
+regions. The original differences start below the populated table, where
+inherited column borders continue. This establishes the cause, but the scope
+of unbounded inherited-column tails still needs review; no tolerance or new
+broad row-retention policy was introduced.
