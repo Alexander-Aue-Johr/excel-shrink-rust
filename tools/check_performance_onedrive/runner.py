@@ -126,6 +126,14 @@ class ProgressStore:
                     detail TEXT NOT NULL,
                     resolved_at TEXT
                 );
+                CREATE TABLE IF NOT EXISTS move_batches (
+                    id INTEGER PRIMARY KEY,
+                    destination TEXT NOT NULL,
+                    file_names_json TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    confirmed_at TEXT,
+                    error TEXT
+                );
             """)
             existing = self.connection.execute(
                 "SELECT value FROM metadata WHERE key = 'folder_id'").fetchone()
@@ -262,6 +270,39 @@ class ProgressStore:
                 VALUES (?, ?, ?, ?)
             """, (name, utc_now(), operation, detail))
         print(f"{name}: not found during {operation}; recorded in SQLite, continuing.", flush=True)
+
+    def start_move_batch(self, names: list[str], destination: str) -> int:
+        """Checkpoint an exact selection before submitting its cloud move."""
+        expected = {"optimized": "completed", "skipped": "skipped"}[destination]
+        if not names or len(names) != len(set(names)):
+            raise ValueError("A move batch needs distinct filenames")
+        with self.connection:
+            if any(self.status(name) != expected for name in names):
+                raise ValueError(f"Selection contains workbooks ineligible for {destination}")
+            cursor = self.connection.execute("""
+                INSERT INTO move_batches (destination, file_names_json, started_at)
+                VALUES (?, ?, ?)
+            """, (destination, json.dumps(names), utc_now()))
+        return cursor.lastrowid
+
+    def finish_move_batch(self, batch_id: int) -> None:
+        """Confirm every moved file and the batch in one transaction."""
+        with self.connection:
+            destination, encoded_names = self.connection.execute(
+                "SELECT destination, file_names_json FROM move_batches WHERE id = ?", (batch_id,)
+            ).fetchone()
+            table = {"optimized": "optimized_moves", "skipped": "skipped_moves"}[destination]
+            timestamp = utc_now()
+            self.connection.executemany(
+                f"INSERT OR REPLACE INTO {table} VALUES (?, ?)",
+                ((name, timestamp) for name in json.loads(encoded_names)))
+            self.connection.execute(
+                "UPDATE move_batches SET confirmed_at = ?, error = NULL WHERE id = ?", (timestamp, batch_id))
+
+    def fail_move_batch(self, batch_id: int, error: str) -> None:
+        """Retain uncertainty after an interrupted or failed cloud operation."""
+        with self.connection:
+            self.connection.execute("UPDATE move_batches SET error = ? WHERE id = ?", (error, batch_id))
 
     def start_attempt(self, name: str) -> int:
         """Start an attempt using the OPENING edge in ALLOWED_TRANSITIONS.
@@ -1369,9 +1410,11 @@ async def next_workbook_with_recovery(context, folder_page, folder_url: str,
 
 async def process_selected_workbook(playwright, context, folder_page, args, profile: Path,
                                     progress: ProgressStore, display: ConsoleProgress,
-                                    name: str, row):
+                                    name: str, row, row_resolver=None):
     """Retry one unexpected failure in a fresh browser, then skip only that file."""
     for attempt_number in (1, 2):
+        if row_resolver is not None:
+            row = await row_resolver(folder_page, name)
         navigation_failed = False
         try:
             await process_with_live_status(
@@ -1429,6 +1472,9 @@ async def load_workbook_inventory(page, progress: ProgressStore, args) -> list[s
 
 async def run_folder_check_performance(args) -> int:
     """Resume known files from the oldest visible row and record each outcome."""
+    if getattr(args, "move_optimized", False) and not args.list_only and not args.only_file:
+        from .visible_batches import run_visible_batches
+        return await run_visible_batches(args)
     identifier = folder_id(args.folder_url)
     move_optimized = getattr(args, "move_optimized", False)
     directory = args.output_root.resolve() / identifier

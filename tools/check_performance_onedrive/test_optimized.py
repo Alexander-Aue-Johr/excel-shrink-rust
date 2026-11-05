@@ -1,6 +1,5 @@
 """Keep successful outcomes durable while moving their OneDrive copies."""
 
-from argparse import Namespace
 from pathlib import Path
 import tempfile
 import unittest
@@ -101,47 +100,6 @@ class OptimizedMoveTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(progress.pending_optimized_moves(), set())
                 self.assertEqual(progress.status("second.xlsx"), "completed")
                 self.assertEqual(progress.outcome("second.xlsx"), "already_clean")
-
-    async def test_run_moves_prior_and_new_completions_only_from_input_folder(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            args = Namespace(folder_url="https://1drv.ms/f/test", output_root=Path(temporary),
-                             profile_dir=None, headed=True, refresh_list=False, list_only=False,
-                             only_file=None, retry_skipped=True, move_optimized=True, max_files=10)
-            identifier = FLOW.folder_id(args.folder_url)
-            directory = Path(temporary) / identifier
-            with FLOW.ProgressStore(directory, identifier) as progress:
-                progress.discover(["done.xlsx", "archived.xlsx", "new.xlsx"])
-                complete(progress, "done.xlsx")
-                complete(progress, "archived.xlsx")
-            browser = (object(), object(), MagicMock())
-            moved = []
-
-            async def archive(*values):
-                progress, names = values[5], values[6]
-                moved.extend(names)
-                for name in names:
-                    progress.confirm_optimized_move(name)
-                return browser
-
-            async def process(*values):
-                self.assertEqual(values[7], "new.xlsx")
-                complete(values[5], values[7])
-                return (*browser, False)
-
-            with (patch.object(FLOW, "restart_folder_browser", new=AsyncMock(return_value=browser)),
-                  patch.object(FLOW, "discover_workbooks", new=AsyncMock(
-                      return_value=["done.xlsx", "new.xlsx"])),
-                  patch.object(FLOW, "next_workbook_with_recovery", new=AsyncMock(
-                      return_value=(browser[2], ("new.xlsx", None)))),
-                  patch.object(FLOW, "process_selected_workbook", new=process),
-                  patch.object(FLOW, "archive_optimized_with_recovery", new=archive),
-                  patch.object(FLOW, "close_browser", new=AsyncMock()),
-                  patch.object(FLOW, "ConsoleProgress")):
-                self.assertEqual(await FLOW.run_folder_check_performance(args), 0)
-            self.assertEqual(moved, ["done.xlsx", "new.xlsx"])
-            with FLOW.ProgressStore(directory, identifier) as progress:
-                self.assertEqual(progress.status("archived.xlsx"), "completed")
-                self.assertEqual(progress.pending_optimized_moves(), {"archived.xlsx"})
 
     def test_cli_enables_completed_moves(self):
         with patch.object(FLOW.sys, "argv", ["runner", "https://1drv.ms/f/test", "--move-optimized"]):

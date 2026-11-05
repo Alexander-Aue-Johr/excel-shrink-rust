@@ -53,12 +53,21 @@ Windows Python instead. Its profile is separate, so use Windows Python for the
 following unattended runs as well. A signed-out headless profile fails promptly
 with `Microsoft sign-in required` and does not mark any workbook as processed.
 
-On the first run, the script discovers XLSX files by scrolling OneDrive's list.
-Later runs reuse the known names from SQLite and skip that full discovery pass.
-It sorts the folder by modification time, oldest first, and opens the next
-known unfinished file directly from the visible rows. Optimized files can move
-to the bottom of the view; the runner checks the current rows again before
-scrolling and wraps to the top when necessary. It updates
+With `--move-optimized`, normal runs start with the visible rows and alternate
+between checking a visible group and bulk-moving its results. Each row's selection
+circle is used before the top command bar's **Move to** action. Earlier completed
+files visible in the folder are moved first. Previous skips are retried once per
+invocation with `--retry-skipped-in-folder`; newly skipped files are staged until
+the current checking group ends, then moved together to `skipped`.
+Files are sorted by modification time, oldest first. A successful edit can move
+its row below the current viewport; it is picked up for relocation when visible
+again. The runner never searches the entire folder for that row in this mode.
+Replacement rows are allowed to settle before choosing the next group. A single
+viewport advance is a fallback when settled rows cannot be processed or moved;
+an unchanged viewport raises an error instead of scrolling indefinitely.
+`--refresh-list` and `--list-only` explicitly request a full discovery scan.
+Targeted `--only-file` runs and runs without `--move-optimized` retain the earlier
+inventory-based flow. The runner updates
 `.tmp/onedrive-check-performance/<folder-id>/progress.sqlite3` after each phase.
 This ignored database records file names, attempts, status, outcomes, UTC times,
 elapsed and per-phase seconds. It samples the Excel-frame JavaScript heap and
@@ -129,7 +138,8 @@ is retried once with a fresh browser, then stops the run with the move pending.
 
 Create `skipped` in each input folder before running. Use
 `--retry-skipped-in-folder` to retry SQLite-skipped workbooks still directly in
-the linked folder, alongside its other unfinished workbooks. This option scans
+the linked folder, alongside its other unfinished workbooks. In visible-batch
+mode it considers the rows currently on screen. The inventory-based flow scans
 the top-level file list once at startup and restricts the run to that list.
 Completed workbooks retain their results. Historical skipped entries absent from
 the folder, including files already moved into `skipped`, retain their history
@@ -140,24 +150,27 @@ to the input folder before using this option, optionally with `--only-file`.
 Subfolders are excluded from discovery.
 
 Add `--move-optimized` when the input folder has an `optimized` child folder.
-The runner first moves successful workbooks still in the top-level input folder,
-including results from earlier runs, then moves each newly completed workbook.
+The runner moves successful workbooks visible in the top-level input folder,
+including results from earlier runs, in groups before checking the next group.
 Both `optimized` and `already_clean` outcomes count as successful. A workbook
 requiring a cloud save must reach its confirmed save before completion. Moves
 are confirmed in SQLite independently of the Check Performance result and resume
-after interruption. A fresh top-level inventory keeps files already inside
-`optimized` outside the run. This option can be combined with
+after interruption. SQLite's `move_batches` table retains the exact selection,
+destination, start time and confirmation or error for each group. An
+interrupted batch keeps its successful check results; a retry selects only its
+files still visible in the main folder. Files already inside `optimized` stay
+outside the run. This option can be combined with
 `--retry-skipped-in-folder` to recheck skipped files still in the input folder.
 
-If a complete search of a readable folder cannot find a workbook, the runner
+In inventory-based flows, if a complete search of a readable folder cannot find a workbook, the runner
 records it in SQLite's `missing_files` table and continues with the other files.
 Each observation stores the filename, UTC time, operation and diagnostic detail.
 Existing validation outcomes and confirmed moves remain available independently.
 Unresolved observations exclude the file from subsequent work and move queues.
 Rediscovering it in the top-level inventory sets `resolved_at`, preserving the
 history and making the file eligible again according to its validation status.
-Use `--refresh-list`, `--retry-skipped-in-folder` or `--move-optimized` for a fresh
-inventory. Folder rendering, authentication and navigation failures retain their
+Visible rediscovery also resolves an absence observation. Use `--refresh-list`
+for an explicit full inventory. Folder rendering, authentication and navigation failures retain their
 normal recovery behavior and cannot establish a file's absence.
 
 An unexpected workbook error records a failed attempt, closes the browser and
