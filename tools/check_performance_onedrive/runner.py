@@ -760,11 +760,8 @@ async def move_workbook_to_folder(page, name: str, destination: str) -> None:
     row = await find_file_row(page, name, missing_ok=True)
     if row is None:
         # A previous process may have moved the file before recording success.
-        await scroll_file_list(page, to_top=True)
-        destination_folder = page.locator(
-            '[data-automationid="field-LinkFilename"]'
-        ).get_by_text(destination, exact=True)
         try:
+            destination_folder = await find_file_row(page, destination)
             await destination_folder.dblclick(timeout=15_000)
             # The parent grid can remain visible during client-side navigation.
             # Do not mistake those old rows for the destination's contents.
@@ -814,19 +811,25 @@ async def archive_skipped_workbooks(page, progress: ProgressStore,
 async def archive_skipped_with_recovery(playwright, context, page, args,
                                         profile: Path, progress: ProgressStore,
                                         names: list[str]):
-    """Retry relocation after browser recovery without changing workbook outcomes."""
-    for attempt in (1, 2):
-        pending = [name for name in progress.pending_skipped_moves() if name in names]
-        try:
-            await archive_skipped_workbooks(page, progress, pending)
-            return playwright, context, page
-        except Exception as error:
-            if attempt == 2:
-                raise RuntimeError("Could not move skipped workbooks; relocation remains pending") from error
-            print(f"Skipped-file move failed ({error}); restarting before retry.",
-                  file=sys.stderr, flush=True)
-            playwright, context, page = await restart_folder_browser(
-                playwright, context, args, profile)
+    """Give each pending workbook its own recovery attempt and durable checkpoint."""
+    pending = set(progress.pending_skipped_moves())
+    for name in names:
+        if name not in pending:
+            continue
+        for attempt in (1, 2):
+            try:
+                await archive_skipped_workbooks(page, progress, [name])
+                break
+            except Exception as error:
+                if attempt == 2:
+                    raise RuntimeError(
+                        f"Could not move skipped workbook {name}: {error}; relocation remains pending"
+                    ) from error
+                print(f"Skipped-file move failed for {name} ({error}); restarting before retry.",
+                      file=sys.stderr, flush=True)
+                playwright, context, page = await restart_folder_browser(
+                    playwright, context, args, profile)
+    return playwright, context, page
 
 
 async def archive_optimized_with_recovery(playwright, context, page, args,

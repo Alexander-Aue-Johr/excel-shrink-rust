@@ -16,14 +16,14 @@ class SkippedMoveTests(unittest.IsolatedAsyncioTestCase):
         page.goto = AsyncMock()
         page.wait_for_url = AsyncMock()
         with (patch.object(FLOW, "find_file_row", new=AsyncMock(
-                side_effect=[None, RuntimeError("Missing from skipped")])) as find,
+                side_effect=[None, MagicMock(dblclick=AsyncMock()), RuntimeError("Missing from skipped")])) as find,
               patch.object(FLOW, "scroll_file_list", new=AsyncMock()),
               patch.object(FLOW, "wait_for_folder_rows", new=AsyncMock())):
             page.locator = MagicMock()
             page.locator.return_value.get_by_text.return_value.dblclick = AsyncMock()
             with self.assertRaisesRegex(RuntimeError, "Missing from skipped"):
                 await FLOW.move_skipped_workbook(page, "excluded.xlsx")
-        self.assertEqual(find.await_count, 2)
+        self.assertEqual(find.await_count, 3)
         page.goto.assert_awaited_once_with(page.url, wait_until="domcontentloaded", timeout=120_000)
 
     async def test_offscreen_source_with_same_named_destination_stays_pending(self):
@@ -55,11 +55,12 @@ class SkippedMoveTests(unittest.IsolatedAsyncioTestCase):
         page.goto = AsyncMock()
         page.wait_for_url = AsyncMock()
         page.locator.return_value.get_by_text.return_value.dblclick = AsyncMock()
-        with (patch.object(FLOW, "find_file_row", new=AsyncMock(side_effect=[None, object()])) as find,
+        with (patch.object(FLOW, "find_file_row", new=AsyncMock(
+                side_effect=[None, MagicMock(dblclick=AsyncMock()), object()])) as find,
               patch.object(FLOW, "scroll_file_list", new=AsyncMock()),
               patch.object(FLOW, "wait_for_folder_rows", new=AsyncMock())):
             await FLOW.move_skipped_workbook(page, "excluded.xlsx")
-        self.assertEqual(find.await_count, 2)
+        self.assertEqual(find.await_count, 3)
         page.frame_locator.assert_not_called()
         page.wait_for_url.assert_awaited_once()
         destination_ready = page.wait_for_url.await_args.args[0]
@@ -111,6 +112,26 @@ class SkippedMoveTests(unittest.IsolatedAsyncioTestCase):
                 progress.finish("done.xlsx", attempt, "already_clean")
                 with self.assertRaises(ValueError):
                     progress.confirm_skipped_move("done.xlsx")
+
+    async def test_each_workbook_gets_its_own_browser_recovery(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with FLOW.ProgressStore(Path(temporary), "folder") as progress:
+                names = ["first.xlsx", "second.xlsx"]
+                progress.discover(names)
+                for name in names:
+                    attempt = progress.start_attempt(name)
+                    progress.skip(name, attempt, "performance_unavailable")
+                with (patch.object(FLOW, "move_skipped_workbook", new=AsyncMock(
+                        side_effect=[RuntimeError("stale first"), None,
+                                     RuntimeError("stale second"), None])) as move,
+                      patch.object(FLOW, "restart_folder_browser", new=AsyncMock(
+                          return_value=(None, None, None))) as restart):
+                    await FLOW.archive_skipped_with_recovery(
+                        None, None, None, None, Path(temporary), progress, names)
+                self.assertEqual(restart.await_count, 2)
+                self.assertEqual([call.args[1] for call in move.await_args_list],
+                                 [names[0], names[0], names[1], names[1]])
+                self.assertEqual(progress.pending_skipped_moves(), [])
 
 
 class SkippedMoveBrowserTests(unittest.IsolatedAsyncioTestCase):
