@@ -231,3 +231,13 @@ A second link-breaking test on the Sandy CFU workbook also completes, with three
 `Tweedly_-_Millbury_utilities_1__1f81f0ee2c8f.xlsx` changes the Pre-Retrofit chart's primary-axis labels from two decimal places to General formatting. Chart XML is unchanged, including source-linked `0.00` formatting. Its empty numeric series references C7:C18; Default removes those formatted empty cells. Restoring only the original `<c r="C7" s="22"/>` to a disposable Default copy removes all observed cell and chart differences. Restoring only C8 does not. The position-specific counterexample supports a first-source-cell format sentinel, rather than retaining the entire series range. This experiment has not yet changed the shrinker.
 
 A separate audit checked 3,710 retained reports for legacy embedded-chart names that collide case-insensitively within one sheet. It found zero ambiguous catalogues and zero read errors, supporting reuse of prior unique-name chart results after indexed capture was introduced.
+
+
+The production-path fix now supplies sparse chart format anchors before initial
+worksheet cleaning. A native comparison of the newly shrunk Tweedly input has
+zero cell-region and chart differences. Its output is 64,342 bytes versus the
+previous 64,337 bytes and original 70,114 bytes. Only the first C7 source cell is
+restored; C8 remains removed. Evidence: V: validation-temp/experiments/
+chart-format-anchor/native-fixed-core-v2/report.json. Parser, empty-row pruning
+and streamed ZIP-pipeline tests cover this invariant. Existing corpus results
+have not yet been migrated to this new core build.

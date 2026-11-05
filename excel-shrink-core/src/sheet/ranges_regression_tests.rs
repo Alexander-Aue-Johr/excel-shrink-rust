@@ -32,6 +32,7 @@ fn params_with_relevant_style(style_id: u32) -> CleanSheetParameters {
             whitespace_indices: None,
         },
         advanced_cleanup: None,
+        chart_format_anchors: Default::default(),
         preprocess: SheetPreprocessConfig::default(),
         cleanup: Default::default(),
         collect_cleanup_stats: false,

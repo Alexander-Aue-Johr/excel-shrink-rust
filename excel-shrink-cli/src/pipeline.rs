@@ -2159,9 +2159,10 @@ fn plan_archive<R: Read + Seek>(
                 &mut plan,
             ),
             ArchiveEntryKind::CopyOriginal => {
-                if context.advanced_cleanup_enabled
-                    && !context.cli.cell_formula_references_only
-                    && is_object_reference_part(&filename)
+                if (filename.starts_with("xl/charts/") && filename.ends_with(".xml"))
+                    || (context.advanced_cleanup_enabled
+                        && !context.cli.cell_formula_references_only
+                        && is_object_reference_part(&filename))
                 {
                     match read_archive_entry(&mut file) {
                         Ok(xml) => {
@@ -2275,6 +2276,7 @@ fn build_sheet_task(
             compress_method: compression,
             patterns: context.patterns.clone(),
             advanced_cleanup: None,
+            chart_format_anchors: Default::default(),
             preprocess: SheetPreprocessConfig {
                 remove_empty_cells: context.cli.preprocess_empty_cells,
             },
@@ -2312,9 +2314,8 @@ fn plan_workbook_entry(
         clean_workbook_or_original(workbook_xml, &filename, context, &mut stats);
     let cleaned_size = cleaned.len();
 
-    if context.advanced_cleanup_enabled {
-        plan.workbook_xml_for_scan = Some(cleaned.clone());
-    }
+    // Chart format anchors need worksheet names even without value cleanup.
+    plan.workbook_xml_for_scan = Some(cleaned.clone());
     if context.has_calc_chain {
         plan.workbook_xml_for_calc_chain = Some(cleaned.clone());
     }
@@ -2399,9 +2400,6 @@ fn plan_relationships_entry(
     context: &ArchivePlanningContext<'_>,
     plan: &mut ArchivePlan,
 ) -> ArchiveEntryPlan {
-    if !context.has_calc_chain && !context.advanced_cleanup_enabled {
-        return queue_original_entry(context.tx, index, filename, context.input_display, false);
-    }
     let mut read_failed = false;
     match read_archive_entry(file) {
         Ok(relationships) => {
@@ -2411,9 +2409,7 @@ fn plan_relationships_entry(
             if context.has_calc_chain {
                 plan.workbook_rels_for_calc_chain = Some(relationships.clone());
             }
-            if context.advanced_cleanup_enabled {
-                plan.workbook_rels_for_scan = Some(relationships);
-            }
+            plan.workbook_rels_for_scan = Some(relationships);
         }
         Err(error) => {
             read_failed = true;
@@ -3385,7 +3381,7 @@ fn process_file(
         calc_chain_part,
     } = archive_plan;
 
-    let sheet_tasks =
+    let mut sheet_tasks =
         prioritize_sheet_tasks(sheet_tasks, &input_display, cli.parallel_range_chunk_size);
 
     // Cell addresses are used only to remove stale calcChain entries.
@@ -3416,6 +3412,22 @@ fn process_file(
         Some(&complete_names),
         Some(&reference_map.files_in_workbook_order),
     );
+    let mut chart_format_anchors = ProtectedWorkbookRefs::default();
+    for (part, xml) in &object_references {
+        if part.starts_with("xl/charts/") {
+            let anchors = scanner.scan_chart_format_anchors(xml);
+            for (sheet, references) in anchors.by_sheet {
+                chart_format_anchors
+                    .refs_for_sheet_mut(&sheet)
+                    .cells
+                    .extend(references.cells);
+            }
+        }
+    }
+    let chart_format_anchors = Arc::new(chart_format_anchors);
+    for task in &mut sheet_tasks {
+        task.params.chart_format_anchors = chart_format_anchors.clone();
+    }
     let accumulated = Mutex::new((ProtectedWorkbookRefs::default(), true));
     let empty_refs = ProtectedWorkbookRefs::default();
     let early_finalizer = SheetFinalizer {
@@ -3485,6 +3497,9 @@ fn process_file(
         let _span = profiling::phase("validate_references", &input_display, "");
         if let Some(selection) = deferred_reference_scan_selection(&processed_sheets) {
             for (part, xml) in &object_references {
+                if cli.cell_formula_references_only {
+                    break;
+                }
                 if part.starts_with("xl/pivotTables/") {
                     scanner.scan_pivot_result_references(
                         xml,

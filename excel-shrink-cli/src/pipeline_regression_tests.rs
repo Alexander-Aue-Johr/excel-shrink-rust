@@ -495,6 +495,7 @@ fn default_sheet_params() -> CleanSheetParameters {
             whitespace_indices: None,
         },
         advanced_cleanup: None,
+        chart_format_anchors: Default::default(),
         preprocess: SheetPreprocessConfig::default(),
         cleanup: Default::default(),
         collect_cleanup_stats: false,
@@ -1339,5 +1340,39 @@ fn pipeline_retains_hidden_chart_and_drawing_inputs() {
     for address in ["A2", "B2", "C2", "D2", "E2", "F2"] {
         assert!(!sheet.contains(&format!(r#"r="{address}""#)));
     }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn chart_format_anchor_survives_streaming_without_value_reference_cleanup() {
+    let root = batch_test_directory("chart_format_anchor");
+    let input = root.join("chart.xlsx");
+    let mut writer = ZipWriter::new(File::create(&input).unwrap());
+    let entries: &[(&str, &[u8])] = &[
+        ("xl/workbook.xml", br#"<workbook><sheets><sheet name="Pre-Retrofit" sheetId="1" r:id="rId1"/></sheets></workbook>"#),
+        ("xl/_rels/workbook.xml.rels", br#"<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>"#),
+        ("xl/styles.xml", br#"<styleSheet><fonts count="1"><font><sz val="11"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/><xf numFmtId="2" fontId="0" fillId="0" borderId="0" applyFont="1"/></cellXfs></styleSheet>"#),
+        ("xl/worksheets/sheet1.xml", br#"<worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c></row><row r="7" ht="15" customHeight="1"><c r="C7" s="1"/></row><row r="8" ht="15" customHeight="1"><c r="C8" s="1"/></row><row r="9"><c r="A9"><v>2</v></c></row></sheetData></worksheet>"#),
+        ("xl/charts/chart1.xml", br#"<c:chart><c:numRef><c:f>'Pre-Retrofit'!$C$7:$C$18</c:f></c:numRef></c:chart>"#),
+    ];
+    for &(name, bytes) in entries {
+        writer.start_file(name, FileOptions::default()).unwrap();
+        writer.write_all(bytes).unwrap();
+    }
+    writer.finish().unwrap();
+    let mut cli = cli_with_analysis_flags(false, None);
+    cli.output = root.join("out");
+    cli.force_overwrite = true;
+    cli.disable_multiprocessing = true;
+    cli.keep_unreferenced_hidden_content_cells = true;
+    cli.cell_formula_references_only = true;
+    cli.chunk_size = 64;
+    process_files(vec![input], &cli).unwrap();
+    let mut archive = ZipArchive::new(File::open(cli.output.join("chart.xlsx")).unwrap()).unwrap();
+    let mut sheet = String::new();
+    archive.by_name("xl/worksheets/sheet1.xml").unwrap().read_to_string(&mut sheet).unwrap();
+    assert!(sheet.contains(r#"<c r="C7" s="1"/>"#), "{sheet}");
+    assert!(!sheet.contains(r#"r="C8""#), "{sheet}");
+    drop(archive);
     std::fs::remove_dir_all(root).unwrap();
 }

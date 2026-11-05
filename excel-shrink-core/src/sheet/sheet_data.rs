@@ -923,6 +923,7 @@ mod tests {
                 whitespace_indices: None,
             },
             advanced_cleanup: None,
+            chart_format_anchors: Default::default(),
             preprocess: SheetPreprocessConfig::default(),
             cleanup: CleanupSwitches::default(),
             collect_cleanup_stats: false,

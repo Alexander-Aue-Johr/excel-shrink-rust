@@ -930,7 +930,12 @@ fn select_empty_style_representative(
         && empty_cell_has_default_style(cell, has_cell_content);
     let has_required_style =
         parsed_empty_cell_has_effective_fill_or_border(cell, params, metrics, has_cell_content)
-        || empty_cell_overrides_row_font(cell, params, has_cell_content);
+        || empty_cell_overrides_row_font(cell, params, has_cell_content)
+        || params.chart_format_anchors.contains(
+            &params.zip_info_filename,
+            cell.col_num,
+            digits_byte_string_to_integer(cell.row),
+        );
 
     EmptyStyleRepresentativeDecision {
         keep_font_only,

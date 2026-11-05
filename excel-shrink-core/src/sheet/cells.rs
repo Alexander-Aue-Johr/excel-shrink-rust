@@ -198,6 +198,16 @@ pub(crate) fn replace_parsed_cell_with_empty_style_policy<'a, 'r>(
         ),
     };
 
+    // Chart axes can inherit the first source cell's format even if it is blank.
+    // Keep the explicit XF, rather than retaining the whole chart source range.
+    if !has_cell_content && params.chart_format_anchors.contains(
+        &params.zip_info_filename,
+        cell.col_num,
+        digits_byte_string_to_integer(cell.row),
+    ) {
+        return keep_cell_unchanged(cell, params, metrics, style, has_cell_content, false);
+    }
+
     if let Some(candidate) = keep_reference_sensitive_candidate(
         cell,
         params,

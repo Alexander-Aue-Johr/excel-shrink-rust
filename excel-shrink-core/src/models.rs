@@ -739,6 +739,8 @@ pub struct CleanSheetParameters {
     pub compress_method: zip::CompressionMethod,
     pub patterns: WorkbookSpecificPatterns,
     pub advanced_cleanup: Option<std::sync::Arc<AdvancedCleanupConfig>>,
+    /// Sparse first-source cells whose explicit format can control chart axes.
+    pub chart_format_anchors: std::sync::Arc<ProtectedWorkbookRefs>,
     pub preprocess: SheetPreprocessConfig,
     pub cleanup: CleanupSwitches,
     pub collect_cleanup_stats: bool,

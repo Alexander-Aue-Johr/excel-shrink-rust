@@ -422,3 +422,14 @@ Worksheet value and inline-string elements remain content when their opening tag
 ### Column widths under row borders
 
 A visible row-level border repeats at column boundaries, including columns without stored cell values. Tail-column merging therefore retains existing column definitions when a surviving visible row border exposes their widths. The guard is propagated across parallel sheet chunks. It adds no cells and leaves ordinary border-free tail merging enabled.
+
+### Chart source format anchors
+
+Excel can obtain a source-linked chart axis number format from the first cell
+of a referenced series even when that cell is empty. Before worksheet cleanup,
+read chart source references and retain their first explicit cell, including its
+original style. Do not retain every empty cell in the source range. This applies
+independently of hidden-value reference cleanup and the cell-formula-only switch.
+The row cleanup pass must not discard the anchor as a temporary font representative.
+Direct worksheet references are resolved through workbook relationships; this
+scanner does not resolve chart references through defined names or dynamic formulas.

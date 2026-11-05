@@ -121,6 +121,7 @@ fn params_with_styles(styles: &[(u32, Xf)]) -> CleanSheetParameters {
             whitespace_indices: None,
         },
         advanced_cleanup: None,
+        chart_format_anchors: Default::default(),
         preprocess: SheetPreprocessConfig::default(),
         cleanup: Default::default(),
         collect_cleanup_stats: false,
@@ -1425,4 +1426,17 @@ fn content_scan_accepts_xml_whitespace_and_rejects_longer_tag_names() {
         assert!(crate::sheet::cells::has_content(&cell));
     }
     assert!(!crate::sheet::cells::has_content(b"<value>text</value><formula/><issue/>"));
+}
+
+#[test]
+fn chart_format_anchor_survives_empty_row_representative_pruning() {
+    let mut params = params_with_styles(&[(427, font_only_style())]);
+    let anchors = std::sync::Arc::make_mut(&mut params.chart_format_anchors);
+    anchors
+        .refs_for_sheet_mut(&params.zip_info_filename)
+        .insert_cell(3, 7);
+    let row = br#"<row r="7" ht="20" customHeight="1"><c r="C7" s="427"/><c r="D7" s="427"/></row>"#;
+    let cleaned = String::from_utf8(replace_single_row(row, &params)).unwrap();
+    assert!(cleaned.contains(r#"<c r="C7" s="427"/>"#));
+    assert!(!cleaned.contains("D7"));
 }
