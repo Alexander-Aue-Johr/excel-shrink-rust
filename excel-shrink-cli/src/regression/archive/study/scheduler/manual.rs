@@ -16,6 +16,14 @@ struct Active {
     restart_requests: Vec<restarts::Request>,
 }
 
+/// Complete the live attempt, leaving earlier attempts of this workbook unchanged.
+fn mark_finished(active: &mut [Active], position: usize, error: Option<String>) {
+    if let Some(job) = active.iter_mut().find(|a| a.job.position == position && !a.finished) {
+        job.finished = true;
+        job.error = error;
+    }
+}
+
 fn cancel_active(active: &[Active]) {
     for group in active {
         group.participant.cancel();
@@ -593,22 +601,16 @@ pub(super) fn compare(
                         report_dirty = true;
                     }
                     Ok(Event::Finished(position, result)) => {
-                        if let Some(job) = active.iter_mut().find(|a| a.job.position == position) {
-                            job.finished = true;
-                        }
+                        let message = result.as_ref().err()
+                            .map(|error| format!("comparison record {position}: {error:#}"));
+                        mark_finished(&mut active, position, message.clone());
                         match result {
                             Ok(record) => {
                                 records[position] = record;
                                 report_dirty = true;
                             }
-                            Err(error) => {
-                                let message = format!("comparison record {position}: {error:#}");
-                                if let Some(job) =
-                                    active.iter_mut().find(|a| a.job.position == position)
-                                {
-                                    job.error = Some(message.clone());
-                                }
-                                errors.push(message);
+                            Err(_) => {
+                                errors.push(message.expect("failed completion has an error"));
                                 cleanup.close_admission();
                                 cancel_active(&active);
                             }
@@ -808,6 +810,30 @@ pub(super) fn await_deferred_manual(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restarted_attempt_completes_without_mutating_its_finished_predecessor() {
+        let participant: batch_cleanup::Participant = serde_json::from_value(json!({
+            "ready_path":"unused-ready", "release_path":"unused-release",
+            "owner_pid":0, "timeout_seconds":1
+        })).unwrap();
+        let attempt = |finished| Active {
+            job: Comparison { index: 0, id: "same-workbook".into(), position: 7 },
+            participant: participant.clone(),
+            finished,
+            error: None,
+            pause_millis: 0,
+            restart_requests: Vec::new(),
+        };
+        for error in [None, Some("replacement failed".to_owned())] {
+            let mut active = vec![attempt(true), attempt(false)];
+            mark_finished(&mut active, 7, error.clone());
+            assert!(active.iter().all(|job| job.finished));
+            assert_eq!(active[0].error, None);
+            assert_eq!(active[1].error, error);
+        }
+    }
+
     #[test]
     fn target_changes_act_without_waiting_for_ready_or_estimating_memory() {
         assert_eq!(slots_to_start(24, 1, 100, false), 23);

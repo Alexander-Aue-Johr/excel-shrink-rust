@@ -82,3 +82,19 @@ The startup failure's cause remains unresolved. A normal main-run recheck was
 requested through the group restart endpoint; the successful isolated evidence
 is retained separately. Launcher metrics now expose `desktop_name` so diagnostic
 inspection can verify the actual desktop instead of inferring it from window mode.
+
+## Restart completion bookkeeping
+
+During the same watch, successful manual replacements for Wisconsin,
+Pennsylvania and KY-AP-and-IB remained `waiting_cleanup` after their Excel hosts
+had closed. Queue throughput stopped. Completion events identified a workbook's
+record position; the scheduler marked the first matching entry in its active
+history, which was the already-finished predecessor. The live replacement stayed
+unfinished and consumed a slot indefinitely.
+
+Completion now selects the unfinished attempt at that position and assigns its
+error to that same attempt. A focused test covers both successful and failed
+replacement completions without changing the finished predecessor. This fixes
+scheduler bookkeeping; it does not explain the intermittent add-in startup
+failures that prompted these manual replacements. Durable successful workbook
+records were already written and remain reusable after restarting the runner.
