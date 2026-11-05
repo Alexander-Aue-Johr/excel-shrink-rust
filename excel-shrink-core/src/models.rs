@@ -264,11 +264,14 @@ pub struct ColumnRangeMap {
     interval_starts: Vec<u32>,
     /// Identical fill across A:XFD, including exact overrides and uncovered columns.
     uniform_fill_id: Option<u32>,
+    /// Effective column borders that an explicit borderless row can mask.
+    has_visible_column_border: bool,
 }
 
 impl ColumnRangeMap {
     pub fn add(&mut self, col_def: ColumnDefinition) {
         self.uniform_fill_id = None;
+        self.has_visible_column_border = false;
         if col_def.min == col_def.max {
             self.exact.insert(col_def.min, col_def);
         } else {
@@ -279,6 +282,10 @@ impl ColumnRangeMap {
     pub fn finalize(&mut self) {
         self.intervals.sort_by_key(|cd| cd.min);
         self.interval_starts = self.intervals.iter().map(|cd| cd.min).collect();
+        self.has_visible_column_border = !self.range_matches(1, 16_384, |col| {
+            self.get(col).and_then(|c| c.cell_xf.as_ref())
+                .is_none_or(|style| !style.has_visible_border)
+        });
         let fill = self.fill_at(1);
         // No full-width visible-fill optimization is needed for the common
         // unfilled/default-column case. Do not scan the remaining boundaries.
@@ -308,6 +315,9 @@ impl ColumnRangeMap {
     }
 
     pub(crate) fn row_style_has_tail_visual_effect(&self, style: &Xf, attributes: &[u8]) -> bool {
+        if style.applies_default_border_override() && self.has_visible_column_border {
+            return true;
+        }
         if self.style_has_tail_visual_effect(style) || !style.has_fill_or_border {
             return style.has_fill_or_border;
         }

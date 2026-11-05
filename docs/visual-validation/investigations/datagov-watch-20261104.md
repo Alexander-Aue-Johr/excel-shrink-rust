@@ -104,3 +104,20 @@ on `CO-AP-and-IB_97188f8b40f6.xlsx` in one continuing run. Both replacements
 finished `unchanged`, changed attempt IDs and released their active slots. The
 remaining queue continued admitting workbooks. The focused scheduler tests and
 compact-summary tests also pass.
+
+## Border-masking row headers
+
+`NESCOR DER Failure Scenarios_CSF Subcategories_93e7264d6602.xlsx` exposed a
+new vertical line after Default removed trailing rows 148:205. Those rows used
+an explicit borderless XF that masked the right border inherited from column F.
+The redundant-white-fill shortcut ignored this independent border cancellation.
+The flagged range had 2,436 changed black/white pixels at equal geometry.
+
+Restoring only the 58 empty row headers, without their cells, eliminated the
+selected native pixel and geometry differences. The fix records whether effective
+column definitions contain a visible border and retains explicit borderless row
+formats in that case. Shadowed column definitions are resolved by the existing
+range map. A focused test covers preservation without cells and removal when the
+bordered interval is fully shadowed. All 248 Core tests pass. The actual fixed
+output for this small workbook is byte-identical to Original, so the native
+pipeline correctly used the unchanged-input proof for its duplicate lane.

@@ -10,7 +10,7 @@ fn params(maximum: bool) -> CleanSheetParameters {
         <borders count="2"><border/><border><bottom style="thin"/></border></borders>
         <cellXfs count="7"><xf fontId="0" fillId="0" borderId="0"/>
         <xf fontId="0" fillId="2" borderId="0" applyFill="1"/>
-        <xf fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"><alignment vertical="top" wrapText="1"/></xf>
+        <xf fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>
         <xf fontId="1" fillId="3" borderId="0" applyFont="1" applyFill="1"/>
         <xf fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/>
         <xf fontId="0" fillId="0" borderId="0" applyFill="1"/>
@@ -37,6 +37,23 @@ fn clean(rows: &[u8], columns: &[u8], maximum: bool, splitting_disabled: bool) -
 }
 
 const WHITE_COLUMNS: &[u8] = br#"<col min="1" max="16384" style="1"/>"#;
+
+/// A redundant row fill must not hide its separate role of masking a column border.
+#[test]
+fn borderless_tail_row_masks_a_visible_column_border_without_retaining_cells() {
+    let rows = br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="2" s="2" customFormat="1"/>"#;
+    let columns = br#"<col min="1" max="16384" style="1"/><col min="6" max="6" style="4"/>"#;
+    for maximum in [false, true] {
+        let result = clean(rows, columns, maximum, false);
+        let xml = String::from_utf8_lossy(&result.xml);
+        assert!(xml.contains(r#"<row r="2" s="2" customFormat="1"/>"#));
+        assert!(!xml.contains("A2"));
+    }
+    // The exact override shadows the bordered interval, so no visible border remains.
+    let shadowed = br#"<col min="1" max="16384" style="4"/><col min="1" max="16384" style="1"/>"#;
+    let result = clean(rows, shadowed, true, false);
+    assert!(!String::from_utf8_lossy(&result.xml).contains(r#"r="2""#));
+}
 
 /// Enron `3.395674.FFVA02E4NUID3ZH5TIILK5UPNDX4KVRQB.1.xls`
 /// (`44ad86f1d9f249470fc6`), sheet `NOV`, retained 11,632 empty cells after
