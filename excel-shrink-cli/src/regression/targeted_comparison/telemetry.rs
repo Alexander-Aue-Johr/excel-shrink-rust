@@ -151,6 +151,9 @@ pub(super) struct Snapshot {
     pub revision: u64,
     /// Monotonic count of successfully persisted nonempty capture images.
     pub capture_success_sequence: u64,
+    /// Validated geometry results and completed capture jobs, including zero area.
+    /// Ordinary heartbeats, calculation polling and status writes do not advance it.
+    pub capture_progress_sequence: u64,
     pub candidate_count: Option<usize>,
     pub lanes: Vec<Lane>,
     pub columns: Value,
@@ -323,6 +326,7 @@ impl Telemetry {
             finished_at: None,
             revision: 0,
             capture_success_sequence: 0,
+            capture_progress_sequence: 0,
             candidate_count: None,
             lanes,
             columns: Phase::columns(),

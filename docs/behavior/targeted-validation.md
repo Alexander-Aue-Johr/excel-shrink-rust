@@ -83,14 +83,17 @@ reports. Those reports cannot satisfy this paired-rebuild strategy.
 In the targeted Control Room workflow, the job-timeout setting is a **capture
 inactivity interval**, not a total workbook wall-clock limit. Every successfully
 persisted, validated nonempty cell/chart image advances the monotonic
-`capture_success_sequence`. Both the private-desktop launcher and an independent
-parent watchdog reset their idle clocks only when this sequence advances.
-Heartbeats, phase changes, geometry requests, zero-area observations and lane
-counter resets do not extend the interval. Sustained captures may continue
-indefinitely. The parent allows 15 seconds of launcher cleanup grace.
+`capture_success_sequence`. Validated geometry results and completed capture jobs,
+including verified zero-area results, also advance `capture_progress_sequence`.
+Both the private-desktop launcher and independent parent watchdog reset inactivity
+when either monotonic receipt advances. Heartbeats, phase changes, requests without
+validated responses, repeated receipts and counter resets do not extend the interval.
+This allows adaptive geometry planning to finish before its first image without
+mistaking completed range measurements for a deadlock. Individual command deadlines
+remain independent bounds. The parent allows launcher cleanup grace.
 
-Before the first image, or during a later capture-free phase (including rebuild
-or comparison), the same idle interval applies. The recovery configuration uses
+Before any verified work, or during a later phase without these receipts (including
+rebuild or comparison), the same inactivity interval applies. The recovery configuration uses
 120 seconds. This may exclude legitimate capture-free work taking longer than
 that; it is a timeout, never an equality or Shrink-defect verdict. The guard
 publishes failure evidence and releases the owned Excel job so other groups

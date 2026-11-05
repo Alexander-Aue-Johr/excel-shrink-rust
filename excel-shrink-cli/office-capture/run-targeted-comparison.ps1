@@ -36,6 +36,7 @@ try {
     if ($PrepareArtifactsOnly) { $arguments += ' --prepare-artifacts-only' }
     $idle = [Diagnostics.Stopwatch]::StartNew()
     $lastCaptureSequence = 0L
+    $lastProgressSequence = 0L
     $process = $desktop.Start($Binary, $arguments, $owned)
     while (-not $process.WaitForExit(500)) {
         $telemetryPath = [IO.Path]::Combine($Output, 'telemetry.json')
@@ -44,8 +45,10 @@ try {
             try {
                 $progress = [IO.File]::ReadAllText($telemetryPath) | ConvertFrom-Json
                 $sequence = [long]$progress.capture_success_sequence
-                if ($sequence -gt $lastCaptureSequence) {
-                    $lastCaptureSequence = $sequence
+                $workSequence = [long]$progress.capture_progress_sequence
+                if ($sequence -gt $lastCaptureSequence -or $workSequence -gt $lastProgressSequence) {
+                    $lastCaptureSequence = [Math]::Max($lastCaptureSequence, $sequence)
+                    $lastProgressSequence = [Math]::Max($lastProgressSequence, $workSequence)
                     $idle.Restart()
                 }
             } catch [System.IO.IOException] { }
@@ -53,7 +56,7 @@ try {
         }
         if ($idle.Elapsed.TotalSeconds -ge $CaptureIdleTimeoutSeconds) {
             $captureIdleTimedOut = $true
-            throw "No successful capture for $CaptureIdleTimeoutSeconds seconds; stopping this attempt."
+            throw "No verified capture or geometry progress for $CaptureIdleTimeoutSeconds seconds; stopping this attempt."
         }
     }
     if ($process.ExitCode -ne 0) { throw "Targeted comparison failed; inspect $Output/failure.json." }
@@ -66,7 +69,7 @@ try {
             # The CLI was terminated before it could publish a failure. Keep the
             # durable error and live mirror consistent with the launcher result.
             try {
-                $message = "No successful capture for $CaptureIdleTimeoutSeconds seconds; stopping this attempt."
+                $message = "No verified capture or geometry progress for $CaptureIdleTimeoutSeconds seconds; stopping this attempt."
                 [void][IO.Directory]::CreateDirectory($Output)
                 $failure = @{status='failed';error=$message;kind='capture_idle_timeout';timeout_seconds=$CaptureIdleTimeoutSeconds}
                 [IO.File]::WriteAllText(([IO.Path]::Combine($Output, 'failure.json')),($failure|ConvertTo-Json))

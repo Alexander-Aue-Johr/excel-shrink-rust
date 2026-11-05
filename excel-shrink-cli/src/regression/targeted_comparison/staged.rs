@@ -570,6 +570,7 @@ impl Workflow<'_, '_> {
                         .or_default() += 1;
                 }
                 self.comparison.telemetry.update(|state| {
+                    state.capture_progress_sequence += batch.len() as u64;
                     state.capture_success_sequence += batch.iter()
                         .filter(|(id, candidate, _)| self.states[id].captures[candidate].path.is_some())
                         .count() as u64;

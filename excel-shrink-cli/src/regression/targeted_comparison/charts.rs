@@ -126,6 +126,7 @@ fn export(
             width.is_some() && height.is_some() && (width == Some(0.0) || height == Some(0.0)),
             "Missing chart image is not explained by measured zero area"
         );
+        telemetry.progress(|state| state.capture_progress_sequence += 1)?;
         return Ok(Capture {
             geometry,
             image: ChartImage::ZeroArea,
@@ -138,7 +139,10 @@ fn export(
         image.width() > 0 && image.height() > 0,
         "Empty chart export"
     );
-    telemetry.update(|state| state.capture_success_sequence += 1)?;
+    telemetry.update(|state| {
+        state.capture_success_sequence += 1;
+        state.capture_progress_sequence += 1;
+    })?;
     Ok(Capture {
         geometry,
         image: ChartImage::Rendered(path),

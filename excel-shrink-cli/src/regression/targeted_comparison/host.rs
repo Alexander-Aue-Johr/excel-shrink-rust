@@ -225,14 +225,16 @@ impl ExcelHost {
             results.len() == lanes.len(),
             "Incomplete geometry response coverage"
         );
-        results
+        let geometries = results
             .iter()
             .map(|result| {
                 let geometry: super::capture_layout::Geometry =
                     serde_json::from_value(result.clone())?;
                 geometry.validate()
             })
-            .collect()
+            .collect::<Result<Vec<_>>>()?;
+        telemetry.progress(|state| state.capture_progress_sequence += geometries.len() as u64)?;
+        Ok(geometries)
     }
 
     /// Submit one outstanding capture per open lane and require every corresponding result.

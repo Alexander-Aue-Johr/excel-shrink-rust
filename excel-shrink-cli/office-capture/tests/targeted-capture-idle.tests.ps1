@@ -1,6 +1,6 @@
 $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
-$root=Join-Path $repo ('.tmp/capture-idle-tests/'+[Guid]::NewGuid().ToString('N'))
+$root=Join-Path ([IO.Path]::GetTempPath()) ('capture-idle-tests/'+[Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $root|Out-Null
 $fake=Join-Path $root 'capture-stub.exe'
 Add-Type -TypeDefinition @"
@@ -23,7 +23,8 @@ public static class CaptureStub {
         Directory.CreateDirectory(output);
         for(int i=1;i<=8;i++){
             string json="{\"status\":\"running\",\"error\":null,\"finished_at\":null,\"lanes\":[],\"updated_at\":"+i+
-                ",\"capture_success_sequence\":"+(mode=="capture"?i:0)+"}";
+                ",\"capture_success_sequence\":"+(mode=="capture"?i:0)+
+                ",\"capture_progress_sequence\":"+(mode=="geometry"?i:mode=="replayed-geometry"?1:0)+"}";
             File.WriteAllText(Path.Combine(output,"telemetry.json"),json);
             Thread.Sleep(350);
         }
@@ -33,7 +34,7 @@ public static class CaptureStub {
 $peer=Start-Process $fake -WindowStyle Hidden -PassThru
 $results=@()
 try {
-    foreach($mode in @('heartbeat','capture','extended-capture')){
+    foreach($mode in @('heartbeat','capture','extended-capture','geometry','replayed-geometry')){
         $output=Join-Path $root $mode
         $env:EXCEL_SHRINK_FAKE_CAPTURE_MODE=if($mode -eq 'extended-capture'){'capture'}else{$mode}
         $runtimeOutput=if($mode -eq 'extended-capture'){'\\?\'+$output}else{$output}
@@ -46,7 +47,7 @@ try {
         if(-not $wrapper.WaitForExit(20000)){Stop-Process -Id $wrapper.Id -Force;throw 'Idle watchdog did not return.'}
         $wrapper.Refresh()
         [IO.File]::WriteAllText((Join-Path $root ($mode+'-exit.json')),(@{exit=$wrapper.ExitCode;seconds=$timer.Elapsed.TotalSeconds;has_exited=$wrapper.HasExited}|ConvertTo-Json))
-        if($mode -ne 'heartbeat'){
+        if($mode -notin @('heartbeat','replayed-geometry')){
             if($wrapper.ExitCode -ne 0 -or $timer.Elapsed.TotalSeconds -lt 2.5){throw 'Successful captures did not extend the attempt.'}
         } else {
             if($wrapper.ExitCode -eq 0){throw 'Heartbeats kept an idle attempt alive.'}

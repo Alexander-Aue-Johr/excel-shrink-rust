@@ -1,4 +1,4 @@
-//! Independent idle watchdog; only persisted capture receipts extend the deadline.
+//! Independent idle watchdog for validated capture and geometry receipts.
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 use std::{
@@ -60,6 +60,7 @@ pub(super) fn run(command: &mut Command, telemetry: &Path, idle: Duration) -> Re
             .context("Start targeted private-desktop comparison")?,
     );
     let mut clock = CaptureClock::new(Instant::now());
+    let mut progress_clock = CaptureClock::new(Instant::now());
     loop {
         if let Some(status) = child
             .0
@@ -77,9 +78,15 @@ pub(super) fn run(command: &mut Command, telemetry: &Path, idle: Duration) -> Re
         {
             clock.observe(sequence, Instant::now());
         }
-        if clock.expired(Instant::now(), idle) {
+        if let Some(sequence) = progress
+            .as_ref()
+            .and_then(|value| value["capture_progress_sequence"].as_u64())
+        {
+            progress_clock.observe(sequence, Instant::now());
+        }
+        if clock.expired(Instant::now(), idle) && progress_clock.expired(Instant::now(), idle) {
             bail!(
-                "No successful capture for {} seconds; owned launcher stopped",
+                "No verified capture or geometry progress for {} seconds; owned launcher stopped",
                 idle.as_secs()
             );
         }
