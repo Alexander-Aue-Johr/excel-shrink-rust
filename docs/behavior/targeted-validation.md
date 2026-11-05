@@ -263,7 +263,7 @@ at each available edge, bounded by Excel's grid.
 Intersect candidate neighborhoods with that envelope and put them on the shared
 internal grid of **128 rows by 16 columns**. Deduplicate grid regions and clip
 boundary tiles to the envelope. This is only a candidate index. Under capture
-partition `visible-geometry-v1`, merge adjacent tiles horizontally, then vertically
+partition `visible-geometry-v2`, merge adjacent tiles horizontally, then vertically
 where their column extents match, preserving their exact union and its holes.
 Measure each merged rectangle through the existing Office.js workers in every
 live state before requesting an image. Cell neighborhoods still use the existing
@@ -278,8 +278,10 @@ Split only rectangles whose estimated visible image exceeds 30,000 pixels on
 an edge or 32 million pixels total. Estimate conservatively at two pixels per
 point plus rounding margin; this is a planning assumption, not an API promise.
 Actual export dimensions are checked too: an unsupported scale fails instead
-of certifying equality. Balanced cell-coordinate bisection measures each child
-once, rather than probing many potential split boundaries. Zero-area leaves
+of certifying equality. Measured size excess determines a proportional cell-coordinate subdivision.
+Each expansion creates at most 128 children, each independently measured in every
+live state. This bounds temporary planning work, not final coverage. Uneven
+geometry can trigger further subdivision. Zero-area leaves
 remain explicit and generate no image. A single indivisible oversized cell fails
 explicitly. Every state uses the same cell partition. Later candidates or rebuild
 geometry can repartition; retained earlier states backfill all new leaves before

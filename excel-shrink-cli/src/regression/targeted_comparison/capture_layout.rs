@@ -94,7 +94,7 @@ pub(super) fn coalesce(selected: &BTreeSet<Candidate>) -> Result<BTreeSet<Candid
 }
 
 /// Use one cell partition for every live state, including later rebuild copies.
-/// Bisect cell coordinates and measure each child once. Every accepted leaf must fit
+/// Partition cell coordinates proportionally and measure each child once. Every accepted leaf must fit
 /// the image budget in every state; zero-area leaves remain explicit.
 pub(super) fn plan(
     selected: &BTreeSet<Candidate>,
@@ -135,27 +135,33 @@ pub(super) fn plan(
             candidate.sheet,
             candidate.cell
         );
-        // Native geometry round trips dominate large plans. Do not run a binary
-        // boundary search for every output image: a balanced split needs only
-        // the two child observations and preserves the exact selected cell union.
-        let low = start + (end - start) / 2;
-        let mut first = rect;
-        let mut second = rect;
-        if vertical {
-            first.bottom = low;
-            second.top = low + 1;
-        } else {
-            first.right = low;
-            second.left = low + 1;
+        // Estimate a useful fan-out from the measured excess, then validate every
+        // child in every state. Uneven or hidden rows can require further splits.
+        // Bound each expansion, not the final coverage or number of captures.
+        let width = geometry.width * PIXELS_PER_POINT + 2.0;
+        let height = geometry.height * PIXELS_PER_POINT + 2.0;
+        let edge = if vertical { height } else { width };
+        let estimate = (edge / f64::from(MAX_EDGE))
+            .max(width * height / MAX_PIXELS as f64)
+            .ceil() as u32;
+        let length = end - start + 1;
+        let parts = estimate.clamp(2, length.min(128));
+        for index in (0..parts).rev() {
+            let mut child = rect;
+            let low = start + length * index / parts;
+            let high = start + length * (index + 1) / parts - 1;
+            if vertical {
+                child.top = low;
+                child.bottom = high;
+            } else {
+                child.left = low;
+                child.right = high;
+            }
+            pending.push(Candidate {
+                sheet: candidate.sheet.clone(),
+                cell: child.address(),
+            });
         }
-        pending.push(Candidate {
-            sheet: candidate.sheet.clone(),
-            cell: second.address(),
-        });
-        pending.push(Candidate {
-            sheet: candidate.sheet,
-            cell: first.address(),
-        });
     }
     Ok(leaves)
 }
@@ -183,7 +189,7 @@ mod tests {
     }
 
     #[test]
-    fn tall_visible_plan_measures_each_tree_node_once() -> Result<()> {
+    fn tall_uniform_plan_measures_one_parent_and_each_leaf() -> Result<()> {
         let selected = [candidate("A1:P30000")].into();
         let mut calls = 0;
         let leaves = plan(&selected, |candidate| {
@@ -200,7 +206,7 @@ mod tests {
             )]
             .into())
         })?;
-        assert_eq!(calls, 2 * leaves.len() - 1);
+        assert_eq!(calls, leaves.len() + 1);
         assert!(leaves
             .values()
             .all(|states| states.values().all(|geometry| geometry.fits())));
@@ -214,6 +220,31 @@ mod tests {
         assert_eq!(rows, 30000);
         Ok(())
     }
+    #[test]
+    fn million_uniform_rows_avoid_binary_tree_round_trips() -> Result<()> {
+        let mut calls = 0;
+        let result = plan(&[candidate("B1:B1048576")].into(), |candidate| {
+            calls += 1;
+            let rect = Rectangle::parse(&candidate.cell)?;
+            Ok([(LaneId::OR, Geometry {
+                top: f64::from(rect.top - 1) * 15., left: 50., width: 100.,
+                height: f64::from(rect.bottom - rect.top + 1) * 15.,
+            })].into())
+        })?;
+        assert!(calls < 1500);
+        let mut rectangles = result.keys().map(|c| Rectangle::parse(&c.cell))
+            .collect::<Result<Vec<_>>>()?;
+        rectangles.sort_by_key(|r| r.top);
+        let mut next = 1;
+        for rect in rectangles {
+            assert_eq!((rect.left, rect.right, rect.top), (2, 2, next));
+            next = rect.bottom + 1;
+        }
+        assert_eq!(next, 1048577);
+        assert!(result.values().all(|states| states.values().all(|g| g.fits())));
+        Ok(())
+    }
+
     #[test]
     fn hidden_million_row_extent_needs_one_geometry_observation() -> Result<()> {
         let selected = [candidate("A1:P1048576")].into();
