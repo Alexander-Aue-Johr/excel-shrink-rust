@@ -388,12 +388,10 @@ fn clean_visible_unstyled_cell<'a, 'r>(
         return keep_cell_unchanged(cell, params, metrics, None, true, false);
     }
 
-    let inherited = inherited_cell_styles(cell, metrics);
-    let clears_inherited_style = [inherited.row, inherited.column]
-        .into_iter()
-        .flatten()
-        .any(|style| style.has_visible_fill || style.has_visible_border);
-    if style_policy.keep_default || style_policy.keep_other || clears_inherited_style {
+    if style_policy.keep_default
+        || style_policy.keep_other
+        || unstyled_cell_masks_inherited_format(cell, metrics)
+    {
         return keep_empty_cell_as_self_closing(cell, params, metrics, None, false);
     }
 
@@ -531,8 +529,23 @@ pub(crate) fn parsed_empty_cell_has_effective_fill_or_border(
         return false;
     }
 
-    cell.style(params)
-        .is_some_and(|style| cell_has_effective_visual_style(style, cell, metrics))
+    match cell.style(params) {
+        Some(style) => cell_has_effective_visual_style(style, cell, metrics),
+        None => unstyled_cell_masks_inherited_format(cell, metrics),
+    }
+}
+
+/// A concrete unstyled cell can clear an inherited fill or border. Both cleanup
+/// and tentative font-sentinel removal must preserve this independent visual role.
+fn unstyled_cell_masks_inherited_format(
+    cell: &ParsedCell<'_, '_>,
+    metrics: &CleanSheetMetrics,
+) -> bool {
+    let inherited = inherited_cell_styles(cell, metrics);
+    [inherited.row, inherited.column]
+        .into_iter()
+        .flatten()
+        .any(|style| style.has_visible_fill || style.has_visible_border)
 }
 
 fn record_kept_cell(
@@ -584,11 +597,7 @@ fn kept_cell_is_tail_anchor(
     if cell_style.is_none() {
         // A default-font representative only protects layout before a later
         // anchor. Clearing an inherited fill or border is itself visible.
-        let inherited = inherited_cell_styles(cell, metrics);
-        return [inherited.row, inherited.column]
-            .into_iter()
-            .flatten()
-            .any(|style| style.has_visible_fill || style.has_visible_border);
+        return unstyled_cell_masks_inherited_format(cell, metrics);
     }
 
     // Column formatting survives without this cell. Only an effective cell

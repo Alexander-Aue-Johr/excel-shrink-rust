@@ -133,6 +133,51 @@ fn replace_single_row(row_xml: &[u8], params: &CleanSheetParameters) -> Vec<u8> 
     replace_single_row_with_metrics(row_xml, params, &mut metrics)
 }
 
+/// PnP Sector Boilers, Fig 4 - SCR: K6 is blank but masks a blue row fill.
+/// Its first-in-row position must not turn this mask into a disposable font sentinel.
+#[test]
+fn unstyled_visual_masks_are_not_tentative_font_sentinels() {
+    for inherited in [fill_style(7, true), relevant_style()] {
+        for from_column in [false, true] {
+            for keep_representatives in [false, true] {
+                let mut params = params_with_styles(&[(12, inherited.clone())]);
+                params.cleanup.keep_textless_default_font_representatives = keep_representatives;
+                let mut metrics = CleanSheetMetrics::default();
+                let row = if from_column {
+                    metrics.column_definitions.add(ColumnDefinition {
+                        min: 1,
+                        max: 26,
+                        cell_xf: Some(inherited.clone()),
+                        hidden: false,
+                    });
+                    metrics.column_definitions.finalize();
+                    br#"<row r="6" ht="12" customHeight="1"><c r="K6"/><c r="L6"/></row>"#.as_slice()
+                } else {
+                    br#"<row r="6" s="12" customFormat="1" ht="12" customHeight="1"><c r="K6"/><c r="L6"/></row>"#.as_slice()
+                };
+                let output = replace_single_row_with_metrics(row, &params, &mut metrics);
+                let output = String::from_utf8(output).unwrap();
+                assert!(
+                    output.contains("<c r=\"K6\"/>"),
+                    "{from_column}/{keep_representatives}: {output}"
+                );
+                assert!(
+                    output.contains("<c r=\"L6\"/>"),
+                    "{from_column}/{keep_representatives}: {output}"
+                );
+                assert_eq!(metrics.tail_anchor_max_row, Some(6));
+            }
+        }
+    }
+
+    let params = params_with_styles(&[(12, font_only_style())]);
+    let output = replace_single_row(
+        br#"<row r="6" s="12" customFormat="1" ht="12" customHeight="1"><c r="K6"/><c r="L6"/></row>"#,
+        &params,
+    );
+    assert!(!String::from_utf8(output).unwrap().contains("<c "));
+}
+
 fn replace_single_row_with_metrics(
     row_xml: &[u8],
     params: &CleanSheetParameters,

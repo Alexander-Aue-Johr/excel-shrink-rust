@@ -204,6 +204,13 @@ or border, it remains a visual anchor even at the end of a sheet. White fills
 receive the same protection as colored fills. Unknown explicit cell styles
 remain conservative anchors.
 
+This visual role also excludes the cell from tentative font-sentinel removal
+in a fixed-height, content-free row. In `PnP Sector Boilers Dataset`, sheet
+`Fig 4 - SCR`, the unstyled empty cell K6 clears a blue row fill. Removing the
+first representative while retaining L6 exposes blue at K6. Preserve both
+masking cells; font-only representatives without inherited fill or border
+remain eligible for removal.
+
 Enron bundles `44ad86f1d9f249470fc6` and `a8bd950dff33454721b5`, sheet `NOV`,
 document the content-free case. Each retained 11,632 empty cells, including 518
 styleless representatives, after the no-fill override fix. Their inherited
