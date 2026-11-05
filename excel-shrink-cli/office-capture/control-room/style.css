@@ -1346,5 +1346,21 @@ body.presenting .experiment-controls,body.presenting .process-section { display:
 .pulse-paused .atelier-diff-pulse { animation: none; opacity: 0; }
 .workbook-pixel-summary { display: block; margin-top: 4px; color: #f3cd8e; font-variant-numeric: tabular-nums; }
 .targeted-copy-status:empty { display: none; }
+.formula-inspector { padding: 16px; border-top: 1px solid #466278; background: #102736; }
+.formula-evidence-note { color: #b5cbd9; max-width: 1100px; line-height: 1.5; }
+.formula-source-only .formula-evidence-note { color: #f4c879; }
+.formula-path { display: flex; align-items: center; gap: 12px; overflow: auto; padding: 16px 0; }
+.formula-cell { flex: 0 0 auto; width: min(420px, 75vw); border: 1px solid #426378; border-radius: 8px; padding: 12px; }
+.formula-cell strong, .formula-expression { display: block; overflow-wrap: anywhere; white-space: pre-wrap; }
+.formula-expression { line-height: 1.6; margin: 10px 0; }
+.formula-cell small { color: #9eb6c6; }
+.formula-path-arrow { font-size: 30px; color: #73dac2; }
+.formula-inspector select { max-width: min(100%, 780px); margin-right: 10px; }
+.formula-dependency-badge, .workbook-formula-summary { color: #e9c77e; }
+.workbook-formula-summary { display: block; font-size: 12px; margin-top: 4px; }
+.formula-volatile-call { border-radius: 3px; color: #ff8c97; animation: formula-call-pulse 2s ease-in-out infinite; }
+.formula-volatile-call.pulse-paused { animation: none; background: #6d2932; }
+@keyframes formula-call-pulse { 0%, 35%, 100% { background: transparent; } 60%, 80% { background: #8a2636; color: #fff; box-shadow: 0 0 10px #ff4a6b88; } }
+@media (prefers-reduced-motion: reduce) { .formula-volatile-call { animation: none; background: #6d2932; } }
 @keyframes atelier-pixel-pulse { 0%, 35%, 100% { opacity: 0; } 55%, 75% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .atelier-diff-pulse { animation: none; opacity: .6; } }

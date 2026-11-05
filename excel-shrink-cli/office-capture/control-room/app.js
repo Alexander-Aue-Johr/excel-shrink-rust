@@ -12,6 +12,7 @@ import { createManualCaptureControls } from './manual-capture.js';
 import { createAtelier } from './atelier.js';
 import { attachPixelSummary } from './pixel-diagnostics.js';
 import { createClipboardButton } from './inspection-clipboard.js';
+import { attachFormulaSummary } from './formula-diagnostics.js';
 
 const $ = id => document.getElementById(id);
 const manualCaptures = createManualCaptureControls(document.querySelector('.heading-actions'), {
@@ -1236,6 +1237,9 @@ function renderWorkbookResultList() {
       pixels.className = 'workbook-pixel-summary';
       details.append(pixels);
       attachPixelSummary(pixels, String(row.id));
+      const formulas = document.createElement('span');
+      details.append(formulas);
+      attachFormulaSummary(formulas, String(row.id));
     }
     const links = document.createElement('div');
     links.className = 'workbook-result-links';

@@ -579,3 +579,39 @@ different run, and stops at either boundary. Moving backward into another file
 selects its last different region; moving forward selects its first. Enabling
 checked regions does not insert identical regions into the overall-differences
 navigation. No workbook is opened or recaptured by these controls.
+
+### Formula dependency explanations
+
+After differing cell regions have been compared and Excel has closed, the
+optional diagnostic reads the actual saved states before their disposable files
+are removed. It records changed saved values and one supported path to RAND,
+RANDBETWEEN, RANDARRAY, NOW or TODAY. Direct/absolute A1 references, quoted sheet
+names, hidden worksheets, ranges, shared formulas and literal A1 INDIRECT calls
+are supported. Computed INDIRECT/OFFSET, external/structured references and
+unsupported paths remain unresolved. The tracer does not evaluate Excel formulas.
+
+The atelier renders separate cell cards and arrows below the images. Only the
+balanced volatile call is highlighted, using browser UTF-16 offsets. Source
+workbooks and live worksheets are never marked or edited. A dependency is not
+exclusive causation: an unused IF branch can contain RAND, for example. Unknown
+or mixed findings are not automatically moved below other findings or accepted
+as rendering noise. The list annotation currently appears after a region's
+formula explanation has been inspected; persistent classification/sorting is
+separate follow-up work.
+
+Older reports can show dependencies from the prepared Original instead. Their
+source cached values are explicitly labeled and never presented as the values
+rendered after a historical rebuild. The backend caches this read-only view.
+
+Diagnostic budgets are independent of scientific coverage: at most 100,000
+indexed cells/shared strings and 16 MiB of diagnostic text per workbook; 100,000
+search operations per region; at most 64 nodes in a displayed path and 20
+retained example paths. New reports inspect all changed values while the search
+budget lasts, even after the example limit is reached. Retention is bounded to
+32 diagnostic regions and 1 MiB per report. Exceeded or unsupported diagnostics
+are explicit; no capture candidate or comparison is omitted because of these
+budgets. They do not reinstate worksheet-size or capture-count limits.
+
+The native Cluster2 control finds 722 changed saved values and supported volatile
+paths for all 722. The source/default input payloads were equal before Excel
+recalculation. This evidence is retained separately; raw pixel verdicts remain.

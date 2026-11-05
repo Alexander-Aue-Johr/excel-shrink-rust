@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { formulaSegments, formulaSummary } from '../formula-diagnostics.js';
+const formula = 'IF("🙂"="x",RAND(),0)';
+const start = formula.indexOf('RAND');
+assert.deepEqual(formulaSegments(formula, [start, start + 6]), ['IF("🙂"="x",', 'RAND()', ',0)']);
+assert.deepEqual(formulaSegments('<script>', [-1, 3]), ['<script>', '', '']);
+assert.match(formulaSummary({ volatile_paths: 2, evidence: 'prepared_source_cached_values' }), /captured values unavailable/);
+assert.match(formulaSummary({ volatile_paths: 2, evidence: 'saved_compared_states' }), /other differences remain unclassified/);
+assert.equal(formulaSummary({ volatile_paths: 0 }), '');
+console.log('PASS formula highlighting, UTF-16 spans and honest source/saved-state labels');
