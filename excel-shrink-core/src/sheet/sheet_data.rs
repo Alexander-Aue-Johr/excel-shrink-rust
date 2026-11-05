@@ -623,6 +623,7 @@ fn make_chunk_metrics(base: &CleanSheetMetrics) -> CleanSheetMetrics {
 }
 
 fn merge_chunk_metrics(target: &mut CleanSheetMetrics, chunk: CleanSheetMetrics) {
+    target.has_visible_row_border |= chunk.has_visible_row_border;
     target.kept_cell_states.extend(chunk.kept_cell_states);
     target.deleted_cell_count += chunk.deleted_cell_count;
     target.source_content_cell_count += chunk.source_content_cell_count;

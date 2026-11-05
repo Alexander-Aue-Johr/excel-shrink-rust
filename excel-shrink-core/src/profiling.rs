@@ -81,6 +81,7 @@ pub fn drop_sheet_metrics(metrics: crate::models::CleanSheetMetrics) {
             cleanup_stats,
             sheet_protection_enabled,
             visible_content_bounds,
+            has_visible_row_border,
             visible_data_range_bounds,
             tail_anchor_rows,
             tail_anchor_max_row,

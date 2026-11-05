@@ -358,6 +358,7 @@ fn maximum_bound(bounds: [Option<u32>; 3]) -> u32 {
     bounds.into_iter().flatten().max().unwrap_or(0)
 }
 
+/// Merge invisible tail definitions while retaining column boundaries exposed by row borders.
 fn clean_columns(
     columns: &[u8],
     bounds: SheetBounds,
@@ -366,7 +367,9 @@ fn clean_columns(
     progress: &mut impl FnMut(&'static str),
 ) -> Vec<u8> {
     progress("merge_extraneous_columns");
-    let cleaned_columns = if params.cleanup.extraneous_column_range_merge {
+    let cleaned_columns = if params.cleanup.extraneous_column_range_merge
+        && !metrics.has_visible_row_border
+    {
         merge_extraneous_columns_with_styles(
             columns,
             column_merge_boundary(bounds, params),
@@ -1453,6 +1456,29 @@ r="A2"><v>42</v></c></row><row r="3"><c	r="A3"><f>1+1</f></c></row><row r="4"><c
         assert!(xml.contains(r#"<col min="1" max="25" width="9.5"/>"#));
         assert!(!xml.contains(r#"<col min="1" max="12" width="8.43"/>"#));
         assert!(!xml.contains(r#"<col min="13" max="17" width="10.0"/>"#));
+    }
+
+    #[test]
+    fn visible_row_borders_preserve_empty_column_widths() {
+        let border = Xf::builder().border_id(Some(1)).apply_border(true)
+            .has_visible_border(true).has_fill_or_border(true)
+            .has_apply_fill_or_border(true).build_xf();
+        let params = params_with_styles(&[(9, border)]);
+        let cols = br#"<col min="1" max="1" width="10"/><col min="2" max="2" width="40"/><col min="3" max="16384" width="9"/>"#;
+        let preprocessed = PreprocessedSheetXml {
+            until_worksheet_start_output_chunks: b"<worksheet>".to_vec(),
+            before_cols_node_output_chunks: b"<cols>".to_vec(),
+            in_cols_node_output_chunks: cols.to_vec(),
+            before_sheet_data_node_output_chunks: b"</cols><sheetData>".to_vec(),
+            sheet_data: br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="2" s="9" customFormat="1"/>"#.to_vec(),
+            before_merge_cells_node_output_chunks: Vec::new(),
+            in_merge_cells_node_output_chunks: Vec::new(),
+            until_worksheet_end_output_chunks: b"</sheetData></worksheet>".to_vec(),
+            clean_sheet_metrics: CleanSheetMetrics::default(),
+        };
+        let cleaned = build_clean_sheet_xml(preprocessed, &params, false).unwrap();
+        assert!(cleaned.metrics.has_visible_row_border);
+        assert!(cleaned.xml.windows(cols.len()).any(|part| part == cols));
     }
 
     #[test]

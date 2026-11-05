@@ -418,3 +418,7 @@ height without retaining every originally formatted cell.
 ### Attributed cell-content elements
 
 Worksheet value and inline-string elements remain content when their opening tags contain XML attributes or whitespace. For example, `<v xml:space="preserve">` is a value, just as `<v>` is. Removing empty cells must preserve their nonempty payloads. Content-marker detection checks the element-name boundary so longer names such as `value` do not match `v`.
+
+### Column widths under row borders
+
+A visible row-level border repeats at column boundaries, including columns without stored cell values. Tail-column merging therefore retains existing column definitions when a surviving visible row border exposes their widths. The guard is propagated across parallel sheet chunks. It adds no cells and leaves ordinary border-free tail merging enabled.
