@@ -323,3 +323,24 @@ Two Mooring findings have identical complete RGBA images, identical dimensions
 and exactly matching comparison_core geometry, while outer capture top differs.
 These were recorded as selected capture-boundary artifacts, not described as
 floating-point noise. Their raw geometry and original verdicts remain available.
+
+
+### Legacy font-cache audit completed
+
+The audit examined 5,501 prepared bundles from producer `875ad278...`.
+It skipped 3,426 exact original aliases and 934 bundles without styles relevant
+to the font/fill/border predicate. It ran the current shrinker on all 1,141
+remaining inputs with the same Default profile, comparing ZIP entry CRC/length
+signatures independently of compression and container metadata. There were
+68 output deltas and no execution/read errors. This is a cache compatibility
+audit, not a claim that all 68 old variants caused visible regressions.
+Nineteen were previously marked unchanged, six had differences and 43 were
+still prepared. HGT is among the detected deltas.
+
+After the runner drained and exited, all 68 prepared bundles and records were
+backed up and SHA-256 verified before invalidation. The receipt is under
+`validation-temp/backups/before-legacy-policy-cache-20261105-125243/migration.json`.
+The full run resumed as PID 64928 with the same corrected binary `d6b97f99...`;
+these cases must be prepared and compared again. Unaffected records, source
+inputs, raw reports and review evidence remain retained. The audit details
+remain in `validation-temp/legacy-font-audit-all.json`.
