@@ -20,6 +20,7 @@ param(
     [ValidateRange(1, 86400)][int]$CaptureIdleTimeoutSeconds = 120
 )
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'TargetedProcessObservation.psm1') -Force
 Add-Type -Path @((Join-Path $PSScriptRoot 'CaptureProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureDesktop.cs'))
 $desktop = New-Object CaptureDesktop
 $owned = New-Object CaptureProcesses
@@ -82,16 +83,19 @@ try {
                     $state.finished_at = $now
                     $state.updated_at = $now
                     $state | Add-Member -NotePropertyName revision -NotePropertyValue ([long]$state.revision + 1) -Force
+                    $cleanupConfirmed = $true
                     foreach ($lane in $state.lanes) {
                         if ($lane.pid) {
-                            $alive = $null -ne (Get-Process -Id $lane.pid -ErrorAction SilentlyContinue)
+                            $alive = Get-TargetedProcessAlive -ProcessId $lane.pid -StartedAt $lane.process_started_at
                             $lane.process_alive = $alive
-                            $lane.lifecycle = if ($alive) { 'failed' } else { 'closed' }
+                            $lane.lifecycle = if ($alive -eq $false) { 'closed' } else { 'failed' }
+                            if ($alive -ne $false) { $cleanupConfirmed = $false }
                         }
                         foreach ($step in $lane.steps.PSObject.Properties) {
                             if ($step.Value -eq 'running') { $step.Value = 'failed' }
                         }
                     }
+                    if (-not $cleanupConfirmed) { $state.status = 'cleanup_unconfirmed' }
                     $json = $state | ConvertTo-Json -Depth 20
                     [IO.File]::WriteAllText($local,$json)
                     [IO.File]::WriteAllText(([IO.Path]::Combine($ObservatoryGroup, 'targeted-comparison.json')),$json)

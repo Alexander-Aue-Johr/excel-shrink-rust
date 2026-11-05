@@ -136,7 +136,7 @@ fn reconcile_cleanup(
     snapshot: &mut Value,
     mut observe: impl FnMut(i64, i64) -> Option<bool>,
 ) -> bool {
-    if snapshot["status"] != "cleanup_unconfirmed"
+    if !matches!(snapshot["status"].as_str(), Some("cleanup_unconfirmed" | "failed"))
         || snapshot["updated_at"].as_i64().is_none()
     {
         return false;
@@ -166,7 +166,9 @@ fn reconcile_cleanup(
     }
     snapshot["status"] = json!("failed");
     // This is the original failure time, not a fabricated process-exit time.
-    snapshot["finished_at"] = snapshot["updated_at"].clone();
+    if snapshot["finished_at"].is_null() {
+        snapshot["finished_at"] = snapshot["updated_at"].clone();
+    }
     snapshot["cleanup_observation"] = json!({"all_processes_exited":true,"source":"pid-and-creation-time"});
     true
 }
@@ -343,6 +345,22 @@ mod tests {
         assert_eq!(snapshot["lanes"][0]["lifecycle"], "closed");
         assert_eq!(snapshot["lanes"][0]["process_alive"], false);
         assert!(snapshot["lanes"][0]["closed_at"].is_null());
+    }
+
+    #[test]
+    fn failed_timeout_receipt_refreshes_stale_liveness_and_preserves_failure_time() {
+        let mut snapshot = json!({"run_id":"timeout", "status":"failed",
+            "updated_at":400, "finished_at":300, "error":"capture idle timeout",
+            "lanes":[{"pid":12,"process_started_at":100,"process_alive":true,"lifecycle":"failed"}]});
+        assert!(reconcile_cleanup(&mut snapshot, |pid, started| {
+            assert_eq!((pid, started), (12, 100));
+            Some(false)
+        }));
+        assert_eq!(snapshot["finished_at"], 300);
+        assert_eq!(snapshot["error"], "capture idle timeout");
+        assert_eq!(snapshot["lanes"][0]["lifecycle"], "closed");
+        assert_eq!(snapshot["lanes"][0]["process_alive"], false);
+        assert_eq!(snapshot["cleanup_observation"]["all_processes_exited"], true);
     }
 
     #[test]

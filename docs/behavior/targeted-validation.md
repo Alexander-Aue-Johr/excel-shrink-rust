@@ -99,6 +99,16 @@ that; it is a timeout, never an equality or Shrink-defect verdict. The guard
 publishes failure evidence and releases the owned Excel job so other groups
 can continue. Individual command deadlines remain independent upper bounds.
 
+After a launcher timeout, process liveness is checked against the recorded PID
+and creation time. A reused PID means the recorded process has exited; missing
+creation-time evidence or an inaccessible process remains unknown. A timeout
+receipt with live or unknown processes is `cleanup_unconfirmed`, not confirmed
+cleanup. The dashboard refreshes frozen observations for both that status and
+historical `failed` timeout receipts, without rewriting their durable reports or
+original failure timestamps. An observed process exit is not a fabricated
+workbook-success or capture-progress event.
+
+
 An owned native repair dialog is recognized by its English/German content
 prompt. It produces `opening-dialog.json` and a clear startup failure without
 accepting a repair or changing the source input. Unknown dialogs are not
