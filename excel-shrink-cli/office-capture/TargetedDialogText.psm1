@@ -16,9 +16,11 @@ function Read-TargetedEmbeddedDialog {
     if ([IO.File]::Exists($output)) { [IO.File]::Delete($output) }
     $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ExcelProcessId {1} -Handle {2} -Output "{3}"' -f `
         (Join-Path $PSScriptRoot 'read-targeted-dialog.ps1'), $Entry.process.Id, $Dialog.Handle, $output
-    $probe = Start-Process powershell.exe -ArgumentList $arguments -WindowStyle Hidden -PassThru `
-        -RedirectStandardError (Join-Path $Entry.session 'embedded-dialog-probe.stderr.log')
+    $scope = New-Object CaptureProcesses
+    $probe = $null
     try {
+        $shell = Join-Path ([Environment]::SystemDirectory) 'WindowsPowerShell/v1.0/powershell.exe'
+        $probe = [CaptureDesktop]::StartOnDesktop($env:EXCEL_SHRINK_EXPECTED_DESKTOP, $shell, $arguments, $scope)
         if (-not $probe.WaitForExit(4000)) {
             $probe.Kill()
             return @()
@@ -27,7 +29,10 @@ function Read-TargetedEmbeddedDialog {
         $result = [IO.File]::ReadAllText($output) | ConvertFrom-Json
         if ($result.pid -ne $Entry.process.Id -or $result.handle -ne $Dialog.Handle) { throw 'Unexpected embedded dialog observation.' }
         return @($result.names)
-    } finally { $probe.Dispose() }
+    } finally {
+        $scope.Dispose()
+        if ($null -ne $probe) { $probe.Dispose() }
+    }
 }
 
 Export-ModuleMember -Function Read-TargetedEmbeddedDialog

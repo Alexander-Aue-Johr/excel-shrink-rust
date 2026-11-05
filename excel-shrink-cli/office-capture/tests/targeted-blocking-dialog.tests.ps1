@@ -1,10 +1,21 @@
-param([switch]$DialogWorker, [string]$Text)
+param([switch]$DialogWorker, [string]$Text, [switch]$BrowserProbe, [int]$ExcelProcessId, [long]$DialogHandle, [string]$Session)
 $ErrorActionPreference='Stop'
 if ($DialogWorker) {
     Add-Type -AssemblyName System.Windows.Forms
     $owner=New-Object Windows.Forms.Form
     $owner.Show()
     [void][Windows.Forms.MessageBox]::Show($owner,$Text,'Microsoft Excel test',[Windows.Forms.MessageBoxButtons]::YesNo)
+    return
+}
+if ($BrowserProbe) {
+    Add-Type -Path @((Join-Path $PSScriptRoot '../CaptureProcesses.cs'), (Join-Path $PSScriptRoot '../CaptureDesktop.cs'))
+    Import-Module (Join-Path $PSScriptRoot '../TargetedDialogText.psm1') -Force
+    $entry = @{process=Get-Process -Id $ExcelProcessId; session=$Session}
+    $browser = [pscustomobject]@{Handle=$DialogHandle; IsModal=$true; ClassName='BasicEmbeddedBrowser'}
+    $labels = @(Read-TargetedEmbeddedDialog $entry $browser)
+    if (($labels -join ' ') -notmatch 'AADSTS50020') { throw 'Private-desktop browser dispatch missed dialog labels.' }
+    if (@(Read-TargetedEmbeddedDialog $entry $browser).Count -ne 0) { throw 'Repeated browser probes must be throttled.' }
+    [IO.File]::WriteAllText((Join-Path $Session 'browser-probe-passed.txt'), 'passed')
     return
 }
 $capture=Split-Path -Parent $PSScriptRoot
@@ -48,6 +59,12 @@ try {
                 $reader = $desktop.Start((Join-Path $PSHOME 'powershell.exe'), $arguments, $owned)
                 if (-not $reader.WaitForExit(5000)) { throw 'Dialog label reader exceeded its deadline.' }
                 if ($reader.ExitCode -ne 0) { throw 'Dialog label reader failed.' }
+                # The production command host and its probe both execute on the workbook's private desktop.
+                $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -BrowserProbe -ExcelProcessId {1} -DialogHandle {2} -Session "{3}"' -f `
+                    $PSCommandPath, $worker.Id, $dialogs[0].Handle, $session
+                $probeProcess = $desktop.Start((Join-Path $PSHOME 'powershell.exe'), $arguments, $owned)
+                if (-not $probeProcess.WaitForExit(7000) -or $probeProcess.ExitCode -ne 0 -or
+                    -not (Test-Path (Join-Path $session 'browser-probe-passed.txt'))) { throw 'Private-desktop browser dispatch failed.' }
                 $observed = Get-Content $labels -Raw | ConvertFrom-Json
                 if ($observed.pid -ne $worker.Id -or ($observed.names -join ' ') -notmatch 'AADSTS50020') {
                     throw 'Accessible labels did not preserve the owned dialog error.'

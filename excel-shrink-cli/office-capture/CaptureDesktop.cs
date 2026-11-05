@@ -20,10 +20,17 @@ public sealed class CaptureDesktop : IDisposable
 
     public Process Start(string executable, string arguments, CaptureProcesses owned)
     {
+        return StartOnDesktop(name, executable, arguments, owned);
+    }
+
+    /// <summary>Start an owned helper on an existing desktop without switching user input.</summary>
+    public static Process StartOnDesktop(string desktopName, string executable, string arguments, CaptureProcesses owned)
+    {
+        if (String.IsNullOrEmpty(desktopName)) throw new ArgumentException("An explicit desktop is required.");
         if (executable.Contains("\"")) throw new ArgumentException("Invalid executable path");
         var startup = new StartupInfo();
         startup.Size = Marshal.SizeOf(typeof(StartupInfo));
-        startup.Desktop = name;
+        startup.Desktop = desktopName;
         var command = new StringBuilder("\"" + executable + "\" " + arguments);
         ProcessInfo info;
         // Assign the process to the cleanup job before it can create children.

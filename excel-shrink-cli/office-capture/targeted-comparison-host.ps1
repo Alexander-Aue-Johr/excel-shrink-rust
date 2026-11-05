@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-Add-Type -Path (Join-Path $PSScriptRoot 'CaptureProcesses.cs')
+Add-Type -Path @((Join-Path $PSScriptRoot 'CaptureProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureDesktop.cs'))
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
