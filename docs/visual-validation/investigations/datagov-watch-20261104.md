@@ -241,3 +241,21 @@ restored; C8 remains removed. Evidence: V: validation-temp/experiments/
 chart-format-anchor/native-fixed-core-v2/report.json. Parser, empty-row pruning
 and streamed ZIP-pipeline tests cover this invariant. Existing corpus results
 have not yet been migrated to this new core build.
+
+
+The prepared-bundle inventory inspected all 8,623 bundles. It found 57 bundles
+with 347 missing or changed empty first-source cells; 53 were still prepared,
+three had completed without differences and Tweedly had the confirmed difference.
+These are invalidation candidates, not 57 proven visual regressions. Identical
+Default-to-original aliases require no regeneration. The completed inventory has
+no read errors. Original worksheet rows are streamed; rows past the greatest
+requested anchor permit conservative early missing-cell detection. An irregular
+row order can therefore cause extra invalidation, never acceptance of a changed
+anchor. Inventory and migration receipts are retained on V: under validation-temp.
+
+For `Data for Table S6_19a9d184a88f.xlsx`, two chart-sheet plot layouts were
+slightly shifted despite equal cell values/formulas. Standard repeat request
+`23673d7e-f25c-4467-8f97-f61e0385b7e5` compared all four chart sheets with zero
+pixel, geometry or presence differences. The initial raw differences remain;
+a separate review links the initial and repeat report hashes and classifies
+the observation as nonrepeatable chart layout. No global pixel tolerance was added.
