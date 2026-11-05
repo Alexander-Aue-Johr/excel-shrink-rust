@@ -201,6 +201,28 @@ The historical R6 observations remain raw findings until reviewed under that pol
 
 ## Experiments supporting specific decisions
 
+### Unstyled fill mask: PnP Sector Boilers, 2026-11-05
+
+`PnP Sector Boilers Dataset_f6e5af66f1bb.xlsx`, `Fig 4 - SCR`, K6 is an
+unstyled empty cell that clears the blue row fill. Ordinary cleanup retained
+it, but tentative font-sentinel cleanup then removed the first such cell in
+the otherwise empty fixed-height row. Commit `6e7c0c9` preserves this visual
+role during both decisions without retaining unrelated font-only cells.
+
+The regression test reproduced the lost K6 before the fix. Afterward the core
+suite passed (256 tests, one ignored, plus four integration tests). A fresh
+Default output retained K6 and L6. Native private-desktop comparison of rebuilt
+Original and rebuilt fresh Default captured six candidate regions and eight
+charts per state: all six regions, including `A1:AF74` on `Fig 4 - SCR`, were
+pixel- and geometry-identical. Two separately captured energy-efficiency charts
+each differed at one pixel (maximum channel deltas 26 and 19); these remain
+separate findings, not an automatic pass. Both owned Excel processes closed.
+
+Local evidence: `.tmp/validation-temp/pnp-fill-mask-proof/native-result/report.json`
+on V:. This is candidate coverage, not an exhaustive full-sheet certification.
+Cached outputs produced before the fix require a separate affected-case audit;
+the successful fresh-output replay does not retroactively validate those files.
+
 | Evidence | What it supports; what it does not |
 | --- | --- |
 | [Parallel workbook opening](../visual-validation/experiments/parallel-workbook-open/README.md) | Four simultaneous startups had median 41.714 s versus 118.388 s sequential on that fixture. Supports trying independent starts together; not a universal Excel speedup. |
