@@ -391,3 +391,24 @@ before this change and passes afterward, including the unbordered negative
 control and both split settings. All 255 active core tests pass (one ignored).
 An actual shrink of the workbook now retains its 73 row headers; native Excel
 counterchecking and selective cache migration follow separately.
+
+The private-desktop native countercheck subsequently completed all 212 selected
+regions with no pixel, geometry, chart-rendering or chart-presence differences.
+Its report is retained under
+`validation-temp/santavy-current-control/native-2/report.json`. A separate review
+links the raw failing report to commit `14b5029` and this repeat; the original
+finding is unchanged.
+
+The prepared-cache inventory examined all 8,623 bundles without errors. It
+checks explicit borderless row headers against visible column-border styles
+and the retained Default row extent. Two bundles require regeneration: Santavy
+and FractureSustainabilityGeothermal Chemical data summary
+(`72415f53ff6a8589442b`). Both bundles and records were copied to a SHA-256-verified
+backup before invalidation. Other prepared artifacts and completed results
+remain reusable. The ongoing large Figure 4 fiber workbook was interrupted
+explicitly for the build switch and remains unverified/retryable.
+
+The full run resumes with the border fix, four groups and a 1,024 MiB reserve.
+Its new control host uses port 18773; earlier control hosts remain running rather
+than being replaced. They read the same study, but the new host is the primary
+view for this resumed build.
