@@ -338,10 +338,35 @@ class VisibleBrowserTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(progress.pending_optimized_moves(), set())
                 self.assertEqual(await self.page.locator('#notice').inner_text(), '')
 
+    async def test_empty_onedrive_toast_confirms_only_after_progress(self):
+        await self.set_folder()
+        await self.page.evaluate('''() => {
+          window.finishMove=()=>{
+            const notice=document.querySelector('#notice');
+            notice.dataset.automationid='msFluentToast';
+            notice.innerHTML='<i data-icon-name="SyncStatusSolid"></i>';
+            setTimeout(()=>{
+              notice.querySelector('i').dataset.iconName='CompletedSolid';
+              document.querySelectorAll('[data-selection-index][aria-selected="true"]').forEach(row=>row.remove());
+              document.querySelector('iframe').remove();
+            },50);
+          };
+        }''')
+        with tempfile.TemporaryDirectory() as temporary:
+            with flow.ProgressStore(Path(temporary), "folder") as progress:
+                progress.discover(["first.xlsx", "second.xlsx"])
+                complete(progress, "first.xlsx")
+                complete(progress, "second.xlsx")
+                await visible.move_visible_batch(self.page, progress,
+                                                 ["first.xlsx", "second.xlsx"], "optimized")
+                self.assertEqual(progress.pending_optimized_moves(), set())
+
     async def test_old_move_notice_cannot_confirm_a_new_batch(self):
         await self.set_folder()
         await self.page.evaluate('''() => {
           document.querySelector('#notice').textContent='Moved 2 items to optimized';
+          document.querySelector('#notice').dataset.automationid='msFluentToast';
+          document.querySelector('#notice').insertAdjacentHTML('beforeend','<i data-icon-name="CompletedSolid"></i>');
           window.finishMove=()=>{
             document.querySelectorAll('[data-selection-index][aria-selected="true"]').forEach(row=>row.remove());
             document.querySelector('iframe').remove();
