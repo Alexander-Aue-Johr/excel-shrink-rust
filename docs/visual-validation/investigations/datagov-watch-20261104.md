@@ -215,3 +215,5 @@ The expanded browser-dispatch test exposed an accessibility failure when the rea
 ### Repeated chart names
 
 `Missoula Cs Mass Calculations w ICPMS 041717_488d7cd4c676.xlsx` contains two drawing objects named `Chart 1`, with distinct drawing IDs 2 and 3. The former chart catalogue rejected their duplicate name identity. Inventory and capture now retain collection positions, so both objects are exported independently. Tests cover selection of the second duplicate, name/order mismatch rejection, independent missing-object evidence, and the native one-based fallback.
+
+Native verification with the production worksheet-name decoder and unmodified Office.js commands completes all twelve selected regions, including the actual tab-bearing name, without differences. Native verification of indexed charts completes seven cell regions and both distinct `Chart 1` objects without differences. Their measured left coordinates are 0 and approximately 415.125 points, confirming separate chart exports. Existing completed comparisons with unique chart names remain reusable; failed attempts remain retained for diagnosis.
