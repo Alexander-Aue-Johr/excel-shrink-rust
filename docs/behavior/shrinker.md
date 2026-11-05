@@ -414,3 +414,7 @@ showed that restoring only the final G2 cell did not restore centering after F2
 had been removed. Restoring the contiguous D2:G2 span did. This differs from
 font-height representatives, where a compact representative can preserve the
 height without retaining every originally formatted cell.
+
+### Attributed cell-content elements
+
+Worksheet value and inline-string elements remain content when their opening tags contain XML attributes or whitespace. For example, `<v xml:space="preserve">` is a value, just as `<v>` is. Removing empty cells must preserve their nonempty payloads. Content-marker detection checks the element-name boundary so longer names such as `value` do not match `v`.

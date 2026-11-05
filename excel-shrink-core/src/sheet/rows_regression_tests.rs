@@ -1404,3 +1404,25 @@ fn full_width_fill_promotion_keeps_border_and_protection_guards() {
         );
     }
 }
+
+#[test]
+fn preserves_value_and_inline_string_elements_with_attributes() {
+    let params = params_with_styles(&[]);
+    for row in [
+        br#"<row r="1"><c r="A1" t="str"><v xml:space="preserve">Visible heading</v></c></row>"#.as_slice(),
+        br#"<row r="1"><c r="A1" t="inlineStr"><is xml:space="preserve"><t>Visible heading</t></is></c></row>"#.as_slice(),
+    ] {
+        assert_eq!(replace_single_row(row, &params), row);
+    }
+}
+
+#[test]
+fn content_scan_accepts_xml_whitespace_and_rejects_longer_tag_names() {
+    for marker in [b"<v\tfoo=\"bar\">text</v>".as_slice(), b"<is\nfoo=\"bar\"><t>text</t></is>", b"<f\rfoo=\"bar\">A1</f>"] {
+        let mut cell = marker.to_vec();
+        cell.extend_from_slice(b"</c>");
+        assert!(super::scan_cell_content(&cell, 0).unwrap().1);
+        assert!(crate::sheet::cells::has_content(&cell));
+    }
+    assert!(!crate::sheet::cells::has_content(b"<value>text</value><formula/><issue/>"));
+}

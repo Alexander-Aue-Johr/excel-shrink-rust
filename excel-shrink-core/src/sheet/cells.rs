@@ -953,9 +953,9 @@ fn generate_self_closing_cell_xml(cell_attr: &[u8]) -> Vec<u8> {
 }
 
 pub(crate) fn has_content(cell: &[u8]) -> bool {
-    crate::xml::find_bytes(cell, b"<v>").is_some()
+    has_child_tag(cell, b"<v")
         || has_formula(cell)
-        || crate::xml::find_bytes(cell, b"<is>").is_some()
+        || has_child_tag(cell, b"<is")
 }
 
 fn has_formula(cell: &[u8]) -> bool {
@@ -967,7 +967,7 @@ fn has_child_tag(cell: &[u8], needle: &[u8]) -> bool {
     while let Some(rel) = crate::xml::find_bytes(&cell[pos..], needle) {
         let start = pos + rel;
         let next = cell.get(start + needle.len()).copied();
-        if matches!(next, Some(b' ' | b'/' | b'>')) {
+        if matches!(next, Some(b' ' | b'\t' | b'\r' | b'\n' | b'/' | b'>')) {
             return true;
         }
         pos = start + needle.len();

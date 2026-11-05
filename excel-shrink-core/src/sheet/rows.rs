@@ -794,9 +794,10 @@ fn scan_cell_content(bytes: &[u8], mut position: usize) -> Option<(usize, bool)>
         if tail.starts_with(b"</c>") {
             return Some((position + 4, false));
         }
-        if tail.starts_with(b"<v>")
-            || tail.starts_with(b"<is>")
-            || (tail.starts_with(b"<f") && matches!(tail.get(2), Some(b' ' | b'/' | b'>')))
+        if [b"<v".as_slice(), b"<is", b"<f"].iter().any(|tag| {
+            tail.starts_with(tag)
+                && matches!(tail.get(tag.len()), Some(b' ' | b'\t' | b'\r' | b'\n' | b'/' | b'>'))
+        })
         {
             let end = find_bytes(tail, b"</c>")?;
             return Some((position + end + 4, true));
