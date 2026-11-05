@@ -228,6 +228,26 @@ diagnostics are `rn-core-selection.log` and `rn-core-components-selection-v3.log
 in the same temporary root. The focused targeted suite passed 104 tests, with
 ten explicit experiments ignored by that command.
 
+Follow-up: the six RN differences were confirmed as conditional-region layout
+regressions. In a disposable counterfactual, restoring only 50 deleted explicit
+custom-height row headers eliminated every difference, without restoring cells.
+Those heights position the ends of bounded conditional fills below the headers.
+Commit `447acba` makes conditional application ranges a row-layout boundary for
+range selection and final tail trimming. The metadata scanner handles ordinary
+and extension sqref forms; it does not evaluate rule truth.
+
+A fresh shrink with this fix completed the native comparison in 52.769 seconds:
+18 regions per state, no pixel or geometry differences, both Excel processes
+closed. Evidence is `rn-core-components-proof/fixed-result/` in the same temporary
+root. The general boundary also retains existing font/layout representatives
+inside conditional scopes: this fixture has 6,273 cells and 664 row headers,
+versus the old Default's 5,376 and 496 (Original: 12,782 and 667). Its XLSX grows
+from 221,731 to 225,824 bytes. This is broader than the 50-header counterfactual;
+it preserves the existing rules for automatically sized rows without assuming
+that their fonts can be dropped from other workbooks. It does not keep every
+original cell in the protected rows. Further reduction of these representatives
+would require a separate height-preservation proof.
+
 ### Unstyled fill mask: PnP Sector Boilers, 2026-11-05
 
 `PnP Sector Boilers Dataset_f6e5af66f1bb.xlsx`, `Fig 4 - SCR`, K6 is an
