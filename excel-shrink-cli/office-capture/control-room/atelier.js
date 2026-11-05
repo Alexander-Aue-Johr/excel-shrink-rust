@@ -4,6 +4,7 @@ import { createPixelInspector } from './atelier-pixels.js';
 import { createClipboardButton } from './inspection-clipboard.js';
 import { adjacentDifference, loadDifferentWorkbooks } from './atelier-navigation.js';
 import { createFormulaInspector } from './formula-diagnostics.js';
+import { readDiagnosticResponse } from './diagnostic-response.js';
 
 const node = (tag, text) => {
   const element = document.createElement(tag);
@@ -217,9 +218,8 @@ export function createAtelier() {
         const response = await fetch(`/api/groups/${encodeURIComponent(id)}/targeted-report`, {
           cache: 'no-store', signal: request.signal,
         });
-        const result = await response.json();
+        const result = await readDiagnosticResponse(response, 'Retained comparison');
         if (current !== generation) return;
-        if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
         report = result;
         populate();
         if (selectLast && regions.length) {

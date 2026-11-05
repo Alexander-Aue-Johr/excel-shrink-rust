@@ -1,3 +1,5 @@
+import { readDiagnosticResponse } from './diagnostic-response.js';
+
 const cached = new Map();
 const pending = new Map();
 const queue = [];
@@ -43,8 +45,7 @@ async function pump() {
     try {
       const query = job.region ? `?region=${encodeURIComponent(job.region)}` : '';
       const response = await fetch(`/api/groups/${encodeURIComponent(job.id)}/pixel-diagnostics${query}`, { cache: 'no-store' });
-      const value = await response.json();
-      if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+      const value = await readDiagnosticResponse(response, 'Pixel diagnostics');
       cached.set(job.key, { value, at: Date.now() });
       job.resolve(value);
     } catch (error) { job.reject(error); }
@@ -65,7 +66,9 @@ export function attachPixelSummary(element, id) {
     if (element.isConnected) show(value);
   }).catch(error => {
     if (element.isConnected) {
-      element.textContent = 'Pixel measurements unavailable';
+      element.textContent = error.code === 'unsupported-diagnostic-endpoint'
+        ? 'Pixel measurements require the current Observatory server'
+        : 'Pixel measurements unavailable';
       element.title = error.message;
     }
   });

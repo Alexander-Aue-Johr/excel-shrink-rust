@@ -12,7 +12,7 @@ let releaseFirst;
 globalThis.fetch = async url => {
   calls.push(url);
   if (calls.length === 1) await new Promise(resolve => { releaseFirst = resolve; });
-  return { ok: true, json: async () => ({ summary: { changed_pixels: 8 } }) };
+  return Response.json({ summary: { changed_pixels: 8 } });
 };
 const first = requestPixelDiagnostics('first');
 const queued = requestPixelDiagnostics('queued');

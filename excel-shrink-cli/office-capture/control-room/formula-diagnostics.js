@@ -1,3 +1,5 @@
+import { readDiagnosticResponse } from './diagnostic-response.js';
+
 const summaries = new Map();
 const retained = new Map();
 const make = (tag, className, text) => {
@@ -56,8 +58,7 @@ export function createFormulaInspector(id, region, reportId) {
   if (!request) {
     request = fetch(`/api/groups/${encodeURIComponent(id)}/formula-diagnostics?region=${encodeURIComponent(region.key)}`,
       { cache: 'no-store' }).then(async response => {
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+      const result = await readDiagnosticResponse(response, 'Formula diagnostics');
       if (result.report_id !== reportId) throw new Error('Comparison changed; reopen the atelier.');
       return result.diagnosis;
     });
