@@ -504,3 +504,5 @@ Binary targeted uploads retain their command-specific paths and exact encoded by
 ### Chart-sheet viewport normalization
 
 Standalone chart exports enable `SizeWithWindow` while applying the controlled 1000-by-750-point viewport and restore its previous value afterward. Freezing that property before resizing could retain a chart's initial window-dependent size. Native chart-area geometry remains recorded, so unequal exports remain differences.
+
+Completed corpus comparisons remove temporary upload-pool links after both reports and retained image paths are durable. Retained PNGs remain valid independent hard links. Cleanup is restricted to hash-named `.image` files inside owned resident upload pools, and its removed-file count is recorded. Tests verify retained evidence, unrelated files and idempotent cleanup.

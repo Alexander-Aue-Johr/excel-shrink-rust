@@ -212,6 +212,54 @@ pub(super) fn discard_originals(directory: &Path, obsolete: &[PathBuf]) -> Resul
     Ok(())
 }
 
+/// Remove temporary upload-pool links only after durable reports retain their evidence.
+/// Captured PNG hard links remain independent; unrelated files and symlinks are untouched.
+pub(super) fn discard_upload_blobs(directory: &Path) -> Result<usize> {
+    let mut removed = 0;
+    for resident in fs::read_dir(directory)? {
+        let resident = resident?;
+        if !resident.file_type()?.is_dir()
+            || !resident
+                .file_name()
+                .to_string_lossy()
+                .starts_with("resident-")
+        {
+            continue;
+        }
+        let pool = resident.path().join("session/diagnosis-images/one/blobs");
+        if !pool.try_exists()? {
+            continue;
+        }
+        ensure!(
+            !fs::symlink_metadata(&pool)?.file_type().is_symlink(),
+            "Upload pool is a link"
+        );
+        for entry in walkdir::WalkDir::new(&pool)
+            .follow_links(false)
+            .max_depth(2)
+        {
+            let entry = entry?;
+            let path = entry.path();
+            let hash = path
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            if entry.file_type().is_file()
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension == "image")
+                && hash.len() == 64
+                && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                fs::remove_file(path)
+                    .with_context(|| format!("Discard temporary upload blob {}", path.display()))?;
+                removed += 1;
+            }
+        }
+    }
+    Ok(removed)
+}
+
 fn replace_alias_paths(value: &mut Value, aliases: &BTreeMap<String, String>) {
     match value {
         Value::Object(fields) => {
@@ -329,6 +377,26 @@ mod tests {
             {"findings":[{"sheet":"Data","cell":"A1:B2", "left_png":null, "right_png":null,
                 "left_rendering":"zero-area-range", "right_rendering":"zero-area-range"}]}]});
         assert!(apply(&mut report, &directory, 64)?.is_empty());
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn upload_pool_cleanup_preserves_retained_evidence_and_unrelated_files() -> Result<()> {
+        let (directory, _) = fixture(&[("A1:B2", false)])?;
+        let retained = directory.join("0-original.png");
+        let hash = artifact_cache::hash_file(&retained)?;
+        let pool = directory.join("resident-O/session/diagnosis-images/one/blobs/0");
+        fs::create_dir_all(&pool)?;
+        fs::hard_link(&retained, pool.join(format!("{hash}.image")))?;
+        let note = pool.join("note.txt");
+        fs::write(&note, b"keep")?;
+        let unrelated = directory.join("unrelated.image");
+        fs::write(&unrelated, b"keep")?;
+        assert_eq!(discard_upload_blobs(&directory)?, 1);
+        assert_eq!(artifact_cache::hash_file(&retained)?, hash);
+        assert!(note.is_file() && unrelated.is_file());
+        assert_eq!(discard_upload_blobs(&directory)?, 0);
         fs::remove_dir_all(directory)?;
         Ok(())
     }

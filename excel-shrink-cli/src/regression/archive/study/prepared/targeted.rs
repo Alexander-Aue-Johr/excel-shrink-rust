@@ -160,6 +160,8 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
     )?;
     publish_portable_evidence(&directory, &job.report_root, report.clone(), record)?;
     retention::discard_originals(&directory, &obsolete_images)?;
+    record["targeted_comparison"]["temporary_upload_blobs_removed"] =
+        json!(retention::discard_upload_blobs(&directory)?);
     // Evidence and XML transitions are durable; reusable raw inputs remain in the
     // preparation bundle. Keeping six working XLSX copies per result fills disks.
     for entry in fs::read_dir(&directory)? {
