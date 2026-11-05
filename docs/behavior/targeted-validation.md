@@ -724,7 +724,7 @@ candidates. Formula inputs retain their conservative whole-area dependency.
 This applies to the already recognized duplicate, scale, rank and data-bar rules.
 Mixed and input-independent rule proofs retain their full format-context check.
 
-### Bounded display registry
+### Conditional-format column scope
 
 Conditional-format layout guards compare column properties only through the
 rightmost application column, including preceding columns that can move the
@@ -733,6 +733,15 @@ otherwise established input proof. Column styles use semantic format identities.
 Unknown attributes, invalid ranges and overlapping column definitions retain
 the conservative fallback. Other worksheet layout guards and effective row-height
 checks remain in force.
+
+An offline replay of retained rebuilt states from
+`Project Summary_SciHub_ASB_d5759637e48f.xlsx` eliminated eight layout-context
+fallbacks caused by changed columns BK:BS beyond the affected CF areas. The
+combined cell/CF candidate list fell from 15,261 to 7,384 entries, before native
+capture planning. Remaining formula-input candidates still require observation.
+The earlier native result remains reusable because it checked a superset.
+
+### Bounded display registry
 
 The Observatory returns recent completed attempts from the dedicated
 `control-room/targeted-comparisons` registry. Its maintenance task keeps the
