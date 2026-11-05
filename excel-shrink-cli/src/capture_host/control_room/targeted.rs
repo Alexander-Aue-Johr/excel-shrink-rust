@@ -109,18 +109,66 @@ pub(super) async fn comparisons(State(room): State<Arc<Room>>) -> HttpResult<Jso
     names.sort_unstable_by(|left, right| right.cmp(left));
     let mut diagnostics = Vec::new();
     let mut comparisons = Vec::new();
+    let mut resolved_cleanup = Vec::new();
     for name in &names {
-        if let Some(snapshot) =
+        if let Some(mut snapshot) =
             read_snapshot(&root.join(name), &mut diagnostics, SNAPSHOT_LIMIT).await
         {
+            if reconcile_cleanup(&mut snapshot, crate::native_process::process_alive) {
+                resolved_cleanup.push(snapshot["run_id"].clone());
+            }
             comparisons.push(snapshot);
         }
     }
     let mut comparisons = retain_recent(comparisons);
+    // A browser may still retain an old snapshot as active. Explicit retirement
+    // removes it even when its corrected terminal state falls outside history.
+    resolved_cleanup.retain(|id| !comparisons.iter().any(|item| item["run_id"] == *id));
     enrich_addin_heartbeats(&room, &mut comparisons, &mut diagnostics).await;
     Ok(Json(
-        json!({"comparisons":comparisons,"retained_limit":100,"diagnostics":diagnostics}),
+        json!({"comparisons":comparisons,"retired_run_ids":resolved_cleanup,"retained_limit":100,"diagnostics":diagnostics}),
     ))
+}
+
+/// Refresh a failed attempt's frozen cleanup observations without changing its
+/// durable report. Only exact PID-and-creation-time evidence can confirm exit.
+fn reconcile_cleanup(
+    snapshot: &mut Value,
+    mut observe: impl FnMut(i64, i64) -> Option<bool>,
+) -> bool {
+    if snapshot["status"] != "cleanup_unconfirmed"
+        || snapshot["updated_at"].as_i64().is_none()
+    {
+        return false;
+    }
+    let Some(lanes) = snapshot["lanes"].as_array_mut() else {
+        return false;
+    };
+    let mut all_closed = true;
+    for lane in lanes {
+        match (lane["pid"].as_i64(), lane["process_started_at"].as_i64()) {
+            (Some(pid), Some(started)) => {
+                let alive = observe(pid, started);
+                lane["process_alive"] = json!(alive);
+                if alive == Some(false) {
+                    lane["lifecycle"] = json!("closed");
+                } else {
+                    all_closed = false;
+                }
+            }
+            (None, _) if matches!(lane["lifecycle"].as_str(),
+                Some("not_started" | "unavailable" | "skipped" | "closed")) => {}
+            _ => all_closed = false,
+        }
+    }
+    if !all_closed {
+        return false;
+    }
+    snapshot["status"] = json!("failed");
+    // This is the original failure time, not a fabricated process-exit time.
+    snapshot["finished_at"] = snapshot["updated_at"].clone();
+    snapshot["cleanup_observation"] = json!({"all_processes_exited":true,"source":"pid-and-creation-time"});
+    true
 }
 
 /// Load the durable portable report for this workbook, never a different live attempt.
@@ -277,6 +325,47 @@ fn retain_recent(mut comparisons: Vec<Value>) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn departed_cleanup_process_becomes_failed_history_without_erasing_the_error() {
+        let mut snapshot = json!({"run_id":"old", "status":"cleanup_unconfirmed",
+            "updated_at":300, "finished_at":null, "error":"open_batch timed out",
+            "lanes":[{"pid":12,"process_started_at":100,"process_alive":true,"lifecycle":"failed"},
+                {"pid":null,"lifecycle":"not_started"}]});
+        assert!(reconcile_cleanup(&mut snapshot, |pid, started| {
+            assert_eq!((pid, started), (12, 100));
+            Some(false)
+        }));
+        assert_eq!(snapshot["status"], "failed");
+        assert_eq!(snapshot["finished_at"], 300);
+        assert_eq!(snapshot["error"], "open_batch timed out");
+        assert_eq!(snapshot["lanes"][0]["lifecycle"], "closed");
+        assert_eq!(snapshot["lanes"][0]["process_alive"], false);
+        assert!(snapshot["lanes"][0]["closed_at"].is_null());
+    }
+
+    #[test]
+    fn live_or_unknown_cleanup_is_not_certified_closed() {
+        for observation in [Some(true), None] {
+            let mut snapshot = json!({"status":"cleanup_unconfirmed","updated_at":300,
+                "lanes":[{"pid":12,"process_started_at":100,"lifecycle":"failed"}]});
+            assert!(!reconcile_cleanup(&mut snapshot, |_, _| observation));
+            assert_eq!(snapshot["status"], "cleanup_unconfirmed");
+            assert!(snapshot["finished_at"].is_null());
+        }
+        let mut missing_birth = json!({"status":"cleanup_unconfirmed","updated_at":300,
+            "lanes":[{"pid":12,"lifecycle":"failed"}]});
+        assert!(!reconcile_cleanup(&mut missing_birth, |_, _| panic!("No birth time")));
+    }
+
+    #[test]
+    fn current_running_work_is_not_reclassified_by_cleanup_observation() {
+        let mut snapshot = json!({"status":"running","updated_at":300,
+            "lanes":[{"pid":12,"process_started_at":100,"lifecycle":"opening"}]});
+        let before = snapshot.clone();
+        assert!(!reconcile_cleanup(&mut snapshot, |_, _| panic!("Not cleanup")));
+        assert_eq!(snapshot, before);
+    }
 
     #[test]
     fn addin_heartbeats_require_received_messages_from_the_exact_process() {

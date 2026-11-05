@@ -223,6 +223,7 @@ export function createTargetedPanel(root) {
   root.replaceChildren(heading, notice, activeTitle, active, completedTitle, completed, more);
   const records = new Map();
   const views = new Map();
+  const retired = new Set();
   let completedLimit = 3;
   let connected = true;
   let nextRefresh = 0;
@@ -265,6 +266,7 @@ export function createTargetedPanel(root) {
   }
 
   function accept(comparison) {
+    if (retired.has(comparison?.run_id)) return;
     const next = acceptComparison(records.get(comparison?.run_id), comparison);
     if (!next) return;
     records.set(next.run_id, next);
@@ -302,6 +304,12 @@ export function createTargetedPanel(root) {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const snapshot = await response.json();
         supported = true;
+        for (const id of snapshot.retired_run_ids || []) {
+          retired.add(id);
+          records.delete(id);
+          views.get(id)?.destroy();
+          views.delete(id);
+        }
         for (const comparison of snapshot.comparisons || []) accept(comparison);
         connected = true; notice.hidden = true;
         render();

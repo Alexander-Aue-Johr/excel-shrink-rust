@@ -528,3 +528,17 @@ Each embedded chart inventory retains its zero-based position in the worksheet's
 The launcher counts standard external-link parts from the ZIP directory. For inputs with such parts, a rebuild that remains continuously responsive in Excel's `Pending` state for 15 seconds fails explicitly with `RebuildPendingExternalLinks`. Active `Calculating` time retains the ordinary command deadline. Observations separated by more than two seconds reset the Pending interval, because opening another workbook can block Office.js. No external-link evidence means the ordinary deadline remains in effect. This short diagnostic budget is based on 5,926 retained successful rebuild-and-save operations: median 0.187 s, 99th percentile 0.787 s, maximum 3.652 s. The sample covers command-position-2 operations and may contain repeated workbooks.
 
 The failed workbook stays unverified. Presence of external-link parts does not by itself establish causality. Breaking links changes formulas into cached values, so a comparison after that transformation requires separate interpretation. The regular validation path preserves those formulas; link-breaking experiments operate on disposable copies.
+
+
+### Historical cleanup observations in the worker list
+
+A failed attempt can retain `cleanup_unconfirmed` after its own telemetry writer
+has exited. The Observatory refreshes these historical process observations
+using both PID and creation time. Only confirmed exit of every possibly started
+lane moves the attempt into failed history. Unknown or live processes remain
+unconfirmed; the original timeout/error and durable report are preserved.
+The original failure timestamp orders this history; no process-exit timestamp
+or success is invented. Retired run IDs explicitly remove old browser cards
+when their corrected failure lies outside the bounded recent history. Late
+snapshots of a retired attempt cannot reactivate its card. This observation
+does not control or reserve scheduler slots.
