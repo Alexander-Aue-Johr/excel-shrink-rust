@@ -223,6 +223,12 @@ on V:. This is candidate coverage, not an exhaustive full-sheet certification.
 Cached outputs produced before the fix require a separate affected-case audit;
 the successful fresh-output replay does not retroactively validate those files.
 
+The read-only cache audit also found `gnipc_829262f4aa5a.xlsx`, where the old
+Default omitted unstyled M247 beneath row style 15. Fresh Default retains it.
+The native rebuilt comparison completed with one selected region and no pixel
+or geometry differences. Evidence is under
+`.tmp/validation-temp/gnipc-mask-proof/result/` on V:.
+
 ### Nanoplastics: equal rendering in a shared viewport, 2026-11-05
 
 `Nanoplastics total metal concentrations_c4436fc6e645.xlsx`, `Intensity`,
