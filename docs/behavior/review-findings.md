@@ -371,6 +371,25 @@ Excel processes closed. The replay inputs and report are retained under
 `.tmp/validation-temp/permit-aggregate-proof/` on V:. These observations describe
 this case and retain the existing conservative coverage for changed inputs.
 
+### Display-registry maintenance, 2026-11-05
+
+The dedicated display registry accumulated more than 6,700 snapshot mirrors.
+Every summary read opened the entire registry before retaining recent attempts.
+A reversible bootstrap archived 6,527 old terminal mirrors with verified backup
+hashes, retaining every one of the 103 entries in the preceding bounded API view.
+The backup and per-file manifest are under
+`.tmp/validation-temp/backups/dashboard-mirrors-20261105-212116/` on V:.
+Legacy mirrors without a source-location field retain their complete original
+bytes in that archive. Scientific reports and captures use their existing paths.
+
+After archiving, one summary request took 0.858 seconds. Earlier requests routinely
+took several seconds. This is an operational observation during a live corpus run.
+Periodic host maintenance now archives eligible mirrors outside a 200-finished-
+attempt buffer. The 34 control-room tests pass, including unchanged archived
+bytes, recent history, unfinished work, closure uncertainty, malformed metadata
+and idempotent repeat sweeps. The running older host received the bootstrap
+archive. Automatic sweeps require the newly built host.
+
 ## Verification and repeatable review
 
 The core suite, focused targeted archive/retention tests and read-only retained-

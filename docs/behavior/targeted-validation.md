@@ -712,6 +712,17 @@ Selection/transport took 6.320 seconds and comparison 0.958 seconds. Its previou
 attempt was still measuring geometry after more than 40 minutes with no image.
 No arbitrary region-count or worksheet-size exclusion was introduced.
 
+Whole-area input proofs now resolve applied cell formats before deciding whether
+their inputs changed. Removing an unused font or XF preserves the proof when
+the rule catalogue, shared format context, cell inputs and applied formats agree.
+A changed nonempty cell format is an uncertain input and selects the dependent
+area. Changed inherited row formats also select that area when affected rows
+contain value-bearing or explicitly typed inputs inside the rule's range.
+Changed formats in empty rows and changed row heights remain local layout
+candidates. Formula inputs retain their conservative whole-area dependency.
+This applies to the already recognized duplicate, scale, rank and data-bar rules.
+Mixed and input-independent rule proofs retain their full format-context check.
+
 ### Bounded display registry
 
 The Observatory returns recent completed attempts from the dedicated
@@ -727,14 +738,3 @@ original report directories. Registry maintenance runs independently of HTTP
 queries and scientific scheduling. The additional history buffer preserves the
 UI's 100 most recent completed attempts while publishers finish concurrently.
 
-Whole-area input proofs now resolve applied cell formats before deciding whether
-their inputs changed. Removing an unused font or XF preserves the proof when
-the rule catalogue, shared format context, cell inputs and applied formats agree.
-A changed nonempty cell format is an uncertain input and selects the dependent
-area. Changed inherited row formats also select that area when affected rows
-contain value-bearing or explicitly typed inputs inside the rule's range.
-Changed formats in empty rows and changed row heights remain local layout
-candidates. Formula inputs retain their conservative
-whole-area dependency. This applies to the already recognized duplicate,
-scale, rank and data-bar rules. Mixed and input-independent rule proofs retain
-their full format-context check.
