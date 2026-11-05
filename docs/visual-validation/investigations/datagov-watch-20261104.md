@@ -294,3 +294,32 @@ regions. The original differences start below the populated table, where
 inherited column borders continue. This establishes the cause, but the scope
 of unbounded inherited-column tails still needs review; no tolerance or new
 broad row-retention policy was introduced.
+
+
+### Raster and overflow-context controls
+
+Enlarged glyph crops were reviewed for INL August 2016 oil/BG, SWCNT WetMix,
+Ladd 2016 and Final dataset/RUS. The affected charts have isolated antialiased
+text-edge changes (1–16 pixels per chart, maximum channel delta 35), matching
+cell value/formula payloads and byte-identical chart XML. Separate review records
+classify the selected findings under the owner's imperceptible-raster exception.
+The diagnostic script now includes RGBA, not just RGB: alpha-only differences
+must not be reported as zero changed pixels. Rechecking these four reviewed
+cases with alpha included preserves their measured counts. The production
+comparator already hashes normalized RGBA and required no change.
+
+For XiaoyuLiu iPCB, Shapefile Metadata and Health Impact Functions, the old
+capture boundaries truncate overflow text. Disposable worker copies expanded
+only the affected sheet horizontally to A1:Z23, A1:Z11 and A1:AZ52 respectively,
+preserving all requested rows. All three native rebuilt comparisons then
+complete without pixel/geometry differences after the existing exact-white-
+margin rule. The experimental command labels retain the original requested
+ranges; review records explicitly retain the actual override and repeat hashes.
+Source value/formula payloads match. Production selection was not changed.
+The first experimental launches failed before Excel because the copied host
+lacked its archive cleanup helper; the complete follow-up copies passed.
+
+Two Mooring findings have identical complete RGBA images, identical dimensions
+and exactly matching comparison_core geometry, while outer capture top differs.
+These were recorded as selected capture-boundary artifacts, not described as
+floating-point noise. Their raw geometry and original verdicts remain available.
