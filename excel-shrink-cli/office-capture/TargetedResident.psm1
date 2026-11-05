@@ -97,7 +97,7 @@ function Start-TargetedWorkbook {
         foreach ($key in $previous.Keys) { [Environment]::SetEnvironmentVariable($key, $previous[$key], 'Process') }
     }
     $Owned.Add($launcher)
-    $entry = @{launcher=$launcher; session=$session; path=$Command.path; process=$null; sequence=0; startup_slot=$startupSlot}
+    $entry = @{launcher=$launcher; session=$session; path=$Command.path; process=$null; sequence=0; startup_slot=$startupSlot; external_link_parts=[int]$Command.external_link_parts}
     $sessions[$Command.lane] = $entry
     return $entry
 }
@@ -257,6 +257,9 @@ function Start-TargetedJob {
     param($Command, [int]$Index)
     $entry = $sessions[$Command.lane]
     if ($null -eq $entry) { throw 'Targeted workbook is not open.' }
+    if ($Command.kind -eq 'recalculate') {
+        $Command | Add-Member -NotePropertyName external_link_parts -NotePropertyValue $entry.external_link_parts -Force
+    }
     $entry.sequence++
     $id = 'targeted-' + $entry.sequence
     Write-TargetedJson (Join-Path $entry.session "commands/one/$id.json") @{

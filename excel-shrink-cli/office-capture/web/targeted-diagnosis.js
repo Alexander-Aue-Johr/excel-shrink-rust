@@ -25,10 +25,28 @@
           await context.sync();
           reportProgress('rebuild_waiting_for_calculation');
           const deadline = Date.now() + Math.max(120000, (command.timeout_seconds || 120) * 1000);
+          let pendingSince = null;
+          let lastStateObservedAt = null;
           while (true) {
             context.workbook.application.load('calculationState');
             await context.sync();
-            if (context.workbook.application.calculationState === Excel.CalculationState.done) break;
+            const state = context.workbook.application.calculationState;
+            if (state === Excel.CalculationState.done) break;
+            const observedAt = Date.now();
+            if (state === Excel.CalculationState.pending) {
+              // Opening another workbook can block Office.js; that gap is not observed idle time.
+              if (pendingSince === null || lastStateObservedAt === null ||
+                  observedAt - lastStateObservedAt > 2000) pendingSince = observedAt;
+              if (command.external_link_parts > 0 && command.linked_pending_timeout_ms > 0 &&
+                  Date.now() - pendingSince >= command.linked_pending_timeout_ms) {
+                const error = new Error(`Rebuild remained Pending for ${command.linked_pending_timeout_ms / 1000} seconds with ${command.external_link_parts} external-link parts; workbook left unverified`);
+                error.code = 'RebuildPendingExternalLinks';
+                throw error;
+              }
+            } else {
+              pendingSince = null;
+            }
+            lastStateObservedAt = observedAt;
             if (Date.now() >= deadline) throw new Error('Targeted rebuild did not finish');
             await new Promise(resolve => setTimeout(resolve, 25));
           }

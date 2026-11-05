@@ -12,6 +12,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+// Successful retained rebuild-and-save samples stayed below four seconds.
+// Use this shorter budget only for continuously responsive Pending with external links.
+const LINKED_PENDING_TIMEOUT_MS: u64 = 15_000;
+
 pub(super) struct ExcelHost {
     child: Child,
     input: BufWriter<ChildStdin>,
@@ -76,7 +80,7 @@ impl ExcelHost {
         Ok(
             json!({"kind":"open", "lane":lane.key(), "path":path, "sheets":sheets,
                 "host_executable":std::env::current_exe()?, "timeout_seconds":self.timeout.as_secs(),
-                "manual_calculation":true}),
+                "manual_calculation":true, "external_link_parts":external_workbook_link_parts(path)?}),
         )
     }
 
@@ -151,7 +155,8 @@ impl ExcelHost {
         lane: LaneId,
         telemetry: &Telemetry,
     ) -> Result<()> {
-        self.call(json!({"kind":"recalculate", "lane":lane.key(), "timeout_seconds":self.timeout.as_secs()}), telemetry)?;
+        self.call(json!({"kind":"recalculate", "lane":lane.key(), "timeout_seconds":self.timeout.as_secs(),
+            "linked_pending_timeout_ms":LINKED_PENDING_TIMEOUT_MS}), telemetry)?;
         Ok(())
     }
 
@@ -477,6 +482,22 @@ fn measured_geometry(response: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn external_link_inventory_reads_package_entries_without_parsing_xml() -> Result<()> {
+        let path = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "linked-package")?;
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path)?);
+        for name in ["xl/externalLinks/externalLink1.xml", "xl/externalLinks/externalLink2.xml",
+            "xl/externalLinks/_rels/externalLink1.xml.rels", "xl/worksheets/sheet1.xml"] {
+            zip.start_file(name, zip::write::FileOptions::default())?;
+            zip.write_all(b"deliberately not XML")?;
+        }
+        zip.finish()?;
+        assert_eq!(external_workbook_link_parts(&path)?, 2);
+        std::fs::remove_file(path)?;
+        Ok(())
+    }
+
     #[cfg(windows)]
     #[test]
     fn canonical_paths_cross_the_powershell_boundary_without_verbatim_prefixes() -> Result<()> {
@@ -534,6 +555,16 @@ $command = [Console]::ReadLine() | ConvertFrom-Json
 }
 
 /// Require a real process identity for every successful opening response.
+/// Count standard external-link parts from ZIP metadata without reading worksheet XML.
+/// Presence is a diagnostic clue, not proof that a particular link caused a failure.
+fn external_workbook_link_parts(path: &Path) -> Result<usize> {
+    let archive = zip::ZipArchive::new(std::fs::File::open(path)?)?;
+    Ok(archive.file_names().filter(|name| {
+        name.strip_prefix("xl/externalLinks/")
+            .is_some_and(|leaf| !leaf.contains('/') && leaf.ends_with(".xml"))
+    }).count())
+}
+
 fn confirmed_pid(result: &Value) -> Result<u32> {
     result["pid"]
         .as_u64()

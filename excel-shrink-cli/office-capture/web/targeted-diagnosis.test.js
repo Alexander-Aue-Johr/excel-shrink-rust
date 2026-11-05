@@ -119,3 +119,54 @@ test('duplicate chart names retain distinct indices and export the requested obj
     {kind: 'capture_chart', sheet: 'Summary', chart: 'Chart 1', chart_index: -1},
     action => action(context)), /Invalid chart collection index/);
 });
+
+
+test('linked-workbook deadline counts continuous Pending time and leaves active calculation alone', async () => {
+  const originalNow = Date.now;
+  const originalTimeout = globalThis.setTimeout;
+  const originalExcel = globalThis.Excel;
+  try {
+    globalThis.Excel = {
+      CalculationType: {fullRebuild: 'FullRebuild'},
+      CalculationState: {done: 'Done', pending: 'Pending', calculating: 'Calculating'},
+      SaveBehavior: {save: 'Save'}
+    };
+    globalThis.setTimeout = callback => { callback(); return 0; };
+    const cases = [
+      {name: 'blocked links', links: 2, states: ['Pending'], rejected: true},
+      {name: 'active calculation', links: 2, states: [...Array(40).fill('Calculating'), 'Done']},
+      {name: 'pending interval resets', links: 2, states: [...Array(20).fill('Pending'), 'Calculating', ...Array(20).fill('Pending'), 'Done']},
+      {name: 'no external-link evidence', links: 0, states: [...Array(40).fill('Pending'), 'Done']},
+      {name: 'Office.js blocked by opening', links: 2, interval: 10000, states: ['Pending', 'Pending', 'Pending', 'Done']}
+    ];
+    for (const scenario of cases) {
+      let now = 0;
+      let saved = false;
+      const states = [...scenario.states];
+      let state = states[0];
+      Date.now = () => now;
+      const application = {
+        calculate() {},
+        load() { state = states.shift() || state; this.calculationState = state; }
+      };
+      const context = {
+        workbook: {application, save() { saved = true; }},
+        sync: async () => { now += scenario.interval || 500; }
+      };
+      const operation = globalThis.TargetedDiagnosis.run({kind: 'recalculate',
+        external_link_parts: scenario.links, linked_pending_timeout_ms: 15000},
+        action => action(context));
+      if (scenario.rejected) {
+        await assert.rejects(operation, error => error.code === 'RebuildPendingExternalLinks', scenario.name);
+        assert.equal(saved, false);
+      } else {
+        assert.equal((await operation).saved, true, scenario.name);
+        assert.equal(saved, true);
+      }
+    }
+  } finally {
+    Date.now = originalNow;
+    globalThis.setTimeout = originalTimeout;
+    globalThis.Excel = originalExcel;
+  }
+});
