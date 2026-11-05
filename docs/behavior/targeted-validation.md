@@ -309,6 +309,17 @@ policy requires a new capture-policy identity and review of result reuse.
 
 ## V7. Conditional formatting: dependency selection, not rule evaluation
 
+Removing a cell with no value/formula/inline-string payload and no nonnumeric
+type does not change its blank CF input. Its visual/style changes remain capture
+candidates. Explicit nonnumeric types and payload-bearing cells remain potential
+input changes. This distinction avoids turning blank-cell cleanup into a
+whole-area dependency change for duplicate rules, scales or data bars.
+
+`x14ac:dyDescent` is recorded as row-local layout metadata. A changed or removed
+row still selects its affected CF intersections and height checks, without
+invalidating the unchanged rule's entire application area. Other unfamiliar row
+metadata retains the global conservative fallback.
+
 The selector does not ask whether a changed input happens to leave a rule true
 or false. It asks which inputs can influence which output areas. If relevant
 inputs changed or are uncertain, capture the dependent target area.

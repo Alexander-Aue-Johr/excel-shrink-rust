@@ -56,6 +56,8 @@ pub(super) struct XmlChange {
     pub also_in_original_open_save: bool,
     #[serde(skip)]
     visible_cell: bool,
+    /// Formatting-only blank cells remain visual candidates, not CF value dependencies.
+    pub may_change_cell_input: bool,
 }
 
 #[derive(Serialize)]
@@ -193,6 +195,7 @@ impl Snapshot {
                     },
                     also_in_original_open_save: false,
                     visible_cell: change.visible(),
+                    may_change_cell_input: change.may_change_input(),
                 });
                 Ok(())
             })?;
@@ -268,6 +271,7 @@ impl Snapshot {
             },
             also_in_original_open_save: false,
             visible_cell: false,
+            may_change_cell_input: false,
         });
     }
 
@@ -530,6 +534,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                                 b"hidden",
                                 b"s",
                                 b"customFormat",
+                                b"x14ac:dyDescent",
                             ]
                             .contains(&key)
                             {
@@ -745,6 +750,7 @@ mod tests {
             context_after: "styles".into(),
             also_in_original_open_save: false,
             visible_cell: false,
+            may_change_cell_input: false,
         };
         let mut b = a.clone();
         b.before = Some("different content".into());
@@ -767,6 +773,7 @@ mod tests {
                 context_after: "c".repeat(64),
                 also_in_original_open_save: row % 2 == 0,
                 visible_cell: true,
+                may_change_cell_input: true,
             })
             .collect();
         let path = super::super::change_evidence::write(&directory, 0, &changes)?;

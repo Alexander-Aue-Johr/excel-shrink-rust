@@ -36,6 +36,8 @@ pub(super) struct Cell {
     pub digest: [u8; 32],
     pub visible: bool,
     pub has_formula: bool,
+    /// Keep explicit nonnumeric blank encodings conservative for CF dependencies.
+    pub has_non_numeric_type: bool,
 }
 impl Cell {
     fn key(&self) -> (u32, u16) {
@@ -65,6 +67,15 @@ impl CellChange {
     }
     pub fn visible(&self) -> bool {
         self.before.is_some_and(|c| c.visible) || self.after.is_some_and(|c| c.visible)
+    }
+
+    /// Empty untyped cells and absent cells supply the same blank CF input.
+    /// The full visual digest still detects their style and presence changes.
+    pub fn may_change_input(&self) -> bool {
+        [self.before, self.after]
+            .into_iter()
+            .flatten()
+            .any(|cell| cell.visible || cell.has_non_numeric_type)
     }
 }
 
@@ -138,6 +149,7 @@ impl Writer {
                             digest: [0; 32],
                             visible: false,
                             has_formula: false,
+                            has_non_numeric_type: tag.attr(b"t")?.is_some_and(|kind| kind != b"n"),
                         },
                         Sha256::new(),
                     ));
@@ -195,7 +207,7 @@ impl Writer {
         record[..4].copy_from_slice(&cell.row.to_le_bytes());
         record[4..6].copy_from_slice(&cell.column.to_le_bytes());
         record[6] = u8::from(cell.visible);
-        record[7] = u8::from(cell.has_formula);
+        record[7] = u8::from(cell.has_formula) | (u8::from(cell.has_non_numeric_type) << 1);
         record[8..].copy_from_slice(&cell.digest);
         self.output
             .as_mut()
@@ -242,7 +254,8 @@ fn next_cell(reader: &mut Option<BufReader<File>>) -> Result<Option<Cell>> {
         row: u32::from_le_bytes(record[..4].try_into().unwrap()),
         column: u16::from_le_bytes(record[4..6].try_into().unwrap()),
         visible: record[6] != 0,
-        has_formula: record[7] != 0,
+        has_formula: record[7] & 1 != 0,
+        has_non_numeric_type: record[7] & 2 != 0,
         digest: record[8..].try_into().unwrap(),
     }))
 }
@@ -341,6 +354,7 @@ impl Cells {
                 digest: [1; 32],
                 visible: false,
                 has_formula: false,
+                has_non_numeric_type: false,
             })
             .unwrap();
         writer.finish().unwrap()

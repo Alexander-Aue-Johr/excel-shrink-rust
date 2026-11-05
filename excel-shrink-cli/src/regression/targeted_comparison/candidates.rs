@@ -268,6 +268,7 @@ mod tests {
                     digest: [0; 32],
                     visible: true,
                     has_formula: false,
+                    has_non_numeric_type: false,
                 };
                 write!(
                     archive,

@@ -288,7 +288,9 @@ fn select_references(
             }
             affected
         };
-        for change in changes.iter().filter(|change| change.sheet == source) {
+        for change in changes.iter().filter(|change| {
+            change.sheet == source && change.may_change_cell_input
+        }) {
             if let Some(input) = change.location.strip_prefix("cell:").and_then(ranges::cell) {
                 changed += usize::from(select(input));
             }
@@ -337,7 +339,9 @@ fn select_local_inputs(
     let name = &name;
     let extent = decision.comparison_extent;
     let mut selected = BTreeSet::new();
-    for change in changes.iter().filter(|change| change.sheet == *name) {
+    for change in changes.iter().filter(|change| {
+        change.sheet == *name && change.may_change_cell_input
+    }) {
         let Some(address) = change.location.strip_prefix("cell:") else {
             continue;
         };

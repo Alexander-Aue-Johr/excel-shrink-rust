@@ -8,6 +8,49 @@ use std::{
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 #[test]
+fn removing_untyped_blank_styles_does_not_change_duplicate_rule_inputs() -> Result<()> {
+    let root =
+        crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-blank-style")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let rule = "<conditionalFormatting sqref=\"B1:B1048576\"><cfRule type=\"duplicateValues\" priority=\"1\"/></conditionalFormatting>";
+    let before =
+        "<row r=\"1\"><c r=\"B1\"><v>7</v></c></row><row r=\"3\"><c r=\"B3\" s=\"1\"/></row>";
+    let after = "<row r=\"1\"><c r=\"B1\"><v>7</v></c></row><row r=\"3\"/>";
+    write_book(&a, before, rule, "", "", "")?;
+    write_book(&b, after, rule, "", "", "")?;
+    let (decisions, candidates) = check(&a, &b)?;
+    assert_eq!(decisions[0].changed_inputs, 0);
+    assert!(candidates.is_empty());
+
+    let descent = before.replace("<row r=\"3\">", "<row r=\"3\" x14ac:dyDescent=\"0.25\">");
+    write_book(&a, &descent, rule, "", "", "")?;
+    let (decisions, candidates) = check(&a, &b)?;
+    assert_eq!(decisions[0].changed_inputs, 0);
+    assert_eq!(decisions[0].layout_rows, 1);
+    assert!(candidates.iter().all(|candidate| candidate.cell == "B3:B3"));
+
+    // Explicit types, strings and real deleted values remain uncertain inputs.
+    let short_rule = rule.replace("1048576", "10");
+    for cell in [
+        "<c r=\"B3\" t=\"s\"/>",
+        "<c r=\"B3\"><v>7</v></c>",
+        "<c r=\"B3\" t=\"inlineStr\"><is><t> </t></is></c>",
+    ] {
+        let before =
+            format!("<row r=\"1\"><c r=\"B1\"><v>7</v></c></row><row r=\"3\">{cell}</row>");
+        write_book(&a, &before, &short_rule, "", "", "")?;
+        write_book(&b, after, &short_rule, "", "", "")?;
+        let (decisions, candidates) = check(&a, &b)?;
+        assert_eq!(decisions[0].changed_inputs, 1);
+        assert!(!candidates.is_empty());
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn x14_expression_adapter_requires_known_namespaces_and_static_format_content() -> Result<()> {
     let root =
         crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-x14-expression")?;

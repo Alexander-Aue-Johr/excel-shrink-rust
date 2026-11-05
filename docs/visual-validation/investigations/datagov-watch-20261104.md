@@ -121,3 +121,27 @@ range map. A focused test covers preservation without cells and removal when the
 bordered interval is fully shadowed. All 248 Core tests pass. The actual fixed
 output for this small workbook is byte-identical to Original, so the native
 pipeline correctly used the unchanged-input proof for its duplicate lane.
+
+## Blank CF inputs and row-local descent metadata
+
+`machine_readable_puf (5)_2daad6b00bf6.xlsx` contains 404 populated/layout rows
+but duplicate rules extending down to row 1,048,576. The old run exported at least
+964 regions per state before interruption. XML inspection found no changed cell
+inputs in rebuilt Original versus rebuilt Default. Two removed untyped blank
+rows had `x14ac:dyDescent`; including that attribute in the global CF layout hash
+forced every application area into a full capture fallback.
+
+Two distinctions now retain the relevant checks without this global expansion.
+Untyped cells without value/formula/inline-string payloads remain blank inputs
+when removed, while their visual cell changes remain candidates. Explicit types,
+real values and formulas stay conservative. Descent metadata belongs to its row,
+so its removal selects the affected rows rather than all CF targets. The streamed
+record remains 40 bytes and uses a spare flag bit for explicit nonnumeric types.
+
+On the actual rebuilt files, the read-only selector now reports two logical CF
+regions, B403:B403 and B404:B404. A native exact-input repeat selected one merged
+capture per state, A385:E512, with no pixel or geometry differences. Its recorded
+capture-selection/transport time was 305 ms and image-comparison time 775 ms.
+These are phase timings, not total workbook opening time. The targeted suite
+passes including explicit typed-blank, string and deleted-value counterexamples.
+Earlier v8 results captured a conservative superset and remain reusable.
