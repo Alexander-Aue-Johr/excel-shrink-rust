@@ -193,3 +193,15 @@ An isolated probe joined the same owned private desktop and queried the existing
 ### Proportional partition consumers
 
 The completion contract and evidence-retention pass recognize both measured partition versions. Zero-area observations retain their explicit image-free contract, and differing adaptive ranges retain full-resolution context at actual cell-rectangle boundaries. Focused consumer tests cover v1/v2 blank-edge and zero-area validation, v2 adjacent ranges and v2 image-free retention. This closes a version-dispatch gap introduced with the proportional planner; underlying capture coverage and pixel verdicts are unchanged.
+
+### CFU authentication observation
+
+The user encountered an EPA tenant sign-in failure (`AADSTS50020`) after interacting with the CFU workbook's security warning. Read-only observation of that Excel process found a modal `BasicEmbeddedBrowser` with an initially empty native title and a Loading / One moment accessibility subtree. The previous classic-dialog filter returned no dialogs for that same process; the expanded owned-modal filter returned its browser window. This demonstrates a monitoring gap, but does not prove that every CFU Pending-recalculation timeout is caused by the sign-in failure.
+
+Focused classification and private-desktop early-skip tests cover sign-in requests and denied tenant access. The same private-desktop test also reads the accessible error labels through the isolated helper. A separate proposed synthetic password-field test was rejected by automatic tool approval without a detailed reason and was not executed. No authentication was submitted or security warning accepted by these tests.
+
+### Capture-boundary and chart repeat checks
+
+The NWSS data dictionary's Change Log comparison has identical common pixels and comparison cores. Narrowing an empty tail column changes the right capture edge inside overflowing header text. A disposable wider A1:J4 capture retains that text in both variants, with exact common pixels and an entirely white unshared exterior. This is a capture-boundary finding, with the original report preserved. The second cbera model variant likewise has exact common pixels; its sole extra bottom pixel row repeats the preceding row's fill beyond the actual data, after removal of custom-height empty rows 36, 39, 42 and 45.
+
+BrazilSoybeanFigure3 initially differs at 96 chart raster pixels with matching geometry and unchanged worksheet formula/value payloads. A repeat through the production targeted-comparison endpoint has zero cell and chart differences. The raw initial finding is preserved with a review recording nonrepeatable raster variation; its precise cause remains unproven.
