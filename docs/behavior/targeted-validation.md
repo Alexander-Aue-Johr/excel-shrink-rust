@@ -518,3 +518,7 @@ The label reader is launched explicitly on the same named private desktop and as
 ### Worksheet names
 
 Workbook-plan worksheet names decode XML entities and then SpreadsheetML Xstring escapes in one left-to-right pass before Office.js lookup. For example `_x0009_` denotes a tab, while `_x005F_x0009_` denotes the literal text `_x0009_`. UTF-16 surrogate pairs are joined and invalid pairs fail explicitly. Relationship targets retain ordinary XML attribute decoding. Encoded names remain conservative for CF proofs that require simple literal names. See [Microsoft's Xstring clarification](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oe376/bd0aa042-434a-4ca7-b25f-4e1fd25a954d).
+
+### Embedded chart identity
+
+Each embedded chart inventory retains its zero-based position in the worksheet's chart collection, alongside its name. Captures use `getItemAt` and verify the expected name after synchronization. Repeated names therefore retain distinct observations. Native same-process export translates the index to the one-based ChartObjects collection and performs the same name check. The chart finding records `chart_index`; older records without an index retain their legacy name-based shape. A missing or reordered observation remains an explicit difference or error. See [Microsoft's ChartCollection API](https://learn.microsoft.com/en-us/javascript/api/excel/excel.chartcollection?view=excel-js-preview), which documents that name lookup returns the first duplicate.

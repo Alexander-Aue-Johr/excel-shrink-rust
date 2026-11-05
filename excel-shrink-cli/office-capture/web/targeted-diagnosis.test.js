@@ -87,3 +87,35 @@ test('a blocked save does not publish completion', async () => {
     {kind: 'save'}, action => action(context), stage => stages.push(stage)), /Save blocked/);
   assert.deepEqual(stages, ['saving_workbook']);
 });
+
+
+test('duplicate chart names retain distinct indices and export the requested object', async () => {
+  const items = [0, 1].map(index => ({
+    name: 'Chart 1', top: index * 200, left: 0, width: 100, height: 80,
+    load() {}, getImage() { return {value: `image-${index}`}; }
+  }));
+  const charts = {
+    items, load() {}, getItemAt: index => items[index],
+    getItem() { assert.fail('Name lookup would select the first duplicate'); }
+  };
+  const sheet = {name: 'Summary', charts};
+  const context = {
+    workbook: {worksheets: {items: [sheet], load() {}, getItem: () => sheet}},
+    sync: async () => {}
+  };
+  const inventory = await globalThis.TargetedDiagnosis.run(
+    {kind: 'charts'}, action => action(context));
+  assert.deepEqual(inventory.charts.map(chart => [chart.name, chart.index]),
+    [['Chart 1', 0], ['Chart 1', 1]]);
+  const result = await globalThis.TargetedDiagnosis.run(
+    {kind: 'capture_chart', sheet: 'Summary', chart: 'Chart 1', chart_index: 1},
+    action => action(context));
+  assert.equal(result.image_base64, 'image-1');
+  assert.equal(result.geometry.top, 200);
+  await assert.rejects(globalThis.TargetedDiagnosis.run(
+    {kind: 'capture_chart', sheet: 'Summary', chart: 'Renamed', chart_index: 1},
+    action => action(context)), /order changed/);
+  await assert.rejects(globalThis.TargetedDiagnosis.run(
+    {kind: 'capture_chart', sheet: 'Summary', chart: 'Chart 1', chart_index: -1},
+    action => action(context)), /Invalid chart collection index/);
+});

@@ -211,3 +211,7 @@ The expanded browser-dispatch test exposed an accessibility failure when the rea
 ### Escaped worksheet name
 
 `De Facto Water Reuse Bioassay Manuscript Data_b40bf00a15f7.xlsx` failed its height command with `ItemNotFound` for `Fig 6 MDA-KBluc_x0009_`. A disposable Office.js experiment decoding the command's Xstring name completes twelve regions with zero differences. The workbook planner previously decoded XML entities alone. Its worksheet-name boundary now also decodes Xstrings once, preserving escaped literal underscores and joining UTF-16 surrogate pairs. Twenty-three planning tests pass, including escaped-name descriptor lookup, literal escapes and malformed surrogate rejection. The native production-build verification is performed separately from that initial diagnostic experiment.
+
+### Repeated chart names
+
+`Missoula Cs Mass Calculations w ICPMS 041717_488d7cd4c676.xlsx` contains two drawing objects named `Chart 1`, with distinct drawing IDs 2 and 3. The former chart catalogue rejected their duplicate name identity. Inventory and capture now retain collection positions, so both objects are exported independently. Tests cover selection of the second duplicate, name/order mismatch rejection, independent missing-object evidence, and the native one-based fallback.

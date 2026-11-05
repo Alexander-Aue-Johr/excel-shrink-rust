@@ -156,7 +156,14 @@ function Export-TargetedEmbeddedChart {
             $sheet = $Book.Worksheets.Item($Command.sheet)
             $visibility = $sheet.Visible
             $objects = $sheet.ChartObjects()
-            $object = $objects.Item($Command.chart)
+            if ($null -ne $Command.chart_index) {
+                $index = [int]$Command.chart_index
+                if ($index -lt 0 -or $index -ge $objects.Count) { throw 'Invalid chart collection index.' }
+                $object = $objects.Item($index + 1)
+                if ($object.Name -cne $Command.chart) { throw 'Chart collection order changed since enumeration.' }
+            } else {
+                $object = $objects.Item($Command.chart)
+            }
             $geometry = @{
                 top=$object.Top; left=$object.Left; width=$object.Width; height=$object.Height
                 export_method='native-existing-process'

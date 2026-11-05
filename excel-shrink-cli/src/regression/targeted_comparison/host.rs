@@ -273,7 +273,7 @@ impl ExcelHost {
     ) -> Result<Value> {
         let response = self.call(
             json!({"kind":"capture_chart", "lane":lane.key(),
-            "sheet":chart.sheet, "chart":chart.name, "chart_kind":chart.kind, "output":output}),
+            "sheet":chart.sheet, "chart":chart.name, "chart_index":chart.index, "chart_kind":chart.kind, "output":output}),
             telemetry,
         )?;
         ensure!(response["geometry"].is_object(), "Missing chart geometry");

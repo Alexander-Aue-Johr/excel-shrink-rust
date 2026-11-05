@@ -18,6 +18,8 @@ pub(super) struct Chart {
     pub sheet: String,
     pub name: String,
     #[serde(default)]
+    pub index: Option<usize>,
+    #[serde(default)]
     pub kind: ChartKind,
 }
 
@@ -60,6 +62,8 @@ pub(super) type Captures = BTreeMap<Chart, Capture>;
 pub(super) struct Finding {
     pub sheet: String,
     pub chart: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chart_index: Option<usize>,
     pub kind: ChartKind,
     pub presence_differs: bool,
     pub pixels_differ: bool,
@@ -179,6 +183,7 @@ pub(super) fn compare(
             Ok(Finding {
                 sheet: chart.sheet.clone(),
                 chart: chart.name.clone(),
+                chart_index: chart.index,
                 kind: chart.kind,
                 presence_differs: a.is_none() || b.is_none(),
                 pixels_differ,
@@ -207,6 +212,7 @@ mod tests {
             Chart {
                 sheet: "Data".into(),
                 name: "Chart 1".into(),
+                index: None,
                 kind: ChartKind::Embedded,
             },
             Capture {
@@ -232,6 +238,7 @@ mod tests {
             Chart {
                 sheet: "Data".into(),
                 name: "Chart 1".into(),
+                index: None,
                 kind: ChartKind::Embedded,
             },
             Capture {
@@ -248,6 +255,7 @@ mod tests {
         let chart = Chart {
             sheet: "Data".into(),
             name: "Chart 11".into(),
+            index: None,
             kind: ChartKind::Embedded,
         };
         let before = BTreeMap::from([(
@@ -276,4 +284,29 @@ mod tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn duplicate_names_remain_separate_and_a_missing_object_is_reported() -> Result<()> {
+        let chart = |index| Chart {
+            sheet: "Summary".into(),
+            name: "Chart 1".into(),
+            index: Some(index),
+            kind: ChartKind::Embedded,
+        };
+        let capture = || Capture {
+            geometry: json!({"width": 0, "height": 80}),
+            image: ChartImage::ZeroArea,
+        };
+        let before = BTreeMap::from([(chart(0), capture()), (chart(1), capture())]);
+        let after = BTreeMap::from([(chart(0), capture())]);
+        let findings = compare(&before, &after, &mut ImageComparisons::default())?;
+        assert_eq!(findings.len(), 2);
+        assert!(!findings[0].presence_differs);
+        assert!(findings[1].presence_differs);
+        assert_eq!(findings[1].chart_index, Some(1));
+        let legacy: Chart = serde_json::from_value(json!({"sheet":"Summary", "name":"Chart 1"}))?;
+        assert_eq!(legacy.index, None);
+        Ok(())
+    }
+
 }

@@ -45,16 +45,25 @@
         await context.sync();
         for (const sheet of sheets.items) sheet.charts.load('items/name');
         await context.sync();
-        const charts = sheets.items.flatMap(sheet => sheet.charts.items.map(chart => ({
+        const charts = sheets.items.flatMap(sheet => sheet.charts.items.map((chart, index) => ({
           sheet: sheet.name,
           name: chart.name,
+          index,
         })));
         return {charts};
       }
       if (command.kind === 'capture_chart') {
-        const chart = context.workbook.worksheets.getItem(command.sheet).charts.getItem(command.chart);
-        chart.load('top,left,width,height');
+        const charts = context.workbook.worksheets.getItem(command.sheet).charts;
+        const indexed = command.chart_index !== undefined && command.chart_index !== null;
+        if (indexed && (!Number.isInteger(command.chart_index) || command.chart_index < 0)) {
+          throw new Error('Invalid chart collection index');
+        }
+        const chart = indexed ? charts.getItemAt(command.chart_index) : charts.getItem(command.chart);
+        chart.load('name,top,left,width,height');
         await context.sync();
+        if (indexed && chart.name !== command.chart) {
+          throw new Error('Chart collection order changed since enumeration');
+        }
         const geometry = {top: chart.top, left: chart.left, width: chart.width, height: chart.height};
         if (chart.width === 0 || chart.height === 0) {
           return {non_rendering: true, reason: 'zero-area-chart', geometry};

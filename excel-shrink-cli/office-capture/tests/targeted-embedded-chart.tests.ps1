@@ -16,9 +16,9 @@ $module = Import-Module (Join-Path $PSScriptRoot '../TargetedChartSheets.psm1') 
         [IO.File]::WriteAllBytes($Path, [byte[]](1,2,3))
         return $true
     }
-    $object = [pscustomobject]@{Top=12; Left=24; Width=100; Height=80; Chart=$chart}
-    $objects = [pscustomobject]@{value=$object}
-    $objects | Add-Member ScriptMethod Item { param($Name) $this.value }
+    $object = [pscustomobject]@{Name='Chart 3'; Top=12; Left=24; Width=100; Height=80; Chart=$chart}
+    $objects = [pscustomobject]@{value=$object; Count=1; last=$null}
+    $objects | Add-Member ScriptMethod Item { param($Name) $this.last=$Name; $this.value }
     $sheet = [pscustomobject]@{Visible=0; objects=$objects}
     $sheet | Add-Member ScriptMethod ChartObjects { $this.objects }
     $sheet | Add-Member ScriptMethod Activate { }
@@ -38,6 +38,15 @@ $module = Import-Module (Join-Path $PSScriptRoot '../TargetedChartSheets.psm1') 
         $object.Height = 0
         $result = Export-TargetedEmbeddedChart @{} $command
         if (-not $result.non_rendering -or $chart.exports -ne 2) { throw 'Zero-area chart was exported' }
+        $object.Height = 80
+        $chart.fail = $false
+        $command.chart_index = 0
+        $null = Export-TargetedEmbeddedChart @{} $command
+        if ($objects.last -isnot [int] -or $objects.last -ne 1) { throw 'Indexed fallback must use the one-based native object position.' }
+        $command.chart = 'Renamed'
+        $failed = $false
+        try { Export-TargetedEmbeddedChart @{} $command } catch { $failed = $true }
+        if (-not $failed) { throw 'A changed chart order must not export another object.' }
         'Embedded chart export restores state on success/failure and preserves zero-area evidence.'
     } finally {
         if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output }
