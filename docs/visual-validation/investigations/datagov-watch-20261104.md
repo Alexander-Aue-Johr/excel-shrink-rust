@@ -145,3 +145,7 @@ capture-selection/transport time was 305 ms and image-comparison time 775 ms.
 These are phase timings, not total workbook opening time. The targeted suite
 passes including explicit typed-blank, string and deleted-value counterexamples.
 Earlier v8 results captured a conservative superset and remain reusable.
+
+### Fig 2rev embedded chart export
+
+Office.js enumerated all eight embedded charts but returned `ItemNotFound` for Sheet2 Chart 3 and Chart 4. Activating the worksheet before Office.js export did not resolve the error. Export through the existing PID-validated resident did. Two isolated comparisons exported eight charts and two cell regions in each rebuilt state with no differences. The final test used unchanged Office.js code and restored the previous worksheet/visibility after native export. A focused fake-workbook test covers restoration on success and failure, propagation of export failures, and zero-area evidence. This addresses chart export only; unrelated recalculation timeouts remain under investigation.

@@ -482,3 +482,7 @@ Check Performance satisfy a subsequent Default-only request. Their evidence and
 provenance remain intact. A Default-only result cannot satisfy a later request
 that includes Check Performance. Missing policy or execution metadata still
 prevents reuse.
+
+### Embedded chart export fallback
+
+When Office.js enumerates an embedded chart but its export fails with `ItemNotFound`, the launcher attempts PNG export through that resident's PID-validated Excel application. It does not open another Excel instance. The previous active worksheet and visibility are restored without saving the temporary rendering state. Other Office.js errors and failed native exports remain failures. Reports record `export_method: native-existing-process`; zero-area charts remain explicit non-rendering observations.

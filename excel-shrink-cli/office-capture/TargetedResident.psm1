@@ -257,6 +257,9 @@ function Resolve-TargetedResponse {
     param($Job, $Response)
     $command = $Job.command
     $entry = $Job.entry
+    if ($Response.diagnostic_error.code -eq 'ItemNotFound' -and $command.kind -eq 'capture_chart' -and $command.chart_kind -eq 'embedded') {
+        return Export-TargetedEmbeddedChart $entry $command
+    }
     if ($Response.ok -ne $true -or $Response.diagnostic_error) {
         throw ($Response | ConvertTo-Json -Depth 6 -Compress)
     }

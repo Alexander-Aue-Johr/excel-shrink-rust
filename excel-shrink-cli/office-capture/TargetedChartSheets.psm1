@@ -1,7 +1,7 @@
 # Standalone chart sheets use the existing PID-validated resident, never a new Excel application.
 $ErrorActionPreference = 'Stop'
 
-function Invoke-OwnedChartSheetOperation {
+function Invoke-OwnedChartOperation {
     <# .SYNOPSIS
     Borrows the exact resident application and releases every COM reference after one operation.
     #>
@@ -40,7 +40,7 @@ function Get-TargetedChartSheets {
         }).Count -gt 0
     } finally { $archive.Dispose() }
     if (-not $hasChartSheets) { return }
-    Invoke-OwnedChartSheetOperation $Entry {
+    Invoke-OwnedChartOperation $Entry {
         param($Book, $Charts)
         for ($index = 1; $index -le $Charts.Count; $index++) {
             $chart = $null
@@ -59,7 +59,7 @@ function Export-TargetedChartSheet {
     Exports a chart sheet at a consistent viewport, restoring the previous view without saving.
     #>
     param($Entry, $Command)
-    Invoke-OwnedChartSheetOperation $Entry {
+    Invoke-OwnedChartOperation $Entry {
         param($Book, $Charts)
         $chart = $null
         $active = $null
@@ -137,4 +137,60 @@ function Export-TargetedChartSheet {
     }
 }
 
-Export-ModuleMember -Function Get-TargetedChartSheets, Export-TargetedChartSheet
+function Export-TargetedEmbeddedChart {
+    <# .SYNOPSIS
+    Exports an Office.js-inaccessible chart through the same PID-validated Excel process.
+    Restores the active sheet and visibility without saving the temporary render state.
+    #>
+    param($Entry, $Command)
+    Invoke-OwnedChartOperation $Entry {
+        param($Book, $Charts)
+        $active = $null
+        $sheet = $null
+        $objects = $null
+        $object = $null
+        $chart = $null
+        $visibility = $null
+        try {
+            $active = $Book.ActiveSheet
+            $sheet = $Book.Worksheets.Item($Command.sheet)
+            $visibility = $sheet.Visible
+            $objects = $sheet.ChartObjects()
+            $object = $objects.Item($Command.chart)
+            $geometry = @{
+                top=$object.Top; left=$object.Left; width=$object.Width; height=$object.Height
+                export_method='native-existing-process'
+            }
+            if ($object.Width -eq 0 -or $object.Height -eq 0) {
+                return @{non_rendering=$true; reason='zero-area-chart'; geometry=$geometry}
+            }
+            if ($visibility -ne -1) { $sheet.Visible = -1 }
+            $sheet.Activate()
+            $chart = $object.Chart
+            $chart.Refresh()
+            for ($attempt = 0; $attempt -lt 10; $attempt++) {
+                Start-Sleep -Milliseconds 200
+                $exported = $chart.Export($Command.output, 'PNG', $false)
+                if ($exported -and [IO.File]::Exists($Command.output) -and
+                    (Get-Item -LiteralPath $Command.output).Length -gt 0) {
+                    return @{path=$Command.output; geometry=$geometry}
+                }
+                $chart.Refresh()
+            }
+            throw 'Embedded chart export did not produce a nonempty image.'
+        } finally {
+            try {
+                if ($null -ne $active) { $active.Activate() }
+                if ($null -ne $visibility) { $sheet.Visible = $visibility }
+            } finally {
+                foreach ($reference in @($chart, $object, $objects, $sheet, $active)) {
+                    if ($null -ne $reference -and [Runtime.InteropServices.Marshal]::IsComObject($reference)) {
+                        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($reference)
+                    }
+                }
+            }
+        }
+    }
+}
+
+Export-ModuleMember -Function Get-TargetedChartSheets, Export-TargetedChartSheet, Export-TargetedEmbeddedChart
