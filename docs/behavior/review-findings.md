@@ -223,6 +223,23 @@ on V:. This is candidate coverage, not an exhaustive full-sheet certification.
 Cached outputs produced before the fix require a separate affected-case audit;
 the successful fresh-output replay does not retroactively validate those files.
 
+### Nanoplastics: equal rendering in a shared viewport, 2026-11-05
+
+`Nanoplastics total metal concentrations_c4436fc6e645.xlsx`, `Intensity`,
+`AO1:CB74` produced different image widths after empty-column cleanup. A
+disposable copy of the current worker expanded only this range to `AO1:CD74`.
+The expanded images were 4736 and 4781 pixels wide, both 1481 pixels high;
+their entire common RGBA viewport was identical. Each complete old capture
+also matched its exact crop from the expanded Original image. Thus the old
+unpaired colored strip is reproduced in Original when its capture extends
+far enough; it does not demonstrate a changed background in that viewport.
+
+Evidence and the recorded override are under
+`.tmp/validation-temp/nanoplastics-boundary-proof/` on V:. A report-hash-keyed
+review preserves the original verdict and links this replay. Both owned Excel
+processes closed. Production selection and comparison rules are unchanged;
+this evidence is not a general exemption for different-sized captures.
+
 | Evidence | What it supports; what it does not |
 | --- | --- |
 | [Parallel workbook opening](../visual-validation/experiments/parallel-workbook-open/README.md) | Four simultaneous startups had median 41.714 s versus 118.388 s sequential on that fixture. Supports trying independent starts together; not a universal Excel speedup. |
