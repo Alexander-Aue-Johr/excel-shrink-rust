@@ -638,3 +638,21 @@ Only internal comparison fingerprints are normalized. Original, Shrink and retai
 Excel-saved files are not rewritten by this analysis. Raw audit transitions remain
 available. The capture plan still includes the existing transition union; restricting
 that union to the final rebuilt pair is a separate policy decision.
+
+The retained `paleosol_hyland_2013a_b4f9a9e0b89c.xlsx` case demonstrated this
+failure mode. Its seven x14 expression rules apply down to row 1,048,576 and refer
+to fixed cells on the input sheet. The old rebuilt-pair analysis selected 73,728
+CF grid candidates because its global style context changed. Resolving format
+identities reduced that pair to 35 cell candidates and excluded all seven rules
+with unchanged referenced inputs. With the existing transition union and adaptive
+geometry still enabled, the native replay completed in 71.679 seconds: nine image
+regions per rebuilt state, zero pixel/geometry/rendering differences, both owned
+Excel processes confirmed closed. Selection/transport took 9.467 seconds and image
+comparison 1.688 seconds. The previous attempt timed out after 900 seconds during
+geometry planning. These are observations of one case, not corpus-wide timings.
+
+For compact offline inspection of another retained pair, set `XML_DIAG_LEFT` and
+`XML_DIAG_RIGHT` to the XLSX paths and run
+`cargo test -p excel-shrink-cli inspect_retained_state_selection -- --ignored --nocapture`.
+This reports candidate counts and bounded CF reasons without opening Excel or
+changing a corpus result. XML candidate counts precede adaptive image partitioning.
