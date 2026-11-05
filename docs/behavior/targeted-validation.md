@@ -712,6 +712,21 @@ Selection/transport took 6.320 seconds and comparison 0.958 seconds. Its previou
 attempt was still measuring geometry after more than 40 minutes with no image.
 No arbitrary region-count or worksheet-size exclusion was introduced.
 
+### Bounded display registry
+
+The Observatory returns recent completed attempts from the dedicated
+`control-room/targeted-comparisons` registry. Its maintenance task keeps the
+latest 200 finished mirrors and checks older entries every five minutes.
+Archiving requires a matching run-ID filename, a known terminal status and
+confirmed closure for every recorded PID. Unfinished, unknown and unconfirmed
+entries remain available for diagnosis.
+
+Older eligible mirrors move unchanged into unique sweep directories under
+`control-room/targeted-comparison-history`. Run evidence remains under its
+original report directories. Registry maintenance runs independently of HTTP
+queries and scientific scheduling. The additional history buffer preserves the
+UI's 100 most recent completed attempts while publishers finish concurrently.
+
 Whole-area input proofs now resolve applied cell formats before deciding whether
 their inputs changed. Removing an unused font or XF preserves the proof when
 the rule catalogue, shared format context, cell inputs and applied formats agree.

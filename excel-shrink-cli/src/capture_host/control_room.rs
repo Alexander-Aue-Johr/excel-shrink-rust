@@ -1,5 +1,6 @@
 //! Browser-facing control plane. The scheduler owns scientific work; this host
-//! reads its snapshots and writes explicit, attempt-scoped control requests.
+//! reads its snapshots, archives terminal display mirrors and writes explicit,
+//! attempt-scoped control requests.
 
 mod activity;
 mod inspection;
@@ -10,6 +11,7 @@ mod platform;
 mod snapshots;
 mod summary;
 mod targeted;
+mod targeted_history;
 mod workbook_index;
 
 use super::{now_iso, now_ms, read_json, serve, with_web, write_json, ApiError, HttpResult};
@@ -109,9 +111,13 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         .route("/api/commands/{id}", get(command))
         .route("/data/{*path}", get(asset))
         .with_state(room.clone());
+    let history_root = room.root.clone();
     let app = with_web(routes, &web, 16 * 1024)
         .layer(middleware::from_fn_with_state(room, enforce_local_request));
-    serve(app, port).await
+    let maintenance = tokio::spawn(targeted_history::maintain(history_root));
+    let result = serve(app, port).await;
+    maintenance.abort();
+    result
 }
 
 async fn enforce_local_request(
