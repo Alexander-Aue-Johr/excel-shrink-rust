@@ -804,4 +804,29 @@ mod tests {
         std::fs::remove_dir_all(directory)?;
         Ok(())
     }
+    /// Inspect retained states without opening Excel or changing corpus results.
+    #[test]
+    #[ignore = "Requires XML_DIAG_LEFT and XML_DIAG_RIGHT retained XLSX paths"]
+    fn inspect_retained_state_selection() -> Result<()> {
+        let left = Snapshot::read(Path::new(&std::env::var("XML_DIAG_LEFT")?))?;
+        let right = Snapshot::read(Path::new(&std::env::var("XML_DIAG_RIGHT")?))?;
+        let (changes, skipped) = left.content_changes(&right)?;
+        let mut candidates = BTreeSet::new();
+        let decisions = super::super::conditional_formatting::select(
+            &left, &right, &changes, &mut candidates,
+        )?;
+        let locations: BTreeMap<_, usize> = changes.iter().fold(BTreeMap::new(), |mut counts, change| {
+            let kind = change.location.split(':').next().unwrap_or("unknown");
+            *counts.entry(format!("{}:{kind}", change.sheet)).or_default() += 1;
+            counts
+        });
+        let reasons: Vec<_> = decisions.iter().map(|decision| serde_json::json!({
+            "sheet": decision.sheet, "outcome": decision.outcome, "reason": decision.reason,
+            "sqref_length": decision.sqref.len(), "sqref_prefix": decision.sqref.chars().take(120).collect::<String>()
+        })).collect();
+        eprintln!("{}", serde_json::json!({"changes": locations, "skipped": skipped,
+            "cf_decisions": reasons, "cf_candidates": candidates.len()}));
+        Ok(())
+    }
+
 }
