@@ -143,6 +143,37 @@ pub(super) fn open_copy(root: &Path, id: &str, profile: &str) -> Result<PathBuf>
     Ok(path)
 }
 
+/// Put a separate Original copy on the Explorer file clipboard. The helper uses
+/// Windows' installed clipboard support rather than introducing another runtime.
+pub(super) fn copy_original_to_clipboard(root: &Path, id: &str, script: &Path) -> Result<PathBuf> {
+    let directory = std::env::temp_dir()
+        .join("excel-shrink-inspection")
+        .join(uuid::Uuid::new_v4().to_string());
+    let path = copy_workbook(root, id, "original", &directory)?;
+    let mut command = std::process::Command::new("powershell.exe");
+    command
+        .args(["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(script)
+        .arg("-Path")
+        .arg(&path)
+        .stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    let output = command
+        .output()
+        .context("Copy inspection file to the Windows clipboard")?;
+    ensure!(
+        output.status.success(),
+        "Clipboard copy failed: {}. Inspection copy: {}",
+        String::from_utf8_lossy(&output.stderr).trim(),
+        path.display()
+    );
+    Ok(path)
+}
+
 #[cfg(windows)]
 fn open_visible_excel(path: &Path) -> Result<()> {
     use std::os::windows::ffi::OsStrExt;

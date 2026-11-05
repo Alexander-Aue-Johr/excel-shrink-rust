@@ -186,8 +186,9 @@ pub(super) async fn report(
         .filter(|path| path.starts_with("evidence/") && path.ends_with("/portable-report.json"))
         .ok_or_else(|| ApiError::not_found("No completed targeted report is available yet."))?;
     let path = confined_path(study, relative)?;
-    let report = read_snapshot(&path, &mut diagnostics, SNAPSHOT_LIMIT).await
+    let mut report = read_snapshot(&path, &mut diagnostics, SNAPSHOT_LIMIT).await
         .ok_or_else(|| ApiError::not_found("The retained targeted report could not be read."))?;
+    report["_evidence_id"] = json!(relative);
     Ok(Json(report))
 }
 

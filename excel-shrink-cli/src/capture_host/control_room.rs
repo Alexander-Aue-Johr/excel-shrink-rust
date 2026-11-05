@@ -4,6 +4,7 @@
 mod activity;
 mod inspection;
 mod manual_capture;
+mod pixel_diagnostics;
 mod platform;
 mod snapshots;
 mod summary;
@@ -86,6 +87,10 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         .route("/api/groups/{id}", get(group))
         .route("/api/groups/{id}/targeted-compare", post(targeted::start))
         .route("/api/groups/{id}/targeted-report", get(targeted::report))
+        .route(
+            "/api/groups/{id}/pixel-diagnostics",
+            get(pixel_diagnostics::inspect),
+        )
         .route("/api/evidence/{*path}", get(evidence_asset))
         .route(
             "/api/groups/{id}/capture-sheet",
@@ -97,6 +102,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         .route("/api/control", post(control))
         .route("/api/groups/{id}/restart", post(restart))
         .route("/api/groups/{id}/inspect", post(inspect))
+        .route("/api/groups/{id}/copy-original", post(copy_original))
         .route("/api/groups/{id}/variants/{profile}", get(download_variant))
         .route("/api/commands/{id}", get(command))
         .route("/data/{*path}", get(asset))
@@ -794,6 +800,30 @@ async fn inspect(
     Ok(Json(
         json!({"ok":true,"status":"launch_requested","profile":profile,"path":path}),
     ))
+}
+
+/// Copy an immutable prepared original into inspection storage before publishing
+/// a file-drop clipboard entry. This never opens Excel or changes the run queue.
+async fn copy_original(
+    State(room): State<Arc<Room>>,
+    RoutePath(id): RoutePath<String>,
+) -> HttpResult<Json<Value>> {
+    safe_id(&id)?;
+    if !known_workbook(&room, &id).await? {
+        return Err(ApiError::not_found("Unknown comparison group."));
+    }
+    let script = room
+        .web
+        .parent()
+        .context("Missing capture scripts")?
+        .join("copy-workbook-to-clipboard.ps1");
+    let root = room.root.clone();
+    let path = tokio::task::spawn_blocking(move || {
+        inspection::copy_original_to_clipboard(&root, &id, &script)
+    })
+    .await
+    .context("Copy original inspection file")??;
+    Ok(Json(json!({"ok":true,"path":path,"clipboard":"file-copy"})))
 }
 
 async fn known_workbook(room: &Room, id: &str) -> Result<bool> {
