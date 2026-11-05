@@ -149,3 +149,7 @@ Earlier v8 results captured a conservative superset and remain reusable.
 ### Fig 2rev embedded chart export
 
 Office.js enumerated all eight embedded charts but returned `ItemNotFound` for Sheet2 Chart 3 and Chart 4. Activating the worksheet before Office.js export did not resolve the error. Export through the existing PID-validated resident did. Two isolated comparisons exported eight charts and two cell regions in each rebuilt state with no differences. The final test used unchanged Office.js code and restored the previous worksheet/visibility after native export. A focused fake-workbook test covers restoration on success and failure, propagation of export failures, and zero-area evidence. This addresses chart export only; unrelated recalculation timeouts remain under investigation.
+
+### Figure 3 / Figure 4 save warning
+
+Stage telemetry proved that rebuild completed immediately and `workbook.save()` blocked. A disposable visible Office.js reproduction exposed the exact warning: negative or zero values cannot be plotted correctly on logarithmic charts. The original already contains those charts. The narrow acknowledgement handler was tested both on the operator desktop and on the normal private desktop. Each comparison captured three cell regions and three charts per rebuilt state, with no differences. Both states retained acknowledgement receipts. A focused decision test rejects additional message text, other dialogs and multiple actions. Other rebuild/save timeouts have not been attributed to this warning without their own evidence.

@@ -486,3 +486,7 @@ prevents reuse.
 ### Embedded chart export fallback
 
 When Office.js enumerates an embedded chart but its export fails with `ItemNotFound`, the launcher attempts PNG export through that resident's PID-validated Excel application. It does not open another Excel instance. The previous active worksheet and visibility are restored without saving the temporary rendering state. Other Office.js errors and failed native exports remain failures. Reports record `export_method: native-existing-process`; zero-area charts remain explicit non-rendering observations.
+
+### Informational log-chart warning during save
+
+An owned modal `NUIDialog` is inspected through its native accessibility tree only after the PID-validated dialog enumeration. The exact English message about negative/zero values on logarithmic charts, with one enabled OK action and no other message text, may be acknowledged. The warning text, process identity, dialog handle and action are retained in `acknowledged-chart-warning.json`. Unknown messages, repair prompts and multiple-choice decisions remain untouched. Native accessibility operations share the outer operation deadline; a blocked provider cannot keep the comparison alive indefinitely.

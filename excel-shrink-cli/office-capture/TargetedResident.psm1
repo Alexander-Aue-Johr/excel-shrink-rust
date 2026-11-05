@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $sessions = @{}
 $script:responseWatcher = $null
 $utf8 = [Text.UTF8Encoding]::new($false)
+Import-Module (Join-Path $PSScriptRoot 'TargetedChartWarnings.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedChartSheets.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'WindowsLongPaths.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedPerformanceCache.psm1') -DisableNameChecking
@@ -120,7 +121,7 @@ function Get-TargetedOpeningDialogKind {
 
 function Test-TargetedWorkbookBlocker {
     <# .SYNOPSIS Reject a proven blocking prompt before the capture-idle watchdog expires.
-    Reads only the owned Excel PID on its explicit private desktop. No buttons are clicked.
+    Inspects the owned Excel PID. Only the exact informational log-chart warning is acknowledged.
     #>
     param($Entry, [string]$Phase = 'opening')
     if ($null -eq $Entry.process) { return }
@@ -131,6 +132,11 @@ function Test-TargetedWorkbookBlocker {
     }
     foreach ($dialog in [TargetedOpeningDialogs]::Inspect($Entry.process.Id, $env:EXCEL_SHRINK_EXPECTED_DESKTOP)) {
         if ($dialog.HasProgressBar) { continue }
+        $warning = Confirm-TargetedLogChartWarning $dialog $Entry.process.Id
+        if ($null -ne $warning) {
+            Write-TargetedJson (Join-Path $Entry.session 'acknowledged-chart-warning.json') $warning
+            continue
+        }
         $kind = Get-TargetedOpeningDialogKind $dialog.Names $dialog.HasPasswordInput
         if (-not $kind -and $dialog.IsModal -and $dialog.DecisionButtons -ge 2) {
             $kind = 'modal_confirmation_required'
