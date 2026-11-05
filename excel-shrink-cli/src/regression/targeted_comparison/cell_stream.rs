@@ -116,7 +116,16 @@ impl Writer {
     }
 
     /// Hash text incrementally; even a large cell body is never accumulated in a Vec.
+    #[cfg(test)]
     pub fn event(&mut self, event: &Event<'_>) -> Result<()> {
+        self.event_with_styles(event, &super::style_identity::StyleIdentity::default())
+    }
+
+    pub fn event_with_styles(
+        &mut self,
+        event: &Event<'_>,
+        styles: &super::style_identity::StyleIdentity,
+    ) -> Result<()> {
         match event {
             Event::Tag(tag) => {
                 if tag.local() == b"c" && matches!(tag.kind, Kind::Start | Kind::Empty) {
@@ -165,7 +174,11 @@ impl Writer {
                     ]);
                     hash.update(tag.name);
                     hash.update([0]);
-                    hash.update(tag.attrs);
+                    if tag.local() == b"c" && tag.kind != Kind::End {
+                        styles.hash_attributes(hash, tag.attrs, b"s")?;
+                    } else {
+                        hash.update(tag.attrs);
+                    }
                     hash.update([0]);
                     cell.visible |= matches!(tag.local(), b"v" | b"f" | b"is" | b"t");
                     cell.has_formula |= tag.local() == b"f";

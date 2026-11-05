@@ -618,3 +618,23 @@ budgets. They do not reinstate worksheet-size or capture-count limits.
 The native Cluster2 control finds 722 changed saved values and supported volatile
 paths for all 722. The source/default input payloads were equal before Excel
 recalculation. This evidence is retained separately; raw pixel verdicts remain.
+
+## Cell-format identity during XML selection
+
+Excel may reassign cellXfs indices while saving or rebuilding a workbook. Selection
+resolves explicit cell, row and column format indices to the complete referenced
+xf definition instead of comparing the numeric index. The stylesheet context uses
+the set of complete cellXfs definitions, retaining every other stylesheet byte.
+Repeated copies of an identical definition do not create a new format meaning.
+
+A format identity also includes the surrounding stylesheet dependencies: fonts,
+fills, borders, base styles, namespace declarations and other components. Changing
+those dependencies still changes the identity. This does not attempt to prove
+that differently serialized formats, reordered font tables or different properties
+render alike. Such cases remain conservative candidates. Invalid referenced format
+indices are explicit errors, not evidence of equality.
+
+Only internal comparison fingerprints are normalized. Original, Shrink and retained
+Excel-saved files are not rewritten by this analysis. Raw audit transitions remain
+available. The capture plan still includes the existing transition union; restricting
+that union to the final rebuilt pair is a separate policy decision.

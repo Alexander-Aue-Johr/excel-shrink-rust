@@ -99,17 +99,19 @@ impl Snapshot {
             .read_to_end(&mut workbook)?;
         let sheet_names = xml::sheet_names(&workbook)?;
         let defined_names = xml::defined_names_in_package(&mut archive, &workbook)?;
-        let context = read_value_context(&mut archive)?;
-        let cf_context = read_conditional_context(&mut archive, &workbook, &context)?;
-        let styles = match archive.by_name("xl/styles.xml") {
+        let (style_bytes, styles) = match archive.by_name("xl/styles.xml") {
             Ok(mut entry) => {
                 let mut bytes = Vec::new();
                 entry.read_to_end(&mut bytes)?;
-                excel_shrink_core::styles::parse_xfs(&bytes)?
+                let styles = excel_shrink_core::styles::parse_xfs(&bytes)?;
+                (bytes, styles)
             }
-            Err(zip::result::ZipError::FileNotFound) => vec![Default::default()],
+            Err(zip::result::ZipError::FileNotFound) => (Vec::new(), vec![Default::default()]),
             Err(error) => return Err(error.into()),
         };
+        let style_identity = super::style_identity::StyleIdentity::read(&style_bytes)?;
+        let context = read_value_context(&mut archive, &style_identity)?;
+        let cf_context = read_conditional_context(&mut archive, &workbook, &context)?;
         let mut sheets = BTreeMap::new();
         for sheet in plan.sheets {
             let model = read_sheet::<true>(
@@ -119,6 +121,7 @@ impl Snapshot {
                 sheet.base_right_column + 1,
                 Some(scratch),
                 &styles,
+                &style_identity,
             )?;
             sheets.insert(sheet.sheet, model);
         }
@@ -294,7 +297,10 @@ impl Snapshot {
 }
 
 /// Hash shared value/style dependencies without decoding their XML.
-fn read_value_context(archive: &mut ZipArchive<File>) -> Result<String> {
+fn read_value_context(
+    archive: &mut ZipArchive<File>,
+    styles: &super::style_identity::StyleIdentity,
+) -> Result<String> {
     let mut context = Sha256::new();
     for part in ["xl/styles.xml", "xl/sharedStrings.xml"] {
         let mut entry = match archive.by_name(part) {
@@ -303,6 +309,10 @@ fn read_value_context(archive: &mut ZipArchive<File>) -> Result<String> {
             Err(error) => return Err(error.into()),
         };
         context.update(part.as_bytes());
+        if part == "xl/styles.xml" {
+            context.update(&styles.context);
+            continue;
+        }
         let mut buffer = [0u8; 128 * 1024];
         loop {
             let count = entry.read(&mut buffer)?;
@@ -353,6 +363,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     right: u32,
     scratch: Option<&Path>,
     styles: &[excel_shrink_core::models::Xf],
+    style_identity: &super::style_identity::StyleIdentity,
 ) -> Result<Sheet> {
     let mut visual = super::visual_bounds::VisualBounds::new(styles);
     let mut model = Sheet::default();
@@ -463,7 +474,11 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                 }
             } else if data_depth.is_none() && tag.local() != b"dimension" {
                 layout.update(tag.name);
-                layout.update(tag.attrs);
+                if tag.local() == b"col" {
+                    style_identity.hash_attributes(&mut layout, tag.attrs, b"style")?;
+                } else {
+                    layout.update(tag.attrs);
+                }
                 layout.update([match tag.kind {
                     Kind::Start => 1,
                     Kind::Empty => 2,
@@ -540,7 +555,11 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                             {
                                 attributes.insert(
                                     String::from_utf8(key.to_vec())?,
-                                    String::from_utf8(value.to_vec())?,
+                                    if key == b"s" {
+                                        style_identity.index_text(value)?
+                                    } else {
+                                        String::from_utf8(value.to_vec())?
+                                    },
                                 );
                             } else if key != b"r" && key != b"spans" {
                                 layout.update(row.to_le_bytes());
@@ -558,7 +577,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                             && columns_depth.is_some_and(|depth| tag.depth == depth + 1) =>
                     {
                         model.columns.extend_from_slice(tag.name);
-                        model.columns.extend_from_slice(tag.attrs);
+                        model.columns.extend_from_slice(&style_identity.attributes(tag.attrs, b"style")?);
                     }
                     b"sheetFormatPr"
                         if tag.name == b"sheetFormatPr" && tag_namespace && tag.depth == 1 =>
@@ -581,7 +600,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
             }
         }
         match &mut cells {
-            Some(cells) => cells.event(&event),
+            Some(cells) => cells.event_with_styles(&event, style_identity),
             None => Ok(()),
         }
     })?;
@@ -611,7 +630,7 @@ pub(super) fn conditional_catalogue_for_audit(
     archive: &mut ZipArchive<File>,
     part: &str,
 ) -> Result<Arc<xml::Catalogue>> {
-    Ok(read_sheet::<false>(archive, part, 0, 0, None, &[])?.conditional)
+    Ok(read_sheet::<false>(archive, part, 0, 0, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default())?.conditional)
 }
 
 impl Sheet {
@@ -697,7 +716,7 @@ mod tests {
         zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="2" width="12"/></cols><sheetData><row r="1" ht="25" customHeight="1"><c r="A1"><v>7</v></c></row></sheetData><extLst><xdr:from><xdr:row>5</xdr:row><xdr:col>2</xdr:col></xdr:from><row r="0"/><col min="99" max="100"/><sheetFormatPr defaultRowHeight="99"/></extLst></worksheet>"#)?;
         zip.finish()?;
         let mut archive = ZipArchive::new(File::open(&path)?)?;
-        let sheet = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 2, None, &[])?;
+        let sheet = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 2, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default())?;
         assert_eq!(sheet.rows.len(), 1);
         assert_eq!(sheet.fixed_height(1), Some(("25", false)));
         assert_eq!(
@@ -724,7 +743,7 @@ mod tests {
         zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData><conditionalFormatting sqref="A1:A10"><cfRule type="cellIs" operator="greaterThan" priority="1"><formula>5</formula></cfRule></conditionalFormatting></worksheet>"#)?;
         zip.finish()?;
         let mut archive = ZipArchive::new(File::open(&path)?)?;
-        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1, None, &[])?;
+        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default())?;
         let audit = conditional_catalogue_for_audit(&mut archive, "xl/worksheets/sheet.xml")?;
         assert_eq!(audit.fingerprints, full.conditional.fingerprints);
         assert_eq!(
@@ -804,6 +823,45 @@ mod tests {
         std::fs::remove_dir_all(directory)?;
         Ok(())
     }
+    #[test]
+    fn format_permutations_preserve_cell_row_column_and_cf_layout_identity() -> Result<()> {
+        use super::super::style_identity::StyleIdentity;
+        use std::io::Write;
+
+        fn model(xml: &[u8], identity: &StyleIdentity) -> Result<Sheet> {
+            let path = std::env::temp_dir().join(format!("style-identity-{}.zip", uuid::Uuid::new_v4()));
+            let mut zip = zip::ZipWriter::new(File::create(&path)?);
+            zip.start_file("sheet.xml", zip::write::FileOptions::default())?;
+            zip.write_all(xml)?;
+            zip.finish()?;
+            let mut archive = ZipArchive::new(File::open(&path)?)?;
+            let model = read_sheet::<true>(
+                &mut archive, "sheet.xml", 1, 1, None,
+                &[Default::default(), Default::default()], identity,
+            )?;
+            drop(archive);
+            std::fs::remove_file(path)?;
+            Ok(model)
+        }
+
+        let left_styles = StyleIdentity::read(br#"<styleSheet><cellXfs count="2"><xf fontId="0"/><xf fontId="1"/></cellXfs></styleSheet>"#)?;
+        let right_styles = StyleIdentity::read(br#"<styleSheet><cellXfs count="2"><xf fontId="1"/><xf fontId="0"/></cellXfs></styleSheet>"#)?;
+        let left = model(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" style="0"/></cols><sheetData><row r="1" s="0" customFormat="1"><c r="A1" s="0"><v>7</v></c></row></sheetData></worksheet>"#, &left_styles)?;
+        let right_xml = br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" style="1"/></cols><sheetData><row r="1" s="1" customFormat="1"><c r="A1" s="1"><v>7</v></c></row></sheetData></worksheet>"#;
+        let right = model(right_xml, &right_styles)?;
+        let mut differences = 0;
+        left.cells.changes(&right.cells, |_| { differences += 1; Ok(()) })?;
+        assert_eq!(differences, 0);
+        assert_eq!(left.rows, right.rows);
+        assert_eq!(left.columns, right.columns);
+        assert_eq!(left.cf_layout, right.cf_layout);
+        let changed_xml = std::str::from_utf8(right_xml)?.replace("<v>7</v>", "<v>8</v>");
+        let changed = model(changed_xml.as_bytes(), &right_styles)?;
+        left.cells.changes(&changed.cells, |_| { differences += 1; Ok(()) })?;
+        assert_eq!(differences, 1);
+        Ok(())
+    }
+
     /// Inspect retained states without opening Excel or changing corpus results.
     #[test]
     #[ignore = "Requires XML_DIAG_LEFT and XML_DIAG_RIGHT retained XLSX paths"]
@@ -811,7 +869,8 @@ mod tests {
         let left = Snapshot::read(Path::new(&std::env::var("XML_DIAG_LEFT")?))?;
         let right = Snapshot::read(Path::new(&std::env::var("XML_DIAG_RIGHT")?))?;
         let (changes, skipped) = left.content_changes(&right)?;
-        let mut candidates = BTreeSet::new();
+        let mut candidates = cell_candidates(&changes);
+        let cell_candidates_count = candidates.len();
         let decisions = super::super::conditional_formatting::select(
             &left, &right, &changes, &mut candidates,
         )?;
@@ -825,7 +884,7 @@ mod tests {
             "sqref_length": decision.sqref.len(), "sqref_prefix": decision.sqref.chars().take(120).collect::<String>()
         })).collect();
         eprintln!("{}", serde_json::json!({"changes": locations, "skipped": skipped,
-            "cf_decisions": reasons, "cf_candidates": candidates.len()}));
+            "cf_decisions": reasons, "cell_candidates": cell_candidates_count, "all_candidates": candidates.len()}));
         Ok(())
     }
 

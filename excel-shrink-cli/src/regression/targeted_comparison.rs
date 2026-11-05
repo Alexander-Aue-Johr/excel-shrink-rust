@@ -23,6 +23,7 @@ pub(super) mod selection_inspection;
 mod snapshot_cache;
 mod staged;
 mod static_workbook_metadata;
+mod style_identity;
 mod telemetry;
 mod visual_bounds;
 mod workbooks;
