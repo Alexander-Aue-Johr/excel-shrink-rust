@@ -392,7 +392,8 @@ Stored XML `ht` is not universally identical to Excel's effective row height.
 Select relevant spans from cell/row changes; unchanged explicitly fixed rows
 can be excluded from automatic-height scanning. Changes to columns, defaults or
 shared style context check rows from the sheet start through the union of
-content-bearing envelopes plus one margin row, minus identical fixed rows.
+content-bearing envelopes, minus identical fixed rows. The trailing context row
+used by captures does not create a height dependency below actual content.
 Empty rows above content are included because they affect capture positions.
 The tail outside content and potentially visible formatting is excluded, not certified equal;
 charts retain independent full-chart observations.

@@ -165,9 +165,10 @@ impl ContentBounds {
             .map(Rectangle::address))
     }
 
-    /// Heights above visible content affect its position; rows below its padded envelope do not.
+    /// Heights above and within visible content affect its position. Context margin rows
+    /// below content may change height without creating a visual regression candidate.
     pub fn last_relevant_row(&self, sheet: &str) -> u32 {
-        self.0.get(sheet).map_or(0, |bounds| bounds.padded().bottom)
+        self.0.get(sheet).map_or(0, |bounds| bounds.bottom)
     }
 
     /// Recompute after late discoveries; retained workbooks backfill newly eligible evidence.
@@ -226,6 +227,22 @@ pub(super) fn record_partition(coverage: &mut [Coverage], candidates: &BTreeSet<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn height_scope_stops_at_content_while_captures_keep_their_context_margin() -> Result<()> {
+        let bounds = ContentBounds(BTreeMap::from([(
+            "Data".into(),
+            Rectangle::parse("B1:XFD83")?,
+        )]));
+        assert_eq!(bounds.last_relevant_row("Data"), 83);
+        assert_eq!(bounds.last_relevant_row("Missing"), 0);
+        let requested = [Candidate { sheet: "Data".into(), cell: "B83".into() }].into();
+        let (selected, _) = bounds.select(&requested)?;
+        assert!(selected.iter().all(|candidate| {
+            Rectangle::parse(&candidate.cell).unwrap().bottom == 84
+        }));
+        Ok(())
+    }
 
     #[test]
     fn row_height_candidates_reach_content_starting_far_from_column_a() -> Result<()> {

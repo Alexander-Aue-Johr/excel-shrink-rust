@@ -390,6 +390,23 @@ bytes, recent history, unfinished work, closure uncertainty, malformed metadata
 and idempotent repeat sweeps. The running older host received the bootstrap
 archive. Automatic sweeps require the newly built host.
 
+### Trailing height context selecting full-width sheets, 2026-11-05
+
+`TwoCylinder_Spacing2.0_MassRatio1.34_Summary_bb043464157e.xlsx` selected 1,027
+image regions per rebuilt state. Four sheets each contributed 256 regions because
+their first empty context row changed from 20.0625 to 15.75 points. Their actual
+content ended immediately above these rows. A full-row border elsewhere in each
+sheet made the rectangular content envelope reach XFD, amplifying those exterior
+height candidates into full-width captures. The 101 cell-XML candidates alone
+did not require this selection.
+
+The existing native report confirms that all measured height differences occurred
+in those trailing context rows. It reports zero differing cell regions after
+the complete 1,027-region comparison. Height selection now ends at the unpadded
+content boundary, while captures keep their surrounding context. The focused
+regression test checks both boundaries, and the targeted suite passes 107 tests.
+Earlier, more extensive comparison evidence remains reusable.
+
 ## Verification and repeatable review
 
 The core suite, focused targeted archive/retention tests and read-only retained-
