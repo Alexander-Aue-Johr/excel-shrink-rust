@@ -94,24 +94,41 @@ async def move_visible_batch(page, progress: flow.ProgressStore, names: list[str
         chosen = await selected_names(page)
         if len(chosen) != len(names) or set(chosen) != set(names):
             raise RuntimeError("Move selection changed while opening the destination")
+        observer = Path(__file__).with_name("move_observer.js").read_text(encoding="utf-8")
+        await page.evaluate(observer, {"batchId": batch_id, "destination": destination, "count": len(names)})
         await picker.get_by_role("button", name=re.compile(r"^(Move here|Hierher verschieben)$", re.I)).click(
             timeout=15_000)
-        await page.wait_for_function("""({names, destination}) => {
-          const notices = [...document.querySelectorAll('[role="alert"], [role="status"]')];
-          const confirmed = notices.some(e => {
-            const text = e.textContent.toLowerCase();
-            return text.includes(destination) && /\\bmoved\\b|\\bverschoben\\b/.test(text) &&
-              new RegExp('\\\\b' + names.length + '\\\\b').test(text);
-          });
-          const remaining = [...document.querySelectorAll('[data-automationid="field-LinkFilename"]')]
-            .some(e => names.includes(e.textContent.trim()));
-          return confirmed && !remaining;
-        }""", arg={"names": names, "destination": destination}, timeout=60_000)
+        await page.wait_for_function("""batchId =>
+          window.__excelShrinkMoveNotice?.batchId === batchId &&
+          window.__excelShrinkMoveNotice.confirmed
+        """, arg=batch_id, timeout=60_000)
+        await page.wait_for_function("""names =>
+          ![...document.querySelectorAll('[data-automationid="field-LinkFilename"]')]
+            .some(e => names.includes(e.textContent.trim()))
+        """, arg=names, timeout=60_000)
         progress.finish_move_batch(batch_id)
         print(f"Moved {len(names)} visible workbooks to {destination}.", flush=True)
     except Exception as error:
-        progress.fail_move_batch(batch_id, f"{type(error).__name__}: {error}")
+        details = f"{type(error).__name__}: {error}"
+        try:
+            notices = await page.locator('[role="alert"], [role="status"]').all_text_contents()
+            present = await page.locator('[data-automationid="field-LinkFilename"]').all_text_contents()
+            remaining = [name for name in names if name in present]
+            details += f"; notices={notices!r}; remaining={remaining!r}"
+        except Exception:
+            pass
+        progress.fail_move_batch(batch_id, details)
+        print(f"Move batch {batch_id} to {destination} failed: {details}", file=sys.stderr, flush=True)
         raise
+    finally:
+        try:
+            await page.evaluate("""batchId => {
+              if (window.__excelShrinkMoveNotice?.batchId === batchId) {
+                window.__excelShrinkMoveNotice.observer.disconnect();
+              }
+            }""", batch_id)
+        except Exception:
+            pass
 
 
 async def move_with_recovery(browser, args, profile: Path, progress, names, destination):

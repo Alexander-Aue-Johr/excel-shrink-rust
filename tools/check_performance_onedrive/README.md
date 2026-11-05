@@ -167,6 +167,8 @@ requiring a cloud save must reach its confirmed save before completion. Moves
 are confirmed in SQLite independently of the Check Performance result and resume
 after interruption. SQLite's `move_batches` table retains the exact selection,
 destination, start time and confirmation or error for each group. An
+observer retains a fresh OneDrive success notice until the corresponding source
+rows disappear, allowing the list update to finish after the notice fades. An
 interrupted batch keeps its successful check results; a retry selects only its
 files still visible in the main folder. Files already inside `optimized` stay
 outside the run. This option can be combined with

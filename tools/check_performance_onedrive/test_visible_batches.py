@@ -309,6 +309,60 @@ class VisibleBrowserTests(unittest.IsolatedAsyncioTestCase):
                 self.assertGreater(await self.page.evaluate('window.scrollBeforeMove'), 0)
                 self.assertEqual(progress.pending_optimized_moves(), set())
 
+    async def test_move_notice_is_retained_until_delayed_source_updates(self):
+        await self.set_folder()
+        await self.page.evaluate('''() => {
+          window.finishMove=()=>{
+            const selected=[...document.querySelectorAll('[data-selection-index][aria-selected="true"]')];
+            document.querySelector('#notice').textContent='Moved 2 items to optimized';
+            setTimeout(()=>document.querySelector('#notice').textContent='',30);
+            setTimeout(()=>{
+              selected.forEach(row=>row.remove());
+              document.querySelector('iframe').remove();
+            },200);
+          };
+        }''')
+        original_wait = self.page.wait_for_function
+
+        async def bounded_wait(script, **kwargs):
+            return await original_wait(script, **{**kwargs, "timeout": 2000})
+
+        with tempfile.TemporaryDirectory() as temporary:
+            with flow.ProgressStore(Path(temporary), "folder") as progress:
+                progress.discover(["first.xlsx", "second.xlsx"])
+                complete(progress, "first.xlsx")
+                complete(progress, "second.xlsx")
+                with patch.object(self.page, "wait_for_function", new=bounded_wait):
+                    await visible.move_visible_batch(self.page, progress,
+                                                     ["first.xlsx", "second.xlsx"], "optimized")
+                self.assertEqual(progress.pending_optimized_moves(), set())
+                self.assertEqual(await self.page.locator('#notice').inner_text(), '')
+
+    async def test_old_move_notice_cannot_confirm_a_new_batch(self):
+        await self.set_folder()
+        await self.page.evaluate('''() => {
+          document.querySelector('#notice').textContent='Moved 2 items to optimized';
+          window.finishMove=()=>{
+            document.querySelectorAll('[data-selection-index][aria-selected="true"]').forEach(row=>row.remove());
+            document.querySelector('iframe').remove();
+          };
+        }''')
+        original_wait = self.page.wait_for_function
+
+        async def bounded_wait(script, **kwargs):
+            return await original_wait(script, **{**kwargs, "timeout": 300})
+
+        with tempfile.TemporaryDirectory() as temporary:
+            with flow.ProgressStore(Path(temporary), "folder") as progress:
+                progress.discover(["first.xlsx", "second.xlsx"])
+                complete(progress, "first.xlsx")
+                complete(progress, "second.xlsx")
+                with patch.object(self.page, "wait_for_function", new=bounded_wait):
+                    with self.assertRaises(Exception):
+                        await visible.move_visible_batch(self.page, progress,
+                                                         ["first.xlsx", "second.xlsx"], "optimized")
+                self.assertEqual(progress.pending_optimized_moves(), {"first.xlsx", "second.xlsx"})
+
     async def test_changed_file_selection_still_aborts_after_automatic_scroll(self):
         await self.set_folder()
         await self.page.evaluate('''() => {
