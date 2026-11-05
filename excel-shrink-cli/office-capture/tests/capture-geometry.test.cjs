@@ -608,3 +608,17 @@ test('batched height spans preserve mixed heights and hidden rows exactly', asyn
     {start_row: 9, end_row: 10, height: 0}
   ]);
 });
+test('uniform million-row heights use visible geometry despite rounded format metadata', async () => {
+  const {readHeightSpans} = require('../web/capture-geometry.js');
+  let synchronizations = 0;
+  const office = action => action({sync: async () => {synchronizations++;},
+    workbook: {worksheets: {getItem: () => ({
+      getRangeByIndexes(start, column, count) {
+        return {load() {}, rowCount: count, height: 51.5625 * count, rowHidden: false,
+          format: {load() {}, rowHeight: 51.5}};
+      }
+    })}}});
+  const runs = await readHeightSpans(office, 'Canonical', [{start: 1, end: 1048576}]);
+  assert.equal(synchronizations, 2);
+  assert.deepEqual(runs, [{start_row: 1, end_row: 1048576, height: 51.5625}]);
+});

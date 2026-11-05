@@ -490,3 +490,7 @@ When Office.js enumerates an embedded chart but its export fails with `ItemNotFo
 ### Informational log-chart warning during save
 
 An owned modal `NUIDialog` is inspected through its native accessibility tree only after the PID-validated dialog enumeration. The exact English message about negative/zero values on logarithmic charts, with one enabled OK action and no other message text, may be acknowledged. The warning text, process identity, dialog handle and action are retained in `acknowledged-chart-warning.json`. Unknown messages, repair prompts and multiple-choice decisions remain untouched. Native accessibility operations share the outer operation deadline; a blocked provider cannot keep the comparison alive indefinitely.
+
+### Uniform row-height measurement
+
+A numeric Office.js `RangeFormat.rowHeight` establishes uniformity; mixed heights return null. Excel may round that property differently from measured range geometry. Uniform visible spans therefore use measured `Range.height / rowCount`, retaining exact hidden-row handling and recursive measurement for mixed spans. No pixel-comparison tolerance is introduced. API contract reference [RangeFormat.rowHeight](https://learn.microsoft.com/en-us/javascript/api/excel/excel.rangeformat?view=office-js#excel-excel-rangeformat-rowheight-member).

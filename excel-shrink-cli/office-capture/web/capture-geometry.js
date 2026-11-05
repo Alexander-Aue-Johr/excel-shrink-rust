@@ -176,11 +176,11 @@
             height: hidden ? 0 : item.height});
           continue;
         }
-        const expected = hidden === true ? 0 : Number(item.rowHeight) * count;
-        if (visible && typeof hidden === 'boolean' && (hidden || uniform) &&
-            Math.abs(item.height - expected) <= Math.max(.01, Math.abs(expected) * 1e-9)) {
+        // Numeric rowHeight proves uniformity, but Excel rounds that property.
+        // Use measured visible geometry for the actual per-row height.
+        if (visible && typeof hidden === 'boolean' && (hidden || uniform)) {
           measured.push({selection: span.selection, start_row: span.start + 1, end_row: span.end,
-            height: hidden ? 0 : item.rowHeight});
+            height: hidden ? 0 : item.height / count});
         } else {
           const middle = span.start + Math.floor(count / 2);
           pending.push({start: span.start, end: middle, selection: span.selection},
