@@ -25,6 +25,7 @@ mod staged;
 mod static_workbook_metadata;
 mod style_identity;
 mod telemetry;
+mod column_layout;
 mod visual_bounds;
 mod workbooks;
 mod xml_changes;

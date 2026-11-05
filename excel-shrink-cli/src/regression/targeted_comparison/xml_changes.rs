@@ -32,6 +32,7 @@ pub(super) struct Sheet {
     pub defaults: Vec<u8>,
     pub conditional: Arc<xml::Catalogue>,
     pub cf_layout: String,
+    pub cf_columns: super::column_layout::ColumnLayout,
     pub bottom: u32,
     pub right: u32,
 }
@@ -388,6 +389,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
 ) -> Result<Sheet> {
     let mut visual = super::visual_bounds::VisualBounds::new(styles);
     let mut model = Sheet::default();
+    model.cf_columns = super::column_layout::ColumnLayout::new();
     model.bottom = bottom;
     model.right = right;
     let mut cells = if INCLUDE_CELLS {
@@ -487,13 +489,15 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
             if tag.name == b"cols" && tag_namespace && tag.depth == 1 {
                 columns_depth = (tag.kind == Kind::Start).then_some(tag.depth);
             }
+            let worksheet_column = tag.name == b"col" && tag_namespace
+                && columns_depth.is_some_and(|depth| tag.depth == depth + 1);
             if tag.local() == b"sheetData" {
                 if tag.kind == Kind::Start {
                     data_depth = Some(tag.depth);
                 } else {
                     data_depth = None;
                 }
-            } else if data_depth.is_none() && tag.local() != b"dimension" {
+            } else if data_depth.is_none() && tag.local() != b"dimension" && !worksheet_column {
                 layout.update(tag.name);
                 if tag.local() == b"col" {
                     style_identity.hash_attributes(&mut layout, tag.attrs, b"style")?;
@@ -597,6 +601,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                             && tag_namespace
                             && columns_depth.is_some_and(|depth| tag.depth == depth + 1) =>
                     {
+                        model.cf_columns.observe(*tag, style_identity)?;
                         model.columns.extend_from_slice(tag.name);
                         model.columns.extend_from_slice(&style_identity.attributes(tag.attrs, b"style")?);
                     }
@@ -895,6 +900,7 @@ mod tests {
         assert_eq!(left.rows, right.rows);
         assert_eq!(left.columns, right.columns);
         assert_eq!(left.cf_layout, right.cf_layout);
+        assert!(left.cf_columns.same_prefix(&right.cf_columns, 16_384));
         let changed_xml = std::str::from_utf8(right_xml)?.replace("<v>7</v>", "<v>8</v>");
         let changed = model(changed_xml.as_bytes(), &right_styles)?;
         left.cells.changes(&changed.cells, |_| { differences += 1; Ok(()) })?;
@@ -921,10 +927,22 @@ mod tests {
         });
         let reasons: Vec<_> = decisions.iter().map(|decision| serde_json::json!({
             "sheet": decision.sheet, "outcome": decision.outcome, "reason": decision.reason,
+            "changed_inputs": decision.changed_inputs,
+            "referenced_input_changes": decision.referenced_input_changes,
+            "formula_input_observations": decision.formula_input_observations,
+            "referenced_formula_observations": decision.referenced_formula_observations,
+            "layout_rows": decision.layout_rows,
             "sqref_length": decision.sqref.len(), "sqref_prefix": decision.sqref.chars().take(120).collect::<String>()
         })).collect();
+        let mut last_candidate_rows = BTreeMap::<String, u32>::new();
+        for candidate in &candidates {
+            let range = super::super::content_bounds::Rectangle::parse(&candidate.cell)?;
+            last_candidate_rows.entry(candidate.sheet.clone())
+                .and_modify(|last| *last = (*last).max(range.bottom)).or_insert(range.bottom);
+        }
         eprintln!("{}", serde_json::json!({"changes": locations, "skipped": skipped,
-            "cf_decisions": reasons, "cell_candidates": cell_candidates_count, "all_candidates": candidates.len()}));
+            "cf_decisions": reasons, "cell_candidates": cell_candidates_count,
+            "all_candidates": candidates.len(), "last_candidate_rows":last_candidate_rows}));
         Ok(())
     }
 

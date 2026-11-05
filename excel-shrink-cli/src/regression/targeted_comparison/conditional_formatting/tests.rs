@@ -8,6 +8,36 @@ use std::{
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 #[test]
+fn later_columns_do_not_expand_an_unchanged_conditional_area() -> Result<()> {
+    let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-column-prefix")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let values = r#"<row r="2"><c r="E2"><v>7</v></c></row>"#;
+    let rule = r#"<conditionalFormatting sqref="E2:K1048576"><cfRule type="containsErrors" priority="1"><formula>ISERROR(E2)</formula></cfRule></conditionalFormatting>"#;
+    let original = r#"<cols><col min="1" max="62" width="12"/><col min="63" max="71" width="15"/></cols>"#;
+    let changed = original.replace("width=\"15\"", "width=\"10\"");
+    write_book(&a, values, rule, "", original, "")?;
+    write_book(&b, values, rule, "", &changed, "")?;
+    assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+    for layout in [
+        changed.replace("width=\"12\"", "width=\"13\""),
+        changed.replace("min=\"1\" max=\"62\"", "min=\"1\" max=\"62\" hidden=\"1\""),
+        changed.replace("min=\"63\"", "unknown=\"1\" min=\"63\""),
+        format!("{changed}<sheetFormatPr defaultRowHeight=\"20\"/>"),
+    ] {
+        write_book(&b, values, rule, "", &layout, "")?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    }
+    write_book(&b, &values.replace(">7<", ">8<"), rule, "", &changed, "")?;
+    let (decisions, candidates) = check(&a, &b)?;
+    assert_eq!(decisions[0].outcome, "partial");
+    assert!(!candidates.is_empty());
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn value_reference_rules_ignore_unused_fonts_but_keep_changed_inputs_and_rendering() -> Result<()> {
     let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-component-links")?;
     fs::create_dir_all(&root)?;

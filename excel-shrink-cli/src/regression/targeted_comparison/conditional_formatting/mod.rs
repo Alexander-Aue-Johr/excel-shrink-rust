@@ -483,7 +483,11 @@ pub(super) fn select(
                         | Proof::ReferencedInputs(_)
                         | Proof::CombinedInputs(_)
                         | Proof::InputIndependent(_)
-                ) && a.cf_layout != b.cf_layout
+                ) && (a.cf_layout != b.cf_layout
+                    || areas.as_ref().is_some_and(|areas| {
+                        let right = areas.iter().map(|area| area.right).max().unwrap_or(16_384);
+                        !a.cf_columns.same_prefix(&b.cf_columns, right)
+                    }))
                 {
                     mode = Proof::Fallback("worksheet-layout-context-changed");
                 }

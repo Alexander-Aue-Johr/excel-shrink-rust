@@ -726,6 +726,14 @@ Mixed and input-independent rule proofs retain their full format-context check.
 
 ### Bounded display registry
 
+Conditional-format layout guards compare column properties only through the
+rightmost application column, including preceding columns that can move the
+area horizontally. Changes exclusively to later columns do not invalidate an
+otherwise established input proof. Column styles use semantic format identities.
+Unknown attributes, invalid ranges and overlapping column definitions retain
+the conservative fallback. Other worksheet layout guards and effective row-height
+checks remain in force.
+
 The Observatory returns recent completed attempts from the dedicated
 `control-room/targeted-comparisons` registry. Its maintenance task keeps the
 latest 200 finished mirrors and checks older entries every five minutes.
