@@ -201,6 +201,31 @@ The historical R6 observations remain raw findings until reviewed under that pol
 
 ## Experiments supporting specific decisions
 
+### Automatic compatibility check: BOM Aquantis, 2026-11-05
+
+`BOM - 250 kW Aquantis test bench_Status 2014-11-14_b382055a9e33.xlsx`
+opened but blocked saving with the Compatibility Checker. Its workbookPr had
+`checkCompatibility="1"`. An isolated experiment changed only this attribute
+to `0` in Original/Default copies. Excel saved and rebuilt both without a prompt;
+the saved copies preserved every inspected nonempty cell value and formula.
+There were no charts, drawings or tables before or after saving.
+
+A second experiment retained the unmodified input files and disabled the flag
+only in the staged copies through `CaptureWorkbook` preparation. Its native
+rebuilt comparison completed: four regions per state, no pixel or geometry
+differences. Setup tests cover Transitional/Strict namespaces, optional prefixes,
+source immutability, date system, object visibility, idempotency and enabled,
+false/absent compatibility flags. Evidence is under
+`.tmp/validation-temp/bom-compatibility-proof/native-setup-test/` on V:.
+This does not accept unknown prompts or certify all possible save transformations.
+
+The artifact-only replay also exposed stale telemetry after successful cleanup:
+`preparation.json` said artifacts_prepared, but telemetry still said running.
+Commit `d3b1c0c` sets the terminal preparation status only after owned Excel
+cleanup succeeds, with visual validation explicitly pending. The subsequent
+native `preparation-result/telemetry.json` confirmed this terminal status and
+completion timestamp. This result is not counted as a visual comparison.
+
 ### Referenced components: RN17B-RN30 Core, 2026-11-05
 
 `RN17B-RN30 Core_65edc172e0f9.xlsx` has containsBlanks rules extending to

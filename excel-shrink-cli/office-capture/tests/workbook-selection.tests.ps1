@@ -76,7 +76,7 @@ function Fixture([string]$ns, [string]$prefix, [bool]$withViews = $true) {
     $targetViews = if ($withViews) { '<@P@sheetViews><@P@sheetView workbookViewId="0" tabSelected="0" zoomScale="90"><@P@selection activeCell="B3" sqref="B3"/></@P@sheetView></@P@sheetViews>'.Replace('@P@', $p) } else { '' }
     return @{
         '[Content_Types].xml' = '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/worksheets/hidden.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/alpha.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/custom-name.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'
-        'xl/workbook.xml' = ('<@P@workbook @DECLARE@ xmlns:rel="@REL@">@VIEWS@<@P@sheets><@P@sheet name="Hidden" sheetId="41" state="hidden" rel:id="rId8"/><@P@sheet name="Alpha" sheetId="3" rel:id="rId4"/><@P@sheet name="Target" sheetId="97" rel:id="rId12"/></@P@sheets><@P@definedNames><@P@definedName name="Test">Target!$A$1</@P@definedName></@P@definedNames></@P@workbook>'.Replace('@VIEWS@', $workbookViews).Replace('@P@', $p).Replace('@DECLARE@', $declaration).Replace('@REL@', $relationships))
+        'xl/workbook.xml' = ('<@P@workbook @DECLARE@ xmlns:rel="@REL@"><@P@workbookPr checkCompatibility="1" date1904="1" showObjects="all"/>@VIEWS@<@P@sheets><@P@sheet name="Hidden" sheetId="41" state="hidden" rel:id="rId8"/><@P@sheet name="Alpha" sheetId="3" rel:id="rId4"/><@P@sheet name="Target" sheetId="97" rel:id="rId12"/></@P@sheets><@P@definedNames><@P@definedName name="Test">Target!$A$1</@P@definedName></@P@definedNames></@P@workbook>'.Replace('@VIEWS@', $workbookViews).Replace('@P@', $p).Replace('@DECLARE@', $declaration).Replace('@REL@', $relationships))
         'xl/_rels/workbook.xml.rels' = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId4" Target="worksheets/alpha.xml" Type="worksheet"/><Relationship Id="rId12" Target="/xl/worksheets/custom-name.xml" Type="worksheet"/><Relationship Id="rId8" Target="worksheets/hidden.xml" Type="worksheet"/></Relationships>'
         'xl/worksheets/hidden.xml' = (Worksheet $ns $prefix $(if ($withViews) { $views } else { '' }))
         'xl/worksheets/alpha.xml' = (Worksheet $ns $prefix $(if ($withViews) { $views } else { '' }))
@@ -101,6 +101,10 @@ try {
                 Assert-Equal (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash $sourceHash 'Input source must remain unchanged'
                 $prepared = Read-Parts $copy
                 $book = Parse-Xml $prepared['xl/workbook.xml']
+                $properties = $book.SelectSingleNode('//*[local-name()="workbookPr"]')
+                Assert-Equal $properties.GetAttribute('checkCompatibility') '0' 'Disable only the automatic compatibility check'
+                Assert-Equal $properties.GetAttribute('date1904') '1' 'Preserve the date system'
+                Assert-Equal $properties.GetAttribute('showObjects') 'all' 'Preserve object visibility'
                 foreach ($view in $book.SelectNodes('//*[local-name()="workbookView"]')) {
                     Assert-Equal $view.GetAttribute('activeTab') '2' 'Active ordinal must not be sheetId or filename'
                     Assert-Equal $view.GetAttribute('firstSheet') '0' 'Tab strip position must remain unchanged'
@@ -134,6 +138,21 @@ try {
         }
     }
 
+    foreach ($flag in @('1', 'true', '0', 'false', 'absent')) {
+        $source = Join-Path $root ('compatibility-' + $flag + '.xlsx')
+        $parts = Fixture 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' ''
+        $replacement = if ($flag -eq 'absent') { '' } else { 'checkCompatibility="' + $flag + '"' }
+        $parts['xl/workbook.xml'] = $parts['xl/workbook.xml'].Replace('checkCompatibility="1"', $replacement)
+        New-Workbook $source $parts
+        Set-InitialWorksheet $source 3
+        $prepared = Read-Parts $source
+        $book = Parse-Xml $prepared['xl/workbook.xml']
+        $properties = $book.SelectSingleNode('//*[local-name()="workbookPr"]')
+        $expected = if ($flag -in @('1', 'true')) { '0' } elseif ($flag -eq 'absent') { '' } else { $flag }
+        Assert-Equal $properties.GetAttribute('checkCompatibility') $expected 'Preserve false/absent checks and disable enabled checks'
+        Assert-Equal $properties.GetAttribute('date1904') '1' 'Compatibility setup must preserve date1904'
+        Remove-Item -LiteralPath $source -Force
+    }
     $source = Join-Path $root 'missing-views.xlsx'
     New-Workbook $source (Fixture 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' '' $false)
     Set-InitialWorksheet $source 3

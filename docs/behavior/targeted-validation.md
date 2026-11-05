@@ -114,6 +114,19 @@ prompt. It produces `opening-dialog.json` and a clear startup failure without
 accepting a repair or changing the source input. Unknown dialogs are not
 clicked automatically.
 
+Disposable capture copies disable an explicitly enabled
+`workbookPr.checkCompatibility` flag during their existing view preparation.
+This is the automatic check for earlier Excel versions, not a repair or a
+file-format conversion. Missing/false settings are left alone; formulas, values,
+date system and object-visibility settings are preserved. Source inputs and
+prepared Shrink variants keep their original setting. Other blocker detection
+remains enabled; no repair/data-loss prompt is automatically accepted.
+The generation-recipe fingerprint includes `CaptureWorkbook.cs`, so saved-control
+and Check Performance artifacts prepared with different setup rules are not
+silently reused under the new recipe.
+See Microsoft's [CheckCompatibility property](https://learn.microsoft.com/en-us/office/vba/api/excel.workbook.checkcompatibility)
+and [Open XML attribute mapping](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.workbookproperties.checkcompatibility?view=openxml-3.0.1).
+
 `tools/order-prepared-by-reduction.ps1` creates an explicit `--workbook-list`
 and a CSV from ZIP-directory sizes. The score is `(Original XLSX - Default XLSX)
 / Original XLSX`, descending; ties use saved bytes, then corpus identity. It

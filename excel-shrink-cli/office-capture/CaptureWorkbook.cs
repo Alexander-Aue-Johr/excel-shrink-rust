@@ -55,6 +55,16 @@ public static class CaptureWorkbook
         calculation.SetAttribute("calcOnSave", "0");
     }
 
+    /// <summary>Disable the automatic earlier-version check in disposable XLSX copies.
+    /// This changes no file format and does not accept repair or data-loss prompts.</summary>
+    private static void DisableCompatibilityCheck(XmlDocument workbook)
+    {
+        var root = workbook.DocumentElement;
+        var properties = root["workbookPr", root.NamespaceURI];
+        if (properties == null) return;
+        var check = properties.GetAttribute("checkCompatibility");
+        if (check == "1" || check == "true") properties.SetAttribute("checkCompatibility", "0");
+    }
     private sealed class InitialSelection
     {
         public XmlDocument Workbook;
@@ -75,6 +85,7 @@ public static class CaptureWorkbook
                 var worksheets = WorksheetParts(source);
                 var selection = initialWorksheet.HasValue ? ReadInitialSelection(source, initialWorksheet.Value, worksheets) : null;
                 if (manualCalculation) SetManualCalculation(selection.Workbook);
+                if (selection != null) DisableCompatibilityCheck(selection.Workbook);
                 foreach (var entry in source.Entries)
                 {
                     var copy = output.CreateEntry(entry.FullName, CompressionLevel.Fastest);
