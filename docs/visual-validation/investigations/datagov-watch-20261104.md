@@ -259,3 +259,13 @@ slightly shifted despite equal cell values/formulas. Standard repeat request
 pixel, geometry or presence differences. The initial raw differences remain;
 a separate review links the initial and repeat report hashes and classifies
 the observation as nonrepeatable chart layout. No global pixel tolerance was added.
+
+
+After the previous runner drained normally, all 57 bundles and records were
+copied and SHA-256 verified before invalidation. The migration receipt is
+`V:/excel-shrink-paper/external/excel-shrink-rust/.tmp/validation-temp/backups/before-chart-format-anchors-20261105-122326/migration.json`.
+The full Data.gov run resumed as PID 60916 using binary SHA-256
+`d6b97f99c17be451c4958eeeb79b02f618a3f2489f98ac03d40261d9e1522f92`.
+The remaining 8,566 prepared artifacts and unaffected completed results were
+retained. The long June permit workbook finished its 2,176 candidate regions
+without differences before shutdown; its work was not discarded.
