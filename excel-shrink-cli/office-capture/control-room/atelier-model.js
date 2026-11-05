@@ -10,13 +10,15 @@ export function evidenceImageUrl(path) {
 /** Preserve the pair and phase: O versus SD differs from O versus rebuilt SD (SDR). */
 export function atelierRegions(report, differencesOnly = true) {
   const regions = [];
-  for (const pair of report.comparisons || []) {
-    for (const finding of [...(pair.findings || []), ...(pair.charts || [])]) {
+  for (const [pairIndex, pair] of (report.comparisons || []).entries()) {
+    const entries = ['findings', 'charts'].flatMap(kind =>
+      (pair[kind] || []).map((finding, findingIndex) => ({ finding, key: `${pairIndex}:${kind}:${findingIndex}` })));
+    for (const { finding, key } of entries) {
       const different = ['pixels_differ', 'geometry_differs', 'rendering_differs', 'presence_differs']
         .some(flag => finding[flag] === true);
       if (differencesOnly && !different) continue;
       regions.push({
-        ...finding, different, left: pair.left, right: pair.right,
+        ...finding, key, different, left: pair.left, right: pair.right,
         label: `${finding.sheet} / ${finding.cell || finding.chart} / ${pair.left} / ${pair.right}`,
         leftUrl: evidenceImageUrl(finding.left_png || finding.left_image),
         rightUrl: evidenceImageUrl(finding.right_png || finding.right_image),

@@ -1,4 +1,7 @@
 import { atelierRegions } from './atelier-model.js';
+import { requestPixelDiagnostics } from './pixel-diagnostics.js';
+import { createPixelInspector } from './atelier-pixels.js';
+import { createClipboardButton } from './inspection-clipboard.js';
 
 const node = (tag, text) => {
   const element = document.createElement(tag);
@@ -15,7 +18,10 @@ export function createAtelier() {
   header.className = 'atelier-header';
   const title = node('strong');
   const close = node('button', 'Close atelier');
-  header.append(title, close);
+  const clipboardNotice = node('p');
+  clipboardNotice.setAttribute('role', 'status');
+  const clipboard = createClipboardButton(() => groupId, clipboardNotice);
+  header.append(title, clipboard, close);
   const toolbar = node('div');
   toolbar.className = 'atelier-tools';
   const previous = node('button', 'Previous');
@@ -32,17 +38,19 @@ export function createAtelier() {
   note.className = 'atelier-note';
   const images = node('div');
   images.className = 'atelier-images fit';
-  dialog.append(header, toolbar, note, images);
+  dialog.append(header, clipboardNotice, toolbar, note, images);
   document.body.append(dialog);
   let ownsFullscreen = false;
   let report = null;
   let regions = [];
   let generation = 0;
   let request = null;
+  let groupId = null;
+  let renderGeneration = 0;
 
   // Use one scale for both captures; independent fitting would invent row-height differences.
   function fitImages() {
-    const captures = [...images.querySelectorAll('img')];
+    const captures = [...images.querySelectorAll('img.atelier-capture')];
     const width = captures.reduce((sum, image) => sum + image.naturalWidth, 0);
     const scale = images.classList.contains('fit') && width > 0
       ? Math.min(1, images.clientWidth / width) : 1;
@@ -53,6 +61,7 @@ export function createAtelier() {
   new ResizeObserver(fitImages).observe(images);
 
   function render() {
+    const rendered = ++renderGeneration;
     images.replaceChildren();
     const index = select.selectedIndex;
     const region = regions[index];
@@ -69,6 +78,7 @@ export function createAtelier() {
       + 'O: Original / SD: Default before rebuild / SDR: Default after rebuild. Images are retained run evidence.';
     const pair = node('div');
     pair.className = 'atelier-pair';
+    const views = [];
     for (const side of ['left', 'right']) {
       const figure = node('figure');
       figure.className = 'atelier-figure';
@@ -77,13 +87,18 @@ export function createAtelier() {
       const url = region[side + 'Url'];
       if (url) {
         const image = node('img');
+        image.className = 'atelier-capture';
         image.alt = `${region[side]} / ${region.sheet} / ${region.cell || region.chart}`;
         image.addEventListener('load', fitImages);
         image.src = url;
         image.addEventListener('error', () => {
           image.replaceWith(node('p', 'Retained image is unavailable. No replacement capture was generated.'));
         }, {once: true});
-        figure.append(image);
+        const stage = node('div');
+        stage.className = 'atelier-image-stage';
+        stage.append(image);
+        figure.append(stage);
+        views.push({ image, stage, label: region[side] });
       } else {
         figure.append(node('p', 'No rendered image for this state; consult its geometry/presence verdict.'));
       }
@@ -93,6 +108,25 @@ export function createAtelier() {
     fitImages();
     images.scrollTop = 0;
     images.scrollLeft = 0;
+    if (views.length === 2 && region.different) {
+      const measuring = node('p', 'Measuring retained pixels…');
+      images.append(measuring);
+      Promise.all(views.map(view => view.image.decode())).then(async () => {
+        if (rendered !== renderGeneration || !dialog.open) return;
+        const diagnostic = await requestPixelDiagnostics(groupId, { priority: true, region: region.key });
+        if (rendered !== renderGeneration || !dialog.open) return;
+        if (diagnostic.report_id !== report?._evidence_id) {
+          throw new Error('The retained comparison changed. Reopen the atelier to inspect its latest evidence.');
+        }
+        const entry = diagnostic.regions.find(item =>
+          `${item.pair_index}:${item.kind}:${item.finding_index}` === region.key);
+        if (!entry) throw new Error('No rendered image pair is available for this diagnostic.');
+        measuring.remove();
+        images.append(createPixelInspector(views, entry.metrics, region));
+      }).catch(error => {
+        if (rendered === renderGeneration) measuring.textContent = `Pixel inspection unavailable: ${error.message}`;
+      });
+    }
   }
   function populate() {
     regions = atelierRegions(report || {}, !all.checked);
@@ -111,6 +145,7 @@ export function createAtelier() {
   close.addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
     generation++;
+    renderGeneration++;
     request?.abort();
     request = null;
     images.replaceChildren();
@@ -121,6 +156,8 @@ export function createAtelier() {
   return {
     async open(id, workbook) {
       const current = ++generation;
+      groupId = id;
+      clipboardNotice.textContent = '';
       request?.abort();
       request = new AbortController();
       report = null;

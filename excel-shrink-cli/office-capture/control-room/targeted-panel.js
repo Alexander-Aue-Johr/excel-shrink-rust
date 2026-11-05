@@ -1,5 +1,6 @@
 import { createProcessIcon } from './process-icon-shader.js';
 import { createSignalMonitor } from './signal-monitor.js';
+import { createClipboardButton } from './inspection-clipboard.js';
 import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, phaseComplete, processCards } from './targeted-model.js';
 
 const node = (tag, className, text) => {
@@ -134,17 +135,26 @@ function createComparisonCard() {
   heading.append(name, outcome);
   const explanation = node('p', 'targeted-explanation');
   const error = node('p', 'targeted-error');
+  const copyNotice = node('p', 'targeted-copy-status');
+  copyNotice.setAttribute('role', 'status');
+  let groupId = null;
+  const copy = createClipboardButton(() => groupId, copyNotice);
+  heading.append(copy);
   const lanes = node('div', 'targeted-lanes');
   const flow = createFlowDiagram();
   const controls = node('p', 'targeted-controls-explanation',
     'Rebuild Original and Default in their existing Excel processes, then compare selected regions and all charts. '
     + 'Optional Check Performance is rebuilt and compared against rebuilt Original. Pre-rebuild XML controls remain available for follow-up.');
   const legend = node('p', 'targeted-flow-legend', '☑ Done · ◩ Running · □ Pending · muted − Not performed / unavailable. Hover a column or checkbox for its purpose.');
-  root.append(heading, explanation, error, lanes, flow.element, legend, controls);
+  root.append(heading, explanation, error, copyNotice, lanes, flow.element, legend, controls);
   const laneViews = new Map();
   return {
     element: root,
     update(comparison, connected) {
+      const parts = String(comparison.report_directory || '').split(/[\\/]+/);
+      const evidence = parts.lastIndexOf('evidence');
+      groupId = evidence >= 0 && /^[a-f0-9]{20}$/.test(parts[evidence + 1]) ? parts[evidence + 1] : null;
+      copy.hidden = !groupId;
       name.textContent = comparison.workbook || 'Targeted workbook comparison';
       const finished = comparisonFinished(comparison);
       root.dataset.finished = String(finished);

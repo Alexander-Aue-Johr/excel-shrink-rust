@@ -10,6 +10,8 @@ import { createControlUpdates } from './control-state.js';
 import { createTargetedPanel } from './targeted-panel.js';
 import { createManualCaptureControls } from './manual-capture.js';
 import { createAtelier } from './atelier.js';
+import { attachPixelSummary } from './pixel-diagnostics.js';
+import { createClipboardButton } from './inspection-clipboard.js';
 
 const $ = id => document.getElementById(id);
 const manualCaptures = createManualCaptureControls(document.querySelector('.heading-actions'), {
@@ -1229,8 +1231,17 @@ function renderWorkbookResultList() {
     const details = document.createElement('span');
     details.className = 'workbook-result-reason';
     details.textContent = [row.corpus, workbookReason(row), row.error].filter(Boolean).join(' · ');
+    if (row.differences_found) {
+      const pixels = document.createElement('span');
+      pixels.className = 'workbook-pixel-summary';
+      details.append(pixels);
+      attachPixelSummary(pixels, String(row.id));
+    }
     const links = document.createElement('div');
     links.className = 'workbook-result-links';
+    if (row.available_variants?.original) {
+      links.append(createClipboardButton(String(row.id), $('workbookResultStatus')));
+    }
     for (const profile of PRIMARY_PROFILES) {
       if (row.available_variants?.[profile.id] !== true) continue;
       const variant = document.createElement('span');

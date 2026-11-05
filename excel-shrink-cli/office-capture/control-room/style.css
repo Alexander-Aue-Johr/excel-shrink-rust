@@ -1324,3 +1324,27 @@ body.presenting .experiment-controls,body.presenting .process-section { display:
 .atelier-figure figcaption { padding: 8px; background: #152b3a; }
 .atelier-figure img { display: block; max-width: none; height: auto; background: white; }
 .atelier-empty { padding: 24px; }
+.atelier-image-stage { position: relative; width: fit-content; }
+.atelier-pixel-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.atelier-pixel-overlay rect { fill: transparent; stroke-width: 1.5; pointer-events: all; cursor: zoom-in; }
+.atelier-pixel-overlay rect.changed { stroke: #ff5161; }
+.atelier-pixel-overlay rect.unpaired { stroke: #ffc05c; stroke-dasharray: 4 2; }
+.atelier-pixel-overlay image { image-rendering: pixelated; }
+.atelier-pixel-inspector { padding: 16px; border-top: 1px solid #466278; background: #102736; }
+.atelier-pixel-summary { color: #fff; font-weight: 700; }
+.atelier-pixel-explanation { color: #b5cbd9; max-width: 1100px; line-height: 1.5; }
+.atelier-pixel-crops { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 620px), 1fr)); gap: 16px; margin: 16px 0; }
+.atelier-pixel-crop { padding: 12px; border: 1px solid #466278; border-radius: 8px; overflow: auto; }
+.atelier-pixel-crop h4 { margin: 0 0 8px; }
+.atelier-crop-pair { display: flex; align-items: start; gap: 12px; }
+.atelier-crop-pair figure { margin: 0; }
+.atelier-crop-pair figcaption { padding: 4px; }
+.atelier-crop-stage { position: relative; width: fit-content; background: repeating-conic-gradient(#8f9ca5 0% 25%, #d1d9df 0% 50%) 0 / 12px 12px; }
+.atelier-crop-stage canvas { display: block; image-rendering: pixelated; max-width: none; }
+.atelier-crop-stage canvas.atelier-diff-pulse { position: absolute; top: 0; left: 0; pointer-events: none; }
+.atelier-diff-pulse { animation: atelier-pixel-pulse 2s linear infinite; }
+.pulse-paused .atelier-diff-pulse { animation: none; opacity: 0; }
+.workbook-pixel-summary { display: block; margin-top: 4px; color: #f3cd8e; font-variant-numeric: tabular-nums; }
+.targeted-copy-status:empty { display: none; }
+@keyframes atelier-pixel-pulse { 0%, 35%, 100% { opacity: 0; } 55%, 75% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .atelier-diff-pulse { animation: none; opacity: .6; } }

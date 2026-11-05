@@ -542,3 +542,32 @@ or success is invented. Retired run IDs explicitly remove old browser cards
 when their corrected failure lies outside the bounded recent history. Late
 snapshots of a retired attempt cannot reactivate its card. This observation
 does not control or reserve scheduler slots.
+
+### Inspecting retained pixel differences
+
+The result list lazily measures retained PNG pairs, with one image-inspection
+request active at a time and an on-disk cache keyed by the immutable report and
+selected region. These diagnostics do not run Excel, select captures, change a
+verdict, or classify rendering noise as a pass.
+
+`changed px` counts unequal aligned RGBA pixels in the overlapping image area.
+`max Δ` is the largest absolute channel difference (0–255); `ΣΔ` sums absolute
+channel differences. Workbook totals sum comparison-region observations, not
+globally unique worksheet pixels. Pixels outside the overlap are reported
+separately as unpaired, including their non-white RGBA count. Missing image
+pairs are explicitly unavailable rather than measured as identical.
+
+The atelier overlays changed pixels in red and outlines affected blocks. It
+shows nearest-neighbor enlarged pairs with a switchable red pulse. Amber bounds
+identify unpaired non-white content, which can result from a cropped edge rather
+than a workbook change. Up to 64 highest-delta display blocks are retained for
+navigation; all overlapping changed pixels remain in the mask. Clicking either
+image permits manual inspection beyond these display blocks. Checkerboard in a
+crop denotes absent image area. Reduced-motion settings disable the pulse.
+
+`Copy Original file` extracts a fresh inspection copy from the immutable prepared
+bundle and places that copy on the Windows file clipboard for Explorer paste.
+It neither opens Excel nor exposes a live worker workbook for editing. Copies
+use the host's temporary directory (configured on V: for this validation run).
+The helper uses Windows PowerShell's installed clipboard support, without a
+separate .NET SDK requirement. A failed clipboard operation is shown explicitly.
