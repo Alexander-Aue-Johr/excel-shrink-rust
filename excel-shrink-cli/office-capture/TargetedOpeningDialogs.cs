@@ -54,7 +54,7 @@ public static class TargetedOpeningDialogs
     }
 
     /// <summary>Inspect the explicit private desktop without switching the user's input desktop.
-    /// Only visible dialog classes are returned. Child reads have a total 500 ms budget;
+    /// Only visible classic dialogs or owned modal windows are returned. Child reads have a total 500 ms budget;
     /// password fields and other editable inputs are never read.</summary>
     public static Dialog[] Inspect(int pid, string desktopName)
     {
@@ -71,18 +71,20 @@ public static class TargetedOpeningDialogs
                 GetWindowThreadProcessId(window, out actualPid);
                 if (actualPid != (uint)pid || !IsWindowVisible(window)) return true;
                 string className = ClassName(window);
-                if (!IsDialogClass(className)) return true;
+                IntPtr owner = GetWindow(window, 4); // GW_OWNER
+                uint ownerPid;
+                GetWindowThreadProcessId(owner, out ownerPid);
+                bool modal = owner != IntPtr.Zero && ownerPid == (uint)pid && !IsWindowEnabled(owner);
+                // Embedded Office sign-in windows do not use the classic dialog classes.
+                if (!IsDialogClass(className) && !modal) return true;
                 if (result.Count >= 8 || clock.ElapsedMilliseconds >= 500) return false;
                 var names = new List<string>();
                 var title = new StringBuilder(512);
                 GetWindowText(window, title, title.Capacity);
                 if (title.Length != 0) names.Add(title.ToString());
-                IntPtr owner = GetWindow(window, 4); // GW_OWNER
-                uint ownerPid;
-                GetWindowThreadProcessId(owner, out ownerPid);
                 var dialog = new Dialog {
                     Handle = window.ToInt64(), ClassName = className,
-                    IsModal = owner != IntPtr.Zero && ownerPid == (uint)pid && !IsWindowEnabled(owner)
+                    IsModal = modal
                 };
                 int visited = 0;
                 EnumChildWindows(window, (child, unused) => {

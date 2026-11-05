@@ -4,6 +4,7 @@ $sessions = @{}
 $script:responseWatcher = $null
 $utf8 = [Text.UTF8Encoding]::new($false)
 Import-Module (Join-Path $PSScriptRoot 'TargetedChartWarnings.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'TargetedDialogText.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedChartSheets.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'WindowsLongPaths.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedPerformanceCache.psm1') -DisableNameChecking
@@ -105,6 +106,9 @@ function Get-TargetedOpeningDialogKind {
     <# .SYNOPSIS Classify visible dialog text; worksheet protection or security bars are not dialogs. #>
     param([string[]]$Names, [bool]$HasPasswordInput = $false)
     $text = $Names -join " "
+    if ($text -match 'AADSTS50020|does not exist in tenant') { return 'tenant_access_denied' }
+    if ($text -match '\bAADSTS\d+\b|trouble signing you in|sign in to (?:your account|access)' -or
+        @($Names | Where-Object { $_ -match '^(?:Microsoft\s+)?(?:Sign in|Anmelden)$' }).Count -gt 0) { return 'authentication_required' }
     if ($HasPasswordInput -or $text -match 'password|kennwort|passwort') { return 'password_required' }
     if ($text -match 'found a problem with some content|problem.*(?:einigen )?inhalten|unreadable content|unlesbare.*inhalte|repair.*workbook|arbeitsmappe.*repar') { return 'repair_required' }
     if ($text -match 'compatibility checker|kompatibilit[a\u00e4]tspr[u\u00fc]fung') { return 'compatibility_confirmation_required' }
@@ -137,13 +141,18 @@ function Test-TargetedWorkbookBlocker {
             Write-TargetedJson (Join-Path $Entry.session 'acknowledged-chart-warning.json') $warning
             continue
         }
-        $kind = Get-TargetedOpeningDialogKind $dialog.Names $dialog.HasPasswordInput
+        $names = @($dialog.Names)
+        $kind = Get-TargetedOpeningDialogKind $names $dialog.HasPasswordInput
+        if (-not $kind) {
+            $names += @(Read-TargetedEmbeddedDialog $Entry $dialog)
+            $kind = Get-TargetedOpeningDialogKind $names $dialog.HasPasswordInput
+        }
         if (-not $kind -and $dialog.IsModal -and $dialog.DecisionButtons -ge 2) {
             $kind = 'modal_confirmation_required'
         }
         if (-not $kind) {
             Write-TargetedJson (Join-Path $Entry.session 'unclassified-dialog.json') @{
-                phase=$Phase; pid=$Entry.process.Id; class_name=$dialog.ClassName; names=$dialog.Names
+                phase=$Phase; pid=$Entry.process.Id; class_name=$dialog.ClassName; names=$names
                 modal=$dialog.IsModal; decision_buttons=$dialog.DecisionButtons; observed_at=[DateTime]::UtcNow.ToString('o')
             }
             continue
@@ -152,7 +161,7 @@ function Test-TargetedWorkbookBlocker {
         Write-TargetedJson $evidence @{
             kind=$kind; phase=$Phase; pid=$Entry.process.Id
             process_started_unix_ms=([DateTimeOffset]$Entry.process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
-            class_name=$dialog.ClassName; handle=$dialog.Handle; names=$dialog.Names
+            class_name=$dialog.ClassName; handle=$dialog.Handle; names=$names
             modal=$dialog.IsModal; action='skip_without_accepting_prompt'; observed_at=[DateTime]::UtcNow.ToString('o')
         }
         # Stop the exact owned Excel handle, then let the resident restore its

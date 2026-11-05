@@ -17,6 +17,8 @@ $root=Join-Path ([IO.Path]::GetTempPath()) ('targeted-dialog-test-'+[Guid]::NewG
 try {
     foreach($case in @(
         @{text='Password required to open this file';kind='password_required'},
+        @{text='AADSTS50020: User account does not exist in tenant EPA';kind='tenant_access_denied'},
+        @{text='Sign in';kind='authentication_required'},
         @{text='We found a problem with some content in one.xlsx.';kind='repair_required'},
         @{text='Microsoft Excel - Compatibility Checker';kind='compatibility_confirmation_required'},
         @{text='Choose whether to continue';kind='modal_confirmation_required'}
@@ -39,6 +41,18 @@ try {
             $session=Join-Path $root $case.kind
             [void][IO.Directory]::CreateDirectory($session)
             $entry=@{process=$worker;launcher=$worker;session=$session}
+            if ($case.kind -eq 'tenant_access_denied') {
+                $labels = Join-Path $session 'labels.json'
+                $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ExcelProcessId {1} -Handle {2} -Output "{3}"' -f `
+                    (Join-Path $capture 'read-targeted-dialog.ps1'), $worker.Id, $dialogs[0].Handle, $labels
+                $reader = $desktop.Start((Join-Path $PSHOME 'powershell.exe'), $arguments, $owned)
+                if (-not $reader.WaitForExit(5000)) { throw 'Dialog label reader exceeded its deadline.' }
+                if ($reader.ExitCode -ne 0) { throw 'Dialog label reader failed.' }
+                $observed = Get-Content $labels -Raw | ConvertFrom-Json
+                if ($observed.pid -ne $worker.Id -or ($observed.names -join ' ') -notmatch 'AADSTS50020') {
+                    throw 'Accessible labels did not preserve the owned dialog error.'
+                }
+            }
             $caught=$null
             try { & (Get-Module TargetedResident) {param($value) Test-TargetedWorkbookBlocker $value 'opening'} $entry }
             catch {$caught=$_.Exception.Message}
