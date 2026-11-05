@@ -72,3 +72,13 @@ Its worksheet XML is 25,486 bytes and its archive 18,203 bytes, versus 20,382
 original bytes and 17,913 bytes for the defective output. No whole-row retention
 was introduced. Core tests cover repeated-cell removal and the existing tail,
 protection and fixed-height behavior.
+
+`state-summary-wisconsin-fy2017__ad9c5887-6ede-4454-97bc-4a8ddfe46d04_d844acb6b744.xlsx`
+subsequently timed out before either add-in became ready. An isolated first repeat
+also timed out. A second exact-input repeat opened Original and Default in
+18.30 and 20.96 seconds and found no selected pixel/geometry differences.
+Read-only dialog inspection of the explicit owned desktop returned no dialogs.
+The startup failure's cause remains unresolved. A normal main-run recheck was
+requested through the group restart endpoint; the successful isolated evidence
+is retained separately. Launcher metrics now expose `desktop_name` so diagnostic
+inspection can verify the actual desktop instead of inferring it from window mode.

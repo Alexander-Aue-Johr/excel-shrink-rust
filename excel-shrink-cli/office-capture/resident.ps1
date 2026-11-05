@@ -662,6 +662,7 @@ function Open-ResidentClient($spec, $visibilityOverride = $null) {
         $process = $owned.Start($excelExecutable, $arguments, [bool]$hideClient, $desktopName)
         $clients[$id] = @{ process=$process; open_clock=$openClock; seen=$false; closed=$false; registration=$guid; error_checking_scope=$null; desktop_name=$desktopName; hide_excel=[bool]$hideClient; private_desktop=($null -ne $desktopName) }
         $metrics.clients[$id].window_mode = if ($desktopName) { 'private_desktop' } elseif ($hideClient) { 'hidden_window' } else { 'interactive_desktop' }
+        $metrics.clients[$id].desktop_name = $desktopName
         $metrics.clients[$id].pid = $process.Id
         $metrics.clients[$id].process_started_unix_ms = ([DateTimeOffset]$process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
         $metrics.clients[$id].process_alive = $true
