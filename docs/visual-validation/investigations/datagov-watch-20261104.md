@@ -98,3 +98,9 @@ replacement completions without changing the finished predecessor. This fixes
 scheduler bookkeeping; it does not explain the intermittent add-in startup
 failures that prompted these manual replacements. Durable successful workbook
 records were already written and remain reusable after restarting the runner.
+
+The rebuilt scheduler was then exercised through the live restart endpoint twice
+on `CO-AP-and-IB_97188f8b40f6.xlsx` in one continuing run. Both replacements
+finished `unchanged`, changed attempt IDs and released their active slots. The
+remaining queue continued admitting workbooks. The focused scheduler tests and
+compact-summary tests also pass.
