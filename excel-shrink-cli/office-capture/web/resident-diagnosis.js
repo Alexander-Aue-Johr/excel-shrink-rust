@@ -130,10 +130,10 @@
     return heights.length;
   }
 
-  async function execute(command, {office, transport}) {
+  async function execute(command, {office, transport, reportProgress}) {
     if (!command || typeof command.operation !== 'string') throw new Error('Missing diagnosis operation');
     if (command.operation === 'targeted') {
-      const result = await root.TargetedDiagnosis.run(command.request, office);
+      const result = await root.TargetedDiagnosis.run(command.request, office, reportProgress);
       if (typeof result.image_base64 === 'string') {
         if (!transport?.diagnosisImage) throw new Error('Binary diagnosis image transport is unavailable');
         const {bytes} = await root.ResidentCapture.encoded(result.image_base64, false);

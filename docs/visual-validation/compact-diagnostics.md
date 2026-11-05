@@ -39,3 +39,7 @@ CF regions, with bounded decision/region examples. `--sample-limit` accepts 0–
 It leaves the input workbooks unchanged and releases its temporary fingerprints.
 It does not open Excel, measure effective heights, capture charts or issue a
 visual verdict. The reported logical regions precede live geometry partitioning.
+
+### Rebuild stage telemetry
+
+Resident heartbeat resource samples include bounded `targeted_progress` evidence with command ID, stage and transition timestamp. Rebuild dispatch, waiting for calculation, saving and successful save are distinct stages. A heartbeat alone does not prove calculation progress. Command deadlines and save/rebuild success requirements are unchanged.

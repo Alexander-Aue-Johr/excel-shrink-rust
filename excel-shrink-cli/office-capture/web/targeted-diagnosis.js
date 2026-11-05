@@ -15,13 +15,15 @@
   }
 
   /** Execute one bounded operation; save/rebuild never replace a missing response with success. */
-  async function run(command, office) {
+  async function run(command, office, reportProgress = () => {}) {
     if (command.kind === 'heights') return measureHeights(command, office);
     return office(async context => {
       if (command.kind === 'save' || command.kind === 'recalculate') {
         if (command.kind === 'recalculate') {
+          reportProgress('rebuild_dispatch');
           context.workbook.application.calculate(Excel.CalculationType.fullRebuild);
           await context.sync();
+          reportProgress('rebuild_waiting_for_calculation');
           const deadline = Date.now() + Math.max(120000, (command.timeout_seconds || 120) * 1000);
           while (true) {
             context.workbook.application.load('calculationState');
@@ -31,8 +33,10 @@
             await new Promise(resolve => setTimeout(resolve, 25));
           }
         }
+        reportProgress('saving_workbook');
         context.workbook.save(Excel.SaveBehavior.save);
         await context.sync();
+        reportProgress('workbook_saved');
         return {saved: true};
       }
       if (command.kind === 'charts') {

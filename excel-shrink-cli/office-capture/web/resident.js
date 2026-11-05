@@ -55,6 +55,7 @@
     let lastCommandTiming;
     let captureProgress = null;
     let sweepProgress = null;
+    let targetedProgress = null;
 
     async function measure(field, action) {
       const started = performance.now();
@@ -83,6 +84,7 @@
       if (lastCommandTiming) sample.last_command_timing = {...lastCommandTiming};
       if (captureProgress) sample.capture_progress = {...captureProgress};
       if (sweepProgress) sample.sweep_progress = {...sweepProgress};
+      if (targetedProgress) sample.targeted_progress = {...targetedProgress};
       // Chromium may expose approximate JS heap figures. They do not include
       // decoded/native images; launcher process snapshots cover that separately.
       if (performance.memory) {
@@ -670,7 +672,12 @@
           else if (command.kind === 'capture_images' || command.kind === 'capture_hashes') result = await captureImages(command);
           else if (command.kind === 'diagnosis') {
             if (!root.ResidentDiagnosis?.run) throw new Error('Resident diagnosis helper is unavailable');
-            result = await root.ResidentDiagnosis.run(command, {office, bounds, checkedWorksheet, rowHeights, helpers, transport});
+            result = await root.ResidentDiagnosis.run(command, {
+              office, bounds, checkedWorksheet, rowHeights, helpers, transport,
+              reportProgress: stage => {
+                targetedProgress = {command_id: command.id, stage, updated_unix_ms: Date.now()};
+              }
+            });
             if (command.operation !== 'read_cells') geometries.clear();
           }
           else if (command.kind === 'upload_retained') result = await uploadRetained(command);

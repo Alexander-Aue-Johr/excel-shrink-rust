@@ -64,3 +64,26 @@ test('capture measures its unpadded core without extra synchronization and disab
   assert.equal(synchronizations,2);
   assert.deepEqual(result.geometry.comparison_core,{top:0,left:0,width:280,height:380});
 });
+
+test('rebuild telemetry distinguishes dispatch, calculation wait and saving', async () => {
+  globalThis.Excel = {CalculationType: {fullRebuild: 'FullRebuild'},
+    CalculationState: {done: 'Done'}, SaveBehavior: {save: 'Save'}};
+  const stages = [];
+  const context = {workbook: {
+    application: {calculate() {}, load() {}, calculationState: 'Done'},
+    save() {}
+  }, sync: async () => {}};
+  const result = await globalThis.TargetedDiagnosis.run(
+    {kind: 'recalculate'}, action => action(context), stage => stages.push(stage));
+  assert.deepEqual(stages, ['rebuild_dispatch', 'rebuild_waiting_for_calculation',
+    'saving_workbook', 'workbook_saved']);
+  assert.equal(result.saved, true);
+});
+
+test('a blocked save does not publish completion', async () => {
+  const stages = [];
+  const context = {workbook: {save() {throw new Error('Save blocked');}}, sync: async () => {}};
+  await assert.rejects(globalThis.TargetedDiagnosis.run(
+    {kind: 'save'}, action => action(context), stage => stages.push(stage)), /Save blocked/);
+  assert.deepEqual(stages, ['saving_workbook']);
+});
