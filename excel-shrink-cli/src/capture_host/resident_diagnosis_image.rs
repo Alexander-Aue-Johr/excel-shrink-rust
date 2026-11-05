@@ -47,20 +47,38 @@ pub(super) async fn upload(
         .join("diagnosis-images")
         .join(&id)
         .join(format!("{command}.image"));
-    if path.try_exists()? {
-        let previous = tokio::fs::read(&path).await?;
-        if previous.as_slice() != bytes.as_ref() {
-            return Err(ApiError::conflict(
-                "Image retry differs from the published capture.",
-            ));
-        }
-    } else {
-        write_bytes(&path, &bytes, false).await?;
-    }
+    // Limit links per blob on filesystems with a hard-link count ceiling.
+    // Command retries do not advance this bucket or create a second command path.
+    let pool = path.parent().unwrap().join("blobs")
+        .join((client.command_count / 512).to_string())
+        .join(format!("{sha256}.image"));
+    publish_targeted_image(&path, &pool, &bytes).await?;
     client.last_activity_at = now_iso();
     Ok(Json(
         json!({"image_path":path,"sha256":sha256,"image_bytes":bytes.len(),"width":width,"height":height}),
     ))
+}
+
+/// Preserve exact encoded evidence while sharing immutable, byte-identical captures.
+/// Unsupported hard links retain ordinary copies; publication never overwrites a retry.
+async fn publish_targeted_image(path: &Path, pool: &Path, bytes: &[u8]) -> HttpResult<()> {
+    if path.try_exists()? {
+        if tokio::fs::read(path).await? != bytes {
+            return Err(ApiError::conflict("Image retry differs from the published capture."));
+        }
+        return Ok(());
+    }
+    if pool.try_exists()? {
+        if tokio::fs::read(pool).await? != bytes {
+            return Err(ApiError::conflict("Pooled capture differs from its content identity."));
+        }
+    } else {
+        write_bytes(pool, bytes, false).await?;
+    }
+    if tokio::fs::hard_link(pool, path).await.is_err() {
+        write_bytes(path, bytes, false).await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -152,4 +170,30 @@ mod tests {
         tokio::fs::remove_dir_all(directory).await?;
         Ok(())
     }
+    #[tokio::test]
+    async fn pooled_images_survive_moves_and_reject_conflicting_retries() -> anyhow::Result<()> {
+        let root = std::env::temp_dir().join(format!("image-pool-{}", uuid::Uuid::new_v4()));
+        let pool = root.join("blobs/0/content.image");
+        let first = root.join("first.image");
+        let second = root.join("second.image");
+        let moved = root.join("evidence.png");
+        publish_targeted_image(&first, &pool, b"immutable pixels").await.unwrap();
+        tokio::fs::rename(&first, &moved).await?;
+        publish_targeted_image(&second, &pool, b"immutable pixels").await.unwrap();
+        assert_eq!(tokio::fs::read(&moved).await?, b"immutable pixels");
+        assert_eq!(tokio::fs::read(&second).await?, b"immutable pixels");
+        assert!(publish_targeted_image(&second, &pool, b"different").await.is_err());
+        assert!(publish_targeted_image(&first, &pool, b"different").await.is_err());
+        assert_eq!(tokio::fs::read(&pool).await?, b"immutable pixels");
+        // A missing destination parent forces the ordinary-copy fallback.
+        let fallback = root.join("new-directory/fallback.image");
+        publish_targeted_image(&fallback, &pool, b"immutable pixels").await.unwrap();
+        assert_eq!(tokio::fs::read(fallback).await?, b"immutable pixels");
+        tokio::fs::remove_file(&pool).await?;
+        assert_eq!(tokio::fs::read(&moved).await?, b"immutable pixels");
+        assert_eq!(tokio::fs::read(&second).await?, b"immutable pixels");
+        tokio::fs::remove_dir_all(root).await?;
+        Ok(())
+    }
+
 }
