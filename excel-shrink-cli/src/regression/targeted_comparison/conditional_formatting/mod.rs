@@ -117,7 +117,10 @@ fn proof(block: &Block, before: &Snapshot, after: &Snapshot) -> Proof {
         };
     }
     if let Some(inputs) = reference_inputs(block, before, after) {
-        return if complete_context_unchanged {
+        // These recognized formulas inspect values, never cell formatting.
+        // Changed applied formats already produce their own cell candidates;
+        // unused XF entries cannot alter the rule's unchanged value inputs.
+        return if before.cf_context == after.cf_context {
             Proof::ReferencedInputs(inputs)
         } else {
             Proof::Fallback("format-string-theme-or-workbook-context-changed")

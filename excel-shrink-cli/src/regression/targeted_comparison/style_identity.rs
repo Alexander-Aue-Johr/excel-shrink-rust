@@ -3,6 +3,7 @@ use crate::regression::xml_views::{Attributes, Kind, Reader};
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 
+mod components;
 mod tables;
 
 #[derive(Default)]
@@ -24,16 +25,23 @@ impl StyleIdentity {
         if !tables::supported(bytes, &cells, bases.as_ref(), names.as_ref())? {
             return Ok(Self::raw_fallback(bytes));
         }
+        let Some(components) = components::Components::read(bytes)? else {
+            return Ok(Self::raw_fallback(bytes));
+        };
         let sections: Vec<_> = std::iter::once(&cells)
             .chain(bases.iter())
             .chain(names.iter())
+            .chain(components.tables.iter())
             .collect();
         let shared: [u8; 32] = Sha256::digest(tables::shared_context(bytes, &sections)).into();
-        let bases = Self::base_formats(bytes, bases.as_ref(), shared);
+        let bases = Self::base_formats(bytes, bases.as_ref(), &components, shared)?;
         let formats = cells
             .entries
             .iter()
-            .map(|range| Self::resolved_format(&bytes[range.clone()], &bases, shared))
+            .map(|range| {
+                let entry = components.resolve(bytes, &bytes[range.clone()])?;
+                Self::resolved_format(&entry, &bases, shared)
+            })
             .collect::<Result<Vec<_>>>()?;
         Ok(Self::from_resolved_formats(shared, formats))
     }
@@ -46,15 +54,20 @@ impl StyleIdentity {
         }
     }
 
-    fn base_formats(bytes: &[u8], table: Option<&tables::Table>, shared: [u8; 32]) -> Self {
+    fn base_formats(
+        bytes: &[u8],
+        table: Option<&tables::Table>,
+        components: &components::Components,
+        shared: [u8; 32],
+    ) -> Result<Self> {
         let mut result = Self::default();
         for range in table.into_iter().flat_map(|table| &table.entries) {
             let mut hash = Sha256::new();
-            hash.update(&bytes[range.clone()]);
+            hash.update(components.resolve(bytes, &bytes[range.clone()])?);
             hash.update(shared);
             result.formats.push(hash.finalize().into());
         }
-        result
+        Ok(result)
     }
 
     /// Preserve every XF property while replacing its base index with that base's identity.
@@ -88,8 +101,8 @@ impl StyleIdentity {
         for identity in unique {
             result.context.extend_from_slice(&identity);
         }
-        // Only constant cellIs proofs use this narrower rendering context.
-        // Other CF families retain the complete style-context safeguard.
+        // Constant cellIs and recognized value-reference proofs use this context.
+        // Other CF families retain the complete applied-format safeguard.
         result.conditional_context.extend_from_slice(&shared);
         if let Some(default) = result.formats.first() {
             result.conditional_context.extend_from_slice(default);
@@ -185,6 +198,91 @@ mod tests {
     use super::*;
 
     #[test]
+    fn component_reindexing_preserves_properties_but_not_actual_changes() -> Result<()> {
+        let before = concat!(
+            "<styleSheet><fonts><font><sz val=\"11\"/></font><font><b/></font></fonts>",
+            "<fills><fill><patternFill patternType=\"none\"/></fill></fills>",
+            "<borders><border/></borders>",
+            "<numFmts><numFmt numFmtId=\"164\" formatCode=\"0.00\"/></numFmts>",
+            "<cellStyleXfs><xf fontId=\"1\"/></cellStyleXfs>",
+            "<cellXfs><xf fontId=\"1\" numFmtId=\"164\" xfId=\"0\"/></cellXfs></styleSheet>",
+        );
+        let after = before
+            .replace(
+                "<font><sz val=\"11\"/></font><font><b/></font>",
+                "<font><b/></font><font><sz val=\"11\"/></font>",
+            )
+            .replace("fontId=\"1\"", "fontId=\"0\"")
+            .replace("numFmtId=\"164\"", "numFmtId=\"180\"");
+        let left = StyleIdentity::read(before.as_bytes())?;
+        let right = StyleIdentity::read(after.as_bytes())?;
+        assert_eq!(left.index_text(b"0")?, right.index_text(b"0")?);
+        assert_eq!(left.context, right.context);
+        for changed in [
+            after.replace("<b/>", "<i/>"),
+            after.replace("formatCode=\"0.00\"", "formatCode=\"0%\""),
+            after.replace("patternType=\"none\"", "patternType=\"solid\""),
+            after.replace("<border/>", "<border><left style=\"thin\"/></border>"),
+        ] {
+            assert_ne!(
+                left.index_text(b"0")?,
+                StyleIdentity::read(changed.as_bytes())?.index_text(b"0")?
+            );
+        }
+        // An explicit definition can override an otherwise built-in number ID.
+        let builtin_override = before.replace("164", "14");
+        let changed_override = builtin_override.replace("0.00", "0%");
+        assert_ne!(
+            StyleIdentity::read(builtin_override.as_bytes())?.index_text(b"0")?,
+            StyleIdentity::read(changed_override.as_bytes())?.index_text(b"0")?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn implicit_component_zero_and_unknown_extension_links_remain_guarded() -> Result<()> {
+        let before = "<styleSheet><fonts><font><sz val=\"11\"/></font></fonts><cellXfs><xf/></cellXfs></styleSheet>";
+        let after = before.replace("11", "20");
+        assert_ne!(
+            StyleIdentity::read(before.as_bytes())?.index_text(b"0")?,
+            StyleIdentity::read(after.as_bytes())?.index_text(b"0")?
+        );
+        let unknown = before.replace(
+            "</styleSheet>",
+            "<extLst><ext uri=\"unknown\"><fontLink fontId=\"0\"/></ext></extLst></styleSheet>",
+        );
+        assert!(StyleIdentity::read(unknown.as_bytes())?.formats.is_empty());
+        assert!(StyleIdentity::read(b"<styleSheet><fonts><font/></fonts><cellXfs><xf fontId=\"99\"/></cellXfs></styleSheet>").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn named_style_revision_ids_require_the_actual_revision_namespace() -> Result<()> {
+        let xml = r#"<styleSheet xmlns:xr="http://schemas.microsoft.com/office/spreadsheetml/2014/revision"><cellXfs><xf/></cellXfs><cellStyles><cellStyle name="Normal" xfId="0" xr:uid="abc"/></cellStyles></styleSheet>"#;
+        let identity = StyleIdentity::read(xml.as_bytes())?;
+        assert!(!identity.formats.is_empty());
+        assert_eq!(
+            identity.context,
+            StyleIdentity::read(xml.replace("abc", "def").as_bytes())?.context
+        );
+        let unknown = xml.replace(
+            "http://schemas.microsoft.com/office/spreadsheetml/2014/revision",
+            "urn:unknown",
+        );
+        assert!(StyleIdentity::read(unknown.as_bytes())?.formats.is_empty());
+        let known_extension = xml.replace("</styleSheet>",
+            r#"<extLst><ext uri="{EB79DEF2-80B8-43e5-95BD-54CBDDF9020C}"><x14:slicerStyles defaultSlicerStyle="SlicerStyleLight1" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"/></ext></extLst></styleSheet>"#);
+        assert!(!StyleIdentity::read(known_extension.as_bytes())?
+            .formats
+            .is_empty());
+        let unknown_property = known_extension.replace("defaultSlicerStyle=", "fontId=");
+        assert!(StyleIdentity::read(unknown_property.as_bytes())?
+            .formats
+            .is_empty());
+        Ok(())
+    }
+
+    #[test]
     fn base_format_indices_resolve_to_properties_and_unused_templates_can_disappear() -> Result<()>
     {
         let left = StyleIdentity::read(br#"<styleSheet><cellStyleXfs count="3"><xf fontId="0"/><xf fontId="1"/><xf fontId="2"/></cellStyleXfs><cellXfs count="2"><xf xfId="0"/><xf xfId="1"/></cellXfs><cellStyles count="2"><cellStyle name="Normal" xfId="0"/><cellStyle name="Unused" xfId="2"/></cellStyles></styleSheet>"#)?;
@@ -246,8 +344,8 @@ mod tests {
 
     #[test]
     fn reordered_formats_keep_identity_but_changed_definitions_do_not() -> Result<()> {
-        let a = StyleIdentity::read(br#"<styleSheet><fonts count="1"/><cellXfs count="2"><xf fontId="0"/><xf fontId="1"><alignment wrapText="1"/></xf></cellXfs></styleSheet>"#)?;
-        let b = StyleIdentity::read(br#"<styleSheet><fonts count="1"/><cellXfs count="2"><xf fontId="1"><alignment wrapText="1"/></xf><xf fontId="0"/></cellXfs></styleSheet>"#)?;
+        let a = StyleIdentity::read(br#"<styleSheet><cellXfs count="2"><xf fontId="0"/><xf fontId="1"><alignment wrapText="1"/></xf></cellXfs></styleSheet>"#)?;
+        let b = StyleIdentity::read(br#"<styleSheet><cellXfs count="2"><xf fontId="1"><alignment wrapText="1"/></xf><xf fontId="0"/></cellXfs></styleSheet>"#)?;
         assert_eq!(a.context, b.context);
         assert_eq!(
             a.attributes(br#" r="A1" s="0" t="n""#, b"s")?,
@@ -257,7 +355,7 @@ mod tests {
             a.attributes(br#" s="0""#, b"s")?,
             b.attributes(br#" s="0""#, b"s")?
         );
-        let changed = StyleIdentity::read(br#"<styleSheet><fonts count="1"/><cellXfs count="2"><xf fontId="0"/><xf fontId="2"><alignment wrapText="1"/></xf></cellXfs></styleSheet>"#)?;
+        let changed = StyleIdentity::read(br#"<styleSheet><cellXfs count="2"><xf fontId="0"/><xf fontId="2"><alignment wrapText="1"/></xf></cellXfs></styleSheet>"#)?;
         assert_ne!(a.context, changed.context);
         assert!(a.attributes(br#" s="99""#, b"s").is_err());
         Ok(())

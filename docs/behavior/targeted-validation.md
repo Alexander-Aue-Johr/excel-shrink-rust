@@ -638,18 +638,24 @@ the fingerprint. Cells without an explicit style also include the implicit defau
 Index-table counts, order and unused named-template labels are not applied visual
 properties. Unrelated named templates therefore cannot change every cell's identity.
 
-Font, fill, border, number-format, differential-format and other shared stylesheet
-components remain conservative dependencies. Their index tables are not semantically
-remapped. Unknown XF attributes, nested extensions or style-table children retain
-the complete raw-style fallback. Invalid referenced format indices are explicit
-errors, not evidence of equality. This does not attempt to prove that differently
-serialized properties or reordered font tables render alike.
+Cell and base formats resolve font, fill and border indices to their complete
+definitions, and custom number-format IDs to their format properties. An omitted
+component index still depends on component zero. Unused component definitions do
+not change applied formats. Excel named-style revision GUIDs are editing metadata;
+they are recognized only with the expected revision namespace binding.
+Differential formats, colors, themes and other shared context remain dependencies.
+Unknown XF/component properties or extension links retain the complete raw-style
+fallback. Empty built-in slicer/timeline default declarations remain in the shared
+context without preventing index resolution. Invalid referenced format indices
+are explicit errors, not evidence of equality. Different serialization of a
+component can still conservatively produce a candidate.
 
-Constant cellIs rules have a narrower rendering context: their unchanged literal
-comparison does not depend on unused cell-format templates. Their complete CF rule,
+Constant cellIs rules and recognized value-reference formulas have a narrower
+rendering context: their comparison does not depend on unused cell-format templates.
+Changed applied formats retain their own cell/row/column candidates. The complete CF rule,
 differential formatting, shared strings, theme/workbook context and implicit default
 must still agree; changed or uncertain cell inputs remain capture candidates. Other
-rule families retain the complete style-context safeguard. Real column-layout or
+rule families retain the complete applied-format safeguard. Real column-layout or
 row-layout changes keep their existing conservative handling.
 
 Only internal comparison fingerprints are normalized. Original, Shrink and retained

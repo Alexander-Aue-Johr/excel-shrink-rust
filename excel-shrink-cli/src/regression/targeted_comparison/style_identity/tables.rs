@@ -8,7 +8,7 @@ pub(super) struct Table {
     pub range: Range<usize>,
     pub entries: Vec<Range<usize>>,
     pub supported: bool,
-    name: &'static [u8],
+    pub(super) name: &'static [u8],
     attributes: [u8; 32],
 }
 
@@ -139,7 +139,7 @@ pub(super) fn supported_format(bytes: &[u8]) -> Result<bool> {
     Ok(true)
 }
 
-pub(super) fn supported_named_style(bytes: &[u8]) -> Result<bool> {
+fn supported_named_style(bytes: &[u8], revision_ids: bool) -> Result<bool> {
     let mut reader = Reader::<128>::new(bytes)?;
     while let Some(tag) = reader.next()? {
         if tag.kind == Kind::End {
@@ -149,6 +149,11 @@ pub(super) fn supported_named_style(bytes: &[u8]) -> Result<bool> {
             return Ok(false);
         }
         for attribute in Attributes::new(tag.attrs) {
+            let (key, _) = attribute?;
+            // Excel's revision GUID identifies an editing record, not a format.
+            if revision_ids && key == b"xr:uid" {
+                continue;
+            }
             if ![
                 b"name".as_slice(),
                 b"xfId",
@@ -157,7 +162,7 @@ pub(super) fn supported_named_style(bytes: &[u8]) -> Result<bool> {
                 b"hidden",
                 b"customBuiltin",
             ]
-            .contains(&attribute?.0)
+            .contains(&key)
             {
                 return Ok(false);
             }
@@ -190,8 +195,12 @@ pub(super) fn supported(
             return Ok(false);
         }
     }
+    let mut reader = Reader::<128>::new(bytes)?;
+    let root = reader.next()?.context("Missing stylesheet root")?;
+    let revision_ids = root.attr(b"xmlns:xr")?
+        == Some(b"http://schemas.microsoft.com/office/spreadsheetml/2014/revision".as_slice());
     for range in names.into_iter().flat_map(|table| &table.entries) {
-        if !supported_named_style(&bytes[range.clone()])? {
+        if !supported_named_style(&bytes[range.clone()], revision_ids)? {
             return Ok(false);
         }
     }

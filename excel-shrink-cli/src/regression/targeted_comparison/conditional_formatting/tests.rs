@@ -8,6 +8,37 @@ use std::{
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 #[test]
+fn value_reference_rules_ignore_unused_fonts_but_keep_changed_inputs_and_rendering() -> Result<()> {
+    let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-component-links")?;
+    fs::create_dir_all(&root)?;
+    let a = root.join("a.xlsx");
+    let b = root.join("b.xlsx");
+    let values = r#"<row r="1"><c r="A1"><v>7</v></c></row>"#;
+    let rule = r#"<conditionalFormatting sqref="A1:A1048576"><cfRule type="containsBlanks" dxfId="0" priority="1"><formula>LEN(TRIM(A1))=0</formula></cfRule></conditionalFormatting>"#;
+    let before = concat!(
+        r#"<fonts><font><sz val="11"/></font><font><sz val="12"/></font></fonts>"#,
+        r#"<cellXfs><xf fontId="0"/><xf fontId="1"/></cellXfs>"#,
+        r#"<dxfs><dxf><fill><patternFill patternType="solid"/></fill></dxf></dxfs>"#,
+    );
+    let after = before
+        .replace(r#"<font><sz val="12"/></font>"#, "")
+        .replace(r#"<xf fontId="1"/>"#, "");
+    write_book(&a, values, rule, "", "", before)?;
+    write_book(&b, values, rule, "", "", &after)?;
+    assert_eq!(check(&a, &b)?.0[0].outcome, "excluded");
+    write_book(&b, &values.replace(">7<", ">8<"), rule, "", "", &after)?;
+    let (decisions, candidates) = check(&a, &b)?;
+    assert_ne!(decisions[0].outcome, "excluded");
+    assert!(!candidates.is_empty());
+    for changed in [after.replace("11", "20"), after.replace("solid", "none")] {
+        write_book(&b, values, rule, "", "", &changed)?;
+        assert_eq!(check(&a, &b)?.0[0].outcome, "capture");
+    }
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn constant_rules_ignore_unapplied_templates_but_keep_changed_inputs_and_formats() -> Result<()> {
     let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-style-template")?;
     fs::create_dir_all(&root)?;
