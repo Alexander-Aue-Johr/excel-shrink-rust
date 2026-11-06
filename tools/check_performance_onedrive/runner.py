@@ -22,6 +22,8 @@ import sys
 import time
 from urllib.parse import urlsplit
 
+from .diagnostics import capture_failure
+
 class JobState(StrEnum):
     """Durable stages of one workbook's Check Performance attempt."""
 
@@ -962,12 +964,23 @@ class WorkbookRepairRequired(Exception):
     """Excel offers only a repaired Reading View or asks to repair the file."""
 
 
+class ExcelServiceUnavailable(OneDriveRenderingError):
+    """Excel requests a later retry because its service cannot process the request."""
+
+
 async def raise_if_workbook_blocked(page) -> None:
     """Preserve the visible Excel notice before any editing or optimization."""
     from playwright.async_api import Error as PlaywrightError
 
     for frame in page.frames:
         try:
+            service_error = frame.get_by_text(re.compile(
+                r"Ihre Anforderung konnte leider nicht verarbeitet werden|"
+                r"Bitte wiederholen Sie diesen Vorgang in einigen Minuten|"
+                r"(?:could not|couldn't|unable to) process (?:your|the) request|"
+                r"(?:try|repeat) (?:this operation )?again in a few minutes", re.I)).first
+            if await service_error.is_visible():
+                raise ExcelServiceUnavailable(await service_error.inner_text())
             dialogs = frame.get_by_role("dialog")
             irm = dialogs.filter(has_text=re.compile(
                 r"Information Rights Management\s*(?:\(|,)\s*IRM\)", re.I)).first
@@ -1179,6 +1192,7 @@ async def optimize(page, pane, progress: ProgressStore,
     script = Path(__file__).with_name("pane.js").read_text(encoding="utf-8")
     try:
         outcome = await pane.evaluate(script)
+        await raise_if_workbook_blocked(page)
     finally:
         bridge["handler"] = None
     if outcome not in {"optimized", "already_clean", "already_clean_after_check_again"}:
@@ -1186,10 +1200,12 @@ async def optimize(page, pane, progress: ProgressStore,
     return outcome
 
 
-async def wait_for_cloud_save(editor) -> None:
+async def wait_for_cloud_save(editor, page=None) -> None:
     """Do not close a changed workbook while Excel still says it is saving."""
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
+        if page is not None:
+            await raise_if_workbook_blocked(page)
         labels = await editor.locator("button[aria-label]").evaluate_all("""buttons =>
           buttons.map(button => button.getAttribute('aria-label') || '')
             .filter(label => /Gespeichert|Saved|Wird gespeichert|Saving/i.test(label))""")
@@ -1250,7 +1266,7 @@ async def process_workbook(context, folder_page, profile: Path,
         pane = await find_performance_pane(page, editor)
         if pane is None:
             if repaired:
-                await wait_for_cloud_save(editor)
+                await wait_for_cloud_save(editor, page)
                 record_phase(progress, attempt, name, "cloud_saved_after_remove_and_edit")
             record_phase(progress, attempt, name, "performance_unavailable")
             outcome = "performance_unavailable"
@@ -1265,7 +1281,7 @@ async def process_workbook(context, folder_page, profile: Path,
         if outcome != "already_clean" or repaired:
             progress.transition(name, JobState.SAVING)
             record_phase(progress, attempt, name, "saving_started")
-            await wait_for_cloud_save(editor)
+            await wait_for_cloud_save(editor, page)
             record_phase(progress, attempt, name, "cloud_saved")
         record_phase(progress, attempt, name, "memory_sampled", await sample_tab_memory(page, profile, editor))
         progress.finish(name, attempt.id, outcome)
@@ -1288,12 +1304,16 @@ async def process_workbook(context, folder_page, profile: Path,
         record_phase(progress, attempt, name, outcome)
         progress.skip(name, attempt.id, outcome, message)
     except OneDriveThrottled as error:
+        await capture_failure(page or folder_page, progress.path.parent,
+                              f"workbook-attempt-{attempt.id}", error, name)
         message = str(error)
         throttled = True
         progress.fail(name, attempt.id, message)
         raise
     except Exception as error:
         message = f"{type(error).__name__}: {error}"[:500]
+        await capture_failure(page or folder_page, progress.path.parent,
+                              f"workbook-attempt-{attempt.id}", error, name)
         progress.fail(name, attempt.id, message)
     finally:
         try:
@@ -1370,11 +1390,13 @@ async def start_folder_browser(args, profile: Path):
     await prepare_profile(profile, discard_restored_tabs)
     playwright = await async_playwright().start()
     context = None
+    folder_page = None
     try:
         context = await playwright.chromium.launch_persistent_context(
             profile, channel=args.browser_channel, headless=not args.headed,
             chromium_sandbox=True, viewport={"width": 1920, "height": 1080})
         context._check_performance_profile = profile
+        context._check_performance_diagnostics_root = args.output_root.resolve() / folder_id(args.folder_url)
         await record_browser(context, profile)
         folder_page = context.pages[0] if context.pages else await context.new_page()
         for extra_page in context.pages:
@@ -1384,7 +1406,10 @@ async def start_folder_browser(args, profile: Path):
         folder_page = await open_folder(folder_page, args.folder_url, args.headed)
         await sort_oldest_first(folder_page)
         return playwright, context, folder_page
-    except BaseException:
+    except BaseException as error:
+        if folder_page is not None and isinstance(error, Exception):
+            await capture_failure(folder_page, args.output_root.resolve() / folder_id(args.folder_url),
+                                  "folder-startup", error)
         await close_browser(playwright, context)
         raise
 
@@ -1426,6 +1451,9 @@ async def next_workbook_with_recovery(context, folder_page, folder_url: str,
     except Exception as error:
         print(f"Folder listing failed ({type(error).__name__}: {error}); "
               "reloading the shared folder once.", file=sys.stderr, flush=True)
+        diagnostics_root = getattr(context, "_check_performance_diagnostics_root", None)
+        if isinstance(diagnostics_root, Path):
+            await capture_failure(folder_page, diagnostics_root, "folder-listing", error)
     folder_page = await recover_folder(context, folder_page, folder_url, headed)
     return folder_page, await next_visible_unfinished(folder_page, unfinished)
 
@@ -1449,6 +1477,8 @@ async def process_selected_workbook(playwright, context, folder_page, args, prof
         except Exception as error:
             print(f"{name}: browser or folder navigation failed: "
                   f"{type(error).__name__}: {error}", file=sys.stderr, flush=True)
+            await capture_failure(folder_page, progress.path.parent,
+                                  "workbook-navigation", error, name)
             if progress.status(name) not in {
                     JobState.COMPLETED.value, JobState.SKIPPED.value, JobState.FAILED.value}:
                 raise RuntimeError(f"Cannot safely retry {name}: its attempt state is uncertain") from error
@@ -1570,6 +1600,9 @@ async def run_folder_check_performance(args) -> int:
                             progress, display, name, row)
                     except OneDriveRenderingError as error:
                         print(f"{error} Preserving progress and restarting.", file=sys.stderr, flush=True)
+                        if isinstance(error, ExcelServiceUnavailable):
+                            print("Excel service unavailable; retrying in 120 seconds.", flush=True)
+                            await asyncio.sleep(120)
                         playwright, context, folder_page = await restart_folder_browser(
                             playwright, context, args, profile)
                         if progress.status(name) not in {JobState.COMPLETED.value, JobState.SKIPPED.value}:
@@ -1590,8 +1623,16 @@ async def run_folder_check_performance(args) -> int:
             print(f"Processed: {processed}/{total}; skipped: {progress.skipped_count()}; "
                   f"remaining: {total - processed}", flush=True)
             return 1 if failed or (unfinished and attempted < args.max_files) else 0
+    except Exception as error:
+        await capture_failure(folder_page, directory, "run-failure", error)
+        raise
     finally:
-        await close_browser(playwright, context)
+        try:
+            if getattr(args, "keep_browser_open", False) and args.headed and context.pages:
+                print("Run finished. Browser stays open until you close its window.", flush=True)
+                await context.wait_for_event("close", timeout=0)
+        finally:
+            await close_browser(playwright, context)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -1602,6 +1643,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--profile-dir", type=Path, help="Persistent signed-in browser profile")
     parser.add_argument("--browser-channel", choices=["msedge", "chrome", "chromium"], default="msedge")
     parser.add_argument("--headed", action="store_true", help="Show the browser for the initial sign-in")
+    parser.add_argument("--keep-browser-open", action="store_true",
+                        help="Keep a headed browser open after the run until its window is closed")
     parser.add_argument("--list-only", action="store_true", help="Discover files without optimizing")
     parser.add_argument("--refresh-list", action="store_true", help="Scan the full folder for new files")
     parser.add_argument("--retry-skipped-in-folder", "--retry-skipped", dest="retry_skipped",

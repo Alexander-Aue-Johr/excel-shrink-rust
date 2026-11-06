@@ -110,6 +110,8 @@ async def move_visible_batch(page, progress: flow.ProgressStore, names: list[str
         print(f"Moved {len(names)} visible workbooks to {destination}.", flush=True)
     except Exception as error:
         details = f"{type(error).__name__}: {error}"
+        await flow.capture_failure(page, progress.path.parent,
+                                   f"move-batch-{batch_id}-to-{destination}", error)
         try:
             notices = await page.locator('[role="alert"], [role="status"]').all_text_contents()
             present = await page.locator('[data-automationid="field-LinkFilename"]').all_text_contents()
@@ -165,7 +167,10 @@ async def read_view_with_recovery(browser, args, profile):
             await browser[2].locator('[data-selection-index]:not([data-selection-index="-1"])').first.wait_for(
                 state="visible", timeout=30_000)
             return browser, await snapshot(browser[2])
-        except Exception:
+        except Exception as error:
+            await flow.capture_failure(
+                browser[2], args.output_root.resolve() / flow.folder_id(args.folder_url),
+                "folder-viewport", error)
             if attempt == 2:
                 raise
             browser = await flow.restart_folder_browser(browser[0], browser[1], args, profile)
@@ -253,6 +258,13 @@ async def run_visible_batches(args) -> int:
                             attempted.add(name)
                             failed = failed or file_failed
                             view_changes = 0
+                        except flow.ExcelServiceUnavailable as error:
+                            print(f"Excel service unavailable ({error}); retrying in 120 seconds.",
+                                  file=sys.stderr, flush=True)
+                            await asyncio.sleep(120)
+                            browser = await flow.restart_folder_browser(
+                                playwright, context, args, profile)
+                            break
                         except ViewportChanged:
                             view_changes += 1
                             if view_changes > 3:
@@ -272,5 +284,14 @@ async def run_visible_batches(args) -> int:
                 display.close()
             print(f"Visible run finished; checked {len(attempted)} workbooks in this invocation.", flush=True)
             return 1 if failed else 0
+    except Exception as error:
+        await flow.capture_failure(browser[2], args.output_root.resolve() / identifier,
+                                   "visible-run-failure", error)
+        raise
     finally:
-        await flow.close_browser(browser[0], browser[1])
+        try:
+            if getattr(args, "keep_browser_open", False) and args.headed and browser[1].pages:
+                print("Run finished. Browser stays open until you close its window.", flush=True)
+                await browser[1].wait_for_event("close", timeout=0)
+        finally:
+            await flow.close_browser(browser[0], browser[1])

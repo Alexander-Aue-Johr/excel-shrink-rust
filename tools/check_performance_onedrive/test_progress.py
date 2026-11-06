@@ -228,6 +228,8 @@ class RenderingRecoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_detached_notice_frame_does_not_abort_live_frame_checks(self):
         from playwright.async_api import Error
         detached, live = MagicMock(), MagicMock()
+        detached.get_by_text.return_value.first.is_visible = AsyncMock(return_value=False)
+        live.get_by_text.return_value.first.is_visible = AsyncMock(return_value=False)
         detached.get_by_role.return_value.filter.return_value.first.is_visible = AsyncMock(
             side_effect=Error("Frame was detached"))
         detached.is_detached.return_value = True

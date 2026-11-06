@@ -1,5 +1,13 @@
 # Run Check Performance on a OneDrive folder
 
+Before recovery or an unexpected failure closes or navigates the browser, the
+runner saves evidence under `<output-root>/<folder-id>/diagnostics/<time-id>/`.
+Each directory contains `viewport.png`, one HTML file per reachable frame,
+`dom-snapshot.json` (including Chromium's shadow DOM), and `error.json` with
+the workbook, operation, original error, frame URLs and capture errors.
+The run log prints the directory path. Capture is limited to 20 seconds and
+retains partial evidence when a frame or browser is unavailable.
+
 `tools/check-performance-onedrive.py` is the stable command-line entry point.
 The browser workflow, state machine, and SQLite progress store live together in
 `runner.py`; `pane.js` observes Excel's Performance pane. The runner opens each XLSX directly from a shared OneDrive
