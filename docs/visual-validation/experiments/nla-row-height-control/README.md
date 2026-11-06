@@ -7,41 +7,61 @@ reported heights of 15.75 versus 15 points for rows 6–179 of
 `2007 NLA QA Data`. Both states were rebuilt in their resident processes.
 The resulting one-pixel-per-row displacement produces a large image difference.
 
+## Corrected worksheet mapping
+
+The affected worksheet is `xl/worksheets/sheet5.xml`. The initial experiments
+incorrectly treated it as `sheet2.xml`, which belongs to
+`NLA_07_water_isotopes`. Restoring that other worksheet could not establish
+that the affected worksheet was unchanged. The earlier interpretation has been
+withdrawn. Native commands used the worksheet name throughout.
+
 ## Counterfactuals observed on 2026-11-06
 
-Experiments used disposable copies, private desktops, Default only and runner
-build `77bbca5`. One regular group slot was reserved during these probes, then
-the regular target was restored to five groups. Corpus bundles and receipts
-were preserved.
+Experiments used disposable copies, private desktops and runner build
+`77bbca5`. One regular group slot was reserved for each native pair. Corpus
+bundles and receipts were preserved.
 
-1. Restore only the original column definitions on `xl/worksheets/sheet2.xml`
-   in Default. The same 15.75-to-15-point height difference remains.
-2. Restore the complete original `sheet2.xml` in Default. The difference remains.
-   The saved rebuilt states have byte-identical `sheet2.xml`, `styles.xml` and
-   `theme/theme1.xml`, despite their different measured effective heights.
+| Pair or isolated change | Original height | Other height |
+| --- | --- | --- |
+| Two byte-identical original inputs | 15.75 pt | 15.75 pt |
+| Original parts repacked with Default ZIP entry order and metadata | 15.75 pt | 15.75 pt |
+| Only `sheet6.xml` or only `sheet7.xml` replaced with shrunk XML | 15.75 pt | 15.75 pt |
+| Only `sheet5.xml` replaced with shrunk XML | 15.75 pt | 15 pt |
+| Only the column definitions of `sheet5.xml` changed | 15.75 pt | 15 pt |
+| Only the cell removals and span updates of `sheet5.xml` changed | 15.75 pt | 15.75 pt |
+| Full Default with one original column retained at AS | 15.75 pt | 15.75 pt |
 
-Each native probe completed with seven selected regions per state, fourteen
-successful captures and confirmed closure of its owned Excel processes.
-The initial invocation without an Observatory directory failed its entry guard
-before workbook observation. The successful probes used an existing directory.
+Each result held directly after opening, after saving and after full rebuild
+and save. Both owned Excel processes confirmed closure after every successful
+probe. A malformed intermediate ZIP fixture failed the inventory guard before
+workbooks were opened. Its replacement fixtures passed CRC and single-part
+difference checks before use.
 
-Offline replay with the current shrink binary also produced the same
-uncompressed package parts as the retained Default bundle. An obsolete prepared
-bundle therefore does not explain this particular difference.
+## Cause and minimal correction
 
-## Interpretation and remaining check
+The first 44 columns use Arial 10. Original AS has no explicit style and AT is
+an uncovered gap, so both retain the default Calibri 11 font. The later column
+tail uses Arial 10 again. Collapsing AS through XFD into the final tail style
+removes the last default-font columns. Those empty columns nevertheless
+determine automatic heights throughout the data rows.
 
-Restoring columns alone does not fix this case. Restoring the entire worksheet
-also does not fix it. The observation cannot be attributed solely to a local
-worksheet edit. Other workbook parts still differ in these counterfactuals.
-Excel session state, workbook-wide effects and the observation workflow remain
-possible causes. A same-package, two-session height control is still needed.
+Keeping AS as one default-font column and merging AT through XFD preserves the
+observed heights. No per-row height assignments or additional data cells are
+needed. This confirms a shrink-induced layout change, rather than independent
+session variation in these controls.
 
-The production difference remains unclassified. No height normalization,
-automatic pass or shrink-rule change follows from these probes.
+## Reproduction
 
-Local evidence is retained under
-`V:\excel-shrink-paper\external\excel-shrink-rust\.tmp\validation-temp\nla-column-height-proof`.
-`result-native` contains the column control and `result-sheet2-control` contains
-the full-worksheet control. Their reports, telemetry, native height checks,
-saved workbooks and PNGs are retained for follow-up.
+`run.ps1` starts `same_package.py` on an owned private desktop. Supply Python,
+the CLI binary, an original XLSX and a new output directory. Omit `-Default`
+for the identical-input control. Supply a disposable counterfactual with
+`-Default` for the other controls. The script uses the production host and its
+Office.js height, geometry, save, rebuild and close commands. Every request is
+bounded and the outer cleanup job owns all experiment processes.
+
+Local evidence is retained below
+`V:\excel-shrink-paper\external\excel-shrink-rust\.tmp\validation-temp` in
+`nla-same-package-proof`, `nla-zip-layout-proof`,
+`nla-isolate-sheet5-proof`, `nla-isolate-sheet6-verified-proof`,
+`nla-isolate-sheet7-verified-proof`, `nla-sheet5-columns-only-proof`,
+`nla-sheet5-cells-only-proof` and `nla-column-font-sentinel-proof`.
