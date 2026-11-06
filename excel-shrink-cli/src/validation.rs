@@ -1,7 +1,7 @@
 //! SheetScope: configure producers, compare their workbooks, retain independent evidence.
 //! The original comparison implementation remains the only scientific execution path.
 
-mod capture;
+pub(crate) mod capture;
 mod pairing;
 mod run;
 mod storage;
@@ -57,6 +57,8 @@ enum Command {
         port: u16,
         #[arg(long)]
         no_open: bool,
+        #[command(flatten)]
+        setup: ObservatorySetup,
     },
     /// Open an existing independent report without Excel or the original workbooks.
     Open { report: PathBuf },
@@ -66,6 +68,94 @@ enum Command {
     Template,
     #[command(hide = true)]
     ComparePair(crate::regression::targeted_comparison::Args),
+}
+
+#[derive(Debug, Default, clap::Args)]
+struct ObservatorySetup {
+    /// Prefill the original source; processing starts only after clicking Start.
+    #[arg(long)]
+    a: Option<String>,
+    /// Prefill an existing processed source instead of an Excel Shrink stage.
+    #[arg(long, conflicts_with = "excel_shrink")]
+    b: Option<String>,
+    /// Prefill a file-processing stage for this Excel Shrink executable.
+    #[arg(long)]
+    excel_shrink: Option<PathBuf>,
+    /// New report directory. Omitted: a unique local SheetScope run directory.
+    #[arg(long)]
+    report: Option<PathBuf>,
+    /// Keep processed workbooks in this new directory. Omitted: temporary workbooks.
+    #[arg(long)]
+    output: Option<PathBuf>,
+    /// External file processes. Omitted: the number of logical processors.
+    #[arg(long)]
+    max_processes: Option<usize>,
+    /// Rayon threads per Excel Shrink process; defaults to one for the preset.
+    #[arg(long, requires = "excel_shrink", value_parser = crate::parse_rayon_threads)]
+    rayon_threads: Option<usize>,
+}
+
+impl ObservatorySetup {
+    fn apply(self, mut config: RunConfig) -> RunConfig {
+        if let Some(source) = self.a {
+            config.source_a = source;
+        }
+        if let Some(source) = self.b {
+            config.source_b = Some(source);
+            config.steps.clear();
+        }
+        if let Some(program) = self.excel_shrink {
+            let mut stage = excel_shrink_preset(self.rayon_threads.unwrap_or(1));
+            stage.program = program;
+            config.steps = vec![stage];
+            config.source_b = None;
+        }
+        if let Some(report) = self.report {
+            config.report_dir = report;
+        }
+        if let Some(path) = self.output {
+            config.output = Output::Directory { path };
+        }
+        if let Some(processes) = self.max_processes {
+            config.max_processes = processes;
+        }
+        if config.report_dir.as_os_str().is_empty() {
+            let base = std::env::var_os("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .unwrap_or_else(std::env::temp_dir);
+            config.report_dir = base
+                .join("SheetScope/runs")
+                .join(uuid::Uuid::new_v4().to_string())
+                .join("report");
+        }
+        config
+    }
+}
+
+/// A file invocation bounds internal workbook/writer parallelism independently
+/// of the number of external processes chosen by the reviewer.
+pub(crate) fn excel_shrink_preset(rayon_threads: usize) -> Stage {
+    Stage {
+        name: "Excel Shrink".to_owned(),
+        program: PathBuf::new(),
+        arguments: vec![
+            "{input}".to_owned(),
+            "{output_dir}".to_owned(),
+            "--rayon-threads".to_owned(),
+            rayon_threads.to_string(),
+            "--max-active-workbooks".to_owned(),
+            "1".to_owned(),
+            "--writer-workers".to_owned(),
+            "1".to_owned(),
+        ],
+        input: crate::validation_process::InputKind::File,
+        output: crate::validation_process::OutputKind::Directory,
+        output_extension: None,
+        timeout_seconds: 3600,
+        working_directory: None,
+        environment: Default::default(),
+        dependencies: Vec::new(),
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -124,7 +214,7 @@ impl Default for RunConfig {
             source_a: String::new(), source_b: None, steps: Vec::new(), baseline_after_step: None,
             report_dir: PathBuf::new(), output: Output::Temporary,
             cache_dir: PathBuf::from(".tmp/sheet-scope/downloads"),
-            refresh_downloads: false, max_processes: 1, continue_on_error: false,
+            refresh_downloads: false, max_processes: std::thread::available_parallelism().map_or(1, usize::from), continue_on_error: false,
             stage_cache_dir: None, processing_cache_key: String::new(),
             reuse_from: None, reuse_parts: PartSelection::default(),
             environment_key: String::new(), capture: CaptureOptions::default(),
@@ -172,7 +262,7 @@ impl RunConfig {
         ensure!(!self.source_a.trim().is_empty(), "Select source A");
         ensure!(!self.report_dir.as_os_str().is_empty(), "Select an independent report directory");
         ensure!(!self.report_dir.exists(), "Report directory already exists; choose a new run directory");
-        ensure!((1..=64).contains(&self.max_processes), "Process parallelism must be between 1 and 64");
+        ensure!(self.max_processes > 0, "Process parallelism must be at least 1");
         ensure!((1..=86400).contains(&self.capture.operation_timeout_seconds)
             && (1..=86400).contains(&self.capture.idle_timeout_seconds),
             "Capture timeouts must be between 1 and 86400 seconds");
@@ -222,10 +312,10 @@ pub(crate) fn run_cli() -> Result<()> {
         return crate::capture_host::run(std::env::args_os().skip(2).collect());
     }
     match Cli::parse().command {
-        None => crate::validation_room::serve(RunConfig::default(), 0, true),
-        Some(Command::Observatory { config, port, no_open }) => {
+        None => crate::validation_room::serve(ObservatorySetup::default().apply(RunConfig::default()), 0, true),
+        Some(Command::Observatory { config, port, no_open, setup }) => {
             let config = config.as_deref().map(RunConfig::from_file).transpose()?.unwrap_or_default();
-            crate::validation_room::serve(config, port, !no_open)
+            crate::validation_room::serve(setup.apply(config), port, !no_open)
         }
         Some(Command::Run { config }) => {
             execute(RunConfig::from_file(&config)?, None)?;
@@ -320,6 +410,23 @@ pub(crate) fn open_browser(target: &OsStr) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn observatory_arguments_prefill_processing_without_creating_output_directories() {
+        let parsed = Cli::try_parse_from(["sheet-scope", "observatory", "--a", "originals",
+            "--excel-shrink", "excel-shrink-cli.exe", "--rayon-threads", "1"]).unwrap();
+        let Some(Command::Observatory { setup, .. }) = parsed.command else { panic!("Wrong command") };
+        let config = setup.apply(RunConfig::default());
+        assert_eq!(config.source_a, "originals");
+        assert_eq!(config.steps[0].program, PathBuf::from("excel-shrink-cli.exe"));
+        assert_eq!(config.steps[0].arguments, excel_shrink_preset(1).arguments);
+        assert!(matches!(config.output, Output::Temporary));
+        assert!(!config.report_dir.exists());
+        assert!(config.max_processes > 0);
+        let another = ObservatorySetup::default().apply(RunConfig::default());
+        assert_ne!(config.report_dir, another.report_dir);
+        assert!(Cli::try_parse_from(["sheet-scope", "observatory", "--b", "B", "--excel-shrink", "shrink.exe"]).is_err());
+    }
 
     #[test]
     fn empty_cli_opens_configuration_and_direct_mode_needs_no_processor() {

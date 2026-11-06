@@ -32,6 +32,25 @@ command. `compare` selects existing A/B sources. `run --config` accepts a JSON
 configuration. `open` generates/opens the saved report viewer; the Observatory's
 report mode also selects an existing run. `export` creates a new standalone site.
 
+`observatory --a SOURCE --excel-shrink EXE` prefills a file-processing stage.
+Optional `--report`, `--output`, `--max-processes` and `--rayon-threads` override
+its defaults. Omitted workbook output is temporary. An omitted report destination
+gets a unique local run path, which is created only when validation begins.
+The default external process count is the available logical processor count;
+the Shrink preset uses one Rayon thread, one active workbook and one writer per
+file process. Increasing Rayon threads multiplies the potential CPU demand.
+
+Configuration opens above the monitor and closes after a successful Start
+request. The monitor reuses the Observatory KPI styles and targeted process,
+heartbeat and capture-flow cards. Its workbook list is paginated; full historical
+indexes are excluded from status polling. It does not enable the legacy corpus
+runner's live control endpoints or its three-dimensional sheet studio.
+
+Windows Browse actions open native folder/file dialogs. Sources provide separate
+folder and file buttons, and the executable uses a file dialog. A new report or
+output destination is generated beneath the selected parent. Other platforms
+retain the server-side directory browser.
+
 The Observatory listens on loopback, uses an automatically assigned port by
 default, and requires same-origin requests plus its session token for actions.
 Its explorer selects paths on the host computer, not browser-uploaded workbooks.
@@ -103,11 +122,14 @@ bounds Shrink's internal workers when the outer pipeline parallelizes files.
 Machine-readable command descriptions exist, for example CWL's
 [CommandLineTool schema](https://www.commonwl.org/v1.2/CommandLineTool.html) and
 the [Boutiques descriptor model](https://pmc.ncbi.nlm.nih.gov/articles/PMC6007562/).
-They require explicit metadata supplied for a tool. The exported Shrink CLI
-provides clap help, not one of these descriptors. This patch therefore uses an
-explicit argv editor and the verified preset; it neither infers a form from
-arbitrary `--help` text nor claims CWL/Boutiques import support. A later descriptor
-adapter can populate the same stage contract without changing the comparator.
+They require explicit metadata supplied for a tool. Excel Shrink now exposes
+`--describe-cli`: names, help, scalar types, enum choices and defaults derived
+from its actual Clap definition. The bundled preset uses that same schema to
+generate typed fields, including a visible Rayon-thread field, while preserving
+the explicit argument array. This schema describes the bundled Excel Shrink
+version, not an arbitrary executable selected by the user. Generic processors
+retain the argv editor. Arbitrary help-text inference and CWL/Boutiques import
+are not implemented.
 
 Pairing tries, in order, matching relative filenames, unique basenames, matching
 relative stems and unique basename stems. Ambiguous matches stay explicit;

@@ -24,6 +24,7 @@ mod validation_process;
 mod validation_report;
 mod validation_reuse;
 mod validation_room;
+mod cli_metadata;
 
 pub(crate) const DEFAULT_PARALLEL_RANGE_CHUNK_SIZE: usize = 16 * 1024 * 1024;
 
@@ -270,6 +271,10 @@ pub fn run_excel_shrink() -> anyhow::Result<()> {
     match raw_args.next().as_deref().and_then(OsStr::to_str) {
         Some("regression") => return run_regression_command(program, raw_args.collect()),
         Some("capture-host") => return capture_host::run(raw_args.collect()),
+        Some("--describe-cli") => {
+            println!("{}", serde_json::to_string_pretty(&cli_metadata::describe())?);
+            return Ok(());
+        }
         _ => {}
     }
 

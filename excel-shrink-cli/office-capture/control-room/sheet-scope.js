@@ -1,6 +1,9 @@
 /* Standalone configuration and bounded progress. Scientific views are shared static pages. */
 'use strict';
 
+import { createTargetedPanel } from '/observatory-assets/targeted-panel.js';
+import { optionValue, setOption } from '/observatory-assets/processor-options.js';
+
 const byId = id => document.getElementById(id);
 const node = (tag, text, className) => {
   const element = document.createElement(tag);
@@ -23,10 +26,20 @@ let lastError = '';
 let isActive = false;
 let hasReport = false;
 let reportBase = '';
+let nativePicker = false;
+let processorSchema = null;
+let shrinkPreset = null;
+let logicalProcessors = 1;
+let workbookOffset = 0;
+let workbookRevision = '';
+let workbookRequest = 0;
+let workbookSearchTimer;
+const targetedPanel = createTargetedPanel(byId('targeted-comparisons'));
 
 function message(text, error = false) {
   byId('message').textContent = text || '';
   byId('message').classList.toggle('error', error);
+  byId('configuration-message').textContent = text || '';
 }
 
 async function api(path, body) {
@@ -152,6 +165,8 @@ function renderStages() {
   const root = byId('steps');
   root.replaceChildren();
   stageModels.forEach((stage, index) => {
+    const shrink = processorSchema && (stage.name === 'Excel Shrink'
+      || /(?:^|[\\/])excel-shrink-cli(?:\.exe)?$/i.test(stage.program));
     const card = node('section', null, 'step');
     card.dataset.index = String(index);
     const heading = node('div', null, 'section-title');
@@ -185,12 +200,72 @@ function renderStages() {
     argumentsInput.value = JSON.stringify(stage.arguments || ['{input}', '{output}'], null, 2);
     const argumentsLabel = field('Arguments as a JSON array', argumentsInput);
     argumentsLabel.className = 'wide';
-    grid.append(argumentsLabel);
+    if (shrink) {
+      const advanced = node('details', null, 'wide');
+      advanced.append(node('summary', 'Advanced invocation arguments'), argumentsLabel);
+      grid.append(advanced);
+    } else grid.append(argumentsLabel);
     grid.append(field('Output extension (optional)', stageInput(card, 'output_extension', stage.output_extension)));
     grid.append(field('Timeout per invocation (seconds)', stageInput(card, 'timeout_seconds', stage.timeout_seconds ?? 3600, 'number')));
-    card.append(heading, grid, node('p', 'Available placeholders: {input}, {output}, {output_dir}, {output_file}. Paths with spaces remain one argument. Additional environment and working-directory settings are available in the complete JSON.', 'help'));
+    card.append(heading, grid);
+    if (shrink) {
+      renderProcessorOptions(card, argumentsInput);
+    }
+    card.append(node('p', 'Available placeholders: {input}, {output}, {output_dir}, {output_file}. Paths with spaces remain one argument. Additional environment and working-directory settings are available in the complete JSON.', 'help'));
     root.append(card);
   });
+}
+
+function renderProcessorOptions(card, argumentsInput) {
+  const details = node('details', null, 'processor-options');
+  details.append(node('summary', 'Excel Shrink parameters'));
+  const grid = node('div', null, 'grid');
+  const controls = [];
+  for (const option of processorSchema.options) {
+    let control;
+    if (option.kind === 'enum') {
+      control = stageSelect(option.name, '', [['', 'CLI default'], ...option.choices.map(value => [value, value])]);
+    } else if (option.kind === 'list') {
+      control = node('textarea');
+      control.rows = 2;
+      control.placeholder = 'One value per line';
+    } else {
+      control = node('input');
+      control.type = option.kind === 'boolean' ? 'checkbox' : option.kind === 'integer' ? 'number' : 'text';
+      if (option.kind === 'integer') control.step = '1';
+      if (['rayon-threads', 'writer-workers', 'max-active-workbooks'].includes(option.name)) control.min = '1';
+      if (option.name === 'rayon-threads') control.max = String(logicalProcessors);
+      if (option.defaults.length && option.kind !== 'boolean') control.placeholder = `CLI default: ${option.defaults.join(', ')}`;
+    }
+    const label = field(`--${option.name}`, control);
+    if (option.kind === 'boolean') label.className = 'check';
+    label.append(node('span', option.help, 'processor-help'));
+    control.addEventListener('change', () => {
+      try {
+        const args = JSON.parse(argumentsInput.value);
+        argumentsInput.value = JSON.stringify(setOption(args, option,
+          option.kind === 'boolean' ? control.checked : control.value), null, 2);
+      } catch (error) { message(`Cannot update arguments: ${error.message}`, true); }
+    });
+    controls.push({ option, control });
+    // Thread count is visible without opening the complete option catalogue.
+    if (option.name === 'rayon-threads') card.append(label);
+    else grid.append(label);
+  }
+  function sync() {
+    try {
+      const args = JSON.parse(argumentsInput.value);
+      for (const { option, control } of controls) {
+        const value = optionValue(args, option);
+        if (option.kind === 'boolean') control.checked = value;
+        else control.value = value;
+      }
+    } catch { /* The JSON editor shows its parse error when the run is submitted. */ }
+  }
+  argumentsInput.addEventListener('input', sync);
+  sync();
+  details.append(grid);
+  card.append(details);
 }
 
 function readStages() {
@@ -215,12 +290,10 @@ function readStages() {
 function addStage(shrink = false) {
   try {
     stageModels = readStages();
-    stageModels.push({
-      name: shrink ? 'Excel Shrink' : `Program ${stageModels.length + 1}`,
+    stageModels.push(shrink ? structuredClone(shrinkPreset) : {
+      name: `Program ${stageModels.length + 1}`,
       program: '', input: 'file', output: 'directory', output_extension: null,
-      arguments: shrink
-        ? ['{input}', '{output_dir}', '--rayon-threads', '1', '--max-active-workbooks', '1', '--writer-workers', '1']
-        : ['{input}', '{output}'],
+      arguments: ['{input}', '{output}'],
       timeout_seconds: 3600,
     });
     renderStages();
@@ -236,8 +309,17 @@ function appendPath(parent, name) {
   return `${parent.replace(/[\\/]$/, '')}${separator}${name}`;
 }
 
-async function openBrowser(input, purpose = input.id) {
+async function openBrowser(input, purpose = input.id, kind = purpose === 'program' ? 'program' : 'folder') {
+  if (nativePicker && browserTarget) return;
   browserTarget = { input, purpose };
+  if (nativePicker) {
+    try {
+      const selected = await api('/api/pick', { kind, initial_path: input.value.trim() || browseDirectoryDefault });
+      if (selected.path) choosePath(selected.path, kind === 'folder');
+    } catch (error) { message(error.message, true); }
+    finally { browserTarget = null; }
+    return;
+  }
   byId('browser').showModal();
   const path = input.value.trim();
   try { await browseDirectory(path && !/^https?:/.test(path) ? path : browseDirectoryDefault); }
@@ -280,7 +362,13 @@ function choosePath(path, directory) {
 function renderProgress(state) {
   const progress = state.progress;
   isActive = state.active;
-  if (state.report_base) reportBase = state.report_base;
+  if (state.report_base && reportBase !== state.report_base) {
+    reportBase = state.report_base;
+    targetedPanel.reset();
+    workbookOffset = 0;
+    byId('evidence-panel').hidden = true;
+    byId('evidence-viewer').src = 'about:blank';
+  }
   byId('report-link').href = `${reportBase}/index.html`;
   byId('status').textContent = progress.state.replaceAll('_', ' ');
   byId('current').textContent = progress.current || 'No active run.';
@@ -291,20 +379,19 @@ function renderProgress(state) {
   byId('start').disabled = state.active;
   byId('open-report').disabled = state.active;
   byId('edit-json').disabled = state.active;
+  byId('configure').disabled = state.active;
   document.querySelectorAll('input[name=mode]').forEach(input => { input.disabled = state.active; });
   hasReport = Boolean(progress.report_dir);
   byId('report-link').hidden = !hasReport || state.active;
   byId('export-settings').hidden = !hasReport || state.active;
 
-  const lanes = byId('lanes');
-  lanes.replaceChildren();
-  for (const lane of state.telemetry?.lanes || []) {
-    if (lane.lifecycle === 'unavailable') continue;
-    const row = node('tr');
-    for (const value of [lane.label, lane.pid || '—', lane.lifecycle,
-      `${lane.captures_done ?? 0} / ${lane.captures_total ?? '?'}`,
-      [lane.current_sheet, lane.current_range].filter(Boolean).join(' · ')]) row.append(node('td', value));
-    lanes.append(row);
+  byId('connection-status').textContent = state.active ? 'Live · local runner' : 'Connected · ready';
+  targetedPanel.updateMany([...(state.comparisons || [])].reverse().concat(state.telemetry || []));
+  renderKpis(progress);
+  const revision = JSON.stringify([progress.state, progress.total, progress.completed, progress.current, reportBase]);
+  if (revision !== workbookRevision) {
+    workbookRevision = revision;
+    void loadWorkbooks();
   }
   const signature = reportBase + JSON.stringify(progress.recent);
   if (signature !== resultsSignature) {
@@ -320,6 +407,7 @@ function renderProgress(state) {
         link.href = `${reportBase}/${record.report.replace(/report\.json$/, 'index.html').split('/').map(encodeURIComponent).join('/')}`;
         link.target = '_blank';
         link.rel = 'noopener';
+        link.addEventListener('click', event => { event.preventDefault(); openEvidence(link.href, record.name); });
         evidence.append(link);
       } else evidence.textContent = (record.errors || []).join(' · ');
       row.append(evidence);
@@ -330,6 +418,61 @@ function renderProgress(state) {
     lastError = progress.error;
     message(progress.error, true);
   }
+}
+
+function renderKpis(progress) {
+  const pending = Math.max(0, progress.total - progress.completed);
+  const values = [
+    ['all', 'All selected workbooks', progress.total],
+    ['pending', 'Pending / running', pending],
+    ['equal', 'Checked: no differences', progress.checked_equal_pairs || 0],
+    ['differences', 'Differences found', progress.different_pairs || 0],
+    ['failed', 'Failed / missing', progress.failed],
+    ['reused', 'Reused observations', progress.reused],
+  ];
+  byId('workbook-kpis').replaceChildren(...values.map(([filter, title, count]) => {
+    const button = node('button', null, 'workbook-kpi');
+    button.type = 'button';
+    button.append(node('strong', `${count} / ${progress.total}`), node('span', title));
+    button.addEventListener('click', () => {
+      byId('workbook-filter').value = filter;
+      workbookOffset = 0;
+      void loadWorkbooks();
+    });
+    return button;
+  }));
+  byId('workbook-scope').textContent = progress.total
+    ? `${progress.completed} / ${progress.total} comparisons completed`
+    : 'Waiting for source acquisition and processing';
+}
+
+async function loadWorkbooks() {
+  const request = ++workbookRequest;
+  const query = new URLSearchParams({ offset: String(workbookOffset), search: byId('workbook-search').value,
+    filter: byId('workbook-filter').value });
+  try {
+    const page = await api(`/api/workbooks?${query}`);
+    if (request !== workbookRequest) return;
+    byId('workbook-count').textContent = page.total
+      ? `${page.offset + 1}–${page.offset + page.rows.length} / ${page.total} workbooks` : '0 workbooks';
+    byId('workbook-prev').disabled = page.offset === 0;
+    byId('workbook-next').disabled = page.offset + page.rows.length >= page.total;
+    byId('workbook-list').replaceChildren(...page.rows.map(record => {
+      const button = node('button', `${record.name} · ${record.status.replaceAll('_', ' ')}`);
+      button.type = 'button';
+      button.disabled = !record.report;
+      button.addEventListener('click', () => openEvidence(
+        `${reportBase}/${record.report.replace(/report\.json$/, 'index.html').split('/').map(encodeURIComponent).join('/')}`, record.name));
+      return button;
+    }));
+  } catch (error) { message(error.message, true); }
+}
+
+function openEvidence(url, name) {
+  byId('evidence-title').textContent = name;
+  byId('evidence-viewer').src = url;
+  byId('evidence-panel').hidden = false;
+  byId('evidence-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function poll() {
@@ -345,7 +488,20 @@ async function poll() {
 }
 
 document.querySelectorAll('input[name=mode], #output-kind, #persist-stages, #reuse').forEach(input => input.addEventListener('change', showSections));
-document.querySelectorAll('[data-browse]').forEach(button => button.addEventListener('click', () => openBrowser(byId(button.dataset.browse))));
+document.querySelectorAll('[data-browse]').forEach(button => button.addEventListener('click', () => openBrowser(byId(button.dataset.browse), button.dataset.browse, button.dataset.kind || 'folder')));
+byId('configure').addEventListener('click', () => byId('configuration-panel').showModal());
+byId('close-configuration').addEventListener('click', () => byId('configuration-panel').close());
+byId('close-evidence').addEventListener('click', () => {
+  byId('evidence-panel').hidden = true;
+  byId('evidence-viewer').src = 'about:blank';
+});
+byId('workbook-filter').addEventListener('change', () => { workbookOffset = 0; void loadWorkbooks(); });
+byId('workbook-search').addEventListener('input', () => {
+  clearTimeout(workbookSearchTimer);
+  workbookSearchTimer = setTimeout(() => { workbookOffset = 0; void loadWorkbooks(); }, 200);
+});
+byId('workbook-prev').addEventListener('click', () => { workbookOffset = Math.max(0, workbookOffset - 100); void loadWorkbooks(); });
+byId('workbook-next').addEventListener('click', () => { workbookOffset += 100; void loadWorkbooks(); });
 byId('add-step').addEventListener('click', () => addStage());
 byId('add-shrink').addEventListener('click', () => addStage(true));
 byId('close-browser').addEventListener('click', () => byId('browser').close());
@@ -362,6 +518,7 @@ byId('configuration').addEventListener('submit', async event => {
   try {
     byId('start').disabled = true;
     await api('/api/run', readConfiguration());
+    byId('configuration-panel').close();
     hasReport = false;
     lastError = '';
     message('Validation started. Completed pairs become available below.');
@@ -412,9 +569,15 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
   try {
     const session = await api('/api/session');
     token = session.token;
+    nativePicker = session.native_picker;
+    processorSchema = session.processor_schema;
+    shrinkPreset = session.shrink_preset;
+    logicalProcessors = session.logical_processors;
     workingDirectory = session.working_directory;
     browseDirectoryDefault = session.browse_directory || workingDirectory;
     populate(session.config);
+    byId('parallel-help').textContent = `${logicalProcessors} logical processors. This limits external programs; --rayon-threads controls threads inside each Excel Shrink process.`;
     await poll();
+    byId('configuration-panel').showModal();
   } catch (error) { message(error.message, true); }
 })();

@@ -27,9 +27,11 @@ struct Room {
     active: AtomicBool,
     report: Mutex<Option<(String, PathBuf)>>,
     reports: Mutex<BTreeMap<String, PathBuf>>,
+    picker: Mutex<()>,
 }
 
 type ApiResult = std::result::Result<Json<Value>, ApiError>;
+#[derive(Debug)]
 struct ApiError(anyhow::Error);
 impl From<anyhow::Error> for ApiError {
     fn from(error: anyhow::Error) -> Self { Self(error) }
@@ -49,7 +51,8 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
     let port = listener.local_addr()?.port();
     let room = Arc::new(Room { port, token:uuid::Uuid::new_v4().to_string(), config:Mutex::new(config),
-        progress:Arc::new(Mutex::new(LiveProgress::default())), active:AtomicBool::new(false), report:Mutex::new(None), reports:Mutex::new(BTreeMap::new()) });
+        progress:Arc::new(Mutex::new(LiveProgress::default())), active:AtomicBool::new(false), report:Mutex::new(None), reports:Mutex::new(BTreeMap::new()), picker:Mutex::new(()) });
+    let web_root = validation::capture::capture_directory()?.join("control-room");
     let routes = Router::new()
         .route("/", get(|| async { Html(HTML) }))
         .route("/sheet-scope.js", get(|| async { ([(header::CONTENT_TYPE,"text/javascript; charset=utf-8")], JS) }))
@@ -57,10 +60,13 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
         .route("/api/session", get(session))
         .route("/api/state", get(state))
         .route("/api/browse", get(browse))
+        .route("/api/pick", post(pick))
+        .route("/api/workbooks", get(workbooks))
         .route("/api/run", post(start))
         .route("/api/open", post(open_report))
         .route("/api/export", post(export_report))
         .route("/reports/{id}/{*path}", get(report_asset))
+        .nest_service("/observatory-assets", tower_http::services::ServeDir::new(web_root))
         .layer(DefaultBodyLimit::max(512 * 1024))
         .with_state(room.clone())
         .layer(middleware::from_fn_with_state(room, local_request));
@@ -104,17 +110,129 @@ async fn session(State(room): State<Arc<Room>>) -> ApiResult {
         .filter(|path| path.is_dir())
         .unwrap_or_else(|| working_directory.clone());
     Ok(Json(json!({"token":room.token,"config":config,"working_directory":working_directory,
-        "browse_directory":browse_directory})))
+        "browse_directory":browse_directory,"native_picker":cfg!(windows),
+        "logical_processors":std::thread::available_parallelism().map_or(1, usize::from),
+        "processor_schema":crate::cli_metadata::describe(),"shrink_preset":validation::excel_shrink_preset(1)})))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PickerKind {
+    Folder,
+    File,
+    Program,
+}
+
+#[derive(Deserialize)]
+struct PickRequest {
+    kind: PickerKind,
+    #[serde(default)]
+    initial_path: String,
+}
+
+/// Open one native picker without blocking status polling.
+async fn pick(State(room): State<Arc<Room>>, Json(request): Json<PickRequest>) -> ApiResult {
+    if !cfg!(windows) {
+        return Err(anyhow::anyhow!("Native file dialogs require Windows").into());
+    }
+    let result = tokio::task::spawn_blocking(move || -> Result<Value> {
+        let _picker = room
+            .picker
+            .try_lock()
+            .map_err(|_| anyhow::anyhow!("A file dialog is already open"))?;
+        let script = validation::capture::capture_directory()?.join("select-path.ps1");
+        let kind = match request.kind {
+            PickerKind::Folder => "folder",
+            PickerKind::File => "file",
+            PickerKind::Program => "program",
+        };
+        let output = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-STA",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
+            .arg(script)
+            .args(["-Kind", kind, "-InitialPath", &request.initial_path])
+            .stdin(std::process::Stdio::null())
+            .output()?;
+        ensure!(
+            output.status.success(),
+            "File dialog failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Ok(serde_json::from_slice(&output.stdout)?)
+    })
+    .await
+    .map_err(anyhow::Error::from)??;
+    Ok(Json(result))
+}
+
+#[derive(Deserialize)]
+struct WorkbookQuery {
+    #[serde(default)]
+    offset: usize,
+    #[serde(default)]
+    search: String,
+    #[serde(default)]
+    filter: String,
+}
+
+async fn workbooks(State(room): State<Arc<Room>>, Query(query): Query<WorkbookQuery>) -> ApiResult {
+    let progress = room
+        .progress
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Progress lock poisoned"))?;
+    let search = query.search.to_lowercase();
+    let matches = |record: &&Value| {
+        let status = record["status"].as_str().unwrap_or_default();
+        let differences = record["different_regions"].as_u64().unwrap_or(0);
+        record["name"]
+            .as_str()
+            .unwrap_or_default()
+            .to_lowercase()
+            .contains(&search)
+            && match query.filter.as_str() {
+                "differences" => differences > 0,
+                "equal" => status == "completed_with_limitations" && differences == 0,
+                "failed" => matches!(status, "failed" | "missing"),
+                "reused" => status == "reused",
+                "pending" => matches!(status, "pending" | "running"),
+                _ => true,
+            }
+    };
+    let total = progress.workbooks.values().filter(matches).count();
+    let rows: Vec<_> = progress
+        .workbooks
+        .values()
+        .filter(matches)
+        .skip(query.offset)
+        .take(100)
+        .cloned()
+        .collect();
+    Ok(Json(
+        json!({"total":total,"offset":query.offset,"rows":rows}),
+    ))
 }
 
 async fn state(State(room): State<Arc<Room>>) -> ApiResult {
-    let progress = room.progress.lock().map_err(|_| anyhow::anyhow!("Progress lock poisoned"))?.clone();
-    let telemetry = if let Some(path) = &progress.telemetry_path {
+    // The paginated workbook index stays in memory; polling serializes only the
+    // bounded status fields instead of cloning the complete historical index.
+    let (progress, telemetry_path, comparisons) = {
+        let progress = room.progress.lock().map_err(|_| anyhow::anyhow!("Progress lock poisoned"))?;
+        (serde_json::to_value(&*progress).map_err(anyhow::Error::from)?,
+            progress.telemetry_path.clone(), progress.comparisons.clone())
+    };
+    let telemetry = if let Some(path) = &telemetry_path {
         read_small_json(path, 4 * 1024 * 1024).await.unwrap_or(Value::Null)
     } else { Value::Null };
     let report_base = room.report.lock().map_err(|_| anyhow::anyhow!("Report lock poisoned"))?
         .as_ref().map(|(id, _)| format!("/reports/{id}"));
-    Ok(Json(json!({"active":room.active.load(Ordering::Acquire),"progress":progress,"telemetry":telemetry,"report_base":report_base})))
+    Ok(Json(json!({"active":room.active.load(Ordering::Acquire),"progress":progress,"telemetry":telemetry,
+        "comparisons":comparisons,"report_base":report_base})))
 }
 
 async fn read_small_json(path: &Path, limit: u64) -> Result<Value> {
@@ -230,6 +348,10 @@ async fn open_report(State(room): State<Arc<Room>>, Json(request): Json<OpenRepo
         completed: pairs.iter().filter(|pair| pair["status"] != "running").count(),
         failed: pairs.iter().filter(|pair| matches!(pair["status"].as_str(), Some("failed" | "missing"))).count(),
         reused: pairs.iter().filter(|pair| pair["status"] == "reused").count(),
+        different_pairs: pairs.iter().filter(|pair| pair["different_regions"].as_u64().unwrap_or(0) > 0).count(),
+        checked_equal_pairs: pairs.iter().filter(|pair| pair["status"] == "completed_with_limitations"
+            && pair["different_regions"].as_u64() == Some(0)).count(),
+        workbooks: pairs.iter().filter_map(|pair| pair["id"].as_str().map(|id| (id.to_owned(), pair.clone()))).collect(),
         recent,
         ..LiveProgress::default()
     };
@@ -285,6 +407,28 @@ async fn report_asset(State(room): State<Arc<Room>>, RoutePath((id, relative)): 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn workbook_pages_filter_the_index_while_status_polling_stays_bounded() {
+        let mut progress = LiveProgress::default();
+        for index in 0..250 {
+            progress.workbooks.insert(format!("{index:03}"), json!({
+                "id":format!("{index:03}"),"name":format!("workbook-{index:03}.xlsx"),
+                "status":"completed_with_limitations","different_regions":index % 2,
+            }));
+        }
+        let room = Arc::new(Room { port:1234, token:"test".into(), config:Mutex::new(RunConfig::default()),
+            progress:Arc::new(Mutex::new(progress)), active:AtomicBool::new(false), report:Mutex::new(None),
+            reports:Mutex::new(BTreeMap::new()), picker:Mutex::new(()) });
+        let page = workbooks(State(room.clone()), Query(WorkbookQuery {
+            offset:100, search:String::new(), filter:"differences".into(),
+        })).await.unwrap().0;
+        assert_eq!(page["total"], 125);
+        assert_eq!(page["rows"].as_array().unwrap().len(), 25);
+        let snapshot = state(State(room)).await.unwrap().0;
+        assert!(snapshot["progress"].get("workbooks").is_none());
+        assert!(snapshot["progress"]["recent"].as_array().unwrap().is_empty());
+    }
     #[test]
     fn local_api_rejects_foreign_hosts_and_cross_origin_requests() {
         let mut headers = HeaderMap::new();

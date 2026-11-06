@@ -4,15 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SheetScope Observatory</title>
+  <link rel="stylesheet" href="/observatory-assets/style.css">
+  <link rel="stylesheet" href="/observatory-assets/signal-monitor.css">
+  <link rel="stylesheet" href="/observatory-assets/targeted-panel.css">
   <link rel="stylesheet" href="/sheet-scope.css">
-  <script src="/sheet-scope.js" defer></script>
+  <script type="module" src="/sheet-scope.js"></script>
 </head>
 <body>
   <header class="masthead">
     <div><p class="eyebrow">Spreadsheet visual validation</p><h1>SheetScope <span>Observatory</span></h1></div>
-    <p>Configure a comparison, follow its progress, and keep independent evidence.</p>
+    <div class="actions"><span id="connection-status">Connecting…</span><button id="configure" type="button">Configure validation</button></div>
   </header>
   <main>
+    <dialog id="configuration-panel" class="configuration-dialog">
+      <div class="section-title"><h2>Configure validation</h2><button id="close-configuration" type="button">Close</button></div>
     <section class="panel">
       <h2>Choose a workflow</h2>
       <div class="modes">
@@ -27,10 +32,10 @@
         <section class="panel grid">
           <h2>Workbook sources</h2>
           <label class="wide">A · original source
-            <span class="path"><input id="source-a" placeholder="Folder, workbook, ZIP file or HTTPS archive URL"><button type="button" data-browse="source-a">Browse…</button></span>
+            <span class="path"><input id="source-a" placeholder="Folder, workbook, ZIP file or HTTPS archive URL"><button type="button" data-browse="source-a" data-kind="folder">Folder…</button><button type="button" data-browse="source-a" data-kind="file">File…</button></span>
           </label>
           <label id="source-b-row" class="wide">B · existing processed source
-            <span class="path"><input id="source-b" placeholder="Independent folder, workbook, ZIP file or archive URL"><button type="button" data-browse="source-b">Browse…</button></span>
+            <span class="path"><input id="source-b" placeholder="Independent folder, workbook, ZIP file or archive URL"><button type="button" data-browse="source-b" data-kind="folder">Folder…</button><button type="button" data-browse="source-b" data-kind="file">File…</button></span>
           </label>
           <p class="help wide">Names are matched by relative path, then by unique filename. Ambiguous matches remain explicit failures. Visual comparison currently requires XLSX on both sides.</p>
         </section>
@@ -41,7 +46,7 @@
           <div id="steps"></div>
           <div class="actions"><button id="add-step" type="button">Add program</button><button id="add-shrink" type="button">Add Excel Shrink preset</button></div>
           <div class="grid">
-            <label>Maximum parallel processes<input id="parallel" type="number" min="1" max="64" value="1"></label>
+            <label>Maximum parallel processing programs<input id="parallel" type="number" min="1" value="1"><span id="parallel-help" class="help"></span></label>
             <label>Baseline after step (optional)<input id="baseline-step" type="number" min="1" placeholder="Original A by default"></label>
           </div>
           <p class="help">For an XLS → XLSX conversion, explicitly select the conversion step as baseline. The subsequent transformations are compared; that conversion itself is outside visual coverage.</p>
@@ -103,17 +108,43 @@
       <label>Report directory or run.json<span class="path"><input id="open-path"><button type="button" data-browse="open-path">Browse…</button></span></label>
       <div class="actions"><button id="open-report" class="primary" type="button">Open report</button></div>
     </section>
+    <p id="configuration-message" role="status" aria-live="polite"></p>
+    </dialog>
+
+    <section class="panel workbook-kpis" aria-label="Workbook outcomes">
+      <div class="section-title"><h2>Workbook outcomes</h2><span id="workbook-scope">No run started</span></div>
+      <div id="workbook-kpis" class="workbook-kpi-grid"></div>
+    </section>
+
+    <div class="observatory-workspace">
+    <aside class="panel">
+      <h2>Workbooks</h2>
+      <input id="workbook-search" type="search" placeholder="Search filenames">
+      <select id="workbook-filter" aria-label="Workbook results">
+        <option value="all">All workbooks</option><option value="pending">Pending / running</option>
+        <option value="equal">Checked: no differences</option><option value="differences">Differences found</option>
+        <option value="failed">Failed / missing</option><option value="reused">Reused observations</option>
+      </select>
+      <p id="workbook-count" class="help">0 workbooks</p>
+      <div id="workbook-list" class="groups"></div>
+      <div class="actions"><button id="workbook-prev" type="button" disabled>Previous</button><button id="workbook-next" type="button" disabled>Next</button></div>
+    </aside>
 
     <section class="panel" id="progress-panel">
       <div class="section-title"><h2>Run progress</h2><span id="status" class="badge">Idle</span></div>
       <p id="current">No active run.</p><progress id="completion" max="1" value="0"></progress>
       <p id="counts" class="help"></p>
-      <div class="table-wrap"><table><thead><tr><th>Excel state</th><th>PID</th><th>Lifecycle</th><th>Captures</th><th>Current region</th></tr></thead><tbody id="lanes"></tbody></table></div>
+      <section id="targeted-comparisons" hidden aria-label="Targeted comparison processes"></section>
       <h3>Recent completed comparisons</h3>
       <div class="table-wrap"><table><thead><tr><th>Workbook</th><th>Outcome</th><th>Differences</th><th>Evidence</th></tr></thead><tbody id="results"></tbody></table></div>
       <p class="help">The latest 20 results are shown here. The completed report indexes every workbook. Reused results retain their original observations.</p>
       <div class="actions"><a id="report-link" href="/reports/index.html" target="_blank" rel="noopener" hidden>Open complete report</a></div>
       <div id="export-settings" hidden><label>New static website directory<span class="path"><input id="export-path"><button type="button" data-browse="export-path">Choose parent…</button></span></label><button id="export-report" type="button">Export static website</button></div>
+    </section>
+    </div>
+    <section id="evidence-panel" class="panel" hidden>
+      <div class="section-title"><h2 id="evidence-title">Comparison evidence</h2><button id="close-evidence" type="button">Close comparison</button></div>
+      <iframe id="evidence-viewer" title="Workbook comparison and pixel inspector"></iframe>
     </section>
     <p id="message" role="status" aria-live="polite"></p>
   </main>

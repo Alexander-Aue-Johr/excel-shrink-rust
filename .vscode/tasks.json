@@ -10,8 +10,7 @@
         "--release",
         "-p",
         "excel-shrink-cli",
-        "--bin",
-        "sheet-scope"
+        "--bins"
       ],
       "linux": {
         "args": [
@@ -21,8 +20,7 @@
           "x86_64-pc-windows-gnu",
           "-p",
           "excel-shrink-cli",
-          "--bin",
-          "sheet-scope"
+          "--bins"
         ]
       },
       "options": {
@@ -75,6 +73,42 @@
         "reveal": "always",
         "panel": "dedicated",
         "clear": true,
+        "focus": false,
+        "showReuseMessage": false
+      }
+    },
+    {
+      "label": "SheetScope: Test Destatis (prefilled)",
+      "type": "process",
+      "command": "${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\start-sheet-scope.ps1",
+        "-SourceRepo",
+        "${workspaceFolder}",
+        "-BinaryPath",
+        "${workspaceFolder}\\target\\release\\sheet-scope.exe",
+        "-Destatis"
+      ],
+      "linux": {
+        "command": "bash",
+        "args": [
+          "${workspaceFolder}/tools/start-sheet-scope-wsl.sh",
+          "-Destatis"
+        ]
+      },
+      "dependsOn": [
+        "SheetScope: Build Windows release"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
         "focus": false,
         "showReuseMessage": false
       }

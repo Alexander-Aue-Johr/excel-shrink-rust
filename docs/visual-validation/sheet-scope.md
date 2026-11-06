@@ -31,6 +31,36 @@ release** is also available as a separate task. In a WSL workspace, it uses the
 assets into a versioned local Windows directory before launching them. In a
 Windows workspace, the task builds with the native Windows toolchain.
 
+For the small local Destatis corpus, choose **SheetScope: Test Destatis
+(prefilled)**. It builds both executables, selects
+`corpus-local/original_destatis_xlsx_files`, fills in the deployed Excel Shrink
+executable and opens configuration. Click **Start validation** to begin; the
+launcher itself does not process any workbooks. In a WSL terminal the equivalent
+is:
+
+```bash
+bash tools/start-sheet-scope-wsl.sh -Destatis
+```
+
+The starter retains each report in a unique
+`%LOCALAPPDATA%\SheetScope\runs\destatis-<id>\report` directory. Processed
+workbooks are temporary and removed after evidence publication. It does not
+create the report destination in advance. Local Windows working storage avoids
+Windows file-lock limitations on WSL network paths.
+
+You can also prefill configuration directly with CLI arguments:
+
+```powershell
+.\target\x86_64-pc-windows-gnu\release\sheet-scope.exe observatory --a "D:\Originals" --excel-shrink "D:\Tools\excel-shrink-cli.exe"
+```
+
+Omit `--output` for temporary workbooks and `--report` for a generated unique
+local report path. Optional `--max-processes` and `--rayon-threads` set the external
+process count and threads per process separately. The preset defaults to as many
+external processes as logical processors, with one Rayon thread per process.
+The configuration shows both settings, along with typed Excel Shrink options
+generated from its bundled Clap definition; other programs use the argv editor.
+
 Build both command-line entry points from the repository root:
 
 ```powershell
@@ -70,7 +100,7 @@ without launching a browser. The default port `0` asks the operating system to
 select a free port.
 
 Choose **Compare existing A and B**, **Process A, then compare**, or **Open a saved
-report**. The built-in file explorer selects local sources, programs and report
+report**. Native Windows folder/file dialogs select local sources, programs and report
 locations; an archive URL can be entered directly. Choose a new report directory
 for each run. For processing, add steps in execution order and configure each
 step's input/output granularity and argv array. The Excel Shrink preset supplies
@@ -82,12 +112,20 @@ other rendering assumptions under which that observation was collected. The key
 is your declaration, not an automatically measured environment fingerprint.
 Change it when those assumptions change.
 
-**Start validation** begins the run. The view shows the current phase/workbook,
-current capture telemetry and the latest 20 workbook results. A finished
+**Start validation** begins the run and closes configuration. The monitor remains
+visible behind it before startup, with empty counts and lists. It reuses the
+Observatory's KPI styles and targeted process cards, heartbeats and workflow
+diagram. The workbook list supports search, result filters and pages of 100.
+The view shows the current phase/workbook, capture telemetry and the latest 20
+workbook results. A finished
 workbook's comparison page becomes available while later workbooks continue.
 The complete report indexes every recorded workbook when the run ends.
 Configuration is fixed for the running attempt; this patch does not add runtime
 capture-tile or hash-mode controls.
+
+This is not the complete legacy corpus-runner interface: its live controls and
+three-dimensional studio are not connected to standalone runs. Published pair
+evidence opens inline with the shared region viewer and pixel inspector.
 
 Use **Download configuration** to retain the form as JSON. **Edit complete JSON**
 also exposes advanced settings such as per-step environment overrides, working

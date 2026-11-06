@@ -68,7 +68,7 @@ pub(super) fn compare(
     Ok(())
 }
 
-pub(super) fn capture_directory() -> Result<PathBuf> {
+pub(crate) fn capture_directory() -> Result<PathBuf> {
     let candidates = [
         PathBuf::from("excel-shrink-cli/office-capture"),
         PathBuf::from("office-capture"),

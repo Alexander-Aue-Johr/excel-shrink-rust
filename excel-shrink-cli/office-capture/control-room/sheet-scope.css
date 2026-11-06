@@ -32,6 +32,19 @@ label { display: flex; flex-direction: column; gap: .45rem; font-size: .9rem; }
 .path { display: flex; align-items: stretch; gap: .5rem; }
 .path input { min-width: 0; flex: 1; }
 .help { color: #a9bbd3; font-size: .85rem; line-height: 1.6; margin: .5rem 0; }
+.configuration-dialog { width: min(1120px, 96vw); }
+.configuration-dialog > .section-title { margin-bottom: 1rem; }
+.observatory-workspace { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 1rem; }
+.observatory-workspace > * { min-width: 0; }
+#workbook-list { max-height: 65vh; overflow: auto; display: grid; gap: .5rem; margin-top: 1rem; }
+#workbook-list button { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+#workbook-filter { margin-top: .5rem; }
+.workbook-kpis { margin: 0 0 1rem; }
+.workbook-kpi-grid { margin-top: 1rem; }
+.processor-help { font-size: .8rem; color: #a9bbd3; line-height: 1.5; }
+.processor-options { margin: 1rem 0; }
+#configuration-message { white-space: pre-wrap; color: #ffc1b8; }
+#evidence-viewer { width: 100%; height: 80vh; border: 0; margin-top: 1rem; background: #08111c; }
 .primary { background: #247f7a; border-color: #48a89d; font-weight: 600; }
 .step { border: 1px solid #42516a; border-radius: .6rem; padding: 1rem; margin: 1rem 0; }
 .step textarea, #json-value { font-family: ui-monospace, monospace; font-size: .85rem; }
@@ -59,4 +72,5 @@ dialog::backdrop { background: #0009; }
   .grid { grid-template-columns: 1fr; }
   .panel, main, .masthead { padding: 1rem; }
   h1 span { display: block; }
+  .observatory-workspace { grid-template-columns: 1fr; }
 }

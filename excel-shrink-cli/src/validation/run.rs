@@ -43,6 +43,12 @@ pub(crate) struct LiveProgress {
     pub reused: usize,
     pub error: Option<String>,
     pub recent: VecDeque<Value>,
+    pub different_pairs: usize,
+    pub checked_equal_pairs: usize,
+    #[serde(skip)]
+    pub workbooks: BTreeMap<String, Value>,
+    #[serde(skip)]
+    pub comparisons: VecDeque<Value>,
     #[serde(skip)]
     pub telemetry_path: Option<PathBuf>,
 }
@@ -114,8 +120,16 @@ impl Run {
     }
 
     fn materialize_originals(&self) -> Result<MaterializedSource> {
-        validation_sources::materialize(&self.config.source_a, &self.work.path.join("source-a"),
-            &self.config.cache_dir, self.config.refresh_downloads)
+        let source = validation_sources::materialize(&self.config.source_a, &self.work.path.join("source-a"),
+            &self.config.cache_dir, self.config.refresh_downloads)?;
+        self.update_progress(|progress| {
+            progress.total = source.files.len();
+            progress.workbooks = source.files.keys().map(|name| {
+                let id = pair_id(name);
+                (id.clone(), json!({"id":id,"name":name,"status":"pending","report":null}))
+            }).collect();
+        })?;
+        Ok(source)
     }
 
     fn obtain_candidates(&mut self, originals: MaterializedSource) -> Result<(MaterializedSource, MaterializedSource)> {
@@ -233,21 +247,28 @@ impl Run {
         let paired = pairing::pair_files(&baseline.files, &candidate.files);
         ensure!(!paired.pairs.is_empty(), "Source A contains no supported workbook files");
         self.header["unmatched_candidates"] = json!(paired.unmatched_candidates);
-        self.update_progress(|progress| progress.total = paired.pairs.len())?;
+        self.update_progress(|progress| {
+            progress.total = paired.pairs.len();
+            progress.workbooks = paired.pairs.iter().map(|pair| {
+                let id = pair_id(&pair.name);
+                (id.clone(), json!({"id":id,"name":pair.name,"status":"pending","report":null}))
+            }).collect();
+        })?;
         self.transition(RunState::Validating)?;
         Ok(paired.pairs)
     }
 
     fn validate_pairs(&mut self, pairs: Vec<WorkbookPair>) -> Result<()> {
         for pair in pairs {
-            let id = format!("{:x}", Sha256::digest(pair.name.as_bytes()));
-            let id = &id[..24];
+            let pair_id = pair_id(&pair.name);
+            let id = pair_id.as_str();
             let mut record = json!({"id":id,"name":pair.name,"candidate_name":pair.candidate_name,
                 "status":"running","report":null,"identity":null,"reuse":null,"errors":[]});
             storage::write_json(&self.root.join("records").join(format!("{id}.json")), &record)?;
             self.update_progress(|progress| {
                 progress.current = Some(pair.name.clone());
                 progress.telemetry_path = Some(self.work.path.join("captures").join(id).join("telemetry.json"));
+                progress.workbooks.insert(id.to_owned(), record.clone());
             })?;
             let outcome = self.validate_pair(&pair, id, &mut record);
             if let Err(error) = &outcome {
@@ -287,6 +308,12 @@ impl Run {
         let raw = self.work.path.join("captures").join(id);
         let logs = self.root.join("logs/validation").join(id);
         let outcome = capture::compare(&pair.original, candidate, &raw, &logs, &pair.name, &self.config.capture);
+        if let Ok(telemetry) = storage::read_json(&raw.join("telemetry.json")) {
+            self.update_progress(|progress| {
+                progress.comparisons.push_front(telemetry);
+                progress.comparisons.truncate(20);
+            })?;
+        }
         if outcome.as_ref().err().is_some_and(|error| error.is::<crate::capture_watchdog::CleanupUnconfirmed>())
             || !cleanup_confirmed(&raw).unwrap_or(false) {
             self.work.preserve();
@@ -329,6 +356,10 @@ impl Run {
             progress.completed += 1;
             progress.failed += usize::from(matches!(record["status"].as_str(), Some("failed" | "missing")));
             progress.reused += usize::from(record["status"] == "reused");
+            progress.different_pairs += usize::from(record["different_regions"].as_u64().unwrap_or(0) > 0);
+            progress.checked_equal_pairs += usize::from(record["status"] == "completed_with_limitations"
+                && record["different_regions"].as_u64() == Some(0));
+            progress.workbooks.insert(id.to_owned(), record.clone());
             progress.telemetry_path = None;
             progress.recent.push_front(record.clone());
             progress.recent.truncate(20);
@@ -409,6 +440,10 @@ impl Run {
         update(&mut progress);
         storage::write_json(&self.root.join("progress.json"), &*progress)
     }
+}
+
+fn pair_id(name: &str) -> String {
+    format!("{:x}", Sha256::digest(name.as_bytes()))[..24].to_owned()
 }
 
 impl PreviousRun {
