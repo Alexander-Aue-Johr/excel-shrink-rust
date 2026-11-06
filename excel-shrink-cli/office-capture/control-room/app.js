@@ -1,3 +1,4 @@
+import { createVisibleAnimationLoop } from './animation-loop.js';
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription, processMeasurements, tileEvidenceDescription, captureTransportSummary, groupOutcome, PRIMARY_PROFILES } from './model.js';
@@ -289,7 +290,7 @@ function initScene() {
     else if (hit?.userData.sheetId) focusSheet(hit.userData.sheetId, true);
     pointerDown = null;
   });
-  requestAnimationFrame(tick);
+  sceneAnimation.refresh();
 }
 function fitCamera(animate = false) {
   const verticalTangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
@@ -518,7 +519,7 @@ function makeBoard(card, sheet, profile, profileIndex, shown, view) {
   }
 }
 function renderScene(force = false) {
-  if (!data) return;
+  if (!data || document.hidden || document.body.classList.contains('targeted-mode')) return;
   const views = data.sheets.map(sheet => [sheet.id, sheetView(sheet)]);
   const signature = JSON.stringify([state.groupId, state.sheetId, state.focus, views, data.profiles, data.sheets]);
   if (!force && signature === lastSignature) return;
@@ -975,8 +976,14 @@ function updateSourceTiles(now) {
     tile.rim.material.opacity = tile.entry.id === state.selected ? 1 : .75;
   }
 }
+const sceneAnimation = createVisibleAnimationLoop(tick, {
+  visible: () => !document.hidden && !document.body.classList.contains('targeted-mode'),
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) renderScene();
+  sceneAnimation.refresh();
+});
 function tick(now) {
-  requestAnimationFrame(tick);
   if (cameraTween) {
     const t = Math.min(1, (now - cameraTween.start) / 650), ease = 1 - Math.pow(1 - t, 3);
     camera.position.lerpVectors(cameraTween.from, cameraTween.to, ease); controls.target.lerpVectors(cameraTween.fromTarget, cameraTween.target, ease); if (t === 1) cameraTween = null;
@@ -1583,6 +1590,7 @@ async function poll() {
     state.queue = queue; state.connected = true; state.error = null;
     const targetedMode = queue.progress?.targeted_comparison === true;
     document.body.classList.toggle('targeted-mode', targetedMode);
+    sceneAnimation.refresh();
     for (const id of ['sweepProcesses', 'equalPreview']) {
       $(id).closest('.control').hidden = targetedMode;
     }
@@ -1638,7 +1646,12 @@ async function poll() {
     $('stopRun').disabled = true;
     $('terminateRun').disabled = true;
     state.connected = false; state.error = error.message; $('connectionLight').className = 'failed'; $('connectionText').textContent = 'Disconnected'; setNotice(`${error.message} Showing the last known state; retrying the connection shortly.`, true);
-  } finally { if (generation === pollGeneration) pollTimer = setTimeout(poll, document.hidden ? 2000 : 500); }
+  } finally {
+    if (generation === pollGeneration) {
+      const delay = document.hidden ? 10000 : state.queue?.running === false ? 5000 : 1000;
+      pollTimer = setTimeout(poll, delay);
+    }
+  }
 }
 function elapsedText(iso) {
   const milliseconds = Date.now() - Date.parse(iso); if (!Number.isFinite(milliseconds)) return '';
