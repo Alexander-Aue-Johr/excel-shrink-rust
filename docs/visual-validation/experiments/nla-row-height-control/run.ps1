@@ -8,7 +8,9 @@ param(
     [Parameter(Mandatory=$true)][string]$Original,
     [Parameter(Mandatory=$true)][string]$Output,
     [string]$Default,
-    [string]$Sheet = '2007 NLA QA Data'
+    [string]$Sheet = '2007 NLA QA Data',
+    [ValidateRange(1, 1048576)][int]$StartRow = 6,
+    [ValidateRange(1, 1048576)][int]$EndRow = 179
 )
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../..'))
@@ -31,7 +33,7 @@ try {
         (Join-Path $PSScriptRoot 'same_package.py'), '--repository', $repo,
         '--binary', ([IO.Path]::GetFullPath($Binary)),
         '--original', ([IO.Path]::GetFullPath($Original)), '--output', $outputPath,
-        '--sheet', $Sheet
+        '--sheet', $Sheet, '--start-row', [string]$StartRow, '--end-row', [string]$EndRow
     )
     if ($Default) { $arguments += @('--default', ([IO.Path]::GetFullPath($Default))) }
     $commandLine = ($arguments | ForEach-Object { ConvertTo-WindowsArgument $_ }) -join ' '

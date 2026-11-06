@@ -100,11 +100,13 @@ def observe_pair(host, arguments):
                                'linked_pending_timeout_ms': 15000})
                 heights = host.call({'kind': 'heights', 'lane': lane,
                                      'sheet': arguments.sheet,
-                                     'spans': [{'start': 6, 'end': 179}], 'budget_ms': 180000})
+                                     'spans': [{'start': arguments.start_row, 'end': arguments.end_row}],
+                                     'budget_ms': 180000})
                 if heights.get('complete') is not True:
                     raise RuntimeError('Incomplete height coverage')
                 geometry = host.call({'kind': 'measure', 'lane': lane,
-                                      'sheet': arguments.sheet, 'range': 'A6:AR179'})
+                                      'sheet': arguments.sheet,
+                                      'range': f'A{arguments.start_row}:AR{arguments.end_row}'})
                 result['measurements'].append({'phase': phase, 'lane': lane,
                                                'heights': heights, 'geometry': geometry})
     finally:
@@ -125,7 +127,11 @@ def main():
     parser.add_argument('--default', type=Path, help='Optional counterfactual; omit for identical inputs')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--sheet', default='2007 NLA QA Data')
+    parser.add_argument('--start-row', type=int, default=6)
+    parser.add_argument('--end-row', type=int, default=179)
     arguments = parser.parse_args()
+    if not 1 <= arguments.start_row <= arguments.end_row <= 1048576:
+        parser.error('Row bounds must satisfy 1 <= start <= end <= 1048576')
     desktop = os.environ.get('EXCEL_SHRINK_EXPECTED_DESKTOP')
     if not desktop or desktop.lower() == 'default':
         raise RuntimeError('Use the owned private-desktop launcher')
