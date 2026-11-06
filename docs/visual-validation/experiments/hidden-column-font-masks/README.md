@@ -35,3 +35,23 @@ Disposable evidence is under
 `lcoe-hidden-mask-full-proof`. Reproduction uses the existing private-desktop
 height-control launcher with `-Sheet 'Installed Cost Overview' -StartRow 1 -EndRow 40`.
 These observations retain the selected-region coverage limitations.
+
+
+## Compatibility and deployment
+
+The complete prior inventory covered all 8,623 prepared Data.gov originals and
+2,751 potential font-mask cases. A header-only pass narrowed those to 215 with
+hidden columns. Replaying Default with the completed release build changed
+17 outputs; the other 198 were unchanged. No replay failed. Compressed size
+changes ranged from -7 to +227 bytes. This LCOE workbook gained 44 bytes.
+
+A preliminary local replay had copied the preceding release while the new build
+was still linking. Its outputs were archived as invalid and discarded from this
+assessment. All 215 reported replay results were regenerated with SHA-256
+`269159b8f88a89ed28469c60b92b7e4b617123756196a8964900c212ce4eaae6`.
+
+After draining active workbooks, the 17 prior bundles and records were backed up
+with checksum verification and invalidated. The regular runner resumed with four
+groups and a 1,024 MiB reserve, accepting proven-compatible unaffected producers.
+Local evidence uses the `hidden-font-cache-` prefix. The verified backup is
+`backups/before-hidden-font-masks-20261106-081440`.
