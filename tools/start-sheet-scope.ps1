@@ -62,8 +62,11 @@ if ($Destatis) {
     }
     $runRoot = Join-Path $env:LOCALAPPDATA ('SheetScope\runs\destatis-' + [Guid]::NewGuid().ToString('N'))
     $report = Join-Path $runRoot 'report'
-    $arguments += @('--a', $source, '--excel-shrink', $deployedShrink, '--report', $report)
+    $rayonThreads = [Environment]::ProcessorCount
+    $arguments += @('--a', $source, '--excel-shrink', $deployedShrink, '--report', $report,
+        '--max-processes', '1', '--rayon-threads', [string]$rayonThreads)
     Write-Host "Destatis report: $report"
+    Write-Host "Excel Shrink: 1 process, $rayonThreads Rayon threads."
     Write-Host 'Processed workbooks are temporary; the report is retained.'
 }
 if ($Config) {

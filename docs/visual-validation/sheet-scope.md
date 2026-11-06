@@ -42,6 +42,9 @@ is:
 bash tools/start-sheet-scope-wsl.sh -Destatis
 ```
 
+The Destatis starter selects one external Shrink process and one Rayon thread
+per logical processor. Both values are prefilled and editable before Start.
+
 The starter retains each report in a unique
 `%LOCALAPPDATA%\SheetScope\runs\destatis-<id>\report` directory. Processed
 workbooks are temporary and removed after evidence publication. It does not
