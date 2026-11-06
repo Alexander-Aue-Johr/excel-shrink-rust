@@ -1314,9 +1314,34 @@ body.presenting .experiment-controls,body.presenting .process-section { display:
 .atelier { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 18px;
   box-sizing: border-box; background: #0d1d29; color: #e6eef3; border: 0; }
 .atelier[open] { display: flex; flex-direction: column; gap: 12px; }
-.atelier-header, .atelier-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.atelier-header strong { flex: 1; overflow-wrap: anywhere; }
-.atelier-tools select { max-width: min(70vw, 900px); }
+.atelier-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+}
+.atelier-header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.atelier-header + p { min-height: 1.5em; }
+.atelier-tools { display: grid; gap: 12px; }
+.atelier-navigation {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.atelier-navigation button { min-width: 0; min-height: 3.5em; }
+.atelier-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+.atelier-options select { min-width: 0; width: 100%; }
+.atelier-options label { grid-column: 1 / -1; }
 .atelier-note { color: #adc2d0; margin: 0; }
 .atelier-images { overflow: auto; flex: 1; min-height: 0; background: #203341; }
 .atelier-pair { display: flex; gap: 0; align-items: flex-start; width: max-content; }

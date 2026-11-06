@@ -27,6 +27,11 @@ export function createAtelier() {
   header.append(title, clipboard, close);
   const toolbar = node('div');
   toolbar.className = 'atelier-tools';
+  const navigation = node('div');
+  navigation.className = 'atelier-navigation';
+  navigation.setAttribute('aria-label', 'Difference navigation');
+  const options = node('div');
+  options.className = 'atelier-options';
   const previous = node('button', 'Previous in file');
   const next = node('button', 'Next in file');
   const previousOverall = node('button', 'Previous difference · all files');
@@ -38,7 +43,9 @@ export function createAtelier() {
   all.type = 'checkbox';
   const allLabel = node('label');
   allLabel.append(all, document.createTextNode(' Include checked regions without differences'));
-  toolbar.append(previous, select, next, previousOverall, nextOverall, size, allLabel);
+  navigation.append(previous, next, previousOverall, nextOverall);
+  options.append(select, size, allLabel);
+  toolbar.append(navigation, options);
   const note = node('p');
   note.className = 'atelier-note';
   const images = node('div');
