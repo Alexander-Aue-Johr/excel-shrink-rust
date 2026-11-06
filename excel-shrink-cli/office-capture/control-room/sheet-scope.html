@@ -52,9 +52,10 @@
           <label class="wide">New report directory
             <span class="path"><input id="report-dir" placeholder="A new directory for evidence and the static viewer"><button type="button" data-browse="report-dir">Choose parent…</button></span>
           </label>
+          <p class="help wide">Choose a parent folder; SheetScope adds a new run folder. The report must be separate from the program and the input files.</p>
           <div id="output-settings" class="wide grid" hidden>
             <label>Processed workbooks<select id="output-kind"><option value="temporary">Temporary · retain only report</option><option value="directory">Keep in a new folder</option><option value="archive">Keep in a new ZIP archive</option></select></label>
-            <label id="output-path-row" hidden>Output destination<span class="path"><input id="output-path"><button type="button" data-browse="output-path">Choose parent…</button></span></label>
+            <label id="output-path-row" hidden>New output destination<span class="path"><input id="output-path" placeholder="A new folder or ZIP file; leave the program folder unchanged"><button type="button" data-browse="output-path">Choose parent…</button></span></label>
             <label class="check wide"><input id="persist-stages" type="checkbox"> Persist and reuse processing stages</label>
             <label id="stage-cache-row" class="wide" hidden>Processing cache directory<span class="path"><input id="stage-cache"><button type="button" data-browse="stage-cache">Browse…</button></span></label>
             <label id="processing-key-row" class="wide" hidden>Processing dependency key<input id="processing-key" placeholder="Change when scripts, external dependencies or execution environment change"></label>

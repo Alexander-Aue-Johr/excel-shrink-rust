@@ -98,7 +98,13 @@ fn allowed_headers(headers: &HeaderMap, port: u16) -> bool {
 
 async fn session(State(room): State<Arc<Room>>) -> ApiResult {
     let config = room.config.lock().map_err(|_| anyhow::anyhow!("Configuration lock poisoned"))?.clone();
-    Ok(Json(json!({"token":room.token,"config":config,"working_directory":std::env::current_dir().map_err(anyhow::Error::from)?})))
+    let working_directory = std::env::current_dir().map_err(anyhow::Error::from)?;
+    let browse_directory = std::env::var_os("USERPROFILE")
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .unwrap_or_else(|| working_directory.clone());
+    Ok(Json(json!({"token":room.token,"config":config,"working_directory":working_directory,
+        "browse_directory":browse_directory})))
 }
 
 async fn state(State(room): State<Arc<Room>>) -> ApiResult {

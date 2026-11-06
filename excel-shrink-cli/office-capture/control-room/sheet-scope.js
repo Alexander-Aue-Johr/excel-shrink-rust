@@ -13,6 +13,7 @@ let token = '';
 let configuration = null;
 let stageModels = [];
 let workingDirectory = '';
+let browseDirectoryDefault = '';
 let browserTarget = null;
 let browserState = null;
 let pollTimer = null;
@@ -239,8 +240,8 @@ async function openBrowser(input, purpose = input.id) {
   browserTarget = { input, purpose };
   byId('browser').showModal();
   const path = input.value.trim();
-  try { await browseDirectory(path && !/^https?:/.test(path) ? path : workingDirectory); }
-  catch { await browseDirectory(workingDirectory).catch(error => { byId('browse-message').textContent = error.message; }); }
+  try { await browseDirectory(path && !/^https?:/.test(path) ? path : browseDirectoryDefault); }
+  catch { await browseDirectory(browseDirectoryDefault).catch(error => { byId('browse-message').textContent = error.message; }); }
 }
 
 async function browseDirectory(path, offset = 0) {
@@ -412,6 +413,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
     const session = await api('/api/session');
     token = session.token;
     workingDirectory = session.working_directory;
+    browseDirectoryDefault = session.browse_directory || workingDirectory;
     populate(session.config);
     await poll();
   } catch (error) { message(error.message, true); }
