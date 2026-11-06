@@ -1629,6 +1629,9 @@ async function poll() {
     if (recovered) setNotice('Connection to local host restored.');
     const memory = queue.memory;
     $('memory').textContent = memory?.available_bytes != null ? `${(memory.available_bytes / 1073741824).toFixed(1)} GiB free / ${(memory.total_bytes / 1073741824).toFixed(0)} GiB` : 'RAM unavailable';
+    $('memory').title = memory?.commit_available_bytes != null
+      ? `${(memory.commit_available_bytes / 1073741824).toFixed(1)} GiB commit headroom / ${(memory.commit_limit_bytes / 1073741824).toFixed(1)} GiB limit (GlobalMemoryStatusEx)`
+      : 'System commit information is unavailable.';
     updateControlInputs();
     const currentGroups = queue.groups?.filter(group => !group.run_id || !queue.run_id
       || group.run_id === queue.run_id) || [];

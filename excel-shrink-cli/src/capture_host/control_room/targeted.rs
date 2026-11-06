@@ -111,9 +111,12 @@ pub(super) async fn comparisons(State(room): State<Arc<Room>>) -> HttpResult<Jso
     let mut comparisons = Vec::new();
     let mut resolved_cleanup = Vec::new();
     for name in &names {
-        if let Some(mut snapshot) =
-            read_snapshot(&root.join(name), &mut diagnostics, SNAPSHOT_LIMIT).await
+        if let Some(snapshot) = room
+            .snapshots
+            .snapshot(&root.join(name), &mut diagnostics, SNAPSHOT_LIMIT)
+            .await
         {
+            let mut snapshot = snapshot.as_ref().clone();
             if reconcile_cleanup(&mut snapshot, crate::native_process::process_alive) {
                 resolved_cleanup.push(snapshot["run_id"].clone());
             }
@@ -203,8 +206,10 @@ async fn enrich_addin_heartbeats(
     let Some(study) = room.root.parent() else {
         return;
     };
-    let Some(queue) =
-        read_snapshot(&room.root.join("queue.json"), diagnostics, SNAPSHOT_LIMIT).await
+    let Some(queue) = room
+        .snapshots
+        .snapshot(&room.root.join("queue.json"), diagnostics, SNAPSHOT_LIMIT)
+        .await
     else {
         return;
     };

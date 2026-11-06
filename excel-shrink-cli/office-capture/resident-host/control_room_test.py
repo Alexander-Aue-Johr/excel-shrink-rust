@@ -417,7 +417,7 @@ class ControlRoomProtocol(unittest.TestCase):
             {"job_timeout_seconds": -1}, {"equal_preview_width": 513}, {"typo": 2},
             {"target_groups": 24, "equal_preview_width": None},
             {"hide_excel": "false"}, {"capture_tile_megapixels": 0}, {"capture_tile_megapixels": 65},
-            {"capture_batch_tiles": 0}, {"capture_batch_tiles": 17}, {"capture_batch_tiles": 1.5},
+            {"capture_batch_tiles": 0}, {"capture_batch_tiles": 1025}, {"capture_batch_tiles": 1.5},
             {"tall_sheet_threshold": 0}, {"tall_sheet_threshold": 1.5}, {"tall_sheet_threshold": 2147483648},
             {"tall_sheet_edge_tiles": 0}, {"tall_sheet_edge_tiles": -1}, {"tall_sheet_edge_tiles": "2"},
             {"system_reserve_mib": -1}, {"system_reserve_mib": 1.5},
@@ -433,6 +433,13 @@ class ControlRoomProtocol(unittest.TestCase):
                 self.assertEqual((self.data / "control.json").read_bytes(), before)
         self.assert_status(415, "/api/control", b"target_groups=24", {"Content-Type": "application/x-www-form-urlencoded"})
         self.assert_status(400, "/api/control", b"{", {"Content-Type": "application/json"})
+
+    def test_capture_batch_boundaries_round_trip(self):
+        for count in (1, 17, 1024):
+            with self.subTest(count=count):
+                controls = self.request("/api/control", {"capture_batch_tiles": count})["controls"]
+                self.assertEqual(controls["capture_batch_tiles"], count)
+                self.assertEqual(self.request("/api/state")["controls"], controls)
 
     def test_zero_groups_drains_without_a_conflicting_capture_pause(self):
         self.request("/api/control", {"paused": True})

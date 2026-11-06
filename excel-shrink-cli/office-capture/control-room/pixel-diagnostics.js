@@ -1,20 +1,13 @@
 import { readDiagnosticResponse } from './diagnostic-response.js';
+import { DiagnosticCache } from './diagnostic-cache.js';
+import { pixelSummary } from './pixel-summary.js';
+export { pixelSummary } from './pixel-summary.js';
 
-const cached = new Map();
+const cached = new DiagnosticCache({ maxEntries: 512, maxBytes: 8 * 1024 * 1024 });
+const MAX_PENDING_REQUESTS = 128;
 const pending = new Map();
 const queue = [];
 let running = false;
-const number = value => Number(value || 0).toLocaleString('en-US');
-
-/** Descriptive measurements, never a severity threshold that certifies a pass. */
-export function pixelSummary(metrics) {
-  if (!metrics) return 'Pixel measurements pending';
-  const text = `${number(metrics.changed_pixels)} changed px · max Δ${number(metrics.max_channel_delta)}/255 · ΣΔ ${number(metrics.total_channel_delta)}`;
-  const exterior = metrics.unmatched_pixels
-    ? ` · ${number(metrics.unmatched_pixels)} unpaired px (${number(metrics.unmatched_nonwhite_pixels)} non-white)` : '';
-  const missing = metrics.unmeasured_regions ? ` · ${number(metrics.unmeasured_regions)} regions unavailable` : '';
-  return text + exterior + missing;
-}
 
 export function cachedPixelDiagnostics(id) { return cached.get(id)?.value; }
 
@@ -25,11 +18,23 @@ export function requestPixelDiagnostics(id, { priority = false, refresh = false,
   if (!refresh && previous && Date.now() - previous.at < 60000) return Promise.resolve(previous.value);
   if (pending.has(key)) {
     const index = queue.findIndex(job => job.key === key);
-    if (priority && index > 0) queue.unshift(queue.splice(index, 1)[0]);
+    if (priority && index >= 0) {
+      queue[index].priority = true;
+      if (index > 0) queue.unshift(queue.splice(index, 1)[0]);
+    }
     return pending.get(key);
   }
+  if (pending.size >= MAX_PENDING_REQUESTS) {
+    // Do not let a long result list keep thousands of DOM rows and response
+    // promises alive. An explicitly selected region may replace list prefetch.
+    const disposable = priority ? queue.findLastIndex(job => !job.priority) : -1;
+    if (disposable < 0) return Promise.reject(new Error('Pixel measurement queue is full; retry this view.'));
+    const [deferred] = queue.splice(disposable, 1);
+    pending.delete(deferred.key);
+    deferred.reject(new Error('Pixel measurement deferred while inspecting a selected region.'));
+  }
   const promise = new Promise((resolve, reject) => {
-    const job = { id, key, region, resolve, reject };
+    const job = { id, key, region, priority, resolve, reject };
     if (priority) queue.unshift(job); else queue.push(job);
   });
   pending.set(key, promise);

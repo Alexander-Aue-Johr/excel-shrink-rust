@@ -22,12 +22,14 @@ pub(super) async fn get(
         ));
     }
     let mut diagnostics = Vec::new();
-    let queue = read_snapshot(
-        &room.root.join("queue.json"),
-        &mut diagnostics,
-        SNAPSHOT_LIMIT,
-    )
-    .await;
+    let queue = room
+        .snapshots
+        .snapshot(
+            &room.root.join("queue.json"),
+            &mut diagnostics,
+            SNAPSHOT_LIMIT,
+        )
+        .await;
     let progress = read_snapshot(
         &room.root.join("progress.json"),
         &mut diagnostics,
@@ -36,7 +38,7 @@ pub(super) async fn get(
     .await;
     let Json(comparisons) = targeted::comparisons(State(room.clone())).await?;
     let mut result = project(
-        queue.as_ref().unwrap_or(&Value::Null),
+        queue.as_deref().unwrap_or(&Value::Null),
         progress.as_ref().unwrap_or(&Value::Null),
         &comparisons["comparisons"],
         limit,

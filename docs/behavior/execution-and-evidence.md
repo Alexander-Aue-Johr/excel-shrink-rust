@@ -308,3 +308,17 @@ heartbeat/progress simulation. An empty completed candidate selection says
 counters say not performed when omitted. File byte sizes describe their named
 artifacts: an unopened `default.xlsx` working copy is not an observed SD state;
 use `state_decisions` to interpret it and `input_default` for raw shrink size.
+
+### Observatory display reads
+
+`/api/state` preserves its complete corpus response. The targeted UI requests
+`group_scope=live` after the paged workbook index becomes available. This view
+includes every active group, the selected workbook and eight recent summaries.
+`groups_total` records the complete count. Historical navigation uses
+`/api/workbooks` independently of this display projection.
+
+Parsed display snapshots and browser diagnostics have bounded caches. Metadata
+changes invalidate snapshot entries, with a forced reread after 30 seconds.
+Read errors discard cached entries. Scientific evidence and reuse eligibility
+remain owned by the comparison pipeline. Hidden historical cards retain their
+records while releasing their canvas and observer resources.

@@ -9,6 +9,7 @@ mod pixel_diagnostics;
 mod formula_diagnostics;
 mod platform;
 mod snapshots;
+mod snapshot_cache;
 mod summary;
 mod targeted;
 mod targeted_history;
@@ -40,6 +41,7 @@ struct Room {
     initial_controls: Value,
     control_gate: Mutex<()>,
     manual_capture: Mutex<Option<std::process::Child>>,
+    snapshots: snapshot_cache::SnapshotCache,
 }
 
 pub(super) async fn run(settings_path: &Path) -> Result<()> {
@@ -79,6 +81,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         initial_controls: initial,
         control_gate: Mutex::new(()),
         manual_capture: Mutex::new(None),
+        snapshots: snapshot_cache::SnapshotCache::default(),
     });
     let routes = Router::new()
         .route("/health", get(health))
@@ -195,8 +198,11 @@ async fn health(State(room): State<Arc<Room>>) -> Json<Value> {
 }
 
 async fn read_queue(room: &Room, diagnostics: &mut Vec<Value>) -> Result<Value> {
-    let mut queue = read_snapshot(&room.root.join("queue.json"), diagnostics, SNAPSHOT_LIMIT)
+    let mut queue = room
+        .snapshots
+        .snapshot(&room.root.join("queue.json"), diagnostics, SNAPSHOT_LIMIT)
         .await
+        .map(|value| value.as_ref().clone())
         .unwrap_or(json!({}));
     check_runner(&mut queue, diagnostics);
     reconcile_groups(&room.root, &mut queue, diagnostics).await?;
@@ -345,13 +351,14 @@ async fn capture_workers(root: &Path, queue: &Value) -> Vec<Value> {
     workers
 }
 
-async fn read_workbook_index(root: &Path, diagnostics: &mut Vec<Value>) -> Option<Value> {
-    read_snapshot(
-        &root.join("workbook-index.json"),
-        diagnostics,
-        64 * 1024 * 1024,
-    )
-    .await
+async fn read_workbook_index(room: &Room, diagnostics: &mut Vec<Value>) -> Option<Arc<Value>> {
+    room.snapshots
+        .snapshot(
+            &room.root.join("workbook-index.json"),
+            diagnostics,
+            64 * 1024 * 1024,
+        )
+        .await
 }
 
 async fn workbooks(
@@ -382,7 +389,7 @@ async fn workbooks(
         return Err(ApiError::bad_request("Workbook page size must be 1..100."));
     }
     let mut diagnostics = Vec::new();
-    let Some(index) = read_workbook_index(&room.root, &mut diagnostics).await else {
+    let Some(index) = read_workbook_index(&room, &mut diagnostics).await else {
         return Ok(Json(json!({"available":false,"workbooks":[],"counts":{},
             "total":0,"offset":offset,"next_offset":null,"diagnostics":diagnostics})));
     };
@@ -641,7 +648,7 @@ async fn group(
     let summary = if queued_summary.is_some() {
         queued_summary
     } else {
-        read_workbook_index(&room.root, &mut diagnostics)
+        read_workbook_index(&room, &mut diagnostics)
             .await
             .and_then(|index| {
                 (queue["run_id"].is_null() || index["run_id"] == queue["run_id"])
@@ -911,7 +918,7 @@ async fn known_workbook(room: &Room, id: &str) -> Result<bool> {
     let indexed = if queued {
         false
     } else {
-        read_workbook_index(&room.root, &mut Vec::new())
+        read_workbook_index(&room, &mut Vec::new())
             .await
             .is_some_and(|index| {
                 (queue["run_id"].is_null() || index["run_id"] == queue["run_id"])
@@ -1751,6 +1758,7 @@ mod tests {
             initial_controls: defaults(),
             control_gate: Mutex::new(()),
             manual_capture: Mutex::new(None),
+            snapshots: snapshot_cache::SnapshotCache::default(),
         };
         let queue = json!({"running":true,"runner_alive":true,
             "runner_pid":42,"runner_started_unix_ms":100});
@@ -1807,6 +1815,7 @@ mod tests {
             initial_controls: defaults(),
             control_gate: Mutex::new(()),
             manual_capture: Mutex::new(None),
+            snapshots: snapshot_cache::SnapshotCache::default(),
         });
         let response = download_variant(State(room), RoutePath(("book".into(), "default".into())))
             .await
