@@ -671,6 +671,12 @@ context without preventing index resolution. Invalid referenced format indices
 are explicit errors, not evidence of equality. Different serialization of a
 component can still conservatively produce a candidate.
 
+An empty custom number-format definition may use either a self-closing element
+or an explicit closing tag with only whitespace in between. Both spellings have
+the same identity. The format code and other attributes remain dependencies,
+including when a workbook explicitly defines a built-in-range number-format ID.
+Unexpected body content does not qualify for this equivalence.
+
 Constant cellIs rules and recognized value-reference formulas have a narrower
 rendering context: their comparison does not depend on unused cell-format templates.
 Changed applied formats retain their own cell/row/column candidates. The complete CF rule,

@@ -114,10 +114,18 @@ impl Components {
                 continue;
             }
             ensure!(found.is_none(), "Duplicate custom number format ID");
-            ensure!(
-                tag.kind == Kind::Empty,
-                "Unsupported custom number format body"
-            );
+            if tag.kind != Kind::Empty {
+                let closing = reader.next()?.context("Missing number format closing tag")?;
+                ensure!(
+                    closing.kind == Kind::End
+                        && closing.name == tag.name
+                        && bytes[range.start + tag.end..range.start + closing.start]
+                            .iter()
+                            .all(u8::is_ascii_whitespace)
+                        && reader.next()?.is_none(),
+                    "Unsupported custom number format body"
+                );
+            }
             let mut definition = Vec::new();
             for attribute in Attributes::new(tag.attrs) {
                 let (key, value) = attribute?;

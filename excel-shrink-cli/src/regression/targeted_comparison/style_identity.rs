@@ -197,6 +197,26 @@ fn hex(identity: &[u8; 32]) -> [u8; 64] {
 mod tests {
     use super::*;
 
+    /// CALHR exports use an explicit closing numFmt tag, including for IDs
+    /// below 164. Its spelling must not prevent comparison or hide its code.
+    #[test]
+    fn paired_empty_number_formats_preserve_identity() -> Result<()> {
+        let xml = br#"<styleSheet><numFmts><numFmt numFmtId="82" formatCode="General"/></numFmts><cellXfs><xf numFmtId="82"/></cellXfs></styleSheet>"#;
+        let paired = String::from_utf8(xml.to_vec())?
+            .replace("formatCode=\"General\"/>", "formatCode=\"General\"> \n</numFmt>");
+        let left = StyleIdentity::read(xml)?;
+        let right = StyleIdentity::read(paired.as_bytes())?;
+        assert_eq!(left.index_text(b"0")?, right.index_text(b"0")?);
+        let changed = paired.replace("General", "0.00");
+        assert_ne!(
+            left.index_text(b"0")?,
+            StyleIdentity::read(changed.as_bytes())?.index_text(b"0")?
+        );
+        let unexpected_body = paired.replace(" \n</numFmt>", "unexpected</numFmt>");
+        assert!(StyleIdentity::read(unexpected_body.as_bytes()).is_err());
+        Ok(())
+    }
+
     #[test]
     fn component_reindexing_preserves_properties_but_not_actual_changes() -> Result<()> {
         let before = concat!(
