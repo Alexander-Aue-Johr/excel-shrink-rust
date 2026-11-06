@@ -10,8 +10,8 @@ export async function readDiagnosticResponse(response, feature) {
   }
   if (!response.ok) {
     if (typeof value?.error === 'string') throw new Error(value.error);
-    if (response.status === 404 && !text.trim()) {
-      const error = new Error(`${feature} is not supported by this server (HTTP 404). Open the current run's Observatory link; this page may be connected to an older server.`);
+    if ([404, 405].includes(response.status) && !text.trim()) {
+      const error = new Error(`${feature} is not supported by this server (HTTP ${response.status}). Open the current run's Observatory link; this page may be connected to an older server.`);
       error.code = 'unsupported-diagnostic-endpoint';
       throw error;
     }
