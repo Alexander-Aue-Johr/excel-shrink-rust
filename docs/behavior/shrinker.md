@@ -278,9 +278,17 @@ are not split by this cleanup.
 The style-aware route can collapse a visible equal-fill tail into the first
 compatible definition or a default tail into the last compatible definition.
 Visible borders and incompatible styles restrict eligibility. Changes to inherited
-column fonts/styles may still affect row layout, hence the separate effective
-height checks during validation. “The columns were empty” alone is not a visual
-preservation proof.
+fonts are constrained by one retained empty column per canonical font identity
+that the replacement would otherwise remove. Uncovered gaps contribute the
+default font too. Sentinels stay at original empty-tail coordinates and introduce
+no cells or fixed row heights. Unknown explicit styles and overlapping ranges
+retain the original definitions. Equal-fill merging stops at uncovered gaps
+instead of painting them. Validation still checks effective row heights.
+
+The NLA water-isotope control demonstrates this requirement. Collapsing the last
+Calibri 11 columns into an Arial 10 tail reduced automatic data-row heights from
+15.75 to 15 points. One retained Calibri column preserves the observed heights
+while allowing the remaining empty columns to merge.
 
 Drawing-anchor bounds are additional layout anchors. The shrinker's drawing
 lookup is not a full rendering engine: missing/unreadable or unsupported drawing

@@ -1,6 +1,7 @@
 use crate::models::{CleanSheetParameters, ColumnDefinition, ColumnRangeMap, Xf};
 use crate::utils::digits_byte_string_to_integer;
 use crate::xml::{find_byte_from, find_bytes};
+use std::collections::HashSet;
 
 pub fn process_cols_node(col_data: &[u8], params: &CleanSheetParameters) -> ColumnRangeMap {
     let mut map = ColumnRangeMap::default();
@@ -240,9 +241,13 @@ fn collapse_visible_equal_fill_column_tail(
     let last = columns.last()?;
     let target_style = eligible_visible_tail_style(last, max_column, params)?;
     let first_tail_index = equal_fill_tail_start(columns, max_column, params, target_style);
-    let first_tail = multiple_column_tail_start(columns, first_tail_index)?;
-
-    collapse_tail_into_first(cols_content, first_tail, last)
+    multiple_column_tail_start(columns, first_tail_index)?;
+    collapse_tail_preserving_fonts(
+        cols_content,
+        &columns[first_tail_index..],
+        &columns[first_tail_index],
+        params,
+    )
 }
 
 fn eligible_visible_tail_style(
@@ -267,7 +272,9 @@ fn equal_fill_tail_start(
 
     while first_tail_index > 0 {
         let previous = &columns[first_tail_index - 1];
-        if !column_extends_equal_fill_tail(previous, max_column, params, target_style) {
+        if previous.max + 1 != columns[first_tail_index].min
+            || !column_extends_equal_fill_tail(previous, max_column, params, target_style)
+        {
             break;
         }
         first_tail_index -= 1;
@@ -297,9 +304,8 @@ fn collapse_default_column_tail(
     eligible_default_tail_column(last, max_column, params)?;
 
     let first_tail_index = default_tail_start(columns, max_column, params);
-    let first_tail = multiple_column_tail_start(columns, first_tail_index)?;
-
-    collapse_tail_into_last(cols_content, first_tail, last)
+    multiple_column_tail_start(columns, first_tail_index)?;
+    collapse_tail_preserving_fonts(cols_content, &columns[first_tail_index..], last, params)
 }
 
 fn eligible_default_tail_column(
@@ -350,40 +356,71 @@ fn multiple_column_tail_start<'slice, 'data>(
     (first_tail_index < columns.len() - 1).then(|| &columns[first_tail_index])
 }
 
-fn collapse_tail_into_first(
+/// Keep one empty column per original font while collapsing redundant widths.
+/// An uncovered default-font gap can also determine every automatic row height.
+fn collapse_tail_preserving_fonts(
     cols_content: &[u8],
-    first_tail: &ParsedColumnTag<'_>,
-    last: &ParsedColumnTag<'_>,
+    tail: &[ParsedColumnTag<'_>],
+    replacement: &ParsedColumnTag<'_>,
+    params: &CleanSheetParameters,
 ) -> Option<Vec<u8>> {
-    let replacement_max = last.max.to_string();
-    let collapsed_first_tag =
-        replace_attr_value(first_tail.tag, b"max", replacement_max.as_bytes())?;
-
-    let mut out = Vec::with_capacity(
-        cols_content.len() - (last.end - first_tail.start) + collapsed_first_tag.len(),
-    );
-    out.extend_from_slice(&cols_content[..first_tail.start]);
-    out.extend_from_slice(&collapsed_first_tag);
+    let first = tail.first()?;
+    let last = tail.last()?;
+    let sentinels = tail_font_sentinels(tail, replacement, params)?;
+    let mut out = Vec::with_capacity(cols_content.len());
+    out.extend_from_slice(&cols_content[..first.start]);
+    let mut next_column = first.min;
+    for (column, tag) in sentinels {
+        if next_column < column {
+            append_column_span(&mut out, replacement.tag, next_column, column - 1)?;
+        }
+        append_column_span(&mut out, tag, column, column)?;
+        next_column = column + 1;
+    }
+    if next_column <= last.max {
+        append_column_span(&mut out, replacement.tag, next_column, last.max)?;
+    }
     out.extend_from_slice(&cols_content[last.end..]);
     Some(out)
 }
 
-fn collapse_tail_into_last(
-    cols_content: &[u8],
-    first_tail: &ParsedColumnTag<'_>,
-    last: &ParsedColumnTag<'_>,
-) -> Option<Vec<u8>> {
-    let replacement_min = first_tail.min.to_string();
-    let collapsed_last_tag = replace_attr_value(last.tag, b"min", replacement_min.as_bytes())?;
+/// Select the first empty source column for each font absent from the replacement.
+fn tail_font_sentinels<'a>(
+    tail: &[ParsedColumnTag<'a>],
+    replacement: &ParsedColumnTag<'_>,
+    params: &CleanSheetParameters,
+) -> Option<Vec<(u32, &'a [u8])>> {
+    let mut represented = HashSet::from([column_font_identity(replacement.style_id, params)?]);
+    let mut sentinels = Vec::new();
+    let mut next_column = tail.first()?.min;
+    for column in tail {
+        if column.min < next_column || column.max < column.min || column.max > 16_384 {
+            return None;
+        }
+        if next_column < column.min && represented.insert(column_font_identity(None, params)?) {
+            sentinels.push((next_column, b"<col min=\"1\" max=\"1\"/>".as_slice()));
+        }
+        if represented.insert(column_font_identity(column.style_id, params)?) {
+            sentinels.push((column.min, column.tag));
+        }
+        next_column = column.max + 1;
+    }
+    Some(sentinels)
+}
 
-    let mut out = Vec::with_capacity(
-        cols_content.len() - (last.end - first_tail.start) + collapsed_last_tag.len(),
-    );
-    out.extend_from_slice(&cols_content[..first_tail.start]);
-    out.extend_from_slice(&collapsed_last_tag);
+/// Reuse canonical font identities; unknown explicit styles cannot prove safety.
+fn column_font_identity(style_id: Option<u32>, params: &CleanSheetParameters) -> Option<u32> {
+    match style_id {
+        Some(id) => Some(params.patterns.xfs_by_index.get(&id)?.font_identity()),
+        None => Some(params.patterns.xfs_by_index.get(&0).map_or(0, Xf::font_identity)),
+    }
+}
 
-    out.extend_from_slice(&cols_content[last.end..]);
-    Some(out)
+fn append_column_span(out: &mut Vec<u8>, tag: &[u8], min: u32, max: u32) -> Option<()> {
+    let tag = replace_attr_value(tag, b"min", min.to_string().as_bytes())?;
+    let tag = replace_attr_value(&tag, b"max", max.to_string().as_bytes())?;
+    out.extend_from_slice(&tag);
+    Some(())
 }
 fn column_tail_style(
     column: &ParsedColumnTag<'_>,
@@ -517,6 +554,69 @@ mod tests {
             .has_fill_or_border(true)
             .has_apply_fill_or_border(true)
             .build_xf()
+    }
+
+    #[test]
+    fn keeps_one_default_font_column_before_a_different_font_tail() {
+        let params = params_with_styles(&[(10, Xf::builder().font_id(Some(19)).build_xf())]);
+        let cols = br#"<col min="1" max="44" style="10"/><col min="45" max="45" width="10.71"/><col min="47" max="16384" style="10"/>"#;
+        let merged = merge_extraneous_columns_with_styles(cols, 44, &params, true);
+        assert_eq!(merged, br#"<col min="1" max="44" style="10"/><col min="45" max="45" width="10.71"/><col min="46" max="16384" style="10"/>"#);
+    }
+
+    #[test]
+    fn keeps_a_default_font_sentinel_from_an_uncovered_gap() {
+        let params = params_with_styles(&[(10, Xf::builder().font_id(Some(19)).build_xf())]);
+        let cols = br#"<col min="45" max="45" style="10"/><col min="48" max="16384" style="10"/>"#;
+        let merged = merge_extraneous_columns_with_styles(cols, 44, &params, true);
+        assert_eq!(merged, br#"<col min="45" max="45" style="10"/><col min="46" max="46"/><col min="47" max="16384" style="10"/>"#);
+    }
+
+    #[test]
+    fn duplicate_font_records_do_not_require_an_extra_column() {
+        let params = params_with_styles(&[
+            (10, Xf::builder().font_id(Some(19)).font_identity_id(Some(0)).build_xf()),
+        ]);
+        let cols = br#"<col min="45" max="45"/><col min="47" max="16384" style="10"/>"#;
+        let merged = merge_extraneous_columns_with_styles(cols, 44, &params, true);
+        assert_eq!(merged, br#"<col min="45" max="16384" style="10"/>"#);
+    }
+
+    #[test]
+    fn unknown_font_styles_keep_the_original_tail() {
+        let cols = br#"<col min="45" max="45" style="8"/><col min="47" max="16384" style="10"/>"#;
+        assert_eq!(merge_extraneous_columns_with_styles(cols, 44, &default_params(), true), cols);
+    }
+
+    #[test]
+    fn repeated_fonts_keep_only_one_sentinel_each() {
+        let params = params_with_styles(&[
+            (11, Xf::builder().font_id(Some(1)).build_xf()),
+            (12, Xf::builder().font_id(Some(2)).build_xf()),
+            (13, Xf::builder().font_id(Some(3)).build_xf()),
+        ]);
+        let cols = br#"<col min="6" max="8" style="11"/><col min="9" max="12" style="12"/><col min="13" max="20" style="11"/><col min="21" max="16384" style="13"/>"#;
+        let merged = merge_extraneous_columns_with_styles(cols, 5, &params, true);
+        assert_eq!(merged, br#"<col min="6" max="6" style="11"/><col min="7" max="8" style="13"/><col min="9" max="9" style="12"/><col min="10" max="16384" style="13"/>"#);
+    }
+
+    #[test]
+    fn equal_fill_tail_keeps_a_different_font_on_one_column() {
+        let mut first = visible_fill_style(2);
+        first.font_id = Some(1);
+        let mut last = visible_fill_style(2);
+        last.font_id = Some(2);
+        let params = params_with_styles(&[(39, first), (40, last)]);
+        let cols = br#"<col min="21" max="100" style="39"/><col min="101" max="16384" style="40"/>"#;
+        let merged = merge_extraneous_columns_with_styles(cols, 20, &params, true);
+        assert_eq!(merged, br#"<col min="21" max="100" style="39"/><col min="101" max="101" style="40"/><col min="102" max="16384" style="39"/>"#);
+    }
+
+    #[test]
+    fn equal_fill_does_not_paint_an_uncovered_gap() {
+        let params = params_with_styles(&[(39, visible_fill_style(2))]);
+        let cols = br#"<col min="21" max="30" style="39"/><col min="32" max="16384" style="39"/>"#;
+        assert_eq!(merge_extraneous_columns_with_styles(cols, 20, &params, true), cols);
     }
 
     #[test]
