@@ -4,7 +4,9 @@
 
 `DE-EE0007347 M2.4 H1 LCOE Model PD v1.0 03-06-2017_57e01cc50096.xlsx`, group
 `0d8586700aaeff9826a2`, has hidden columns F:H on `Installed Cost Overview`.
-Their column style supplies Arial 12. Empty cells supply Arial 11 instead.
+Their column style supplies bold Arial 11 (font 13). Empty cells supply regular
+Arial 11 (font 26) instead. Both fonts have the same point size, but their
+measured row-height contributions differ.
 Although visible cells also use Arial 11, they cannot mask the hidden columns.
 
 The previous cleanup removed those local masks because their font was already
