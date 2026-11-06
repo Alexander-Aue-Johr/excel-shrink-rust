@@ -46,7 +46,7 @@ class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
                       patch.object(flow, "capture_failure", new=AsyncMock(
                           side_effect=lambda *args: events.append("capture"))),
                       patch.object(flow, "wait_for_folder_rows", new=AsyncMock()),
-                      patch.object(flow, "sort_oldest_first", new=AsyncMock())):
+                      patch.object(flow, "sort_newest_first", new=AsyncMock())):
                     await flow.process_workbook(None, page, Path(temporary), progress,
                                                 MagicMock(), "file.xlsx")
                 self.assertEqual(events, ["capture", "navigate"])

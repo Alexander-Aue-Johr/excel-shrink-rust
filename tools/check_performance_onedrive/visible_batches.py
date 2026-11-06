@@ -136,6 +136,7 @@ async def move_visible_batch(page, progress: flow.ProgressStore, names: list[str
 async def move_with_recovery(browser, args, profile: Path, progress, names, destination):
     """Retry only original files still visible after a browser recovery."""
     playwright, context, page = browser
+    names = flow.owned_names(names, args)
     for attempt in (1, 2):
         current = set((await snapshot(page))["files"])
         batch = [name for name in names if name in current]
@@ -161,7 +162,7 @@ async def read_view_with_recovery(browser, args, profile):
     for attempt in (1, 2):
         try:
             await flow.wait_for_folder_rows(browser[2])
-            await flow.sort_oldest_first(browser[2])
+            await flow.sort_newest_first(browser[2])
             # The destination folder is always present in this mode. Header-only
             # markup can otherwise be mistaken for an empty list during reload.
             await browser[2].locator('[data-selection-index]:not([data-selection-index="-1"])').first.wait_for(
@@ -189,6 +190,7 @@ async def run_visible_batches(args) -> int:
     cohort = []
     try:
         with flow.ProgressStore(args.output_root.resolve() / identifier, identifier) as progress:
+            flow.bind_worker(progress, args)
             if args.refresh_list:
                 await flow.load_workbook_inventory(browser[2], progress, args)
             display = flow.ConsoleProgress(progress)
@@ -196,7 +198,7 @@ async def run_visible_batches(args) -> int:
                 while True:
                     browser, view = await read_view_with_recovery(browser, args, profile)
                     playwright, context, page = browser
-                    names = view["files"]
+                    names = flow.owned_names(view["files"], args)
                     progress.discover(names)
                     if phase == Phase.MOVE:
                         completed = [name for name in names if progress.status(name) == "completed"]
@@ -234,11 +236,11 @@ async def run_visible_batches(args) -> int:
                         # Allow OneDrive's delayed replacement rows to settle before
                         # deciding the folder is drained or advancing past blocked rows.
                         quiet_views += 1
-                        if quiet_views < (20 if not names else 4):
+                        if quiet_views < (20 if not view["files"] else 4):
                             await asyncio.sleep(0.5)
                             continue
                         if view["more_below"]:
-                            position = (tuple(names), view["scroll_top"])
+                            position = (tuple(view["files"]), view["scroll_top"])
                             if position == last_advance:
                                 raise RuntimeError("OneDrive did not advance the list viewport")
                             last_advance = position

@@ -254,10 +254,21 @@ class RenderingRecoveryTests(unittest.IsolatedAsyncioTestCase):
         expectation = MagicMock()
         expectation.to_have_attribute = AsyncMock()
         with patch("playwright.async_api.expect", return_value=expectation) as expect:
-            await FLOW.sort_oldest_first(page)
+            await FLOW.sort_newest_first(page)
         expect.assert_called_once_with(header)
-        expectation.to_have_attribute.assert_awaited_once_with("aria-sort", "ascending", timeout=30_000)
+        expectation.to_have_attribute.assert_awaited_once_with("aria-sort", "descending", timeout=30_000)
+        self.assertEqual(page.locator.call_args.args[0],
+                         '[role="menuitemcheckbox"][data-automationid="sortDesc"]')
         page.wait_for_function.assert_not_called()
+
+    async def test_newest_first_sort_does_not_toggle_an_already_descending_list(self):
+        page, header = MagicMock(), MagicMock()
+        page.locator.return_value = header
+        header.wait_for = AsyncMock()
+        header.get_attribute = AsyncMock(return_value="descending")
+        await FLOW.sort_newest_first(page)
+        header.locator.assert_not_called()
+        page.locator.assert_called_once()
 
 
 class ProgressStoreTests(unittest.TestCase):

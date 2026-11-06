@@ -92,7 +92,7 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
             args = SimpleNamespace(browser_channel="chromium", headed=False,
                                    folder_url="https://example.test/folder")
             with (patch.object(FLOW, "open_folder", side_effect=lambda page, *_: page),
-                  patch.object(FLOW, "sort_oldest_first", new_callable=AsyncMock)):
+                  patch.object(FLOW, "sort_newest_first", new_callable=AsyncMock)):
                 first_driver, first_context, _ = await FLOW.restart_folder_browser(
                     None, None, args, Path(temporary))
                 second_driver, second_context, _ = await FLOW.restart_folder_browser(
@@ -333,7 +333,7 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
         with (patch.object(FLOW, "open_workbook_in_current_tab", new_callable=AsyncMock,
                            return_value=page) as open_tab,
               patch.object(FLOW, "find_editor", side_effect=FLOW.WorkbookCannotOpen()),
-              patch.object(FLOW, "sort_oldest_first", new_callable=AsyncMock),
+              patch.object(FLOW, "sort_newest_first", new_callable=AsyncMock),
               patch.object(FLOW, "record_phase")):
             with self.assertRaisesRegex(FLOW.WorkbookCannotOpen, "both opening attempts"):
                 await FLOW.open_editor_with_retry(None, page, "broken.xlsx", progress, None)
@@ -503,7 +503,7 @@ class PaneObserverTests(unittest.IsolatedAsyncioTestCase):
         """The next workbook can use the same tab after one folder reload fails."""
         with (patch.object(FLOW, "open_folder", new_callable=AsyncMock,
                            return_value=self.page) as open_folder,
-              patch.object(FLOW, "sort_oldest_first", new_callable=AsyncMock) as sort):
+              patch.object(FLOW, "sort_newest_first", new_callable=AsyncMock) as sort):
             recovered = await FLOW.recover_folder(
                 self.page.context, self.page, "https://1drv.ms/f/example", True)
         self.assertIs(recovered, self.page)

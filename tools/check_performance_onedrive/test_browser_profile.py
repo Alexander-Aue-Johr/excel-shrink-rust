@@ -101,7 +101,7 @@ class BrowserProfileTests(unittest.IsolatedAsyncioTestCase):
             args = SimpleNamespace(folder_url="https://example.test", browser_channel="chromium", headed=False)
             driver = context = None
             with (patch.object(flow, "open_folder", new=AsyncMock(side_effect=lambda page, *_: page)),
-                  patch.object(flow, "sort_oldest_first", new=AsyncMock())):
+                  patch.object(flow, "sort_newest_first", new=AsyncMock())):
                 try:
                     driver, context, _ = await flow.start_folder_browser(args, profile)
                     owner = json.loads(profiles.owner_path(profile).read_text(encoding="utf-8"))

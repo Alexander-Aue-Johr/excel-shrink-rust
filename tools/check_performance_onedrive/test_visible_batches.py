@@ -64,7 +64,7 @@ class VisibleRunTests(unittest.IsolatedAsyncioTestCase):
 
             with (patch.object(flow, "restart_folder_browser", new=AsyncMock(return_value=browser)),
                   patch.object(flow, "wait_for_folder_rows", new=AsyncMock()),
-                  patch.object(flow, "sort_oldest_first", new=AsyncMock()) as sort,
+                  patch.object(flow, "sort_newest_first", new=AsyncMock()) as sort,
                   patch.object(flow, "discover_workbooks", side_effect=AssertionError("full discovery")),
                   patch.object(flow, "find_file_row", side_effect=AssertionError("full search")),
                   patch.object(flow, "scroll_file_list", side_effect=AssertionError("scrolling")),
@@ -162,7 +162,7 @@ class VisibleRunTests(unittest.IsolatedAsyncioTestCase):
 
             with (patch.object(flow, "restart_folder_browser", new=AsyncMock(return_value=browser)),
                   patch.object(flow, "wait_for_folder_rows", new=AsyncMock()),
-                  patch.object(flow, "sort_oldest_first", new=AsyncMock()),
+                  patch.object(flow, "sort_newest_first", new=AsyncMock()),
                   patch.object(flow, "process_selected_workbook", new=process),
                   patch.object(flow, "close_browser", new=AsyncMock()),
                   patch.object(flow, "ConsoleProgress"),

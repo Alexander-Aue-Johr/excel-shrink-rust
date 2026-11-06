@@ -23,6 +23,7 @@ import time
 from urllib.parse import urlsplit
 
 from .diagnostics import capture_failure
+from .workers import bind_worker, owned_names
 
 class JobState(StrEnum):
     """Durable stages of one workbook's Check Performance attempt."""
@@ -727,17 +728,17 @@ SINGLE_TAB_NAVIGATION = """(() => {
 })()"""
 
 
-async def sort_oldest_first(page) -> None:
-    """Keep optimized files moving below older work in OneDrive's folder view."""
+async def sort_newest_first(page) -> None:
+    """Keep recently edited workbooks at the top for prompt result relocation."""
     header = page.locator('[role="columnheader"][data-automationid="field-Modified"]')
     await header.wait_for(state="visible", timeout=30_000)
-    if await header.get_attribute("aria-sort") == "ascending":
+    if await header.get_attribute("aria-sort") == "descending":
         return
     await header.locator('[role="button"]').click()
-    await page.locator('[role="menuitemcheckbox"][data-automationid="sortAsc"]').click(
+    await page.locator('[role="menuitemcheckbox"][data-automationid="sortDesc"]').click(
         timeout=10_000)
     from playwright.async_api import expect
-    await expect(header).to_have_attribute("aria-sort", "ascending", timeout=30_000)
+    await expect(header).to_have_attribute("aria-sort", "descending", timeout=30_000)
 
 
 async def discover_workbooks(page) -> list[str]:
@@ -1238,7 +1239,7 @@ async def open_editor_with_retry(context, folder_page, name: str,
                 await page.goto(folder_url, wait_until="domcontentloaded", timeout=120_000)
                 await page.locator('[data-automationid="field-LinkFilename"]').first.wait_for(
                     state="visible", timeout=60_000)
-                await sort_oldest_first(page)
+                await sort_newest_first(page)
                 row = None
     raise WorkbookCannotOpen("Excel rejected the workbook on both opening attempts")
 
@@ -1320,7 +1321,7 @@ async def process_workbook(context, folder_page, profile: Path,
             if not throttled and not folder_page.is_closed() and folder_page.url != folder_url:
                 await folder_page.goto(folder_url, wait_until="domcontentloaded", timeout=120_000)
                 await wait_for_folder_rows(folder_page)
-                await sort_oldest_first(folder_page)
+                await sort_newest_first(folder_page)
         finally:
             display.finish(name, attempt, outcome, message)
 
@@ -1349,7 +1350,7 @@ async def recover_folder(context, folder_page, folder_url: str, headed: bool):
         folder_page = await context.new_page()
         await folder_page.add_init_script(SINGLE_TAB_NAVIGATION)
     folder_page = await open_folder(folder_page, folder_url, headed)
-    await sort_oldest_first(folder_page)
+    await sort_newest_first(folder_page)
     return folder_page
 
 
@@ -1404,7 +1405,7 @@ async def start_folder_browser(args, profile: Path):
                 await extra_page.close()
         await folder_page.add_init_script(SINGLE_TAB_NAVIGATION)
         folder_page = await open_folder(folder_page, args.folder_url, args.headed)
-        await sort_oldest_first(folder_page)
+        await sort_newest_first(folder_page)
         return playwright, context, folder_page
     except BaseException as error:
         if folder_page is not None and isinstance(error, Exception):
@@ -1508,11 +1509,11 @@ async def process_selected_workbook(playwright, context, folder_page, args, prof
 
 async def load_workbook_inventory(page, progress: ProgressStore, args) -> list[str]:
     """Discover new uploads when requested, otherwise reuse the durable inventory."""
-    names = progress.names()
+    names = owned_names(progress.names(), args)
     scope_to_folder = args.retry_skipped or getattr(args, "move_optimized", False)
     if not names or args.refresh_list or args.list_only or scope_to_folder:
-        discovered = await discover_workbooks(page)
-        names = progress.discover(discovered)
+        discovered = owned_names(await discover_workbooks(page), args)
+        names = owned_names(progress.discover(discovered), args)
         print(f"Found {len(discovered)} XLSX files; {len(names)} known across runs. "
               f"Progress: {progress.path}", flush=True)
         if scope_to_folder:
@@ -1523,7 +1524,7 @@ async def load_workbook_inventory(page, progress: ProgressStore, args) -> list[s
 
 
 async def run_folder_check_performance(args) -> int:
-    """Resume known files from the oldest visible row and record each outcome."""
+    """Resume known files in newest-first order and record each outcome."""
     if getattr(args, "move_optimized", False) and not args.list_only and not args.only_file:
         from .visible_batches import run_visible_batches
         return await run_visible_batches(args)
@@ -1534,6 +1535,7 @@ async def run_folder_check_performance(args) -> int:
     playwright, context, folder_page = await restart_folder_browser(None, None, args, profile)
     try:
         with ProgressStore(directory, identifier) as progress:
+            bind_worker(progress, args)
             names = await load_workbook_inventory(folder_page, progress, args)
             if args.list_only:
                 for name in names:
@@ -1553,7 +1555,7 @@ async def run_folder_check_performance(args) -> int:
                 playwright, context, folder_page = await archive_optimized_with_recovery(
                     playwright, context, folder_page, args, profile, progress, completed_in_folder)
             if not args.retry_skipped:
-                pending_moves = progress.pending_skipped_moves()
+                pending_moves = owned_names(progress.pending_skipped_moves(), args)
                 if args.only_file:
                     pending_moves = [name for name in pending_moves if name == args.only_file]
                 playwright, context, folder_page = await archive_skipped_with_recovery(
@@ -1654,9 +1656,17 @@ def parse_arguments() -> argparse.Namespace:
                         help="Move completed workbooks into the existing optimized child folder")
     parser.add_argument("--only-file", help="Process or check one named workbook")
     parser.add_argument("--max-files", type=int, default=sys.maxsize, help="Process at most N files this run")
+    parser.add_argument("--worker-count", type=int, default=1,
+                        help="Fixed number of workers sharing the folder")
+    parser.add_argument("--worker-id", type=int, default=0,
+                        help="Zero-based worker ID, from 0 to worker-count minus one")
     args = parser.parse_args()
     if args.max_files < 1:
         parser.error("--max-files must be positive")
+    if args.worker_count < 1 or not 0 <= args.worker_id < args.worker_count:
+        parser.error("Require --worker-count >= 1 and 0 <= --worker-id < --worker-count")
+    if args.only_file and not owned_names([args.only_file], args):
+        parser.error("--only-file belongs to another worker")
     return args
 
 

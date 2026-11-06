@@ -1,5 +1,37 @@
 # Run Check Performance on a OneDrive folder
 
+## Multiple workers sharing one folder
+
+Give each worker machine a distinct zero-based ID and the same fixed count.
+For two machines, start the first with:
+
+```powershell
+python tools/check-performance-onedrive.py 'YOUR_LINK' --headed --move-optimized --worker-count 2 --worker-id 0
+```
+
+Start the second machine with the same folder link and `--worker-count 2 --worker-id 1`.
+Each machine keeps its own local SQLite database and browser profile. Running
+multiple workers on one machine requires a separate `--output-root` per worker.
+The existing `optimized` and `skipped` child folders are shared destinations.
+
+Ownership uses SHA-256 of the exact filename, including `.xlsx`, encoded as
+UTF-8. Interpret the first eight digest bytes as an unsigned big-endian integer
+and take the remainder modulo `worker-count`. There is no case conversion or
+Unicode normalization. For example, `alpha.xlsx` has integer
+`12739248936139767823` and belongs to worker 1 with two workers.
+
+Both checking and moving are restricted to the worker's filenames. Foreign
+rows are ignored, and a viewport containing only foreign rows is scrolled past.
+The inventory-based modes and `--only-file` use the same assignment.
+Without these options, the default is one worker with ID 0.
+
+An existing single-worker database can resume as one partition while preserving
+its historical results. The worker count, ID and hash protocol are recorded in
+SQLite. A later incompatible assignment is rejected, requiring a separate
+`--output-root`. Keep the worker count fixed for the shared run and use the same
+filename spelling on every machine. Files already moved into child folders stay
+outside normal input-folder processing.
+
 Before recovery or an unexpected failure closes or navigates the browser, the
 runner saves evidence under `<output-root>/<folder-id>/diagnostics/<time-id>/`.
 Each directory contains `viewport.png`, one HTML file per reachable frame,
@@ -77,9 +109,10 @@ circle is used before the top command bar's **Move to** action. Earlier complete
 files visible in the folder are moved first. Previous skips are retried once per
 invocation with `--retry-skipped-in-folder`; newly skipped files are staged until
 the current checking group ends, then moved together to `skipped`.
-Files are sorted by modification time, oldest first. A successful edit can move
-its row below the current viewport; it is picked up for relocation when visible
-again. The runner never searches the entire folder for that row in this mode.
+Files are sorted by modification time, newest first. Recently edited workbooks
+collect at the top, where the runner moves their completed results to `optimized`
+between checking groups. Skipped files visible in a group are moved to `skipped`.
+The runner uses the current visible rows when selecting the next group.
 Replacement rows are allowed to settle before choosing the next group. A single
 viewport advance is a fallback when settled rows cannot be processed or moved;
 an unchanged viewport raises an error instead of scrolling indefinitely.
