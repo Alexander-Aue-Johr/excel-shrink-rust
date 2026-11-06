@@ -53,3 +53,27 @@ Local evidence is under
 `zhang-bounded-font-proof`, `automatic-dense-font-proof/native` and
 `height-regression-controls`. These machine-local corpus artifacts are not
 committed.
+
+## Cache migration on 2026-11-06
+
+A read-only byte inventory streamed changed worksheet parts in all 8,623 prepared
+Data.gov workbooks. It selected 2,751 possible local-font or dense automatic-row
+cases, with no inventory errors. Default outputs were replayed and compared by
+SHA-256 of every decompressed package member. Of those, 2,121 were unchanged and
+630 changed. One 300-second replay limit was exceeded. Its bounded retry finished
+in 589 seconds and produced no changed members.
+
+After draining the active groups, the 630 prior bundles and records were copied
+into a checksum-verified backup. Only those bundles were invalidated. Existing
+capture reports and images remained in place. The regular runner restarted with
+four groups and a 1,024 MiB reserve. Unaffected prepared artifacts were explicitly
+accepted from their inventoried producer builds. Other machines should not accept
+an old producer wholesale without equivalent compatibility evidence.
+
+Local migration evidence is `local-font-cache-audit.json`,
+`local-font-cache-replays.json`, `local-font-giant-retry.json` and
+`local-font-cache-fix-plan.json` under the temporary root above. The verified
+backup is `backups/before-local-font-masks-20261106-063936`.
+
+The full Zhang paired-rebuild control also completed with all 19 selected regions
+matching. These controls preserve the existing selected-region coverage limits.
