@@ -171,6 +171,15 @@ anchor even without content below it. When no fill is inherited, the same
 attributes alone neither justify keeping the cell nor make it a tail anchor.
 Other retention rules still apply.
 
+A row with `customFormat="1"` and no `s` attribute still applies row XF 0.
+Treat it as an explicit row format when deciding whether a concrete cell clears
+or restores inherited column formatting. An omitted custom-format flag leaves
+ordinary column inheritance unchanged. In the AFFF manual's Data rows 124–128,
+discarding filled blanks because they matched their column exposed the implicit
+no-fill row format instead. The focused control removed only the custom-format
+flags from the shrunk copy and eliminated the image difference. Production
+cleanup preserves those flags and the cells needed to restore the original fill.
+
 The regression fixture for Enron bundle `44ad86f1d9f249470fc6`, sheet `AUGUST`,
 documents this distinction. Its 21,947 no-fill overrides had nothing to clear
 but incorrectly anchored an otherwise content-free sheet through F2779.

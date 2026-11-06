@@ -1228,6 +1228,38 @@ fn keeps_colored_cells_when_the_row_overrides_the_same_colored_column() {
     );
 }
 
+/// AFFF Data rows 124–128 specify customFormat without s. Their implicit
+/// default row style clears the column fill unless a concrete cell restores it.
+#[test]
+fn custom_format_without_style_uses_default_row_style() {
+    let default = empty_style_without_visible_parts();
+    let colored = fill_style(4, true);
+    let params = params_with_styles(&[(0, default), (4, colored.clone())]);
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 1,
+        cell_xf: Some(colored),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+
+    for attributes in [br#" r="3" customFormat="1""#.as_slice(), br#" r="3" customFormat="true""#] {
+        let row = RowView::parse(attributes, &params).unwrap();
+        assert_eq!(row.style, params.patterns.xfs_by_index.get(&0));
+        let xml = br#"<c r="A3" s="4"/>"#;
+        let mut cell = parsed_a3_cell(xml, br#" r="A3" s="4""#, Some(4));
+        cell.row_view = Some(&row);
+        assert_eq!(replace_parsed_cell(&cell, &params, &mut metrics).as_ref(), xml);
+    }
+
+    for attributes in [br#" r="3""#.as_slice(), br#" r="3" customFormat="0""#] {
+        assert!(RowView::parse(attributes, &params).unwrap().style.is_none());
+    }
+    let explicit = RowView::parse(br#" r="3" customFormat="1" s="4""#, &params).unwrap();
+    assert_eq!(explicit.style, params.patterns.xfs_by_index.get(&4));
+}
+
 #[test]
 fn removes_empty_cell_when_row_and_column_apply_same_fill_as_cell() {
     let inherited_default_fill = fill_style(0, true);

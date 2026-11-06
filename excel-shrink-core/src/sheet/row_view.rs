@@ -36,6 +36,7 @@ impl<'xml, 'styles> RowView<'xml, 'styles> {
         };
         // Preserve first-value semantics for repeated recognized attributes.
         let mut seen = 0u8;
+        let mut custom_format = false;
         for attribute in Attributes::new(raw_attributes) {
             let attribute = attribute.ok()?;
             let bit = match attribute.name {
@@ -45,6 +46,7 @@ impl<'xml, 'styles> RowView<'xml, 'styles> {
                 b"ht" => 8,
                 b"customHeight" => 16,
                 b"spans" => 32,
+                b"customFormat" => 64,
                 _ => continue,
             };
             if seen & bit != 0 {
@@ -69,8 +71,14 @@ impl<'xml, 'styles> RowView<'xml, 'styles> {
                 b"ht" => row.has_height = true,
                 b"customHeight" => row.has_custom_height = attribute.value == b"1",
                 b"spans" => row.spans = Some((attribute.value_start, attribute.value_end)),
+                b"customFormat" => custom_format = matches!(attribute.value, b"1" | b"true"),
                 _ => unreachable!(),
             }
+        }
+        // The omitted row style index defaults to zero. With customFormat it
+        // still overrides column formatting, including otherwise equal fills.
+        if custom_format && seen & 2 == 0 {
+            row.style = params.patterns.xfs_by_index.get(&0);
         }
         Some(row)
     }
