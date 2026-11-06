@@ -1571,3 +1571,29 @@ fn empty_no_fill_row_masks_inherited_column_fill() {
     metrics.column_definitions.finalize();
     assert!(!metrics.column_definitions.row_style_has_tail_visual_effect(&no_fill, b""));
 }
+
+/// Visible font representatives cannot mask a larger hidden-column font.
+#[test]
+fn automatic_row_keeps_each_mask_of_an_unrepresented_hidden_column_font() {
+    let params = promotion_params();
+    for (style, source) in [
+        (2, br#"<row r="1"><c r="A1" s="2"><v>1</v></c><c r="B1" s="2"/><c r="C1" s="2"/></row>"#.as_slice()),
+        (0, br#"<row r="1"><c r="A1"><v>1</v></c><c r="B1"/><c r="C1"/></row>"#.as_slice()),
+    ] {
+        let mut metrics = CleanSheetMetrics::default();
+        let larger = Xf::builder().font_id(Some(13)).apply_font(true).build_xf();
+        let ordinary = params.patterns.xfs_by_index[&style].clone();
+        for (min, max, inherited, hidden) in [
+            (1, 1, ordinary.clone(), false),
+            (2, 3, larger, true),
+            (4, 16384, ordinary, false),
+        ] {
+            metrics.column_definitions.add(crate::models::ColumnDefinition {
+                min, max, cell_xf: Some(inherited), hidden,
+            });
+        }
+        metrics.column_definitions.finalize();
+        let cleaned = replace_single_row_with_metrics(source, &params, &mut metrics);
+        assert_eq!(cleaned, source);
+    }
+}

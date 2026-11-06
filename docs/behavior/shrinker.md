@@ -257,6 +257,14 @@ already exists in an original cell or an unmasked column gap, ordinary font
 representatives remain sufficient. Merged layouts cannot establish that shortcut.
 The dense promotion below avoids retaining thousands of equivalent masks.
 
+Hidden columns also participate in automatic row sizing. Their local font masks
+must survive if removal would expose a font absent from the original row,
+including its unmasked column positions. A matching visible font representative
+cannot suppress that newly exposed font. The row pass caches source-font queries
+per inherited identity, preserving deduplication when that font is already
+present. This rule is limited to visible automatic-height rows without a row
+format; existing row-format and fixed-height policies remain separate.
+
 For dense bloat, the implementation can move an existing cell XF to the row's
 `s`/`customFormat` attributes and remove redundant cells. It does not allocate a
 new workbook style or change a value merely to make this transformation possible.
