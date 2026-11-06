@@ -53,3 +53,18 @@ bytes. The fix adds 316 bytes to retain the required formatting.
 All 267 active core unit tests and four allocation tests passed. One existing
 unit test remained ignored. The broad corpus continues independently while
 the affected prepared-cache inventory is examined.
+
+## Prepared-cache audit and deployment
+
+The complete inventory examined 8,623 prepared originals and found 155 workbooks
+with an implicit default row format. Replaying all 155 changed 20 Default
+packages. The other 135 kept identical package-part contents. One 62 MB input
+exceeded the initial five-minute audit deadline; its longer retry completed and
+confirmed unchanged part contents. No unresolved inventory/replay errors remain.
+
+Only the 20 changed prepared bundles were backed up and invalidated. Their old
+records, reports and images remain retained. Runner build `499a64f`, SHA-256
+`09e2353aec93cae2de4fe819b659e1139e6bb8e416836a49fdd7e1e0c0e2faed`,
+resumed the same study with four groups and regenerated those outputs. This is
+an artifact compatibility audit, separate from completion of their native visual
+comparisons and the remaining corpus.
