@@ -266,12 +266,15 @@ pub struct ColumnRangeMap {
     uniform_fill_id: Option<u32>,
     /// Effective column borders that an explicit borderless row can mask.
     has_visible_column_border: bool,
+    /// Colored column fills that an explicit no-fill row can mask.
+    has_visible_column_fill: bool,
 }
 
 impl ColumnRangeMap {
     pub fn add(&mut self, col_def: ColumnDefinition) {
         self.uniform_fill_id = None;
         self.has_visible_column_border = false;
+        self.has_visible_column_fill = false;
         if col_def.min == col_def.max {
             self.exact.insert(col_def.min, col_def);
         } else {
@@ -285,6 +288,10 @@ impl ColumnRangeMap {
         self.has_visible_column_border = !self.range_matches(1, 16_384, |col| {
             self.get(col).and_then(|c| c.cell_xf.as_ref())
                 .is_none_or(|style| !style.has_visible_border)
+        });
+        self.has_visible_column_fill = !self.range_matches(1, 16_384, |col| {
+            self.get(col).and_then(|column| column.cell_xf.as_ref())
+                .is_none_or(|style| !style.has_visible_fill)
         });
         let fill = self.fill_at(1);
         // No full-width visible-fill optimization is needed for the common
@@ -314,14 +321,15 @@ impl ColumnRangeMap {
                 && self.uniform_fill_id == style.fill_id)
     }
 
-    /// A borderless row header can suppress inherited column borders even when
-    /// it has no visible fill or border of its own.
-    pub(crate) fn row_style_masks_column_borders(&self, style: &Xf) -> bool {
-        style.applies_default_border_override() && self.has_visible_column_border
+    /// A row can visibly clear inherited column borders or fills without
+    /// introducing a visible border or fill of its own.
+    pub(crate) fn row_style_masks_column_format(&self, style: &Xf) -> bool {
+        (style.applies_default_border_override() && self.has_visible_column_border)
+            || (style.applies_default_fill_override() && self.has_visible_column_fill)
     }
 
     pub(crate) fn row_style_has_tail_visual_effect(&self, style: &Xf, attributes: &[u8]) -> bool {
-        if self.row_style_masks_column_borders(style) {
+        if self.row_style_masks_column_format(style) {
             return true;
         }
         if self.style_has_tail_visual_effect(style) || !style.has_fill_or_border {

@@ -225,7 +225,7 @@ fn rfind_relevant_style_attribute(
             .xfs_by_index
             .get(&attribute.style_id)
             .is_some_and(|style| {
-                style.has_fill_or_border || columns.row_style_masks_column_borders(style)
+                style.has_fill_or_border || columns.row_style_masks_column_format(style)
             })
         {
             return Some(attribute.position);

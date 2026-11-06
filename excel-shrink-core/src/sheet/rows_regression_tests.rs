@@ -1544,3 +1544,30 @@ fn automatic_row_keeps_one_default_font_override_without_apply_font() {
     let cleaned = replace_single_row(source, &params);
     assert_eq!(cleaned, br#"<row r="1" s="0" customFormat="1"><c r="A1" s="1"/></row>"#);
 }
+
+/// Carbon/timber sheets clear gray column fills with empty no-fill row headers.
+#[test]
+fn empty_no_fill_row_masks_inherited_column_fill() {
+    let no_fill = Xf::builder().font_id(Some(0)).fill_id(Some(0))
+        .apply_fill(true).build_xf();
+    let gray = Xf::builder().fill_id(Some(2)).apply_fill(true)
+        .has_visible_fill(true).has_fill_or_border(true).build_xf();
+    let params = params_with_styles(&[(0, no_fill.clone()), (1, gray.clone())]);
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(crate::models::ColumnDefinition {
+        min: 10, max: 12, cell_xf: Some(gray), hidden: false,
+    });
+    metrics.column_definitions.finalize();
+    assert!(metrics.column_definitions.row_style_has_tail_visual_effect(&no_fill, b""));
+    let source = br#"<row r="390" s="0" customFormat="1"/>"#;
+    assert_eq!(replace_single_row_with_metrics(source, &params, &mut metrics), source);
+    // An exact override can cover the entire gray interval. Stale declarations
+    // must not protect unrelated empty rows when no column still displays gray.
+    for column in 10..=12 {
+        metrics.column_definitions.add(crate::models::ColumnDefinition {
+            min: column, max: column, cell_xf: Some(no_fill.clone()), hidden: false,
+        });
+    }
+    metrics.column_definitions.finalize();
+    assert!(!metrics.column_definitions.row_style_has_tail_visual_effect(&no_fill, b""));
+}

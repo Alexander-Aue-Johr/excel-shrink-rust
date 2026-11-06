@@ -225,6 +225,13 @@ or border, it remains a visual anchor even at the end of a sheet. White fills
 receive the same protection as colored fills. Unknown explicit cell styles
 remain conservative anchors.
 
+An empty row with an applied no-fill format can clear visible column fills.
+Such a row is itself a visual anchor, just as an applied borderless row can
+clear column borders. Preserve its compact row header when an effective column
+still carries the masked fill. Redundant empty cells in that row remain removable.
+Exact column overrides covering the filled interval must prevent obsolete column
+declarations from protecting otherwise invisible rows.
+
 This visual role also excludes the cell from tentative font-sentinel removal
 in a fixed-height, content-free row. In `PnP Sector Boilers Dataset`, sheet
 `Fig 4 - SCR`, the unstyled empty cell K6 clears a blue row fill. Removing the
