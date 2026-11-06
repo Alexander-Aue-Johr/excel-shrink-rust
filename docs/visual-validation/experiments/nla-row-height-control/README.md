@@ -2,6 +2,11 @@
 
 ## Question
 
+The launcher also accepts `-Sheet 'Worksheet name'` for focused controls on other
+workbooks. Its default remains `2007 NLA QA Data`. The measurement range remains
+rows 6–179, so this option changes the selected worksheet without implying full
+height coverage of another workbook.
+
 The Data.gov comparison of `NLA water isotope data-2007-2017_5289b0294534.xlsx`
 reported heights of 15.75 versus 15 points for rows 6–179 of
 `2007 NLA QA Data`. Both states were rebuilt in their resident processes.

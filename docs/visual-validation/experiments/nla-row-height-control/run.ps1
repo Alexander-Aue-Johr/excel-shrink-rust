@@ -1,13 +1,14 @@
 <#
 .SYNOPSIS
-Measures identical NLA copies on an owned private desktop without taking user input.
+Measures workbook-copy heights on an owned private desktop without taking user input.
 #>
 param(
     [Parameter(Mandatory=$true)][string]$Python,
     [Parameter(Mandatory=$true)][string]$Binary,
     [Parameter(Mandatory=$true)][string]$Original,
     [Parameter(Mandatory=$true)][string]$Output,
-    [string]$Default
+    [string]$Default,
+    [string]$Sheet = '2007 NLA QA Data'
 )
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../..'))
@@ -29,7 +30,8 @@ try {
     $arguments = @(
         (Join-Path $PSScriptRoot 'same_package.py'), '--repository', $repo,
         '--binary', ([IO.Path]::GetFullPath($Binary)),
-        '--original', ([IO.Path]::GetFullPath($Original)), '--output', $outputPath
+        '--original', ([IO.Path]::GetFullPath($Original)), '--output', $outputPath,
+        '--sheet', $Sheet
     )
     if ($Default) { $arguments += @('--default', ([IO.Path]::GetFullPath($Default))) }
     $commandLine = ($arguments | ForEach-Object { ConvertTo-WindowsArgument $_ }) -join ' '
