@@ -65,6 +65,17 @@ public static class CaptureWorkbook
         var check = properties.GetAttribute("checkCompatibility");
         if (check == "1" || check == "true") properties.SetAttribute("checkCompatibility", "0");
     }
+
+    /// <summary>Remove only the optional read-only opening recommendation from a disposable
+    /// copy. Reservation passwords and workbook/sheet protection remain intact.</summary>
+    private static void DisableReadOnlyRecommendation(XmlDocument workbook)
+    {
+        var root = workbook.DocumentElement;
+        var sharing = root["fileSharing", root.NamespaceURI];
+        if (sharing == null) return;
+        var recommended = sharing.GetAttribute("readOnlyRecommended");
+        if (recommended == "1" || recommended == "true") sharing.SetAttribute("readOnlyRecommended", "0");
+    }
     private sealed class InitialSelection
     {
         public XmlDocument Workbook;
@@ -85,7 +96,11 @@ public static class CaptureWorkbook
                 var worksheets = WorksheetParts(source);
                 var selection = initialWorksheet.HasValue ? ReadInitialSelection(source, initialWorksheet.Value, worksheets) : null;
                 if (manualCalculation) SetManualCalculation(selection.Workbook);
-                if (selection != null) DisableCompatibilityCheck(selection.Workbook);
+                if (selection != null)
+                {
+                    DisableCompatibilityCheck(selection.Workbook);
+                    DisableReadOnlyRecommendation(selection.Workbook);
+                }
                 foreach (var entry in source.Entries)
                 {
                     var copy = output.CreateEntry(entry.FullName, CompressionLevel.Fastest);

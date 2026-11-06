@@ -124,6 +124,13 @@ remains enabled; no repair/data-loss prompt is automatically accepted.
 The generation-recipe fingerprint includes `CaptureWorkbook.cs`, so saved-control
 and Check Performance artifacts prepared with different setup rules are not
 silently reused under the new recipe.
+
+Capture preparation also sets an explicitly enabled
+`fileSharing.readOnlyRecommended` flag to `0` in the disposable copy. This lets
+the resident save and rebuild without the author's optional read-only opening
+recommendation. Tests check true/false/absent flags and verify reservation
+passwords and sharing attribution. This staging operation applies to both
+Original and Default observations.
 See Microsoft's [CheckCompatibility property](https://learn.microsoft.com/en-us/office/vba/api/excel.workbook.checkcompatibility)
 and [Open XML attribute mapping](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.workbookproperties.checkcompatibility?view=openxml-3.0.1).
 

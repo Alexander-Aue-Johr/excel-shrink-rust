@@ -153,6 +153,23 @@ try {
         Assert-Equal $properties.GetAttribute('date1904') '1' 'Compatibility setup must preserve date1904'
         Remove-Item -LiteralPath $source -Force
     }
+    foreach ($flag in @('1', 'true', '0', 'false', 'absent')) {
+        $source = Join-Path $root ('read-only-recommendation-' + $flag + '.xlsx')
+        $parts = Fixture 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' ''
+        $attribute = if ($flag -eq 'absent') { '' } else { ' readOnlyRecommended="' + $flag + '"' }
+        $sharing = '<fileSharing userName="Fixture Author" reservationPassword="ABCD"' + $attribute + '/>'
+        $parts['xl/workbook.xml'] = $parts['xl/workbook.xml'].Replace('<workbookPr', $sharing + '<workbookPr')
+        New-Workbook $source $parts
+        Set-InitialWorksheet $source 3
+        $prepared = Read-Parts $source
+        $book = Parse-Xml $prepared['xl/workbook.xml']
+        $properties = $book.SelectSingleNode('//*[local-name()="fileSharing"]')
+        $expected = if ($flag -in @('1', 'true')) { '0' } elseif ($flag -eq 'absent') { '' } else { $flag }
+        Assert-Equal $properties.GetAttribute('readOnlyRecommended') $expected 'Disable only enabled read-only recommendations'
+        Assert-Equal $properties.GetAttribute('reservationPassword') 'ABCD' 'Preserve the write-reservation password'
+        Assert-Equal $properties.GetAttribute('userName') 'Fixture Author' 'Preserve sharing attribution'
+        Remove-Item -LiteralPath $source -Force
+    }
     $source = Join-Path $root 'missing-views.xlsx'
     New-Workbook $source (Fixture 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' '' $false)
     Set-InitialWorksheet $source 3
