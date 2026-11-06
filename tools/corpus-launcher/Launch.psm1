@@ -81,6 +81,15 @@ function Update-OwnedControlHost([string]$Repo, $Plan, [int]$Port) {
     $process | Stop-Process -Force -ErrorAction Stop
 }
 
+function Get-ExcelDiagnosticRoot {
+    <# .SYNOPSIS
+    Resolves the diagnostic directory from the environment inherited by Excel.
+    #>
+    param([Collections.IDictionary]$Environment)
+    $excelTemp = if ($Environment.Keys -contains 'TEMP') { $Environment['TEMP'] } else { $env:TEMP }
+    Join-Path $excelTemp 'Diagnostics/EXCEL'
+}
+
 function Start-StudyLaunch {
     param($Configuration, [string]$ConfigurationPath, [string]$Repo, $Plan)
     $gate=[Threading.Mutex]::new($false,('Local\ExcelShrink-CorpusLaunch-'+(Get-TextHash $Plan.OutputRoot).Substring(0,20)))
@@ -110,8 +119,7 @@ function Start-StudyLaunch {
             $cleanupScript = Join-Path $Repo 'tools/clear-excel-diagnostics.ps1'
             $cleanupStatus = Join-Path $Plan.RunDirectory 'excel-diagnostics-cleanup.json'
             # Match the TEMP inherited by Excel, including runs redirected off C:.
-            $excelTemp = if ($Plan.Environment.ContainsKey('TEMP')) { $Plan.Environment['TEMP'] } else { $env:TEMP }
-            $diagnosticRoot = Join-Path $excelTemp 'Diagnostics/EXCEL'
+            $diagnosticRoot = Get-ExcelDiagnosticRoot $Plan.Environment
             $cleanupArguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',
                 $cleanupScript,'-OwnerPid',[string]$process.Id,'-OwnerStartedTicks',
                 [string]$process.StartTime.ToUniversalTime().Ticks,'-StatusPath',$cleanupStatus,
