@@ -186,7 +186,7 @@ fn validate_rendering(finding: &Value) -> Result<bool> {
         ensure!(
             raw_geometry_differs && captured[0] && captured[1]
                 && finding["pixels_differ"] == false
-                && crate::regression::targeted_comparison::matching_content_geometry(left, right),
+                && crate::regression::targeted_comparison::matching_content_origin(left, right),
             "Blank-margin exclusion contradicts measured content evidence"
         );
     }
@@ -326,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn blank_margin_exclusions_require_unchanged_measured_content() -> Result<()> {
+    fn blank_margin_exclusions_require_matching_measured_origins() -> Result<()> {
         let mut report = report();
         report["capture_partition"] = json!("visible-geometry-v1");
         for pair in report["comparisons"].as_array_mut().unwrap() {
@@ -344,7 +344,7 @@ mod tests {
             report["capture_partition"] = json!(partition);
             assert!(!has_differences(&report, true)?);
         }
-        for field in ["top", "left", "width", "height"] {
+        for field in ["top", "left"] {
             let mut invalid = report.clone();
             invalid["comparisons"][0]["findings"][0]["right_geometry"]["comparison_core"][field] = json!(7);
             assert!(has_differences(&invalid, true).is_err());

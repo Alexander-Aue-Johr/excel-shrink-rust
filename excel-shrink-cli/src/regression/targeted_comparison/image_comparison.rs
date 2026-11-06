@@ -42,7 +42,7 @@ impl ImageComparisons {
     }
 
     /// Compare top-left aligned pixels with white padding at the right/bottom only.
-    /// Callers must first establish unchanged content geometry; this is not general cropping.
+    /// Callers must establish matching measured origins; this is not general cropping.
     pub fn differ_with_blank_edges(&mut self, left: &Path, right: &Path) -> Result<bool> {
         self.statistics.comparisons += 1;
         Ok(self.fingerprint(left)?.blank_edge_fingerprint

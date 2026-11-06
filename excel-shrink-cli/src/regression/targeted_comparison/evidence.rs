@@ -47,8 +47,8 @@ impl Evidence {
         }
     }
 
-    /// Ignore size changes only outside an unchanged measured content rectangle, and
-    /// only when the complete captures still match with blank trailing padding.
+    /// Ignore changed trailing white extent only when both measured origins agree
+    /// and every nonblank pixel in the complete captures still matches exactly.
     pub fn compare_content(
         &self,
         other: &Self,
@@ -58,7 +58,7 @@ impl Evidence {
         let left_geometry: Geometry = serde_json::from_value(self.geometry.clone())?;
         let right_geometry: Geometry = serde_json::from_value(other.geometry.clone())?;
         let geometry_differs = left_geometry != right_geometry;
-        if geometry_differs && matching_content_geometry(&self.geometry, &other.geometry) {
+        if geometry_differs && matching_content_origin(&self.geometry, &other.geometry) {
             if let (Some(left), Some(right)) = (&self.path, &other.path) {
                 if !comparisons.differ_with_blank_edges(left, right)? {
                     return Ok(ContentVerdict {
@@ -85,8 +85,10 @@ impl Evidence {
     }
 }
 
-/// A missing core measurement, moved content, or clipped core must stay a difference.
-pub(in crate::regression) fn matching_content_geometry(left: &Value, right: &Value) -> bool {
+/// Keep the measured origins fixed and require both content cores to be captured.
+/// Their sizes may differ; the separate full-image proof must establish that only
+/// trailing white pixels changed. Core size alone cannot establish that proof.
+pub(in crate::regression) fn matching_content_origin(left: &Value, right: &Value) -> bool {
     fn measured(value: &Value) -> Option<Geometry> {
         serde_json::from_value::<Geometry>(value.clone())
             .ok()?
@@ -103,16 +105,18 @@ pub(in crate::regression) fn matching_content_geometry(left: &Value, right: &Val
     };
     if left.top != right.top
         || left.left != right.left
-        || left_core != right_core
+        || left_core.top != right_core.top
+        || left_core.left != right_core.left
         || left_core.empty()
+        || right_core.empty()
     {
         return false;
     }
-    [left, right].into_iter().all(|full| {
-        left_core.left >= full.left
-            && left_core.top >= full.top
-            && left_core.left + left_core.width <= full.left + full.width
-            && left_core.top + left_core.height <= full.top + full.height
+    [(left, left_core), (right, right_core)].into_iter().all(|(full, core)| {
+        core.left >= full.left
+            && core.top >= full.top
+            && core.left + core.width <= full.left + full.width
+            && core.top + core.height <= full.top + full.height
     })
 }
 
@@ -401,7 +405,7 @@ mod margin_tests {
     /// The extra blank row/column in Enron Deals A1:I7 and Top 100 Exposures
     /// may change size. Body geometry and overflow ink must remain observable.
     #[test]
-    fn blank_margin_changes_require_unchanged_core_and_matching_all_ink() -> Result<()> {
+    fn blank_margin_changes_require_matching_origins_and_all_ink() -> Result<()> {
         let directory =
             crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "blank-margin")?;
         std::fs::create_dir_all(&directory)?;
@@ -434,11 +438,7 @@ mod margin_tests {
         }
         let mut body = evidence[1].clone();
         body.geometry["comparison_core"]["height"] = json!(7);
-        assert!(
-            evidence[0]
-                .compare_content(&body, &mut comparisons)?
-                .geometry_differs
-        );
+        assert!(evidence[0].compare_content(&body, &mut comparisons)?.blank_margin_ignored);
         let mut unknown = evidence[1].clone();
         unknown
             .geometry
@@ -472,6 +472,13 @@ mod margin_tests {
                 blank_margin_ignored: false
             }
         );
+        // Even a one-level brightness change in a single pixel remains visible
+        // evidence. The white-extent rule supplies no antialiasing tolerance.
+        let path = directory.join("faint-border.png");
+        image.put_pixel(12, 3, image::Rgba([254, 254, 254, 255]));
+        image.save(&path)?;
+        overflow.path = Some(path);
+        assert!(evidence[0].compare_content(&overflow, &mut comparisons)?.pixels_differ);
         std::fs::remove_dir_all(directory)?;
         Ok(())
     }

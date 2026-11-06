@@ -43,6 +43,15 @@ and excluded from Shrink's visual regression requirement. Flaky Excel rendering
 is the suspected explanation; that attribution remains a hypothesis.
 
 Retain the raw pixel/geometry observation and the reviewed acceptance reason.
+
+Purely white trailing capture extent is excluded from the difference verdict
+when the measured capture and content origins match, each measured content core
+is contained in its capture, and all nonblank image pixels match exactly at the
+same positions. The two core widths/heights need not match. This covers different
+blank row heights or column widths that only change the exported white canvas.
+Keep both raw geometries and record `blank_margin_ignored`. A displaced border,
+changed pixel (including a one-level brightness difference), overflow ink,
+missing core measurement or shifted origin does not pass this rule.
 Exact pixel inequality alone does not establish a Shrink defect. No global numeric
 tolerance or allowed number of changed pixels has been specified. Tiny differences
 in actual text, chart points, lines or objects still require examination; an
