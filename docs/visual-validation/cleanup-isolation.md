@@ -87,7 +87,7 @@ Focused checks without opening Excel:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File excel-shrink-cli/office-capture/tests/closing-processes.tests.ps1
-cargo test -p excel-shrink-cli --bin excel-shrink-cli cleanup_helper
+cargo test -p excel-shrink-cli --lib cleanup_helper
 ```
 
 ## Clean-desktop failure and profile isolation

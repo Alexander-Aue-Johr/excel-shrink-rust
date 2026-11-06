@@ -1,3 +1,5 @@
+//! Shared application root; Cargo keeps this historical path for reviewable SCE diffs.
+//! The two small binary adapters dispatch to their respective public entry points.
 use clap::{Parser, ValueEnum};
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
@@ -14,6 +16,14 @@ mod pipeline;
 mod profiling;
 mod regression;
 mod visual_profile;
+#[path = "regression/archive/study/prepared/targeted/bounded_process.rs"]
+mod capture_watchdog;
+mod validation;
+mod validation_sources;
+mod validation_process;
+mod validation_report;
+mod validation_reuse;
+mod validation_room;
 
 pub(crate) const DEFAULT_PARALLEL_RANGE_CHUNK_SIZE: usize = 16 * 1024 * 1024;
 
@@ -253,7 +263,8 @@ impl LogLevel {
     }
 }
 
-fn main() -> anyhow::Result<()> {
+/// Run the compatible Excel Shrink command line.
+pub fn run_excel_shrink() -> anyhow::Result<()> {
     let mut raw_args = std::env::args_os();
     let program = raw_args.next().unwrap_or_else(|| "excel-shrink".into());
     match raw_args.next().as_deref().and_then(OsStr::to_str) {
@@ -693,3 +704,8 @@ mod tests {
 #[cfg(test)]
 #[path = "corpus_regression_tests.rs"]
 mod corpus_regression_tests;
+
+/// Run SheetScope without requiring an Excel Shrink processing stage.
+pub fn run_sheet_scope() -> anyhow::Result<()> {
+    validation::run_cli()
+}

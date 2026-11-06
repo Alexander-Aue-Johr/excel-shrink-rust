@@ -5,10 +5,11 @@
 mod activity;
 mod inspection;
 mod manual_capture;
-mod pixel_diagnostics;
+pub(crate) mod pixel_diagnostics;
 mod formula_diagnostics;
 mod platform;
 mod snapshots;
+mod snapshot_cache;
 mod summary;
 mod targeted;
 mod targeted_history;
@@ -40,6 +41,7 @@ struct Room {
     initial_controls: Value,
     control_gate: Mutex<()>,
     manual_capture: Mutex<Option<std::process::Child>>,
+    snapshots: snapshot_cache::SnapshotCache,
 }
 
 pub(super) async fn run(settings_path: &Path) -> Result<()> {
@@ -79,6 +81,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         initial_controls: initial,
         control_gate: Mutex::new(()),
         manual_capture: Mutex::new(None),
+        snapshots: snapshot_cache::SnapshotCache::default(),
     });
     let routes = Router::new()
         .route("/health", get(health))
@@ -195,8 +198,9 @@ async fn health(State(room): State<Arc<Room>>) -> Json<Value> {
 }
 
 async fn read_queue(room: &Room, diagnostics: &mut Vec<Value>) -> Result<Value> {
-    let mut queue = read_snapshot(&room.root.join("queue.json"), diagnostics, SNAPSHOT_LIMIT)
+    let mut queue = room.snapshots.snapshot(&room.root.join("queue.json"), diagnostics, SNAPSHOT_LIMIT)
         .await
+        .map(|value| value.as_ref().clone())
         .unwrap_or(json!({}));
     check_runner(&mut queue, diagnostics);
     reconcile_groups(&room.root, &mut queue, diagnostics).await?;
@@ -345,9 +349,9 @@ async fn capture_workers(root: &Path, queue: &Value) -> Vec<Value> {
     workers
 }
 
-async fn read_workbook_index(root: &Path, diagnostics: &mut Vec<Value>) -> Option<Value> {
-    read_snapshot(
-        &root.join("workbook-index.json"),
+async fn read_workbook_index(room: &Room, diagnostics: &mut Vec<Value>) -> Option<Arc<Value>> {
+    room.snapshots.snapshot(
+        &room.root.join("workbook-index.json"),
         diagnostics,
         64 * 1024 * 1024,
     )
@@ -382,7 +386,7 @@ async fn workbooks(
         return Err(ApiError::bad_request("Workbook page size must be 1..100."));
     }
     let mut diagnostics = Vec::new();
-    let Some(index) = read_workbook_index(&room.root, &mut diagnostics).await else {
+    let Some(index) = read_workbook_index(&room, &mut diagnostics).await else {
         return Ok(Json(json!({"available":false,"workbooks":[],"counts":{},
             "total":0,"offset":offset,"next_offset":null,"diagnostics":diagnostics})));
     };
@@ -392,7 +396,25 @@ async fn workbooks(
     Ok(Json(response))
 }
 
-async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
+#[derive(Default, serde::Deserialize)]
+struct StateOptions {
+    group_scope: Option<String>,
+    selected: Option<String>,
+}
+
+/// Frequent live polls can omit corpus history; `/api/workbooks` owns browsing.
+/// Omitting the option preserves the full response for existing API clients.
+async fn state(
+    State(room): State<Arc<Room>>,
+    Query(options): Query<StateOptions>,
+) -> HttpResult<Json<Value>> {
+    let scope = options.group_scope.as_deref().unwrap_or("all");
+    if !matches!(scope, "all" | "live") {
+        return Err(ApiError::bad_request("group_scope must be all or live."));
+    }
+    if let Some(id) = &options.selected {
+        safe_id(id)?;
+    }
     let mut diagnostics = Vec::new();
     let mut queue = read_queue(&room, &mut diagnostics).await?;
     queue["update_ready"] =
@@ -438,7 +460,33 @@ async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
     queue["server"] =
         json!({"started_at": room.started, "utc": now_iso(), "port": room.port, "live": true});
     queue["diagnostics"] = json!(diagnostics);
+    if scope == "live" {
+        retain_live_groups(&mut queue, options.selected.as_deref());
+    }
     Ok(Json(queue))
+}
+
+/// Preserve every active process, the selected workbook, and eight recent
+/// inactive summaries. This changes only the response, never queue.json.
+fn retain_live_groups(queue: &mut Value, selected: Option<&str>) {
+    let groups = queue["groups"].as_array_mut().map(std::mem::take).unwrap_or_default();
+    let total = groups.len();
+    let mut recent: Vec<_> = groups.iter().enumerate()
+        .filter(|(_, group)| group["active"] != true
+            && (queue["run_id"].is_null() || group["run_id"].is_null() || group["run_id"] == queue["run_id"]))
+        .map(|(position, group)| (group["started_unix_ms"].as_i64().unwrap_or(0), position))
+        .collect();
+    recent.sort_unstable_by(|left, right| right.cmp(left));
+    let recent: std::collections::HashSet<_> = recent.into_iter().take(8)
+        .map(|(_, position)| position).collect();
+    let kept: Vec<_> = groups.into_iter().enumerate().filter_map(|(position, group)| {
+        (group["active"] == true || recent.contains(&position)
+            || selected.is_some_and(|id| group["id"].as_str() == Some(id))).then_some(group)
+    }).collect();
+    queue["groups_total"] = json!(total);
+    queue["group_scope"] = json!("live");
+    queue["groups_truncated"] = json!(kept.len() < total);
+    queue["groups"] = json!(kept);
 }
 
 async fn attach_active_preparation_profile(
@@ -577,7 +625,7 @@ async fn group(
     let summary = if queued_summary.is_some() {
         queued_summary
     } else {
-        read_workbook_index(&room.root, &mut diagnostics)
+        read_workbook_index(&room, &mut diagnostics)
             .await
             .and_then(|index| {
                 (queue["run_id"].is_null() || index["run_id"] == queue["run_id"])
@@ -847,7 +895,7 @@ async fn known_workbook(room: &Room, id: &str) -> Result<bool> {
     let indexed = if queued {
         false
     } else {
-        read_workbook_index(&room.root, &mut Vec::new())
+        read_workbook_index(&room, &mut Vec::new())
             .await
             .is_some_and(|index| {
                 (queue["run_id"].is_null() || index["run_id"] == queue["run_id"])
@@ -1647,6 +1695,28 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn live_projection_retains_active_selected_and_recent_without_expanding_with_corpus_size() {
+        let mut groups: Vec<_> = (0..9000).map(|index| json!({
+            "id":format!("book-{index}"),"active":false,"run_id":"run", "started_unix_ms":index,
+            "status":"completed"
+        })).collect();
+        groups[1]["active"] = json!(true);
+        groups[2]["active"] = json!(true);
+        let mut queue = json!({"run_id":"run","groups":groups,"open_groups":2});
+        retain_live_groups(&mut queue, Some("book-3"));
+        let kept = queue["groups"].as_array().unwrap();
+        assert_eq!(kept.len(), 11);
+        assert_eq!(queue["groups_total"], 9000);
+        assert_eq!(queue["open_groups"], 2);
+        assert_eq!(queue["groups_truncated"], true);
+        assert!(kept.iter().any(|group| group["id"] == "book-1"));
+        assert!(kept.iter().any(|group| group["id"] == "book-2"));
+        assert!(kept.iter().any(|group| group["id"] == "book-3"));
+        assert!(kept.iter().any(|group| group["id"] == "book-8999"));
+        assert!(!kept.iter().any(|group| group["id"] == "book-8991"));
+    }
+
     #[tokio::test]
     async fn explicit_deferred_scan_resumes_one_group_but_never_counters_a_stop() -> Result<()> {
         let root =
@@ -1664,6 +1734,7 @@ mod tests {
             initial_controls: defaults(),
             control_gate: Mutex::new(()),
             manual_capture: Mutex::new(None),
+            snapshots: snapshot_cache::SnapshotCache::default(),
         };
         let queue = json!({"running":true,"runner_alive":true,
             "runner_pid":42,"runner_started_unix_ms":100});
@@ -1720,6 +1791,7 @@ mod tests {
             initial_controls: defaults(),
             control_gate: Mutex::new(()),
             manual_capture: Mutex::new(None),
+            snapshots: snapshot_cache::SnapshotCache::default(),
         });
         let response = download_variant(State(room), RoutePath(("book".into(), "default".into())))
             .await

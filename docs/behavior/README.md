@@ -6,7 +6,7 @@ not a claim that every workbook is visually preserved or every source line has
 been independently verified. The legacy comparison system still exists; its
 behavior is deliberately distinguished from the current targeted workflow.
 
-Current targeted execution policy is `targeted-content-grid-v6`; its conditional
+Current targeted execution policy is `targeted-content-grid-v8`; its conditional
 state exclusions and version-two result reuse are documented below. The source
 review baseline above remains historical, not an attribution of newer behavior.
 
@@ -51,9 +51,12 @@ implemented differently, but changes to the stated decisions must be visible.
    resume, result schemas, retention, telemetry and reproducibility.
 4. [Review findings](review-findings.md): corrections, known limits, experiments,
    verification performed and questions requiring an owner decision.
+5. [Standalone validation](standalone-validation.md): SheetScope input sources,
+   external stages, independent reports, selected-part reuse and bounded monitoring.
 
-For operating commands, retain [the targeted corpus guide](../visual-validation/targeted-corpus.md).
-This set complements it rather than creating another launcher or runner.
+For operating commands, use [the targeted corpus guide](../visual-validation/targeted-corpus.md)
+for existing corpus studies or [SheetScope](../visual-validation/sheet-scope.md)
+for producer-independent comparisons and processing chains.
 
 ## Meaning of the statements
 
@@ -96,8 +99,10 @@ selected cell ranges is possible and must disclose that coverage.
 
 ## Scope and provenance
 
-The described production paths are the ordinary XLSX CLI pipeline and
-`regression study --resident-capture --targeted-comparison`. Profile experiments,
+The described paths are the ordinary XLSX CLI pipeline,
+`regression study --resident-capture --targeted-comparison`, and the standalone
+`sheet-scope` coordinator. The latter uses the same targeted comparison engine
+with producer-independent A/B inputs and separate report persistence. Profile experiments,
 the former full-sheet renderer, hash sweeps, whitespace diagnosis and manual
 inspection have separate scopes. Their results cannot be silently relabeled as
 the current targeted policy.

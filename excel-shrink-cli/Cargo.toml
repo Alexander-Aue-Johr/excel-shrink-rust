@@ -2,6 +2,20 @@
 name = "excel-shrink-cli"
 version = "0.1.0"
 edition = "2021"
+autobins = false
+default-run = "excel-shrink-cli"
+
+# Keep the existing module paths while both CLI adapters share one implementation.
+[lib]
+path = "src/main.rs"
+
+[[bin]]
+name = "excel-shrink-cli"
+path = "src/excel_shrink_main.rs"
+
+[[bin]]
+name = "sheet-scope"
+path = "src/sheet_scope_main.rs"
 
 [features]
 # Kept so older local commands that pass this feature still work; smoke corpus tests are default tests now.

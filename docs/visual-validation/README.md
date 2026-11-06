@@ -1,5 +1,10 @@
 # Running corpus studies
 
+For producer-independent A/B comparisons, generic processing chains and saved
+reports, start with [SheetScope](sheet-scope.md). The commands below remain the
+existing Excel Shrink corpus-study workflow. Both use the established targeted
+comparison engine; their scheduling, source and persistence contracts differ.
+
 The experiment branch also provides [aggressive-first screening followed by full validation](aggressive-first-study.md).
 It also supports preparation-time hash screening. In the Windows terminal launcher,
 select one profile with `-PreparationHashProfile default`,

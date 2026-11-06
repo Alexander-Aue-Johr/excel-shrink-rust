@@ -12,6 +12,7 @@ param(
     [Parameter(Mandatory=$true)][string]$Default,
     [Parameter(Mandatory=$true)][string]$Output,
     [Parameter(Mandatory=$true)][string]$ObservatoryGroup,
+    [switch]$SheetScope,
     [switch]$SkipCheckPerformance,
     [switch]$CheckPerformance,
     [switch]$SerialCaptures,
@@ -28,8 +29,9 @@ $process = $null
 $captureIdleTimedOut = $false
 try {
     $env:EXCEL_SHRINK_EXPECTED_DESKTOP = $desktop.Name
-    $arguments = 'regression targeted-compare --original "{0}" --default "{1}" --output "{2}" --observatory-group-dir "{3}" --host-script "{4}"' -f `
-        $Original, $Default, $Output, $ObservatoryGroup, (Join-Path $PSScriptRoot 'targeted-comparison-host.ps1')
+    $entryPoint = if ($SheetScope) { 'compare-pair' } else { 'regression targeted-compare' }
+    $arguments = $entryPoint + (' --original "{0}" --default "{1}" --output "{2}" --observatory-group-dir "{3}" --host-script "{4}"' -f `
+        $Original, $Default, $Output, $ObservatoryGroup, (Join-Path $PSScriptRoot 'targeted-comparison-host.ps1'))
     $arguments += ' --operation-timeout-seconds ' + $OperationTimeoutSeconds
     if ($SkipCheckPerformance -and $CheckPerformance) { throw 'Choose CheckPerformance or SkipCheckPerformance.' }
     if ($CheckPerformance) { $arguments += ' --check-performance' }

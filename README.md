@@ -5,10 +5,28 @@
 The repository is organised as a Rust Cargo workspace with two crates:
 
 * `excel-shrink-core`: library code for cleaning XLSX-internal XML data
-* `excel-shrink-cli`: command-line program for running Excel Shrink on one file or a directory of files
+* `excel-shrink-cli`: shared CLI implementation with `excel-shrink-cli` for cleanup
+  and `sheet-scope` for producer-independent visual validation
 
 For preservation rules, profiles, targeted visual validation, result semantics
 and known limits, see the [behavior and reimplementation specification](docs/behavior/README.md).
+
+## Standalone visual validation: SheetScope
+
+`sheet-scope` opens its Observatory without requiring a complete configuration.
+It compares existing sources, runs explicit external processing stages, or opens
+saved visual evidence. Processing outputs may be temporary while reports retain
+their images and can be exported as a static website. The optimized targeted
+comparison engine remains in its existing source locations.
+
+See the [SheetScope operating guide](docs/visual-validation/sheet-scope.md) and
+[standalone behavior contract](docs/behavior/standalone-validation.md) for supported
+formats, Windows/Excel capture requirements, reuse rules and current limits.
+`cargo build --release -p excel-shrink-cli --bins` builds both entry points.
+Existing internal Rust tests now use the crate's `--lib` target; binary
+integration tests remain under `excel-shrink-cli/tests/`.
+
+## Cleanup run logs
 
 Set `EXCEL_SHRINK_LOG_DIR` to choose the directory for per-process run logs.
 When unset or empty, logs use `logs/runs` relative to the working directory.
@@ -58,7 +76,7 @@ later during normal worksheet processing or in global/reference XML already bein
 read abort the entire partial output. There is no additional full ZIP/XML pass.
 
 The isolated preflight benchmark is available with
-`cargo test -p excel-shrink-cli --bin excel-shrink-cli --release namespace_header_benchmark -- --ignored --nocapture`.
+`cargo test -p excel-shrink-cli --lib --release namespace_header_benchmark -- --ignored --nocapture`.
 It compares the former full XML scan with the bounded header check; its ratios do
 not represent end-to-end shrink speedups.
 
@@ -231,7 +249,7 @@ cargo run --release -p excel-shrink-cli -- regression smoke --case-id trailing-l
 The same smoke cases are also available as `corpus-regression-tests`-gated Rust tests for debugger-friendly execution.
 
 ```bash
-cargo test -p excel-shrink-cli --bin excel-shrink-cli --features corpus-regression-tests corpus_regression_default_smoke_suite -- --nocapture
+cargo test -p excel-shrink-cli --lib --features corpus-regression-tests corpus_regression_default_smoke_suite -- --nocapture
 ```
 
 ## Running Excel Shrink

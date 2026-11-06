@@ -1,4 +1,4 @@
-import { pixelSummary } from './pixel-diagnostics.js';
+import { pixelSummary } from './pixel-summary.js';
 
 const make = (tag, className, text) => {
   const element = document.createElement(tag);

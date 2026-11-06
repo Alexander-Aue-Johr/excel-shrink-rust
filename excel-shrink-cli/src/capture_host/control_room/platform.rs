@@ -74,6 +74,9 @@ pub(super) fn memory_snapshot() -> Value {
                 "total_bytes": status.ullTotalPhys,
                 "available_bytes": status.ullAvailPhys,
                 "load_percent": status.dwMemoryLoad,
+                "commit_limit_bytes": status.ullTotalPageFile,
+                "commit_available_bytes": status.ullAvailPageFile,
+                "commit_used_bytes": status.ullTotalPageFile.saturating_sub(status.ullAvailPageFile),
                 "source": "GlobalMemoryStatusEx"
             });
         }

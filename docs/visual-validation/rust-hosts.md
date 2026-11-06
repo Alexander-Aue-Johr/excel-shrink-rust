@@ -56,7 +56,7 @@ The HTTP suites exercise the actual executable. Their optional DLL input is
 retained only as a development oracle for comparing an older C# build.
 
 ```powershell
-cargo test -p excel-shrink-cli --bin excel-shrink-cli capture_host::
+cargo test -p excel-shrink-cli --lib capture_host::
 python excel-shrink-cli/office-capture/resident-host/host_protocol_test.py --host target/release/excel-shrink-cli.exe
 python excel-shrink-cli/office-capture/resident-host/control_room_test.py --host target/release/excel-shrink-cli.exe
 python excel-shrink-cli/office-capture/tests/classic_host_protocol_test.py --host target/release/excel-shrink-cli.exe

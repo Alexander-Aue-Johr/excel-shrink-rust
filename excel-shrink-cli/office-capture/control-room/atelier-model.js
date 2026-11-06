@@ -7,8 +7,9 @@ export function evidenceImageUrl(path) {
   return '/api/evidence/' + parts.slice(1).map(encodeURIComponent).join('/');
 }
 
-/** Preserve the pair and phase: O versus SD differs from O versus rebuilt SD (SDR). */
-export function atelierRegions(report, differencesOnly = true) {
+/** Preserve the pair and phase. A portable report supplies a local asset resolver;
+ * the live Observatory keeps its evidence API and its existing confinement rules. */
+export function atelierRegions(report, differencesOnly = true, resolveImage = evidenceImageUrl) {
   const regions = [];
   for (const [pairIndex, pair] of (report.comparisons || []).entries()) {
     const entries = ['findings', 'charts'].flatMap(kind =>
@@ -20,8 +21,8 @@ export function atelierRegions(report, differencesOnly = true) {
       regions.push({
         ...finding, key, different, left: pair.left, right: pair.right,
         label: `${finding.sheet} / ${finding.cell || finding.chart} / ${pair.left} / ${pair.right}`,
-        leftUrl: evidenceImageUrl(finding.left_png || finding.left_image),
-        rightUrl: evidenceImageUrl(finding.right_png || finding.right_image),
+        leftUrl: resolveImage(finding.left_png || finding.left_image),
+        rightUrl: resolveImage(finding.right_png || finding.right_image),
       });
     }
   }

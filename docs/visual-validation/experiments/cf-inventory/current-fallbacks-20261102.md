@@ -100,11 +100,11 @@ future dependency support, not newly accepted invariance proofs.
 ```powershell
 $env:CF_INVENTORY = '<retained-inventory>'
 $env:CF_AUDIT_OUTPUT = '<new-audit.json>'
-cargo test --release -p excel-shrink-cli --bin excel-shrink-cli audit_inventory_with_current_selector -- --ignored --nocapture
+cargo test --release -p excel-shrink-cli --lib audit_inventory_with_current_selector -- --ignored --nocapture
 
 $env:CF_AUDIT_INPUT = $env:CF_AUDIT_OUTPUT
 $env:CF_COST_OUTPUT = '<new-costs.json>'
-cargo test --release -p excel-shrink-cli --bin excel-shrink-cli rank_fallbacks_with_source_visual_extents -- --ignored --nocapture
+cargo test --release -p excel-shrink-cli --lib rank_fallbacks_with_source_visual_extents -- --ignored --nocapture
 ```
 
 Both are explicit ignored audit tests. They do not run during ordinary tests or

@@ -20,7 +20,7 @@ use tokio::io::AsyncWriteExt;
 use tower_http::services::ServeDir;
 
 mod classic;
-mod control_room;
+pub(crate) mod control_room;
 mod resident;
 
 /// Use the same Windows build for orchestration and HTTP hosting. WSL callers

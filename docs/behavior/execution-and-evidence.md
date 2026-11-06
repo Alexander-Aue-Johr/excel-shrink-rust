@@ -4,6 +4,12 @@ These rules complement [the shrinker](shrinker.md) and
 [the targeted comparison](targeted-validation.md). They distinguish scientific
 outcomes, scheduling, diagnostic telemetry and disposable working files.
 
+E1-E8 describe the existing corpus-study identity and execution contracts.
+The producer-independent SheetScope coordinator uses its own
+[standalone contract](standalone-validation.md), including separate input,
+processing-output and report lifetimes. It reuses the scientific engine and the
+owned private-desktop launcher, not the corpus scheduler's automatic shrink step.
+
 ## E1. Corpus and workbook identities
 
 Keep the original corpus/archive identity and catalog when processing a subset.
@@ -264,6 +270,15 @@ explain delay. Keep heartbeat age, process liveness and actual work progress
 separate. Glow/afterglow conveys recent activity, not a new measurement.
 
 ## Source map
+
+The 2026-11 standalone patch also bounds Observatory snapshot and browser
+diagnostic caches, releases hidden historical views and suspends invisible 3D
+rendering. Targeted polling can request active/selected/recent groups while the
+paged workbook index retains corpus navigation. These changes do not alter
+scientific completion or process-ownership rules. See
+[long-run resource behavior](../visual-validation/observatory-long-runs.md) for
+limits, remaining whole-queue writes and the distinction between source findings
+and an unperformed 24-hour Windows reproduction.
 
 | Rules | Main source under `excel-shrink-cli/` |
 | --- | --- |

@@ -409,6 +409,33 @@ Earlier, more extensive comparison evidence remains reusable.
 
 ## Verification and repeatable review
 
+### Standalone validation SCE patch, 2026-11-06
+
+The new [SheetScope contract](standalone-validation.md) adds a second CLI and
+coordinator while preserving the targeted engine's source locations and scientific
+selection policy. The ordinary cleanup CLI accepts files/directories, not corpus
+ZIPs; its generic-program preset respects that existing behavior. Input archives,
+temporary/durable processing outputs and retained report evidence now have
+independent lifetimes.
+
+The long-run source review found invisible Three.js rendering, historical DOM
+retention, unbounded browser diagnostics and repeated full-queue transport/read
+costs. The patch fixes or bounds those paths. It also found existing bounded
+watch notifications, event histories and telemetry coalescing, so it does not
+replace them with a database. Remaining scheduler-wide snapshots, concurrent
+Excel/WebView memory, system commit pressure and GPU resources still need native
+measurement. No reproduced 24-hour failure or complete cure is claimed. The
+[resource review](../visual-validation/observatory-long-runs.md) records details.
+
+New permanent tests cover source/process contracts, selected-part fingerprints,
+portable report integrity, bounded UI caches, interrupted records and CLI
+separation. Node checks listed in the resource/report guides ran in this export.
+No Rust compilation, PowerShell/Excel execution or native long-run verification
+was performed for this patch. The historical test results below describe their
+original review, not verification of the new coordinator.
+
+### Historical review verification
+
 The core suite, focused targeted archive/retention tests and read-only retained-
 report contract audit were executed during this review. Broader archive study
 tests also passed (188 passed, two ignored before the final additional missing-
@@ -422,10 +449,10 @@ Useful commands (PowerShell environment example):
 
 ```powershell
 cargo test -p excel-shrink-core --lib
-cargo test -p excel-shrink-cli --bin excel-shrink-cli regression::archive::study
-cargo test -p excel-shrink-cli --bin excel-shrink-cli regression::targeted_comparison
+cargo test -p excel-shrink-cli --lib regression::archive::study
+cargo test -p excel-shrink-cli --lib regression::targeted_comparison
 $env:TARGETED_REPORT_REVIEW_ROOT = 'V:\excel-shrink-paper\external\excel-shrink-rust\.tmp\tdg-20261102'
-cargo test -p excel-shrink-cli --bin excel-shrink-cli retained_completed_reports_satisfy_the_contract -- --ignored --nocapture
+cargo test -p excel-shrink-cli --lib retained_completed_reports_satisfy_the_contract -- --ignored --nocapture
 ```
 
 For a source/specification review, take each S/V/E rule and ask: where is its

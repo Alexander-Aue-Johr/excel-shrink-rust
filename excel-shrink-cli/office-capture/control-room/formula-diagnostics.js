@@ -1,7 +1,10 @@
 import { readDiagnosticResponse } from './diagnostic-response.js';
+import { DiagnosticCache } from './diagnostic-cache.js';
 
-const summaries = new Map();
-const retained = new Map();
+const summaries = new DiagnosticCache({ maxEntries: 512, maxBytes: 256 * 1024 });
+const retained = new DiagnosticCache({ maxEntries: 64, maxBytes: 8 * 1024 * 1024 });
+const pending = new Map();
+const MAX_PENDING_REQUESTS = 16;
 const make = (tag, className, text) => {
   const element = document.createElement(tag);
   element.className = className;
@@ -20,12 +23,12 @@ export function formulaSummary(diagnosis) {
 export function attachFormulaSummary(element, id) {
   element.dataset.formulaGroup = id;
   element.className = 'workbook-formula-summary';
-  element.textContent = formulaSummary(summaries.get(id));
+  element.textContent = summaries.get(id) || '';
 }
 
 function remember(id, diagnosis) {
   if (!diagnosis.volatile_paths) return;
-  summaries.set(id, diagnosis);
+  summaries.set(id, formulaSummary(diagnosis));
   for (const element of document.querySelectorAll('.workbook-formula-summary')) {
     if (element.dataset.formulaGroup === id) element.textContent = formulaSummary(diagnosis);
   }
@@ -47,25 +50,33 @@ function formulaCode(node, pulsing) {
   return code;
 }
 
+/** Cache resolved evidence, not promises that retain every visited graph forever. */
+export function requestFormulaDiagnostics(id, region, reportId) {
+  const key = `${id}/${reportId}/${region}`;
+  const cached = retained.get(key);
+  if (cached) return Promise.resolve(cached);
+  if (pending.has(key)) return pending.get(key);
+  if (pending.size >= MAX_PENDING_REQUESTS) {
+    return Promise.reject(new Error('Formula inspection queue is full; retry this region.'));
+  }
+  const request = fetch(`/api/groups/${encodeURIComponent(id)}/formula-diagnostics?region=${encodeURIComponent(region)}`,
+    { cache: 'no-store' }).then(async response => {
+    const result = await readDiagnosticResponse(response, 'Formula diagnostics');
+    if (result.report_id !== reportId) throw new Error('Comparison changed; reopen the atelier.');
+    retained.set(key, result.diagnosis);
+    return result.diagnosis;
+  }).finally(() => pending.delete(key));
+  pending.set(key, request);
+  return request;
+}
+
 /** Render a separate read-only path, without marking or editing worksheet cells. */
 export function createFormulaInspector(id, region, reportId) {
   const root = make('section', 'formula-inspector');
   root.append(make('h3', '', 'Formula dependencies'));
   const note = make('p', 'formula-evidence-note', 'Loading formula evidence…');
   root.append(note);
-  const key = `${id}/${reportId}/${region.key}`;
-  let request = retained.get(key);
-  if (!request) {
-    request = fetch(`/api/groups/${encodeURIComponent(id)}/formula-diagnostics?region=${encodeURIComponent(region.key)}`,
-      { cache: 'no-store' }).then(async response => {
-      const result = await readDiagnosticResponse(response, 'Formula diagnostics');
-      if (result.report_id !== reportId) throw new Error('Comparison changed; reopen the atelier.');
-      return result.diagnosis;
-    });
-    retained.set(key, request);
-    request.catch(() => retained.delete(key));
-  }
-  request.then(diagnosis => {
+  requestFormulaDiagnostics(id, region.key, reportId).then(diagnosis => {
     remember(id, diagnosis);
     if (!root.isConnected) return;
     const source = diagnosis.evidence === 'prepared_source_cached_values';

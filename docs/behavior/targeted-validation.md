@@ -1,5 +1,15 @@
 # Targeted visual validation behavior
 
+The independent `sheet-scope` CLI now calls this same comparison implementation.
+Its A/B inputs need not come from Excel Shrink. Historical state names such as
+Default/SD/DR remain in the scientific report schema; in SheetScope they describe
+the supplied candidate and its Excel-saved/rebuilt states. They do not establish
+that Shrink produced it. SheetScope disables the optional Excel Check Performance
+branch and records its own producer-independent provenance. The original corpus
+workflow retains that branch and its existing options. Source acquisition,
+external programs and selected-part reuse are specified in
+[standalone validation](standalone-validation.md).
+
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
 `targeted-content-grid-v8`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance

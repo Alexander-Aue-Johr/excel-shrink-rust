@@ -45,7 +45,7 @@ Reproduce the read-only planner observation on a separate inspection copy:
 ```powershell
 $env:CAPTURE_GEOMETRY_WORKBOOK = 'C:\path\to\frpp-inspection.xlsx'
 $env:CAPTURE_GEOMETRY_OUTPUT = "$PWD\.tmp\adaptive-review\frpp-plan.json"
-cargo test -p excel-shrink-cli --bin excel-shrink-cli native_frpp_visible_geometry_plan -- --ignored --nocapture
+cargo test -p excel-shrink-cli --lib native_frpp_visible_geometry_plan -- --ignored --nocapture
 ```
 
 The ignored test intentionally uses the known FRPP extent `A1:DN307921`.

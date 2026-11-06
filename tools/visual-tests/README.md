@@ -108,7 +108,7 @@ values/formulas and unchanged source files, and retains fixtures and logs under
 ```console
 cargo fmt --all -- --check
 cargo check -p excel-shrink-cli --bin excel-shrink-cli
-cargo test -p excel-shrink-cli --bin excel-shrink-cli regression:: -- --nocapture
-cargo test -p excel-shrink-cli --bin excel-shrink-cli regression::xlsx_value_compare -- --nocapture
-cargo test -p excel-shrink-cli --bin excel-shrink-cli visual_ -- --nocapture
+cargo test -p excel-shrink-cli --lib regression:: -- --nocapture
+cargo test -p excel-shrink-cli --lib regression::xlsx_value_compare -- --nocapture
+cargo test -p excel-shrink-cli --lib visual_ -- --nocapture
 ```

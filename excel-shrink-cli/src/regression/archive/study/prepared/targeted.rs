@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 mod contract;
 mod execution_contract;
 mod retention;
-mod bounded_process;
+use crate::capture_watchdog as bounded_process;
 
 const POLICY: &str = crate::regression::targeted_comparison::CAPTURE_POLICY;
 

@@ -17,6 +17,11 @@ pub(super) async fn inspect(
     Query(options): Query<Options>,
 ) -> HttpResult<Json<Value>> {
     safe_id(&id)?;
+    // Waiting requests retain only their identifiers, not a complete report.
+    let _permit = INSPECTIONS
+        .acquire()
+        .await
+        .context("Formula inspections stopped")?;
     let Json(report) = targeted::report(State(room.clone()), RoutePath(id.clone())).await?;
     let (pair, kind, finding) = selection(&options.region)?;
     let entry = report["comparisons"]
@@ -70,10 +75,6 @@ pub(super) async fn inspect(
     if cache.is_file() {
         return Ok(Json(read_object(&cache, SNAPSHOT_LIMIT).await?));
     }
-    let _permit = INSPECTIONS
-        .acquire()
-        .await
-        .context("Formula inspections stopped")?;
     let result = tokio::task::spawn_blocking(move || -> Result<Value> {
         let directory = std::env::temp_dir()
             .join("excel-shrink-formula-inspection")

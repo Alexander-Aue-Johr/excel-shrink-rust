@@ -19,6 +19,11 @@ pub(super) async fn inspect(
     Query(options): Query<Options>,
 ) -> HttpResult<Json<Value>> {
     safe_id(&id)?;
+    // Waiting requests retain only their identifiers, not a complete report.
+    let _permit = DIAGNOSTICS
+        .acquire()
+        .await
+        .context("Pixel diagnostics stopped")?;
     let Json(report) = targeted::report(State(room.clone()), RoutePath(id.clone())).await?;
     let study = room
         .root
@@ -34,11 +39,6 @@ pub(super) async fn inspect(
     if cache.is_file() {
         return Ok(Json(read_object(&cache, SNAPSHOT_LIMIT).await?));
     }
-    // Do not let an open result list decode many large capture pairs at once.
-    let _permit = DIAGNOSTICS
-        .acquire()
-        .await
-        .context("Pixel diagnostics stopped")?;
     let result = tokio::task::spawn_blocking(move || {
         inspect_report(
             &study,
@@ -218,7 +218,7 @@ impl Hotspot {
 
 /// Compare aligned overlapping RGBA pixels. Exterior pixels stay a separate
 /// measurement: a differently sized capture is not a changed common pixel.
-fn compare_pixels(
+pub(crate) fn compare_pixels(
     left: &RgbaImage,
     right: &RgbaImage,
     details: bool,

@@ -55,8 +55,8 @@ pub(crate) struct Args {
     /// Untouched source XLSX; the command works on a copy.
     #[arg(long)]
     original: PathBuf,
-    /// XLSX produced by the default shrink profile; the command works on a copy.
-    #[arg(long)]
+    /// Candidate XLSX from any producer; the command works on a copy.
+    #[arg(long, alias = "candidate")]
     default: PathBuf,
     /// New directory for the report, screenshots and working copies.
     #[arg(long)]
@@ -85,6 +85,11 @@ pub(crate) struct Args {
     /// Generate reusable Excel controls and measurements without running visual comparisons.
     #[arg(long)]
     prepare_artifacts_only: bool,
+}
+
+/// Record the comparison contract independently of a workbook producer's version.
+pub(crate) fn policy() -> (&'static str, &'static str) {
+    (CAPTURE_POLICY, EXECUTION_STRATEGY)
 }
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize)]

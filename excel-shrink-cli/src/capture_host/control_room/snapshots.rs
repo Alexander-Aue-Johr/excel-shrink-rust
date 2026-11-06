@@ -24,7 +24,12 @@ pub(super) async fn read_object(path: &Path, maximum: u64) -> Result<Value> {
         "Snapshot exceeds the {} KiB metadata limit.",
         maximum / 1024
     );
-    let value: Value = serde_json::from_slice(&bytes)?;
+    let value: Value = if bytes.len() > 64 * 1024 {
+        tokio::task::spawn_blocking(move || serde_json::from_slice(&bytes))
+            .await.context("Parse display snapshot")??
+    } else {
+        serde_json::from_slice(&bytes)?
+    };
     ensure!(value.is_object(), "Expected an object snapshot.");
     Ok(value)
 }

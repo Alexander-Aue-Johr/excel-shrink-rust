@@ -24,3 +24,23 @@ assert.match(calls[1], /selected\/pixel-diagnostics\?region=0%3Acharts%3A1/);
 await requestPixelDiagnostics('first');
 assert.equal(calls.length, 3, 'Cached list measurements must not decode again');
 console.log('PASS pixel summaries, bounded requests, selection priority and cache reuse');
+
+let releaseBlocked;
+const longRunCalls = [];
+globalThis.fetch = async url => {
+  longRunCalls.push(url);
+  if (longRunCalls.length === 1) await new Promise(resolve => { releaseBlocked = resolve; });
+  return Response.json({ summary: { changed_pixels: 0 } });
+};
+const pending = Array.from({ length: 128 }, (_, index) =>
+  requestPixelDiagnostics(`long-run-${index}`).then(() => 'ok', error => error.message));
+await assert.rejects(requestPixelDiagnostics('excess-prefetch'), /queue is full/);
+const selectedWhenFull = requestPixelDiagnostics('selected-when-full', { priority: true, region: '1:findings:0' });
+releaseBlocked();
+const outcomes = await Promise.all(pending);
+await selectedWhenFull;
+assert.equal(outcomes.filter(value => value === 'ok').length, 127);
+assert.equal(outcomes.filter(value => /deferred/.test(value)).length, 1);
+assert.match(longRunCalls[1], /selected-when-full/, 'Explicit selection takes precedence over bounded list prefetch');
+assert.equal(longRunCalls.length, 128, 'Excess background work never enters the server queue');
+console.log('PASS long-run pending limit and interactive priority under saturation');

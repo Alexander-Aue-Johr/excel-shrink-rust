@@ -361,7 +361,7 @@ They are normal tests and run as part of `cargo test`.
 Example:
 
 ```bash
-cargo test -p excel-shrink-cli --bin excel-shrink-cli corpus_regression_smoke_suite -- --nocapture
+cargo test -p excel-shrink-cli --lib corpus_regression_smoke_suite -- --nocapture
 ```
 
 Test entry points:

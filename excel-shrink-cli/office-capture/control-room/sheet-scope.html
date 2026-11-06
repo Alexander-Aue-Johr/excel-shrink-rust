@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SheetScope Observatory</title>
+  <link rel="stylesheet" href="/sheet-scope.css">
+  <script src="/sheet-scope.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div><p class="eyebrow">Spreadsheet visual validation</p><h1>SheetScope <span>Observatory</span></h1></div>
+    <p>Configure a comparison, follow its progress, and keep independent evidence.</p>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>Choose a workflow</h2>
+      <div class="modes">
+        <label><input type="radio" name="mode" value="compare" checked> Compare existing A and B</label>
+        <label><input type="radio" name="mode" value="process"> Process A, then compare</label>
+        <label><input type="radio" name="mode" value="report"> Open a saved report</label>
+      </div>
+    </section>
+
+    <form id="configuration">
+      <fieldset id="run-fields">
+        <section class="panel grid">
+          <h2>Workbook sources</h2>
+          <label class="wide">A · original source
+            <span class="path"><input id="source-a" placeholder="Folder, workbook, ZIP file or HTTPS archive URL"><button type="button" data-browse="source-a">Browse…</button></span>
+          </label>
+          <label id="source-b-row" class="wide">B · existing processed source
+            <span class="path"><input id="source-b" placeholder="Independent folder, workbook, ZIP file or archive URL"><button type="button" data-browse="source-b">Browse…</button></span>
+          </label>
+          <p class="help wide">Names are matched by relative path, then by unique filename. Ambiguous matches remain explicit failures. Visual comparison currently requires XLSX on both sides.</p>
+        </section>
+
+        <section id="processing" class="panel" hidden>
+          <h2>Processing steps</h2>
+          <p class="help">Steps run in order. Each program receives separate arguments. A file step may run several processes; folder and ZIP steps run once per stage.</p>
+          <div id="steps"></div>
+          <div class="actions"><button id="add-step" type="button">Add program</button><button id="add-shrink" type="button">Add Excel Shrink preset</button></div>
+          <div class="grid">
+            <label>Maximum parallel processes<input id="parallel" type="number" min="1" max="64" value="1"></label>
+            <label>Baseline after step (optional)<input id="baseline-step" type="number" min="1" placeholder="Original A by default"></label>
+          </div>
+          <p class="help">For an XLS → XLSX conversion, explicitly select the conversion step as baseline. The subsequent transformations are compared; that conversion itself is outside visual coverage.</p>
+        </section>
+
+        <section class="panel grid">
+          <h2>Reports and storage</h2>
+          <label class="wide">New report directory
+            <span class="path"><input id="report-dir" placeholder="A new directory for evidence and the static viewer"><button type="button" data-browse="report-dir">Choose parent…</button></span>
+          </label>
+          <div id="output-settings" class="wide grid" hidden>
+            <label>Processed workbooks<select id="output-kind"><option value="temporary">Temporary · retain only report</option><option value="directory">Keep in a new folder</option><option value="archive">Keep in a new ZIP archive</option></select></label>
+            <label id="output-path-row" hidden>Output destination<span class="path"><input id="output-path"><button type="button" data-browse="output-path">Choose parent…</button></span></label>
+            <label class="check wide"><input id="persist-stages" type="checkbox"> Persist and reuse processing stages</label>
+            <label id="stage-cache-row" class="wide" hidden>Processing cache directory<span class="path"><input id="stage-cache"><button type="button" data-browse="stage-cache">Browse…</button></span></label>
+            <label id="processing-key-row" class="wide" hidden>Processing dependency key<input id="processing-key" placeholder="Change when scripts, external dependencies or execution environment change"></label>
+          </div>
+          <label class="check wide"><input id="continue-errors" type="checkbox"> Continue with successful file pairs after individual failures</label>
+        </section>
+
+        <section class="panel grid">
+          <h2>Reuse earlier visual observations</h2>
+          <label class="wide">Renderer / environment key<input id="environment-key" placeholder="For example: workstation, Office build and font setup"></label>
+          <p class="help wide">Record this key on the baseline run too. Reuse requires a matching validator and this same declared environment.</p>
+          <label class="check wide"><input id="reuse" type="checkbox"> Reuse a previous report under selected OOXML components</label>
+          <label id="reuse-path-row" class="wide" hidden>Previous report<span class="path"><input id="reuse-path" placeholder="Report directory or run.json"><button type="button" data-browse="reuse-path">Browse…</button></span></label>
+          <div class="wide"><details id="reuse-details"><summary>OOXML components recorded for reuse</summary>
+            <div id="part-options" class="checks">
+              <label><input type="checkbox" data-part="worksheets" checked> Worksheet XML</label>
+              <label><input type="checkbox" data-part="workbook" checked> workbook.xml</label>
+              <label><input type="checkbox" data-part="styles" checked> styles.xml</label>
+              <label><input type="checkbox" data-part="shared_strings" checked> sharedStrings.xml</label>
+              <label><input type="checkbox" data-part="relationships" checked> Relationships (.rels)</label>
+              <label><input type="checkbox" data-part="drawings" checked> Drawings and media</label>
+              <label><input type="checkbox" data-part="charts" checked> Charts and chart sheets</label>
+              <label><input type="checkbox" data-part="other" checked> Other package members</label>
+            </div>
+            <label>Additional exact part names (one per line)<textarea id="extra-parts" rows="2"></textarea></label>
+          </details></div>
+          <p class="help wide">Both A and B are checked by the contents of the selected ZIP members. ZIP order and compression do not decide reuse. A reused observation is labelled as such; this selection is not a proof of visual equality.</p>
+        </section>
+
+        <section class="panel"><details><summary>Execution and download settings</summary>
+          <div class="grid">
+            <label class="wide">Download cache<span class="path"><input id="download-cache"><button type="button" data-browse="download-cache">Browse…</button></span></label>
+            <label class="check wide"><input id="refresh-downloads" type="checkbox"> Download fresh versions of archive URLs</label>
+            <label>Excel operation timeout (seconds)<input id="operation-timeout" type="number" min="1" max="86400" value="120"></label>
+            <label>Capture progress timeout (seconds)<input id="idle-timeout" type="number" min="1" max="86400" value="120"></label>
+            <label class="check wide"><input id="serial-captures" type="checkbox"> Serial capture requests for diagnostics</label>
+          </div>
+        </details></section>
+      </fieldset>
+      <div class="actions"><button id="start" class="primary" type="submit">Start validation</button><button id="save-config" type="button">Download configuration</button><button id="edit-json" type="button">Edit complete JSON</button></div>
+    </form>
+
+    <section id="saved-report" class="panel" hidden>
+      <h2>Open completed or interrupted evidence</h2>
+      <label>Report directory or run.json<span class="path"><input id="open-path"><button type="button" data-browse="open-path">Browse…</button></span></label>
+      <div class="actions"><button id="open-report" class="primary" type="button">Open report</button></div>
+    </section>
+
+    <section class="panel" id="progress-panel">
+      <div class="section-title"><h2>Run progress</h2><span id="status" class="badge">Idle</span></div>
+      <p id="current">No active run.</p><progress id="completion" max="1" value="0"></progress>
+      <p id="counts" class="help"></p>
+      <div class="table-wrap"><table><thead><tr><th>Excel state</th><th>PID</th><th>Lifecycle</th><th>Captures</th><th>Current region</th></tr></thead><tbody id="lanes"></tbody></table></div>
+      <h3>Recent completed comparisons</h3>
+      <div class="table-wrap"><table><thead><tr><th>Workbook</th><th>Outcome</th><th>Differences</th><th>Evidence</th></tr></thead><tbody id="results"></tbody></table></div>
+      <p class="help">The latest 20 results are shown here. The completed report indexes every workbook. Reused results retain their original observations.</p>
+      <div class="actions"><a id="report-link" href="/reports/index.html" target="_blank" rel="noopener" hidden>Open complete report</a></div>
+      <div id="export-settings" hidden><label>New static website directory<span class="path"><input id="export-path"><button type="button" data-browse="export-path">Choose parent…</button></span></label><button id="export-report" type="button">Export static website</button></div>
+    </section>
+    <p id="message" role="status" aria-live="polite"></p>
+  </main>
+
+  <dialog id="browser">
+    <div class="section-title"><h2>Select a local path</h2><button id="close-browser" type="button">Close</button></div>
+    <form id="browse-form" class="path"><input id="browse-path" aria-label="Directory path"><button type="submit">Go</button></form>
+    <div class="actions"><button id="browse-up" type="button">Parent folder</button><button id="use-folder" type="button">Use this folder</button></div>
+    <p id="browse-message" class="help"></p><div id="browse-entries"></div>
+    <div class="actions"><button id="browse-prev" type="button">Previous</button><button id="browse-next" type="button">Next</button></div>
+  </dialog>
+  <dialog id="json-editor">
+    <h2>Complete run configuration</h2><p class="help">Includes per-step environment overrides and working directories. Relative paths resolve from the Observatory working directory.</p>
+    <textarea id="json-value" rows="24" spellcheck="false" aria-label="Run configuration JSON"></textarea>
+    <div class="actions"><button id="apply-json" type="button">Apply configuration</button><button id="close-json" type="button">Cancel</button></div>
+  </dialog>
+</body>
+</html>

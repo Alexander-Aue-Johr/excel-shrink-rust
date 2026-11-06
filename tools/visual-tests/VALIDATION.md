@@ -88,7 +88,7 @@ deleting corpus files, baselines, reports, or measurements.
 ```console
 cargo fmt --all -- --check
 cargo check -p excel-shrink-cli --bin excel-shrink-cli
-cargo test -p excel-shrink-cli --bin excel-shrink-cli regression:: -- --nocapture
-cargo test -p excel-shrink-cli --bin excel-shrink-cli visual_ -- --nocapture
+cargo test -p excel-shrink-cli --lib regression:: -- --nocapture
+cargo test -p excel-shrink-cli --lib visual_ -- --nocapture
 python tools/visual-tests/benchmark_value_compare_v9.py --rows 20000
 ```

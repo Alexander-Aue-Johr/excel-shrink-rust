@@ -20,6 +20,7 @@ use xlsx_value_compare::{CellValueDifference, MissingCellPolicy, WorkbookCompari
 
 mod visual_diagnostics;
 mod excel_automation;
+pub(crate) use excel_automation::power_shell_path;
 mod launcher_journal;
 mod xlsx_value_compare;
 mod artifact_cache;
@@ -36,7 +37,7 @@ mod visual_validation;
 mod visual_diagnosis;
 mod diagnosis_report;
 mod archive;
-mod targeted_comparison;
+pub(crate) mod targeted_comparison;
 pub(crate) mod formula_trace;
 mod sheet_capture;
 mod cf_inventory;

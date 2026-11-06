@@ -1,3 +1,4 @@
+import { createVisibleAnimationLoop } from './animation-loop.js';
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription, processMeasurements, tileEvidenceDescription, captureTransportSummary, groupOutcome, PRIMARY_PROFILES } from './model.js';
@@ -289,7 +290,7 @@ function initScene() {
     else if (hit?.userData.sheetId) focusSheet(hit.userData.sheetId, true);
     pointerDown = null;
   });
-  requestAnimationFrame(tick);
+  sceneAnimation.refresh();
 }
 function fitCamera(animate = false) {
   const verticalTangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
@@ -518,7 +519,7 @@ function makeBoard(card, sheet, profile, profileIndex, shown, view) {
   }
 }
 function renderScene(force = false) {
-  if (!data) return;
+  if (!data || document.hidden || document.body.classList.contains('targeted-mode')) return;
   const views = data.sheets.map(sheet => [sheet.id, sheetView(sheet)]);
   const signature = JSON.stringify([state.groupId, state.sheetId, state.focus, views, data.profiles, data.sheets]);
   if (!force && signature === lastSignature) return;
@@ -975,8 +976,14 @@ function updateSourceTiles(now) {
     tile.rim.material.opacity = tile.entry.id === state.selected ? 1 : .75;
   }
 }
+const sceneAnimation = createVisibleAnimationLoop(tick, {
+  visible: () => !document.hidden && !document.body.classList.contains('targeted-mode'),
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) renderScene();
+  sceneAnimation.refresh();
+});
 function tick(now) {
-  requestAnimationFrame(tick);
   if (cameraTween) {
     const t = Math.min(1, (now - cameraTween.start) / 650), ease = 1 - Math.pow(1 - t, 3);
     camera.position.lerpVectors(cameraTween.from, cameraTween.to, ease); controls.target.lerpVectors(cameraTween.fromTarget, cameraTween.target, ease); if (t === 1) cameraTween = null;
@@ -1546,7 +1553,10 @@ async function poll() {
   const generation = pollGeneration;
   const controlRevision = controlUpdates.beginRead();
   try {
-    const response = await fetch('/api/state', { cache: 'no-store' }); if (!response.ok) throw new Error(`Status unavailable (${response.status}).`);
+    const liveGroups = state.queue?.progress?.targeted_comparison === true && workbookIndex?.available === true;
+    const query = new URLSearchParams(liveGroups ? { group_scope: 'live' } : {});
+    if (liveGroups && state.groupId) query.set('selected', state.groupId);
+    const response = await fetch(`/api/state?${query}`, { cache: 'no-store' }); if (!response.ok) throw new Error(`Status unavailable (${response.status}).`);
     const queue = await response.json(); if (generation !== pollGeneration) return;
     const newRun = state.queue?.run_id && queue.run_id && state.queue.run_id !== queue.run_id;
     if (newRun) {
@@ -1583,6 +1593,7 @@ async function poll() {
     state.queue = queue; state.connected = true; state.error = null;
     const targetedMode = queue.progress?.targeted_comparison === true;
     document.body.classList.toggle('targeted-mode', targetedMode);
+    sceneAnimation.refresh();
     for (const id of ['sweepProcesses', 'equalPreview']) {
       $(id).closest('.control').hidden = targetedMode;
     }
@@ -1618,6 +1629,9 @@ async function poll() {
     if (recovered) setNotice('Connection to local host restored.');
     const memory = queue.memory;
     $('memory').textContent = memory?.available_bytes != null ? `${(memory.available_bytes / 1073741824).toFixed(1)} GiB free / ${(memory.total_bytes / 1073741824).toFixed(0)} GiB` : 'RAM unavailable';
+    $('memory').title = memory?.commit_available_bytes != null
+      ? `${(memory.commit_available_bytes / 1073741824).toFixed(1)} GiB commit headroom / ${(memory.commit_limit_bytes / 1073741824).toFixed(1)} GiB limit (GlobalMemoryStatusEx)`
+      : 'System commit information is unavailable.';
     updateControlInputs();
     const currentGroups = queue.groups?.filter(group => !group.run_id || !queue.run_id
       || group.run_id === queue.run_id) || [];
@@ -1638,7 +1652,12 @@ async function poll() {
     $('stopRun').disabled = true;
     $('terminateRun').disabled = true;
     state.connected = false; state.error = error.message; $('connectionLight').className = 'failed'; $('connectionText').textContent = 'Disconnected'; setNotice(`${error.message} Showing the last known state; retrying the connection shortly.`, true);
-  } finally { if (generation === pollGeneration) pollTimer = setTimeout(poll, document.hidden ? 2000 : 500); }
+  } finally {
+    if (generation === pollGeneration) {
+      const delay = document.hidden ? 10000 : state.queue?.running === false ? 5000 : 1000;
+      pollTimer = setTimeout(poll, delay);
+    }
+  }
 }
 function elapsedText(iso) {
   const milliseconds = Date.now() - Date.parse(iso); if (!Number.isFinite(milliseconds)) return '';
@@ -2115,7 +2134,7 @@ function snapshot() {
     running: state.queue?.running, runnerAlive: state.queue?.runner_alive, phase: state.queue?.phase,
     groupId: state.groupId, sheetId: state.sheetId, selected: state.selected, regionId: state.regionId, focus: state.focus, sheetCards: sheetCards.size, pinned: state.pinned, follow: state.follow,
     view: { ...sheetView(selectedSheet()) }, sheetViews: data?.sheets.map(sheet => ({ id: sheet.id, view: sheetView(sheet) })), profiles: data?.profiles, status: data?.status, launcher: data?.launcher,
-    groupCount: state.queue?.groups?.length || 0, totalTiles: entries.length, visibleTiles: [...new Set(sourceTiles.map(tile => tile.entry.id))],
+    groupCount: state.queue?.groups_total ?? state.queue?.groups?.length ?? 0, totalTiles: entries.length, visibleTiles: [...new Set(sourceTiles.map(tile => tile.entry.id))],
     tiles: sourceTiles.map(tile => ({ id: tile.entry.id, address: tile.entry.address, profile: tile.profile.id, status: imageStatus(tile.entry, tile.profile.id), loaded: tile.loaded, rectangle: tile.rectangle, clip: tile.clip, offscreen: tile.offscreen })),
     details: detailPanels.map(panel => ({ profiles: panel.group.ids, pixelClass: panel.group.pixelClass,
       sameAsOriginal: panel.sameAsOriginal, fullReady: panel.fullReady, maskPresent: Boolean(panel.mask),

@@ -126,7 +126,7 @@ function createFlowDiagram() {
   };
 }
 
-/** A workbook group owns its lane cards until bounded history eviction. */
+/** A visible workbook group owns its lane cards; hidden history keeps only data. */
 function createComparisonCard() {
   const root = node('article', 'targeted-workbook');
   const heading = node('header', 'targeted-workbook-heading');
@@ -248,14 +248,18 @@ export function createTargetedPanel(root) {
     const visible = document.fullscreenElement === root ? ended : ended.slice(0, completedLimit);
     const displayed = new Set([...running, ...visible].map(item => item.run_id));
     const before = new Map([...views].map(([id, view]) => [id, view.element.getBoundingClientRect()]));
-    for (const item of all) {
-      if (!displayed.has(item.run_id) && !views.has(item.run_id)) continue;
-      if (!views.has(item.run_id)) views.set(item.run_id, createComparisonCard());
-      const view = views.get(item.run_id);
-      view.element.hidden = !displayed.has(item.run_id);
-      view.update(item, connected);
+    // Retain small report records, not hidden canvas/observer/DOM trees for
+    // every workbook that has ever passed through the active section.
+    for (const [id, view] of views) {
+      if (displayed.has(id)) continue;
+      view.destroy();
+      views.delete(id);
     }
-    for (const [parent, items] of [[active, running], [completed, ended]]) {
+    for (const item of [...running, ...visible]) {
+      if (!views.has(item.run_id)) views.set(item.run_id, createComparisonCard());
+      views.get(item.run_id).update(item, connected);
+    }
+    for (const [parent, items] of [[active, running], [completed, visible]]) {
       items.filter(item => views.has(item.run_id)).forEach((item, index) => {
         const element = views.get(item.run_id).element;
         if (parent.children[index] !== element) parent.insertBefore(element, parent.children[index] || null);
@@ -316,6 +320,7 @@ export function createTargetedPanel(root) {
         supported = true;
         for (const id of snapshot.retired_run_ids || []) {
           retired.add(id);
+          while (retired.size > 512) retired.delete(retired.values().next().value);
           records.delete(id);
           views.get(id)?.destroy();
           views.delete(id);
