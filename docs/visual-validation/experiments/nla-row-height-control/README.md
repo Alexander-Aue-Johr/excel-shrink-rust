@@ -65,3 +65,30 @@ Local evidence is retained below
 `nla-isolate-sheet5-proof`, `nla-isolate-sheet6-verified-proof`,
 `nla-isolate-sheet7-verified-proof`, `nla-sheet5-columns-only-proof`,
 `nla-sheet5-cells-only-proof` and `nla-column-font-sentinel-proof`.
+
+## Production verification and cache migration
+
+Core fix `44e9537` retains canonical column-font sentinels. The complete core
+suite passed with 266 unit tests and four allocation tests, with one ignored
+test. A fresh CLI shrink produced a 662,460-byte Default file, compared with
+662,446 bytes before the fix and 662,562 original bytes.
+
+The production targeted workflow compared seven regions in each rebuilt state.
+All seven image pairs were captured and compared without pixel, geometry or
+rendering differences. The effective-height check for the affected worksheet
+also found no differences. Full evidence is retained in
+`validation-temp/nla-production-font-fix-proof/result` beside the other probes.
+
+A read-only inventory examined all 8,623 prepared bundles. It checked column
+headers and format identities without scanning worksheet cells, excluding
+already measured outputs with no column merge. Nineteen bundles had changed
+column fonts or gap fills. Replaying those nineteen with the new core produced
+changed package parts in every case, with no inventory or replay errors.
+
+Their old bundles and records were copied and SHA-256 verified before targeted
+invalidation. Reports and PNGs remain retained. The backup is
+`validation-temp/backups/before-column-font-20261106-020535`.
+The full run resumed with build SHA-256
+`c201e1668d0baad9d4707e4e40852a0da6c20170379fb17bca30fecdaed55224`.
+All nineteen replacement bundles were verified as prepared by that build.
+Their production visual comparisons remain work for the resumed run.
