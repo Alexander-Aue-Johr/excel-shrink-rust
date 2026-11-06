@@ -1553,7 +1553,10 @@ async function poll() {
   const generation = pollGeneration;
   const controlRevision = controlUpdates.beginRead();
   try {
-    const response = await fetch('/api/state', { cache: 'no-store' }); if (!response.ok) throw new Error(`Status unavailable (${response.status}).`);
+    const liveGroups = state.queue?.progress?.targeted_comparison === true && workbookIndex?.available === true;
+    const query = new URLSearchParams(liveGroups ? { group_scope: 'live' } : {});
+    if (liveGroups && state.groupId) query.set('selected', state.groupId);
+    const response = await fetch(`/api/state?${query}`, { cache: 'no-store' }); if (!response.ok) throw new Error(`Status unavailable (${response.status}).`);
     const queue = await response.json(); if (generation !== pollGeneration) return;
     const newRun = state.queue?.run_id && queue.run_id && state.queue.run_id !== queue.run_id;
     if (newRun) {
@@ -2128,7 +2131,7 @@ function snapshot() {
     running: state.queue?.running, runnerAlive: state.queue?.runner_alive, phase: state.queue?.phase,
     groupId: state.groupId, sheetId: state.sheetId, selected: state.selected, regionId: state.regionId, focus: state.focus, sheetCards: sheetCards.size, pinned: state.pinned, follow: state.follow,
     view: { ...sheetView(selectedSheet()) }, sheetViews: data?.sheets.map(sheet => ({ id: sheet.id, view: sheetView(sheet) })), profiles: data?.profiles, status: data?.status, launcher: data?.launcher,
-    groupCount: state.queue?.groups?.length || 0, totalTiles: entries.length, visibleTiles: [...new Set(sourceTiles.map(tile => tile.entry.id))],
+    groupCount: state.queue?.groups_total ?? state.queue?.groups?.length ?? 0, totalTiles: entries.length, visibleTiles: [...new Set(sourceTiles.map(tile => tile.entry.id))],
     tiles: sourceTiles.map(tile => ({ id: tile.entry.id, address: tile.entry.address, profile: tile.profile.id, status: imageStatus(tile.entry, tile.profile.id), loaded: tile.loaded, rectangle: tile.rectangle, clip: tile.clip, offscreen: tile.offscreen })),
     details: detailPanels.map(panel => ({ profiles: panel.group.ids, pixelClass: panel.group.pixelClass,
       sameAsOriginal: panel.sameAsOriginal, fullReady: panel.fullReady, maskPresent: Boolean(panel.mask),

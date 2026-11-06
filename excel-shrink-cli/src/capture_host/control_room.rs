@@ -392,7 +392,25 @@ async fn workbooks(
     Ok(Json(response))
 }
 
-async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
+#[derive(Default, serde::Deserialize)]
+struct StateOptions {
+    group_scope: Option<String>,
+    selected: Option<String>,
+}
+
+/// Project frequent live polls while preserving the complete legacy response.
+/// Corpus browsing remains available through the paged workbook index.
+async fn state(
+    State(room): State<Arc<Room>>,
+    Query(options): Query<StateOptions>,
+) -> HttpResult<Json<Value>> {
+    let scope = options.group_scope.as_deref().unwrap_or("all");
+    if !matches!(scope, "all" | "live") {
+        return Err(ApiError::bad_request("group_scope must be all or live."));
+    }
+    if let Some(id) = &options.selected {
+        safe_id(id)?;
+    }
     let mut diagnostics = Vec::new();
     let mut queue = read_queue(&room, &mut diagnostics).await?;
     queue["update_ready"] =
@@ -438,7 +456,53 @@ async fn state(State(room): State<Arc<Room>>) -> HttpResult<Json<Value>> {
     queue["server"] =
         json!({"started_at": room.started, "utc": now_iso(), "port": room.port, "live": true});
     queue["diagnostics"] = json!(diagnostics);
+    if scope == "live" {
+        retain_live_groups(&mut queue, options.selected.as_deref());
+    }
     Ok(Json(queue))
+}
+
+/// Retain every active group, the selected workbook and eight recent summaries.
+/// Filtering owns only this response and never changes the durable queue.
+fn retain_live_groups(queue: &mut Value, selected: Option<&str>) {
+    let groups = queue["groups"]
+        .as_array_mut()
+        .map(std::mem::take)
+        .unwrap_or_default();
+    let total = groups.len();
+    let mut recent: Vec<_> = groups
+        .iter()
+        .enumerate()
+        .filter(|(_, group)| {
+            group["active"] != true
+                && (queue["run_id"].is_null()
+                    || group["run_id"].is_null()
+                    || group["run_id"] == queue["run_id"])
+        })
+        .map(|(position, group)| {
+            (group["started_unix_ms"].as_i64().unwrap_or(0), position)
+        })
+        .collect();
+    recent.sort_unstable_by(|left, right| right.cmp(left));
+    let recent: std::collections::HashSet<_> = recent
+        .into_iter()
+        .take(8)
+        .map(|(_, position)| position)
+        .collect();
+    let kept: Vec<_> = groups
+        .into_iter()
+        .enumerate()
+        .filter_map(|(position, group)| {
+            (group["active"] == true
+                || recent.contains(&position)
+                || selected.is_some_and(|id| group["id"].as_str() == Some(id)))
+            .then_some(group)
+        })
+        .collect();
+    queue["groups_total"] = json!(total);
+    queue["group_scope"] = json!("live");
+    queue["groups_truncated"] = json!(kept.len() < total);
+    queue["groups"] = json!(kept);
 }
 
 async fn attach_active_preparation_profile(
@@ -1645,6 +1709,29 @@ mod tests {
         assert!(merge_controls(&controls, &json!({"prepare_processes": max + 1})).is_err());
         assert!(merge_controls(&controls, &json!({"shrink_threads": max + 1})).is_err());
         Ok(())
+    }
+
+    #[test]
+    fn live_projection_retains_active_selected_and_recent_without_expanding_with_corpus_size() {
+        let mut groups: Vec<_> = (0..9000)
+            .map(|index| json!({
+                "id":format!("book-{index}"), "active":false, "run_id":"run",
+                "started_unix_ms":index, "status":"completed"
+            }))
+            .collect();
+        groups[1]["active"] = json!(true);
+        groups[2]["active"] = json!(true);
+        let mut queue = json!({"run_id":"run", "groups":groups, "open_groups":2});
+        retain_live_groups(&mut queue, Some("book-3"));
+        let kept = queue["groups"].as_array().unwrap();
+        assert_eq!(kept.len(), 11);
+        assert_eq!(queue["groups_total"], 9000);
+        assert_eq!(queue["open_groups"], 2);
+        assert_eq!(queue["groups_truncated"], true);
+        for id in ["book-1", "book-2", "book-3", "book-8999"] {
+            assert!(kept.iter().any(|group| group["id"] == id));
+        }
+        assert!(!kept.iter().any(|group| group["id"] == "book-8991"));
     }
 
     #[tokio::test]

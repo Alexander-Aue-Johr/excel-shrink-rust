@@ -48,8 +48,7 @@ def current_process_started_ms(pid=None):
 
 class ControlRoomProtocol(unittest.TestCase):
     def setUp(self):
-        (HERE / "obj").mkdir(exist_ok=True)
-        self.temp = tempfile.TemporaryDirectory(prefix="control-room-", dir=HERE / "obj")
+        self.temp = tempfile.TemporaryDirectory(prefix="control-room-")
         self.directory = Path(self.temp.name)
         self.data = self.directory / "data"
         self.web = self.directory / "web"
@@ -114,6 +113,26 @@ class ControlRoomProtocol(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as raised:
             self.request(path, body, headers)
         self.assertEqual(raised.exception.code, code)
+
+    def test_live_state_is_bounded_while_workbook_history_remains_pageable(self):
+        groups = [{"id": f"book-{index}", "run_id": "current", "active": False,
+                   "status": "completed", "started_unix_ms": index} for index in range(9000)]
+        groups[1]["active"] = True
+        groups[1]["status"] = "comparing"
+        self.write("queue.json", {"run_id": "current", "groups": groups, "open_groups": 1})
+        self.write("workbook-index.json", {"version": 1, "run_id": "current", "workbooks": groups})
+        state = self.request("/api/state?group_scope=live&selected=book-3")
+        self.assertEqual(state["groups_total"], 9000)
+        self.assertTrue(state["groups_truncated"])
+        self.assertEqual(len(state["groups"]), 10)
+        self.assertEqual({row["id"] for row in state["groups"]},
+                         {"book-1", "book-3", *(f"book-{index}" for index in range(8992, 9000))})
+        self.assertEqual(len(self.request("/api/state")["groups"]), 9000)
+        history = self.request("/api/workbooks?offset=500&limit=100")
+        self.assertEqual(history["total"], 9000)
+        self.assertEqual(history["workbooks"][0]["id"], "book-500")
+        self.assert_status(400, "/api/state?group_scope=unknown")
+        self.assert_status(400, "/api/state?group_scope=live&selected=../outside")
 
     def test_inspection_profiles_and_skipped_reason_follow_current_attempt(self):
         self.write("queue.json", {"groups": [{"id": "book", "status": "skipped",
