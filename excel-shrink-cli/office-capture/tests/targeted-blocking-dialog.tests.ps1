@@ -10,11 +10,13 @@ if ($DialogWorker) {
 if ($BrowserProbe) {
     Add-Type -Path @((Join-Path $PSScriptRoot '../CaptureProcesses.cs'), (Join-Path $PSScriptRoot '../CaptureDesktop.cs'))
     Import-Module (Join-Path $PSScriptRoot '../TargetedDialogText.psm1') -Force
-    $entry = @{process=Get-Process -Id $ExcelProcessId; session=$Session}
-    $browser = [pscustomobject]@{Handle=$DialogHandle; IsModal=$true; ClassName='BasicEmbeddedBrowser'}
-    $labels = @(Read-TargetedEmbeddedDialog $entry $browser)
-    if (($labels -join ' ') -notmatch 'AADSTS50020') { throw 'Private-desktop browser dispatch missed dialog labels.' }
-    if (@(Read-TargetedEmbeddedDialog $entry $browser).Count -ne 0) { throw 'Repeated browser probes must be throttled.' }
+    foreach ($className in @('BasicEmbeddedBrowser', 'NUIDialog')) {
+        $entry = @{process=Get-Process -Id $ExcelProcessId; session=$Session}
+        $dialog = [pscustomobject]@{Handle=$DialogHandle; IsModal=$true; ClassName=$className}
+        $labels = @(Read-TargetedEmbeddedDialog $entry $dialog)
+        if (($labels -join ' ') -notmatch 'AADSTS50020') { throw 'Private-desktop dispatch missed dialog labels.' }
+        if (@(Read-TargetedEmbeddedDialog $entry $dialog).Count -ne 0) { throw 'Repeated dialog probes must be throttled.' }
+    }
     [IO.File]::WriteAllText((Join-Path $Session 'browser-probe-passed.txt'), 'passed')
     return
 }
@@ -32,6 +34,7 @@ try {
         @{text='Sign in';kind='authentication_required'},
         @{text='We found a problem with some content in one.xlsx.';kind='repair_required'},
         @{text='Microsoft Excel - Compatibility Checker';kind='compatibility_confirmation_required'},
+        @{text='The author would like you to open this workbook as read-only. Open as read-only?';kind='read_only_prompt'},
         @{text='Choose whether to continue';kind='modal_confirmation_required'}
     )) {
         $owned=New-Object CaptureProcesses

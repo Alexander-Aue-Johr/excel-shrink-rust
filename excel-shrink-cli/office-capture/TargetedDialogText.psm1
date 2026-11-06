@@ -2,9 +2,9 @@
 $ErrorActionPreference = 'Stop'
 
 function Read-TargetedEmbeddedDialog {
-    <# .SYNOPSIS Read bounded accessible labels from a modal browser owned by this Excel session. #>
+    <# .SYNOPSIS Read bounded accessible labels from an owned modal browser or modern Excel dialog. #>
     param($Entry, $Dialog)
-    if (-not $Dialog.IsModal -or $Dialog.ClassName -ne 'BasicEmbeddedBrowser') { return @() }
+    if (-not $Dialog.IsModal -or $Dialog.ClassName -notin @('BasicEmbeddedBrowser', 'NUIDialog')) { return @() }
     if (-not $Entry.ContainsKey('dialog_probe_clock')) {
         $Entry.dialog_probe_clock = [Diagnostics.Stopwatch]::StartNew()
         $Entry.dialog_probe_handle = 0L
