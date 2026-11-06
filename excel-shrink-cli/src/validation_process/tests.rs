@@ -140,7 +140,18 @@ fn file_processors_preserve_names_write_directly_and_respect_the_process_bound()
     let counter = test.0.join("concurrency.json");
     let mut stage = fixture_stage(InputKind::File, OutputKind::File, "copy");
     stage.environment.insert("SHEET_SCOPE_TEST_COUNTER".into(), counter.to_string_lossy().into_owned());
-    let result = run_stage(&stage, &inputs, &output, &logs, 2, false)?;
+    let mut progress = crate::validation::ProcessingProgress::new("fixture".into(), 1, 4);
+    let mut observe = |outcome: &ProcessOutcome, pid: Option<u32>| -> Result<()> {
+        if outcome.status == ProcessStatus::Running { assert!(pid.is_some()); }
+        progress.observe(outcome, pid);
+        assert!(progress.running.len() <= 2);
+        Ok(())
+    };
+    let result = run_stage(&stage, &inputs, &output, &logs, 2, false, Some(&mut observe))?;
+    assert_eq!(progress.completed, 4);
+    assert_eq!(progress.succeeded, 4);
+    assert!(progress.running.is_empty());
+    assert_eq!(progress.recent.len(), 4);
     assert_eq!(result.failed, 0);
     assert_eq!(result.source.files.len(), 4);
     for (name, path) in &result.source.files {
@@ -156,12 +167,34 @@ fn file_processors_preserve_names_write_directly_and_respect_the_process_bound()
 }
 
 #[test]
+fn failed_live_status_publication_stops_and_closes_the_owned_process() -> Result<()> {
+    let test = TestDirectory::new();
+    let inputs = test.source(&["a.xlsx"])?;
+    let stage = fixture_stage(InputKind::File, OutputKind::File, "sleep");
+    let logs = test.0.join("logs");
+    let mut statuses = Vec::new();
+    let mut observe = |outcome: &ProcessOutcome, _pid: Option<u32>| -> Result<()> {
+        statuses.push(outcome.status);
+        if outcome.status == ProcessStatus::Running { anyhow::bail!("Live status publication failed") }
+        Ok(())
+    };
+    let error = run_stage(&stage, &inputs, &test.0.join("output"), &logs, 1, false, Some(&mut observe)).unwrap_err();
+    assert!(format!("{error:#}").contains("Live status publication failed"));
+    assert_eq!(statuses, vec![ProcessStatus::Running, ProcessStatus::Failed]);
+    let receipt: ProcessOutcome = serde_json::from_slice(&fs::read(logs.join("invocations/000001/outcome.json"))?)?;
+    assert_eq!(receipt.status, ProcessStatus::Failed);
+    assert!(receipt.finished_at.is_some());
+    assert!(receipt.error.unwrap().contains("owned process stopped"));
+    Ok(())
+}
+
+#[test]
 fn failing_processes_keep_diagnostics_and_stop_future_dispatch() -> Result<()> {
     let test = TestDirectory::new();
     let inputs = test.source(&["a.xlsx", "b.xlsx", "c.xlsx"])?;
     let logs = test.0.join("logs");
     let stage = fixture_stage(InputKind::File, OutputKind::File, "fail");
-    assert!(run_stage(&stage, &inputs, &test.0.join("output"), &logs, 1, false).is_err());
+    assert!(run_stage(&stage, &inputs, &test.0.join("output"), &logs, 1, false, None).is_err());
     let record: serde_json::Value = serde_json::from_slice(&fs::read(logs.join("stage.json"))?)?;
     let outcomes: Vec<ProcessOutcome> = serde_json::from_value(record["outcomes"].clone())?;
     assert_eq!(outcomes.len(), 3);
@@ -179,7 +212,7 @@ fn successful_batch_process_can_continue_with_only_present_outputs() -> Result<(
     let test = TestDirectory::new();
     let inputs = test.source(&["a.xlsx", "b.xlsx"])?;
     let stage = fixture_stage(InputKind::Directory, OutputKind::Directory, "partial");
-    let result = run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 4, true)?;
+    let result = run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 4, true, None)?;
     assert_eq!(result.outcomes.len(), 1);
     assert_eq!(result.outcomes[0].status, ProcessStatus::Incomplete);
     assert_eq!(result.source.files.len(), 1);
@@ -193,7 +226,7 @@ fn nonzero_batch_exit_does_not_certify_partially_written_files() -> Result<()> {
     let test = TestDirectory::new();
     let inputs = test.source(&["a.xlsx", "b.xlsx"])?;
     let stage = fixture_stage(InputKind::Directory, OutputKind::Directory, "nonzero_partial");
-    let result = run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 4, true)?;
+    let result = run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 4, true, None)?;
     assert_eq!(result.failed, 1);
     assert_eq!(result.outcomes[0].produced_outputs, ["a.xlsx"]);
     assert!(result.source.files.is_empty());
@@ -205,7 +238,7 @@ fn archive_processors_receive_one_zip_and_publish_named_outputs() -> Result<()> 
     let test = TestDirectory::new();
     let inputs = test.source(&["a.xlsx", "nested/b.xlsx"])?;
     let stage = fixture_stage(InputKind::Archive, OutputKind::Archive, "archive");
-    let result = run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 4, false)?;
+    let result = run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 4, false, None)?;
     assert_eq!(result.outcomes.len(), 1);
     assert_eq!(result.source.files.len(), 2);
     assert_eq!(fs::read(&result.source.files["nested/b.xlsx"])? , b"nested/b.xlsx");
@@ -219,7 +252,7 @@ fn timeout_is_recorded_without_publishing_an_output() -> Result<()> {
     let inputs = test.source(&["a.xlsx"])?;
     let mut stage = fixture_stage(InputKind::File, OutputKind::File, "sleep");
     stage.timeout_seconds = 1;
-    let result = run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 1, true)?;
+    let result = run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 1, true, None)?;
     assert_eq!(result.outcomes[0].status, ProcessStatus::TimedOut);
     assert!(result.outcomes[0].elapsed_ms < 20_000);
     assert!(result.source.files.is_empty());
@@ -232,7 +265,7 @@ fn changed_extensions_reject_collisions_before_launching_a_processor() -> Result
     let inputs = test.source(&["a.xls", "a.xlsx"])?;
     let mut stage = fixture_stage(InputKind::File, OutputKind::File, "copy");
     stage.output_extension = Some("xlsx".into());
-    assert!(run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 2, true).is_err());
+    assert!(run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 2, true, None).is_err());
     assert!(!test.0.join("logs").exists());
     assert_eq!(output_name("nested/old.xls", Some(".xlsx"))?, "nested/old.xlsx");
     Ok(())
@@ -243,11 +276,11 @@ fn stale_outputs_and_in_place_destinations_are_rejected() -> Result<()> {
     let test = TestDirectory::new();
     let inputs = test.source(&["a.xlsx"])?;
     let stage = fixture_stage(InputKind::File, OutputKind::File, "copy");
-    assert!(run_stage(&stage, &inputs, &inputs.root, &test.0.join("logs"), 1, false).is_err());
+    assert!(run_stage(&stage, &inputs, &inputs.root, &test.0.join("logs"), 1, false, None).is_err());
     let output = test.0.join("output");
     fs::create_dir(&output)?;
     fs::write(output.join("a.xlsx"), b"keep this output")?;
-    assert!(run_stage(&stage, &inputs, &output, &test.0.join("logs"), 1, false).is_err());
+    assert!(run_stage(&stage, &inputs, &output, &test.0.join("logs"), 1, false, None).is_err());
     assert_eq!(fs::read(output.join("a.xlsx"))?, b"keep this output");
     Ok(())
 }
@@ -258,7 +291,7 @@ fn directory_followup_sees_only_accepted_workbooks() -> Result<()> {
     let mut inputs = test.source(&["a.xlsx", "b.xlsx"])?;
     inputs.files.remove("b.xlsx");
     let stage = fixture_stage(InputKind::Directory, OutputKind::Directory, "directory");
-    let result = run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 1, false)?;
+    let result = run_stage(&stage, &inputs, &test.0.join("output"), &test.0.join("logs"), 1, false, None)?;
     assert_eq!(result.source.files.len(), 1);
     assert!(!result.source.root.join("b.xlsx").exists());
     assert!(inputs.root.join("b.xlsx").exists());

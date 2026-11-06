@@ -134,6 +134,15 @@
       <div class="section-title"><h2>Run progress</h2><span id="status" class="badge">Idle</span></div>
       <p id="current">No active run.</p><progress id="completion" max="1" value="0"></progress>
       <p id="counts" class="help"></p>
+      <section id="processing-progress" hidden>
+        <h3 id="processing-title">Processing workbooks</h3>
+        <p id="processing-counts" class="help"></p>
+        <p class="help">Visual comparisons begin after this processing stage finishes. Elapsed time shows how long a process has been running; open its logs for details.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Input</th><th>Status</th><th>PID</th><th>Elapsed</th><th>Logs</th></tr></thead>
+          <tbody id="processing-rows"></tbody>
+        </table></div>
+      </section>
       <section id="targeted-comparisons" hidden aria-label="Targeted comparison processes"></section>
       <h3>Recent completed comparisons</h3>
       <div class="table-wrap"><table><thead><tr><th>Workbook</th><th>Outcome</th><th>Differences</th><th>Evidence</th></tr></thead><tbody id="results"></tbody></table></div>

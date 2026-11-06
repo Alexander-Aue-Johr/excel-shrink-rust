@@ -372,9 +372,13 @@ function renderProgress(state) {
   byId('report-link').href = `${reportBase}/index.html`;
   byId('status').textContent = progress.state.replaceAll('_', ' ');
   byId('current').textContent = progress.current || 'No active run.';
-  byId('completion').max = Math.max(progress.total, 1);
-  byId('completion').value = progress.completed;
-  byId('counts').textContent = `${progress.completed} / ${progress.total} pairs · ${progress.reused} reused · ${progress.failed} failed or missing`;
+  const processing = progress.state === 'processing' ? progress.processing : null;
+  byId('completion').max = Math.max(processing?.total ?? progress.total, 1);
+  byId('completion').value = processing?.completed ?? progress.completed;
+  byId('counts').textContent = processing
+    ? `${processing.completed} / ${processing.total} processing invocations finished · visual comparison has not started`
+    : `${progress.completed} / ${progress.total} visual comparisons · ${progress.reused} reused · ${progress.failed} failed or missing`;
+  renderProcessing(progress.processing);
   byId('run-fields').disabled = state.active;
   byId('start').disabled = state.active;
   byId('open-report').disabled = state.active;
@@ -388,7 +392,8 @@ function renderProgress(state) {
   byId('connection-status').textContent = state.active ? 'Live · local runner' : 'Connected · ready';
   targetedPanel.updateMany([...(state.comparisons || [])].reverse().concat(state.telemetry || []));
   renderKpis(progress);
-  const revision = JSON.stringify([progress.state, progress.total, progress.completed, progress.current, reportBase]);
+  const revision = JSON.stringify([progress.state, progress.total, progress.completed, progress.current,
+    progress.processing?.completed, Object.keys(progress.processing?.running || {}), reportBase]);
   if (revision !== workbookRevision) {
     workbookRevision = revision;
     void loadWorkbooks();
@@ -418,6 +423,35 @@ function renderProgress(state) {
     lastError = progress.error;
     message(progress.error, true);
   }
+}
+
+function renderProcessing(processing) {
+  byId('processing-progress').hidden = !processing;
+  if (!processing) return;
+  const running = Object.values(processing.running);
+  const waiting = Math.max(0, processing.total - processing.completed - running.length);
+  byId('processing-title').textContent = `Step ${processing.step}: ${processing.stage}`;
+  byId('processing-counts').textContent = `${processing.succeeded} / ${processing.total} succeeded · ${running.length} running · ${waiting} waiting · ${processing.failed} failed · ${processing.skipped} skipped`;
+  byId('processing-rows').replaceChildren(...[...running, ...processing.recent].map(process => {
+    const row = node('tr');
+    const name = process.input_count > 1 ? `${process.input_count} workbooks` : process.name;
+    const milliseconds = process.status === 'running' && process.started_at
+      ? Date.now() - Date.parse(process.started_at) : process.elapsed_ms;
+    const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+    row.append(node('td', name), node('td', process.status.replaceAll('_', ' ')), node('td', process.pid || '—'),
+      node('td', `${Math.floor(seconds / 60)}m ${seconds % 60}s`));
+    if (process.error) row.title = process.error;
+    const logs = node('td');
+    for (const stream of ['stdout', 'stderr']) {
+      const link = node('a', stream);
+      link.href = `${reportBase}/logs/stage-${processing.step}/invocations/${String(process.invocation).padStart(6, '0')}/${stream}.log`;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      logs.append(link, document.createTextNode(' '));
+    }
+    row.append(logs);
+    return row;
+  }));
 }
 
 function renderKpis(progress) {
@@ -458,7 +492,8 @@ async function loadWorkbooks() {
     byId('workbook-prev').disabled = page.offset === 0;
     byId('workbook-next').disabled = page.offset + page.rows.length >= page.total;
     byId('workbook-list').replaceChildren(...page.rows.map(record => {
-      const button = node('button', `${record.name} · ${record.status.replaceAll('_', ' ')}`);
+      const preparation = record.processing_status ? `Processing: ${record.processing_status.replaceAll('_', ' ')} · ` : '';
+      const button = node('button', `${record.name} · ${preparation}${record.status.replaceAll('_', ' ')}`);
       button.type = 'button';
       button.disabled = !record.report;
       button.addEventListener('click', () => openEvidence(

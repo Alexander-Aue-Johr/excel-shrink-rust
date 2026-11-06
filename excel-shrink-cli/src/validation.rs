@@ -4,6 +4,7 @@
 pub(crate) mod capture;
 mod pairing;
 mod run;
+mod processing_progress;
 mod storage;
 
 use crate::validation_process::Stage;
@@ -15,6 +16,7 @@ use std::{ffi::OsStr, fs, path::{Path, PathBuf}};
 
 pub(crate) use run::{execute, LiveProgress, RunState};
 pub(crate) use run::read_run;
+pub(crate) use processing_progress::ProcessingProgress;
 
 #[derive(Debug, Parser)]
 #[command(name = "sheet-scope", about = "Targeted visual validation of spreadsheet transformations.")]

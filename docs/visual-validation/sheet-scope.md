@@ -123,6 +123,13 @@ The complete report indexes every recorded workbook when the run ends.
 Configuration is fixed for the running attempt; this patch does not add runtime
 capture-tile or hash-mode controls.
 
+While Excel Shrink or another processor runs, the progress bar shows completed
+program invocations. The processing table includes active PIDs, elapsed time,
+successful outputs and stdout/stderr links. The scientific comparison counters
+remain at zero until validation starts after processing. A small number of XLSX
+files can still contain large worksheets; elapsed time is not a capture heartbeat
+or a guarantee of responsive processing.
+
 This is not the complete legacy corpus-runner interface: its live controls and
 three-dimensional studio are not connected to standalone runs. Published pair
 evidence opens inline with the shared region viewer and pixel inspector.

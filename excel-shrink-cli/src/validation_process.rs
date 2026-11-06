@@ -101,6 +101,10 @@ pub(crate) struct ProcessOutcome {
     pub error: Option<String>,
 }
 
+/// Observe starts and terminal outcomes in scheduler order. Observer failures
+/// stop dispatch and follow the same owned-process cleanup path as other errors.
+pub(crate) type ProcessObserver<'a> = dyn FnMut(&ProcessOutcome, Option<u32>) -> Result<()> + 'a;
+
 /// A caller must retain owned working data and stop scheduling when this error
 /// is present anywhere in the anyhow chain. Presence/absence of an output file
 /// cannot establish that an external process has exited.
@@ -172,6 +176,7 @@ pub(crate) fn run_stage(
     logs_root: &Path,
     max_processes: usize,
     continue_on_error: bool,
+    observer: Option<&mut ProcessObserver<'_>>,
 ) -> Result<StageResult> {
     validate_stage(stage, inputs, max_processes)?;
     let output_root = prepare_output_directory(stage, inputs, output_root)?;
@@ -191,7 +196,7 @@ pub(crate) fn run_stage(
     };
     persist_stage(&logs_root, &record)?;
 
-    let result = execute_stage(stage, inputs, &output_root, &logs_root, &mut record);
+    let result = execute_stage(stage, inputs, &output_root, &logs_root, &mut record, observer);
     match result {
         Ok(result) => {
             record.state = if result.failed == 0 { StageState::Completed } else { StageState::Incomplete };
@@ -219,13 +224,14 @@ fn execute_stage(
     output_root: &Path,
     logs_root: &Path,
     record: &mut StageRecord<'_>,
+    observer: Option<&mut ProcessObserver<'_>>,
 ) -> Result<StageResult> {
     let scratch = ScratchDirectory::create(output_root.parent().context("Output has no parent")?)?;
     let plan = plan_invocations(stage, inputs, output_root, &scratch.path)?;
     record.state = StageState::Running;
     persist_stage(logs_root, record)?;
     let outcomes = match invocation::execute(
-        stage, plan, output_root, logs_root, record.max_processes, record.continue_on_error,
+        stage, plan, output_root, logs_root, record.max_processes, record.continue_on_error, observer,
     ) {
         Ok(outcomes) => outcomes,
         Err(error) => {

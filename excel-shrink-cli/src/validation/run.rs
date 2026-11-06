@@ -45,6 +45,7 @@ pub(crate) struct LiveProgress {
     pub recent: VecDeque<Value>,
     pub different_pairs: usize,
     pub checked_equal_pairs: usize,
+    pub processing: Option<super::ProcessingProgress>,
     #[serde(skip)]
     pub workbooks: BTreeMap<String, Value>,
     #[serde(skip)]
@@ -180,8 +181,23 @@ impl Run {
             staging
         } else { self.work.path.join(format!("stage-{}", index + 1)) };
         let output = direct.unwrap_or_else(|| stage_root.join("files"));
+        let invocation_count = if stage.input == validation_process::InputKind::File { input.files.len() } else { 1 };
+        self.update_progress(|progress| {
+            progress.processing = Some(super::ProcessingProgress::new(stage.name.clone(), index + 1, invocation_count));
+        })?;
+        let live = self.progress.clone();
+        let mut observe = |outcome: &validation_process::ProcessOutcome, pid: Option<u32>| -> Result<()> {
+            let mut progress = live.lock().map_err(|_| anyhow::anyhow!("Progress lock poisoned"))?;
+            if let Some(processing) = &mut progress.processing { processing.observe(outcome, pid); }
+            for name in &outcome.inputs {
+                if let Some(record) = progress.workbooks.get_mut(&pair_id(name)) {
+                    record["processing_status"] = serde_json::to_value(outcome.status)?;
+                }
+            }
+            Ok(())
+        };
         let result = validation_process::run_stage(&stage, input, &output, &logs,
-            self.config.max_processes, self.config.continue_on_error);
+            self.config.max_processes, self.config.continue_on_error, Some(&mut observe));
         let result = match result {
             Ok(result) => result,
             Err(error) => {

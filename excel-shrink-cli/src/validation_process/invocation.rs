@@ -19,6 +19,7 @@ pub(super) fn execute(
     logs_root: &Path,
     parallelism: usize,
     continue_on_error: bool,
+    mut observer: Option<&mut ProcessObserver<'_>>,
 ) -> Result<Vec<ProcessOutcome>> {
     let program = fs::canonicalize(&stage.program)?;
     let working_directory = stage.working_directory.as_ref().map(fs::canonicalize).transpose()?;
@@ -32,8 +33,17 @@ pub(super) fn execute(
             while !stop_dispatch && running.len() < parallelism {
                 let Some(plan) = pending.pop_front() else { break };
                 match start(stage, plan, &program, working_directory.as_deref(), output_root, logs_root)? {
-                    Started::Running(invocation) => running.push(invocation),
+                    Started::Running(invocation) => {
+                        // Transfer ownership before notifying; an observer error
+                        // must still close this child through explicit cleanup.
+                        running.push(invocation);
+                        if let Some(observer) = observer.as_mut() {
+                            let invocation = running.last().unwrap();
+                            observer(&invocation.outcome, Some(invocation.child.id()))?;
+                        }
+                    }
                     Started::Finished(outcome) => {
+                        if let Some(observer) = observer.as_mut() { observer(&outcome, None)?; }
                         stop_dispatch = !continue_on_error;
                         outcomes.push(outcome);
                     }
@@ -41,6 +51,7 @@ pub(super) fn execute(
             }
             for index in (0..running.len()).rev() {
                 if let Some(outcome) = running[index].poll(stage, output_root)? {
+                    if let Some(observer) = observer.as_mut() { observer(&outcome, Some(running[index].child.id()))?; }
                     if outcome.status != ProcessStatus::Succeeded && !continue_on_error {
                         stop_dispatch = true;
                     }
@@ -50,7 +61,9 @@ pub(super) fn execute(
             }
             if stop_dispatch {
                 for plan in pending.drain(..) {
-                    outcomes.push(record_skipped(stage, plan, &program, working_directory.as_deref(), logs_root)?);
+                    let outcome = record_skipped(stage, plan, &program, working_directory.as_deref(), logs_root)?;
+                    if let Some(observer) = observer.as_mut() { observer(&outcome, None)?; }
+                    outcomes.push(outcome);
                 }
             }
             if !running.is_empty() {
@@ -62,11 +75,17 @@ pub(super) fn execute(
     if let Err(error) = execution {
         let mut unconfirmed = Vec::new();
         for invocation in &mut running {
+            if invocation.finished { continue; }
             if let Err(cleanup) = invocation.interrupt() {
                 if cleanup.is::<UnconfirmedTermination>() {
                     unconfirmed.push(format!("{cleanup:#}"));
                 } else {
                     tracing::error!("Could not persist interrupted invocation: {cleanup:#}");
+                }
+            }
+            if let Some(observer) = observer.as_mut() {
+                if let Err(publication) = observer(&invocation.outcome, Some(invocation.child.id())) {
+                    tracing::error!("Could not publish interrupted process status: {publication:#}");
                 }
             }
         }

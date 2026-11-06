@@ -46,6 +46,13 @@ heartbeat and capture-flow cards. Its workbook list is paginated; full historica
 indexes are excluded from status polling. It does not enable the legacy corpus
 runner's live control endpoints or its three-dimensional sheet studio.
 
+During external processing, the main progress bar counts terminal program
+invocations rather than visual comparisons. A separate section shows successful,
+running, waiting, failed and skipped invocations, including filenames, PIDs,
+elapsed time and links to stdout/stderr. Scheduler start/exit events update this
+bounded in-memory view; polling does not scan historical receipts or log files.
+Processing success does not increment the scientific comparison counters.
+
 Windows Browse actions open native folder/file dialogs. Sources provide separate
 folder and file buttons, and the executable uses a file dialog. A new report or
 output destination is generated beneath the selected parent. Other platforms
