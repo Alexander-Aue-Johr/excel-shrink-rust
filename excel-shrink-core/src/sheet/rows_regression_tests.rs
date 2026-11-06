@@ -1485,3 +1485,62 @@ fn chart_format_anchor_survives_empty_row_representative_pruning() {
     assert!(cleaned.contains(r#"<c r="C7" s="427"/>"#));
     assert!(!cleaned.contains("D7"));
 }
+
+/// Automatic-height rows may mask an implicit default-font gap locally.
+#[test]
+fn automatic_row_preserves_masks_without_retaining_redundant_font_bloat() {
+    let params = promotion_params();
+    let mut metrics = promotion_columns(&params, false);
+    // A:B and E:XFD inherit font 8. C:D are the only default-font columns,
+    // and their explicit font-8 cells mask that larger implicit font.
+    metrics.column_definitions = Default::default();
+    for (min, max) in [(1, 2), (5, 16384)] {
+        metrics.column_definitions.add(crate::models::ColumnDefinition {
+            min, max, cell_xf: params.patterns.xfs_by_index.get(&2).cloned(), hidden: false,
+        });
+    }
+    metrics.column_definitions.finalize();
+    let source = br#"<row r="1" ht="12.75"><c r="A1" s="2"><v>1</v></c><c r="C1" s="2"/><c r="D1" s="2"/></row>"#;
+    let cleaned = replace_single_row_with_metrics(source, &params, &mut metrics);
+    let text = String::from_utf8(cleaned).unwrap();
+    assert!(text.contains("<c r=\"C1\" s=\"2\"/>"));
+    assert!(text.contains("<c r=\"D1\" s=\"2\"/>"));
+    // With no column definitions, default-font gaps already exist. Retain a
+    // font representative, rather than every blank carrying that font.
+    let cleaned = replace_single_row_with_metrics(source, &params, &mut CleanSheetMetrics::default());
+    assert!(cleaned.len() < source.len());
+}
+
+/// A full-width automatic row can use one existing row XF instead of 16K masks.
+#[test]
+fn dense_automatic_row_compacts_without_exposing_a_new_font() {
+    let params = promotion_params();
+    for missing in [vec![], vec![16384]] {
+        let source = String::from_utf8(dense_row_with_missing_cells(&missing, false))
+            .unwrap().replace(" customHeight=\"1\"", "");
+        let cleaned = replace_single_row_with_metrics(
+            source.as_bytes(), &params, &mut CleanSheetMetrics::default());
+        let text = String::from_utf8(cleaned.clone()).unwrap();
+        assert!(text.contains("s=\"2\" customFormat=\"1\""));
+        assert!(cleaned.len() < 150);
+        if !missing.is_empty() {
+            assert!(text.contains("<c r=\"XFD1\" s=\"0\"/>"));
+        }
+        let repeated = replace_single_row_with_metrics(
+            &cleaned, &params, &mut CleanSheetMetrics::default());
+        assert_eq!(repeated, cleaned);
+    }
+}
+
+/// An XF can explicitly restore the default font without applyFont. PAH's
+/// Reaction Products row 5 needs one such cell above its Arial row font.
+#[test]
+fn automatic_row_keeps_one_default_font_override_without_apply_font() {
+    let row_style = Xf::builder().font_id(Some(5)).build_xf();
+    let default_mask = Xf::builder().font_id(Some(0)).border_id(Some(0))
+        .apply_border(true).build_xf();
+    let params = params_with_styles(&[(0, row_style), (1, default_mask)]);
+    let source = br#"<row r="1" s="0" customFormat="1"><c r="A1" s="1"/><c r="B1" s="1"/></row>"#;
+    let cleaned = replace_single_row(source, &params);
+    assert_eq!(cleaned, br#"<row r="1" s="0" customFormat="1"><c r="A1" s="1"/></row>"#);
+}

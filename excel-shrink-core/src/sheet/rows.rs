@@ -135,6 +135,7 @@ struct RowCellCleanupState<'a> {
     has_kept_content: bool,
     max_kept_col: Option<u32>,
     kept_cells_start: usize,
+    source_default_font_present: Option<bool>,
     kept_default_style_cell: bool,
     tentative_style_representatives: Vec<TentativeStyleRepresentative<'a>>,
     kept_represented_style_ids: std::collections::HashSet<u32>,
@@ -153,6 +154,7 @@ impl<'a> RowCellCleanupState<'a> {
             has_kept_content: false,
             max_kept_col: None,
             kept_cells_start,
+            source_default_font_present: None,
             kept_default_style_cell: false,
             tentative_style_representatives: Vec::new(),
             kept_represented_style_ids: std::collections::HashSet::new(),
@@ -401,10 +403,9 @@ fn choose_promoted_row_style(
     metrics: &CleanSheetMetrics,
 ) -> Option<RowStylePromotion> {
     if !params.cleanup.empty_cells_without_content
-        || !row.has_custom_height
         || row.hidden
         || row.style.is_some()
-        || content.len() < 64
+        || content.len() < if row.has_custom_height { 64 } else { 1024 * 12 }
         || metrics.sheet_protection_enabled
     {
         return None;
@@ -419,6 +420,9 @@ fn choose_promoted_row_style(
         .merge_cell_ranges
         .iter()
         .any(|r| r.start_row <= row_num && row_num <= r.end_row);
+    if !row.has_custom_height && row_has_merge {
+        return None;
+    }
     let mut counts = std::collections::BTreeMap::<u32, usize>::new();
     let mut gaps = Vec::new();
     let mut pos = 0;
@@ -496,6 +500,9 @@ fn choose_promoted_row_style(
         if let Some(missing_cells) = restore_dense_row_gaps(&gaps, xf, params, metrics) {
             return Some(RowStylePromotion { style_id: dominant, missing_cells });
         }
+    }
+    if !row.has_custom_height {
+        return None;
     }
     // A dense row retains its explicit merged cells through the normal merge
     // policy; sparse merged rows need a stronger inheritance proof.
@@ -733,6 +740,7 @@ fn clean_cells<'a, const SAMPLED: bool>(
         }
         let cleaned_cell = clean_cell_block(
             block,
+            row_content,
             params,
             metrics,
             style_policy,
@@ -809,6 +817,7 @@ fn scan_cell_content(bytes: &[u8], mut position: usize) -> Option<(usize, bool)>
 
 fn clean_cell_block<'a, const SAMPLED: bool>(
     block: ParsedCellBlock<'a>,
+    source_row: &[u8],
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     style_policy: EmptyStyleRepresentativePolicy,
@@ -839,7 +848,7 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
             has_cell_content,
         );
     }
-    let representative = timings.measure(CellStage::SelectRepresentative, || {
+    let mut representative = timings.measure(CellStage::SelectRepresentative, || {
         select_empty_style_representative(
             &cell,
             params,
@@ -849,6 +858,9 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
             state,
         )
     });
+    representative.keep_font_only |= protects_implicit_column_font(
+        &cell, has_cell_content, source_row, row, params, metrics, state,
+    );
     let cleaned_cell = timings.measure(CellStage::ApplyPolicy, || {
         replace_parsed_cell_with_empty_style_policy(
             &cell,
@@ -875,6 +887,88 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
     }
 
     cleaned_cell
+}
+
+/// Keep local masks only when their removal would introduce the default font
+/// into an automatic-height row. One sentinel elsewhere cannot mask this column.
+fn protects_implicit_column_font(
+    cell: &ParsedCell<'_, '_>,
+    has_content: bool,
+    source: &[u8],
+    row: &RowView<'_, '_>,
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+    state: &mut RowCellCleanupState<'_>,
+) -> bool {
+    if has_content
+        || !params.cleanup.keep_textless_column_style_representatives
+        || (row.has_height && row.has_custom_height)
+        || row.style.is_some()
+        || cell.column.flatten().and_then(|column| column.cell_xf.as_ref()).is_some()
+    {
+        return false;
+    }
+    let Some(default) = params.patterns.xfs_by_index.get(&0) else {
+        return false;
+    };
+    let Some(style) = cell.style_id.and_then(|id| params.patterns.xfs_by_index.get(&id))
+    else {
+        return false;
+    };
+    if style.font_identity() == default.font_identity() {
+        return false;
+    }
+    let present = state.source_default_font_present.get_or_insert_with(|| {
+        source_row_contains_default_font(source, row, default.font_identity(), params, metrics)
+    });
+    !*present
+}
+
+/// Inspect the original row once on demand. Unknown or merged layouts cannot
+/// prove that an unmasked default-font position already contributes to height.
+fn source_row_contains_default_font(
+    content: &[u8],
+    row: &RowView<'_, '_>,
+    default_font: u32,
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+) -> bool {
+    if metrics.merge_cell_ranges.iter().any(|range| {
+        row.number.is_none_or(|number| range.start_row <= number && number <= range.end_row)
+    }) {
+        return false;
+    }
+    let mut position = 0;
+    let mut previous_column = 0;
+    while let Some(offset) = find_bytes(&content[position..], b"<c") {
+        let start = position + offset;
+        if !is_cell_tag_start(content, start) {
+            return false;
+        }
+        let Some(block) = parse_cell_block(content, start) else {
+            return false;
+        };
+        let Some(cell) = parse_cell_from_parts(block.raw, block.attr) else {
+            return false;
+        };
+        if cell.row != row.reference || cell.col_num <= previous_column || cell.col_num > 16384 {
+            return false;
+        }
+        if metrics.column_definitions.contains_font(
+            previous_column + 1, cell.col_num - 1, default_font, default_font,
+        ) {
+            return true;
+        }
+        let id = cell.style_id.unwrap_or(0);
+        if params.patterns.xfs_by_index.get(&id)
+            .is_some_and(|style| style.font_identity() == default_font)
+        {
+            return true;
+        }
+        previous_column = cell.col_num;
+        position = block.end;
+    }
+    metrics.column_definitions.contains_font(previous_column + 1, 16384, default_font, default_font)
 }
 
 // Unknown styles do not establish a representative: retaining an extra cell
@@ -1098,7 +1192,12 @@ fn empty_cell_can_supply_font_representative(
         .and_then(|id| params.patterns.xfs_by_index.get(&id))
         .is_some_and(|style| {
             style.has_no_empty_cell_visible_style
-                || (style.apply_font
+                || ((style.apply_font || cell.row_view.is_some_and(|row| {
+                        !(row.has_height && row.has_custom_height)
+                            && row.style.is_some_and(|inherited| {
+                                inherited.font_identity() != style.font_identity()
+                            })
+                    }))
                     && !style.has_apply_protection
                     && !parsed_empty_cell_has_effective_fill_or_border(cell, params, metrics, false))
         })

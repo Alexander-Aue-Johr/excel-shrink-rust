@@ -239,14 +239,27 @@ row formats contain fonts without visible fills or borders. These representative
 must not block pruning. Removing such a content-free tail can also remove its
 empty-row heights; this policy does not preserve exterior blank-grid geometry.
 
+Empty cells can locally mask a different inherited column font, including an
+explicit styleless cell that uses XF 0. Removing one may expose a larger font
+and change automatic row height even if another cell retains the smaller font.
+Automatic height includes rows without an `ht` attribute. Explicit column-font
+exceptions remain at their original positions. For uncovered columns, the row
+pass checks the original row once on demand. It preserves nondefault-font masks
+when removing them would introduce the default font into the row. If that font
+already exists in an original cell or an unmasked column gap, ordinary font
+representatives remain sufficient. Merged layouts cannot establish that shortcut.
+The dense promotion below avoids retaining thousands of equivalent masks.
+
 For dense bloat, the implementation can move an existing cell XF to the row's
 `s`/`customFormat` attributes and remove redundant cells. It does not allocate a
 new workbook style or change a value merely to make this transformation possible.
 
-Promotion requires cleanup enabled, an explicitly custom-height nonhidden row,
-no existing row style/custom format, no active sheet protection, sufficient row
-content and valid ordered cells. Cells with unsupported attributes, unknown XFs
-or non-cell content prevent this transformation.
+Promotion requires cleanup enabled, a nonhidden row, no existing row style/custom
+format, no active sheet protection, sufficient row content and valid ordered
+cells. Automatic-height rows use only the dense routes and must not intersect
+merges. Sparse promotion still requires an explicitly custom-height row. Cells
+with unsupported attributes, unknown XFs or non-cell content prevent this
+transformation.
 
 The dominant empty-cell style must occur at least twice. The dense full-width
 route requires at least 1,024 occurrences, applied font and either a nonvisible

@@ -389,6 +389,7 @@ fn clean_visible_unstyled_cell<'a, 'r>(
     }
 
     if style_policy.keep_default
+        || style_policy.keep_column_font_override
         || style_policy.keep_other
         || unstyled_cell_masks_inherited_format(cell, metrics)
     {
@@ -868,7 +869,7 @@ fn empty_cell_has_column_font_style_override(
     }
     let cell_font_id = cell_style.font_id.unwrap_or(0);
     let row_uses_auto_height =
-        row_attributes.is_some_and(|row| row.has_height && !row.has_custom_height);
+        row_attributes.is_some_and(|row| !(row.has_height && row.has_custom_height));
 
     if cell_font_id == 0 && !cell_style.apply_font && !row_uses_auto_height {
         return false;
@@ -922,7 +923,13 @@ fn parsed_empty_cell_has_column_font_style_override(
     metrics: &CleanSheetMetrics,
     has_cell_content: bool,
 ) -> bool {
-    cell.style(params).is_some_and(|style| {
+    let style = match cell.style_id {
+        Some(_) => cell.style(params),
+        // An existing styleless cell can clear a larger inherited column font.
+        // A representative in another column cannot supply this local override.
+        None => params.patterns.xfs_by_index.get(&0),
+    };
+    style.is_some_and(|style| {
         empty_cell_has_column_font_style_override(cell, style, params, metrics, has_cell_content)
     })
 }

@@ -1205,6 +1205,41 @@ fn keeps_unstyled_empty_cells_that_mask_a_colored_column() {
     );
 }
 
+/// CAPs Acrolein Supplemental Table S1 row 46 changes from 12.75 to 15 points
+/// when either of its local default-font masks is removed from a larger-font column.
+#[test]
+fn styleless_cells_preserve_local_column_font_overrides_on_auto_height_rows() {
+    let default = empty_style_without_visible_parts();
+    let larger_font = Xf::builder().font_id(Some(1)).apply_font(true).build_xf();
+    let params = params_with_styles(&[(0, default), (1, larger_font.clone())]);
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.column_definitions.add(ColumnDefinition {
+        min: 1,
+        max: 2,
+        cell_xf: Some(larger_font),
+        hidden: false,
+    });
+    metrics.column_definitions.finalize();
+    let row = RowView::parse(br#" r="3" ht="13.2""#, &params).unwrap();
+    let xml = br#"<c r="A3"/>"#;
+    let mut cell = parsed_a3_cell(xml, br#" r="A3""#, None);
+    cell.row_view = Some(&row);
+    assert_eq!(replace_parsed_cell(&cell, &params, &mut metrics).as_ref(), xml);
+    let second_xml = br#"<c r="B3"/>"#;
+    cell.raw = second_xml;
+    cell.attr = br#" r="B3""#;
+    cell.reference_attr = br#"r="B3""#;
+    cell.col_num = 2;
+    assert_eq!(replace_parsed_cell(&cell, &params, &mut metrics).as_ref(), second_xml);
+    cell.col_num = 3;
+    assert!(replace_parsed_cell(&cell, &params, &mut metrics).is_empty());
+    // An omitted height is automatic too; Zhang's Data_MAR2 uses this form.
+    let automatic = RowView::parse(br#" r="3""#, &params).unwrap();
+    let mut cell = parsed_a3_cell(xml, br#" r="A3""#, None);
+    cell.row_view = Some(&automatic);
+    assert_eq!(replace_parsed_cell(&cell, &params, &mut metrics).as_ref(), xml);
+}
+
 #[test]
 fn keeps_colored_cells_when_the_row_overrides_the_same_colored_column() {
     let row_style = empty_style_without_visible_parts();

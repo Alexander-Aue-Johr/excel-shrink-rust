@@ -370,6 +370,15 @@ impl ColumnRangeMap {
             })
     }
 
+    /// Find a font at column boundaries, including uncovered default columns.
+    pub(crate) fn contains_font(&self, start: u32, end: u32, font: u32, default: u32) -> bool {
+        !self.range_matches(start, end, |column| {
+            self.get(column)
+                .and_then(|definition| definition.cell_xf.as_ref())
+                .map_or(default, Xf::font_identity) != font
+        })
+    }
+
     #[cfg(test)]
     pub(crate) fn has_uniform_font(&self, start: u32, end: u32, font: u32) -> bool {
         self.range_matches(start, end, |col| {
