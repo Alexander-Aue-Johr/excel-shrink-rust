@@ -2,6 +2,84 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "SheetScope: Build Windows release",
+      "type": "process",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--release",
+        "-p",
+        "excel-shrink-cli",
+        "--bin",
+        "sheet-scope"
+      ],
+      "linux": {
+        "args": [
+          "build",
+          "--release",
+          "--target",
+          "x86_64-pc-windows-gnu",
+          "-p",
+          "excel-shrink-cli",
+          "--bin",
+          "sheet-scope"
+        ]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:PATH}:${userHome}/.cargo/bin"
+        }
+      },
+      "windows": {
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "env": {
+            "PATH": "${env:PATH};${userHome}/.cargo/bin"
+          }
+        }
+      },
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build"
+    },
+    {
+      "label": "SheetScope: Start Observatory",
+      "type": "process",
+      "command": "${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tools\\start-sheet-scope.ps1",
+        "-SourceRepo",
+        "${workspaceFolder}",
+        "-BinaryPath",
+        "${workspaceFolder}\\target\\release\\sheet-scope.exe"
+      ],
+      "linux": {
+        "command": "bash",
+        "args": [
+          "${workspaceFolder}/tools/start-sheet-scope-wsl.sh"
+        ]
+      },
+      "dependsOn": [
+        "SheetScope: Build Windows release"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "focus": false,
+        "showReuseMessage": false
+      }
+    },
+    {
       "label": "cargo build",
       "type": "process",
       "command": "cargo",

@@ -13,13 +13,23 @@ report retains that scope, its limitations and any reused observations.
 
 ## Prepare the capture machine
 
-For new visual comparisons, use a native Windows build, desktop Microsoft Excel
-and Windows PowerShell. Keep the repository's `excel-shrink-cli/office-capture`
+For new visual comparisons, use a Windows executable, desktop Microsoft Excel
+and Windows PowerShell. The executable can be built natively on Windows or
+cross-compiled from WSL. Keep the repository's `excel-shrink-cli/office-capture`
 assets available, including the private-desktop launcher, its C# helpers and
 Office.js assets. Running from the repository root is the simplest way to retain
 the established asset lookup. These are the existing capture components;
 SheetScope does not replace Excel with a different renderer. HTTP(S) archive
 sources also require the existing system `curl` executable.
+
+In VS Code, choose **Terminal → Run Task → SheetScope: Start Observatory**.
+The task first builds the Windows release, then starts it without workbook
+arguments and opens the configuration page in the browser. Choose sources,
+processing steps and a new report location there. **SheetScope: Build Windows
+release** is also available as a separate task. In a WSL workspace, it uses the
+`x86_64-pc-windows-gnu` target; the start task copies the executable and capture
+assets into a versioned local Windows directory before launching them. In a
+Windows workspace, the task builds with the native Windows toolchain.
 
 Build both command-line entry points from the repository root:
 
