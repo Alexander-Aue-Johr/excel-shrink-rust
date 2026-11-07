@@ -1,0 +1,66 @@
+{
+  "workbook_group": "4ad664e009aa1a302242",
+  "source": "Cotton Lysimeter 2020",
+  "date": "2026-11-07",
+  "production_cell_regions_per_state": 533,
+  "production_grid_tiles": 3260,
+  "direct_grid_tiles": 1061,
+  "direct_coalesced_regions": 11,
+  "direct_geometry_regions_per_state": 143,
+  "charts_per_state": 69,
+  "values_equal": true,
+  "formula_serializations_equal": true,
+  "effective_height_runs_equal": true,
+  "height_sheets": 11,
+  "height_rows_per_state": 1113516,
+  "cell_counts": {
+    "original.rebuilt-test.xlsx": {
+      "cells": 6651371,
+      "empty_cells": 2322835
+    },
+    "default.rebuilt-test.xlsx": {
+      "cells": 4471927,
+      "empty_cells": 143391
+    }
+  },
+  "chart_inventory": {
+    "chart_xml_parts": 69,
+    "byte_identical_charts": 69,
+    "equal_chart_caches": 69,
+    "different_parts": [],
+    "reference_count": 394,
+    "unique_reference_count": 261,
+    "reference_examples": [
+      "'2020 E Cotton Lys Daily'!$D$1:$D$1",
+      "'2020 E Cotton Lys Daily'!$B$2:$B$366",
+      "'2020 E Cotton Lys Daily'!$D$2:$D$366",
+      "'2020 E Cotton Lys Daily'!$L$1:$L$1",
+      "'2020 E Cotton Lys Daily'!$L$2:$L$366",
+      "'2020 E Cotton Lys Daily'!$AX$1:$AX$1",
+      "'2020 E Cotton Lys Daily'!$B$2:$B$365",
+      "'2020 E Cotton Lys Daily'!$AX$2:$AX$365",
+      "'2020 E Cotton Lys Daily'!$AZ$1:$AZ$1",
+      "'2020 E Cotton Lys Daily'!$AZ$2:$AZ$365",
+      "'2020 E Cotton Lys Daily'!$AF$1:$AF$1",
+      "'2020 E Cotton Lys Daily'!$AF$2:$AF$367"
+    ],
+    "related_parts": {
+      "xl/drawings/": {
+        "parts": 23,
+        "byte_identical": 23
+      },
+      "xl/charts/_rels/": {
+        "parts": 17,
+        "byte_identical": 17
+      },
+      "xl/theme/": {
+        "parts": 1,
+        "byte_identical": 1
+      }
+    }
+  },
+  "files": {
+    "original.rebuilt-test.xlsx": "eac0a5b6d1d5cc84164e18441974b88b990e91f7c1acf59ec42019ae2302dfe0",
+    "default.rebuilt-test.xlsx": "d56f153e0b59baaa77b175d77766537b4d3fcc73ec414cdd7847a7d400a1ae45"
+  }
+}

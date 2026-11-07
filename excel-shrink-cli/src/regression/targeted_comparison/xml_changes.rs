@@ -940,9 +940,21 @@ mod tests {
             last_candidate_rows.entry(candidate.sheet.clone())
                 .and_modify(|last| *last = (*last).max(range.bottom)).or_insert(range.bottom);
         }
-        eprintln!("{}", serde_json::json!({"changes": locations, "skipped": skipped,
+        let mut bounds = super::super::content_bounds::ContentBounds::default();
+        bounds.include(&left);
+        bounds.include(&right);
+        let (selected, coverage) = bounds.select(&candidates)?;
+        let coalesced = super::super::capture_layout::coalesce(&selected)?;
+        let report = serde_json::json!({"changes": locations, "skipped": skipped,
             "cf_decisions": reasons, "cell_candidates": cell_candidates_count,
-            "all_candidates": candidates.len(), "last_candidate_rows":last_candidate_rows}));
+            "all_candidates": candidates.len(), "last_candidate_rows":last_candidate_rows,
+            "coverage": coverage, "selected_grid_tiles": selected.len(),
+            "coalesced_regions": coalesced,
+            "note": "XML-only selection. Effective row heights and measured image-size partitioning require live Excel; charts are additional independent exports."});
+        if let Ok(path) = std::env::var("XML_DIAG_OUTPUT") {
+            std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
+        }
+        eprintln!("{report}");
         Ok(())
     }
 
