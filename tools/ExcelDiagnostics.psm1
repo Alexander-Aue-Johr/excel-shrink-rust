@@ -1,5 +1,10 @@
 function Clear-ExcelDiagnosticLogs {
-    param([Parameter(Mandatory=$true)][string]$Root, [int]$MinimumAgeSeconds = 60, [string]$OwnershipPath)
+    param(
+        [Parameter(Mandatory=$true)][string]$Root,
+        [int]$MinimumAgeSeconds = 60,
+        [string]$OwnershipPath,
+        [ValidateRange(0, 4096)][int]$MaximumCompressionFiles = 32
+    )
     $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
     if ([IO.Path]::GetFileName($rootPath) -ne 'EXCEL' -or [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($rootPath)) -ne 'Diagnostics') {
         throw 'Cleanup is restricted to a Diagnostics\EXCEL directory.'
@@ -52,7 +57,7 @@ function Clear-ExcelDiagnosticLogs {
                         $owners += $identity
                     }
                 }
-                $inspection = [ExcelDiagnosticFiles]::InspectAndRemove($path, $rootPath, $MinimumAgeSeconds, [string]$observed.identity, [ExcelDiagnosticFiles+Owner[]]$owners, ($compressionAttempts -lt 32))
+                $inspection = [ExcelDiagnosticFiles]::InspectAndRemove($path, $rootPath, $MinimumAgeSeconds, [string]$observed.identity, [ExcelDiagnosticFiles+Owner[]]$owners, ($compressionAttempts -lt $MaximumCompressionFiles))
                 $outcome = $inspection.Outcome
                 if ($inspection.CompressionAttempted) { $compressionAttempts++ }
                 if ($outcome -eq 'unknown-compressed') { $result.compressed_files++; $result.compression_saved_bytes += $inspection.CompressionSavedBytes }

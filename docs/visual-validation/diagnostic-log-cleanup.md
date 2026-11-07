@@ -33,8 +33,12 @@ Old unknown logs of at least 64 KiB may receive NTFS per-file compression while
 held exclusively. This retains their path, logical length and every byte; no
 ownership is inferred and nothing is deleted. It is especially effective for
 blank 16 MiB preallocations. Known live writers and files with active holders are
-left alone. Compression is limited to 32 files per pass and never sets a directory
+left alone. Compression defaults to 32 files per pass and never sets a directory
 default. Unsupported filesystems or failed compression leave the file intact.
+The helper accepts `-MaximumCompressionFiles 128` for high-concurrency runs
+whose log production exceeds that default. Zero disables compression. This
+changes the per-pass storage budget only; deletion and live-writer checks remain
+the same. Owner discovery retains its independent limit of 32 queries per pass.
 The Windows APIs and transparent behavior are documented in
 [FSCTL_SET_COMPRESSION](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_set_compression)
 and [NTFS compression](https://learn.microsoft.com/en-us/windows/win32/fileio/file-compression-and-decompression).

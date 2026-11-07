@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '../ExcelDiagnostics.psm1') -Force
-$root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ('../../.tmp/diagnostic-compression-test-' + [Guid]::NewGuid().ToString('N') + '/Diagnostics/EXCEL')))
+$testBase = if ($env:EXCEL_SHRINK_TEST_TEMP) { $env:EXCEL_SHRINK_TEST_TEMP } else { Join-Path $PSScriptRoot '../../.tmp' }
+$root = [IO.Path]::GetFullPath((Join-Path $testBase ('diagnostic-compression-test-' + [Guid]::NewGuid().ToString('N') + '/Diagnostics/EXCEL')))
 [void][IO.Directory]::CreateDirectory($root)
 $path = Join-Path $root 'unknown-preallocated.log'
 $bytes = New-Object byte[] (16 * 1024 * 1024)
@@ -55,4 +56,8 @@ for ($index = 0; $index -lt 33; $index++) {
 $result = Clear-ExcelDiagnosticLogs -Root $root
 if ($result.compression_attempts -ne 32 -or $result.compressed_files -ne 32) { throw 'Compression exceeded or did not fill its bounded pass budget.' }
 if ((Get-Item -LiteralPath $root).Attributes -band [IO.FileAttributes]::Compressed) { throw 'Compression leaked to the directory default.' }
+$result = Clear-ExcelDiagnosticLogs -Root $root -MaximumCompressionFiles 0
+if ($result.compression_attempts -ne 0) { throw 'Disabled compression still attempted a file.' }
+$result = Clear-ExcelDiagnosticLogs -Root $root -MaximumCompressionFiles 128
+if ($result.compressed_files -ne 1) { throw 'Configured compression budget did not finish the backlog.' }
 'PASS: exclusive lossless compression preserves 16 MiB and SHA256, saves >15 MiB, supports ordinary/mapped writes, skips live files and caps each pass at 32.'

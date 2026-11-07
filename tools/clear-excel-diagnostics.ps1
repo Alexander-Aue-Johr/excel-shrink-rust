@@ -3,6 +3,7 @@ param(
     [long]$OwnerStartedTicks,
     [string]$StatusPath,
     [string]$Root = (Join-Path $env:LOCALAPPDATA 'Temp\Diagnostics\EXCEL'),
+    [ValidateRange(0, 4096)][int]$MaximumCompressionFiles = 32,
     [switch]$Once
 )
 $ErrorActionPreference = 'Stop'
@@ -15,7 +16,7 @@ while ($true) {
     }
     try {
         $ownershipPath = if ($StatusPath) { $StatusPath + '.owners.json' } else { $null }
-        $result = Clear-ExcelDiagnosticLogs -Root $root -OwnershipPath $ownershipPath
+        $result = Clear-ExcelDiagnosticLogs -Root $root -OwnershipPath $ownershipPath -MaximumCompressionFiles $MaximumCompressionFiles
         if ($StatusPath) {
             $pending = $StatusPath + '.pending'
             $result | ConvertTo-Json | Set-Content -LiteralPath $pending -Encoding UTF8
