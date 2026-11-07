@@ -905,3 +905,21 @@ The raw and saved inputs remain available to content-bound discovery, so deleted
 real content cannot disappear from the clipping envelope. Unknown inherited
 layout keeps conservative content coverage. No region-count, file-size or
 cell-count shortcut changes the equality verdict.
+
+
+### Independent legacy conversion capacity
+
+For selections containing XLS inputs, the Observatory exposes
+`conversion_processes` independently of `prepare_processes` (concurrent Shrink
+stages) and `shrink_threads`. Both stage limits accept 1 through the available
+logical-core count. Missing conversion settings default to one. The conversion
+control is shown only when the selected workbook index contains XLS names.
+The preparation scheduler admits at most the sum of the two limits for legacy
+selections, or only the Shrink limit for XLSX-only selections. Stage-specific
+process-owned file locks enforce each live limit. A worker releases conversion
+capacity after Excel conversion and cleanup, before requesting Shrink capacity.
+Lowering a limit drains existing operations before admitting replacements.
+Capacity waits are reported separately and credited against the worker deadline;
+a frozen wait counter cannot extend that deadline. Parent heartbeat expiry and
+explicit termination remain effective. Prepared bundle and result reuse rules
+are unchanged.

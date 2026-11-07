@@ -1344,8 +1344,17 @@ function renderGroups() {
 function updateControlInputs() {
   const values = state.controls;
   const logicalCores = Math.max(1, Number(state.queue?.logical_cores || 1));
+  const stageLabels = {
+    conversion_processes: 'Excel conversion',
+    prepare_processes: 'shrink stage',
+    shrink_threads: 'shrink job',
+  };
+  $('conversionProcessesControl').hidden = !(state.queue?.groups || []).some(
+    group => String(group.workbook || '').toLowerCase().endsWith('.xls')
+  );
   for (const [id, key, valueId, statusId] of [
     ['sweepProcesses', 'sweep_processes', 'sweepProcessesValue', 'sweepProcessesStatus'],
+    ['conversionProcesses', 'conversion_processes', 'conversionProcessesValue', 'conversionProcessesStatus'],
     ['prepareProcesses', 'prepare_processes', 'prepareProcessesValue', 'prepareProcessesStatus'],
     ['shrinkThreads', 'shrink_threads', 'shrinkThreadsValue', 'shrinkThreadsStatus'],
   ]) {
@@ -1357,14 +1366,14 @@ function updateControlInputs() {
     $(valueId).textContent = slider.value;
     const running = key === 'prepare_processes' && state.queue?.phase === 'preparing'
       && Array.isArray(state.queue?.progress?.active_preparation)
-      ? ` · ${state.queue.progress.active_preparation.length} active now` : '';
+      ? ` · ${state.queue.progress.active_preparation.length} preparation jobs active` : '';
     $(statusId).textContent = values[key] == null
       ? 'Waiting for confirmed value.'
       : dirtyControls.has(id)
         ? `Selected: ${slider.value} · confirmed: ${values[key]} · release to apply.`
       : key === 'sweep_processes'
         ? `Confirmed: ${values[key]} · applies to newly started sweep sessions.`
-        : `Confirmed: ${values[key]}${running} · applies to newly started shrink processes · maximum ${logicalCores} logical cores.`;
+        : `Confirmed: ${values[key]}${running} · applies at the next ${stageLabels[key]} · maximum ${logicalCores}.`;
   }
   for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
@@ -1417,7 +1426,7 @@ async function sendControl(change) {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
     const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Control change rejected (${response.status}).`);
     controlUpdates.confirmWrite(result.controls);
-    for (const [id, key] of [['sweepProcesses', 'sweep_processes'], ['prepareProcesses', 'prepare_processes'], ['shrinkThreads', 'shrink_threads']]) {
+    for (const [id, key] of [['sweepProcesses', 'sweep_processes'], ['conversionProcesses', 'conversion_processes'], ['prepareProcesses', 'prepare_processes'], ['shrinkThreads', 'shrink_threads']]) {
       if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     }
     for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
@@ -1429,6 +1438,7 @@ async function sendControl(change) {
         : 'active comparisons finish, then the run pauses.'}${wasCapturePaused ? ' The capture pause was lifted to allow this.' : ''}`
       : change.target_groups != null ? `Group target ${state.controls.target_groups} confirmed.`
       : change.sweep_processes != null ? `${state.controls.sweep_processes} simultaneous hash-sweep groups confirmed for future starts.`
+      : change.conversion_processes != null ? `${state.controls.conversion_processes} simultaneous XLS → XLSX conversions confirmed.`
       : change.prepare_processes != null ? `${state.controls.prepare_processes} simultaneous shrink processes confirmed for future starts.`
       : change.shrink_threads != null ? `${state.controls.shrink_threads} Rayon threads per shrink process confirmed for future starts.`
       : change.capture_transport != null ? 'Capture transport confirmed for the next primary capture phase.'
@@ -1438,7 +1448,7 @@ async function sendControl(change) {
     pushEvent(text); setNotice(text);
   } catch (error) {
     setNotice(error.message, true);
-    for (const [id, key] of [['sweepProcesses', 'sweep_processes'], ['prepareProcesses', 'prepare_processes'], ['shrinkThreads', 'shrink_threads']]) {
+    for (const [id, key] of [['sweepProcesses', 'sweep_processes'], ['conversionProcesses', 'conversion_processes'], ['prepareProcesses', 'prepare_processes'], ['shrinkThreads', 'shrink_threads']]) {
       if (key in change) {
         dirtyControls.delete(id);
         $(id).value = String(state.controls[key] ?? 1);
@@ -2041,6 +2051,7 @@ function wireControls() {
   $('minus').addEventListener('click', () => adjustTarget(-1)); $('plus').addEventListener('click', () => adjustTarget(1));
   for (const [id, key, valueId, statusId] of [
     ['sweepProcesses', 'sweep_processes', 'sweepProcessesValue', 'sweepProcessesStatus'],
+    ['conversionProcesses', 'conversion_processes', 'conversionProcessesValue', 'conversionProcessesStatus'],
     ['prepareProcesses', 'prepare_processes', 'prepareProcessesValue', 'prepareProcessesStatus'],
     ['shrinkThreads', 'shrink_threads', 'shrinkThreadsValue', 'shrinkThreadsStatus'],
   ]) {

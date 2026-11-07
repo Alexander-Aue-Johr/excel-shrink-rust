@@ -277,6 +277,20 @@ pub(super) fn launch(
         .file_name().context("ownership generation filename")?.to_string_lossy().into_owned();
     fs::write(job.work.join("windows-owners.jsonl.generation"), &generation)?;
     command.env("EXCEL_SHRINK_ARCHIVE_GENERATION", &generation);
+    let stage_pause =
+        (job.mode == JobMode::Prepare).then(|| job.work.join("preparation-wait.json"));
+    if let Some(path) = &stage_pause {
+        fs::write(path, br#"{"elapsed_millis":0}"#)?;
+        command.env("EXCEL_SHRINK_PREPARATION_WAIT", path);
+        if let Some(root) = &job.control_room {
+            command.env("EXCEL_SHRINK_PREPARATION_CONTROL_DIR", root);
+        } else {
+            command.env_remove("EXCEL_SHRINK_PREPARATION_CONTROL_DIR");
+        }
+    } else {
+        command.env_remove("EXCEL_SHRINK_PREPARATION_WAIT");
+        command.env_remove("EXCEL_SHRINK_PREPARATION_CONTROL_DIR");
+    }
     let mut running = RunningWorker {
         child: command.spawn().context("start isolated workbook worker")?,
         work: job.work.clone(),
@@ -287,6 +301,7 @@ pub(super) fn launch(
         &mut running.child,
         Duration::from_secs(args.workbook_timeout_seconds),
         job.cleanup_barrier.as_ref(),
+        stage_pause.as_deref(),
         || {
             if job
                 .control_room
@@ -310,10 +325,11 @@ fn wait_for_worker(
     child: &mut Child,
     timeout: Duration,
     cleanup_barrier: Option<&batch_cleanup::Participant>,
+    stage_pause: Option<&Path>,
     mut on_progress: impl FnMut() -> Result<()>,
 ) -> Result<()> {
     let mut clock = opening_pause::OpeningPause::new(
-        cleanup_barrier.and_then(|barrier| barrier.pause_path.as_deref()),
+        stage_pause.or_else(|| cleanup_barrier.and_then(|barrier| barrier.pause_path.as_deref())),
     );
     let mut last_notice = Instant::now();
     loop {
@@ -555,6 +571,44 @@ mod tests {
     use std::io::Write;
 
     #[test]
+    fn preparation_capacity_waits_pause_only_the_worker_deadline() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("stage-wait-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root)?;
+        let pause = root.join("wait.json");
+        fs::write(&pause, br#"{"elapsed_millis":0}"#)?;
+        let mut child = Command::new(std::env::current_exe()?)
+            .args([
+                "--exact",
+                "regression::archive::worker::tests::cleanup_helper_test_child",
+            ])
+            .env("EXCEL_SHRINK_CLEANUP_TEST_HANG", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let started = Instant::now();
+        let result = wait_for_worker(
+            &mut child,
+            Duration::from_millis(200),
+            None,
+            Some(&pause),
+            || {
+                if started.elapsed() < Duration::from_millis(400) {
+                    let elapsed = serde_json::to_vec(&json!({
+                        "elapsed_millis": started.elapsed().as_millis(),
+                    }))?;
+                    artifact_cache::atomic_write(&pause, &elapsed)?;
+                }
+                Ok(())
+            },
+        );
+        stop_child(&mut child, Duration::from_secs(5))?;
+        assert!(result.unwrap_err().to_string().contains("timed out"));
+        assert!(started.elapsed() >= Duration::from_millis(400));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        Ok(())
+    }
+
+    #[test]
     fn cleanup_helper_timeout_reaps_helper_before_retry() -> Result<()> {
         let mut child = Command::new(std::env::current_exe()?)
             .args([
@@ -641,6 +695,7 @@ mod tests {
                 &mut running.child,
                 Duration::from_secs(3600),
                 Some(&participant),
+                None,
                 || Ok(()),
             )
         });
@@ -769,7 +824,7 @@ mod tests {
                 cleanup_barrier: None,
             };
             let result =
-                wait_for_worker(&mut running.child, Duration::from_secs(10), None, || Ok(()));
+                wait_for_worker(&mut running.child, Duration::from_secs(10), None, None, || Ok(()));
             running.stop()?;
             let status = running
                 .child
@@ -864,7 +919,7 @@ mod tests {
             .spawn()?;
         // The child lives beyond both deadlines. Only its completed readiness
         // suspends them; the peer timeout and parent checks remain enabled.
-        let outcome = wait_for_worker(&mut child, Duration::ZERO, Some(&participant), || Ok(()));
+        let outcome = wait_for_worker(&mut child, Duration::ZERO, Some(&participant), None, || Ok(()));
         if outcome.is_err() {
             let _ = child.kill();
         }
@@ -924,6 +979,7 @@ mod tests {
             &mut child,
             Duration::from_secs(1),
             Some(&participant),
+            None,
             || {
                 artifact_cache::atomic_write(
                     &pause,
@@ -980,13 +1036,13 @@ mod tests {
             stopped: false,
             cleanup_barrier: None,
         };
-        let failure = wait_for_worker(&mut stuck.child, Duration::from_millis(20), None, || Ok(()))
+        let failure = wait_for_worker(&mut stuck.child, Duration::from_millis(20), None, None, || Ok(()))
             .unwrap_err();
         assert!(failure.to_string().contains("timed out"));
         stuck.stop()?;
         assert!(stuck.child.try_wait()?.is_some());
         let mut next = Command::new("true").spawn()?;
-        wait_for_worker(&mut next, Duration::from_secs(2), None, || Ok(()))?;
+        wait_for_worker(&mut next, Duration::from_secs(2), None, None, || Ok(()))?;
         Ok(())
     }
 }

@@ -1513,7 +1513,7 @@ fn logical_cores() -> usize {
 }
 
 fn defaults() -> Value {
-    json!({"target_groups": 1, "prepare_processes": 1, "sweep_processes": 1, "shrink_threads": logical_cores(),
+    json!({"target_groups": 1, "prepare_processes": 1, "conversion_processes": 1, "sweep_processes": 1, "shrink_threads": logical_cores(),
         "paused": false, "open_timeout_seconds": 600, "system_reserve_mib": 0,
         "job_timeout_seconds": 300, "equal_preview_width": 512, "capture_tile_megapixels": 32,
         "capture_batch_tiles": 1, "capture_context_tiles": 0, "capture_transport": "live-images", "hide_excel": false,
@@ -1566,7 +1566,7 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
                 "equal_preview_width" => matches!(integer, 0 | 128 | 256 | 512 | 1024),
                 "target_groups" => integer >= 0,
                 "sweep_processes" => integer > 0,
-                "prepare_processes" | "shrink_threads" => {
+                "prepare_processes" | "conversion_processes" | "shrink_threads" => {
                     integer > 0 && (integer as usize) <= logical_cores()
                 }
                 "capture_tile_megapixels" => (1..=64).contains(&integer),
@@ -1746,9 +1746,12 @@ mod tests {
         let max = logical_cores();
         let controls = merge_controls(
             &defaults(),
-            &json!({"prepare_processes": max, "shrink_threads": 1}),
+            &json!({"prepare_processes": max, "conversion_processes": max, "shrink_threads": 1}),
         )?;
         assert_eq!(controls["prepare_processes"], max);
+        assert_eq!(controls["conversion_processes"], max);
+        assert!(merge_controls(&controls, &json!({"conversion_processes": 0})).is_err());
+        assert!(merge_controls(&controls, &json!({"conversion_processes": max + 1})).is_err());
         assert_eq!(controls["shrink_threads"], 1);
         assert!(merge_controls(&controls, &json!({"prepare_processes": 0})).is_err());
         assert!(merge_controls(&controls, &json!({"shrink_threads": 0})).is_err());

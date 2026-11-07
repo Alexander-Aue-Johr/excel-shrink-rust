@@ -121,6 +121,8 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
             ensure!(reused, "configured converted-original cache has no matching workbook");
             record["conversion"] = json!({"reused":true,"source":"converted_original_bundle"});
         } else {
+            let _conversion_permit =
+                super::preparation_slots::acquire(super::preparation_slots::Stage::Conversion)?;
             let metrics = excel_automation::convert_legacy_workbook(
                 &extracted, &converted, &job.work.join("conversion"),
             )?;
@@ -181,6 +183,8 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
         if let Some(threads) = rayon_threads {
             cli_args.extend(["--rayon-threads".to_owned(), threads.to_string()]);
         }
+        let shrink_permit =
+            super::preparation_slots::acquire(super::preparation_slots::Stage::Shrink)?;
         let report = run_case(
             "study",
             &repo_root(),
@@ -195,6 +199,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
             log_level,
             &case,
         )?;
+        drop(shrink_permit);
         if namespace_exclusion::skip_from_batch_report(job, record, &batch_report_path)? {
             return Ok(());
         }

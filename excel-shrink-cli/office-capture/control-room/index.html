@@ -28,6 +28,11 @@
         <small id="sweepProcessesStatus" role="status">Controls simultaneous sweep jobs after shrinking. Each job opens the Excel instances it needs; there is no separate Excel instance limit.</small>
         <small id="excelProcessDemand" role="status">Checking sweep opening demand.</small>
       </div>
+    <div class="control" id="conversionProcessesControl" hidden>
+      <label for="conversionProcesses">SIMULTANEOUS XLS → XLSX CONVERSIONS</label>
+      <div class="control-line"><input id="conversionProcesses" type="range" min="1" max="1" step="1" value="1" aria-describedby="conversionProcessesStatus"><strong id="conversionProcessesValue">1</strong></div>
+      <small id="conversionProcessesStatus" role="status">Waiting for confirmed value.</small>
+    </div>
     <div class="control">
       <label for="prepareProcesses">SIMULTANEOUS SHRINK PROCESSES</label>
       <div class="control-line"><input id="prepareProcesses" type="range" min="1" max="1" step="1" value="1" aria-describedby="prepareProcessesStatus"><strong id="prepareProcessesValue">1</strong></div>

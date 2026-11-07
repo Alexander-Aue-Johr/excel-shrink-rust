@@ -150,6 +150,9 @@ fn run_phase(
         return Ok(());
     }
 
+    let has_legacy_inputs = pending
+        .iter()
+        .any(|job| job.name.to_ascii_lowercase().ends_with(".xls"));
     std::thread::scope(|scope| {
         let (sender, receiver) = mpsc::channel();
         let mut active = BTreeMap::<usize, u64>::new();
@@ -165,7 +168,12 @@ fn run_phase(
                             if hash_sweep {
                                 controls.sweep_processes
                             } else {
-                                controls.prepare_processes
+                                let conversion_capacity = if has_legacy_inputs {
+                                    controls.conversion_processes
+                                } else {
+                                    0
+                                };
+                                controls.prepare_processes + conversion_capacity
                             }
                         }
                         Err(error) => {

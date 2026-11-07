@@ -5,6 +5,7 @@ mod control_room;
 mod execution;
 mod fallback;
 mod preparation;
+mod preparation_slots;
 mod progress;
 mod startup;
 use super::verified as ledger;

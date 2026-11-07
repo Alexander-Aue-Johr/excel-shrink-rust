@@ -42,6 +42,8 @@ pub(super) struct Controls {
     #[serde(default = "default_prepare_processes")]
     pub prepare_processes: usize,
     #[serde(default = "default_prepare_processes")]
+    pub conversion_processes: usize,
+    #[serde(default = "default_prepare_processes")]
     pub sweep_processes: usize,
     #[serde(default = "logical_cores")]
     pub shrink_threads: usize,
@@ -168,7 +170,8 @@ impl Controls {
         let value: Self = serde_json::from_slice(&fs::read(root.join("control.json"))?)?;
         let max = logical_cores();
         ensure!(
-            (1..=max).contains(&value.prepare_processes)
+            (1..=max).contains(&value.conversion_processes)
+                && (1..=max).contains(&value.prepare_processes)
                 && (1..=max).contains(&value.shrink_threads),
             "preparation processes and shrink threads must each be between 1 and {max}"
         );
@@ -395,6 +398,10 @@ impl Room {
             prepare_processes: previous_controls
                 .as_ref()
                 .map(|old| old.prepare_processes)
+                .unwrap_or_else(default_prepare_processes),
+            conversion_processes: previous_controls
+                .as_ref()
+                .map(|old| old.conversion_processes)
                 .unwrap_or_else(default_prepare_processes),
             sweep_processes: previous_controls.as_ref().map(|old| old.sweep_processes).unwrap_or(1),
             shrink_threads: previous_controls
@@ -1063,7 +1070,7 @@ mod tests {
                 "accepted invalid {key}={bad}"
             );
         }
-        for key in ["prepare_processes", "shrink_threads"] {
+        for key in ["prepare_processes", "conversion_processes", "shrink_threads"] {
             for bad in [0, logical_cores() + 1] {
                 let mut invalid = value.clone();
                 invalid[key] = json!(bad);
