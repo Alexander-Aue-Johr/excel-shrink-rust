@@ -92,6 +92,7 @@ function Get-DefaultStudySettings {
         targeted_comparison = $true
         targeted_skip_check_performance = $true
         chart_capture_mode = 'deterministic'
+        sqlite_metadata = $true
         targeted_check_performance = $false
         worker_memory_mib = $(if ($small) { 2048 } else { 4096 })
         excel_memory_mib = $(if ($small) { 2048 } else { 4096 })
@@ -328,6 +329,7 @@ function New-StudyLaunchPlan {
         EXCEL_SHRINK_RESIDENT_VISIBLE='0'
         EXCEL_SHRINK_TALL_SHEET_THRESHOLD=[string]$settings.tall_sheet_threshold
         EXCEL_SHRINK_TALL_SHEET_EDGE_TILES=[string]$settings.tall_sheet_edge_tiles
+        EXCEL_SHRINK_SQLITE_METADATA=$(if (Get-Value $settings 'sqlite_metadata' $true) { '1' } else { '0' })
     }
     return [pscustomobject]@{ Executable=(Resolve-StudyPath $Repo $Executable); Arguments=$argsList; CommandLine=(($argsList | ForEach-Object { ConvertTo-WindowsArgument $_ }) -join ' ');
         Request=$request; RequestFile=$requestPath; OutputRoot=$output; RunDirectory=$RunDirectory; Environment=$environment; ExportResults=$export;

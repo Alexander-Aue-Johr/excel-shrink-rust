@@ -1,5 +1,17 @@
 # Compact validation diagnostics
 
+## SQLite diagnostics in corpus launches
+
+Corpus launcher settings default to `sqlite_metadata=true`. The launch plan sets
+`EXCEL_SHRINK_SQLITE_METADATA=1` for comparison snapshots and resident diagnostic
+events. Each writer owns its database. Completion exports remain compatible with
+existing report readers. `settings.sqlite_metadata=false` selects the legacy
+diagnostic writer. Command/response IPC files and scientific result JSON remain
+separate from these diagnostic databases.
+
+The native chart experiment exercised both chart modes and a changed-input case
+with SQLite enabled. All nine resulting databases passed `integrity_check`.
+
 `GET /api/summary?limit=8&stalled_after_seconds=120` returns bounded current-run
 comparison evidence, current and last successful host operations, process and
 Office.js liveness separately, queue counts and available throughput estimates.
