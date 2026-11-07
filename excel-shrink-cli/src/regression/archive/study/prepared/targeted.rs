@@ -17,6 +17,19 @@ pub(in crate::regression::archive::study) fn matches_chart_mode(
         || record["targeted_comparison"]["chart_capture_mode"] != "deterministic"
 }
 
+/// Respect explicit skip retention before checking whether comparison evidence is complete.
+pub(in crate::regression::archive::study) fn needs_attempt(
+    record: &Value,
+    skip_performance: bool,
+    chart_mode: crate::regression::targeted_comparison::ChartCaptureMode,
+    retry_skipped: bool,
+) -> bool {
+    if record["status"] == "skipped" && !retry_skipped {
+        return false;
+    }
+    !complete(record, skip_performance) || !matches_chart_mode(record, chart_mode)
+}
+
 /// A targeted result completes this selection policy, never a whole-sheet visual certificate.
 pub(in crate::regression::archive::study) fn complete(
     record: &Value,
@@ -402,4 +415,17 @@ mod tests {
         record["targeted_comparison"]["status"] = json!("failed");
         assert!(!complete(&record, false));
     }
+    #[test]
+    fn skipped_failures_require_an_explicit_retry() {
+        let mut record = json!({"status":"skipped","complete":true,
+            "targeted_comparison":{"status":"failed"}});
+        let mode = crate::regression::targeted_comparison::ChartCaptureMode::Deterministic;
+        assert!(!needs_attempt(&record, true, mode, false));
+        assert!(needs_attempt(&record, true, mode, true));
+        record["complete"] = json!(false);
+        assert!(!needs_attempt(&record, true, mode, false));
+        record["status"] = json!("interrupted");
+        assert!(needs_attempt(&record, true, mode, false));
+    }
+
 }

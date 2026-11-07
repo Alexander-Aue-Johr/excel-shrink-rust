@@ -606,9 +606,12 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                 selection::ordered_members(source, args.order).into_iter().filter(|(index, name)| {
                     let id = identity(source, *index, name);
                     records.iter().find(|record| record["identity"] == id).is_none_or(|record| {
-                        !prepared::targeted::complete(record, args.targeted_skip_check_performance)
-                            || !prepared::targeted::matches_chart_mode(record, args.chart_capture_mode)
-                            && (record["status"] != "skipped" || args.should_retry_skipped())
+                        prepared::targeted::needs_attempt(
+                            record,
+                            args.targeted_skip_check_performance,
+                            args.chart_capture_mode,
+                            args.should_retry_skipped(),
+                        )
                     })
                 }).collect()
             } else if let Some(profile) = args.preparation_hash_profile.as_deref() {
