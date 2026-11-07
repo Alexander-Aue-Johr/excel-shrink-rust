@@ -124,7 +124,7 @@ function Clear-OfficeGraphicsCache {
         return [pscustomobject]$result
     }
     if (-not (Test-Path -LiteralPath $rootPath)) { return [pscustomobject]$result }
-    if ((Get-Item -LiteralPath $rootPath).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Graphics cache root is a reparse point.' }
+    if ((Get-Item -LiteralPath $rootPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Graphics cache root is a reparse point.' }
     if (-not ('ExcelDiagnosticFiles' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'ExcelDiagnosticFiles.cs') }
     # Content.MSO files are direct children. Do not traverse nested directories.
     foreach ($item in Get-ChildItem -LiteralPath $rootPath -File -Filter '*.tmp' -Force) {
