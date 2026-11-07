@@ -72,6 +72,16 @@ fn open_workbook(
     if progress.is_file() {
         fs::copy(&progress, work_dir.join("excel-open-progress.log"))?;
     }
+    let failure = transfer.0.join("failure.json");
+    if failure.is_file() {
+        let bytes = fs::read(&failure)?;
+        fs::write(work_dir.join("excel-open-failure.json"), &bytes)?;
+        let receipt: serde_json::Value = serde_json::from_slice(&bytes)?;
+        anyhow::bail!("Excel conversion {} during {}: {}",
+            receipt["kind"].as_str().unwrap_or("failed"),
+            receipt["phase"].as_str().unwrap_or("unknown phase"),
+            receipt["error"].as_str().unwrap_or("Native error unavailable"));
+    }
     result?;
     let measured: ExcelOpenMetrics = serde_json::from_slice(&fs::read(&metrics)?)?;
     fs::copy(&metrics, work_dir.join("excel-open-metrics.json"))?;

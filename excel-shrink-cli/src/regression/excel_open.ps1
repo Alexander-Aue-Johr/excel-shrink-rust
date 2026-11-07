@@ -7,6 +7,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 function Progress([string]$message) {
+    $script:phase = $message
     # Rust polls this file while Excel is running; neither handle may exclude readers.
     $bytes = [Text.Encoding]::UTF8.GetBytes("$(Get-Date -Format o) open $message" + [Environment]::NewLine)
     $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
@@ -47,6 +48,7 @@ try {
     $excel.AskToUpdateLinks = $false
     $excel.AutomationSecurity = 3
     $excel.EnableEvents = $false
+    $excel.AutoRecover.Enabled = $false
     $settings = $excel.Workbooks.Add()
     $excel.Calculation = -4135
 
@@ -83,6 +85,23 @@ try {
     $json = $metrics | ConvertTo-Json
     [IO.File]::WriteAllText($MetricsPath, $json, (New-Object Text.UTF8Encoding($false)))
     Progress 'finished'
+} catch {
+    # Keep the native failure even if Close or Quit subsequently blocks.
+    $message = $_.Exception.Message
+    $kind = 'excel_automation_failed'
+    if ($message -match '(?i)password|kennwort|passwort') { $kind = 'password_required' }
+    elseif ($message -match '(?i)trust center|vertrauensstellungscenter|file block|dateiblock') { $kind = 'trust_center_blocked' }
+    elseif ($message -match '(?i)permission|berechtigung|access denied|zugriff verweigert|rights management') { $kind = 'access_denied' }
+    elseif ($message -match '(?i)corrupt|repair|beschädigt|repar') { $kind = 'repair_required' }
+    elseif ($script:phase -eq 'saving XLSX conversion') { $kind = 'conversion_save_failed' }
+    $failure = [ordered]@{
+        status = 'failed'; kind = $kind; phase = $script:phase
+        error = $message; hresult = $_.Exception.HResult; excel_pid = $excelProcessId
+    }
+    $failurePath = Join-Path ([IO.Path]::GetDirectoryName($ProgressPath)) 'failure.json'
+    [IO.File]::WriteAllText($failurePath, ($failure | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+    Progress "failed: $kind"
+    throw
 } finally {
     # The cleanup job also handles an interrupted or blocked COM call.
     foreach ($book in @($workbook, $settings)) {
