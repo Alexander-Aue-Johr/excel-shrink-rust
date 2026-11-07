@@ -14,6 +14,7 @@ REPO = Path(__file__).resolve().parents[4]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--output", required=True, type=Path)
 parser.add_argument("--binary", required=True, type=Path)
+parser.add_argument("--captures", action="store_true", help="Compare capture packages of 1, 2, 3, 4 and 8 images")
 args = parser.parse_args()
 OUTPUT = args.output.resolve()
 OUTPUT.mkdir(parents=True, exist_ok=False)
@@ -102,6 +103,34 @@ try:
         sample = {"mode": mode, "ranges": len(ranges), "wall_seconds": time.monotonic() - started}
         results.append(sample)
         print(json.dumps(sample), flush=True)
+    if args.captures:
+        from PIL import Image
+        reference_images = None
+        for batch_size in (1, 2, 3, 4, 8):
+            started = time.monotonic()
+            observations = []
+            selected = ranges[:12]
+            for offset in range(0, len(selected), batch_size):
+                addresses = selected[offset:offset + batch_size]
+                response = command({"kind": "capture_many", "sheet": sheet,
+                    "ranges": [{"range": address} for address in addresses]})
+                assert [item["range"] for item in response["images"]] == addresses
+                for item in response["images"]:
+                    if item.get("non_rendering"):
+                        observations.append({"range": item["range"], "zero_area": True})
+                    else:
+                        with Image.open(item["image_path"]) as image:
+                            observations.append({"range": item["range"], "size": image.size,
+                                "rgba_sha256": hashlib.sha256(image.convert("RGBA").tobytes()).hexdigest()})
+            if reference_images is None:
+                reference_images = observations
+            assert observations == reference_images
+            sample = {"mode": "capture", "batch_size": batch_size,
+                "ranges": len(selected), "wall_seconds": time.monotonic() - started,
+                "all_pixels_and_zero_area_results_equal": True}
+            results.append(sample)
+            print(json.dumps(sample), flush=True)
+
 finally:
     helper.close_client(session, process)
     helper.publish(OUTPUT / "result.json", {

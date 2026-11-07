@@ -1,13 +1,15 @@
 {
   "date": "2026-11-07",
-  "ranges": 64,
-  "order": "scalar, batch, batch, scalar",
+  "geometry_ranges": 64,
+  "geometry_order": "scalar, batch, batch, scalar",
+  "capture_ranges": 12,
+  "capture_zero_area_ranges": 4,
   "all_geometries_equal": true,
   "measurements": [
     {
       "mode": "scalar",
       "ranges": 64,
-      "wall_seconds": 16.34299999999348
+      "wall_seconds": 16.09399999998277
     },
     {
       "mode": "batch",
@@ -22,9 +24,46 @@
     {
       "mode": "scalar",
       "ranges": 64,
-      "wall_seconds": 16.25
+      "wall_seconds": 16.094000000011874
+    },
+    {
+      "mode": "capture",
+      "batch_size": 1,
+      "ranges": 12,
+      "wall_seconds": 3.125,
+      "all_pixels_and_zero_area_results_equal": true
+    },
+    {
+      "mode": "capture",
+      "batch_size": 2,
+      "ranges": 12,
+      "wall_seconds": 1.5789999999979045,
+      "all_pixels_and_zero_area_results_equal": true
+    },
+    {
+      "mode": "capture",
+      "batch_size": 3,
+      "ranges": 12,
+      "wall_seconds": 1.0929999999934807,
+      "all_pixels_and_zero_area_results_equal": true
+    },
+    {
+      "mode": "capture",
+      "batch_size": 4,
+      "ranges": 12,
+      "wall_seconds": 0.8280000000086147,
+      "all_pixels_and_zero_area_results_equal": true
+    },
+    {
+      "mode": "capture",
+      "batch_size": 8,
+      "ranges": 12,
+      "wall_seconds": 0.5789999999979045,
+      "all_pixels_and_zero_area_results_equal": true
     }
   ],
-  "binary_sha256": "71cb6758a0f79b9318e64e18b6b6c7d8db27bd0602b1cfa298dec6f9687d153c",
-  "scope": "Resident command round trips and Office.js geometry reads; excludes startup and image capture."
+  "binary_sha256": "7448aa7cba2a436a6f53d41e1bd0f35e69d309112de2b116e3c27497edc5fb89",
+  "excel_exit_confirmed": true,
+  "excel_peak_private_bytes": 427192320,
+  "scope": "Resident command round trips, Office.js geometry/capture and binary image uploads. Excludes startup; response polling is 250 ms."
 }
