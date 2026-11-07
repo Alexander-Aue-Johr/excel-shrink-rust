@@ -6,8 +6,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-function Progress([string]$message) {
-    $script:phase = $message
+$script:phase = 'initialization'
+$script:phaseClock = [Diagnostics.Stopwatch]::StartNew()
+$script:phaseSeconds = [ordered]@{}
+function Progress([string]$message, [string]$PhaseName = $message) {
+    $previous = $script:phase
+    if (-not $script:phaseSeconds.Contains($previous)) { $script:phaseSeconds[$previous] = 0.0 }
+    $script:phaseSeconds[$previous] += $script:phaseClock.Elapsed.TotalSeconds
+    $script:phaseClock.Restart()
+    $script:phase = $PhaseName
     # Rust polls this file while Excel is running; neither handle may exclude readers.
     $bytes = [Text.Encoding]::UTF8.GetBytes("$(Get-Date -Format o) open $message" + [Environment]::NewLine)
     $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
@@ -41,7 +48,7 @@ try {
     [void][ExcelOpenWindow]::GetWindowThreadProcessId([IntPtr]$excel.Hwnd, [ref]$excelProcessId)
     $process = Get-Process -Id $excelProcessId
     $owned.Add($process)
-    Progress "excel pid=$excelProcessId"
+    Progress "excel pid=$excelProcessId" 'configuring Excel'
     $excel.Visible = $false
     $excel.Interactive = $false
     $excel.DisplayAlerts = $false
@@ -82,9 +89,6 @@ try {
         $workbook.SaveAs($localOutput, 51)
         Copy-Item -LiteralPath $localOutput -Destination $OutputPath -Force
     }
-    $json = $metrics | ConvertTo-Json
-    [IO.File]::WriteAllText($MetricsPath, $json, (New-Object Text.UTF8Encoding($false)))
-    Progress 'finished'
 } catch {
     # Keep the native failure even if Close or Quit subsequently blocks.
     $message = $_.Exception.Message
@@ -104,6 +108,7 @@ try {
     throw
 } finally {
     # The cleanup job also handles an interrupted or blocked COM call.
+    Progress 'closing workbooks'
     foreach ($book in @($workbook, $settings)) {
         if ($null -ne $book) {
             try { $book.Close($false) } catch {}
@@ -111,9 +116,14 @@ try {
         }
     }
     if ($null -ne $excel) {
+        Progress 'closing Excel'
         try { $excel.Quit() } catch {}
         [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel)
     }
     $owned.Dispose()
     Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 }
+Progress 'finished'
+$metrics['phase_seconds'] = $script:phaseSeconds
+$json = $metrics | ConvertTo-Json -Depth 4
+[IO.File]::WriteAllText($MetricsPath, $json, [Text.UTF8Encoding]::new($false))

@@ -26,3 +26,17 @@ production `excel_open.ps1` in a V: staging directory with its existing process
 ownership helpers, passing distinct MetricsPath, ProgressPath and OutputPath
 for each input. The normal case must create XLSX and metrics. The protected case
 must create failure.json with its native reason and no XLSX output.
+
+Conversion metrics additionally retain optional `phase_seconds`. The stable
+phase names separate PowerShell/helper initialization, staging, Excel startup,
+configuration, workbook opening/resource sampling, SaveAs and cleanup. The
+existing `open_seconds` remains the Workbooks.Open call alone. Metrics are
+published after owned Excel cleanup, while native failure receipts are persisted
+before cleanup can block. Old metrics without phase_seconds remain readable.
+
+A small normal-workbook probe under concurrent corpus load measured about
+0.33 seconds inside Workbooks.Open but 6.78 seconds starting Excel and 0.76
+seconds configuring it. This explains why conversion throughput cannot be
+predicted from open_seconds alone. These are diagnostic observations, not a
+controlled benchmark. The password failure still retained password_required
+and produced no converted workbook after instrumentation.
