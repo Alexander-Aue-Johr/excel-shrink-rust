@@ -40,3 +40,15 @@ seconds configuring it. This explains why conversion throughput cannot be
 predicted from open_seconds alone. These are diagnostic observations, not a
 controlled benchmark. The password failure still retained password_required
 and produced no converted workbook after instrumentation.
+
+A single retry now handles only the observed COM activation HRESULT 0x80080005
+before workbook opening. It uses a fresh PowerShell/Excel attempt after a short
+backoff and retains the first failure receipt. The conversion record marks
+`startup_retries` when that retry succeeds. Password, Trust Center, file-format,
+opening and save failures do not qualify for this retry. The native conversion
+probe exercised the Rust entry point with both normal and protected fixtures;
+successful conversion and the protected-file failure receipt remained intact.
+
+On native Windows, the converter resolves the inbox PowerShell executable
+through SystemRoot. It no longer starts another PowerShell process solely to
+query its version for every workbook. Other-platform probing is unchanged.

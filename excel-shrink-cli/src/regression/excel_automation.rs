@@ -30,6 +30,8 @@ pub struct ExcelOpenMetrics {
     pub macros_removed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase_seconds: Option<std::collections::BTreeMap<String, f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub startup_retries: Option<u32>,
 }
 
 pub fn convert_legacy_workbook(
@@ -41,7 +43,24 @@ pub fn convert_legacy_workbook(
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
     }
-    open_workbook(input, Some(output), work_dir)
+    match open_workbook(input, Some(output), work_dir) {
+        Err(first) if retryable_excel_start(&first.to_string()) => {
+            // Retry only CO_E_SERVER_EXEC_FAILURE before workbook opening. The
+            // first launch has already exited; its failure receipt remains intact.
+            thread::sleep(Duration::from_secs(2));
+            let mut metrics = open_workbook(input, Some(output), &work_dir.join("startup-retry"))
+                .map_err(|retry| anyhow::anyhow!("Excel startup retry failed: {retry:#}; first attempt: {first:#}"))?;
+            metrics.startup_retries = Some(1);
+            fs::write(work_dir.join("excel-open-retry-metrics.json"), serde_json::to_vec(&metrics)?)?;
+            Ok(metrics)
+        }
+        result => result,
+    }
+}
+
+/// A COM activation failure is not evidence of an unreadable workbook.
+fn retryable_excel_start(message: &str) -> bool {
+    message.contains("during starting Excel:") && message.contains("80080005")
 }
 
 fn open_workbook(
@@ -723,6 +742,35 @@ const RECALCULATE_AND_SAVE_SCRIPT: &str = include_str!("excel_recalculate.ps1");
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Exercise the real converter using the normal/password XLS experiment fixtures.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "Requires LEGACY_CONVERSION_FIXTURES and installed Excel"]
+    fn native_legacy_conversion_preserves_success_and_failure_receipts() -> anyhow::Result<()> {
+        let root = PathBuf::from(std::env::var("LEGACY_CONVERSION_FIXTURES")?);
+        let output = root.join(format!("native-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&output)?;
+        let converted = output.join("normal.xlsx");
+        let metrics = convert_legacy_workbook(&root.join("normal.xls"), &converted, &output.join("normal"))?;
+        assert!(converted.is_file());
+        assert!(metrics.phase_seconds.as_ref().is_some_and(|phases| phases.contains_key("starting Excel")));
+        let failure = convert_legacy_workbook(&root.join("password.xls"), &output.join("password.xlsx"), &output.join("password"));
+        assert!(failure.unwrap_err().to_string().contains("password_required"));
+        assert!(!output.join("password.xlsx").exists());
+        let receipt: serde_json::Value = serde_json::from_slice(&fs::read(output.join("password/excel-open-failure.json"))?)?;
+        assert_eq!(receipt["kind"], "password_required");
+        println!("{}", output.display());
+        Ok(())
+    }
+
+    #[test]
+    fn only_the_known_preopen_com_activation_failure_is_retried() {
+        assert!(retryable_excel_start("Excel conversion failed during starting Excel: HRESULT 0x80080005"));
+        assert!(!retryable_excel_start("Excel conversion failed during opening workbook: HRESULT 0x80080005"));
+        assert!(!retryable_excel_start("Excel conversion failed during starting Excel: HRESULT 0x80040154"));
+        assert!(!retryable_excel_start("Excel conversion trust_center_blocked during opening workbook"));
+    }
 
     #[test]
     fn conversion_phase_metrics_remain_optional_for_existing_results() -> anyhow::Result<()> {
