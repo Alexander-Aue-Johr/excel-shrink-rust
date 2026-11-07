@@ -20,7 +20,7 @@ $inputDesktop=[DesktopIdentity]::InputName()
 $sharedDesktop=[DesktopIdentity]::CurrentName()
 $worker=Join-Path $outputPath 'worker'
 [void][IO.Directory]::CreateDirectory($worker)
-foreach($file in @('archive_processes.ps1','ArchiveProcesses.cs')){
+foreach($file in @('archive_processes.ps1','ArchiveProcesses.cs','ExcelConversionErrors.psm1')){
     Copy-Item -LiteralPath (Join-Path $repo ('excel-shrink-cli/src/regression/'+$file)) -Destination $worker
 }
 foreach($file in @('CaptureProcesses.cs','ExcelProcessSlots.ps1')){

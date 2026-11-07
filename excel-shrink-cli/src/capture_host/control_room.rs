@@ -427,6 +427,13 @@ async fn state(
     }
     queue["controls"] = read_controls(&room, &mut diagnostics).await;
     queue["logical_cores"] = json!(logical_cores());
+    if let Some(run_id) = queue["run_id"].as_str().filter(|id| uuid::Uuid::parse_str(id).is_ok()) {
+        let status = read_snapshot(
+            &room.root.join("conversion-pool").join(run_id).join("status.json"),
+            &mut diagnostics, 16 * 1024,
+        ).await;
+        queue["conversion_pool"] = status.unwrap_or(Value::Null);
+    }
     let opening_demand = capture_opening_demand(&room.root, &queue).await;
     queue["excel_opening_demand"] = opening_demand;
     let workers = capture_workers(&room.root, &queue).await;
@@ -1565,8 +1572,8 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
             let valid = match key.as_str() {
                 "equal_preview_width" => matches!(integer, 0 | 128 | 256 | 512 | 1024),
                 "target_groups" => integer >= 0,
-                "sweep_processes" => integer > 0,
-                "prepare_processes" | "conversion_processes" | "shrink_threads" => {
+                "sweep_processes" | "conversion_processes" => integer > 0,
+                "prepare_processes" | "shrink_threads" => {
                     integer > 0 && (integer as usize) <= logical_cores()
                 }
                 "capture_tile_megapixels" => (1..=64).contains(&integer),
@@ -1742,7 +1749,7 @@ mod tests {
     }
 
     #[test]
-    fn preparation_controls_are_bounded_by_available_logical_cores() -> Result<()> {
+    fn preparation_controls_allow_extra_converters_and_bound_shrink_threads() -> Result<()> {
         let max = logical_cores();
         let controls = merge_controls(
             &defaults(),
@@ -1751,7 +1758,7 @@ mod tests {
         assert_eq!(controls["prepare_processes"], max);
         assert_eq!(controls["conversion_processes"], max);
         assert!(merge_controls(&controls, &json!({"conversion_processes": 0})).is_err());
-        assert!(merge_controls(&controls, &json!({"conversion_processes": max + 1})).is_err());
+        assert!(merge_controls(&controls, &json!({"conversion_processes": max + 1})).is_ok());
         assert_eq!(controls["shrink_threads"], 1);
         assert!(merge_controls(&controls, &json!({"prepare_processes": 0})).is_err());
         assert!(merge_controls(&controls, &json!({"shrink_threads": 0})).is_err());

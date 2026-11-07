@@ -282,12 +282,19 @@ pub(super) fn launch(
     if let Some(path) = &stage_pause {
         fs::write(path, br#"{"elapsed_millis":0}"#)?;
         command.env("EXCEL_SHRINK_PREPARATION_WAIT", path);
+        #[cfg(windows)]
+        if let (Some(root), Some(run)) = (&job.control_room, &job.run_manifest) {
+            if let Some(run_id) = run["run_id"].as_str() {
+                command.env("EXCEL_SHRINK_CONVERSION_POOL", root.join("conversion-pool").join(run_id));
+            }
+        }
         if let Some(root) = &job.control_room {
             command.env("EXCEL_SHRINK_PREPARATION_CONTROL_DIR", root);
         } else {
             command.env_remove("EXCEL_SHRINK_PREPARATION_CONTROL_DIR");
         }
     } else {
+        command.env_remove("EXCEL_SHRINK_CONVERSION_POOL");
         command.env_remove("EXCEL_SHRINK_PREPARATION_WAIT");
         command.env_remove("EXCEL_SHRINK_PREPARATION_CONTROL_DIR");
     }

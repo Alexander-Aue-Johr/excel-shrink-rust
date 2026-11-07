@@ -6,6 +6,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 pub(super) enum Stage {
+    #[cfg(not(windows))]
     Conversion,
     Shrink,
 }
@@ -39,6 +40,7 @@ pub(super) fn acquire(stage: Stage) -> Result<Option<File>> {
         }
         let controls = Controls::read(root)?;
         let (name, limit) = match stage {
+            #[cfg(not(windows))]
             Stage::Conversion => ("conversion", controls.conversion_processes),
             Stage::Shrink => ("shrink", controls.prepare_processes),
         };

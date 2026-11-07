@@ -121,6 +121,7 @@ pub(super) fn prepare(job: &MemberJob, record: &mut Value, log_level: LogLevel) 
             ensure!(reused, "configured converted-original cache has no matching workbook");
             record["conversion"] = json!({"reused":true,"source":"converted_original_bundle"});
         } else {
+            #[cfg(not(windows))]
             let _conversion_permit =
                 super::preparation_slots::acquire(super::preparation_slots::Stage::Conversion)?;
             let metrics = excel_automation::convert_legacy_workbook(

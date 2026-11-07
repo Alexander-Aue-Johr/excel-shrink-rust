@@ -32,6 +32,12 @@ pub struct ExcelOpenMetrics {
     pub phase_seconds: Option<std::collections::BTreeMap<String, f64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup_retries: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excel_pid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workbooks_converted: Option<u64>,
 }
 
 pub fn convert_legacy_workbook(
@@ -42,6 +48,10 @@ pub fn convert_legacy_workbook(
     anyhow::ensure!(input != output, "conversion input and output must differ");
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
+    }
+    #[cfg(windows)]
+    if let Some(root) = std::env::var_os("EXCEL_SHRINK_CONVERSION_POOL") {
+        return super::legacy_conversion::convert(Path::new(&root), input, output, work_dir);
     }
     match open_workbook(input, Some(output), work_dir) {
         Err(first) if retryable_excel_start(&first.to_string()) => {
@@ -74,6 +84,7 @@ fn open_workbook(
     fs::copy(input, &local_input)?;
     let script = transfer.0.join("open.ps1");
     fs::write(&script, include_str!("excel_open.ps1"))?;
+    fs::write(transfer.0.join("ExcelConversionErrors.psm1"), format!("\u{feff}{}", include_str!("ExcelConversionErrors.psm1")))?;
     fs::write(transfer.0.join("ExcelProcessSlots.ps1"), include_str!("../../office-capture/ExcelProcessSlots.ps1"))?;
     fs::write(transfer.0.join("archive_processes.ps1"), include_str!("archive_processes.ps1"))?;
     fs::write(transfer.0.join("ArchiveProcesses.cs"), include_str!("ArchiveProcesses.cs"))?;
@@ -554,7 +565,7 @@ fn run_power_shell_script_with_status(
     }
 }
 
-fn power_shell_script_command(
+pub(super) fn power_shell_script_command(
     script_path: &Path,
     args: &[(&str, String)],
 ) -> anyhow::Result<Command> {

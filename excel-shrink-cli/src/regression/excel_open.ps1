@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'ExcelConversionErrors.psm1') -Force
 $script:phase = 'initialization'
 $script:phaseClock = [Diagnostics.Stopwatch]::StartNew()
 $script:phaseSeconds = [ordered]@{}
@@ -92,12 +93,7 @@ try {
 } catch {
     # Keep the native failure even if Close or Quit subsequently blocks.
     $message = $_.Exception.Message
-    $kind = 'excel_automation_failed'
-    if ($message -match '(?i)password|kennwort|passwort') { $kind = 'password_required' }
-    elseif ($message -match '(?i)trust center|vertrauensstellungscenter|file block|dateiblock') { $kind = 'trust_center_blocked' }
-    elseif ($message -match '(?i)permission|berechtigung|access denied|zugriff verweigert|rights management') { $kind = 'access_denied' }
-    elseif ($message -match '(?i)corrupt|repair|beschädigt|repar') { $kind = 'repair_required' }
-    elseif ($script:phase -eq 'saving XLSX conversion') { $kind = 'conversion_save_failed' }
+    $kind = Get-LegacyConversionFailureKind $message $script:phase
     $failure = [ordered]@{
         status = 'failed'; kind = $kind; phase = $script:phase
         error = $message; hresult = $_.Exception.HResult; excel_pid = $excelProcessId

@@ -169,9 +169,10 @@ impl Controls {
     pub fn read(root: &Path) -> Result<Self> {
         let value: Self = serde_json::from_slice(&fs::read(root.join("control.json"))?)?;
         let max = logical_cores();
+        ensure!((1..=i32::MAX as usize).contains(&value.conversion_processes),
+            "conversion workers must be positive");
         ensure!(
-            (1..=max).contains(&value.conversion_processes)
-                && (1..=max).contains(&value.prepare_processes)
+            (1..=max).contains(&value.prepare_processes)
                 && (1..=max).contains(&value.shrink_threads),
             "preparation processes and shrink threads must each be between 1 and {max}"
         );
@@ -1070,7 +1071,7 @@ mod tests {
                 "accepted invalid {key}={bad}"
             );
         }
-        for key in ["prepare_processes", "conversion_processes", "shrink_threads"] {
+        for key in ["prepare_processes", "shrink_threads"] {
             for bad in [0, logical_cores() + 1] {
                 let mut invalid = value.clone();
                 invalid[key] = json!(bad);
@@ -1081,6 +1082,10 @@ mod tests {
                 );
             }
         }
+        value["conversion_processes"] = json!(0);
+        write(&root.join("control.json"), &value)?;
+        assert!(Controls::read(&root).is_err());
+        value["conversion_processes"] = json!(logical_cores() + 1);
         value["prepare_processes"] = json!(logical_cores());
         value["shrink_threads"] = json!(1);
         value["target_groups"] = json!(0);
@@ -1090,6 +1095,7 @@ mod tests {
         let updated = Controls::read(&root)?;
         assert_eq!(updated.target_groups, 0);
         assert_eq!(updated.prepare_processes, logical_cores());
+        assert_eq!(updated.conversion_processes, logical_cores() + 1);
         assert_eq!(updated.shrink_threads, 1);
         assert_eq!(updated.tall_sheet_threshold, 75);
         assert_eq!(updated.tall_sheet_edge_tiles, 3);

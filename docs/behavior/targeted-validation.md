@@ -909,17 +909,35 @@ cell-count shortcut changes the equality verdict.
 
 ### Independent legacy conversion capacity
 
-For selections containing XLS inputs, the Observatory exposes
-`conversion_processes` independently of `prepare_processes` (concurrent Shrink
-stages) and `shrink_threads`. Both stage limits accept 1 through the available
-logical-core count. Missing conversion settings default to one. The conversion
-control is shown only when the selected workbook index contains XLS names.
-The preparation scheduler admits at most the sum of the two limits for legacy
-selections, or only the Shrink limit for XLSX-only selections. Stage-specific
-process-owned file locks enforce each live limit. A worker releases conversion
-capacity after Excel conversion and cleanup, before requesting Shrink capacity.
-Lowering a limit drains existing operations before admitting replacements.
-Capacity waits are reported separately and credited against the worker deadline;
-a frozen wait counter cannot extend that deadline. Parent heartbeat expiry and
-explicit termination remain effective. Prepared bundle and result reuse rules
-are unchanged.
+For XLS selections, `conversion_processes` controls a run-owned pool of persistent
+Excel sessions independently of concurrent Shrink stages (`prepare_processes`)
+and `shrink_threads`. Conversion capacity may exceed the logical-core count.
+The UI offers up to 128 sessions and retains larger configured values. The API
+accepts positive 32-bit counts. Missing settings default to one.
+
+Each session starts a native Excel process on its own private desktop, binds COM
+to that owned process and keeps a seed workbook open between conversions. Input
+workbooks open read-only with link updates, macros, events and AutoRecover
+disabled. Each input closes before its converted output is published. Conversion
+opening metrics describe this warm-session opening and include the session ID,
+Excel PID and number of converted workbooks. They are distinct from subsequent
+visual-validation opening measurements.
+
+Idle sessions immediately accept another queued workbook. Increasing capacity
+starts additional sessions asynchronously. Decreasing it retires excess sessions
+after their current workbook. A failed or stalled session is replaced after its
+owned processes are stopped. PID creation times and retained process handles
+protect cleanup from PID reuse. Windows jobs also bound process lifetime to the
+coordinator. Failed cleanup remains an error, never a successful conversion.
+
+New sessions require at least 512 MiB available memory, or the configured global
+reserve when larger. The check also considers available commit. It is a current
+availability check, not a prediction of future workbook memory consumption.
+
+The preparation scheduler admits at most conversion capacity plus Shrink
+capacity for XLS selections. Capacity waits are reported separately and credited
+against the preparation deadline. Each conversion phase has its own inactivity
+deadline. A frozen wait counter cannot extend that deadline. Parent heartbeat
+expiry and explicit termination remain effective. Prepared bundles and completed
+results retain their existing reuse rules. The pool drains before preparation
+finishes and visual comparisons begin.

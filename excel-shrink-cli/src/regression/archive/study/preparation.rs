@@ -153,6 +153,14 @@ fn run_phase(
     let has_legacy_inputs = pending
         .iter()
         .any(|job| job.name.to_ascii_lowercase().ends_with(".xls"));
+    #[cfg(windows)]
+    let mut conversion_pool = if args.control_room && has_legacy_inputs && !hash_sweep {
+        Some(crate::regression::legacy_conversion::Pool::new(
+            room.join("conversion-pool").join(run["run_id"].as_str().context("run ID missing")?),
+        )?)
+    } else {
+        None
+    };
     std::thread::scope(|scope| {
         let (sender, receiver) = mpsc::channel();
         let mut active = BTreeMap::<usize, u64>::new();
@@ -273,6 +281,32 @@ fn run_phase(
                 );
             }
 
+            #[cfg(windows)]
+            if !active.is_empty() {
+                if let Some(pool) = &mut conversion_pool {
+                    let fatal = halt.as_ref().filter(|error| {
+                        error.downcast_ref::<control_room::StopRequested>().is_none()
+                    });
+                    let result = if let Some(error) = fatal {
+                        pool.abort(error)
+                    } else {
+                        control_room::Controls::read(&room).and_then(|controls| {
+                            let target = if control_room::terminate_requested(&room) {
+                                0
+                            } else {
+                                controls.conversion_processes
+                            };
+                            pool.reconcile(target, controls.system_reserve_mib)
+                        })
+                    };
+                    if let Err(error) = result {
+                        if let Err(cleanup) = pool.abort(&error) {
+                            eprintln!("Conversion pool cleanup unconfirmed: {cleanup:#}");
+                        }
+                        halt = Some(error.context("manage persistent conversion pool"));
+                    }
+                }
+            }
             if active.is_empty() {
                 break;
             }

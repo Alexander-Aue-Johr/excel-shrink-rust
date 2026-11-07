@@ -1359,7 +1359,7 @@ function updateControlInputs() {
     ['shrinkThreads', 'shrink_threads', 'shrinkThreadsValue', 'shrinkThreadsStatus'],
   ]) {
     const slider = $(id);
-    slider.max = String(key === 'sweep_processes' ? Math.max(128, Number(values[key] || 1)) : logicalCores);
+    slider.max = String(['sweep_processes', 'conversion_processes'].includes(key) ? Math.max(128, Number(values[key] || 1)) : logicalCores);
     if (values[key] != null && document.activeElement !== slider && !dirtyControls.has(id)) {
       slider.value = String(values[key]);
     }
@@ -1367,13 +1367,23 @@ function updateControlInputs() {
     const running = key === 'prepare_processes' && state.queue?.phase === 'preparing'
       && Array.isArray(state.queue?.progress?.active_preparation)
       ? ` · ${state.queue.progress.active_preparation.length} preparation jobs active` : '';
+    const capacityLabel = key === 'conversion_processes'
+      ? 'persistent Excel sessions; at least 512 MiB RAM reserved'
+      : `maximum ${logicalCores}`;
     $(statusId).textContent = values[key] == null
       ? 'Waiting for confirmed value.'
       : dirtyControls.has(id)
         ? `Selected: ${slider.value} · confirmed: ${values[key]} · release to apply.`
       : key === 'sweep_processes'
         ? `Confirmed: ${values[key]} · applies to newly started sweep sessions.`
-        : `Confirmed: ${values[key]}${running} · applies at the next ${stageLabels[key]} · maximum ${logicalCores}.`;
+        : `Confirmed: ${values[key]}${running} · applies at the next ${stageLabels[key]} · ${capacityLabel}.`;
+  }
+  const pool = state.queue?.conversion_pool;
+  if (pool && !dirtyControls.has('conversionProcesses')) {
+    $('conversionProcessesStatus').textContent += pool.stopped
+      ? ' Pool stopped.'
+      : ` Ready ${pool.ready} · converting ${pool.busy} · starting ${pool.starting}.`;
+    if (pool.ram_blocked) $('conversionProcessesStatus').textContent += ' Waiting for RAM reserve.';
   }
   for (const [id, key] of [['targetGroups', 'target_groups'], ['systemReserve', 'system_reserve_mib'], ['openTimeout', 'open_timeout_seconds'], ['jobTimeout', 'job_timeout_seconds'], ['equalPreview', 'equal_preview_width'], ['captureMegapixels', 'capture_tile_megapixels'], ['captureBatch', 'capture_batch_tiles'], ['captureContext', 'capture_context_tiles'], ['tallSheetThreshold', 'tall_sheet_threshold'], ['tallSheetEdges', 'tall_sheet_edge_tiles'], ['crcEqualSheetThreshold', 'crc_equal_sheet_threshold_mib']]) {
     if (values[key] != null && document.activeElement !== $(id) && !dirtyControls.has(id)) $(id).value = String(values[key]);
