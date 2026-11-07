@@ -37,7 +37,7 @@ function Write-SessionJson([string]$name, $value) {
     Write-ResidentJsonFile ([IO.Path]::Combine($session, $name)) $value
 }
 
-function Confirm-ResidentClientExit($ownedClients, $clientMetrics, [int]$TimeoutMilliseconds = 3000) {
+function Confirm-ResidentClientExit($ownedClients, $clientMetrics, [int]$TimeoutMilliseconds = 10000) {
     # Closing a Job Object requests termination; it does not mean every process
     # has already signalled exit. Use one shared bound for the entire group.
     $remaining = New-Object 'Collections.Generic.HashSet[string]'

@@ -540,7 +540,7 @@ function Close-TargetedWorkbook {
     if ($null -eq $entry) { return @{closed=$true} }
     Write-TargetedJson (Join-Path $entry.session 'finish.json') @{complete=$true}
     $entry.launcher.WaitForExit()
-    if ($null -ne $entry.process -and -not $entry.process.WaitForExit(1000)) { throw 'Targeted Excel exit unconfirmed.' }
+    if ($null -ne $entry.process -and -not $entry.process.WaitForExit(5000)) { throw 'Targeted Excel exit unconfirmed.' }
     $null = $sessions.Remove($Lane)
     if ($sessions.Count -eq 0 -and $null -ne $script:responseWatcher) {
         $script:responseWatcher.Dispose()

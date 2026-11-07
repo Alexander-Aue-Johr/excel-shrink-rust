@@ -334,3 +334,14 @@ JSON remains readable and migration never removes source documents or binary
 evidence. See `../visual-validation/sqlite-metadata.md` for activation, export
 and backup constraints. Diagnostic consolidation does not alter capture scope,
 image comparison, exclusion decisions or result reuse eligibility.
+
+### Resident exit confirmation
+
+Closing an owned Windows Job Object requests termination asynchronously. The
+resident launcher allows up to ten seconds, shared across all its clients, for
+the retained process handles to signal exit. Checks finish immediately when all
+clients exit. After the launcher finishes, the targeted host allows up to five
+additional seconds for its retained Excel handle. An unconfirmed exit remains a
+failure with explicit uncertainty; elapsed deadlines never imply successful
+cleanup. These bounds accommodate delayed teardown under load without adding a
+fixed sleep to ordinary closes.

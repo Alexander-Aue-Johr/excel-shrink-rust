@@ -26,6 +26,20 @@ foreach ($id in $clients.Keys) {
     Assert ($metrics[$id].exit_confirmed_unix_ms -gt 0) 'Exit confirmation time was not recorded.'
 }
 
+# Observed Excel teardown can exceed three seconds after the job is closed.
+# The default shared deadline must cover that delay without claiming early exit.
+$exitClock = [Diagnostics.Stopwatch]::StartNew()
+$delayedProcess = [pscustomobject]@{ clock=$exitClock }
+$delayedProcess | Add-Member ScriptMethod WaitForExit {
+    param($timeout)
+    return $this.clock.ElapsedMilliseconds -ge 3500
+}
+$clients = @{ one=@{ process=$delayedProcess } }
+$metrics = @{ one=@{} }
+$pending = @(Confirm-ResidentClientExit $clients $metrics)
+Assert ($pending.Count -eq 0) 'The default deadline rejected a delayed process exit.'
+Assert ($exitClock.ElapsedMilliseconds -ge 3500) 'Exit was reported before the process signalled.'
+
 $clients = @{}
 $metrics = @{}
 foreach ($id in 1..8) {
