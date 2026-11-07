@@ -200,6 +200,15 @@ honor this masking effect. Otherwise a borderless, unfilled row can disappear
 before the normal row-retention check runs. Without visible column borders,
 these otherwise redundant tail headers remain removable.
 
+Visible column borders also make stored heights of otherwise empty tail rows
+observable. Preserve those non-hidden rows when they have an `ht` attribute,
+including automatically sized rows without `customHeight`. Both the ordinary
+tail scan and the content-boundary shortcut apply this rule. The check uses the
+existing cached column-border flag, so worksheets without visible column borders
+do not receive an additional tail scan. Hidden rows and heightless redundant
+headers remain eligible for removal. This retains the existing row representation
+without generating cells across the bordered columns.
+
 Removing empty font cells can change Excel's automatic row height and text
 baseline. Default therefore keeps appropriate representatives even where no
 value is visible. Representatives can be tentative in fixed-height rows and

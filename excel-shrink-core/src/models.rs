@@ -450,6 +450,11 @@ impl ColumnRangeMap {
                 .is_some_and(Xf::applies_visible_fill_or_border)
         })
     }
+
+    /// Column borders make explicit row heights visible even in otherwise empty rows.
+    pub fn has_visible_column_borders(&self) -> bool {
+        self.has_visible_column_border
+    }
 }
 
 #[derive(Debug, Clone)]

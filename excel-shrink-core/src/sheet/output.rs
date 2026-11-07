@@ -709,7 +709,7 @@ fn cutoff_after_row_boundary(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
 ) -> usize {
-    let cutoff = cutoff_after_exact_row_reference(sheet_data, max_row)
+    let mut cutoff = cutoff_after_exact_row_reference(sheet_data, max_row)
         .map(|end| {
             extend_cutoff_to_visible_row_before_hidden_tail(
                 sheet_data,
@@ -721,6 +721,18 @@ fn cutoff_after_row_boundary(
         .unwrap_or_else(|| {
             scan_cutoff_after_row_boundary(sheet_data, max_row, params, &metrics.column_definitions)
         });
+
+    if metrics.column_definitions.has_visible_column_borders() {
+        let mut position = cutoff;
+        while let Some((row, end)) = next_row_after_cutoff(sheet_data, position) {
+            if !row_is_hidden(row)
+                && row_has_inherited_border_height(row, &metrics.column_definitions)
+            {
+                cutoff = end;
+            }
+            position = end;
+        }
+    }
 
     if tail_contains_content_cell(&sheet_data[cutoff..]) {
         metrics.tail_content_guard_triggered = true;
@@ -1009,7 +1021,20 @@ fn trailing_row_is_layout_only(
     columns: &ColumnRangeMap,
 ) -> bool {
     !row_has_visible_cell_anchor(row, params, columns)
-        && (row_is_hidden(row) || !row_has_visible_style(row, params, columns))
+        && (row_is_hidden(row)
+            || (!row_has_inherited_border_height(row, columns)
+                && !row_has_visible_style(row, params, columns)))
+}
+
+/// Removing a stored height can move horizontal borders inherited from columns.
+fn row_has_inherited_border_height(row: &[u8], columns: &ColumnRangeMap) -> bool {
+    if !columns.has_visible_column_borders() {
+        return false;
+    }
+    let Some(end) = find_byte_from(row, b'>', 0) else {
+        return true;
+    };
+    extract_attribute_value(&row[..end], b"ht=\"").is_some()
 }
 
 fn row_has_visible_cell_anchor(
@@ -1968,6 +1993,60 @@ r="A2"><v>42</v></c></row><row r="3"><c	r="A3"><f>1+1</f></c></row><row r="4"><c
 
         assert!(cleaned.contains(r#"r="1""#));
         assert!(!cleaned.contains(r#"r="999""#));
+    }
+
+    #[test]
+    fn inherited_column_borders_keep_visible_tail_heights_only() {
+        let border = Xf::builder()
+            .border_id(Some(1))
+            .apply_border(true)
+            .has_visible_border(true)
+            .has_fill_or_border(true)
+            .has_apply_fill_or_border(true)
+            .build_xf();
+        let params = params_with_styles(&[(1, border)]);
+        let mut metrics = CleanSheetMetrics::default();
+        metrics.column_definitions = crate::sheet::cols::process_cols_node(
+            br#"<col min="1" max="16384" style="1"/>"#,
+            &params,
+        );
+        for (tail, kept) in [
+            (r#"<row r="14" ht="12.75"/>"#, true),
+            (r#"<row r="14" ht="12.75" customHeight="1"/>"#, true),
+            (r#"<row r="14" hidden="1" ht="12.75"/>"#, false),
+            (r#"<row r="14"/>"#, false),
+        ] {
+            let xml = format!(r#"<row r="1"><c r="A1"><v>1</v></c></row>{tail}"#);
+            let result = super::trim_trailing_layout_only_rows(xml.as_bytes(), &params, &mut metrics);
+            assert_eq!(String::from_utf8_lossy(&result).contains(r#"r="14""#), kept);
+            metrics.tail_anchor_max_row = Some(1);
+            let result = super::trim_trailing_layout_only_rows(xml.as_bytes(), &params, &mut metrics);
+            assert_eq!(String::from_utf8_lossy(&result).contains(r#"r="14""#), kept);
+            metrics.tail_anchor_max_row = None;
+        }
+        metrics.column_definitions = crate::models::ColumnRangeMap::default();
+        let xml = br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="14" ht="12.75"/>"#;
+        let result = super::trim_trailing_layout_only_rows(xml, &params, &mut metrics);
+        assert!(!String::from_utf8_lossy(&result).contains(r#"r="14""#));
+    }
+
+    #[test]
+    fn build_clean_sheet_keeps_tail_height_with_inherited_column_borders() {
+        let border = Xf::builder()
+            .border_id(Some(1))
+            .apply_border(true)
+            .has_visible_border(true)
+            .has_fill_or_border(true)
+            .has_apply_fill_or_border(true)
+            .build_xf();
+        let params = params_with_styles(&[(1, border)]);
+        let mut sheet = preprocessed_with_sheet_data(
+            br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="14" ht="12.75"><c r="F14" s="1"/></row>"#,
+            None,
+        );
+        sheet.in_cols_node_output_chunks = br#"<col min="1" max="16384" style="1"/>"#.to_vec();
+        let cleaned = build_clean_sheet_xml(sheet, &params, false).unwrap();
+        assert!(String::from_utf8_lossy(&cleaned.xml).contains(r#"r="14""#));
     }
 
     #[test]
