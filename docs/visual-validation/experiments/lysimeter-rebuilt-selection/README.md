@@ -27,3 +27,26 @@ Effective heights and region geometry were measured through COM in the disposabl
 Set XML_DIAG_LEFT and XML_DIAG_RIGHT to retained rebuilt XLSX paths. Set XML_DIAG_OUTPUT to a writable JSON path and TEMP/TMP to the intended scratch volume. Then run cargo test -p excel-shrink-cli inspect_retained_state_selection -- --ignored --nocapture.
 
 The output distinguishes internal grid tiles, coalesced regions, CF decisions and XML change locations. Final image counts additionally require live geometry measurements. The local full test files and harnesses are retained under V:/excel-shrink-paper/external/excel-shrink-rust/.tmp/validation-temp/lysimeter-value-audit. Workbook SHA-256 identities and compact measurements are in results.json.
+
+## Native pipeline confirmation
+
+The complete production Office.js pipeline subsequently ran on the original and
+Default prepared inputs, rebuilding both in their existing Excel processes.
+It produced exactly **143 cell images per state**, with **zero cell differences**.
+Live height checks completed successfully. Chart dependency proofs excluded 34
+of 69 charts; the remaining 35 were captured per state, with zero chart
+differences. This confirms the earlier COM geometry plan through the normal
+native entry point.
+
+The full attempt took 264.679 seconds. Capture selection and transport accounted
+for 19.912 seconds and image comparison for 1.988 seconds. Other elapsed work
+includes opening, saving, XML attribution, rebuilding, heights and cleanup;
+these figures do not isolate all those phases. No end-to-end comparison against
+a simultaneous old-plan run is claimed. Geometry batches were 256, capture
+packages eight ranges with a 256 MP combined allowance. Individual image limits
+were unchanged. SQLite diagnostics were enabled.
+
+The discard-equal storage policy was also replayed against this native report.
+Contract validation retained the unchanged verdict and portable publishing
+exported no equal-image files. Compact native measurements are recorded in
+`native-results.json`.

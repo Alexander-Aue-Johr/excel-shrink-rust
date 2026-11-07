@@ -1,0 +1,28 @@
+{
+  "capture_policy": "targeted-content-grid-v9",
+  "execution_strategy": "paired-inplace-rebuild-v1",
+  "candidate_count": 143,
+  "capture_counts": {
+    "OR": 143,
+    "OR:charts": 35,
+    "SDR": 143,
+    "SDR:charts": 35
+  },
+  "timings_ms": {
+    "capture_selection_and_transport": 19912,
+    "image_comparisons": 1988
+  },
+  "image_comparison_statistics": {
+    "comparisons": 178,
+    "files_read": 356,
+    "decoded_images": 66,
+    "encoded_images_reused": 290,
+    "encoded_bytes_read": 79324786
+  },
+  "wall_seconds": 264.679,
+  "cell_differences": 0,
+  "chart_differences": 0,
+  "charts_dependency_excluded": 34,
+  "height_checks_complete": true,
+  "binary_sha256": "bc123ffbc2b2d1bd6b45598fa72241d7e0fd32030b29fffa1a2dfe96021e1d9a"
+}
