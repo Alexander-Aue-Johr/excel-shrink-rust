@@ -578,7 +578,7 @@ async def scroll_file_list(page, to_top: bool) -> tuple[int, int]:
     return await page.evaluate("""toTop => {
       const item = document.querySelector('[data-automationid="field-LinkFilename"]');
       let element = item?.parentElement;
-      while (element && element.scrollHeight <= element.clientHeight + 10) {
+      while (element && !/^(auto|scroll|overlay)$/.test(getComputedStyle(element).overflowY)) {
         element = element.parentElement;
       }
       if (!element) element = document.scrollingElement;

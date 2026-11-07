@@ -8,6 +8,33 @@ from .move_picker import open_destination, scan_destination
 
 
 class MovePickerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_scroll_and_snapshot_use_same_container_with_overflowing_inner_rows(self):
+        from playwright.async_api import async_playwright
+        from .runner import scroll_file_list
+        from .visible_batches import snapshot
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(channel="msedge", headless=True)
+            try:
+                page = await browser.new_page()
+                await page.set_content('''
+                    <div id="list" style="height:150px;overflow-y:auto">
+                      <div style="height:900px">
+                        <div style="height:20px;overflow:visible">
+                          <div style="height:80px" data-automationid="field-LinkFilename">folder</div>
+                        </div>
+                      </div>
+                    </div>
+                ''')
+                before = await snapshot(page)
+                position, _ = await scroll_file_list(page, to_top=False)
+                after = await snapshot(page)
+                self.assertGreater(position, 0)
+                self.assertEqual(after["scroll_top"], position)
+                self.assertNotEqual(before["scroll_top"], after["scroll_top"])
+            finally:
+                await browser.close()
+
     async def test_fractional_scroll_end_does_not_loop_indefinitely(self):
         picker, pane, target = MagicMock(), MagicMock(), MagicMock()
         picker.locator.return_value.first = pane

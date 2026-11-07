@@ -188,6 +188,7 @@ async def run_visible_batches(args) -> int:
     quiet_views = 0
     last_advance = None
     cohort = []
+    run_error = None
     try:
         with flow.ProgressStore(args.output_root.resolve() / identifier, identifier) as progress:
             flow.bind_worker(progress, args)
@@ -287,13 +288,16 @@ async def run_visible_batches(args) -> int:
             print(f"Visible run finished; checked {len(attempted)} workbooks in this invocation.", flush=True)
             return 1 if failed else 0
     except Exception as error:
+        run_error = error
+        print(f"Visible run failed: {type(error).__name__}: {error}", file=sys.stderr, flush=True)
         await flow.capture_failure(browser[2], args.output_root.resolve() / identifier,
                                    "visible-run-failure", error)
         raise
     finally:
         try:
             if getattr(args, "keep_browser_open", False) and args.headed and browser[1].pages:
-                print("Run finished. Browser stays open until you close its window.", flush=True)
+                message = "Run failed" if run_error is not None else "Run finished"
+                print(f"{message}. Browser stays open until you close its window.", flush=True)
                 await browser[1].wait_for_event("close", timeout=0)
         finally:
             await flow.close_browser(browser[0], browser[1])
