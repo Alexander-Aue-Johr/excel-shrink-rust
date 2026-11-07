@@ -108,4 +108,32 @@ function Clear-ExcelDiagnosticLogs {
     if ($result.free_disk_bytes -ge 2GB) { $result.warning = $null }
     [pscustomobject]$result
 }
-Export-ModuleMember -Function Clear-ExcelDiagnosticLogs
+function Clear-OfficeGraphicsCache {
+    <# .SYNOPSIS
+    Retires old graphics cache files only while Office is closed.
+    #>
+    param([string]$Root = (Join-Path $env:LOCALAPPDATA 'Microsoft/Windows/INetCache/Content.MSO'))
+    $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    if ([IO.Path]::GetFileName($rootPath) -ne 'Content.MSO' -or
+        [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($rootPath)) -ne 'INetCache') {
+        throw 'Graphics cleanup is restricted to INetCache\Content.MSO.'
+    }
+    $result = [ordered]@{root=$rootPath; removed_files=0; removed_bytes=[long]0; skipped_files=0; status='complete'}
+    if (Get-Process EXCEL,WINWORD,POWERPNT,OUTLOOK,MSACCESS,ONENOTE,MSPUB -ErrorAction SilentlyContinue) {
+        $result.status = 'office-running'
+        return [pscustomobject]$result
+    }
+    if (-not (Test-Path -LiteralPath $rootPath)) { return [pscustomobject]$result }
+    if ((Get-Item -LiteralPath $rootPath).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Graphics cache root is a reparse point.' }
+    if (-not ('ExcelDiagnosticFiles' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'ExcelDiagnosticFiles.cs') }
+    # Content.MSO files are direct children. Do not traverse nested directories.
+    foreach ($item in Get-ChildItem -LiteralPath $rootPath -File -Filter '*.tmp' -Force) {
+        $outcome = [ExcelDiagnosticFiles]::RemoveOfficeCacheFile($item.FullName, $rootPath, 3600)
+        if ($outcome -eq 'office-running') { $result.status = $outcome; break }
+        if ($outcome -eq 'removed') { $result.removed_files++; $result.removed_bytes += $item.Length }
+        else { $result.skipped_files++ }
+    }
+    [pscustomobject]$result
+}
+
+Export-ModuleMember -Function Clear-ExcelDiagnosticLogs,Clear-OfficeGraphicsCache

@@ -71,3 +71,21 @@ remain unassigned, and replacement of the same path.
 `tools/corpus-launcher/diagnostics-compression.tests.ps1` verifies SHA256 and length
 before/after compression, future ordinary and memory-mapped writes, protection of
 active files, allocation reporting and the per-pass limit.
+
+
+## Office graphics cache
+
+The run-owned cleanup helper checks the current user's
+`Microsoft/Windows/INetCache/Content.MSO` every five minutes and once after its
+runner exits. This also covers XLS conversion. A running Excel, Word,
+PowerPoint, Outlook, Access, OneNote or Publisher process defers the pass.
+Only direct-child `.tmp` files with creation and modification times at least
+one hour old are eligible. Each deletion rechecks Office processes, requires
+exclusive file access, rejects reparse points and verifies the resolved path.
+Deletion uses the verified file handle. Other extensions and subdirectories
+are retained. The helper's status includes `graphics_cache` outcomes.
+Continuous Office activity can defer cleanup until the final pass. Cleanup does
+not interrupt Office to create an idle interval.
+
+`tools/corpus-launcher/graphics-cache-cleanup.tests.ps1` verifies the running
+Office guard and, in an Office-free pass, age, sharing and root restrictions.

@@ -11,6 +11,38 @@ using Microsoft.Win32.SafeHandles;
 // both a departed writer and exclusive access to the exact file being inspected.
 public static class ExcelDiagnosticFiles
 {
+    // Retire only old cache files during an Office-free interval. Exclusive
+    // access and handle-based deletion protect a racing reader or path change.
+    public static string RemoveOfficeCacheFile(string path, string root, int minimumAgeSeconds)
+    {
+        foreach (string name in new[] { "EXCEL", "WINWORD", "POWERPNT", "OUTLOOK", "MSACCESS", "ONENOTE", "MSPUB" })
+        {
+            var processes = System.Diagnostics.Process.GetProcessesByName(name);
+            bool running = processes.Length != 0;
+            foreach (var process in processes) process.Dispose();
+            if (running) return "office-running";
+        }
+        using (var file = CreateFile(path, 0x80000000 | 0x00010000, 0, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero))
+        {
+            if (file.IsInvalid) return "locked-or-unreadable";
+            FileInformation info;
+            if (!GetFileInformationByHandle(file, out info) || (info.Attributes & 0x410) != 0) return "unsafe-path";
+            var resolved = new StringBuilder(32768);
+            uint length = GetFinalPathNameByHandle(file, resolved, (uint)resolved.Capacity, 0);
+            if (length == 0 || length >= resolved.Capacity) return "unsafe-path";
+            string actual = resolved.ToString();
+            if (actual.StartsWith(@"\\?\", StringComparison.Ordinal)) actual = actual.Substring(4);
+            if (!actual.StartsWith(root.TrimEnd('\\') + @"\", StringComparison.OrdinalIgnoreCase) ||
+                !String.Equals(Path.GetExtension(actual), ".tmp", StringComparison.OrdinalIgnoreCase)) return "unsafe-path";
+            DateTime cutoff = DateTime.UtcNow.AddSeconds(-minimumAgeSeconds);
+            if (DateTime.FromFileTimeUtc(ToLong(info.Written)) > cutoff ||
+                DateTime.FromFileTimeUtc(ToLong(info.Created)) > cutoff) return "recent";
+            var disposition = new FileDisposition { DeleteFile = true };
+            return SetFileInformationByHandle(file, 4, ref disposition, (uint)Marshal.SizeOf(typeof(FileDisposition)))
+                ? "removed" : "delete-failed";
+        }
+    }
+
     public sealed class Result
     {
         public string Outcome;
