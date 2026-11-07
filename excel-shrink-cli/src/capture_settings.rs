@@ -7,6 +7,15 @@ pub(crate) const DEFAULT_GEOMETRY_RANGES: usize = 64;
 pub(crate) const MAX_GEOMETRY_RANGES: usize = 4096;
 pub(crate) const DEFAULT_CAPTURE_RANGES: usize = 4;
 pub(crate) const MAX_CAPTURE_RANGES: usize = 64;
+pub(crate) const DEFAULT_CAPTURE_BATCH_MEGAPIXELS: usize = 32;
+pub(crate) const MAX_CAPTURE_BATCH_MEGAPIXELS: usize = 256;
+
+/// A package may hold several individually bounded images; this is not a per-image allowance.
+pub(crate) fn capture_batch_megapixels(value: &Value) -> Result<usize> {
+    let budget = batch_size(value, DEFAULT_CAPTURE_BATCH_MEGAPIXELS, MAX_CAPTURE_BATCH_MEGAPIXELS)?;
+    ensure!(budget >= DEFAULT_CAPTURE_BATCH_MEGAPIXELS, "Capture package budget must be 32..=256 MP");
+    Ok(budget)
+}
 
 /// Validate the same numeric contract at API admission and before worker dispatch.
 pub(crate) fn batch_size(value: &Value, default: usize, maximum: usize) -> Result<usize> {
@@ -46,6 +55,18 @@ pub(crate) fn read_batch_size(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn capture_pixel_budget_is_independent_and_bounded() -> Result<()> {
+        assert_eq!(capture_batch_megapixels(&Value::Null)?, 32);
+        for allowed in [32, 64, 128, 256] {
+            assert_eq!(capture_batch_megapixels(&json!(allowed))?, allowed);
+        }
+        for invalid in [json!(0), json!(31), json!(257), json!(64.5), json!("64")] {
+            assert!(capture_batch_megapixels(&invalid).is_err());
+        }
+        Ok(())
+    }
 
     #[test]
     fn independent_settings_are_reloaded_without_restarting_a_comparison() -> Result<()> {

@@ -50,6 +50,22 @@ test('oversized combined captures fail before queuing any images', async () => {
     ranges: [{range:'A1:P128'}, {range:'A129:P256'}]}, action => action(context)), /combined pixel budget/);
 });
 
+test('explicit package budget permits multiple individually bounded large images', async () => {
+  let images = 0;
+  const context = {workbook: {worksheets: {getItem: () => ({getRange: () => ({
+    top: 0, left: 0, width: 2500, height: 2500, load() {},
+    getImage() {images++; return {value: 'image'};}
+  })})}}, sync: async () => {}};
+  const request = {kind: 'capture_many', sheet: 'Data', batch_megapixels: 64,
+    ranges: [{range: 'A1'}, {range: 'A2'}]};
+  await globalThis.TargetedDiagnosis.run(request, action => action(context));
+  assert.equal(images, 2);
+  for (const invalid of [0, 31, 257, 32.5, '64']) {
+    await assert.rejects(globalThis.TargetedDiagnosis.run({...request, batch_megapixels: invalid},
+      action => action(context)), /package budget/);
+  }
+});
+
 test('geometry batches load every range before one synchronization', async () => {
   let synchronized = false;
   let synchronizations = 0;

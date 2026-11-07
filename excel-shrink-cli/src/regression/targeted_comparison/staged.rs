@@ -548,7 +548,13 @@ impl Workflow<'_, '_> {
                 crate::capture_settings::DEFAULT_CAPTURE_RANGES,
                 crate::capture_settings::MAX_CAPTURE_RANGES,
             )?;
-            let jobs = self.next_capture_jobs(&pending, limit)?;
+            let megapixels = crate::capture_settings::read_batch_size(
+                controls.as_deref(), "capture_batch_megapixels",
+                crate::capture_settings::DEFAULT_CAPTURE_BATCH_MEGAPIXELS,
+                crate::capture_settings::MAX_CAPTURE_BATCH_MEGAPIXELS,
+            )?;
+            let megapixels = crate::capture_settings::capture_batch_megapixels(&serde_json::json!(megapixels))?;
+            let jobs = self.next_capture_jobs(&pending, limit, megapixels as u64 * 1_000_000)?;
             if jobs.is_empty() {
                 break;
             }
@@ -579,7 +585,7 @@ impl Workflow<'_, '_> {
                     .excel
                     .as_mut()
                     .context("Excel host missing")?
-                    .capture_ranges(batch, &core_ranges, &self.comparison.telemetry)?;
+                    .capture_ranges(batch, &core_ranges, megapixels, &self.comparison.telemetry)?;
                 for ((id, candidate, path), geometry) in batch.iter().zip(geometry) {
                     self.states.get_mut(id).unwrap().captures.insert(
                         candidate.clone(),
@@ -640,11 +646,12 @@ impl Workflow<'_, '_> {
             .map(|root| root.join("control.json"))
     }
 
-    /// Keep image memory bounded by the existing per-image pixel allowance for each package.
+    /// Bound each lane's package independently from the unchanged per-image allowance.
     fn next_capture_jobs(
         &self,
         pending: &BTreeMap<LaneId, VecDeque<Candidate>>,
         limit: usize,
+        pixel_budget: u64,
     ) -> Result<Vec<(LaneId, Candidate, PathBuf)>> {
         let mut jobs = Vec::new();
         for (&id, queue) in pending {
@@ -662,7 +669,7 @@ impl Workflow<'_, '_> {
                     .get(candidate)
                     .context("Capture package has no measured geometry")?;
                 let next_pixels = geometry.estimated_pixels();
-                if count > 0 && pixels + next_pixels > capture_layout::MAX_PIXELS {
+                if count > 0 && pixels + next_pixels > pixel_budget {
                     break;
                 }
                 pixels += next_pixels;

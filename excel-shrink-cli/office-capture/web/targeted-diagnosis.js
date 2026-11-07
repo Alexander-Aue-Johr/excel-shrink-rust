@@ -17,6 +17,10 @@
   /** Queue geometry together, then render only nonempty ranges in one image sync. */
   async function captureRanges(context, command) {
     const requests = command.kind === 'capture_many' ? command.ranges : [command];
+    const megapixels = command.batch_megapixels ?? 32;
+    if (!Number.isInteger(megapixels) || megapixels < 32 || megapixels > 256) {
+      throw new Error('Capture package budget must be 32..256 MP');
+    }
     if (!Array.isArray(requests) || requests.length < 1 || requests.length > 64 ||
         requests.some(item => typeof item.range !== 'string' || !item.range)) {
       throw new Error('Capture batch requires 1..64 ranges');
@@ -43,9 +47,9 @@
       if (!empty) pixels += (Math.ceil(range.width * 2) + 2) * (Math.ceil(range.height * 2) + 2);
       return {request, range, geometry, empty};
     });
-    // Single-image exports retain their existing validation in Rust. Multiple
-    // image results share that same conservative decoded-pixel memory budget.
-    if (requests.length > 1 && pixels > 32000000) throw new Error('Capture batch exceeds the combined pixel budget');
+    // Individual exports keep their native image limits. This allowance bounds
+    // the sum of independently rendered images waiting in one synchronization.
+    if (requests.length > 1 && pixels > megapixels * 1000000) throw new Error('Capture batch exceeds the combined pixel budget');
     const images = captures.map(item => item.empty ? null : item.range.getImage());
     if (images.some(Boolean)) await context.sync();
     return captures.map((item, index) => item.empty

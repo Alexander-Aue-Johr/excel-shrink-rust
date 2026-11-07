@@ -255,6 +255,7 @@ impl ExcelHost {
         &mut self,
         jobs: &[(LaneId, super::Candidate, std::path::PathBuf)],
         core_ranges: &std::collections::BTreeMap<super::Candidate, String>,
+        megapixels: usize,
         telemetry: &Telemetry,
     ) -> Result<Vec<Value>> {
         let mut lanes = std::collections::BTreeMap::<LaneId, Vec<usize>>::new();
@@ -281,7 +282,8 @@ impl ExcelHost {
                 })
                 .collect();
             commands.push(
-                json!({"kind":"capture_many", "lane":lane.key(), "sheet":sheet, "ranges":ranges}),
+                json!({"kind":"capture_many", "lane":lane.key(), "sheet":sheet, "ranges":ranges,
+                    "batch_megapixels":megapixels}),
             );
         }
         let response = self.call(json!({"kind":"capture_batch", "jobs":commands}), telemetry)?;

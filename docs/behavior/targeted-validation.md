@@ -855,3 +855,13 @@ charts). Result-contract validation before and after retention agreed in each
 case. Portable publishing exported no equal images in the equal cases and
 retained differing evidence. Deletion occurs after publication, so failure
 before publication preserves the original image files.
+
+### Capture package pixel allowance
+
+`capture_batch_megapixels` is an independent live API control, from 32 to 256 MP
+per Excel lane and synchronization package. Its default is 32. Range-count and
+geometry-batch controls remain independent. Increasing the combined package
+allowance never increases the 32 MP / 30,000-pixel individual image limits.
+Both host planning and the Office.js command validate the selected package
+budget. See the real-workbook experiment in
+`docs/visual-validation/experiments/capture-package-pixels`.

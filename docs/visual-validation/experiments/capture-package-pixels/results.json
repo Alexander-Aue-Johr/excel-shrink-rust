@@ -1,0 +1,177 @@
+{
+  "source": "V:\\excel-shrink-paper\\external\\excel-shrink-rust\\.tmp\\validation-temp\\lysimeter-value-audit\\original.rebuilt-test.xlsx",
+  "sheet": "2020 E Cotton Lys 15-Min",
+  "binary_sha256": "23714fd4daa92292f7a4609028fdf153ee4c5037330409930536de158f30744f",
+  "individual_estimated_pixels": [
+    29196958,
+    29196958,
+    29196958,
+    29196958,
+    29196958,
+    29196958,
+    29196958,
+    29196958
+  ],
+  "results": [
+    {
+      "budget_mp": 32,
+      "packages": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "wall_seconds_including_rgba_verification": 5.66938699997263,
+      "all_pixels_equal": true,
+      "sampled_job_bytes": 794894336
+    },
+    {
+      "budget_mp": 64,
+      "packages": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "wall_seconds_including_rgba_verification": 5.451118400029372,
+      "all_pixels_equal": true,
+      "sampled_job_bytes": 730738688
+    },
+    {
+      "budget_mp": 128,
+      "packages": [
+        4,
+        4
+      ],
+      "wall_seconds_including_rgba_verification": 4.949844099988695,
+      "all_pixels_equal": true,
+      "sampled_job_bytes": 750473216
+    },
+    {
+      "budget_mp": 256,
+      "packages": [
+        8
+      ],
+      "wall_seconds_including_rgba_verification": 4.740073199965991,
+      "all_pixels_equal": true,
+      "sampled_job_bytes": 763666432
+    },
+    {
+      "budget_mp": 256,
+      "packages": [
+        8
+      ],
+      "wall_seconds_including_rgba_verification": 4.742380500014406,
+      "all_pixels_equal": true,
+      "sampled_job_bytes": 846082048
+    },
+    {
+      "budget_mp": 128,
+      "packages": [
+        4,
+        4
+      ],
+      "wall_seconds_including_rgba_verification": 5.015746499993838,
+      "all_pixels_equal": true,
+      "sampled_job_bytes": 865026048
+    },
+    {
+      "budget_mp": 64,
+      "packages": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "wall_seconds_including_rgba_verification": 5.5890774999861605,
+      "all_pixels_equal": true,
+      "sampled_job_bytes": 798400512
+    },
+    {
+      "budget_mp": 32,
+      "packages": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "wall_seconds_including_rgba_verification": 5.497707300004549,
+      "all_pixels_equal": true,
+      "sampled_job_bytes": 769589248
+    }
+  ],
+  "images": [
+    {
+      "range": "A32816:BU32953",
+      "size": [
+        4699,
+        2761
+      ],
+      "rgba_sha256": "77c6faec7c59566a0642247d5311ac45bd945611120ad4726b449e5e3e020b04"
+    },
+    {
+      "range": "A32954:BU33091",
+      "size": [
+        4699,
+        2761
+      ],
+      "rgba_sha256": "255c8f89f503ccc08cf91a2d7330c97ea81d8e8ffc7e3572bc2ab321ed96d41e"
+    },
+    {
+      "range": "A33092:BU33229",
+      "size": [
+        4699,
+        2761
+      ],
+      "rgba_sha256": "11e12ab95d122bb655029195c00355e78d975ec3d6d779b24fa11e50735c1789"
+    },
+    {
+      "range": "A33230:BU33367",
+      "size": [
+        4699,
+        2761
+      ],
+      "rgba_sha256": "3a9b48264d8b102d4742014bcf669f469e0bf8999b513d449df2a5b47da3ea9f"
+    },
+    {
+      "range": "A33368:BU33505",
+      "size": [
+        4699,
+        2761
+      ],
+      "rgba_sha256": "b24902dc2b32ef7f8f085431cd76443c8b81db011d8de9ef2f7f8e3693059faf"
+    },
+    {
+      "range": "A33506:BU33643",
+      "size": [
+        4699,
+        2761
+      ],
+      "rgba_sha256": "78690c20ad7dffbb2fb96d069d78406cdaedfa5a9a91b9fe1d96ab148cfb6491"
+    },
+    {
+      "range": "A33644:BU33781",
+      "size": [
+        4699,
+        2761
+      ],
+      "rgba_sha256": "52fcca93a92bfb5483442d7e0dad96243de900d8a401a05a7b50b12b517bf9cd"
+    },
+    {
+      "range": "A33782:BU33919",
+      "size": [
+        4699,
+        2761
+      ],
+      "rgba_sha256": "b29f70df36f9027bd4a163bbd358288265a0dddee64ca44d9382b0ca47f8ed68"
+    }
+  ]
+}

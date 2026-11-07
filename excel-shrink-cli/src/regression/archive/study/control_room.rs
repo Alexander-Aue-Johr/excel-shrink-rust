@@ -59,6 +59,8 @@ pub(super) struct Controls {
     pub geometry_batch_ranges: usize,
     #[serde(default = "default_capture_ranges")]
     pub capture_batch_ranges: usize,
+    #[serde(default = "default_capture_batch_megapixels")]
+    pub capture_batch_megapixels: usize,
     #[serde(default)]
     pub capture_context_tiles: u32,
     #[serde(default = "default_tall_sheet_threshold")]
@@ -133,6 +135,9 @@ fn default_geometry_ranges() -> usize {
 fn default_capture_ranges() -> usize {
     crate::capture_settings::DEFAULT_CAPTURE_RANGES
 }
+fn default_capture_batch_megapixels() -> usize {
+    crate::capture_settings::DEFAULT_CAPTURE_BATCH_MEGAPIXELS
+}
 fn default_tall_sheet_threshold() -> u32 {
     40
 }
@@ -172,6 +177,7 @@ impl Controls {
             "sweep processes must be positive"
         );
         validate_system_reserve_mib(value.system_reserve_mib)?;
+        crate::capture_settings::capture_batch_megapixels(&json!(value.capture_batch_megapixels))?;
         crate::capture_settings::batch_size(
             &json!(value.geometry_batch_ranges),
             default_geometry_ranges(),
@@ -426,6 +432,9 @@ impl Room {
                 .as_ref()
                 .map(|old| old.capture_batch_ranges)
                 .unwrap_or_else(default_capture_ranges),
+            capture_batch_megapixels: previous_controls.as_ref()
+                .map(|old| old.capture_batch_megapixels)
+                .unwrap_or_else(default_capture_batch_megapixels),
             // Explicit launcher settings override the previous run once;
             // subsequent group snapshots use the Observatory's control file.
             tall_sheet_threshold: tall_sheet_setting(

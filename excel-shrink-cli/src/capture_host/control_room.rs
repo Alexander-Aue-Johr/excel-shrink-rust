@@ -1519,6 +1519,7 @@ fn defaults() -> Value {
         "capture_batch_tiles": 1, "capture_context_tiles": 0, "capture_transport": "live-images", "hide_excel": false,
         "geometry_batch_ranges": crate::capture_settings::DEFAULT_GEOMETRY_RANGES,
         "capture_batch_ranges": crate::capture_settings::DEFAULT_CAPTURE_RANGES,
+        "capture_batch_megapixels": crate::capture_settings::DEFAULT_CAPTURE_BATCH_MEGAPIXELS,
         "tall_sheet_threshold": 40, "tall_sheet_edge_tiles": 2,
         "crc_equal_sheet_threshold_mib": 256})
 }
@@ -1540,6 +1541,9 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
         ensure!(known.get(key).is_some(), "Unknown control '{key}'.");
         if matches!(key.as_str(), "paused" | "hide_excel") {
             ensure!(value.is_boolean(), "{key} must be a boolean.");
+        } else if key == "capture_batch_megapixels" {
+            ensure!(!value.is_null(), "Capture package budget must be an integer");
+            crate::capture_settings::capture_batch_megapixels(value)?;
         } else if key == "geometry_batch_ranges" || key == "capture_batch_ranges" {
             let maximum = if key == "geometry_batch_ranges" {
                 crate::capture_settings::MAX_GEOMETRY_RANGES
@@ -1629,6 +1633,12 @@ mod tests {
         let next = merge_controls(&current, &json!({"capture_batch_ranges":2}))?;
         assert_eq!(next["geometry_batch_ranges"], 256);
         assert_eq!(next["capture_batch_ranges"], 2);
+        let larger = merge_controls(&next, &json!({"capture_batch_megapixels":128}))?;
+        assert_eq!(larger["capture_batch_megapixels"], 128);
+        assert_eq!(larger["capture_batch_ranges"], 2);
+        for invalid in [json!(31), json!(257), json!(64.5), Value::Null] {
+            assert!(merge_controls(&next, &json!({"capture_batch_megapixels":invalid})).is_err());
+        }
         for invalid in [json!(0), json!(-1), json!(1.5), Value::Null, json!(65)] {
             assert!(merge_controls(&current, &json!({"capture_batch_ranges":invalid})).is_err());
         }
