@@ -1,0 +1,30 @@
+{
+  "date": "2026-11-07",
+  "ranges": 64,
+  "order": "scalar, batch, batch, scalar",
+  "all_geometries_equal": true,
+  "measurements": [
+    {
+      "mode": "scalar",
+      "ranges": 64,
+      "wall_seconds": 16.34299999999348
+    },
+    {
+      "mode": "batch",
+      "ranges": 64,
+      "wall_seconds": 0.25
+    },
+    {
+      "mode": "batch",
+      "ranges": 64,
+      "wall_seconds": 0.25
+    },
+    {
+      "mode": "scalar",
+      "ranges": 64,
+      "wall_seconds": 16.25
+    }
+  ],
+  "binary_sha256": "71cb6758a0f79b9318e64e18b6b6c7d8db27bd0602b1cfa298dec6f9687d153c",
+  "scope": "Resident command round trips and Office.js geometry reads; excludes startup and image capture."
+}
