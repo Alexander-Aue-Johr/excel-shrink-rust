@@ -127,7 +127,7 @@ function Clear-OfficeGraphicsCache {
     if ((Get-Item -LiteralPath $rootPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Graphics cache root is a reparse point.' }
     if (-not ('ExcelDiagnosticFiles' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'ExcelDiagnosticFiles.cs') }
     # Content.MSO files are direct children. Do not traverse nested directories.
-    foreach ($item in Get-ChildItem -LiteralPath $rootPath -File -Filter '*.tmp' -Force) {
+    foreach ($item in Get-ChildItem -LiteralPath $rootPath -File -Force) {
         $outcome = [ExcelDiagnosticFiles]::RemoveOfficeCacheFile($item.FullName, $rootPath, 3600)
         if ($outcome -eq 'office-running') { $result.status = $outcome; break }
         if ($outcome -eq 'removed') { $result.removed_files++; $result.removed_bytes += $item.Length }

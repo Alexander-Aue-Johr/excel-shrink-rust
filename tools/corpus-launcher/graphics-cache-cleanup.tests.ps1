@@ -6,9 +6,10 @@ $root = Join-Path $testBase ('graphics-cache-test-' + [Guid]::NewGuid().ToString
 $old = Join-Path $root 'old.tmp'
 $fresh = Join-Path $root 'fresh.tmp'
 $locked = Join-Path $root 'locked.tmp'
-$other = Join-Path $root 'keep.png'
-foreach ($path in @($old, $fresh, $locked, $other)) { [IO.File]::WriteAllText($path, 'fixture') }
-foreach ($path in @($old, $locked, $other)) {
+$other = Join-Path $root 'keep.txt'
+$graphic = Join-Path $root 'old.emf'
+foreach ($path in @($old, $fresh, $locked, $other, $graphic)) { [IO.File]::WriteAllText($path, 'fixture') }
+foreach ($path in @($old, $locked, $other, $graphic)) {
     [IO.File]::SetCreationTimeUtc($path, [DateTime]::UtcNow.AddHours(-2))
     [IO.File]::SetLastWriteTimeUtc($path, [DateTime]::UtcNow.AddHours(-2))
 }
@@ -20,7 +21,7 @@ try {
         'PASS: running Office prevents graphics cache cleanup.'
         return
     }
-    if ($result.removed_files -ne 1 -or (Test-Path -LiteralPath $old)) { throw 'Old cache file was not retired.' }
+    if ($result.removed_files -ne 2 -or (Test-Path -LiteralPath $old) -or (Test-Path -LiteralPath $graphic)) { throw 'Old cache files were not retired.' }
     foreach ($path in @($fresh, $locked, $other)) {
         if (-not (Test-Path -LiteralPath $path)) { throw "Protected fixture removed: $path" }
     }

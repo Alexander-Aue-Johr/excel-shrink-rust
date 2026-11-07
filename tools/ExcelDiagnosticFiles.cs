@@ -32,8 +32,9 @@ public static class ExcelDiagnosticFiles
             if (length == 0 || length >= resolved.Capacity) return "unsafe-path";
             string actual = resolved.ToString();
             if (actual.StartsWith(@"\\?\", StringComparison.Ordinal)) actual = actual.Substring(4);
+            string[] extensions = { ".tmp", ".emf", ".wmf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff" };
             if (!actual.StartsWith(root.TrimEnd('\\') + @"\", StringComparison.OrdinalIgnoreCase) ||
-                !String.Equals(Path.GetExtension(actual), ".tmp", StringComparison.OrdinalIgnoreCase)) return "unsafe-path";
+                Array.IndexOf(extensions, Path.GetExtension(actual).ToLowerInvariant()) < 0) return "unsafe-path";
             DateTime cutoff = DateTime.UtcNow.AddSeconds(-minimumAgeSeconds);
             if (DateTime.FromFileTimeUtc(ToLong(info.Written)) > cutoff ||
                 DateTime.FromFileTimeUtc(ToLong(info.Created)) > cutoff) return "recent";

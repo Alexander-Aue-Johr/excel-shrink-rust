@@ -79,7 +79,8 @@ The run-owned cleanup helper checks the current user's
 `Microsoft/Windows/INetCache/Content.MSO` every five minutes and once after its
 runner exits. This also covers XLS conversion. A running Excel, Word,
 PowerPoint, Outlook, Access, OneNote or Publisher process defers the pass.
-Only direct-child `.tmp` files with creation and modification times at least
+Only direct-child temporary and graphics files (`.tmp`, `.emf`, `.wmf`, `.png`,
+`.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`) with creation and modification times at least
 one hour old are eligible. Each deletion rechecks Office processes, requires
 exclusive file access, rejects reparse points and verifies the resolved path.
 Deletion uses the verified file handle. Other extensions and subdirectories
