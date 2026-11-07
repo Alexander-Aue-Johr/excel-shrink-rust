@@ -632,18 +632,32 @@ fn terminate_process_by_pid(pid: u32) {
 }
 
 fn find_power_shell() -> Option<&'static str> {
-    for candidate in ["powershell.exe", "pwsh", "powershell"] {
-        if Command::new(candidate)
-            .arg("-NoProfile")
-            .arg("-Command")
-            .arg("$PSVersionTable.PSVersion.ToString()")
-            .output()
-            .is_ok_and(|output| output.status.success())
-        {
-            return Some(candidate);
-        }
+    #[cfg(windows)]
+    {
+        // Native Excel automation uses inbox PowerShell. Probing its version in
+        // another process for every workbook adds an unnecessary CLR startup.
+        static SHELL: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+        return SHELL.get_or_init(|| {
+            let root = std::env::var_os("SystemRoot")?;
+            let path = PathBuf::from(root).join("System32/WindowsPowerShell/v1.0/powershell.exe");
+            path.is_file().then(|| path.to_string_lossy().into_owned())
+        }).as_deref();
     }
-    None
+    #[cfg(not(windows))]
+    {
+        for candidate in ["powershell.exe", "pwsh", "powershell"] {
+            if Command::new(candidate)
+                .arg("-NoProfile")
+                .arg("-Command")
+                .arg("$PSVersionTable.PSVersion.ToString()")
+                .output()
+                .is_ok_and(|output| output.status.success())
+            {
+                return Some(candidate);
+            }
+        }
+        None
+    }
 }
 
 pub(super) fn power_shell_path(path: &Path) -> anyhow::Result<String> {
