@@ -9,6 +9,14 @@ mod bounded_process;
 
 const POLICY: &str = crate::regression::targeted_comparison::CAPTURE_POLICY;
 
+/// Historical full-chart runs remain reusable. An explicit conservative request cannot reuse exclusions.
+pub(in crate::regression::archive::study) fn matches_chart_mode(
+    record: &Value, mode: crate::regression::targeted_comparison::ChartCaptureMode,
+) -> bool {
+    mode != crate::regression::targeted_comparison::ChartCaptureMode::Conservative
+        || record["targeted_comparison"]["chart_capture_mode"] != "deterministic"
+}
+
 /// A targeted result completes this selection policy, never a whole-sheet visual certificate.
 pub(in crate::regression::archive::study) fn complete(
     record: &Value,
@@ -53,8 +61,10 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
     fs::create_dir_all(&group)?;
     record["targeted_comparison"] = json!({"policy":POLICY,"status":"running",
         "skip_check_performance":skip,"execution_strategy":crate::regression::targeted_comparison::EXECUTION_STRATEGY,"report_directory":directory});
+    record["targeted_comparison"]["chart_capture_mode"] = json!(job.run_manifest.as_ref()
+        .and_then(|run| run["chart_capture_mode"].as_str()).unwrap_or("deterministic"));
     record["checks_complete"] = json!(false);
-    record["validation_scope"] = json!("XML-selected content regions and all charts; exterior formatting-only regions intentionally excluded");
+    record["validation_scope"] = json!("XML-selected content regions; charts captured unless dependencies are proven unchanged; exterior formatting-only regions intentionally excluded");
     write_record(&job.record, record)?;
     work_state::event(
         "comparing",
@@ -85,6 +95,8 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
         .arg(&directory)
         .arg("-ObservatoryGroup")
         .arg(&group)
+        .arg("-ChartCaptureMode")
+        .arg(job.run_manifest.as_ref().and_then(|run| run["chart_capture_mode"].as_str()).unwrap_or("deterministic"))
         .arg("-OperationTimeoutSeconds")
         .arg(std::env::var("EXCEL_SHRINK_CAPTURE_STARTUP_SECONDS").unwrap_or_else(|_| "120".into()))
         .env("EXCEL_SHRINK_TARGETED_WORKBOOK_LABEL", &job.name)
@@ -356,6 +368,13 @@ mod tests {
     }
     #[test]
     fn resume_requires_matching_strategy_and_requested_performance_lane() {
+        use crate::regression::targeted_comparison::ChartCaptureMode;
+        let mut chart_record = json!({"targeted_comparison":{"chart_capture_mode":"deterministic"}});
+        assert!(matches_chart_mode(&chart_record, ChartCaptureMode::Deterministic));
+        assert!(!matches_chart_mode(&chart_record, ChartCaptureMode::Conservative));
+        chart_record["targeted_comparison"]["chart_capture_mode"] = json!("conservative");
+        assert!(matches_chart_mode(&chart_record, ChartCaptureMode::Deterministic));
+        assert!(matches_chart_mode(&chart_record, ChartCaptureMode::Conservative));
         let mut record = json!({"complete":true,"status":"unchanged"});
         assert!(!complete(&record, false));
         record["targeted_comparison"] = json!({"policy":POLICY,"status":"completed_with_limitations","skip_check_performance":false,"execution_strategy":crate::regression::targeted_comparison::EXECUTION_STRATEGY});

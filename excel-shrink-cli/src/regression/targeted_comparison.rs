@@ -4,6 +4,8 @@ mod capture_layout;
 mod cell_stream;
 mod change_evidence;
 mod charts;
+mod chart_dependencies;
+pub(in crate::regression) use chart_dependencies::Mode as ChartCaptureMode;
 mod check_performance;
 mod conditional_formatting;
 mod content_bounds;
@@ -82,6 +84,9 @@ pub(crate) struct Args {
     /// Run capture requests serially for diagnostics instead of across open Excel states.
     #[arg(long)]
     serial_captures: bool,
+    /// Capture every chart, or exclude only charts with proven unchanged dependencies.
+    #[arg(long, value_enum, default_value_t = chart_dependencies::Mode::Deterministic)]
+    chart_capture_mode: chart_dependencies::Mode,
     /// Generate reusable Excel controls and measurements without running visual comparisons.
     #[arg(long)]
     prepare_artifacts_only: bool,
@@ -120,6 +125,7 @@ struct Report {
     capture_policy: &'static str,
     execution_strategy: &'static str,
     capture_partition: &'static str,
+    chart_capture_mode: chart_dependencies::Mode,
     input_identity: execution_plan::InputIdentity,
     state_decisions: BTreeMap<LaneId, execution_plan::StateDecision>,
     rebuild_checks: BTreeMap<LaneId, execution_plan::RebuildCheck>,
@@ -133,6 +139,7 @@ struct Report {
     transitions: Vec<xml_changes::Transition>,
     height_checks: Vec<heights::HeightCheck>,
     conditional_formatting: Vec<conditional_formatting::Check>,
+    chart_dependencies: Vec<chart_dependencies::Check>,
     comparisons: Vec<staged::VisualComparison>,
     formula_diagnostics: Value,
     candidate_count: usize,
@@ -215,6 +222,7 @@ impl<'a> Comparison<'a> {
             report: {
                 let mut report = new_report();
                 report.input_identity = input_identity;
+                report.chart_capture_mode = args.chart_capture_mode;
                 if !args.skip_check_performance {
                     report.check_performance = "pending";
                 }

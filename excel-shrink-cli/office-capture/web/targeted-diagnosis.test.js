@@ -2,6 +2,21 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 require('./targeted-diagnosis.js');
 
+test('chart inventory reads live geometry without rendering any images', async () => {
+  let syncs = 0;
+  const chart = {name: 'Chart 1', top: 10, left: 20, width: 400, height: 200,
+    getImage() {assert.fail('Inventory must not render');}};
+  const sheets = {items: [{name: 'Data', charts: {items: [chart], load(properties) {
+    assert.equal(syncs, 1);
+    assert.equal(properties, 'items/name,items/top,items/left,items/width,items/height');
+  }}}], load() {assert.equal(syncs, 0);}};
+  const context = {workbook: {worksheets: sheets}, sync: async () => {syncs++;}};
+  const result = await globalThis.TargetedDiagnosis.run({kind: 'charts'}, action => action(context));
+  assert.equal(syncs, 2);
+  assert.deepEqual(result.charts, [{sheet: 'Data', name: 'Chart 1', index: 0,
+    geometry: {top: 10, left: 20, width: 400, height: 200}}]);
+});
+
 test('multiple captures share two syncs and preserve zero-area observations and order', async () => {
   let syncs = 0;
   const reads = [];

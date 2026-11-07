@@ -117,12 +117,13 @@
         const sheets = context.workbook.worksheets;
         sheets.load('items/name');
         await context.sync();
-        for (const sheet of sheets.items) sheet.charts.load('items/name');
+        for (const sheet of sheets.items) sheet.charts.load('items/name,items/top,items/left,items/width,items/height');
         await context.sync();
         const charts = sheets.items.flatMap(sheet => sheet.charts.items.map((chart, index) => ({
           sheet: sheet.name,
           name: chart.name,
           index,
+          geometry: {top: chart.top, left: chart.left, width: chart.width, height: chart.height},
         })));
         return {charts};
       }

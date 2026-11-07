@@ -31,6 +31,7 @@ pub(crate) fn run(input: InspectArgs) -> Result<()> {
         skip_check_performance: true,
             check_performance: false,
         serial_captures: false,
+        chart_capture_mode: Default::default(),
         prepare_artifacts_only: false,
     };
     let mut comparison = Comparison::prepare(&args)?;

@@ -487,8 +487,37 @@ backfill ends. Preview generation and retention follow the full-resolution verdi
 
 ## V10. Charts and other objects
 
-Capture every inventoried embedded chart and standalone chart sheet in every
-retained state, regardless of cell candidates. Embedded charts use Office.js.
+Consider every inventoried embedded chart and standalone chart sheet independently
+of cell candidates. `--chart-capture-mode deterministic` is the default. It skips
+an embedded chart only when its chart XML and caches, static package dependencies,
+referenced cells and styles, source layout and visibility, supported CF inputs,
+and complete live chart geometry are unchanged. A cache alone is insufficient.
+Source references are checked against complete worksheet cell streams, including
+coordinates outside the normal worksheet capture envelope.
+
+The first supported references are explicit same-workbook A1 cells and finite
+rectangles, including quoted sheet names and absolute coordinates. Defined names,
+external links, PivotCharts, user-shape dependencies, unknown extensions or package
+features, incomplete geometry and ambiguous object names retain captures. The
+recognized static extension payloads are chart unique IDs and `dispNaAsBlank`.
+Other charts in a workbook may also retain captures when a shared package
+dependency cannot be proved unchanged.
+
+Every actual exclusion has `dependencies_unchanged=true`, explicit
+`unchanged-chart-dependencies` rendering states and `pixels_compared=false`.
+`chart_dependencies` retains per-pair decisions, reasons and reference counts.
+The result contract requires a matching dependency receipt and identical measured
+geometry. A state shared by multiple pairs skips only charts proved unchanged
+for every pair. The Observatory reports dependency exclusions separately.
+
+`--chart-capture-mode conservative` exports all charts and can be supplied to
+both `regression targeted-compare` and `regression study`. The private-desktop
+wrapper accepts `-ChartCaptureMode`. The corpus launcher configuration accepts
+`settings.chart_capture_mode`. The setting is recorded in run provenance and
+reports. Existing full-chart results remain reusable in deterministic mode.
+An explicit conservative request rechecks records produced in deterministic mode.
+
+Charts requiring images use Office.js for embedded charts.
 Standalone chart sheets use a COM export fallback bound to the existing owned
 Excel instance and private desktop, not another measurement-only Excel process.
 

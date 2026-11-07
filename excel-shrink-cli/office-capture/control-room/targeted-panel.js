@@ -167,6 +167,9 @@ function createComparisonCard() {
       explanation.textContent = `${selection}. Limited candidate coverage. Check Performance: ${performanceStatus.replaceAll('_', ' ')}.`;
       if (comparison.report?.chart_comparisons != null) {
         explanation.textContent += ` Charts: ${comparison.report.chart_comparisons} comparisons · ${comparison.report.chart_differences} differences.`;
+        if (comparison.report.chart_dependency_exclusions) {
+          explanation.textContent += ` ${comparison.report.chart_dependency_exclusions} charts skipped — unchanged dependencies (not pixel-compared).`;
+        }
       }
       if (comparison.report?.cf_excluded_decisions != null) {
         explanation.textContent += ` CF decisions across state pairs: ${comparison.report.cf_excluded_decisions} excluded / ${comparison.report.cf_partial_decisions} partial / ${comparison.report.cf_capture_decisions} capture.`;

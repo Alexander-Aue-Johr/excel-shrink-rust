@@ -1,10 +1,10 @@
-//! Whole-chart evidence is unconditional and independent of changed worksheet cells.
+//! Keep dependency exclusions distinct from whole-chart pixel observations.
 use super::{
     host::ExcelHost,
     image_comparison::ImageComparisons,
     telemetry::{LaneId, Telemetry},
 };
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -31,6 +31,22 @@ pub(super) enum ChartKind {
     ChartSheet,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub(super) struct Inventory {
+    #[serde(flatten)]
+    pub chart: Chart,
+    pub geometry: Option<serde_json::Value>,
+}
+
+impl Inventory {
+    /// Old workers or chart sheets without complete live geometry cannot prove equality.
+    pub fn valid_geometry(&self) -> Result<super::capture_layout::Geometry> {
+        serde_json::from_value::<super::capture_layout::Geometry>(
+            self.geometry.clone().context("Missing live chart geometry")?,
+        )?.validate()
+    }
+}
+
 pub(super) struct Capture {
     geometry: serde_json::Value,
     image: ChartImage,
@@ -39,6 +55,7 @@ pub(super) struct Capture {
 enum ChartImage {
     Rendered(PathBuf),
     ZeroArea,
+    UnchangedDependencies,
 }
 
 impl Capture {
@@ -46,12 +63,14 @@ impl Capture {
         match &self.image {
             ChartImage::Rendered(path) => Some(path),
             ChartImage::ZeroArea => None,
+            ChartImage::UnchangedDependencies => None,
         }
     }
     fn rendering(&self) -> &'static str {
         match self.image {
             ChartImage::Rendered(_) => "captured",
             ChartImage::ZeroArea => "zero-area-chart",
+            ChartImage::UnchangedDependencies => "unchanged-chart-dependencies",
         }
     }
 }
@@ -69,6 +88,7 @@ pub(super) struct Finding {
     pub pixels_differ: bool,
     pub geometry_differs: bool,
     pub pixels_compared: bool,
+    pub dependencies_unchanged: bool,
     pub rendering_differs: bool,
     pub left_rendering: Option<&'static str>,
     pub right_rendering: Option<&'static str>,
@@ -84,10 +104,13 @@ pub(super) fn capture(
     lane: LaneId,
     directory: &Path,
     telemetry: &Telemetry,
+    inventory: Vec<Inventory>,
+    skipped: &BTreeSet<Chart>,
 ) -> Result<Captures> {
     fs::create_dir_all(directory)?;
     let mut captures = BTreeMap::new();
-    for chart in excel.charts(lane, telemetry)? {
+    for entry in inventory {
+        let chart = entry.chart;
         ensure!(
             !captures.contains_key(&chart),
             "Duplicate chart identity: {} / {}",
@@ -100,7 +123,12 @@ pub(super) fn capture(
         })?;
         let name = format!("{:x}", Sha256::digest(serde_json::to_vec(&chart)?));
         let path = directory.join(format!("{name}.image"));
-        let capture = export(excel, lane, &chart, path, telemetry)?;
+        let capture = if skipped.contains(&chart) {
+            Capture { geometry: entry.geometry.context("Skipped chart requires live geometry")?,
+                image: ChartImage::UnchangedDependencies }
+        } else {
+            export(excel, lane, &chart, path, telemetry)?
+        };
         captures.insert(chart, capture);
     }
     Ok(captures)
@@ -193,6 +221,9 @@ pub(super) fn compare(
                 pixels_differ,
                 geometry_differs,
                 pixels_compared,
+                dependencies_unchanged: a.zip(b).is_some_and(|(a, b)|
+                    matches!(a.image, ChartImage::UnchangedDependencies)
+                    && matches!(b.image, ChartImage::UnchangedDependencies)),
                 rendering_differs,
                 left_rendering: a.map(Capture::rendering),
                 right_rendering: b.map(Capture::rendering),
@@ -209,6 +240,21 @@ pub(super) fn compare(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn dependency_exclusions_do_not_claim_pixel_comparisons() -> Result<()> {
+        let captures = BTreeMap::from([(
+            Chart { sheet: "Data".into(), name: "Chart 1".into(), index: Some(0), kind: ChartKind::Embedded },
+            Capture { geometry: json!({"top":0,"left":0,"width":400,"height":200}),
+                image: ChartImage::UnchangedDependencies },
+        )]);
+        let findings = compare(&captures, &captures, &mut ImageComparisons::default())?;
+        assert!(findings[0].dependencies_unchanged);
+        assert!(!findings[0].pixels_compared && !findings[0].pixels_differ);
+        assert!(findings[0].left_image.is_none() && findings[0].right_image.is_none());
+        assert_eq!(image_count(&captures), 0);
+        Ok(())
+    }
 
     #[test]
     fn removed_chart_is_reported_without_inventing_partner_evidence() -> Result<()> {

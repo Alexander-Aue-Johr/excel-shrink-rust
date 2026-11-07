@@ -96,6 +96,9 @@ pub(in crate::regression) struct StudyArgs {
     /// Include native Check Performance in targeted comparisons (off by default).
     #[arg(long, requires = "targeted_comparison", conflicts_with = "targeted_skip_check_performance")]
     targeted_check_performance: bool,
+    /// Exclude charts only with proven unchanged dependencies, or capture every chart.
+    #[arg(long, value_enum, default_value_t = crate::regression::targeted_comparison::ChartCaptureMode::Deterministic)]
+    chart_capture_mode: crate::regression::targeted_comparison::ChartCaptureMode,
     /// Screen the selection with the aggressive profile before full follow-up.
     #[arg(long, requires = "resident_capture", conflicts_with_all = ["prepare_only", "diagnose_whitespace_only", "full_scan_deferred"])]
     aggressive_first: bool,
@@ -549,6 +552,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             "resident_capture":args.resident_capture,"comparison_workers":args.comparison_workers,
             "targeted_comparison":args.targeted_comparison,
             "targeted_skip_check_performance":args.targeted_skip_check_performance,
+            "chart_capture_mode":args.chart_capture_mode,
             "hide_excel":args.hide_excel,
             "control_room":args.control_room,"control_room_port":args.control_room_port,
             "adaptive_concurrency":args.adaptive_concurrency,"order":args.order,
@@ -598,6 +602,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                     let id = identity(source, *index, name);
                     records.iter().find(|record| record["identity"] == id).is_none_or(|record| {
                         !prepared::targeted::complete(record, args.targeted_skip_check_performance)
+                            || !prepared::targeted::matches_chart_mode(record, args.chart_capture_mode)
                             && (record["status"] != "skipped" || args.should_retry_skipped())
                     })
                 }).collect()

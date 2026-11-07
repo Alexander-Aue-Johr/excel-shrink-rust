@@ -317,7 +317,7 @@ impl ExcelHost {
         &mut self,
         lane: LaneId,
         telemetry: &Telemetry,
-    ) -> Result<Vec<super::charts::Chart>> {
+    ) -> Result<Vec<super::charts::Inventory>> {
         let response = self.call(json!({"kind":"charts", "lane":lane.key()}), telemetry)?;
         serde_json::from_value(response["charts"].clone()).context("Invalid chart inventory")
     }

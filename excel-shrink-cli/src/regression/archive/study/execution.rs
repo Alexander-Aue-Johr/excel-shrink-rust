@@ -151,6 +151,7 @@ pub(super) fn run_record(
             "preparation_hash_profile":run["options"]["preparation_hash_profile"],
             "targeted_comparison":run["options"]["targeted_comparison"],
             "targeted_skip_check_performance":run["options"]["targeted_skip_check_performance"],
+            "chart_capture_mode":run["options"]["chart_capture_mode"],
             "preparation_stage":run["options"]["preparation_stage"]}),
         ),
     };

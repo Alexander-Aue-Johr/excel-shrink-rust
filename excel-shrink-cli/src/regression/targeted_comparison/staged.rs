@@ -105,7 +105,9 @@ impl Workflow<'_, '_> {
         self.rebuild_in_place(LaneId::O, LaneId::OR)?;
         self.rebuild_in_place(LaneId::SD, LaneId::SDR)?;
         self.rebuild_in_place(LaneId::CP, LaneId::CPR)?;
-        self.inspect_available_pairs()?;
+        let inventories = self.chart_inventories()?;
+        self.inspect_available_pairs(&inventories)?;
+        self.capture_chart_states(inventories)?;
         self.capture_missing_regions()?;
         self.publish_available_comparisons("Original and variants rebuilt in their existing processes")?;
         self.close_states()?;
@@ -231,11 +233,6 @@ impl Workflow<'_, '_> {
         self.comparison
             .telemetry
             .update(|state| state.step(id, Phase::Discover, StepStatus::Done))?;
-        let charts = if matches!(id, LaneId::OR | LaneId::SDR | LaneId::CPR) {
-            self.capture_charts(id)?
-        } else {
-            charts::Captures::default()
-        };
         self.comparison.report.state_decisions.insert(
             id,
             StateDecision::Observed {
@@ -253,15 +250,53 @@ impl Workflow<'_, '_> {
                 xml,
                 captures: BTreeMap::new(),
                 geometries: BTreeMap::new(),
-                charts,
+                charts: charts::Captures::default(),
                 heights: BTreeMap::new(),
             },
         );
         Ok(())
     }
 
-    /// Capture every chart while this state's pre-rebuild workbook is still retained.
-    fn capture_charts(&mut self, id: LaneId) -> Result<charts::Captures> {
+    /// Enumerate rebuilt chart identities and live placement before deciding which images are needed.
+    fn chart_inventories(&mut self) -> Result<BTreeMap<LaneId, Vec<charts::Inventory>>> {
+        let mut result = BTreeMap::new();
+        for &id in self.states.keys() {
+            let inventory = self.comparison.excel.as_mut().context("Excel host missing")?
+                .charts(id, &self.comparison.telemetry)?;
+            result.insert(id, inventory);
+        }
+        Ok(result)
+    }
+
+    /// A shared state may have several partners. Skip only charts proved unchanged for every pair.
+    fn capture_chart_states(
+        &mut self,
+        inventories: BTreeMap<LaneId, Vec<charts::Inventory>>,
+    ) -> Result<()> {
+        let mut checks = self.comparison.report.chart_dependencies.iter();
+        let mut skipped: BTreeSet<_> = checks.next()
+            .map(|check| check.decisions.iter()
+                .filter(|decision| decision.unchanged)
+                .map(|decision| decision.chart.clone())
+                .collect())
+            .unwrap_or_default();
+        for check in checks {
+            skipped.retain(|chart| check.decisions.iter().any(|d| d.chart == *chart && d.unchanged));
+        }
+        for (id, inventory) in inventories {
+            let captures = self.capture_charts(id, inventory, &skipped)?;
+            self.states.get_mut(&id).unwrap().charts = captures;
+        }
+        Ok(())
+    }
+
+    /// Export unresolved charts; dependency-only observations never claim pixel equality.
+    fn capture_charts(
+        &mut self,
+        id: LaneId,
+        inventory: Vec<charts::Inventory>,
+        skipped: &BTreeSet<charts::Chart>,
+    ) -> Result<charts::Captures> {
         let phase = if matches!(id, LaneId::O | LaneId::SD | LaneId::CP) {
             Phase::CaptureBefore
         } else {
@@ -282,6 +317,8 @@ impl Workflow<'_, '_> {
                 .output
                 .join(format!("charts-{}", id.key())),
             &self.comparison.telemetry,
+            inventory,
+            skipped,
         )?;
         self.comparison.report.capture_counts.insert(
             format!("{}:charts", id.key()),
@@ -362,7 +399,7 @@ impl Workflow<'_, '_> {
         self.register(target, path)?;
         Ok(())
     }
-    fn inspect_available_pairs(&mut self) -> Result<()> {
+    fn inspect_available_pairs(&mut self, inventories: &BTreeMap<LaneId, Vec<charts::Inventory>>) -> Result<()> {
         let pairs = self.pairs();
         for (_, left, right) in pairs {
             if !self.inspected.insert((left, right)) {
@@ -382,6 +419,13 @@ impl Workflow<'_, '_> {
                 &changes,
                 &mut self.requested_candidates,
             )?;
+            let chart_decisions = super::chart_dependencies::select(
+                &self.states[&left].path, &self.states[&right].path, &a, &b, &decisions,
+                &inventories[&left], &inventories[&right], self.comparison.args.chart_capture_mode,
+            );
+            self.comparison.report.chart_dependencies.push(super::chart_dependencies::Check {
+                left, right, mode: self.comparison.args.chart_capture_mode, decisions: chart_decisions,
+            });
             self.comparison.report.conditional_formatting.push(
                 super::conditional_formatting::Check {
                     left: left.key().into(),

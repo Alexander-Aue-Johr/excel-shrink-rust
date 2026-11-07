@@ -114,6 +114,9 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
             "Missing rendered chart findings"
         );
         for chart in charts {
+            if chart["dependencies_unchanged"] == true {
+                validate_chart_exclusion(report, left, right, chart)?;
+            }
             changed |= difference_flags(
                 chart,
                 &[
@@ -126,6 +129,32 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
         }
     }
     Ok(changed)
+}
+
+/// An XML exclusion is positive dependency evidence, never a missing image or pixel verdict.
+fn validate_chart_exclusion(report: &Value, left: &str, right: &str, chart: &Value) -> Result<()> {
+    ensure!(chart["pixels_compared"] == false && chart["pixels_differ"] == false
+        && chart["geometry_differs"] == false && chart["presence_differs"] == false
+        && chart["rendering_differs"] == false,
+        "Chart dependency exclusion contradicts comparison verdicts");
+    for side in ["left", "right"] {
+        ensure!(chart[format!("{side}_image")].is_null()
+            && chart[format!("{side}_rendering")] == "unchanged-chart-dependencies",
+            "Chart dependency exclusion contradicts image evidence");
+        for field in ["top", "left", "width", "height"] {
+            ensure!(chart[format!("{side}_geometry")][field].as_f64()
+                .is_some_and(|v| v.is_finite() && v >= 0.0), "Missing excluded chart geometry");
+        }
+    }
+    ensure!(chart["left_geometry"] == chart["right_geometry"], "Changed excluded chart geometry");
+    let checks = report["chart_dependencies"].as_array().context("Missing chart dependency checks")?;
+    ensure!(checks.iter().any(|check| check["left"] == left && check["right"] == right
+        && check["mode"] == "deterministic" && check["decisions"].as_array().is_some_and(|decisions|
+            decisions.iter().any(|d| d["unchanged"] == true && d["references"].as_u64().is_some_and(|n| n > 0)
+                && d["chart"]["sheet"] == chart["sheet"] && d["chart"]["name"] == chart["chart"]
+                && d["chart"]["index"] == chart["chart_index"] && d["chart"]["kind"] == chart["kind"]))),
+        "Excluded chart has no matching dependency proof");
+    Ok(())
 }
 
 /// An absent PNG is valid only with explicit zero-area geometry, never missing evidence.
@@ -209,6 +238,28 @@ fn difference_flags(finding: &Value, fields: &[&str]) -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn chart_exclusion_requires_a_matching_dependency_receipt() -> Result<()> {
+        let geometry = serde_json::json!({"top":0,"left":0,"width":400,"height":200});
+        let finding = serde_json::json!({"sheet":"Data","chart":"Chart 1","chart_index":0,"kind":"embedded",
+            "dependencies_unchanged":true,"pixels_compared":false,"pixels_differ":false,"geometry_differs":false,
+            "presence_differs":false,"rendering_differs":false,"left_image":null,"right_image":null,
+            "left_rendering":"unchanged-chart-dependencies","right_rendering":"unchanged-chart-dependencies",
+            "left_geometry":geometry,"right_geometry":geometry});
+        let mut report = serde_json::json!({"chart_dependencies":[{"left":"OR","right":"SDR","mode":"deterministic",
+            "decisions":[{"chart":{"sheet":"Data","name":"Chart 1","index":0,"kind":"embedded"},"unchanged":true,"references":1}]}]});
+        validate_chart_exclusion(&report, "OR", "SDR", &finding)?;
+        report["chart_dependencies"][0]["decisions"][0]["unchanged"] = serde_json::json!(false);
+        assert!(validate_chart_exclusion(&report, "OR", "SDR", &finding).is_err());
+        report["chart_dependencies"][0]["decisions"][0]["unchanged"] = serde_json::json!(true);
+        let mut invalid = finding.clone();
+        invalid["pixels_compared"] = serde_json::json!(true);
+        assert!(validate_chart_exclusion(&report, "OR", "SDR", &invalid).is_err());
+        invalid = finding.clone();
+        invalid["right_geometry"]["width"] = serde_json::json!(401);
+        assert!(validate_chart_exclusion(&report, "OR", "SDR", &invalid).is_err());
+        Ok(())
+    }
     use super::*;
     use serde_json::json;
 

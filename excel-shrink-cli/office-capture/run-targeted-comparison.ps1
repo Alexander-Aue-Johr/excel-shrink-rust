@@ -15,6 +15,7 @@ param(
     [switch]$SkipCheckPerformance,
     [switch]$CheckPerformance,
     [switch]$SerialCaptures,
+    [ValidateSet('conservative', 'deterministic')][string]$ChartCaptureMode = 'deterministic',
     [switch]$PrepareArtifactsOnly,
     [ValidateRange(1, 86400)][int]$OperationTimeoutSeconds = 120,
     [ValidateRange(1, 86400)][int]$CaptureIdleTimeoutSeconds = 120
@@ -31,6 +32,7 @@ try {
     $arguments = 'regression targeted-compare --original "{0}" --default "{1}" --output "{2}" --observatory-group-dir "{3}" --host-script "{4}"' -f `
         $Original, $Default, $Output, $ObservatoryGroup, (Join-Path $PSScriptRoot 'targeted-comparison-host.ps1')
     $arguments += ' --operation-timeout-seconds ' + $OperationTimeoutSeconds
+    $arguments += ' --chart-capture-mode ' + $ChartCaptureMode
     if ($SkipCheckPerformance -and $CheckPerformance) { throw 'Choose CheckPerformance or SkipCheckPerformance.' }
     if ($CheckPerformance) { $arguments += ' --check-performance' }
     if ($SerialCaptures) { $arguments += ' --serial-captures' }
