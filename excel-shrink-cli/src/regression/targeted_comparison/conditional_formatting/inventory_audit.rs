@@ -112,6 +112,7 @@ fn audit_inventory_with_current_selector() -> Result<()> {
         let snapshot = Snapshot {
             sheets: BTreeMap::new(),
             context: String::new(),
+            layout_context: String::new(),
             cf_context: String::new(),
             sheet_names: names[&id].clone(),
             defined_names: defined_names[&id].clone(),

@@ -943,3 +943,18 @@ deadline. A frozen wait counter cannot extend that deadline. Parent heartbeat
 expiry and explicit termination remain effective. Prepared bundles and completed
 results retain their existing reuse rules. The pool drains before preparation
 finishes and visual comparisons begin.
+### Unreferenced format catalogue entries
+
+Layout selection and effective-height selection use shared rendering dependencies
+and the resolved default format. Used cell, row and column styles are compared
+through their resolved properties. Removing an unused XF from Excel's saved style
+catalogue therefore does not select the entire content envelope. Unknown style
+structures retain the raw conservative context. Conditional-format and chart
+proofs retain their existing, broader catalogue guards.
+
+This matters for sheets with a fill inherited across every column. Their visible
+formatting envelope can reach the sheet boundary even when only a few cells hold
+values. Local changes still select local evidence. A change to the default format
+or an unresolved rendering dependency still requires conservative coverage.
+Previously completed comparisons remain usable because this refinement removes
+unnecessary candidates without weakening their retained evidence.

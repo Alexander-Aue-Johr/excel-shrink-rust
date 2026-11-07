@@ -969,6 +969,7 @@ fn retained_cell_is_errors_are_supported_but_the_external_reference_is_not() -> 
     let snapshot = Snapshot {
         sheets: BTreeMap::new(),
         context: String::new(),
+            layout_context: String::new(),
         cf_context: String::new(),
         sheet_names: None,
         defined_names: None,

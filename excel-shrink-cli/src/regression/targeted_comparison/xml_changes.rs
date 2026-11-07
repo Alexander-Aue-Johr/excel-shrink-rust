@@ -41,6 +41,8 @@ pub(super) struct Sheet {
 pub(super) struct Snapshot {
     pub sheets: BTreeMap<String, Sheet>,
     pub context: String,
+    /// Shared rendering dependencies and the default format, excluding unused XFs.
+    pub layout_context: String,
     pub cf_context: String,
     pub sheet_names: Option<BTreeSet<String>>,
     pub defined_names: Option<BTreeSet<String>>,
@@ -129,6 +131,7 @@ impl Snapshot {
         Ok(Self {
             sheets,
             context,
+            layout_context: conditional_values,
             cf_context,
             sheet_names,
             defined_names,
@@ -728,6 +731,7 @@ mod tests {
                     },
                 )]),
                 context: "same".into(),
+                layout_context: "same".into(),
                 cf_context: "same".into(),
                 sheet_names: None,
                 defined_names: None,

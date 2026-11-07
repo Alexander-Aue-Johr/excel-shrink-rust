@@ -51,7 +51,7 @@ pub(super) fn selection(
     );
     let global = left.columns != right.columns
         || left.defaults != right.defaults
-        || before.context != after.context;
+        || before.layout_context != after.layout_context;
     let mut wanted = BTreeSet::new();
     let mut skipped = 0;
     let fixed: BTreeSet<u32> = left
@@ -223,6 +223,7 @@ mod tests {
         Snapshot {
             sheets: [("Rows".into(), sheet)].into(),
             context: "same styles".into(),
+            layout_context: "same layout".into(),
             cf_context: "same CF context".into(),
             sheet_names: Some(["rows".into()].into()),
             defined_names: None,

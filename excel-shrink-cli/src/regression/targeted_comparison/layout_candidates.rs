@@ -26,7 +26,7 @@ pub(super) fn select(
                 cell: area.address(),
             });
         };
-        if before.context != after.context
+        if before.layout_context != after.layout_context
             || left.defaults != right.defaults
             || left.cf_layout != right.cf_layout
         {
@@ -94,6 +94,7 @@ mod tests {
         Snapshot {
             sheets: [("Data".into(), sheet)].into(),
             context: "same".into(),
+            layout_context: "same".into(),
             cf_context: "same".into(),
             sheet_names: None,
             defined_names: None,
@@ -126,7 +127,7 @@ mod tests {
     fn unknown_layout_and_global_context_require_content_coverage() -> Result<()> {
         let before = snapshot();
         let mut after = before.clone();
-        after.context = "different global rendering context".into();
+        after.layout_context = "different global rendering context".into();
         let mut bounds = ContentBounds::default();
         bounds.include(&before);
         let mut candidates = BTreeSet::new();
@@ -170,4 +171,40 @@ mod tests {
         );
         Ok(())
     }
+    #[test]
+    fn unused_format_catalogue_changes_do_not_expand_layout_coverage() -> Result<()> {
+        let before = snapshot();
+        let mut after = before.clone();
+        after.context = "unused format was removed".into();
+        let mut bounds = ContentBounds::default();
+        bounds.include(&before);
+        let mut candidates = BTreeSet::new();
+        select(&before, &after, &bounds, &mut candidates)?;
+        assert!(candidates.is_empty());
+        Ok(())
+    }
+
+    /// Replay retained Excel saves without launching or changing Excel.
+    #[test]
+    #[ignore = "requires EXCEL_SHRINK_LAYOUT_PAIR_FIXTURE containing rebuilt workbooks"]
+    fn retained_unused_hyperlink_format_does_not_select_the_whole_sheet() -> Result<()> {
+        let root = std::path::PathBuf::from(std::env::var("EXCEL_SHRINK_LAYOUT_PAIR_FIXTURE")?);
+        let before = Snapshot::read(&root.join("OR-rebuilt.xlsx"))?;
+        let after = Snapshot::read(&root.join("SDR-rebuilt.xlsx"))?;
+        assert_ne!(before.context, after.context);
+        assert_eq!(before.layout_context, after.layout_context);
+        let mut bounds = ContentBounds::default();
+        bounds.include(&before);
+        bounds.include(&after);
+        let mut candidates = super::super::xml_changes::cell_candidates(
+            &before.content_changes(&after)?.0,
+        );
+        select(&before, &after, &bounds, &mut candidates)?;
+        let (selected, _) = bounds.select(&candidates)?;
+        println!("{} selected regions", selected.len());
+        assert!(!selected.is_empty(), "deleted styled cells still need evidence");
+        assert!(selected.len() < 20, "unused formats must not select a million-row sheet");
+        Ok(())
+    }
+
 }
