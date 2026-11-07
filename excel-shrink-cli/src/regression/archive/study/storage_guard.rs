@@ -1,4 +1,4 @@
-//! Reserve space for the next preparation on the volume that holds its bundle.
+//! Reserve preparation space and protect the Windows system volume from exhaustion.
 
 use anyhow::Result;
 use serde::Serialize;
@@ -14,6 +14,7 @@ const PEAK_SOURCE_MULTIPLIER: u64 = 8;
 
 #[derive(Clone, Copy, Debug, Serialize)]
 pub(super) struct GuardState {
+    pub volume: &'static str,
     pub free_bytes: u64,
     pub required_free_bytes: u64,
     pub input_bytes: Option<u64>,
@@ -31,15 +32,38 @@ pub(super) fn check_with_active(
     input_bytes: Option<u64>,
     active_source_bytes: u64,
 ) -> Result<GuardState> {
+    #[cfg(windows)]
+    {
+        let system_root = std::env::var_os("SystemRoot").ok_or_else(|| {
+            anyhow::anyhow!("SystemRoot is unavailable for the system disk check")
+        })?;
+        let system_free = available_bytes(Path::new(&system_root))?;
+        if let Some(blocked) = system_volume_guard(system_free, input_bytes) {
+            return Ok(blocked);
+        }
+    }
     let free_bytes = available_bytes(output)?;
     let required_free_bytes = required_free_bytes(Some(
         active_source_bytes.saturating_add(input_bytes.unwrap_or(0)),
     ));
     Ok(GuardState {
+        volume: "study output volume",
         free_bytes,
         required_free_bytes,
         input_bytes,
         blocked: free_bytes < required_free_bytes,
+    })
+}
+
+/// System caches need a fixed reserve even when workbook artifacts live elsewhere.
+#[cfg(any(windows, test))]
+fn system_volume_guard(free_bytes: u64, input_bytes: Option<u64>) -> Option<GuardState> {
+    (free_bytes < MINIMUM_FREE_BYTES).then_some(GuardState {
+        volume: "Windows system volume",
+        free_bytes,
+        required_free_bytes: MINIMUM_FREE_BYTES,
+        input_bytes,
+        blocked: true,
     })
 }
 
@@ -93,6 +117,16 @@ fn available_bytes(path: &Path) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protects_the_system_disk_independently_of_workbook_size() {
+        let blocked = system_volume_guard(8 * GIB - 1, Some(123)).unwrap();
+        assert_eq!(blocked.volume, "Windows system volume");
+        assert!(blocked.blocked);
+        assert_eq!(blocked.input_bytes, Some(123));
+        assert_eq!(blocked.required_free_bytes, 8 * GIB);
+        assert!(system_volume_guard(8 * GIB, Some(u64::MAX)).is_none());
+    }
 
     #[test]
     fn reserves_space_for_the_next_bundle_and_temporary_outputs() {

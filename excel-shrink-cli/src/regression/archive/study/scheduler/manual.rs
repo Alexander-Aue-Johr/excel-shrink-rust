@@ -247,11 +247,11 @@ pub(super) fn compare(
             let storage_error = match &storage {
                 Ok(space) if !space.blocked => None,
                 Ok(space) => Some(format!(
-                    "Preparation needs {} free bytes on the study output volume; {} bytes available.",
-                    space.required_free_bytes, space.free_bytes
+                    "Preparation needs {} free bytes on the {}; {} bytes available.",
+                    space.required_free_bytes, space.volume, space.free_bytes
                 )),
                 Err(error) => Some(format!(
-                    "Cannot verify free space on the study output volume: {error:#}"
+                    "Cannot verify free disk space: {error:#}"
                 )),
             };
             if let Some(error) = storage_error {

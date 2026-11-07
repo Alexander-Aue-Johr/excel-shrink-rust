@@ -192,11 +192,11 @@ fn run_phase(
                 let reason = match &storage {
                     Ok(space) if !space.blocked => None,
                     Ok(space) => Some(format!(
-                        "Preparation paused before {}: {} bytes free on the study output volume; {} bytes required. Free space and rerun to resume.",
-                        next.name, space.free_bytes, space.required_free_bytes
+                        "Preparation paused before {}: {} bytes free on the {}; {} bytes required. Free space and rerun to resume.",
+                        next.name, space.free_bytes, space.volume, space.required_free_bytes
                     )),
                     Err(error) => Some(format!(
-                        "Preparation paused before {}: free space on the study output volume could not be verified: {error:#}. Rerun after checking the volume.",
+                        "Preparation paused before {}: free disk space could not be verified: {error:#}. Rerun after checking the volumes.",
                         next.name
                     )),
                 };

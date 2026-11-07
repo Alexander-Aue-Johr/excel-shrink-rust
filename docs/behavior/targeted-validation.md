@@ -594,6 +594,14 @@ An owned modal `NUIDialog` is inspected through its native accessibility tree on
 
 A numeric Office.js `RangeFormat.rowHeight` establishes uniformity; mixed heights return null. Excel may round that property differently from measured range geometry. Uniform visible spans therefore use measured `Range.height / rowCount`, retaining exact hidden-row handling and recursive measurement for mixed spans. No pixel-comparison tolerance is introduced. API contract reference [RangeFormat.rowHeight](https://learn.microsoft.com/en-us/javascript/api/excel/excel.rangeformat?view=office-js#excel-excel-rangeformat-rowheight-member).
 
+### Preparation disk reserves
+
+Preparation admission also requires at least 8 GiB free on the Windows system
+volume, even when the study output and temporary files are on another drive.
+The existing output-volume reserve still applies independently. A disk guard
+wait retains completed results and lets admitted work finish. Its diagnostic
+identifies the constrained volume; reclaim space before resuming the run.
+
 ### Exact image storage sharing
 
 Binary targeted uploads retain their command-specific paths and exact encoded bytes. Within each resident, byte-identical immutable uploads share a content-addressed blob through filesystem hard links. Pools are bucketed by 512 dispatched commands to bound link counts. Existing command retries and blobs are checked against the uploaded bytes before reuse. Unsupported links fall back to ordinary copies. Moving a command image into report evidence preserves its bytes and link; removing a pool entry does not invalidate retained evidence. This storage sharing changes neither candidate selection nor pixel comparison, and requires no special reader when results are copied to another machine.
