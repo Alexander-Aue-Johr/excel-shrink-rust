@@ -13,7 +13,9 @@ pub(super) struct VisualBounds<'a> {
     columns: ColumnRangeMap,
     column_bounds: Option<Rectangle>,
     explicit_cells: Option<Rectangle>,
-    has_row_style: bool,
+    row_styles: BTreeSet<usize>,
+    row_styles_known: bool,
+    row_bounds: Option<Rectangle>,
     columns_known: bool,
     pub bounds: Option<Rectangle>,
 }
@@ -35,7 +37,9 @@ impl<'a> VisualBounds<'a> {
             columns: ColumnRangeMap::default(),
             column_bounds: None,
             explicit_cells: None,
-            has_row_style: false,
+            row_styles: BTreeSet::new(),
+            row_styles_known: true,
+            row_bounds: None,
             columns_known: true,
             bounds: None,
         }
@@ -71,8 +75,11 @@ impl<'a> VisualBounds<'a> {
                 });
             }
             b"row" => {
-                self.has_row_style |=
-                    tag.attr(b"s")?.is_some() || tag.attr(b"customFormat")?.is_some();
+                if let Some(index) = tag.attr(b"s")? {
+                    self.row_styles.insert(std::str::from_utf8(index)?.parse()?);
+                } else if tag.attr(b"customFormat")?.is_some() {
+                    self.row_styles_known = false;
+                }
             }
             b"c" => {
                 let address =
@@ -112,7 +119,8 @@ impl<'a> VisualBounds<'a> {
             b"row" if tag.attr(b"customFormat")? == Some(b"1") => {
                 let row: u32 =
                     std::str::from_utf8(tag.attr(b"r")?.context("Missing styled row")?)?.parse()?;
-                self.include_rectangle(row, 1, row, 16_384);
+                include(&mut self.row_bounds, row, 1);
+                include(&mut self.row_bounds, row, 16_384);
             }
             b"col" => {
                 let left: u32 =
@@ -191,11 +199,20 @@ impl<'a> VisualBounds<'a> {
         self.columns.finalize();
         let uniform = allow_uniform
             && self.columns_known
-            && !self.has_row_style
+            && self.row_styles_known
             && self
                 .columns
                 .uniform_background_fill()
-                .is_some_and(|fill| solid_fills.contains(&fill));
+                .is_some_and(|fill| {
+                    solid_fills.contains(&fill)
+                        && self.row_styles.iter().all(|index| {
+                            self.styles.get(*index).is_some_and(|style| {
+                                style.fill_id == Some(fill)
+                                    && style.has_visible_fill
+                                    && !style.has_visible_border
+                            })
+                        })
+                });
         let bounds = if uniform {
             self.include_rectangle(finite.top, finite.left, finite.bottom, finite.right);
             self.explicit_cells
@@ -204,6 +221,11 @@ impl<'a> VisualBounds<'a> {
         };
         if let Some(bounds) = bounds {
             self.include_rectangle(bounds.top, bounds.left, bounds.bottom, bounds.right);
+        }
+        if !uniform {
+            if let Some(bounds) = self.row_bounds {
+                self.include_rectangle(bounds.top, bounds.left, bounds.bottom, bounds.right);
+            }
         }
     }
 }
@@ -222,6 +244,13 @@ mod tests {
             ..Default::default()
         };
         for (columns, row, solid, allow, finite_expected) in [
+            (
+                r#"<col min="1" max="16384" style="1"/>"#,
+                r#"<row r="3" s="1" customFormat="1"/>"#,
+                true,
+                true,
+                true,
+            ),
             (
                 r#"<col min="1" max="16384" style="1"/>"#,
                 "",

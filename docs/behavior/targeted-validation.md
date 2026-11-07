@@ -320,7 +320,9 @@ A full-width, uniformly applied solid column fill without borders is an
 unbounded background. It does not extend the envelope to the worksheet limits.
 For this case the envelope retains every serialized cell, including explicit
 blank/no-fill overrides, the content and merge extent, and an A1 background sample.
-Row-style overrides, unknown/overlapping column definitions, patterned fills,
+Row styles with the same solid fill and no visible borders preserve this proof,
+including font and alignment differences on those rows. Explicit cells still
+remain in the envelope. Other row-style overrides, unknown/overlapping column definitions, patterned fills,
 conditional formatting, objects and unsupported worksheet features disable this
 proof and retain the conservative extent. Changed column formats and effective
 row heights inside the retained envelope still produce capture candidates.
