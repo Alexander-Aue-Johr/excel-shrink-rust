@@ -1,0 +1,40 @@
+{
+  "results": [
+    {
+      "mode": "shared",
+      "parallel": 4,
+      "wall_seconds": 24.202883699999997,
+      "helper_and_excel_desktops_match": true
+    },
+    {
+      "mode": "private",
+      "parallel": 4,
+      "wall_seconds": 36.860338299999995,
+      "helper_and_excel_desktops_match": true
+    },
+    {
+      "mode": "private",
+      "parallel": 4,
+      "wall_seconds": 25.0854705,
+      "helper_and_excel_desktops_match": true
+    },
+    {
+      "mode": "shared",
+      "parallel": 4,
+      "wall_seconds": 26.4478346,
+      "helper_and_excel_desktops_match": true
+    }
+  ],
+  "content_parts_identical": false,
+  "verified_parts": [
+    "xl/styles.xml",
+    "xl/worksheets/sheet1.xml",
+    "xl/sharedStrings.xml",
+    "xl/theme/theme1.xml"
+  ],
+  "converted_files": 16,
+  "input_desktop_unchanged": true,
+  "content_parts_identical_except_worksheet_revision_uuid": true,
+  "background_concurrency_changed": true,
+  "conclusion": "Desktop placement and conversion success verified; throughput comparison is inconclusive because preparation concurrency changed during the trial."
+}
