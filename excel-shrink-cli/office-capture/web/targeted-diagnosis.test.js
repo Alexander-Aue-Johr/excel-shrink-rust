@@ -2,6 +2,39 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 require('./targeted-diagnosis.js');
 
+test('multiple captures share two syncs and preserve zero-area observations and order', async () => {
+  let syncs = 0;
+  const reads = [];
+  const context = {
+    workbook: {worksheets: {getItem: () => ({getRange: address => ({
+      top: 0, left: 0, width: 100, height: address === 'A2' ? 0 : 100,
+      load() { assert.equal(syncs, 0); },
+      getImage() {
+        assert.equal(syncs, 1);
+        reads.push(address);
+        return {get value() {assert.equal(syncs, 2); return address;}};
+      }
+    })})}},
+    sync: async () => { syncs++; }
+  };
+  const result = await globalThis.TargetedDiagnosis.run({kind: 'capture_many', sheet: 'Data',
+    ranges: ['A1', 'A2', 'A3'].map(range => ({range}))}, action => action(context));
+  assert.equal(syncs, 2);
+  assert.deepEqual(reads, ['A1', 'A3']);
+  assert.deepEqual(result.images.map(image => image.range), ['A1', 'A2', 'A3']);
+  assert.equal(result.images[1].non_rendering, true);
+  assert.equal(result.images[2].image_base64, 'A3');
+});
+
+test('oversized combined captures fail before queuing any images', async () => {
+  const context = {workbook: {worksheets: {getItem: () => ({getRange: () => ({
+    top: 0, left: 0, width: 2500, height: 2500, load() {},
+    getImage() {assert.fail('Combined budget must be checked first');}
+  })})}}, sync: async () => {}};
+  await assert.rejects(globalThis.TargetedDiagnosis.run({kind: 'capture_many', sheet: 'Data',
+    ranges: [{range:'A1:P128'}, {range:'A129:P256'}]}, action => action(context)), /combined pixel budget/);
+});
+
 test('geometry batches load every range before one synchronization', async () => {
   let synchronized = false;
   let synchronizations = 0;
@@ -36,9 +69,9 @@ test('geometry batches load every range before one synchronization', async () =>
 test('invalid geometry batches never load ranges or synchronize', async () => {
   const context = {workbook: {worksheets: {getItem() {assert.fail('Invalid batch');}}},
     sync() {assert.fail('Invalid batch');}};
-  for (const ranges of [[], [''], [null], Array(65).fill('A1')]) {
+  for (const ranges of [[], [''], [null], Array(4097).fill('A1')]) {
     await assert.rejects(globalThis.TargetedDiagnosis.run(
-      {kind: 'measure_batch', sheet: 'Data', ranges}, action => action(context)), /1\.\.64/);
+      {kind: 'measure_batch', sheet: 'Data', ranges}, action => action(context)), /1\.\.4096/);
   }
 });
 

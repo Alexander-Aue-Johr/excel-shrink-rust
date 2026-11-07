@@ -437,7 +437,8 @@ a hidden or whitespace value was removed.
 
 ## V9. Captures, transport and comparison
 
-Capture partitioning batches at most 64 independent ranges from one sheet.
+Capture partitioning batches independent ranges from one sheet. The live
+`geometry_batch_ranges` API control defaults to 64 and accepts 1..4096.
 Each live state loads all four geometry properties for those ranges before one
 Office.js `context.sync()`. Oversized parents produce children for later batches.
 Every child is still measured in every state that lacks a cached observation.
@@ -446,11 +447,27 @@ geometry. Missing, reordered or invalid observations fail the attempt. Batching
 does not change selected cell coverage, image limits or zero-area handling.
 
 Office.js captures the requested region and measured geometry in its workbook
-instance. For a batch, submit at most one outstanding cell capture per distinct
-open lane; collect every result in request order. Responses must match the active
+instance. The independent `capture_batch_ranges` API control defaults to four
+and accepts 1..64. Both controls are reread before the next package and retained
+across run restarts. Submit at most one outstanding package per distinct open
+lane; collect every result in request order. Responses must match the active
 session and command. A late-added candidate is captured in all retained states
 before their instances close. New late candidates cannot be compared with missing
 partners and cannot silently overwrite earlier image filenames.
+
+Each image package stays on one sheet and shares a conservative 32-megapixel
+decoded-pixel allowance. Large regions therefore use smaller packages, including
+single-image packages. Requested coverage is never truncated to satisfy the
+package size. One synchronization obtains all range/core geometries, and another
+obtains all nonempty image results. Binary uploads require a distinct validated
+image index within that command. A failed member fails the package rather than
+certifying incomplete evidence. The UI shows the actual range count per package.
+
+Example live control update through `POST /api/control` on the Observatory host:
+
+```json
+{"geometry_batch_ranges":128,"capture_batch_ranges":3}
+```
 
 Transport image bytes to the resident Rust host, not a large Base64 JSON response.
 Office's capture API may initially return Base64 internally; this does not mean

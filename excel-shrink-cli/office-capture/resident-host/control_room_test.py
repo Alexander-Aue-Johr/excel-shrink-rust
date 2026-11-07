@@ -346,6 +346,21 @@ class ControlRoomProtocol(unittest.TestCase):
                 self.assertEqual(detail["status"], status)
                 self.assertEqual(detail["capture_status"], "complete")
 
+    def test_targeted_geometry_and_capture_packages_are_independent(self):
+        result = self.request("/api/control", {"geometry_batch_ranges": 256, "capture_batch_ranges": 2})
+        self.assertEqual(result["controls"]["geometry_batch_ranges"], 256)
+        for count in (3, 4, 8):
+            result = self.request("/api/control", {"capture_batch_ranges": count})
+            self.assertEqual(result["controls"]["capture_batch_ranges"], count)
+            self.assertEqual(result["controls"]["geometry_batch_ranges"], 256)
+        stored = json.loads((self.data / "control.json").read_text())
+        self.assertEqual(stored["capture_batch_ranges"], 8)
+        for patch in ({"geometry_batch_ranges": 0}, {"geometry_batch_ranges": 4097},
+                      {"capture_batch_ranges": 0}, {"capture_batch_ranges": 65}):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.request("/api/control", patch)
+        self.assertEqual(json.loads((self.data / "control.json").read_text()), stored)
+
     def test_controls_have_no_eight_group_cap_and_persist_atomically(self):
         result = self.request("/api/control", {"target_groups": 128, "paused": True, "equal_preview_width": 0,
                                               "capture_tile_megapixels": 2, "capture_batch_tiles": 4, "hide_excel": True,

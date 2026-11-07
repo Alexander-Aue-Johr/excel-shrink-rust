@@ -748,8 +748,9 @@
     const worker = createWorker(helpers, {image(id, metadata, bytes) {
       return request(`/image/${clientPath}/${encodeURIComponent(id)}/${metadata.sheet_index}/${metadata.tile_index}`,
         bytes, {'Content-Type': 'image/png', ...(metadata.sha256 ? {'X-Sha256': metadata.sha256} : {})});
-    }, diagnosisImage(id, bytes) {
-      return request(`/diagnosis-image/${clientPath}/${encodeURIComponent(id)}`,
+    }, diagnosisImage(id, bytes, index) {
+      const slot = index == null ? '' : `?index=${index}`;
+      return request(`/diagnosis-image/${clientPath}/${encodeURIComponent(id)}${slot}`,
         bytes, {'Content-Type': 'application/octet-stream'});
     }}, config.workbook);
     let heartbeatBusy = false;

@@ -289,19 +289,38 @@ function Resolve-TargetedResponse {
         Remove-TargetedTaskpane $entry
     }
     if ($command.kind -in @('capture','capture_chart')) {
-        if ($Response.non_rendering -eq $true) {
-            return @{non_rendering=$true; reason=$Response.reason; geometry=$Response.geometry}
+        return Resolve-TargetedImage $entry $Response $command.output
+    }
+    if ($command.kind -eq 'capture_many') {
+        $images = @($Response.images)
+        $requests = @($command.ranges)
+        if ($images.Count -ne $requests.Count) { throw 'Incomplete capture image coverage.' }
+        $results = @()
+        for ($index = 0; $index -lt $requests.Count; $index++) {
+            if ($images[$index].range -ne $requests[$index].range) { throw 'Capture range identity changed.' }
+            $image = Resolve-TargetedImage $entry $images[$index] $requests[$index].output
+            $image.range = $requests[$index].range
+            $results += $image
         }
-        $image = [IO.Path]::GetFullPath([string]$Response.image_path)
-        $ownedImages = [IO.Path]::GetFullPath((Join-Path $entry.session 'diagnosis-images/one'))
-        if (-not $image.StartsWith($ownedImages + '\', [StringComparison]::OrdinalIgnoreCase)) {
-            throw 'Image receipt is outside this resident session.'
-        }
-        Move-Item -LiteralPath (ConvertTo-WindowsLongPath $image) `
-            -Destination (ConvertTo-WindowsLongPath ([string]$command.output)) -ErrorAction Stop
-        return @{path=$command.output; geometry=$Response.geometry}
+        return @{images=$results}
     }
     return $Response
+}
+
+function Resolve-TargetedImage {
+    <# .SYNOPSIS Adopt only binary image receipts owned by this exact resident session. #>
+    param($Entry, $Response, [string]$Output)
+    if ($Response.non_rendering -eq $true) {
+        return @{non_rendering=$true; reason=$Response.reason; geometry=$Response.geometry}
+    }
+    $image = [IO.Path]::GetFullPath([string]$Response.image_path)
+    $ownedImages = [IO.Path]::GetFullPath((Join-Path $Entry.session 'diagnosis-images/one'))
+    if (-not $image.StartsWith($ownedImages + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Image receipt is outside this resident session.'
+    }
+    Move-Item -LiteralPath (ConvertTo-WindowsLongPath $image) `
+        -Destination (ConvertTo-WindowsLongPath $Output) -ErrorAction Stop
+    return @{path=$Output; geometry=$Response.geometry}
 }
 
 function Invoke-TargetedJobs {
@@ -373,7 +392,7 @@ function Invoke-TargetedCaptureBatch {
     #>
     param($Command)
     foreach ($job in $Command.jobs) {
-        if ($job.kind -notin @('capture','measure','measure_batch')) { throw 'A capture batch may not mutate workbooks.' }
+        if ($job.kind -notin @('capture','capture_many','measure','measure_batch')) { throw 'A capture batch may not mutate workbooks.' }
     }
     return @{images=@(Invoke-TargetedJobs $Command.jobs)}
 }

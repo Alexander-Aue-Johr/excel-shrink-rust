@@ -55,6 +55,10 @@ pub(super) struct Controls {
     pub capture_tile_megapixels: u32,
     #[serde(default = "default_capture_batch")]
     pub capture_batch_tiles: u32,
+    #[serde(default = "default_geometry_ranges")]
+    pub geometry_batch_ranges: usize,
+    #[serde(default = "default_capture_ranges")]
+    pub capture_batch_ranges: usize,
     #[serde(default)]
     pub capture_context_tiles: u32,
     #[serde(default = "default_tall_sheet_threshold")]
@@ -123,6 +127,12 @@ fn default_capture_megapixels() -> u32 {
 fn default_capture_batch() -> u32 {
     1
 }
+fn default_geometry_ranges() -> usize {
+    crate::capture_settings::DEFAULT_GEOMETRY_RANGES
+}
+fn default_capture_ranges() -> usize {
+    crate::capture_settings::DEFAULT_CAPTURE_RANGES
+}
 fn default_tall_sheet_threshold() -> u32 {
     40
 }
@@ -162,7 +172,20 @@ impl Controls {
             "sweep processes must be positive"
         );
         validate_system_reserve_mib(value.system_reserve_mib)?;
-        ensure!(value.capture_context_tiles <= 16, "capture context must be 0..16 tiles");
+        crate::capture_settings::batch_size(
+            &json!(value.geometry_batch_ranges),
+            default_geometry_ranges(),
+            crate::capture_settings::MAX_GEOMETRY_RANGES,
+        )?;
+        crate::capture_settings::batch_size(
+            &json!(value.capture_batch_ranges),
+            default_capture_ranges(),
+            crate::capture_settings::MAX_CAPTURE_RANGES,
+        )?;
+        ensure!(
+            value.capture_context_tiles <= 16,
+            "capture context must be 0..16 tiles"
+        );
         ensure!(
             value.open_timeout_seconds > 0 && value.job_timeout_seconds > 0,
             "control room limits must be positive"
@@ -391,7 +414,18 @@ impl Room {
                 .as_ref()
                 .map(|old| old.capture_batch_tiles)
                 .unwrap_or(1),
-            capture_context_tiles: previous_controls.as_ref().map(|old| old.capture_context_tiles).unwrap_or(0),
+            capture_context_tiles: previous_controls
+                .as_ref()
+                .map(|old| old.capture_context_tiles)
+                .unwrap_or(0),
+            geometry_batch_ranges: previous_controls
+                .as_ref()
+                .map(|old| old.geometry_batch_ranges)
+                .unwrap_or_else(default_geometry_ranges),
+            capture_batch_ranges: previous_controls
+                .as_ref()
+                .map(|old| old.capture_batch_ranges)
+                .unwrap_or_else(default_capture_ranges),
             // Explicit launcher settings override the previous run once;
             // subsequent group snapshots use the Observatory's control file.
             tall_sheet_threshold: tall_sheet_setting(

@@ -33,6 +33,15 @@ impl Geometry {
         self.width == 0.0 || self.height == 0.0
     }
 
+    pub fn estimated_pixels(self) -> u64 {
+        if self.empty() {
+            return 0;
+        }
+        let width = (self.width * PIXELS_PER_POINT).ceil() + 2.0;
+        let height = (self.height * PIXELS_PER_POINT).ceil() + 2.0;
+        (width * height) as u64
+    }
+
     pub fn fits(self) -> bool {
         if self.empty() {
             return true;
@@ -94,19 +103,26 @@ pub(super) fn coalesce(selected: &BTreeSet<Candidate>) -> Result<BTreeSet<Candid
 }
 
 /// Bound pending Office.js range objects without limiting capture coverage.
-pub(super) const MEASUREMENT_BATCH_SIZE: usize = 64;
+#[cfg(test)]
+pub(super) const MEASUREMENT_BATCH_SIZE: usize = crate::capture_settings::DEFAULT_GEOMETRY_RANGES;
 
 /// Measure independent ranges together while preserving every state's image limits.
 /// Oversized children enter later batches; zero-area leaves retain explicit coverage.
 pub(super) fn plan_batched(
     selected: &BTreeSet<Candidate>,
+    mut batch_size: impl FnMut() -> Result<usize>,
     mut measure: impl FnMut(&[Candidate]) -> Result<Vec<BTreeMap<LaneId, Geometry>>>,
 ) -> Result<BTreeMap<Candidate, BTreeMap<LaneId, Geometry>>> {
     let mut pending: Vec<_> = coalesce(selected)?.into_iter().collect();
     let mut leaves = BTreeMap::new();
     while let Some(first) = pending.pop() {
+        let limit = batch_size()?;
+        ensure!(
+            (1..=crate::capture_settings::MAX_GEOMETRY_RANGES).contains(&limit),
+            "Invalid geometry package size"
+        );
         let mut batch = vec![first];
-        while batch.len() < MEASUREMENT_BATCH_SIZE
+        while batch.len() < limit
             && pending
                 .last()
                 .is_some_and(|next| next.sheet == batch[0].sheet)
@@ -188,7 +204,11 @@ fn plan(
     selected: &BTreeSet<Candidate>,
     mut measure: impl FnMut(&Candidate) -> Result<BTreeMap<LaneId, Geometry>>,
 ) -> Result<BTreeMap<Candidate, BTreeMap<LaneId, Geometry>>> {
-    plan_batched(selected, |batch| batch.iter().map(&mut measure).collect())
+    plan_batched(
+        selected,
+        || Ok(MEASUREMENT_BATCH_SIZE),
+        |batch| batch.iter().map(&mut measure).collect(),
+    )
 }
 
 #[cfg(test)]
@@ -235,11 +255,15 @@ mod tests {
             geometry(candidate)
         })?;
         let mut batches = 0;
-        let batched = plan_batched(&selected, |batch| {
-            assert!(!batch.is_empty() && batch.len() <= MEASUREMENT_BATCH_SIZE);
-            batches += 1;
-            batch.iter().map(geometry).collect()
-        })?;
+        let batched = plan_batched(
+            &selected,
+            || Ok(MEASUREMENT_BATCH_SIZE),
+            |batch| {
+                assert!(!batch.is_empty() && batch.len() <= MEASUREMENT_BATCH_SIZE);
+                batches += 1;
+                batch.iter().map(geometry).collect()
+            },
+        )?;
         assert_eq!(scalar, batched);
         assert!(batches * 10 < scalar_calls);
         Ok(())
@@ -255,28 +279,34 @@ mod tests {
             },
         ]
         .into();
-        let result = plan_batched(&selected, |batch| {
-            assert!(batch
-                .iter()
-                .all(|candidate| candidate.sheet == batch[0].sheet));
-            Ok(batch
-                .iter()
-                .map(|_| {
-                    [(
-                        LaneId::OR,
-                        Geometry {
-                            top: 0.,
-                            left: 0.,
-                            width: 0.,
-                            height: 0.,
-                        },
-                    )]
-                    .into()
-                })
-                .collect())
-        })?;
+        let result = plan_batched(
+            &selected,
+            || Ok(MEASUREMENT_BATCH_SIZE),
+            |batch| {
+                assert!(batch
+                    .iter()
+                    .all(|candidate| candidate.sheet == batch[0].sheet));
+                Ok(batch
+                    .iter()
+                    .map(|_| {
+                        [(
+                            LaneId::OR,
+                            Geometry {
+                                top: 0.,
+                                left: 0.,
+                                width: 0.,
+                                height: 0.,
+                            },
+                        )]
+                        .into()
+                    })
+                    .collect())
+            },
+        )?;
         assert_eq!(result.len(), 2);
-        assert!(plan_batched(&selected, |_| Ok(Vec::new())).is_err());
+        assert!(
+            plan_batched(&selected, || Ok(MEASUREMENT_BATCH_SIZE), |_| Ok(Vec::new())).is_err()
+        );
         Ok(())
     }
 

@@ -218,7 +218,7 @@ impl ExcelHost {
         for (lane, candidates) in jobs {
             let first = candidates.first().context("Empty geometry batch")?;
             ensure!(
-                candidates.len() <= super::capture_layout::MEASUREMENT_BATCH_SIZE,
+                candidates.len() <= crate::capture_settings::MAX_GEOMETRY_RANGES,
                 "Geometry batch exceeds range limit"
             );
             ensure!(
@@ -250,27 +250,66 @@ impl ExcelHost {
         Ok(geometries)
     }
 
-    /// Submit one outstanding capture per open lane and require every corresponding result.
+    /// Capture bounded same-sheet packages concurrently across live Excel lanes.
     pub(super) fn capture_ranges(
         &mut self,
         jobs: &[(LaneId, super::Candidate, std::path::PathBuf)],
         core_ranges: &std::collections::BTreeMap<super::Candidate, String>,
         telemetry: &Telemetry,
     ) -> Result<Vec<Value>> {
-        let response = self.call(json!({"kind":"capture_batch","jobs":jobs.iter().map(|(lane,candidate,output)|
-            json!({"kind":"capture","lane":lane.key(),"sheet":candidate.sheet,"range":candidate.cell,"output":output,"comparison_core_range":core_ranges.get(candidate)}))
-            .collect::<Vec<_>>()}), telemetry)?;
-        let images = response["images"]
+        let mut lanes = std::collections::BTreeMap::<LaneId, Vec<usize>>::new();
+        for (index, (lane, _, _)) in jobs.iter().enumerate() {
+            lanes.entry(*lane).or_default().push(index);
+        }
+        let mut commands = Vec::new();
+        for (lane, indices) in &lanes {
+            ensure!(
+                indices.len() <= crate::capture_settings::MAX_CAPTURE_RANGES,
+                "Capture package exceeds its range limit"
+            );
+            let sheet = &jobs[indices[0]].1.sheet;
+            ensure!(
+                indices.iter().all(|&index| jobs[index].1.sheet == *sheet),
+                "Capture package spans multiple sheets"
+            );
+            let ranges: Vec<_> = indices
+                .iter()
+                .map(|&index| {
+                    let (_, candidate, output) = &jobs[index];
+                    json!({"range":candidate.cell, "output":output,
+                    "comparison_core_range":core_ranges.get(candidate)})
+                })
+                .collect();
+            commands.push(
+                json!({"kind":"capture_many", "lane":lane.key(), "sheet":sheet, "ranges":ranges}),
+            );
+        }
+        let response = self.call(json!({"kind":"capture_batch", "jobs":commands}), telemetry)?;
+        let results = response["images"]
             .as_array()
-            .context("Missing capture batch responses")?;
+            .context("Missing capture lane responses")?;
         ensure!(
-            images.len() == jobs.len(),
-            "Capture batch response count differs from its requests"
+            results.len() == lanes.len(),
+            "Incomplete capture lane coverage"
         );
-        images
-            .iter()
-            .map(|image| measured_geometry(&image["geometry"]))
-            .collect()
+        let mut geometries = vec![Value::Null; jobs.len()];
+        for ((_, indices), result) in lanes.iter().zip(results) {
+            let images = result["images"]
+                .as_array()
+                .context("Missing capture images")?;
+            ensure!(
+                images.len() == indices.len(),
+                "Incomplete capture range coverage"
+            );
+            for (&index, image) in indices.iter().zip(images) {
+                ensure!(
+                    image["range"].as_str() == Some(jobs[index].1.cell.as_str()),
+                    "Capture range identity changed"
+                );
+                geometries[index] = measured_geometry(&image["geometry"])?;
+            }
+        }
+        Ok(geometries)
     }
 
     /// Enumerate embedded charts and same-resident chart sheets independently of XML changes.

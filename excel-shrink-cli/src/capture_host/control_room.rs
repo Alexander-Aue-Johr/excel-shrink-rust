@@ -1517,6 +1517,8 @@ fn defaults() -> Value {
         "paused": false, "open_timeout_seconds": 600, "system_reserve_mib": 0,
         "job_timeout_seconds": 300, "equal_preview_width": 512, "capture_tile_megapixels": 32,
         "capture_batch_tiles": 1, "capture_context_tiles": 0, "capture_transport": "live-images", "hide_excel": false,
+        "geometry_batch_ranges": crate::capture_settings::DEFAULT_GEOMETRY_RANGES,
+        "capture_batch_ranges": crate::capture_settings::DEFAULT_CAPTURE_RANGES,
         "tall_sheet_threshold": 40, "tall_sheet_edge_tiles": 2,
         "crc_equal_sheet_threshold_mib": 256})
 }
@@ -1538,6 +1540,14 @@ fn merge_controls(current: &Value, patch: &Value) -> Result<Value> {
         ensure!(known.get(key).is_some(), "Unknown control '{key}'.");
         if matches!(key.as_str(), "paused" | "hide_excel") {
             ensure!(value.is_boolean(), "{key} must be a boolean.");
+        } else if key == "geometry_batch_ranges" || key == "capture_batch_ranges" {
+            let maximum = if key == "geometry_batch_ranges" {
+                crate::capture_settings::MAX_GEOMETRY_RANGES
+            } else {
+                crate::capture_settings::MAX_CAPTURE_RANGES
+            };
+            ensure!(!value.is_null(), "Batch size must be an integer");
+            crate::capture_settings::batch_size(value, 1, maximum)?;
         } else if key == "capture_transport" {
             ensure!(
                 matches!(value.as_str(), Some("live-images" | "hash-first")),
@@ -1606,6 +1616,25 @@ fn active_stop_requested(queue: &Value, stop: Option<&Value>) -> bool {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn targeted_package_sizes_are_independent_api_controls() -> Result<()> {
+        let defaults = defaults();
+        let current = merge_controls(
+            &defaults,
+            &json!({"geometry_batch_ranges":256,"capture_batch_ranges":3}),
+        )?;
+        assert_eq!(current["geometry_batch_ranges"], 256);
+        assert_eq!(current["capture_batch_ranges"], 3);
+        let next = merge_controls(&current, &json!({"capture_batch_ranges":2}))?;
+        assert_eq!(next["geometry_batch_ranges"], 256);
+        assert_eq!(next["capture_batch_ranges"], 2);
+        for invalid in [json!(0), json!(-1), json!(1.5), Value::Null, json!(65)] {
+            assert!(merge_controls(&current, &json!({"capture_batch_ranges":invalid})).is_err());
+        }
+        assert!(merge_controls(&current, &json!({"geometry_batch_ranges":4097})).is_err());
+        Ok(())
+    }
 
     #[tokio::test]
     async fn preparation_capture_demand_counts_unstarted_excel_clients() -> Result<()> {

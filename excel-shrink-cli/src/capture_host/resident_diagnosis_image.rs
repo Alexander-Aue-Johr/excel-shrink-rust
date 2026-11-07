@@ -7,6 +7,7 @@ use std::io::Cursor;
 pub(super) async fn upload(
     State(host): State<Arc<Host>>,
     RoutePath((id, command)): RoutePath<(String, String)>,
+    Query(parameters): Parameters,
     request: Request,
 ) -> JsonResponse {
     safe_id(&id)?;
@@ -17,7 +18,7 @@ pub(super) async fn upload(
         || client.active_payload["operation"] != "targeted"
         || !matches!(
             client.active_payload["request"]["kind"].as_str(),
-            Some("capture" | "capture_chart")
+            Some("capture" | "capture_chart" | "capture_many")
         )
         || !client.error.is_null()
     {
@@ -25,6 +26,29 @@ pub(super) async fn upload(
             "Image does not belong to an active targeted capture.",
         ));
     }
+    let name = if client.active_payload["request"]["kind"] == "capture_many" {
+        let index = parameters
+            .get("index")
+            .and_then(|text| text.parse::<usize>().ok())
+            .ok_or_else(|| ApiError::bad_request("Missing capture image index"))?;
+        let count = client.active_payload["request"]["ranges"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or(0);
+        if count == 0 || count > crate::capture_settings::MAX_CAPTURE_RANGES || index >= count {
+            return Err(ApiError::bad_request(
+                "Capture image index is outside its command",
+            ));
+        }
+        format!("{command}-{index}.image")
+    } else {
+        if parameters.contains_key("index") {
+            return Err(ApiError::bad_request(
+                "Single capture cannot select an image index",
+            ));
+        }
+        format!("{command}.image")
+    };
     let bytes = axum::body::to_bytes(request.into_body(), MAX_IMAGE_BYTES)
         .await
         .map_err(ApiError::bad_request)?;
@@ -42,11 +66,7 @@ pub(super) async fn upload(
         return Err(ApiError::bad_request("Empty capture."));
     }
     let sha256 = format!("{:x}", Sha256::digest(&bytes));
-    let path = host
-        .session
-        .join("diagnosis-images")
-        .join(&id)
-        .join(format!("{command}.image"));
+    let path = host.session.join("diagnosis-images").join(&id).join(name);
     // Limit links per blob on filesystems with a hard-link count ceiling.
     // Command retries do not advance this bucket or create a second command path.
     let pool = path.parent().unwrap().join("blobs")
@@ -121,14 +141,18 @@ mod tests {
                 .unwrap()
         };
         let args = || RoutePath(("one".into(), "capture-1".into()));
-        assert!(
-            upload(State(host.clone()), args(), request("wrong", bytes.clone()))
-                .await
-                .is_err()
-        );
+        assert!(upload(
+            State(host.clone()),
+            args(),
+            Query(HashMap::new()),
+            request("wrong", bytes.clone())
+        )
+        .await
+        .is_err());
         assert!(upload(
             State(host.clone()),
             RoutePath(("one".into(), "other".into())),
+            Query(HashMap::new()),
             request("worker-token", bytes.clone())
         )
         .await
@@ -136,6 +160,7 @@ mod tests {
         assert!(upload(
             State(host.clone()),
             args(),
+            Query(HashMap::new()),
             request("worker-token", b"invalid".to_vec())
         )
         .await
@@ -143,6 +168,7 @@ mod tests {
         let first = upload(
             State(host.clone()),
             args(),
+            Query(HashMap::new()),
             request("worker-token", bytes.clone()),
         )
         .await
@@ -151,6 +177,7 @@ mod tests {
         let second = upload(
             State(host.clone()),
             args(),
+            Query(HashMap::new()),
             request("worker-token", bytes.clone()),
         )
         .await
@@ -163,10 +190,59 @@ mod tests {
         );
         let mut changed = bytes.clone();
         changed.extend_from_slice(b"different encoding");
-        assert!(
-            upload(State(host), args(), request("worker-token", changed))
-                .await
-                .is_err()
+        assert!(upload(
+            State(host.clone()),
+            args(),
+            Query(HashMap::new()),
+            request("worker-token", changed)
+        )
+        .await
+        .is_err());
+        let shared = host.find_client("one").await.unwrap();
+        {
+            let mut client = shared.lock().await;
+            client.active_payload["request"]["kind"] = json!("capture_many");
+            client.active_payload["request"]["ranges"] = json!([{"range":"A1"},{"range":"A2"}]);
+        }
+        assert!(upload(
+            State(host.clone()),
+            args(),
+            Query(HashMap::new()),
+            request("worker-token", bytes.clone())
+        )
+        .await
+        .is_err());
+        let slot = |index: &str| Query(HashMap::from([("index".into(), index.into())]));
+        assert!(upload(
+            State(host.clone()),
+            args(),
+            slot("2"),
+            request("worker-token", bytes.clone())
+        )
+        .await
+        .is_err());
+        let left = upload(
+            State(host.clone()),
+            args(),
+            slot("0"),
+            request("worker-token", bytes.clone()),
+        )
+        .await
+        .unwrap()
+        .0;
+        let right = upload(
+            State(host),
+            args(),
+            slot("1"),
+            request("worker-token", bytes.clone()),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_ne!(left["image_path"], right["image_path"]);
+        assert_eq!(
+            tokio::fs::read(right["image_path"].as_str().unwrap()).await?,
+            bytes
         );
         tokio::fs::remove_dir_all(directory).await?;
         Ok(())

@@ -497,27 +497,14 @@ impl Workflow<'_, '_> {
                 .update(|state| state.step(id, capture_phase(id), StepStatus::Running))?;
         }
         loop {
-            let jobs: Vec<_> = pending
-                .iter()
-                .filter_map(|(&id, queue)| {
-                    queue.front().map(|candidate| {
-                        let name = format!(
-                            "{:x}",
-                            Sha256::digest(
-                                format!("{}\0{}", candidate.sheet, candidate.cell).as_bytes()
-                            )
-                        );
-                        (
-                            id,
-                            candidate.clone(),
-                            self.comparison
-                                .args
-                                .output
-                                .join(format!("evidence-{}/{name}.png", id.key())),
-                        )
-                    })
-                })
-                .collect();
+            let controls = self.control_path();
+            let limit = crate::capture_settings::read_batch_size(
+                controls.as_deref(),
+                "capture_batch_ranges",
+                crate::capture_settings::DEFAULT_CAPTURE_RANGES,
+                crate::capture_settings::MAX_CAPTURE_RANGES,
+            )?;
+            let jobs = self.next_capture_jobs(&pending, limit)?;
             if jobs.is_empty() {
                 break;
             }
@@ -528,9 +515,13 @@ impl Workflow<'_, '_> {
             };
             for batch in jobs.chunks(batch_size) {
                 self.comparison.telemetry.progress(|state| {
-                    for (id, candidate, _) in batch {
-                        state.lane(*id).current_sheet = Some(candidate.sheet.clone());
-                        state.lane(*id).current_range = Some(candidate.cell.clone());
+                    for &id in self.states.keys() {
+                        let ranges: Vec<_> = batch.iter().filter(|(lane, _, _)| *lane == id)
+                            .map(|(_, candidate, _)| candidate).collect();
+                        if let Some(first) = ranges.first() {
+                            state.lane(id).current_sheet = Some(first.sheet.clone());
+                            state.lane(id).current_range = Some(format!("capture {} ranges · {}", ranges.len(), first.cell));
+                        }
                     }
                 })?;
                 let mut core_ranges = BTreeMap::new();
@@ -594,10 +585,75 @@ impl Workflow<'_, '_> {
         Ok(())
     }
 
+    /// Resolve the owning Observatory without coupling standalone comparisons to a global run.
+    fn control_path(&self) -> Option<PathBuf> {
+        self.comparison
+            .args
+            .observatory_group_dir
+            .as_deref()
+            .and_then(Path::parent)
+            .and_then(Path::parent)
+            .map(|root| root.join("control.json"))
+    }
+
+    /// Keep image memory bounded by the existing per-image pixel allowance for each package.
+    fn next_capture_jobs(
+        &self,
+        pending: &BTreeMap<LaneId, VecDeque<Candidate>>,
+        limit: usize,
+    ) -> Result<Vec<(LaneId, Candidate, PathBuf)>> {
+        let mut jobs = Vec::new();
+        for (&id, queue) in pending {
+            let Some(first) = queue.front() else {
+                continue;
+            };
+            let mut pixels = 0;
+            let mut count = 0;
+            for candidate in queue.iter().take(limit) {
+                if candidate.sheet != first.sheet {
+                    break;
+                }
+                let geometry = self.states[&id]
+                    .geometries
+                    .get(candidate)
+                    .context("Capture package has no measured geometry")?;
+                let next_pixels = geometry.estimated_pixels();
+                if count > 0 && pixels + next_pixels > capture_layout::MAX_PIXELS {
+                    break;
+                }
+                pixels += next_pixels;
+                count += 1;
+                let name = format!(
+                    "{:x}",
+                    Sha256::digest(format!("{}\0{}", candidate.sheet, candidate.cell).as_bytes())
+                );
+                let path = self
+                    .comparison
+                    .args
+                    .output
+                    .join(format!("evidence-{}/{name}.png", id.key()));
+                jobs.push((id, candidate.clone(), path));
+            }
+        }
+        Ok(jobs)
+    }
+
     /// Preserve selected coverage, measure its visible partition, and record non-rendering leaves.
     fn prepare_capture_partition(&mut self) -> Result<()> {
         let (selected, coverage) = self.content_bounds.select(&self.requested_candidates)?;
-        let plan = capture_layout::plan_batched(&selected, |batch| self.measure_candidates(batch))?;
+        let controls = self.control_path();
+        let plan = capture_layout::plan_batched(
+            &selected,
+            || {
+                crate::capture_settings::read_batch_size(
+                    controls.as_deref(),
+                    "geometry_batch_ranges",
+                    crate::capture_settings::DEFAULT_GEOMETRY_RANGES,
+                    crate::capture_settings::MAX_GEOMETRY_RANGES,
+                )
+            },
+            |batch| self.measure_candidates(batch),
+        )?;
         self.comparison.candidates = plan.keys().cloned().collect();
         let mut coverage = coverage;
         super::content_bounds::record_partition(&mut coverage, &self.comparison.candidates);

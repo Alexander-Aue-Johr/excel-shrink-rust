@@ -14,14 +14,53 @@
     return {runs, elapsed_ms: performance.now() - started, complete: true};
   }
 
+  /** Queue geometry together, then render only nonempty ranges in one image sync. */
+  async function captureRanges(context, command) {
+    const requests = command.kind === 'capture_many' ? command.ranges : [command];
+    if (!Array.isArray(requests) || requests.length < 1 || requests.length > 64 ||
+        requests.some(item => typeof item.range !== 'string' || !item.range)) {
+      throw new Error('Capture batch requires 1..64 ranges');
+    }
+    const worksheet = context.workbook.worksheets.getItem(command.sheet);
+    worksheet.showGridlines = false;
+    const loaded = requests.map(request => {
+      const range = worksheet.getRange(request.range);
+      range.load('top,left,width,height');
+      const core = request.comparison_core_range ? worksheet.getRange(request.comparison_core_range) : null;
+      if (core) core.load('top,left,width,height');
+      return {request, range, core};
+    });
+    await context.sync();
+    let pixels = 0;
+    const captures = loaded.map(({request, range, core}) => {
+      const geometry = {top: range.top, left: range.left, width: range.width, height: range.height};
+      if (core) geometry.comparison_core = {top: core.top, left: core.left, width: core.width, height: core.height};
+      if (![geometry.top, geometry.left, geometry.width, geometry.height]
+          .every(value => Number.isFinite(value) && value >= 0)) {
+        throw new Error('Invalid measured capture geometry');
+      }
+      const empty = range.width === 0 || range.height === 0;
+      if (!empty) pixels += (Math.ceil(range.width * 2) + 2) * (Math.ceil(range.height * 2) + 2);
+      return {request, range, geometry, empty};
+    });
+    // Single-image exports retain their existing validation in Rust. Multiple
+    // image results share that same conservative decoded-pixel memory budget.
+    if (requests.length > 1 && pixels > 32000000) throw new Error('Capture batch exceeds the combined pixel budget');
+    const images = captures.map(item => item.empty ? null : item.range.getImage());
+    if (images.some(Boolean)) await context.sync();
+    return captures.map((item, index) => item.empty
+      ? {range: item.request.range, non_rendering: true, reason: 'zero-area-range', geometry: item.geometry}
+      : {range: item.request.range, image_base64: images[index].value, geometry: item.geometry});
+  }
+
   /** Execute one bounded operation; save/rebuild never replace a missing response with success. */
   async function run(command, office, reportProgress = () => {}) {
     if (command.kind === 'heights') return measureHeights(command, office);
     return office(async context => {
       if (command.kind === 'measure_batch') {
-        if (!Array.isArray(command.ranges) || command.ranges.length < 1 || command.ranges.length > 64 ||
+        if (!Array.isArray(command.ranges) || command.ranges.length < 1 || command.ranges.length > 4096 ||
             command.ranges.some(address => typeof address !== 'string' || !address)) {
-          throw new Error('Geometry batch requires 1..64 range addresses');
+          throw new Error('Geometry batch requires 1..4096 range addresses');
         }
         const sheet = context.workbook.worksheets.getItem(command.sheet);
         const ranges = command.ranges.map(address => {
@@ -110,33 +149,11 @@
           geometry
         };
       }
-      const range = context.workbook.worksheets.getItem(command.sheet).getRange(command.range);
-      if (command.kind === 'capture') {
-        const worksheet = context.workbook.worksheets.getItem(command.sheet);
-        worksheet.showGridlines = false;
-        range.load('top,left,width,height');
-        const core = command.comparison_core_range
-          ? worksheet.getRange(command.comparison_core_range) : null;
-        if (core) core.load('top,left,width,height');
-        await context.sync();
-        const geometry = {top: range.top, left: range.left, width: range.width, height: range.height};
-        if (core) geometry.comparison_core = {
-          top: core.top, left: core.left, width: core.width, height: core.height
-        };
-        if (![geometry.top, geometry.left, geometry.width, geometry.height]
-          .every(value => Number.isFinite(value) && value >= 0)) {
-          throw new Error('Invalid measured capture geometry');
-        }
-        if (range.width === 0 || range.height === 0) {
-          return {non_rendering: true, reason: 'zero-area-range', geometry};
-        }
-        const image = range.getImage();
-        await context.sync();
-        return {
-          image_base64: image.value,
-          geometry
-        };
+      if (command.kind === 'capture' || command.kind === 'capture_many') {
+        const images = await captureRanges(context, command);
+        return command.kind === 'capture' ? images[0] : {images};
       }
+      const range = context.workbook.worksheets.getItem(command.sheet).getRange(command.range);
       if (command.kind === 'measure') {
         range.load('top,left,width,height');
         await context.sync();
