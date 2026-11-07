@@ -932,6 +932,16 @@ opening metrics describe this warm-session opening and include the session ID,
 Excel PID and number of converted workbooks. They are distinct from subsequent
 visual-validation opening measurements.
 
+XLSX conversion explicitly saves with `xlExclusive` access. The new conversion
+copy drops legacy shared editing and its revision history, recorded by the optional
+`shared_editing_removed` metric. The input remains read-only. Keeping legacy shared
+mode had prevented 58 Enron inputs from saving because Excel could not apply their
+revision history. Three retained examples saved with exclusive access. Complete
+used-range value/formula checks matched after reopening for two examples. The
+third preserved every formula and changed one cached value belonging to `TODAY()`
+to the current date. This is an observed conversion-time calculation effect,
+separate from Shrink and from the later rebuilt comparison.
+
 Idle sessions immediately accept another queued workbook. Increasing capacity
 starts additional sessions asynchronously. Decreasing it retires excess sessions
 after their current workbook. A failed or stalled session is replaced after its

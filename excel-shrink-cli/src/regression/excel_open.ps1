@@ -87,7 +87,11 @@ try {
         $metrics['macros_removed'] = [bool]$workbook.HasVBProject
         $localOutput = Join-Path $stage 'converted.xlsx'
         $workbook.CheckCompatibility = $false
-        $workbook.SaveAs($localOutput, 51)
+        $metrics['shared_editing_removed'] = [bool]$workbook.MultiUserEditing
+        # Convert a private copy to exclusive access. Inheriting legacy shared
+        # mode can make XLSX saving fail while applying obsolete revision history.
+        $exclusiveAccess = 3
+        $workbook.SaveAs($localOutput, 51, $missing, $missing, $false, $false, $exclusiveAccess)
         Copy-Item -LiteralPath $localOutput -Destination $OutputPath -Force
     }
 } catch {

@@ -28,6 +28,9 @@ pub struct ExcelOpenMetrics {
     pub calculation: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub macros_removed: Option<bool>,
+    /// Conversion copies use exclusive access instead of legacy shared editing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_editing_removed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase_seconds: Option<std::collections::BTreeMap<String, f64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -788,6 +791,9 @@ mod tests {
         let mut value = serde_json::json!({"open_seconds":0.5,"working_set_bytes":100,
             "private_bytes":80,"calculation":"manual"});
         assert!(serde_json::from_value::<ExcelOpenMetrics>(value.clone())?.phase_seconds.is_none());
+        assert!(serde_json::from_value::<ExcelOpenMetrics>(value.clone())?.shared_editing_removed.is_none());
+        value["shared_editing_removed"] = serde_json::json!(true);
+        assert_eq!(serde_json::from_value::<ExcelOpenMetrics>(value.clone())?.shared_editing_removed, Some(true));
         value["phase_seconds"] = serde_json::json!({"starting Excel":2.0,"closing Excel":0.1});
         assert_eq!(serde_json::from_value::<ExcelOpenMetrics>(value)?.phase_seconds.unwrap()["starting Excel"], 2.0);
         Ok(())

@@ -103,7 +103,10 @@ try {
             $phaseClock.Restart()
             $workbook.CheckCompatibility = $false
             $pendingOutput = Join-Path $request.directory 'converted.pending.xlsx'
-            $workbook.SaveAs($pendingOutput, 51)
+            $metrics['shared_editing_removed'] = [bool]$workbook.MultiUserEditing
+            # Only the new conversion copy loses legacy sharing and revision history.
+            $exclusiveAccess = 3
+            $workbook.SaveAs($pendingOutput, 51, $missing, $missing, $false, $false, $exclusiveAccess)
             $phaseTimes[$phase] = $phaseClock.Elapsed.TotalSeconds
             $phase = 'closing workbook'
             Set-Phase $request.directory $phase

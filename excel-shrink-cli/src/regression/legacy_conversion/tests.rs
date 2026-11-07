@@ -141,6 +141,50 @@ fn native_pool_reuses_excel_and_recovers_failed_sessions() -> Result<()> {
     Ok(())
 }
 
+/// Replay a shared XLS with independently checked XLSX values and formulas.
+#[test]
+#[ignore = "requires LEGACY_SHARED_FIXTURE containing shared.xls and expected.xlsx"]
+fn native_shared_revision_history_converts_without_changing_inputs() -> Result<()> {
+    let fixtures = PathBuf::from(std::env::var("LEGACY_SHARED_FIXTURE")?);
+    let input = fixtures.join("shared.xls");
+    let original = fs::read(&input)?;
+    let root =
+        std::env::temp_dir().join(format!("shared-conversion-test-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&root)?;
+    let mut pool = Pool::new(root.join("pool"))?;
+    let output = root.join("converted.xlsx");
+    let metrics = std::thread::scope(|scope| -> Result<_> {
+        let pool_root = pool.root.clone();
+        let work = root.join("conversion");
+        let result_path = output.clone();
+        let source_path = input.clone();
+        let handle =
+            scope.spawn(move || client::convert(&pool_root, &source_path, &result_path, &work));
+        pump_until(&mut pool, 1, |_| handle.is_finished())?;
+        handle.join().unwrap()
+    })?;
+    assert_eq!(metrics.shared_editing_removed, Some(true));
+    assert_eq!(
+        original,
+        fs::read(&input)?,
+        "conversion must not modify its input"
+    );
+    let comparison = super::super::xlsx_value_compare::compare_workbook_preservation(
+        &fixtures.join("expected.xlsx"),
+        &output,
+        super::super::xlsx_value_compare::MissingCellPolicy::strict(),
+        None,
+    )?;
+    assert_eq!(comparison.difference_count, 0);
+    drop(pool);
+    write_json(
+        &root.join("test-results.json"),
+        &json!({"metrics":metrics,"value_differences":0,"source_unchanged":true}),
+    )?;
+    println!("{}", root.display());
+    Ok(())
+}
+
 fn pump_until(pool: &mut Pool, target: usize, ready: impl Fn(&Pool) -> bool) -> Result<()> {
     let started = Instant::now();
     while !ready(pool) {
