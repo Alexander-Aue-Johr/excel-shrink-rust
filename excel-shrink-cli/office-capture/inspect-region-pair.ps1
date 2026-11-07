@@ -23,7 +23,7 @@ function Get-InspectionSession([string]$Side) {
     $entry = $sessions[$Side]
     if ($null -ne $entry -and $entry.process.HasExited) {
         Release-InspectionBook $entry
-        [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($entry.seed)
+        if ($null -ne $entry.seed) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($entry.seed) }
         [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($entry.app)
         $entry.process.Dispose()
         $sessions.Remove($Side)
@@ -63,6 +63,13 @@ function Select-InspectionRegion([string]$Side, [string]$Path, [string]$Sheet, [
         $entry.book = $entry.app.Workbooks.Open($Path, 0, $true, $missing, '', '', $true)
         $entry.book.EnableAutoRecover = $false
         $entry.path = $Path
+        if ($null -ne $entry.seed) {
+            # The seed permits setting calculation mode before opening the first file.
+            # Once a real workbook exists it must not become an extra visible window.
+            $entry.seed.Close($false)
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($entry.seed)
+            $entry.seed = $null
+        }
     }
     $sheetObject = $null
     $selection = $null
@@ -97,7 +104,7 @@ try {
     try {
         foreach ($entry in $sessions.Values) {
             Release-InspectionBook $entry
-            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($entry.seed)
+            if ($null -ne $entry.seed) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($entry.seed) }
             try { $entry.app.Quit() } catch [Runtime.InteropServices.COMException] {}
             [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($entry.app)
             $entry.process.Dispose()
