@@ -958,3 +958,16 @@ values. Local changes still select local evidence. A change to the default forma
 or an unresolved rendering dependency still requires conservative coverage.
 Previously completed comparisons remain usable because this refinement removes
 unnecessary candidates without weakening their retained evidence.
+### Filename-dependent formula results
+
+`CELL("filename")` can display the temporary workbook path. Separate comparison
+copies therefore produce different strings after rebuilding, even when their
+formula XML is identical. Preserve the pixel difference and distinguish this
+input-environment effect during investigation. It does not justify changing the
+shrinker or declaring unrelated differences equal.
+
+The two Enron `3.555790.FLAR4E54UTFJIDD155M3RVLRNOVFKM4VA` examples contain this
+formula in `Tab 1!A13`. Their retained 512 by 239 captures differ only in the
+filename text at pixel rows 212 through 218. The current random/time dependency
+explainer does not recognize this function, so its negative result alone cannot
+rule out environment-dependent formulas.
