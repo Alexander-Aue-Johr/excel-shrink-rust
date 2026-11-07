@@ -77,6 +77,11 @@ try {
                 $local = [IO.Path]::Combine($Output, 'telemetry.json')
                 if ([IO.File]::Exists($local)) {
                     $state = [IO.File]::ReadAllText($local) | ConvertFrom-Json
+                    if ($state.PSObject.Properties['_metadata_store']) {
+                        $resolved = & $Binary metadata-store read $local
+                        if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve SQLite telemetry during timeout cleanup.' }
+                        $state = ($resolved -join "`n") | ConvertFrom-Json
+                    }
                     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
                     $state.status = 'failed'
                     $state.error = $message

@@ -9,6 +9,15 @@ pub(super) const SNAPSHOT_LIMIT: u64 = 32 * 1024 * 1024;
 const MONITOR_LIMIT: u64 = 2 * 1024 * 1024;
 
 pub(super) async fn read_object(path: &Path, maximum: u64) -> Result<Value> {
+    let owned = path.to_owned();
+    if let Some(bytes) =
+        tokio::task::spawn_blocking(move || crate::metadata_store::linked_snapshot(&owned, maximum))
+            .await??
+    {
+        let value: Value = serde_json::from_slice(&bytes)?;
+        ensure!(value.is_object(), "Expected an object snapshot.");
+        return Ok(value);
+    }
     // Producers publish snapshots by atomic rename. Rust's Windows file reads
     // allow delete sharing so a producer can replace the snapshot during a read.
     let file = tokio::fs::File::open(path).await?;

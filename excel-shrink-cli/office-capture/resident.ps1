@@ -13,6 +13,9 @@ if ($Visible -and $HideExcel) { throw 'Visible and HideExcel cannot be combined.
 $ProgressPreference = 'SilentlyContinue'
 $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $session = [IO.Path]::GetFullPath($SessionPath)
+$script:sqliteDiagnosticsEnabled = $env:EXCEL_SHRINK_SQLITE_METADATA -eq '1'
+$script:diagnosticHostReady = $false
+$script:diagnosticEvents = New-Object 'Collections.Generic.List[object]'
 if (-not (Test-Path -LiteralPath (Join-Path $session 'clients') -PathType Container)) {
     throw 'Resident session requires a clients directory.'
 }
@@ -31,7 +34,7 @@ foreach ($function in $ast.FindAll({ param($node) $node -is [Management.Automati
 }
 
 function Write-SessionJson([string]$name, $value) {
-    Write-ResidentJsonFile (Join-Path $session $name) $value
+    Write-ResidentJsonFile ([IO.Path]::Combine($session, $name)) $value
 }
 
 function Confirm-ResidentClientExit($ownedClients, $clientMetrics, [int]$TimeoutMilliseconds = 3000) {
@@ -74,6 +77,16 @@ function Confirm-ResidentClientExit($ownedClients, $clientMetrics, [int]$Timeout
 }
 
 function Write-ResidentJsonFile([string]$target, $value) {
+    if ($script:diagnosticHostReady) {
+        if ($target -eq [IO.Path]::Combine($session, 'metrics.json')) {
+            Publish-ResidentDiagnostics $value
+            return
+        }
+        if ($liveGroupDirectory -and $target -eq [IO.Path]::Combine($liveGroupDirectory, 'launcher.json')) {
+            # The same committed metrics are referenced by both display paths.
+            return
+        }
+    }
     $pending = ConvertTo-WindowsLongPath ($target + '.' + [Guid]::NewGuid().ToString('N') + '.pending')
     $target = ConvertTo-WindowsLongPath $target
     [IO.File]::WriteAllText($pending, ($value | ConvertTo-Json -Depth 40), $utf8)
@@ -254,7 +267,38 @@ function Test-ResidentDeadline([string]$kind, [double]$elapsed) {
 function Add-SessionEvent([string]$kind, [string]$client, $extra) {
     $event = [ordered]@{ event=$kind; client_id=$client; utc=[DateTime]::UtcNow.ToString('o'); elapsed_seconds=$clock.Elapsed.TotalSeconds }
     if ($null -ne $extra) { $event.detail = $extra }
-    [IO.File]::AppendAllText((Join-Path $session 'launcher-events.jsonl'), (($event | ConvertTo-Json -Depth 20 -Compress) + "`n"), $utf8)
+    if ($script:sqliteDiagnosticsEnabled -and ($script:diagnosticHostReady -or -not $ready)) {
+        $event.id = [Guid]::NewGuid().ToString('D')
+        $script:diagnosticEvents.Add($event)
+        if ($script:diagnosticHostReady -and $script:diagnosticEvents.Count -ge 4) {
+            Publish-ResidentDiagnostics $metrics
+        }
+        return
+    }
+    [IO.File]::AppendAllText(([IO.Path]::Combine($session, 'launcher-events.jsonl')), (($event | ConvertTo-Json -Depth 20 -Compress) + "`n"), $utf8)
+}
+
+function Publish-ResidentDiagnostics($snapshot, [switch]$Export) {
+    # Retain the queue until the host confirms its transaction. Event IDs make
+    # an explicit retry safe if an HTTP response is lost after commit.
+    $count = $script:diagnosticEvents.Count
+    $batch = @{ events=@($script:diagnosticEvents.ToArray()); export=[bool]$Export }
+    if ($null -ne $snapshot) { $batch.metrics = $snapshot }
+    $body = $batch | ConvertTo-Json -Depth 40 -Compress
+    $receipt = Invoke-RestMethod -Uri ($controlUrl + '/launcher/diagnostics') -Method Post `
+        -Headers @{ 'X-Launcher-Token'=$launcherToken } -Body ([Text.Encoding]::UTF8.GetBytes($body)) `
+        -ContentType 'application/json' -TimeoutSec 10
+    if (-not $receipt.ok -or [int]$receipt.accepted_events -ne $count) {
+        throw 'Diagnostic event batch was not acknowledged.'
+    }
+    if ($count) { $script:diagnosticEvents.RemoveRange(0, $count) }
+}
+
+function Write-PendingDiagnosticEvents {
+    foreach ($event in $script:diagnosticEvents) {
+        [IO.File]::AppendAllText(([IO.Path]::Combine($session, 'launcher-events.jsonl')), (($event | ConvertTo-Json -Depth 40 -Compress) + "`n"), $utf8)
+    }
+    $script:diagnosticEvents.Clear()
 }
 
 function Get-SystemReserveBytes($configured) {
@@ -795,6 +839,7 @@ try {
         try { $health = Read-HostHealth; if ($health.ok) { $ready=$true; break } } catch { Start-Sleep -Milliseconds 200 }
     }
     if (-not $ready) { throw 'Resident capture host did not become ready within 30 seconds.' }
+    $script:diagnosticHostReady = $script:sqliteDiagnosticsEnabled
     $excelExecutable = Find-ExcelExecutable
     Write-SessionJson 'launcher.json' @{ launcher_pid=$PID; host_pid=$hostProcess.Id; port=$port; stage=$stage; started_at=[DateTime]::UtcNow.ToString('o') }
     $metrics.status = 'running'
@@ -871,6 +916,15 @@ try {
         try { $metrics.cleanup_processes = @($owned.ProcessIdentities()) }
         catch { $metrics.cleanup_snapshot_warning = $_.Exception.Message }
         Add-SessionEvent 'owned_cleanup_started' '' @{ processes=$metrics.cleanup_processes }
+        if ($script:diagnosticHostReady) {
+            try { Publish-ResidentDiagnostics $metrics -Export }
+            catch {
+                $metrics.diagnostic_export_warning = $_.Exception.Message
+                Write-PendingDiagnosticEvents
+            } finally {
+                $script:diagnosticHostReady = $false
+            }
+        }
         foreach ($entry in $clients.Values) {
             if ($null -ne $entry.error_checking_scope) {
                 try { $entry.error_checking_scope.Dispose() }
@@ -917,6 +971,7 @@ try {
         catch { if ($attempt -eq 19) { $metrics.cleanup_warning = $_.Exception.Message } else { Start-Sleep -Milliseconds 250 } }
     }
     $metrics.elapsed_seconds = $clock.Elapsed.TotalSeconds
+    Write-PendingDiagnosticEvents
     $metrics.opening_seconds = $openingSeconds
     $metrics.other_group_opening_seconds = $otherOpeningSeconds
     Update-ClientStateTimes

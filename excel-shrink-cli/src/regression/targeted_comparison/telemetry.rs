@@ -211,6 +211,7 @@ struct Shared {
     paths: Vec<PathBuf>,
     stop: bool,
     last_published: Instant,
+    sqlite: Option<crate::metadata_store::SnapshotPublisher>,
 }
 
 /// One publisher serializes phase changes and an independent PID-liveness sampler.
@@ -336,12 +337,21 @@ impl Telemetry {
             current_operation: Value::Null,
             last_successful_operation: Value::Null,
         };
+        let sqlite = if std::env::var("EXCEL_SHRINK_SQLITE_METADATA").as_deref() == Ok("1") {
+            fs::create_dir_all(&args.output)?;
+            Some(crate::metadata_store::SnapshotPublisher::new(
+                args.output.join("telemetry.sqlite"),
+            )?)
+        } else {
+            None
+        };
         let shared = Arc::new((
             Mutex::new(Shared {
                 snapshot,
                 paths,
                 stop: false,
                 last_published: Instant::now(),
+                sqlite,
             }),
             Condvar::new(),
         ));
@@ -409,6 +419,11 @@ fn write_snapshot(state: &mut Shared) -> Result<()> {
     state.snapshot.updated_at = now();
     state.snapshot.revision += 1;
     state.snapshot.publication_errors.clear();
+    if let Some(sqlite) = &mut state.sqlite {
+        sqlite.publish(&mut serde_json::to_value(&state.snapshot)?, &state.paths)?;
+        state.last_published = Instant::now();
+        return Ok(());
+    }
     let bytes = serde_json::to_vec_pretty(&state.snapshot)?;
     for path in state.paths.iter().skip(1) {
         // Concurrent manual rechecks may share the legacy group snapshot, but

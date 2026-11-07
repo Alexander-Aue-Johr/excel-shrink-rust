@@ -23,10 +23,10 @@ use super::{
 #[path = "resident_telemetry.rs"]
 mod telemetry;
 use telemetry::WorkerTelemetry;
-#[path = "resident_events.rs"]
-mod events;
 #[path = "resident_diagnosis_image.rs"]
 mod diagnosis_image;
+#[path = "resident_events.rs"]
+mod events;
 
 const MAX_IMAGE_BYTES: usize = 512 * 1024 * 1024;
 const STARTUP_QUIET_PERIOD: Duration = Duration::from_secs(2);
@@ -43,6 +43,7 @@ struct Host {
     dispatch: Mutex<Dispatch>,
     events: events::Changes,
     coordinator_token: Option<String>,
+    diagnostics: Option<Arc<std::sync::Mutex<crate::metadata_store::SessionWriter>>>,
 }
 
 struct Dispatch {
@@ -144,6 +145,28 @@ pub async fn run(settings_path: &Path) -> anyhow::Result<()> {
                 .map(str::to_owned)
         })
         .collect();
+    let diagnostic_writer = if std::env::var("EXCEL_SHRINK_SQLITE_METADATA").as_deref() == Ok("1") {
+        let group_snapshot = match (
+            std::env::var_os("EXCEL_SHRINK_CONTROL_ROOM_DIR"),
+            std::env::var("EXCEL_SHRINK_CONTROL_ROOM_GROUP_ID").ok(),
+        ) {
+            (Some(root), Some(id)) => {
+                safe_id(&id).map_err(|error| anyhow::anyhow!("{error:?}"))?;
+                Some(
+                    PathBuf::from(root)
+                        .join("groups")
+                        .join(id)
+                        .join("launcher.json"),
+                )
+            }
+            _ => None,
+        };
+        Some(Arc::new(std::sync::Mutex::new(
+            crate::metadata_store::SessionWriter::new(session.clone(), group_snapshot)?,
+        )))
+    } else {
+        None
+    };
     let host = Arc::new(Host {
         session,
         launcher_token: settings["launcher_token"].as_str().map(str::to_owned),
@@ -158,6 +181,7 @@ pub async fn run(settings_path: &Path) -> anyhow::Result<()> {
         }),
         events: events::Changes::new(),
         coordinator_token,
+        diagnostics: diagnostic_writer,
     });
     let _watcher = events::watch_files(&host)?;
     write_json(
@@ -177,11 +201,41 @@ pub async fn run(settings_path: &Path) -> anyhow::Result<()> {
         .route("/job", get(next_job))
         .route("/launcher/startup-sampled/{id}", post(startup_sampled))
         .route("/launcher/reset/{id}", post(reset))
+        .route("/launcher/diagnostics", post(diagnostics))
         .route("/image/{id}/{command}/{sheet}/{tile}", post(image))
-        .route("/diagnosis-image/{id}/{command}", post(diagnosis_image::upload))
+        .route(
+            "/diagnosis-image/{id}/{command}",
+            post(diagnosis_image::upload),
+        )
         .route("/result/{id}/{command}", post(result))
         .with_state(host);
     serve(with_web(router, &web, MAX_IMAGE_BYTES), port as u16).await
+}
+
+/// Commit one authenticated launcher batch before acknowledging its event IDs.
+async fn diagnostics(
+    State(host): State<Arc<Host>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> JsonResponse {
+    host.authenticate_launcher(&headers)?;
+    if body.len() > 8 * 1024 * 1024 {
+        return Err(ApiError::bad_request("Diagnostic batch exceeds 8 MiB"));
+    }
+    let value = parse_object(&body)?;
+    let writer = host
+        .diagnostics
+        .clone()
+        .ok_or_else(|| ApiError::bad_request("SQLite diagnostics are not enabled"))?;
+    let count = tokio::task::spawn_blocking(move || {
+        writer
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Diagnostic writer lock poisoned"))?
+            .publish(&value)
+    })
+    .await
+    .context("Commit launcher diagnostics")??;
+    Ok(Json(json!({"ok":true,"accepted_events":count})))
 }
 
 impl Host {
@@ -1048,6 +1102,7 @@ mod diagnosis_dispatch_tests {
             }),
             events: events::Changes::new(),
             coordinator_token: None,
+            diagnostics: None,
         };
         let mut headers = HeaderMap::new();
         headers.insert("X-Client-Token", "fixture-token".parse().unwrap());

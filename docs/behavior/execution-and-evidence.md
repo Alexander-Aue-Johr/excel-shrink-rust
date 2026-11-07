@@ -322,3 +322,15 @@ changes invalidate snapshot entries, with a forced reread after 30 seconds.
 Read errors discard cached entries. Scientific evidence and reuse eligibility
 remain owned by the comparison pipeline. Hidden historical cards retain their
 records while releasing their canvas and observer resources.
+
+### Optional SQLite diagnostics
+
+`EXCEL_SHRINK_SQLITE_METADATA=1` enables per-owner SQLite diagnostic storage.
+Comparison snapshots and resident event batches are committed independently of
+scientific result records. Acknowledged event UUIDs are deduplicated, conflicting
+reuse fails, and terminal comparison state is committed immediately. Readiness
+metrics and watchdog counters retain their existing file contracts. Historical
+JSON remains readable and migration never removes source documents or binary
+evidence. See `../visual-validation/sqlite-metadata.md` for activation, export
+and backup constraints. Diagnostic consolidation does not alter capture scope,
+image comparison, exclusion decisions or result reuse eligibility.

@@ -69,6 +69,7 @@ impl Fixture {
             }),
             events: Changes::new(),
             coordinator_token: Some("coordinator-token".into()),
+            diagnostics: None,
         });
         let watcher = watch_files(&host).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

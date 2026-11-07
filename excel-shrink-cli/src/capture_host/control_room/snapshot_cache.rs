@@ -39,6 +39,8 @@ struct Entry {
     weight: usize,
     used: u64,
     read_at: Instant,
+    sqlite: bool,
+    encoded_bytes: u64,
 }
 
 #[derive(Default)]
@@ -101,13 +103,30 @@ impl SnapshotCache {
         entries.clock = entries.clock.wrapping_add(1);
         let used = entries.clock;
         if let Some(entry) = entries.values.get_mut(path) {
-            if entry.stamp == stamp && entry.read_at.elapsed() < REVALIDATE_AFTER {
+            if entry.stamp == stamp
+                && entry.read_at.elapsed() < REVALIDATE_AFTER
+                && (!entry.sqlite || entry.value["finished_at"].is_i64())
+            {
+                ensure!(
+                    entry.encoded_bytes <= maximum,
+                    "Snapshot exceeds the metadata limit"
+                );
                 entry.used = used;
                 return Ok(entry.value.clone());
             }
         }
         entries.remove(path);
-        let value = Arc::new(read_object(path, maximum).await?);
+        let owned = path.to_owned();
+        let linked = tokio::task::spawn_blocking(move || {
+            crate::metadata_store::linked_snapshot(&owned, maximum)
+        })
+        .await??;
+        let sqlite = linked.is_some();
+        let (value, encoded_bytes) = match linked {
+            Some(bytes) => (serde_json::from_slice(&bytes)?, bytes.len() as u64),
+            None => (read_object(path, maximum).await?, stamp.length),
+        };
+        let value = Arc::new(value);
         // An atomic replacement during the read is a valid old snapshot, but
         // must not be remembered as the new file. A later poll reads it again.
         if Stamp::read(path).await? != stamp {
@@ -135,6 +154,8 @@ impl SnapshotCache {
                     weight,
                     used,
                     read_at: Instant::now(),
+                    sqlite,
+                    encoded_bytes,
                 },
             );
         }
@@ -174,6 +195,35 @@ fn retained_size(value: &Value) -> usize {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[tokio::test]
+    async fn sqlite_references_refresh_live_values_and_cache_finished_snapshots() -> Result<()> {
+        let root =
+            std::env::temp_dir().join(format!("sqlite-display-cache-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root)?;
+        let database = root.join("telemetry.sqlite");
+        let store = crate::metadata_store::Store::open(&database)?;
+        let path = root.join("mirror.json");
+        fs::write(
+            &path,
+            serde_json::to_vec(&json!({"_metadata_store":database}))?,
+        )?;
+        store.put("snapshot.json", br#"{"count":1,"finished_at":null}"#)?;
+        let cache = SnapshotCache::default();
+        assert_eq!(cache.read(&path, 8192).await?["count"], 1);
+        store.put("snapshot.json", br#"{"count":2,"finished_at":null}"#)?;
+        assert_eq!(cache.read(&path, 8192).await?["count"], 2);
+        store.put(
+            "snapshot.json",
+            &serde_json::to_vec(&json!({"count":3,"finished_at":1,"note":"x".repeat(2000)}))?,
+        )?;
+        let terminal = cache.read(&path, 8192).await?;
+        assert!(Arc::ptr_eq(&terminal, &cache.read(&path, 8192).await?));
+        assert!(cache.read(&path, 1024).await.is_err());
+        drop(store);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[tokio::test]
     async fn unchanged_snapshots_share_parsed_bytes_and_changes_and_errors_invalidate() -> Result<()>

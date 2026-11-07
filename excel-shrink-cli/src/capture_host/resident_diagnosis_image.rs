@@ -109,6 +109,7 @@ mod tests {
             }),
             events: events::Changes::new(),
             coordinator_token: None,
+            diagnostics: None,
         });
         let mut bytes = Cursor::new(Vec::new());
         image::RgbImage::new(2, 3).write_to(&mut bytes, image::ImageFormat::Png)?;

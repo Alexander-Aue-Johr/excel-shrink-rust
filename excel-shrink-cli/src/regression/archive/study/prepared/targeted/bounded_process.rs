@@ -2,7 +2,6 @@
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 use std::{
-    fs,
     path::Path,
     process::{Child, Command, ExitStatus},
     thread,
@@ -69,7 +68,7 @@ pub(super) fn run(command: &mut Command, telemetry: &Path, idle: Duration) -> Re
         {
             return Ok(status);
         }
-        let progress = fs::read(telemetry)
+        let progress = crate::metadata_store::read_snapshot(telemetry, 32 * 1024 * 1024)
             .ok()
             .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
         if let Some(sequence) = progress
@@ -97,6 +96,7 @@ pub(super) fn run(command: &mut Command, telemetry: &Path, idle: Duration) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn captures_can_extend_an_attempt_indefinitely_but_heartbeats_cannot() {

@@ -148,6 +148,9 @@ fn closed_terminal(path: &Path, snapshot: &Value) -> bool {
 }
 
 fn read_mirror(path: &Path) -> Result<Value> {
+    if let Some(bytes) = crate::metadata_store::linked_snapshot(path, SNAPSHOT_LIMIT)? {
+        return Ok(serde_json::from_slice(&bytes)?);
+    }
     let mut bytes = Vec::new();
     fs::File::open(path)?
         .take(SNAPSHOT_LIMIT + 1)

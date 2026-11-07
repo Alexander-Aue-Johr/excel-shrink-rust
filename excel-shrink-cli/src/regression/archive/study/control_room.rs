@@ -676,7 +676,7 @@ fn health(port: u16) -> Option<Value> {
 }
 
 pub(super) fn read_json(path: &Path) -> Option<Value> {
-    serde_json::from_slice(&fs::read(path).ok()?).ok()
+    serde_json::from_slice(&crate::metadata_store::read_snapshot(path, 32 * 1024 * 1024).ok()?).ok()
 }
 
 pub(super) fn write(path: &Path, value: &Value) -> Result<()> {
