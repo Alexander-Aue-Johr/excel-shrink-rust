@@ -450,6 +450,47 @@ fn chart_references(bytes: &[u8]) -> Result<Vec<Reference>> {
     Ok(refs)
 }
 
+/// Retain syntax evidence even when the invariance gate rejects an unsupported chart feature.
+pub(in crate::regression) fn inspect_xml(bytes: &[u8]) -> Result<serde_json::Value> {
+    let mut reader = Reader::<128>::new(bytes)?;
+    let mut formulas = Vec::new();
+    let mut formula = None;
+    let mut caches = BTreeMap::<String, usize>::new();
+    let mut points = 0;
+    let mut root = String::new();
+    while let Some(tag) = reader.next()? {
+        if tag.depth == 0 && tag.kind != Kind::End {
+            root = String::from_utf8(tag.local().to_vec())?;
+        }
+        if tag.kind != Kind::End {
+            if matches!(tag.local(), b"numCache" | b"strCache" | b"multiLvlStrCache") {
+                *caches
+                    .entry(String::from_utf8(tag.local().to_vec())?)
+                    .or_default() += 1;
+            }
+            points += usize::from(tag.name == b"c:pt");
+        }
+        if tag.local() == b"f" {
+            match tag.kind {
+                Kind::Start => formula = Some(tag.end),
+                Kind::End => {
+                    let start = formula.take().context("Unmatched inventory formula")?;
+                    formulas.push(decode_attr(&bytes[start..tag.start])?);
+                }
+                Kind::Empty => formulas.push(String::new()),
+            }
+        }
+    }
+    let supported_formulas = formulas.iter().filter(|f| reference(f).is_some()).count();
+    let eligibility = chart_references(bytes);
+    Ok(
+        serde_json::json!({"root":root,"formulas":formulas,"simple_a1_formulas":supported_formulas,
+        "caches":caches,"cached_points":points,"supported_dependency_syntax":eligibility.is_ok(),
+        "fallback_reason":eligibility.err().map(|e| format!("{e:#}")),
+        "meaning":"Syntax eligibility only. Exclusion also requires unchanged sources, formats, package dependencies and live geometry."}),
+    )
+}
+
 /// Prove cached chart data against actual rebuilt cell fingerprints, source layout and CF inputs.
 pub(super) fn select(
     left_path: &Path,

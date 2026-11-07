@@ -6,6 +6,7 @@ mod change_evidence;
 mod charts;
 mod chart_dependencies;
 pub(in crate::regression) use chart_dependencies::Mode as ChartCaptureMode;
+pub(in crate::regression) use chart_dependencies::inspect_xml as inspect_chart_xml;
 mod check_performance;
 mod conditional_formatting;
 mod content_bounds;

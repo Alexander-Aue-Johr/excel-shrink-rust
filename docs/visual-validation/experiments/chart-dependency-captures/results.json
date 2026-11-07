@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-07",
+  "lysimeter": {
+    "charts": 69,
+    "excluded": 34,
+    "capture_fallback": 35,
+    "reasons": {
+      "Unchanged chart XML/cache, referenced cells, source formatting, package dependencies and live geometry": 34,
+      "Chart XML mapping unavailable": 18,
+      "Dynamic or external chart dependency": 17
+    },
+    "method": "Production dependency gate on fresh COM-rebuilt states with live COM chart geometry; no replacement whole-Lysimeter image run in this experiment."
+  },
+  "native_officejs_cases": {
+    "deterministic": {
+      "mode": "deterministic",
+      "captured_images": 0,
+      "excluded": 1,
+      "pixel_differences": 0,
+      "sqlite_databases": 3,
+      "status": "completed_with_limitations"
+    },
+    "conservative": {
+      "mode": "conservative",
+      "captured_images": 2,
+      "excluded": 0,
+      "pixel_differences": 0,
+      "sqlite_databases": 3,
+      "status": "completed_with_limitations"
+    },
+    "changed": {
+      "mode": "deterministic",
+      "captured_images": 2,
+      "excluded": 0,
+      "pixel_differences": 1,
+      "sqlite_databases": 3,
+      "status": "completed_with_limitations"
+    }
+  }
+}

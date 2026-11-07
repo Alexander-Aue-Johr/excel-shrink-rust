@@ -40,6 +40,7 @@ mod targeted_comparison;
 pub(crate) mod formula_trace;
 mod sheet_capture;
 mod cf_inventory;
+mod chart_inventory;
 mod prefix_inventory;
 
 #[derive(Parser, Debug)]
@@ -78,6 +79,8 @@ enum RegressionCommand {
     CaptureSheet(sheet_capture::Args),
     /// Inventory conditional formatting and retain source XML evidence without opening Excel.
     CfInventory(cf_inventory::Args),
+    /// Inventory chart XML, cached data and reference syntax without opening Excel.
+    ChartInventory(chart_inventory::Args),
     /// Inventory actual prefixes on worksheet data elements without opening Excel.
     PrefixInventory(prefix_inventory::Args),
     /// Create a namespace-normalized experimental copy and verify its expanded XML evidence.
@@ -448,6 +451,7 @@ pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
         RegressionCommand::InspectCandidates(args) => targeted_comparison::selection_inspection::run(args),
         RegressionCommand::CaptureSheet(args) => sheet_capture::run(args),
         RegressionCommand::CfInventory(args) => cf_inventory::run(args),
+        RegressionCommand::ChartInventory(args) => chart_inventory::run(args),
         RegressionCommand::PrefixInventory(args) => prefix_inventory::run(args),
         RegressionCommand::PrefixNormalize(args) => prefix_inventory::normalize::run(args),
         RegressionCommand::PrefixInspect(args) => targeted_comparison::prefix_inspection::run(args),
