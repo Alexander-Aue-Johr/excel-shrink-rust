@@ -882,3 +882,18 @@ row, because clipping the changed empty rows must not hide displacement of real
 content. Replayed Lysimeter rebuilt states retain the earlier 1,061 selected
 grid tiles and eleven coalesced ranges after these additional guards. Prior
 policy versions remain readable but are not silently promoted to v9 validation.
+
+### Rebuilt-pair capture selection
+
+Save controls and input/rebuild transitions retain their complete compressed
+XML-change audit for attribution. They no longer append cell candidates to the
+visual plan. The plan is selected from the actual rebuilt comparison partners,
+including cell values/formulas, resolved style properties, inherited layout,
+conditional-format dependencies, measured effective heights and chart guards.
+Original and Default still rebuild independently in their existing processes.
+Check Performance, when requested, remains an independent rebuilt partner.
+
+The raw and saved inputs remain available to content-bound discovery, so deleted
+real content cannot disappear from the clipping envelope. Unknown inherited
+layout keeps conservative content coverage. No region-count, file-size or
+cell-count shortcut changes the equality verdict.

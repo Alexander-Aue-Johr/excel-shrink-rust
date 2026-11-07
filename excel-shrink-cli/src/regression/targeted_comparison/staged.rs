@@ -1,4 +1,4 @@
-//! Compare live Original with Default before and after rebuilding the same Default instance.
+//! Compare rebuilt resident states while retaining earlier save/rebuild XML as attribution controls.
 #[path = "staged_formulas.rs"]
 mod formula_diagnostics;
 use super::{
@@ -81,7 +81,7 @@ struct Workflow<'a, 'b> {
 }
 
 impl Comparison<'_> {
-    /// Compare two SD phases without reopening SD or explicitly rebuilding Original.
+    /// Rebuild comparison partners in their existing processes and retain their earlier XML controls.
     pub(super) fn execute_staged_comparison(&mut self) -> Result<()> {
         Workflow {
             comparison: self,
@@ -100,8 +100,9 @@ impl Workflow<'_, '_> {
     fn execute(&mut self) -> Result<()> {
         self.open_and_save_controls()?;
         self.optimize_and_register_states()?;
-        self.requested_candidates
-            .extend(std::mem::take(&mut self.comparison.candidates));
+        // Input and save controls explain provenance. Only the compared rebuilt
+        // partners select captures, together with layout, CF and live-height guards.
+        self.comparison.candidates.clear();
         self.rebuild_in_place(LaneId::O, LaneId::OR)?;
         self.rebuild_in_place(LaneId::SD, LaneId::SDR)?;
         self.rebuild_in_place(LaneId::CP, LaneId::CPR)?;
@@ -341,7 +342,6 @@ impl Workflow<'_, '_> {
         self.content_bounds.include(&a);
         self.content_bounds.include(&b);
         let (mut changes, skipped_outside_content_cell_changes) = a.content_changes(&b)?;
-        self.requested_candidates.extend(cell_candidates(&changes));
         self.publish_candidate_count()?;
         if label == "original opening/saving control" {
             self.original_save_keys = changes.iter().map(change_key).collect::<Result<_>>()?;
