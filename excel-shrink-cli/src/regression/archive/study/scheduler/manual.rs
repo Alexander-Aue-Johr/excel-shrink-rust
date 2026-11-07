@@ -54,8 +54,8 @@ fn refresh_groups(queue: &mut Value, active: &[Active], records: &[Value], pendi
         {
             group["active"] = json!(!job.finished);
             let record = &records[job.job.position];
-            if let Some(attempt) = record["control_room_attempt"]["id"].as_str() {
-                group["attempt_id"] = json!(attempt);
+            // Admission owns the attempt identity until its first checkpoint arrives.
+            if record["control_room_attempt"]["id"] == group["attempt_id"] {
                 group["started_unix_ms"] = record["control_room_attempt"]["started_unix_ms"].clone();
             }
             group["capture_mode"] = record["capture_mode"].clone();
@@ -810,6 +810,35 @@ pub(super) fn await_deferred_manual(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admission_time_survives_a_previous_attempt_until_the_new_checkpoint() {
+        let participant = serde_json::from_value(json!({
+            "ready_path":"unused-ready", "release_path":"unused-release",
+            "owner_pid":0, "timeout_seconds":1
+        })).unwrap();
+        let active = vec![Active {
+            job: Comparison { index: 0, id: "workbook".into(), position: 0 },
+            participant,
+            finished: false,
+            error: None,
+            pause_millis: 0,
+            restart_requests: Vec::new(),
+        }];
+        let mut queue = json!({"groups":[{
+            "id":control_room::group_id("workbook"),
+            "attempt_id":"new", "started_unix_ms":200, "status":"opening"
+        }]});
+        let mut record = json!({"control_room_attempt":{"id":"old","started_unix_ms":1}});
+        refresh_groups(&mut queue, &active, &[record.clone()], 0);
+        assert_eq!(queue["groups"][0]["attempt_id"], "new");
+        assert_eq!(queue["groups"][0]["started_unix_ms"], 200);
+
+        record["control_room_attempt"] = json!({"id":"new","started_unix_ms":201});
+        refresh_groups(&mut queue, &active, &[record], 0);
+        assert_eq!(queue["groups"][0]["attempt_id"], "new");
+        assert_eq!(queue["groups"][0]["started_unix_ms"], 201);
+    }
 
     #[test]
     fn restarted_attempt_completes_without_mutating_its_finished_predecessor() {
