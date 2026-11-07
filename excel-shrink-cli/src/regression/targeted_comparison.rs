@@ -23,6 +23,7 @@ mod performance_reuse;
 pub(super) mod prefix_inspection;
 mod preparation;
 mod reporting;
+mod region_plan;
 pub(super) mod selection_inspection;
 mod snapshot_cache;
 mod staged;

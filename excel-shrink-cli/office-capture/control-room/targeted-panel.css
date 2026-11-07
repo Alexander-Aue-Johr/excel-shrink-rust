@@ -56,6 +56,12 @@
 .process-timing-rows { max-height: 320px; overflow: auto; }
 .process-timing-row { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr; gap: 12px; padding: 5px 0; margin: 0; border-top: 1px solid #233b47; }
 .process-timing-row span { overflow-wrap: anywhere; }
+.capture-region-list { margin-top: 12px; font-size: 12px; }
+.capture-region-list summary { cursor: pointer; padding: 8px 0; }
+.capture-region-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.capture-region-rows { max-height: 360px; overflow: auto; }
+.capture-region-row { display: grid; grid-template-columns: minmax(120px, 1fr) auto; gap: 12px; align-items: center; padding: 6px 0; border-top: 1px solid #304958; }
+.capture-region-row span { overflow-wrap: anywhere; }
 .signal-heartbeat-only .signal-canvas { height: 90px; }
 .signal-heartbeat-only .signal-heading { flex-wrap: wrap; }
 .signal-heartbeat-only .signal-setting { font-size: 10px; }

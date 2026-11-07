@@ -5,6 +5,7 @@ import { createClipboardButton } from './inspection-clipboard.js';
 import { adjacentDifference, loadDifferentWorkbooks } from './atelier-navigation.js';
 import { createFormulaInspector } from './formula-diagnostics.js';
 import { readDiagnosticResponse } from './diagnostic-response.js';
+import { createRegionInspectButton } from './region-inspection.js';
 
 const node = (tag, text) => {
   const element = document.createElement(tag);
@@ -24,7 +25,11 @@ export function createAtelier() {
   const clipboardNotice = node('p');
   clipboardNotice.setAttribute('role', 'status');
   const clipboard = createClipboardButton(() => groupId, clipboardNotice);
-  header.append(title, clipboard, close);
+  const inspect = createRegionInspectButton(() => {
+    const region = regions[select.selectedIndex];
+    return region?.cell ? {id: groupId, sheet: region.sheet, range: region.cell} : null;
+  }, clipboardNotice);
+  header.append(title, clipboard, inspect, close);
   const toolbar = node('div');
   toolbar.className = 'atelier-tools';
   const navigation = node('div');
@@ -99,6 +104,7 @@ export function createAtelier() {
     images.replaceChildren();
     const index = select.selectedIndex;
     const region = regions[index];
+    inspect.disabled = !region?.cell;
     previous.disabled = index <= 0;
     next.disabled = index < 0 || index >= regions.length - 1;
     previousOverall.disabled = !overallTarget(-1);

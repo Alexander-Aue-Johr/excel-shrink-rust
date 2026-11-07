@@ -4,6 +4,8 @@
 
 mod activity;
 mod inspection;
+mod inspection_pair;
+mod capture_regions;
 mod manual_capture;
 mod pixel_diagnostics;
 mod formula_diagnostics;
@@ -41,6 +43,7 @@ struct Room {
     initial_controls: Value,
     control_gate: Mutex<()>,
     manual_capture: Mutex<Option<std::process::Child>>,
+    inspection_pair: std::sync::Mutex<inspection_pair::Inspector>,
     snapshots: snapshot_cache::SnapshotCache,
 }
 
@@ -81,6 +84,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         initial_controls: initial,
         control_gate: Mutex::new(()),
         manual_capture: Mutex::new(None),
+        inspection_pair: std::sync::Mutex::new(inspection_pair::Inspector::default()),
         snapshots: snapshot_cache::SnapshotCache::default(),
     });
     let routes = Router::new()
@@ -109,6 +113,8 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
         .route("/api/control", post(control))
         .route("/api/groups/{id}/restart", post(restart))
         .route("/api/groups/{id}/inspect", post(inspect))
+        .route("/api/groups/{id}/inspect-region", post(inspection_pair::select))
+        .route("/api/groups/{id}/capture-regions", get(capture_regions::list))
         .route("/api/groups/{id}/copy-original", post(copy_original))
         .route("/api/groups/{id}/variants/{profile}", get(download_variant))
         .route("/api/commands/{id}", get(command))
@@ -1807,6 +1813,7 @@ mod tests {
             initial_controls: defaults(),
             control_gate: Mutex::new(()),
             manual_capture: Mutex::new(None),
+            inspection_pair: std::sync::Mutex::new(inspection_pair::Inspector::default()),
             snapshots: snapshot_cache::SnapshotCache::default(),
         };
         let queue = json!({"running":true,"runner_alive":true,
@@ -1864,6 +1871,7 @@ mod tests {
             initial_controls: defaults(),
             control_gate: Mutex::new(()),
             manual_capture: Mutex::new(None),
+            inspection_pair: std::sync::Mutex::new(inspection_pair::Inspector::default()),
             snapshots: snapshot_cache::SnapshotCache::default(),
         });
         let response = download_variant(State(room), RoutePath(("book".into(), "default".into())))

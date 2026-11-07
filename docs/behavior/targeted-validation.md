@@ -1004,3 +1004,38 @@ formula in `Tab 1!A13`. Their retained 512 by 239 captures differ only in the
 filename text at pixel rows 212 through 218. The current random/time dependency
 explainer does not recognize this function, so its negative result alone cannot
 rule out environment-dependent formulas.
+
+### Process timings and manual region inspection
+
+Process cards show the measured opening duration and the working set sampled at
+readiness, paired with the other workbook's measurement. The primary bar belongs
+to the current card. A ratio at least 2 is red, above 1.2 is amber, below 0.8 is
+green, and intermediate ratios are neutral. These are relative cost indicators.
+Historical attempts without measurements show them as unavailable.
+
+Expandable timing tables retain phase wall times and per-sheet request totals.
+Geometry, image rendering and upload have separate measured durations when the
+worker reports them. Shared batch timings are not multiplied across images.
+Overlapping durations must not be added to estimate total elapsed time.
+
+`Capture regions` loads at most 100 addresses per explicit request. An atomic
+JSONL index records the coalesced plan before geometry measurement and the final
+measured partition afterward. The index is separate from live status snapshots.
+Older completed reports expose retained compared ranges. Failed attempts without
+an index do not borrow a previous attempt's region list.
+
+`Inspect pair in Excel` opens read-only prepared Original and Default copies,
+selects the worksheet and range, and arranges their windows in the left and right
+halves of the monitor's work area. It is available from the region list and the
+atelier for cell ranges. These copies are not retained rebuilt states, so cached
+formula values can differ from a rebuilt capture. Opening does not recapture or
+change comparison results.
+
+One host-owned COM helper reuses two Excel applications. Closing one application
+recreates only that side. Closing a workbook reopens only the missing workbook.
+Switching groups closes the previous inspection books without saving and opens
+new copies in the same applications. The helper disables macros, link updates
+and AutoRecover. It does not bypass access or repair prompts. A timed-out helper
+and its owned Excel applications are terminated. Host exit also closes them.
+Copies and helper files use the configured TEMP directory, which is on V: for
+the Enron launch, and are removed when the inspector is disposed.

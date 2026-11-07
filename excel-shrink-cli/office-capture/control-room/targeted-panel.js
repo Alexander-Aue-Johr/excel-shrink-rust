@@ -2,6 +2,7 @@ import { createProcessIcon } from './process-icon-shader.js';
 import { createSignalMonitor } from './signal-monitor.js';
 import { createClipboardButton } from './inspection-clipboard.js';
 import { createProcessMetrics } from './process-metrics.js';
+import { createRegionList } from './region-inspection.js';
 import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, phaseComplete, processCards } from './targeted-model.js';
 
 const node = (tag, className, text) => {
@@ -141,6 +142,7 @@ function createComparisonCard() {
   const copyNotice = node('p', 'targeted-copy-status');
   copyNotice.setAttribute('role', 'status');
   let groupId = null;
+  const regions = createRegionList(() => groupId);
   const copy = createClipboardButton(() => groupId, copyNotice);
   heading.append(copy);
   const lanes = node('div', 'targeted-lanes');
@@ -149,7 +151,7 @@ function createComparisonCard() {
     'Rebuild Original and Default in their existing Excel processes, then compare selected regions and all charts. '
     + 'Optional Check Performance is rebuilt and compared against rebuilt Original. Pre-rebuild XML controls remain available for follow-up.');
   const legend = node('p', 'targeted-flow-legend', '☑ Done · ◩ Running · □ Pending · muted − Not performed / unavailable. Hover a column or checkbox for its purpose.');
-  root.append(heading, explanation, error, copyNotice, lanes, flow.element, legend, controls);
+  root.append(heading, explanation, error, copyNotice, lanes, regions, flow.element, legend, controls);
   const laneViews = new Map();
   return {
     element: root,

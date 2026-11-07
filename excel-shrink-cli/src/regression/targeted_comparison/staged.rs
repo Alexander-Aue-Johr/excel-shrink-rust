@@ -703,6 +703,10 @@ impl Workflow<'_, '_> {
     /// Preserve selected coverage, measure its visible partition, and record non-rendering leaves.
     fn prepare_capture_partition(&mut self) -> Result<()> {
         let (selected, coverage) = self.content_bounds.select(&self.requested_candidates)?;
+        let parents = capture_layout::coalesce(&selected)?;
+        if let Err(error) = super::region_plan::publish(&self.comparison.args.output, &parents, "before_geometry_partition") {
+            tracing::warn!(%error, "Cannot publish optional capture inspection index");
+        }
         let controls = self.control_path();
         let plan = capture_layout::plan_batched(
             &selected,
@@ -717,6 +721,9 @@ impl Workflow<'_, '_> {
             |batch| self.measure_candidates(batch),
         )?;
         self.comparison.candidates = plan.keys().cloned().collect();
+        if let Err(error) = super::region_plan::publish(&self.comparison.args.output, &self.comparison.candidates, "measured_capture_regions") {
+            tracing::warn!(%error, "Cannot publish optional capture inspection index");
+        }
         let mut coverage = coverage;
         super::content_bounds::record_partition(&mut coverage, &self.comparison.candidates);
         self.comparison.report.content_coverage = coverage;
