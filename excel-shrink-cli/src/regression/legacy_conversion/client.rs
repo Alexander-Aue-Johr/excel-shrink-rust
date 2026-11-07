@@ -25,7 +25,10 @@ pub(in crate::regression) fn convert(
         let result = run_request(root, &session, &request);
         drop(lease);
         match result {
-            Ok(Some(metrics)) => {
+            Ok(Some(mut metrics)) => {
+                if attempt > 0 {
+                    metrics.startup_retries = Some(attempt);
+                }
                 fs::write(
                     work.join("excel-open-metrics.json"),
                     serde_json::to_vec(&metrics)?,
@@ -34,7 +37,7 @@ pub(in crate::regression) fn convert(
             }
             Ok(None) if attempt == 0 => continue,
             Ok(None) => anyhow::bail!(
-                "persistent conversion helper exited twice; inspect {}",
+                "persistent conversion session failed twice; inspect {}",
                 directory.display()
             ),
             Err(error) => return Err(error),
@@ -125,6 +128,12 @@ fn run_request(root: &Path, session: &Path, request: &Request) -> Result<Option<
                 work.join("excel-open-failure.json"),
                 serde_json::to_vec(&response)?,
             )?;
+            if response["hresult"]
+                .as_i64()
+                .is_some_and(transient_com_failure)
+            {
+                return Ok(None);
+            }
             anyhow::bail!(
                 "Excel conversion {} during {}: {}",
                 response["kind"].as_str().unwrap_or("failed"),
@@ -194,4 +203,22 @@ fn check_pool(root: &Path) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// A disconnected automation server can recover in a fresh owned session.
+fn transient_com_failure(hresult: i64) -> bool {
+    matches!(hresult as u32, 0x800706BA | 0x800706BE | 0x80010108)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_disconnected_com_servers_retry() {
+        for code in [0x800706BA_u32, 0x800706BE, 0x80010108] {
+            assert!(super::transient_com_failure(i64::from(code as i32)));
+        }
+        for code in [0x800A03EC_u32, 0x80070005, 0] {
+            assert!(!super::transient_com_failure(i64::from(code as i32)));
+        }
+    }
 }

@@ -926,7 +926,9 @@ visual-validation opening measurements.
 Idle sessions immediately accept another queued workbook. Increasing capacity
 starts additional sessions asynchronously. Decreasing it retires excess sessions
 after their current workbook. A failed or stalled session is replaced after its
-owned processes are stopped. PID creation times and retained process handles
+owned processes are stopped. A disconnected COM server receives one fresh-session
+retry, recorded in the conversion metrics. Password, access and content failures
+retain their specific failure outcome. PID creation times and retained process handles
 protect cleanup from PID reuse. Windows jobs also bound process lifetime to the
 coordinator. Failed cleanup remains an error, never a successful conversion.
 
