@@ -943,6 +943,7 @@ mod tests {
         let mut bounds = super::super::content_bounds::ContentBounds::default();
         bounds.include(&left);
         bounds.include(&right);
+        super::super::layout_candidates::select(&left, &right, &bounds, &mut candidates)?;
         let (selected, coverage) = bounds.select(&candidates)?;
         let coalesced = super::super::capture_layout::coalesce(&selected)?;
         let report = serde_json::json!({"changes": locations, "skipped": skipped,

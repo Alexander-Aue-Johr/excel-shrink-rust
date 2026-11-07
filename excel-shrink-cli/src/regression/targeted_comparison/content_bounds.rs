@@ -121,6 +121,10 @@ pub(super) struct Coverage {
 pub(super) struct ContentBounds(BTreeMap<String, Rectangle>);
 
 impl ContentBounds {
+    /// Expose the unpadded visible-content envelope to layout candidate selection.
+    pub fn envelope(&self, sheet: &str) -> Option<Rectangle> {
+        self.0.get(sheet).copied()
+    }
     /// Account for both the candidate's neighborhood and the content margin before allocating a change.
     pub fn intersects_cell(&self, sheet: &str, row: u32, column: u32) -> bool {
         self.0.get(sheet).is_some_and(|bounds| {

@@ -132,6 +132,11 @@ pub(super) fn validate(runs: &[HeightRun], spans: &[(u32, u32)]) -> Result<()> {
 }
 
 impl HeightCheck {
+    /// Height changes above the first content row can move it even when their own cells are clipped.
+    pub(super) fn changed_before(&self, row: u32) -> bool {
+        self.differences.iter().any(|difference| difference.start_row < row)
+    }
+
     /// Report every changed height run; select boundary images explicitly rather than a million images.
     pub(super) fn compare(
         &mut self,
@@ -177,6 +182,18 @@ impl HeightCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn changed_heights_above_content_keep_its_position_observable() -> Result<()> {
+        let mut check = HeightCheck { left: "OR".into(), right: "SDR".into(), sheet: "Data".into(),
+            checked_spans: vec![(1, 5)], unchanged_fixed_rows: 0, differences: Vec::new(), complete: false };
+        check.compare(
+            &[HeightRun { start_row: 1, end_row: 5, height: 15.0 }],
+            &[HeightRun { start_row: 1, end_row: 5, height: 16.0 }],
+        )?;
+        assert!(check.changed_before(10));
+        assert!(!check.changed_before(1));
+        Ok(())
+    }
     #[test]
     fn missing_height_partner_is_not_equal() {
         assert!(validate(&[], &[(1, 100)]).is_err());

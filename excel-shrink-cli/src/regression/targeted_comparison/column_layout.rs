@@ -96,6 +96,36 @@ impl ColumnLayout {
         self.resolved && other.resolved && self.prefix(through).eq(other.prefix(through))
     }
 
+    /// Resolve at most Excel's 16,384 columns with two linear run cursors.
+    /// Unknown definitions require the caller's conservative content fallback.
+    pub fn changed_spans(&self, other: &Self, through: u32) -> Option<Vec<(u32, u32)>> {
+        if !self.resolved || !other.resolved || through > 16_384 {
+            return None;
+        }
+        let (mut left, mut right) = (0, 0);
+        let mut spans: Vec<(u32, u32)> = Vec::new();
+        for column in 1..=through {
+            let a = self.properties_at(column, &mut left);
+            let b = other.properties_at(column, &mut right);
+            if a == b {
+                continue;
+            }
+            if let Some(last) = spans.last_mut().filter(|last| last.1 + 1 == column) {
+                last.1 = column;
+            } else {
+                spans.push((column, column));
+            }
+        }
+        Some(spans)
+    }
+
+    fn properties_at(&self, column: u32, index: &mut usize) -> Option<&Properties> {
+        while self.runs.get(*index).is_some_and(|run| run.last < column) {
+            *index += 1;
+        }
+        self.runs.get(*index).filter(|run| run.first <= column).map(|run| &run.properties)
+    }
+
     fn prefix(&self, through: u32) -> impl Iterator<Item = (u32, u32, &Properties)> {
         self.runs
             .iter()
@@ -108,6 +138,18 @@ impl ColumnLayout {
 mod tests {
     use super::*;
     use crate::regression::xml_views::Reader;
+
+    #[test]
+    fn changed_columns_resolve_gaps_and_equivalent_run_partitions() -> Result<()> {
+        let a = columns(br#"<cols><col min="1" max="4" width="12"/></cols>"#)?;
+        let b = columns(br#"<cols><col min="1" max="2" width="12"/><col min="3" max="4" width="12"/></cols>"#)?;
+        assert_eq!(a.changed_spans(&b, 10), Some(Vec::new()));
+        let changed = columns(br#"<cols><col min="1" max="2" width="12"/><col min="4" max="5" width="14"/></cols>"#)?;
+        assert_eq!(a.changed_spans(&changed, 10), Some(vec![(3, 5)]));
+        assert_eq!(a.changed_spans(&ColumnLayout::default(), 10), None);
+        assert_eq!(a.changed_spans(&changed, 2), Some(Vec::new()));
+        Ok(())
+    }
 
     fn columns(xml: &[u8]) -> Result<ColumnLayout> {
         let mut result = ColumnLayout::new();

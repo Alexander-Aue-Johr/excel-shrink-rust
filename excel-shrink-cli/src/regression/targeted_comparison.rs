@@ -14,6 +14,7 @@ mod control_cache;
 mod evidence;
 mod execution_plan;
 mod heights;
+mod layout_candidates;
 mod host;
 mod image_comparison;
 mod performance_cache;
@@ -48,7 +49,7 @@ use std::{
 };
 use telemetry::{LaneId, Phase, StepStatus, Telemetry};
 
-pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v8";
+pub(super) const CAPTURE_POLICY: &str = "targeted-content-grid-v9";
 pub(super) const EXECUTION_STRATEGY: &str = "paired-inplace-rebuild-v1";
 pub(super) const CAPTURE_ROWS: u32 = 128;
 pub(super) const CAPTURE_COLUMNS: u32 = 16;

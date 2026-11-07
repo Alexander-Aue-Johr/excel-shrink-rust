@@ -865,3 +865,20 @@ allowance never increases the 32 MP / 30,000-pixel individual image limits.
 Both host planning and the Office.js command validate the selected package
 budget. See the real-workbook experiment in
 `docs/visual-validation/experiments/capture-package-pixels`.
+
+### Inherited-layout candidate guards
+
+Policy `targeted-content-grid-v9` explicitly selects inherited row-format and
+column-definition changes in the compared states. Cell XML equality alone
+cannot exclude these changes. Column definitions are resolved with linear
+cursors over Excel's bounded column domain. Only changed columns through the
+content edge are selected; preceding changed columns and unknown metadata keep
+conservative content coverage. Changed defaults, global rendering context or
+unrecognized layout also retain content coverage. Effective live row-height
+checks remain independent.
+
+A height difference above the first content row explicitly selects that first
+row, because clipping the changed empty rows must not hide displacement of real
+content. Replayed Lysimeter rebuilt states retain the earlier 1,061 selected
+grid tiles and eleven coalesced ranges after these additional guards. Prior
+policy versions remain readable but are not silently promoted to v9 validation.

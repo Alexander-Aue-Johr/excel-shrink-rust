@@ -413,6 +413,9 @@ impl Workflow<'_, '_> {
             );
             let (changes, _) = a.content_changes(&b)?;
             self.requested_candidates.extend(cell_candidates(&changes));
+            super::layout_candidates::select(
+                &a, &b, &self.content_bounds, &mut self.requested_candidates,
+            )?;
             let decisions = super::conditional_formatting::select(
                 &a,
                 &b,
@@ -459,8 +462,16 @@ impl Workflow<'_, '_> {
                 self.comparison.report.height_checks.push(check);
                 let before = self.read_heights(left, sheet, &spans)?;
                 let after = self.read_heights(right, sheet, &spans)?;
-                let selected =
+                let mut selected =
                     self.comparison.report.height_checks[index].compare(&before, &after)?;
+                if let Some(bounds) = self.content_bounds.envelope(sheet) {
+                    if self.comparison.report.height_checks[index].changed_before(bounds.top) {
+                        selected.insert(Candidate {
+                            sheet: sheet.clone(),
+                            cell: super::content_bounds::Rectangle { bottom: bounds.top, ..bounds }.address(),
+                        });
+                    }
+                }
                 self.requested_candidates.extend(selected);
                 self.publish_candidate_count()?;
             }
