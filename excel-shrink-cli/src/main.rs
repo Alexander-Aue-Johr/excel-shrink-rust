@@ -11,6 +11,8 @@ mod capture_host;
 mod capture_settings;
 mod console_writer;
 mod native_process;
+#[cfg(windows)]
+mod process_job;
 mod metadata_store;
 mod pipeline;
 mod profiling;

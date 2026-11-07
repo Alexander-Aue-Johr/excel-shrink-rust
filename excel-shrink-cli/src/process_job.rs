@@ -8,7 +8,7 @@ use windows_sys::Win32::System::JobObjects::{
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 
-pub(super) struct Job(OwnedHandle);
+pub(crate) struct Job(OwnedHandle);
 
 impl Job {
     pub fn new() -> Result<Self> {
@@ -16,7 +16,7 @@ impl Job {
         let raw = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         anyhow::ensure!(
             !raw.is_null(),
-            "cannot create conversion pool job: {}",
+            "cannot create owned process job: {}",
             std::io::Error::last_os_error()
         );
         // SAFETY: CreateJobObjectW returned an owned handle.
@@ -35,7 +35,7 @@ impl Job {
         };
         anyhow::ensure!(
             ok != 0,
-            "cannot configure conversion pool job: {}",
+            "cannot configure owned process job: {}",
             std::io::Error::last_os_error()
         );
         Ok(Self(handle))
@@ -46,7 +46,7 @@ impl Job {
         let ok = unsafe { AssignProcessToJobObject(self.0.as_raw_handle(), child.as_raw_handle()) };
         if ok == 0 {
             return Err(std::io::Error::last_os_error())
-                .context("assign converter to run-owned job");
+                .context("assign helper to owner job");
         }
         Ok(())
     }

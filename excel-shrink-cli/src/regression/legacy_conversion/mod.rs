@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 mod client;
-mod job;
+use crate::process_job as job;
 #[cfg(test)]
 mod tests;
 mod worker;
