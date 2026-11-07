@@ -200,6 +200,13 @@ honor this masking effect. Otherwise a borderless, unfilled row can disappear
 before the normal row-retention check runs. Without visible column borders,
 these otherwise redundant tail headers remain removable.
 
+An explicit row XF with `borderId="0"` can clear inherited column borders even
+when `applyBorder` is absent. The row-specific masking check therefore recognizes
+that explicit border identity independently of the application flag. Content-boundary
+tail pruning honors the same row-retention predicate as the ordinary tail scan.
+This preserves the few masking row headers without retaining or generating a
+full row of cells. Cell-level style application rules are unchanged.
+
 Visible column borders also make stored heights of otherwise empty tail rows
 observable. Preserve those non-hidden rows when they have an `ht` attribute,
 including automatically sized rows without `customHeight`. Both the ordinary

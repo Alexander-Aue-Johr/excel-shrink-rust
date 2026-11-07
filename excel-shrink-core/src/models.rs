@@ -338,7 +338,9 @@ impl ColumnRangeMap {
     /// A row can visibly clear inherited column borders or fills without
     /// introducing a visible border or fill of its own.
     pub(crate) fn row_style_masks_column_format(&self, style: &Xf) -> bool {
-        (style.applies_default_border_override() && self.has_visible_column_border)
+        // Excel's explicit row format clears column borders even when its XF
+        // omits applyBorder. Cell-level override rules remain separate.
+        (style.border_id == Some(0) && self.has_visible_column_border)
             || (style.applies_default_fill_override() && self.has_visible_column_fill)
     }
 

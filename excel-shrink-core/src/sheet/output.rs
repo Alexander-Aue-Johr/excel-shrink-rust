@@ -725,9 +725,7 @@ fn cutoff_after_row_boundary(
     if metrics.column_definitions.has_visible_column_borders() {
         let mut position = cutoff;
         while let Some((row, end)) = next_row_after_cutoff(sheet_data, position) {
-            if !row_is_hidden(row)
-                && row_has_inherited_border_height(row, &metrics.column_definitions)
-            {
+            if !trailing_row_is_layout_only(row, params, &metrics.column_definitions) {
                 cutoff = end;
             }
             position = end;
@@ -2047,6 +2045,33 @@ r="A2"><v>42</v></c></row><row r="3"><c	r="A3"><f>1+1</f></c></row><row r="4"><c
         sheet.in_cols_node_output_chunks = br#"<col min="1" max="16384" style="1"/>"#.to_vec();
         let cleaned = build_clean_sheet_xml(sheet, &params, false).unwrap();
         assert!(String::from_utf8_lossy(&cleaned.xml).contains(r#"r="14""#));
+    }
+
+    #[test]
+    fn content_boundary_keeps_border_masking_tail_rows() {
+        let border = Xf::builder()
+            .border_id(Some(1))
+            .apply_border(true)
+            .has_visible_border(true)
+            .has_fill_or_border(true)
+            .has_apply_fill_or_border(true)
+            .build_xf();
+        let borderless = Xf::builder().border_id(Some(0)).build_xf();
+        let params = params_with_styles(&[(1, border), (2, borderless)]);
+        let mut metrics = CleanSheetMetrics {
+            tail_anchor_max_row: Some(1),
+            ..Default::default()
+        };
+        metrics.column_definitions = crate::sheet::cols::process_cols_node(
+            br#"<col min="1" max="1" style="1"/>"#,
+            &params,
+        );
+        let xml = br#"<row r="1"><c r="A1"><v>1</v></c></row><row r="2" s="2" customFormat="1"/><row r="3" s="2" customFormat="1"/><row r="4"/>"#;
+        let cleaned = super::trim_trailing_layout_only_rows(xml, &params, &mut metrics);
+        let cleaned = String::from_utf8_lossy(&cleaned);
+        assert!(cleaned.contains(r#"r="2""#));
+        assert!(cleaned.contains(r#"r="3""#));
+        assert!(!cleaned.contains(r#"r="4""#));
     }
 
     #[test]
