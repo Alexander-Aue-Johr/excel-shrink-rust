@@ -832,3 +832,26 @@ original report directories. Registry maintenance runs independently of HTTP
 queries and scientific scheduling. The additional history buffer preserves the
 UI's 100 most recent completed attempts while publishers finish concurrently.
 
+
+### Optional equal-image retention
+
+Corpus launches accept `--retain-equal-images true|false`. The corresponding
+launcher setting is `retain_equal_images`. Existing configurations default to
+`true`; the Enron run uses `false` to bound retained evidence storage.
+
+With retention disabled, capture selection, native resolution and comparison
+remain unchanged. Successfully compared equal images are removed only after
+both durable result reports have been published. Receipts retain SHA-256,
+encoded length, image dimensions and the positive comparison verdict. Missing,
+unperformed or differing comparisons never qualify. Any image shared with a
+differing comparison remains full resolution. Equal neighboring tiles are not
+retained under this storage policy. The Atelier explicitly labels deliberately
+discarded images. Dependency-proven chart exclusions remain distinct from pixel
+comparisons and do not acquire an image receipt.
+
+The storage policy was replayed against three native Excel experiment reports
+(equal conservative captures, changed chart inputs and dependency-excluded
+charts). Result-contract validation before and after retention agreed in each
+case. Portable publishing exported no equal images in the equal cases and
+retained differing evidence. Deletion occurs after publication, so failure
+before publication preserves the original image files.

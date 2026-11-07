@@ -117,6 +117,11 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
             if chart["dependencies_unchanged"] == true {
                 validate_chart_exclusion(report, left, right, chart)?;
             }
+            for side in ["left", "right"] {
+                if chart[format!("{side}_image_retained")] == false {
+                    validate_discarded_equal_image(chart, side, &format!("{side}_image"))?;
+                }
+            }
             changed |= difference_flags(
                 chart,
                 &[
@@ -180,8 +185,14 @@ fn validate_rendering(finding: &Value) -> Result<bool> {
             "Rendering state contradicts geometry"
         );
         let image = &finding[format!("{side}_png")];
+        let discarded = finding[format!("{side}_image_retained")] == false;
+        if discarded {
+            validate_discarded_equal_image(finding, side, &format!("{side}_png"))?;
+        }
         ensure!(
             if empty {
+                image.is_null()
+            } else if discarded {
                 image.is_null()
             } else {
                 image.as_str().is_some_and(|s| !s.is_empty())
@@ -226,6 +237,33 @@ fn validate_rendering(finding: &Value) -> Result<bool> {
     Ok(rendering_differs)
 }
 
+/// A deliberate storage omission requires a successful equal-pixel verdict and a content receipt.
+fn validate_discarded_equal_image(finding: &Value, side: &str, image_field: &str) -> Result<()> {
+    let receipt = &finding[format!("{side}_image_receipt")];
+    ensure!(
+        finding["pixels_compared"] == true
+            && finding["pixels_differ"] == false
+            && finding["geometry_differs"] == false
+            && finding["rendering_differs"] == false
+            && (finding["presence_differs"].is_null() || finding["presence_differs"] == false)
+            && finding[format!("{side}_rendering")] == "captured"
+            && finding[image_field].is_null(),
+        "Discarded image has no verified equal comparison"
+    );
+    ensure!(
+        receipt["reason"] == "verified-equal-image-discarded"
+            && receipt["sha256"]
+                .as_str()
+                .is_some_and(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+            && receipt["encoded_bytes"].as_u64().is_some_and(|n| n > 0)
+            && receipt["pixels"].as_array().is_some_and(
+                |p| p.len() == 2 && p.iter().all(|n| n.as_u64().is_some_and(|n| n > 0))
+            ),
+        "Missing discarded-image integrity receipt"
+    );
+    Ok(())
+}
+
 fn difference_flags(finding: &Value, fields: &[&str]) -> Result<bool> {
     let mut changed = false;
     for field in fields {
@@ -262,6 +300,24 @@ mod tests {
     }
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn discarded_images_require_positive_equal_comparison_receipts() -> Result<()> {
+        let mut finding = json!({"pixels_compared":true,"pixels_differ":false,
+            "geometry_differs":false,"rendering_differs":false,"left_rendering":"captured",
+            "left_png":null,"left_image_receipt":{"reason":"verified-equal-image-discarded",
+                "sha256":"a".repeat(64),"encoded_bytes":100,"pixels":[20,30]}});
+        validate_discarded_equal_image(&finding, "left", "left_png")?;
+        finding["pixels_differ"] = json!(true);
+        assert!(validate_discarded_equal_image(&finding, "left", "left_png").is_err());
+        finding["pixels_differ"] = json!(false);
+        finding["pixels_compared"] = json!(false);
+        assert!(validate_discarded_equal_image(&finding, "left", "left_png").is_err());
+        finding["pixels_compared"] = json!(true);
+        finding["left_image_receipt"]["sha256"] = json!("missing");
+        assert!(validate_discarded_equal_image(&finding, "left", "left_png").is_err());
+        Ok(())
+    }
 
     #[test]
     #[ignore = "read-only audit; requires TARGETED_REPORT_REVIEW_ROOT"]

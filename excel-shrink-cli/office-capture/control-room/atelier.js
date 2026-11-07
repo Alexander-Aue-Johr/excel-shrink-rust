@@ -109,9 +109,11 @@ export function createAtelier() {
         : 'Loading retained captures...';
       return;
     }
-    note.textContent = `${index + 1} / ${regions.length} / ${region.different ? 'Difference found' : 'No difference detected'} / `
+    const outcome = region.dependencies_unchanged ? 'Skipped — unchanged chart dependencies'
+      : region.different ? 'Difference found' : 'No difference detected';
+    note.textContent = `${index + 1} / ${regions.length} / ${outcome} / `
       + (region.blank_margin_ignored ? 'Blank trailing margin size ignored. ' : '')
-      + 'O: Original / SD: Default before rebuild / SDR: Default after rebuild. Images are retained run evidence.';
+      + 'O: Original / SD: Default before rebuild / SDR: Default after rebuild. Storage decisions are recorded in run evidence.';
     const pair = node('div');
     pair.className = 'atelier-pair';
     const views = [];
@@ -136,7 +138,15 @@ export function createAtelier() {
         figure.append(stage);
         views.push({ image, stage, label: region[side] });
       } else {
-        figure.append(node('p', 'No rendered image for this state; consult its geometry/presence verdict.'));
+        let message = 'No rendered image for this state; consult its geometry/presence verdict.';
+        if (region[side + '_image_retained'] === false) {
+          const receipt = region[side + '_image_receipt'];
+          message = 'Image discarded after a verified equal comparison.';
+          if (receipt) message += ` ${receipt.pixels.join(' × ')} px · SHA-256 ${receipt.sha256}`;
+        } else if (region.dependencies_unchanged) {
+          message = 'Capture skipped — unchanged chart dependencies.';
+        }
+        figure.append(node('p', message));
       }
       pair.append(figure);
     }

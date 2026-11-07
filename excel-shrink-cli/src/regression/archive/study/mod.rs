@@ -99,6 +99,9 @@ pub(in crate::regression) struct StudyArgs {
     /// Exclude charts only with proven unchanged dependencies, or capture every chart.
     #[arg(long, value_enum, default_value_t = crate::regression::targeted_comparison::ChartCaptureMode::Deterministic)]
     chart_capture_mode: crate::regression::targeted_comparison::ChartCaptureMode,
+    /// Retain verified-equal image evidence; false keeps integrity receipts and differing images.
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    retain_equal_images: bool,
     /// Screen the selection with the aggressive profile before full follow-up.
     #[arg(long, requires = "resident_capture", conflicts_with_all = ["prepare_only", "diagnose_whitespace_only", "full_scan_deferred"])]
     aggressive_first: bool,
@@ -553,6 +556,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             "targeted_comparison":args.targeted_comparison,
             "targeted_skip_check_performance":args.targeted_skip_check_performance,
             "chart_capture_mode":args.chart_capture_mode,
+            "retain_equal_images":args.retain_equal_images,
             "hide_excel":args.hide_excel,
             "control_room":args.control_room,"control_room_port":args.control_room_port,
             "adaptive_concurrency":args.adaptive_concurrency,"order":args.order,

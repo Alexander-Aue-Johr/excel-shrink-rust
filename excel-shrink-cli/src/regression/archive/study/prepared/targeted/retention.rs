@@ -3,6 +3,22 @@ use super::*;
 use crate::regression::targeted_comparison::{CAPTURE_COLUMNS, CAPTURE_ROWS};
 use std::collections::BTreeMap;
 
+mod discard_equal;
+
+/// Change storage only after comparison; scientific verdicts and capture coverage stay intact.
+pub(super) fn apply_with_policy(
+    report: &mut Value,
+    directory: &Path,
+    preview_width: u32,
+    retain_equal: bool,
+) -> Result<Vec<PathBuf>> {
+    if retain_equal {
+        apply(report, directory, preview_width)
+    } else {
+        discard_equal::apply(report, directory)
+    }
+}
+
 type Tile = (String, u32, u32);
 type Dimensions = (u32, u32);
 
@@ -202,10 +218,7 @@ fn rectangle(range: &str) -> Result<(u32, u32, u32, u32)> {
 /// Call only after both completed reports reference the durable retained files.
 pub(super) fn discard_originals(directory: &Path, obsolete: &[PathBuf]) -> Result<()> {
     for path in obsolete {
-        ensure!(
-            path.starts_with(directory) && path.extension().is_some_and(|ext| ext == "png"),
-            "Refusing to discard an image outside this attempt"
-        );
+        discard_equal::validate_owned_image(directory, path)?;
         fs::remove_file(path)
             .with_context(|| format!("Discard superseded image {}", path.display()))?;
     }

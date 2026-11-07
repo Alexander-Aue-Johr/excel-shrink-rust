@@ -165,7 +165,10 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
         .as_u64()
         .filter(|width| [0, 128, 256, 512, 1024].contains(width))
         .unwrap_or(512) as u32;
-    let obsolete_images = retention::apply(&mut report, &directory, preview_width)?;
+    let retain_equal = job.run_manifest.as_ref()
+        .and_then(|run| run["retain_equal_images"].as_bool()).unwrap_or(true);
+    let obsolete_images = retention::apply_with_policy(
+        &mut report, &directory, preview_width, retain_equal)?;
     artifact_cache::atomic_write(
         &directory.join("report.json"),
         &serde_json::to_vec(&report)?,

@@ -93,6 +93,7 @@ function Get-DefaultStudySettings {
         targeted_skip_check_performance = $true
         chart_capture_mode = 'deterministic'
         sqlite_metadata = $true
+        retain_equal_images = $true
         targeted_check_performance = $false
         worker_memory_mib = $(if ($small) { 2048 } else { 4096 })
         excel_memory_mib = $(if ($small) { 2048 } else { 4096 })
@@ -295,6 +296,7 @@ function New-StudyLaunchPlan {
     if (Get-Value $settings 'targeted_comparison' $true) {
         $argsList += '--targeted-comparison'
         $argsList += @('--chart-capture-mode', [string](Get-Value $settings 'chart_capture_mode' 'deterministic'))
+        $argsList += @('--retain-equal-images', ([string][bool](Get-Value $settings 'retain_equal_images' $true)).ToLowerInvariant())
         if (Get-Value $settings 'targeted_check_performance' $false) {
             $argsList += '--targeted-check-performance'
         } else {

@@ -152,6 +152,7 @@ pub(super) fn run_record(
             "targeted_comparison":run["options"]["targeted_comparison"],
             "targeted_skip_check_performance":run["options"]["targeted_skip_check_performance"],
             "chart_capture_mode":run["options"]["chart_capture_mode"],
+            "retain_equal_images":run["options"]["retain_equal_images"],
             "preparation_stage":run["options"]["preparation_stage"]}),
         ),
     };
