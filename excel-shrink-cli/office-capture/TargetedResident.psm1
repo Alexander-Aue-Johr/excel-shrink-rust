@@ -373,7 +373,7 @@ function Invoke-TargetedCaptureBatch {
     #>
     param($Command)
     foreach ($job in $Command.jobs) {
-        if ($job.kind -notin @('capture','measure')) { throw 'A capture batch may not mutate workbooks.' }
+        if ($job.kind -notin @('capture','measure','measure_batch')) { throw 'A capture batch may not mutate workbooks.' }
     }
     return @{images=@(Invoke-TargetedJobs $Command.jobs)}
 }

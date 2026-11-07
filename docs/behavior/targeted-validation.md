@@ -437,6 +437,14 @@ a hidden or whitespace value was removed.
 
 ## V9. Captures, transport and comparison
 
+Capture partitioning batches at most 64 independent ranges from one sheet.
+Each live state loads all four geometry properties for those ranges before one
+Office.js `context.sync()`. Oversized parents produce children for later batches.
+Every child is still measured in every state that lacks a cached observation.
+Responses must contain every requested address in order and finite, nonnegative
+geometry. Missing, reordered or invalid observations fail the attempt. Batching
+does not change selected cell coverage, image limits or zero-area handling.
+
 Office.js captures the requested region and measured geometry in its workbook
 instance. For a batch, submit at most one outstanding cell capture per distinct
 open lane; collect every result in request order. Responses must match the active

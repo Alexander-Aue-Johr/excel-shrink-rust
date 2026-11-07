@@ -121,12 +121,12 @@ impl Workflow<'_, '_> {
             self.skip_state(
                 LaneId::SD,
                 StateDecision::SkippedIdenticalInput { source: LaneId::O },
-                "Default unchanged â€” identical input bytes",
+                "Default unchanged — identical input bytes",
             )?;
             self.skip_state(
                 LaneId::SDR,
                 StateDecision::SkippedIdenticalInput { source: LaneId::O },
-                "Default rebuild omitted â€” identical input bytes",
+                "Default rebuild omitted — identical input bytes",
             )?;
         }
         if self.comparison.args.skip_check_performance {
@@ -597,7 +597,7 @@ impl Workflow<'_, '_> {
     /// Preserve selected coverage, measure its visible partition, and record non-rendering leaves.
     fn prepare_capture_partition(&mut self) -> Result<()> {
         let (selected, coverage) = self.content_bounds.select(&self.requested_candidates)?;
-        let plan = capture_layout::plan(&selected, |candidate| self.measure_candidate(candidate))?;
+        let plan = capture_layout::plan_batched(&selected, |batch| self.measure_candidates(batch))?;
         self.comparison.candidates = plan.keys().cloned().collect();
         let mut coverage = coverage;
         super::content_bounds::record_partition(&mut coverage, &self.comparison.candidates);
@@ -641,19 +641,28 @@ impl Workflow<'_, '_> {
         Ok(())
     }
 
-    /// Cache immutable state geometry; later states must supply their own measurements.
-    fn measure_candidate(&mut self, candidate: &Candidate) -> Result<BTreeMap<LaneId, Geometry>> {
-        let missing: Vec<_> = self
-            .states
-            .iter()
-            .filter(|(_, state)| !state.geometries.contains_key(candidate))
-            .map(|(&id, _)| id)
-            .collect();
-        if !missing.is_empty() {
+    /// Cache measured geometry per immutable workbook state, batching only missing ranges.
+    fn measure_candidates(
+        &mut self,
+        candidates: &[Candidate],
+    ) -> Result<Vec<BTreeMap<LaneId, Geometry>>> {
+        let mut jobs = Vec::new();
+        for (&id, state) in &self.states {
+            let missing: Vec<_> = candidates
+                .iter()
+                .filter(|candidate| !state.geometries.contains_key(*candidate))
+                .cloned()
+                .collect();
+            if !missing.is_empty() {
+                jobs.push((id, missing));
+            }
+        }
+        if !jobs.is_empty() {
             self.comparison.telemetry.progress(|state| {
-                for &id in &missing {
-                    state.lane(id).current_sheet = Some(candidate.sheet.clone());
-                    state.lane(id).current_range = Some(format!("measure {}", candidate.cell));
+                for (id, ranges) in &jobs {
+                    state.lane(*id).current_sheet = Some(ranges[0].sheet.clone());
+                    state.lane(*id).current_range =
+                        Some(format!("measure {} ranges", ranges.len()));
                 }
             })?;
             let measured = self
@@ -661,25 +670,29 @@ impl Workflow<'_, '_> {
                 .excel
                 .as_mut()
                 .context("Excel host missing")?
-                .measure_ranges(&missing, candidate, &self.comparison.telemetry)?;
-            for (&id, geometry) in missing.iter().zip(measured) {
-                self.states
-                    .get_mut(&id)
-                    .unwrap()
-                    .geometries
-                    .insert(candidate.clone(), geometry);
+                .measure_ranges(&jobs, &self.comparison.telemetry)?;
+            for ((id, ranges), geometries) in jobs.into_iter().zip(measured) {
+                let cache = &mut self.states.get_mut(&id).unwrap().geometries;
+                for (candidate, geometry) in ranges.into_iter().zip(geometries) {
+                    cache.insert(candidate, geometry);
+                }
             }
         }
-        self.states
+        candidates
             .iter()
-            .map(|(&id, state)| {
-                Ok((
-                    id,
-                    *state
-                        .geometries
-                        .get(candidate)
-                        .context("Missing measured capture geometry")?,
-                ))
+            .map(|candidate| {
+                self.states
+                    .iter()
+                    .map(|(&id, state)| {
+                        Ok((
+                            id,
+                            *state
+                                .geometries
+                                .get(candidate)
+                                .context("Missing measured capture geometry")?,
+                        ))
+                    })
+                    .collect()
             })
             .collect()
     }

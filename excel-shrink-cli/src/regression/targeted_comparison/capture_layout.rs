@@ -93,77 +93,102 @@ pub(super) fn coalesce(selected: &BTreeSet<Candidate>) -> Result<BTreeSet<Candid
     Ok(result)
 }
 
-/// Use one cell partition for every live state, including later rebuild copies.
-/// Partition cell coordinates proportionally and measure each child once. Every accepted leaf must fit
-/// the image budget in every state; zero-area leaves remain explicit.
-pub(super) fn plan(
+/// Bound pending Office.js range objects without limiting capture coverage.
+pub(super) const MEASUREMENT_BATCH_SIZE: usize = 64;
+
+/// Measure independent ranges together while preserving every state's image limits.
+/// Oversized children enter later batches; zero-area leaves retain explicit coverage.
+pub(super) fn plan_batched(
     selected: &BTreeSet<Candidate>,
-    mut measure: impl FnMut(&Candidate) -> Result<BTreeMap<LaneId, Geometry>>,
+    mut measure: impl FnMut(&[Candidate]) -> Result<Vec<BTreeMap<LaneId, Geometry>>>,
 ) -> Result<BTreeMap<Candidate, BTreeMap<LaneId, Geometry>>> {
     let mut pending: Vec<_> = coalesce(selected)?.into_iter().collect();
     let mut leaves = BTreeMap::new();
-    while let Some(candidate) = pending.pop() {
-        let geometries = measure(&candidate)?;
-        ensure!(!geometries.is_empty(), "No live capture states to measure");
-        for geometry in geometries.values() {
-            geometry.validate()?;
+    while let Some(first) = pending.pop() {
+        let mut batch = vec![first];
+        while batch.len() < MEASUREMENT_BATCH_SIZE
+            && pending
+                .last()
+                .is_some_and(|next| next.sheet == batch[0].sheet)
+        {
+            batch.push(pending.pop().unwrap());
         }
-        let oversized = geometries
-            .iter()
-            .filter(|(_, g)| !g.fits())
-            .max_by(|(_, a), (_, b)| (a.width * a.height).total_cmp(&(b.width * b.height)));
-        let Some((_, &geometry)) = oversized else {
-            leaves.insert(candidate, geometries);
-            continue;
-        };
-        let rect = Rectangle::parse(&candidate.cell)?;
-        let vertical = if rect.left == rect.right {
-            true
-        } else if rect.top == rect.bottom {
-            false
-        } else {
-            geometry.height >= geometry.width
-        };
-        let (start, end) = if vertical {
-            (rect.top, rect.bottom)
-        } else {
-            (rect.left, rect.right)
-        };
+        let measured = measure(&batch)?;
         ensure!(
-            start < end,
-            "A single cell exceeds the safe image export budget: {}!{}",
-            candidate.sheet,
-            candidate.cell
+            measured.len() == batch.len(),
+            "Incomplete geometry batch coverage"
         );
-        // Estimate a useful fan-out from the measured excess, then validate every
-        // child in every state. Uneven or hidden rows can require further splits.
-        // Bound each expansion, not the final coverage or number of captures.
-        let width = geometry.width * PIXELS_PER_POINT + 2.0;
-        let height = geometry.height * PIXELS_PER_POINT + 2.0;
-        let edge = if vertical { height } else { width };
-        let estimate = (edge / f64::from(MAX_EDGE))
-            .max(width * height / MAX_PIXELS as f64)
-            .ceil() as u32;
-        let length = end - start + 1;
-        let parts = estimate.clamp(2, length.min(128));
-        for index in (0..parts).rev() {
-            let mut child = rect;
-            let low = start + length * index / parts;
-            let high = start + length * (index + 1) / parts - 1;
-            if vertical {
-                child.top = low;
-                child.bottom = high;
-            } else {
-                child.left = low;
-                child.right = high;
+        for (candidate, geometries) in batch.into_iter().zip(measured) {
+            ensure!(!geometries.is_empty(), "No live capture states to measure");
+            for geometry in geometries.values() {
+                geometry.validate()?;
             }
-            pending.push(Candidate {
-                sheet: candidate.sheet.clone(),
-                cell: child.address(),
-            });
+            let oversized = geometries
+                .iter()
+                .filter(|(_, g)| !g.fits())
+                .max_by(|(_, a), (_, b)| (a.width * a.height).total_cmp(&(b.width * b.height)));
+            let Some((_, &geometry)) = oversized else {
+                leaves.insert(candidate, geometries);
+                continue;
+            };
+            let rect = Rectangle::parse(&candidate.cell)?;
+            let vertical = if rect.left == rect.right {
+                true
+            } else if rect.top == rect.bottom {
+                false
+            } else {
+                geometry.height >= geometry.width
+            };
+            let (start, end) = if vertical {
+                (rect.top, rect.bottom)
+            } else {
+                (rect.left, rect.right)
+            };
+            ensure!(
+                start < end,
+                "A single cell exceeds the safe image export budget: {}!{}",
+                candidate.sheet,
+                candidate.cell
+            );
+            // Estimate a useful fan-out from the measured excess, then validate every
+            // child in every state. Uneven or hidden rows can require further splits.
+            // Bound each expansion, not the final coverage or number of captures.
+            let width = geometry.width * PIXELS_PER_POINT + 2.0;
+            let height = geometry.height * PIXELS_PER_POINT + 2.0;
+            let edge = if vertical { height } else { width };
+            let estimate = (edge / f64::from(MAX_EDGE))
+                .max(width * height / MAX_PIXELS as f64)
+                .ceil() as u32;
+            let length = end - start + 1;
+            let parts = estimate.clamp(2, length.min(128));
+            for index in (0..parts).rev() {
+                let mut child = rect;
+                let low = start + length * index / parts;
+                let high = start + length * (index + 1) / parts - 1;
+                if vertical {
+                    child.top = low;
+                    child.bottom = high;
+                } else {
+                    child.left = low;
+                    child.right = high;
+                }
+                pending.push(Candidate {
+                    sheet: candidate.sheet.clone(),
+                    cell: child.address(),
+                });
+            }
         }
     }
     Ok(leaves)
+}
+
+/// Keep scalar experiment fixtures available through the same partition algorithm.
+#[cfg(test)]
+fn plan(
+    selected: &BTreeSet<Candidate>,
+    mut measure: impl FnMut(&Candidate) -> Result<BTreeMap<LaneId, Geometry>>,
+) -> Result<BTreeMap<Candidate, BTreeMap<LaneId, Geometry>>> {
+    plan_batched(selected, |batch| batch.iter().map(&mut measure).collect())
 }
 
 #[cfg(test)]
@@ -175,6 +200,84 @@ mod tests {
             sheet: "Data".into(),
             cell: cell.into(),
         }
+    }
+
+    #[test]
+    fn geometry_batches_preserve_partition_and_reduce_round_trips() -> Result<()> {
+        let selected = [candidate("A1:P1048576")].into();
+        let geometry = |candidate: &Candidate| -> Result<BTreeMap<LaneId, Geometry>> {
+            let rect = Rectangle::parse(&candidate.cell)?;
+            Ok([
+                (
+                    LaneId::OR,
+                    Geometry {
+                        top: f64::from(rect.top - 1) * 15.,
+                        left: 0.,
+                        width: 1000.,
+                        height: f64::from(rect.bottom - rect.top + 1) * 15.,
+                    },
+                ),
+                (
+                    LaneId::SDR,
+                    Geometry {
+                        top: 0.,
+                        left: 0.,
+                        width: 1000.,
+                        height: 0.,
+                    },
+                ),
+            ]
+            .into())
+        };
+        let mut scalar_calls = 0;
+        let scalar = plan(&selected, |candidate| {
+            scalar_calls += 1;
+            geometry(candidate)
+        })?;
+        let mut batches = 0;
+        let batched = plan_batched(&selected, |batch| {
+            assert!(!batch.is_empty() && batch.len() <= MEASUREMENT_BATCH_SIZE);
+            batches += 1;
+            batch.iter().map(geometry).collect()
+        })?;
+        assert_eq!(scalar, batched);
+        assert!(batches * 10 < scalar_calls);
+        Ok(())
+    }
+
+    #[test]
+    fn geometry_batches_separate_sheets_and_reject_incomplete_coverage() -> Result<()> {
+        let selected = [
+            candidate("A1:A1"),
+            Candidate {
+                sheet: "Other".into(),
+                cell: "A1:A1".into(),
+            },
+        ]
+        .into();
+        let result = plan_batched(&selected, |batch| {
+            assert!(batch
+                .iter()
+                .all(|candidate| candidate.sheet == batch[0].sheet));
+            Ok(batch
+                .iter()
+                .map(|_| {
+                    [(
+                        LaneId::OR,
+                        Geometry {
+                            top: 0.,
+                            left: 0.,
+                            width: 0.,
+                            height: 0.,
+                        },
+                    )]
+                    .into()
+                })
+                .collect())
+        })?;
+        assert_eq!(result.len(), 2);
+        assert!(plan_batched(&selected, |_| Ok(Vec::new())).is_err());
+        Ok(())
     }
 
     #[test]

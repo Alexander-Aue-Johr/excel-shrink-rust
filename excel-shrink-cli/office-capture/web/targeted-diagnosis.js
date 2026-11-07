@@ -18,6 +18,23 @@
   async function run(command, office, reportProgress = () => {}) {
     if (command.kind === 'heights') return measureHeights(command, office);
     return office(async context => {
+      if (command.kind === 'measure_batch') {
+        if (!Array.isArray(command.ranges) || command.ranges.length < 1 || command.ranges.length > 64 ||
+            command.ranges.some(address => typeof address !== 'string' || !address)) {
+          throw new Error('Geometry batch requires 1..64 range addresses');
+        }
+        const sheet = context.workbook.worksheets.getItem(command.sheet);
+        const ranges = command.ranges.map(address => {
+          const range = sheet.getRange(address);
+          range.load('top,left,width,height');
+          return range;
+        });
+        await context.sync();
+        return {ranges: ranges.map((range, index) => ({
+          range: command.ranges[index],
+          top: range.top, left: range.left, width: range.width, height: range.height
+        }))};
+      }
       if (command.kind === 'save' || command.kind === 'recalculate') {
         if (command.kind === 'recalculate') {
           reportProgress('rebuild_dispatch');

@@ -2,6 +2,46 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 require('./targeted-diagnosis.js');
 
+test('geometry batches load every range before one synchronization', async () => {
+  let synchronized = false;
+  let synchronizations = 0;
+  const loaded = [];
+  const addresses = Array.from({length: 64}, (_, index) => `A${index + 1}:P${index + 1}`);
+  const context = {
+    workbook: {worksheets: {getItem: sheet => {
+      assert.equal(sheet, 'Data');
+      return {getRange: address => ({
+        load(properties) {
+          assert.equal(properties, 'top,left,width,height');
+          assert.equal(synchronized, false);
+          loaded.push(address);
+        },
+        get top() { assert.equal(synchronized, true); return 15; },
+        left: 0, width: 300, height: 0
+      })};
+    }}},
+    sync: async () => {
+      assert.deepEqual(loaded, addresses);
+      synchronizations++;
+      synchronized = true;
+    }
+  };
+  const result = await globalThis.TargetedDiagnosis.run(
+    {kind: 'measure_batch', sheet: 'Data', ranges: addresses}, action => action(context));
+  assert.equal(synchronizations, 1);
+  assert.deepEqual(result.ranges.map(item => item.range), addresses);
+  assert(result.ranges.every(item => item.height === 0 && item.top === 15));
+});
+
+test('invalid geometry batches never load ranges or synchronize', async () => {
+  const context = {workbook: {worksheets: {getItem() {assert.fail('Invalid batch');}}},
+    sync() {assert.fail('Invalid batch');}};
+  for (const ranges of [[], [''], [null], Array(65).fill('A1')]) {
+    await assert.rejects(globalThis.TargetedDiagnosis.run(
+      {kind: 'measure_batch', sheet: 'Data', ranges}, action => action(context)), /1\.\.64/);
+  }
+});
+
 test('capture checks visible geometry before rendering', async () => {
   let synchronizations = 0;
   const range = {

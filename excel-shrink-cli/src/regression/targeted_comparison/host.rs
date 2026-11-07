@@ -208,32 +208,45 @@ impl ExcelHost {
         measured_geometry(&response["geometry"])
     }
 
-    /// Measure the same proposed rectangle in every live state without rendering it.
+    /// Measure bounded same-sheet ranges with one Office.js synchronization per lane.
     pub(super) fn measure_ranges(
         &mut self,
-        lanes: &[LaneId],
-        candidate: &super::Candidate,
+        jobs: &[(LaneId, Vec<super::Candidate>)],
         telemetry: &Telemetry,
-    ) -> Result<Vec<super::capture_layout::Geometry>> {
-        let response = self.call(json!({"kind":"capture_batch","jobs":lanes.iter().map(|lane|
-            json!({"kind":"measure","lane":lane.key(),"sheet":candidate.sheet,"range":candidate.cell}))
-            .collect::<Vec<_>>()}), telemetry)?;
+    ) -> Result<Vec<Vec<super::capture_layout::Geometry>>> {
+        let mut commands = Vec::new();
+        for (lane, candidates) in jobs {
+            let first = candidates.first().context("Empty geometry batch")?;
+            ensure!(
+                candidates.len() <= super::capture_layout::MEASUREMENT_BATCH_SIZE,
+                "Geometry batch exceeds range limit"
+            );
+            ensure!(
+                candidates
+                    .iter()
+                    .all(|candidate| candidate.sheet == first.sheet),
+                "Geometry batch spans multiple sheets"
+            );
+            commands.push(json!({"kind":"measure_batch", "lane":lane.key(),
+                "sheet":first.sheet, "ranges":candidates.iter().map(|c| &c.cell).collect::<Vec<_>>()}));
+        }
+        let response = self.call(json!({"kind":"capture_batch", "jobs":commands}), telemetry)?;
         let results = response["images"]
             .as_array()
             .context("Missing geometry responses")?;
         ensure!(
-            results.len() == lanes.len(),
-            "Incomplete geometry response coverage"
+            results.len() == jobs.len(),
+            "Incomplete geometry lane coverage"
         );
-        let geometries = results
+        let geometries = jobs
             .iter()
-            .map(|result| {
-                let geometry: super::capture_layout::Geometry =
-                    serde_json::from_value(result.clone())?;
-                geometry.validate()
-            })
+            .zip(results)
+            .map(|((_, candidates), result)| decode_geometry_batch(candidates, result))
             .collect::<Result<Vec<_>>>()?;
-        telemetry.progress(|state| state.capture_progress_sequence += geometries.len() as u64)?;
+        telemetry.progress(|state| {
+            state.capture_progress_sequence +=
+                geometries.iter().map(Vec::len).sum::<usize>() as u64;
+        })?;
         Ok(geometries)
     }
 
@@ -463,6 +476,32 @@ fn observe_started_process(event: &Value, telemetry: &Telemetry) -> Result<()> {
 }
 
 /// Transport timings and resource samples are not workbook geometry.
+/// Require ordered range identities and complete, finite geometry before caching any batch.
+fn decode_geometry_batch(
+    candidates: &[super::Candidate],
+    response: &Value,
+) -> Result<Vec<super::capture_layout::Geometry>> {
+    let ranges = response["ranges"]
+        .as_array()
+        .context("Missing geometry ranges")?;
+    ensure!(
+        ranges.len() == candidates.len(),
+        "Incomplete geometry range coverage"
+    );
+    candidates
+        .iter()
+        .zip(ranges)
+        .map(|(candidate, result)| {
+            ensure!(
+                result["range"].as_str() == Some(candidate.cell.as_str()),
+                "Geometry range identity changed"
+            );
+            let geometry: super::capture_layout::Geometry = serde_json::from_value(result.clone())?;
+            geometry.validate()
+        })
+        .collect()
+}
+
 fn measured_geometry(response: &Value) -> Result<Value> {
     let mut geometry = serde_json::Map::new();
     for key in ["top", "left", "width", "height"] {
@@ -484,6 +523,25 @@ fn measured_geometry(response: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn geometry_batch_receipts_require_every_requested_range_in_order() -> Result<()> {
+        let candidates = ["A1:P128", "A129:P256"].map(|cell| super::super::Candidate {
+            sheet: "Data".into(),
+            cell: cell.into(),
+        });
+        let first = json!({"range":"A1:P128","top":0.,"left":0.,"width":300.,"height":0.});
+        let second = json!({"range":"A129:P256","top":0.,"left":0.,"width":300.,"height":15.});
+        let decoded = decode_geometry_batch(&candidates, &json!({"ranges":[first, second]}))?;
+        assert_eq!(decoded.len(), 2);
+        assert!(decoded[0].empty());
+        assert!(decode_geometry_batch(&candidates, &json!({"ranges":[first]})).is_err());
+        assert!(decode_geometry_batch(&candidates, &json!({"ranges":[second, first]})).is_err());
+        let mut invalid = second;
+        invalid["height"] = json!(-1);
+        assert!(decode_geometry_batch(&candidates, &json!({"ranges":[first, invalid]})).is_err());
+        Ok(())
+    }
 
     #[test]
     fn external_link_inventory_reads_package_entries_without_parsing_xml() -> Result<()> {
