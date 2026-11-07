@@ -10,6 +10,7 @@ mod batch_report;
 mod capture_host;
 mod console_writer;
 mod native_process;
+mod metadata_store;
 mod pipeline;
 mod profiling;
 mod regression;
@@ -259,6 +260,7 @@ fn main() -> anyhow::Result<()> {
     match raw_args.next().as_deref().and_then(OsStr::to_str) {
         Some("regression") => return run_regression_command(program, raw_args.collect()),
         Some("capture-host") => return capture_host::run(raw_args.collect()),
+        Some("metadata-store") => return metadata_store::run(raw_args.collect()),
         _ => {}
     }
 

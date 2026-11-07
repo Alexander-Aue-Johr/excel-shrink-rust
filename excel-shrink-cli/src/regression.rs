@@ -22,7 +22,7 @@ mod visual_diagnostics;
 mod excel_automation;
 mod launcher_journal;
 mod xlsx_value_compare;
-mod artifact_cache;
+pub(crate) mod artifact_cache;
 pub(crate) use artifact_cache::atomic_write as write_atomic_artifact;
 mod xml_views;
 mod worksheet_stream;

@@ -85,7 +85,7 @@ pub(crate) fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     if result.is_err() { let _ = fs::remove_file(&pending); }
     result.with_context(|| format!("atomically write {}", path.display()))
 }
-fn atomic_replace(source: &Path, target: &Path) -> Result<()> {
+pub(crate) fn atomic_replace(source: &Path, target: &Path) -> Result<()> {
     #[cfg(not(windows))]
     fs::rename(source, target)?;
     #[cfg(windows)]
