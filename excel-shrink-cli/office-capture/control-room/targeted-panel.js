@@ -1,6 +1,7 @@
 import { createProcessIcon } from './process-icon-shader.js';
 import { createSignalMonitor } from './signal-monitor.js';
 import { createClipboardButton } from './inspection-clipboard.js';
+import { createProcessMetrics } from './process-metrics.js';
 import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, phaseComplete, processCards } from './targeted-model.js';
 
 const node = (tag, className, text) => {
@@ -33,11 +34,13 @@ function createLaneCard() {
   const progressText = node('p', 'targeted-progress-label');
   const signals = createSignalMonitor({ compact: true, heartbeatOnly: true });
   const source = node('p', 'targeted-source');
-  root.append(heading, state, current, progress, progressText, signals.element, source);
+  const metrics = createProcessMetrics();
+  root.append(heading, state, current, progress, progressText, metrics.element, signals.element, source);
   return {
     element: root,
     update(comparison, lane, connected) {
       name.textContent = lane.label;
+      metrics.update(comparison, lane);
       state.textContent = [labels[lane.lifecycle] || lane.lifecycle, lane.pid ? `PID ${lane.pid}` : null].filter(Boolean).join(' · ');
       current.textContent = [lane.decision_note, lane.current_sheet, lane.current_range].filter(Boolean).join(' · ');
       current.hidden = !current.textContent;

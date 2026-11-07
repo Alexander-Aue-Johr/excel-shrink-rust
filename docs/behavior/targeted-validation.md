@@ -292,6 +292,20 @@ a saved/rebuilt path as immutable just because its filename is unchanged.
 
 ## V6. Candidate discovery and the content envelope
 
+Process cards retain phase wall times and aggregate host request latency by lane,
+operation and sheet. The browser separately measures capture geometry, image
+render synchronization and binary transfer, including PNG byte preparation.
+Parallel request and phase durations may overlap and must not be added into an
+exclusive total. Aggregation retains one entry per operation/sheet rather than
+every request. Old results without these observations display unavailable data.
+
+Opening and start-RAM comparisons use the existing resident's
+`launch-to-addin-ready-v1` observation. They never open a separate benchmark
+instance. Start RAM is the working set sampled at readiness, not a lifetime peak.
+In-place rebuild cards retain the source process's single opening observation.
+Relative bar colors describe that measurement against its partner and do not
+change validation verdicts.
+
 Changed cell locations, changed row metadata, column/default changes, conditional
 dependencies and measured row-height changes feed candidate selection. Chart
 captures are independent of the cell-envelope policy.

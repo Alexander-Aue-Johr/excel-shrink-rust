@@ -45,10 +45,11 @@ function Get-TargetedWorkbookMeasurements {
     Retains compact existing launcher observations, without an additional open.
     Peaks are observed through this sample, not a full-lifetime maximum.
     #>
-    param([string]$Session)
+    param([string]$Session, $ExistingMetrics = $null)
     $path = Join-Path $Session 'metrics.json'
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
-    while ($true) {
+    $metrics = $ExistingMetrics
+    while ($null -eq $metrics) {
         try {
             $metrics = [IO.File]::ReadAllText($path) | ConvertFrom-Json
             break

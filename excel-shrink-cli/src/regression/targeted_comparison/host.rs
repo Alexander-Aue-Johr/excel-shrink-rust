@@ -45,6 +45,7 @@ impl ExcelHost {
         self.remember_resident(lane, path)?;
         let command = self.open_command(lane, path)?;
         let result = self.call(command, telemetry)?;
+        telemetry.update(|state| state.lane(lane).measurements = result["measurements"].clone())?;
         confirmed_pid(&result)
     }
 
@@ -66,6 +67,11 @@ impl ExcelHost {
             .as_array()
             .context("Missing opening results")?;
         ensure!(results.len() == jobs.len(), "Incomplete opening batch");
+        telemetry.update(|state| {
+            for ((lane, _), result) in jobs.iter().zip(results) {
+                state.lane(*lane).measurements = result["measurements"].clone();
+            }
+        })?;
         results.iter().map(confirmed_pid).collect()
     }
 
@@ -399,6 +405,9 @@ impl ExcelHost {
             "kind": command["kind"], "lane": command["lane"],
             "sheet": command["sheet"], "range": command["range"],
             "job_count": command["jobs"].as_array().map(Vec::len),
+            "jobs": command["jobs"].as_array().map(|jobs| jobs.iter().map(|job| json!({
+                "lane":job["lane"], "kind":job["kind"], "sheet":job["sheet"],
+            })).collect::<Vec<_>>()),
             "started_at": started, "deadline_at": started + timeout.as_millis() as i64,
             "state": "awaiting_host_reply"
         });
@@ -434,14 +443,20 @@ impl ExcelHost {
                 self.operation_measurements
                     .push(response["operation_measurements"].clone());
             }
-            ensure!(response["ok"] == true, "Excel host: {}", response["error"]);
             telemetry.update(|state| {
-                state.last_successful_operation = operation.clone();
-                state.last_successful_operation["state"] = json!("completed");
-                state.last_successful_operation["finished_at"] =
-                    json!(chrono::Utc::now().timestamp_millis());
-                state.current_operation = Value::Null;
+                state.record_operation(
+                    &command, &response,
+                    chrono::Utc::now().timestamp_millis().saturating_sub(started).max(0) as u64,
+                );
+                if response["ok"] == true {
+                    state.last_successful_operation = operation.clone();
+                    state.last_successful_operation["state"] = json!("completed");
+                    state.last_successful_operation["finished_at"] =
+                        json!(chrono::Utc::now().timestamp_millis());
+                    state.current_operation = Value::Null;
+                }
             })?;
+            ensure!(response["ok"] == true, "Excel host: {}", response["error"]);
             return Ok(response["result"].clone());
         }
     }

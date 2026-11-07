@@ -133,7 +133,11 @@
   async function execute(command, {office, transport, reportProgress}) {
     if (!command || typeof command.operation !== 'string') throw new Error('Missing diagnosis operation');
     if (command.operation === 'targeted') {
+      const started = performance.now();
       const result = await root.TargetedDiagnosis.run(command.request, office, reportProgress);
+      result.timings_ms = {...result.timings_ms, office_operation_ms: performance.now() - started};
+      const transferStarted = performance.now();
+      const hasImages = Array.isArray(result.images) || typeof result.image_base64 === 'string';
       if (Array.isArray(result.images)) {
         for (let index = 0; index < result.images.length; index++) {
           const image = result.images[index];
@@ -153,6 +157,7 @@
         if (typeof receipt.image_path !== 'string' || !receipt.image_path) throw new Error('Missing binary image receipt');
         Object.assign(result, receipt);
       }
+      if (hasImages) result.timings_ms.binary_upload_ms = performance.now() - transferStarted;
       return result;
     }
     if (command.operation === 'read_cells') {

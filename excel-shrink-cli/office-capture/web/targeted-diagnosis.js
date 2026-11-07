@@ -16,6 +16,7 @@
 
   /** Queue geometry together, then render only nonempty ranges in one image sync. */
   async function captureRanges(context, command) {
+    const started = performance.now();
     const requests = command.kind === 'capture_many' ? command.ranges : [command];
     const megapixels = command.batch_megapixels ?? 32;
     if (!Number.isInteger(megapixels) || megapixels < 32 || megapixels > 256) {
@@ -35,6 +36,7 @@
       return {request, range, core};
     });
     await context.sync();
+    const geometryMs = performance.now() - started;
     let pixels = 0;
     const captures = loaded.map(({request, range, core}) => {
       const geometry = {top: range.top, left: range.left, width: range.width, height: range.height};
@@ -50,11 +52,15 @@
     // Individual exports keep their native image limits. This allowance bounds
     // the sum of independently rendered images waiting in one synchronization.
     if (requests.length > 1 && pixels > megapixels * 1000000) throw new Error('Capture batch exceeds the combined pixel budget');
+    const renderStarted = performance.now();
     const images = captures.map(item => item.empty ? null : item.range.getImage());
     if (images.some(Boolean)) await context.sync();
-    return captures.map((item, index) => item.empty
+    const result = captures.map((item, index) => item.empty
       ? {range: item.request.range, non_rendering: true, reason: 'zero-area-range', geometry: item.geometry}
       : {range: item.request.range, image_base64: images[index].value, geometry: item.geometry});
+    return {images: result, timings_ms: {
+      geometry_ms: geometryMs, render_ms: performance.now() - renderStarted,
+    }};
   }
 
   /** Execute one bounded operation; save/rebuild never replace a missing response with success. */
@@ -62,6 +68,7 @@
     if (command.kind === 'heights') return measureHeights(command, office);
     return office(async context => {
       if (command.kind === 'measure_batch') {
+        const started = performance.now();
         if (!Array.isArray(command.ranges) || command.ranges.length < 1 || command.ranges.length > 4096 ||
             command.ranges.some(address => typeof address !== 'string' || !address)) {
           throw new Error('Geometry batch requires 1..4096 range addresses');
@@ -73,7 +80,7 @@
           return range;
         });
         await context.sync();
-        return {ranges: ranges.map((range, index) => ({
+        return {timings_ms: {geometry_ms: performance.now() - started}, ranges: ranges.map((range, index) => ({
           range: command.ranges[index],
           top: range.top, left: range.left, width: range.width, height: range.height
         }))};
@@ -155,8 +162,10 @@
         };
       }
       if (command.kind === 'capture' || command.kind === 'capture_many') {
-        const images = await captureRanges(context, command);
-        return command.kind === 'capture' ? images[0] : {images};
+        const result = await captureRanges(context, command);
+        return command.kind === 'capture'
+          ? {...result.images[0], timings_ms: result.timings_ms}
+          : result;
       }
       const range = context.workbook.worksheets.getItem(command.sheet).getRange(command.range);
       if (command.kind === 'measure') {

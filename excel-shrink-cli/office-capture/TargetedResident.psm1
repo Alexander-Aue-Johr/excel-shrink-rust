@@ -203,7 +203,7 @@ function Wait-TargetedWorkbook {
             if ($null -ne $metrics -and $metrics.primary_clients_ready) {
                 $configuration = Read-TargetedJson (Join-Path $session 'launcher.json')
                 $entry.staged = Join-Path $configuration.stage 'one.xlsx'
-                return @{pid=$entry.process.Id}
+                return @{pid=$entry.process.Id; measurements=(Get-TargetedWorkbookMeasurements -Session $session -ExistingMetrics $metrics)}
             }
             Start-Sleep -Milliseconds 100
         }
@@ -265,7 +265,7 @@ function Start-TargetedJob {
     Write-TargetedJson (Join-Path $entry.session "commands/one/$id.json") @{
         id=$id; kind='diagnosis'; operation='targeted'; request=$Command
     }
-    return @{command=$Command; entry=$entry; index=$Index; response=(Join-Path $entry.session "responses/one/$id.json")}
+    return @{command=$Command; entry=$entry; index=$Index; timer=[Diagnostics.Stopwatch]::StartNew(); response=(Join-Path $entry.session "responses/one/$id.json")}
 }
 
 function Resolve-TargetedResponse {
@@ -355,7 +355,10 @@ function Invoke-TargetedJobs {
             if ($job.entry.launcher.HasExited) { throw 'Targeted resident exited without a response.' }
             $response = Read-TargetedJson $job.response
             if ($null -eq $response) { continue }
-            $results[$job.index] = Resolve-TargetedResponse $job $response
+            $resolved = [pscustomobject](Resolve-TargetedResponse $job $response)
+            $timing = @{elapsed_ms=[long]$job.timer.ElapsedMilliseconds; client=$response.timings_ms}
+            $resolved | Add-Member -NotePropertyName operation_timing -NotePropertyValue $timing -Force
+            $results[$job.index] = $resolved
             $pending.RemoveAt($index)
         }
         if ($pending.Count -gt 0 -and $dialogCheck.Elapsed.TotalSeconds -ge 1) {

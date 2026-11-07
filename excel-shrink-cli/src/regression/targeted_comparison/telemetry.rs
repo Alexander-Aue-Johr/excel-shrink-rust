@@ -2,6 +2,8 @@
 //! and neither signal is evidence that capture or recalculation made progress.
 
 use super::Args;
+mod timing;
+use timing::{OperationTiming, PhaseTiming};
 use crate::native_process::process_alive;
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -128,6 +130,8 @@ pub(super) struct Lane {
     pub xml_finished_at: Option<i64>,
     pub closed_at: Option<i64>,
     pub steps: BTreeMap<Phase, StepStatus>,
+    pub phase_timings: BTreeMap<Phase, PhaseTiming>,
+    pub measurements: Value,
     pub captures_done: usize,
     pub skipped_zero_area_regions: usize,
     pub captures_total: Option<usize>,
@@ -162,6 +166,7 @@ pub(super) struct Snapshot {
     pub publication_errors: Vec<String>,
     pub current_operation: Value,
     pub last_successful_operation: Value,
+    pub operation_timings: Vec<OperationTiming>,
 }
 
 impl Snapshot {
@@ -181,6 +186,7 @@ impl Snapshot {
     /// Record a real phase transition, including XML timestamps for afterglow.
     pub fn step(&mut self, id: LaneId, phase: Phase, status: StepStatus) {
         let lane = self.lane(id);
+        lane.phase_timings.entry(phase).or_default().transition(status, now());
         lane.steps.insert(phase, status);
         if matches!(
             phase,
@@ -298,6 +304,8 @@ impl Telemetry {
                 .collect(),
             captures_done: 0,
             skipped_zero_area_regions: 0,
+            phase_timings: BTreeMap::new(),
+            measurements: Value::Null,
             captures_total: None,
             decision_note: None,
             capture_selection_complete: false,
@@ -335,6 +343,7 @@ impl Telemetry {
             error: None,
             publication_errors: Vec::new(),
             current_operation: Value::Null,
+            operation_timings: Vec::new(),
             last_successful_operation: Value::Null,
         };
         let sqlite = if std::env::var("EXCEL_SHRINK_SQLITE_METADATA").as_deref() == Ok("1") {
@@ -559,9 +568,7 @@ mod tests {
 
     #[test]
     fn quick_xml_work_and_candidate_growth_are_persisted_without_fake_beats() {
-        let root = std::env::current_dir()
-            .unwrap()
-            .join(".tmp")
+        let root = std::env::temp_dir()
             .join(format!("targeted-unit-{}", uuid::Uuid::new_v4()));
         let output = root.join("result");
         let group = root.join("control/groups/one");
@@ -589,6 +596,10 @@ mod tests {
                 state.candidates(3);
                 state.lane(LaneId::O).captures_done = 1;
                 state.candidates(5);
+                let command = json!({"kind":"capture_batch","jobs":[{"kind":"measure_batch","lane":"O","sheet":"Sheet1"}]});
+                let response = json!({"ok":true,"result":{"images":[{"operation_timing":{"elapsed_ms":60,"client":{"geometry_ms":40.0}}}]}});
+                state.record_operation(&command, &response, 90);
+                state.record_operation(&command, &response, 90);
             })
             .unwrap();
         drop(telemetry);
@@ -601,6 +612,11 @@ mod tests {
         assert_eq!(lane["captures_done"], 1);
         assert_eq!(lane["captures_total"], 5);
         assert!(lane["process_heartbeat_at"].is_null());
+        assert_eq!(lane["phase_timings"]["discover"]["calls"], 1);
+        assert_eq!(snapshot["operation_timings"].as_array().unwrap().len(), 1);
+        assert_eq!(snapshot["operation_timings"][0]["calls"], 2);
+        assert_eq!(snapshot["operation_timings"][0]["elapsed_ms"], 120);
+        assert_eq!(snapshot["operation_timings"][0]["geometry_ms"], 80.0);
         assert_eq!(snapshot["lanes"][2]["steps"]["open"], "unavailable");
         assert_eq!(
             fs::read(group.join("targeted-comparison.json")).unwrap(),
