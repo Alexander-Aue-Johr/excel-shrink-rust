@@ -121,12 +121,12 @@ impl Workflow<'_, '_> {
             self.skip_state(
                 LaneId::SD,
                 StateDecision::SkippedIdenticalInput { source: LaneId::O },
-                "Default unchanged — identical input bytes",
+                "Default unchanged â€” identical input bytes",
             )?;
             self.skip_state(
                 LaneId::SDR,
                 StateDecision::SkippedIdenticalInput { source: LaneId::O },
-                "Default rebuild omitted — identical input bytes",
+                "Default rebuild omitted â€” identical input bytes",
             )?;
         }
         if self.comparison.args.skip_check_performance {
