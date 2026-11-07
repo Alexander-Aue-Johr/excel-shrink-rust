@@ -2,13 +2,19 @@
 use super::content_bounds::{include, Rectangle};
 use crate::regression::xml_views::{Kind, Tag};
 use anyhow::{Context, Result};
-use excel_shrink_core::models::{CenteredTextSpan, Xf};
+use excel_shrink_core::models::{CenteredTextSpan, ColumnDefinition, ColumnRangeMap, Xf};
+use std::collections::BTreeSet;
 
 pub(super) struct VisualBounds<'a> {
     styles: &'a [Xf],
     has_centered_styles: bool,
     centered_span: CenteredTextSpan,
     pending_cell: Option<PendingCell>,
+    columns: ColumnRangeMap,
+    column_bounds: Option<Rectangle>,
+    explicit_cells: Option<Rectangle>,
+    has_row_style: bool,
+    columns_known: bool,
     pub bounds: Option<Rectangle>,
 }
 
@@ -26,6 +32,11 @@ impl<'a> VisualBounds<'a> {
             has_centered_styles: styles.iter().any(|style| style.centers_across_selection),
             centered_span: CenteredTextSpan::default(),
             pending_cell: None,
+            columns: ColumnRangeMap::default(),
+            column_bounds: None,
+            explicit_cells: None,
+            has_row_style: false,
+            columns_known: true,
             bounds: None,
         }
     }
@@ -38,6 +49,39 @@ impl<'a> VisualBounds<'a> {
         }
         if tag.kind == Kind::End {
             return Ok(());
+        }
+        match tag.local() {
+            b"col" => {
+                self.columns_known &= tag.name == b"col" && tag.kind == Kind::Empty;
+                let number = |name| -> Result<u32> {
+                    Ok(
+                        std::str::from_utf8(tag.attr(name)?.context("Missing column boundary")?)?
+                            .parse()?,
+                    )
+                };
+                let style = tag
+                    .attr(b"style")?
+                    .map(|value| -> Result<usize> { Ok(std::str::from_utf8(value)?.parse()?) })
+                    .transpose()?;
+                self.columns.add(ColumnDefinition {
+                    min: number(b"min")?,
+                    max: number(b"max")?,
+                    cell_xf: style.and_then(|index| self.styles.get(index)).cloned(),
+                    hidden: crate::regression::xml_views::truth(tag.attr(b"hidden")?),
+                });
+            }
+            b"row" => {
+                self.has_row_style |=
+                    tag.attr(b"s")?.is_some() || tag.attr(b"customFormat")?.is_some();
+            }
+            b"c" => {
+                let address =
+                    std::str::from_utf8(tag.attr(b"r")?.context("Missing cell coordinate")?)?;
+                let (row, column) = super::conditional_formatting::cell_address(address)
+                    .context("Invalid cell coordinate")?;
+                include(&mut self.explicit_cells, row, column);
+            }
+            _ => {}
         }
         let attribute = if tag.local() == b"col" {
             b"style".as_slice()
@@ -77,7 +121,8 @@ impl<'a> VisualBounds<'a> {
                 let right: u32 =
                     std::str::from_utf8(tag.attr(b"max")?.context("Missing column end")?)?
                         .parse()?;
-                self.include_rectangle(1, left, 1_048_576, right);
+                include(&mut self.column_bounds, 1, left);
+                include(&mut self.column_bounds, 1_048_576, right);
             }
             _ => {}
         }
@@ -94,16 +139,16 @@ impl<'a> VisualBounds<'a> {
             let address = std::str::from_utf8(tag.attr(b"r")?.context("Missing cell coordinate")?)?;
             let (row, column) = super::conditional_formatting::cell_address(address)
                 .context("Invalid cell coordinate")?;
-            let style = tag.attr(b"s")?
-                .map(|index| -> Result<usize> {
-                    Ok(std::str::from_utf8(index)?.parse()?)
-                })
+            let style = tag
+                .attr(b"s")?
+                .map(|index| -> Result<usize> { Ok(std::str::from_utf8(index)?.parse()?) })
                 .transpose()?;
             self.pending_cell = Some(PendingCell {
                 row,
                 column,
                 has_content: false,
-                centered: style.and_then(|index| self.styles.get(index))
+                centered: style
+                    .and_then(|index| self.styles.get(index))
                     .is_some_and(|style| style.centers_across_selection),
             });
             if tag.kind == Kind::Empty {
@@ -134,6 +179,33 @@ impl<'a> VisualBounds<'a> {
         include(&mut self.bounds, top, left);
         include(&mut self.bounds, bottom, right);
     }
+
+    /// A proven solid background has no finite lower or right edge to capture.
+    /// Keep every serialized cell, merge/content extent and a background sample.
+    pub fn finish_columns(
+        &mut self,
+        solid_fills: &BTreeSet<u32>,
+        finite: Rectangle,
+        allow_uniform: bool,
+    ) {
+        self.columns.finalize();
+        let uniform = allow_uniform
+            && self.columns_known
+            && !self.has_row_style
+            && self
+                .columns
+                .uniform_background_fill()
+                .is_some_and(|fill| solid_fills.contains(&fill));
+        let bounds = if uniform {
+            self.include_rectangle(finite.top, finite.left, finite.bottom, finite.right);
+            self.explicit_cells
+        } else {
+            self.column_bounds
+        };
+        if let Some(bounds) = bounds {
+            self.include_rectangle(bounds.top, bounds.left, bounds.bottom, bounds.right);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -142,8 +214,114 @@ mod tests {
     use crate::regression::xml_views::Reader;
 
     #[test]
+    fn uniform_background_keeps_explicit_overrides_and_conservative_exceptions() -> Result<()> {
+        let base = Xf {
+            fill_id: Some(2),
+            apply_fill: true,
+            has_visible_fill: true,
+            ..Default::default()
+        };
+        for (columns, row, solid, allow, finite_expected) in [
+            (
+                r#"<col min="1" max="16384" style="1"/>"#,
+                "",
+                true,
+                true,
+                true,
+            ),
+            (
+                r#"<col min="2" max="16384" style="1"/>"#,
+                "",
+                true,
+                true,
+                false,
+            ),
+            (
+                r#"<col min="1" max="16384" style="1"/>"#,
+                r#"<row r="3" s="0"/>"#,
+                true,
+                true,
+                false,
+            ),
+            (
+                r#"<col min="1" max="16384" style="1"/>"#,
+                "",
+                false,
+                true,
+                false,
+            ),
+            (
+                r#"<col min="1" max="16384" style="1"/>"#,
+                "",
+                true,
+                false,
+                false,
+            ),
+        ] {
+            let styles = [Xf::default(), base.clone()];
+            let mut bounds = VisualBounds::new(&styles);
+            let xml = format!("{columns}{row}<c r=\"Z40\" s=\"0\"/>");
+            let mut reader = Reader::<32>::new(xml.as_bytes())?;
+            while let Some(tag) = reader.next()? {
+                bounds.observe(tag)?;
+            }
+            let fills = if solid {
+                BTreeSet::from([2])
+            } else {
+                BTreeSet::new()
+            };
+            bounds.finish_columns(
+                &fills,
+                Rectangle {
+                    top: 1,
+                    left: 1,
+                    bottom: 10,
+                    right: 6,
+                },
+                allow,
+            );
+            let extent = bounds.bounds.unwrap();
+            if finite_expected {
+                assert_eq!(
+                    extent.address(),
+                    "A1:Z40",
+                    "explicit no-fill cells remain visible evidence"
+                );
+            } else {
+                assert_eq!(extent.bottom, 1_048_576);
+                assert_eq!(extent.right, 16_384);
+            }
+        }
+        let styles = [Xf {
+            has_visible_border: true,
+            ..base
+        }];
+        let mut bounds = VisualBounds::new(&styles);
+        let mut reader = Reader::<32>::new(br#"<col min="1" max="16384" style="0"/>"#)?;
+        bounds.observe(reader.next()?.unwrap())?;
+        bounds.finish_columns(
+            &BTreeSet::from([2]),
+            Rectangle {
+                top: 1,
+                left: 1,
+                bottom: 10,
+                right: 6,
+            },
+            true,
+        );
+        assert_eq!(bounds.bounds.unwrap().bottom, 1_048_576);
+        Ok(())
+    }
+
+    #[test]
     fn centered_text_extends_the_envelope_without_retaining_unanchored_formats() -> Result<()> {
-        let styles = [Xf::default(), Xf { centers_across_selection: true, ..Default::default() }];
+        let styles = [
+            Xf::default(),
+            Xf {
+                centers_across_selection: true,
+                ..Default::default()
+            },
+        ];
         let mut bounds = VisualBounds::new(&styles);
         let mut reader = Reader::<32>::new(br#"<row r="2"><c r="D2" s="1"><v>1</v></c><c r="E2" s="1"/><c r="F2" s="1"/><c r="G2" s="1"/><c r="I2" s="1"/></row><row r="3"><c r="XFD3" s="1"/></row>"#)?;
         while let Some(tag) = reader.next()? {
@@ -175,6 +353,16 @@ mod tests {
         assert_eq!(bounds.bounds.unwrap().address(), "C10:E20");
         let mut reader = Reader::<32>::new(br#"<col min="8" max="9" style="1"/>"#)?;
         bounds.observe(reader.next()?.unwrap())?;
+        bounds.finish_columns(
+            &BTreeSet::new(),
+            Rectangle {
+                top: 1,
+                left: 1,
+                bottom: 20,
+                right: 9,
+            },
+            false,
+        );
         assert_eq!(bounds.bounds.unwrap().address(), "C1:I1048576");
         Ok(())
     }

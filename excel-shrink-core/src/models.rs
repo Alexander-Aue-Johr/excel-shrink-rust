@@ -311,6 +311,20 @@ impl ColumnRangeMap {
             .unwrap_or(0)
     }
 
+    /// Return a visible full-width fill only when every column applies it without borders.
+    /// Call `finalize` after adding definitions. The caller must inspect the fill's pattern.
+    pub fn uniform_background_fill(&self) -> Option<u32> {
+        let fill = self.uniform_fill_id?;
+        self.range_matches(1, 16_384, |column| {
+            self.get(column)
+                .and_then(|definition| definition.cell_xf.as_ref())
+                .is_some_and(|style| {
+                    style.apply_fill && style.has_visible_fill && !style.has_visible_border
+                })
+        })
+        .then_some(fill)
+    }
+
     /// Only a full-width inherited fill can make a row fill redundant.
     /// Borders remain anchors; matching fills do not imply matching borders.
     #[inline]

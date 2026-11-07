@@ -20,6 +20,11 @@ pub(super) struct ColumnLayout {
 }
 
 impl ColumnLayout {
+    /// Unknown or overlapping definitions cannot support a background-extent proof.
+    pub fn is_resolved(&self) -> bool {
+        self.resolved
+    }
+
     /// Only a parsed worksheet can establish that an absent column definition is known.
     pub fn new() -> Self {
         Self {

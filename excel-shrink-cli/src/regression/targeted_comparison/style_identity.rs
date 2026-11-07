@@ -6,6 +6,52 @@ use sha2::{Digest, Sha256};
 mod components;
 mod tables;
 
+/// Identify simple solid fills for the uniform-background extent proof.
+/// Patterned, gradient and extended fill records remain conservative.
+pub(super) fn solid_fill_ids(bytes: &[u8]) -> Result<std::collections::BTreeSet<u32>> {
+    let mut result = std::collections::BTreeSet::new();
+    let Some(fills) = tables::Table::read(bytes, b"fills", b"fill")? else {
+        return Ok(result);
+    };
+    if !fills.supported {
+        return Ok(result);
+    }
+    for (index, range) in fills.entries.iter().enumerate() {
+        let mut reader = Reader::<32>::new(&bytes[range.clone()])?;
+        let mut solid = false;
+        let mut patterns = 0;
+        let mut supported = true;
+        while let Some(tag) = reader.next()? {
+            if tag.kind == Kind::End {
+                continue;
+            }
+            match (tag.depth, tag.name) {
+                (0, b"fill") => supported &= tag.attrs.iter().all(u8::is_ascii_whitespace),
+                (1, b"patternFill") => {
+                    patterns += 1;
+                    solid = tag.attr(b"patternType")? == Some(b"solid");
+                    for attribute in Attributes::new(tag.attrs) {
+                        supported &= attribute?.0 == b"patternType";
+                    }
+                }
+                (2, b"fgColor" | b"bgColor") if tag.kind == Kind::Empty => {
+                    for attribute in Attributes::new(tag.attrs) {
+                        supported &= matches!(
+                            attribute?.0,
+                            b"rgb" | b"indexed" | b"theme" | b"tint" | b"auto"
+                        );
+                    }
+                }
+                _ => supported = false,
+            }
+        }
+        if solid && supported && patterns == 1 {
+            result.insert(index as u32);
+        }
+    }
+    Ok(result)
+}
+
 #[derive(Default)]
 pub(super) struct StyleIdentity {
     formats: Vec<[u8; 32]>,
@@ -196,6 +242,16 @@ fn hex(identity: &[u8; 32]) -> [u8; 64] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn background_proof_accepts_only_plain_solid_fills() -> anyhow::Result<()> {
+        let xml = br#"<styleSheet><fills count="5"><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill><fill><patternFill patternType="darkGrid"/></fill><fill><gradientFill/></fill><fill><patternFill patternType="solid"><ext/></patternFill></fill><fill><patternFill patternType="solid"><fgColor future="1"/></patternFill></fill></fills></styleSheet>"#;
+        assert_eq!(
+            super::solid_fill_ids(xml)?,
+            std::collections::BTreeSet::from([0])
+        );
+        Ok(())
+    }
 
     /// CALHR exports use an explicit closing numFmt tag, including for IDs
     /// below 164. Its spelling must not prevent comparison or hide its code.

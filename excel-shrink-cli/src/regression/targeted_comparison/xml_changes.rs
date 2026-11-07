@@ -113,6 +113,7 @@ impl Snapshot {
             Err(error) => return Err(error.into()),
         };
         let style_identity = super::style_identity::StyleIdentity::read(&style_bytes)?;
+        let solid_fills = super::style_identity::solid_fill_ids(&style_bytes)?;
         let (context, conditional_values) = read_value_context(&mut archive, &style_identity)?;
         let cf_context = read_conditional_context(&mut archive, &workbook, &conditional_values)?;
         let mut sheets = BTreeMap::new();
@@ -125,6 +126,7 @@ impl Snapshot {
                 Some(scratch),
                 &styles,
                 &style_identity,
+                &solid_fills,
             )?;
             sheets.insert(sheet.sheet, model);
         }
@@ -389,6 +391,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     scratch: Option<&Path>,
     styles: &[excel_shrink_core::models::Xf],
     style_identity: &super::style_identity::StyleIdentity,
+    solid_fills: &BTreeSet<u32>,
 ) -> Result<Sheet> {
     let mut visual = super::visual_bounds::VisualBounds::new(styles);
     let mut model = Sheet::default();
@@ -645,6 +648,18 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
             }
         }
     }
+    visual.finish_columns(
+        solid_fills,
+        super::content_bounds::Rectangle {
+            top: 1,
+            left: 1,
+            bottom: bottom.max(1),
+            right: right.max(1),
+        },
+        model.value_namespace_supported
+            && model.cf_columns.is_resolved()
+            && model.rebuild_blockers.iter().all(|reason| reason == "worksheet formula"),
+    );
     model.visual_bounds = visual.bounds;
     if let Some(bounds) = model.visual_bounds {
         model.bottom = model.bottom.max(bounds.bottom);
@@ -659,7 +674,7 @@ pub(super) fn conditional_catalogue_for_audit(
     archive: &mut ZipArchive<File>,
     part: &str,
 ) -> Result<Arc<xml::Catalogue>> {
-    Ok(read_sheet::<false>(archive, part, 0, 0, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default())?.conditional)
+    Ok(read_sheet::<false>(archive, part, 0, 0, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default(), &BTreeSet::new())?.conditional)
 }
 
 impl Sheet {
@@ -765,7 +780,7 @@ mod tests {
         zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="2" width="12"/></cols><sheetData><row r="1" ht="25" customHeight="1"><c r="A1"><v>7</v></c></row></sheetData><extLst><xdr:from><xdr:row>5</xdr:row><xdr:col>2</xdr:col></xdr:from><row r="0"/><col min="99" max="100"/><sheetFormatPr defaultRowHeight="99"/></extLst></worksheet>"#)?;
         zip.finish()?;
         let mut archive = ZipArchive::new(File::open(&path)?)?;
-        let sheet = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 2, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default())?;
+        let sheet = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 2, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default(), &BTreeSet::new())?;
         assert_eq!(sheet.rows.len(), 1);
         assert_eq!(sheet.fixed_height(1), Some(("25", false)));
         assert_eq!(
@@ -792,7 +807,7 @@ mod tests {
         zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData><conditionalFormatting sqref="A1:A10"><cfRule type="cellIs" operator="greaterThan" priority="1"><formula>5</formula></cfRule></conditionalFormatting></worksheet>"#)?;
         zip.finish()?;
         let mut archive = ZipArchive::new(File::open(&path)?)?;
-        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default())?;
+        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default(), &BTreeSet::new())?;
         let audit = conditional_catalogue_for_audit(&mut archive, "xl/worksheets/sheet.xml")?;
         assert_eq!(audit.fingerprints, full.conditional.fingerprints);
         assert_eq!(
@@ -886,7 +901,7 @@ mod tests {
             let mut archive = ZipArchive::new(File::open(&path)?)?;
             let model = read_sheet::<true>(
                 &mut archive, "sheet.xml", 1, 1, None,
-                &[Default::default(), Default::default()], identity,
+                &[Default::default(), Default::default()], identity, &BTreeSet::new(),
             )?;
             drop(archive);
             std::fs::remove_file(path)?;
