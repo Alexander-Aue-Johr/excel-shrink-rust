@@ -24,6 +24,7 @@ from urllib.parse import urlsplit
 
 from .diagnostics import capture_failure
 from .workers import bind_worker, owned_names
+from .move_picker import open_destination
 
 class JobState(StrEnum):
     """Durable stages of one workbook's Check Performance attempt."""
@@ -853,7 +854,8 @@ async def move_workbook_to_folder(page, name: str, destination: str) -> None:
     await row.click(button="right", timeout=10_000)
     await page.locator('[data-automationid="moveCommand"]').last.click(timeout=10_000)
     picker = page.frame_locator('iframe[title="Verschieben nach"], iframe[title="Move to"]')
-    await picker.get_by_role("link", name=destination, exact=True).dblclick(timeout=30_000)
+    await open_destination(picker, destination, page=page,
+                           diagnostic_root=getattr(page.context, "_check_performance_diagnostics_root", None))
     # OneDrive's picker starts in the source folder. Opening its direct child
     # keeps identically named directories in other corpus folders out of scope.
     await picker.get_by_role(

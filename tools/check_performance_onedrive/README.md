@@ -14,6 +14,13 @@ Each machine keeps its own local SQLite database and browser profile. Running
 multiple workers on one machine requires a separate `--output-root` per worker.
 The existing `optimized` and `skipped` child folders are shared destinations.
 
+The Move to picker has its own sorting and virtualized list. When a destination
+is not visible, the runner selects Modified in the picker's Sort menu and tries
+newest first, then oldest first, waiting for loading to finish after each change.
+If necessary it then searches the virtualized scrollable list.
+It opens the exact child-folder name before confirming a move. The input
+folder's newest-first processing order is applied independently.
+
 Ownership uses SHA-256 of the exact filename, including `.xlsx`, encoded as
 UTF-8. Interpret the first eight digest bytes as an unsigned big-endian integer
 and take the remainder modulo `worker-count`. There is no case conversion or

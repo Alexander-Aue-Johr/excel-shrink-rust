@@ -88,7 +88,7 @@ async def move_visible_batch(page, progress: flow.ProgressStore, names: list[str
     try:
         await page.locator('[data-automationid="moveCommand"]:visible').first.click(timeout=10_000)
         picker = page.frame_locator('iframe[title="Move to"], iframe[title="Verschieben nach"]')
-        await picker.get_by_role("link", name=destination, exact=True).dblclick(timeout=30_000)
+        await flow.open_destination(picker, destination, page=page, diagnostic_root=progress.path.parent)
         await picker.get_by_role("heading", name=destination, exact=True).wait_for(
             state="visible", timeout=30_000)
         chosen = await selected_names(page)
