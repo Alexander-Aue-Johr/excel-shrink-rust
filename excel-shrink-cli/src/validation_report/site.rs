@@ -50,6 +50,9 @@ pub(crate) fn write_site(report_root: &Path, run: &Value) -> Result<PathBuf> {
         "selection": run["selection"],
         "error": run["error"],
         "interrupted_index": run["interrupted_index"],
+        "publication_review": if root.join("publication-review.json").is_file() {
+            Some(read_json_file(&evidence::confined_file(&root, "publication-review.json")?)?)
+        } else { None },
         "pairs": rows
     });
     let path = root.join("index.html");
@@ -103,7 +106,7 @@ fn write_pair_page_contents(root: &Path, report_relative: &str, label: &str) -> 
     Ok(page)
 }
 
-/// Export only run metadata and verified comparison packages into a new folder.
+/// Export run metadata and verified packages with a publication-review inventory.
 /// Original reports stay read-only. Processing outputs, scratch workbooks,
 /// telemetry histories and executable programs are deliberately not exported.
 pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<PathBuf> {
@@ -117,6 +120,7 @@ pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<Path
     let rows = overview_rows(&source, &run)?;
     let destination = evidence::create_destination(&source, destination)?;
     let mut identities = BTreeSet::new();
+    let mut audit_files = vec![String::from("run.json")];
     for row in rows {
         if let Some(relative) = row["identity"].as_str() {
             if identities.insert(relative.to_owned()) {
@@ -126,6 +130,7 @@ pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<Path
                     relative,
                     row["identity_sha256"].as_str(),
                 )?;
+                audit_files.push(relative.to_owned());
             }
         }
         let Some(relative) = row["report"].as_str() else {
@@ -140,10 +145,16 @@ pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<Path
             .parent()
             .context("Missing exported comparison directory")?;
         evidence::copy_verified_package(package, &target)?;
+        audit_files.push(relative.to_owned());
     }
     evidence::write_new(
         &destination.join("run.json"),
         &serde_json::to_vec_pretty(&run)?,
+    )?;
+    let review = super::publication::audit(&destination, &audit_files)?;
+    evidence::write_new(
+        &destination.join("publication-review.json"),
+        &serde_json::to_vec_pretty(&review)?,
     )?;
     write_site(&destination, &run)
 }

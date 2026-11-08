@@ -5,6 +5,7 @@
 //! processing programs, live telemetry, or the original workbook files.
 
 mod evidence;
+mod publication;
 mod site;
 
 pub(crate) use site::{export_site, write_pair_page, write_site};

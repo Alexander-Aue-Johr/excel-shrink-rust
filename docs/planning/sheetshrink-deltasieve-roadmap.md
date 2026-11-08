@@ -162,6 +162,18 @@ Organize exports by corpus, date, implementation, and an anonymous hardware desc
 
 Acceptance requires a served static-export smoke test with the local runner unavailable, checksum verification, and a privacy review performed during execution. Select a dated, frozen result set for the export and record its identity. Prepare the deployment procedure and release files so later public publication can use the verified package when the destination and access are available.
 
+The 2026-11-08 static-export check used a retained synthetic difference without
+invoking a validation runner. Browser inspection verified the exported overview,
+paired captures, pixel mask and enlarged regions through an independent HTTP
+server. The publication inventory identified 21 metadata concerns in three JSON
+files. Seventeen focused export tests and the portable frontend test passed.
+The check retains source reports and package integrity. It does not approve the
+Enron workbook contents for public distribution. Working artifacts remain under
+`G:\deltasieve-work\publication-audit-smoke-20261108`; the owned HTTP server was
+stopped after inspection. See `../visual-validation/static-publication.md` for
+the publication procedure. Formula presentation, corpus-study import, a frozen
+corpus release and final privacy decisions remain open.
+
 ## 10 Measure the performance report's proposals
 
 - [ ] Test the four proposals from `R:\excel-shrink-performance-review-a7445eb-20261107.zip` individually before adopting them.

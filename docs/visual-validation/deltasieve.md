@@ -74,6 +74,21 @@ studies retain their respective on-disk formats.
 
 `deltasieve template` prints a configuration template. `deltasieve run --config PATH` executes a saved configuration. `compare --a SOURCE --b SOURCE --report DIRECTORY` compares existing sources. `open DIRECTORY` opens a retained standalone report. `export --help` describes the portable export command.
 
+### Publication review of static exports
+
+Export also writes `publication-review.json` and displays a review notice in the
+exported overview. The inventory scans copied run, comparison and reuse-identity
+JSON for local-path syntax, identity/credential fields, and URL credentials.
+Entries identify the relative file, JSON pointer and concern category without
+copying the field value. It counts every match while retaining at most 1,000
+locations, with an explicit truncation flag.
+
+This is a bounded review aid. It preserves scientific reports and their integrity
+manifests. Workbook names, formulas, screenshots and corpus distribution rights
+need a separate publication decision. A zero metadata count leaves that review
+requirement in place. Exported evidence may contain confidential workbook content.
+Keep a working export private until its publication review is complete.
+
 The cleanup executable exposes `excel-shrink-cli --describe-cli` for typed option fields. Its JSON describes the same Clap options used by the cleanup command.
 
 `Add SheetShrink` uses the running DeltaSieve executable and its `shrink` entry

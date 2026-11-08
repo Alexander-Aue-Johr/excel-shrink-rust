@@ -289,6 +289,7 @@ fn static_export_retains_reuse_identity_and_never_changes_the_source_report() ->
         br#"{"parts":["worksheets"],"original":"fixture"}"#,
     )?;
     let run = json!({"schema":1,"tool":"DeltaSieve","status":"completed","index_complete":true,
+        "config":{"source":"C:/Users/private/source.zip","token":"fixture-secret"},
         "pairs":[{"id":"one","name":"Book & <one>.xlsx","status":"completed_with_limitations",
             "report":"pairs/one/report.json","identity":"identities/one.json","different_regions":0}]});
     fs::write(root.join("run.json"), serde_json::to_vec(&run)?)?;
@@ -298,6 +299,17 @@ fn static_export_retains_reuse_identity_and_never_changes_the_source_report() ->
     assert!(page.is_file());
     assert!(target.join("pairs/one/index.html").is_file());
     assert!(target.join("report-assets/report-view.js").is_file());
+    let review = read_json_file(&target.join("publication-review.json"))?;
+    assert_eq!(review["status"], "publication_review_required");
+    assert_eq!(review["scanned_json_files"], 3);
+    assert_eq!(review["metadata_finding_count"], 2);
+    assert!(!serde_json::to_string(&review)?.contains("fixture-secret"));
+    assert!(fs::read_to_string(&page)?.contains("publication_review_required"));
+    assert_eq!(
+        fs::read(root.join("pairs/one/report.json"))?,
+        fs::read(target.join("pairs/one/report.json"))?
+    );
+    verify_comparison(&target.join("pairs/one"))?;
     assert_eq!(
         fs::read(root.join("identities/one.json"))?,
         fs::read(target.join("identities/one.json"))?

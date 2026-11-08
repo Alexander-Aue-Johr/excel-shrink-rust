@@ -74,6 +74,13 @@ function startReportPage() {
 
 function showRunReport(content, data) {
   const rows = Array.isArray(data.pairs) ? data.pairs : [];
+  if (data.publication_review) {
+    const review = data.publication_review;
+    content.append(reportElement('p', 'report-warning',
+      `Publication review required · ${review.metadata_finding_count ?? review.metadata_findings.length} metadata concerns recorded. `
+      + 'Review workbook contents, screenshots and distribution rights before sharing this export.'));
+    content.append(reportLink('publication-review.json', 'Publication review inventory'));
+  }
   content.append(reportElement('p', 'report-summary',
     `${rows.length.toLocaleString('en-US')} workbook pairs · Run status: ${data.status || 'unknown'}`));
   if (data.created_at || data.finished_at) {
