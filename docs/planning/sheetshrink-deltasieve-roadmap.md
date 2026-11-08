@@ -237,6 +237,15 @@ Estimate full-capture cost from actual visible geometry, object extent, image li
 
 Acceptance requires reproducible mutation fixtures, independent reference comparisons, ablations of major selection mechanisms, and a precise statement of the supported model and remaining limits.
 
+`ba4db82` adds an explicit native reference-plan command, independent of the
+candidate selector and content clipping. Native same-input and known-height
+controls passed, and an oversized reference failed explicitly before rendering.
+The fixed real Enron font-sentinel case produced identical images over the
+independently supplied `A!A1:T151` rectangle. Receipts and checksums are described
+in `../visual-validation/experiments/independent-reference/README.md`. Seeded
+reference sampling, the broader mutation matrix and selector-coverage scoring
+remain open.
+
 ## 14 Write and review complete first manuscript drafts
 
 - [ ] Produce a complete first draft of each new paper using Task 03's research-derived design and the verified evaluation evidence.

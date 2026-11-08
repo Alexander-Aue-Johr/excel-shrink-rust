@@ -59,3 +59,20 @@ Working receipts are under
 `G:\deltasieve-work\independent-reference-pilot-20261108`. One Enron admission slot
 was reserved temporarily, and its four-group target was restored in a `finally`
 block. Existing corpus work continued throughout the experiment.
+
+## Fixed real regression and failure control
+
+The corrected Enron group `005d034f18d6dc340a2c` was independently observed over
+`A!A1:T151`, including the previously shortened rows and later visible content.
+The test completed in 42.774 seconds. Both images were 1,406 by 5,009 pixels,
+with equal native geometry and identical PNG SHA-256
+`46590ae30feca8edb24bf5f6d7d43c1a131b37151f69fb73753b3b728bc0a586`.
+This verifies the supplied larger area independently of the two production
+candidate regions. It remains a development regression case with that stated
+reference scope.
+
+An explicit `Rows!A1:XFD1048576` negative control failed at the image-size
+preflight. It retained zero reference image pairs and an unsuccessful receipt,
+as expected. Both tests positively closed their owned Excel processes. A later
+PID check found none of those four processes still present. The four-group Enron
+target was restored, and its completed count continued increasing afterward.
