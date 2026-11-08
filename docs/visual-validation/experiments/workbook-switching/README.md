@@ -325,3 +325,29 @@ and failed while reading the second control; copying entry metadata fixed it.
 This establishes the small deterministic rebuild/snapshot control through Rust
 and C#. It does not establish Save As equivalence, chart handling, external-link
 rebuild behavior, concurrent pool operation or production scheduler integration.
+
+## Exclusive warm pool probe
+
+The internal `capture-host workbook-pool <settings.json>` service starts owned
+workers concurrently. Each slot retains its Excel instance, seed and private
+WebView profile. Loopback requests require a pool token. Commands additionally
+require the current lease token and a live owner PID with matching creation time.
+Acquire retries with the same active comparison UUID return the same lease.
+Release retries preserve a subsequent lease. Clients must use a fresh comparison
+UUID after release and stop their capture HTTP host before releasing its origin.
+
+Run `pool-probe.ps1` with Binary, CaptureRoot, Seed, Original, Candidate and a new
+Output directory. Trial `workbook-pool-probe-20261108-02` started two workers in
+4.710 seconds and finished the probe in 14.268 seconds. Parallel opens, exclusive
+admission, acquire/release retries, stale-token rejection, warm reuse and capture
+origin reservation passed. Killing one idle lease owner retired its Excel process.
+The peer saved successfully and replacement used a new process. Cleanup confirmed
+all test processes exited and source hashes were unchanged. Four focused Rust
+worker tests passed. The test uses small deterministic rebuild controls.
+
+This remains an internal prototype pending corpus scheduler integration. Owner
+checks run every second for unlocked slots. An in-flight command holds its slot
+until its bounded deadline, so owner death during that command is not immediate
+cancellation. Failed or unconfirmed cleanup quarantines the affected slot. RAM
+checks require 512 MiB physical and commit reserve around worker startup. They
+cannot guarantee memory consumed later by arbitrary workbooks.

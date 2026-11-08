@@ -1161,3 +1161,15 @@ retires the worker. Manual calculation and CalculateBeforeSave=false preserve
 separate pre-rebuild caches in the deterministic control. Raw snapshots retain
 probe add-in metadata. This contract does not claim Save As equivalence or
 coverage of external-link and volatile recalculation cases.
+
+### Experimental warm pool lease contract
+
+The internal workbook pool assigns one comparison exclusively to a worker. Pool
+and lease credentials are separate. Every owner is identified by PID and birth
+time. Active acquire retries reuse their lease. The most recently released token
+may repeat release without changing a newer lease, but cannot issue commands.
+Capture origins remain reserved while idle and must be free before release.
+Confirmed owner exit retires only its worker. Unknown cleanup quarantines it.
+Health readiness requires native process liveness and confirmed cleanup. A busy
+slot is reported as busy rather than probed through its active command lock.
+This service is experimental and is not yet the corpus scheduler execution path.

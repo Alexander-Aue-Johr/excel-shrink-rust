@@ -1,0 +1,172 @@
+param(
+    [Parameter(Mandatory=$true)][string]$Binary,
+    [Parameter(Mandatory=$true)][string]$CaptureRoot,
+    [Parameter(Mandatory=$true)][string]$Seed,
+    [Parameter(Mandatory=$true)][string]$Original,
+    [Parameter(Mandatory=$true)][string]$Candidate,
+    [Parameter(Mandatory=$true)][string]$Output
+)
+$ErrorActionPreference = 'Stop'
+if (Test-Path -LiteralPath $Output) { throw 'Choose a new pool probe directory.' }
+[void][IO.Directory]::CreateDirectory($Output)
+$utf8 = [Text.UTF8Encoding]::new($false)
+Add-Type -Path @((Join-Path $CaptureRoot 'CaptureProcesses.cs'), (Join-Path $CaptureRoot 'CaptureDesktop.cs'))
+Add-Type -AssemblyName System.Net.Http
+Import-Module (Join-Path $CaptureRoot 'CaptureSetup.psm1') -DisableNameChecking
+$owned = New-Object CaptureProcesses
+$desktop = New-Object CaptureDesktop
+$http = New-Object Net.Http.HttpClient
+$http.Timeout = [TimeSpan]::FromSeconds(120)
+$excelProcesses = @()
+$poolProcess = $null
+$owner = [Diagnostics.Process]::GetCurrentProcess()
+$token = [Guid]::NewGuid().ToString()
+$headers = @{'X-Pool-Token'=$token}
+$hashes = @((Get-FileHash -LiteralPath $Original).Hash, (Get-FileHash -LiteralPath $Candidate).Hash)
+
+function Write-PoolProbeJson([string]$Path, $Value) {
+    [IO.File]::WriteAllText($Path, ($Value | ConvertTo-Json -Depth 12), $utf8)
+}
+
+function Owner-Request($Process) {
+    return @{pid=$Process.Id;started_ms=([DateTimeOffset]$Process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds();comparison_id=[Guid]::NewGuid().ToString()}
+}
+
+function Pool-Request([string]$Path, $Body, $Lease) {
+    $requestHeaders = @{'X-Pool-Token'=$token}
+    if ($Lease) { $requestHeaders['X-Lease-Token'] = $Lease.lease_token }
+    $bytes = $utf8.GetBytes(($Body | ConvertTo-Json -Compress))
+    return Invoke-RestMethod -Method Post ($url + $Path) -Headers $requestHeaders -ContentType 'application/json; charset=utf-8' -Body $bytes -TimeoutSec 120
+}
+
+function Pool-Command($Lease, [string]$Kind, [string]$Path) {
+    $id = [Guid]::NewGuid().ToString()
+    $reply = Pool-Request ('/command/' + $Lease.slot) @{id=$id;kind=$Kind;path=$Path} $Lease
+    if (-not $reply.ok -or $reply.id -ne $id -or $reply.pid -ne $Lease.process.pid) { throw 'Pool command identity or status differs.' }
+}
+
+function Expect-PoolStatus([scriptblock]$Action, [int]$Status) {
+    try { & $Action | Out-Null }
+    catch [Net.WebException] {
+        if ([int]$_.Exception.Response.StatusCode -ne $Status) { throw }
+        return
+    }
+    throw 'Pool request unexpectedly succeeded.'
+}
+
+function Remember-Excel($Lease) {
+    $process = [Diagnostics.Process]::GetProcessById([int]$Lease.process.pid)
+    if ($process.StartTime.ToUniversalTime().Ticks -ne ([DateTimeOffset]::Parse($Lease.process.started_utc)).UtcTicks) {
+        throw 'Pool Excel birth identity differs.'
+    }
+    $script:excelProcesses += $process
+}
+
+try {
+    $settings = Join-Path $Output 'settings.json'
+    $readyPath = Join-Path $Output 'ready.json'
+    Write-PoolProbeJson $settings @{
+        worker=@{seed=$Seed;excel_executable=(Find-ExcelExecutable);capture_root=$CaptureRoot;
+            profile_root=(Join-Path $Output 'workers');timeout_seconds=60}
+        workers=2;token=$token;port=0;ready_path=$readyPath
+    }
+    $poolProcess = $desktop.Start($Binary, ('capture-host workbook-pool ' + (Quote-Argument $settings)), $owned)
+    $startup = [Diagnostics.Stopwatch]::StartNew()
+    while (-not (Test-Path -LiteralPath $readyPath)) {
+        if ($poolProcess.HasExited -or $startup.Elapsed.TotalSeconds -gt 120) { throw 'Pool startup failed or timed out.' }
+        Start-Sleep -Milliseconds 100
+    }
+    $ready = [IO.File]::ReadAllText($readyPath) | ConvertFrom-Json
+    $startupSeconds = $startup.Elapsed.TotalSeconds
+    $url = $ready.url
+    $firstOwner = Owner-Request $owner
+    $first = Pool-Request '/acquire' $firstOwner $null
+    $repeated = Pool-Request '/acquire' $firstOwner $null
+    if ($first.slot -ne $repeated.slot -or $first.lease_token -ne $repeated.lease_token) { throw 'Acquire retry allocated another worker.' }
+    $second = Pool-Request '/acquire' (Owner-Request $owner) $null
+    Remember-Excel $first
+    Remember-Excel $second
+    if ($first.slot -eq $second.slot -or $first.capture_port -eq $second.capture_port -or
+        $first.process.pid -eq $second.process.pid) { throw 'Pool workers were not independent.' }
+    Expect-PoolStatus { Pool-Request '/acquire' (Owner-Request $owner) $null } 409
+
+    # Submit both opens before waiting for either response.
+    $pending = @()
+    foreach ($job in @(@{lease=$first;path=$Original}, @{lease=$second;path=$Candidate})) {
+        $id = [Guid]::NewGuid().ToString()
+        $request = New-Object Net.Http.HttpRequestMessage -ArgumentList @([Net.Http.HttpMethod]::Post, ($url + '/command/' + $job.lease.slot))
+        [void]$request.Headers.TryAddWithoutValidation('X-Pool-Token', $token)
+        [void]$request.Headers.TryAddWithoutValidation('X-Lease-Token', $job.lease.lease_token)
+        $request.Content = New-Object Net.Http.StringContent -ArgumentList @((@{id=$id;kind='open';path=$job.path} | ConvertTo-Json -Compress), $utf8, 'application/json')
+        $pending += @{task=$http.SendAsync($request);request=$request;id=$id;lease=$job.lease}
+    }
+    foreach ($job in $pending) {
+        if (-not $job.task.Wait(120000)) { throw 'Concurrent workbook open exceeded its deadline.' }
+        $response = $job.task.Result
+        try {
+            $reply = $response.Content.ReadAsStringAsync().Result | ConvertFrom-Json
+            if (-not $response.IsSuccessStatusCode -or -not $reply.ok -or $reply.id -ne $job.id) { throw 'Concurrent open failed.' }
+        } finally { $response.Dispose(); $job.request.Dispose() }
+    }
+    Pool-Command $first 'save_copy' (Join-Path $Output 'first-before.xlsx')
+    Pool-Command $first 'rebuild' ''
+    Pool-Command $first 'save_copy' (Join-Path $Output 'first-after.xlsx')
+    Expect-PoolStatus { Pool-Request ('/release/' + $first.slot) @{} $first } 409
+    Pool-Command $first 'close' ''
+    $origin = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, [int]$first.capture_port)
+    $origin.Start()
+    try { Expect-PoolStatus { Pool-Request ('/release/' + $first.slot) @{} $first } 409 }
+    finally { $origin.Stop() }
+    Pool-Request ('/release/' + $first.slot) @{} $first | Out-Null
+    Pool-Request ('/release/' + $first.slot) @{} $first | Out-Null
+    $reused = Pool-Request '/acquire' (Owner-Request $owner) $null
+    if ($reused.process.pid -ne $first.process.pid -or $reused.process.started_utc -ne $first.process.started_utc) { throw 'Warm process was not reused.' }
+    Expect-PoolStatus { Pool-Command $first 'close' '' } 403
+    Pool-Request ('/release/' + $first.slot) @{} $first | Out-Null
+    Expect-PoolStatus { Pool-Request '/acquire' (Owner-Request $owner) $null } 409
+    Pool-Request ('/release/' + $reused.slot) @{} $reused | Out-Null
+
+    $helper = $desktop.Start((Join-Path $PSHOME 'powershell.exe'), '-NoProfile -Command "Start-Sleep -Seconds 60"', $owned)
+    $abandoned = Pool-Request '/acquire' (Owner-Request $helper) $null
+    Pool-Command $abandoned 'open' $Original
+    if (-not [CaptureProcesses]::Stop($helper)) { throw 'Probe owner exit unconfirmed.' }
+    if (-not $excelProcesses[0].WaitForExit(10000)) { throw 'Abandoned workbook worker remained alive.' }
+    Pool-Command $second 'save_copy' (Join-Path $Output 'survivor.xlsx')
+    $replacement = $null
+    $replacementClock = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $replacement -and $replacementClock.Elapsed.TotalSeconds -lt 15) {
+        try { $replacement = Pool-Request '/acquire' (Owner-Request $owner) $null }
+        catch [Net.WebException] {
+            if ([int]$_.Exception.Response.StatusCode -ne 409) { throw }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    if (-not $replacement) { throw 'Retired worker was not replaceable.' }
+    Remember-Excel $replacement
+    if ($replacement.process.pid -eq $first.process.pid -and $replacement.process.started_utc -eq $first.process.started_utc) {
+        throw 'Abandoned worker identity was reused.'
+    }
+    Pool-Request ('/release/' + $replacement.slot) @{} $replacement | Out-Null
+    Pool-Command $second 'close' ''
+    Pool-Request ('/release/' + $second.slot) @{} $second | Out-Null
+    Write-PoolProbeJson (Join-Path $Output 'result.json') @{
+        startup_seconds=$startupSeconds;probe_seconds=$startup.Elapsed.TotalSeconds
+        initial_excel_pids=@($first.process.pid,$second.process.pid)
+        replacement_pid=$replacement.process.pid;exclusive_leases=$true;stale_token_rejected=$true
+        capture_origin_guard=$true;warm_reuse=$true;owner_death_retired=$true;peer_survived=$true
+        acquire_retry_reused=$true;release_retry_safe=$true
+    }
+} finally {
+    $http.Dispose()
+    $owned.Dispose()
+    if ($poolProcess -and -not $poolProcess.WaitForExit(10000)) { throw 'Pool process exit unconfirmed.' }
+    foreach ($process in $excelProcesses) {
+        if (-not $process.WaitForExit(10000)) { throw 'Pool Excel process exit unconfirmed.' }
+    }
+    $desktop.Dispose()
+    $owner.Dispose()
+}
+if ($hashes[0] -ne (Get-FileHash -LiteralPath $Original).Hash -or $hashes[1] -ne (Get-FileHash -LiteralPath $Candidate).Hash) {
+    throw 'Pool probe source changed.'
+}
+Write-PoolProbeJson (Join-Path $Output 'cleanup.json') @{pool_exit_confirmed=$true;excel_exits_confirmed=$true;source_hashes_unchanged=$true}

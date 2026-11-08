@@ -14,7 +14,7 @@ use std::{
 
 const MAX_FRAME_BYTES: usize = 65536;
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Settings {
     seed: PathBuf,
@@ -32,6 +32,9 @@ struct Worker {
     job: Option<crate::process_job::Job>,
     identity: Option<(i64, i64)>,
 }
+
+mod pool;
+pub(crate) use pool::run as run_pool;
 
 impl Worker {
     fn start(settings: &Settings) -> Result<Self> {
@@ -179,6 +182,37 @@ impl Worker {
             );
         }
         Ok(())
+    }
+
+    fn initialize(&mut self, timeout: Duration) -> Result<Value> {
+        let deadline = Instant::now() + timeout;
+        let identity = self.receive(deadline)?;
+        ensure!(
+            identity["event_type"] == "process_started",
+            "Missing workbook worker startup identity"
+        );
+        self.verify_identity(&identity)?;
+        let ready = self.receive(deadline)?;
+        ensure!(
+            ready["event_type"] == "ready" && ready["pid"] == identity["pid"],
+            "Workbook worker did not become ready"
+        );
+        Ok(identity)
+    }
+
+    fn command(&mut self, request: &Value, timeout: Duration) -> Result<Value> {
+        uuid::Uuid::parse_str(
+            request["id"]
+                .as_str()
+                .context("Missing worker command ID")?,
+        )?;
+        let deadline = Instant::now() + timeout;
+        let mut frame = Vec::new();
+        write_frame(&mut frame, request)?;
+        self.send(frame, deadline)?;
+        let reply = self.receive(deadline)?;
+        self.verify_reply(request, &reply)?;
+        Ok(reply)
     }
 
     fn stop(&mut self) -> Result<()> {

@@ -21,8 +21,8 @@ use tower_http::services::ServeDir;
 
 mod classic;
 pub(crate) mod control_room;
-mod resident;
 mod probe_access;
+mod resident;
 
 /// Use the same Windows build for orchestration and HTTP hosting. WSL callers
 /// can select a native companion executable explicitly.
@@ -67,6 +67,10 @@ pub fn run(arguments: Vec<OsString>) -> Result<()> {
             #[cfg(windows)]
             Some("workbook-worker") if arguments.len() == 1 => {
                 crate::regression::workbook_worker::run(Path::new(&arguments[0]))
+            }
+            #[cfg(windows)]
+            Some("workbook-pool") if arguments.len() == 1 => {
+                crate::regression::workbook_worker::run_pool(Path::new(&arguments[0])).await
             }
             Some("inject-addin-probe") if arguments.len() == 1 => {
                 crate::regression::addin_probe::run(Path::new(&arguments[0]))
