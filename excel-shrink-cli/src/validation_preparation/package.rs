@@ -21,6 +21,8 @@ const CONTROLS: [&str; 3] = [
 
 mod reader;
 pub(crate) use reader::verify;
+mod preview;
+pub(crate) use preview::preview;
 
 #[cfg(test)]
 mod tests;

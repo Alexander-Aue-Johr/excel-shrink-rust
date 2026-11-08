@@ -86,6 +86,16 @@ enum Command {
     PreparationExport { preparation: PathBuf, output: PathBuf },
     /// Verify a transferred preparation package without Excel.
     PreparationVerify { package: PathBuf },
+    /// Preview preparation coverage against a selected source manifest.
+    PreparationPreview {
+        package: PathBuf,
+        #[arg(long)]
+        source_manifest: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+    },
     /// Print an editable configuration; arguments are an array, never a shell string.
     Template,
     #[command(hide = true)]
@@ -493,6 +503,11 @@ pub(crate) fn run_cli() -> Result<()> {
         Some(Command::PreparationVerify { package }) => {
             let header = crate::validation_preparation::package::verify(&package)?;
             println!("Verified {} preparation outcomes", header.entries);
+            Ok(())
+        }
+        Some(Command::PreparationPreview { package, source_manifest, offset, limit }) => {
+            let preview = crate::validation_preparation::package::preview(&package, &source_manifest, offset, limit)?;
+            println!("{}", serde_json::to_string_pretty(&preview)?);
             Ok(())
         }
         Some(Command::Export { report, output }) => {

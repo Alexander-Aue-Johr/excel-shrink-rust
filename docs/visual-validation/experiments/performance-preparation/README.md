@@ -102,6 +102,14 @@ same-length blob corruption, database corruption and an invalid generation
 binding even after updating the database hash in the header. Verification opens
 the database read-only and checks all state and provenance references.
 
+The source-manifest preparation from attempt `06-manifest` was also exported
+and inspected through the ordinary `preparation-preview` CLI. Its exact source
+occurrence, raw-source reference and local baseline matched one complete
+generation. `coverage-acceptance.json` retains that result beside the private
+experiment artifacts. Ten package tests passed after adding full-selection
+accounting with paged details, missing and failed sources, source/baseline
+mismatches, changed or missing local inputs and ambiguous compatible generations.
+
 ## Repeatable native tests
 
 Set TEMP, TMP, EXCEL_SHRINK_LOG_DIR and EXCEL_SHRINK_VISUAL_LOG_DIR to a working

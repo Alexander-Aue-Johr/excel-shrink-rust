@@ -3,7 +3,8 @@
 This contract defines the next integration step after the persistent-worker
 acceptance experiment. The explicit-input and source-manifest preparation CLI
 interfaces, package export and read-only package verification are implemented.
-Selection coverage preview and consumption remain integration requirements.
+Selection coverage preview is also available through the CLI. Materialization
+and web integration remain implementation requirements.
 
 ## Source identity and selection
 
@@ -100,6 +101,22 @@ Preview the exact selected source set with paged details and aggregate counts.
 Classify each item as complete, missing, unsuccessful, invalid, baseline mismatch
 or ambiguous generation. Preserve candidate generations with their provenance
 and require an explicit generation choice where matching is ambiguous.
+
+Run `deltasieve preparation-preview PACKAGE_ROOT --source-manifest sources.json`
+with optional `--offset` and `--limit` (1–1000, default 100). This read-only
+operation verifies the entire package first and rejects invalid packages rather
+than presenting corrupt entries as usable. It then reconciles all selected
+occurrences, independent of the detail page. Output includes the selection
+digest, aggregate status counts and candidate generation/provenance identities.
+Only source-manifest packages support corpus reuse. An explicit-file-list
+package does not establish a transferable corpus mapping.
+
+Complete coverage requires one compatible successful generation, an exact
+baseline hash and matching raw-source provenance when supplied by the selection.
+Multiple compatible generations are ambiguous. Missing and failed preparations,
+source and baseline mismatches, and unavailable or changed local baseline files
+receive separate outcomes. A missing local baseline is not silently replaced by
+the packaged copy. Explicit adoption belongs to the subsequent import workflow.
 
 Verify schema, database and blob hashes, lengths, source identity, baseline,
 expected state roles and native outcome. Resolve metadata paths safely, reject

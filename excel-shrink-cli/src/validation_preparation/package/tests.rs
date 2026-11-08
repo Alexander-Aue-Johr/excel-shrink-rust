@@ -202,3 +202,120 @@ fn verification_checks_database_hash_and_internal_generation_bindings() -> Resul
     assert!(format!("{:#}", verify(&target).unwrap_err()).contains("generation hash"));
     Ok(())
 }
+
+fn selection(root: &Path, ids: &[&str]) -> Result<PathBuf> {
+    let baseline = root.join("local.xlsx");
+    fs::write(&baseline, b"baseline bytes")?;
+    let hash = artifact_cache::hash_file(&baseline)?;
+    let inputs: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            json!({"source_id":id,"name":id,
+        "baseline":"local.xlsx","baseline_sha256":hash})
+        })
+        .collect();
+    let path = root.join("selection.json");
+    fs::write(
+        &path,
+        serde_json::to_vec(&json!({"version":1,"inputs":inputs}))?,
+    )?;
+    Ok(path)
+}
+
+#[test]
+fn coverage_preview_counts_all_occurrences_and_pages_details() -> Result<()> {
+    let (root, source) = fixture()?;
+    let target = root.join("package");
+    export(&source, &target)?;
+    let manifest = selection(
+        &root,
+        &["source:'0", "source:'1", "failed-source", "absent"],
+    )?;
+    let result = serde_json::to_value(preview(&target, &manifest, 1, 1)?)?;
+    assert_eq!(result["selected"], 4);
+    assert_eq!(
+        result["counts"],
+        json!({"complete":2,"unsuccessful":1,"missing":1})
+    );
+    assert_eq!(result["items"].as_array().unwrap().len(), 1);
+    assert_eq!(result["items"][0]["source_id"], "source:'1");
+    assert!(preview(&target, &manifest, 0, 0).is_err());
+    assert!(preview(&target, &manifest, 0, 1001).is_err());
+    Ok(())
+}
+
+#[test]
+fn coverage_preview_distinguishes_source_and_local_baseline_mismatches() -> Result<()> {
+    let (root, source) = fixture()?;
+    let target = root.join("package");
+    export(&source, &target)?;
+    let manifest = selection(&root, &["source:'0"])?;
+    let original = fs::read(&manifest)?;
+    let mut input: Value = serde_json::from_slice(&original)?;
+    input["inputs"][0]["baseline_sha256"] = json!("f".repeat(64));
+    fs::write(&manifest, serde_json::to_vec(&input)?)?;
+    assert_eq!(
+        serde_json::to_value(preview(&target, &manifest, 0, 1)?)?["counts"],
+        json!({"baseline_mismatch":1})
+    );
+    input = serde_json::from_slice(&original)?;
+    input["inputs"][0]["raw_source"] = json!({"sha256":"e".repeat(64),"format":"xls"});
+    fs::write(&manifest, serde_json::to_vec(&input)?)?;
+    assert_eq!(
+        serde_json::to_value(preview(&target, &manifest, 0, 1)?)?["counts"],
+        json!({"source_mismatch":1})
+    );
+    fs::write(&manifest, original)?;
+    fs::write(root.join("local.xlsx"), b"changed")?;
+    assert_eq!(
+        serde_json::to_value(preview(&target, &manifest, 0, 1)?)?["counts"],
+        json!({"local_baseline_changed":1})
+    );
+    fs::remove_file(root.join("local.xlsx"))?;
+    assert_eq!(
+        serde_json::to_value(preview(&target, &manifest, 0, 1)?)?["counts"],
+        json!({"local_baseline_unavailable":1})
+    );
+    Ok(())
+}
+
+#[test]
+fn coverage_preview_retains_ambiguous_generations_without_selecting_one() -> Result<()> {
+    let (root, source) = fixture()?;
+    let target = root.join("package");
+    export(&source, &target)?;
+    let database = target.join("metadata.sqlite");
+    let connection = Connection::open(&database)?;
+    let (producer, payload): (Option<String>, String) = connection.query_row(
+        "SELECT provenance_id,payload FROM entries WHERE source_id=?1",
+        ["source:'0"],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let mut payload: Value = serde_json::from_str(&payload)?;
+    payload["measurements"]["worker_jobs_completed"] = json!(999);
+    let generation = artifact_cache::sha256(&serde_json::to_vec(&(&payload, &producer))?);
+    connection.execute(
+        "INSERT INTO entries VALUES (?1,?2,'prepared',?3,?4)",
+        params![
+            "source:'0",
+            generation,
+            producer,
+            serde_json::to_string(&payload)?
+        ],
+    )?;
+    connection.close().map_err(|(_, error)| error)?;
+    let path = target.join("manifest.json");
+    let mut header: Header = serde_json::from_slice(&fs::read(&path)?)?;
+    header.database_sha256 = artifact_cache::hash_file(&database)?;
+    header.entries += 1;
+    header.prepared += 1;
+    fs::write(path, serde_json::to_vec(&header)?)?;
+    let manifest = selection(&root, &["source:'0"])?;
+    let result = serde_json::to_value(preview(&target, &manifest, 0, 1)?)?;
+    assert_eq!(result["counts"], json!({"ambiguous_generation":1}));
+    assert_eq!(
+        result["items"][0]["candidates"].as_array().unwrap().len(),
+        2
+    );
+    Ok(())
+}
