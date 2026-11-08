@@ -726,3 +726,15 @@ fresh v9 restart was rejected and must not be launched. Preserve v9 metadata and
 raw evidence while v10 produces its own selected-region results. SheetShrink core
 has no diff from production commit 317200b, allowing prepared-artifact reuse after
 source identity verification. Visual v9 results keep their recorded policy.
+
+### Four-group release acceptance on 2026-11-09
+
+The optimized build completed the four-file scheduler fixture with four admitted
+groups and eight warm Excel workers. All four records were complete and unchanged,
+and all eight resident sessions confirmed lease release. Earlier one-group
+acceptance already verified stable worker identities across three sequential
+workbooks and confirmed native process exit. Enron's previous v9 metadata was
+snapshotted separately before migration, with per-file hashes and ZIP integrity.
+The running scientific policy remains explicit per report. No v9 report is relabeled
+as v10. Prepared files may be reused under unchanged SheetShrink core and verified
+source identities. The user explicitly authorized the v10/pool restart.
