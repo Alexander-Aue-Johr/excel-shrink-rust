@@ -12,8 +12,13 @@ export function installPerformancePreparation({ api, message }) {
   const byId = id => document.getElementById(id);
   const form = byId('performance-job');
   let busy = false;
+  let currentJob = null;
+  let changingWorkers = false;
 
   function render(job, active) {
+    currentJob = job;
+    byId('performance-worker-control').hidden = !job || job.status !== 'running';
+    byId('performance-worker-apply').disabled = changingWorkers;
     byId('performance-job-fields').disabled = busy || Boolean(active);
     byId('performance-job-observation').hidden = !job;
     if (!job) return;
@@ -25,7 +30,7 @@ export function installPerformancePreparation({ api, message }) {
     progress.max = Math.max(1, total);
     progress.value = finished;
     byId('performance-job-detail').textContent = [
-      `${job.workers} requested workers`,
+      `${counters.requested_workers ?? job.workers} requested workers`,
       `${counters.in_flight || 0} in-flight requests`,
       `${counters.queued ?? total} queued`,
       job.output,
@@ -33,6 +38,27 @@ export function installPerformancePreparation({ api, message }) {
       job.progress_error,
     ].filter(value => value != null).join(' · ');
   }
+
+  byId('performance-worker-control').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (changingWorkers || currentJob?.status !== 'running') return;
+    const workers = Number(byId('performance-worker-target').value);
+    if (!Number.isSafeInteger(workers) || workers < 1) {
+      message('Choose a positive integer worker count.', true);
+      return;
+    }
+    changingWorkers = true;
+    byId('performance-worker-apply').disabled = true;
+    try {
+      await api('/api/preparation/control', { job_id: currentJob.id, workers });
+      message(`Preparation worker target set to ${workers}. Active workbooks finish before retirement.`);
+    } catch (error) {
+      message(error.message, true);
+    } finally {
+      changingWorkers = false;
+      byId('performance-worker-apply').disabled = false;
+    }
+  });
 
   form.addEventListener('submit', async event => {
     event.preventDefault();

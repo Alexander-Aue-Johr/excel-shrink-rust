@@ -116,6 +116,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
         .route("/api/preparation/import", post(preparation::import))
         .route("/api/preparation/export", post(preparation::export))
         .route("/api/preparation/start", post(preparation_job::start))
+        .route("/api/preparation/control", post(preparation_job::control))
         .route("/reports/{id}/{*path}", get(report_asset))
         .nest_service(
             "/observatory-assets",

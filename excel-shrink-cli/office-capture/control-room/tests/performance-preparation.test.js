@@ -24,7 +24,8 @@ test('preparation workers are independent and can exceed logical cores', () => {
 
 test('job status distinguishes request counts from workers and exposes terminal errors', () => {
   const fields = ['performance-job', 'performance-job-fields', 'performance-job-observation',
-    'performance-job-status', 'performance-job-progress', 'performance-job-detail'];
+    'performance-job-status', 'performance-job-progress', 'performance-job-detail',
+    'performance-worker-control', 'performance-worker-target', 'performance-worker-apply'];
   const nodes = Object.fromEntries(fields.map(name => [name, {
     disabled: false, hidden: true, textContent: '', addEventListener() {},
   }]));
@@ -45,5 +46,29 @@ test('job status distinguishes request counts from workers and exposes terminal 
     assert.equal(nodes['performance-job-observation'].hidden, true);
   } finally {
     globalThis.document = previousDocument;
+  }
+});
+
+test('live control binds the requested target to the observed job identity', async () => {
+  const names = ['performance-job', 'performance-job-fields', 'performance-job-observation',
+    'performance-job-status', 'performance-job-progress', 'performance-job-detail',
+    'performance-worker-control', 'performance-worker-target', 'performance-worker-apply'];
+  const nodes = Object.fromEntries(names.map(name => [name, {
+    value: '48', handlers: {}, addEventListener(type, handler) { this.handlers[type] = handler; },
+  }]));
+  const previous = globalThis.document;
+  globalThis.document = { getElementById: name => nodes[name] };
+  const calls = [];
+  try {
+    const view = installPerformancePreparation({ api: async (...args) => calls.push(args), message() {} });
+    view.render({ id: 'selected-job', status: 'running', workers: 2, total: 10 }, true);
+    await nodes['performance-worker-control'].handlers.submit({ preventDefault() {} });
+    assert.deepEqual(calls, [['/api/preparation/control', { job_id: 'selected-job', workers: 48 }]]);
+    view.render({ id: 'selected-job', status: 'completed', workers: 2, total: 10 }, false);
+    assert.equal(nodes['performance-worker-control'].hidden, true);
+    await nodes['performance-worker-control'].handlers.submit({ preventDefault() {} });
+    assert.equal(calls.length, 1);
+  } finally {
+    globalThis.document = previous;
   }
 });

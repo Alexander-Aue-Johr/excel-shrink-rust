@@ -277,6 +277,25 @@ Excel or start validation. A supplied prepared identity index is visible and
 editable in the ordinary comparison configuration. Export preserves native
 failed outcomes as part of the package denominator.
 
+## Live preparation concurrency
+
+An active Check Performance preparation has an independent positive worker target
+in its atomic `control.json` document, with version 1 and integer `workers`.
+The manager observes changes approximately once per second. It starts additional
+dispatch threads and Excel sessions when the target grows, subject to the
+512 MiB memory reserve and remaining inputs. Reductions stop surplus dispatch
+slots from claiming further inputs and retire Excel sessions at workbook
+boundaries. A fully reused batch still starts zero native workers.
+
+The local web route `POST /api/preparation/control` accepts `job_id` and
+`workers` through the existing authenticated control boundary. The current job
+must match, be running, and have initialized its control document. Stale job IDs,
+terminal jobs and zero targets are rejected. The UI keeps this control separate
+from frozen input selection. Progress exposes the observed target. The terminal
+ledger retains the original requested target and `final_requested_workers`.
+An invalid or unreadable manager control document aborts the owned pool with an
+explicit error. Bounded native adjustment acceptance remains to be performed.
+
 ## Remaining acceptance gates
 
 Test valid transfer, relocation, partial coverage, failed inputs, hash corruption,

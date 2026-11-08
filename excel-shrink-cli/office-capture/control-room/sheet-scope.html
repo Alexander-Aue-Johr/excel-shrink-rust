@@ -200,6 +200,11 @@
       <p id="performance-job-status" role="status"></p>
       <progress id="performance-job-progress" max="1" value="0"></progress>
       <p id="performance-job-detail" class="help"></p>
+      <form id="performance-worker-control">
+        <label>Preparation workers <input id="performance-worker-target" type="number" min="1" step="1" value="2"></label>
+        <button id="performance-worker-apply" type="submit">Apply worker count</button>
+        <span class="help">Reductions take effect after active workbooks finish.</span>
+      </form>
     </section>
 
     <section class="panel workbook-kpis" aria-label="Workbook outcomes">

@@ -98,6 +98,10 @@ pub(crate) fn run(args: Args) -> Result<()> {
         .transpose()?;
     fs::create_dir(&args.output)?;
     let output = fs::canonicalize(&args.output)?;
+    write_json(
+        &output.join("control.json"),
+        &json!({"version":1,"workers":args.workers}),
+    )?;
     let producer = super::super::artifact_cache::hash_file(&std::env::current_exe()?)?;
     write_json(
         &output.join("owner.json"),
@@ -164,6 +168,9 @@ pub(crate) fn run(args: Args) -> Result<()> {
     let reused = retained.len();
     let outcomes = Mutex::new(retained);
     let count = args.workers.min(pending.len());
+    let target = AtomicUsize::new(count);
+    let requested_target = AtomicUsize::new(args.workers);
+    let peak_dispatch_slots = AtomicUsize::new(count);
     publish_progress(
         &output,
         &counters,
@@ -174,9 +181,29 @@ pub(crate) fn run(args: Args) -> Result<()> {
         "running",
     )?;
     let pool_result = std::thread::scope(|scope| -> Result<()> {
-        let handles: Vec<_> = (0..count)
-            .map(|_| {
-                scope.spawn(|| loop {
+        let mut handles = Vec::new();
+        let mut last_control = Instant::now();
+        loop {
+            let desired = target.load(Ordering::Acquire);
+            for slot in handles.len()..desired {
+                let target = &target;
+                let next = &next;
+                let pending = &pending;
+                let inputs = &inputs;
+                let output = &output;
+                let pool_root = &pool_root;
+                let producer = &producer;
+                let outcomes = &outcomes;
+                let counters = &counters;
+                let reuse_lookups = &reuse_lookups;
+                handles.push(scope.spawn(move || loop {
+                    if next.load(Ordering::Acquire) >= pending.len() {
+                        break;
+                    }
+                    if slot >= target.load(Ordering::Acquire) {
+                        std::thread::sleep(Duration::from_millis(50));
+                        continue;
+                    }
                     let position = next.fetch_add(1, Ordering::Relaxed);
                     let Some(&index) = pending.get(position) else {
                         break;
@@ -209,29 +236,41 @@ pub(crate) fn run(args: Args) -> Result<()> {
                     } else {
                         counters.failed.fetch_add(1, Ordering::Release);
                     }
-                })
-            })
-            .collect();
-        let mut last_progress = Instant::now();
-        while handles.iter().any(|handle| !handle.is_finished()) {
-            if let Err(error) = pool.reconcile(count, 512) {
+                }));
+            }
+            peak_dispatch_slots.store(handles.len(), Ordering::Release);
+            if handles.iter().all(|handle| handle.is_finished()) {
+                break;
+            }
+            if let Err(error) = pool.reconcile(desired, 512) {
                 pool.abort(&error)?;
                 return Err(error);
             }
-            if last_progress.elapsed() >= Duration::from_secs(1) {
+            if last_control.elapsed() >= Duration::from_secs(1) {
+                let requested_workers = match read_worker_target(&output.join("control.json")) {
+                    Ok(workers) => {
+                        requested_target.store(workers, Ordering::Release);
+                        target.store(workers.min(pending.len()), Ordering::Release);
+                        workers
+                    }
+                    Err(error) => {
+                        pool.abort(&error)?;
+                        return Err(error);
+                    }
+                };
                 if let Err(error) = publish_progress(
                     &output,
                     &counters,
                     reused + next.load(Ordering::Acquire).min(pending.len()),
                     inputs.len(),
-                    args.workers,
+                    requested_workers,
                     started_at.elapsed(),
                     "running",
                 ) {
                     pool.abort(&error)?;
                     return Err(error);
                 }
-                last_progress = Instant::now();
+                last_control = Instant::now();
             }
             std::thread::sleep(Duration::from_millis(50));
         }
@@ -256,8 +295,10 @@ pub(crate) fn run(args: Args) -> Result<()> {
         &json!({
             "version": 1,
             "operation": "check-performance",
-            "workers": count,
+            "workers": peak_dispatch_slots.load(Ordering::Acquire),
+            "initial_dispatch_slots": count,
             "requested_workers": args.workers,
+            "final_requested_workers": requested_target.load(Ordering::Acquire),
             "producer_sha256": producer,
             "selection_sha256": selection_hash,
             "identity_scope": if args.source_manifest.is_some() { "source-manifest" } else { "explicit-file-list" },
@@ -275,7 +316,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
         &counters,
         reused + next.load(Ordering::Acquire).min(pending.len()),
         inputs.len(),
-        args.workers,
+        requested_target.load(Ordering::Acquire),
         started_at.elapsed(),
         if pool_result.is_ok() && failed == 0 {
             "completed"
@@ -289,6 +330,21 @@ pub(crate) fn run(args: Args) -> Result<()> {
         "{failed} Check Performance preparations failed; inspect preparation.json"
     );
     Ok(())
+}
+
+/// Read the independently adjustable native pool target from its atomic control file.
+fn read_worker_target(path: &Path) -> Result<usize> {
+    let value: Value = serde_json::from_slice(&fs::read(path)?)?;
+    anyhow::ensure!(
+        value["version"] == 1,
+        "Unsupported preparation control version"
+    );
+    let workers = value["workers"]
+        .as_u64()
+        .and_then(|value| usize::try_from(value).ok());
+    let workers = workers.context("Preparation worker target must be a positive integer")?;
+    anyhow::ensure!(workers > 0, "Preparation worker target must be positive");
+    Ok(workers)
 }
 
 fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str) -> Result<()> {
@@ -461,6 +517,29 @@ mod tests {
         assert_eq!(progress["queued"], 0);
         assert_eq!(progress["unresolved"], 0);
         assert_eq!(progress["status"], "failed");
+        Ok(())
+    }
+
+    #[test]
+    fn preparation_target_requires_versioned_positive_integer() -> Result<()> {
+        let root =
+            std::env::temp_dir().join(format!("preparation-target-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root)?;
+        let path = root.join("control.json");
+        for workers in [1, 4, 48] {
+            write_json(&path, &json!({"version":1,"workers":workers}))?;
+            assert_eq!(read_worker_target(&path)?, workers);
+        }
+        for value in [
+            json!({"version":2,"workers":4}),
+            json!({"version":1,"workers":0}),
+            json!({"version":1,"workers":-1}),
+            json!({"version":1,"workers":1.5}),
+            json!({"version":1,"workers":"4"}),
+        ] {
+            write_json(&path, &value)?;
+            assert!(read_worker_target(&path).is_err());
+        }
         Ok(())
     }
 

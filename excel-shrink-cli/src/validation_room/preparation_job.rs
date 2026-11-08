@@ -11,6 +11,50 @@ pub(super) struct StartRequest {
     reuse_from: Option<PathBuf>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ControlRequest {
+    job_id: String,
+    workers: usize,
+}
+
+/// Adjust only the explicitly selected live preparation; busy sessions finish their workbook.
+pub(super) async fn control(
+    State(room): State<Arc<Room>>,
+    Json(request): Json<ControlRequest>,
+) -> ApiResult {
+    let current = room
+        .preparation_job
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Preparation job lock poisoned"))?;
+    let job = current
+        .as_ref()
+        .context("No preparation job is available")?;
+    set_workers(job, &request)?;
+    Ok(Json(
+        json!({"accepted":true,"job_id":job.id,"workers":request.workers}),
+    ))
+}
+
+fn set_workers(job: &Job, request: &ControlRequest) -> Result<()> {
+    ensure!(request.workers > 0, "Preparation workers must be positive");
+    ensure!(job.id == request.job_id, "Preparation job identity changed");
+    ensure!(
+        job.status == "running",
+        "Preparation job is already terminal"
+    );
+    let path = job.output.join("control.json");
+    ensure!(
+        path.is_file(),
+        "Preparation is still initializing; retry shortly"
+    );
+    crate::regression::artifact_cache::atomic_write(
+        &path,
+        &serde_json::to_vec(&json!({"version":1,"workers":request.workers}))?,
+    )?;
+    Ok(())
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub(super) struct Job {
     version: u32,
@@ -187,6 +231,33 @@ pub(super) async fn snapshot(room: &Room) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_target_updates_require_matching_active_job() -> Result<()> {
+        let (_, request) = request()?;
+        let mut job = freeze_job(request)?;
+        fs::create_dir(&job.output)?;
+        let path = job.output.join("control.json");
+        fs::write(&path, br#"{"version":1,"workers":2}"#)?;
+        let mut control = ControlRequest {
+            job_id: job.id.clone(),
+            workers: 48,
+        };
+        set_workers(&job, &control)?;
+        let saved = fs::read(&path)?;
+        let value: Value = serde_json::from_slice(&saved)?;
+        assert_eq!(value["workers"], 48);
+        control.workers = 0;
+        assert!(set_workers(&job, &control).is_err());
+        control.workers = 3;
+        control.job_id = "stale-job".into();
+        assert!(set_workers(&job, &control).is_err());
+        control.job_id = job.id.clone();
+        job.status = "completed".into();
+        assert!(set_workers(&job, &control).is_err());
+        assert_eq!(fs::read(&path)?, saved);
+        Ok(())
+    }
 
     fn request() -> Result<(PathBuf, StartRequest)> {
         let root =
