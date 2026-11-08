@@ -36,7 +36,8 @@ public static class CaptureWorkbookWorker
             using (var session = new CaptureWorkbookSession(checking.GetOwnedApplication(), process, seedPath))
             {
                 session.Initialize();
-                Reply(json, new { event_type = "ready", pid = process.Id });
+                Reply(json, new { event_type = "ready", pid = process.Id,
+                    background_error_checking_disabled = checking.IsDisabled });
                 string line;
                 while ((line = ReadCommand()) != null)
                 {

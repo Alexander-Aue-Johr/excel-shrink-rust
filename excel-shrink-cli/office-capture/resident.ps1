@@ -21,6 +21,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $session 'clients') -PathType Contai
 }
 
 Import-Module (Join-Path $PSScriptRoot 'CaptureSetup.psm1') -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'WorkbookPool.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'WindowsLongPaths.psm1') -Force
 . (Join-Path $PSScriptRoot 'resident/Opening.ps1')
 $tokens = $null
@@ -162,7 +163,10 @@ function Update-ClientReadySamples($health) {
         if (-not $clients.ContainsKey($id) -or -not $sample.ready_at -or $sample.startup_sampled) { continue }
         $entry = $clients[$id]
         $item = $metrics.clients[$id]
-        if ($null -eq $entry.error_checking_scope) {
+        if ($poolLease) {
+            if ($poolLease.process.background_error_checking_disabled -ne $true) { throw 'Pool worker did not confirm disabled background error checking.' }
+            $item.background_error_checking_disabled = $true
+        } elseif ($null -eq $entry.error_checking_scope) {
             $entry.error_checking_scope = [CaptureErrorChecking]::TryDisable($entry.process, $entry.desktop_name)
             if ($null -eq $entry.error_checking_scope) { continue }
             if (-not $entry.error_checking_scope.IsDisabled) { throw "Owned Excel background error checking is still enabled: $id" }
@@ -184,6 +188,7 @@ function Update-ClientReadySamples($health) {
         $item.startup_sampled_unix_ms = $observedAt.ToUnixTimeMilliseconds()
         $item.ready_at = [string]$sample.ready_at
         $item.startup_measurement_method = 'launch-to-addin-ready-v1'
+        if ($poolLease) { $item.startup_measurement_method = 'warm-workbook-open-to-addin-ready-v1' }
         $item.startup_diagnostics = $sample.startup_diagnostics
         $item.status = 'ready'
         $item.stage = 'waiting_for_job'
@@ -667,6 +672,9 @@ $registrations = @{}
 $clients = @{}
 $captureGroupSlot = $null
 $reservedClientCount = 0
+$poolConnection = $null
+$poolLease = $null
+$poolWorkbookClosed = $false
 $batchLifetime = $null
 $batchOwner = $null
 $batchReleased = $false
@@ -699,6 +707,14 @@ try {
         }
     }
     $primaryClientIds = @(Get-PrimaryClientIds (Join-Path $session 'clients'))
+    if ($env:EXCEL_SHRINK_WORKBOOK_POOL_CONNECTION) {
+        if ($primaryClientIds.Count -ne 1) { throw 'A pooled resident requires exactly one client.' }
+        $poolConnection = Read-WorkbookPoolConnection $env:EXCEL_SHRINK_WORKBOOK_POOL_CONNECTION
+        $poolLease = Get-WorkbookPoolLease $poolConnection $StartupTimeoutSeconds
+        Write-SessionJson 'pool-lease.json' $poolLease
+        $metrics.worker_pool = @{slot=$poolLease.slot; reused_excel=$true; process=$poolLease.process}
+        $metrics.resource_scope = 'Resident helper and HTTP host; shared pool owns Excel and WebView processes'
+    }
     $metrics.expected_primary_clients = $primaryClientIds.Count
     Add-Type -Path (Join-Path $PSScriptRoot 'CaptureWorkbook.cs') -ReferencedAssemblies @('System.IO.Compression', 'System.IO.Compression.FileSystem', 'System.Xml')
     $systemReserveBytes = Get-SystemReserveBytes ([Environment]::GetEnvironmentVariable('EXCEL_SHRINK_SYSTEM_RESERVE_MIB'))
@@ -732,9 +748,12 @@ try {
     $owned = New-Object ResidentProcesses
     Update-Resources
     $hostExecutable = Get-CaptureHostExecutable $HostExecutable
-    $portProbe = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
-    $portProbe.Start()
-    try { $port = $portProbe.LocalEndpoint.Port } finally { $portProbe.Stop() }
+    if ($poolLease) { $port = [int]$poolLease.capture_port }
+    else {
+        $portProbe = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
+        $portProbe.Start()
+        try { $port = $portProbe.LocalEndpoint.Port } finally { $portProbe.Stop() }
+    }
     $baseUrl = 'http://localhost:' + $port
     $controlUrl = 'http://127.0.0.1:' + $port
     $webStage = Join-Path $stage 'web'
@@ -856,7 +875,23 @@ try {
         }
         $owned.Dispose()
         $metrics.cleanup_job_released_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-        $unconfirmedClients = @(Confirm-ResidentClientExit $clients $metrics.clients)
+        if ($poolLease) {
+            $unconfirmedClients = @('one')
+            try {
+                Invoke-WorkbookPoolCommand $poolConnection $poolLease 'close' '' $StartupTimeoutSeconds | Out-Null
+                $poolWorkbookClosed = $true
+                $unconfirmedClients = @()
+                foreach ($id in $clients.Keys) {
+                    $metrics.clients[$id].closed = $true
+                    $metrics.clients[$id].stage = 'workbook_closed'
+                    $metrics.clients[$id].status = 'closed'
+                    $metrics.clients[$id].process_retained_by_pool = $true
+                }
+            } catch {
+                $metrics.status = 'failed'
+                $metrics.error = 'Pooled workbook close unconfirmed: ' + $_.Exception.Message
+            }
+        } else { $unconfirmedClients = @(Confirm-ResidentClientExit $clients $metrics.clients) }
         if ($unconfirmedClients.Count -eq 0) {
             $metrics.cleanup_completed_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
             Add-SessionEvent 'owned_cleanup_completed' '' $null
@@ -883,6 +918,16 @@ try {
     }
     foreach ($guid in @($registrations.Keys)) {
         try { Restore-AddIn $guid $registrations[$guid] } catch { $metrics.registry_cleanup_warning = $_.Exception.Message }
+    }
+    if ($poolLease -and $poolWorkbookClosed) {
+        try {
+            if ($hostProcess -and -not $hostProcess.WaitForExit(10000)) { throw 'Capture host exit unconfirmed.' }
+            Release-WorkbookPoolLease $poolConnection $poolLease
+            $metrics.pool_lease_released = $true
+        } catch {
+            $metrics.status = 'failed'
+            $metrics.error = 'Pooled lease release unconfirmed: ' + $_.Exception.Message
+        }
     }
     if ($null -ne $captureDesktop) { $captureDesktop.Dispose() }
     if ($null -ne $batchOwner) { $batchOwner.Dispose() }

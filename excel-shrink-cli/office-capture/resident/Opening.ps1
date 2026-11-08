@@ -55,6 +55,7 @@ function Prepare-ResidentClientWorkbook {
     $id = $request.id
     $source = $request.source
     $guid = [Guid]::NewGuid().ToString()
+    if ($poolLease) { $guid = [string]$poolLease.manifest_id }
     [xml]$manifest = [IO.File]::ReadAllText((Join-Path $webStage 'manifest.xml'), $utf8).Replace('http://localhost:3000', $baseUrl)
     $manifest.SelectSingleNode("/*[local-name()='OfficeApp']/*[local-name()='Id']").InnerText = $guid
     $version = $manifest.SelectSingleNode("/*[local-name()='OfficeApp']/*[local-name()='Version']").InnerText.Trim()
@@ -110,7 +111,15 @@ function Start-ResidentClientExcel {
     $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $profileRoot $(if ($desktopName) { 'private' } else { 'interactive' })
     $metrics.clients[$id].webview2_user_data_folder = $env:WEBVIEW2_USER_DATA_FOLDER
     $openClock = [Diagnostics.Stopwatch]::StartNew()
-    $process = $owned.Start($excelExecutable, $arguments, [bool]$hideClient, $desktopName)
+    if ($poolLease) {
+        $desktopName = [string]$poolLease.process.desktop
+        $process = [Diagnostics.Process]::GetProcessById([int]$poolLease.process.pid)
+        if ($process.StartTime.ToUniversalTime().Ticks -ne ([DateTimeOffset]::Parse($poolLease.process.started_utc)).UtcTicks) {
+            throw 'Pooled Excel process identity changed.'
+        }
+        Invoke-WorkbookPoolCommand $poolConnection $poolLease 'open_working_copy' $workbook.path $StartupTimeoutSeconds | Out-Null
+        $metrics.clients[$id].webview_profile_policy = 'warm-worker-owned'
+    } else { $process = $owned.Start($excelExecutable, $arguments, [bool]$hideClient, $desktopName) }
     $clients[$id] = @{
         process=$process
         open_clock=$openClock

@@ -375,3 +375,25 @@ operations on caller-staged copies. Neither command can open the worker's seed.
 The corpus adapter must stage a distinct copy before choosing the writable mode.
 Save As now has native acceptance on these formula controls. Chart, volatile
 filename and production scheduler acceptance remain open.
+
+### Pooled resident integration acceptance
+
+`pool-probe.ps1 -ResidentComparisons` now runs two complete targeted comparisons
+through the normal private-desktop launcher while the same two pool workers stay
+alive. Trial `workbook-pool-resident-20261108-01` completed both v10 paired rebuild
+comparisons. Both found the deliberate difference. Both visits used Excel PIDs
+16124 and 23000, and all four residents confirmed workbook close and lease release.
+First-visit open-to-add-in readiness was 1.078 and 1.416 seconds. Final cleanup
+confirmed pool/Excel exit and unchanged source hashes.
+
+Select the experimental path using EXCEL_SHRINK_WORKBOOK_POOL_CONNECTION pointing
+to a private JSON file with loopback url and pool token. Each resident acquires one
+exclusive lease, stages its own writable workbook and retains the slot's origin
+and manifest identity. Its helper job owns the HTTP host, while the pool owns Excel.
+The resident closes the workbook, stops its HTTP host, restores registration and
+releases the lease. Warm open measurements carry a distinct method label.
+
+This acceptance uses two tiny worksheet-only fixtures. Standalone chart-sheet
+native operations, native chart fallback, optional Check Performance and corpus
+scheduler ownership are still separate integration gates. Do not start a corpus
+through this path until its required gates pass.

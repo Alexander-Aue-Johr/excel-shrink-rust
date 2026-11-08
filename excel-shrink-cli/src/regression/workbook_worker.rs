@@ -186,7 +186,7 @@ impl Worker {
 
     fn initialize(&mut self, timeout: Duration) -> Result<Value> {
         let deadline = Instant::now() + timeout;
-        let identity = self.receive(deadline)?;
+        let mut identity = self.receive(deadline)?;
         ensure!(
             identity["event_type"] == "process_started",
             "Missing workbook worker startup identity"
@@ -197,6 +197,7 @@ impl Worker {
             ready["event_type"] == "ready" && ready["pid"] == identity["pid"],
             "Workbook worker did not become ready"
         );
+        identity["background_error_checking_disabled"] = ready["background_error_checking_disabled"].clone();
         Ok(identity)
     }
 

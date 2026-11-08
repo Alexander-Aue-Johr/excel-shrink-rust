@@ -101,7 +101,7 @@ function Start-TargetedWorkbook {
         foreach ($key in $previous.Keys) { [Environment]::SetEnvironmentVariable($key, $previous[$key], 'Process') }
     }
     $Owned.Add($launcher)
-    $entry = @{launcher=$launcher; session=$session; path=$Command.path; process=$null; sequence=0; startup_slot=$startupSlot; external_link_parts=[int]$Command.external_link_parts}
+    $entry = @{launcher=$launcher; session=$session; path=$Command.path; process=$null; sequence=0; startup_slot=$startupSlot; external_link_parts=[int]$Command.external_link_parts; pooled=[bool]$env:EXCEL_SHRINK_WORKBOOK_POOL_CONNECTION}
     $sessions[$Command.lane] = $entry
     return $entry
 }
@@ -545,13 +545,14 @@ function Close-TargetedWorkbook {
     if ($null -eq $entry) { return @{closed=$true} }
     Write-TargetedJson (Join-Path $entry.session 'finish.json') @{complete=$true}
     $entry.launcher.WaitForExit()
-    if ($null -ne $entry.process -and -not $entry.process.WaitForExit(5000)) { throw 'Targeted Excel exit unconfirmed.' }
+    if (-not $entry.pooled -and $null -ne $entry.process -and -not $entry.process.WaitForExit(5000)) { throw 'Targeted Excel exit unconfirmed.' }
     $null = $sessions.Remove($Lane)
     if ($sessions.Count -eq 0 -and $null -ne $script:responseWatcher) {
         $script:responseWatcher.Dispose()
         $script:responseWatcher = $null
     }
     $metrics = Read-TargetedJson (Join-Path $entry.session 'metrics.json')
+    if ($entry.pooled -and $metrics.pool_lease_released -ne $true) { throw 'Pooled workbook cleanup or lease release unconfirmed.' }
     $profileReusable = $metrics -and
         $metrics.PSObject.Properties['profile_job_exit_confirmed'] -and
         $metrics.profile_job_exit_confirmed -eq $true

@@ -1194,3 +1194,12 @@ Both disable link updates and reject the seed. The caller owns staging and must
 preserve source bytes. Pool trial 04 passed writable-copy, rebuild, Save As and
 snapshot checks with unchanged source hashes. This supersedes the pending native
 Save As gate above only for the small deterministic formula controls.
+
+For an explicitly configured pool connection, one resident borrows exactly one
+worker and creates a comparison-owned capture host on its assigned origin. Its
+owned job excludes Excel. Closure confirms the workbook and lease release while
+reporting that the native Excel process is retained by the pool. Warm readiness
+uses warm-workbook-open-to-addin-ready-v1 rather than the cold-launch measurement
+label. Background error checking is confirmed by the retained C# owner.
+The normal worksheet capture/rebuild path passed two serial comparisons reusing
+both worker identities. Chart fallback and scheduler integration remain pending.

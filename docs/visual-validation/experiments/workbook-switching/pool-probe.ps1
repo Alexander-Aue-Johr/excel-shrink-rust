@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Seed,
     [Parameter(Mandatory=$true)][string]$Original,
     [Parameter(Mandatory=$true)][string]$Candidate,
-    [Parameter(Mandatory=$true)][string]$Output
+    [Parameter(Mandatory=$true)][string]$Output,
+    [switch]$ResidentComparisons
 )
 $ErrorActionPreference = 'Stop'
 if (Test-Path -LiteralPath $Output) { throw 'Choose a new pool probe directory.' }
@@ -79,6 +80,47 @@ try {
     $ready = [IO.File]::ReadAllText($readyPath) | ConvertFrom-Json
     $startupSeconds = $startup.Elapsed.TotalSeconds
     $url = $ready.url
+    if ($ResidentComparisons) {
+        $connection = Join-Path $Output 'connection.json'
+        Write-PoolProbeJson $connection @{url=$url;token=$token}
+        $previousConnection = $env:EXCEL_SHRINK_WORKBOOK_POOL_CONNECTION
+        $previousAssets = $env:EXCEL_SHRINK_CAPTURE_DIR
+        try {
+            $env:EXCEL_SHRINK_WORKBOOK_POOL_CONNECTION = $connection
+            $env:EXCEL_SHRINK_CAPTURE_DIR = $CaptureRoot
+            $residentPids = @()
+            for ($visit = 0; $visit -lt 2; $visit++) {
+                $comparison = Join-Path $Output ('comparison-' + $visit)
+                $group = Join-Path $Output ('group-' + $visit)
+                [void][IO.Directory]::CreateDirectory($group)
+                $arguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',
+                    (Join-Path $CaptureRoot 'run-targeted-comparison.ps1'), '-Binary',$Binary,
+                    '-Original',$Original,'-Default',$Candidate,'-Output',$comparison,
+                    '-ObservatoryGroup',$group,'-SkipCheckPerformance',
+                    '-OperationTimeoutSeconds','60','-CaptureIdleTimeoutSeconds','60')
+                $commandLine = ($arguments | ForEach-Object { Quote-Argument ([string]$_) }) -join ' '
+                $comparisonProcess = $desktop.Start((Join-Path $PSHOME 'powershell.exe'), $commandLine, $owned)
+                if (-not $comparisonProcess.WaitForExit(180000)) { throw 'Pooled resident comparison timed out.' }
+                if ($comparisonProcess.ExitCode -ne 0) { throw ('Pooled resident comparison failed: ' + $comparison) }
+                $report = [IO.File]::ReadAllText((Join-Path $comparison 'report.json')) | ConvertFrom-Json
+                if ($report.status -ne 'completed_with_limitations') { throw 'Pooled comparison did not complete.' }
+                $metrics = @(Get-ChildItem -LiteralPath $comparison -Filter metrics.json -File -Recurse | ForEach-Object {
+                    [IO.File]::ReadAllText($_.FullName) | ConvertFrom-Json
+                } | Where-Object { $_.worker_pool })
+                if ($metrics.Count -ne 2 -or @($metrics | Where-Object { $_.pool_lease_released -ne $true }).Count) {
+                    throw 'Pooled residents did not confirm two released leases.'
+                }
+                $pids = @($metrics | ForEach-Object { [int]$_.worker_pool.process.pid } | Sort-Object)
+                $residentPids += ,$pids
+                foreach ($metric in $metrics) { Remember-Excel @{process=$metric.worker_pool.process} }
+            }
+            if (($residentPids[0] -join ',') -ne ($residentPids[1] -join ',')) { throw 'Resident comparisons did not reuse the same workers.' }
+            Write-PoolProbeJson (Join-Path $Output 'resident-result.json') @{visits=2;worker_pids=$residentPids;warm_reuse=$true}
+        } finally {
+            $env:EXCEL_SHRINK_WORKBOOK_POOL_CONNECTION = $previousConnection
+            $env:EXCEL_SHRINK_CAPTURE_DIR = $previousAssets
+        }
+    }
     $firstOwner = Owner-Request $owner
     $first = Pool-Request '/acquire' $firstOwner $null
     $repeated = Pool-Request '/acquire' $firstOwner $null
