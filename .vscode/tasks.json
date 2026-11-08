@@ -173,6 +173,7 @@
     },
     {
       "label": "Excel Shrink: Configure corpus run",
+      "detail": "Open the DeltaSieve web configurator. Resume a saved study through its launch.json receipt.",
       "type": "process",
       "command": "${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
@@ -182,7 +183,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "${workspaceFolder}\\tools\\start-corpus.ps1"
+        "${workspaceFolder}\\tools\\start-deltasieve.ps1"
       ],
       "options": {
         "cwd": "${workspaceFolder}",

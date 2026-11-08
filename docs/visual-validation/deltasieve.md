@@ -30,6 +30,11 @@ that root. `-BinaryPath` uses an existing build, and `-Config` loads a saved
 standalone configuration. An isolated HTTP smoke test verified the starter's
 session and working paths on V:.
 
+The existing Windows VS Code task `Excel Shrink: Configure corpus run` now opens
+the same web configurator. Its label remains as a compatibility alias for saved
+task selections. Explicit PowerShell corpus configurations and the WSL launcher
+remain available through their existing scripts while profile migration proceeds.
+
 Choose `Resume a corpus study` in the web configurator and select the study's
 `launch.json`. The adapter verifies its executable checksum, absolute paths,
 request/output arguments and output lock before invoking the recorded runner.
