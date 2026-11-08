@@ -43,3 +43,12 @@ shutdown observation and does not establish the cause of the opening stall.
 No specific security, repair or workbook-link diagnosis has been established.
 Preserve this failed observation for a bounded isolated retry and window
 inspection. No successful visual coverage or SheetShrink regression is inferred.
+
+Identity `59343f0cf251258cecba` also reached the 180-second `open_batch` timeout.
+Its source is
+`edrm/native_000%2F3.545819.GA0XTHCNKODPLM0NVAN1T0Q21F0VW02RA.1.xls`.
+The retained attempt is `targeted-f4e54c8a-9a95-4cd1-bdaf-84440ee3c896` below
+that identity's evidence directory. Original reported session termination during
+startup after approximately 178.72 seconds; the candidate reported cancellation
+after approximately 178.84 seconds. These are timeout teardown observations.
+The underlying opening cause remains unresolved and requires isolated inspection.
