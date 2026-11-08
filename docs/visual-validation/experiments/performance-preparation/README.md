@@ -79,7 +79,23 @@ scale-down, value preservation and process exit in 27.41 s. The new preparation
 test repeated two confirmed jobs in one Excel process, retained controls and
 checked owned process exit in 34.31 s.
 
-## Repeatable tests
+## Portable export acceptance
+
+The completed `07-baselines` preparation was exported with the ordinary CLI.
+
+```powershell
+deltasieve preparation-export PREPARATION_ROOT NEW_PACKAGE_ROOT
+```
+
+The package contained two successful occurrences, six byte-deduplicated XLSX
+blobs and one producing-environment record. An independent Python sqlite3 and
+hashlib check verified SQLite integrity, the database hash and every blob's hash
+and length. This export required no Excel operation. Four focused unit tests
+also cover duplicate bytes, failed outcomes, corrupt controls, immutable output
+destinations and older receipts with an available verified external baseline.
+Import preview and paired-folder materialization remain separate work.
+
+## Repeatable native tests
 
 Set TEMP, TMP, EXCEL_SHRINK_LOG_DIR and EXCEL_SHRINK_VISUAL_LOG_DIR to a working
 drive before running these tests. Set PERFORMANCE_PREPARATION_FIXTURE to an XLSX

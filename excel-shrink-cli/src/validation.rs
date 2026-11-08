@@ -82,6 +82,8 @@ enum Command {
     Open { report: PathBuf },
     /// Copy a completed report into a new, publishable static website directory.
     Export { report: PathBuf, output: PathBuf },
+    /// Export completed preparation outcomes with SQLite metadata and verified XLSX blobs.
+    PreparationExport { preparation: PathBuf, output: PathBuf },
     /// Print an editable configuration; arguments are an array, never a shell string.
     Template,
     #[command(hide = true)]
@@ -480,6 +482,11 @@ pub(crate) fn run_cli() -> Result<()> {
             let run = read_run(&root)?;
             let index = crate::validation_report::write_site(&root, &run)?;
             open_browser(index.as_os_str())
+        }
+        Some(Command::PreparationExport { preparation, output }) => {
+            let header = crate::validation_preparation::package::export(&preparation, &output)?;
+            println!("Exported {} preparation outcomes to {}", header.entries, output.display());
+            Ok(())
         }
         Some(Command::Export { report, output }) => {
             let root = report_root(&report)?;

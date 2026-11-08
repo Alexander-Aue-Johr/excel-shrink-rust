@@ -2,8 +2,8 @@
 
 This contract defines the next integration step after the persistent-worker
 acceptance experiment. The explicit-input and source-manifest preparation CLI
-interfaces are implemented. Package publication and import preview remain
-implementation requirements until their acceptance evidence is recorded.
+interfaces and package export are implemented. Import preview and consumption
+remain integration requirements.
 
 ## Source identity and selection
 
@@ -79,8 +79,9 @@ The transfer package avoids adding one diagnostic JSON file per event or input.
 The existing worker's raw receipts can remain in its private working directory.
 
 Publish a package only after database transactions close and every referenced
-blob is present and verified. Build it in a new sibling staging directory and
-publish to a new destination. Existing packages remain immutable. A failed
+blob is present and verified. Reserve a new destination exclusively, retain an
+incomplete marker during construction and publish the manifest last as the
+completion marker. Readers require that final manifest. Existing packages remain immutable. A failed
 export retains its explicit incomplete status and cannot replace a complete
 package. Archive wrapping is transport; extracted package contents undergo the
 same validation.

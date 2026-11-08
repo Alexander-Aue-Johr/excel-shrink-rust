@@ -1,6 +1,7 @@
 //! Stable source occurrences shared by preparation and portable artifact matching.
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
+pub(crate) mod package;
 use std::io::BufRead;
 use std::{
     collections::BTreeSet,
