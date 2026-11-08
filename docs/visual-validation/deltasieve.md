@@ -30,9 +30,17 @@ that root. `-BinaryPath` uses an existing build, and `-Config` loads a saved
 standalone configuration. An isolated HTTP smoke test verified the starter's
 session and working paths on V:.
 
-The existing corpus launcher remains available while existing-study resume
-is being integrated into the web configurator. Standalone configurations and
-the active Enron study currently have separate launch contracts.
+Choose `Resume a corpus study` in the web configurator and select the study's
+`launch.json`. The adapter verifies its executable checksum, absolute paths,
+request/output arguments and output lock before invoking the recorded runner.
+Its own study lock remains authoritative if another launcher races the request.
+New launcher logs are written beneath the existing output root in `web-launches`.
+The returned link opens that study's Observatory after startup.
+
+This path preserves the recorded binary and options. Changing study settings or
+upgrading its producer still uses the existing corpus launcher while those
+configuration contracts are being integrated. Standalone reports and corpus
+studies retain their respective on-disk formats.
 
 `deltasieve template` prints a configuration template. `deltasieve run --config PATH` executes a saved configuration. `compare --a SOURCE --b SOURCE --report DIRECTORY` compares existing sources. `open DIRECTORY` opens a retained standalone report. `export --help` describes the portable export command.
 
@@ -49,4 +57,10 @@ The integration passed compilation of all targets, five focused watchdog tests, 
 
 HTTP smoke tests returned the configuration page and idle session state. The updated server accepted the `deltasieve.localhost` Host and Origin headers, rejected a foreign Host with 403, and returned report and cache paths beneath the selected V: data directory.
 
-A native CLI smoke test processed one known Original/Default workbook pair through the standalone coordinator. It published `completed_with_limitations`, zero different regions, no failed pairs, and no unmatched candidates. Its retained report also exported successfully to a separate static directory. Browser hostname resolution, existing-study resume integration, and full browser interaction remain pending.
+A native CLI smoke test processed one known Original/Default workbook pair through the standalone coordinator. It published `completed_with_limitations`, zero different regions, no failed pairs, and no unmatched candidates. Its retained report also exported successfully to a separate static directory.
+
+Three focused study-resume tests verify relative paths, missing/duplicate/mismatched
+output arguments, a held output lock and a changed executable checksum. An HTTP
+test using the active Enron launch receipt returned 400 for its held output lock;
+the resume UI returned 200. A successful stopped-study resume, browser hostname
+resolution and full browser interaction remain pending.

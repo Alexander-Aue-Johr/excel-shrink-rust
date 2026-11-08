@@ -100,6 +100,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
         .route("/api/pick", post(pick))
         .route("/api/workbooks", get(workbooks))
         .route("/api/run", post(start))
+        .route("/api/study/resume", post(resume_study))
         .route("/api/open", post(open_report))
         .route("/api/export", post(export_report))
         .route("/reports/{id}/{*path}", get(report_asset))
@@ -406,6 +407,36 @@ async fn start(State(room): State<Arc<Room>>, Json(mut config): Json<RunConfig>)
         }
     });
     Ok(Json(json!({"accepted":true})))
+}
+
+#[derive(Deserialize)]
+struct ResumeStudy {
+    receipt: PathBuf,
+}
+
+/// Keep the selected study on its recorded runner while preserving its results.
+async fn resume_study(State(room): State<Arc<Room>>, Json(request): Json<ResumeStudy>) -> ApiResult {
+    let reservation = reserve(&room)?;
+    let (mut child, url) = tokio::task::spawn_blocking(move || {
+        crate::validation_study::resume(request.receipt)
+    }).await.map_err(anyhow::Error::from)??;
+    let pid = child.id();
+    let progress = room.progress.clone();
+    tokio::task::spawn_blocking(move || {
+        let _reservation = reservation;
+        let error = match child.wait() {
+            Ok(status) if status.success() => None,
+            Ok(status) => Some(format!("Study runner exited with {status}. Inspect its web-launches logs.")),
+            Err(error) => Some(format!("Could not observe study runner exit: {error}")),
+        };
+        if let Some(error) = error {
+            if let Ok(mut progress) = progress.lock() {
+                progress.error = Some(error);
+                progress.state = validation::RunState::Failed;
+            }
+        }
+    });
+    Ok(Json(json!({"pid":pid,"url":url})))
 }
 
 /// Keep start, open and export mutually exclusive, including failures and panics.

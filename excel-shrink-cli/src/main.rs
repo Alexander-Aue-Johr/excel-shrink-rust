@@ -27,6 +27,7 @@ mod validation_process;
 mod validation_report;
 mod validation_reuse;
 mod validation_room;
+mod validation_study;
 
 /// Open the standalone configuration UI or execute its explicit validation command.
 pub fn run_deltasieve() -> anyhow::Result<()> {

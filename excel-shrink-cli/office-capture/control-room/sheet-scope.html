@@ -24,6 +24,7 @@
         <label><input type="radio" name="mode" value="compare" checked> Compare existing A and B</label>
         <label><input type="radio" name="mode" value="process"> Process A, then compare</label>
         <label><input type="radio" name="mode" value="report"> Open a saved report</label>
+        <label><input type="radio" name="mode" value="study"> Resume a corpus study</label>
       </div>
     </section>
 
@@ -104,6 +105,13 @@
       <div class="actions"><button id="start" class="primary" type="submit">Start validation</button><button id="save-config" type="button">Download configuration</button><button id="edit-json" type="button">Edit complete JSON</button></div>
     </form>
 
+    <section id="saved-study" class="panel" hidden>
+      <h2>Resume a corpus study</h2>
+      <p>Choose the study's launch.json. Its recorded executable, options and existing results are reused. An active study keeps its output lock.</p>
+      <label>Launch receipt<span class="path"><input id="study-receipt"><button type="button" data-browse="study-receipt" data-kind="file">File…</button></span></label>
+      <button id="resume-study" type="button">Resume study</button>
+      <a id="study-link" hidden>Open study Observatory</a>
+    </section>
     <section id="saved-report" class="panel" hidden>
       <h2>Open completed or interrupted evidence</h2>
       <label>Report directory or run.json<span class="path"><input id="open-path"><button type="button" data-browse="open-path">Browse…</button></span></label>
