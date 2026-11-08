@@ -25,7 +25,6 @@ mod validation;
 mod validation_sources;
 mod validation_process;
 mod validation_report;
-mod validation_reuse;
 mod validation_room;
 mod validation_study;
 mod validation_preparation;

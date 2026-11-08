@@ -185,7 +185,7 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
         workbooks > 0,
         "Archive contains no direct XLS or XLSX workbooks"
     );
-    let archive_hash = crate::validation_reuse::file_sha256(&configuration.archive)?;
+    let archive_hash = deltasieve_engine::reuse::file_sha256(&configuration.archive)?;
     let source_after = fs::metadata(&configuration.archive)?;
     ensure!(
         source_before.len() == source_after.len()
@@ -200,7 +200,7 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
     fs::create_dir(&configuration.output_root)?;
     fs::File::create(configuration.output_root.join(".run.lock"))?;
     let source_executable = std::env::current_exe()?;
-    let binary_hash = crate::validation_reuse::file_sha256(&source_executable)?;
+    let binary_hash = deltasieve_engine::reuse::file_sha256(&source_executable)?;
     let executable_directory = configuration
         .output_root
         .join("executables")
@@ -209,7 +209,7 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
     let executable = executable_directory.join("deltasieve.exe");
     fs::copy(&source_executable, &executable)?;
     ensure!(
-        crate::validation_reuse::file_sha256(&executable)? == binary_hash,
+        deltasieve_engine::reuse::file_sha256(&executable)? == binary_hash,
         "Copied study executable checksum differs"
     );
     let capture = crate::validation::capture::capture_directory()?;
@@ -345,7 +345,7 @@ mod tests {
         let receipt: Receipt = serde_json::from_slice(&fs::read(&receipt_path).unwrap()).unwrap();
         receipt.validate().unwrap();
         assert_eq!(
-            crate::validation_reuse::file_sha256(&receipt.executable).unwrap(),
+            deltasieve_engine::reuse::file_sha256(&receipt.executable).unwrap(),
             receipt.binary_sha256
         );
         assert_eq!(receipt.environment["EXCEL_SHRINK_SQLITE_METADATA"], "1");

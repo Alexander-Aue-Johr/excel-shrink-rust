@@ -1,7 +1,8 @@
 //! Own temporary work and stage manifests independently of the final visual report.
 
 use super::{Output, RunConfig};
-use crate::{regression::write_atomic_artifact, validation_reuse::file_sha256};
+use crate::regression::write_atomic_artifact;
+use deltasieve_engine::reuse::file_sha256;
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

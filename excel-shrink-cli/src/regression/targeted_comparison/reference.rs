@@ -54,9 +54,9 @@ pub(crate) fn run(input: Args) -> Result<()> {
         "selection": "explicit_independent_reference_plan",
         "plan": serde_json::from_slice::<Value>(&plan_bytes)?,
         "plan_sha256": digest(&plan_bytes),
-        "original_sha256": crate::validation_reuse::file_sha256(&args.original)?,
-        "default_sha256": crate::validation_reuse::file_sha256(&args.default)?,
-        "producer_sha256": crate::validation_reuse::file_sha256(&std::env::current_exe()?)?,
+        "original_sha256": deltasieve_engine::reuse::file_sha256(&args.original)?,
+        "default_sha256": deltasieve_engine::reuse::file_sha256(&args.default)?,
+        "producer_sha256": deltasieve_engine::reuse::file_sha256(&std::env::current_exe()?)?,
         "started_at": chrono::Utc::now().to_rfc3339(),
         "limitations": [
             "Coverage is exactly the supplied areas; the command does not establish their completeness.",
@@ -133,10 +133,10 @@ fn observe(
         host.recalculate_workbook(lane, &comparison.telemetry)?;
         host.save_workbook(lane, &comparison.telemetry)?;
     }
-    receipt["original_rebuilt_sha256"] = json!(crate::validation_reuse::file_sha256(
+    receipt["original_rebuilt_sha256"] = json!(deltasieve_engine::reuse::file_sha256(
         &comparison.paths.original
     )?);
-    receipt["default_rebuilt_sha256"] = json!(crate::validation_reuse::file_sha256(
+    receipt["default_rebuilt_sha256"] = json!(deltasieve_engine::reuse::file_sha256(
         &comparison.paths.default
     )?);
     for (index, region) in regions.iter().enumerate() {
@@ -179,7 +179,7 @@ fn observe(
             images.push(Some(read_image(&path)?));
             retained.push(json!({
                 "file": path.file_name().context("Reference image has no filename")?.to_string_lossy(),
-                "sha256": crate::validation_reuse::file_sha256(&path)?,
+                "sha256": deltasieve_engine::reuse::file_sha256(&path)?,
                 "bytes": fs::metadata(&path)?.len()
             }));
         }

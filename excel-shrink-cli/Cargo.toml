@@ -22,6 +22,7 @@ corpus-regression-tests = []
 cell-tracing = ["excel-shrink-core/cell-tracing"]
 
 [dependencies]
+deltasieve-engine = { path = "../crates/deltasieve-engine" }
 excel-shrink-core = { path = "../excel-shrink-core" }
 clap = { version = "4.4", features = ["derive"] }
 tracing.workspace = true

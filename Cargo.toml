@@ -3,6 +3,7 @@ members = [
     "excel-shrink-core",
     "excel-shrink-cli",
     "apps/sheetshrink",
+    "crates/deltasieve-engine",
 ]
 resolver = "2"
 

@@ -449,6 +449,12 @@ Move code in reviewable steps with clear ownership of domain decisions, orchestr
 
 Acceptance requires a standalone validation entry point, a working integrated shrink-and-validate path, and focused compatibility tests after each extraction.
 
+The first engine extraction moves selected-OOXML fingerprints and reuse
+decisions into `crates/deltasieve-engine`, without a cleanup, Windows or UI
+dependency. The compatibility CLI consumes that API directly. Current ownership
+and the remaining extraction are described in `docs/architecture/toolset.md`.
+Native orchestration and Observatory extraction remain open.
+
 This task belongs before the first distributed evaluation build. Keep the
 currently running immutable Enron executable and its required assets available
 while moving source components. Preserve compatibility entry points or update

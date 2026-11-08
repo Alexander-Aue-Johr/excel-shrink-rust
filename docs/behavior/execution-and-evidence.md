@@ -31,6 +31,12 @@ verification still need end-to-end acceptance.
 
 ## E1. Corpus and workbook identities
 
+Selected-OOXML observation fingerprints and their comparison rules are owned by
+`deltasieve-engine::reuse`. The compatibility CLI uses that shared implementation
+for both applications. Version-one persisted fingerprints retain the same fields,
+member-content digests and coverage checks after extraction. Callers still own
+method/environment compatibility checks and the decision to reuse an observation.
+
 Keep the original corpus/archive identity and catalog when processing a subset.
 A workbook identity combines corpus ID, archive member index and member name.
 Record filenames use a shortened hash of that full identity. A filename alone

@@ -224,7 +224,7 @@ fn runtime_recipe_digest() -> Result<String> {
         }
         files.insert(
             relative.to_string_lossy().replace('\\', "/"),
-            crate::validation_reuse::file_sha256(entry.path())?,
+            deltasieve_engine::reuse::file_sha256(entry.path())?,
         );
     }
     storage::hash_json(&files)

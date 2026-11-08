@@ -8,10 +8,10 @@ use super::{
 };
 use crate::{
     validation_process, validation_report,
-    validation_reuse::{file_sha256, PairFingerprint},
     validation_sources::{self, MaterializedSource},
 };
 use anyhow::{ensure, Context, Result};
+use deltasieve_engine::reuse::{file_sha256, PairFingerprint};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};

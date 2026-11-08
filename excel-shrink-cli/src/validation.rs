@@ -9,7 +9,7 @@ mod run;
 mod storage;
 
 use crate::validation_process::Stage;
-use crate::validation_reuse::PartSelection;
+use deltasieve_engine::reuse::PartSelection;
 use anyhow::{ensure, Context, Result};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde::{Deserialize, Serialize};

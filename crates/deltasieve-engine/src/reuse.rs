@@ -11,9 +11,10 @@ use std::{
     path::Path,
 };
 
+/// Selected package contents whose identity is required to reuse an observation.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct PartSelection {
+pub struct PartSelection {
     pub worksheets: bool,
     pub workbook: bool,
     pub styles: bool,
@@ -100,14 +101,16 @@ impl PartSelection {
     }
 }
 
+/// Digest of one uncompressed package member, independent of ZIP compression.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub(crate) struct PartDigest {
+pub struct PartDigest {
     pub bytes: u64,
     pub sha256: String,
 }
 
+/// Versioned content identities for both partners of an earlier comparison.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct PairFingerprint {
+pub struct PairFingerprint {
     pub schema: u32,
     pub selection: PartSelection,
     pub original: BTreeMap<String, PartDigest>,
@@ -197,7 +200,7 @@ fn validate_part_name(name: &str) -> Result<()> {
 }
 
 /// Streaming file digest used for process artifacts and provenance, not visual reuse decisions.
-pub(crate) fn file_sha256(path: &Path) -> Result<String> {
+pub fn file_sha256(path: &Path) -> Result<String> {
     let mut file = File::open(path)?;
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 128 * 1024];
