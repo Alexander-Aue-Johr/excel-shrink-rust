@@ -69,3 +69,60 @@ report and a rendered-image report have different output semantics. Report both
 coverage and cost rather than treating one output as an interchangeable oracle.
 Retain unsupported properties and missing editions as explicit availability
 outcomes. The pilot remains incomplete until executable observations exist.
+
+## Reproducible fixture checkpoint
+
+`fixtures.py` creates five controlled pairs as deterministic OOXML test packages.
+It requires a fresh output directory and publishes `fixtures.json` with exact
+input hashes and declared changes after producing all ten files. Generated
+workbooks remain private test artifacts outside Git. Run the independent package
+checks before sharing a frozen fixture set.
+
+```powershell
+python -m unittest discover -s docs/visual-validation/experiments/comparator-pilot -p test_fixtures.py -v
+python docs/visual-validation/experiments/comparator-pilot/fixtures.py --output G:\deltasieve-work\comparator-pilot-20261108\fixtures
+```
+
+The package check parses every XML member, verifies repeatable hashes, confirms
+that only the identical pair has equal whole-file hashes, and checks the input
+values, hidden row, layout, sparse-format mutation and unchanged CF/chart
+reference expressions. The dependent chart's numeric cache reflects the changed
+input. Its formula and CF definition remain unchanged. The sparse case contains
+20,000 explicitly formatted blank cells and seven numeric cells.
+
+`accept-fixtures.ps1 -Root G:\deltasieve-work\comparator-pilot-20261108` opens the
+ten inputs read-only in one owned Excel instance and retains native observations
+and PID/creation-time ownership. Invoke it in a separate process with an external
+deadline and working-drive TEMP/TMP, rather than in a shared interactive Excel
+session. A 120-second external deadline was used for acceptance. Enron admission
+was temporarily reduced to three groups, then restored to four in a finally
+block. The owned Excel process was confirmed absent afterward.
+
+The native acceptance on Excel 16.0.20527.20150 opened all ten inputs and retained
+unchanged input hashes. It observed both offscreen values changing from 7 to 9,
+row 3000 remaining hidden, row 1 changing from 15 to 30 points, different A1
+fills, and one chart plus one CF rule in both dependent variants. Excel reported
+column A widths of 11.29 and 23.29, illustrating that its effective width units
+differ from the literal XML attributes 12 and 24. These observations establish
+native input acceptance; independent rendered captures remain pending.
+
+Private evidence is retained under
+`G:\deltasieve-work\comparator-pilot-20261108`. The first native attempt failed
+before opening any workbook because the helper environment did not expose
+`Get-FileHash`. Its observations remain as `native-fixture-observations-attempt1.json`.
+The corrected helper uses .NET SHA-256 and retains its successful observations
+in `native-fixture-observations.json`. This was a helper failure and provides no
+evidence against workbook validity.
+
+## External acquisition checkpoint
+
+The official DiffEngineX download page offers a no-installer ZIP for its 30-day
+evaluation. xlCompare documents a portable option and a fully functional download
+without registration. Their license agreements attach conditions to acquisition
+or use, so explicit trial-license approval was requested before downloading or
+executing either product. No external execution result is claimed by the native
+fixture acceptance above.
+[DiffEngineX downloads](https://www.diffenginex.com/excel-differences-download.html),
+[DiffEngineX terms](https://www.florencesoft.com/xldifflicense.html),
+[xlCompare downloads](https://xlcompare.com/download.html),
+[xlCompare terms](https://xlcompare.com/copyright.html)
