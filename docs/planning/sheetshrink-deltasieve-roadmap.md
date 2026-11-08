@@ -187,6 +187,17 @@ and parent-content checks. A source or generation change can invalidate affected
 artifacts; a SheetShrink-only change does not by itself invalidate CP generation.
 Preserve all earlier manifests and outcomes when retrying or upgrading.
 
+The user additionally requires the CP preparation job to use a long-lived worker
+pool with continuous refill, matching the XLS-conversion scheduling behavior.
+Give it an independent concurrency setting. Keep each worker's Excel instance,
+private desktop and UI-automation ownership separate, close the previous workbook
+before accepting the next, and replace failed instances. Preserve RAM admission,
+AutoRecover suppression and safe owned cache cleanup. Measure sustained
+utilization, successful artifacts per hour, memory and restart behavior with
+several successive workbooks. Raising the target admits additional workers;
+lowering it retires excess workers after their current jobs. Keep aggregate
+native admission explicit when conversion and CP preparation run together.
+
 ## 07 Verify conversion and environment-dependent formulas
 
 - [ ] Verify completed conversion fixes and finish the handling of `CELL("filename")` and related evidence.
