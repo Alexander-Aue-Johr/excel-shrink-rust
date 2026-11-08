@@ -2,8 +2,10 @@
 
 ## Status on 2026-11-08
 
-No external comparator execution or throughput measurement has been completed.
-A bounded local inventory found no matching Synkronizer, xlCompare, DiffEngineX
+The five-pair xlCompare and DiffEngineX CLI pilot has completed. Larger-input
+measurements, independent rendered reference captures and option/edition coverage
+remain open. Before acquiring the trials, a bounded local inventory found no
+matching Synkronizer, xlCompare, DiffEngineX
 or Spreadsheet Compare uninstall entries. The standard Office16 DCF executable
 locations and the standard xlCompare/DiffEngineX executable locations were also
 absent. Portable or nonstandard installations remain possible. Installed
@@ -68,7 +70,8 @@ which tasks are genuinely comparable to DeltaSieve. A structural difference
 report and a rendered-image report have different output semantics. Report both
 coverage and cost rather than treating one output as an interchangeable oracle.
 Retain unsupported properties and missing editions as explicit availability
-outcomes. The pilot remains incomplete until executable observations exist.
+outcomes. Broader conclusions require the large-input and rendering follow-ups
+below.
 
 ## Reproducible fixture checkpoint
 
@@ -126,3 +129,75 @@ fixture acceptance above.
 [DiffEngineX terms](https://www.florencesoft.com/xldifflicense.html),
 [xlCompare downloads](https://xlcompare.com/download.html),
 [xlCompare terms](https://xlcompare.com/copyright.html)
+
+## Executed five-pair CLI observations
+
+The user explicitly approved both trial agreements before acquisition and use.
+The official portable DiffEngineX ZIP and xlCompare MSI were downloaded to G:.
+The MSI was administratively extracted into a private directory, without an
+ordinary product installation. Both executable Authenticode checks were valid.
+The observed file versions were DiffEngineX 3.18.0.0 and xlCompare 12.5.0.0
+(marketed as 12.05).
+
+| Executable | SHA-256 |
+| --- | --- |
+| xlCompare | `4b3a8f9a740e73a60832f9411ff7d9e42b577ac368bc6356815ef25e8a93496b` |
+| DiffEngineX | `4d23aa73dafc2ae9a7bee09563310cc15bd1d05f0f685d52d1e93de7b231220c` |
+
+`run_pilot.py` verifies each frozen input and supplies fresh exact copies to the
+documented report command. It retains stdout/stderr, exact arguments, process
+metrics, full XLSX reports and a bounded text preview. DiffEngineX's positive
+difference-count exit codes are distinguished from errors. Missing, unreadable
+or timed-out reports stop further trials. The helper never interprets a report
+as rendered-pixel equality. All ten measured trial input pairs remained
+byte-identical after their comparisons.
+
+| Pair | xlCompare seconds | DiffEngineX seconds | Observed exported content |
+| --- | --- | --- | --- |
+| Identical | 0.778 | 4.805 | Empty xlCompare report; DiffEngineX zero differences |
+| Offscreen/hidden | 0.759 | 12.392 | Both export B2000; neither tested export lists B3000 |
+| Direct presentation | 1.245 | 14.851 | Empty xlCompare report; DiffEngineX zero cell differences |
+| Dependent presentation | 1.301 | 5.424 | Both export the B1 input edit; no separate dependent CF/chart finding |
+| Sparse formatting | 2.022 | 13.958 | Empty xlCompare report; DiffEngineX zero cell differences |
+
+The xlCompare trial export contains a message limiting output to its first ten
+rows. Its effect on reporting must remain disclosed. Options/editions beyond
+the exact retained commands were not exhaustively evaluated. The absence of a
+format or hidden-cell entry in these reports does not establish absence of that
+feature in the full products. The offscreen result directly establishes report
+generation beyond the initial viewport for these commands.
+
+These are single-trial wall times alongside Enron, preceded by one identical-pair
+smoke test for each product. Resource receipts cover only the direct comparator
+process and exclude any separate Excel process. They cannot support a fair
+whole-process memory comparison between standalone and Excel-backed products.
+The full receipts are under the private experiment's `xlcompare-five-pairs` and
+`diffenginex-five-pairs` directories. Each Excel-backed test window restored
+Enron admission to four groups afterward. No comparator process remained after
+the pilot.
+
+## Large-input follow-up
+
+The user requested preserving limited trial uses for large files. DiffEngineX's
+official home page specifies 30 days and at most 60 comparisons. Six invocations
+have been used here before the large-input stage, including the smoke test.
+No trial counter or license limitation is modified. Large-input follow-up takes
+priority over further small repetitions. [DiffEngineX evaluation limits](https://diffenginex.com/)
+
+`prepare_large.py` extracts two preselected Destatis members, verifies their
+previously frozen SHA-256 identities and runs SheetShrink Default with one Rayon
+thread. The pinned release binary is commit `317200b`; its Core has no diff from
+the current checkout. These input pairs are prepared independently of external
+trial invocations. Their visual outcome remains for independent validation.
+
+| Input | Original bytes | Sheet XML bytes | Sheets | Default output bytes |
+| --- | --- | --- | --- | --- |
+| Kernhaushalt Gemeinden | 89,367,137 | 953,486,690 | 107 | 4,602,649 |
+| Verkehrsunfälle Zeitreihen | 37,207,883 | 774,344,761 | 215 | 2,608,693 |
+
+The SheetShrink preparation wall times were 19.323 and 9.801 seconds in one
+concurrent-load trial. Shrinking and comparing workbooks are separate tasks.
+Structural comparison costs are compared with DeltaSieve only where output
+semantics and tested options are stated. Check Performance remains the cleaning
+baseline. A trial/export limit must never become a whole-workbook equality claim.
+Large-input comparator execution and reference validation remain pending.
