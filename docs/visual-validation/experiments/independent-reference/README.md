@@ -26,8 +26,12 @@ Set TEMP and TMP to a working drive before launching.
     -OperationTimeoutSeconds 90 -TotalTimeoutSeconds 240
 ```
 
-The output directory must be new. The launcher owns a private desktop and cleanup
-job and retains its completion/failure receipt. The command preserves working
+The output directory and its `.runtime` sibling must be new. The launcher sets
+child `TEMP`, `TMP` and run-log paths beneath that sibling, on the selected
+working drive, and restores the caller's environment afterward. Runtime receipts
+also survive failures before the comparison directory exists. The launcher owns
+a private desktop and cleanup job and retains its completion/failure receipt.
+The command preserves working
 copies, raw images, source and rebuilt workbook checksums, plan checksum, producer
 checksum, native geometry, image identities and exact RGBA inequality observations.
 It does not update a corpus verdict or call unequal pixels a product regression.

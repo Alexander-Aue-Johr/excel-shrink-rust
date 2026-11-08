@@ -26,6 +26,13 @@ $defaultPath = (Resolve-Path -LiteralPath $Default).Path
 $planPath = (Resolve-Path -LiteralPath $Plan).Path
 $outputPath = [IO.Path]::GetFullPath($Output).TrimEnd('\')
 if (Test-Path -LiteralPath $outputPath) { throw 'Reference output must be a new directory.' }
+$runtimePath = $outputPath + '.runtime'
+if (Test-Path -LiteralPath $runtimePath) { throw 'Reference runtime directory must be new.' }
+[void][IO.Directory]::CreateDirectory((Join-Path $runtimePath 'temp'))
+$previousEnvironment = @{}
+foreach ($name in @('TEMP', 'TMP', 'EXCEL_SHRINK_LOG_DIR')) {
+    $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+}
 $desktop = New-Object CaptureDesktop
 $owned = New-Object CaptureProcesses
 $process = $null
@@ -34,6 +41,9 @@ $exitCode = $null
 $previousDesktop = $env:EXCEL_SHRINK_EXPECTED_DESKTOP
 try {
     $env:EXCEL_SHRINK_EXPECTED_DESKTOP = $desktop.Name
+    $env:TEMP = Join-Path $runtimePath 'temp'
+    $env:TMP = $env:TEMP
+    $env:EXCEL_SHRINK_LOG_DIR = Join-Path $runtimePath 'logs'
     $arguments = 'regression reference-compare --original "{0}" --default "{1}" --plan "{2}" --output "{3}" --operation-timeout-seconds {4}' -f `
         $originalPath, $defaultPath, $planPath, $outputPath, $OperationTimeoutSeconds
     $process = $desktop.Start($binaryPath, $arguments, $owned)
@@ -47,6 +57,9 @@ try {
     throw
 } finally {
     $env:EXCEL_SHRINK_EXPECTED_DESKTOP = $previousDesktop
+    foreach ($name in $previousEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+    }
     try { $owned.Dispose() }
     catch {
         if (-not $failure) { $failure = $_.Exception.Message }
@@ -55,12 +68,15 @@ try {
     finally {
         if ($null -ne $process) { $process.Dispose() }
         $desktop.Dispose()
+        $receipt = @{status=$(if($failure){'failed'}else{'completed'}); error=$failure;
+            exit_code=$exitCode; total_timeout_seconds=$TotalTimeoutSeconds;
+            runtime_directory=$runtimePath; finished_at=[DateTime]::UtcNow.ToString('o')}
+        $receiptJson = $receipt | ConvertTo-Json -Depth 3
+        [IO.File]::WriteAllText((Join-Path $runtimePath 'reference-launcher.json'),
+            $receiptJson, [Text.UTF8Encoding]::new($false))
         if (Test-Path -LiteralPath $outputPath) {
-            $receipt = @{status=$(if($failure){'failed'}else{'completed'}); error=$failure;
-                exit_code=$exitCode; total_timeout_seconds=$TotalTimeoutSeconds;
-                finished_at=[DateTime]::UtcNow.ToString('o')}
             [IO.File]::WriteAllText((Join-Path $outputPath 'reference-launcher.json'),
-                ($receipt | ConvertTo-Json -Depth 3), [Text.UTF8Encoding]::new($false))
+                $receiptJson, [Text.UTF8Encoding]::new($false))
         }
     }
 }
