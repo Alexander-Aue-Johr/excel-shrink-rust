@@ -567,3 +567,21 @@ Approval was received on 2026-11-08. Task 01 is in progress. The live runner PID
 
 These checkpoints describe partial acceptance evidence. The unchecked tasks
 retain their full remaining requirements.
+
+### Preparation delivery checkpoint on 2026-11-08
+
+- `ed6d305` adds verified selective continuation into a new preparation directory.
+  A controlled native owner interruption retained the completed input and
+  regenerated only the missing input. Original receipts and measurements stayed
+  unchanged. Recovery acceptance is documented in `dbfb7fe`.
+- `03285c9` adds live Check Performance worker targets through the web/API.
+  Two bounded six-occurrence native tests completed without failures. The second
+  observed two concurrently busy workers before reduction, complete retirement
+  and cleanup. Existing Enron results and the pinned production runner were
+  preserved, and four-group admission was restored after each native window.
+- `8c4feb7` freezes the five-pair external comparator protocol and records the
+  checked local availability and primary documentation. No external comparator
+  has yet been executed. The pilot and broader detection evaluation remain open.
+- Browser layout acceptance, automatic preparation-job reattachment, unified
+  corpus/partition selection and the remaining distributed release gates still
+  require implementation or verification. Task 06 remains incomplete.

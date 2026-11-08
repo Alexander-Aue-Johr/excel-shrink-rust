@@ -252,6 +252,36 @@ browser layout acceptance and live worker-target adjustment remain open.
 Both isolated hosts were closed and Enron admission was restored to four.
 A subsequent live query confirmed four active groups and continuing completions.
 
+## Live target adjustment acceptance
+
+Commit `03285c9` adds a job-bound live target through
+`POST /api/preparation/control` and the preparation progress panel. Positive
+targets can exceed the logical core count. The targeted Rust suites passed,
+including active-job identity checks, invalid targets and reuse without native
+workers. Three JavaScript tests passed, including the submitted job identity.
+
+Two bounded native runs each selected six synthetic occurrences of the same
+small workbook. The first raised the target from one to two, observed two
+processes, and reduced it while the second process was still starting. It
+completed all six inputs without failure and observed retirement.
+
+The second run explicitly waited until two workers were both ready and busy
+before reducing the target to one. It also completed all six inputs without
+failure, with final requested target one and peak dispatch slots two. The last
+progress snapshot recorded approximately 73.81 seconds elapsed. Fifteen sampled
+pool snapshots showed a retiring worker. The terminal pool was stopped, and both
+Excel PIDs found in successful receipts were absent afterward.
+
+Private evidence includes `run-live-target-acceptance.ps1`,
+`run-live-target-ready-acceptance.ps1`, `live-target-acceptance.json`,
+`live-target-ready-acceptance.json` and the two `native-live-target-*` result
+directories beside the earlier experiment. These functional tests do not
+estimate throughput benefit, high-concurrency behavior or prompt coverage.
+The scripts closed their owned hosts and restored Enron admission to four.
+The subsequent live query confirmed four active groups and 6,840 completed
+comparisons. Browser layout acceptance and automatic job reattachment remain
+open.
+
 ## Repeatable native tests
 
 Set TEMP, TMP, EXCEL_SHRINK_LOG_DIR and EXCEL_SHRINK_VISUAL_LOG_DIR to a working

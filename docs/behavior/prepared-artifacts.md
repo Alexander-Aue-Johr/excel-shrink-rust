@@ -294,7 +294,10 @@ terminal jobs and zero targets are rejected. The UI keeps this control separate
 from frozen input selection. Progress exposes the observed target. The terminal
 ledger retains the original requested target and `final_requested_workers`.
 An invalid or unreadable manager control document aborts the owned pool with an
-explicit error. Bounded native adjustment acceptance remains to be performed.
+explicit error. Bounded native acceptance verified one-to-two-to-one adjustment,
+two concurrently busy workers, successful completion and owned process cleanup.
+The experiment record is in
+`docs/visual-validation/experiments/performance-preparation/README.md`.
 
 ## Remaining acceptance gates
 
