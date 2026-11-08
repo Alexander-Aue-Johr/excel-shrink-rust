@@ -211,10 +211,45 @@ most 64 KiB of preparation counters. The page displays preparation progress
 outside the configuration dialog and keeps producer failures explicit.
 
 The owner process must remain running. Reloading or closing the browser does not
-stop the job. Automatic recovery after owner-process restart and changing the
-worker target during this job remain integration requirements. Completed native
+stop the job. After interruption, select the same source manifest, a new output
+directory and the earlier preparation in the optional reuse field. Changing the
+worker target during a running job remains an integration requirement. Completed native
 outcomes and job receipts are retained even though the room currently exposes
 only its most recent preparation job.
+
+## Selective preparation continuation
+
+The CLI accepts `regression performance-prepare --source-manifest sources.json
+--output NEW_DIRECTORY --reuse-from PREVIOUS_DIRECTORY --workers N`. Web jobs
+offer the same optional prior-directory field. Continuation copies successful,
+compatible inputs into the new batch and leaves every previous file unchanged.
+It requires a recorded stopped pool or a positively departed PID/creation-time
+owner. Without a stopped pool, a live or unverifiable previous owner is rejected
+before creating output.
+
+Completed inputs are matched by stable source ID. Reuse checks the native recipe
+asset hashes, positive optimization outcome, supplied raw-source provenance,
+current and expected baseline hashes, retained baseline binding, exact control
+set and every artifact's length/hash. Missing or incompatible input evidence
+enters the native queue with a recorded reuse-miss reason. An unreadable or
+ambiguous prior source index fails explicitly. Copy-time corruption also fails
+instead of publishing a falsely completed input.
+
+The original producer, environment and measured preparation costs stay attached
+to each copied receipt. Reuse is a historical-artifact choice and does not claim
+that the current Excel environment generated those states. Different new inputs
+may receive new producer provenance. The current executable alone does not
+invalidate old CP artifacts. A native recipe change does. Older receipts may
+take producer identity from their existing final batch ledger; interrupted old
+receipts without either producer source cannot be silently attributed.
+
+Progress and final ledgers report reused counts separately. Native worker count
+is based on the remaining queue, so a fully reusable batch starts no Excel
+worker. Stable source manifests permit changed order and partitions without
+renumbering source identities. Explicit-file-list identities retain their
+previously documented list-local scope. This is explicit continuation into a new
+batch, with preserved earlier attempts; automatic in-place job reattachment is
+still outside the implemented startup path.
 
 Check Performance preparation publishes a compact `progress.json` after pool
 initialization, at most once per second while running, and after the terminal

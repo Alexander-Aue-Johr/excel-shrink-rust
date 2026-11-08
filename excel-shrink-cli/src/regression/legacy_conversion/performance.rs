@@ -5,11 +5,13 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Mutex,
 };
+mod reuse;
 
 #[derive(Default)]
 struct ProgressCounters {
     prepared: AtomicUsize,
     failed: AtomicUsize,
+    reused: AtomicUsize,
 }
 
 /// Publish compact counters without rescanning per-workbook receipts for web status queries.
@@ -31,6 +33,7 @@ fn publish_progress(
         &json!({
             "version":1,"operation":"check-performance","status":status,
             "total":total,"started":started,"prepared":prepared,"failed":failed,
+            "reused":counters.reused.load(Ordering::Acquire),
             "in_flight":started.saturating_sub(completed),"queued":total.saturating_sub(started),
             "unresolved":total.saturating_sub(completed),"requested_workers":workers,
             "elapsed_seconds":elapsed.as_secs_f64(),"updated_at":chrono::Utc::now().to_rfc3339()
@@ -52,6 +55,9 @@ pub(crate) struct Args {
     /// Independent Excel workers; may exceed the logical processor count.
     #[arg(long, default_value_t = 2)]
     workers: usize,
+    /// Reuse verified successful inputs from a completed or positively departed preparation.
+    #[arg(long)]
+    reuse_from: Option<PathBuf>,
 }
 
 /// Run one continuously refilled queue, retaining every input's terminal receipt.
@@ -59,12 +65,14 @@ pub(crate) fn run_manifest(
     source_manifest: PathBuf,
     output: PathBuf,
     workers: usize,
+    reuse_from: Option<PathBuf>,
 ) -> Result<()> {
     run(Args {
         input: Vec::new(),
         source_manifest: Some(source_manifest),
         output,
         workers,
+        reuse_from,
     })
 }
 
@@ -83,20 +91,83 @@ pub(crate) fn run(args: Args) -> Result<()> {
         None => validation_preparation::explicit(&args.input)?,
     };
     let selection_hash = validation_preparation::selection_hash(&inputs)?;
+    let previous = args
+        .reuse_from
+        .as_deref()
+        .map(reuse::Index::open)
+        .transpose()?;
     fs::create_dir(&args.output)?;
     let output = fs::canonicalize(&args.output)?;
     let producer = super::super::artifact_cache::hash_file(&std::env::current_exe()?)?;
+    write_json(
+        &output.join("owner.json"),
+        &json!({"pid":std::process::id(),"started_ms":crate::native_process::current_started_unix_ms()}),
+    )?;
     let mut pool = Pool::new_performance(output.join("workers"))?;
     let pool_root = pool.root.clone();
     let next = AtomicUsize::new(0);
     let counters = ProgressCounters::default();
     let started_at = Instant::now();
-    let outcomes = Mutex::new(Vec::new());
-    let count = args.workers.min(inputs.len());
+    let recipe = generation_recipe(&pool_root)?;
+    let mut retained = Vec::new();
+    let mut pending = Vec::new();
+    let mut reuse_lookups = std::collections::BTreeMap::new();
+    let mut last_restore_progress = Instant::now();
     publish_progress(
         &output,
         &counters,
         0,
+        inputs.len(),
+        args.workers,
+        started_at.elapsed(),
+        "restoring",
+    )?;
+    for (index, input) in inputs.iter().enumerate() {
+        let directory = output.join(format!("input-{index:06}"));
+        let lookup = previous
+            .as_ref()
+            .map(|previous| previous.lookup(input, &recipe));
+        match lookup {
+            Some(Ok(Some(entry))) => {
+                entry.restore(&directory)?;
+                retained.push(json!({"index":index,"source_id":input.source_id,"name":input.name,
+                    "input":input.baseline,"directory":directory,"status":"prepared","error":null,"reused":true}));
+                counters.prepared.fetch_add(1, Ordering::Release);
+                counters.reused.fetch_add(1, Ordering::Release);
+            }
+            other => {
+                let detail = match other {
+                    Some(Err(error)) => {
+                        format!("incompatible or invalid prior evidence: {error:#}")
+                    }
+                    _ => "no compatible completed input".into(),
+                };
+                if previous.is_some() {
+                    reuse_lookups.insert(index, detail);
+                }
+                pending.push(index);
+            }
+        }
+        if last_restore_progress.elapsed() >= Duration::from_secs(1) {
+            publish_progress(
+                &output,
+                &counters,
+                retained.len(),
+                inputs.len(),
+                args.workers,
+                started_at.elapsed(),
+                "restoring",
+            )?;
+            last_restore_progress = Instant::now();
+        }
+    }
+    let reused = retained.len();
+    let outcomes = Mutex::new(retained);
+    let count = args.workers.min(pending.len());
+    publish_progress(
+        &output,
+        &counters,
+        reused,
         inputs.len(),
         args.workers,
         started_at.elapsed(),
@@ -106,10 +177,11 @@ pub(crate) fn run(args: Args) -> Result<()> {
         let handles: Vec<_> = (0..count)
             .map(|_| {
                 scope.spawn(|| loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(input) = inputs.get(index) else {
+                    let position = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(&index) = pending.get(position) else {
                         break;
                     };
+                    let input = &inputs[index];
                     let directory = output.join(format!("input-{index:06}"));
                     let result = prepare(&pool_root, input, &directory, &producer);
                     let succeeded = result.is_ok();
@@ -120,7 +192,8 @@ pub(crate) fn run(args: Args) -> Result<()> {
                         "input": input.baseline,
                         "directory": directory,
                         "status": if result.is_ok() { "prepared" } else { "failed" },
-                        "error": result.err().map(|error| format!("{error:#}"))
+                        "error": result.err().map(|error| format!("{error:#}")),
+                        "reused":false,"reuse_lookup":reuse_lookups.get(&index)
                     });
                     if outcome["status"] == "failed" {
                         if let Err(error) = write_json(&directory.join("failed.json"), &outcome) {
@@ -149,7 +222,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
                 if let Err(error) = publish_progress(
                     &output,
                     &counters,
-                    next.load(Ordering::Acquire),
+                    reused + next.load(Ordering::Acquire).min(pending.len()),
                     inputs.len(),
                     args.workers,
                     started_at.elapsed(),
@@ -192,13 +265,15 @@ pub(crate) fn run(args: Args) -> Result<()> {
             "visual_validation": "pending",
             "total": inputs.len(),
             "failed": failed,
+            "reused":reused,
+            "reuse_from":args.reuse_from,
             "inputs": outcomes
         }),
     )?;
     publish_progress(
         &output,
         &counters,
-        next.load(Ordering::Acquire),
+        reused + next.load(Ordering::Acquire).min(pending.len()),
         inputs.len(),
         args.workers,
         started_at.elapsed(),
@@ -260,11 +335,7 @@ fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str)
         "No confirmed native optimization outcome"
     );
     let mut artifacts = std::collections::BTreeMap::new();
-    for name in [
-        "original-saved.xlsx",
-        "before-optimization.xlsx",
-        "after-optimization.xlsx",
-    ] {
+    for name in validation_preparation::PREPARATION_CONTROLS {
         let path = directory.join(name);
         artifacts.insert(
             name,
@@ -274,19 +345,7 @@ fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str)
             }),
         );
     }
-    let mut recipe = std::collections::BTreeMap::new();
-    for name in [
-        "worker.ps1",
-        "WorkerPerformance.psm1",
-        "CheckPerformance.psm1",
-        "NativeWindow.cs",
-        "ExcelProcessId.cs",
-    ] {
-        recipe.insert(
-            name,
-            super::super::artifact_cache::hash_file(&root.join(name))?,
-        );
-    }
+    let recipe = generation_recipe(root)?;
     write_json(
         &directory.join("prepared.json"),
         &json!({
@@ -313,9 +372,53 @@ fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str)
     )
 }
 
+fn generation_recipe(root: &Path) -> Result<Value> {
+    let mut recipe = std::collections::BTreeMap::new();
+    for name in [
+        "worker.ps1",
+        "WorkerPerformance.psm1",
+        "CheckPerformance.psm1",
+        "NativeWindow.cs",
+        "ExcelProcessId.cs",
+    ] {
+        recipe.insert(
+            name,
+            super::super::artifact_cache::hash_file(&root.join(name))?,
+        );
+    }
+    Ok(serde_json::to_value(recipe)?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_continuation_needs_no_excel_worker_and_preserves_producer() -> Result<()> {
+        let (root, previous, manifest, _) = reuse::fixture()?;
+        let output = root.join("continued");
+        run(Args {
+            input: Vec::new(),
+            source_manifest: Some(manifest),
+            output: output.clone(),
+            workers: 32,
+            reuse_from: Some(previous),
+        })?;
+        let batch = read_json(&output.join("preparation.json")).unwrap();
+        assert_eq!(batch["reused"], 1);
+        assert_eq!(batch["workers"], 0);
+        assert_eq!(batch["inputs"][0]["status"], "prepared");
+        let receipt = read_json(&output.join("input-000000/prepared.json")).unwrap();
+        assert_eq!(receipt["producer_sha256"], "a".repeat(64));
+        assert_eq!(
+            read_json(&output.join("workers/manifest.json")).unwrap()["workers"],
+            json!([])
+        );
+        let progress = read_json(&output.join("progress.json")).unwrap();
+        assert_eq!(progress["reused"], 1);
+        assert_eq!(progress["status"], "completed");
+        Ok(())
+    }
 
     #[test]
     fn compact_progress_counts_queued_in_flight_and_terminal_outcomes() -> Result<()> {
@@ -369,6 +472,7 @@ mod tests {
             source_manifest: None,
             output: output.clone(),
             workers: 0,
+            reuse_from: None,
         })
         .unwrap_err();
         assert!(error.to_string().contains("positive"));
@@ -421,6 +525,7 @@ mod tests {
             source_manifest: None,
             output: output.clone(),
             workers: 1,
+            reuse_from: None,
         })?;
         let progress =
             read_json(&output.join("progress.json")).context("Progress receipt missing")?;

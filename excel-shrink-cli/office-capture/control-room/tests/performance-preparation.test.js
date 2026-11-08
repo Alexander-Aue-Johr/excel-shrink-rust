@@ -7,10 +7,11 @@ test('preparation workers are independent and can exceed logical cores', () => {
     source_manifest: { value: ' G:\\selected sources.json ' },
     output: { value: ' V:\\new preparation ' },
     workers: { value: '32' },
+    reuse_from: { value: '' },
   };
   const form = { elements: { namedItem: name => fields[name] } };
   assert.deepEqual(preparationJobRequest(form), {
-    source_manifest: 'G:\\selected sources.json', output: 'V:\\new preparation', workers: 32,
+    source_manifest: 'G:\\selected sources.json', output: 'V:\\new preparation', workers: 32, reuse_from: null,
   });
   for (const invalid of ['', '0', '-1', '2.5', 'Infinity']) {
     fields.workers.value = invalid;

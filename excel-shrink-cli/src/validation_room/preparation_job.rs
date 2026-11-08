@@ -8,6 +8,7 @@ pub(super) struct StartRequest {
     source_manifest: PathBuf,
     output: PathBuf,
     workers: usize,
+    reuse_from: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -20,6 +21,7 @@ pub(super) struct Job {
     receipt: PathBuf,
     source_manifest_sha256: String,
     workers: usize,
+    reuse_from: Option<PathBuf>,
     total: usize,
     owner_pid: u32,
     started_at: String,
@@ -54,6 +56,7 @@ pub(super) async fn start(
                     parameters.source_manifest,
                     parameters.output,
                     parameters.workers,
+                    parameters.reuse_from,
                 )
             })
             .await;
@@ -94,6 +97,7 @@ fn freeze_job(request: StartRequest) -> Result<Job> {
         "Choose a new preparation output directory"
     );
     let id = uuid::Uuid::new_v4().to_string();
+    let reuse_from = request.reuse_from.map(fs::canonicalize).transpose()?;
     let jobs_root = parent.join(".preparation-jobs");
     let directory = jobs_root.join(&id);
     fs::create_dir_all(&jobs_root)?;
@@ -122,6 +126,7 @@ fn freeze_job(request: StartRequest) -> Result<Job> {
         receipt: directory.join("job.json"),
         source_manifest_sha256,
         workers: request.workers,
+        reuse_from,
         total: inputs.len(),
         owner_pid: std::process::id(),
         started_at: chrono::Utc::now().to_rfc3339(),
@@ -201,6 +206,7 @@ mod tests {
                 source_manifest: manifest,
                 output: root.join("output"),
                 workers: 32,
+                reuse_from: None,
             },
         ))
     }

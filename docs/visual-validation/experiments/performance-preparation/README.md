@@ -203,7 +203,22 @@ preparation tests passed after this change. The new regression test verifies
 distinct per-input producers, legacy batch fallback and explicit rejection of a
 malformed producer identity. The ignored native test now asserts producer
 agreement with the batch receipt, but was not rerun for this metadata-only
-change. Interrupted-batch continuation remains open.
+change. Interrupted-batch continuation remained open at that checkpoint.
+
+Selective continuation now accepts a prior preparation directory and a new
+destination through the CLI and web job request. Eight focused preparation
+tests passed, including unchanged old receipts, retained measurements/producer,
+incompatible recipe, changed baseline, corrupt controls, live-owner rejection
+and a completely reusable batch with zero Excel workers. Six room tests,
+seventeen package tests and two preparation-control JavaScript tests also passed.
+
+The ordinary CLI continued the real `native-web-job-01` result into
+`continued-native-web-job-01`. It reused one input, reported zero native workers,
+no failures and an empty worker membership list. Producer identity and all
+original measurements were preserved, and baseline bytes matched. The private
+`continuation-cli-acceptance.json` records these checks. No new native Excel
+operation was required for this acceptance. A mixed native cache-hit/cache-miss
+run and controlled owner-interruption recovery remain acceptance work.
 
 ## Repeatable native tests
 

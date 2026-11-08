@@ -5,7 +5,7 @@ export function preparationJobRequest(form) {
   const sourceManifest = value('source_manifest');
   const output = value('output');
   if (!sourceManifest || !output) throw new Error('Choose a source manifest and a new preparation directory.');
-  return { source_manifest: sourceManifest, output, workers };
+  return { source_manifest: sourceManifest, output, workers, reuse_from: value('reuse_from') || null };
 }
 
 export function installPerformancePreparation({ api, message }) {
@@ -20,7 +20,7 @@ export function installPerformancePreparation({ api, message }) {
     const counters = job.progress || {};
     const finished = (counters.prepared || 0) + (counters.failed || 0);
     const total = counters.total ?? job.total;
-    byId('performance-job-status').textContent = `${job.status} · ${finished} / ${total} finished · ${counters.prepared || 0} prepared · ${counters.failed || 0} failed`;
+    byId('performance-job-status').textContent = `${job.status} · ${finished} / ${total} finished · ${counters.prepared || 0} prepared (${counters.reused || 0} reused) · ${counters.failed || 0} failed`;
     const progress = byId('performance-job-progress');
     progress.max = Math.max(1, total);
     progress.value = finished;

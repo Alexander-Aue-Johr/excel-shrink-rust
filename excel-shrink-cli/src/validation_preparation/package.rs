@@ -13,11 +13,7 @@ use std::{
 
 const POLICY: &str = "deltasieve-preparation-package-v1";
 const APPLICATION_ID: u32 = 0x44535050;
-const CONTROLS: [&str; 3] = [
-    "original-saved.xlsx",
-    "before-optimization.xlsx",
-    "after-optimization.xlsx",
-];
+const CONTROLS: [&str; 3] = super::PREPARATION_CONTROLS;
 
 mod reader;
 pub(crate) use reader::verify;

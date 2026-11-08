@@ -29,14 +29,15 @@ pub(crate) fn prepare_performance_manifest(
     source_manifest: PathBuf,
     output: PathBuf,
     workers: usize,
+    reuse_from: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     #[cfg(windows)]
     {
-        legacy_conversion::performance::run_manifest(source_manifest, output, workers)
+        legacy_conversion::performance::run_manifest(source_manifest, output, workers, reuse_from)
     }
     #[cfg(not(windows))]
     {
-        let _ = (source_manifest, output, workers);
+        let _ = (source_manifest, output, workers, reuse_from);
         anyhow::bail!("Check Performance preparation requires Windows and Excel")
     }
 }

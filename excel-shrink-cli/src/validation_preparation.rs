@@ -3,6 +3,9 @@ use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 pub(crate) mod package;
 pub(crate) mod imported;
+pub(crate) const PREPARATION_CONTROLS: [&str; 3] = [
+    "original-saved.xlsx", "before-optimization.xlsx", "after-optimization.xlsx",
+];
 use std::io::BufRead;
 use std::{
     collections::BTreeSet,
@@ -165,7 +168,7 @@ fn resolve_xlsx(path: &Path) -> Result<PathBuf> {
     }
 }
 
-fn normalized_sha(value: &str) -> Result<String> {
+pub(crate) fn normalized_sha(value: &str) -> Result<String> {
     ensure!(
         value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()),
         "Invalid SHA-256 identity"
