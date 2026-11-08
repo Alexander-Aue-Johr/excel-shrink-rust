@@ -42,6 +42,7 @@ public sealed class CaptureWorkbookSession : IDisposable
             Set(application, "AutomationSecurity", 3);
             Set(application, "EnableEvents", false);
             Set(application, "Calculation", -4135);
+            Set(application, "CalculateBeforeSave", false);
             object recovery = Get(application, "AutoRecover");
             try { Set(recovery, "Enabled", false); }
             finally { Release(recovery); }
@@ -93,6 +94,61 @@ public sealed class CaptureWorkbookSession : IDisposable
             VerifySeedOnly();
         }
         catch { faulted = true; throw; }
+    }
+
+    /// <summary>Rebuild the current comparison and empty seed, requiring Excel's completed state.</summary>
+    public void Rebuild()
+    {
+        RequireCurrentWorkbook();
+        try
+        {
+            VerifyProcess();
+            Invoke(application, "CalculateFullRebuild", new object[0]);
+            VerifyProcess();
+            if (Convert.ToInt32(Get(application, "CalculationState")) != 0)
+                throw new InvalidOperationException("Excel did not complete the full rebuild.");
+        }
+        catch { faulted = true; throw; }
+    }
+
+    /// <summary>Serialize an XLSX snapshot without changing the open workbook or replacing an existing file.</summary>
+    public void SaveCopy(string output)
+    {
+        RequireCurrentWorkbook();
+        string destination = Path.GetFullPath(output);
+        if (!String.Equals(Path.GetExtension(destination), ".xlsx", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Workbook snapshots require an .xlsx destination.", "output");
+        if (File.Exists(destination)) throw new IOException("Workbook snapshot destination already exists.");
+        string pending = Path.Combine(Path.GetDirectoryName(destination), ".snapshot-" + Guid.NewGuid().ToString("N") + ".xlsx");
+        try
+        {
+            VerifyProcess();
+            if (Convert.ToInt32(Get(currentWorkbook, "FileFormat")) != 51)
+                throw new InvalidOperationException("Snapshot source must be an XLSX workbook.");
+            string before = Convert.ToString(Get(currentWorkbook, "FullName"));
+            Invoke(currentWorkbook, "SaveCopyAs", new object[] { pending });
+            VerifyProcess();
+            if (!SamePath(Get(currentWorkbook, "FullName"), before) || new FileInfo(pending).Length == 0)
+                throw new InvalidOperationException("Workbook snapshot changed identity or produced an empty file.");
+            // Move publishes only a completed snapshot and refuses a concurrent destination.
+            File.Move(pending, destination);
+        }
+        catch { faulted = true; throw; }
+        finally
+        {
+            if (File.Exists(pending))
+            {
+                try { File.Delete(pending); }
+                catch (IOException error) { Console.Error.WriteLine("Snapshot cleanup failed: " + error.Message); }
+                catch (UnauthorizedAccessException error) { Console.Error.WriteLine("Snapshot cleanup failed: " + error.Message); }
+            }
+        }
+    }
+
+    void RequireCurrentWorkbook()
+    {
+        EnsureUsable();
+        if (currentWorkbook == null) throw new InvalidOperationException("No comparison workbook is open.");
     }
 
     void EnsureUsable()

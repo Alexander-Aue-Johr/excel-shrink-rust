@@ -50,6 +50,8 @@ public static class CaptureWorkbookWorker
                         string kind = RequiredString(request, "kind");
                         if (kind == "open") session.OpenReadOnly(RequiredString(request, "path"));
                         else if (kind == "close") session.CloseCurrent();
+                        else if (kind == "rebuild") session.Rebuild();
+                        else if (kind == "save_copy") session.SaveCopy(RequiredString(request, "path"));
                         else if (kind == "stop")
                         {
                             session.CloseCurrent();

@@ -35,6 +35,12 @@ next worker gate is rebuild/save/chart control through its retained C# reference
 followed by scheduler leases and concurrent acceptance. The failed binding
 probes are retained and do not count as a completed pool integration.
 
+The retained C# reference now supports explicit full rebuild and non-overwriting
+SaveCopyAs snapshots. A deterministic four-visit native control passes with
+cached formulas preserved before rebuild and updated afterward, plus eight PNG
+receipt checks. CalculateBeforeSave=false is necessary for that control. This
+does not complete Save As, chart, external-link, concurrency or scheduler gates.
+
 This is the reviewable work queue for the two tools, their Observatory, and their papers. Follow the phased dependencies below after approval, retaining the task numbers as stable references and recording each task's evidence and remaining work here. Tasks marked as existing work require verification and integration. Their status does not establish that the planned acceptance checks have passed.
 
 ## 00 Wait for approval

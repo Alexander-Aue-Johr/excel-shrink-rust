@@ -11,7 +11,8 @@ param(
     [switch]$WorkerProcess,
     [switch]$FailWorkerAtEnd,
     [switch]$RustWorker,
-    [switch]$NativeSessionBinding
+    [switch]$NativeSessionBinding,
+    [switch]$RebuildSnapshots
 )
 $ErrorActionPreference = 'Stop'
 if ($ExpectDifferentPixels -and -not $CaptureRange) { throw 'Different-pixel control requires CaptureRange.' }
@@ -19,6 +20,9 @@ if ($ResidentCommands -and $CaptureRange) { throw 'Choose the production residen
 if ($FailWorkerAtEnd -and -not $WorkerProcess) { throw 'Worker failure control requires WorkerProcess.' }
 if ($RustWorker -and -not $WorkerProcess) { throw 'RustWorker requires WorkerProcess.' }
 if ($NativeSessionBinding -and -not $WorkerProcess) { throw 'NativeSessionBinding requires WorkerProcess.' }
+if ($RebuildSnapshots -and (-not $WorkerProcess -or -not $ResidentCommands)) {
+    throw 'RebuildSnapshots requires WorkerProcess and ResidentCommands.'
+}
 if (Test-Path -LiteralPath $Output) { throw 'Choose a new probe output directory.' }
 [void][IO.Directory]::CreateDirectory($Output)
 Add-Type -Path @((Join-Path $CaptureRoot 'CaptureProcesses.cs'), (Join-Path $CaptureRoot 'CaptureDesktop.cs'))
@@ -163,19 +167,20 @@ function Invoke-ProbeCommand($HostInfo, $Command) {
 function Test-ResidentCapture($HostInfo, $Ready) {
     $sample = @{ready_at=$Ready.ready_at} | ConvertTo-Json -Compress
     Invoke-RestMethod -Method Post ($HostInfo.url + '/launcher/startup-sampled/one') -Headers $HostInfo.headers -ContentType 'application/json' -Body $sample -TimeoutSec 5 | Out-Null
+    $captureId = [Guid]::NewGuid().ToString('N')
     $capture = Invoke-ProbeCommand $HostInfo @{
-        id='capture';kind='capture';sheets=@(@{
+        id=$captureId;kind='capture';sheets=@(@{
             index=1;name='Sheet1';bottom_row=10;base_right_column=2
             capture_right_column=40;right_margin_pixels=0
             horizontal_overflow_required=$false;drawing_fallback_required=$false
         })
     }
-    $images = Invoke-ProbeCommand $HostInfo @{id='images';kind='images';capture_id='capture';tiles=@($capture.tiles)}
+    $images = Invoke-ProbeCommand $HostInfo @{id=($captureId + '-images');kind='images';capture_id=$captureId;tiles=@($capture.tiles)}
     foreach ($image in $images.images) {
         $actual = (Get-ProbeHash $image.image_path).Replace('-', '').ToLowerInvariant()
         if ($actual -ne $image.sha256) { throw 'Uploaded PNG does not match its receipt.' }
     }
-    $release = Invoke-ProbeCommand $HostInfo @{id='release';kind='release'}
+    $release = Invoke-ProbeCommand $HostInfo @{id=($captureId + '-release');kind='release'}
     if ($release.pane_resources.retained_capture_plans -ne 0 -or
         $release.pane_resources.retained_image_bytes -ne 0 -or
         $release.pane_resources.geometry_cache_entries -ne 0) {
@@ -346,6 +351,15 @@ try {
             $configUrl = $hostInfo.url + '/config?client=one&document=' + $identity.document_id + '&run=' + $identity.run_id + '&request=' + [Guid]::NewGuid().ToString()
             $previousClientToken = (Invoke-RestMethod $configUrl -TimeoutSec 5).client_token
             $samples[-1].resident = Test-ResidentCapture $hostInfo $ready
+            if ($RebuildSnapshots) {
+                $before = Join-Path $directory 'before-rebuild.xlsx'
+                $after = Join-Path $directory 'after-rebuild.xlsx'
+                Invoke-WorkbookWorker $worker 'save_copy' $before
+                Invoke-WorkbookWorker $worker 'rebuild' ''
+                Invoke-WorkbookWorker $worker 'save_copy' $after
+                $samples[-1].snapshots = @{before=$before;after=$after}
+                $samples[-1].resident_rebuilt = Test-ResidentCapture $hostInfo $ready
+            }
         }
         Write-ProbeJson (Join-Path $Output 'samples.json') @{startup_seconds=$startupSeconds;samples=$samples}
         if ($WorkerProcess) { Invoke-WorkbookWorker $worker 'close' '' }
@@ -416,5 +430,6 @@ Write-ProbeJson (Join-Path $Output 'result.json') @{
     samples=$samples;startup_seconds=$startupSeconds
     worker_process_used=[bool]$WorkerProcess;worker_failure_control=[bool]$FailWorkerAtEnd
     rust_worker_used=[bool]$RustWorker
+    rebuild_snapshots=[bool]$RebuildSnapshots
     owned_excel_exit_confirmed=$true;source_hashes_unchanged=$true
 }

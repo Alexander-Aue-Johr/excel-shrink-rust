@@ -1152,3 +1152,12 @@ processes receive the same explicit desktop identity for both process launch
 and window inspection. A desktop identity alone does not establish that an
 external caller can acquire the workbook's COM application. Failed acquisition
 remains a failure and does not authorize a global application lookup.
+
+The experimental worker's `rebuild` operation uses its retained C# application
+and requires completed calculation state. `save_copy` serializes an XLSX format
+51 snapshot without changing the open workbook name. Pending output is unique
+and published without replacing an existing file. A save or rebuild failure
+retires the worker. Manual calculation and CalculateBeforeSave=false preserve
+separate pre-rebuild caches in the deterministic control. Raw snapshots retain
+probe add-in metadata. This contract does not claim Save As equivalence or
+coverage of external-link and volatile recalculation cases.

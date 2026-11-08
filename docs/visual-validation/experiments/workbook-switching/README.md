@@ -284,3 +284,44 @@ Before production pool adoption, native workbook actions must be tested through
 the C# worker's retained application reference. The current standalone worker
 implements only open, close and stop. Rebuild, save, chart operations and the
 pool lease lifecycle remain acceptance work.
+
+## Rebuild and serialized snapshot controls
+
+The C# worker now accepts `rebuild` and `save_copy` through its retained
+application reference. Rebuild calls `CalculateFullRebuild` and requires Excel's
+completed calculation state. Snapshot saving calls `Workbook.SaveCopyAs` into a
+unique pending file, checks that the open workbook identity is unchanged and
+publishes with a non-overwriting move. Only XLSX format 51 is supported. These
+are serialized snapshots, distinct from changing the open workbook with Save As.
+Snapshots retain the probe's injected add-in metadata and are raw test controls.
+
+`-RebuildSnapshots -ResidentCommands -WorkerProcess` captures each control before
+rebuild, writes a snapshot, rebuilds, writes another snapshot and captures again.
+Every capture/upload/release sequence uses fresh command IDs, preserving earlier
+responses. Use `rebuild-controls.py create <blank-seed.xlsx> <new-control-folder>`
+to generate the two small inputs, pass `control-a.xlsx` and `control-b.xlsx` as
+Original and Shrunk, then run `rebuild-controls.py verify <probe/result.json>`.
+The source seed must contain one worksheet at `xl/worksheets/sheet1.xml`.
+
+Both controls contain B1 formula `A1*3`. A1 is 2 or 3, while intentionally stale
+B1 caches are 999 or 1111. The first native attempt used a seed whose worksheet
+was named Conversion and failed before capturing because the probe expected
+Sheet1. Trial 02 captured successfully, but its pre-rebuild snapshots already
+contained 6 and 9. Disabling `Application.CalculateBeforeSave` in the worker
+preserved the intended pre-rebuild caches in trial 03. The separate property
+also applies to manual calculation, as documented by [Microsoft](https://learn.microsoft.com/en-us/office/vba/api/excel.application.calculatebeforesave).
+
+Trial `office-worker-rebuild-20261108-03` passed A/B/A/B in Excel PID 60896.
+All four pre-rebuild snapshots retained 999 or 1111 and all post-rebuild snapshots
+contained 6 or 9, with unchanged formulas. Eight PNG file hashes matched their
+receipts. Repeated captures matched within each source and calculation state,
+while pre/post images differed. Input hashes remained unchanged and worker
+failure retirement confirmed Excel exit. Six guard checks passed without Excel
+for missing workbook, seed protection, existing output, unsupported extension
+and disposal behavior. The factory's two output ZIPs passed integrity checks.
+Its initial Python version reused mutable ZipInfo objects between output archives
+and failed while reading the second control; copying entry metadata fixed it.
+
+This establishes the small deterministic rebuild/snapshot control through Rust
+and C#. It does not establish Save As equivalence, chart handling, external-link
+rebuild behavior, concurrent pool operation or production scheduler integration.
