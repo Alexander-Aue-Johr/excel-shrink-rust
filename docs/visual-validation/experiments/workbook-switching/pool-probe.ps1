@@ -92,12 +92,14 @@ try {
 
     # Submit both opens before waiting for either response.
     $pending = @()
-    foreach ($job in @(@{lease=$first;path=$Original}, @{lease=$second;path=$Candidate})) {
+    $workingCopy = Join-Path $Output 'working-copy.xlsx'
+    Copy-Item -LiteralPath $Original -Destination $workingCopy
+    foreach ($job in @(@{lease=$first;path=$workingCopy;kind='open_working_copy'}, @{lease=$second;path=$Candidate;kind='open'})) {
         $id = [Guid]::NewGuid().ToString()
         $request = New-Object Net.Http.HttpRequestMessage -ArgumentList @([Net.Http.HttpMethod]::Post, ($url + '/command/' + $job.lease.slot))
         [void]$request.Headers.TryAddWithoutValidation('X-Pool-Token', $token)
         [void]$request.Headers.TryAddWithoutValidation('X-Lease-Token', $job.lease.lease_token)
-        $request.Content = New-Object Net.Http.StringContent -ArgumentList @((@{id=$id;kind='open';path=$job.path} | ConvertTo-Json -Compress), $utf8, 'application/json')
+        $request.Content = New-Object Net.Http.StringContent -ArgumentList @((@{id=$id;kind=$job.kind;path=$job.path} | ConvertTo-Json -Compress), $utf8, 'application/json')
         $pending += @{task=$http.SendAsync($request);request=$request;id=$id;lease=$job.lease}
     }
     foreach ($job in $pending) {
@@ -158,6 +160,7 @@ try {
         capture_origin_guard=$true;warm_reuse=$true;owner_death_retired=$true;peer_survived=$true
         acquire_retry_reused=$true;release_retry_safe=$true
         save_as_identity_verified=$true
+        writable_staged_copy=$true
     }
 } finally {
     $http.Dispose()

@@ -49,6 +49,7 @@ public static class CaptureWorkbookWorker
                         if (!Guid.TryParse(requestId, out identity)) throw new InvalidDataException("Command ID must be a GUID.");
                         string kind = RequiredString(request, "kind");
                         if (kind == "open") session.OpenReadOnly(RequiredString(request, "path"));
+                        else if (kind == "open_working_copy") session.OpenWorkingCopy(RequiredString(request, "path"));
                         else if (kind == "close") session.CloseCurrent();
                         else if (kind == "rebuild") session.Rebuild();
                         else if (kind == "save_copy") session.SaveCopy(RequiredString(request, "path"));

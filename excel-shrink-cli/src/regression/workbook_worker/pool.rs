@@ -330,10 +330,10 @@ async fn command(
         let kind = request["kind"]
             .as_str()
             .ok_or_else(|| ApiError::bad_request("Missing workbook command kind"))?;
-        if !matches!(kind, "open" | "close" | "save_copy" | "save_as" | "rebuild") {
+        if !matches!(kind, "open" | "open_working_copy" | "close" | "save_copy" | "save_as" | "rebuild") {
             return Err(ApiError::bad_request("Unsupported leased workbook command"));
         }
-        if (kind == "open" && lease.opened)
+        if (matches!(kind, "open" | "open_working_copy") && lease.opened)
             || (matches!(kind, "save_copy" | "save_as" | "rebuild") && !lease.opened)
         {
             return Err(ApiError::conflict(
@@ -347,7 +347,7 @@ async fn command(
         let reply = worker.command(&request, Duration::from_secs(pool.settings.timeout_seconds));
         match reply {
             Ok(value) if value["ok"] == true => {
-                if kind == "open" {
+                if matches!(kind, "open" | "open_working_copy") {
                     slot.lease.as_mut().unwrap().opened = true;
                 }
                 if kind == "close" {

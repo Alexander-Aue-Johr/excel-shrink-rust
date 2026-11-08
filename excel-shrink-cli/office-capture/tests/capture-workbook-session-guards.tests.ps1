@@ -22,6 +22,7 @@ try {
     Assert-Guard { $session.SaveAs((Join-Path $root 'saved.xlsx')) } ([InvalidOperationException])
     Assert-Guard { $session.Rebuild() } ([InvalidOperationException])
     Assert-Guard { $session.OpenReadOnly($source) } ([ArgumentException])
+    Assert-Guard { $session.OpenWorkingCopy($source) } ([ArgumentException])
     $current = [CaptureWorkbookSession].GetField('currentWorkbook', [Reflection.BindingFlags]'NonPublic,Instance')
     $current.SetValue($session, [object]::new())
     Assert-Guard { $session.SaveCopy($source) } ([IO.IOException])

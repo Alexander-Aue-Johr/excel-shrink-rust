@@ -358,3 +358,20 @@ It verified trial 02's stale original cache 999, rebuilt cache 6 and unaffected
 peer cache 1111. When a later probe records Save As acceptance, it additionally
 requires both Save As outputs to retain the rebuilt cache. That acceptance is
 still pending a native test after the user's requested machine restart.
+
+### Native Save As and writable-copy acceptance
+
+After the requested reboot, pool trial 03 passed real Save As and subsequent
+SaveCopyAs. The independent verifier checked all five ZIP snapshots, including
+the peer's unchanged stale cache. Trial 04 additionally opened a separately
+staged writable copy with link updates disabled, verifying ReadOnly=false through
+the retained application. Its two workers became ready in 1.207 seconds and the
+probe finished in 5.208 seconds. Exclusive leases, old-token rejection, owner-death
+retirement, replacement, cleanup and unchanged source hashes passed again.
+These timings describe these tiny fixtures after reboot, not corpus throughput.
+
+`open` retains read-only semantics. `open_working_copy` explicitly enables save
+operations on caller-staged copies. Neither command can open the worker's seed.
+The corpus adapter must stage a distinct copy before choosing the writable mode.
+Save As now has native acceptance on these formula controls. Chart, volatile
+filename and production scheduler acceptance remain open.

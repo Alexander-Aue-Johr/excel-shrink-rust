@@ -1187,3 +1187,10 @@ Native acceptance is pending the user's requested reboot. It remains outside
 the production corpus path until the pool probe and independent serialized-cache
 checks pass. No CELL(filename), volatile-formula or chart equivalence is inferred
 from guard tests.
+
+The worker's `open` command remains read-only. `open_working_copy` opens an
+explicitly staged copy writable and checks its exact path and ReadOnly=false.
+Both disable link updates and reject the seed. The caller owns staging and must
+preserve source bytes. Pool trial 04 passed writable-copy, rebuild, Save As and
+snapshot checks with unchanged source hashes. This supersedes the pending native
+Save As gate above only for the small deterministic formula controls.

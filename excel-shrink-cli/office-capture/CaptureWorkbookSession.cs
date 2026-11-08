@@ -53,6 +53,17 @@ public sealed class CaptureWorkbookSession : IDisposable
     /// <summary>Disable link updates and require the exact staged file to open read-only.</summary>
     public void OpenReadOnly(string path)
     {
+        Open(path, true);
+    }
+
+    /// <summary>Open a caller-staged working copy for explicit save operations.</summary>
+    public void OpenWorkingCopy(string path)
+    {
+        Open(path, false);
+    }
+
+    void Open(string path, bool readOnly)
+    {
         EnsureUsable();
         if (currentWorkbook != null) throw new InvalidOperationException("Close the current workbook before opening another.");
         string expectedPath = Path.GetFullPath(path);
@@ -66,11 +77,11 @@ public sealed class CaptureWorkbookSession : IDisposable
             try
             {
                 currentWorkbook = Invoke(workbooks, "Open", new object[] {
-                    expectedPath, 0, true, Type.Missing, "", "", true
+                    expectedPath, 0, readOnly, Type.Missing, "", "", true
                 });
                 VerifyProcess();
                 if (!SamePath(Get(currentWorkbook, "FullName"), expectedPath) ||
-                    !Convert.ToBoolean(Get(currentWorkbook, "ReadOnly")) ||
+                    Convert.ToBoolean(Get(currentWorkbook, "ReadOnly")) != readOnly ||
                     Convert.ToInt32(Get(workbooks, "Count")) != 2)
                     throw new InvalidOperationException("Opened workbook identity or read-only state differs from the request.");
             }
