@@ -126,8 +126,12 @@ protection-formatted cell. Promotion into a row style keeps its separate guards.
 The Enron `005d034f18d6dc340a2c` investigation found five automatic-height rows
 that became one pixel shorter after two Arial-formatted protection cells were
 removed. A focused test reproduced the missing sentinel with both active and
-inactive sheet protection. The corrected Core suite passes. Native confirmation
-of the revised workbook remains part of the investigation before deployment.
+inactive sheet protection. The corrected Core suite passes. A native comparison
+of the real workbook found no remaining effective-height differences or unequal
+selected captures. Only the worksheet member changed against the immediate
+reference build. The new Default file was 21,110 bytes, compared with 21,253
+bytes previously and 24,356 bytes for the Original. The production runner's
+build and previously completed outcomes still require controlled reconciliation.
 
 ### S4.1. Whitespace and blank are not interchangeable
 
