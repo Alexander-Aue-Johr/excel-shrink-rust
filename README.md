@@ -13,6 +13,11 @@ and known limits, see the [behavior and reimplementation specification](docs/beh
 Set `EXCEL_SHRINK_LOG_DIR` to choose the directory for per-process run logs.
 When unset or empty, logs use `logs/runs` relative to the working directory.
 
+Configuration clients can run `excel-shrink-cli --describe-cli` to obtain a
+versioned JSON description of cleanup options. It derives names, help text,
+types, choices, and defaults from the same Clap definitions as the cleanup CLI.
+Input and output paths are configured separately from these named options.
+
 ## Repository structure
 
 ```text

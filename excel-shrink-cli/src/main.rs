@@ -7,6 +7,7 @@ use tracing_appender::rolling;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 mod batch_report;
+mod cli_metadata;
 mod capture_host;
 mod capture_settings;
 mod console_writer;
@@ -265,6 +266,10 @@ pub fn run_excel_shrink() -> anyhow::Result<()> {
         Some("regression") => return run_regression_command(program, raw_args.collect()),
         Some("capture-host") => return capture_host::run(raw_args.collect()),
         Some("metadata-store") => return metadata_store::run(raw_args.collect()),
+        Some("--describe-cli") => {
+            println!("{}", serde_json::to_string_pretty(&cli_metadata::describe())?);
+            return Ok(());
+        }
         _ => {}
     }
 
