@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $captureRoot = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $captureRoot 'WindowsLongPaths.psm1') -Force
 $repo = [IO.Path]::GetFullPath((Join-Path $captureRoot '../..'))
 $tokens = $null
 $errors = $null
