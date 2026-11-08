@@ -70,6 +70,13 @@ identical Default preparation does not bypass requested Check Performance work.
 
 ## E3. Admission, pause, cancellation and timeouts
 
+The `deltasieve` and `excel-shrink-cli` applications share the internal
+`regression`, `capture-host` and `metadata-store` command implementations.
+Resident services can therefore reuse the exact executable that started their
+comparison. User-facing DeltaSieve configuration remains a separate command
+grammar. Missing internal service dispatch must fail explicitly rather than
+being interpreted as a workbook or silently selecting another executable.
+
 The ordinary shrink CLI bounds workbook orchestration by
 `--max-active-workbooks`. At most that many dispatcher loops claim inputs, and
 each loop claims its next input after completing its current orchestration.

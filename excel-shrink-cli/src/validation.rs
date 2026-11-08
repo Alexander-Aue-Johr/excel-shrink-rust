@@ -416,11 +416,6 @@ fn resolve_source(value: &str, base: &Path) -> String {
 }
 
 pub(crate) fn run_cli() -> Result<()> {
-    // Resident Office.js hosts reuse the current binary. This internal transport
-    // remains available independently of the user-facing command grammar.
-    if std::env::args_os().nth(1).as_deref() == Some(OsStr::new("capture-host")) {
-        return crate::capture_host::run(std::env::args_os().skip(2).collect());
-    }
     match Cli::parse().command {
         None => crate::validation_room::serve(
             ObservatorySetup::default().apply(RunConfig::default()),
