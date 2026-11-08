@@ -66,6 +66,30 @@ without extracting workbook payloads. It detects ordinary source changes during
 freezing. The registered corpus ID is supplied by the caller; the archive's
 separate full checksum binds the actual source used for the sample.
 
+`prepare.py` binds that frozen selection to existing study preparation bundles.
+It verifies the complete bundle hash, full workbook identity and both retained
+member hashes, then copies only those verified states to fixed working paths.
+It uses an independent ElementTree reader to plan A1 through the union of both
+stored worksheet dimensions. This includes leading geometry and removed extent.
+It never reads candidate decisions or replaces failed sample members.
+
+```powershell
+python prepare.py --selection 'G:\reference-samples\corpus-v1\selection.json' `
+    --study 'V:\validation-runs\corpus' --output 'G:\reference-inputs\corpus-v1'
+```
+
+Stored dimensions define this experiment's declared rectangle. They do not prove
+complete coverage of overflow or every rendering effect. Graphical, embedded and
+chart-sheet parts require a separate reference envelope and remain explicitly
+unsupported by this preparer. Native size limits and timeouts retain their own
+outcomes. Public claims must state these limits.
+
+The frozen Enron sample prepared on 2026-11-08 retained all twelve identities.
+Nine produced plans and three require graphical/embedded reference coverage.
+The six sampler/preparer tests include grid edges, dimension union, graphical
+exclusion, corrupt member hashes and missing preparations. Inputs and receipts
+remain privately under `G:\deltasieve-work\reference-samples-20261108`.
+
 ## Initial check on 2026-11-08
 
 Two trials used a synthetic worksheet whose reference area was fixed at
