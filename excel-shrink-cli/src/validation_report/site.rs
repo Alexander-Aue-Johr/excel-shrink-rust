@@ -53,6 +53,7 @@ pub(crate) fn write_site(report_root: &Path, run: &Value) -> Result<PathBuf> {
         "selection": run["selection"],
         "preparation": run["preparation"],
         "replay": run["replay"],
+        "merge": run["merge"],
         "error": run["error"],
         "interrupted_index": run["interrupted_index"],
         "publication_review": if root.join("publication-review.json").is_file() {
@@ -120,6 +121,9 @@ pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<Path
         .canonicalize()
         .context("Resolve source report")?;
     let mut run = crate::validation::read_run(&source)?;
+    if run["merge"].is_object() {
+        return super::merge::export_collection(&source, &run, destination);
+    }
     // The exported index is a complete snapshot of the recovered journal. Its
     // validation status is unchanged, including interrupted or failed runs.
     run["index_complete"] = json!(true);
@@ -209,7 +213,7 @@ fn overview_rows(root: &Path, run: &Value) -> Result<Vec<Value>> {
         };
         rows.push(json!({
             "id": id, "name": pair["display_name"].as_str().or_else(|| pair["name"].as_str()).unwrap_or(id),
-            "preparation":pair["preparation"],
+            "preparation":pair["preparation"], "merge_source":pair["merge_source"],
             "status": pair["status"], "report": report, "page": page,
             "different_regions": pair["different_regions"], "reuse": pair["reuse"],
             "error": pair["error"], "errors": pair["errors"], "identity": pair["identity"],

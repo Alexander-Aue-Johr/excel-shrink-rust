@@ -619,3 +619,18 @@ retain their full remaining requirements.
 - Cleanup-only web execution, full component extraction, unified corpus profiles
   and the remaining release gates remain open. These application entry points
   are an incremental structural change. Tasks 04–08 and 16 retain their scope.
+
+### Distributed report collection checkpoint on 2026-11-08
+
+`deltasieve merge` collects finished standalone reports with independent source
+namespaces, verified comparison packages and byte-exact original run metadata.
+Six focused tests cover repeated locations, duplicate metadata in different
+directories, conflicts, missing environment evidence, partial fingerprints,
+corrupt packages, nested destinations and repeated static export. Three shared
+site tests and the portable frontend test also passed. The behavior contract is
+`docs/behavior/distributed-results.md`.
+
+This acceptance does not cover the archive corpus-study adapter, collection-aware
+reuse or a real multi-machine rehearsal. Inspection identified incomplete
+automatic hardware/Excel-version metadata in the standalone run header. Complete
+that environment record before freezing the distributed evaluation release.

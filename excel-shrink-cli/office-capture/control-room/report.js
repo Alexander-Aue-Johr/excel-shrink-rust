@@ -76,6 +76,19 @@ function startReportPage() {
 
 function showRunReport(content, data) {
   const rows = Array.isArray(data.pairs) ? data.pairs : [];
+  if (data.merge) {
+    content.append(reportElement('p', 'report-warning',
+      `Merged collection · ${data.merge.distinct_run_snapshots} source snapshots · ${rows.length} retained observations · `
+      + `${data.merge.potential_conflicts} potential outcome conflicts. Counts do not represent unique corpus coverage.`));
+    content.append(reportDetails('Merge provenance and overlap checks', data.merge));
+    const sources = reportElement('nav', 'report-controls');
+    for (const source of data.merge.sources || []) {
+      if (!/^[a-f0-9]{64}$/.test(source.snapshot_id || '')) continue;
+      const page = portablePageUrl(`runs/${source.snapshot_id}/index.html`);
+      sources.append(reportLink(page, `Source snapshot ${source.snapshot_id.slice(0, 8)}`));
+    }
+    content.append(sources);
+  }
   if (data.publication_review) {
     const review = data.publication_review;
     content.append(reportElement('p', 'report-warning',
@@ -156,6 +169,7 @@ function showRunReport(content, data) {
         reportElement('td', '', Number.isSafeInteger(row.different_regions) ? row.different_regions.toLocaleString('en-US') : 'Not recorded'));
       const provenance = reportElement('td');
       provenance.append(reportElement('span', '', row.reuse ? 'Earlier observation reused' : row.report ? 'Current observation' : 'No retained comparison'));
+      if (row.merge_source) provenance.append(reportDetails('Source run identity', row.merge_source));
       if (row.reuse) provenance.append(reportDetails('Reuse decision', row.reuse));
       entry.append(provenance);
       body.append(entry);

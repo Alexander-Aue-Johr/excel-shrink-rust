@@ -859,6 +859,7 @@ fn verify_completed_observation(report: &Path) -> Result<PathBuf> {
 /// Reconstruct an interrupted index once, from complete per-pair records. Live
 /// polling uses compact progress snapshots instead of repeatedly running this scan.
 pub(crate) fn read_run(root: &Path) -> Result<Value> {
+    ensure!(!root.join(".incomplete").try_exists()?, "Report publication is incomplete");
     let mut run = storage::read_json(&root.join("run.json"))?;
     ensure!(
         run["schema"] == 1 && run["tool"] == "DeltaSieve",

@@ -8,8 +8,10 @@ mod evidence;
 mod publication;
 mod replay;
 mod site;
+mod merge;
 
 pub(crate) use site::{export_site, write_pair_page, write_site};
+pub(crate) use merge::merge_reports;
 
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};

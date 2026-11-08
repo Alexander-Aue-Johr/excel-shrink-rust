@@ -26,7 +26,7 @@ pub(super) fn hash_json(value: &impl Serialize) -> Result<String> {
 }
 
 /// Canonicalise the existing ancestor before comparing locations of new destinations.
-pub(super) fn destination(path: &Path) -> Result<PathBuf> {
+pub(crate) fn destination(path: &Path) -> Result<PathBuf> {
     let path = std::path::absolute(path)?;
     ensure!(
         !path

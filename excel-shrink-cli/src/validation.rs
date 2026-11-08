@@ -6,7 +6,7 @@ mod pairing;
 mod processing_progress;
 mod replay;
 mod run;
-mod storage;
+pub(crate) mod storage;
 
 use crate::validation_process::Stage;
 use deltasieve_engine::reuse::PartSelection;
@@ -83,6 +83,13 @@ enum Command {
     Open { report: PathBuf },
     /// Copy a completed report into a new, publishable static website directory.
     Export { report: PathBuf, output: PathBuf },
+    /// Collect finished reports with verified evidence and separate run provenance.
+    Merge {
+        #[arg(required = true, num_args = 2..)]
+        reports: Vec<PathBuf>,
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Export completed preparation outcomes with SQLite metadata and verified XLSX blobs.
     PreparationExport { preparation: PathBuf, output: PathBuf },
     /// Verify a transferred preparation package without Excel.
@@ -566,6 +573,11 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
         }
         Some(Command::Template) => {
             println!("{}", serde_json::to_string_pretty(&RunConfig::default())?);
+            Ok(())
+        }
+        Some(Command::Merge { reports, output }) => {
+            let index = crate::validation_report::merge_reports(&reports, &output)?;
+            println!("Merged report: {}", index.display());
             Ok(())
         }
         Some(Command::ComparePair(args)) => crate::regression::targeted_comparison::run(args),
