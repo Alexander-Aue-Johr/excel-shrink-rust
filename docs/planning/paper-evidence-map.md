@@ -5,6 +5,11 @@ missing experiments. A proposed claim enters the results section only after its
 listed evidence has been inspected and its population and environment recorded.
 The prospective protocol is [evaluation-protocol.md](evaluation-protocol.md).
 
+Both fresh LaTeX projects now contain drafted contract sections, committed in
+the paper repository as `0768f76` on `icde2026`. Both compile with the installed
+TeX Live. These sections establish the intended claims and limits. Full methods,
+Related Work, evaluated results and complete manuscripts remain open.
+
 ## SheetShrink
 
 The central question is whether deterministic package cleanup can reduce the

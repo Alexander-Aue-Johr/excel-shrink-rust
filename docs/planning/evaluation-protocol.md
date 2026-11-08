@@ -6,14 +6,16 @@ receipts. Existing corpus observations form a retrospective development set.
 
 ## Preservation and comparison subjects
 
-SheetShrink Default is the production cleanup subject. Preserve cell values,
-formulas, meaningful dependencies and human-visible presentation within the
+SheetShrink Default is the production cleanup subject. Preserve meaningful cell
+values, formulas, dependencies and human-visible presentation within the
 relevant visual area. Include effective visible fills, borders, conditional
 formatting and objects when determining that area. Preserve overflow reaching
 beyond a populated cell. Empty exterior rows and columns may change geometry.
 Protection preservation applies within the relevant visual area according to the
 owner's stated contract. Evaluate that contract separately from formula and value
-preservation.
+preservation. The hidden-content policy permits removing unreferenced hidden
+values under its dependency rules. Record these intentional removals separately
+from required-value preservation.
 
 Measure the primary pair after rebuilding and saving both Original and Default
 in their respective resident Excel processes. Keep raw, ordinary-saved and rebuilt
