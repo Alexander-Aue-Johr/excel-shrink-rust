@@ -541,6 +541,14 @@ impl Run {
                 }
             }
             if raw.join("report.json").is_file() || raw.join("partial-report.json").is_file() {
+                if outcome.is_ok() && !self.config.capture.retain_equal_images {
+                    let report_path = raw.join("report.json");
+                    let mut report = storage::read_json(&report_path)?;
+                    let _ = crate::regression::archive::study::prepared::targeted::retention::apply_with_policy(
+                        &mut report, &raw, 0, false,
+                    )?;
+                    storage::write_json(&report_path, &report)?;
+                }
                 let bundle = validation_report::package_comparison(&raw, &destination)?;
                 self.publish_pair_view(id, &pair.name, bundle.different_regions, record)?;
             }

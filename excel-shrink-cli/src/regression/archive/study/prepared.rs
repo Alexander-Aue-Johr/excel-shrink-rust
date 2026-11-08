@@ -7,7 +7,7 @@ mod namespace_exclusion;
 mod resident;
 mod prioritized;
 mod sweep;
-pub(super) mod targeted;
+pub(crate) mod targeted;
 pub(super) use sweep::cached_exists as sweep_cached;
 
 pub(super) const PROFILES: [&str; 3] = ["default", "maximum-cleaning", "too-aggressive-cleaning"];

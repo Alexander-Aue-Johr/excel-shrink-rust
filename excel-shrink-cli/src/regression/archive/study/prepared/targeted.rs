@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::process::{Command, Stdio};
 mod contract;
 mod execution_contract;
-mod retention;
+pub(crate) mod retention;
 mod bounded_process;
 
 const POLICY: &str = crate::regression::targeted_comparison::CAPTURE_POLICY;

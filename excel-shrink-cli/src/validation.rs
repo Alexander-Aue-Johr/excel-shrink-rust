@@ -185,6 +185,7 @@ pub(crate) struct CaptureOptions {
     pub operation_timeout_seconds: u64,
     pub idle_timeout_seconds: u64,
     pub serial_captures: bool,
+    pub retain_equal_images: bool,
 }
 
 impl Default for CaptureOptions {
@@ -193,6 +194,7 @@ impl Default for CaptureOptions {
             operation_timeout_seconds: 120,
             idle_timeout_seconds: 120,
             serial_captures: false,
+            retain_equal_images: false,
         }
     }
 }

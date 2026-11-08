@@ -38,7 +38,7 @@ mod visual_report;
 mod visual_validation;
 mod visual_diagnosis;
 mod diagnosis_report;
-mod archive;
+pub(crate) mod archive;
 pub(crate) mod targeted_comparison;
 pub(crate) mod formula_trace;
 mod sheet_capture;

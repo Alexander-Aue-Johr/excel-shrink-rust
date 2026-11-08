@@ -26,6 +26,11 @@ Reports and the download cache default beneath `DELTASIEVE_DATA_DIR/DeltaSieve`.
 
 The cleanup executable exposes `excel-shrink-cli --describe-cli` for typed option fields. Its JSON describes the same Clap options used by the cleanup command.
 
+`capture.retain_equal_images` controls equal-image storage and defaults to false.
+The configuration form exposes the same setting. Completed comparisons retain
+hashes and geometry receipts for discarded equal images. Images required by
+differences remain available in the portable report.
+
 ## Verification status
 
 The integration passed compilation of all targets, five focused watchdog tests, and 54 tests selected by the validation filter. Two fixture or explicit local tests were ignored. Three frontend tests cover relative evidence paths, shared comparison projection, and typed processor fields.

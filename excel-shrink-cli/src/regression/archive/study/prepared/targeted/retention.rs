@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 mod discard_equal;
 
 /// Change storage only after comparison; scientific verdicts and capture coverage stay intact.
-pub(super) fn apply_with_policy(
+pub(crate) fn apply_with_policy(
     report: &mut Value,
     directory: &Path,
     preview_width: u32,

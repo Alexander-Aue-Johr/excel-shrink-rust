@@ -10,7 +10,7 @@ mod progress;
 mod startup;
 use super::verified as ledger;
 use execution::process;
-mod prepared;
+pub(crate) mod prepared;
 mod provenance;
 mod scheduler;
 mod reduction_order;

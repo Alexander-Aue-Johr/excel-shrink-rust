@@ -9,7 +9,7 @@ use zip::ZipArchive;
 pub(in crate::regression) mod batch_cleanup;
 pub(in crate::regression) mod opening_pause;
 mod download;
-mod study;
+pub(crate) mod study;
 mod worker;
 pub(in crate::regression) mod work_state;
 mod verified;
