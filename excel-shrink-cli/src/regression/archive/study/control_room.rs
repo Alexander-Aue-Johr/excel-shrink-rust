@@ -583,7 +583,7 @@ impl Room {
         }
         write(&room.root.join("queue.json"), &queue)?;
         eprintln!(
-            "[study] Live control room: http://127.0.0.1:{}/",
+            "[study] Live control room: http://observatory.deltasieve.localhost:{}/",
             args.control_room_port
         );
         Ok(room)

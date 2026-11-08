@@ -161,6 +161,7 @@ fn local_request(headers: &HeaderMap, port: u16) -> bool {
         || !matches!(
             host_name.to_ascii_lowercase().as_str(),
             "localhost" | "127.0.0.1" | "::1"
+                | "deltasieve.localhost" | "observatory.deltasieve.localhost"
         )
         || host.port_u16() != Some(port)
     {
@@ -1633,6 +1634,24 @@ fn active_stop_requested(queue: &Value, stop: Option<&Value>) -> bool {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn named_observatory_hosts_keep_same_origin_and_port_checks() {
+        for host in ["deltasieve.localhost", "observatory.deltasieve.localhost"] {
+            let mut headers = HeaderMap::new();
+            headers.insert("host", format!("{host}:18777").parse().unwrap());
+            headers.insert("origin", format!("http://{host}:18777").parse().unwrap());
+            assert!(local_request(&headers, 18777));
+            assert!(!local_request(&headers, 18778));
+            headers.insert("origin", "http://localhost:18777".parse().unwrap());
+            assert!(!local_request(&headers, 18777));
+        }
+        for host in ["observatory.deltasieve.localhost.example.com", "example.com", "unlisted.localhost"] {
+            let mut headers = HeaderMap::new();
+            headers.insert("host", format!("{host}:18777").parse().unwrap());
+            assert!(!local_request(&headers, 18777));
+        }
+    }
 
     #[test]
     fn targeted_package_sizes_are_independent_api_controls() -> Result<()> {

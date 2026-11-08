@@ -155,6 +155,7 @@ fn allowed_headers(headers: &HeaderMap, port: u16) -> bool {
         format!("127.0.0.1:{port}"),
         format!("localhost:{port}"),
         format!("deltasieve.localhost:{port}"),
+        format!("configure.deltasieve.localhost:{port}"),
     ];
     let Some(host) = headers.get(header::HOST).and_then(|v| v.to_str().ok()) else {
         return false;
@@ -694,6 +695,11 @@ mod tests {
             "http://deltasieve.localhost:1234".parse().unwrap(),
         );
         assert!(allowed_headers(&headers, 1234));
+        headers.insert(header::HOST, "configure.deltasieve.localhost:1234".parse().unwrap());
+        headers.insert(header::ORIGIN, "http://configure.deltasieve.localhost:1234".parse().unwrap());
+        assert!(allowed_headers(&headers, 1234));
+        headers.insert(header::ORIGIN, "http://deltasieve.localhost:1234".parse().unwrap());
+        assert!(!allowed_headers(&headers, 1234));
         headers.insert(header::ORIGIN, "https://example.com".parse().unwrap());
         assert!(!allowed_headers(&headers, 1234));
         headers.remove(header::ORIGIN);

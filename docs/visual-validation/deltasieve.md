@@ -18,6 +18,13 @@ cargo build -p excel-shrink-cli --bin deltasieve
 
 The configurator opens at `http://deltasieve.localhost:18778/`. Loopback IP and `localhost` addresses on the same port are also accepted. The process binds to IPv4 loopback and checks the Host, Origin, and session token for local control operations. An occupied explicit port returns a bind error. Omitting `--port` selects an available port and prints its address. Use `--no-open` for an HTTP-only smoke test.
 
+The configuration service also accepts `configure.deltasieve.localhost` on its
+actual port. Updated corpus-study hosts accept `observatory.deltasieve.localhost`
+and print that address at startup. Requests remain confined to the exact Host,
+Origin and port. Arbitrary `.localhost` subdomains are excluded. The add-in keeps
+its existing HTTPS endpoint and certificate contract. Earlier pinned study hosts
+continue to use their recorded loopback address until their host is updated.
+
 Reports and the download cache default beneath `DELTASIEVE_DATA_DIR/DeltaSieve`. Temporary working copies use the process temporary directory, so set TEMP and TMP as well. Explicit configuration paths take precedence. The configuration UI starts processing through its Start action.
 
 ## Command entry points
