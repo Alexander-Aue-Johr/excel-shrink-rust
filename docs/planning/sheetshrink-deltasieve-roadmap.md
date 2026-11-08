@@ -26,6 +26,15 @@ controls. Two focused Rust tests cover framing and a stalled mock helper without
 Excel. The remaining integration is the corpus scheduler's exclusive worker
 leases and stable origins, not the tested single-worker command transport.
 
+Native integration trials 12 and 13 could not bind the existing external COM
+adapter to the separate worker, even with its desktop identity. A retry did not
+resolve the failure and was removed. A normal Original/SheetShrink comparison
+still passes through the existing private-desktop runner. Native helpers now
+prefer each session's explicit desktop with a validated legacy fallback. The
+next worker gate is rebuild/save/chart control through its retained C# reference,
+followed by scheduler leases and concurrent acceptance. The failed binding
+probes are retained and do not count as a completed pool integration.
+
 This is the reviewable work queue for the two tools, their Observatory, and their papers. Follow the phased dependencies below after approval, retaining the task numbers as stable references and recording each task's evidence and remaining work here. Tasks marked as existing work require verification and integration. Their status does not establish that the planned acceptance checks have passed.
 
 ## 00 Wait for approval

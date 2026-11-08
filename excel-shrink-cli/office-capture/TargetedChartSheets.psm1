@@ -1,12 +1,13 @@
 # Standalone chart sheets use the existing PID-validated resident, never a new Excel application.
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'TargetedSessionIdentity.psm1') -Force
 
 function Invoke-OwnedChartOperation {
     <# .SYNOPSIS
     Borrows the exact resident application and releases every COM reference after one operation.
     #>
     param($Entry, [scriptblock]$Operation)
-    $scope = [CaptureErrorChecking]::TryDisable($Entry.process, $env:EXCEL_SHRINK_EXPECTED_DESKTOP)
+    $scope = [CaptureErrorChecking]::TryDisable($Entry.process, (Get-TargetedSessionDesktop $Entry))
     if ($null -eq $scope) { throw 'Owned Excel has no accessible workbook window.' }
     $excel = $null
     $book = $null

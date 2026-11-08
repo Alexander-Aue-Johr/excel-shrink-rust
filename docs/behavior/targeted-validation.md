@@ -1144,3 +1144,11 @@ Closing the owned job is followed by bounded cleanup confirmation. A stopped
 process with the same numeric PID but a different birth identity does not count
 as the original process still running. Unknown liveness remains unconfirmed.
 This adapter does not yet alter the corpus scheduler's worker lifecycle.
+
+Native targeted operations resolve the private desktop from their workbook
+session. Older sessions fall back to the group's expected-desktop environment
+setting. Missing, interactive or malformed names are rejected. Dialog helper
+processes receive the same explicit desktop identity for both process launch
+and window inspection. A desktop identity alone does not establish that an
+external caller can acquire the workbook's COM application. Failed acquisition
+remains a failure and does not authorize a global application lookup.

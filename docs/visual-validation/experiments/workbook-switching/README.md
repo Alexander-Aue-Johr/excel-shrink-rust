@@ -252,3 +252,35 @@ their 64 KiB limit.
 
 The adapter is callable and natively tested. Corpus scheduling and worker leases
 still require integration, alongside matched rebuild and concurrent-pool tests.
+
+## Native adapter integration boundary
+
+`-NativeSessionBinding -WorkerProcess` additionally attempts the existing native
+chart adapter against the separate worker. The test supplies the worker's actual
+desktop and deliberately changes the group-level desktop preference. Trials 12
+and 13 failed to obtain an accessible native workbook window from the external
+adapter, with and without a three-second retry. That retry was removed because
+it did not resolve the failure. The cause is unresolved. Passing Office.js
+captures does not establish that external COM rebinding works for this worker.
+
+Native chart operations, Save As and dialog helpers now resolve a desktop from
+the workbook session's `desktop_name`, with the existing group preference as
+fallback for older sessions. Private names are validated before use in helper
+arguments. The existing opening path retains the desktop reported by its
+process-identity metrics. This removes the group-global assumption without
+claiming that it solves the separate worker's native rebinding failure.
+
+Four focused PowerShell test scripts passed for desktop resolution, embedded
+chart behavior, process identity observations and dialog classification. A
+normal small Original/SheetShrink run through `run-targeted-comparison.ps1`
+completed with its documented policy limitations and confirmed both Excel
+clients closed. Its receipt is `session-desktop-normal-20261108-02/report.json`.
+The first setup attempt failed before Excel because the Observatory group
+directory was missing. One CLI log created in the checkout by that setup attempt
+was moved to the V: probe directory. The successful run used V: as its working,
+log and temporary directory.
+
+Before production pool adoption, native workbook actions must be tested through
+the C# worker's retained application reference. The current standalone worker
+implements only open, close and stop. Rebuild, save, chart operations and the
+pool lease lifecycle remain acceptance work.

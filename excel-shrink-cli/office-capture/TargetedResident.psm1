@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $sessions = @{}
 $script:responseWatcher = $null
 $utf8 = [Text.UTF8Encoding]::new($false)
+Import-Module (Join-Path $PSScriptRoot 'TargetedSessionIdentity.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedChartWarnings.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedDialogText.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedChartSheets.psm1') -Force -DisableNameChecking
@@ -137,7 +138,7 @@ function Test-TargetedWorkbookBlocker {
     if (-not ('TargetedOpeningDialogs' -as [type])) {
         Add-Type -Path (Join-Path $PSScriptRoot 'TargetedOpeningDialogs.cs')
     }
-    foreach ($dialog in [TargetedOpeningDialogs]::Inspect($Entry.process.Id, $env:EXCEL_SHRINK_EXPECTED_DESKTOP)) {
+    foreach ($dialog in [TargetedOpeningDialogs]::Inspect($Entry.process.Id, (Get-TargetedSessionDesktop $Entry))) {
         if ($dialog.HasProgressBar) { continue }
         $warning = Confirm-TargetedLogChartWarning $dialog $Entry.process.Id
         if ($null -ne $warning) {
@@ -195,6 +196,7 @@ function Wait-TargetedWorkbook {
                     $candidate.process = [Diagnostics.Process]::GetProcessById($sample.clients.one.pid)
                     $started = ([DateTimeOffset]$candidate.process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
                     if ([Math]::Abs($started - $sample.clients.one.process_started_unix_ms) -gt 2) { throw 'Excel PID identity changed.' }
+                    $candidate.desktop_name = [string]$sample.clients.one.desktop_name
                     [Console]::WriteLine((@{event='process_started'; lane=$lane; pid=$candidate.process.Id; started_at=$started} | ConvertTo-Json -Compress))
                 }
                 if ($lane -eq $Command.lane) { $metrics = $sample }
@@ -458,7 +460,7 @@ function Optimize-TargetedWorkbook {
     #>
     param($Command)
     $entry = $sessions[$Command.lane]
-    $scope = [CaptureErrorChecking]::TryDisable($entry.process, $env:EXCEL_SHRINK_EXPECTED_DESKTOP)
+    $scope = [CaptureErrorChecking]::TryDisable($entry.process, (Get-TargetedSessionDesktop $entry))
     if ($null -eq $scope) { throw 'Owned Excel has no accessible workbook window.' }
     $excel = $null
     $book = $null
@@ -513,7 +515,7 @@ function SaveAs-TargetedWorkbook {
     param($Command)
     $entry = $sessions[$Command.lane]
     if ($null -eq $entry) { throw 'Save As requires an open owned workbook.' }
-    $scope = [CaptureErrorChecking]::TryDisable($entry.process, $env:EXCEL_SHRINK_EXPECTED_DESKTOP)
+    $scope = [CaptureErrorChecking]::TryDisable($entry.process, (Get-TargetedSessionDesktop $entry))
     if ($null -eq $scope) { throw 'Owned Excel workbook is inaccessible.' }
     $excel = $null; $book = $null
     try {

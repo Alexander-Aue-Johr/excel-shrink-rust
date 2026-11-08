@@ -10,13 +10,15 @@ param(
     [switch]$ResidentCommands,
     [switch]$WorkerProcess,
     [switch]$FailWorkerAtEnd,
-    [switch]$RustWorker
+    [switch]$RustWorker,
+    [switch]$NativeSessionBinding
 )
 $ErrorActionPreference = 'Stop'
 if ($ExpectDifferentPixels -and -not $CaptureRange) { throw 'Different-pixel control requires CaptureRange.' }
 if ($ResidentCommands -and $CaptureRange) { throw 'Choose the production resident page or the minimal pixel page.' }
 if ($FailWorkerAtEnd -and -not $WorkerProcess) { throw 'Worker failure control requires WorkerProcess.' }
 if ($RustWorker -and -not $WorkerProcess) { throw 'RustWorker requires WorkerProcess.' }
+if ($NativeSessionBinding -and -not $WorkerProcess) { throw 'NativeSessionBinding requires WorkerProcess.' }
 if (Test-Path -LiteralPath $Output) { throw 'Choose a new probe output directory.' }
 [void][IO.Directory]::CreateDirectory($Output)
 Add-Type -Path @((Join-Path $CaptureRoot 'CaptureProcesses.cs'), (Join-Path $CaptureRoot 'CaptureDesktop.cs'))
@@ -237,6 +239,7 @@ $excel = $null
 $workbookSession = $null
 $process = $null
 $worker = $null
+$workerDesktop = $null
 $samples = @()
 $previousClientToken = $null
 $script:probeAddinGuid = [Guid]::NewGuid().ToString()
@@ -270,6 +273,7 @@ try {
         try { $owned.Add($worker) } catch { $worker.Kill(); throw }
         $identity = Read-WorkbookWorkerMessage $worker
         if ($identity.event_type -ne 'process_started') { throw 'Missing worker Excel identity.' }
+        $workerDesktop = $identity.desktop
         $process = [Diagnostics.Process]::GetProcessById([int]$identity.pid)
         if ($process.StartTime.ToUniversalTime().Ticks -ne ([DateTimeOffset]::Parse($identity.started_utc)).UtcTicks) {
             throw 'Worker Excel process identity changed.'
@@ -322,6 +326,20 @@ try {
         if (-not $WorkerProcess) { Assert-RejectedWorkbookOpen $book 'Close the current workbook before opening another.' }
         $ready = Wait-ProbeOfficeReady $hostInfo
         $samples += @{index=$index;pid=$process.Id;com_open_seconds=$openSeconds;ready_seconds=$clock.Elapsed.TotalSeconds;observation=$ready}
+        if ($NativeSessionBinding) {
+            $chartsModule = Import-Module (Join-Path $CaptureRoot 'TargetedChartSheets.psm1') -PassThru
+            $sessionEntry = @{process=$process;staged=$book;desktop_name=$workerDesktop}
+            $previousDesktop = $env:EXCEL_SHRINK_EXPECTED_DESKTOP
+            try {
+                $env:EXCEL_SHRINK_EXPECTED_DESKTOP = 'unrelated-group-desktop'
+                $nativeName = & $chartsModule {
+                    param($Entry)
+                    Invoke-OwnedChartOperation $Entry { param($Book, $Charts) $Book.Name }
+                } $sessionEntry
+                if ($nativeName -ne $name) { throw 'Native adapter selected another workbook.' }
+                $samples[-1].native_workbook_name = $nativeName
+            } finally { $env:EXCEL_SHRINK_EXPECTED_DESKTOP = $previousDesktop }
+        }
         if ($ResidentCommands) {
             if ($previousClientToken) { $samples[-1].retired_token_checks = @(Test-RetiredToken $hostInfo $previousClientToken) }
             $identity = $ready.runtime

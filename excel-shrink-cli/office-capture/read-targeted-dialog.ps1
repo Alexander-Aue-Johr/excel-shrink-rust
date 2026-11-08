@@ -2,11 +2,12 @@
 param(
     [Parameter(Mandatory=$true)][int]$ExcelProcessId,
     [Parameter(Mandatory=$true)][long]$Handle,
-    [Parameter(Mandatory=$true)][string]$Output
+    [Parameter(Mandatory=$true)][string]$Output,
+    [string]$DesktopName = $env:EXCEL_SHRINK_EXPECTED_DESKTOP
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -Path (Join-Path $PSScriptRoot 'TargetedOpeningDialogs.cs')
-$dialog = [TargetedOpeningDialogs]::Inspect($ExcelProcessId, $env:EXCEL_SHRINK_EXPECTED_DESKTOP) |
+$dialog = [TargetedOpeningDialogs]::Inspect($ExcelProcessId, $DesktopName) |
     Where-Object { $_.Handle -eq $Handle -and $_.IsModal }
 if ($null -eq $dialog) { throw 'The dialog no longer belongs to the owned Excel process.' }
 Add-Type -AssemblyName UIAutomationClient
