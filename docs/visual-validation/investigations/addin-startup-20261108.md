@@ -61,3 +61,24 @@ both owned Excel client exits. Disabling the override did not improve startup
 in this sequential single-pair comparison. These observations do not establish
 cold-start performance, explain the earlier 31-second pre-WebView delay, or
 retest independent-group cleanup. Keep profile isolation in the normal runner.
+
+## Opening refactor countercheck
+
+Attempt 08 substituted only `resident.ps1` from the parent of `36ff482c`, before
+the opening-step extraction. The native debug binary, input pair, current web
+assets, private desktop policy and fresh isolated profile policy were retained.
+Attempt 09 immediately repeated the same comparison with the current resident
+script and extracted opening functions. The older script lacks the new browser
+diagnostic forwarding, but retains the same launch-to-ready measurement.
+
+| Attempt | Opening script | Original ready, seconds | SheetShrink ready, seconds |
+| --- | --- | ---: | ---: |
+| 08 | Before SLA extraction | 9.550 | 10.081 |
+| 09 | Current SLA extraction | 9.880 | 10.566 |
+
+Both invocations returned successfully and confirmed both owned Excel exits.
+The current script was 0.33 and 0.49 seconds slower in this sequential trial.
+This provides no evidence that the refactor caused the earlier large speedup.
+It is one paired trial, without randomization or a controlled cold system, and
+does not establish performance equivalence. The focused opening tests also pass
+for orchestration order, failures, duplicate clients and add-in readiness.
