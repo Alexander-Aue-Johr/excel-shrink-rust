@@ -12,7 +12,7 @@ One changed pixel is sufficient to offer an explanation. The explanation is a
 possible dependency path and does not establish the cause of every changed pixel.
 
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
-`targeted-content-grid-v9`. It compares rebuilt Original (OR) with rebuilt Default
+`targeted-content-grid-v10`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance
 is optional; when requested its rebuilt state (CPR) is compared with OR.
 
@@ -57,19 +57,17 @@ is the suspected explanation; that attribution remains a hypothesis.
 
 Retain the raw pixel/geometry observation and the reviewed acceptance reason.
 
-Purely white trailing capture extent is excluded from the difference verdict
-when the measured capture and content origins match, each measured content core
-is contained in its capture, and all nonblank image pixels match exactly at the
-same positions. The two core widths/heights need not match. This covers different
-blank row heights or column widths that only change the exported white canvas.
-Keep both raw geometries and record `blank_margin_ignored`. A displaced border,
-changed pixel (including a one-level brightness difference), overflow ink,
-missing core measurement or shifted origin does not pass this rule.
-Exact pixel inequality alone does not establish a Shrink defect. No global numeric
-tolerance or allowed number of changed pixels has been specified. Tiny differences
-in actual text, chart points, lines or objects still require examination; an
-unexamined difference remains unresolved. Existing raw result flags do not yet
-implement a separate reviewed-acceptance classification.
+Policy v10 compares captures with matching measured capture/content origins only
+within their common top-left-aligned pixel rectangle. Right/bottom overhangs,
+including colored fills and borders, are outside this comparison scope.
+`capture_extent_ignored` records that scope. Raw geometries and both images are
+retained even when the common pixels are equal. Any overlapping changed pixel
+remains a difference. Missing measurements, shifted origins and chart captures
+retain their conservative verdicts. Existing v9 reports retain their raw verdicts
+until an explicit retrospective classification is performed.
+
+The stronger historical white-margin proof remains separately recorded by
+`blank_margin_ignored` and requires all nonblank pixels to match.
 
 The required data/visual boundary includes values and formulas, plus empty cells
 with visible effective fill or borders, including inherited or conditional styles.

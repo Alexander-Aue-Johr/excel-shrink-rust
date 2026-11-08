@@ -41,6 +41,7 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
                 | "targeted-content-grid-v7"
                 | "targeted-content-grid-v8"
                 | "targeted-content-grid-v9"
+                | "targeted-content-grid-v10"
         )
     ) {
         expected = super::execution_contract::expected_pairs(report, skip_performance)?;
@@ -222,11 +223,12 @@ fn validate_rendering(finding: &Value) -> Result<bool> {
     let raw_geometry_differs = ["top", "left", "width", "height"]
         .iter()
         .any(|field| left[*field].as_f64() != right[*field].as_f64());
-    let ignored_margin = finding["blank_margin_ignored"] == true;
+    let ignored_margin = finding["blank_margin_ignored"] == true
+        || finding["capture_extent_ignored"] == true;
     if ignored_margin {
         ensure!(
             raw_geometry_differs && captured[0] && captured[1]
-                && finding["pixels_differ"] == false
+                && (finding["capture_extent_ignored"] == true || finding["pixels_differ"] == false)
                 && crate::regression::targeted_comparison::matching_content_origin(left, right),
             "Blank-margin exclusion contradicts measured content evidence"
         );
@@ -462,6 +464,10 @@ mod tests {
         assert!(has_differences(&invalid, true).is_err());
         report["comparisons"][0]["findings"][0]["blank_margin_ignored"] = json!(false);
         assert!(has_differences(&report, true).is_err());
+        report["comparisons"][0]["findings"][0]["capture_extent_ignored"] = json!(true);
+        assert!(!has_differences(&report, true)?);
+        report["comparisons"][0]["findings"][0]["pixels_differ"] = json!(true);
+        assert!(has_differences(&report, true)?);
         Ok(())
     }
 

@@ -9,6 +9,7 @@ const OBSERVATIONS: [(&str, [&str; 2]); 2] = [
 
 fn confirmed_equal(finding: &Value) -> bool {
     finding["pixels_compared"] == true
+        && finding["capture_extent_ignored"] != true
         && finding["left_rendering"] == "captured"
         && finding["right_rendering"] == "captured"
         && finding["pixels_differ"] == false
@@ -119,6 +120,15 @@ pub(super) fn apply(report: &mut Value, directory: &Path) -> Result<Vec<PathBuf>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn overlap_only_equality_keeps_the_original_capture_evidence() {
+        let finding = json!({"pixels_compared":true,"pixels_differ":false,
+            "geometry_differs":false,"rendering_differs":false,
+            "left_rendering":"captured","right_rendering":"captured",
+            "capture_extent_ignored":true});
+        assert!(!confirmed_equal(&finding));
+    }
 
     /// Apply the storage policy to real native output without deleting its original evidence.
     #[test]

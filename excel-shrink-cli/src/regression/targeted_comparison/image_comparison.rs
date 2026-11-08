@@ -53,6 +53,26 @@ impl ImageComparisons {
         self.statistics.clone()
     }
 
+    /// Compare only the common rectangle, without scaling either immutable image.
+    /// The caller establishes the same measured capture origin.
+    pub fn differ_in_overlap(&mut self, left: &Path, right: &Path) -> Result<bool> {
+        self.statistics.comparisons += 1;
+        if self.fingerprint(left)? == self.fingerprint(right)? {
+            return Ok(false);
+        }
+        self.statistics.encoded_bytes_read += fs::metadata(left)?.len() + fs::metadata(right)?.len();
+        let left = image::open(left)?.into_rgba8();
+        let right = image::open(right)?.into_rgba8();
+        self.statistics.decoded_images += 2;
+        self.statistics.files_read += 2;
+        let width = left.width().min(right.width());
+        let height = left.height().min(right.height());
+        anyhow::ensure!(width > 0 && height > 0, "No shared capture pixels");
+        Ok((0..height).any(|y| {
+            (0..width).any(|x| left.get_pixel(x, y) != right.get_pixel(x, y))
+        }))
+    }
+
     fn fingerprint(&mut self, path: &Path) -> Result<Pixels> {
         if let Some(pixels) = self.files.get(path) {
             return Ok(*pixels);

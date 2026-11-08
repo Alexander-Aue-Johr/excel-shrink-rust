@@ -17,6 +17,7 @@ pub(super) struct ContentVerdict {
     pub pixels_differ: bool,
     pub geometry_differs: bool,
     pub blank_margin_ignored: bool,
+    pub capture_extent_ignored: bool,
 }
 
 #[derive(Clone)]
@@ -47,8 +48,8 @@ impl Evidence {
         }
     }
 
-    /// Ignore changed trailing white extent only when both measured origins agree
-    /// and every nonblank pixel in the complete captures still matches exactly.
+    /// Compare the shared image rectangle when capture/content origins agree.
+    /// Keep the historical white-margin proof distinct from an overlap-only verdict.
     pub fn compare_content(
         &self,
         other: &Self,
@@ -65,14 +66,22 @@ impl Evidence {
                         pixels_differ: false,
                         geometry_differs: false,
                         blank_margin_ignored: true,
+                        capture_extent_ignored: false,
                     });
                 }
+                return Ok(ContentVerdict {
+                    pixels_differ: comparisons.differ_in_overlap(left, right)?,
+                    geometry_differs: false,
+                    blank_margin_ignored: false,
+                    capture_extent_ignored: true,
+                });
             }
         }
         Ok(ContentVerdict {
             pixels_differ,
             geometry_differs,
             blank_margin_ignored: false,
+            capture_extent_ignored: false,
         })
     }
 
@@ -405,7 +414,7 @@ mod margin_tests {
     /// The extra blank row/column in Enron Deals A1:I7 and Top 100 Exposures
     /// may change size. Body geometry and overflow ink must remain observable.
     #[test]
-    fn blank_margin_changes_require_matching_origins_and_all_ink() -> Result<()> {
+    fn capture_extent_changes_require_matching_origins_and_preserve_overlap_differences() -> Result<()> {
         let directory =
             crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "blank-margin")?;
         std::fs::create_dir_all(&directory)?;
@@ -432,7 +441,8 @@ mod margin_tests {
                 ContentVerdict {
                     pixels_differ: false,
                     geometry_differs: false,
-                    blank_margin_ignored: true
+                    blank_margin_ignored: true,
+                    capture_extent_ignored: false
                 }
             );
         }
@@ -467,17 +477,22 @@ mod margin_tests {
         assert_eq!(
             evidence[0].compare_content(&overflow, &mut comparisons)?,
             ContentVerdict {
-                pixels_differ: true,
-                geometry_differs: true,
-                blank_margin_ignored: false
+                pixels_differ: false,
+                geometry_differs: false,
+                blank_margin_ignored: false,
+                capture_extent_ignored: true
             }
         );
-        // Even a one-level brightness change in a single pixel remains visible
-        // evidence. The white-extent rule supplies no antialiasing tolerance.
+        // Content outside the shared rectangle is outside this comparison's scope.
         let path = directory.join("faint-border.png");
         image.put_pixel(12, 3, image::Rgba([254, 254, 254, 255]));
         image.save(&path)?;
         overflow.path = Some(path);
+        assert!(!evidence[0].compare_content(&overflow, &mut comparisons)?.pixels_differ);
+        image.put_pixel(2, 3, image::Rgba([1, 0, 0, 255]));
+        let changed = directory.join("changed-overlap.png");
+        image.save(&changed)?;
+        overflow.path = Some(changed);
         assert!(evidence[0].compare_content(&overflow, &mut comparisons)?.pixels_differ);
         std::fs::remove_dir_all(directory)?;
         Ok(())
