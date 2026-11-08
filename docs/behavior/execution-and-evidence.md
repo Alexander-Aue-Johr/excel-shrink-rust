@@ -4,6 +4,21 @@ These rules complement [the shrinker](shrinker.md) and
 [the targeted comparison](targeted-validation.md). They distinguish scientific
 outcomes, scheduling, diagnostic telemetry and disposable working files.
 
+## Runtime Office assets
+
+The standalone renderer, preparation helpers and configurator web assets share
+the capture-directory resolver. An explicit `EXCEL_SHRINK_CAPTURE_DIR` takes
+precedence and must contain `run-targeted-comparison.ps1`. An invalid explicit
+directory fails rather than selecting different scripts silently.
+
+Without that override, `office-capture` beside the running executable is searched
+before the existing working-directory and build-checkout fallbacks. Release
+packaging must retain the complete Office asset tree. Runtime recipe hashes
+continue to bind the selected scientific assets into comparison reuse identity.
+This resolver change is one release prerequisite. Relocation of the complete
+study runner, regression repository-root assumptions and packaged dependency
+verification still need end-to-end acceptance.
+
 ## E1. Corpus and workbook identities
 
 Keep the original corpus/archive identity and catalog when processing a subset.

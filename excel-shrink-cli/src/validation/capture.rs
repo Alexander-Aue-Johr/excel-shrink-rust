@@ -112,17 +112,68 @@ pub(super) fn compare(
 }
 
 pub(crate) fn capture_directory() -> Result<PathBuf> {
-    let candidates = [
+    let explicit = std::env::var_os("EXCEL_SHRINK_CAPTURE_DIR").map(PathBuf::from);
+    let adjacent = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.join("office-capture")));
+    let candidates = adjacent.into_iter().chain([
         PathBuf::from("excel-shrink-cli/office-capture"),
         PathBuf::from("office-capture"),
         Path::new(env!("CARGO_MANIFEST_DIR")).join("office-capture"),
-    ];
+    ]);
+    resolve_capture_directory(explicit, candidates)
+}
+
+/// Prefer explicitly bound or executable-adjacent assets when a release leaves its checkout.
+fn resolve_capture_directory(
+    explicit: Option<PathBuf>,
+    candidates: impl IntoIterator<Item = PathBuf>,
+) -> Result<PathBuf> {
+    if let Some(path) = explicit {
+        ensure!(
+            path.join("run-targeted-comparison.ps1").is_file(),
+            "EXCEL_SHRINK_CAPTURE_DIR does not contain the Office capture scripts"
+        );
+        return fs::canonicalize(path).context("Cannot resolve EXCEL_SHRINK_CAPTURE_DIR");
+    }
     candidates
         .into_iter()
         .find(|path| path.join("run-targeted-comparison.ps1").is_file())
         .map(fs::canonicalize)
         .transpose()?
         .context("The Office capture scripts are missing")
+}
+
+#[cfg(test)]
+mod asset_tests {
+    use super::*;
+
+    #[test]
+    fn release_assets_take_precedence_and_explicit_mistakes_do_not_fall_back() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("capture-assets-{}", uuid::Uuid::new_v4()));
+        let packaged = root.join("release/office-capture");
+        let checkout = root.join("checkout/office-capture");
+        for path in [&packaged, &checkout] {
+            fs::create_dir_all(path)?;
+            fs::write(path.join("run-targeted-comparison.ps1"), b"fixture")?;
+        }
+        assert_eq!(
+            resolve_capture_directory(None, [packaged.clone(), checkout.clone()])?,
+            fs::canonicalize(&packaged)?
+        );
+        assert_eq!(
+            resolve_capture_directory(Some(checkout.clone()), [packaged.clone()])?,
+            fs::canonicalize(&checkout)?
+        );
+        assert!(resolve_capture_directory(Some(root.join("missing")), [checkout.clone()]).is_err());
+        fs::rename(root.join("release"), root.join("relocated"))?;
+        let relocated = root.join("relocated/office-capture");
+        assert_eq!(
+            resolve_capture_directory(None, [packaged, relocated.clone()])?,
+            fs::canonicalize(relocated)?
+        );
+        Ok(())
+    }
 }
 
 /// Keep producer releases independent of validator identity. The source digest is
