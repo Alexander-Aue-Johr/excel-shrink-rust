@@ -15,6 +15,7 @@ mod native_process;
 #[cfg(windows)]
 mod process_job;
 mod metadata_store;
+mod machine_environment;
 mod pipeline;
 mod profiling;
 mod regression;

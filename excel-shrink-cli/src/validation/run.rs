@@ -124,6 +124,11 @@ impl Run {
             fs::create_dir(root.join(directory))?;
         }
         let work = WorkDirectory::create(&root)?;
+        let mut machine = crate::machine_environment::collect(None);
+        // Portable reports identify the machine by its hash, without its local hostname.
+        machine.as_object_mut().unwrap().remove("hostname");
+        machine.as_object_mut().unwrap().remove("label");
+        let executable_sha256 = file_sha256(&std::env::current_exe()?)?;
         let header = json!({
             "schema":1, "tool":"DeltaSieve", "version":env!("CARGO_PKG_VERSION"),
             "run_id":uuid::Uuid::new_v4().to_string(), "status":"preparing",
@@ -133,6 +138,7 @@ impl Run {
             "baseline_after_step":config.baseline_after_step,
             "pairs":[], "unmatched_candidates":[], "steps":[],
             "preparation":preparation.as_ref().map(|evidence| &evidence.summary),
+            "environment":{"machine":machine,"executable_sha256":executable_sha256},
             "replay":{"available":true,"manifest":"replay/manifest.json","channel":"run-progress"},
         });
         let replay = Mutex::new(super::replay::Recorder::new(root.join("replay"))?);
@@ -979,6 +985,13 @@ mod tests {
             ..RunConfig::default()
         };
         assert!(execute(config, None).is_err());
+        let run = storage::read_json(&report.join("run.json"))?;
+        let environment = &run["environment"];
+        assert_eq!(environment["executable_sha256"], file_sha256(&std::env::current_exe()?)?);
+        assert!(environment["machine"]["machine_id"].is_string());
+        assert!(environment["machine"].get("hostname").is_none());
+        assert!(environment["machine"].get("label").is_none());
+        assert!(environment["machine"]["excel"].is_object());
         let manifest = storage::read_json(&report.join("replay/manifest.json"))?;
         assert_eq!(manifest["complete"], true);
         let chunks = manifest["chunks"].as_array().unwrap();

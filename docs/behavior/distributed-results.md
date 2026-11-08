@@ -62,3 +62,19 @@ Private receipts remain in
 
 This was a same-machine report-format acceptance. It did not substitute for the
 distributed multi-machine rehearsal or establish pixel-detection accuracy.
+
+### Automatic standalone environment snapshot
+
+New standalone run headers record an environment object containing the executing
+binary's SHA-256 and a hardware/installed-Excel snapshot. The collector is shared
+with archive runs and reads CIM/registry metadata without starting Excel. Missing
+fields retain collection warnings. Standalone snapshots omit hostname and label,
+using the hashed machine identity for attribution. Historical reports remain
+unchanged. This metadata is observational and does not replace the declared
+renderer environment key used for result reuse.
+
+The focused failed-source/replay test passed with assertions for the executable
+checksum, machine identity, Excel metadata object and absent hostname/label.
+Collection and storage succeeded even for a run whose source preparation failed.
+This completes metadata publication for that standalone entry point. Archive
+collection adaptation and the multi-machine rehearsal remain open.
