@@ -40,3 +40,32 @@ controlled deployments. An invalid explicit path fails.
 This is a packaging prerequisite, not the final distributed evaluation release.
 The full roadmap still requires independent application defaults, replay,
 export/merge and ordinary study start/resume acceptance after relocation.
+
+## Relocation acceptance on 2026-11-08
+
+Four package tests passed, covering member selection, relocation, corruption,
+existing destinations, unexpected files and interrupted publication. A real
+debug runtime package contained 98 files and passed verification before and
+after moving from `package-01` to `relocated-01` under
+`G:\deltasieve-work\runtime-relocation-20261108`.
+
+The packaged Observatory started from an empty working directory without an
+explicit capture-directory override. A unique temporary probe served from its
+packaged web tree established the selected asset location. The test host was
+closed, the probe removed, and all 98 package files verified again.
+
+The relocated executable then completed one existing Original/Check Performance
+fixture pair through the ordinary `compare` command from the same empty working
+directory, in approximately 59.04 seconds. It reported one processed pair, zero
+failed pairs, and `completed_with_limitations`. Five Original-rebuilt and five
+candidate-rebuilt region captures were retained as observations. The report
+recorded one differing region, with geometry and images preserved. This smoke
+test establishes execution and evidence publication, with no new attribution of
+that difference or claim of visual equality.
+
+Both Excel PIDs recorded by the comparison were absent after completion. Enron
+admission was restored to four and a live query confirmed four active groups
+and continuing completions. Private acceptance receipts are
+`web-relocation-acceptance.json`, `native-relocation-process.json` and the
+`native-report-01` directory beside the package. This covers one standalone
+pair. Relocated archive-study start/resume and other release gates remain open.
