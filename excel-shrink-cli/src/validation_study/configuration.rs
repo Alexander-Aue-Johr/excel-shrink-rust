@@ -24,6 +24,7 @@ pub(crate) struct Configuration {
     pub partition: u32,
     pub check_performance: bool,
     pub retain_equal_images: bool,
+    pub reuse_webview_profiles: bool,
     pub geometry_batch_ranges: usize,
     pub capture_batch_ranges: usize,
     pub capture_batch_megapixels: usize,
@@ -45,6 +46,7 @@ impl Default for Configuration {
             partition: 0,
             check_performance: false,
             retain_equal_images: false,
+            reuse_webview_profiles: false,
             geometry_batch_ranges: 256,
             capture_batch_ranges: 8,
             capture_batch_megapixels: 256,
@@ -219,7 +221,7 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
         .context("Capture repository root")?;
     let runtime = configuration.output_root.join("runtime");
     fs::create_dir_all(runtime.join("temp"))?;
-    let environment = BTreeMap::from([
+    let mut environment = BTreeMap::from([
         (
             "EXCEL_SHRINK_REPOSITORY_ROOT".into(),
             crate::regression::power_shell_path(repository)?,
@@ -244,6 +246,13 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
             runtime.join("logs").to_string_lossy().into_owned(),
         ),
     ]);
+    // An empty value overrides any inherited pool setting for fresh-profile runs.
+    let profile_pool = if configuration.reuse_webview_profiles {
+        runtime.join("webview-profiles").to_string_lossy().into_owned()
+    } else {
+        String::new()
+    };
+    environment.insert("EXCEL_SHRINK_WEBVIEW_PROFILE_POOL".into(), profile_pool);
     let controls = json!({
         "target_groups":configuration.comparison_groups, "paused":false,
         "prepare_processes":configuration.prepare_processes,
@@ -349,6 +358,7 @@ mod tests {
             receipt.binary_sha256
         );
         assert_eq!(receipt.environment["EXCEL_SHRINK_SQLITE_METADATA"], "1");
+        assert_eq!(receipt.environment["EXCEL_SHRINK_WEBVIEW_PROFILE_POOL"], "");
         assert_eq!(
             receipt.environment["EXCEL_SHRINK_SYSTEM_RESERVE_MIB"],
             "512"
@@ -356,6 +366,20 @@ mod tests {
         let original_receipt = fs::read(&receipt_path).unwrap();
         assert!(create(configuration).is_err());
         assert_eq!(fs::read(receipt_path).unwrap(), original_receipt);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn freezes_the_profile_pool_for_repeatable_resume() {
+        let (root, mut configuration) = fixture();
+        configuration.reuse_webview_profiles = true;
+        let receipt_path = create(configuration.clone()).unwrap();
+        let receipt: Receipt = serde_json::from_slice(&fs::read(receipt_path).unwrap()).unwrap();
+        assert_eq!(
+            PathBuf::from(&receipt.environment["EXCEL_SHRINK_WEBVIEW_PROFILE_POOL"]),
+            configuration.output_root.join("runtime/webview-profiles")
+        );
+        receipt.validate().unwrap();
         fs::remove_dir_all(root).unwrap();
     }
 

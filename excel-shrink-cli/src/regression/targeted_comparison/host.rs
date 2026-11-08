@@ -88,7 +88,9 @@ impl ExcelHost {
             "base_right_column":sheet.base_right_column, "right_column":sheet.base_right_column,
             "horizontal_overflow_required":false, "drawing_fallback_required":false,
         })).collect();
-        let profile_root = if let Some(root) = std::env::var_os("EXCEL_SHRINK_WEBVIEW_PROFILE_POOL") {
+        let pool = std::env::var_os("EXCEL_SHRINK_WEBVIEW_PROFILE_POOL")
+            .filter(|root| !root.is_empty());
+        let profile_root = if let Some(root) = pool {
             ensure!(
                 !self.profiles.contains_key(lane.key()),
                 "Lane already owns a profile"

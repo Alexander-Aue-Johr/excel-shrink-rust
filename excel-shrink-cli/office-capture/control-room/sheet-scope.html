@@ -176,6 +176,7 @@
         <label>Capture ranges per sync<input name="capture_batch_ranges" type="number" min="1" max="64" required></label>
         <label>Capture batch megapixel budget<input name="capture_batch_megapixels" type="number" min="1" required></label>
         <label class="check wide"><input name="retain_equal_images" type="checkbox"> Retain verified-equal images</label>
+        <label class="check wide"><input name="reuse_webview_profiles" type="checkbox"> Reuse isolated WebView profiles (warm browser caches)</label>
       </div></details>
       <p class="help wide">SQLite metadata and a 512 MiB free-RAM reserve are enabled. The run saves its source hash, configuration and immutable executable. Worker and batch settings remain adjustable in its Observatory.</p>
       <div class="actions wide"><button id="start-study" type="submit" class="primary">Start corpus study</button><a id="new-study-link" hidden>Open study Observatory</a></div>

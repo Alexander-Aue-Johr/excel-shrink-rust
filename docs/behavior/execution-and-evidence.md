@@ -188,6 +188,11 @@ isolated profiles for the targeted runner. Rust assigns an exclusively locked
 slot to each live resident lane. The same slot has separate `private` and
 `interactive` browser directories. Lane transitions retain that lease.
 Without this setting, the existing temporary per-session profile remains in use.
+The study configurator exposes `reuse_webview_profiles`, defaulting to false.
+When selected, the launch receipt binds the pool to
+`<output_root>/runtime/webview-profiles`, preserving it on resume. Fresh-profile
+receipts explicitly clear an inherited pool environment setting. The checkbox
+prefills from a supplied study configuration and never starts the run by itself.
 
 The pool retains at most 128 slot directories. An `in-use` marker survives an
 interrupted lease. Such a slot is quarantined even after its file lock is
