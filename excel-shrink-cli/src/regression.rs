@@ -3060,11 +3060,8 @@ fn repo_root() -> PathBuf {
     // scripts and assets to the requested repository and all child processes inherit it.
     if let Some(root) = std::env::var_os("EXCEL_SHRINK_REPOSITORY_ROOT") {
         let root = PathBuf::from(root);
-        assert!(
-            root.join("Cargo.toml").is_file()
-                && root.join("excel-shrink-cli/office-capture").is_dir(),
-            "EXCEL_SHRINK_REPOSITORY_ROOT must name an existing capture repository"
-        );
+        assert!(capture_root_exists(&root),
+            "EXCEL_SHRINK_REPOSITORY_ROOT must name a capture checkout or packaged runtime");
         return root;
     }
     // A WSL cross-build is deployed into a Windows working copy. Its embedded
@@ -3082,6 +3079,34 @@ fn repo_root() -> PathBuf {
         .parent()
         .expect("workspace root should exist")
         .to_path_buf()
+}
+
+/// Archive execution needs its working root and capture assets, not Cargo sources.
+fn capture_root_exists(root: &Path) -> bool {
+    (root.join("Cargo.toml").is_file()
+        && root.join("excel-shrink-cli/office-capture").is_dir())
+        || (root.join("release-manifest.json").is_file()
+            && root.join("office-capture/run-targeted-comparison.ps1").is_file()
+            && root.join("src/regression/archive_processes.ps1").is_file())
+}
+
+#[cfg(test)]
+mod capture_root_tests {
+    use super::*;
+
+    #[test]
+    fn packaged_runtime_does_not_require_a_source_checkout() -> anyhow::Result<()> {
+        let root = std::env::temp_dir().join(format!("runtime-root-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("office-capture"))?;
+        fs::create_dir_all(root.join("src/regression"))?;
+        fs::write(root.join("office-capture/run-targeted-comparison.ps1"), b"fixture")?;
+        fs::write(root.join("src/regression/archive_processes.ps1"), b"fixture")?;
+        assert!(!capture_root_exists(&root));
+        fs::write(root.join("release-manifest.json"), b"{}")?;
+        assert!(capture_root_exists(&root));
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 }
 
 fn cached_corpus_root(repo_root: &Path) -> PathBuf {

@@ -307,6 +307,17 @@ The experiment record is in
 
 ## Remaining acceptance gates
 
+An archive study can run from a packaged runtime without a Cargo checkout.
+An explicitly supplied `EXCEL_SHRINK_REPOSITORY_ROOT` accepts either the existing
+checkout layout or a runtime root containing `release-manifest.json`, the Office
+capture entry script and the owned-process cleanup helper. This layout check
+does not replace verification of every packaged file against the release
+manifest. The transfer launcher performs that verification before starting.
+
+The first ordinary transfer-starter acceptance exposed the former checkout-only
+assertion before any workbook comparison started. Runtime-root recognition is
+covered by a focused test. Native starter acceptance remains a separate gate.
+
 Test valid transfer, relocation, partial coverage, failed inputs, hash corruption,
 source/baseline changes, duplicate occurrences, multiple generations, changed
 partitions, producer/consumer environment differences and unavailable local
