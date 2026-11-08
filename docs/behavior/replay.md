@@ -38,9 +38,25 @@ the number of published chunks. The writer avoids rewriting the growing
 manifest for each chunk. Recording errors are surfaced through the run's
 existing progress/publication failure path.
 
+## Static export validation
+
+The ordinary static exporter verifies complete replay channels before copying
+their exact compressed bytes. It checks canonical chunk filenames, path
+confinement, SHA-256, compressed sizes, bounded decompression, no trailing gzip
+data, event counts, contiguous sequences and monotonic timestamp bounds. The
+manifest totals must match its events. Limits are fixed by this version of the
+reader. A malformed channel fails export rather than being silently omitted.
+
+Missing older history and explicitly incomplete recordings export an unavailable
+reason. Partial-channel recovery is still open. Exported `run.json` records the
+available channel's relative manifest path. Publication review scans decoded
+gzip checkpoint JSON within the same bounds, so compressed error text remains
+subject to local-path and credential checks. Original recordings and source
+run metadata stay unchanged.
+
 ## Remaining delivery gates
 
-Static export of this channel, validated bounded readers, virtual-clock UI,
+Browser readers, virtual-clock UI,
 play/pause/seek/speed controls and shared live component playback remain open.
 Process/sheet/capture/heartbeat recording and long-run memory/cost acceptance
 remain open too. This storage channel alone does not complete roadmap Task 15.

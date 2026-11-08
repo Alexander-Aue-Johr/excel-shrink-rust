@@ -6,6 +6,7 @@
 
 mod evidence;
 mod publication;
+mod replay;
 mod site;
 
 pub(crate) use site::{export_site, write_pair_page, write_site};

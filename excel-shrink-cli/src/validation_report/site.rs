@@ -50,6 +50,7 @@ pub(crate) fn write_site(report_root: &Path, run: &Value) -> Result<PathBuf> {
         "summary": run["summary"],
         "selection": run["selection"],
         "preparation": run["preparation"],
+        "replay": run["replay"],
         "error": run["error"],
         "interrupted_index": run["interrupted_index"],
         "publication_review": if root.join("publication-review.json").is_file() {
@@ -110,7 +111,8 @@ fn write_pair_page_contents(root: &Path, report_relative: &str, label: &str) -> 
 
 /// Export run metadata and verified packages with a publication-review inventory.
 /// Original reports stay read-only. Processing outputs, scratch workbooks,
-/// telemetry histories and executable programs are deliberately not exported.
+/// Raw telemetry histories and executable programs are deliberately not exported.
+/// The compact replay channel is verified separately before publication.
 pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<PathBuf> {
     let source = source_root
         .canonicalize()
@@ -149,6 +151,9 @@ pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<Path
         evidence::copy_verified_package(package, &target)?;
         audit_files.push(relative.to_owned());
     }
+    let (replay, replay_files) = super::replay::copy_channel(&source, &destination)?;
+    run["replay"] = replay;
+    audit_files.extend(replay_files);
     evidence::write_new(
         &destination.join("run.json"),
         &serde_json::to_vec_pretty(&run)?,

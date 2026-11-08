@@ -29,7 +29,12 @@ impl Findings {
 pub(super) fn audit(root: &Path, files: &[String]) -> Result<Value> {
     let mut findings = Findings::default();
     for relative in files {
-        let value = read_json_file(&evidence::confined_file(root, relative)?)?;
+        let path = evidence::confined_file(root, relative)?;
+        let value = if relative.starts_with("replay/") && relative.ends_with(".json.gz") {
+            super::replay::read_chunk(&path)?
+        } else {
+            read_json_file(&path)?
+        };
         inspect(&value, "", relative, &mut findings);
     }
     Ok(json!({
