@@ -319,3 +319,63 @@ fn coverage_preview_retains_ambiguous_generations_without_selecting_one() -> Res
     );
     Ok(())
 }
+
+#[test]
+fn import_materializes_exact_pairs_with_shared_names_and_producer_evidence() -> Result<()> {
+    let (root, source) = fixture()?;
+    let package = root.join("package");
+    export(&source, &package)?;
+    let manifest = selection(&root, &["source:'0", "source:'1"])?;
+    let target = root.join("imported");
+    assert_eq!(materialize(&package, &manifest, &target)?, 2);
+    assert!(!target.join("incomplete.json").exists());
+    let index: Value = serde_json::from_slice(&fs::read(target.join("import.json"))?)?;
+    assert_eq!(index["visual_validation"], "pending");
+    assert_eq!(index["provenance"].as_object().unwrap().len(), 1);
+    let config = crate::validation::RunConfig::from_file(&target.join("compare.json"))?;
+    config.validate()?;
+    let a = crate::validation_sources::discover(Path::new(&config.source_a))?;
+    let b = crate::validation_sources::discover(Path::new(config.source_b.as_ref().unwrap()))?;
+    assert_eq!(
+        a.files.keys().collect::<Vec<_>>(),
+        b.files.keys().collect::<Vec<_>>()
+    );
+    assert_eq!(a.files.len(), 2);
+    for entry in index["entries"].as_array().unwrap() {
+        let name = entry["pair_file"].as_str().unwrap();
+        assert_eq!(name.len(), 69);
+        assert_eq!(
+            fs::read(target.join("baseline").join(name))?,
+            b"baseline bytes"
+        );
+        assert_eq!(
+            fs::read(target.join("check-performance").join(name))?,
+            b"optimized"
+        );
+        assert_eq!(
+            entry["prepared_evidence"]["measurements"]["worker_jobs_completed"]
+                .as_u64()
+                .is_some(),
+            true
+        );
+    }
+    let before = fs::read(target.join("import.json"))?;
+    assert!(materialize(&package, &manifest, &target).is_err());
+    assert_eq!(before, fs::read(target.join("import.json"))?);
+    Ok(())
+}
+
+#[test]
+fn import_rejects_incomplete_selection_before_creating_output() -> Result<()> {
+    let (root, source) = fixture()?;
+    let package = root.join("package");
+    export(&source, &package)?;
+    let manifest = selection(&root, &["source:'0", "failed-source"])?;
+    let target = root.join("imported");
+    assert!(materialize(&package, &manifest, &target).is_err());
+    assert!(!target.exists());
+    let manifest = selection(&root, &["source:'0"])?;
+    assert!(materialize(&package, &manifest, &package.join("nested")).is_err());
+    assert!(!package.join("nested").exists());
+    Ok(())
+}

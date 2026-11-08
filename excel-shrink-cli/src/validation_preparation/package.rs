@@ -23,6 +23,8 @@ mod reader;
 pub(crate) use reader::verify;
 mod preview;
 pub(crate) use preview::preview;
+mod materialize;
+pub(crate) use materialize::materialize;
 
 #[cfg(test)]
 mod tests;

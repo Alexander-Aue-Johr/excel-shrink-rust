@@ -1,9 +1,9 @@
 use super::*;
 use crate::validation_preparation::{self, Input};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-enum Status {
+pub(super) enum Status {
     Complete,
     Missing,
     Unsuccessful,
@@ -15,11 +15,12 @@ enum Status {
 }
 
 #[derive(Serialize)]
-struct Item {
+pub(super) struct Item {
     source_id: String,
     name: String,
-    status: Status,
+    pub status: Status,
     detail: Option<String>,
+    pub selected_generation: Option<String>,
     candidates: Vec<Value>,
 }
 
@@ -84,7 +85,7 @@ pub(crate) fn preview(
     })
 }
 
-fn inspect(statement: &mut rusqlite::Statement<'_>, input: &Input) -> Result<Item> {
+pub(super) fn inspect(statement: &mut rusqlite::Statement<'_>, input: &Input) -> Result<Item> {
     let mut rows = statement.query([&input.source_id])?;
     let mut candidates = Vec::new();
     while let Some(row) = rows.next()? {
@@ -98,26 +99,30 @@ fn inspect(statement: &mut rusqlite::Statement<'_>, input: &Input) -> Result<Ite
             "error":payload["error"]
         }));
     }
-    let (status, detail) = classify(input, &candidates)?;
+    let (status, detail, selected_generation) = classify(input, &candidates)?;
     Ok(Item {
         source_id: input.source_id.clone(),
         name: input.name.clone(),
         status,
         detail,
+        selected_generation,
         candidates,
     })
 }
 
-fn classify(input: &Input, candidates: &[Value]) -> Result<(Status, Option<String>)> {
+fn classify(
+    input: &Input,
+    candidates: &[Value],
+) -> Result<(Status, Option<String>, Option<String>)> {
     if candidates.is_empty() {
-        return Ok((Status::Missing, None));
+        return Ok((Status::Missing, None, None));
     }
     let prepared: Vec<_> = candidates
         .iter()
         .filter(|entry| entry["status"] == "prepared")
         .collect();
     if prepared.is_empty() {
-        return Ok((Status::Unsuccessful, None));
+        return Ok((Status::Unsuccessful, None, None));
     }
     let raw = input
         .raw_source
@@ -129,7 +134,7 @@ fn classify(input: &Input, candidates: &[Value]) -> Result<(Status, Option<Strin
         .filter(|entry| raw.as_ref().is_none_or(|raw| entry["raw_source"] == *raw))
         .collect();
     if sources.is_empty() {
-        return Ok((Status::SourceMismatch, None));
+        return Ok((Status::SourceMismatch, None, None));
     }
     let expected = input
         .expected_sha256
@@ -138,26 +143,33 @@ fn classify(input: &Input, candidates: &[Value]) -> Result<(Status, Option<Strin
     let matching = sources
         .iter()
         .filter(|entry| entry["baseline_sha256"] == expected)
-        .count();
-    if matching == 0 {
-        return Ok((Status::BaselineMismatch, None));
+        .collect::<Vec<_>>();
+    if matching.is_empty() {
+        return Ok((Status::BaselineMismatch, None, None));
     }
     match artifact_cache::hash_file(&input.baseline) {
         Ok(actual) if actual != expected => {
             return Ok((
                 Status::LocalBaselineChanged,
                 Some("Local baseline differs from the selected manifest".into()),
+                None,
             ))
         }
-        Err(error) => return Ok((Status::LocalBaselineUnavailable, Some(format!("{error:#}")))),
+        Err(error) => {
+            return Ok((
+                Status::LocalBaselineUnavailable,
+                Some(format!("{error:#}")),
+                None,
+            ))
+        }
         _ => {}
     }
-    Ok((
-        if matching == 1 {
-            Status::Complete
-        } else {
-            Status::AmbiguousGeneration
-        },
-        None,
-    ))
+    if matching.len() > 1 {
+        return Ok((Status::AmbiguousGeneration, None, None));
+    }
+    let generation = matching[0]["generation_id"]
+        .as_str()
+        .context("Generation missing")?
+        .to_owned();
+    Ok((Status::Complete, None, Some(generation)))
 }

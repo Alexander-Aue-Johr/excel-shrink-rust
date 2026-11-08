@@ -3,8 +3,9 @@
 This contract defines the next integration step after the persistent-worker
 acceptance experiment. The explicit-input and source-manifest preparation CLI
 interfaces, package export and read-only package verification are implemented.
-Selection coverage preview is also available through the CLI. Materialization
-and web integration remain implementation requirements.
+Selection coverage preview and strict paired-folder import are also available
+through the CLI. Explicit baseline adoption, generation selection and web
+integration remain implementation requirements.
 
 ## Source identity and selection
 
@@ -133,6 +134,26 @@ while a SheetShrink-only update does not invalidate independent CP generation.
 
 The receiver can materialize paired baseline/optimized folders with matching
 safe names and an identity index for the ordinary DeltaSieve comparison path.
+
+Use `deltasieve preparation-import PACKAGE_ROOT --source-manifest sources.json
+--output NEW_DIRECTORY` for strict import. Every selected occurrence must have
+exactly one compatible generation and an unchanged, available local baseline.
+The importer uses the same decision as the coverage preview and rejects the
+entire request before creating output if any selected occurrence is unresolved.
+Select an explicit smaller source manifest when importing a completed subset.
+Ambiguous generations and alternative converted baselines require the future
+explicit selection/adoption workflow.
+
+The new directory contains `baseline` and `check-performance` folders, a
+`compare.json` configuration and a final `import.json` index. Pair filenames
+derive from the source ID's SHA-256, preserving distinct occurrences even when
+their display names or bytes repeat. Every copied state is hash- and
+length-verified. The index retains original names, source and generation IDs,
+full prepared-state receipts, producer measurements and deduplicated provenance.
+The comparison configuration uses the ordinary two-corpus path with no local
+optimization stage. Import leaves visual validation pending. Existing output
+directories are immutable, and failed construction retains an incomplete marker.
+
 SheetShrink evaluation can explicitly adopt the same packaged baseline where
 needed. Native generation, artifact import and visual verdicts retain separate
 lifecycles and reuse checks.

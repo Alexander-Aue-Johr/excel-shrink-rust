@@ -86,6 +86,14 @@ enum Command {
     PreparationExport { preparation: PathBuf, output: PathBuf },
     /// Verify a transferred preparation package without Excel.
     PreparationVerify { package: PathBuf },
+    /// Materialize compatible packaged baselines and optimized workbooks as paired folders.
+    PreparationImport {
+        package: PathBuf,
+        #[arg(long)]
+        source_manifest: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Preview preparation coverage against a selected source manifest.
     PreparationPreview {
         package: PathBuf,
@@ -503,6 +511,11 @@ pub(crate) fn run_cli() -> Result<()> {
         Some(Command::PreparationVerify { package }) => {
             let header = crate::validation_preparation::package::verify(&package)?;
             println!("Verified {} preparation outcomes", header.entries);
+            Ok(())
+        }
+        Some(Command::PreparationImport { package, source_manifest, output }) => {
+            let count = crate::validation_preparation::package::materialize(&package, &source_manifest, &output)?;
+            println!("Imported {count} prepared pairs to {}", output.display());
             Ok(())
         }
         Some(Command::PreparationPreview { package, source_manifest, offset, limit }) => {
