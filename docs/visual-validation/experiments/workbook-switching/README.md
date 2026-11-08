@@ -351,3 +351,10 @@ until its bounded deadline, so owner death during that command is not immediate
 cancellation. Failed or unconfirmed cleanup quarantines the affected slot. RAM
 checks require 512 MiB physical and commit reserve around worker startup. They
 cannot guarantee memory consumed later by arbitrary workbooks.
+
+`rebuild-controls.py verify-pool <probe-directory>` independently checks ZIP
+integrity, B1 formula text and serialized caches in the pool's three snapshots.
+It verified trial 02's stale original cache 999, rebuilt cache 6 and unaffected
+peer cache 1111. When a later probe records Save As acceptance, it additionally
+requires both Save As outputs to retain the rebuilt cache. That acceptance is
+still pending a native test after the user's requested machine restart.

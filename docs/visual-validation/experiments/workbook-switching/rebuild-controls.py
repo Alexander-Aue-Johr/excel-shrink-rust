@@ -76,6 +76,31 @@ def verify(result: Path) -> None:
     print("Verified four rebuild transitions and eight PNG receipts in one Excel process.")
 
 
+def verify_pool(directory: Path) -> None:
+    """Check serialized formulas independently of the native probe's success flags."""
+    report = json.loads((directory / "result.json").read_text(encoding="utf-8-sig"))
+    cleanup = json.loads((directory / "cleanup.json").read_text(encoding="utf-8-sig"))
+    if not all(cleanup.get(key) is True for key in [
+        "pool_exit_confirmed", "excel_exits_confirmed", "source_hashes_unchanged"
+    ]):
+        raise ValueError("Missing pool cleanup evidence")
+    expected = {"first-before.xlsx": 999, "first-after.xlsx": 6, "survivor.xlsx": 1111}
+    if report.get("save_as_identity_verified") is True:
+        expected.update({"first-save-as.xlsx": 6, "first-after-save-as.xlsx": 6})
+    for name, cached in expected.items():
+        with zipfile.ZipFile(directory / name) as workbook:
+            corrupt = workbook.testzip()
+            if corrupt is not None:
+                raise ValueError(f"Corrupt snapshot member in {name}: {corrupt}")
+            sheet = ET.fromstring(workbook.read("xl/worksheets/sheet1.xml"))
+            cell = sheet.find('.//s:c[@r="B1"]', NS)
+            if cell is None or cell.findtext("s:f", namespaces=NS) != "A1*3":
+                raise ValueError(f"Snapshot formula differs in {name}")
+            if int(cell.findtext("s:v", namespaces=NS)) != cached:
+                raise ValueError(f"Unexpected cached value in {name}")
+    print(f"Verified {len(expected)} pool snapshots, including the unaffected peer's stale cache.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -84,8 +109,12 @@ if __name__ == "__main__":
     create.add_argument("output", type=Path)
     check = commands.add_parser("verify")
     check.add_argument("result", type=Path)
+    pool = commands.add_parser("verify-pool")
+    pool.add_argument("directory", type=Path)
     arguments = parser.parse_args()
     if arguments.command == "create":
         create_controls(arguments.seed, arguments.output)
-    else:
+    elif arguments.command == "verify":
         verify(arguments.result)
+    else:
+        verify_pool(arguments.directory)
