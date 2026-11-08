@@ -1,4 +1,5 @@
 import { createVisibleAnimationLoop } from './animation-loop.js';
+import { invalidateLiveStatus, liveStatus } from './live-status.js';
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { normalizeGroup, imageStatus, groupedPanels, visibleTiles, clippedTile, profileRectangle, activeGroupCount, sheetLayout, inspectionRegions, inspectionEntry, differenceTargets, heartbeatAge, omissionDescription, processMeasurements, tileEvidenceDescription, captureTransportSummary, groupOutcome, PRIMARY_PROFILES } from './model.js';
@@ -1420,7 +1421,10 @@ function updateControlInputs() {
     : diskGuard?.blocked ? `${diskGuard.message}${diskGuard.free_bytes != null ? ` Free: ${(diskGuard.free_bytes / 1073741824).toFixed(2)} GiB.` : ''}${diskGuard.error ? ` ${diskGuard.error}` : ''}`
     : values.paused ? 'Jobs already in progress will finish. New captures wait.'
       : 'Pausing captures keeps Excel open. A group target of 0 lets preparation finish, then pauses comparisons.';
-  $('activeGroups').textContent = `${active} admitted · ${values.target_groups ?? '—'} capture + ${state.queue?.prefetch_groups ?? 0} preparing`;
+  const capacity = state.queue?.warm_worker_pool?.groups;
+  const effective = Number.isInteger(capacity) ? Math.min(capacity, values.target_groups ?? 0) : values.target_groups;
+  $('activeGroups').textContent = `${active} admitted · ${effective ?? '—'} effective · ${values.target_groups ?? '—'} requested · ${state.queue?.prefetch_groups ?? 0} preparing`
+    + (Number.isInteger(capacity) ? ` · pool capacity ${capacity}${values.target_groups > capacity ? ' (restart required to expand)' : ''}` : '');
   const demand = state.queue?.excel_opening_demand;
   $('excelProcessDemand').textContent = demand?.observed_sessions
     ? `${demand.waiting_workbooks} capture workbooks waiting to open in ${demand.waiting_sessions} sessions · ${demand.opening_workbooks} opening now. Sweep groups: ${values.sweep_processes ?? 1}; comparison groups: ${values.target_groups ?? '—'}. No separate Excel instance limit.`
@@ -1436,6 +1440,7 @@ async function sendControl(change) {
     const response = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
     const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || `Control change rejected (${response.status}).`);
     controlUpdates.confirmWrite(result.controls);
+    invalidateLiveStatus();
     for (const [id, key] of [['sweepProcesses', 'sweep_processes'], ['conversionProcesses', 'conversion_processes'], ['prepareProcesses', 'prepare_processes'], ['shrinkThreads', 'shrink_threads']]) {
       if (change[key] != null && Number($(id).value) === change[key]) dirtyControls.delete(id);
     }
@@ -1446,7 +1451,10 @@ async function sendControl(change) {
       ? `Target 0 confirmed: ${state.queue?.progress?.visual_scope_frozen === false
         ? 'preparation continues; visual comparison waits at the barrier.'
         : 'active comparisons finish, then the run pauses.'}${wasCapturePaused ? ' The capture pause was lifted to allow this.' : ''}`
-      : change.target_groups != null ? `Group target ${state.controls.target_groups} confirmed.`
+      : change.target_groups != null ? Number.isInteger(state.queue?.warm_worker_pool?.groups)
+        && change.target_groups > state.queue.warm_worker_pool.groups
+          ? `Requested ${change.target_groups} groups saved. This pool supports ${state.queue.warm_worker_pool.groups}; expansion requires restarting the runner.`
+          : `Group target ${state.controls.target_groups} confirmed.`
       : change.sweep_processes != null ? `${state.controls.sweep_processes} simultaneous hash-sweep groups confirmed for future starts.`
       : change.conversion_processes != null ? `${state.controls.conversion_processes} simultaneous XLS → XLSX conversions confirmed.`
       : change.prepare_processes != null ? `${state.controls.prepare_processes} simultaneous shrink processes confirmed for future starts.`
@@ -1576,8 +1584,13 @@ async function poll() {
     const liveGroups = state.queue?.progress?.targeted_comparison === true && workbookIndex?.available === true;
     const query = new URLSearchParams(liveGroups ? { group_scope: 'live' } : {});
     if (liveGroups && state.groupId) query.set('selected', state.groupId);
-    const response = await fetch(`/api/state?${query}`, { cache: 'no-store' }); if (!response.ok) throw new Error(`Status unavailable (${response.status}).`);
-    const queue = await response.json(); if (generation !== pollGeneration) return;
+    let queue = liveStatus()?.queue;
+    if (!queue) {
+      const response = await fetch(`/api/state?${query}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Status unavailable (${response.status}).`);
+      queue = await response.json();
+    }
+    if (generation !== pollGeneration) return;
     const newRun = state.queue?.run_id && queue.run_id && state.queue.run_id !== queue.run_id;
     if (newRun) {
       state.groupId = null;

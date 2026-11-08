@@ -3,6 +3,7 @@
 //! attempt-scoped control requests.
 
 mod activity;
+mod live_stream;
 mod inspection;
 mod inspection_pair;
 mod capture_regions;
@@ -90,6 +91,7 @@ pub(super) async fn run(settings_path: &Path) -> Result<()> {
     let routes = Router::new()
         .route("/health", get(health))
         .route("/api/state", get(state))
+        .route("/api/live", get(live_stream::connect))
         .route("/api/summary", get(summary::get))
         .route("/api/workbooks", get(workbooks))
         .route("/api/workers", get(workers))

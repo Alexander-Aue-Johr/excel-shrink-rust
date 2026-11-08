@@ -1,4 +1,5 @@
 import { createProcessIcon } from './process-icon-shader.js';
+import { liveStatus } from './live-status.js';
 import { createSignalMonitor } from './signal-monitor.js';
 import { createClipboardButton } from './inspection-clipboard.js';
 import { createProcessMetrics } from './process-metrics.js';
@@ -357,14 +358,17 @@ export function createTargetedPanel(root, { candidateLabel = () => null } = {}) 
       if (refreshing || document.hidden || Date.now() < nextRefresh) return;
       refreshing = true; nextRefresh = Date.now() + 3000;
       try {
-        const response = await fetch('/api/targeted-comparisons', { cache: 'no-store' });
-        if (response.status === 404) {
+        const live = liveStatus();
+        const response = live ? null : await fetch('/api/targeted-comparisons', { cache: 'no-store' });
+        if (response?.status === 404) {
           supported = false;
           nextRefresh = Date.now() + 60000;
           return; // An older host still serves ordinary corpus work.
         }
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const snapshot = await response.json();
+        if (response && !response.ok) throw new Error(`HTTP ${response.status}`);
+        const snapshot = live
+          ? { ...live, comparisons: Object.values(live.comparisons) }
+          : await response.json();
         supported = true;
         for (const id of snapshot.retired_run_ids || []) {
           retired.add(id);

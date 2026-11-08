@@ -512,6 +512,23 @@ the bounded native tests, retained evidence and current integration scope.
 package contracts, including baseline mismatches and producer/local measurements.
 ## Corpus resume planning
 
+The local Observatory offers `/api/live` as a shared WebSocket for the compact
+run status and retained capture-job cards. Each connection receives one complete
+baseline, then sequenced RFC 6902 patches. Comparison objects are keyed by attempt
+UUID so a changed card does not replace the completed history. The compact queue
+is replaced as a unit. Existing HTTP readers remain compatible.
+
+The browser rejects revision gaps and unsupported patch paths, reconnects with a
+fresh baseline, and falls back to HTTP while disconnected. A confirmed control
+write invalidates the cached live state. Connections retain one previous
+snapshot each, with at most four simultaneous connections and a ten-second send
+deadline. Missed sampling ticks are skipped. The server samples every three
+seconds and uses the existing bounded comparison registry.
+
+The group controls distinguish requested concurrency, effective concurrency and
+the running warm pool's fixed group capacity. A target above that capacity is
+saved and visibly reports the requirement to restart for expansion.
+
 New web-study configurations default to `warm_workers=true`. The configurator
 exposes this choice and freezes `EXCEL_SHRINK_WARM_WORKERS` as `1` or `0` in the
 launch receipt, overriding inherited environment values. Saved configurations
