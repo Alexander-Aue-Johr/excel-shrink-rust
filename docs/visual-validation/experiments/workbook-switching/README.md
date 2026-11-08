@@ -88,6 +88,32 @@ an omitted launcher token. They provide no successful switching measurements.
 
 The final harness also checks that only the seed remains after each close and
 that all four document IDs differ. Trial 07 passed these added assertions and
-again confirmed final Excel exit and unchanged source hashes. Captures, pixels,
-rebuilds, multiple workers and post-comparison generation changes remain
-untested in this probe.
+again confirmed final Excel exit and unchanged source hashes.
+
+## Pixel captures after switching
+
+Optional `-CaptureRange 'A1:C10'` replaces the taskpane page with a small probe.
+It synchronizes the workbook name and `Range.getImage`, decodes the PNG to RGBA
+in a canvas, hashes the pixel bytes with Web Crypto and posts dimensions and
+the digest with its readiness observation. It checks repeated captures of each
+source, source file hashes, distinct document identities, workbook count and
+the owned Excel PID. `-ExpectDifferentPixels` additionally requires different
+digests for the two supplied sources. This option requires `CaptureRange`.
+
+Trial `office-pixels-switch-20261108-01` used the original and SheetShrink pair.
+All four captures were 147 by 181 pixels with the same RGBA digest. Excel
+initialization took 6.227 seconds. Opening through completed capture and ready
+took 2.239, 1.411, 1.002 and 0.832 seconds, in one Excel PID.
+
+Trial `office-pixels-switch-20261108-02` used the original and a separate control
+copy with B4 replaced by inline text `CHANGED`. The A/B/A/B sequence produced
+two distinct digests, with each source's digest and dimensions repeating exactly.
+The changed control was 147 by 183 pixels, the original 147 by 181. Initialization
+took 4.418 seconds. Open, capture and ready took 1.578, 0.749, 0.848 and 1.515
+seconds. Both trials confirmed final owned Excel exit and unchanged input hashes.
+
+These small captures establish that fresh Office.js document contexts capture
+the corresponding workbook after a warm COM switch. They dispatch no resident
+comparison commands and do not exercise command completion, retained-image
+release, production generation boundaries, rebuilds or multiple workers. Those
+remain required before using warm switching in the corpus pipeline.

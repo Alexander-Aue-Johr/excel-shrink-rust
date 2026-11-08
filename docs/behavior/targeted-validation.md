@@ -1106,3 +1106,10 @@ strings. Readiness requires a successful Office.js workbook identity query.
 Workbook visibility alone does not establish add-in readiness. Native startup
 timings include process and add-in initialization, distinct from warm COM open
 timings. See the dated add-in startup investigation for measured controls.
+
+The workbook-switch experiment optionally captures a small range and compares
+RGBA hashes across repeated source visits. A deliberately changed workbook is
+the positive difference control. These readiness observations do not establish
+that the resident command protocol can retire a completed comparison and safely
+reuse its Excel process. Production reuse requires its own generation boundary
+and rejection of stale commands and uploads.

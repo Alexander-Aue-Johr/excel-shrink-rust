@@ -4,9 +4,12 @@ param(
     [Parameter(Mandatory=$true)][string]$Seed,
     [Parameter(Mandatory=$true)][string]$Original,
     [Parameter(Mandatory=$true)][string]$Shrunk,
-    [Parameter(Mandatory=$true)][string]$Output
+    [Parameter(Mandatory=$true)][string]$Output,
+    [string]$CaptureRange,
+    [switch]$ExpectDifferentPixels
 )
 $ErrorActionPreference = 'Stop'
+if ($ExpectDifferentPixels -and -not $CaptureRange) { throw 'Different-pixel control requires CaptureRange.' }
 if (Test-Path -LiteralPath $Output) { throw 'Choose a new probe output directory.' }
 [void][IO.Directory]::CreateDirectory($Output)
 Add-Type -Path @((Join-Path $CaptureRoot 'CaptureProcesses.cs'), (Join-Path $CaptureRoot 'CaptureDesktop.cs'))
@@ -89,6 +92,49 @@ function Wait-ProbeOfficeReady($HostInfo) {
     throw 'Office.js readiness timed out after workbook switch.'
 }
 
+function Set-PixelProbePage($HostInfo, [string]$Range) {
+    $rangeJson = ConvertTo-Json -InputObject $Range -Compress
+    $page = @'
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Workbook switch pixel probe</title>
+<script src="https://officeapis.public.onecdn.static.microsoft/1/office.js"></script>
+</head><body>Workbook switch pixel probe<script>
+Office.onReady(async () => {
+  const documentId = crypto.randomUUID();
+  const config = await fetch(`/config?client=one&document=${documentId}&run=${crypto.randomUUID()}&request=${crypto.randomUUID()}`)
+    .then(response => response.json());
+  const captured = await Excel.run(async context => {
+    context.workbook.load('name');
+    const picture = context.workbook.worksheets.getFirst().getRange(__RANGE__).getImage();
+    await context.sync();
+    return {workbook: context.workbook.name, png: picture.value};
+  });
+  const image = new Image();
+  image.src = `data:image/png;base64,${captured.png}`;
+  await image.decode();
+  const canvas = document.createElement('canvas');
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const drawing = canvas.getContext('2d');
+  drawing.drawImage(image, 0, 0);
+  const pixels = drawing.getImageData(0, 0, canvas.width, canvas.height).data;
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', pixels));
+  const rgbaSha256 = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+  const response = await fetch('/ready?client=one', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-Client-Token': config.client_token},
+    body: JSON.stringify({workbook: captured.workbook, startup: {
+      pixel_probe: {range: __RANGE__, width: canvas.width, height: canvas.height, rgba_sha256: rgbaSha256}
+    }})
+  });
+  if (!response.ok) throw new Error(`Ready failed with HTTP ${response.status}`);
+});
+</script></body></html>
+'@
+    $page = $page.Replace('__RANGE__', $rangeJson)
+    [IO.File]::WriteAllText((Join-Path $HostInfo.directory 'web/taskpane.html'), $page, $utf8)
+}
+
 $owned = New-Object CaptureProcesses
 $desktop = New-Object CaptureDesktop
 $registrations = @{}
@@ -120,6 +166,7 @@ try {
     $startupSeconds = $startup.Elapsed.TotalSeconds
     $index = 0
     $hostInfo = Start-WorkbookHost (Join-Path $Output 'host') 'case-0.xlsx'
+    if ($CaptureRange) { Set-PixelProbePage $hostInfo $CaptureRange }
     foreach ($source in @($Original, $Shrunk, $Original, $Shrunk)) {
         $directory = Join-Path $Output ('request-' + $index)
         [void][IO.Directory]::CreateDirectory($directory)
@@ -164,5 +211,27 @@ if ((Get-ProbeHash $Original) -ne $hashes[0] -or
     (Get-ProbeHash $Shrunk) -ne $hashes[1]) { throw 'Probe source changed.' }
 if (@($samples | ForEach-Object { $_.observation.runtime.document_id } | Select-Object -Unique).Count -ne 4) {
     throw 'Each opened workbook must have a distinct Office.js document identity.'
+}
+if ($CaptureRange) {
+    foreach ($sample in $samples) {
+        $pixels = $sample.observation.startup_diagnostics.pixel_probe
+        if ($pixels.range -ne $CaptureRange -or $pixels.width -le 0 -or $pixels.height -le 0 -or
+            $pixels.rgba_sha256 -notmatch '^[a-f0-9]{64}$') {
+            throw 'Missing or invalid workbook-switch pixel observation.'
+        }
+    }
+    foreach ($pair in @(@(0,2), @(1,3))) {
+        $before = $samples[$pair[0]].observation.startup_diagnostics.pixel_probe
+        $after = $samples[$pair[1]].observation.startup_diagnostics.pixel_probe
+        if ($before.width -ne $after.width -or $before.height -ne $after.height -or
+            $before.rgba_sha256 -ne $after.rgba_sha256) {
+            throw 'Repeated capture pixels differed for the same source workbook.'
+        }
+    }
+    if ($ExpectDifferentPixels -and
+        $samples[0].observation.startup_diagnostics.pixel_probe.rgba_sha256 -eq
+        $samples[1].observation.startup_diagnostics.pixel_probe.rgba_sha256) {
+        throw 'The intentionally different workbook rendered the same pixels.'
+    }
 }
 Write-ProbeJson (Join-Path $Output 'result.json') @{samples=$samples;startup_seconds=$startupSeconds;owned_excel_exit_confirmed=$true;source_hashes_unchanged=$true}
