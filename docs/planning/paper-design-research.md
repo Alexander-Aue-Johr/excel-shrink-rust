@@ -45,3 +45,19 @@ accepted. [Author preprint](https://web.iitd.ac.in/~kbeedkar/publication/xdb-icd
 ## Further design evidence
 
 Inspect complete evaluation and Related Work sections, verify additional ICDE examples, and examine representative first-page layouts at publication size. Record the difference between an observed writing practice and a recommendation inferred for these manuscripts. The first-page Observatory figure remains an open design decision.
+
+## Comparison-tool evidence checked on 2026-11-08
+
+Microsoft Spreadsheet Compare provides a workbook difference report, including
+formula and cell-format categories and hidden worksheets. The paper should
+therefore evaluate its documented scope and available installation before making
+claims about existing comparators. Its documented interface alone does not
+establish renderer-level pixel equivalence or candidate-planning cost.
+[Microsoft documentation](https://support.microsoft.com/en-gb/excel/basic-tasks-in-spreadsheet-compare)
+
+ExcelCompare's vendor describes formula, value and text comparison with a
+detailed difference report and PDF output. This is a candidate for a separately
+scoped functional comparison. These are documented capabilities, with no local
+runtime or detection evaluation yet performed.
+[Vendor documentation](https://spreadsheetsoftware.com/excelcompare/)
+

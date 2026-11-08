@@ -296,3 +296,30 @@ Acceptance requires reconciled corpus totals, completed or explicitly justified 
 ## Progress record
 
 Approval was received on 2026-11-08. Task 01 is in progress. The live runner PID 17640 was verified against its launch receipt, using producer commit `abc9e79` and Observatory port 18777. Initial free capacity was approximately 85 GiB on C:, 317 GiB on V:, and 1,374 GiB on G:. G: is a candidate for overflow working data subject to suitability checks.
+
+### Integration and draft checkpoints
+
+- The Windows VS Code configuration task now opens the web entry point. Direct
+  CLI execution, the bundled SheetShrink preset, held-lock rejection and a
+  successful completed-study resume were tested. The compatible prior result
+  was reused without a new native capture attempt. The legacy explicit WPF
+  script and WSL entry require further reconciliation.
+- `cd45950` adds stable validation partitions to the standalone configuration,
+  after complete filename matching. Processing retains complete-source scope.
+  Unit tests and an ordinary empty-partition CLI run verified accounting. Named
+  corpus profiles and the full study configuration adapter remain open.
+- The independent paper projects now contain narrative drafts in paper-repo
+  commit `fa8f8c3`. Both four-page PDFs compiled with BibTeX and all eight pages
+  were visually inspected. Abstracts, scientific figures, complete related-work
+  coverage and frozen evaluation tables still require work. Task 14 remains open.
+- The common performance-review fixtures passed on the current reference and
+  isolated A/B variants. A preserved all decompressed members on seven matched
+  inputs over alternating-order repetitions, without a useful observed gain in
+  the two large cases. A was removed. B and C adoption remain under investigation.
+- `77959b2` preserves finite uniform-background bounds around supported drawings.
+  The interrupted Enron group `cade66d204a8e1b3760d` contains unsupported rotated
+  shapes and lines, so that improvement does not resolve its full-sheet plan.
+  Its interruption is recorded on V: and requires a separately evidenced retry.
+
+These checkpoints describe partial acceptance evidence. The unchecked tasks
+retain their full remaining requirements.
