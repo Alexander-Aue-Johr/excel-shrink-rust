@@ -63,8 +63,19 @@ Creation and child observation share a background ownership scope, so a browser
 disconnect does not release admission while its launched runner goes unobserved.
 The current tests cover typed settings, explicit partitions, existing-root
 preservation, copied executable identity, failed configuration release and
-readiness responses from the correct, foreign and unavailable services. Native
-new-study acceptance remains in progress.
+readiness responses from the correct, foreign and unavailable services.
+
+On 2026-11-08, the new-study HTTP operation created a one-member archive study
+using the frozen Enron reference workbook `0966d3e126908018b94a`. Preparation
+and native validation completed with five captures per rebuilt state and no
+reported visual differences. Equal images were discarded with receipts retained.
+Resuming its saved launch receipt completed without creating another capture
+attempt. The isolated test used ports 18884/18885 and retained its configuration,
+launch identity and results under
+`G:\deltasieve-work\web-study-configuration-20261108`. Enron admission was
+temporarily reduced to three and restored to four groups afterward. The test
+used capture assets from the current checkout. Relocatable release packaging
+and portable Check Performance modes remain separate acceptance requirements.
 
 ### Validation partitions
 
