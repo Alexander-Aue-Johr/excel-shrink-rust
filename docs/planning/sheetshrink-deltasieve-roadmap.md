@@ -4,16 +4,16 @@ This is the reviewable work queue for the two tools, their Observatory, and thei
 
 ## 00 Wait for approval
 
-- [ ] The user gives an explicit Go for this plan, or manually removes this approval gate after reviewing it.
+- [x] The user gave an explicit Go on 2026-11-08 and reactivated the monitoring goal.
 
-Begin Tasks 01–19 after that approval. The independently running Enron process may continue while the plan awaits review. The existing monitoring Pursuing Goal is paused at the user's requested approval gate. Resume it after approval and use this queue to preserve the implementation order.
+Tasks 01–19 are authorized. The Enron process continues independently while implementation and background supervision proceed through this queue.
 
 That Go authorizes autonomous execution through Task 19. Resolve routine implementation, sampling, and presentation choices using the agreed requirements and record material assumptions. Perform the reviews and acceptance checks in this plan during execution. The author's later manuscript revision and optional external research can follow the completed working drafts.
 
 ## Delivery rules
 
 - Preserve prepared workbooks, source identities, completed evidence, and restart compatibility throughout changes. Bind reusable results to the source, relevant configuration, method, and producing implementation.
-- Keep temporary files, builds, probes, and exported working data on V:. Track disk usage and give retained evidence a documented lifetime.
+- Prefer V: for temporary files, builds, probes, and exported working data. When capacity becomes tight, select another suitable drive with ample free space. Preserve the system drive's free-space reserve. Track disk usage and give retained evidence a documented lifetime.
 - Use focused tests and reviewable commits. Inspect staged changes, update the relevant behavior specification, and push each completed conceptual change before deploying it into a run.
 - Separate mechanical restructuring from behavioral changes. Apply Single Level of Abstraction and useful Rustdoc or Python docstrings in touched code according to the repository agreements.
 - Record a task's outcome, verification, commit IDs, and unresolved limitations before checking its box. A failed or unsupported comparison retains its reason and coverage status.
@@ -289,4 +289,4 @@ Acceptance requires reconciled corpus totals, completed or explicitly justified 
 
 ## Progress record
 
-Approval is pending. The next action is the user's review of Task 00 and the planned scope. Record subsequent decisions and completed-task evidence below as work proceeds.
+Approval was received on 2026-11-08. Task 01 is in progress. The live runner PID 17640 was verified against its launch receipt, using producer commit `abc9e79` and Observatory port 18777. Initial free capacity was approximately 85 GiB on C:, 317 GiB on V:, and 1,374 GiB on G:. G: is a candidate for overflow working data subject to suitability checks.
