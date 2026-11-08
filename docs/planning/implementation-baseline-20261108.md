@@ -30,6 +30,24 @@ An isolated Enron opening failure in group `ee6c5aa544fd08d1d31d` was retried th
 
 ## Capacity and continuity
 
+## Performance handoff verification
+
+The review archive on R: contains four isolated proposals against `a7445eb`.
+Proposal D rejects the dominant style after its unchanged selection when it
+neither applies a font nor has an existing font-only representative. Both dense
+promotion branches require that style's `apply_font`; the sparse branch requires
+`apply_font` on one of those two targets. The early rejection therefore preserves
+the target selection. It avoids later default-style lookup and target traversal.
+It does not avoid the preceding cell scan or frequency count.
+
+The implementation passed six focused promotion tests, including a dominant style
+without `apply_font` that still has a valid separate font representative. The
+complete Core library suite passed 277 tests with one ignored benchmark. Runtime
+benefit and real-corpus output identity remain to be measured before deployment
+into the pinned Enron runner. Proposals A, B and C remain unimplemented.
+
+## Capacity observations
+
 Initial free capacity was approximately 85 GiB on C:, 317 GiB on V:, and 1,374 GiB on G:. Prefer V: for working data and evaluate G: for overflow if needed. Preserve the system-drive reserve and record each owned working directory.
 
 The pipeline continues during development. Native experiments use the approved bounded test windows and confirm resumed Enron progress after any interruption. Outstanding visual findings remain subject to their retained evidence and individual review.

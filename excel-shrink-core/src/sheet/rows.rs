@@ -480,6 +480,11 @@ fn choose_promoted_row_style(
         return None;
     }
     let xf = params.patterns.xfs_by_index.get(&dominant)?;
+    // Dense promotion needs applyFont on this XF. Sparse promotion can also
+    // use its existing font-only representative, whose applyFont is checked below.
+    if !xf.apply_font && xf.row_font_style_id.is_none() {
+        return None;
+    }
     // The entire row was explicit: moving an identical full XF changes no
     // previously implicit position. Restrict this path to real dense bloat.
     // Filled rows must apply the same fill to every cell, including content.

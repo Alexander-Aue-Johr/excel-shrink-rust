@@ -1005,6 +1005,26 @@ fn row_font_promotion_reuses_existing_font_xf_and_preserves_text() {
 }
 
 #[test]
+fn row_font_promotion_requires_a_font_target_but_accepts_a_separate_representative() {
+    let mut params = promotion_params();
+    params.patterns.xfs_by_index.get_mut(&2).unwrap().apply_font = false;
+    let result = replace_single_row_with_metrics(
+        PROMOTION_ROW,
+        &params,
+        &mut promotion_columns(&params, true),
+    );
+    assert!(String::from_utf8(result).unwrap().contains("s=\"1\" customFormat=\"1\""));
+
+    params.patterns.xfs_by_index.get_mut(&2).unwrap().row_font_style_id = None;
+    let result = replace_single_row_with_metrics(
+        PROMOTION_ROW,
+        &params,
+        &mut promotion_columns(&params, true),
+    );
+    assert!(!String::from_utf8(result).unwrap().contains("customFormat"));
+}
+
+#[test]
 fn row_font_promotion_rejects_different_implicit_font_or_unstyled_value() {
     let params = promotion_params();
     let a = replace_single_row_with_metrics(
