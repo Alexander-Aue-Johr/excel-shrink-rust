@@ -14,7 +14,7 @@ pub(super) async fn connect(
     Ok(upgrade.on_upgrade(move |socket| async move {
         let _permit = permit;
         if let Err(error) = serve_connection(socket, room).await {
-            tracing::debug!(%error, "Live status connection ended");
+            tracing::warn!(%error, "Live status connection ended");
         }
     }))
 }
@@ -35,12 +35,23 @@ async fn snapshot(room: Arc<Room>) -> Result<Value> {
     let mut comparisons = serde_json::Map::new();
     for item in targeted["comparisons"].as_array().into_iter().flatten() {
         if let Some(id) = item["run_id"].as_str() {
-            uuid::Uuid::parse_str(id)?;
+            validate_comparison_id(id)?;
             comparisons.insert(id.into(), item.clone());
         }
     }
     Ok(json!({"queue":queue,"comparisons":comparisons,
         "retired_run_ids":targeted["retired_run_ids"],"diagnostics":targeted["diagnostics"]}))
+}
+
+fn validate_comparison_id(id: &str) -> Result<()> {
+    if uuid::Uuid::parse_str(id).is_ok() {
+        return Ok(());
+    }
+    let (timestamp, uuid) = id.split_once('-').context("Invalid comparison identity")?;
+    ensure!(!timestamp.is_empty() && timestamp.len() <= 20
+        && timestamp.bytes().all(|byte| byte.is_ascii_digit()), "Invalid comparison timestamp");
+    uuid::Uuid::parse_str(uuid)?;
+    Ok(())
 }
 
 /// Keyed comparison objects prevent one changing lane from replacing all history.
@@ -102,6 +113,13 @@ async fn serve_connection(mut socket: WebSocket, room: Arc<Room>) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accepts_existing_timestamped_comparison_identities() {
+        assert!(validate_comparison_id("1794182130052-0873afcd-70cd-4fdc-8917-9628978fd1ee").is_ok());
+        assert!(validate_comparison_id("0873afcd-70cd-4fdc-8917-9628978fd1ee").is_ok());
+        assert!(validate_comparison_id("__proto__").is_err());
+    }
 
     #[test]
     fn updates_only_changed_comparisons_and_removes_retired_history() {

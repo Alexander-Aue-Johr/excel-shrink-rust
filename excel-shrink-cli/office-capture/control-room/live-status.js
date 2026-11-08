@@ -10,7 +10,7 @@ export function applyLivePacket(previous, message) {
       && operation.op === 'replace') {
       value[parts[0]] = operation.value;
     } else if (parts.length === 2 && parts[0] === 'comparisons'
-      && /^[0-9a-f-]{36}$/i.test(parts[1])) {
+      && /^(?:\d{1,20}-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parts[1])) {
       if (operation.op === 'remove') delete value.comparisons[parts[1]];
       else if (['add', 'replace'].includes(operation.op)) value.comparisons[parts[1]] = operation.value;
       else throw new Error('Unsupported live operation');
