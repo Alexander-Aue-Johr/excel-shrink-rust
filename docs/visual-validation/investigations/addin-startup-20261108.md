@@ -115,3 +115,11 @@ reuse and quarantine after an unconfirmed drop. A native Windows test covers
 owned-process termination, confirmation of an empty Job and repeated cleanup.
 Six targeted Rust host tests and the resident opening and cleanup scripts pass.
 The pool remains opt-in. No active corpus runner was redeployed in these tests.
+
+Attempts 14 and 15 ran concurrently against the same pool. Their four residents
+received distinct slots 000, 001, 002 and 003. Both invocations returned
+successfully, all four whole-job exits were confirmed, and no dirty lease marker
+remained after completion. The readiness times were 13.916/12.016 seconds for
+attempt 14 and 14.185/14.927 seconds for attempt 15. This checks concurrent slot
+assignment and ordinary cleanup for two small comparisons. It does not reproduce
+the earlier four-group visible-reset/upload stress scenario or establish a speedup.
