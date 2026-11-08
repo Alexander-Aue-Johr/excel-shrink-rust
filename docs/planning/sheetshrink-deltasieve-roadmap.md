@@ -55,6 +55,12 @@ Acceptance requires a concise implementation inventory, a reproducible baseline,
 
 - [ ] Reconcile the SheetShrink and targeted-validation specifications with the agreed requirements and define the evaluation before selecting its samples.
 
+The prospective protocol is recorded in
+[evaluation-protocol.md](evaluation-protocol.md), committed as `b8c8820`.
+It separates the development corpus from seeded evaluation samples, defines
+independent full-reference and mutation checks, and retains timeout and coverage
+denominators. Contract reconciliation and measured acceptance remain open.
+
 SheetShrink Default is the production subject. Maximum and Too Aggressive remain historical test artifacts. Preserve values, formulas, and required visual behavior while removing deterministically irrelevant structures with a small preservation footprint. Cover row-font sentinels, overflow blockers, inherited formats, and protection within the actual visible content area. That area includes visible fills, borders, and objects. Layout changes beyond its boundary have a different contract.
 
 Record the distinction between stored original, Excel-saved original, rebuilt original, shrunk output, and optional Check Performance output. The fast primary visual comparison uses rebuilt Original against rebuilt Default. Saved and pre-rebuild controls explain attribution where needed and affordable. Opening, saving, conversion, recalculation, volatile formulas, and rendering variability need separate accounting.
