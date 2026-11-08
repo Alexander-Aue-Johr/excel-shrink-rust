@@ -1,6 +1,7 @@
 :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #10151e; color: #e2eaf6; }
 * { box-sizing: border-box; }
 body { margin: 0; }
+body[data-application-host="deltasieve.localhost"] [data-sheetshrink-only] { display: none; }
 button, input, select, textarea { font: inherit; }
 button, input, select, textarea { border: 1px solid #42516a; border-radius: .45rem; color: inherit; background: #111b29; padding: .65rem .8rem; }
 button { cursor: pointer; background: #263650; white-space: nowrap; }

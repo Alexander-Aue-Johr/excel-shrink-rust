@@ -90,6 +90,7 @@ mod tests {
 
     fn room() -> Arc<Room> {
         Arc::new(Room {
+            application: Application::DeltaSieve,
             port: 1234,
             token: "test".into(),
             config: Mutex::new(RunConfig::default()),

@@ -28,10 +28,13 @@ const HTML: &str = include_str!("../office-capture/control-room/sheet-scope.html
 const JS: &str = include_str!("../office-capture/control-room/sheet-scope.js");
 const CSS: &str = include_str!("../office-capture/control-room/sheet-scope.css");
 
+mod application;
 mod preparation;
 mod preparation_job;
+pub(crate) use application::Application;
 
 struct Room {
+    application: Application,
     port: u16,
     token: String,
     config: Mutex<RunConfig>,
@@ -62,18 +65,19 @@ impl IntoResponse for ApiError {
     }
 }
 
-pub(crate) fn serve(config: RunConfig, port: u16, open: bool) -> Result<()> {
+pub(crate) fn serve(config: RunConfig, port: u16, open: bool, application: Application) -> Result<()> {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()?
-        .block_on(serve_async(config, port, open))
+        .block_on(serve_async(config, port, open, application))
 }
 
-async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
+async fn serve_async(config: RunConfig, port: u16, open: bool, application: Application) -> Result<()> {
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
     let port = listener.local_addr()?.port();
     let room = Arc::new(Room {
+        application,
         port,
         token: uuid::Uuid::new_v4().to_string(),
         config: Mutex::new(config),
@@ -87,7 +91,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
     });
     let web_root = validation::capture::capture_directory()?.join("control-room");
     let routes = Router::new()
-        .route("/", get(|| async { Html(HTML) }))
+        .route("/", get(move || async move { Html(application.html()) }))
         .route(
             "/sheet-scope.js",
             get(|| async {
@@ -125,8 +129,8 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
         .layer(DefaultBodyLimit::max(512 * 1024))
         .with_state(room.clone())
         .layer(middleware::from_fn_with_state(room, local_request));
-    let url = format!("http://deltasieve.localhost:{port}/");
-    eprintln!("DeltaSieve Observatory: {url}");
+    let url = format!("http://{}:{port}/", application.hostname());
+    eprintln!("{} Observatory: {url}", application.name());
     if open {
         validation::open_browser(std::ffi::OsStr::new(&url))?;
     }
@@ -170,6 +174,8 @@ fn allowed_headers(headers: &HeaderMap, port: u16) -> bool {
         format!("localhost:{port}"),
         format!("deltasieve.localhost:{port}"),
         format!("configure.deltasieve.localhost:{port}"),
+        format!("sheetshrink.localhost:{port}"),
+        format!("configure.sheetshrink.localhost:{port}"),
     ];
     let Some(host) = headers.get(header::HOST).and_then(|v| v.to_str().ok()) else {
         return false;
@@ -198,12 +204,9 @@ async fn session(State(room): State<Arc<Room>>) -> ApiResult {
         .map(PathBuf::from)
         .filter(|path| path.is_dir())
         .unwrap_or_else(|| working_directory.clone());
-    let mut shrink_preset = validation::excel_shrink_preset(1);
-    shrink_preset.name = "SheetShrink".to_owned();
-    shrink_preset.program = std::env::current_exe().map_err(anyhow::Error::from)?;
-    shrink_preset.arguments.insert(0, "shrink".to_owned());
+    let shrink_preset = application::sheetshrink_stage()?;
     Ok(Json(
-        json!({"token":room.token,"config":config,"working_directory":working_directory,
+        json!({"application":room.application,"token":room.token,"config":config,"working_directory":working_directory,
         "browse_directory":browse_directory,"native_picker":cfg!(windows),
         "logical_processors":std::thread::available_parallelism().map_or(1, usize::from),
         "processor_schema":crate::cli_metadata::describe(),"shrink_preset":shrink_preset,
@@ -711,6 +714,7 @@ mod tests {
             );
         }
         let room = Arc::new(Room {
+            application: Application::DeltaSieve,
             port: 1234,
             token: "test".into(),
             config: Mutex::new(RunConfig::default()),

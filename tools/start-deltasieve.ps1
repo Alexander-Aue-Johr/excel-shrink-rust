@@ -1,5 +1,6 @@
 [CmdletBinding()]
 param(
+    [ValidateSet('deltasieve', 'sheetshrink')][string]$Application = 'deltasieve',
     [string]$DataRoot = $env:DELTASIEVE_DATA_DIR,
     [string]$BinaryPath,
     [string]$Config,
@@ -29,9 +30,10 @@ try {
         if (-not $env:CARGO_TARGET_DIR) {
             $env:CARGO_TARGET_DIR = Join-Path $DataRoot 'build'
         }
-        & cargo build -p excel-shrink-cli --bins -j 2
-        if ($LASTEXITCODE -ne 0) { throw 'DeltaSieve build failed.' }
-        $BinaryPath = Join-Path $env:CARGO_TARGET_DIR 'debug\deltasieve.exe'
+        $package = if ($Application -eq 'sheetshrink') { 'sheetshrink' } else { 'excel-shrink-cli' }
+        & cargo build -p $package --bins -j 2
+        if ($LASTEXITCODE -ne 0) { throw "$Application build failed." }
+        $BinaryPath = Join-Path $env:CARGO_TARGET_DIR "debug\$Application.exe"
     }
     $BinaryPath = (Resolve-Path -LiteralPath $BinaryPath).Path
     $arguments = @('observatory', '--port', [string]$Port)
@@ -40,7 +42,7 @@ try {
     }
     if ($NoOpen) { $arguments += '--no-open' }
     & $BinaryPath @arguments
-    if ($LASTEXITCODE -ne 0) { throw "DeltaSieve exited with code $LASTEXITCODE." }
+    if ($LASTEXITCODE -ne 0) { throw "$Application exited with code $LASTEXITCODE." }
 } finally {
     Pop-Location
 }

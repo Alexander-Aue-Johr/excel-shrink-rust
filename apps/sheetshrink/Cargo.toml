@@ -1,0 +1,8 @@
+[package]
+name = "sheetshrink"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.102"
+excel-shrink-cli = { path = "../../excel-shrink-cli" }

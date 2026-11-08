@@ -581,7 +581,29 @@ retain their full remaining requirements.
   preserved, and four-group admission was restored after each native window.
 - `8c4feb7` freezes the five-pair external comparator protocol and records the
   checked local availability and primary documentation. No external comparator
-  has yet been executed. The pilot and broader detection evaluation remain open.
+  had been executed at that checkpoint. Subsequent measured trials are recorded
+  in the comparator checkpoint below. Broader detection evaluation remains open.
 - Browser layout acceptance, automatic preparation-job reattachment, unified
   corpus/partition selection and the remaining distributed release gates still
   require implementation or verification. Task 06 remains incomplete.
+
+### Comparator and application checkpoint on 2026-11-08
+
+- The comparator pilot now includes five small pairs and two large Destatis
+  pairs per product. `54d2f59` records measured xlCompare and DiffEngineX costs,
+  exact report coverage and trial/export limitations. The comparison task differs
+  from cleanup. Independent rendered references and a matched DeltaSieve cost
+  comparison remain open.
+- The workspace now has `apps/sheetshrink` with its own executable, branding,
+  localhost name and built-in producer defaults. DeltaSieve starts with an
+  existing-input comparison view. Both retain the same execution engine and
+  native worker service dispatch. Existing configurations remain reusable.
+- Two application configuration tests and two SheetShrink executable tests passed.
+  Four existing web configuration tests passed. Actual isolated HTTP sessions
+  verified both identities, distinct producer defaults, template substitution
+  and retained cleaned outputs. Both owned test hosts were closed. Receipts are
+  under `G:\deltasieve-work\application-entry-20261108`. Browser layout and a new
+  native end-to-end SheetShrink web run remain acceptance work.
+- Cleanup-only web execution, full component extraction, unified corpus profiles
+  and the remaining release gates remain open. These application entry points
+  are an incremental structural change. Tasks 04–08 and 16 retain their scope.

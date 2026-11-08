@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DeltaSieve Observatory</title>
+  <title>{{APPLICATION_NAME}} Observatory</title>
   <link rel="stylesheet" href="/observatory-assets/style.css">
   <link rel="stylesheet" href="/observatory-assets/signal-monitor.css">
   <link rel="stylesheet" href="/observatory-assets/targeted-panel.css">
   <link rel="stylesheet" href="/sheet-scope.css">
   <script type="module" src="/sheet-scope.js"></script>
 </head>
-<body>
+<body data-application-host="{{APPLICATION_HOST}}">
   <header class="masthead">
-    <div><p class="eyebrow">Spreadsheet visual validation</p><h1>DeltaSieve <span>Observatory</span></h1></div>
+    <div><p class="eyebrow">{{APPLICATION_PURPOSE}}</p><h1>{{APPLICATION_NAME}} <span>Observatory</span></h1></div>
     <div class="actions"><span id="connection-status">Connecting…</span><button id="configure" type="button">Configure validation</button></div>
   </header>
   <main>
@@ -24,8 +24,8 @@
         <label><input type="radio" name="mode" value="compare" checked> Compare existing A and B</label>
         <label><input type="radio" name="mode" value="process"> Process A, then compare</label>
         <label><input type="radio" name="mode" value="report"> Open a saved report</label>
-        <label><input type="radio" name="mode" value="study"> Resume a corpus study</label>
-        <label><input type="radio" name="mode" value="new-study"> Start a corpus study</label>
+        <label data-sheetshrink-only><input type="radio" name="mode" value="study"> Resume a SheetShrink corpus study</label>
+        <label data-sheetshrink-only><input type="radio" name="mode" value="new-study"> Start a SheetShrink corpus study</label>
         <label><input type="radio" name="mode" value="prepared"> Transfer Check Performance preparations</label>
         <label><input type="radio" name="mode" value="prepare-performance"> Prepare Check Performance variants</label>
       </div>
@@ -88,7 +88,7 @@
           <h2>Processing steps</h2>
           <p class="help">Steps run in order. Each program receives separate arguments. A file step may run several processes; folder and ZIP steps run once per stage.</p>
           <div id="steps"></div>
-          <div class="actions"><button id="add-step" type="button">Add program</button><button id="add-shrink" type="button">Add SheetShrink</button></div>
+          <div class="actions"><button id="add-step" type="button">Add program</button><button id="add-shrink" data-sheetshrink-only type="button">Add SheetShrink</button></div>
           <div class="grid">
             <label>Maximum parallel processing programs<input id="parallel" type="number" min="1" value="1"><span id="parallel-help" class="help"></span></label>
             <label>Baseline after step (optional)<input id="baseline-step" type="number" min="1" placeholder="Original A by default"></label>

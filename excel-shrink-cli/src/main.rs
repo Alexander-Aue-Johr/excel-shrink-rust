@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{CommandFactory, FromArgMatches, Parser, ValueEnum};
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -48,6 +48,20 @@ pub fn run_deltasieve() -> anyhow::Result<()> {
         _ => {}
     }
     validation::run_cli()
+}
+
+/// Open SheetShrink's own configuration by default while retaining direct cleanup and native services.
+pub fn run_sheetshrink() -> anyhow::Result<()> {
+    match std::env::args_os().nth(1).as_deref().and_then(OsStr::to_str) {
+        None | Some("observatory") => {
+            validation::run_cli_for(validation_room::Application::SheetShrink)
+        }
+        Some("regression" | "capture-host" | "metadata-store" | "shrink") => run_deltasieve(),
+        _ => {
+            let matches = Cli::command().name("sheetshrink").get_matches();
+            run_cleanup_command(Cli::from_arg_matches(&matches)?)
+        }
+    }
 }
 
 pub(crate) const DEFAULT_PARALLEL_RANGE_CHUNK_SIZE: usize = 16 * 1024 * 1024;

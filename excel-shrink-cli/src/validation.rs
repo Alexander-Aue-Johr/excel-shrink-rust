@@ -11,7 +11,7 @@ mod storage;
 use crate::validation_process::Stage;
 use crate::validation_reuse::PartSelection;
 use anyhow::{ensure, Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::OsStr,
@@ -465,11 +465,22 @@ fn resolve_source(value: &str, base: &Path) -> String {
 }
 
 pub(crate) fn run_cli() -> Result<()> {
-    match Cli::parse().command {
+    run_cli_for(crate::validation_room::Application::DeltaSieve)
+}
+
+/// Application-specific defaults do not change the shared run and resume contracts.
+pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> Result<()> {
+    let name = match application {
+        crate::validation_room::Application::DeltaSieve => "deltasieve",
+        crate::validation_room::Application::SheetShrink => "sheetshrink",
+    };
+    let cli = Cli::from_arg_matches(&Cli::command().name(name).get_matches())?;
+    match cli.command {
         None => crate::validation_room::serve(
-            ObservatorySetup::default().apply(RunConfig::default()),
+            application.configure(ObservatorySetup::default().apply(RunConfig::default()))?,
             0,
             true,
+            application,
         ),
         Some(Command::Observatory {
             config,
@@ -482,7 +493,12 @@ pub(crate) fn run_cli() -> Result<()> {
                 .map(RunConfig::from_file)
                 .transpose()?
                 .unwrap_or_default();
-            crate::validation_room::serve(setup.apply(config), port, !no_open)
+            crate::validation_room::serve(
+                application.configure(setup.apply(config))?,
+                port,
+                !no_open,
+                application,
+            )
         }
         Some(Command::Run { config }) => {
             execute(RunConfig::from_file(&config)?, None)?;

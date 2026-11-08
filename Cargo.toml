@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "excel-shrink-core",
-    "excel-shrink-cli"
+    "excel-shrink-cli",
+    "apps/sheetshrink",
 ]
 resolver = "2"
 

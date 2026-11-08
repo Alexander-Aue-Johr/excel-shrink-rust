@@ -95,12 +95,27 @@ identical Default preparation does not bypass requested Check Performance work.
 
 ## E3. Admission, pause, cancellation and timeouts
 
-The `deltasieve` and `excel-shrink-cli` applications share the internal
+The `deltasieve`, `sheetshrink` and `excel-shrink-cli` applications share the internal
 `regression`, `capture-host` and `metadata-store` command implementations.
 Resident services can therefore reuse the exact executable that started their
 comparison. User-facing DeltaSieve configuration remains a separate command
 grammar. Missing internal service dispatch must fail explicitly rather than
 being interpreted as a workbook or silently selecting another executable.
+
+`sheetshrink.exe` opens its own configurator at `sheetshrink.localhost` with an
+OS-assigned available port. A fresh session selects the built-in SheetShrink
+producer and retains cleaned outputs beside the report directory. Explicit
+existing comparison inputs or producer configurations are preserved.
+`deltasieve.exe` opens `deltasieve.localhost` with two-input comparison defaults.
+Its initial navigation hides SheetShrink corpus-study actions and its built-in
+producer shortcut. Both applications use the same comparison implementation,
+report format, preparation utilities and evidence rules. Direct SheetShrink
+cleanup arguments retain the existing command-line behavior. The web cleanup
+workflow currently also validates its output.
+
+From a checkout, use `tools/start-deltasieve.ps1 -Application sheetshrink` to
+build and launch SheetShrink, or omit `-Application` for DeltaSieve. The launcher's
+`-DataRoot` and `-Config` options remain available for either application.
 
 New archive studies use a versioned web/CLI configuration and a new output root.
 The launcher freezes the source checksum, configuration, request, controls and
