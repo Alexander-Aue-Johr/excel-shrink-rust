@@ -165,3 +165,45 @@ fn formula_detection_allocates_nothing_with_reusable_metrics() {
     assert_eq!(allocations, 0);
     assert_eq!(metrics.kept_cell_states.len(), 1);
 }
+
+// Count allocations after reusable metrics have been warmed, independently of timing.
+#[test]
+fn unchanged_single_style_row_allocates_nothing_after_metric_warmup() {
+    let mut params = params();
+    let style = excel_shrink_core::models::Xf::builder()
+        .font_id(Some(0))
+        .fill_id(Some(0))
+        .border_id(Some(0))
+        .has_no_empty_cell_visible_style(true)
+        .build_xf();
+    params.patterns.xfs_by_index.insert(0, style.clone());
+    params.patterns.xfs_by_index.insert(7, style);
+    let mut metrics = CleanSheetMetrics::default();
+    let raw = br#"<row r="1048576"><c r="G1048576" s="7"/></row>"#;
+    let attributes = br#" r="1048576""#;
+    let cells = br#"<c r="G1048576" s="7"/>"#;
+
+    // Warm tracing/search initialization and retained-cell capacity, outside the count.
+    assert_eq!(
+        replace_row_bytes(raw, attributes, Some(cells), &params, &mut metrics).as_ref(),
+        raw
+    );
+    let allocations = count_allocations(|| {
+        for _ in 0..10_000 {
+            metrics.kept_cell_states.clear();
+            black_box(replace_row_bytes(
+                black_box(raw),
+                attributes,
+                Some(cells),
+                &params,
+                &mut metrics,
+            ));
+        }
+    });
+
+    assert_eq!(allocations, 0);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.kept_cell_states[0].col, 7);
+    assert_eq!(metrics.kept_cell_states[0].row, 1_048_576);
+    assert_eq!(metrics.deleted_cell_count, 0);
+}

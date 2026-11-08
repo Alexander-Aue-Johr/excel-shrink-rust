@@ -34,3 +34,23 @@ with a recorded, stable machine workload.
 The initial working receipts live under
 `validation-temp/performance-variants-20261108` on V:. The pinned Enron runner
 continues independently throughout these tests.
+
+## A and B observations
+
+A produced identical decompressed members on all seven verified inputs in both
+alternating-order repetitions. Median candidate/reference ratios were about 1.00
+for Kernhaushalt and 1.01 for Verkehrsunfälle. Smaller-file observations were
+variable. A was removed because this experiment did not establish a useful
+benefit in the large cases.
+
+B also preserved every decompressed member on the seven inputs in both
+repetitions. The focused allocation contract counts 10,000 allocations without B
+and zero with B over 10,000 warmed single-style rows. The baseline negative
+control failed with exactly that count, and all five allocation tests passed
+with B. All 292 Core behavior tests passed, with one ignored benchmark.
+
+The exploratory wall-time medians for B were 20.88 versus 19.25 seconds for
+Kernhaushalt and 9.92 versus 9.54 seconds for Verkehrsunfälle. Enron remained
+active. These observations do not support a controlled corpus speedup claim.
+B was retained for its independently measured removal of the per-row allocation
+while preserving membership behavior. The live pinned runner remains unchanged.

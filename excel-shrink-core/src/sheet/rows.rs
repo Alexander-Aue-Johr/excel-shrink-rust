@@ -139,6 +139,8 @@ struct RowCellCleanupState<'a> {
     source_other_font_presence: std::collections::BTreeMap<u32, bool>,
     kept_default_style_cell: bool,
     tentative_style_representatives: Vec<TentativeStyleRepresentative<'a>>,
+    // A single represented style needs no per-row hash table allocation.
+    first_kept_represented_style_id: Option<u32>,
     kept_represented_style_ids: std::collections::HashSet<u32>,
     // Most rows use one font; its ID needs no per-row hash table allocation.
     first_kept_font_id: Option<u32>,
@@ -159,10 +161,28 @@ impl<'a> RowCellCleanupState<'a> {
             source_other_font_presence: std::collections::BTreeMap::new(),
             kept_default_style_cell: false,
             tentative_style_representatives: Vec::new(),
+            first_kept_represented_style_id: None,
             kept_represented_style_ids: std::collections::HashSet::new(),
             first_kept_font_id: None,
             kept_font_ids: std::collections::HashSet::new(),
             hidden_tail: None,
+        }
+    }
+
+    /// Include the inline representative when checking already covered styles.
+    fn has_kept_represented_style_id(&self, style_id: u32) -> bool {
+        self.first_kept_represented_style_id == Some(style_id)
+            || self.kept_represented_style_ids.contains(&style_id)
+    }
+
+    /// Keep the first style inline and allocate only for other distinct styles.
+    fn record_kept_represented_style_id(&mut self, style_id: u32) {
+        if let Some(first) = self.first_kept_represented_style_id {
+            if first != style_id {
+                self.kept_represented_style_ids.insert(style_id);
+            }
+        } else {
+            self.first_kept_represented_style_id = Some(style_id);
         }
     }
 
@@ -232,11 +252,11 @@ impl<'a> RowCellCleanupState<'a> {
         decision: EmptyStyleRepresentativeDecision,
         policy: EmptyStyleRepresentativePolicy,
     ) {
-        record_represented_cell_style(
-            cell,
-            &mut self.kept_represented_style_ids,
-            &mut self.kept_default_style_cell,
-        );
+        if let Some(style_id) = cell.style_id {
+            self.record_kept_represented_style_id(style_id);
+        } else {
+            self.kept_default_style_cell = true;
+        }
 
         if decision.is_tentative(policy) {
             self.tentative_style_representatives
@@ -1040,7 +1060,7 @@ fn select_empty_style_representative(
         && empty_cell_can_supply_font_representative(cell, params, metrics, has_cell_content)
         && cell
             .style_id
-            .is_some_and(|style_id| !state.kept_represented_style_ids.contains(&style_id)));
+            .is_some_and(|style_id| !state.has_kept_represented_style_id(style_id)));
     let keep_merged =
         empty_styled_cell_is_inside_merge_range(cell, params, metrics, has_cell_content);
     let keep_default = policy.keep_default_styleless
@@ -1076,18 +1096,6 @@ fn record_cell_visit(params: &CleanSheetParameters, cell: &ParsedCell<'_, '_>) {
 #[cfg(not(feature = "cell-tracing"))]
 #[inline]
 fn record_cell_visit(_params: &CleanSheetParameters, _cell: &ParsedCell<'_, '_>) {}
-
-fn record_represented_cell_style(
-    cell: &ParsedCell<'_, '_>,
-    kept_represented_style_ids: &mut std::collections::HashSet<u32>,
-    kept_default_style_cell: &mut bool,
-) {
-    if let Some(style_id) = cell.style_id {
-        kept_represented_style_ids.insert(style_id);
-    } else {
-        *kept_default_style_cell = true;
-    }
-}
 
 fn empty_styled_cell_is_inside_merge_range(
     cell: &ParsedCell<'_, '_>,
